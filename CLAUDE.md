@@ -1,56 +1,61 @@
 # Ants Terminal
 
-A modern PyQt6 chat terminal with themes, image paste support, and extensible architecture.
+A real terminal emulator built from scratch in C++ with Qt6.
 
 ## Tech Stack
 
-- **Python 3.13+** with **PyQt6** for the GUI
-- **Pillow** for image processing
-- Fusion Qt style with custom QSS theming
+- **C++20** with **Qt6** (Widgets, Core, Gui)
+- **libutil** for PTY (forkpty)
+- CMake build system
 
 ## Project Structure
 
 ```
-├── main.py                # Entry point
-├── requirements.txt       # Python dependencies
-├── app/
-│   ├── __init__.py        # Package init, version
-│   ├── config.py          # Persistent JSON config (~/.config/ants-terminal/)
-│   ├── themes.py          # Theme definitions + QSS stylesheet generator
-│   ├── input_widget.py    # InputWidget, ImagePreview, InputArea
-│   ├── chat_display.py    # ChatDisplay, Message dataclass
-│   └── main_window.py     # MainWindow with menus, shortcuts, layout
-├── STANDARDS.md           # Development standards
-└── RULES.md               # Project rules
-```
-
-## Running
-
-```bash
-python3 main.py
+├── CMakeLists.txt
+├── src/
+│   ├── main.cpp              # Entry point
+│   ├── mainwindow.h/.cpp     # Main window, menus, theme switching
+│   ├── terminalwidget.h/.cpp # Qt widget: renders grid, handles keyboard input
+│   ├── terminalgrid.h/.cpp   # Character grid, scrollback, processes VtActions
+│   ├── vtparser.h/.cpp       # VT100/xterm escape sequence state machine
+│   ├── pty.h/.cpp            # PTY management (forkpty, read/write, resize)
+│   ├── themes.h/.cpp         # 7 color themes with ANSI palette overrides
+│   └── config.h/.cpp         # Persistent JSON config
+├── assets/                   # Icons
+├── STANDARDS.md
+├── RULES.md
+└── README.md
 ```
 
 ## Architecture
 
-- **Config** persists to `~/.config/ants-terminal/config.json`
-- **Themes** are defined as dicts in `themes.py`; `get_stylesheet()` generates QSS
-- **ChatDisplay** stores messages as `Message` dataclass instances; re-renders all on theme change
-- **InputArea** composites `ImagePreview` + `InputWidget`; emits `submitted(text, images)`
-- **MainWindow** wires everything together
+Data flows: **PTY → VtParser → TerminalGrid → TerminalWidget (QPainter)**
+
+- `Pty`: forkpty() spawns bash, QSocketNotifier for non-blocking reads
+- `VtParser`: state machine decodes UTF-8, emits VtAction structs (Print, Execute, CSI, ESC, OSC)
+- `TerminalGrid`: processes VtActions, maintains character cell grid + scrollback + cursor state
+- `TerminalWidget`: renders grid with QPainter, handles keyboard → PTY writes
+- `MainWindow`: wires everything, manages themes/config/menus
+
+## Building
+
+```bash
+mkdir build && cd build
+cmake .. && make -j$(nproc)
+./ants-terminal
+```
 
 ## Conventions
 
-- Signals/slots for all inter-widget communication
-- Theme colors referenced by semantic name (e.g., `user_accent`, not `blue`)
-- Images stored as QImage in Message; registered as QTextDocument resources for display
-- No business logic in widgets — keep them as pure UI
+- Signals/slots for cross-component communication
+- Theme colors set on TerminalGrid (default fg/bg), used during rendering
+- ANSI palette (16 standard + 216 cube + 24 gray) initialized in TerminalGrid
+- Config persists to ~/.config/ants-terminal/config.json with 0600 permissions
+- Scrollback capped at 10,000 lines
 
-## Adding a New Theme
+## Key Design Decisions
 
-Add a new entry to `THEMES` dict in `app/themes.py` with all required color keys. It will automatically appear in the View > Themes menu.
-
-## Adding New Features
-
-1. Create a new module in `app/` if the feature is self-contained
-2. Wire it into `MainWindow` via signals/slots
-3. Update this file and STANDARDS.md if architectural patterns change
+- Custom VT100 parser (not pyte/libvterm) — no external deps beyond Qt6
+- QPainter cell-by-cell rendering (CPU) — simple, correct, fast enough
+- Alt screen buffer support (for vim, htop, etc.)
+- Delayed wrap (like xterm) for correct line-wrapping behavior

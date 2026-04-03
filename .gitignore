@@ -1,19 +1,31 @@
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg-info/
-dist/
+# Build
 build/
-.eggs/
-*.egg
-.venv/
-venv/
-env/
-.env
+cmake-build-*/
+*.o
+*.so
+*.a
+moc_*
+*.moc
+CMakeFiles/
+CMakeCache.txt
+Makefile
+compile_commands.json
+
+# IDE
+.idea/
+.vscode/
 *.swp
 *.swo
 *~
-.idea/
-.vscode/
+
+# Binary
+ants-terminal
+
+# Python leftovers
+__pycache__/
+*.py[cod]
+.venv/
+
+# OS
+.DS_Store
 *.bak
