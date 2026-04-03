@@ -18,7 +18,7 @@ A modern, themeable chat terminal built with Python and PyQt6.
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/ants-terminal.git
+git clone https://github.com/milnet01/ants-terminal.git
 cd ants-terminal
 
 # Install dependencies
