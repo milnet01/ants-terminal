@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Ants Terminal
 Comment=A modern terminal with themes, image support, and more
-Exec=/mnt/Storage/Scripts/Linux/Ants/build/ants-terminal
+Exec=/mnt/Storage/Scripts/Linux/Ants/launch.sh
 Icon=ants-terminal
 Terminal=false
 Type=Application
