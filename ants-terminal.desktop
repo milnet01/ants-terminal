@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Ants Terminal
+Comment=A modern terminal with themes, image support, and more
+Exec=python3 /mnt/Storage/Scripts/Linux/Ants/main.py
+Icon=ants-terminal
+Terminal=false
+Type=Application
+Categories=Utility;TerminalEmulator;
+Keywords=terminal;chat;ants;
+StartupWMClass=ants-terminal
