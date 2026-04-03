@@ -10,6 +10,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 add_executable(ants-terminal
     src/main.cpp
     src/mainwindow.cpp
+    src/titlebar.cpp
     src/terminalwidget.cpp
     src/terminalgrid.cpp
     src/vtparser.cpp

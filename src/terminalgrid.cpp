@@ -61,6 +61,30 @@ TerminalGrid::TerminalGrid(int rows, int cols)
         }
 }
 
+void TerminalGrid::setDefaultFg(const QColor &c) {
+    QColor oldFg = m_defaultFg;
+    m_defaultFg = c;
+    // Recolor cells that had the old default fg
+    for (auto &row : m_screen)
+        for (auto &cell : row)
+            if (cell.attrs.fg == oldFg)
+                cell.attrs.fg = c;
+    if (m_currentAttrs.fg == oldFg)
+        m_currentAttrs.fg = c;
+}
+
+void TerminalGrid::setDefaultBg(const QColor &c) {
+    QColor oldBg = m_defaultBg;
+    m_defaultBg = c;
+    // Recolor cells that had the old default bg
+    for (auto &row : m_screen)
+        for (auto &cell : row)
+            if (cell.attrs.bg == oldBg)
+                cell.attrs.bg = c;
+    if (m_currentAttrs.bg == oldBg)
+        m_currentAttrs.bg = c;
+}
+
 void TerminalGrid::processAction(const VtAction &action) {
     switch (action.type) {
     case VtAction::Print:

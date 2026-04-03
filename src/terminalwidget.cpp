@@ -1,6 +1,7 @@
 #include "terminalwidget.h"
 
 #include <QPainter>
+#include <QEvent>
 #include <QKeyEvent>
 #include <QResizeEvent>
 #include <QFontDatabase>
@@ -121,7 +122,26 @@ void TerminalWidget::applyThemeColors(const QColor &fg, const QColor &bg,
     m_grid->setDefaultFg(fg);
     m_grid->setDefaultBg(bg);
     m_cursorColor = cursorColor;
+
+    // Set widget palette so no foreign background can bleed through
+    QPalette pal = palette();
+    pal.setColor(QPalette::Window, bg);
+    pal.setColor(QPalette::Base, bg);
+    setPalette(pal);
+
     update();
+}
+
+bool TerminalWidget::event(QEvent *event) {
+    // Intercept Tab/Backtab before Qt's focus system steals them
+    if (event->type() == QEvent::KeyPress) {
+        QKeyEvent *ke = static_cast<QKeyEvent *>(event);
+        if (ke->key() == Qt::Key_Tab || ke->key() == Qt::Key_Backtab) {
+            keyPressEvent(ke);
+            return true;
+        }
+    }
+    return QWidget::event(event);
 }
 
 void TerminalWidget::paintEvent(QPaintEvent *) {
@@ -144,7 +164,10 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     int scrollbackSize = m_grid->scrollbackSize();
     int viewStart = scrollbackSize - m_scrollOffset;
 
-    static Cell blankCell;
+    // Blank cell with default bg so unpopulated cells don't paint dark blocks
+    Cell blankCell;
+    blankCell.attrs.fg = defaultBg;
+    blankCell.attrs.bg = defaultBg;
 
     // Precompute bracket match for current cursor
     BracketPair bp = (m_scrollOffset == 0) ? findMatchingBracket() : BracketPair{-1,-1,-1,-1};
@@ -204,7 +227,8 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 fg = m_urlColor;
             }
 
-            if (bg != defaultBg || selected) {
+            // Paint cell bg — use defaultBg for cells that haven't been colored by ANSI codes
+            if (bg != defaultBg) {
                 p.fillRect(px_x, px_y, m_cellWidth, m_cellHeight, bg);
             }
 
@@ -333,6 +357,9 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         break;
     case Qt::Key_Tab:
         data = "\t";
+        break;
+    case Qt::Key_Backtab:
+        data = "\x1B[Z";  // Shift+Tab (reverse tab)
         break;
     case Qt::Key_Escape:
         data = "\x1B";

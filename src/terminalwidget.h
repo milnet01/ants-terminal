@@ -25,6 +25,7 @@ public:
     void applyThemeColors(const QColor &fg, const QColor &bg,
                           const QColor &cursorColor);
     int scrollOffset() const { return m_scrollOffset; }
+    QString shellTitle() const { return m_lastTitle; }
 
 signals:
     void titleChanged(const QString &title);
@@ -32,6 +33,7 @@ signals:
     void imagePasted(const QImage &image);
 
 protected:
+    bool event(QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;

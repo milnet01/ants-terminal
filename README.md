@@ -221,7 +221,7 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 | Ctrl+= | Zoom in |
 | Ctrl+- | Zoom out |
 | Ctrl+0 | Reset zoom (11pt) |
-| Ctrl+Shift+C | Center window on screen |
+| Ctrl+Shift+M | Center window on screen |
 
 ### URL Interaction
 

@@ -45,9 +45,9 @@ public:
     int scrollbackSize() const { return static_cast<int>(m_scrollback.size()); }
     const std::vector<Cell> &scrollbackLine(int index) const { return m_scrollback[index]; }
 
-    // Default colors (set by theme)
-    void setDefaultFg(const QColor &c) { m_defaultFg = c; }
-    void setDefaultBg(const QColor &c) { m_defaultBg = c; }
+    // Default colors (set by theme) — recolors existing cells
+    void setDefaultFg(const QColor &c);
+    void setDefaultBg(const QColor &c);
     QColor defaultFg() const { return m_defaultFg; }
     QColor defaultBg() const { return m_defaultBg; }
 
