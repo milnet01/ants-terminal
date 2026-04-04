@@ -17,6 +17,7 @@ add_executable(ants-terminal
     src/ptyhandler.cpp
     src/themes.cpp
     src/config.cpp
+    src/commandpalette.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE

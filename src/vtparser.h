@@ -13,6 +13,8 @@ struct VtAction {
         CsiDispatch,    // CSI sequence complete (cursor move, erase, SGR, etc.)
         EscDispatch,    // ESC sequence complete
         OscEnd,         // OSC sequence complete (window title, etc.)
+        DcsEnd,         // DCS sequence complete (Sixel, etc.)
+        ApcEnd,         // APC sequence complete (Kitty graphics, etc.)
     };
 
     Type type;
@@ -43,8 +45,9 @@ private:
         CsiParam,
         CsiIntermediate,
         OscString,
-        // Simplified: DCS/SOS/PM/APC strings are consumed and ignored
-        IgnoreString,
+        DcsString,      // DCS sequence (Sixel graphics)
+        ApcString,      // APC sequence (Kitty graphics)
+        IgnoreString,   // SOS, PM — consumed and ignored
     };
 
     void processChar(uint32_t ch);
@@ -62,6 +65,8 @@ private:
     int m_currentParam = -1;  // -1 means "not started"
     std::string m_intermediate;
     std::string m_oscString;
+    std::string m_dcsString;  // DCS payload (Sixel data)
+    std::string m_apcString;  // APC payload (Kitty graphics)
 
     // UTF-8 decoder state
     uint32_t m_utf8Accum = 0;

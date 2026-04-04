@@ -5,9 +5,11 @@
 
 #include <QMainWindow>
 #include <QTabWidget>
+#include <QActionGroup>
 
 class TitleBar;
 class TerminalWidget;
+class CommandPalette;
 class QSplitter;
 
 class MainWindow : public QMainWindow {
@@ -59,4 +61,11 @@ private:
     QTabWidget *m_tabWidget = nullptr;
     Config m_config;
     QString m_currentTheme;
+
+    QActionGroup *m_themeGroup = nullptr;
+    QActionGroup *m_scrollbackGroup = nullptr;
+    QActionGroup *m_opacityGroup = nullptr;
+
+    CommandPalette *m_commandPalette = nullptr;
+    void collectActions(QMenu *menu, QList<QAction *> &out);
 };

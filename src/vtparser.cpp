@@ -99,8 +99,16 @@ void VtParser::processChar(uint32_t ch) {
             m_intermediate.clear();
             m_intermediate += static_cast<char>(ch);
             transition(EscapeIntermediate);
-        } else if (ch == 'P' || ch == 'X' || ch == '^' || ch == '_') {
-            // DCS, SOS, PM, APC — consume and ignore
+        } else if (ch == 'P') {
+            // DCS — Sixel graphics
+            m_dcsString.clear();
+            transition(DcsString);
+        } else if (ch == '_') {
+            // APC — Kitty graphics
+            m_apcString.clear();
+            transition(ApcString);
+        } else if (ch == 'X' || ch == '^') {
+            // SOS, PM — consume and ignore
             transition(IgnoreString);
         } else if (ch >= 0x30 && ch <= 0x7E) {
             // ESC final byte
@@ -247,6 +255,44 @@ void VtParser::processChar(uint32_t ch) {
                     m_oscString += static_cast<char>(0x80 | (ch & 0x3F));
                 }
             }
+        }
+        break;
+
+    case DcsString:
+        if (ch == 0x9C || ch == 0x07) {
+            VtAction a;
+            a.type = VtAction::DcsEnd;
+            a.oscString = m_dcsString; // Reuse oscString field for payload
+            m_callback(a);
+            transition(Ground);
+        } else if (ch == 0x1B) {
+            VtAction a;
+            a.type = VtAction::DcsEnd;
+            a.oscString = m_dcsString;
+            m_callback(a);
+            transition(Escape);
+        } else {
+            if (m_dcsString.size() < 10 * 1024 * 1024) // 10MB cap
+                m_dcsString += static_cast<char>(ch);
+        }
+        break;
+
+    case ApcString:
+        if (ch == 0x9C || ch == 0x07) {
+            VtAction a;
+            a.type = VtAction::ApcEnd;
+            a.oscString = m_apcString; // Reuse oscString field for payload
+            m_callback(a);
+            transition(Ground);
+        } else if (ch == 0x1B) {
+            VtAction a;
+            a.type = VtAction::ApcEnd;
+            a.oscString = m_apcString;
+            m_callback(a);
+            transition(Escape);
+        } else {
+            if (m_apcString.size() < 10 * 1024 * 1024) // 10MB cap
+                m_apcString += static_cast<char>(ch);
         }
         break;
 

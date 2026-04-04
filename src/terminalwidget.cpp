@@ -458,17 +458,37 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         }
     }
 
+    // Draw bookmark markers in left gutter
+    if (!m_bookmarks.empty()) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(m_cursorColor);
+        for (int bm : m_bookmarks) {
+            int vr = bm - viewStart;
+            if (vr >= 0 && vr < rows) {
+                int py = m_padding + vr * m_cellHeight + m_cellHeight / 2;
+                p.drawEllipse(QPoint(2, py), 2, 2);
+            }
+        }
+    }
+
     // Draw inline images
     for (const auto &img : m_grid->inlineImages()) {
         int px_x = m_padding + img.col * m_cellWidth;
         int imgRow = img.row;
-        // Convert screen row to viewport row
         int screenGlobalLine = scrollbackSize + imgRow;
         int vr = screenGlobalLine - viewStart;
         if (vr < 0 || vr >= rows) continue;
         int px_y = m_padding + vr * m_cellHeight;
-        int pw = img.cellWidth * m_cellWidth;
-        int ph = img.cellHeight * m_cellHeight;
+        int pw, ph;
+        if (img.pixelSized) {
+            // Sixel/Kitty: dimensions are pixels, render at actual size
+            pw = img.cellWidth;
+            ph = img.cellHeight;
+        } else {
+            // iTerm2/cell-based: dimensions are in cells
+            pw = img.cellWidth * m_cellWidth;
+            ph = img.cellHeight * m_cellHeight;
+        }
         p.drawImage(QRect(px_x, px_y, pw, ph), img.image);
     }
 
@@ -549,6 +569,32 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     if (key == Qt::Key_F && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         showSearchBar();
         return;
+    }
+
+    // Ctrl+Shift+Up/Down -- prompt navigation (OSC 133)
+    if ((mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+        if (key == Qt::Key_Up) {
+            navigatePrompt(-1);
+            return;
+        }
+        if (key == Qt::Key_Down) {
+            navigatePrompt(1);
+            return;
+        }
+        // Ctrl+Shift+B -- toggle bookmark
+        if (key == Qt::Key_B) {
+            toggleBookmark();
+            return;
+        }
+        // Ctrl+Shift+J / Ctrl+Shift+K -- navigate bookmarks
+        if (key == Qt::Key_J) {
+            nextBookmark();
+            return;
+        }
+        if (key == Qt::Key_K) {
+            prevBookmark();
+            return;
+        }
     }
 
 
@@ -758,8 +804,35 @@ void TerminalWidget::onPtyData(const QByteArray &data) {
         m_logFile->flush();
     }
 
+    // Asciicast recording
+    if (m_recording && m_recordFile && m_recordFile->isOpen()) {
+        double elapsed = m_recordTimer.elapsed() / 1000.0;
+        // Escape the data for JSON
+        QString escaped = QString::fromUtf8(data);
+        escaped.replace('\\', "\\\\");
+        escaped.replace('"', "\\\"");
+        escaped.replace('\n', "\\n");
+        escaped.replace('\r', "\\r");
+        escaped.replace('\t', "\\t");
+        // Escape control characters
+        for (int i = 0; i < escaped.size(); ++i) {
+            QChar ch = escaped[i];
+            if (ch.unicode() < 0x20 && ch != '\n' && ch != '\r' && ch != '\t') {
+                QString esc = QString("\\u%1").arg(static_cast<int>(ch.unicode()), 4, 16, QChar('0'));
+                escaped.replace(i, 1, esc);
+                i += esc.size() - 1;
+            }
+        }
+        QString line = QString("[%1, \"o\", \"%2\"]\n")
+            .arg(elapsed, 0, 'f', 6)
+            .arg(escaped);
+        m_recordFile->write(line.toUtf8());
+    }
+
     // Track output for idle notification
     m_lastOutputTime.restart();
+    if (!m_hadRecentOutput)
+        m_commandStartTime.restart();
     m_hadRecentOutput = true;
     m_notifiedIdle = false;
 
@@ -795,14 +868,64 @@ void TerminalWidget::checkIdleNotification() {
         m_hadRecentOutput = false;
         if (!m_hasFocus && !m_notifiedIdle) {
             m_notifiedIdle = true;
-            // Send desktop notification via notify-send
+
+            // Try to get command info from OSC 133 prompt regions
+            QString body = "A command has finished in Ants Terminal";
+            qint64 elapsed = m_commandStartTime.isValid()
+                ? m_commandStartTime.elapsed() / 1000 : 0;
+            if (elapsed > 0) {
+                int mins = static_cast<int>(elapsed / 60);
+                int secs = static_cast<int>(elapsed % 60);
+                if (mins > 0)
+                    body = QString("Finished after %1m %2s").arg(mins).arg(secs);
+                else
+                    body = QString("Finished after %1s").arg(secs);
+            }
+
             QProcess::startDetached("notify-send", {
                 "-a", "Ants Terminal",
                 "-i", "utilities-terminal",
                 "Command Complete",
-                "A command has finished in Ants Terminal"
+                body
             });
         }
+    }
+}
+
+void TerminalWidget::navigatePrompt(int direction) {
+    const auto &regions = m_grid->promptRegions();
+    if (regions.empty()) return;
+
+    int scrollbackSize = m_grid->scrollbackSize();
+    // Current view top in global line coordinates
+    int viewTop = scrollbackSize - m_scrollOffset;
+
+    if (direction < 0) {
+        // Find the prompt region whose startLine is above current viewTop
+        for (int i = static_cast<int>(regions.size()) - 1; i >= 0; --i) {
+            if (regions[i].startLine < viewTop - 1) {
+                m_scrollOffset = scrollbackSize - regions[i].startLine;
+                m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+                update();
+                return;
+            }
+        }
+        // Already at topmost prompt — scroll to start
+        m_scrollOffset = scrollbackSize;
+        update();
+    } else {
+        // Find the prompt region whose startLine is below current viewTop
+        for (const auto &region : regions) {
+            if (region.startLine > viewTop + 1) {
+                m_scrollOffset = scrollbackSize - region.startLine;
+                m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+                update();
+                return;
+            }
+        }
+        // Already at bottommost prompt — scroll to end
+        m_scrollOffset = 0;
+        update();
     }
 }
 
@@ -1172,9 +1295,10 @@ std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) 
         QRegularExpression::CaseInsensitiveOption
     );
 
-    // File path with optional line number
+    // File path with optional line:col (compiler/linter output)
+    // Matches: /abs/path.ext:line:col, ./rel/path.ext:line, src/file.cpp:42:10, file.rs:17
     static QRegularExpression filePathRe(
-        R"((?:^|[\s(])((\.{0,2}/)?[a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+(?::\d+(?::\d+)?)?)(?=[\s),;:]|$))"
+        R"RE((?:^|[\s("'])((\.{0,2}/)?[a-zA-Z0-9_\-./]+\.[a-zA-Z0-9_]+(?::(\d+)(?::(\d+))?)?))(?=[\s)"',;:\]}>]|$))RE"
     );
 
     std::vector<UrlSpan> spans;
@@ -1229,8 +1353,12 @@ std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) 
                 break;
             }
         }
-        if (!overlaps && path.contains('/')) {
-            spans.push_back({startCol, endCol, path, true, false});
+        if (!overlaps) {
+            // Accept paths with '/' or paths with :line (compiler output)
+            bool hasLineNum = match.capturedStart(3) >= 0;
+            if (path.contains('/') || hasLineNum) {
+                spans.push_back({startCol, endCol, path, true, false});
+            }
         }
     }
 
@@ -1252,15 +1380,22 @@ void TerminalWidget::openFileAtPath(const QString &path) {
             col = match.captured(3).toInt();
     }
 
-    // Resolve relative paths
-    // Try to resolve relative to CWD (if we can detect it)
+    // Resolve relative paths using shell's actual CWD
     QFileInfo fi(filePath);
     if (!fi.isAbsolute()) {
-        // Try common locations
-        QStringList tryPaths = {
-            QDir::currentPath() + "/" + filePath,
-            QDir::homePath() + "/" + filePath,
-        };
+        QStringList tryPaths;
+        // Get shell's CWD from /proc if possible
+        if (m_pty) {
+            int pid = m_pty->childPid();
+            if (pid > 0) {
+                QString cwdLink = QString("/proc/%1/cwd").arg(pid);
+                QFileInfo cwdInfo(cwdLink);
+                if (cwdInfo.exists())
+                    tryPaths.append(cwdInfo.symLinkTarget() + "/" + filePath);
+            }
+        }
+        tryPaths.append(QDir::currentPath() + "/" + filePath);
+        tryPaths.append(QDir::homePath() + "/" + filePath);
         for (const QString &p : tryPaths) {
             if (QFileInfo::exists(p)) {
                 filePath = p;
@@ -1484,3 +1619,82 @@ TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
     return cacheAndReturn({-1, -1, -1, -1});
 }
 
+// --- Terminal Recording (asciicast v2) ---
+
+void TerminalWidget::startRecording(const QString &path) {
+    if (m_recording) return;
+    m_recordFile = std::make_unique<QFile>(path);
+    if (!m_recordFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        m_recordFile.reset();
+        return;
+    }
+
+    // Write asciicast v2 header
+    QString header = QString(R"({"version": 2, "width": %1, "height": %2, "timestamp": %3, "env": {"TERM": "xterm-256color"}})")
+        .arg(m_grid->cols())
+        .arg(m_grid->rows())
+        .arg(QDateTime::currentSecsSinceEpoch());
+    m_recordFile->write(header.toUtf8() + "\n");
+
+    m_recordTimer.start();
+    m_recording = true;
+}
+
+void TerminalWidget::stopRecording() {
+    if (!m_recording) return;
+    m_recording = false;
+    if (m_recordFile) {
+        m_recordFile->close();
+        m_recordFile.reset();
+    }
+}
+
+// --- Bookmarks ---
+
+void TerminalWidget::toggleBookmark() {
+    int globalLine = m_grid->scrollbackSize() + m_grid->cursorRow();
+    auto it = std::find(m_bookmarks.begin(), m_bookmarks.end(), globalLine);
+    if (it != m_bookmarks.end()) {
+        m_bookmarks.erase(it);
+    } else {
+        m_bookmarks.push_back(globalLine);
+        std::sort(m_bookmarks.begin(), m_bookmarks.end());
+    }
+    update();
+}
+
+void TerminalWidget::nextBookmark() {
+    if (m_bookmarks.empty()) return;
+    int scrollbackSize = m_grid->scrollbackSize();
+    int viewTop = scrollbackSize - m_scrollOffset;
+    for (int bm : m_bookmarks) {
+        if (bm > viewTop + 1) {
+            m_scrollOffset = scrollbackSize - bm;
+            m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+            update();
+            return;
+        }
+    }
+    // Wrap to first bookmark
+    m_scrollOffset = scrollbackSize - m_bookmarks.front();
+    m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+    update();
+}
+
+void TerminalWidget::prevBookmark() {
+    if (m_bookmarks.empty()) return;
+    int scrollbackSize = m_grid->scrollbackSize();
+    int viewTop = scrollbackSize - m_scrollOffset;
+    for (int i = static_cast<int>(m_bookmarks.size()) - 1; i >= 0; --i) {
+        if (m_bookmarks[i] < viewTop - 1) {
+            m_scrollOffset = scrollbackSize - m_bookmarks[i];
+            m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+            update();
+            return;
+        }
+    }
+    // Wrap to last bookmark
+    m_scrollOffset = scrollbackSize - m_bookmarks.back();
+    m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+    update();
+}

@@ -57,6 +57,17 @@ public:
     // Send raw data to the PTY (for actions like clear-line)
     void sendToPty(const QByteArray &data);
 
+    // Terminal recording
+    void startRecording(const QString &path);
+    void stopRecording();
+    bool isRecording() const { return m_recording; }
+
+    // Bookmarks
+    void toggleBookmark();
+    void nextBookmark();
+    void prevBookmark();
+    const std::vector<int> &bookmarks() const { return m_bookmarks; }
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);
@@ -122,6 +133,9 @@ private:
     void searchPrev();
     bool isCellSearchMatch(int globalLine, int col) const;
     bool isCellCurrentMatch(int globalLine, int col) const;
+
+    // Prompt navigation (OSC 133 shell integration)
+    void navigatePrompt(int direction); // -1 = prev, +1 = next
 
     // Bracket matching
     struct BracketPair { int line1; int col1; int line2; int col2; };
@@ -197,6 +211,7 @@ private:
     // Idle notification (detect when long-running command finishes)
     QTimer m_idleTimer;
     QElapsedTimer m_lastOutputTime;
+    QElapsedTimer m_commandStartTime;
     bool m_hadRecentOutput = false;
     bool m_notifiedIdle = true; // start as true so we don't notify on first prompt
 
@@ -217,4 +232,12 @@ private:
     // Last mouse button state for SGR reporting
     int m_lastMouseButton = -1;
     QPoint m_lastMouseCell{-1, -1};
+
+    // Terminal recording (asciicast v2)
+    bool m_recording = false;
+    std::unique_ptr<QFile> m_recordFile;
+    QElapsedTimer m_recordTimer;
+
+    // Line bookmarks
+    std::vector<int> m_bookmarks; // global line numbers
 };

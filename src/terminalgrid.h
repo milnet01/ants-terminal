@@ -54,8 +54,9 @@ struct InlineImage {
     QImage image;
     int row;        // screen row where image starts
     int col;        // column where image starts
-    int cellWidth;  // width in cells
-    int cellHeight; // height in cells
+    int cellWidth;  // width in cells (or pixels if pixelSized)
+    int cellHeight; // height in cells (or pixels if pixelSized)
+    bool pixelSized = false; // true for Sixel/Kitty (dimensions are pixels, not cells)
 };
 
 // OSC 8 hyperlink span stored per-line
@@ -146,6 +147,8 @@ private:
     void handleCsi(const VtAction &a);
     void handleEsc(const VtAction &a);
     void handleOsc(const std::string &payload);
+    void handleDcs(const std::string &payload);  // Sixel graphics
+    void handleApc(const std::string &payload);  // Kitty graphics
 
     // CSI helpers
     void handleSGR(const std::vector<int> &params);
@@ -246,6 +249,11 @@ private:
     // Shell integration (OSC 133)
     std::vector<PromptRegion> m_promptRegions;
     int m_shellIntegState = 0; // 0=none, 'A'=prompt start, 'B'=command start, 'C'=output start
+
+    // Kitty graphics image cache (id -> QImage)
+    std::unordered_map<uint32_t, QImage> m_kittyImages;
+    std::string m_kittyChunkBuffer; // For multi-chunk transmissions
+    uint32_t m_kittyChunkId = 0;
 
     // 256-color palette
     static QColor s_palette256[256];

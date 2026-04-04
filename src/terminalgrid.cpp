@@ -133,6 +133,12 @@ void TerminalGrid::processAction(const VtAction &action) {
     case VtAction::OscEnd:
         handleOsc(action.oscString);
         break;
+    case VtAction::DcsEnd:
+        handleDcs(action.oscString);
+        break;
+    case VtAction::ApcEnd:
+        handleApc(action.oscString);
+        break;
     }
 }
 
@@ -961,19 +967,87 @@ void TerminalGrid::resize(int rows, int cols) {
             m_scrollback.pop_front();
     }
 
-    // Build new screen
-    std::vector<TermLine> newScreen(rows);
-    for (auto &line : newScreen) {
-        line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+    // Reflow screen lines when width changes
+    if (cols != m_cols && !m_altScreenActive) {
+        // Join soft-wrapped screen lines into logical lines
+        std::vector<std::vector<Cell>> logicalScreen;
+        std::vector<Cell> cur;
+        for (auto &sl : m_screenLines) {
+            auto &cells = sl.cells;
+            int len = static_cast<int>(cells.size());
+            while (len > 0 && cells[len - 1].codepoint == ' ') --len;
+            cur.insert(cur.end(), cells.begin(), cells.begin() + len);
+            if (!sl.softWrapped) {
+                logicalScreen.push_back(std::move(cur));
+                cur.clear();
+            }
+        }
+        if (!cur.empty()) logicalScreen.push_back(std::move(cur));
+
+        // Re-wrap into new width
+        std::vector<TermLine> reflowed;
+        for (auto &logical : logicalScreen) {
+            if (logical.empty()) {
+                TermLine tl;
+                tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+                reflowed.push_back(std::move(tl));
+                continue;
+            }
+            int pos = 0;
+            int total = static_cast<int>(logical.size());
+            while (pos < total) {
+                int chunk = std::min(cols, total - pos);
+                TermLine tl;
+                tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+                for (int i = 0; i < chunk; ++i) tl.cells[i] = logical[pos + i];
+                pos += chunk;
+                tl.softWrapped = (pos < total);
+                reflowed.push_back(std::move(tl));
+            }
+        }
+
+        // If we have more reflowed lines than fit on screen, push excess to scrollback
+        while (static_cast<int>(reflowed.size()) > rows) {
+            m_scrollback.push_back(std::move(reflowed.front()));
+            reflowed.erase(reflowed.begin());
+        }
+
+        // Build final screen
+        std::vector<TermLine> newScreen(rows);
+        for (auto &line : newScreen)
+            line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+        for (int r = 0; r < static_cast<int>(reflowed.size()) && r < rows; ++r)
+            newScreen[r] = std::move(reflowed[r]);
+
+        m_screenLines = std::move(newScreen);
+
+        // Reposition cursor on the last content line
+        int lastContent = 0;
+        for (int r = rows - 1; r >= 0; --r) {
+            bool hasContent = false;
+            for (int c = 0; c < cols; ++c) {
+                if (m_screenLines[r].cells[c].codepoint != ' ') {
+                    hasContent = true;
+                    break;
+                }
+            }
+            if (hasContent) { lastContent = r; break; }
+        }
+        m_cursorRow = std::min(m_cursorRow, lastContent + 1);
+        m_cursorRow = std::clamp(m_cursorRow, 0, rows - 1);
+        m_cursorCol = std::clamp(m_cursorCol, 0, cols - 1);
+    } else {
+        // No reflow needed (same width or alt screen) — simple copy
+        std::vector<TermLine> newScreen(rows);
+        for (auto &line : newScreen)
+            line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+        int copyRows = std::min(rows, m_rows);
+        int copyCols = std::min(cols, m_cols);
+        for (int r = 0; r < copyRows; ++r)
+            for (int c = 0; c < copyCols; ++c)
+                newScreen[r].cells[c] = m_screenLines[r].cells[c];
+        m_screenLines = std::move(newScreen);
     }
-
-    int copyRows = std::min(rows, m_rows);
-    int copyCols = std::min(cols, m_cols);
-    for (int r = 0; r < copyRows; ++r)
-        for (int c = 0; c < copyCols; ++c)
-            newScreen[r].cells[c] = m_screenLines[r].cells[c];
-
-    m_screenLines = std::move(newScreen);
 
     // Also resize alt screen buffer if it exists
     if (!m_altScreen.empty()) {
@@ -997,4 +1071,340 @@ void TerminalGrid::resize(int rows, int cols) {
     m_cursorRow = std::clamp(m_cursorRow, 0, m_rows - 1);
     m_cursorCol = std::clamp(m_cursorCol, 0, m_cols - 1);
     m_screenHyperlinks.resize(m_rows);
+}
+
+// --- Sixel Graphics (DCS q ... ST) ---
+
+void TerminalGrid::handleDcs(const std::string &payload) {
+    if (payload.empty()) return;
+
+    // Find the 'q' that starts Sixel data
+    size_t qpos = payload.find('q');
+    if (qpos == std::string::npos) return;
+
+    // Parse raster attributes if present
+    size_t dataStart = qpos + 1;
+
+    // Sixel color palette (up to 256 entries)
+    QColor palette[256];
+    for (int i = 0; i < 16; ++i) palette[i] = s_palette256[i];
+    for (int i = 16; i < 256; ++i) palette[i] = QColor(0, 0, 0);
+    int currentColor = 0;
+
+    // First pass: determine image dimensions
+    int imgWidth = 0, imgHeight = 0;
+    {
+        int x = 0, y = 0, maxX = 0;
+        for (size_t i = dataStart; i < payload.size(); ++i) {
+            char ch = payload[i];
+            if (ch >= '?' && ch <= '~') {
+                ++x;
+                if (x > maxX) maxX = x;
+            } else if (ch == '$') {
+                x = 0;
+            } else if (ch == '-') {
+                x = 0;
+                y += 6;
+            } else if (ch == '!') {
+                // Repeat: !<count><char>
+                int count = 0;
+                ++i;
+                while (i < payload.size() && payload[i] >= '0' && payload[i] <= '9') {
+                    count = count * 10 + (payload[i] - '0');
+                    ++i;
+                }
+                if (i < payload.size() && payload[i] >= '?' && payload[i] <= '~') {
+                    x += count;
+                    if (x > maxX) maxX = x;
+                }
+            } else if (ch == '#') {
+                // Skip color command
+                ++i;
+                while (i < payload.size() && ((payload[i] >= '0' && payload[i] <= '9') || payload[i] == ';'))
+                    ++i;
+                --i;
+            } else if (ch == '"') {
+                // Raster attributes: "Pan;Pad;Ph;Pv
+                ++i;
+                int rasterParams[4] = {0, 0, 0, 0};
+                int rp = 0;
+                while (i < payload.size() && rp < 4) {
+                    if (payload[i] >= '0' && payload[i] <= '9') {
+                        rasterParams[rp] = rasterParams[rp] * 10 + (payload[i] - '0');
+                    } else if (payload[i] == ';') {
+                        ++rp;
+                    } else {
+                        break;
+                    }
+                    ++i;
+                }
+                --i;
+                if (rasterParams[2] > 0) maxX = rasterParams[2];
+                if (rasterParams[3] > 0) { y = 0; imgHeight = rasterParams[3]; }
+            }
+        }
+        imgWidth = maxX;
+        if (imgHeight == 0) imgHeight = y + 6;
+    }
+
+    if (imgWidth <= 0 || imgHeight <= 0 || imgWidth > 4096 || imgHeight > 4096) return;
+
+    QImage image(imgWidth, imgHeight, QImage::Format_ARGB32);
+    image.fill(Qt::transparent);
+
+    // Second pass: render pixels
+    int x = 0, y = 0;
+    for (size_t i = dataStart; i < payload.size(); ++i) {
+        char ch = payload[i];
+        if (ch >= '?' && ch <= '~') {
+            int sixel = ch - '?';
+            QColor col = palette[currentColor];
+            for (int bit = 0; bit < 6; ++bit) {
+                if (sixel & (1 << bit)) {
+                    int py = y + bit;
+                    if (x < imgWidth && py < imgHeight)
+                        image.setPixelColor(x, py, col);
+                }
+            }
+            ++x;
+        } else if (ch == '$') {
+            x = 0;
+        } else if (ch == '-') {
+            x = 0;
+            y += 6;
+        } else if (ch == '!') {
+            // Repeat
+            int count = 0;
+            ++i;
+            while (i < payload.size() && payload[i] >= '0' && payload[i] <= '9') {
+                count = count * 10 + (payload[i] - '0');
+                ++i;
+            }
+            if (i < payload.size() && payload[i] >= '?' && payload[i] <= '~') {
+                int sixel = payload[i] - '?';
+                QColor col = palette[currentColor];
+                for (int r = 0; r < count; ++r) {
+                    for (int bit = 0; bit < 6; ++bit) {
+                        if (sixel & (1 << bit)) {
+                            int py = y + bit;
+                            if (x < imgWidth && py < imgHeight)
+                                image.setPixelColor(x, py, col);
+                        }
+                    }
+                    ++x;
+                }
+            }
+        } else if (ch == '#') {
+            // Color command: #idx or #idx;2;r;g;b
+            ++i;
+            int idx = 0;
+            while (i < payload.size() && payload[i] >= '0' && payload[i] <= '9') {
+                idx = idx * 10 + (payload[i] - '0');
+                ++i;
+            }
+            idx = std::clamp(idx, 0, 255);
+            if (i < payload.size() && payload[i] == ';') {
+                // Color definition
+                ++i;
+                int colorParams[5] = {0, 0, 0, 0, 0};
+                int cp = 0;
+                while (i < payload.size() && cp < 5) {
+                    if (payload[i] >= '0' && payload[i] <= '9') {
+                        colorParams[cp] = colorParams[cp] * 10 + (payload[i] - '0');
+                    } else if (payload[i] == ';') {
+                        ++cp;
+                    } else {
+                        break;
+                    }
+                    ++i;
+                }
+                --i;
+                if (colorParams[0] == 2) {
+                    // RGB (0-100 percentage)
+                    int r = colorParams[1] * 255 / 100;
+                    int g = colorParams[2] * 255 / 100;
+                    int b = colorParams[3] * 255 / 100;
+                    palette[idx] = QColor(std::clamp(r, 0, 255),
+                                          std::clamp(g, 0, 255),
+                                          std::clamp(b, 0, 255));
+                }
+            }
+            currentColor = idx;
+        }
+    }
+
+    // Place image at cursor position
+    if (m_inlineImages.size() >= 100) m_inlineImages.erase(m_inlineImages.begin());
+
+    InlineImage img;
+    img.image = image;
+    img.row = m_cursorRow;
+    img.col = m_cursorCol;
+    img.cellWidth = imgWidth;
+    img.cellHeight = imgHeight;
+    img.pixelSized = true;
+    m_inlineImages.push_back(img);
+}
+
+// --- Kitty Graphics Protocol (APC G ... ST) ---
+
+void TerminalGrid::handleApc(const std::string &payload) {
+    if (payload.empty() || payload[0] != 'G') return;
+
+    // Parse key=value pairs (comma-separated) before the semicolon
+    size_t semicolon = payload.find(';');
+    std::string params_str = (semicolon != std::string::npos)
+        ? payload.substr(1, semicolon - 1) : payload.substr(1);
+    std::string data_str = (semicolon != std::string::npos)
+        ? payload.substr(semicolon + 1) : "";
+
+    // Parse parameters
+    std::unordered_map<char, std::string> params;
+    size_t pos = 0;
+    while (pos < params_str.size()) {
+        char key = params_str[pos];
+        if (pos + 1 >= params_str.size() || params_str[pos + 1] != '=') break;
+        pos += 2;
+        std::string value;
+        while (pos < params_str.size() && params_str[pos] != ',') {
+            value += params_str[pos];
+            ++pos;
+        }
+        params[key] = value;
+        if (pos < params_str.size() && params_str[pos] == ',') ++pos;
+    }
+
+    // Extract common parameters
+    char action = 'T'; // Default: transmit + display
+    if (params.count('a')) action = params['a'][0];
+
+    int format = 32; // Default: RGBA
+    if (params.count('f')) format = std::stoi(params['f']);
+
+    uint32_t imageId = 0;
+    if (params.count('i')) imageId = static_cast<uint32_t>(std::stoul(params['i']));
+
+    int more = 0; // Chunking: 1 = more data coming
+    if (params.count('m')) more = std::stoi(params['m']);
+
+    // Handle chunked transmission
+    if (more == 1) {
+        if (m_kittyChunkBuffer.empty()) m_kittyChunkId = imageId;
+        m_kittyChunkBuffer += data_str;
+        return; // Wait for more chunks
+    }
+
+    // Final chunk (or single transmission)
+    std::string fullData = m_kittyChunkBuffer + data_str;
+    m_kittyChunkBuffer.clear();
+    if (imageId == 0 && m_kittyChunkId != 0) imageId = m_kittyChunkId;
+    m_kittyChunkId = 0;
+
+    // Handle actions
+    if (action == 'd') {
+        // Delete
+        char deleteType = 'a';
+        if (params.count('d')) deleteType = params['d'][0];
+        if (deleteType == 'a') {
+            m_kittyImages.clear();
+            m_inlineImages.clear();
+        } else if (deleteType == 'i' && imageId > 0) {
+            m_kittyImages.erase(imageId);
+        }
+        // Send response
+        if (m_responseCallback) {
+            std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
+            m_responseCallback(resp);
+        }
+        return;
+    }
+
+    if (action == 'q') {
+        // Query — respond with OK
+        if (m_responseCallback) {
+            std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
+            m_responseCallback(resp);
+        }
+        return;
+    }
+
+    // Decode image data
+    QImage image;
+    if (!fullData.empty()) {
+        QByteArray base64Data = QByteArray::fromRawData(fullData.data(),
+                                                         static_cast<int>(fullData.size()));
+        QByteArray decoded = QByteArray::fromBase64(base64Data);
+
+        if (format == 100) {
+            // PNG format
+            image.loadFromData(decoded, "PNG");
+        } else if (format == 32 || format == 24) {
+            // Raw pixel data
+            int pixelW = 0, pixelH = 0;
+            if (params.count('s')) pixelW = std::stoi(params['s']);
+            if (params.count('v')) pixelH = std::stoi(params['v']);
+            if (pixelW > 0 && pixelH > 0 && pixelW <= 4096 && pixelH <= 4096) {
+                int bytesPerPixel = (format == 32) ? 4 : 3;
+                if (decoded.size() >= pixelW * pixelH * bytesPerPixel) {
+                    QImage::Format fmt = (format == 32)
+                        ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
+                    image = QImage(reinterpret_cast<const uchar *>(decoded.constData()),
+                                   pixelW, pixelH, fmt).copy(); // .copy() to own the data
+                }
+            }
+        }
+    }
+
+    if (image.isNull() && action != 'p') {
+        // Failed to decode — send error response
+        if (m_responseCallback) {
+            std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";ENODATA\x1B\\";
+            m_responseCallback(resp);
+        }
+        return;
+    }
+
+    // Store image if it has an ID
+    if (imageId > 0 && !image.isNull()) {
+        if (m_kittyImages.size() >= 200) m_kittyImages.clear(); // Prevent unbounded growth
+        m_kittyImages[imageId] = image;
+    }
+
+    // Display if action is T (transmit+display) or p (display stored)
+    if (action == 'T' || action == 'p') {
+        QImage displayImg = image;
+        if (action == 'p' && imageId > 0 && m_kittyImages.count(imageId)) {
+            displayImg = m_kittyImages[imageId];
+        }
+        if (!displayImg.isNull()) {
+            if (m_inlineImages.size() >= 100)
+                m_inlineImages.erase(m_inlineImages.begin());
+
+            InlineImage img;
+            img.image = displayImg;
+            img.row = m_cursorRow;
+            img.col = m_cursorCol;
+            img.cellWidth = displayImg.width();
+            img.cellHeight = displayImg.height();
+            img.pixelSized = true;
+
+            // Use cols/rows if specified (cell units override pixel sizing)
+            if (params.count('c')) {
+                img.cellWidth = std::stoi(params['c']);
+                img.pixelSized = false;
+            }
+            if (params.count('r')) {
+                img.cellHeight = std::stoi(params['r']);
+                if (!params.count('c')) img.pixelSized = false;
+            }
+
+            m_inlineImages.push_back(img);
+        }
+    }
+
+    // Send OK response
+    if (m_responseCallback) {
+        std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
+        m_responseCallback(resp);
+    }
 }

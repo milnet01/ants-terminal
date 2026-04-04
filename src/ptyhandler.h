@@ -15,6 +15,7 @@ public:
     bool start(const QString &shell = QString());
     void write(const QByteArray &data);
     void resize(int rows, int cols);
+    pid_t childPid() const { return m_childPid; }
 
 signals:
     void dataReceived(const QByteArray &data);

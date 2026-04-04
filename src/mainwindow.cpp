@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "terminalwidget.h"
 #include "titlebar.h"
+#include "commandpalette.h"
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -73,6 +74,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     setupMenus();
 
+    // Command palette (Ctrl+Shift+P)
+    m_commandPalette = new CommandPalette(central);
+    m_commandPalette->hide();
+    connect(m_commandPalette, &CommandPalette::closed, this, [this]() {
+        if (auto *t = focusedTerminal()) t->setFocus();
+    });
+    // Collect all menu actions for the palette
+    QList<QAction *> allActions;
+    for (QAction *menuAction : m_menuBar->actions()) {
+        if (menuAction->menu())
+            collectActions(menuAction->menu(), allActions);
+    }
+    m_commandPalette->setActions(allActions);
+
     // Apply saved theme
     applyTheme(m_config.theme());
 
@@ -123,8 +138,13 @@ void MainWindow::setupMenus() {
 
     // Themes submenu
     QMenu *themesMenu = viewMenu->addMenu("&Themes");
+    m_themeGroup = new QActionGroup(this);
+    m_themeGroup->setExclusive(true);
     for (const QString &name : Themes::names()) {
         QAction *a = themesMenu->addAction(name);
+        a->setCheckable(true);
+        a->setChecked(name == m_config.theme());
+        m_themeGroup->addAction(a);
         connect(a, &QAction::triggered, this, [this, name]() {
             applyTheme(name);
         });
@@ -151,8 +171,14 @@ void MainWindow::setupMenus() {
 
     // Opacity submenu
     QMenu *opacityMenu = viewMenu->addMenu("&Opacity");
+    m_opacityGroup = new QActionGroup(this);
+    m_opacityGroup->setExclusive(true);
+    int currentOpacityPct = static_cast<int>(m_config.opacity() * 100 + 0.5);
     for (int pct : {100, 95, 90, 85, 80, 70}) {
         QAction *a = opacityMenu->addAction(QString("%1%").arg(pct));
+        a->setCheckable(true);
+        a->setChecked(pct == currentOpacityPct);
+        m_opacityGroup->addAction(a);
         connect(a, &QAction::triggered, this, [this, pct]() {
             double val = pct / 100.0;
             m_config.setOpacity(val);
@@ -166,6 +192,14 @@ void MainWindow::setupMenus() {
     QAction *centerAction = viewMenu->addAction("&Center Window");
     centerAction->setShortcut(QKeySequence("Ctrl+Shift+M"));
     connect(centerAction, &QAction::triggered, this, &MainWindow::centerWindow);
+
+    viewMenu->addSeparator();
+
+    QAction *paletteAction = viewMenu->addAction("Command &Palette");
+    paletteAction->setShortcut(QKeySequence(m_config.keybinding("command_palette", "Ctrl+Shift+P")));
+    connect(paletteAction, &QAction::triggered, this, [this]() {
+        if (m_commandPalette) m_commandPalette->show();
+    });
 
     // Split menu
     QMenu *splitMenu = m_menuBar->addMenu("&Split");
@@ -216,10 +250,66 @@ void MainWindow::setupMenus() {
 
     settingsMenu->addSeparator();
 
+    QAction *recordAction = settingsMenu->addAction("&Record Session");
+    recordAction->setCheckable(true);
+    recordAction->setShortcut(QKeySequence(m_config.keybinding("record_session", "Ctrl+Shift+R")));
+    connect(recordAction, &QAction::toggled, this, [this, recordAction](bool checked) {
+        TerminalWidget *t = focusedTerminal();
+        if (!t) t = currentTerminal();
+        if (!t) return;
+        if (checked) {
+            QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+                          + "/ants-terminal/recordings";
+            QDir().mkpath(dir);
+            QString path = dir + "/recording_"
+                + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".cast";
+            t->startRecording(path);
+            statusBar()->showMessage("Recording: " + path, 5000);
+        } else {
+            t->stopRecording();
+            statusBar()->showMessage("Recording stopped", 3000);
+        }
+    });
+
+    settingsMenu->addSeparator();
+
+    // Bookmarks
+    QAction *bookmarkAction = settingsMenu->addAction("Toggle &Bookmark");
+    bookmarkAction->setShortcut(QKeySequence(m_config.keybinding("toggle_bookmark", "Ctrl+Shift+B")));
+    connect(bookmarkAction, &QAction::triggered, this, [this]() {
+        TerminalWidget *t = focusedTerminal();
+        if (!t) t = currentTerminal();
+        if (t) t->toggleBookmark();
+    });
+
+    QAction *nextBmAction = settingsMenu->addAction("Next Bookmark");
+    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark", "Ctrl+Shift+J")));
+    connect(nextBmAction, &QAction::triggered, this, [this]() {
+        TerminalWidget *t = focusedTerminal();
+        if (!t) t = currentTerminal();
+        if (t) t->nextBookmark();
+    });
+
+    QAction *prevBmAction = settingsMenu->addAction("Previous Bookmark");
+    prevBmAction->setShortcut(QKeySequence(m_config.keybinding("prev_bookmark", "Ctrl+Shift+K")));
+    connect(prevBmAction, &QAction::triggered, this, [this]() {
+        TerminalWidget *t = focusedTerminal();
+        if (!t) t = currentTerminal();
+        if (t) t->prevBookmark();
+    });
+
+    settingsMenu->addSeparator();
+
     // Scrollback submenu
     QMenu *scrollbackMenu = settingsMenu->addMenu("Scrollback &Lines");
+    m_scrollbackGroup = new QActionGroup(this);
+    m_scrollbackGroup->setExclusive(true);
+    int currentScrollback = m_config.scrollbackLines();
     for (int lines : {10000, 50000, 100000, 500000}) {
-        QAction *a = scrollbackMenu->addAction(QString("%1").arg(lines));
+        QAction *a = scrollbackMenu->addAction(QString::number(lines));
+        a->setCheckable(true);
+        a->setChecked(lines == currentScrollback);
+        m_scrollbackGroup->addAction(a);
         connect(a, &QAction::triggered, this, [this, lines]() {
             m_config.setScrollbackLines(lines);
             QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
@@ -485,6 +575,13 @@ void MainWindow::applyTheme(const QString &name) {
     m_currentTheme = name;
     m_config.setTheme(name);
 
+    // Update theme checkmark
+    if (m_themeGroup) {
+        for (QAction *a : m_themeGroup->actions()) {
+            a->setChecked(a->text().remove('&') == name);
+        }
+    }
+
     const Theme &theme = Themes::byName(name);
 
     QString ss = QString(
@@ -507,6 +604,15 @@ void MainWindow::applyTheme(const QString &name) {
         "QSplitter::handle { background-color: %4; }"
         "QSplitter::handle:horizontal { width: 2px; }"
         "QSplitter::handle:vertical { height: 2px; }"
+        "QWidget#commandPalette { background-color: %2; border: 1px solid %4;"
+        "  border-radius: 8px; }"
+        "QLineEdit#commandPaletteInput { background: %1; color: %3; border: none;"
+        "  border-bottom: 1px solid %4; padding: 10px 14px; font-size: 14px;"
+        "  border-radius: 0px; }"
+        "QListWidget#commandPaletteList { background: %2; color: %3; border: none;"
+        "  outline: none; padding: 4px 0; }"
+        "QListWidget#commandPaletteList::item { padding: 6px 14px; }"
+        "QListWidget#commandPaletteList::item:selected { background-color: %5; color: %1; }"
     ).arg(theme.bgPrimary.name(),
           theme.bgSecondary.name(),
           theme.textPrimary.name(),
@@ -633,6 +739,37 @@ void MainWindow::onImagePasted(const QImage &image) {
     QString dir = m_config.imagePasteDir();
     if (dir.isEmpty()) dir = QDir::homePath() + "/Pictures/ClaudePaste";
     statusBar()->showMessage(QString("Image pasted → %1").arg(dir), 5000);
+}
+
+void MainWindow::collectActions(QMenu *menu, QList<QAction *> &out) {
+    for (QAction *action : menu->actions()) {
+        if (action->menu()) {
+            // Recurse into submenus, prefix action names
+            QString prefix = menu->title().remove('&') + " > ";
+            for (QAction *sub : action->menu()->actions()) {
+                if (sub->menu()) {
+                    // One more level deep
+                    QString prefix2 = prefix + action->menu()->title().remove('&') + " > ";
+                    for (QAction *sub2 : sub->menu()->actions()) {
+                        if (!sub2->isSeparator() && !sub2->text().isEmpty()) {
+                            // Create a proxy action with prefixed name
+                            auto *proxy = new QAction(prefix2 + sub2->text().remove('&'), this);
+                            proxy->setShortcut(sub2->shortcut());
+                            connect(proxy, &QAction::triggered, sub2, &QAction::trigger);
+                            out.append(proxy);
+                        }
+                    }
+                } else if (!sub->isSeparator() && !sub->text().isEmpty()) {
+                    auto *proxy = new QAction(prefix + sub->text().remove('&'), this);
+                    proxy->setShortcut(sub->shortcut());
+                    connect(proxy, &QAction::triggered, sub, &QAction::trigger);
+                    out.append(proxy);
+                }
+            }
+        } else if (!action->isSeparator() && !action->text().isEmpty()) {
+            out.append(action);
+        }
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
