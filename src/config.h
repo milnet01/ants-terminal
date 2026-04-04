@@ -2,6 +2,11 @@
 
 #include <QString>
 #include <QJsonObject>
+#include <QJsonArray>
+#include <QList>
+
+// Forward declare
+struct SshBookmark;
 
 class Config {
 public:
@@ -45,6 +50,40 @@ public:
     // Custom keybindings (action -> key sequence string)
     QString keybinding(const QString &action, const QString &defaultKey) const;
     void setKeybinding(const QString &action, const QString &key);
+
+    // GPU rendering
+    bool gpuRendering() const;
+    void setGpuRendering(bool enabled);
+
+    // Per-pixel background alpha (0-255, separate from window opacity)
+    int backgroundAlpha() const;
+    void setBackgroundAlpha(int alpha);
+
+    // Session persistence
+    bool sessionPersistence() const;
+    void setSessionPersistence(bool enabled);
+
+    // AI assistant
+    QString aiEndpoint() const;
+    void setAiEndpoint(const QString &url);
+    QString aiApiKey() const;
+    void setAiApiKey(const QString &key);
+    QString aiModel() const;
+    void setAiModel(const QString &model);
+    int aiContextLines() const;
+    void setAiContextLines(int lines);
+    bool aiEnabled() const;
+    void setAiEnabled(bool enabled);
+
+    // SSH bookmarks
+    QJsonArray sshBookmarksJson() const;
+    void setSshBookmarksJson(const QJsonArray &arr);
+
+    // Plugin system
+    QString pluginDir() const;
+    void setPluginDir(const QString &dir);
+    QStringList enabledPlugins() const;
+    void setEnabledPlugins(const QStringList &plugins);
 
     void save();
 

@@ -29,9 +29,36 @@
 - **Signals/slots** for all cross-component communication -- no direct method calls between siblings
 - **Config class** for all persistent state -- never write JSON directly
 - **Themes** as the single source of truth for all colors -- no hardcoded color values in widgets
-- Data flows: PTY -> VtParser -> TerminalGrid -> TerminalWidget (QPainter)
+- Data flows: PTY -> VtParser -> TerminalGrid -> TerminalWidget (QPainter/OpenGL)
 - Reverse data flow for DA/CPR/DSR: TerminalGrid -> ResponseCallback -> PTY
 - Each class has a single clear responsibility
+
+## Rendering Standards
+
+- **CPU path**: QPainter with QTextLayout for ligature-aware text shaping
+- **GPU path**: QOpenGLWidget with glyph atlas texture (2048x2048), GLSL 3.3 core shaders
+- Both paths must produce identical visual output
+- Per-pixel background alpha applied in paint loop, not at window level
+- Cell backgrounds drawn before text; cursor drawn last
+- GL_RED texture format for glyph atlas (single-channel alpha)
+
+## Plugin System Standards
+
+- Lua 5.4 embedded via C API with sandboxed environment
+- Dangerous globals removed: `os`, `io`, `loadfile`, `dofile`, `require`, `debug`
+- Instruction count hook for timeout protection (10M instructions max)
+- Plugin events fired synchronously on Qt event loop
+- Plugin API namespaced under `ants.*` table
+- Plugins stored in `~/.config/ants-terminal/plugins/<name>/init.lua`
+
+## Network Standards
+
+- AI backend uses OpenAI-compatible chat completions API (`/v1/chat/completions`)
+- SSE streaming for progressive response display
+- API keys stored in config.json (0600 permissions)
+- Non-HTTPS endpoints allowed but not recommended
+- Network timeout: 30 seconds
+- No network connections made without explicit user action
 
 ## VT Protocol Standards
 
@@ -45,6 +72,8 @@
 - OSC 133 shell integration markers (A/B/C/D) stored as prompt regions
 - Underline styles use colon subparameter syntax (`4:N`); both colon and semicolon forms accepted
 - Combining characters stored in per-line side table, not per-cell, to minimize memory overhead
+- Sixel graphics: two-pass rendering (dimension scan + pixel paint), 4096x4096 max
+- Kitty graphics: chunked base64 reassembly, image cache (200 entries), PNG/RGBA/RGB formats
 
 ## Widget Guidelines
 
@@ -67,6 +96,8 @@
 - Never crash on user actions (paste, input, resize, theme switch)
 - PTY failures reported via status bar, not crashes
 - Validate all external input (OSC payloads, clipboard data, file paths)
+- Network errors displayed in AI dialog, not as modal dialogs
+- Lua plugin errors logged to status bar, never crash the terminal
 
 ## Performance
 
@@ -74,6 +105,8 @@
 - Avoid heap allocations in the paint loop where possible
 - Use `update(QRect)` for partial repaints when only the cursor changes
 - Scrollback operations should be O(1) amortized (deque, not vector)
+- Glyph atlas eviction: clear and rebuild when full (simple, avoids fragmentation)
+- Session serialization uses qCompress (zlib level 6) for space efficiency
 
 ## Security
 
@@ -81,9 +114,12 @@
 - Validate file paths before opening (resolve relative paths, check existence)
 - Use `QProcess::startDetached()` with argument lists, never shell command strings
 - Config file written with 0600 permissions
-- OSC 52 clipboard query (read) disabled by default — only write is allowed
+- OSC 52 clipboard query (read) disabled by default -- only write is allowed
 - URIs from OSC 8 hyperlinks sanitized before opening (restrict to http/https/file/mailto schemes)
 - CSI parameters capped at 32 entries; individual values capped at 16384
+- SSH bookmarks do not store passwords -- user authenticates interactively
+- Lua plugins sandboxed: no filesystem/network/process access from scripts
+- AI API keys stored in config (0600); never logged or displayed
 
 ## Testing
 

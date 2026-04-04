@@ -141,3 +141,115 @@ void Config::setKeybinding(const QString &action, const QString &key) {
     m_data["keybindings"] = kb;
     save();
 }
+
+// GPU rendering
+bool Config::gpuRendering() const {
+    return m_data.value("gpu_rendering").toBool(false);
+}
+
+void Config::setGpuRendering(bool enabled) {
+    m_data["gpu_rendering"] = enabled;
+    save();
+}
+
+// Per-pixel background alpha
+int Config::backgroundAlpha() const {
+    return m_data.value("background_alpha").toInt(255);
+}
+
+void Config::setBackgroundAlpha(int alpha) {
+    m_data["background_alpha"] = qBound(0, alpha, 255);
+    save();
+}
+
+// Session persistence
+bool Config::sessionPersistence() const {
+    return m_data.value("session_persistence").toBool(false);
+}
+
+void Config::setSessionPersistence(bool enabled) {
+    m_data["session_persistence"] = enabled;
+    save();
+}
+
+// AI assistant
+QString Config::aiEndpoint() const {
+    return m_data.value("ai_endpoint").toString("");
+}
+
+void Config::setAiEndpoint(const QString &url) {
+    m_data["ai_endpoint"] = url;
+    save();
+}
+
+QString Config::aiApiKey() const {
+    return m_data.value("ai_api_key").toString("");
+}
+
+void Config::setAiApiKey(const QString &key) {
+    m_data["ai_api_key"] = key;
+    save();
+}
+
+QString Config::aiModel() const {
+    return m_data.value("ai_model").toString("llama3");
+}
+
+void Config::setAiModel(const QString &model) {
+    m_data["ai_model"] = model;
+    save();
+}
+
+int Config::aiContextLines() const {
+    return m_data.value("ai_context_lines").toInt(50);
+}
+
+void Config::setAiContextLines(int lines) {
+    m_data["ai_context_lines"] = qBound(10, lines, 500);
+    save();
+}
+
+bool Config::aiEnabled() const {
+    return m_data.value("ai_enabled").toBool(false);
+}
+
+void Config::setAiEnabled(bool enabled) {
+    m_data["ai_enabled"] = enabled;
+    save();
+}
+
+// SSH bookmarks
+QJsonArray Config::sshBookmarksJson() const {
+    return m_data.value("ssh_bookmarks").toArray();
+}
+
+void Config::setSshBookmarksJson(const QJsonArray &arr) {
+    m_data["ssh_bookmarks"] = arr;
+    save();
+}
+
+// Plugin system
+QString Config::pluginDir() const {
+    return m_data.value("plugin_dir").toString("");
+}
+
+void Config::setPluginDir(const QString &dir) {
+    m_data["plugin_dir"] = dir;
+    save();
+}
+
+QStringList Config::enabledPlugins() const {
+    QStringList result;
+    QJsonArray arr = m_data.value("enabled_plugins").toArray();
+    for (const QJsonValue &v : arr)
+        result.append(v.toString());
+    return result;
+}
+
+void Config::setEnabledPlugins(const QStringList &plugins) {
+    QJsonArray arr;
+    for (const QString &p : plugins)
+        arr.append(p);
+    m_data["enabled_plugins"] = arr;
+    save();
+}

@@ -4,7 +4,7 @@
 #include "vtparser.h"
 #include "ptyhandler.h"
 
-#include <QWidget>
+#include <QOpenGLWidget>
 #include <QFont>
 #include <QTimer>
 #include <QImage>
@@ -14,10 +14,12 @@
 #include <QElapsedTimer>
 #include <memory>
 
+class GlRenderer;
+
 class QLabel;
 class QHBoxLayout;
 
-class TerminalWidget : public QWidget {
+class TerminalWidget : public QOpenGLWidget {
     Q_OBJECT
 
 public:
@@ -68,6 +70,23 @@ public:
     void prevBookmark();
     const std::vector<int> &bookmarks() const { return m_bookmarks; }
 
+    // Extract recent terminal output as plain text (for AI context)
+    QString recentOutput(int lines = 50) const;
+
+    // Write a command string to the PTY (for SSH manager, plugins)
+    void writeCommand(const QString &cmd);
+
+    // GPU rendering toggle
+    void setGpuRendering(bool enabled);
+    bool gpuRendering() const { return m_gpuRendering; }
+
+    // Per-pixel background alpha (0-255)
+    void setBackgroundAlpha(int alpha);
+    int backgroundAlpha() const { return m_backgroundAlpha; }
+
+    // Access to grid for session save/restore
+    TerminalGrid *grid() { return m_grid.get(); }
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);
@@ -76,6 +95,8 @@ signals:
 protected:
     bool event(QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
+    void initializeGL() override;
+    void resizeGL(int w, int h) override;
     void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void focusInEvent(QFocusEvent *event) override;
@@ -240,4 +261,11 @@ private:
 
     // Line bookmarks
     std::vector<int> m_bookmarks; // global line numbers
+
+    // GPU rendering
+    bool m_gpuRendering = false;
+    std::unique_ptr<GlRenderer> m_glRenderer;
+
+    // Per-pixel background alpha (0=transparent, 255=opaque)
+    int m_backgroundAlpha = 255;
 };

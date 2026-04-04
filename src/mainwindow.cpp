@@ -2,6 +2,13 @@
 #include "terminalwidget.h"
 #include "titlebar.h"
 #include "commandpalette.h"
+#include "aidialog.h"
+#include "sshdialog.h"
+#include "sessionmanager.h"
+
+#ifdef ANTS_LUA_PLUGINS
+#include "pluginmanager.h"
+#endif
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -17,6 +24,10 @@
 #include <QVBoxLayout>
 #include <QTabBar>
 #include <QSplitter>
+#include <QUuid>
+#include <QTimer>
+#include <QJsonArray>
+#include <QJsonValue>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Ants Terminal");
@@ -26,17 +37,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     int w = m_config.windowWidth();
     int h = m_config.windowHeight();
     resize(w, h);
-    int x = m_config.windowX();
-    int y = m_config.windowY();
-    if (x >= 0 && y >= 0) {
-        move(x, y);
+    int savedX = m_config.windowX();
+    int savedY = m_config.windowY();
+    if (savedX >= 0 && savedY >= 0) {
+        move(savedX, savedY);
+        // Deferred move to handle window manager overriding frameless window position
+        QTimer::singleShot(50, this, [this, savedX, savedY]() {
+            if (m_config.windowX() >= 0 && m_config.windowY() >= 0)
+                move(savedX, savedY);
+        });
     }
 
     // Apply window opacity from config
     setWindowOpacity(m_config.opacity());
 
     // Translucent background for compositor transparency
-    if (m_config.opacity() < 1.0)
+    if (m_config.opacity() < 1.0 || m_config.backgroundAlpha() < 255)
         setAttribute(Qt::WA_TranslucentBackground, true);
 
     // KDE/KWin background blur
@@ -88,11 +104,35 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     }
     m_commandPalette->setActions(allActions);
 
+#ifdef ANTS_LUA_PLUGINS
+    // Initialize plugin system
+    QString pluginDir = m_config.pluginDir();
+    if (pluginDir.isEmpty()) {
+        pluginDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                    + "/ants-terminal/plugins";
+    }
+    m_pluginManager = new PluginManager(this);
+    m_pluginManager->setPluginDir(pluginDir);
+    m_pluginManager->scanAndLoad(m_config.enabledPlugins());
+    connect(m_pluginManager, &PluginManager::sendToTerminal, this, [this](const QString &text) {
+        if (auto *t = focusedTerminal()) t->writeCommand(text);
+    });
+    connect(m_pluginManager, &PluginManager::statusMessage, this, [this](const QString &msg) {
+        statusBar()->showMessage(msg, 5000);
+    });
+    connect(m_pluginManager, &PluginManager::logMessage, this, [this](const QString &msg) {
+        statusBar()->showMessage("Plugin: " + msg, 3000);
+    });
+#endif
+
     // Apply saved theme
     applyTheme(m_config.theme());
 
     // Create first tab
     newTab();
+
+    // Cleanup old sessions
+    SessionManager::cleanupOldSessions(30);
 }
 
 void MainWindow::setupMenus() {
@@ -114,6 +154,34 @@ void MainWindow::setupMenus() {
     connect(newWindowAction, &QAction::triggered, this, []() {
         auto *win = new MainWindow();
         win->show();
+    });
+
+    fileMenu->addSeparator();
+
+    // SSH Manager
+    QAction *sshAction = fileMenu->addAction("SSH &Manager...");
+    sshAction->setShortcut(QKeySequence(m_config.keybinding("ssh_manager", "Ctrl+Shift+S")));
+    connect(sshAction, &QAction::triggered, this, [this]() {
+        if (!m_sshDialog) {
+            m_sshDialog = new SshDialog(this);
+            connect(m_sshDialog, &SshDialog::connectRequested,
+                    this, &MainWindow::onSshConnect);
+            connect(m_sshDialog, &SshDialog::bookmarksChanged,
+                    this, [this](const QList<SshBookmark> &bookmarks) {
+                QJsonArray arr;
+                for (const auto &bm : bookmarks)
+                    arr.append(bm.toJson());
+                m_config.setSshBookmarksJson(arr);
+            });
+        }
+        // Load saved bookmarks
+        QList<SshBookmark> bookmarks;
+        QJsonArray arr = m_config.sshBookmarksJson();
+        for (const QJsonValue &v : arr)
+            bookmarks.append(SshBookmark::fromJson(v.toObject()));
+        m_sshDialog->setBookmarks(bookmarks);
+        m_sshDialog->show();
+        m_sshDialog->raise();
     });
 
     fileMenu->addSeparator();
@@ -183,7 +251,29 @@ void MainWindow::setupMenus() {
             double val = pct / 100.0;
             m_config.setOpacity(val);
             setWindowOpacity(val);
-            setAttribute(Qt::WA_TranslucentBackground, val < 1.0 || m_config.backgroundBlur());
+            setAttribute(Qt::WA_TranslucentBackground,
+                         val < 1.0 || m_config.backgroundBlur() || m_config.backgroundAlpha() < 255);
+        });
+    }
+
+    // Background alpha submenu
+    QMenu *alphaMenu = viewMenu->addMenu("Background &Alpha");
+    QActionGroup *alphaGroup = new QActionGroup(this);
+    alphaGroup->setExclusive(true);
+    int currentAlpha = m_config.backgroundAlpha();
+    for (int alpha : {255, 230, 204, 178, 153, 128}) {
+        int pct = alpha * 100 / 255;
+        QAction *a = alphaMenu->addAction(QString("%1%").arg(pct));
+        a->setCheckable(true);
+        a->setChecked(alpha == currentAlpha);
+        alphaGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [this, alpha]() {
+            m_config.setBackgroundAlpha(alpha);
+            QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+            for (auto *t : terminals) t->setBackgroundAlpha(alpha);
+            if (alpha < 255)
+                setAttribute(Qt::WA_TranslucentBackground, true);
+            statusBar()->showMessage(QString("Background alpha: %1%").arg(alpha * 100 / 255), 3000);
         });
     }
 
@@ -216,6 +306,29 @@ void MainWindow::setupMenus() {
     closePane->setShortcut(QKeySequence(m_config.keybinding("close_pane", "Ctrl+Shift+X")));
     connect(closePane, &QAction::triggered, this, &MainWindow::closeFocusedPane);
 
+    // Tools menu
+    QMenu *toolsMenu = m_menuBar->addMenu("&Tools");
+
+    // AI Assistant
+    QAction *aiAction = toolsMenu->addAction("&AI Assistant...");
+    aiAction->setShortcut(QKeySequence(m_config.keybinding("ai_assistant", "Ctrl+Shift+A")));
+    connect(aiAction, &QAction::triggered, this, [this]() {
+        if (!m_aiDialog) {
+            m_aiDialog = new AiDialog(this);
+            connect(m_aiDialog, &AiDialog::insertCommand, this, [this](const QString &cmd) {
+                if (auto *t = focusedTerminal()) t->writeCommand(cmd);
+            });
+        }
+        // Update context and config
+        if (auto *t = focusedTerminal()) {
+            m_aiDialog->setTerminalContext(t->recentOutput(m_config.aiContextLines()));
+        }
+        m_aiDialog->setConfig(m_config.aiEndpoint(), m_config.aiApiKey(),
+                              m_config.aiModel(), m_config.aiContextLines());
+        m_aiDialog->show();
+        m_aiDialog->raise();
+    });
+
     // Settings menu
     QMenu *settingsMenu = m_menuBar->addMenu("S&ettings");
 
@@ -244,8 +357,29 @@ void MainWindow::setupMenus() {
     blurAction->setChecked(m_config.backgroundBlur());
     connect(blurAction, &QAction::toggled, this, [this](bool checked) {
         m_config.setBackgroundBlur(checked);
-        setAttribute(Qt::WA_TranslucentBackground, checked || m_config.opacity() < 1.0);
+        setAttribute(Qt::WA_TranslucentBackground,
+                     checked || m_config.opacity() < 1.0 || m_config.backgroundAlpha() < 255);
         statusBar()->showMessage(checked ? "Blur enabled (restart for full effect)" : "Blur disabled", 3000);
+    });
+
+    // GPU rendering toggle
+    QAction *gpuAction = settingsMenu->addAction("&GPU Rendering");
+    gpuAction->setCheckable(true);
+    gpuAction->setChecked(m_config.gpuRendering());
+    connect(gpuAction, &QAction::toggled, this, [this](bool checked) {
+        m_config.setGpuRendering(checked);
+        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        for (auto *t : terminals) t->setGpuRendering(checked);
+        statusBar()->showMessage(checked ? "GPU rendering enabled" : "GPU rendering disabled", 3000);
+    });
+
+    // Session persistence toggle
+    QAction *persistAction = settingsMenu->addAction("Session &Persistence");
+    persistAction->setCheckable(true);
+    persistAction->setChecked(m_config.sessionPersistence());
+    connect(persistAction, &QAction::toggled, this, [this](bool checked) {
+        m_config.setSessionPersistence(checked);
+        statusBar()->showMessage(checked ? "Session persistence enabled" : "Session persistence disabled", 3000);
     });
 
     settingsMenu->addSeparator();
@@ -254,6 +388,7 @@ void MainWindow::setupMenus() {
     recordAction->setCheckable(true);
     recordAction->setShortcut(QKeySequence(m_config.keybinding("record_session", "Ctrl+Shift+R")));
     connect(recordAction, &QAction::toggled, this, [this, recordAction](bool checked) {
+        Q_UNUSED(recordAction);
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
         if (!t) return;
@@ -317,6 +452,17 @@ void MainWindow::setupMenus() {
             statusBar()->showMessage(QString("Scrollback: %1 lines").arg(lines), 3000);
         });
     }
+
+#ifdef ANTS_LUA_PLUGINS
+    // Plugins menu
+    settingsMenu->addSeparator();
+    QAction *reloadPluginsAction = settingsMenu->addAction("Reload &Plugins");
+    connect(reloadPluginsAction, &QAction::triggered, this, [this]() {
+        m_pluginManager->reloadAll(m_config.enabledPlugins());
+        statusBar()->showMessage(
+            QString("Loaded %1 plugins").arg(m_pluginManager->pluginCount()), 3000);
+    });
+#endif
 }
 
 TerminalWidget *MainWindow::createTerminal() {
@@ -339,6 +485,8 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setAutoCopyOnSelect(m_config.autoCopyOnSelect());
     terminal->setEditorCommand(m_config.editorCommand());
     terminal->setImagePasteDir(m_config.imagePasteDir());
+    terminal->setBackgroundAlpha(m_config.backgroundAlpha());
+    terminal->setGpuRendering(m_config.gpuRendering());
 }
 
 void MainWindow::connectTerminal(TerminalWidget *terminal) {
@@ -379,8 +527,10 @@ void MainWindow::newTab() {
     auto *terminal = createTerminal();
     connectTerminal(terminal);
 
+    QString tabId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     int idx = m_tabWidget->addTab(terminal, "Shell");
     m_tabWidget->setCurrentIndex(idx);
+    m_tabSessionIds[terminal] = tabId;
 
     if (!terminal->startShell()) {
         statusBar()->showMessage("Failed to start shell!");
@@ -390,6 +540,20 @@ void MainWindow::newTab() {
 
     // Hide tab bar when only one tab
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
+}
+
+void MainWindow::onSshConnect(const QString &sshCommand, bool inNewTab) {
+    if (inNewTab) {
+        newTab();
+    }
+    auto *t = focusedTerminal();
+    if (!t) t = currentTerminal();
+    if (t) {
+        // Small delay to let shell start
+        QTimer::singleShot(200, this, [t, sshCommand]() {
+            t->writeCommand(sshCommand);
+        });
+    }
 }
 
 void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
@@ -538,6 +702,7 @@ void MainWindow::closeTab(int index) {
     }
 
     QWidget *w = m_tabWidget->widget(index);
+    m_tabSessionIds.remove(w);
     m_tabWidget->removeTab(index);
     w->deleteLater();
 
@@ -738,7 +903,7 @@ void MainWindow::onImagePasted(const QImage &image) {
     // Image saving + path insertion is now handled by TerminalWidget
     QString dir = m_config.imagePasteDir();
     if (dir.isEmpty()) dir = QDir::homePath() + "/Pictures/ClaudePaste";
-    statusBar()->showMessage(QString("Image pasted → %1").arg(dir), 5000);
+    statusBar()->showMessage(QString("Image pasted -> %1").arg(dir), 5000);
 }
 
 void MainWindow::collectActions(QMenu *menu, QList<QAction *> &out) {
@@ -772,7 +937,30 @@ void MainWindow::collectActions(QMenu *menu, QList<QAction *> &out) {
     }
 }
 
+// --- Session persistence ---
+
+void MainWindow::saveAllSessions() {
+    if (!m_config.sessionPersistence()) return;
+
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        QWidget *w = m_tabWidget->widget(i);
+        auto *t = qobject_cast<TerminalWidget *>(w);
+        if (!t) t = w->findChild<TerminalWidget *>();
+        if (!t) continue;
+
+        QString tabId = m_tabSessionIds.value(w);
+        if (tabId.isEmpty()) continue;
+
+        SessionManager::saveSession(tabId, t->grid());
+    }
+}
+
+void MainWindow::restoreSessions() {
+    // Not auto-restoring on startup — expose via menu if needed
+}
+
 void MainWindow::closeEvent(QCloseEvent *event) {
     m_config.setWindowGeometry(x(), y(), width(), height());
+    saveAllSessions();
     event->accept();
 }

@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>A real terminal emulator built from scratch in C++ with Qt6.</strong><br>
-  No terminal libraries — custom VT100/xterm parser, PTY management, and cell-by-cell rendering.
+  No terminal libraries -- custom VT100/xterm parser, PTY management, and GPU-accelerated rendering.
 </p>
 
 <p align="center">
@@ -16,6 +16,7 @@
   <a href="#themes">Themes</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
+  <a href="#plugins">Plugins</a> &bull;
   <a href="#license">License</a>
 </p>
 
@@ -25,16 +26,37 @@
 
 ### Terminal Emulation
 
-- **Real shell** — spawns your login shell (bash, zsh, etc.) via `forkpty()` with full interactive support
-- **VT100/xterm compatible** — custom state machine parser based on the Paul Williams DEC model
-- **UTF-8** — complete 1-4 byte decoding with overlong rejection; invalid sequences replaced with U+FFFD
-- **Alt screen buffer** — vim, htop, less, nano, and other full-screen programs work correctly
-- **Scrollback history** — configurable up to 1,000,000 lines, navigable by mouse wheel or keyboard
-- **Bracketed paste mode** — supported for shells and editors that use it
-- **Device Attributes** — responds to DA1 (`CSI c`) and DA2 (`CSI > c`) queries
-- **Cursor Position Report** — responds to `CSI 6n` with current cursor position
-- **Window title** — reads OSC 0/2 title sequences from your shell prompt or running programs
-- **Dynamic resize** — window size changes propagate to the PTY via `SIGWINCH` with scrollback reflow
+- **Real shell** -- spawns your login shell (bash, zsh, etc.) via `forkpty()` with full interactive support
+- **VT100/xterm compatible** -- custom state machine parser based on the Paul Williams DEC model
+- **UTF-8** -- complete 1-4 byte decoding with overlong rejection; invalid sequences replaced with U+FFFD
+- **Alt screen buffer** -- vim, htop, less, nano, and other full-screen programs work correctly
+- **Scrollback history** -- configurable up to 1,000,000 lines, navigable by mouse wheel or keyboard
+- **Bracketed paste mode** -- supported for shells and editors that use it
+- **Device Attributes** -- responds to DA1 (`CSI c`) and DA2 (`CSI > c`) queries
+- **Cursor Position Report** -- responds to `CSI 6n` with current cursor position
+- **Window title** -- reads OSC 0/2 title sequences from your shell prompt or running programs
+- **Dynamic resize** -- window size changes propagate to the PTY via `SIGWINCH` with scrollback reflow
+
+### GPU-Accelerated Rendering
+
+Ants Terminal uses `QOpenGLWidget` for hardware-accelerated rendering out of the box. Two render paths are available:
+
+- **QPainter (default)** -- GPU-accelerated 2D painting via Qt's OpenGL paint engine. Uses `QTextLayout` for proper font ligature shaping.
+- **Custom GL Renderer** -- Optional glyph atlas-based renderer with GLSL 3.3 shaders. Enable via `gpu_rendering: true` in config or Settings menu. Uses a 2048x2048 texture atlas with on-demand glyph rasterization and instanced quad rendering.
+
+### Ligature Support
+
+Text is rendered using `QTextLayout` with HarfBuzz shaping, enabling proper ligatures in fonts like:
+- **JetBrains Mono** -- `!=`, `<=`, `>=`, `->`, `=>`, `|>`
+- **Fira Code** -- `www`, `::`, `===`, `!==`, `</>`, `<!--`
+
+### Inline Graphics
+
+| Protocol | Support |
+|----------|---------|
+| **Sixel** | Full DCS parser, two-pass rendering, 4096x4096 max, palette colors |
+| **Kitty Graphics** | Chunked base64, PNG/RGBA/RGB, image cache (200 entries), transmit/display/delete |
+| **iTerm2** | OSC 1337 inline images, cell-based sizing |
 
 ### Color Support
 
@@ -48,7 +70,7 @@ Sets `TERM=xterm-256color` and `COLORTERM=truecolor` so programs detect capabili
 
 ### Text Attributes
 
-Bold, italic, underline, dim, inverse, and strikethrough — all rendered natively with font variants and QPainter drawing.
+Bold, italic, underline, dim, inverse, and strikethrough -- all rendered natively with font variants and QPainter drawing.
 
 ### Advanced Underline Styles
 
@@ -64,10 +86,10 @@ Underline color is independently settable via `CSI 58;2;R;G;B m`. Used by Neovim
 
 ### Unicode Support
 
-- **UTF-8** — complete 1-4 byte decoding with overlong encoding rejection
-- **CJK double-width** — `wcwidth()` detection, double-cell rendering
-- **Combining characters** — diacritical marks attached to base characters (e.g., e + combining acute = e)
-- **Emoji** — via font fallback (Noto Color Emoji, Symbola)
+- **UTF-8** -- complete 1-4 byte decoding with overlong encoding rejection
+- **CJK double-width** -- `wcwidth()` detection, double-cell rendering
+- **Combining characters** -- diacritical marks attached to base characters (e.g., e + combining acute = e)
+- **Emoji** -- via font fallback (Noto Color Emoji, Symbola)
 
 ### Selection and Copy/Paste
 
@@ -80,85 +102,143 @@ Underline color is independently settable via `CSI 58;2;R;G;B m`. Used by Neovim
 
 ### Image Paste (Claude Code Integration)
 
-Paste images directly from the clipboard with **Ctrl+Shift+V**. Images are automatically saved as timestamped PNGs to `~/Pictures/ClaudePaste/` (configurable) and the **full filepath is inserted into the terminal** as text. This enables seamless screenshot sharing with Claude Code — just paste and press Enter.
-
-The save directory is configurable via `image_paste_dir` in `config.json`.
+Paste images directly from the clipboard with **Ctrl+Shift+V**. Images are automatically saved as timestamped PNGs to `~/Pictures/ClaudePaste/` (configurable) and the **full filepath is inserted into the terminal** as text. This enables seamless screenshot sharing with Claude Code -- just paste and press Enter.
 
 ### URL Detection & OSC 8 Hyperlinks
 
-URLs (`http://`, `https://`, `ftp://`, `file://`) are automatically detected, underlined, and colored with the theme accent. Hold **Ctrl** and the cursor changes to a pointing hand — **Ctrl+Click** opens the URL in your default browser.
+URLs (`http://`, `https://`, `ftp://`, `file://`) are automatically detected, underlined, and colored with the theme accent. Hold **Ctrl** and the cursor changes to a pointing hand -- **Ctrl+Click** opens the URL in your default browser.
 
-Applications can also emit **explicit hyperlinks** via the OSC 8 protocol (`ESC ] 8 ; params ; URI ST`). These take priority over regex-detected URLs and support grouped/multiline links via the `id` parameter.
+Applications can also emit **explicit hyperlinks** via the OSC 8 protocol (`ESC ] 8 ; params ; URI ST`). These take priority over regex-detected URLs.
 
 ### Search in Scrollback
 
-Press **Ctrl+Shift+F** to open the search bar. Type a query to highlight all case-insensitive matches across the entire scrollback and visible screen.
+Press **Ctrl+Shift+F** to open the search bar. All case-insensitive matches are highlighted across the entire scrollback and visible screen.
 
-- **Enter** — jump to the next match
-- **Shift+Enter** — jump to the previous match
-- **Escape** — close the search bar
-- Match counter shows `N of Total` in the search bar
+### Command Palette
 
-All matches are highlighted in yellow; the current match is highlighted in orange.
+Press **Ctrl+Shift+P** to open the command palette -- a searchable list of all available actions with their keyboard shortcuts. Type to filter, arrow keys to navigate, Enter to execute.
 
 ### Bracket Matching
 
-When the cursor sits on a bracket character — `(`, `)`, `[`, `]`, `{`, or `}` — the matching bracket is highlighted with a subtle background. The scanner handles arbitrary nesting depth and works across lines.
+When the cursor sits on a bracket character -- `(`, `)`, `[`, `]`, `{`, or `}` -- the matching bracket is highlighted with a subtle background.
+
+### Line Bookmarks
+
+Toggle bookmarks on any line with **Ctrl+Shift+B**. Navigate between bookmarks with **Ctrl+Shift+J** (next) and **Ctrl+Shift+K** (previous). Bookmarks are shown as colored dots in the left gutter.
+
+### Prompt Navigation (OSC 133)
+
+When your shell emits OSC 133 markers, jump between command prompts with **Ctrl+Shift+Up/Down**.
 
 ### Mouse Reporting
 
 Full SGR mouse reporting for TUI applications:
 
-- **Button events** (`?1000h`) — press and release
-- **Button+motion** (`?1002h`) — drag tracking
-- **Any motion** (`?1003h`) — full mouse position tracking
-- **SGR encoding** (`?1006h`) — unlimited coordinates, explicit release
+- **Button events** (`?1000h`) -- press and release
+- **Button+motion** (`?1002h`) -- drag tracking
+- **Any motion** (`?1003h`) -- full mouse position tracking
+- **SGR encoding** (`?1006h`) -- unlimited coordinates, explicit release
 
-Works with htop, lazygit, ranger, fzf, tmux, and other mouse-aware applications. Hold **Shift** to override mouse reporting and use terminal selection instead.
+Hold **Shift** to override mouse reporting and use terminal selection instead.
 
 ### Focus Reporting
 
-When enabled (`CSI ?1004h`), the terminal sends `CSI I` on focus gain and `CSI O` on focus loss. Used by Vim, Neovim, and tmux to detect when the terminal window is active.
+When enabled (`CSI ?1004h`), the terminal sends `CSI I` on focus gain and `CSI O` on focus loss.
 
 ### Synchronized Output
 
-Applications can bracket rapid output updates with `CSI ?2026h` / `CSI ?2026l` to prevent screen tearing. The terminal defers repainting until the end marker arrives.
-
-### Shell Integration (OSC 133)
-
-When your shell emits OSC 133 markers (A/B/C/D), Ants Terminal tracks prompt regions. This enables:
-
-- Command output boundaries detection
-- Prompt navigation (future: Ctrl+Shift+Up/Down to jump between prompts)
-- Exit status tracking
+Applications can bracket rapid output updates with `CSI ?2026h` / `CSI ?2026l` to prevent screen tearing.
 
 ### Clipboard Access (OSC 52)
 
 Remote applications can set the system clipboard via OSC 52 sequences. Clipboard read (query) is disabled for security.
 
-### Background Opacity & Blur
+### Session Recording
 
-- **Opacity** — adjustable from 70% to 100% via View menu (saved to config)
-- **Translucent background** — works with KDE Plasma / KWin compositor
-- **Background blur** — toggleable in Settings menu (requires compositor support)
+Record terminal sessions in **asciicast v2** format via **Ctrl+Shift+R** or the Settings menu. Recordings are saved to `~/.local/share/ants-terminal/recordings/` and can be played back with [asciinema](https://asciinema.org).
 
-### Configurable Keybindings
+### Session Persistence
 
-All keyboard shortcuts can be customized via the `keybindings` section in `config.json`. Set any action to your preferred key combination:
+Enable in Settings to save terminal scrollback on exit and restore it on next launch. Session data is compressed and stored in `~/.local/share/ants-terminal/sessions/`.
 
+### Per-Pixel Background Transparency
+
+Two levels of transparency control:
+
+- **Window Opacity** (View > Opacity) -- affects the entire window including title bar
+- **Background Alpha** (View > Background Alpha) -- only the terminal background becomes transparent while text remains fully opaque. Works with KDE/KWin compositor blur.
+
+### AI Assistant
+
+Press **Ctrl+Shift+A** to open the AI assistant. Ask questions about terminal output, get command suggestions, or debug errors. Supports any OpenAI-compatible API endpoint (Ollama, LM Studio, OpenAI, Anthropic via proxy).
+
+Configure in `config.json`:
 ```json
 {
-    "keybindings": {
-        "new_tab": "Ctrl+Shift+T",
-        "close_tab": "Ctrl+Shift+W",
-        "split_horizontal": "Ctrl+Shift+E"
-    }
+    "ai_endpoint": "http://localhost:11434/v1/chat/completions",
+    "ai_model": "llama3",
+    "ai_api_key": ""
 }
 ```
 
+Features:
+- Streaming responses (SSE)
+- Terminal context injection (last N lines)
+- "Insert Command" button to paste AI suggestions into the terminal
+- Works with local LLMs (no data leaves your machine with Ollama)
+
+### SSH Manager
+
+Press **Ctrl+Shift+S** to open the SSH manager. Manage connection bookmarks and connect to remote hosts.
+
+Features:
+- Quick connect bar (`user@host:port`)
+- Bookmark management (save, edit, delete)
+- Connect in new tab or current tab
+- Identity file and extra SSH args support
+- Passwords are never stored -- authentication is interactive
+
+### Scriptable Plugin System (Lua)
+
+Extend Ants Terminal with Lua plugins. Plugins react to terminal events and can send commands, show notifications, and modify behavior.
+
+**Plugin API:**
+```lua
+-- ~/.config/ants-terminal/plugins/my-plugin/init.lua
+ants.on("output", function(data)
+    ants.log("Got output: " .. data)
+end)
+
+ants.on("keypress", function(key)
+    -- Return false to cancel the keypress
+    return true
+end)
+
+ants.send("echo hello")
+ants.notify("Title", "Message")
+ants.get_output(50)  -- Last 50 lines
+ants.get_cwd()       -- Current directory
+ants.set_status("Custom status text")
+```
+
+**Events:** `output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed`
+
+**Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require` removed. 10M instruction timeout prevents infinite loops.
+
+### Background Opacity & Blur
+
+- **Opacity** -- adjustable from 70% to 100% via View menu (saved to config)
+- **Background Alpha** -- per-pixel transparency from 50% to 100%
+- **Translucent background** -- works with KDE Plasma / KWin compositor
+- **Background blur** -- toggleable in Settings menu (requires compositor support)
+
+### Configurable Keybindings
+
+All keyboard shortcuts can be customized via the `keybindings` section in `config.json`.
+
 ### Font Fallback
 
-The terminal automatically detects and uses fallback fonts for characters not available in the primary font. Falls back to Noto Color Emoji, Noto Sans CJK, or other available Unicode fonts for emoji and CJK characters.
+The terminal automatically detects and uses fallback fonts for characters not available in the primary font.
 
 ### 7 Built-in Themes
 
@@ -174,31 +254,13 @@ Switch themes from the **View** menu. Your choice is saved between sessions.
 | **Solarized Dark** | `#002B36` | `#268BD2` | Ethan Schoonover |
 | **Gruvbox** | `#282828` | `#FABD2F` | Retro warm |
 
-Each theme includes a full 16-color ANSI palette override, so `ls --color`, shell prompts, and colorized output all look consistent.
-
 ### Window Management
 
-- **Persistent geometry** — window size and position saved/restored between sessions
-- **Center window** — **Ctrl+Shift+C** or View menu to center on your current monitor
-- **Zoom** — **Ctrl+=** / **Ctrl+-** / **Ctrl+0** (8pt to 32pt range, saved to config)
-- **Minimum size** enforced (20 columns x 5 rows)
-
-### Fonts
-
-Ants Terminal tries the following monospace fonts in order, using the first one available on your system:
-
-1. JetBrains Mono
-2. Fira Code
-3. Source Code Pro
-4. DejaVu Sans Mono
-5. Liberation Mono
-6. Monospace (system fallback)
-
-Default size: **11pt**. Zoom range: **8-32pt**.
-
-### Input Method
-
-Full Qt Input Method support for CJK and other complex input methods. Cursor position is reported to the IME for correct popup placement.
+- **Persistent geometry** -- window size and position saved/restored between sessions
+- **Center window** -- **Ctrl+Shift+M** or View menu
+- **Zoom** -- **Ctrl+=** / **Ctrl+-** / **Ctrl+0** (8pt to 32pt range)
+- **Tabs** -- Ctrl+Shift+T/W for new/close
+- **Split panes** -- horizontal (Ctrl+Shift+E) and vertical (Ctrl+Shift+O)
 
 ---
 
@@ -209,30 +271,31 @@ Full Qt Input Method support for CJK and other complex input methods. Cursor pos
 | Dependency | Version | Notes |
 |-----------|---------|-------|
 | C++ compiler | C++20 (GCC 12+, Clang 15+) | |
-| Qt6 | 6.x | Core, Gui, Widgets modules |
+| Qt6 | 6.x | Core, Gui, Widgets, Network, OpenGL, OpenGLWidgets |
 | CMake | 3.20+ | |
-| libutil | — | Included with glibc (provides `forkpty`) |
+| libutil | -- | Included with glibc (provides `forkpty`) |
+| Lua 5.4 | 5.4.x | Optional -- enables plugin system |
 
 ### Install Dependencies
 
 **openSUSE Tumbleweed:**
 ```bash
-sudo zypper install qt6-base-devel qt6-widgets-devel cmake gcc-c++
+sudo zypper install qt6-base-devel cmake gcc-c++ lua54-devel
 ```
 
 **Ubuntu / Debian:**
 ```bash
-sudo apt install qt6-base-dev cmake g++
+sudo apt install qt6-base-dev libqt6opengl6-dev cmake g++ liblua5.4-dev
 ```
 
 **Fedora:**
 ```bash
-sudo dnf install qt6-qtbase-devel cmake gcc-c++
+sudo dnf install qt6-qtbase-devel cmake gcc-c++ lua-devel
 ```
 
 **Arch Linux:**
 ```bash
-sudo pacman -S qt6-base cmake gcc
+sudo pacman -S qt6-base cmake gcc lua
 ```
 
 ### Compile
@@ -267,6 +330,7 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 |----------|--------|
 | Ctrl+Shift+N | New window |
 | Ctrl+Shift+Q | Quit |
+| Ctrl+Shift+P | Command palette |
 
 ### Editing
 
@@ -283,16 +347,19 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 | Shortcut | Action |
 |----------|--------|
 | Mouse wheel | Scroll through history |
-| Shift+Page Up | Scroll up half a screen |
-| Shift+Page Down | Scroll down half a screen |
+| Shift+Page Up/Down | Scroll by screen |
+| Shift+Home/End | Scroll to top/bottom |
+| Ctrl+Shift+Up/Down | Jump to prev/next prompt (OSC 133) |
+| Ctrl+Shift+B | Toggle line bookmark |
+| Ctrl+Shift+J/K | Next/previous bookmark |
 
 ### Search
 
 | Shortcut | Action |
 |----------|--------|
-| Ctrl+Shift+F | Open / close search bar |
-| Enter (in search) | Next match |
-| Shift+Enter (in search) | Previous match |
+| Ctrl+Shift+F | Open search bar |
+| Enter | Next match |
+| Shift+Enter | Previous match |
 | Escape | Close search bar |
 
 ### View
@@ -304,13 +371,6 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 | Ctrl+0 | Reset zoom (11pt) |
 | Ctrl+Shift+M | Center window on screen |
 
-### URL Interaction
-
-| Action | How |
-|--------|-----|
-| Ctrl+Click on URL | Open in default browser |
-| Ctrl held over URL | Cursor changes to pointing hand |
-
 ### Tabs & Splits
 
 | Shortcut | Action |
@@ -321,14 +381,13 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 | Ctrl+Shift+O | Split vertical |
 | Ctrl+Shift+X | Close focused pane |
 
-### Mouse
+### Tools
 
-| Action | How |
-|--------|-----|
-| Click + drag | Select text (Shift+click overrides mouse reporting) |
-| Double-click | Select word |
-| Middle-click | Paste primary selection |
-| Mouse wheel | Scroll history (or report to app when mouse mode active) |
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Shift+A | AI Assistant |
+| Ctrl+Shift+S | SSH Manager |
+| Ctrl+Shift+R | Toggle session recording |
 
 ---
 
@@ -342,55 +401,56 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
 - Cursor color
 - Full ANSI 16-color palette (colors 0-15)
 
-The selected theme persists in the config file and is restored on next launch.
-
 ---
 
 ## Architecture
 
 ```
-┌──────────┐     ┌──────────┐     ┌──────────────┐     ┌────────────────┐     ┌────────┐
-│ Keyboard │────>│   PTY    │────>│   Shell      │────>│   PTY          │────>│ Screen │
-│ / Mouse  │     │ (master) │     │ (bash/zsh)   │     │ (master read)  │     │        │
-└──────────┘     └──────────┘     └──────────────┘     └───────┬────────┘     └────────┘
-                                                               │                   ▲
-                                                               ▼                   │
-                                                        ┌──────────┐        ┌──────────────┐
-                                                        │ VtParser │───────>│TerminalGrid  │
-                                                        │          │        │              │
-                                                        │ State    │ VtAction│ Char cells  │
-                                                        │ machine  │ structs │ + scrollback│
-                                                        └──────────┘        └──────┬───────┘
-                                                                                   │
-                                                                                   ▼
-                                                                            ┌──────────────┐
-                                                                            │TerminalWidget│
-                                                                            │              │
-                                                                            │ QPainter     │
-                                                                            │ rendering    │
-                                                                            └──────────────┘
+┌──────────┐     ┌──────────┐     ┌──────────────┐     ┌────────────────┐
+│ Keyboard │────>│   PTY    │────>│   Shell      │────>│   PTY          │
+│ / Mouse  │     │ (master) │     │ (bash/zsh)   │     │ (master read)  │
+└──────────┘     └──────────┘     └──────────────┘     └───────┬────────┘
+                                                               │
+                                                               v
+                                                        ┌──────────┐
+                                                        │ VtParser │
+                                                        │ State    │
+                                                        │ machine  │
+                                                        └────┬─────┘
+                                                             │ VtAction
+                                                             v
+                                                      ┌──────────────┐
+                                                      │TerminalGrid  │
+                                                      │ Cells +      │
+                                                      │ scrollback   │
+                                                      └──────┬───────┘
+                                                             │
+                                          ┌──────────────────┼──────────────────┐
+                                          v                  v                  v
+                                   ┌──────────┐     ┌──────────────┐    ┌──────────┐
+                                   │ QPainter │     │ GlRenderer   │    │ Session  │
+                                   │ (CPU)    │     │ (GPU/OpenGL) │    │ Manager  │
+                                   └──────────┘     └──────────────┘    └──────────┘
 ```
 
 ### Components
 
 | Component | File | Responsibility |
 |-----------|------|----------------|
-| **Pty** | `ptyhandler.h/cpp` | Spawns shell via `forkpty()`, non-blocking I/O with `QSocketNotifier`, PTY resize via `TIOCSWINSZ` |
-| **VtParser** | `vtparser.h/cpp` | DEC VT100/xterm state machine, UTF-8 decoding, emits `VtAction` structs (Print, Execute, CsiDispatch, EscDispatch, OscEnd) |
-| **TerminalGrid** | `terminalgrid.h/cpp` | Character cell buffer, scrollback ring, cursor state, ANSI colors, alt screen buffer, scroll regions |
-| **TerminalWidget** | `terminalwidget.h/cpp` | QPainter cell-by-cell rendering, keyboard/mouse input, selection, URL detection, search, bracket matching |
-| **MainWindow** | `mainwindow.h/cpp` | Window chrome, menus, theme switching, config persistence, image paste handling |
-| **Themes** | `themes.h/cpp` | 7 color theme definitions with ANSI palette overrides |
-| **Config** | `config.h/cpp` | Persistent JSON config at `~/.config/ants-terminal/config.json` with 0600 permissions |
-
-### Data Flow
-
-1. **User types** a key → `TerminalWidget::keyPressEvent()` encodes it and writes to the PTY master fd
-2. **Shell processes** the input and produces output (escape sequences, text, etc.)
-3. **PTY master** becomes readable → `QSocketNotifier` fires → raw bytes read into buffer
-4. **VtParser** feeds bytes through the state machine, emitting `VtAction` structs
-5. **TerminalGrid** processes each `VtAction` — prints characters, moves cursor, changes colors, scrolls, etc.
-6. **TerminalWidget** calls `update()` → `paintEvent()` iterates the grid and paints each cell with QPainter
+| **Pty** | `ptyhandler.h/cpp` | Spawns shell via `forkpty()`, non-blocking I/O, PTY resize |
+| **VtParser** | `vtparser.h/cpp` | DEC VT100/xterm state machine, UTF-8 decoding, emits VtActions |
+| **TerminalGrid** | `terminalgrid.h/cpp` | Cell buffer, scrollback, cursor, ANSI colors, alt screen, Sixel/Kitty |
+| **TerminalWidget** | `terminalwidget.h/cpp` | QOpenGLWidget rendering, input, selection, search, URLs |
+| **GlRenderer** | `glrenderer.h/cpp` | OpenGL glyph atlas, GLSL shaders, instanced rendering |
+| **MainWindow** | `mainwindow.h/cpp` | Window chrome, menus, themes, config, dialogs |
+| **AiDialog** | `aidialog.h/cpp` | AI chat dialog, OpenAI API, streaming SSE |
+| **SshDialog** | `sshdialog.h/cpp` | SSH bookmark manager, connection via PTY |
+| **SessionManager** | `sessionmanager.h/cpp` | Scrollback serialization, save/restore |
+| **LuaEngine** | `luaengine.h/cpp` | Embedded Lua 5.4, sandboxed API, event handlers |
+| **PluginManager** | `pluginmanager.h/cpp` | Plugin discovery, loading, lifecycle |
+| **CommandPalette** | `commandpalette.h/cpp` | Searchable action overlay (Ctrl+Shift+P) |
+| **Themes** | `themes.h/cpp` | 7 color themes with ANSI palette overrides |
+| **Config** | `config.h/cpp` | JSON config persistence (0600 perms) |
 
 ---
 
@@ -421,107 +481,74 @@ The selected theme persists in the config file and is restored on next launch.
 | f | HVP | Horizontal/vertical position |
 | m | SGR | Select graphic rendition |
 | c | DA | Device attributes (DA1/DA2 responses) |
-| n | DSR | Device status report (CPR at `6n`, status at `5n`) |
+| n | DSR | Device status report |
 | r | DECSTBM | Set scrolling region |
 | s | DECSC | Save cursor position |
 | u | DECRC | Restore cursor position |
 
 ### Private Modes (`ESC [ ? ... h/l`)
 
-| Mode | Name | Description |
-|------|------|-------------|
-| 1 | DECCKM | Application cursor keys |
-| 6 | DECOM | Origin mode |
-| 7 | DECAWM | Auto-wrap mode |
-| 25 | DECTCEM | Cursor visibility |
-| 47 | — | Alt screen buffer |
-| 1047 | — | Alt screen buffer (xterm) |
-| 1049 | — | Alt screen + save cursor |
-| 1000 | — | Mouse button reporting |
-| 1002 | — | Mouse button+motion reporting |
-| 1003 | — | Mouse any-motion reporting |
-| 1004 | — | Focus reporting (send CSI I / CSI O) |
-| 1006 | — | SGR mouse encoding |
-| 2004 | — | Bracketed paste mode |
-| 2026 | — | Synchronized output (defer repaints) |
-
-### ESC Sequences
-
-| Code | Name | Description |
-|------|------|-------------|
-| M | RI | Reverse index (scroll down) |
-| D | IND | Index (scroll up) |
-| E | NEL | Next line |
-| 7 | DECSC | Save cursor |
-| 8 | DECRC | Restore cursor |
-| c | RIS | Full reset |
+| Mode | Description |
+|------|-------------|
+| 1 | Application cursor keys |
+| 6 | Origin mode |
+| 7 | Auto-wrap mode |
+| 25 | Cursor visibility |
+| 47/1047/1049 | Alt screen buffer |
+| 1000 | Mouse button reporting |
+| 1002 | Mouse button+motion reporting |
+| 1003 | Mouse any-motion reporting |
+| 1004 | Focus reporting |
+| 1006 | SGR mouse encoding |
+| 2004 | Bracketed paste mode |
+| 2026 | Synchronized output |
 
 ### OSC Sequences (`ESC ]`)
 
 | Code | Description |
 |------|-------------|
-| 0 | Set window title |
-| 2 | Set window title |
+| 0/2 | Set window title |
 | 8 | Hyperlinks (open/close explicit links) |
-| 52 | Clipboard access (write only; read disabled for security) |
-| 133 | Shell integration (A=prompt, B=command, C=output, D=done) |
+| 52 | Clipboard access (write only) |
+| 133 | Shell integration (A/B/C/D markers) |
 | 1337 | iTerm2 inline images |
 
-### SGR Attributes (`ESC [ ... m`)
+### DCS / APC Sequences
 
-| Code | Attribute |
-|------|-----------|
-| 0 | Reset all |
-| 1 | Bold |
-| 2 | Dim |
-| 3 | Italic |
-| 4 | Underline |
-| 7 | Inverse |
-| 9 | Strikethrough |
-| 30-37 | Foreground color |
-| 40-47 | Background color |
-| 38;5;N | 256-color foreground |
-| 48;5;N | 256-color background |
-| 21 | Double underline |
-| 38;2;R;G;B | True color foreground |
-| 48;2;R;G;B | True color background |
-| 58;2;R;G;B | Underline color (RGB) |
-| 58;5;N | Underline color (256-palette) |
-| 59 | Reset underline color |
-| 4:0 | No underline |
-| 4:1 | Single underline |
-| 4:2 | Double underline |
-| 4:3 | Curly underline (undercurl) |
-| 4:4 | Dotted underline |
-| 4:5 | Dashed underline |
-| 90-97 | Bright foreground |
-| 100-107 | Bright background |
+| Protocol | Description |
+|----------|-------------|
+| DCS (Sixel) | Sixel graphics with palette, RLE, raster attributes |
+| APC (Kitty) | Kitty graphics protocol with chunked transmission |
 
 ---
 
 ## Configuration
 
-Config is stored at `~/.config/ants-terminal/config.json` with **0600** file permissions (owner read/write only).
+Config is stored at `~/.config/ants-terminal/config.json` with **0600** file permissions.
 
 ```json
 {
     "theme": "Dark",
     "font_size": 11,
     "opacity": 1.0,
+    "background_alpha": 255,
     "scrollback_lines": 50000,
     "auto_copy_on_select": true,
     "session_logging": false,
     "background_blur": false,
+    "gpu_rendering": false,
+    "session_persistence": false,
     "image_paste_dir": "",
     "editor_command": "",
-    "keybindings": {
-        "new_tab": "Ctrl+Shift+T",
-        "close_tab": "Ctrl+Shift+W"
-    },
-    "window_w": 900,
-    "window_h": 700,
-    "window_x": 100,
-    "window_y": 100
+    "ai_endpoint": "",
+    "ai_api_key": "",
+    "ai_model": "llama3",
+    "ai_context_lines": 50,
+    "ai_enabled": false,
+    "ssh_bookmarks": [],
+    "plugin_dir": "",
+    "enabled_plugins": [],
+    "keybindings": {}
 }
 ```
 
@@ -530,63 +557,89 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 | `theme` | string | `"Dark"` | Active theme name |
 | `font_size` | int | `11` | Font size in points (8-32) |
 | `opacity` | double | `1.0` | Window opacity (0.1-1.0) |
+| `background_alpha` | int | `255` | Per-pixel background alpha (0-255) |
 | `scrollback_lines` | int | `50000` | Max scrollback lines (1000-1000000) |
 | `auto_copy_on_select` | bool | `true` | Copy to clipboard on text selection |
-| `session_logging` | bool | `false` | Log session to file |
+| `session_logging` | bool | `false` | Log raw session to file |
 | `background_blur` | bool | `false` | Enable KWin background blur |
-| `image_paste_dir` | string | `""` | Image paste save directory (default: ~/Pictures/ClaudePaste) |
-| `editor_command` | string | `""` | Editor for file path clicking (auto-detects code/kate) |
-| `keybindings` | object | `{}` | Custom keybindings (action -> key sequence) |
-| `window_w` | int | `900` | Window width in pixels |
-| `window_h` | int | `700` | Window height in pixels |
-| `window_x` | int | `-1` | Window X position (-1 = system default) |
-| `window_y` | int | `-1` | Window Y position (-1 = system default) |
-
-The config file is human-readable JSON and can be edited manually. Changes take effect on next launch.
-
-### Configurable Keybindings
-
-Add a `keybindings` object to config.json. Available actions:
-
-| Action | Default | Description |
-|--------|---------|-------------|
-| `new_tab` | `Ctrl+Shift+T` | Open new tab |
-| `close_tab` | `Ctrl+Shift+W` | Close current tab |
-| `new_window` | `Ctrl+Shift+N` | Open new window |
-| `exit` | `Ctrl+Shift+Q` | Quit application |
-| `clear_line` | `Ctrl+Shift+U` | Clear input line |
-| `split_horizontal` | `Ctrl+Shift+E` | Split pane horizontally |
-| `split_vertical` | `Ctrl+Shift+O` | Split pane vertically |
-| `close_pane` | `Ctrl+Shift+X` | Close focused pane |
+| `gpu_rendering` | bool | `false` | Use OpenGL glyph atlas renderer |
+| `session_persistence` | bool | `false` | Save/restore scrollback across restarts |
+| `image_paste_dir` | string | `""` | Image paste save directory |
+| `editor_command` | string | `""` | Editor for file path clicking |
+| `ai_endpoint` | string | `""` | OpenAI-compatible API URL |
+| `ai_api_key` | string | `""` | API key for AI endpoint |
+| `ai_model` | string | `"llama3"` | LLM model to use |
+| `ai_context_lines` | int | `50` | Lines of terminal output sent to AI |
+| `ssh_bookmarks` | array | `[]` | Saved SSH connection bookmarks |
+| `plugin_dir` | string | `""` | Lua plugin directory |
+| `enabled_plugins` | array | `[]` | List of enabled plugin names |
+| `keybindings` | object | `{}` | Custom keybindings (action -> key) |
 
 ---
 
-## Desktop Integration
+## Plugins
 
-### Desktop Entry
+### Creating a Plugin
 
-A `.desktop` file is provided for Linux desktop environments:
+1. Create a directory: `~/.config/ants-terminal/plugins/my-plugin/`
+2. Create `init.lua`:
 
-```ini
-[Desktop Entry]
-Name=Ants Terminal
-Comment=A modern terminal with themes, image support, and more
-Exec=/path/to/launch.sh
-Icon=ants-terminal
-Terminal=false
-Type=Application
-Categories=Utility;TerminalEmulator;
-Keywords=terminal;chat;ants;
-StartupWMClass=ants-terminal
+```lua
+ants.log("My plugin loaded!")
+
+ants.on("prompt", function(data)
+    ants.notify("Prompt", "New command prompt")
+end)
 ```
 
-### Setup
+3. Optionally create `manifest.json`:
 
-1. Copy `ants-terminal.desktop` to `~/.local/share/applications/`
-2. Update the `Exec=` path to point to your `launch.sh`
-3. Install icons from `assets/` to `~/.local/share/icons/` if desired
+```json
+{
+    "name": "My Plugin",
+    "version": "1.0.0",
+    "description": "Does cool things",
+    "author": "Your Name"
+}
+```
 
-The `launch.sh` wrapper script is required for reliable launching from application menus and taskbars — it sets up the execution environment correctly and logs errors to `/tmp/ants-terminal.log`.
+### Plugin API
+
+| Function | Description |
+|----------|-------------|
+| `ants.on(event, callback)` | Register event handler |
+| `ants.send(text)` | Send text to terminal PTY |
+| `ants.notify(title, message)` | Show desktop notification |
+| `ants.get_output(n)` | Get last N lines of output |
+| `ants.get_cwd()` | Get current working directory |
+| `ants.set_status(text)` | Set status bar text |
+| `ants.log(message)` | Log message to status bar |
+
+### Events
+
+| Event | Data | Description |
+|-------|------|-------------|
+| `output` | Raw bytes | PTY data received |
+| `line` | Line text | Complete line received |
+| `prompt` | -- | OSC 133 prompt detected |
+| `keypress` | Key name | Before key sent to PTY (return false to cancel) |
+| `title_changed` | Title | Window title changed |
+| `tab_created` | -- | New tab created |
+| `tab_closed` | -- | Tab closed |
+
+---
+
+## Security
+
+- **Config file permissions**: created with `0600` (owner read/write only)
+- **No network access** by default -- AI assistant requires explicit configuration
+- **OSC 52 clipboard**: write-only -- read disabled
+- **Lua sandbox**: dangerous functions removed, instruction timeout
+- **SSH**: no password storage, interactive authentication only
+- **AI**: API keys stored in 0600-permission config
+- **Buffer limits**: CSI params capped at 32, images capped at 100+200, combining chars at 8
+- **UTF-8 security**: overlong encodings, surrogates, out-of-range rejected
+- **Bracketed paste**: prevents clipboard injection attacks
 
 ---
 
@@ -603,38 +656,23 @@ ants-terminal/
 ├── launch.sh                   # Desktop launcher wrapper
 ├── ants-terminal.desktop       # Desktop entry file
 ├── assets/                     # App icons (16-256px PNGs)
-│   ├── ants-terminal-16.png
-│   ├── ants-terminal-32.png
-│   ├── ants-terminal-48.png
-│   ├── ants-terminal-64.png
-│   ├── ants-terminal-128.png
-│   ├── ants-terminal-256.png
-│   └── ants-terminal.png
 └── src/
-    ├── main.cpp                # Entry point, Fusion style, font setup
-    ├── mainwindow.h/cpp        # Window, menus, theme switching, config
-    ├── terminalwidget.h/cpp    # Rendering, input, selection, search, URLs
+    ├── main.cpp                # Entry point, OpenGL format setup
+    ├── mainwindow.h/cpp        # Window, menus, themes, dialogs
+    ├── terminalwidget.h/cpp    # Rendering, input, selection, search
     ├── terminalgrid.h/cpp      # Cell grid, scrollback, VtAction processing
     ├── vtparser.h/cpp          # VT100/xterm state machine, UTF-8 decoder
     ├── ptyhandler.h/cpp        # PTY via forkpty(), QSocketNotifier I/O
-    ├── themes.h/cpp            # 7 color themes with ANSI palette overrides
-    └── config.h/cpp            # JSON config persistence (0600 perms)
+    ├── themes.h/cpp            # 7 color themes with ANSI palettes
+    ├── config.h/cpp            # JSON config persistence (0600 perms)
+    ├── commandpalette.h/cpp    # Searchable command palette overlay
+    ├── glrenderer.h/cpp        # OpenGL glyph atlas + shader renderer
+    ├── sessionmanager.h/cpp    # Session save/restore
+    ├── aidialog.h/cpp          # AI assistant (OpenAI API)
+    ├── sshdialog.h/cpp         # SSH bookmark manager
+    ├── luaengine.h/cpp         # Lua 5.4 scripting engine
+    └── pluginmanager.h/cpp     # Plugin discovery + loading
 ```
-
----
-
-## Security
-
-- **Config file permissions**: created with `0600` (owner read/write only)
-- **Config directory permissions**: created with `0700`
-- **No network access**: Ants Terminal makes no network connections — URLs are opened via the system's default browser handler
-- **No eval/exec of untrusted input**: escape sequences are parsed through a strict state machine; unrecognized sequences are silently discarded
-- **Validated config values**: font size clamped to 8-32pt range, theme names validated against known list
-- **UTF-8 security**: overlong encodings, surrogates, and out-of-range codepoints rejected
-- **Bracketed paste**: prevents clipboard injection attacks
-- **OSC 52 clipboard**: write-only — clipboard read (query) disabled to prevent data exfiltration
-- **Buffer limits**: CSI params capped at 32, inline images capped at 100, combining chars per cell capped at 8
-- **OSC title sanitization**: control characters stripped from window titles to prevent UI spoofing
 
 ---
 

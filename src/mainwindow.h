@@ -10,7 +10,12 @@
 class TitleBar;
 class TerminalWidget;
 class CommandPalette;
+class AiDialog;
+class SshDialog;
 class QSplitter;
+#ifdef ANTS_LUA_PLUGINS
+class PluginManager;
+#endif
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -37,6 +42,9 @@ private slots:
     void splitVertical();
     void closeFocusedPane();
 
+    // SSH connection
+    void onSshConnect(const QString &sshCommand, bool newTab);
+
 private:
     void setupMenus();
     void applyTheme(const QString &name);
@@ -56,6 +64,10 @@ private:
     // Apply settings from config to a terminal
     void applyConfigToTerminal(TerminalWidget *terminal);
 
+    // Session persistence
+    void saveAllSessions();
+    void restoreSessions();
+
     TitleBar *m_titleBar = nullptr;
     QMenuBar *m_menuBar = nullptr;
     QTabWidget *m_tabWidget = nullptr;
@@ -68,4 +80,18 @@ private:
 
     CommandPalette *m_commandPalette = nullptr;
     void collectActions(QMenu *menu, QList<QAction *> &out);
+
+    // AI assistant
+    AiDialog *m_aiDialog = nullptr;
+
+    // SSH manager
+    SshDialog *m_sshDialog = nullptr;
+
+    // Plugin manager
+#ifdef ANTS_LUA_PLUGINS
+    PluginManager *m_pluginManager = nullptr;
+#endif
+
+    // Tab UUIDs for session persistence
+    QHash<QWidget *, QString> m_tabSessionIds;
 };

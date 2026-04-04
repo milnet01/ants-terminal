@@ -1,7 +1,9 @@
 #include "terminalwidget.h"
+#include "glrenderer.h"
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QTextLayout>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QResizeEvent>
@@ -21,12 +23,17 @@
 #include <QDir>
 #include <QDateTime>
 #include <QFileInfo>
+#include <QSurfaceFormat>
 
-TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
+TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_InputMethodEnabled, true);
-    setAttribute(Qt::WA_OpaquePaintEvent, true);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    // Request alpha buffer for per-pixel transparency
+    QSurfaceFormat fmt = format();
+    fmt.setAlphaBufferSize(8);
+    setFormat(fmt);
 
     // Pick a good monospace font
     QStringList families = {"JetBrains Mono", "Fira Code", "Source Code Pro",
@@ -268,7 +275,11 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     const int cols = m_grid->cols();
     const QColor defaultBg = m_grid->defaultBg();
 
-    p.fillRect(rect(), defaultBg);
+    // Per-pixel alpha: apply background alpha if < 255
+    QColor bgFill = defaultBg;
+    if (m_backgroundAlpha < 255)
+        bgFill.setAlpha(m_backgroundAlpha);
+    p.fillRect(rect(), bgFill);
 
     int scrollbackSize = m_grid->scrollbackSize();
     int viewStart = scrollbackSize - m_scrollOffset;
@@ -337,7 +348,10 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             // Paint cell background (wide chars get double-width bg)
             int cellDrawWidth = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
             if (bg != defaultBg) {
-                p.fillRect(px_x, px_y, cellDrawWidth, m_cellHeight, bg);
+                QColor cellBg = bg;
+                if (m_backgroundAlpha < 255 && !selected && !isCellSearchMatch(globalLine, col))
+                    cellBg.setAlpha(m_backgroundAlpha);
+                p.fillRect(px_x, px_y, cellDrawWidth, m_cellHeight, cellBg);
             }
 
             // Skip continuation cells of wide characters (already drawn)
@@ -443,18 +457,26 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             runs.push_back(current);
         }
 
-        // Draw all text runs for this row
+        // Draw all text runs using QTextLayout for proper ligature shaping
         for (const auto &run : runs) {
             const QFont *drawFont = &m_font;
             if (run.bold && run.italic) drawFont = &m_fontBoldItalic;
             else if (run.bold) drawFont = &m_fontBold;
             else if (run.italic) drawFont = &m_fontItalic;
 
-            if (drawFont != &m_font) p.setFont(*drawFont);
             p.setPen(run.fg);
             int px_x = m_padding + run.startCol * m_cellWidth;
-            p.drawText(px_x, px_y + m_fontAscent, run.text);
-            if (drawFont != &m_font) p.setFont(m_font);
+
+            // Use QTextLayout for HarfBuzz-powered ligature shaping
+            QTextLayout layout(run.text, *drawFont);
+            layout.beginLayout();
+            QTextLine tline = layout.createLine();
+            if (tline.isValid()) {
+                tline.setLineWidth(run.text.length() * m_cellWidth * 2); // generous width
+                tline.setPosition(QPointF(0, 0));
+            }
+            layout.endLayout();
+            layout.draw(&p, QPointF(px_x, px_y));
         }
     }
 
@@ -1697,4 +1719,70 @@ void TerminalWidget::prevBookmark() {
     m_scrollOffset = scrollbackSize - m_bookmarks.back();
     m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
     update();
+}
+
+// --- OpenGL ---
+
+void TerminalWidget::initializeGL() {
+    if (m_gpuRendering) {
+        m_glRenderer = std::make_unique<GlRenderer>();
+        if (!m_glRenderer->initialize()) {
+            m_gpuRendering = false;
+            m_glRenderer.reset();
+        } else {
+            m_glRenderer->setFont(m_font, m_fontBold, m_fontItalic, m_fontBoldItalic);
+            m_glRenderer->setCellSize(m_cellWidth, m_cellHeight, m_fontAscent);
+        }
+    }
+}
+
+void TerminalWidget::resizeGL(int w, int h) {
+    if (m_glRenderer) {
+        m_glRenderer->setViewportSize(w, h);
+    }
+    recalcGridSize();
+}
+
+void TerminalWidget::setGpuRendering(bool enabled) {
+    m_gpuRendering = enabled;
+    if (enabled && !m_glRenderer) {
+        // Will be initialized in initializeGL on next paint
+        makeCurrent();
+        initializeGL();
+        doneCurrent();
+    } else if (!enabled) {
+        m_glRenderer.reset();
+    }
+    update();
+}
+
+void TerminalWidget::setBackgroundAlpha(int alpha) {
+    m_backgroundAlpha = qBound(0, alpha, 255);
+    if (m_backgroundAlpha < 255) {
+        setAttribute(Qt::WA_TranslucentBackground, true);
+    }
+    update();
+}
+
+// --- Recent output for AI context ---
+
+QString TerminalWidget::recentOutput(int lines) const {
+    QStringList result;
+    int scrollbackSize = m_grid->scrollbackSize();
+    int totalLines = scrollbackSize + m_grid->rows();
+
+    int start = std::max(0, totalLines - lines);
+    for (int i = start; i < totalLines; ++i) {
+        result.append(lineText(i));
+    }
+    return result.join('\n');
+}
+
+// --- Write command to PTY ---
+
+void TerminalWidget::writeCommand(const QString &cmd) {
+    if (m_pty && !cmd.isEmpty()) {
+        m_pty->write(cmd.toUtf8());
+        m_pty->write(QByteArray("\n", 1));
+    }
 }

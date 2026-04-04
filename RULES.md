@@ -7,6 +7,7 @@
 3. **Consistency** -- All UI elements respect the active theme
 4. **Reliability** -- The app should never crash from user actions (paste, input, resize, rapid output)
 5. **Performance** -- Rendering must stay smooth even with high-throughput terminal output
+6. **Security** -- No data leaves the system without explicit user action
 
 ## Development Rules
 
@@ -26,15 +27,20 @@
 3. `TerminalWidget` renders the grid -- it never modifies grid state except through the parser
 4. `MainWindow` wires components -- it owns tabs, menus, and config application
 5. Split pane hierarchy: QTabWidget > QSplitter (nested) > TerminalWidget
+6. `GlRenderer` handles GPU rendering -- it reads grid state but never modifies it
+7. `LuaEngine` is sandboxed -- plugins communicate only through the `ants` API
+8. `AiDialog` is self-contained -- it makes network calls only when the user clicks Send
+9. `SessionManager` serializes read-only snapshots -- it never modifies grid state during save
 
 ## Feature Development Process
 
 1. Discuss the feature scope before implementation
 2. New VT sequences go in `VtParser` + `TerminalGrid`
 3. New UI features go in `TerminalWidget` or `MainWindow`
-4. Wire into `MainWindow` via signals/slots
-5. Test with all themes
-6. Update CLAUDE.md if architecture or patterns change
+4. New dialogs get their own header/source pair
+5. Wire into `MainWindow` via signals/slots
+6. Test with all themes
+7. Update CLAUDE.md if architecture or patterns change
 
 ## Code Quality
 
@@ -64,6 +70,20 @@
 8. Combining characters per cell capped at 8 to prevent DoS
 9. CSI parameters capped at 32 entries, values capped at 16384
 10. UTF-8 overlong encodings, surrogates, and out-of-range codepoints rejected (replaced with U+FFFD)
+11. SSH bookmarks never store passwords -- authentication is interactive
+12. AI API keys stored in 0600-permission config, never logged
+13. Lua plugins sandboxed: `os`, `io`, `debug`, `require`, `loadfile` removed from environment
+14. Lua execution timeout: 10 million instruction limit per event handler
+15. Network requests only made with explicit user action (AI Send button)
+
+## Plugin Rules
+
+1. Plugins live in `~/.config/ants-terminal/plugins/<name>/`
+2. Each plugin must have an `init.lua` entry point
+3. Optional `manifest.json` provides metadata (name, version, description, author)
+4. Plugins can only interact via the `ants` API -- no direct access to Qt or terminal internals
+5. Event handlers returning `false` cancel the event (keypress interception)
+6. Plugin errors are logged, never crash the terminal
 
 ## Release Checklist
 
@@ -81,3 +101,11 @@
 12. Undercurl renders in Neovim with LSP diagnostics
 13. Focus reporting works (test with vim's `set termguicolors`)
 14. Configurable keybindings load from config.json
+15. GPU rendering toggle works without artifacts
+16. Ligatures render correctly with JetBrains Mono / Fira Code
+17. SSH manager connects to remote hosts
+18. AI assistant sends/receives with configured endpoint
+19. Lua plugins load and fire events
+20. Session persistence saves and restores scrollback
+21. Background alpha/transparency works with compositor
+22. Sixel and Kitty graphics render correctly
