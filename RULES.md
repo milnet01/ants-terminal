@@ -72,9 +72,12 @@
 10. UTF-8 overlong encodings, surrogates, and out-of-range codepoints rejected (replaced with U+FFFD)
 11. SSH bookmarks never store passwords -- authentication is interactive
 12. AI API keys stored in 0600-permission config, never logged
-13. Lua plugins sandboxed: `os`, `io`, `debug`, `require`, `loadfile` removed from environment
+13. Lua plugins sandboxed: `os`, `io`, `debug`, `require`, `loadfile`, `setmetatable` removed from environment
 14. Lua execution timeout: 10 million instruction limit per event handler
 15. Network requests only made with explicit user action (AI Send button)
+16. Network timeout: 30 seconds on all outgoing HTTP requests
+17. Session files validated on load: all sizes bounds-checked, max 100MB compressed
+18. GL resources cleaned up explicitly with context current -- never in destructors
 
 ## Plugin Rules
 

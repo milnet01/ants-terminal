@@ -37,15 +37,17 @@
 
 - **CPU path**: QPainter with QTextLayout for ligature-aware text shaping
 - **GPU path**: QOpenGLWidget with glyph atlas texture (2048x2048), GLSL 3.3 core shaders
-- Both paths must produce identical visual output
+- GPU shaders use per-vertex data (CPU expands quads to 6 vertices) -- not instanced
+- GL resources must be cleaned up via explicit `cleanup()` with context current, not in destructors
+- Both paths must produce identical visual output (note: GPU path cannot render ligatures)
 - Per-pixel background alpha applied in paint loop, not at window level
 - Cell backgrounds drawn before text; cursor drawn last
-- GL_RED texture format for glyph atlas (single-channel alpha)
+- GL_RED texture format with swizzle (R->ONE, G->ONE, B->ONE, A->RED) for driver compatibility
 
 ## Plugin System Standards
 
 - Lua 5.4 embedded via C API with sandboxed environment
-- Dangerous globals removed: `os`, `io`, `loadfile`, `dofile`, `require`, `debug`
+- Dangerous globals removed: `os`, `io`, `loadfile`, `dofile`, `require`, `debug`, `setmetatable`, `collectgarbage`
 - Instruction count hook for timeout protection (10M instructions max)
 - Plugin events fired synchronously on Qt event loop
 - Plugin API namespaced under `ants.*` table
