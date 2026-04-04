@@ -34,6 +34,9 @@ public:
     void shutdown();
     bool isInitialized() const { return m_state != nullptr; }
 
+    // Memory limit for Lua allocations (default 10MB)
+    static constexpr size_t MAX_LUA_MEMORY = 10 * 1024 * 1024;
+
     // Fire events to all registered handlers
     // Returns false if any handler requests cancellation (for keypress)
     bool fireEvent(PluginEvent event, const QString &data = QString());
@@ -61,7 +64,12 @@ private:
     void registerApi();
     void sandboxEnvironment();
 
+    // Custom memory allocator with limit
+    static void *luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize);
+
     lua_State *m_state = nullptr;
+    size_t m_luaMemUsage = 0;  // Current Lua memory usage in bytes
+    bool m_timedOut = false;    // Set by instruction hook, checked after pcall
     QString m_recentOutput;
     QString m_cwd;
 

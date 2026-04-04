@@ -42,7 +42,7 @@
 Ants Terminal uses `QOpenGLWidget` for hardware-accelerated rendering out of the box. Two render paths are available:
 
 - **QPainter (default)** -- GPU-accelerated 2D painting via Qt's OpenGL paint engine. Uses `QTextLayout` for proper font ligature shaping.
-- **Custom GL Renderer** -- Optional glyph atlas-based renderer with GLSL 3.3 shaders. Enable via `gpu_rendering: true` in config or Settings menu. Uses a 2048x2048 texture atlas with on-demand glyph rasterization and instanced quad rendering.
+- **Custom GL Renderer** -- Optional glyph atlas-based renderer with GLSL 3.3 core shaders. Enable via `gpu_rendering: true` in config or Settings menu. Uses a 2048x2048 texture atlas with on-demand glyph rasterization, driver-safe texture swizzle for Intel/AMD compatibility, and per-vertex quad rendering. Note: ligatures are only available in the QPainter path.
 
 ### Ligature Support
 
@@ -223,7 +223,7 @@ ants.set_status("Custom status text")
 
 **Events:** `output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed`
 
-**Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require` removed. 10M instruction timeout prevents infinite loops.
+**Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require`, `setmetatable`, `collectgarbage` removed. 10M instruction timeout prevents infinite loops (immune to `pcall` bypass). Memory capped at 10MB to prevent `string.rep` OOM attacks.
 
 ### Background Opacity & Blur
 
@@ -441,7 +441,7 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
 | **VtParser** | `vtparser.h/cpp` | DEC VT100/xterm state machine, UTF-8 decoding, emits VtActions |
 | **TerminalGrid** | `terminalgrid.h/cpp` | Cell buffer, scrollback, cursor, ANSI colors, alt screen, Sixel/Kitty |
 | **TerminalWidget** | `terminalwidget.h/cpp` | QOpenGLWidget rendering, input, selection, search, URLs |
-| **GlRenderer** | `glrenderer.h/cpp` | OpenGL glyph atlas, GLSL shaders, instanced rendering |
+| **GlRenderer** | `glrenderer.h/cpp` | OpenGL glyph atlas, GLSL 3.3 shaders, per-vertex rendering |
 | **MainWindow** | `mainwindow.h/cpp` | Window chrome, menus, themes, config, dialogs |
 | **AiDialog** | `aidialog.h/cpp` | AI chat dialog, OpenAI API, streaming SSE |
 | **SshDialog** | `sshdialog.h/cpp` | SSH bookmark manager, connection via PTY |
@@ -634,9 +634,10 @@ end)
 - **Config file permissions**: created with `0600` (owner read/write only)
 - **No network access** by default -- AI assistant requires explicit configuration
 - **OSC 52 clipboard**: write-only -- read disabled
-- **Lua sandbox**: dangerous functions removed, instruction timeout
+- **Lua sandbox**: dangerous functions removed, 10M instruction timeout (pcall-proof), 10MB memory limit
 - **SSH**: no password storage, interactive authentication only
-- **AI**: API keys stored in 0600-permission config
+- **AI**: API keys stored in 0600-permission config, 30-second network timeout
+- **Session files**: bounds-validated on load, 100MB compressed size limit
 - **Buffer limits**: CSI params capped at 32, images capped at 100+200, combining chars at 8
 - **UTF-8 security**: overlong encodings, surrogates, out-of-range rejected
 - **Bracketed paste**: prevents clipboard injection attacks

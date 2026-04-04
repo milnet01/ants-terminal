@@ -2,6 +2,7 @@
 
 #include <lua5.4/lua.hpp>
 #include <QDebug>
+#include <cstdlib>
 
 // Helper to retrieve LuaEngine* from Lua state upvalue
 static LuaEngine *getEngine(lua_State *L) {
@@ -9,6 +10,27 @@ static LuaEngine *getEngine(lua_State *L) {
     auto *engine = static_cast<LuaEngine *>(lua_touserdata(L, -1));
     lua_pop(L, 1);
     return engine;
+}
+
+// Custom Lua allocator with memory limit (prevents string.rep OOM)
+void *LuaEngine::luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
+    auto *engine = static_cast<LuaEngine *>(ud);
+    if (nsize == 0) {
+        // Free
+        engine->m_luaMemUsage -= osize;
+        free(ptr);
+        return nullptr;
+    }
+    // Check memory limit on allocate/realloc
+    size_t newTotal = engine->m_luaMemUsage - osize + nsize;
+    if (newTotal > MAX_LUA_MEMORY) {
+        return nullptr; // Lua treats NULL return as allocation failure
+    }
+    void *result = realloc(ptr, nsize);
+    if (result) {
+        engine->m_luaMemUsage = newTotal;
+    }
+    return result;
 }
 
 static PluginEvent eventFromString(const char *name) {
@@ -31,7 +53,9 @@ LuaEngine::~LuaEngine() {
 bool LuaEngine::initialize() {
     if (m_state) return true;
 
-    m_state = luaL_newstate();
+    m_luaMemUsage = 0;
+    m_timedOut = false;
+    m_state = lua_newstate(luaAlloc, this);
     if (!m_state) return false;
 
     // Load safe standard libraries
@@ -52,7 +76,12 @@ bool LuaEngine::initialize() {
     sandboxEnvironment();
 
     // Set instruction count hook for timeout (10 million instructions)
+    // Sets m_timedOut flag so pcall cannot silently swallow the error
     lua_sethook(m_state, [](lua_State *L, lua_Debug *) {
+        lua_getfield(L, LUA_REGISTRYINDEX, "__ants_engine");
+        auto *eng = static_cast<LuaEngine *>(lua_touserdata(L, -1));
+        lua_pop(L, 1);
+        if (eng) eng->m_timedOut = true;
         luaL_error(L, "Script execution timeout exceeded");
     }, LUA_MASKCOUNT, 10000000);
 
@@ -127,6 +156,8 @@ void LuaEngine::shutdown() {
         m_handlers.clear();
         lua_close(m_state);
         m_state = nullptr;
+        m_luaMemUsage = 0;
+        m_timedOut = false;
     }
 }
 
@@ -147,6 +178,13 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
             const char *err = lua_tostring(m_state, -1);
             emit logMessage(QString("Plugin error: %1").arg(err ? err : "unknown"));
             lua_pop(m_state, 1);
+
+            // If timed out, stop all handler execution (pcall cannot escape timeout)
+            if (m_timedOut) {
+                emit logMessage("Plugin timed out — execution stopped");
+                m_timedOut = false;
+                break;
+            }
             continue;
         }
 
@@ -155,6 +193,13 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
             allow = false;
         }
         lua_pop(m_state, 1);
+
+        // Also check timeout after successful pcall (script may have caught it internally)
+        if (m_timedOut) {
+            emit logMessage("Plugin timed out — execution stopped");
+            m_timedOut = false;
+            break;
+        }
     }
 
     return allow;
