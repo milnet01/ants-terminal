@@ -108,6 +108,9 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid) {
 }
 
 bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed) {
+    // Reject excessively large compressed data (100MB limit)
+    if (compressed.size() > 100 * 1024 * 1024) return false;
+
     QByteArray raw = qUncompress(compressed);
     if (raw.isEmpty()) return false;
 
@@ -120,6 +123,10 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed) {
 
     int32_t rows, cols, curRow, curCol;
     in >> rows >> cols >> curRow >> curCol;
+    if (in.status() != QDataStream::Ok) return false;
+
+    // Bounds-check deserialized dimensions to prevent memory exhaustion
+    if (rows <= 0 || rows > 500 || cols <= 0 || cols > 1000) return false;
 
     // Resize grid to match saved dimensions
     grid->resize(rows, cols);
@@ -127,45 +134,50 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed) {
     // Read scrollback
     int32_t sbSize;
     in >> sbSize;
-    // We can't directly push to scrollback through the public API easily,
-    // so we restore screen lines and let them be the visible content.
-    // For a full restore, we'd need friend access or dedicated restore methods.
-    // Skip scrollback for now — focus on screen state
+    if (in.status() != QDataStream::Ok || sbSize < 0 || sbSize > 1000000) return false;
+
     for (int i = 0; i < sbSize; ++i) {
         int32_t cellCount;
         bool wrapped;
         in >> cellCount >> wrapped;
+        if (in.status() != QDataStream::Ok || cellCount < 0 || cellCount > 10000) return false;
         for (int j = 0; j < cellCount; ++j) {
             uint32_t cp; QRgb fg, bg; uint8_t flags;
             in >> cp >> fg >> bg >> flags;
         }
         int32_t combCount;
         in >> combCount;
+        if (in.status() != QDataStream::Ok || combCount < 0 || combCount > 10000) return false;
         for (int j = 0; j < combCount; ++j) {
             int32_t col, cpCount;
             in >> col >> cpCount;
+            if (in.status() != QDataStream::Ok || cpCount < 0 || cpCount > 8) return false;
             for (int k = 0; k < cpCount; ++k) {
                 uint32_t cp; in >> cp;
             }
         }
     }
 
-    // Read screen lines — these we restore via processAction Print
+    // Read screen lines
     int32_t screenRows;
     in >> screenRows;
-    // Skip detailed screen restore for now since grid doesn't expose direct cell write
+    if (in.status() != QDataStream::Ok || screenRows < 0 || screenRows > 500) return false;
+
     for (int row = 0; row < screenRows; ++row) {
         int32_t colCount;
         in >> colCount;
+        if (in.status() != QDataStream::Ok || colCount < 0 || colCount > 10000) return false;
         for (int col = 0; col < colCount; ++col) {
             uint32_t cp; QRgb fg, bg; uint8_t flags;
             in >> cp >> fg >> bg >> flags;
         }
         int32_t combCount;
         in >> combCount;
+        if (in.status() != QDataStream::Ok || combCount < 0 || combCount > 10000) return false;
         for (int j = 0; j < combCount; ++j) {
             int32_t col, cpCount;
             in >> col >> cpCount;
+            if (in.status() != QDataStream::Ok || cpCount < 0 || cpCount > 8) return false;
             for (int k = 0; k < cpCount; ++k) {
                 uint32_t cp; in >> cp;
             }

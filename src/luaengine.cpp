@@ -99,7 +99,8 @@ void LuaEngine::sandboxEnvironment() {
     const char *dangerous[] = {
         "os", "io", "loadfile", "dofile", "load",
         "rawget", "rawset", "rawequal", "rawlen",
-        "collectgarbage", "require", "package", "debug",
+        "setmetatable", "collectgarbage",
+        "require", "package", "debug",
         nullptr
     };
     for (int i = 0; dangerous[i]; ++i) {

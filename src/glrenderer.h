@@ -4,12 +4,10 @@
 #include <QOpenGLShaderProgram>
 #include <QOpenGLBuffer>
 #include <QOpenGLVertexArrayObject>
-#include <QOpenGLTexture>
+#include <QMatrix4x4>
 #include <QFont>
 #include <QColor>
 #include <QHash>
-#include <QImage>
-#include <QSize>
 #include <vector>
 #include <cstdint>
 
@@ -35,7 +33,7 @@ struct GlyphKey {
 };
 
 inline size_t qHash(const GlyphKey &k, size_t seed = 0) {
-    return qHash(k.codepoint, seed) ^ qHash(k.bold) ^ qHash(k.italic);
+    return qHash(k.codepoint, seed) ^ qHash(k.bold, seed) ^ qHash(k.italic, seed);
 }
 
 // Per-cell instance data for GPU rendering
@@ -55,6 +53,9 @@ class GlRenderer : protected QOpenGLFunctions {
 public:
     GlRenderer();
     ~GlRenderer();
+
+    // Must be called with GL context current (before widget destruction)
+    void cleanup();
 
     bool initialize();
     void setFont(const QFont &regular, const QFont &bold,
@@ -105,6 +106,9 @@ private:
     // Viewport
     int m_viewWidth = 0;
     int m_viewHeight = 0;
+
+    // Cached projection matrix (recomputed each frame in render())
+    QMatrix4x4 m_projection;
 
     // Vertex buffers
     QOpenGLBuffer m_quadVBO;

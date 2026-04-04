@@ -46,6 +46,7 @@ private:
     QString m_apiKey;
     QString m_model;
     int m_contextLines = 50;
-    QString m_lastResponse; // Last complete AI response (for insert)
-    QString m_streamBuffer; // Accumulates streaming response
+    QString m_lastResponse;   // Last complete AI response (for insert)
+    QString m_streamBuffer;   // Accumulates streaming response
+    QByteArray m_sseLineBuffer; // Buffers incomplete SSE lines across TCP chunks
 };

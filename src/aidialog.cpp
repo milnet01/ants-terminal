@@ -112,8 +112,16 @@ void AiDialog::appendMessage(const QString &role, const QString &text) {
 }
 
 void AiDialog::sendRequest(const QString &userMessage) {
+    // Abort any in-flight request to prevent leaked QNetworkReply
+    if (m_currentReply) {
+        m_currentReply->abort();
+        m_currentReply->deleteLater();
+        m_currentReply = nullptr;
+    }
+
     m_sendBtn->setEnabled(false);
     m_streamBuffer.clear();
+    m_sseLineBuffer.clear();
 
     QJsonObject systemMsg;
     systemMsg["role"] = "system";
@@ -139,6 +147,7 @@ void AiDialog::sendRequest(const QString &userMessage) {
 
     QNetworkRequest req{QUrl(m_endpoint)};
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    req.setTransferTimeout(30000); // 30-second timeout
     if (!m_apiKey.isEmpty())
         req.setRawHeader("Authorization", ("Bearer " + m_apiKey).toUtf8());
 
@@ -150,14 +159,20 @@ void AiDialog::sendRequest(const QString &userMessage) {
 void AiDialog::onReplyReadyRead() {
     if (!m_currentReply) return;
 
-    QByteArray data = m_currentReply->readAll();
-    QString text = QString::fromUtf8(data);
+    // Append new data to SSE line buffer to handle chunk boundaries correctly
+    m_sseLineBuffer += m_currentReply->readAll();
 
-    // Parse Server-Sent Events (SSE) format
-    QStringList lines = text.split('\n');
-    for (const QString &line : lines) {
-        if (!line.startsWith("data: ")) continue;
-        QString json = line.mid(6).trimmed();
+    // Process complete lines (SSE lines are terminated by \n)
+    while (true) {
+        int nlPos = m_sseLineBuffer.indexOf('\n');
+        if (nlPos < 0) break;
+
+        QString line = QString::fromUtf8(m_sseLineBuffer.left(nlPos)).trimmed();
+        m_sseLineBuffer = m_sseLineBuffer.mid(nlPos + 1);
+
+        // Handle both "data: " (standard) and "data:" (some providers)
+        if (!line.startsWith("data:")) continue;
+        QString json = line.mid(line.startsWith("data: ") ? 6 : 5).trimmed();
         if (json == "[DONE]") continue;
 
         QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());

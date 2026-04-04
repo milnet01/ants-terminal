@@ -141,6 +141,12 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
 }
 
 TerminalWidget::~TerminalWidget() {
+    // Clean up GL resources while context is still valid
+    if (m_glRenderer) {
+        makeCurrent();
+        m_glRenderer->cleanup();
+        doneCurrent();
+    }
     if (m_logFile)
         m_logFile->close();
 }
@@ -264,7 +270,7 @@ bool TerminalWidget::event(QEvent *event) {
             return true;
         }
     }
-    return QWidget::event(event);
+    return QOpenGLWidget::event(event);
 }
 
 void TerminalWidget::paintEvent(QPaintEvent *) {
@@ -567,7 +573,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
                 return;
             }
         }
-        if (mime->hasText()) {
+        if (mime->hasText() && m_pty) {
             QString text = clipboard->text();
             data = text.toUtf8();
             if (m_grid->bracketedPaste()) {
@@ -628,8 +634,10 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
 
     // Shift+Enter -- literal newline
     if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (mods & Qt::ShiftModifier)) {
-        data = QByteArray("\x16\n", 2);
-        m_pty->write(data);
+        if (m_pty) {
+            data = QByteArray("\x16\n", 2);
+            m_pty->write(data);
+        }
         return;
     }
 
@@ -737,7 +745,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         break;
     }
 
-    if (!data.isEmpty()) {
+    if (!data.isEmpty() && m_pty) {
         m_pty->write(data);
     }
 }
@@ -801,7 +809,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
 }
 
 void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
-    if (!event->commitString().isEmpty()) {
+    if (!event->commitString().isEmpty() && m_pty) {
         QByteArray data = event->commitString().toUtf8();
         m_pty->write(data);
     }
@@ -814,7 +822,7 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
         int y = m_padding + m_grid->cursorRow() * m_cellHeight;
         return QRect(x, y, m_cellWidth, m_cellHeight);
     }
-    return QWidget::inputMethodQuery(query);
+    return QOpenGLWidget::inputMethodQuery(query);
 }
 
 void TerminalWidget::onPtyData(const QByteArray &data) {
@@ -1096,7 +1104,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         m_selEnd = m_selStart;
         update();
     }
-    if (event->button() == Qt::MiddleButton) {
+    if (event->button() == Qt::MiddleButton && m_pty) {
         QString text = QApplication::clipboard()->text(QClipboard::Selection);
         if (!text.isEmpty()) {
             QByteArray data = text.toUtf8();
@@ -1745,12 +1753,15 @@ void TerminalWidget::resizeGL(int w, int h) {
 
 void TerminalWidget::setGpuRendering(bool enabled) {
     m_gpuRendering = enabled;
-    if (enabled && !m_glRenderer) {
-        // Will be initialized in initializeGL on next paint
+    if (enabled && !m_glRenderer && isValid()) {
+        // Initialize GL renderer now (context must be valid)
         makeCurrent();
         initializeGL();
         doneCurrent();
-    } else if (!enabled) {
+    } else if (!enabled && m_glRenderer) {
+        makeCurrent();
+        m_glRenderer->cleanup();
+        doneCurrent();
         m_glRenderer.reset();
     }
     update();

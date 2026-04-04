@@ -6,25 +6,18 @@
 #include <QImage>
 
 // Vertex shader for colored quads (backgrounds)
+// CPU expands quads to 6 vertices each, so shader just passes through
 static const char *bgVertexShader = R"(
 #version 330 core
 layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec2 aSize;
-layout(location = 2) in vec4 aColor;
+layout(location = 1) in vec4 aColor;
 
 uniform mat4 projection;
 
 out vec4 vColor;
 
 void main() {
-    // Expand point to quad using gl_VertexID
-    vec2 offsets[6] = vec2[](
-        vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
-        vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0)
-    );
-    vec2 offset = offsets[gl_VertexID % 6];
-    vec2 pos = aPos + offset * aSize;
-    gl_Position = projection * vec4(pos, 0.0, 1.0);
+    gl_Position = projection * vec4(aPos, 0.0, 1.0);
     vColor = aColor;
 }
 )";
@@ -40,12 +33,12 @@ void main() {
 )";
 
 // Vertex shader for textured quads (glyphs)
+// CPU expands quads to 6 vertices each with pre-computed UVs
 static const char *glyphVertexShader = R"(
 #version 330 core
 layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec2 aSize;
-layout(location = 2) in vec4 aUV;
-layout(location = 3) in vec4 aColor;
+layout(location = 1) in vec2 aTexCoord;
+layout(location = 2) in vec4 aColor;
 
 uniform mat4 projection;
 
@@ -53,20 +46,8 @@ out vec2 vTexCoord;
 out vec4 vColor;
 
 void main() {
-    vec2 offsets[6] = vec2[](
-        vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
-        vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0)
-    );
-    vec2 uvOffsets[6] = vec2[](
-        vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
-        vec2(0.0, 0.0), vec2(1.0, 1.0), vec2(0.0, 1.0)
-    );
-    vec2 offset = offsets[gl_VertexID % 6];
-    vec2 pos = aPos + offset * aSize;
-    gl_Position = projection * vec4(pos, 0.0, 1.0);
-
-    vec2 uvOffset = uvOffsets[gl_VertexID % 6];
-    vTexCoord = aUV.xy + uvOffset * aUV.zw;
+    gl_Position = projection * vec4(aPos, 0.0, 1.0);
+    vTexCoord = aTexCoord;
     vColor = aColor;
 }
 )";
@@ -89,10 +70,19 @@ GlRenderer::GlRenderer()
     : m_quadVBO(QOpenGLBuffer::VertexBuffer) {}
 
 GlRenderer::~GlRenderer() {
+    // GL resources should already be cleaned up via cleanup()
+    // Do NOT call glDeleteTextures here — context may not be current
+}
+
+void GlRenderer::cleanup() {
     if (m_atlasTexture) {
-        // GL context must be current when destroying
         glDeleteTextures(1, &m_atlasTexture);
+        m_atlasTexture = 0;
     }
+    m_vao.destroy();
+    m_quadVBO.destroy();
+    m_glyphCache.clear();
+    m_initialized = false;
 }
 
 bool GlRenderer::initialize() {
@@ -181,14 +171,15 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Build orthographic projection matrix
+    // Build orthographic projection matrix (Y-down)
     float proj[16] = {};
     proj[0] = 2.0f / m_viewWidth;
-    proj[5] = -2.0f / m_viewHeight; // Y-down
+    proj[5] = -2.0f / m_viewHeight;
     proj[10] = -1.0f;
     proj[12] = -1.0f;
     proj[13] = 1.0f;
     proj[15] = 1.0f;
+    m_projection = QMatrix4x4(proj);
 
     int rows = grid->rows();
     int cols = grid->cols();
@@ -261,19 +252,9 @@ void GlRenderer::renderBackgrounds(const std::vector<CellQuad> &quads) {
     if (quads.empty()) return;
 
     m_bgShader.bind();
+    m_bgShader.setUniformValue("projection", m_projection);
 
-    // Set projection
-    float proj[16] = {};
-    proj[0] = 2.0f / m_viewWidth;
-    proj[5] = -2.0f / m_viewHeight;
-    proj[10] = -1.0f;
-    proj[12] = -1.0f;
-    proj[13] = 1.0f;
-    proj[15] = 1.0f;
-    m_bgShader.setUniformValue("projection", QMatrix4x4(proj));
-
-    // Upload quad data and render using instanced geometry
-    // For simplicity, emit 6 vertices per quad in a single VBO
+    // Expand quads to 6 vertices each (two triangles)
     struct BgVertex { float x, y, r, g, b, a; };
     std::vector<BgVertex> verts;
     verts.reserve(quads.size() * 6);
@@ -293,14 +274,18 @@ void GlRenderer::renderBackgrounds(const std::vector<CellQuad> &quads) {
     m_quadVBO.bind();
     m_quadVBO.allocate(verts.data(), static_cast<int>(verts.size() * sizeof(BgVertex)));
 
+    // location 0: vec2 aPos
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(BgVertex), nullptr);
+    // location 1: vec4 aColor
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(BgVertex),
                           reinterpret_cast<void *>(2 * sizeof(float)));
 
     glDrawArrays(GL_TRIANGLES, 0, static_cast<int>(verts.size()));
 
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
     m_quadVBO.release();
     m_vao.release();
     m_bgShader.release();
@@ -310,20 +295,13 @@ void GlRenderer::renderGlyphs(const std::vector<GlyphQuad> &quads) {
     if (quads.empty()) return;
 
     m_glyphShader.bind();
-
-    float proj[16] = {};
-    proj[0] = 2.0f / m_viewWidth;
-    proj[5] = -2.0f / m_viewHeight;
-    proj[10] = -1.0f;
-    proj[12] = -1.0f;
-    proj[13] = 1.0f;
-    proj[15] = 1.0f;
-    m_glyphShader.setUniformValue("projection", QMatrix4x4(proj));
+    m_glyphShader.setUniformValue("projection", m_projection);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
     m_glyphShader.setUniformValue("glyphAtlas", 0);
 
+    // Expand quads to 6 vertices each with pre-computed UVs
     struct GlyphVertex { float x, y, u, v, r, g, b, a; };
     std::vector<GlyphVertex> verts;
     verts.reserve(quads.size() * 6);
@@ -344,17 +322,23 @@ void GlRenderer::renderGlyphs(const std::vector<GlyphQuad> &quads) {
     m_quadVBO.bind();
     m_quadVBO.allocate(verts.data(), static_cast<int>(verts.size() * sizeof(GlyphVertex)));
 
+    // location 0: vec2 aPos
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(GlyphVertex), nullptr);
+    // location 1: vec2 aTexCoord
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(GlyphVertex),
                           reinterpret_cast<void *>(2 * sizeof(float)));
+    // location 2: vec4 aColor
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(GlyphVertex),
                           reinterpret_cast<void *>(4 * sizeof(float)));
 
     glDrawArrays(GL_TRIANGLES, 0, static_cast<int>(verts.size()));
 
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glDisableVertexAttribArray(2);
     m_quadVBO.release();
     m_vao.release();
     m_glyphShader.release();
