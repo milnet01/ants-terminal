@@ -18,12 +18,22 @@
 Pty::Pty(QObject *parent) : QObject(parent) {}
 
 Pty::~Pty() {
-    if (m_masterFd >= 0) {
-        ::close(m_masterFd);
-    }
     if (m_childPid > 0) {
         ::kill(m_childPid, SIGHUP);
-        ::waitpid(m_childPid, nullptr, WNOHANG);
+    }
+    if (m_masterFd >= 0) {
+        ::close(m_masterFd);
+        m_masterFd = -1;
+    }
+    if (m_childPid > 0) {
+        // Reap child — try non-blocking first, then blocking with timeout
+        int status = 0;
+        if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
+            // Child still running after SIGHUP — send SIGTERM
+            ::kill(m_childPid, SIGTERM);
+            ::waitpid(m_childPid, &status, 0);
+        }
+        m_childPid = -1;
     }
 }
 
@@ -89,8 +99,19 @@ bool Pty::start(const QString &shell) {
 }
 
 void Pty::write(const QByteArray &data) {
-    if (m_masterFd >= 0) {
-        ::write(m_masterFd, data.constData(), data.size());
+    if (m_masterFd < 0) return;
+    const char *buf = data.constData();
+    qsizetype remaining = data.size();
+    while (remaining > 0) {
+        ssize_t n = ::write(m_masterFd, buf, remaining);
+        if (n > 0) {
+            buf += n;
+            remaining -= n;
+        } else if (n < 0 && errno == EINTR) {
+            continue;
+        } else {
+            break; // EAGAIN or fatal error
+        }
     }
 }
 

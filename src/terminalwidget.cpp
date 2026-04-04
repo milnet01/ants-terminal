@@ -1,10 +1,10 @@
 #include "terminalwidget.h"
 
 #include <QPainter>
+#include <QPainterPath>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QResizeEvent>
-#include <QFontDatabase>
 #include <QFontMetrics>
 #include <QApplication>
 #include <QClipboard>
@@ -16,7 +16,11 @@
 #include <QPushButton>
 #include <QDesktopServices>
 #include <QUrl>
-#include <cmath>
+#include <QProcess>
+#include <QStandardPaths>
+#include <QDir>
+#include <QDateTime>
+#include <QFileInfo>
 
 TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
@@ -31,22 +35,55 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_font.setPointSize(11);
     m_font.setStyleHint(QFont::Monospace);
     m_font.setFixedPitch(true);
+    // Enable font features (ligatures)
+    m_font.setStyleStrategy(QFont::PreferDefault);
 
-    QFontMetrics fm(m_font);
-    m_cellWidth = fm.horizontalAdvance('M');
-    m_cellHeight = fm.height();
-    m_fontAscent = fm.ascent();
+    updateFontMetrics();
 
     // Initial grid
-    m_grid = new TerminalGrid(24, 80);
-    m_parser = new VtParser([this](const VtAction &a) {
+    m_grid = std::make_unique<TerminalGrid>(24, 80);
+
+    // Response callback: DA, CPR replies go back to PTY; OSC 52 sets clipboard
+    m_grid->setResponseCallback([this](const std::string &response) {
+        if (response.size() > 6 && response.compare(1, 6, "OSC52:") == 0) {
+            // OSC 52 clipboard set (prefixed with \0OSC52:)
+            QString text = QString::fromUtf8(response.data() + 7,
+                                              static_cast<int>(response.size()) - 7);
+            QApplication::clipboard()->setText(text);
+            return;
+        }
+        if (m_pty)
+            m_pty->write(QByteArray(response.data(), static_cast<int>(response.size())));
+    });
+
+    m_parser = std::make_unique<VtParser>([this](const VtAction &a) {
         m_grid->processAction(a);
     });
+
+    // Font fallback for emoji/symbols
+    QStringList fallbackFamilies = {"Noto Color Emoji", "Noto Emoji", "Symbola",
+                                     "Noto Sans CJK SC", "Noto Sans CJK", "WenQuanYi Micro Hei"};
+    for (const QString &family : fallbackFamilies) {
+        QFont test(family);
+        QFontMetrics fm(test);
+        if (fm.horizontalAdvance(QChar(0x2603)) > 0) { // snowman test
+            m_fallbackFont = test;
+            m_fallbackFont.setPointSize(m_font.pointSize());
+            m_hasFallbackFont = true;
+            break;
+        }
+    }
 
     // Cursor blink timer
     m_cursorTimer.setInterval(530);
     connect(&m_cursorTimer, &QTimer::timeout, this, &TerminalWidget::blinkCursor);
     m_cursorTimer.start();
+
+    // Idle notification timer (check every 2 seconds)
+    m_idleTimer.setInterval(2000);
+    connect(&m_idleTimer, &QTimer::timeout, this, &TerminalWidget::checkIdleNotification);
+    m_idleTimer.start();
+    m_lastOutputTime.start();
 
     setMinimumSize(m_cellWidth * 20 + m_padding * 2, m_cellHeight * 5 + m_padding * 2);
     setMouseTracking(true);
@@ -97,9 +134,63 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
 }
 
 TerminalWidget::~TerminalWidget() {
-    delete m_parser;
-    delete m_grid;
-    // m_pty is a QObject child, deleted automatically
+    if (m_logFile)
+        m_logFile->close();
+}
+
+void TerminalWidget::updateFontMetrics() {
+    QFontMetrics fm(m_font);
+    m_cellWidth = fm.horizontalAdvance('M');
+    m_cellHeight = fm.height();
+    m_fontAscent = fm.ascent();
+
+    // Create bold/italic variants
+    m_fontBold = m_font;
+    m_fontBold.setBold(true);
+    m_fontItalic = m_font;
+    m_fontItalic.setItalic(true);
+    m_fontBoldItalic = m_font;
+    m_fontBoldItalic.setBold(true);
+    m_fontBoldItalic.setItalic(true);
+}
+
+void TerminalWidget::setFontSize(int size) {
+    size = qBound(8, size, 32);
+    m_font.setPointSize(size);
+    if (m_hasFallbackFont) m_fallbackFont.setPointSize(size);
+    updateFontMetrics();
+    recalcGridSize();
+    update();
+}
+
+int TerminalWidget::fontSize() const {
+    return m_font.pointSize();
+}
+
+void TerminalWidget::setMaxScrollback(int lines) {
+    m_grid->setMaxScrollback(lines);
+}
+
+void TerminalWidget::setSessionLogging(bool enabled) {
+    m_loggingEnabled = enabled;
+    if (enabled && !m_logFile) {
+        QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+                      + "/ants-terminal/logs";
+        QDir().mkpath(dir);
+        QString filename = dir + "/session_"
+                           + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")
+                           + ".log";
+        m_logFile = std::make_unique<QFile>(filename);
+        m_logFile->open(QIODevice::WriteOnly | QIODevice::Append);
+    } else if (!enabled && m_logFile) {
+        m_logFile->close();
+        m_logFile.reset();
+    }
+}
+
+void TerminalWidget::sendToPty(const QByteArray &data) {
+    if (m_pty)
+        m_pty->write(data);
 }
 
 bool TerminalWidget::startShell() {
@@ -118,12 +209,38 @@ bool TerminalWidget::startShell() {
 }
 
 void TerminalWidget::applyThemeColors(const QColor &fg, const QColor &bg,
-                                       const QColor &cursorColor) {
+                                       const QColor &cursorColor,
+                                       const QColor &accent,
+                                       const QColor &border) {
     m_grid->setDefaultFg(fg);
     m_grid->setDefaultBg(bg);
     m_cursorColor = cursorColor;
 
-    // Set widget palette so no foreign background can bleed through
+    // Derive highlight colors from theme
+    QColor accentColor = accent.isValid() ? accent : cursorColor;
+    m_selectionBg = accentColor;
+    m_selectionFg = bg;
+    m_urlColor = accentColor;
+    m_bracketHighlightBg = border.isValid() ? border : accentColor.darker(150);
+
+    // Search highlights: derive from accent
+    m_searchHighlightBg = accentColor.lighter(140);
+    m_searchHighlightFg = bg;
+    m_searchCurrentBg = accentColor;
+    m_searchCurrentFg = bg;
+
+    // Update search bar colors if visible
+    if (m_searchVisible) {
+        m_searchBar->setStyleSheet(QString(
+            "QWidget#searchBar { background-color: %1; border-bottom: 1px solid %2; }"
+            "QLineEdit { background: %3; color: %4; border: 1px solid %2; border-radius: 4px; padding: 2px 6px; }"
+            "QLabel { color: %5; }"
+            "QPushButton { background: transparent; color: %5; border: none; font-size: 12px; }"
+            "QPushButton:hover { color: %4; }"
+        ).arg(bg.darker(110).name(), border.isValid() ? border.name() : bg.lighter(150).name(),
+              bg.name(), fg.name(), fg.darker(130).name()));
+    }
+
     QPalette pal = palette();
     pal.setColor(QPalette::Window, bg);
     pal.setColor(QPalette::Base, bg);
@@ -133,7 +250,6 @@ void TerminalWidget::applyThemeColors(const QColor &fg, const QColor &bg,
 }
 
 bool TerminalWidget::event(QEvent *event) {
-    // Intercept Tab/Backtab before Qt's focus system steals them
     if (event->type() == QEvent::KeyPress) {
         QKeyEvent *ke = static_cast<QKeyEvent *>(event);
         if (ke->key() == Qt::Key_Tab || ke->key() == Qt::Key_Backtab) {
@@ -152,55 +268,47 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     const int cols = m_grid->cols();
     const QColor defaultBg = m_grid->defaultBg();
 
-    // Fill background
     p.fillRect(rect(), defaultBg);
 
-    // Viewport model:
-    //   Combined buffer = [scrollback lines...] + [screen lines...]
-    //   viewStart = scrollbackSize - scrollOffset
-    //   For viewport row `vr`: globalLine = viewStart + vr
-    //     if globalLine < scrollbackSize -> scrollback line
-    //     else -> screen line (index = globalLine - scrollbackSize)
     int scrollbackSize = m_grid->scrollbackSize();
     int viewStart = scrollbackSize - m_scrollOffset;
 
-    // Blank cell with default bg so unpopulated cells don't paint dark blocks
-    Cell blankCell;
-    blankCell.attrs.fg = defaultBg;
-    blankCell.attrs.bg = defaultBg;
-
-    // Precompute bracket match for current cursor
     BracketPair bp = (m_scrollOffset == 0) ? findMatchingBracket() : BracketPair{-1,-1,-1,-1};
 
     for (int vr = 0; vr < rows; ++vr) {
         int globalLine = viewStart + vr;
         int px_y = m_padding + vr * m_cellHeight;
 
-        // Precompute URL spans for this line
         auto urlSpans = detectUrls(globalLine);
+
+        // --- Ligature-aware text rendering ---
+        // We accumulate runs of same-attribute cells and draw them together
+        // to let Qt apply font ligatures (JetBrains Mono, Fira Code, etc.)
+        struct TextRun {
+            int startCol;
+            QString text;
+            QColor fg;
+            QColor bg;
+            bool bold;
+            bool italic;
+            bool underline;
+            bool strikethrough;
+            bool isUrl;
+        };
+        std::vector<TextRun> runs;
+        TextRun current{};
+        current.startCol = 0;
+        bool currentValid = false;
 
         for (int col = 0; col < cols; ++col) {
             int px_x = m_padding + col * m_cellWidth;
 
-            // Get the cell for this position
-            const Cell *cp = &blankCell;
-            if (globalLine >= 0 && globalLine < scrollbackSize) {
-                const auto &sbLine = m_grid->scrollbackLine(globalLine);
-                if (col < static_cast<int>(sbLine.size()))
-                    cp = &sbLine[col];
-            } else {
-                int screenRow = globalLine - scrollbackSize;
-                if (screenRow >= 0 && screenRow < rows)
-                    cp = &m_grid->cellAt(screenRow, col);
-            }
-
-            const Cell &c = *cp;
+            const Cell &c = cellAtGlobal(globalLine, col);
             QColor fg = c.attrs.fg;
             QColor bg = c.attrs.bg;
             if (c.attrs.inverse) std::swap(fg, bg);
             if (c.attrs.dim) fg = fg.darker(150);
 
-            // Check if cell is part of a URL
             bool isUrl = false;
             for (const auto &u : urlSpans) {
                 if (col >= u.startCol && col <= u.endCol) {
@@ -209,7 +317,6 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 }
             }
 
-            // Selection highlight (highest priority)
             bool selected = isCellSelected(globalLine, col);
             if (selected) {
                 fg = m_selectionFg;
@@ -227,26 +334,102 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 fg = m_urlColor;
             }
 
-            // Paint cell bg — use defaultBg for cells that haven't been colored by ANSI codes
+            // Paint cell background (wide chars get double-width bg)
+            int cellDrawWidth = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
             if (bg != defaultBg) {
-                p.fillRect(px_x, px_y, m_cellWidth, m_cellHeight, bg);
+                p.fillRect(px_x, px_y, cellDrawWidth, m_cellHeight, bg);
             }
+
+            // Skip continuation cells of wide characters (already drawn)
+            if (c.isWideCont) continue;
+
+            // Determine if this cell continues the current run
+            bool sameAttrs = currentValid &&
+                fg == current.fg && bg == current.bg &&
+                c.attrs.bold == current.bold &&
+                c.attrs.italic == current.italic &&
+                c.attrs.underline == current.underline &&
+                c.attrs.strikethrough == current.strikethrough &&
+                isUrl == current.isUrl;
 
             if (c.codepoint != ' ' && c.codepoint != 0) {
-                QFont drawFont = m_font;
-                if (c.attrs.bold) drawFont.setBold(true);
-                if (c.attrs.italic) drawFont.setItalic(true);
-                if (drawFont != m_font) p.setFont(drawFont);
-                p.setPen(fg);
-                p.drawText(px_x, px_y + m_fontAscent, QString::fromUcs4(reinterpret_cast<const char32_t *>(&c.codepoint), 1));
-                if (drawFont != m_font) p.setFont(m_font);
+                uint32_t baseCp = c.codepoint;
+                QString ch = QString::fromUcs4(reinterpret_cast<const char32_t *>(&baseCp), 1);
+                // Append combining characters
+                if (auto *comb = combiningAt(globalLine, col)) {
+                    for (uint32_t combCp : *comb)
+                        ch += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
+                }
+                if (sameAttrs) {
+                    current.text += ch;
+                } else {
+                    if (currentValid && !current.text.isEmpty()) {
+                        runs.push_back(current);
+                    }
+                    current = TextRun{};
+                    current.startCol = col;
+                    current.text = ch;
+                    current.fg = fg;
+                    current.bg = bg;
+                    current.bold = c.attrs.bold;
+                    current.italic = c.attrs.italic;
+                    current.underline = c.attrs.underline;
+                    current.strikethrough = c.attrs.strikethrough;
+                    current.isUrl = isUrl;
+                    currentValid = true;
+                }
+            } else {
+                // Space or null breaks the run
+                if (currentValid && !current.text.isEmpty()) {
+                    runs.push_back(current);
+                    currentValid = false;
+                }
             }
 
-            // Underline for URLs or explicit underline attribute
+            // Underline rendering (supports multiple styles + custom color)
             if (c.attrs.underline || isUrl) {
-                p.setPen(fg);
-                p.drawLine(px_x, px_y + m_cellHeight - 1,
-                           px_x + m_cellWidth - 1, px_y + m_cellHeight - 1);
+                QColor ulColor = c.attrs.underlineColor.isValid() ? c.attrs.underlineColor : fg;
+                int ulY = px_y + m_cellHeight - 2;
+                int ulW = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
+                UnderlineStyle style = isUrl ? UnderlineStyle::Single : c.attrs.underlineStyle;
+                if (style == UnderlineStyle::None) style = UnderlineStyle::Single;
+
+                p.setPen(ulColor);
+                switch (style) {
+                case UnderlineStyle::Single:
+                    p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
+                    break;
+                case UnderlineStyle::Double:
+                    p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
+                    p.drawLine(px_x, ulY - 2, px_x + ulW - 1, ulY - 2);
+                    break;
+                case UnderlineStyle::Curly: {
+                    QPainterPath path;
+                    path.moveTo(px_x, ulY);
+                    for (int x = 0; x < ulW; x += 4) {
+                        int x0 = px_x + x;
+                        path.cubicTo(x0 + 1, ulY - 2, x0 + 3, ulY + 2, x0 + 4, ulY);
+                    }
+                    p.setBrush(Qt::NoBrush);
+                    p.drawPath(path);
+                    break;
+                }
+                case UnderlineStyle::Dotted: {
+                    QPen dotPen(ulColor, 1, Qt::DotLine);
+                    p.setPen(dotPen);
+                    p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
+                    p.setPen(ulColor);
+                    break;
+                }
+                case UnderlineStyle::Dashed: {
+                    QPen dashPen(ulColor, 1, Qt::DashLine);
+                    p.setPen(dashPen);
+                    p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
+                    p.setPen(ulColor);
+                    break;
+                }
+                default: break;
+                }
             }
             if (c.attrs.strikethrough) {
                 p.setPen(fg);
@@ -254,19 +437,53 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 p.drawLine(px_x, sy, px_x + m_cellWidth - 1, sy);
             }
         }
+
+        // Flush last run
+        if (currentValid && !current.text.isEmpty()) {
+            runs.push_back(current);
+        }
+
+        // Draw all text runs for this row
+        for (const auto &run : runs) {
+            const QFont *drawFont = &m_font;
+            if (run.bold && run.italic) drawFont = &m_fontBoldItalic;
+            else if (run.bold) drawFont = &m_fontBold;
+            else if (run.italic) drawFont = &m_fontItalic;
+
+            if (drawFont != &m_font) p.setFont(*drawFont);
+            p.setPen(run.fg);
+            int px_x = m_padding + run.startCol * m_cellWidth;
+            p.drawText(px_x, px_y + m_fontAscent, run.text);
+            if (drawFont != &m_font) p.setFont(m_font);
+        }
     }
 
-    // Cursor (only when viewing current screen)
+    // Draw inline images
+    for (const auto &img : m_grid->inlineImages()) {
+        int px_x = m_padding + img.col * m_cellWidth;
+        int imgRow = img.row;
+        // Convert screen row to viewport row
+        int screenGlobalLine = scrollbackSize + imgRow;
+        int vr = screenGlobalLine - viewStart;
+        if (vr < 0 || vr >= rows) continue;
+        int px_y = m_padding + vr * m_cellHeight;
+        int pw = img.cellWidth * m_cellWidth;
+        int ph = img.cellHeight * m_cellHeight;
+        p.drawImage(QRect(px_x, px_y, pw, ph), img.image);
+    }
+
+    // Cursor
     if (m_scrollOffset == 0 && m_grid->cursorVisible() && (m_cursorBlinkOn || !m_hasFocus)) {
         int cx = m_padding + m_grid->cursorCol() * m_cellWidth;
         int cy = m_padding + m_grid->cursorRow() * m_cellHeight;
 
         if (m_hasFocus) {
             p.fillRect(cx, cy, m_cellWidth, m_cellHeight, m_cursorColor);
-            const Cell &cc = m_grid->cellAt(m_grid->cursorRow(), m_grid->cursorCol());
-            if (cc.codepoint != ' ' && cc.codepoint != 0) {
+            int cursorGL = scrollbackSize + m_grid->cursorRow();
+            QString cursorText = cellText(cursorGL, m_grid->cursorCol());
+            if (!cursorText.isEmpty()) {
                 p.setPen(m_grid->defaultBg());
-                p.drawText(cx, cy + m_fontAscent, QString::fromUcs4(reinterpret_cast<const char32_t *>(&cc.codepoint), 1));
+                p.drawText(cx, cy + m_fontAscent, cursorText);
             }
         } else {
             p.setPen(m_cursorColor);
@@ -277,10 +494,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 }
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
-    // Reset scroll on keypress
     m_scrollOffset = 0;
-
-    // Reset cursor blink
     m_cursorBlinkOn = true;
     m_cursorTimer.start();
 
@@ -288,13 +502,25 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     int key = event->key();
     Qt::KeyboardModifiers mods = event->modifiers();
 
-    // Ctrl+Shift+V — paste
+    // Ctrl+Shift+V -- paste
     if (key == Qt::Key_V && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         const QClipboard *clipboard = QApplication::clipboard();
         const QMimeData *mime = clipboard->mimeData();
         if (mime->hasImage()) {
             QImage img = clipboard->image();
             if (!img.isNull()) {
+                // Auto-save image and insert filepath into terminal
+                QString dir = m_imagePasteDir;
+                if (dir.isEmpty())
+                    dir = QDir::homePath() + "/Pictures/ClaudePaste";
+                QDir().mkpath(dir);
+                QString filename = dir + "/paste_"
+                    + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz")
+                    + ".png";
+                if (img.save(filename)) {
+                    // Insert the filepath into the terminal
+                    if (m_pty) m_pty->write(filename.toUtf8());
+                }
                 emit imagePasted(img);
                 return;
             }
@@ -302,32 +528,39 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         if (mime->hasText()) {
             QString text = clipboard->text();
             data = text.toUtf8();
-            m_pty->write(data);
+            if (m_grid->bracketedPaste()) {
+                m_pty->write(QByteArray("\x1B[200~"));
+                m_pty->write(data);
+                m_pty->write(QByteArray("\x1B[201~"));
+            } else {
+                m_pty->write(data);
+            }
         }
         return;
     }
 
-    // Ctrl+Shift+C — copy selection
+    // Ctrl+Shift+C -- copy selection
     if (key == Qt::Key_C && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         copySelection();
         return;
     }
 
-    // Ctrl+Shift+F — search
+    // Ctrl+Shift+F -- search
     if (key == Qt::Key_F && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         showSearchBar();
         return;
     }
 
-    // Escape — close search bar
+
+    // Escape -- close search bar
     if (key == Qt::Key_Escape && m_searchVisible) {
         hideSearchBar();
         return;
     }
 
-    // Shift+Enter — literal newline (Ctrl-V + newline for readline)
+    // Shift+Enter -- literal newline
     if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (mods & Qt::ShiftModifier)) {
-        data = QByteArray("\x16\n", 2); // Ctrl-V + LF
+        data = QByteArray("\x16\n", 2);
         m_pty->write(data);
         return;
     }
@@ -335,7 +568,6 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     // Ctrl+key combinations
     if (mods & Qt::ControlModifier && !(mods & Qt::ShiftModifier)) {
         if (key >= Qt::Key_A && key <= Qt::Key_Z) {
-            // Ctrl+A = 0x01, Ctrl+B = 0x02, ..., Ctrl+Z = 0x1A
             char ch = static_cast<char>(key - Qt::Key_A + 1);
             data.append(ch);
             m_pty->write(data);
@@ -359,7 +591,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         data = "\t";
         break;
     case Qt::Key_Backtab:
-        data = "\x1B[Z";  // Shift+Tab (reverse tab)
+        data = "\x1B[Z";
         break;
     case Qt::Key_Escape:
         data = "\x1B";
@@ -377,9 +609,19 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         data = "\x1B[D";
         break;
     case Qt::Key_Home:
+        if (mods & Qt::ShiftModifier) {
+            m_scrollOffset = m_grid->scrollbackSize();
+            update();
+            return;
+        }
         data = "\x1B[H";
         break;
     case Qt::Key_End:
+        if (mods & Qt::ShiftModifier) {
+            m_scrollOffset = 0;
+            update();
+            return;
+        }
         data = "\x1B[F";
         break;
     case Qt::Key_Insert:
@@ -390,8 +632,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         break;
     case Qt::Key_PageUp:
         if (mods & Qt::ShiftModifier) {
-            // Shift+PgUp — scroll back
-            m_scrollOffset = std::min(m_scrollOffset + m_grid->rows() / 2,
+            m_scrollOffset = std::min(m_scrollOffset + m_grid->rows(),
                                        m_grid->scrollbackSize());
             update();
             return;
@@ -400,7 +641,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         break;
     case Qt::Key_PageDown:
         if (mods & Qt::ShiftModifier) {
-            m_scrollOffset = std::max(m_scrollOffset - m_grid->rows() / 2, 0);
+            m_scrollOffset = std::max(m_scrollOffset - m_grid->rows(), 0);
             update();
             return;
         }
@@ -419,7 +660,6 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     case Qt::Key_F11: data = "\x1B[23~"; break;
     case Qt::Key_F12: data = "\x1B[24~"; break;
     default:
-        // Regular text input
         {
             QString text = event->text();
             if (!text.isEmpty()) {
@@ -442,6 +682,8 @@ void TerminalWidget::focusInEvent(QFocusEvent *) {
     m_hasFocus = true;
     m_cursorBlinkOn = true;
     m_cursorTimer.start();
+    if (m_grid->focusReporting() && m_pty)
+        m_pty->write(QByteArray("\x1B[I"));
     update();
 }
 
@@ -449,16 +691,42 @@ void TerminalWidget::focusOutEvent(QFocusEvent *) {
     m_hasFocus = false;
     m_cursorBlinkOn = false;
     m_cursorTimer.stop();
+    if (m_grid->focusReporting() && m_pty)
+        m_pty->write(QByteArray("\x1B[O"));
     update();
 }
 
 void TerminalWidget::wheelEvent(QWheelEvent *event) {
+    // Mouse wheel reporting to application
+    if (mouseReportingActive() && !(event->modifiers() & Qt::ShiftModifier)) {
+        QPoint cellPos = pixelToCell(event->position().toPoint());
+        int col = cellPos.y() + 1;
+        int row = cellPos.x() - m_grid->scrollbackSize() + m_scrollOffset + 1;
+        if (row >= 1 && row <= m_grid->rows()) {
+            int delta = event->angleDelta().y();
+            int button = (delta > 0) ? 64 : 65; // 64=wheel up, 65=wheel down
+            if (m_grid->mouseSgrMode()) {
+                QString seq = QString("\x1B[<%1;%2;%3M").arg(button).arg(col).arg(row);
+                m_pty->write(seq.toUtf8());
+            } else {
+                char cb = static_cast<char>(button + 32);
+                char cx = static_cast<char>(col + 32);
+                char cy = static_cast<char>(row + 32);
+                QByteArray seq;
+                seq.append("\x1B[M");
+                seq.append(cb);
+                seq.append(cx);
+                seq.append(cy);
+                m_pty->write(seq);
+            }
+            return;
+        }
+    }
+
     int delta = event->angleDelta().y();
     if (delta > 0) {
-        // Scroll up (into scrollback)
         m_scrollOffset = std::min(m_scrollOffset + 3, m_grid->scrollbackSize());
     } else if (delta < 0) {
-        // Scroll down (toward current)
         m_scrollOffset = std::max(m_scrollOffset - 3, 0);
     }
     update();
@@ -484,14 +752,28 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
 void TerminalWidget::onPtyData(const QByteArray &data) {
     m_parser->feed(data.constData(), data.size());
 
-    // Check for title changes
+    // Session logging
+    if (m_loggingEnabled && m_logFile && m_logFile->isOpen()) {
+        m_logFile->write(data);
+        m_logFile->flush();
+    }
+
+    // Track output for idle notification
+    m_lastOutputTime.restart();
+    m_hadRecentOutput = true;
+    m_notifiedIdle = false;
+
     QString title = m_grid->windowTitle();
     if (title != m_lastTitle) {
         m_lastTitle = title;
         emit titleChanged(title);
     }
 
-    update();
+    // Synchronized output: defer screen update until mode is turned off
+    bool wasSync = m_syncOutputActive;
+    m_syncOutputActive = m_grid->synchronizedOutput();
+    if (!m_syncOutputActive || !wasSync)
+        update();
 }
 
 void TerminalWidget::onPtyFinished(int exitCode) {
@@ -500,10 +782,28 @@ void TerminalWidget::onPtyFinished(int exitCode) {
 
 void TerminalWidget::blinkCursor() {
     m_cursorBlinkOn = !m_cursorBlinkOn;
-    // Only repaint the cursor area
     int cx = m_padding + m_grid->cursorCol() * m_cellWidth;
     int cy = m_padding + m_grid->cursorRow() * m_cellHeight;
     update(cx, cy, m_cellWidth, m_cellHeight);
+}
+
+void TerminalWidget::checkIdleNotification() {
+    if (m_notifiedIdle || !m_hadRecentOutput) return;
+
+    // If no output for 3 seconds after a burst, and window is not focused
+    if (m_lastOutputTime.elapsed() > 3000) {
+        m_hadRecentOutput = false;
+        if (!m_hasFocus && !m_notifiedIdle) {
+            m_notifiedIdle = true;
+            // Send desktop notification via notify-send
+            QProcess::startDetached("notify-send", {
+                "-a", "Ants Terminal",
+                "-i", "utilities-terminal",
+                "Command Complete",
+                "A command has finished in Ants Terminal"
+            });
+        }
+    }
 }
 
 void TerminalWidget::recalcGridSize() {
@@ -521,10 +821,6 @@ void TerminalWidget::recalcGridSize() {
     }
 }
 
-QPoint TerminalWidget::cellToPixel(int row, int col) const {
-    return QPoint(m_padding + col * m_cellWidth, m_padding + row * m_cellHeight);
-}
-
 QPoint TerminalWidget::pixelToCell(const QPoint &pos) const {
     int col = std::clamp((pos.x() - m_padding) / m_cellWidth, 0, m_grid->cols() - 1);
     int vr = std::clamp((pos.y() - m_padding) / m_cellHeight, 0, m_grid->rows() - 1);
@@ -532,15 +828,121 @@ QPoint TerminalWidget::pixelToCell(const QPoint &pos) const {
     return QPoint(globalLine, col);
 }
 
+const Cell &TerminalWidget::cellAtGlobal(int globalLine, int col) const {
+    static const Cell s_blankCell{' ', {}};
+    int scrollbackSize = m_grid->scrollbackSize();
+    if (globalLine >= 0 && globalLine < scrollbackSize) {
+        const auto &line = m_grid->scrollbackLine(globalLine);
+        if (col >= 0 && col < static_cast<int>(line.size()))
+            return line[col];
+    } else {
+        int sr = globalLine - scrollbackSize;
+        if (sr >= 0 && sr < m_grid->rows() && col >= 0 && col < m_grid->cols())
+            return m_grid->cellAt(sr, col);
+    }
+    return s_blankCell;
+}
+
+const std::vector<uint32_t> *TerminalWidget::combiningAt(int globalLine, int col) const {
+    int scrollbackSize = m_grid->scrollbackSize();
+    const std::unordered_map<int, std::vector<uint32_t>> *map = nullptr;
+    if (globalLine >= 0 && globalLine < scrollbackSize) {
+        map = &m_grid->scrollbackCombining(globalLine);
+    } else {
+        int sr = globalLine - scrollbackSize;
+        if (sr >= 0 && sr < m_grid->rows())
+            map = &m_grid->screenCombining(sr);
+    }
+    if (map) {
+        auto it = map->find(col);
+        if (it != map->end())
+            return &it->second;
+    }
+    return nullptr;
+}
+
+QString TerminalWidget::cellText(int globalLine, int col) const {
+    const Cell &c = cellAtGlobal(globalLine, col);
+    if (c.codepoint == ' ' || c.codepoint == 0) return {};
+    uint32_t cp = c.codepoint;
+    QString text = QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
+    if (auto *comb = combiningAt(globalLine, col)) {
+        for (uint32_t combCp : *comb)
+            text += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
+    }
+    return text;
+}
+
+bool TerminalWidget::mouseReportingActive() const {
+    return m_grid->mouseButtonMode() || m_grid->mouseMotionMode() || m_grid->mouseAnyMode();
+}
+
+void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release) {
+    if (!m_pty) return;
+    QPoint cell = pixelToCell(event->pos());
+    int col = cell.y() + 1; // 1-based
+    int row = cell.x() - m_grid->scrollbackSize() + m_scrollOffset + 1; // 1-based screen row
+    if (row < 1 || row > m_grid->rows()) return;
+
+    int button = 0;
+    if (event->button() == Qt::LeftButton || (event->buttons() & Qt::LeftButton))
+        button = 0;
+    else if (event->button() == Qt::MiddleButton || (event->buttons() & Qt::MiddleButton))
+        button = 1;
+    else if (event->button() == Qt::RightButton || (event->buttons() & Qt::RightButton))
+        button = 2;
+    else if (!press && !release)
+        button = 35; // motion with no button
+
+    // Add modifier bits
+    int mods = 0;
+    if (event->modifiers() & Qt::ShiftModifier) mods |= 4;
+    if (event->modifiers() & Qt::AltModifier) mods |= 8;
+    if (event->modifiers() & Qt::ControlModifier) mods |= 16;
+
+    if (m_grid->mouseSgrMode()) {
+        // SGR mode: CSI < button;col;row M/m
+        char suffix = release ? 'm' : 'M';
+        int btn = button + mods;
+        if (!press && !release) btn = button + 32 + mods; // motion
+        QString seq = QString("\x1B[<%1;%2;%3%4").arg(btn).arg(col).arg(row).arg(suffix);
+        m_pty->write(seq.toUtf8());
+    } else {
+        // X10/normal mode: CSI M Cb Cx Cy (all + 32)
+        if (release) return; // X10 doesn't report release
+        char cb = static_cast<char>(button + mods + 32);
+        char cx = static_cast<char>(col + 32);
+        char cy = static_cast<char>(row + 32);
+        QByteArray seq;
+        seq.append("\x1B[M");
+        seq.append(cb);
+        seq.append(cx);
+        seq.append(cy);
+        m_pty->write(seq);
+    }
+}
+
 void TerminalWidget::mousePressEvent(QMouseEvent *event) {
+    // Mouse reporting to application (unless Shift held for override)
+    if (mouseReportingActive() && !(event->modifiers() & Qt::ShiftModifier)) {
+        sendMouseEvent(event, true, false);
+        return;
+    }
+
     if (event->button() == Qt::LeftButton) {
-        // Ctrl+Click opens URLs
+        // Ctrl+Click opens URLs and file paths
         if (event->modifiers() & Qt::ControlModifier) {
             QPoint cell = pixelToCell(event->pos());
-            QString url = urlAtCell(cell.x(), cell.y());
-            if (!url.isEmpty()) {
-                QDesktopServices::openUrl(QUrl(url));
-                return;
+            auto spans = detectUrls(cell.x());
+            for (const auto &s : spans) {
+                if (cell.y() >= s.startCol && cell.y() <= s.endCol) {
+                    if (s.isFilePath) {
+                        openFileAtPath(s.url);
+                    } else {
+                        QDesktopServices::openUrl(QUrl(s.url));
+                    }
+                    return;
+                }
             }
         }
         clearSelection();
@@ -549,42 +951,77 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         m_selEnd = m_selStart;
         update();
     }
-    // Middle-click paste (X11 primary selection)
     if (event->button() == Qt::MiddleButton) {
         QString text = QApplication::clipboard()->text(QClipboard::Selection);
         if (!text.isEmpty()) {
-            m_pty->write(text.toUtf8());
+            QByteArray data = text.toUtf8();
+            if (m_grid->bracketedPaste()) {
+                m_pty->write(QByteArray("\x1B[200~"));
+                m_pty->write(data);
+                m_pty->write(QByteArray("\x1B[201~"));
+            } else {
+                m_pty->write(data);
+            }
         }
     }
 }
 
 void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
+    // Mouse motion reporting
+    if (mouseReportingActive() && !(event->modifiers() & Qt::ShiftModifier)) {
+        bool anyButton = event->buttons() != Qt::NoButton;
+        if (m_grid->mouseAnyMode() || (m_grid->mouseMotionMode() && anyButton)) {
+            QPoint cell = pixelToCell(event->pos());
+            if (cell != m_lastMouseCell) {
+                m_lastMouseCell = cell;
+                sendMouseEvent(event, false, false);
+            }
+        }
+        return;
+    }
+
     if (m_selecting) {
         m_selEnd = pixelToCell(event->pos());
         m_hasSelection = (m_selStart != m_selEnd);
         update();
     }
 
-    // Change cursor to hand when hovering over a URL with Ctrl held
+    // Change cursor for URLs/file paths with Ctrl held
     if (event->modifiers() & Qt::ControlModifier) {
         QPoint cell = pixelToCell(event->pos());
-        QString url = urlAtCell(cell.x(), cell.y());
-        setCursor(url.isEmpty() ? Qt::IBeamCursor : Qt::PointingHandCursor);
+        auto spans = detectUrls(cell.x());
+        bool onLink = false;
+        for (const auto &s : spans) {
+            if (cell.y() >= s.startCol && cell.y() <= s.endCol) {
+                onLink = true;
+                break;
+            }
+        }
+        setCursor(onLink ? Qt::PointingHandCursor : Qt::IBeamCursor);
     } else {
         setCursor(Qt::IBeamCursor);
     }
 }
 
 void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
+    if (mouseReportingActive() && !(event->modifiers() & Qt::ShiftModifier)) {
+        sendMouseEvent(event, false, true);
+        return;
+    }
+
     if (event->button() == Qt::LeftButton && m_selecting) {
         m_selecting = false;
         m_selEnd = pixelToCell(event->pos());
         m_hasSelection = (m_selStart != m_selEnd);
-        // Copy to X11 primary selection (middle-click paste)
         if (m_hasSelection) {
             QString text = selectedText();
             if (!text.isEmpty()) {
+                // Always copy to X11 primary selection
                 QApplication::clipboard()->setText(text, QClipboard::Selection);
+                // Auto-copy to clipboard too if enabled
+                if (m_autoCopyOnSelect) {
+                    QApplication::clipboard()->setText(text);
+                }
             }
         }
         update();
@@ -593,25 +1030,12 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
 
 void TerminalWidget::mouseDoubleClickEvent(QMouseEvent *event) {
     if (event->button() == Qt::LeftButton) {
-        // Select word under cursor
         QPoint cell = pixelToCell(event->pos());
         int globalLine = cell.x();
         int col = cell.y();
-        int scrollbackSize = m_grid->scrollbackSize();
-        int rows = m_grid->rows();
 
-        // Get character at position
         auto getChar = [&](int gl, int c) -> uint32_t {
-            if (gl >= 0 && gl < scrollbackSize) {
-                const auto &line = m_grid->scrollbackLine(gl);
-                if (c < static_cast<int>(line.size()))
-                    return line[c].codepoint;
-            } else {
-                int sr = gl - scrollbackSize;
-                if (sr >= 0 && sr < rows)
-                    return m_grid->cellAt(sr, c).codepoint;
-            }
-            return ' ';
+            return cellAtGlobal(gl, c).codepoint;
         };
 
         auto isWordChar = [](uint32_t cp) {
@@ -620,12 +1044,9 @@ void TerminalWidget::mouseDoubleClickEvent(QMouseEvent *event) {
 
         if (!isWordChar(getChar(globalLine, col))) return;
 
-        // Expand left
         int left = col;
         while (left > 0 && isWordChar(getChar(globalLine, left - 1)))
             --left;
-
-        // Expand right
         int right = col;
         while (right < m_grid->cols() - 1 && isWordChar(getChar(globalLine, right + 1)))
             ++right;
@@ -638,6 +1059,9 @@ void TerminalWidget::mouseDoubleClickEvent(QMouseEvent *event) {
         QString text = selectedText();
         if (!text.isEmpty()) {
             QApplication::clipboard()->setText(text, QClipboard::Selection);
+            if (m_autoCopyOnSelect) {
+                QApplication::clipboard()->setText(text);
+            }
         }
 
         update();
@@ -657,7 +1081,6 @@ void TerminalWidget::clearSelection() {
 bool TerminalWidget::isCellSelected(int globalLine, int col) const {
     if (!m_hasSelection) return false;
 
-    // Normalize so start <= end
     QPoint s = m_selStart, e = m_selEnd;
     if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
         std::swap(s, e);
@@ -669,7 +1092,7 @@ bool TerminalWidget::isCellSelected(int globalLine, int col) const {
     if (sLine == eLine) return col >= sCol && col <= eCol;
     if (globalLine == sLine) return col >= sCol;
     if (globalLine == eLine) return col <= eCol;
-    return true;  // middle line — fully selected
+    return true;
 }
 
 QString TerminalWidget::selectedText() const {
@@ -679,8 +1102,6 @@ QString TerminalWidget::selectedText() const {
     if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
         std::swap(s, e);
 
-    int scrollbackSize = m_grid->scrollbackSize();
-    int rows = m_grid->rows();
     int cols = m_grid->cols();
     QString result;
 
@@ -690,21 +1111,15 @@ QString TerminalWidget::selectedText() const {
 
         QString line;
         for (int c = startCol; c <= endCol; ++c) {
-            uint32_t cp = ' ';
-            if (gl >= 0 && gl < scrollbackSize) {
-                const auto &sbLine = m_grid->scrollbackLine(gl);
-                if (c < static_cast<int>(sbLine.size()))
-                    cp = sbLine[c].codepoint;
-            } else {
-                int sr = gl - scrollbackSize;
-                if (sr >= 0 && sr < rows)
-                    cp = m_grid->cellAt(sr, c).codepoint;
-            }
+            uint32_t cp = cellAtGlobal(gl, c).codepoint;
             if (cp == 0) cp = ' ';
             line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
+            if (auto *comb = combiningAt(gl, c)) {
+                for (uint32_t combCp : *comb)
+                    line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
+            }
         }
 
-        // Trim trailing spaces on each line
         while (line.endsWith(' ')) line.chop(1);
         result += line;
         if (gl < e.x()) result += '\n';
@@ -721,44 +1136,72 @@ void TerminalWidget::copySelection() {
     }
 }
 
-// --- URL Detection ---
+// --- URL and File Path Detection ---
 
 QString TerminalWidget::lineText(int globalLine) const {
-    int scrollbackSize = m_grid->scrollbackSize();
-    int rows = m_grid->rows();
     int cols = m_grid->cols();
     QString text;
-    text.reserve(cols);
+    text.reserve(cols * 2);
+
+    auto appendCp = [&](uint32_t cp) {
+        if (cp < 0x10000) {
+            text += QChar(static_cast<char16_t>(cp));
+        } else {
+            cp -= 0x10000;
+            text += QChar(static_cast<char16_t>(0xD800 + (cp >> 10)));
+            text += QChar(static_cast<char16_t>(0xDC00 + (cp & 0x3FF)));
+        }
+    };
 
     for (int c = 0; c < cols; ++c) {
-        uint32_t cp = ' ';
-        if (globalLine >= 0 && globalLine < scrollbackSize) {
-            const auto &sbLine = m_grid->scrollbackLine(globalLine);
-            if (c < static_cast<int>(sbLine.size()))
-                cp = sbLine[c].codepoint;
-        } else {
-            int sr = globalLine - scrollbackSize;
-            if (sr >= 0 && sr < rows)
-                cp = m_grid->cellAt(sr, c).codepoint;
-        }
+        uint32_t cp = cellAtGlobal(globalLine, c).codepoint;
         if (cp == 0) cp = ' ';
-        text += QChar(cp < 0x10000 ? static_cast<char16_t>(cp) : ' ');
+        appendCp(cp);
+        if (auto *comb = combiningAt(globalLine, c)) {
+            for (uint32_t combCp : *comb)
+                appendCp(combCp);
+        }
     }
     return text;
 }
 
 std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) const {
+    // URL pattern
     static QRegularExpression urlRe(
         R"((https?://|ftp://|file://)[^\s<>"'\)\]}{,;]+)",
         QRegularExpression::CaseInsensitiveOption
     );
 
+    // File path with optional line number
+    static QRegularExpression filePathRe(
+        R"((?:^|[\s(])((\.{0,2}/)?[a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+(?::\d+(?::\d+)?)?)(?=[\s),;:]|$))"
+    );
+
     std::vector<UrlSpan> spans;
+
+    // OSC 8 explicit hyperlinks first (highest priority)
+    int scrollbackSize = m_grid->scrollbackSize();
+    const std::vector<HyperlinkSpan> *hlSpans = nullptr;
+    if (globalLine >= 0 && globalLine < scrollbackSize) {
+        hlSpans = &m_grid->scrollbackHyperlinks(globalLine);
+    } else {
+        int sr = globalLine - scrollbackSize;
+        if (sr >= 0 && sr < m_grid->rows())
+            hlSpans = &m_grid->screenHyperlinks(sr);
+    }
+    if (hlSpans) {
+        for (const auto &hl : *hlSpans) {
+            spans.push_back({hl.startCol, hl.endCol,
+                             QString::fromStdString(hl.uri), false, true});
+        }
+    }
+
     QString text = lineText(globalLine);
+
+    // Detect URLs
     auto it = urlRe.globalMatch(text);
     while (it.hasNext()) {
         auto match = it.next();
-        // Trim trailing punctuation that's likely not part of the URL
         QString url = match.captured();
         int endCol = match.capturedEnd() - 1;
         while (endCol > match.capturedStart() &&
@@ -766,18 +1209,88 @@ std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) 
             url.chop(1);
             --endCol;
         }
-        spans.push_back({static_cast<int>(match.capturedStart()), endCol, url});
+        spans.push_back({static_cast<int>(match.capturedStart()), endCol, url, false, false});
     }
+
+    // Detect file paths with line numbers (e.g., src/main.cpp:42)
+    auto it2 = filePathRe.globalMatch(text);
+    while (it2.hasNext()) {
+        auto match = it2.next();
+        QString path = match.captured(1);
+        int startCol = match.capturedStart(1);
+        int endCol = match.capturedEnd(1) - 1;
+
+        // Verify it looks like a real file path (has a file extension)
+        // Skip if it overlaps with an existing URL span
+        bool overlaps = false;
+        for (const auto &s : spans) {
+            if (startCol <= s.endCol && endCol >= s.startCol) {
+                overlaps = true;
+                break;
+            }
+        }
+        if (!overlaps && path.contains('/')) {
+            spans.push_back({startCol, endCol, path, true, false});
+        }
+    }
+
     return spans;
 }
 
-QString TerminalWidget::urlAtCell(int globalLine, int col) const {
-    auto spans = detectUrls(globalLine);
-    for (const auto &s : spans) {
-        if (col >= s.startCol && col <= s.endCol)
-            return s.url;
+void TerminalWidget::openFileAtPath(const QString &path) {
+    // Parse path:line:col format
+    QString filePath = path;
+    int line = -1;
+    int col = -1;
+
+    QRegularExpression lineColRe(R"(^(.+):(\d+)(?::(\d+))?$)");
+    auto match = lineColRe.match(path);
+    if (match.hasMatch()) {
+        filePath = match.captured(1);
+        line = match.captured(2).toInt();
+        if (match.lastCapturedIndex() >= 3 && !match.captured(3).isEmpty())
+            col = match.captured(3).toInt();
     }
-    return {};
+
+    // Resolve relative paths
+    // Try to resolve relative to CWD (if we can detect it)
+    QFileInfo fi(filePath);
+    if (!fi.isAbsolute()) {
+        // Try common locations
+        QStringList tryPaths = {
+            QDir::currentPath() + "/" + filePath,
+            QDir::homePath() + "/" + filePath,
+        };
+        for (const QString &p : tryPaths) {
+            if (QFileInfo::exists(p)) {
+                filePath = p;
+                break;
+            }
+        }
+    }
+
+    // Determine editor command
+    QString editor = m_editorCommand;
+    if (editor.isEmpty()) {
+        // Auto-detect: try VS Code, Kate, then xdg-open
+        if (QStandardPaths::findExecutable("code").size())
+            editor = "code";
+        else if (QStandardPaths::findExecutable("kate").size())
+            editor = "kate";
+        else
+            editor = "xdg-open";
+    }
+
+    QStringList args;
+    if (editor == "code" && line > 0) {
+        args << "--goto" << QString("%1:%2%3").arg(filePath).arg(line).arg(col > 0 ? QString(":%1").arg(col) : "");
+    } else if (editor == "kate" && line > 0) {
+        args << "-l" << QString::number(line) << filePath;
+    } else {
+        args << filePath;
+    }
+
+    QProcess::startDetached(editor, args);
 }
 
 // --- Search ---
@@ -785,13 +1298,17 @@ QString TerminalWidget::urlAtCell(int globalLine, int col) const {
 void TerminalWidget::showSearchBar() {
     m_searchVisible = true;
     m_searchBar->setGeometry(0, 0, width(), 36);
-    m_searchBar->setStyleSheet(
-        "QWidget#searchBar { background-color: rgba(49,50,68,240); border-bottom: 1px solid #585b70; }"
-        "QLineEdit { background: #1e1e2e; color: #cdd6f4; border: 1px solid #585b70; border-radius: 4px; padding: 2px 6px; }"
-        "QLabel { color: #a6adc8; }"
-        "QPushButton { background: transparent; color: #a6adc8; border: none; font-size: 12px; }"
-        "QPushButton:hover { color: #cdd6f4; }"
-    );
+    QColor bg = m_grid->defaultBg();
+    QColor fg = m_grid->defaultFg();
+    QColor barBg = bg.darker(110);
+    QColor borderColor = m_bracketHighlightBg;
+    m_searchBar->setStyleSheet(QString(
+        "QWidget#searchBar { background-color: %1; border-bottom: 1px solid %2; }"
+        "QLineEdit { background: %3; color: %4; border: 1px solid %2; border-radius: 4px; padding: 2px 6px; }"
+        "QLabel { color: %5; }"
+        "QPushButton { background: transparent; color: %5; border: none; font-size: 12px; }"
+        "QPushButton:hover { color: %4; }"
+    ).arg(barBg.name(), borderColor.name(), bg.name(), fg.name(), fg.darker(130).name()));
     m_searchBar->show();
     m_searchInput->setFocus();
     m_searchInput->selectAll();
@@ -834,7 +1351,6 @@ void TerminalWidget::performSearch() {
     }
 
     if (!m_searchMatches.empty()) {
-        // Jump to first match near current view
         int viewCenter = scrollbackSize - m_scrollOffset + m_grid->rows() / 2;
         m_currentMatchIdx = 0;
         for (int i = 0; i < static_cast<int>(m_searchMatches.size()); ++i) {
@@ -857,7 +1373,6 @@ void TerminalWidget::scrollToMatch() {
     const auto &m = m_searchMatches[m_currentMatchIdx];
     int scrollbackSize = m_grid->scrollbackSize();
     int rows = m_grid->rows();
-    // Calculate scroll offset to bring match into view
     int viewStart = scrollbackSize - m_scrollOffset;
     int viewEnd = viewStart + rows - 1;
     if (m.globalLine < viewStart || m.globalLine > viewEnd) {
@@ -884,8 +1399,12 @@ void TerminalWidget::searchPrev() {
 }
 
 bool TerminalWidget::isCellSearchMatch(int globalLine, int col) const {
-    for (const auto &m : m_searchMatches) {
-        if (m.globalLine == globalLine && col >= m.col && col < m.col + m.length)
+    // Binary search to find matches on this line (matches are sorted by globalLine)
+    for (size_t i = 0; i < m_searchMatches.size(); ++i) {
+        const auto &m = m_searchMatches[i];
+        if (m.globalLine < globalLine) continue;
+        if (m.globalLine > globalLine) break;
+        if (col >= m.col && col < m.col + m.length)
             return true;
     }
     return false;
@@ -901,34 +1420,34 @@ bool TerminalWidget::isCellCurrentMatch(int globalLine, int col) const {
 // --- Bracket Matching ---
 
 uint32_t TerminalWidget::getCellCodepoint(int globalLine, int col) const {
-    int scrollbackSize = m_grid->scrollbackSize();
-    int rows = m_grid->rows();
-    if (globalLine >= 0 && globalLine < scrollbackSize) {
-        const auto &line = m_grid->scrollbackLine(globalLine);
-        if (col < static_cast<int>(line.size()))
-            return line[col].codepoint;
-    } else {
-        int sr = globalLine - scrollbackSize;
-        if (sr >= 0 && sr < rows && col >= 0 && col < m_grid->cols())
-            return m_grid->cellAt(sr, col).codepoint;
-    }
-    return 0;
+    return cellAtGlobal(globalLine, col).codepoint;
 }
 
 TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
-    int scrollbackSize = m_grid->scrollbackSize();
-    int cursorGL = scrollbackSize + m_grid->cursorRow();
+    int cursorRow = m_grid->cursorRow();
     int cursorCol = m_grid->cursorCol();
+
+    // Return cached result if cursor hasn't moved
+    if (cursorRow == m_cachedBracketCursorRow && cursorCol == m_cachedBracketCursorCol)
+        return m_cachedBracket;
+    m_cachedBracketCursorRow = cursorRow;
+    m_cachedBracketCursorCol = cursorCol;
+
+    int scrollbackSize = m_grid->scrollbackSize();
+    int cursorGL = scrollbackSize + cursorRow;
 
     uint32_t ch = getCellCodepoint(cursorGL, cursorCol);
 
     char32_t openBrackets[]  = {'(', '[', '{'};
     char32_t closeBrackets[] = {')', ']', '}'};
 
-    // Check if cursor is on an opening bracket
+    auto cacheAndReturn = [this](BracketPair bp) {
+        m_cachedBracket = bp;
+        return bp;
+    };
+
     for (int i = 0; i < 3; ++i) {
         if (ch == openBrackets[i]) {
-            // Search forward for matching close bracket
             int depth = 1;
             int gl = cursorGL, col = cursorCol + 1;
             int totalLines = scrollbackSize + m_grid->rows();
@@ -938,17 +1457,15 @@ TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
                 uint32_t c = getCellCodepoint(gl, col);
                 if (c == openBrackets[i]) ++depth;
                 else if (c == closeBrackets[i]) --depth;
-                if (depth == 0) return {cursorGL, cursorCol, gl, col};
+                if (depth == 0) return cacheAndReturn({cursorGL, cursorCol, gl, col});
                 ++col;
             }
-            return {-1, -1, -1, -1};
+            return cacheAndReturn({-1, -1, -1, -1});
         }
     }
 
-    // Check if cursor is on a closing bracket
     for (int i = 0; i < 3; ++i) {
         if (ch == closeBrackets[i]) {
-            // Search backward for matching open bracket
             int depth = 1;
             int gl = cursorGL, col = cursorCol - 1;
             int cols = m_grid->cols();
@@ -957,17 +1474,13 @@ TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
                 uint32_t c = getCellCodepoint(gl, col);
                 if (c == closeBrackets[i]) ++depth;
                 else if (c == openBrackets[i]) --depth;
-                if (depth == 0) return {gl, col, cursorGL, cursorCol};
+                if (depth == 0) return cacheAndReturn({gl, col, cursorGL, cursorCol});
                 --col;
             }
-            return {-1, -1, -1, -1};
+            return cacheAndReturn({-1, -1, -1, -1});
         }
     }
 
-    return {-1, -1, -1, -1};
+    return cacheAndReturn({-1, -1, -1, -1});
 }
 
-bool TerminalWidget::isCellBracketHighlight(int globalLine, int col) const {
-    return (globalLine == m_bracketMatch.line1 && col == m_bracketMatch.col1) ||
-           (globalLine == m_bracketMatch.line2 && col == m_bracketMatch.col2);
-}

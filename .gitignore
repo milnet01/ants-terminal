@@ -21,11 +21,12 @@ compile_commands.json
 # Binary
 ants-terminal
 
-# Python leftovers
-__pycache__/
-*.py[cod]
-.venv/
-
 # OS
 .DS_Store
 *.bak
+
+# Claude Code (local settings, not shared)
+.claude/settings.local.json
+
+# Runtime / user data
+*.log

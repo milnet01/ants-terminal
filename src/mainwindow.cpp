@@ -15,6 +15,7 @@
 #include <QFile>
 #include <QVBoxLayout>
 #include <QTabBar>
+#include <QSplitter>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Ants Terminal");
@@ -30,6 +31,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         move(x, y);
     }
 
+    // Apply window opacity from config
+    setWindowOpacity(m_config.opacity());
+
+    // Translucent background for compositor transparency
+    if (m_config.opacity() < 1.0)
+        setAttribute(Qt::WA_TranslucentBackground, true);
+
+    // KDE/KWin background blur
+    if (m_config.backgroundBlur())
+        setAttribute(Qt::WA_TranslucentBackground, true);
+
     // Custom title bar
     m_titleBar = new TitleBar(this);
     m_titleBar->setTitle("Ants Terminal");
@@ -38,7 +50,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_titleBar, &TitleBar::closeRequested, this, &QWidget::close);
     connect(m_titleBar->centerButton(), &QToolButton::clicked, this, &MainWindow::centerWindow);
 
-    // Standalone menu bar (NOT QMainWindow::menuBar(), to control layout order)
+    // Standalone menu bar
     m_menuBar = new QMenuBar(this);
 
     // Tab widget
@@ -49,7 +61,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
 
-    // Layout: title bar → menu bar → tabs (with terminal content)
+    // Layout: title bar -> menu bar -> tabs
     QWidget *central = new QWidget(this);
     QVBoxLayout *vbox = new QVBoxLayout(central);
     vbox->setContentsMargins(0, 0, 0, 0);
@@ -73,17 +85,17 @@ void MainWindow::setupMenus() {
     QMenu *fileMenu = m_menuBar->addMenu("&File");
 
     QAction *newTabAction = fileMenu->addAction("New &Tab");
-    newTabAction->setShortcut(QKeySequence("Ctrl+Shift+T"));
+    newTabAction->setShortcut(QKeySequence(m_config.keybinding("new_tab", "Ctrl+Shift+T")));
     connect(newTabAction, &QAction::triggered, this, &MainWindow::newTab);
 
     QAction *closeTabAction = fileMenu->addAction("&Close Tab");
-    closeTabAction->setShortcut(QKeySequence("Ctrl+Shift+W"));
+    closeTabAction->setShortcut(QKeySequence(m_config.keybinding("close_tab", "Ctrl+Shift+W")));
     connect(closeTabAction, &QAction::triggered, this, &MainWindow::closeCurrentTab);
 
     fileMenu->addSeparator();
 
     QAction *newWindowAction = fileMenu->addAction("&New Window");
-    newWindowAction->setShortcut(QKeySequence("Ctrl+Shift+N"));
+    newWindowAction->setShortcut(QKeySequence(m_config.keybinding("new_window", "Ctrl+Shift+N")));
     connect(newWindowAction, &QAction::triggered, this, []() {
         auto *win = new MainWindow();
         win->show();
@@ -92,8 +104,19 @@ void MainWindow::setupMenus() {
     fileMenu->addSeparator();
 
     QAction *exitAction = fileMenu->addAction("E&xit");
-    exitAction->setShortcut(QKeySequence("Ctrl+Shift+Q"));
+    exitAction->setShortcut(QKeySequence(m_config.keybinding("exit", "Ctrl+Shift+Q")));
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
+
+    // Edit menu
+    QMenu *editMenu = m_menuBar->addMenu("&Edit");
+
+    QAction *clearLineAction = editMenu->addAction("Clear &Input Line");
+    clearLineAction->setShortcut(QKeySequence(m_config.keybinding("clear_line", "Ctrl+Shift+U")));
+    connect(clearLineAction, &QAction::triggered, this, [this]() {
+        TerminalWidget *t = focusedTerminal();
+        if (!t) t = currentTerminal();
+        if (t) t->sendToPty(QByteArray("\x01\x0B", 2)); // Ctrl+A + Ctrl+K
+    });
 
     // View menu
     QMenu *viewMenu = m_menuBar->addMenu("&View");
@@ -121,48 +144,150 @@ void MainWindow::setupMenus() {
     zoomReset->setShortcut(QKeySequence("Ctrl+0"));
     connect(zoomReset, &QAction::triggered, this, [this]() {
         m_config.setFontSize(11);
-        applyTheme(m_currentTheme);
+        applyFontSizeToAll(11);
     });
+
+    viewMenu->addSeparator();
+
+    // Opacity submenu
+    QMenu *opacityMenu = viewMenu->addMenu("&Opacity");
+    for (int pct : {100, 95, 90, 85, 80, 70}) {
+        QAction *a = opacityMenu->addAction(QString("%1%").arg(pct));
+        connect(a, &QAction::triggered, this, [this, pct]() {
+            double val = pct / 100.0;
+            m_config.setOpacity(val);
+            setWindowOpacity(val);
+            setAttribute(Qt::WA_TranslucentBackground, val < 1.0 || m_config.backgroundBlur());
+        });
+    }
 
     viewMenu->addSeparator();
 
     QAction *centerAction = viewMenu->addAction("&Center Window");
     centerAction->setShortcut(QKeySequence("Ctrl+Shift+M"));
     connect(centerAction, &QAction::triggered, this, &MainWindow::centerWindow);
+
+    // Split menu
+    QMenu *splitMenu = m_menuBar->addMenu("&Split");
+
+    QAction *splitH = splitMenu->addAction("Split &Horizontal");
+    splitH->setShortcut(QKeySequence(m_config.keybinding("split_horizontal", "Ctrl+Shift+E")));
+    connect(splitH, &QAction::triggered, this, &MainWindow::splitHorizontal);
+
+    QAction *splitV = splitMenu->addAction("Split &Vertical");
+    splitV->setShortcut(QKeySequence(m_config.keybinding("split_vertical", "Ctrl+Shift+O")));
+    connect(splitV, &QAction::triggered, this, &MainWindow::splitVertical);
+
+    QAction *closePane = splitMenu->addAction("&Close Pane");
+    closePane->setShortcut(QKeySequence(m_config.keybinding("close_pane", "Ctrl+Shift+X")));
+    connect(closePane, &QAction::triggered, this, &MainWindow::closeFocusedPane);
+
+    // Settings menu
+    QMenu *settingsMenu = m_menuBar->addMenu("S&ettings");
+
+    QAction *loggingAction = settingsMenu->addAction("Session &Logging");
+    loggingAction->setCheckable(true);
+    loggingAction->setChecked(m_config.sessionLogging());
+    connect(loggingAction, &QAction::toggled, this, [this](bool checked) {
+        m_config.setSessionLogging(checked);
+        // Apply to all terminals
+        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        for (auto *t : terminals) t->setSessionLogging(checked);
+        statusBar()->showMessage(checked ? "Session logging enabled" : "Session logging disabled", 3000);
+    });
+
+    QAction *autoCopyAction = settingsMenu->addAction("&Auto-copy on Select");
+    autoCopyAction->setCheckable(true);
+    autoCopyAction->setChecked(m_config.autoCopyOnSelect());
+    connect(autoCopyAction, &QAction::toggled, this, [this](bool checked) {
+        m_config.setAutoCopyOnSelect(checked);
+        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        for (auto *t : terminals) t->setAutoCopyOnSelect(checked);
+    });
+
+    QAction *blurAction = settingsMenu->addAction("Background &Blur");
+    blurAction->setCheckable(true);
+    blurAction->setChecked(m_config.backgroundBlur());
+    connect(blurAction, &QAction::toggled, this, [this](bool checked) {
+        m_config.setBackgroundBlur(checked);
+        setAttribute(Qt::WA_TranslucentBackground, checked || m_config.opacity() < 1.0);
+        statusBar()->showMessage(checked ? "Blur enabled (restart for full effect)" : "Blur disabled", 3000);
+    });
+
+    settingsMenu->addSeparator();
+
+    // Scrollback submenu
+    QMenu *scrollbackMenu = settingsMenu->addMenu("Scrollback &Lines");
+    for (int lines : {10000, 50000, 100000, 500000}) {
+        QAction *a = scrollbackMenu->addAction(QString("%1").arg(lines));
+        connect(a, &QAction::triggered, this, [this, lines]() {
+            m_config.setScrollbackLines(lines);
+            QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+            for (auto *t : terminals) t->setMaxScrollback(lines);
+            statusBar()->showMessage(QString("Scrollback: %1 lines").arg(lines), 3000);
+        });
+    }
 }
 
-void MainWindow::newTab() {
-    auto *terminal = new TerminalWidget(this);
+TerminalWidget *MainWindow::createTerminal() {
+    auto *terminal = new TerminalWidget();
+    applyConfigToTerminal(terminal);
 
-    // Apply current theme to new tab
     if (!m_currentTheme.isEmpty()) {
         const Theme &theme = Themes::byName(m_currentTheme);
-        terminal->applyThemeColors(theme.textPrimary, theme.bgPrimary, theme.cursor);
+        terminal->applyThemeColors(theme.textPrimary, theme.bgPrimary, theme.cursor,
+                                    theme.accent, theme.border);
     }
 
+    return terminal;
+}
+
+void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
+    terminal->setFontSize(m_config.fontSize());
+    terminal->setMaxScrollback(m_config.scrollbackLines());
+    terminal->setSessionLogging(m_config.sessionLogging());
+    terminal->setAutoCopyOnSelect(m_config.autoCopyOnSelect());
+    terminal->setEditorCommand(m_config.editorCommand());
+    terminal->setImagePasteDir(m_config.imagePasteDir());
+}
+
+void MainWindow::connectTerminal(TerminalWidget *terminal) {
     connect(terminal, &TerminalWidget::titleChanged, this, [this, terminal](const QString &title) {
-        int idx = m_tabWidget->indexOf(terminal);
-        if (idx >= 0) {
-            QString tabTitle = title.isEmpty() ? "Shell" : title;
-            // Truncate long titles for the tab
-            if (tabTitle.length() > 30)
-                tabTitle = tabTitle.left(27) + "...";
-            m_tabWidget->setTabText(idx, tabTitle);
+        // Find which tab this terminal is in
+        for (int i = 0; i < m_tabWidget->count(); ++i) {
+            if (m_tabWidget->widget(i)->isAncestorOf(terminal) || m_tabWidget->widget(i) == terminal) {
+                QString tabTitle = title.isEmpty() ? "Shell" : title;
+                if (tabTitle.length() > 30)
+                    tabTitle = tabTitle.left(27) + "...";
+                m_tabWidget->setTabText(i, tabTitle);
+                break;
+            }
         }
-        // Update window title if this is the active tab
-        if (terminal == currentTerminal()) {
+        if (terminal == focusedTerminal()) {
             onTitleChanged(title);
         }
     });
 
-    connect(terminal, &TerminalWidget::shellExited, this, [this, terminal](int code) {
-        int idx = m_tabWidget->indexOf(terminal);
-        if (idx >= 0) {
-            closeTab(idx);
+    connect(terminal, &TerminalWidget::shellExited, this, [this, terminal](int /*code*/) {
+        // Find parent splitter
+        QSplitter *splitter = findParentSplitter(terminal);
+        if (splitter) {
+            terminal->setParent(nullptr);
+            terminal->deleteLater();
+            cleanupEmptySplitters(m_tabWidget->currentWidget());
+        } else {
+            // It's the only terminal in the tab
+            int idx = m_tabWidget->indexOf(terminal);
+            if (idx >= 0) closeTab(idx);
         }
     });
 
     connect(terminal, &TerminalWidget::imagePasted, this, &MainWindow::onImagePasted);
+}
+
+void MainWindow::newTab() {
+    auto *terminal = createTerminal();
+    connectTerminal(terminal);
 
     int idx = m_tabWidget->addTab(terminal, "Shell");
     m_tabWidget->setCurrentIndex(idx);
@@ -177,9 +302,147 @@ void MainWindow::newTab() {
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
 }
 
+void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
+    TerminalWidget *current = focusedTerminal();
+    if (!current) current = currentTerminal();
+    if (!current) return;
+
+    // Create new terminal
+    auto *newTerm = createTerminal();
+    connectTerminal(newTerm);
+
+    QWidget *parent = current->parentWidget();
+    QSplitter *parentSplitter = qobject_cast<QSplitter *>(parent);
+
+    if (parentSplitter) {
+        // Already in a splitter — add new pane alongside current
+        int idx = parentSplitter->indexOf(current);
+        if (parentSplitter->orientation() == orientation) {
+            // Same orientation — just insert next to it
+            parentSplitter->insertWidget(idx + 1, newTerm);
+        } else {
+            // Different orientation — need to nest a new splitter
+            auto *newSplitter = new QSplitter(orientation);
+            parentSplitter->insertWidget(idx, newSplitter);
+            current->setParent(nullptr);
+            newSplitter->addWidget(current);
+            newSplitter->addWidget(newTerm);
+        }
+    } else {
+        // Current terminal is the direct tab widget content
+        int tabIdx = m_tabWidget->indexOf(current);
+        if (tabIdx < 0) return;
+
+        auto *splitter = new QSplitter(orientation);
+        current->setParent(nullptr);
+        splitter->addWidget(current);
+        splitter->addWidget(newTerm);
+
+        m_tabWidget->removeTab(tabIdx);
+        m_tabWidget->insertTab(tabIdx, splitter, "Shell");
+        m_tabWidget->setCurrentIndex(tabIdx);
+    }
+
+    if (!newTerm->startShell()) {
+        statusBar()->showMessage("Failed to start shell!");
+    }
+    newTerm->setFocus();
+}
+
+void MainWindow::splitHorizontal() {
+    splitCurrentPane(Qt::Vertical); // Vertical splitter = horizontal split (panes stacked)
+}
+
+void MainWindow::splitVertical() {
+    splitCurrentPane(Qt::Horizontal); // Horizontal splitter = vertical split (panes side by side)
+}
+
+void MainWindow::closeFocusedPane() {
+    TerminalWidget *focused = focusedTerminal();
+    if (!focused) return;
+
+    QSplitter *parent = findParentSplitter(focused);
+    if (!parent) {
+        // Only terminal in the tab -- close tab
+        closeCurrentTab();
+        return;
+    }
+
+    focused->setParent(nullptr);
+    focused->deleteLater();
+    cleanupEmptySplitters(m_tabWidget->currentWidget());
+
+    // Focus the next available terminal
+    if (auto *t = focusedTerminal()) {
+        t->setFocus();
+    } else if (auto *t2 = currentTerminal()) {
+        t2->setFocus();
+    }
+}
+
+QSplitter *MainWindow::findParentSplitter(QWidget *w) const {
+    if (!w) return nullptr;
+    return qobject_cast<QSplitter *>(w->parentWidget());
+}
+
+void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {
+    if (!tabRoot) return;
+
+    // Recursively clean up splitters with 0 or 1 children
+    auto *splitter = qobject_cast<QSplitter *>(tabRoot);
+    if (!splitter) return;
+
+    // First, recurse into children
+    for (int i = splitter->count() - 1; i >= 0; --i) {
+        auto *childSplitter = qobject_cast<QSplitter *>(splitter->widget(i));
+        if (childSplitter) cleanupEmptySplitters(childSplitter);
+    }
+
+    if (splitter->count() == 0) {
+        // Empty splitter — close the tab
+        int idx = m_tabWidget->indexOf(splitter);
+        if (idx >= 0) closeTab(idx);
+    } else if (splitter->count() == 1) {
+        // Only one child left — promote it
+        QWidget *child = splitter->widget(0);
+        QSplitter *parentSplitter = qobject_cast<QSplitter *>(splitter->parentWidget());
+
+        if (parentSplitter) {
+            int idx = parentSplitter->indexOf(splitter);
+            child->setParent(nullptr);
+            parentSplitter->insertWidget(idx, child);
+            splitter->setParent(nullptr);
+            splitter->deleteLater();
+        } else {
+            // This splitter is the tab root
+            int tabIdx = m_tabWidget->indexOf(splitter);
+            if (tabIdx >= 0) {
+                child->setParent(nullptr);
+                splitter->setParent(nullptr);
+                m_tabWidget->removeTab(tabIdx);
+                m_tabWidget->insertTab(tabIdx, child, "Shell");
+                m_tabWidget->setCurrentIndex(tabIdx);
+                splitter->deleteLater();
+            }
+        }
+    }
+}
+
+TerminalWidget *MainWindow::focusedTerminal() const {
+    QWidget *focused = QApplication::focusWidget();
+    if (auto *t = qobject_cast<TerminalWidget *>(focused))
+        return t;
+    // Walk up from focused widget
+    while (focused) {
+        if (auto *t = qobject_cast<TerminalWidget *>(focused))
+            return t;
+        focused = focused->parentWidget();
+    }
+    return currentTerminal();
+}
+
 void MainWindow::closeTab(int index) {
     if (m_tabWidget->count() <= 1) {
-        // Last tab — close the window
         close();
         return;
     }
@@ -188,10 +451,8 @@ void MainWindow::closeTab(int index) {
     m_tabWidget->removeTab(index);
     w->deleteLater();
 
-    // Hide tab bar when only one tab left
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
 
-    // Focus the new current terminal
     if (auto *t = currentTerminal()) {
         t->setFocus();
     }
@@ -202,14 +463,22 @@ void MainWindow::closeCurrentTab() {
 }
 
 void MainWindow::onTabChanged(int /*index*/) {
-    if (auto *t = currentTerminal()) {
+    auto *t = focusedTerminal();
+    if (!t) t = currentTerminal();
+    if (t) {
         t->setFocus();
         onTitleChanged(t->shellTitle());
     }
 }
 
 TerminalWidget *MainWindow::currentTerminal() const {
-    return qobject_cast<TerminalWidget *>(m_tabWidget->currentWidget());
+    QWidget *w = m_tabWidget->currentWidget();
+    if (!w) return nullptr;
+    // If it's directly a TerminalWidget
+    if (auto *t = qobject_cast<TerminalWidget *>(w))
+        return t;
+    // Otherwise find the first TerminalWidget in the widget tree
+    return w->findChild<TerminalWidget *>();
 }
 
 void MainWindow::applyTheme(const QString &name) {
@@ -218,7 +487,6 @@ void MainWindow::applyTheme(const QString &name) {
 
     const Theme &theme = Themes::byName(name);
 
-    // Style the menu bar, tab widget, and status bar
     QString ss = QString(
         "QMainWindow { background-color: %1; }"
         "QMenuBar { background-color: %2; color: %3; border-bottom: 1px solid %4; }"
@@ -236,6 +504,9 @@ void MainWindow::applyTheme(const QString &name) {
         "QTabBar::tab:hover { background-color: %1; color: %3; }"
         "QTabBar::close-button { image: none; }"
         "QTabBar::close-button:hover { background-color: #e74856; border-radius: 3px; }"
+        "QSplitter::handle { background-color: %4; }"
+        "QSplitter::handle:horizontal { width: 2px; }"
+        "QSplitter::handle:vertical { height: 2px; }"
     ).arg(theme.bgPrimary.name(),
           theme.bgSecondary.name(),
           theme.textPrimary.name(),
@@ -245,29 +516,26 @@ void MainWindow::applyTheme(const QString &name) {
 
     setStyleSheet(ss);
 
-    // Style the custom title bar
     m_titleBar->setThemeColors(theme.bgSecondary, theme.textPrimary,
                                 theme.accent, theme.border);
 
-    // Apply colors to all terminal tabs
-    for (int i = 0; i < m_tabWidget->count(); ++i) {
-        if (auto *t = qobject_cast<TerminalWidget *>(m_tabWidget->widget(i))) {
-            t->applyThemeColors(theme.textPrimary, theme.bgPrimary, theme.cursor);
-        }
+    // Apply colors to ALL terminal widgets (including those in splitters)
+    QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+    for (auto *t : terminals) {
+        t->applyThemeColors(theme.textPrimary, theme.bgPrimary, theme.cursor,
+                             theme.accent, theme.border);
     }
 
     statusBar()->showMessage(QString("Theme: %1").arg(name), 3000);
 }
 
 void MainWindow::centerWindow() {
-    // Try Qt move() first (works on X11)
     if (QScreen *screen = this->screen()) {
         QRect geo = screen->availableGeometry();
         move(geo.x() + (geo.width() - width()) / 2,
              geo.y() + (geo.height() - height()) / 2);
     }
 
-    // On Wayland, move() is ignored — use KWin scripting via D-Bus
     qint64 pid = QApplication::applicationPid();
     QString kwinJs = QStringLiteral(
         "var clients = workspace.windowList();\n"
@@ -294,23 +562,31 @@ void MainWindow::centerWindow() {
         f.write(kwinJs.toUtf8());
     }
 
-    QProcess::execute("dbus-send", {
+    // Run KWin script asynchronously to avoid blocking the event loop
+    auto *proc = new QProcess(this);
+    proc->start("dbus-send", {
         "--session", "--dest=org.kde.KWin", "--print-reply",
         "/Scripting", "org.kde.kwin.Scripting.loadScript",
         QStringLiteral("string:%1").arg(scriptPath),
         "string:ants_terminal_center"
     });
-    QProcess::execute("dbus-send", {
-        "--session", "--dest=org.kde.KWin", "--print-reply",
-        "/Scripting", "org.kde.kwin.Scripting.start"
+    connect(proc, &QProcess::finished, this, [this, proc, scriptPath]() {
+        proc->deleteLater();
+        auto *proc2 = new QProcess(this);
+        proc2->start("dbus-send", {
+            "--session", "--dest=org.kde.KWin", "--print-reply",
+            "/Scripting", "org.kde.kwin.Scripting.start"
+        });
+        connect(proc2, &QProcess::finished, this, [this, proc2, scriptPath]() {
+            proc2->deleteLater();
+            QProcess::startDetached("dbus-send", {
+                "--session", "--dest=org.kde.KWin", "--print-reply",
+                "/Scripting", "org.kde.kwin.Scripting.unloadScript",
+                "string:ants_terminal_center"
+            });
+            QFile::remove(scriptPath);
+        });
     });
-    QProcess::execute("dbus-send", {
-        "--session", "--dest=org.kde.KWin", "--print-reply",
-        "/Scripting", "org.kde.kwin.Scripting.unloadScript",
-        "string:ants_terminal_center"
-    });
-
-    QFile::remove(scriptPath);
 }
 
 void MainWindow::toggleMaximize() {
@@ -325,7 +601,15 @@ void MainWindow::changeFontSize(int delta) {
     int size = m_config.fontSize() + delta;
     size = qBound(8, size, 32);
     m_config.setFontSize(size);
-    statusBar()->showMessage(QString("Font size: %1pt (restart to apply)").arg(size), 3000);
+    applyFontSizeToAll(size);
+}
+
+void MainWindow::applyFontSizeToAll(int size) {
+    QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+    for (auto *t : terminals) {
+        t->setFontSize(size);
+    }
+    statusBar()->showMessage(QString("Font size: %1pt").arg(size), 3000);
 }
 
 void MainWindow::onTitleChanged(const QString &title) {
@@ -344,15 +628,11 @@ void MainWindow::onShellExited(int code) {
 }
 
 void MainWindow::onImagePasted(const QImage &image) {
-    QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-                  + "/ants-terminal";
-    QDir().mkpath(dir);
-    QString filename = dir + "/paste_"
-                       + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")
-                       + ".png";
-    if (image.save(filename)) {
-        statusBar()->showMessage(QString("Image saved: %1").arg(filename), 5000);
-    }
+    Q_UNUSED(image);
+    // Image saving + path insertion is now handled by TerminalWidget
+    QString dir = m_config.imagePasteDir();
+    if (dir.isEmpty()) dir = QDir::homePath() + "/Pictures/ClaudePaste";
+    statusBar()->showMessage(QString("Image pasted → %1").arg(dir), 5000);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

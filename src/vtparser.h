@@ -49,7 +49,6 @@ private:
 
     void processChar(uint32_t ch);
     void transition(State newState);
-    void emitAction(VtAction::Type type);
 
     // UTF-8 decoding
     void feedByte(uint8_t byte);
@@ -67,4 +66,5 @@ private:
     // UTF-8 decoder state
     uint32_t m_utf8Accum = 0;
     int m_utf8Remaining = 0;
+    int m_utf8ExpectedLen = 0;
 };

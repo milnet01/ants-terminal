@@ -15,13 +15,20 @@ void VtParser::feedByte(uint8_t byte) {
             m_utf8Accum = (m_utf8Accum << 6) | (byte & 0x3F);
             --m_utf8Remaining;
             if (m_utf8Remaining == 0) {
-                flushCodepoint(m_utf8Accum);
+                // Reject overlong encodings and surrogates
+                bool valid = true;
+                if (m_utf8Accum < 0x80) valid = false;                    // overlong 2-byte
+                else if (m_utf8Accum < 0x800 && m_utf8ExpectedLen >= 3) valid = false;  // overlong 3-byte
+                else if (m_utf8Accum < 0x10000 && m_utf8ExpectedLen >= 4) valid = false; // overlong 4-byte
+                else if (m_utf8Accum >= 0xD800 && m_utf8Accum <= 0xDFFF) valid = false;  // surrogate
+                else if (m_utf8Accum > 0x10FFFF) valid = false;           // out of range
+                flushCodepoint(valid ? m_utf8Accum : 0xFFFD);
             }
             return;
         }
         // Invalid continuation — reset and process this byte
         m_utf8Remaining = 0;
-        flushCodepoint(0xFFFD); // replacement char
+        flushCodepoint(0xFFFD);
     }
 
     if (byte < 0x80) {
@@ -29,12 +36,15 @@ void VtParser::feedByte(uint8_t byte) {
     } else if ((byte & 0xE0) == 0xC0) {
         m_utf8Accum = byte & 0x1F;
         m_utf8Remaining = 1;
+        m_utf8ExpectedLen = 2;
     } else if ((byte & 0xF0) == 0xE0) {
         m_utf8Accum = byte & 0x0F;
         m_utf8Remaining = 2;
+        m_utf8ExpectedLen = 3;
     } else if ((byte & 0xF8) == 0xF0) {
         m_utf8Accum = byte & 0x07;
         m_utf8Remaining = 3;
+        m_utf8ExpectedLen = 4;
     } else {
         flushCodepoint(0xFFFD);
     }
@@ -128,9 +138,15 @@ void VtParser::processChar(uint32_t ch) {
         m_params.clear();
         m_currentParam = -1;
         m_intermediate.clear();
-        // Fall through to CsiParam processing
-        m_state = CsiParam;
-        processChar(ch);
+        if (ch >= 0x3C && ch <= 0x3F) {
+            // Private parameter prefix: ?, >, =, <
+            m_intermediate += static_cast<char>(ch);
+            m_state = CsiParam;
+        } else {
+            // Fall through to CsiParam processing
+            m_state = CsiParam;
+            processChar(ch);
+        }
         break;
 
     case CsiParam:
@@ -140,7 +156,8 @@ void VtParser::processChar(uint32_t ch) {
             // Clamp to prevent overflow
             if (m_currentParam > 16384) m_currentParam = 16384;
         } else if (ch == ';') {
-            m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
+            if (m_params.size() < 32) // Cap at 32 params to prevent DoS
+                m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
             m_currentParam = -1;
         } else if (ch >= 0x20 && ch <= 0x2F) {
             // Intermediate byte
@@ -164,8 +181,8 @@ void VtParser::processChar(uint32_t ch) {
             transition(Ground);
         } else if (ch == ':') {
             // Sub-parameter separator (used in SGR colon syntax)
-            // Treat like ';' for basic compatibility
-            m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
+            if (m_params.size() < 32)
+                m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
             m_currentParam = -1;
         } else if (ch < 0x20) {
             VtAction a;
@@ -212,7 +229,7 @@ void VtParser::processChar(uint32_t ch) {
             m_callback(a);
             transition(Escape);
         } else {
-            if (m_oscString.size() < 4096) {
+            if (m_oscString.size() < 10 * 1024 * 1024) { // 10MB for inline images
                 // Encode back to UTF-8
                 if (ch < 0x80) {
                     m_oscString += static_cast<char>(ch);
@@ -254,8 +271,3 @@ void VtParser::transition(State newState) {
     }
 }
 
-void VtParser::emitAction(VtAction::Type type) {
-    VtAction a;
-    a.type = type;
-    m_callback(a);
-}

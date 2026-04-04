@@ -30,12 +30,18 @@ A real terminal emulator built from scratch in C++ with Qt6.
 ## Architecture
 
 Data flows: **PTY → VtParser → TerminalGrid → TerminalWidget (QPainter)**
+Reverse flow: **TerminalGrid → ResponseCallback → PTY** (for DA, CPR, DSR)
 
 - `Pty`: forkpty() spawns bash, QSocketNotifier for non-blocking reads
 - `VtParser`: state machine decodes UTF-8, emits VtAction structs (Print, Execute, CSI, ESC, OSC)
-- `TerminalGrid`: processes VtActions, maintains character cell grid + scrollback + cursor state
-- `TerminalWidget`: renders grid with QPainter, handles keyboard → PTY writes
-- `MainWindow`: wires everything, manages themes/config/menus
+- `TerminalGrid`: processes VtActions, maintains cell grid + scrollback + cursor + modes
+  - Mouse/focus/sync modes, OSC 8 hyperlinks, OSC 133 shell integration
+  - Combining chars stored in per-line side table (`TermLine::combining`)
+  - Response callback for DA1/DA2/CPR/DSR sequences
+- `TerminalWidget`: renders grid with QPainter, handles keyboard/mouse → PTY writes
+  - SGR mouse reporting, focus reporting, synchronized output
+  - Undercurl + colored underlines, font fallback, image paste auto-save
+- `MainWindow`: wires everything, manages themes/config/menus/keybindings
 
 ## Building
 
@@ -51,11 +57,15 @@ cmake .. && make -j$(nproc)
 - Theme colors set on TerminalGrid (default fg/bg), used during rendering
 - ANSI palette (16 standard + 216 cube + 24 gray) initialized in TerminalGrid
 - Config persists to ~/.config/ants-terminal/config.json with 0600 permissions
-- Scrollback capped at 10,000 lines
+- Scrollback configurable up to 1,000,000 lines (default 50,000)
 
 ## Key Design Decisions
 
 - Custom VT100 parser (not pyte/libvterm) — no external deps beyond Qt6
-- QPainter cell-by-cell rendering (CPU) — simple, correct, fast enough
+- QPainter cell-by-cell + text-run rendering (CPU) — simple, correct, supports ligatures
 - Alt screen buffer support (for vim, htop, etc.)
 - Delayed wrap (like xterm) for correct line-wrapping behavior
+- SGR mouse reporting, focus reporting, synchronized output for TUI app compatibility
+- Combining chars in per-line side table (zero memory overhead for lines without combiners)
+- Image paste auto-saves to disk and inserts filepath (optimized for Claude Code workflow)
+- Keybindings configurable via config.json

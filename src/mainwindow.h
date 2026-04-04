@@ -8,6 +8,7 @@
 
 class TitleBar;
 class TerminalWidget;
+class QSplitter;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -29,12 +30,29 @@ private slots:
     void closeCurrentTab();
     void onTabChanged(int index);
 
+    // Split pane
+    void splitHorizontal();
+    void splitVertical();
+    void closeFocusedPane();
+
 private:
     void setupMenus();
     void applyTheme(const QString &name);
     void centerWindow();
     void changeFontSize(int delta);
+    void applyFontSizeToAll(int size);
     TerminalWidget *currentTerminal() const;
+    TerminalWidget *focusedTerminal() const;
+
+    // Split helpers
+    TerminalWidget *createTerminal();
+    void connectTerminal(TerminalWidget *terminal);
+    void splitCurrentPane(Qt::Orientation orientation);
+    QSplitter *findParentSplitter(QWidget *w) const;
+    void cleanupEmptySplitters(QWidget *tabRoot);
+
+    // Apply settings from config to a terminal
+    void applyConfigToTerminal(TerminalWidget *terminal);
 
     TitleBar *m_titleBar = nullptr;
     QMenuBar *m_menuBar = nullptr;
