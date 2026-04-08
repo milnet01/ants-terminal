@@ -36,6 +36,7 @@ add_executable(ants-terminal
     src/sessionmanager.cpp
     src/aidialog.cpp
     src/sshdialog.cpp
+    src/xcbpositiontracker.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE

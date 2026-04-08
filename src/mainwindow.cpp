@@ -5,6 +5,7 @@
 #include "aidialog.h"
 #include "sshdialog.h"
 #include "sessionmanager.h"
+#include "xcbpositiontracker.h"
 
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
@@ -12,6 +13,8 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QShowEvent>
+#include <QMoveEvent>
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QToolButton>
@@ -33,20 +36,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Ants Terminal");
     setWindowFlag(Qt::FramelessWindowHint);
 
-    // Restore window geometry
-    int w = m_config.windowWidth();
-    int h = m_config.windowHeight();
-    resize(w, h);
-    int savedX = m_config.windowX();
-    int savedY = m_config.windowY();
-    if (savedX >= 0 && savedY >= 0) {
-        move(savedX, savedY);
-        // Deferred move to handle window manager overriding frameless window position
-        QTimer::singleShot(50, this, [this, savedX, savedY]() {
-            if (m_config.windowX() >= 0 && m_config.windowY() >= 0)
-                move(savedX, savedY);
-        });
-    }
+    // Restore window size
+    resize(m_config.windowWidth(), m_config.windowHeight());
+
+    // Position tracker — bypasses Qt's broken pos()/moveEvent for frameless windows
+    m_posTracker = new XcbPositionTracker(this);
 
     // Apply window opacity from config
     setWindowOpacity(m_config.opacity());
@@ -66,6 +60,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_titleBar, &TitleBar::maximizeRequested, this, &MainWindow::toggleMaximize);
     connect(m_titleBar, &TitleBar::closeRequested, this, &QWidget::close);
     connect(m_titleBar->centerButton(), &QToolButton::clicked, this, &MainWindow::centerWindow);
+    connect(m_titleBar, &TitleBar::windowMoved, this, [this](const QPoint &pos) {
+        m_posTracker->updatePos(pos);
+        m_titleBar->setKnownWindowPos(pos);
+        // Save immediately — don't wait for closeEvent
+        m_config.setWindowGeometry(pos.x(), pos.y(), width(), height());
+    });
 
     // Standalone menu bar
     m_menuBar = new QMenuBar(this);
@@ -800,11 +800,66 @@ void MainWindow::applyTheme(const QString &name) {
     statusBar()->showMessage(QString("Theme: %1").arg(name), 3000);
 }
 
+void MainWindow::moveViaKWin(int targetX, int targetY) {
+    qint64 pid = QApplication::applicationPid();
+    QString kwinJs = QStringLiteral(
+        "var clients = workspace.windowList();\n"
+        "for (var i = 0; i < clients.length; i++) {\n"
+        "    var c = clients[i];\n"
+        "    if (c.pid === %1) {\n"
+        "        c.frameGeometry = {\n"
+        "            x: %2,\n"
+        "            y: %3,\n"
+        "            width: c.frameGeometry.width,\n"
+        "            height: c.frameGeometry.height\n"
+        "        };\n"
+        "        break;\n"
+        "    }\n"
+        "}\n"
+    ).arg(pid).arg(targetX).arg(targetY);
+
+    QString scriptPath = QDir::tempPath() + "/kwin_move_ants.js";
+    {
+        QFile f(scriptPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return;
+        f.write(kwinJs.toUtf8());
+    }
+
+    auto *proc = new QProcess(this);
+    proc->start("dbus-send", {
+        "--session", "--dest=org.kde.KWin", "--print-reply",
+        "/Scripting", "org.kde.kwin.Scripting.loadScript",
+        QStringLiteral("string:%1").arg(scriptPath),
+        "string:ants_terminal_move"
+    });
+    connect(proc, &QProcess::finished, this, [this, proc, scriptPath]() {
+        proc->deleteLater();
+        auto *proc2 = new QProcess(this);
+        proc2->start("dbus-send", {
+            "--session", "--dest=org.kde.KWin", "--print-reply",
+            "/Scripting", "org.kde.kwin.Scripting.start"
+        });
+        connect(proc2, &QProcess::finished, this, [this, proc2, scriptPath]() {
+            proc2->deleteLater();
+            QProcess::startDetached("dbus-send", {
+                "--session", "--dest=org.kde.KWin", "--print-reply",
+                "/Scripting", "org.kde.kwin.Scripting.unloadScript",
+                "string:ants_terminal_move"
+            });
+            QFile::remove(scriptPath);
+        });
+    });
+}
+
 void MainWindow::centerWindow() {
     if (QScreen *screen = this->screen()) {
         QRect geo = screen->availableGeometry();
-        move(geo.x() + (geo.width() - width()) / 2,
-             geo.y() + (geo.height() - height()) / 2);
+        int cx = geo.x() + (geo.width() - width()) / 2;
+        int cy = geo.y() + (geo.height() - height()) / 2;
+        m_posTracker->setPosition(cx, cy);
+        m_titleBar->setKnownWindowPos(QPoint(cx, cy));
+        m_config.setWindowGeometry(cx, cy, width(), height());
     }
 
     qint64 pid = QApplication::applicationPid();
@@ -959,8 +1014,41 @@ void MainWindow::restoreSessions() {
     // Not auto-restoring on startup — expose via menu if needed
 }
 
+void MainWindow::showEvent(QShowEvent *event) {
+    QMainWindow::showEvent(event);
+
+    // Center window on first show via KWin scripting.
+    // Qt's move()/pos() are broken for frameless windows on KWin compositor,
+    // so we always center on open. KWin scripting is the only reliable positioning method.
+    static bool firstShow = true;
+    if (firstShow) {
+        firstShow = false;
+        QTimer::singleShot(150, this, [this]() {
+            centerWindow();
+        });
+    }
+}
+
+void MainWindow::moveEvent(QMoveEvent *event) {
+    QMainWindow::moveEvent(event);
+    m_posTracker->updatePos(event->pos());
+}
+
+bool MainWindow::event(QEvent *event) {
+    // Detect end of system drag: KWin sends NonClientAreaMouseButtonRelease,
+    // or the window gets a MouseButtonRelease, or focus changes.
+    if (event->type() == QEvent::NonClientAreaMouseButtonRelease ||
+        event->type() == QEvent::MouseButtonRelease ||
+        event->type() == QEvent::FocusIn ||
+        event->type() == QEvent::WindowActivate) {
+        m_titleBar->finishSystemDrag();
+    }
+    return QMainWindow::event(event);
+}
+
 void MainWindow::closeEvent(QCloseEvent *event) {
-    m_config.setWindowGeometry(x(), y(), width(), height());
+    QPoint realPos = m_posTracker->currentPos();
+    m_config.setWindowGeometry(realPos.x(), realPos.y(), width(), height());
     saveAllSessions();
     event->accept();
 }

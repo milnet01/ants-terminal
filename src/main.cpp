@@ -6,11 +6,12 @@
 
 int main(int argc, char *argv[]) {
     // Set default surface format with alpha for per-pixel transparency
+    // Do NOT set Core Profile here — it breaks QPainter's GL paint engine
+    // font scaling on displays where physical DPI differs from logical DPI.
+    // The GlRenderer requests Core Profile on its own context when needed.
     QSurfaceFormat fmt;
     fmt.setAlphaBufferSize(8);
     fmt.setDepthBufferSize(24);
-    fmt.setVersion(3, 3);
-    fmt.setProfile(QSurfaceFormat::CoreProfile);
     QSurfaceFormat::setDefaultFormat(fmt);
 
     QApplication app(argc, argv);

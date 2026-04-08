@@ -31,9 +31,12 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     // Request alpha buffer for per-pixel transparency
+    // Only request Core Profile if GPU rendering is needed (QPainter works
+    // best without it — Core Profile causes font scaling bugs on mismatched DPI)
     QSurfaceFormat fmt = format();
     fmt.setAlphaBufferSize(8);
     setFormat(fmt);
+
 
     // Pick a good monospace font
     QStringList families = {"JetBrains Mono", "Fira Code", "Source Code Pro",
@@ -168,7 +171,7 @@ void TerminalWidget::updateFontMetrics() {
 }
 
 void TerminalWidget::setFontSize(int size) {
-    size = qBound(8, size, 32);
+    size = qBound(4, size, 48);
     m_font.setPointSize(size);
     if (m_hasFallbackFont) m_fallbackFont.setPointSize(size);
     updateFontMetrics();
@@ -750,7 +753,10 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     }
 }
 
-void TerminalWidget::resizeEvent(QResizeEvent *) {
+void TerminalWidget::resizeEvent(QResizeEvent *event) {
+    // QOpenGLWidget::resizeEvent recreates the internal FBO at the new size.
+    // Without this call, the FBO stays at its initial size and gets stretched.
+    QOpenGLWidget::resizeEvent(event);
     recalcGridSize();
 }
 
@@ -1328,7 +1334,7 @@ std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) 
     // File path with optional line:col (compiler/linter output)
     // Matches: /abs/path.ext:line:col, ./rel/path.ext:line, src/file.cpp:42:10, file.rs:17
     static QRegularExpression filePathRe(
-        R"RE((?:^|[\s("'])((\.{0,2}/)?[a-zA-Z0-9_\-./]+\.[a-zA-Z0-9_]+(?::(\d+)(?::(\d+))?)?))(?=[\s)"',;:\]}>]|$))RE"
+        R"RE((?:^|[\s("'])((\.{0,2}/)?[a-zA-Z0-9_\-./]+\.[a-zA-Z0-9_]+(?::(\d+)(?::(\d+))?)?)(?=[\s)"',;:\]}>]|$))RE"
     );
 
     std::vector<UrlSpan> spans;
@@ -1754,6 +1760,11 @@ void TerminalWidget::resizeGL(int w, int h) {
 void TerminalWidget::setGpuRendering(bool enabled) {
     m_gpuRendering = enabled;
     if (enabled && !m_glRenderer && isValid()) {
+        // GPU path needs Core Profile for GLSL 3.3 shaders
+        QSurfaceFormat fmt = format();
+        fmt.setVersion(3, 3);
+        fmt.setProfile(QSurfaceFormat::CoreProfile);
+        setFormat(fmt);
         // Initialize GL renderer now (context must be valid)
         makeCurrent();
         initializeGL();

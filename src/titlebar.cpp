@@ -2,6 +2,9 @@
 
 #include <QMouseEvent>
 #include <QWindow>
+#include <QTimer>
+#include <QApplication>
+#include <QCursor>
 
 TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     setFixedHeight(36);
@@ -12,6 +15,7 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
 
     m_titleLabel = new QLabel(this);
     m_titleLabel->setAlignment(Qt::AlignCenter);
+    m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents); // Pass clicks to TitleBar
     layout->addStretch();
     layout->addWidget(m_titleLabel);
     layout->addStretch();
@@ -78,9 +82,22 @@ void TitleBar::mouseDoubleClickEvent(QMouseEvent *event) {
 
 void TitleBar::mousePressEvent(QMouseEvent *event) {
     if (event->button() == Qt::LeftButton) {
-        // Start system move — works on both X11 and Wayland
-        if (window()->windowHandle()) {
+        // Compute offset: cursor_global - known_window_pos
+        // Can't use event->pos() — Qt computes it from X11 pos (0,0 on KWin compositor)
+        m_cursorOffset = event->globalPosition().toPoint() - m_knownWindowPos;
+        m_systemDragActive = true;
+
+        // Let KWin handle the drag (only method that works for frameless windows)
+        if (window()->windowHandle())
             window()->windowHandle()->startSystemMove();
-        }
     }
+}
+
+void TitleBar::finishSystemDrag() {
+    if (!m_systemDragActive) return;
+    m_systemDragActive = false;
+
+    QPoint cursor = QCursor::pos();
+    QPoint finalPos = cursor - m_cursorOffset;
+    emit windowMoved(finalPos);
 }

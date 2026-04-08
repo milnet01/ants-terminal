@@ -49,7 +49,7 @@ int Config::fontSize() const {
 }
 
 void Config::setFontSize(int size) {
-    size = qBound(8, size, 32);
+    size = qBound(4, size, 48);
     m_data["font_size"] = size;
     save();
 }
@@ -64,6 +64,15 @@ void Config::setWindowGeometry(int x, int y, int w, int h) {
     m_data["window_y"] = y;
     m_data["window_w"] = w;
     m_data["window_h"] = h;
+    save();
+}
+
+QString Config::windowGeometryBase64() const {
+    return m_data.value("window_geometry").toString("");
+}
+
+void Config::setWindowGeometryBase64(const QString &base64) {
+    m_data["window_geometry"] = base64;
     save();
 }
 

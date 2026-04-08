@@ -24,6 +24,10 @@ public:
     int windowY() const;
     void setWindowGeometry(int x, int y, int w, int h);
 
+    // Qt saveGeometry/restoreGeometry (handles WM frame offsets reliably)
+    QString windowGeometryBase64() const;
+    void setWindowGeometryBase64(const QString &base64);
+
     int scrollbackLines() const;
     void setScrollbackLines(int lines);
 

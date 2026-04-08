@@ -13,6 +13,7 @@ class CommandPalette;
 class AiDialog;
 class SshDialog;
 class QSplitter;
+class XcbPositionTracker;
 #ifdef ANTS_LUA_PLUGINS
 class PluginManager;
 #endif
@@ -25,6 +26,9 @@ public:
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+    void moveEvent(QMoveEvent *event) override;
+    bool event(QEvent *event) override;
 
 private slots:
     void onTitleChanged(const QString &title);
@@ -49,6 +53,7 @@ private:
     void setupMenus();
     void applyTheme(const QString &name);
     void centerWindow();
+    void moveViaKWin(int targetX, int targetY);
     void changeFontSize(int delta);
     void applyFontSizeToAll(int size);
     TerminalWidget *currentTerminal() const;
@@ -94,4 +99,7 @@ private:
 
     // Tab UUIDs for session persistence
     QHash<QWidget *, QString> m_tabSessionIds;
+
+    // XCB position tracker (Qt's pos()/moveEvent broken for frameless windows on KWin)
+    XcbPositionTracker *m_posTracker = nullptr;
 };
