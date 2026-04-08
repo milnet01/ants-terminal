@@ -12,6 +12,7 @@ class TerminalWidget;
 class CommandPalette;
 class AiDialog;
 class SshDialog;
+class ClaudeAllowlistDialog;
 class QSplitter;
 class XcbPositionTracker;
 #ifdef ANTS_LUA_PLUGINS
@@ -91,6 +92,10 @@ private:
 
     // SSH manager
     SshDialog *m_sshDialog = nullptr;
+
+    // Claude Code allowlist
+    ClaudeAllowlistDialog *m_claudeDialog = nullptr;
+    void openClaudeAllowlistDialog(const QString &prefillRule = QString());
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS

@@ -6,6 +6,7 @@
 #include "sshdialog.h"
 #include "sessionmanager.h"
 #include "xcbpositiontracker.h"
+#include "claudeallowlist.h"
 
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
@@ -329,6 +330,14 @@ void MainWindow::setupMenus() {
         m_aiDialog->raise();
     });
 
+    // Claude Code submenu
+    QMenu *claudeMenu = toolsMenu->addMenu("&Claude Code");
+    QAction *editAllowlist = claudeMenu->addAction("Edit &Allowlist...");
+    editAllowlist->setShortcut(QKeySequence(m_config.keybinding("claude_allowlist", "Ctrl+Shift+L")));
+    connect(editAllowlist, &QAction::triggered, this, [this]() {
+        openClaudeAllowlistDialog();
+    });
+
     // Settings menu
     QMenu *settingsMenu = m_menuBar->addMenu("S&ettings");
 
@@ -521,6 +530,19 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     });
 
     connect(terminal, &TerminalWidget::imagePasted, this, &MainWindow::onImagePasted);
+
+    // Claude Code permission detection → status bar notification
+    connect(terminal, &TerminalWidget::claudePermissionDetected, this, [this](const QString &rule) {
+        statusBar()->showMessage(
+            QString("Claude Code permission: %1 — ").arg(rule), 10000);
+        auto *addBtn = new QPushButton("Add to allowlist", statusBar());
+        statusBar()->addPermanentWidget(addBtn);
+        connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn]() {
+            openClaudeAllowlistDialog(rule);
+            addBtn->deleteLater();
+        });
+        QTimer::singleShot(10000, addBtn, &QObject::deleteLater);
+    });
 }
 
 void MainWindow::newTab() {
@@ -1027,6 +1049,29 @@ void MainWindow::showEvent(QShowEvent *event) {
             centerWindow();
         });
     }
+}
+
+void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
+    if (!m_claudeDialog) {
+        m_claudeDialog = new ClaudeAllowlistDialog(this);
+        connect(m_claudeDialog, &QDialog::finished, this, [this]() {
+            if (auto *t = focusedTerminal()) t->setFocus();
+        });
+    }
+
+    // Resolve .claude/settings.local.json from shell's CWD
+    QString cwd;
+    if (auto *t = focusedTerminal()) {
+        cwd = t->shellCwd();
+    }
+    if (cwd.isEmpty()) cwd = QDir::currentPath();
+    QString settingsPath = cwd + "/.claude/settings.local.json";
+
+    m_claudeDialog->setSettingsPath(settingsPath);
+    if (!prefillRule.isEmpty())
+        m_claudeDialog->prefillRule(prefillRule);
+    m_claudeDialog->show();
+    m_claudeDialog->raise();
 }
 
 void MainWindow::moveEvent(QMoveEvent *event) {

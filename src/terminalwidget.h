@@ -87,10 +87,14 @@ public:
     // Access to grid for session save/restore
     TerminalGrid *grid() { return m_grid.get(); }
 
+    // Get the shell's current working directory (via /proc/PID/cwd)
+    QString shellCwd() const;
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);
     void imagePasted(const QImage &image);
+    void claudePermissionDetected(const QString &rule);
 
 protected:
     bool event(QEvent *event) override;
@@ -268,4 +272,9 @@ private:
 
     // Per-pixel background alpha (0=transparent, 255=opaque)
     int m_backgroundAlpha = 255;
+
+    // Claude Code permission detection
+    QTimer m_claudeDetectTimer;
+    QString m_lastDetectedRule;
+    void checkForClaudePermissionPrompt();
 };

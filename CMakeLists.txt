@@ -37,6 +37,7 @@ add_executable(ants-terminal
     src/aidialog.cpp
     src/sshdialog.cpp
     src/xcbpositiontracker.cpp
+    src/claudeallowlist.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE

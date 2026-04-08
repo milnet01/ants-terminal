@@ -95,6 +95,11 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     m_idleTimer.start();
     m_lastOutputTime.start();
 
+    // Claude Code permission detection (debounced)
+    m_claudeDetectTimer.setSingleShot(true);
+    m_claudeDetectTimer.setInterval(300);
+    connect(&m_claudeDetectTimer, &QTimer::timeout, this, &TerminalWidget::checkForClaudePermissionPrompt);
+
     setMinimumSize(m_cellWidth * 20 + m_padding * 2, m_cellHeight * 5 + m_padding * 2);
     setMouseTracking(true);
 
@@ -883,6 +888,9 @@ void TerminalWidget::onPtyData(const QByteArray &data) {
     m_syncOutputActive = m_grid->synchronizedOutput();
     if (!m_syncOutputActive || !wasSync)
         update();
+
+    // Restart Claude Code detection debounce timer
+    m_claudeDetectTimer.start();
 }
 
 void TerminalWidget::onPtyFinished(int exitCode) {
@@ -1798,6 +1806,43 @@ QString TerminalWidget::recentOutput(int lines) const {
         result.append(lineText(i));
     }
     return result.join('\n');
+}
+
+// --- Shell CWD ---
+
+QString TerminalWidget::shellCwd() const {
+    if (!m_pty) return {};
+    int pid = m_pty->childPid();
+    if (pid <= 0) return {};
+    QFileInfo cwdInfo(QString("/proc/%1/cwd").arg(pid));
+    return cwdInfo.exists() ? cwdInfo.symLinkTarget() : QString();
+}
+
+// --- Claude Code permission detection ---
+
+void TerminalWidget::checkForClaudePermissionPrompt() {
+    // Scan last 5 lines for Claude Code permission prompt pattern
+    int scrollbackSize = m_grid->scrollbackSize();
+    int totalLines = scrollbackSize + m_grid->rows();
+    int start = std::max(0, totalLines - 5);
+
+    // Pattern: "Allow ToolName" or "Allow ToolName(args)"
+    static QRegularExpression promptRe(
+        R"((?:Allow|allow)\s+(\w+(?:\([^)]*\))?)\s*\?)"
+    );
+
+    for (int i = start; i < totalLines; ++i) {
+        QString text = lineText(i);
+        auto match = promptRe.match(text);
+        if (match.hasMatch()) {
+            QString rule = match.captured(1);
+            if (rule != m_lastDetectedRule) {
+                m_lastDetectedRule = rule;
+                emit claudePermissionDetected(rule);
+            }
+            return;
+        }
+    }
 }
 
 // --- Write command to PTY ---
