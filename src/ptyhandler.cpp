@@ -26,12 +26,20 @@ Pty::~Pty() {
         m_masterFd = -1;
     }
     if (m_childPid > 0) {
-        // Reap child — try non-blocking first, then blocking with timeout
+        // Reap child — try non-blocking first, then escalate
         int status = 0;
         if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
-            // Child still running after SIGHUP — send SIGTERM
+            // Child still running after SIGHUP — send SIGTERM and wait briefly
             ::kill(m_childPid, SIGTERM);
-            ::waitpid(m_childPid, &status, 0);
+            for (int i = 0; i < 50; ++i) {
+                if (::waitpid(m_childPid, &status, WNOHANG) != 0) break;
+                ::usleep(10000); // 10ms
+            }
+            // Last resort — SIGKILL
+            if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
+                ::kill(m_childPid, SIGKILL);
+                ::waitpid(m_childPid, &status, 0);
+            }
         }
         m_childPid = -1;
     }

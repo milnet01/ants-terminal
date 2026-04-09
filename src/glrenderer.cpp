@@ -433,8 +433,16 @@ void GlRenderer::uploadToAtlas(const QImage &img, GlyphEntry &entry) {
         m_atlasRowHeight = 0;
     }
 
-    // Check if atlas is full — clear and re-upload this glyph into the fresh atlas
+    // Check if atlas is full — double size if possible, else clear and restart
     if (m_atlasY + h > m_atlasHeight) {
+        if (m_atlasWidth < 4096) {
+            // Double the atlas size to reduce stall frequency
+            m_atlasWidth = 4096;
+            m_atlasHeight = 4096;
+            glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_atlasWidth, m_atlasHeight, 0,
+                         GL_RED, GL_UNSIGNED_BYTE, nullptr);
+        }
         m_glyphCache.clear();
         m_atlasX = 0;
         m_atlasY = 0;
@@ -442,7 +450,6 @@ void GlRenderer::uploadToAtlas(const QImage &img, GlyphEntry &entry) {
         std::vector<uint8_t> zeros(m_atlasWidth * m_atlasHeight, 0);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_atlasWidth, m_atlasHeight,
                         GL_RED, GL_UNSIGNED_BYTE, zeros.data());
-        // Now the atlas is empty, so this glyph will fit — fall through to upload
     }
 
     // Upload glyph to atlas

@@ -193,7 +193,8 @@ void AiDialog::onReplyReadyRead() {
 void AiDialog::onReplyFinished() {
     if (!m_currentReply) return;
 
-    if (m_currentReply->error() != QNetworkReply::NoError) {
+    bool hadError = m_currentReply->error() != QNetworkReply::NoError;
+    if (hadError) {
         // Try to read non-streaming response (some APIs don't stream)
         QByteArray data = m_currentReply->readAll();
         if (!data.isEmpty()) {
@@ -205,14 +206,18 @@ void AiDialog::onReplyFinished() {
                     QString content = choices[0].toObject()["message"].toObject()["content"].toString();
                     if (!content.isEmpty()) {
                         m_streamBuffer = content;
+                        hadError = false; // Valid response despite HTTP error
                     }
                 } else if (obj.contains("error")) {
                     appendMessage("Error", obj["error"].toObject()["message"].toString());
                 }
             }
         }
-        if (m_streamBuffer.isEmpty()) {
+        if (hadError && m_streamBuffer.isEmpty()) {
             appendMessage("Error", m_currentReply->errorString());
+        } else if (hadError && !m_streamBuffer.isEmpty()) {
+            // Had partial stream content before error — mark as incomplete
+            m_streamBuffer += "\n[response may be incomplete]";
         }
     }
 

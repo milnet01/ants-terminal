@@ -48,7 +48,7 @@ void XcbPositionTracker::setPosition(int x, int y) {
     });
     QObject::connect(proc, &QProcess::finished, m_window, [proc, scriptPath]() {
         proc->deleteLater();
-        auto *proc2 = new QProcess();
+        auto *proc2 = new QProcess(proc->parent());
         proc2->start("dbus-send", {
             "--session", "--dest=org.kde.KWin", "--print-reply",
             "/Scripting", "org.kde.kwin.Scripting.start"

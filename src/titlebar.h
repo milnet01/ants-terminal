@@ -21,8 +21,6 @@ signals:
     void minimizeRequested();
     void maximizeRequested();
     void closeRequested();
-
-signals:
     void windowMoved(const QPoint &newPos);
 
 public:

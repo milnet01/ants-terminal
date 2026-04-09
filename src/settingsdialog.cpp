@@ -265,8 +265,8 @@ void SettingsDialog::setupKeybindingsTab(QWidget *tab) {
             {"split_vertical", "Ctrl+Shift+O"}, {"close_pane", "Ctrl+Shift+X"},
             {"ai_assistant", "Ctrl+Shift+A"}, {"claude_allowlist", "Ctrl+Shift+L"},
             {"claude_projects", "Ctrl+Shift+J"}, {"record_session", "Ctrl+Shift+R"},
-            {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+N"},
-            {"prev_bookmark", "Ctrl+Shift+K"},
+            {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+Down"},
+            {"prev_bookmark", "Ctrl+Shift+Up"},
         };
         m_keybindingTable->setRowCount(0);
         for (auto &[action, key] : defaults) {
@@ -496,8 +496,8 @@ void SettingsDialog::loadSettings() {
         {"split_vertical", "Ctrl+Shift+O"}, {"close_pane", "Ctrl+Shift+X"},
         {"ai_assistant", "Ctrl+Shift+A"}, {"claude_allowlist", "Ctrl+Shift+L"},
         {"claude_projects", "Ctrl+Shift+J"}, {"record_session", "Ctrl+Shift+R"},
-        {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+N"},
-        {"prev_bookmark", "Ctrl+Shift+K"},
+        {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+Down"},
+        {"prev_bookmark", "Ctrl+Shift+Up"},
     };
     for (auto &[action, defaultKey] : defaults) {
         int row = m_keybindingTable->rowCount();

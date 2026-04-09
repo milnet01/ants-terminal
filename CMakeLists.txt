@@ -37,6 +37,8 @@ add_executable(ants-terminal
     src/aidialog.cpp
     src/sshdialog.cpp
     src/settingsdialog.cpp
+    src/toggleswitch.cpp
+    src/auditdialog.cpp
     src/xcbpositiontracker.cpp
     src/claudeallowlist.cpp
     src/claudeintegration.cpp

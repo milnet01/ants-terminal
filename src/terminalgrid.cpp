@@ -527,7 +527,7 @@ void TerminalGrid::handleOsc(const std::string &payload) {
         }
     }
     // OSC 133 — Shell integration: OSC 133 ; A/B/C/D ST
-    else if (oscNum == "133" && semi != std::string::npos) {
+    else if (oscNum == "133" && semi != std::string::npos && semi + 1 < payload.size()) {
         char marker = payload[semi + 1];
         int globalLine = static_cast<int>(m_scrollback.size()) + m_cursorRow;
         switch (marker) {
@@ -853,7 +853,7 @@ void TerminalGrid::scrollUp(int count) {
             if (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
                 m_scrollback.pop_front();
             // Move hyperlinks to scrollback
-            if (!m_screenHyperlinks.empty()) {
+            if (m_scrollTop < static_cast<int>(m_screenHyperlinks.size())) {
                 m_scrollbackHyperlinks.push_back(std::move(m_screenHyperlinks[m_scrollTop]));
                 while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
                     m_scrollbackHyperlinks.pop_front();
@@ -864,10 +864,12 @@ void TerminalGrid::scrollUp(int count) {
         tl.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
         m_screenLines.insert(m_screenLines.begin() + m_scrollBottom, std::move(tl));
         // Shift hyperlink rows
-        if (m_scrollTop < static_cast<int>(m_screenHyperlinks.size())) {
+        if (m_scrollTop < static_cast<int>(m_screenHyperlinks.size()) &&
+            m_scrollBottom <= static_cast<int>(m_screenHyperlinks.size())) {
             m_screenHyperlinks.erase(m_screenHyperlinks.begin() + m_scrollTop);
-            m_screenHyperlinks.insert(m_screenHyperlinks.begin() + m_scrollBottom,
-                                       std::vector<HyperlinkSpan>{});
+            m_screenHyperlinks.insert(m_screenHyperlinks.begin() +
+                std::min(m_scrollBottom, static_cast<int>(m_screenHyperlinks.size())),
+                std::vector<HyperlinkSpan>{});
         }
     }
 }

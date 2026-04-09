@@ -35,32 +35,44 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
 void ClaudeIntegration::pollClaudeProcess() {
     if (m_shellPid <= 0) return;
 
-    // Scan /proc for claude processes that are children of our shell
-    QDir procDir("/proc");
+    // Scan only direct children of our shell via /proc/<pid>/task/<tid>/children
     bool found = false;
     pid_t foundPid = 0;
 
-    for (const QString &entry : procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-        bool ok;
-        pid_t pid = entry.toInt(&ok);
-        if (!ok || pid <= 0) continue;
+    // Read child PIDs from the kernel's children file (much faster than scanning all /proc)
+    QFile childFile(QString("/proc/%1/task/%1/children").arg(m_shellPid));
+    QList<pid_t> childPids;
+    if (childFile.open(QIODevice::ReadOnly)) {
+        QString children = QString::fromUtf8(childFile.readAll()).trimmed();
+        childFile.close();
+        for (const QString &pidStr : children.split(' ', Qt::SkipEmptyParts)) {
+            bool ok;
+            pid_t pid = pidStr.toInt(&ok);
+            if (ok && pid > 0) childPids.append(pid);
+        }
+    } else {
+        // Fallback: scan /proc but only check stat for ppid match
+        QDir procDir("/proc");
+        for (const QString &entry : procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            bool ok;
+            pid_t pid = entry.toInt(&ok);
+            if (!ok || pid <= 0) continue;
 
-        // Check if this process is a child of our shell
-        QFile statFile(QString("/proc/%1/stat").arg(pid));
-        if (!statFile.open(QIODevice::ReadOnly)) continue;
-        QString stat = QString::fromUtf8(statFile.readAll());
-        statFile.close();
+            QFile statFile(QString("/proc/%1/stat").arg(pid));
+            if (!statFile.open(QIODevice::ReadOnly)) continue;
+            QString stat = QString::fromUtf8(statFile.readAll());
+            statFile.close();
 
-        // Parse ppid (4th field, after comm which may contain spaces)
-        int closeParenIdx = stat.lastIndexOf(')');
-        if (closeParenIdx < 0) continue;
-        QStringList fields = stat.mid(closeParenIdx + 2).split(' ');
-        if (fields.size() < 2) continue;
-        pid_t ppid = fields[1].toInt();
+            int closeParenIdx = stat.lastIndexOf(')');
+            if (closeParenIdx < 0) continue;
+            QStringList fields = stat.mid(closeParenIdx + 2).split(' ');
+            if (fields.size() < 2) continue;
+            pid_t ppid = fields[1].toInt();
+            if (ppid == m_shellPid) childPids.append(pid);
+        }
+    }
 
-        if (ppid != m_shellPid) continue;
-
-        // Check if this is Claude Code by reading the command line
+    for (pid_t pid : childPids) {
         QFile cmdFile(QString("/proc/%1/cmdline").arg(pid));
         if (!cmdFile.open(QIODevice::ReadOnly)) continue;
         QString cmdline = QString::fromUtf8(cmdFile.readAll()).replace('\0', ' ').toLower();

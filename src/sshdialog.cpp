@@ -51,8 +51,11 @@ QString SshBookmark::toSshCommand() const {
         args << "-p" << QString::number(port);
     if (!identityFile.isEmpty())
         args << "-i" << shellQuote(identityFile);
-    if (!extraArgs.isEmpty())
-        args << extraArgs; // User-provided verbatim; they control their own args
+    if (!extraArgs.isEmpty()) {
+        // Shell-quote each argument to prevent command injection
+        for (const QString &arg : extraArgs.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts))
+            args << shellQuote(arg);
+    }
     if (!user.isEmpty())
         args << shellQuote(user + "@" + host);
     else

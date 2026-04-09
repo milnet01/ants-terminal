@@ -11,6 +11,7 @@
 #include "claudeintegration.h"
 #include "claudeprojects.h"
 #include "claudetranscript.h"
+#include "auditdialog.h"
 
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
@@ -194,6 +195,7 @@ void MainWindow::setupMenus() {
     newWindowAction->setShortcut(QKeySequence(m_config.keybinding("new_window", "Ctrl+Shift+N")));
     connect(newWindowAction, &QAction::triggered, this, []() {
         auto *win = new MainWindow();
+        win->setAttribute(Qt::WA_DeleteOnClose);
         win->show();
     });
 
@@ -350,6 +352,21 @@ void MainWindow::setupMenus() {
         m_aiDialog->show();
         m_aiDialog->raise();
     });
+
+    toolsMenu->addSeparator();
+
+    // Project Audit
+    QAction *auditAction = toolsMenu->addAction("Project &Audit...");
+    connect(auditAction, &QAction::triggered, this, [this]() {
+        QString cwd;
+        if (auto *t = focusedTerminal()) cwd = t->shellCwd();
+        if (cwd.isEmpty()) cwd = QDir::currentPath();
+        auto *dlg = new AuditDialog(cwd, this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->show();
+    });
+
+    toolsMenu->addSeparator();
 
     // Claude Code submenu
     QMenu *claudeMenu = toolsMenu->addMenu("&Claude Code");
@@ -526,7 +543,7 @@ void MainWindow::setupMenus() {
     });
 
     QAction *nextBmAction = settingsMenu->addAction("Next Bookmark");
-    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark", "Ctrl+Shift+N")));
+    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark", "Ctrl+Shift+Down")));
     connect(nextBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -534,7 +551,7 @@ void MainWindow::setupMenus() {
     });
 
     QAction *prevBmAction = settingsMenu->addAction("Previous Bookmark");
-    prevBmAction->setShortcut(QKeySequence(m_config.keybinding("prev_bookmark", "Ctrl+Shift+K")));
+    prevBmAction->setShortcut(QKeySequence(m_config.keybinding("prev_bookmark", "Ctrl+Shift+Up")));
     connect(prevBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -739,9 +756,14 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
 
     // Claude Code permission detection → status bar notification
     connect(terminal, &TerminalWidget::claudePermissionDetected, this, [this](const QString &rule) {
+        // Remove any existing allowlist button to prevent accumulation
+        auto existing = statusBar()->findChildren<QPushButton *>("claudeAllowBtn");
+        for (auto *btn : existing) btn->deleteLater();
+
         statusBar()->showMessage(
             QString("Claude Code permission: %1 — ").arg(rule), 10000);
         auto *addBtn = new QPushButton("Add to allowlist", statusBar());
+        addBtn->setObjectName("claudeAllowBtn");
         statusBar()->addPermanentWidget(addBtn);
         connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn]() {
             openClaudeAllowlistDialog(rule);

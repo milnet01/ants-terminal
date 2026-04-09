@@ -5,6 +5,8 @@
 #include <QJsonDocument>
 #include <QStandardPaths>
 
+#include <sys/stat.h>
+
 Config::Config() {
     load();
 }
@@ -28,11 +30,14 @@ void Config::load() {
 
 void Config::save() {
     QString path = configPath();
+    // Set restrictive umask before creating file to avoid brief world-readable window
+    mode_t oldMask = ::umask(0077);
     QFile file(path);
     if (file.open(QIODevice::WriteOnly)) {
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         file.write(QJsonDocument(m_data).toJson());
     }
+    ::umask(oldMask);
 }
 
 QString Config::theme() const {

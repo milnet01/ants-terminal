@@ -725,12 +725,12 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         if (key >= Qt::Key_A && key <= Qt::Key_Z) {
             char ch = static_cast<char>(key - Qt::Key_A + 1);
             data.append(ch);
-            m_pty->write(data);
+            if (m_pty) m_pty->write(data);
             return;
         }
-        if (key == Qt::Key_BracketLeft) { data = "\x1B"; m_pty->write(data); return; }
-        if (key == Qt::Key_Backslash)   { data = "\x1C"; m_pty->write(data); return; }
-        if (key == Qt::Key_BracketRight){ data = "\x1D"; m_pty->write(data); return; }
+        if (key == Qt::Key_BracketLeft) { data = "\x1B"; if (m_pty) m_pty->write(data); return; }
+        if (key == Qt::Key_Backslash)   { data = "\x1C"; if (m_pty) m_pty->write(data); return; }
+        if (key == Qt::Key_BracketRight){ data = "\x1D"; if (m_pty) m_pty->write(data); return; }
     }
 
     // Accept autocomplete suggestion with Right arrow (only when suggestion is showing)
@@ -944,21 +944,19 @@ void TerminalWidget::onPtyData(const QByteArray &data) {
     // Asciicast recording
     if (m_recording && m_recordFile && m_recordFile->isOpen()) {
         double elapsed = m_recordTimer.elapsed() / 1000.0;
-        // Escape the data for JSON
-        QString escaped = QString::fromUtf8(data);
-        escaped.replace('\\', "\\\\");
-        escaped.replace('"', "\\\"");
-        escaped.replace('\n', "\\n");
-        escaped.replace('\r', "\\r");
-        escaped.replace('\t', "\\t");
-        // Escape control characters
-        for (int i = 0; i < escaped.size(); ++i) {
-            QChar ch = escaped[i];
-            if (ch.unicode() < 0x20 && ch != '\n' && ch != '\r' && ch != '\t') {
-                QString esc = QString("\\u%1").arg(static_cast<int>(ch.unicode()), 4, 16, QChar('0'));
-                escaped.replace(i, 1, esc);
-                i += esc.size() - 1;
-            }
+        // Escape the data for JSON in a single pass
+        QString raw = QString::fromUtf8(data);
+        QString escaped;
+        escaped.reserve(raw.size() + raw.size() / 4);
+        for (QChar ch : raw) {
+            ushort u = ch.unicode();
+            if (u == '\\')      escaped += "\\\\";
+            else if (u == '"')  escaped += "\\\"";
+            else if (u == '\n') escaped += "\\n";
+            else if (u == '\r') escaped += "\\r";
+            else if (u == '\t') escaped += "\\t";
+            else if (u < 0x20)  escaped += QString("\\u%1").arg(u, 4, 16, QChar('0'));
+            else                escaped += ch;
         }
         QString line = QString("[%1, \"o\", \"%2\"]\n")
             .arg(elapsed, 0, 'f', 6)

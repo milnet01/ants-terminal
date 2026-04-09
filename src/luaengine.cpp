@@ -16,8 +16,11 @@ static LuaEngine *getEngine(lua_State *L) {
 void *LuaEngine::luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     auto *engine = static_cast<LuaEngine *>(ud);
     if (nsize == 0) {
-        // Free
-        engine->m_luaMemUsage -= osize;
+        // Free — guard against unsigned underflow from accounting drift
+        if (osize <= engine->m_luaMemUsage)
+            engine->m_luaMemUsage -= osize;
+        else
+            engine->m_luaMemUsage = 0;
         free(ptr);
         return nullptr;
     }
