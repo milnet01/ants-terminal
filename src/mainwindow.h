@@ -6,6 +6,7 @@
 #include <QMainWindow>
 #include <QTabWidget>
 #include <QActionGroup>
+#include <QLabel>
 
 class TitleBar;
 class TerminalWidget;
@@ -13,6 +14,8 @@ class CommandPalette;
 class AiDialog;
 class SshDialog;
 class ClaudeAllowlistDialog;
+class ClaudeTranscriptDialog;
+class ClaudeIntegration;
 class QSplitter;
 class XcbPositionTracker;
 #ifdef ANTS_LUA_PLUGINS
@@ -93,9 +96,13 @@ private:
     // SSH manager
     SshDialog *m_sshDialog = nullptr;
 
-    // Claude Code allowlist
+    // Claude Code integration
+    ClaudeIntegration *m_claudeIntegration = nullptr;
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;
+    ClaudeTranscriptDialog *m_claudeTranscript = nullptr;
+    QLabel *m_claudeStatusLabel = nullptr;
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
+    void setupClaudeIntegration();
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS

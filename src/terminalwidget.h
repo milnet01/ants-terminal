@@ -90,6 +90,9 @@ public:
     // Get the shell's current working directory (via /proc/PID/cwd)
     QString shellCwd() const;
 
+    // Get the shell's PID (for process tree inspection)
+    pid_t shellPid() const;
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);

@@ -1818,6 +1818,10 @@ QString TerminalWidget::shellCwd() const {
     return cwdInfo.exists() ? cwdInfo.symLinkTarget() : QString();
 }
 
+pid_t TerminalWidget::shellPid() const {
+    return m_pty ? m_pty->childPid() : -1;
+}
+
 // --- Claude Code permission detection ---
 
 void TerminalWidget::checkForClaudePermissionPrompt() {

@@ -7,6 +7,8 @@
 #include "sessionmanager.h"
 #include "xcbpositiontracker.h"
 #include "claudeallowlist.h"
+#include "claudeintegration.h"
+#include "claudetranscript.h"
 
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
@@ -131,6 +133,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     // Create first tab
     newTab();
+
+    // Claude Code integration
+    setupClaudeIntegration();
 
     // Cleanup old sessions
     SessionManager::cleanupOldSessions(30);
@@ -332,10 +337,48 @@ void MainWindow::setupMenus() {
 
     // Claude Code submenu
     QMenu *claudeMenu = toolsMenu->addMenu("&Claude Code");
+
     QAction *editAllowlist = claudeMenu->addAction("Edit &Allowlist...");
     editAllowlist->setShortcut(QKeySequence(m_config.keybinding("claude_allowlist", "Ctrl+Shift+L")));
     connect(editAllowlist, &QAction::triggered, this, [this]() {
         openClaudeAllowlistDialog();
+    });
+
+    QAction *viewTranscript = claudeMenu->addAction("View &Transcript...");
+    connect(viewTranscript, &QAction::triggered, this, [this]() {
+        if (!m_claudeTranscript)
+            m_claudeTranscript = new ClaudeTranscriptDialog(m_claudeIntegration, this);
+        m_claudeTranscript->show();
+        m_claudeTranscript->raise();
+    });
+
+    claudeMenu->addSeparator();
+
+    // Slash command shortcuts
+    for (auto &[label, cmd] : std::initializer_list<std::pair<const char*, const char*>>{
+        {"Send /compact", "/compact"},
+        {"Send /clear", "/clear"},
+        {"Send /cost", "/cost"},
+        {"Send /help", "/help"},
+        {"Send /status", "/status"},
+    }) {
+        QAction *a = claudeMenu->addAction(label);
+        connect(a, &QAction::triggered, this, [this, cmd]() {
+            if (auto *t = focusedTerminal()) t->writeCommand(QString(cmd));
+        });
+    }
+
+    claudeMenu->addSeparator();
+
+    QAction *configureHooks = claudeMenu->addAction("Configure &Hooks for this Project");
+    connect(configureHooks, &QAction::triggered, this, [this]() {
+        if (auto *t = focusedTerminal()) {
+            QString cwd = t->shellCwd();
+            if (!cwd.isEmpty()) {
+                ClaudeIntegration::ensureHooksConfigured(cwd, 0);
+                statusBar()->showMessage("Claude Code hooks configured in " + cwd, 5000);
+            }
+        }
     });
 
     // Settings menu
@@ -560,6 +603,10 @@ void MainWindow::newTab() {
 
     terminal->setFocus();
 
+    // Track shell process for Claude Code integration
+    if (m_claudeIntegration)
+        m_claudeIntegration->setShellPid(terminal->shellPid());
+
     // Hide tab bar when only one tab
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
 }
@@ -745,6 +792,9 @@ void MainWindow::onTabChanged(int /*index*/) {
     if (t) {
         t->setFocus();
         onTitleChanged(t->shellTitle());
+        // Update Claude integration with the focused terminal's shell
+        if (m_claudeIntegration)
+            m_claudeIntegration->setShellPid(t->shellPid());
     }
 }
 
@@ -1049,6 +1099,84 @@ void MainWindow::showEvent(QShowEvent *event) {
             centerWindow();
         });
     }
+}
+
+void MainWindow::setupClaudeIntegration() {
+    m_claudeIntegration = new ClaudeIntegration(this);
+
+    // Status bar indicator for Claude Code state
+    m_claudeStatusLabel = new QLabel(this);
+    m_claudeStatusLabel->setStyleSheet("color: gray; padding: 0 8px; font-size: 11px;");
+    m_claudeStatusLabel->hide();
+    statusBar()->addPermanentWidget(m_claudeStatusLabel);
+
+    connect(m_claudeIntegration, &ClaudeIntegration::stateChanged,
+            this, [this](ClaudeState state, const QString &detail) {
+        switch (state) {
+        case ClaudeState::NotRunning:
+            m_claudeStatusLabel->hide();
+            break;
+        case ClaudeState::Idle:
+            m_claudeStatusLabel->setText("Claude: idle");
+            m_claudeStatusLabel->setStyleSheet("color: #A6E3A1; padding: 0 8px; font-size: 11px;");
+            m_claudeStatusLabel->show();
+            break;
+        case ClaudeState::Thinking:
+            m_claudeStatusLabel->setText("Claude: thinking...");
+            m_claudeStatusLabel->setStyleSheet("color: #89B4FA; padding: 0 8px; font-size: 11px;");
+            m_claudeStatusLabel->show();
+            break;
+        case ClaudeState::ToolUse:
+            m_claudeStatusLabel->setText(QString("Claude: %1").arg(detail));
+            m_claudeStatusLabel->setStyleSheet("color: #F9E2AF; padding: 0 8px; font-size: 11px;");
+            m_claudeStatusLabel->show();
+            break;
+        }
+    });
+
+    connect(m_claudeIntegration, &ClaudeIntegration::contextUpdated,
+            this, [this](int percent) {
+        if (m_claudeStatusLabel->isVisible()) {
+            QString current = m_claudeStatusLabel->text();
+            if (!current.contains("ctx:"))
+                m_claudeStatusLabel->setText(current + QString(" [ctx: %1%]").arg(percent));
+        }
+    });
+
+    connect(m_claudeIntegration, &ClaudeIntegration::fileChanged,
+            this, [this](const QString &path) {
+        statusBar()->showMessage(QString("Claude edited: %1").arg(path), 3000);
+    });
+
+    connect(m_claudeIntegration, &ClaudeIntegration::permissionRequested,
+            this, [this](const QString &tool, const QString &input) {
+        QString rule = tool;
+        if (!input.isEmpty()) rule += "(" + input + ")";
+        statusBar()->showMessage(QString("Claude permission: %1").arg(rule), 10000);
+        auto *addBtn = new QPushButton("Add to allowlist", statusBar());
+        statusBar()->addPermanentWidget(addBtn);
+        connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn]() {
+            openClaudeAllowlistDialog(rule);
+            addBtn->deleteLater();
+        });
+        QTimer::singleShot(10000, addBtn, &QObject::deleteLater);
+    });
+
+    // Set up MCP server
+    QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
+                        QString::number(QApplication::applicationPid());
+    m_claudeIntegration->startMcpServer(mcpSocket);
+    m_claudeIntegration->setScrollbackProvider([this](int lines) -> QString {
+        if (auto *t = focusedTerminal()) return t->recentOutput(lines);
+        return {};
+    });
+    m_claudeIntegration->setCwdProvider([this]() -> QString {
+        if (auto *t = focusedTerminal()) return t->shellCwd();
+        return QDir::currentPath();
+    });
+
+    // Start hook server
+    m_claudeIntegration->startHookServer();
 }
 
 void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
