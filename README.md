@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="#features">Features</a> &bull;
+  <a href="#claude-code-integration">Claude Code</a> &bull;
   <a href="#building">Building</a> &bull;
   <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
   <a href="#themes">Themes</a> &bull;
@@ -124,7 +125,7 @@ When the cursor sits on a bracket character -- `(`, `)`, `[`, `]`, `{`, or `}` -
 
 ### Line Bookmarks
 
-Toggle bookmarks on any line with **Ctrl+Shift+B**. Navigate between bookmarks with **Ctrl+Shift+J** (next) and **Ctrl+Shift+K** (previous). Bookmarks are shown as colored dots in the left gutter.
+Toggle bookmarks on any line with **Ctrl+Shift+B**. Navigate between bookmarks with **Ctrl+Shift+N** (next) and **Ctrl+Shift+K** (previous). Bookmarks are shown as colored dots in the left gutter.
 
 ### Prompt Navigation (OSC 133)
 
@@ -231,6 +232,22 @@ ants.set_status("Custom status text")
 - **Background Alpha** -- per-pixel transparency from 50% to 100%
 - **Translucent background** -- works with KDE Plasma / KWin compositor
 - **Background blur** -- toggleable in Settings menu (requires compositor support)
+
+### Claude Code Integration
+
+Deep integration with [Claude Code](https://claude.ai/claude-code) for AI-assisted development workflows.
+
+**Live Status Monitoring** -- The status bar shows Claude's current state (idle, thinking, tool use) with context window usage. Process detection via `/proc` polling automatically tracks running Claude sessions.
+
+**Project & Session Browser** (**Ctrl+Shift+J**) -- Browse all your Claude Code projects discovered from `~/.claude/projects/`. For each project, see every session with its first message summary, timestamp, file size, and active status. Resume any session, continue the latest, or fork a session -- all directly from the terminal.
+
+**Permission Allowlist Editor** (**Ctrl+Shift+L**) -- Visual editor for `.claude/settings.local.json` permission rules. Add, remove, and organize allow/deny/ask rules with preset suggestions for common tools (git, npm, cargo, etc.). Changes are written atomically with proper file permissions.
+
+**Session Transcript Viewer** -- Read-only viewer for Claude Code JSONL transcripts. Displays user messages, assistant responses, tool calls, and token usage in a formatted HTML view.
+
+**Slash Command Shortcuts** -- Quick menu entries for sending `/compact`, `/clear`, `/cost`, `/help`, and `/status` to a running Claude session.
+
+**Project Directory Management** -- Configure directories where new Claude Code projects can be created. Start new projects in any managed directory directly from the Projects dialog.
 
 ### Configurable Keybindings
 
@@ -351,7 +368,7 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 | Shift+Home/End | Scroll to top/bottom |
 | Ctrl+Shift+Up/Down | Jump to prev/next prompt (OSC 133) |
 | Ctrl+Shift+B | Toggle line bookmark |
-| Ctrl+Shift+J/K | Next/previous bookmark |
+| Ctrl+Shift+N/K | Next/previous bookmark |
 
 ### Search
 
@@ -388,6 +405,8 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 | Ctrl+Shift+A | AI Assistant |
 | Ctrl+Shift+S | SSH Manager |
 | Ctrl+Shift+R | Toggle session recording |
+| Ctrl+Shift+J | Claude Code Projects & Sessions |
+| Ctrl+Shift+L | Claude Code Allowlist Editor |
 
 ---
 
@@ -449,6 +468,12 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
 | **LuaEngine** | `luaengine.h/cpp` | Embedded Lua 5.4, sandboxed API, event handlers |
 | **PluginManager** | `pluginmanager.h/cpp` | Plugin discovery, loading, lifecycle |
 | **CommandPalette** | `commandpalette.h/cpp` | Searchable action overlay (Ctrl+Shift+P) |
+| **TitleBar** | `titlebar.h/cpp` | Custom frameless title bar with drag support |
+| **XcbPositionTracker** | `xcbpositiontracker.h/cpp` | Window position tracking via KWin scripting |
+| **ClaudeIntegration** | `claudeintegration.h/cpp` | Claude Code process detection, status, hooks |
+| **ClaudeProjects** | `claudeprojects.h/cpp` | Project/session browser and resume dialog |
+| **ClaudeAllowlist** | `claudeallowlist.h/cpp` | Permission rule editor for Claude settings |
+| **ClaudeTranscript** | `claudetranscript.h/cpp` | Session transcript viewer |
 | **Themes** | `themes.h/cpp` | 7 color themes with ANSI palette overrides |
 | **Config** | `config.h/cpp` | JSON config persistence (0600 perms) |
 
@@ -548,6 +573,7 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
     "ssh_bookmarks": [],
     "plugin_dir": "",
     "enabled_plugins": [],
+    "claude_project_dirs": [],
     "keybindings": {}
 }
 ```
@@ -570,9 +596,11 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 | `ai_api_key` | string | `""` | API key for AI endpoint |
 | `ai_model` | string | `"llama3"` | LLM model to use |
 | `ai_context_lines` | int | `50` | Lines of terminal output sent to AI |
+| `ai_enabled` | bool | `false` | Enable AI assistant features |
 | `ssh_bookmarks` | array | `[]` | Saved SSH connection bookmarks |
 | `plugin_dir` | string | `""` | Lua plugin directory |
 | `enabled_plugins` | array | `[]` | List of enabled plugin names |
+| `claude_project_dirs` | array | `[]` | Directories for Claude Code projects |
 | `keybindings` | object | `{}` | Custom keybindings (action -> key) |
 
 ---
@@ -660,6 +688,7 @@ ants-terminal/
 └── src/
     ├── main.cpp                # Entry point, OpenGL format setup
     ├── mainwindow.h/cpp        # Window, menus, themes, dialogs
+    ├── titlebar.h/cpp          # Custom frameless title bar
     ├── terminalwidget.h/cpp    # Rendering, input, selection, search
     ├── terminalgrid.h/cpp      # Cell grid, scrollback, VtAction processing
     ├── vtparser.h/cpp          # VT100/xterm state machine, UTF-8 decoder
@@ -671,6 +700,11 @@ ants-terminal/
     ├── sessionmanager.h/cpp    # Session save/restore
     ├── aidialog.h/cpp          # AI assistant (OpenAI API)
     ├── sshdialog.h/cpp         # SSH bookmark manager
+    ├── xcbpositiontracker.h/cpp # KWin window position tracking
+    ├── claudeintegration.h/cpp # Claude Code status, hooks, MCP
+    ├── claudeprojects.h/cpp    # Claude Code project/session browser
+    ├── claudeallowlist.h/cpp   # Claude Code permission editor
+    ├── claudetranscript.h/cpp  # Claude Code transcript viewer
     ├── luaengine.h/cpp         # Lua 5.4 scripting engine
     └── pluginmanager.h/cpp     # Plugin discovery + loading
 ```
