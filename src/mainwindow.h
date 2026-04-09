@@ -14,6 +14,7 @@ class CommandPalette;
 class AiDialog;
 class SshDialog;
 class ClaudeAllowlistDialog;
+class ClaudeProjectsDialog;
 class ClaudeTranscriptDialog;
 class ClaudeIntegration;
 class QSplitter;
@@ -99,9 +100,11 @@ private:
     // Claude Code integration
     ClaudeIntegration *m_claudeIntegration = nullptr;
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;
+    ClaudeProjectsDialog *m_claudeProjects = nullptr;
     ClaudeTranscriptDialog *m_claudeTranscript = nullptr;
     QLabel *m_claudeStatusLabel = nullptr;
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
+    void openClaudeProjectsDialog();
     void setupClaudeIntegration();
 
     // Plugin manager

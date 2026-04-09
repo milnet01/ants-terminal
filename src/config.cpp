@@ -262,3 +262,20 @@ void Config::setEnabledPlugins(const QStringList &plugins) {
     m_data["enabled_plugins"] = arr;
     save();
 }
+
+// Claude Code project directories
+QStringList Config::claudeProjectDirs() const {
+    QStringList result;
+    QJsonArray arr = m_data.value("claude_project_dirs").toArray();
+    for (const QJsonValue &v : arr)
+        result.append(v.toString());
+    return result;
+}
+
+void Config::setClaudeProjectDirs(const QStringList &dirs) {
+    QJsonArray arr;
+    for (const QString &d : dirs)
+        arr.append(d);
+    m_data["claude_project_dirs"] = arr;
+    save();
+}

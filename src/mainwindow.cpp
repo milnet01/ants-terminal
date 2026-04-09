@@ -8,6 +8,7 @@
 #include "xcbpositiontracker.h"
 #include "claudeallowlist.h"
 #include "claudeintegration.h"
+#include "claudeprojects.h"
 #include "claudetranscript.h"
 
 #ifdef ANTS_LUA_PLUGINS
@@ -342,6 +343,12 @@ void MainWindow::setupMenus() {
     editAllowlist->setShortcut(QKeySequence(m_config.keybinding("claude_allowlist", "Ctrl+Shift+L")));
     connect(editAllowlist, &QAction::triggered, this, [this]() {
         openClaudeAllowlistDialog();
+    });
+
+    QAction *viewProjects = claudeMenu->addAction("&Projects && Sessions...");
+    viewProjects->setShortcut(QKeySequence(m_config.keybinding("claude_projects", "Ctrl+Shift+J")));
+    connect(viewProjects, &QAction::triggered, this, [this]() {
+        openClaudeProjectsDialog();
     });
 
     QAction *viewTranscript = claudeMenu->addAction("View &Transcript...");
@@ -1200,6 +1207,55 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
         m_claudeDialog->prefillRule(prefillRule);
     m_claudeDialog->show();
     m_claudeDialog->raise();
+}
+
+void MainWindow::openClaudeProjectsDialog() {
+    if (!m_claudeProjects) {
+        m_claudeProjects = new ClaudeProjectsDialog(m_claudeIntegration, &m_config, this);
+
+        // Shell-quote a path (wrap in single quotes, escape existing quotes)
+        auto shellQuote = [](const QString &path) -> QString {
+            QString escaped = path;
+            escaped.replace("'", "'\\''");
+            return "'" + escaped + "'";
+        };
+
+        // Resume a specific session
+        connect(m_claudeProjects, &ClaudeProjectsDialog::resumeSession,
+                this, [this, shellQuote](const QString &projectPath, const QString &sessionId, bool fork) {
+            auto *t = focusedTerminal();
+            if (!t) return;
+            QString cmd = QString("cd %1 && claude --resume %2")
+                          .arg(shellQuote(projectPath), sessionId);
+            if (fork) cmd += " --fork-session";
+            t->writeCommand(cmd);
+        });
+
+        // Continue the latest session in a project
+        connect(m_claudeProjects, &ClaudeProjectsDialog::continueProject,
+                this, [this, shellQuote](const QString &projectPath) {
+            auto *t = focusedTerminal();
+            if (!t) return;
+            t->writeCommand(QString("cd %1 && claude --continue").arg(shellQuote(projectPath)));
+        });
+
+        // Start a new session in a project
+        connect(m_claudeProjects, &ClaudeProjectsDialog::newSession,
+                this, [this, shellQuote](const QString &projectPath) {
+            auto *t = focusedTerminal();
+            if (!t) return;
+            t->writeCommand(QString("cd %1 && claude").arg(shellQuote(projectPath)));
+        });
+
+        connect(m_claudeProjects, &QDialog::finished, this, [this]() {
+            if (auto *t = focusedTerminal()) t->setFocus();
+        });
+    } else {
+        m_claudeProjects->refresh();
+    }
+
+    m_claudeProjects->show();
+    m_claudeProjects->raise();
 }
 
 void MainWindow::moveEvent(QMoveEvent *event) {

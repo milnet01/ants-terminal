@@ -89,6 +89,10 @@ public:
     QStringList enabledPlugins() const;
     void setEnabledPlugins(const QStringList &plugins);
 
+    // Claude Code project directories (where to look for / create projects)
+    QStringList claudeProjectDirs() const;
+    void setClaudeProjectDirs(const QStringList &dirs);
+
     void save();
 
 private:

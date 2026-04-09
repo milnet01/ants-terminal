@@ -39,6 +39,7 @@ add_executable(ants-terminal
     src/xcbpositiontracker.cpp
     src/claudeallowlist.cpp
     src/claudeintegration.cpp
+    src/claudeprojects.cpp
     src/claudetranscript.cpp
 )
 

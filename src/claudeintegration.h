@@ -9,8 +9,31 @@
 #include <QFileSystemWatcher>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QDateTime>
 
 class TerminalWidget;
+
+// Metadata for a single Claude Code session
+struct ClaudeSession {
+    QString sessionId;
+    QString projectPath;     // decoded real path (e.g. /mnt/Storage/Scripts/Linux/Ants)
+    QString projectEncoded;  // encoded dir name (e.g. -mnt-Storage-Scripts-Linux-Ants)
+    QString transcriptPath;  // full path to .jsonl file
+    QString name;            // session name (from metadata, if any)
+    QString firstMessage;    // first user message (summary)
+    QDateTime lastModified;
+    qint64 sizeBytes = 0;
+    bool isActive = false;   // currently running
+};
+
+// A project with its sessions
+struct ClaudeProject {
+    QString path;            // decoded real path
+    QString encodedName;     // encoded dir name
+    QString memorySnippet;   // first few lines of MEMORY.md
+    QList<ClaudeSession> sessions;
+    QDateTime lastActivity;  // most recent session date
+};
 
 // Claude Code state detected from process inspection + hooks
 enum class ClaudeState {
@@ -52,6 +75,13 @@ public:
 
     // File change tracking from transcript
     QStringList recentlyChangedFiles() const { return m_changedFiles; }
+
+    // Project/session discovery
+    QList<ClaudeProject> discoverProjects() const;
+    QString sessionSummary(const QString &transcriptPath) const;
+    QString projectMemory(const QString &projectEncoded) const;
+    static QString decodeProjectPath(const QString &encoded);
+    static QString encodeProjectPath(const QString &path);
 
     // Environment setup
     static QProcessEnvironment claudeEnv();

@@ -8,6 +8,7 @@
 #include <QStandardPaths>
 #include <QProcessEnvironment>
 #include <QSaveFile>
+#include <QSet>
 #include <QApplication>
 
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
@@ -440,6 +441,196 @@ void ClaudeIntegration::onMcpConnection() {
         });
         connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
     }
+}
+
+// --- Project / Session Discovery ---
+
+QString ClaudeIntegration::decodeProjectPath(const QString &encoded) {
+    // Claude Code encodes paths by replacing /, _, and spaces with dashes.
+    // Decoding is ambiguous, so this is a best-effort fallback.
+    // The real path should be extracted from transcript cwd fields instead.
+    QString path = encoded;
+    if (path.startsWith('-'))
+        path = '/' + path.mid(1);
+    path.replace('-', '/');
+    return path;
+}
+
+QString ClaudeIntegration::encodeProjectPath(const QString &path) {
+    // Matches Claude Code's encoding: replace / with -
+    QString encoded = path;
+    encoded.replace('/', '-');
+    return encoded;
+}
+
+// Extract the real project path from a transcript's first user message cwd field
+static QString extractCwdFromTranscript(const QString &transcriptPath) {
+    QFile file(transcriptPath);
+    if (!file.open(QIODevice::ReadOnly)) return {};
+
+    int linesRead = 0;
+    while (!file.atEnd() && linesRead < 30) {
+        QByteArray line = file.readLine().trimmed();
+        ++linesRead;
+        if (line.isEmpty()) continue;
+        QJsonDocument doc = QJsonDocument::fromJson(line);
+        if (!doc.isObject()) continue;
+        QJsonObject obj = doc.object();
+        // user messages and some other types carry cwd
+        QString cwd = obj.value("cwd").toString();
+        if (!cwd.isEmpty()) return cwd;
+    }
+    return {};
+}
+
+QList<ClaudeProject> ClaudeIntegration::discoverProjects() const {
+    QList<ClaudeProject> projects;
+    QString home = QDir::homePath();
+    QDir projectsDir(home + "/.claude/projects");
+    if (!projectsDir.exists()) return projects;
+
+    // Load active session metadata to mark active sessions
+    // Also build sessionId -> name + cwd map
+    QSet<QString> activeSessionIds;
+    QHash<QString, QString> sessionNames;   // sessionId -> name
+    QHash<QString, QString> sessionCwds;    // sessionId -> cwd
+    QDir sessionsDir(home + "/.claude/sessions");
+    if (sessionsDir.exists()) {
+        for (const QFileInfo &fi : sessionsDir.entryInfoList({"*.json"}, QDir::Files)) {
+            QFile f(fi.absoluteFilePath());
+            if (!f.open(QIODevice::ReadOnly)) continue;
+            QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+            if (!doc.isObject()) continue;
+            QJsonObject obj = doc.object();
+            QString sid = obj.value("sessionId").toString();
+            QString name = obj.value("name").toString();
+            QString cwd = obj.value("cwd").toString();
+            if (!name.isEmpty()) sessionNames[sid] = name;
+            if (!cwd.isEmpty()) sessionCwds[sid] = cwd;
+            // Check if the process is actually running
+            int pid = obj.value("pid").toInt();
+            if (pid > 0 && QFile::exists(QString("/proc/%1/cmdline").arg(pid)))
+                activeSessionIds.insert(sid);
+        }
+    }
+
+    for (const QString &dirName : projectsDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        QDir projDir(projectsDir.filePath(dirName));
+        QFileInfoList jsonls = projDir.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time);
+        if (jsonls.isEmpty()) continue;
+
+        ClaudeProject project;
+        project.encodedName = dirName;
+
+        // Resolve the real project path from transcript or session metadata
+        // Try session metadata first (most reliable), then transcript cwd
+        QString realPath;
+        for (const QFileInfo &fi : jsonls) {
+            QString sid = fi.baseName();
+            if (sessionCwds.contains(sid)) {
+                realPath = sessionCwds[sid];
+                break;
+            }
+        }
+        if (realPath.isEmpty()) {
+            // Fallback: extract from the most recent transcript
+            realPath = extractCwdFromTranscript(jsonls.first().absoluteFilePath());
+        }
+        if (realPath.isEmpty()) {
+            // Last resort: naive decode
+            realPath = decodeProjectPath(dirName);
+        }
+        project.path = realPath;
+
+        // Read project memory snippet
+        project.memorySnippet = projectMemory(dirName);
+
+        for (const QFileInfo &fi : jsonls) {
+            ClaudeSession session;
+            session.sessionId = fi.baseName();
+            session.projectPath = project.path;
+            session.projectEncoded = dirName;
+            session.transcriptPath = fi.absoluteFilePath();
+            session.lastModified = fi.lastModified();
+            session.sizeBytes = fi.size();
+            session.isActive = activeSessionIds.contains(session.sessionId);
+            session.name = sessionNames.value(session.sessionId);
+
+            // Lazy-load summary for the first few sessions per project
+            if (project.sessions.size() < 5)
+                session.firstMessage = sessionSummary(fi.absoluteFilePath());
+
+            project.sessions.append(session);
+        }
+
+        if (!project.sessions.isEmpty())
+            project.lastActivity = project.sessions.first().lastModified;
+
+        projects.append(project);
+    }
+
+    // Sort projects by last activity (most recent first)
+    std::sort(projects.begin(), projects.end(), [](const ClaudeProject &a, const ClaudeProject &b) {
+        return a.lastActivity > b.lastActivity;
+    });
+
+    return projects;
+}
+
+QString ClaudeIntegration::sessionSummary(const QString &transcriptPath) const {
+    QFile file(transcriptPath);
+    if (!file.open(QIODevice::ReadOnly)) return {};
+
+    // Read up to 50 lines to find the first user message
+    int linesRead = 0;
+    while (!file.atEnd() && linesRead < 50) {
+        QByteArray line = file.readLine().trimmed();
+        ++linesRead;
+        if (line.isEmpty()) continue;
+
+        QJsonDocument doc = QJsonDocument::fromJson(line);
+        if (!doc.isObject()) continue;
+        QJsonObject obj = doc.object();
+
+        if (obj.value("type").toString() != "user") continue;
+
+        QJsonObject msg = obj.value("message").toObject();
+        QJsonValue content = msg.value("content");
+
+        QString text;
+        if (content.isArray()) {
+            for (const QJsonValue &c : content.toArray()) {
+                QJsonObject block = c.toObject();
+                if (block.value("type").toString() == "text") {
+                    text = block.value("text").toString();
+                    break;
+                }
+            }
+        } else if (content.isString()) {
+            text = content.toString();
+        }
+
+        if (!text.isEmpty()) {
+            // Truncate to ~150 chars
+            if (text.length() > 150)
+                text = text.left(150) + "...";
+            return text.simplified();
+        }
+    }
+    return {};
+}
+
+QString ClaudeIntegration::projectMemory(const QString &projectEncoded) const {
+    QString memPath = QDir::homePath() + "/.claude/projects/"
+                      + projectEncoded + "/memory/MEMORY.md";
+    QFile file(memPath);
+    if (!file.open(QIODevice::ReadOnly)) return {};
+
+    QString content = QString::fromUtf8(file.readAll());
+    // Return first ~500 chars as snippet
+    if (content.length() > 500)
+        content = content.left(500) + "\n...";
+    return content;
 }
 
 // --- Environment Setup ---
