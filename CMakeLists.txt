@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.3.0 LANGUAGES CXX)
+project(ants-terminal VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus)
 
 # Lua 5.4 (optional — plugin system)
 find_package(PkgConfig)
@@ -36,6 +36,7 @@ add_executable(ants-terminal
     src/sessionmanager.cpp
     src/aidialog.cpp
     src/sshdialog.cpp
+    src/settingsdialog.cpp
     src/xcbpositiontracker.cpp
     src/claudeallowlist.cpp
     src/claudeintegration.cpp
@@ -50,6 +51,7 @@ target_link_libraries(ants-terminal PRIVATE
     Qt6::Network
     Qt6::OpenGL
     Qt6::OpenGLWidgets
+    Qt6::DBus
     util
 )
 

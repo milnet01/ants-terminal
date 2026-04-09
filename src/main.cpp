@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QFont>
 #include <QSurfaceFormat>
+#include <QStringList>
 
 int main(int argc, char *argv[]) {
     // Set default surface format with alpha for per-pixel transparency
@@ -16,15 +17,19 @@ int main(int argc, char *argv[]) {
 
     QApplication app(argc, argv);
     app.setApplicationName("Ants Terminal");
-    app.setApplicationVersion("0.3.0");
+    app.setApplicationVersion("0.4.0");
     app.setStyle("Fusion");
+
+    // Check for --quake / --dropdown flag
+    QStringList args = app.arguments();
+    bool quakeMode = args.contains("--quake") || args.contains("--dropdown");
 
     QFont font("Monospace", 11);
     font.setStyleHint(QFont::Monospace);
     font.setFixedPitch(true);
     app.setFont(font);
 
-    MainWindow window;
+    MainWindow window(quakeMode);
     window.show();
 
     return app.exec();

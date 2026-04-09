@@ -4,6 +4,7 @@
 #include "commandpalette.h"
 #include "aidialog.h"
 #include "sshdialog.h"
+#include "settingsdialog.h"
 #include "sessionmanager.h"
 #include "xcbpositiontracker.h"
 #include "claudeallowlist.h"
@@ -35,8 +36,15 @@
 #include <QTimer>
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QFileDialog>
+#include <QTextStream>
+#include <QDBusMessage>
+#include <QDBusConnection>
+#include <QTextEdit>
+#include <QClipboard>
+#include <QHBoxLayout>
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
+MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Ants Terminal");
     setWindowFlag(Qt::FramelessWindowHint);
 
@@ -46,16 +54,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     // Position tracker — bypasses Qt's broken pos()/moveEvent for frameless windows
     m_posTracker = new XcbPositionTracker(this);
 
-    // Apply window opacity from config
-    setWindowOpacity(m_config.opacity());
-
-    // Translucent background for compositor transparency
-    if (m_config.opacity() < 1.0 || m_config.backgroundAlpha() < 255)
-        setAttribute(Qt::WA_TranslucentBackground, true);
-
-    // KDE/KWin background blur
-    if (m_config.backgroundBlur())
-        setAttribute(Qt::WA_TranslucentBackground, true);
+    // Always enable translucent background — on X11, the window visual (RGB vs
+    // ARGB) is determined at creation time and cannot be changed after show().
+    // Without this, per-pixel alpha (background transparency, window opacity)
+    // has no effect when toggled at runtime.
+    setAttribute(Qt::WA_TranslucentBackground, true);
+    // WA_TranslucentBackground disables auto-fill for the entire widget tree.
+    // WA_StyledBackground ensures the QMainWindow's stylesheet background-color
+    // still paints, keeping the UI chrome opaque.
+    setAttribute(Qt::WA_StyledBackground, true);
 
     // Custom title bar
     m_titleBar = new TitleBar(this);
@@ -137,6 +144,33 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     // Claude Code integration
     setupClaudeIntegration();
+
+    // Status bar info widgets (CWD, git branch, process)
+    m_statusCwd = new QLabel(this);
+    m_statusCwd->setStyleSheet("color: gray; padding: 0 8px; font-size: 11px;");
+    statusBar()->addWidget(m_statusCwd, 1);
+
+    m_statusGitBranch = new QLabel(this);
+    m_statusGitBranch->setStyleSheet("color: #A6E3A1; padding: 0 8px; font-size: 11px;");
+    statusBar()->addWidget(m_statusGitBranch);
+
+    m_statusProcess = new QLabel(this);
+    m_statusProcess->setStyleSheet("color: #89B4FA; padding: 0 8px; font-size: 11px;");
+    statusBar()->addWidget(m_statusProcess);
+
+    // Status update timer (every 2 seconds)
+    m_statusTimer = new QTimer(this);
+    m_statusTimer->setInterval(2000);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateStatusBar);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateTabTitles);
+    m_statusTimer->start();
+
+    // Broadcast mode from config
+    m_broadcastMode = m_config.broadcastMode();
+
+    // Quake mode (from config or constructor flag)
+    if (quakeMode || m_config.quakeMode())
+        setupQuakeMode();
 
     // Cleanup old sessions
     SessionManager::cleanupOldSessions(30);
@@ -257,30 +291,8 @@ void MainWindow::setupMenus() {
         connect(a, &QAction::triggered, this, [this, pct]() {
             double val = pct / 100.0;
             m_config.setOpacity(val);
-            setWindowOpacity(val);
-            setAttribute(Qt::WA_TranslucentBackground,
-                         val < 1.0 || m_config.backgroundBlur() || m_config.backgroundAlpha() < 255);
-        });
-    }
-
-    // Background alpha submenu
-    QMenu *alphaMenu = viewMenu->addMenu("Background &Alpha");
-    QActionGroup *alphaGroup = new QActionGroup(this);
-    alphaGroup->setExclusive(true);
-    int currentAlpha = m_config.backgroundAlpha();
-    for (int alpha : {255, 230, 204, 178, 153, 128}) {
-        int pct = alpha * 100 / 255;
-        QAction *a = alphaMenu->addAction(QString("%1%").arg(pct));
-        a->setCheckable(true);
-        a->setChecked(alpha == currentAlpha);
-        alphaGroup->addAction(a);
-        connect(a, &QAction::triggered, this, [this, alpha]() {
-            m_config.setBackgroundAlpha(alpha);
-            QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
-            for (auto *t : terminals) t->setBackgroundAlpha(alpha);
-            if (alpha < 255)
-                setAttribute(Qt::WA_TranslucentBackground, true);
-            statusBar()->showMessage(QString("Background alpha: %1%").arg(alpha * 100 / 255), 3000);
+            // Re-apply theme to update all background colors with new opacity
+            applyTheme(m_currentTheme);
         });
     }
 
@@ -395,6 +407,38 @@ void MainWindow::setupMenus() {
         }
     });
 
+    claudeMenu->addSeparator();
+
+    // Model switching submenu
+    QMenu *modelMenu = claudeMenu->addMenu("Switch &Model");
+    for (auto &[label, cmd] : std::initializer_list<std::pair<const char*, const char*>>{
+        {"Opus (most capable)", "/model opus"},
+        {"Sonnet (fast + capable)", "/model sonnet"},
+        {"Haiku (fastest)", "/model haiku"},
+    }) {
+        QAction *a = modelMenu->addAction(label);
+        connect(a, &QAction::triggered, this, [this, cmd]() {
+            if (auto *t = focusedTerminal()) t->writeCommand(QString(cmd));
+        });
+    }
+
+    // Thinking level submenu
+    QMenu *thinkMenu = claudeMenu->addMenu("Thinking &Level");
+    for (auto &[label, cmd] : std::initializer_list<std::pair<const char*, const char*>>{
+        {"Ultra Think", "/ultrathink"},
+        {"Think", "/think"},
+        {"No Think", "/nothink"},
+    }) {
+        QAction *a = thinkMenu->addAction(label);
+        connect(a, &QAction::triggered, this, [this, cmd]() {
+            if (auto *t = focusedTerminal()) t->writeCommand(QString(cmd));
+        });
+    }
+
+    // Review Changes action
+    QAction *reviewChanges = claudeMenu->addAction("&Review Changes...");
+    connect(reviewChanges, &QAction::triggered, this, &MainWindow::showDiffViewer);
+
     // Settings menu
     QMenu *settingsMenu = m_menuBar->addMenu("S&ettings");
 
@@ -423,8 +467,7 @@ void MainWindow::setupMenus() {
     blurAction->setChecked(m_config.backgroundBlur());
     connect(blurAction, &QAction::toggled, this, [this](bool checked) {
         m_config.setBackgroundBlur(checked);
-        setAttribute(Qt::WA_TranslucentBackground,
-                     checked || m_config.opacity() < 1.0 || m_config.backgroundAlpha() < 255);
+        // WA_TranslucentBackground is always set at construction time
         statusBar()->showMessage(checked ? "Blur enabled (restart for full effect)" : "Blur disabled", 3000);
     });
 
@@ -518,6 +561,85 @@ void MainWindow::setupMenus() {
         });
     }
 
+    settingsMenu->addSeparator();
+
+    // Broadcast input toggle
+    m_broadcastAction = settingsMenu->addAction("&Broadcast Input to All Panes");
+    m_broadcastAction->setCheckable(true);
+    m_broadcastAction->setChecked(m_config.broadcastMode());
+    m_broadcastAction->setShortcut(QKeySequence(m_config.keybinding("broadcast_input", "Ctrl+Shift+I")));
+    connect(m_broadcastAction, &QAction::toggled, this, [this](bool checked) {
+        m_broadcastMode = checked;
+        m_config.setBroadcastMode(checked);
+        statusBar()->showMessage(checked ? "Broadcast mode ON — input sent to all panes"
+                                         : "Broadcast mode OFF", 3000);
+    });
+
+    settingsMenu->addSeparator();
+
+    // Export scrollback
+    QAction *exportAction = settingsMenu->addAction("Export Scro&llback...");
+    connect(exportAction, &QAction::triggered, this, [this]() {
+        auto *t = focusedTerminal();
+        if (!t) t = currentTerminal();
+        if (!t) return;
+        // Trigger the context menu export (reuses same code)
+        QString path = QFileDialog::getSaveFileName(this, "Export Scrollback", QString(),
+                                                     "Text Files (*.txt);;HTML Files (*.html)");
+        if (path.isEmpty()) return;
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+        QTextStream stream(&file);
+        if (path.endsWith(".html", Qt::CaseInsensitive))
+            stream << t->exportAsHtml();
+        else
+            stream << t->exportAsText();
+        statusBar()->showMessage("Scrollback exported to " + path, 5000);
+    });
+
+    settingsMenu->addSeparator();
+
+    // Settings dialog
+    QAction *settingsAction = settingsMenu->addAction("&Preferences...");
+    settingsAction->setShortcut(QKeySequence(m_config.keybinding("preferences", "Ctrl+,")));
+    connect(settingsAction, &QAction::triggered, this, [this]() {
+        if (!m_settingsDialog) {
+            m_settingsDialog = new SettingsDialog(&m_config, this);
+            connect(m_settingsDialog, &SettingsDialog::settingsChanged, this, [this]() {
+                // Apply all changed settings
+                applyTheme(m_config.theme());
+                applyFontSizeToAll(m_config.fontSize());
+
+                QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+                for (auto *t : terminals) {
+                    applyConfigToTerminal(t);
+                    t->setHighlightRules(m_config.highlightRules());
+                    t->setTriggerRules(m_config.triggerRules());
+                    QString family = m_config.fontFamily();
+                    if (!family.isEmpty()) t->setFontFamily(family);
+                }
+
+                // Opacity is now applied via per-pixel alpha in applyTheme() above
+
+                // Update broadcast
+                m_broadcastMode = m_config.broadcastMode();
+                if (m_broadcastAction)
+                    m_broadcastAction->setChecked(m_broadcastMode);
+
+                // Update quake mode
+                if (m_config.quakeMode() && !m_quakeMode)
+                    setupQuakeMode();
+
+                statusBar()->showMessage("Settings applied", 3000);
+            });
+            connect(m_settingsDialog, &QDialog::finished, this, [this]() {
+                if (auto *t = focusedTerminal()) t->setFocus();
+            });
+        }
+        m_settingsDialog->show();
+        m_settingsDialog->raise();
+    });
+
 #ifdef ANTS_LUA_PLUGINS
     // Plugins menu
     settingsMenu->addSeparator();
@@ -550,8 +672,10 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setAutoCopyOnSelect(m_config.autoCopyOnSelect());
     terminal->setEditorCommand(m_config.editorCommand());
     terminal->setImagePasteDir(m_config.imagePasteDir());
-    terminal->setBackgroundAlpha(m_config.backgroundAlpha());
+    terminal->setWindowOpacityLevel(m_config.opacity());
     terminal->setGpuRendering(m_config.gpuRendering());
+    QString family = m_config.fontFamily();
+    if (!family.isEmpty()) terminal->setFontFamily(family);
 }
 
 void MainWindow::connectTerminal(TerminalWidget *terminal) {
@@ -586,6 +710,32 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     });
 
     connect(terminal, &TerminalWidget::imagePasted, this, &MainWindow::onImagePasted);
+
+    // Broadcast callback
+    terminal->setBroadcastCallback([this](TerminalWidget *source, const QByteArray &data) {
+        if (!m_broadcastMode) return;
+        QList<TerminalWidget *> all = m_tabWidget->findChildren<TerminalWidget *>();
+        for (auto *t : all) {
+            if (t != source) t->sendToPty(data);
+        }
+    });
+
+    // Trigger signals
+    connect(terminal, &TerminalWidget::triggerFired, this, &MainWindow::onTriggerFired);
+
+    // Apply highlight and trigger rules from config
+    terminal->setHighlightRules(m_config.highlightRules());
+    terminal->setTriggerRules(m_config.triggerRules());
+
+    // Error detection — show failed command in status bar
+    connect(terminal, &TerminalWidget::commandFailed, this, [this](int exitCode, const QString &output) {
+        if (m_claudeErrorLabel) {
+            m_claudeErrorLabel->setText(QString("Exit %1").arg(exitCode));
+            m_claudeErrorLabel->setToolTip(output.left(500));
+            m_claudeErrorLabel->show();
+            QTimer::singleShot(10000, m_claudeErrorLabel, &QWidget::hide);
+        }
+    });
 
     // Claude Code permission detection → status bar notification
     connect(terminal, &TerminalWidget::claudePermissionDetected, this, [this](const QString &rule) {
@@ -834,6 +984,9 @@ void MainWindow::applyTheme(const QString &name) {
 
     const Theme &theme = Themes::byName(name);
 
+    // UI chrome (title bar, menus, tabs, status bar) always uses opaque backgrounds.
+    // Opacity and background alpha only affect the terminal content area — this is
+    // handled in TerminalWidget::paintEvent via m_windowOpacity / m_backgroundAlpha.
     QString ss = QString(
         "QMainWindow { background-color: %1; }"
         "QMenuBar { background-color: %2; color: %3; border-bottom: 1px solid %4; }"
@@ -875,11 +1028,13 @@ void MainWindow::applyTheme(const QString &name) {
     m_titleBar->setThemeColors(theme.bgSecondary, theme.textPrimary,
                                 theme.accent, theme.border);
 
-    // Apply colors to ALL terminal widgets (including those in splitters)
+    // Apply colors + window opacity to ALL terminal widgets
+    double opacity = m_config.opacity();
     QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
     for (auto *t : terminals) {
         t->applyThemeColors(theme.textPrimary, theme.bgPrimary, theme.cursor,
                              theme.accent, theme.border);
+        t->setWindowOpacityLevel(opacity);
     }
 
     statusBar()->showMessage(QString("Theme: %1").arg(name), 3000);
@@ -1123,11 +1278,42 @@ void MainWindow::setupClaudeIntegration() {
     m_claudeStatusLabel->hide();
     statusBar()->addPermanentWidget(m_claudeStatusLabel);
 
+    // Context window pressure indicator (progress bar)
+    m_claudeContextBar = new QProgressBar(this);
+    m_claudeContextBar->setRange(0, 100);
+    m_claudeContextBar->setValue(0);
+    m_claudeContextBar->setFixedWidth(80);
+    m_claudeContextBar->setFixedHeight(14);
+    m_claudeContextBar->setFormat("%p%");
+    m_claudeContextBar->setStyleSheet(
+        "QProgressBar { border: 1px solid #45475A; border-radius: 3px; background: #313244; font-size: 10px; color: #CDD6F4; }"
+        "QProgressBar::chunk { background: #A6E3A1; border-radius: 2px; }");
+    m_claudeContextBar->setToolTip("Claude Code context window usage");
+    m_claudeContextBar->hide();
+    statusBar()->addPermanentWidget(m_claudeContextBar);
+
+    // Review Changes button (shown when Claude edits files)
+    m_claudeReviewBtn = new QPushButton("Review Changes", this);
+    m_claudeReviewBtn->setFixedHeight(18);
+    m_claudeReviewBtn->setStyleSheet(
+        "QPushButton { background: #45475A; color: #CDD6F4; border: 1px solid #585B70; border-radius: 3px; padding: 0 6px; font-size: 10px; }"
+        "QPushButton:hover { background: #585B70; }");
+    m_claudeReviewBtn->hide();
+    statusBar()->addPermanentWidget(m_claudeReviewBtn);
+    connect(m_claudeReviewBtn, &QPushButton::clicked, this, &MainWindow::showDiffViewer);
+
+    // Error indicator label
+    m_claudeErrorLabel = new QLabel(this);
+    m_claudeErrorLabel->setStyleSheet("color: #F38BA8; padding: 0 4px; font-size: 11px;");
+    m_claudeErrorLabel->hide();
+    statusBar()->addPermanentWidget(m_claudeErrorLabel);
+
     connect(m_claudeIntegration, &ClaudeIntegration::stateChanged,
             this, [this](ClaudeState state, const QString &detail) {
         switch (state) {
         case ClaudeState::NotRunning:
             m_claudeStatusLabel->hide();
+            m_claudeContextBar->hide();
             break;
         case ClaudeState::Idle:
             m_claudeStatusLabel->setText("Claude: idle");
@@ -1149,33 +1335,66 @@ void MainWindow::setupClaudeIntegration() {
 
     connect(m_claudeIntegration, &ClaudeIntegration::contextUpdated,
             this, [this](int percent) {
-        if (m_claudeStatusLabel->isVisible()) {
-            QString current = m_claudeStatusLabel->text();
-            if (!current.contains("ctx:"))
-                m_claudeStatusLabel->setText(current + QString(" [ctx: %1%]").arg(percent));
+        // Update context pressure bar
+        m_claudeContextBar->setValue(percent);
+        m_claudeContextBar->show();
+        // Color-code: green < 60%, yellow 60-80%, red > 80%
+        QString chunkColor = "#A6E3A1";
+        if (percent > 80) chunkColor = "#F38BA8";
+        else if (percent > 60) chunkColor = "#F9E2AF";
+        m_claudeContextBar->setStyleSheet(
+            QString("QProgressBar { border: 1px solid #45475A; border-radius: 3px; background: #313244; font-size: 10px; color: #CDD6F4; }"
+                    "QProgressBar::chunk { background: %1; border-radius: 2px; }").arg(chunkColor));
+        if (percent >= 80) {
+            m_claudeContextBar->setToolTip(
+                QString("Context %1% — consider using /compact").arg(percent));
         }
     });
 
     connect(m_claudeIntegration, &ClaudeIntegration::fileChanged,
             this, [this](const QString &path) {
         statusBar()->showMessage(QString("Claude edited: %1").arg(path), 3000);
+        m_claudeReviewBtn->show();
     });
 
     connect(m_claudeIntegration, &ClaudeIntegration::permissionRequested,
             this, [this](const QString &tool, const QString &input) {
         QString rule = tool;
         if (!input.isEmpty()) rule += "(" + input + ")";
-        statusBar()->showMessage(QString("Claude permission: %1").arg(rule), 10000);
-        auto *addBtn = new QPushButton("Add to allowlist", statusBar());
-        statusBar()->addPermanentWidget(addBtn);
-        connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn]() {
-            openClaudeAllowlistDialog(rule);
-            addBtn->deleteLater();
+        statusBar()->showMessage(QString("Claude permission: %1").arg(rule), 15000);
+
+        // Enhanced permission action buttons
+        auto *btnWidget = new QWidget(statusBar());
+        auto *btnLayout = new QHBoxLayout(btnWidget);
+        btnLayout->setContentsMargins(0, 0, 0, 0);
+        btnLayout->setSpacing(4);
+
+        auto *allowBtn = new QPushButton("Allow", btnWidget);
+        allowBtn->setStyleSheet("QPushButton { background: #A6E3A1; color: #1E1E2E; border-radius: 3px; padding: 1px 8px; font-size: 10px; }");
+        auto *denyBtn = new QPushButton("Deny", btnWidget);
+        denyBtn->setStyleSheet("QPushButton { background: #F38BA8; color: #1E1E2E; border-radius: 3px; padding: 1px 8px; font-size: 10px; }");
+        auto *addBtn = new QPushButton("Add to allowlist", btnWidget);
+        addBtn->setStyleSheet("QPushButton { background: #45475A; color: #CDD6F4; border-radius: 3px; padding: 1px 8px; font-size: 10px; }");
+
+        btnLayout->addWidget(allowBtn);
+        btnLayout->addWidget(denyBtn);
+        btnLayout->addWidget(addBtn);
+        statusBar()->addPermanentWidget(btnWidget);
+
+        connect(allowBtn, &QPushButton::clicked, btnWidget, [btnWidget]() {
+            btnWidget->deleteLater();
         });
-        QTimer::singleShot(10000, addBtn, &QObject::deleteLater);
+        connect(denyBtn, &QPushButton::clicked, btnWidget, [btnWidget]() {
+            btnWidget->deleteLater();
+        });
+        connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget]() {
+            openClaudeAllowlistDialog(rule);
+            btnWidget->deleteLater();
+        });
+        QTimer::singleShot(15000, btnWidget, &QObject::deleteLater);
     });
 
-    // Set up MCP server
+    // Set up MCP server with all providers
     QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
                         QString::number(QApplication::applicationPid());
     m_claudeIntegration->startMcpServer(mcpSocket);
@@ -1186,6 +1405,56 @@ void MainWindow::setupClaudeIntegration() {
     m_claudeIntegration->setCwdProvider([this]() -> QString {
         if (auto *t = focusedTerminal()) return t->shellCwd();
         return QDir::currentPath();
+    });
+    m_claudeIntegration->setLastCommandProvider([this]() -> QPair<int,QString> {
+        if (auto *t = focusedTerminal())
+            return {t->lastExitCode(), t->lastCommandOutput()};
+        return {0, {}};
+    });
+    m_claudeIntegration->setGitStatusProvider([this]() -> QString {
+        auto *t = focusedTerminal();
+        if (!t) return {};
+        QString cwd = t->shellCwd();
+        if (cwd.isEmpty()) return {};
+        // Run git status + branch + recent log
+        QProcess git;
+        git.setWorkingDirectory(cwd);
+        git.setProgram("git");
+        QStringList result;
+        // Branch
+        git.setArguments({"rev-parse", "--abbrev-ref", "HEAD"});
+        git.start(); git.waitForFinished(2000);
+        result << "Branch: " + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+        // Status
+        git.setArguments({"status", "--porcelain", "-sb"});
+        git.start(); git.waitForFinished(2000);
+        result << "Status:\n" + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+        // Recent commits
+        git.setArguments({"log", "--oneline", "-5"});
+        git.start(); git.waitForFinished(2000);
+        result << "Recent commits:\n" + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+        return result.join("\n\n");
+    });
+    m_claudeIntegration->setEnvironmentProvider([this]() -> QString {
+        auto *t = focusedTerminal();
+        if (!t) return {};
+        // Read key env vars from /proc/PID/environ
+        pid_t pid = t->shellPid();
+        if (pid <= 0) return {};
+        QFile envFile(QString("/proc/%1/environ").arg(pid));
+        if (!envFile.open(QIODevice::ReadOnly)) return {};
+        QByteArray raw = envFile.readAll();
+        QStringList vars = QString::fromUtf8(raw).split('\0', Qt::SkipEmptyParts);
+        // Filter to useful vars
+        QStringList filtered;
+        QStringList keys = {"PATH", "VIRTUAL_ENV", "CONDA_DEFAULT_ENV", "NODE_ENV",
+                           "SHELL", "EDITOR", "LANG", "HOME", "USER", "TERM", "COLORTERM"};
+        for (const QString &v : vars) {
+            for (const QString &k : keys) {
+                if (v.startsWith(k + "=")) { filtered << v; break; }
+            }
+        }
+        return filtered.join("\n");
     });
 
     // Start hook server
@@ -1286,4 +1555,224 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     m_config.setWindowGeometry(realPos.x(), realPos.y(), width(), height());
     saveAllSessions();
     event->accept();
+}
+
+// --- Status bar ---
+
+void MainWindow::updateStatusBar() {
+    auto *t = focusedTerminal();
+    if (!t) t = currentTerminal();
+    if (!t) return;
+
+    // CWD
+    QString cwd = t->shellCwd();
+    if (!cwd.isEmpty()) {
+        // Show abbreviated path
+        QString home = QDir::homePath();
+        if (cwd.startsWith(home))
+            cwd = "~" + cwd.mid(home.length());
+        m_statusCwd->setText(cwd);
+    }
+
+    // Git branch (read .git/HEAD)
+    QString fullCwd = t->shellCwd();
+    QString gitBranch;
+    if (!fullCwd.isEmpty()) {
+        QString dir = fullCwd;
+        while (!dir.isEmpty() && dir != "/") {
+            QFile head(dir + "/.git/HEAD");
+            if (head.open(QIODevice::ReadOnly)) {
+                QString ref = QString::fromUtf8(head.readAll()).trimmed();
+                if (ref.startsWith("ref: refs/heads/"))
+                    gitBranch = ref.mid(16);
+                else if (ref.length() >= 7)
+                    gitBranch = ref.left(7); // detached HEAD
+                break;
+            }
+            int slash = dir.lastIndexOf('/');
+            if (slash <= 0) break;
+            dir = dir.left(slash);
+        }
+    }
+    if (!gitBranch.isEmpty()) {
+        m_statusGitBranch->setText(" " + gitBranch);
+        m_statusGitBranch->show();
+    } else {
+        m_statusGitBranch->hide();
+    }
+
+    // Foreground process
+    QString proc = t->foregroundProcess();
+    if (!proc.isEmpty()) {
+        m_statusProcess->setText(proc);
+        m_statusProcess->show();
+    } else {
+        m_statusProcess->hide();
+    }
+}
+
+// --- Tab label customization ---
+
+void MainWindow::updateTabTitles() {
+    QString format = m_config.tabTitleFormat();
+    if (format == "title") return; // Default shell title behavior, handled by signal
+
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        QWidget *w = m_tabWidget->widget(i);
+        auto *t = qobject_cast<TerminalWidget *>(w);
+        if (!t) t = w->findChild<TerminalWidget *>();
+        if (!t) continue;
+
+        QString label;
+        if (format == "cwd") {
+            QString cwd = t->shellCwd();
+            if (!cwd.isEmpty()) {
+                QFileInfo fi(cwd);
+                label = fi.fileName();
+            }
+        } else if (format == "process") {
+            label = t->foregroundProcess();
+        } else if (format == "cwd-process") {
+            QString cwd = t->shellCwd();
+            QString proc = t->foregroundProcess();
+            if (!cwd.isEmpty()) {
+                QFileInfo fi(cwd);
+                label = fi.fileName();
+            }
+            if (!proc.isEmpty()) {
+                if (!label.isEmpty()) label += " - ";
+                label += proc;
+            }
+        }
+
+        if (label.isEmpty()) label = "Shell";
+        if (label.length() > 30) label = label.left(27) + "...";
+        m_tabWidget->setTabText(i, label);
+    }
+}
+
+// --- Broadcast input ---
+// Handled in connectTerminal via sendToPty forwarding
+
+// --- Quake mode ---
+
+void MainWindow::setupQuakeMode() {
+    m_quakeMode = true;
+
+    // Set window to top of screen, full width
+    if (QScreen *screen = this->screen()) {
+        QRect geo = screen->availableGeometry();
+        resize(geo.width(), geo.height() / 3);
+        move(geo.x(), geo.y());
+    }
+
+    setWindowFlags(windowFlags() | Qt::WindowStaysOnTopHint);
+    show();
+}
+
+// --- Trigger handler ---
+
+void MainWindow::onTriggerFired(const QString &pattern, const QString &actionType,
+                                 const QString &actionValue) {
+    if (actionType == "notify") {
+        // Desktop notification via D-Bus
+        QString summary = actionValue.isEmpty() ? "Trigger matched" : actionValue;
+        QDBusMessage msg = QDBusMessage::createMethodCall(
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "Notify");
+        msg << "Ants Terminal"      // app_name
+            << uint(0)              // replaces_id
+            << ""                   // app_icon
+            << QString("Terminal Trigger") // summary
+            << QString("Pattern '%1' matched: %2").arg(pattern, summary) // body
+            << QStringList()        // actions
+            << QVariantMap()        // hints
+            << int(5000);           // timeout ms
+        QDBusConnection::sessionBus().send(msg);
+    } else if (actionType == "sound") {
+        QApplication::beep();
+    } else if (actionType == "command") {
+        if (!actionValue.isEmpty()) {
+            QProcess::startDetached("/bin/sh", {"-c", actionValue});
+        }
+    }
+    statusBar()->showMessage(QString("Trigger: '%1' matched").arg(pattern), 3000);
+}
+
+// --- Diff Viewer ---
+
+void MainWindow::showDiffViewer() {
+    auto *t = focusedTerminal();
+    if (!t) return;
+    QString cwd = t->shellCwd();
+    if (cwd.isEmpty()) return;
+
+    // Run git diff to get changes
+    QProcess git;
+    git.setWorkingDirectory(cwd);
+    git.setProgram("git");
+    git.setArguments({"diff", "--stat", "--patch"});
+    git.start();
+    git.waitForFinished(5000);
+
+    QString diff = QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+    if (diff.isEmpty()) {
+        // Also check staged changes
+        git.setArguments({"diff", "--cached", "--stat", "--patch"});
+        git.start();
+        git.waitForFinished(5000);
+        diff = QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+    }
+
+    if (diff.isEmpty()) {
+        statusBar()->showMessage("No changes detected in git", 3000);
+        return;
+    }
+
+    // Show in a dialog with syntax coloring
+    auto *dialog = new QDialog(this);
+    dialog->setWindowTitle("Review Changes");
+    dialog->resize(800, 600);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    auto *layout = new QVBoxLayout(dialog);
+    auto *viewer = new QTextEdit(dialog);
+    viewer->setReadOnly(true);
+    viewer->setFont(QFont("Monospace", 10));
+
+    // Simple diff colorization
+    QString html = "<pre style='color: #CDD6F4; background: #1E1E2E;'>";
+    for (const QString &line : diff.split('\n')) {
+        QString escaped = line.toHtmlEscaped();
+        if (line.startsWith('+') && !line.startsWith("+++"))
+            html += "<span style='color: #A6E3A1;'>" + escaped + "</span>\n";
+        else if (line.startsWith('-') && !line.startsWith("---"))
+            html += "<span style='color: #F38BA8;'>" + escaped + "</span>\n";
+        else if (line.startsWith("@@"))
+            html += "<span style='color: #89B4FA;'>" + escaped + "</span>\n";
+        else if (line.startsWith("diff ") || line.startsWith("index "))
+            html += "<span style='color: #F9E2AF;'>" + escaped + "</span>\n";
+        else
+            html += escaped + "\n";
+    }
+    html += "</pre>";
+    viewer->setHtml(html);
+
+    auto *btnBox = new QHBoxLayout;
+    auto *closeBtn = new QPushButton("Close", dialog);
+    auto *copyBtn = new QPushButton("Copy Diff", dialog);
+    btnBox->addStretch();
+    btnBox->addWidget(copyBtn);
+    btnBox->addWidget(closeBtn);
+
+    connect(closeBtn, &QPushButton::clicked, dialog, &QDialog::close);
+    connect(copyBtn, &QPushButton::clicked, this, [diff]() {
+        QApplication::clipboard()->setText(diff);
+    });
+
+    layout->addWidget(viewer);
+    layout->addLayout(btnBox);
+    dialog->show();
 }

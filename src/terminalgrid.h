@@ -11,6 +11,17 @@
 #include <QImage>
 #include <QString>
 
+// Cursor shape for DECSCUSR (CSI Ps SP q)
+enum class CursorShape : uint8_t {
+    BlinkBlock = 0,
+    BlinkBlock1 = 1,
+    SteadyBlock = 2,
+    BlinkUnderline = 3,
+    SteadyUnderline = 4,
+    BlinkBar = 5,
+    SteadyBar = 6,
+};
+
 // Underline style for SGR 4:x
 enum class UnderlineStyle : uint8_t {
     None = 0,
@@ -88,6 +99,17 @@ public:
     int cursorCol() const { return m_cursorCol; }
     bool cursorVisible() const { return m_cursorVisible; }
     bool bracketedPaste() const { return m_bracketedPaste; }
+    CursorShape cursorShape() const { return m_cursorShape; }
+    bool cursorBlink() const {
+        return m_cursorShape == CursorShape::BlinkBlock ||
+               m_cursorShape == CursorShape::BlinkBlock1 ||
+               m_cursorShape == CursorShape::BlinkUnderline ||
+               m_cursorShape == CursorShape::BlinkBar;
+    }
+    bool applicationKeypad() const { return m_applicationKeypad; }
+    bool applicationCursorKeys() const { return m_applicationCursorKeys; }
+    int lastExitCode() const { return m_lastExitCode; }
+    int commandOutputStartLine() const { return m_commandOutputStart; }
 
     const Cell &cellAt(int row, int col) const;
     QString windowTitle() const { return m_windowTitle; }
@@ -133,6 +155,9 @@ public:
 
     // Synchronized output
     bool synchronizedOutput() const { return m_synchronizedOutput; }
+
+    // Alt screen active (vim, htop, etc.)
+    bool altScreenActive() const { return m_altScreenActive; }
 
     // OSC 8 hyperlinks (per screen line)
     const std::vector<HyperlinkSpan> &screenHyperlinks(int row) const;
@@ -216,6 +241,22 @@ private:
     bool m_autoWrap = true;
     bool m_wrapNext = false;  // delayed wrap
     bool m_bracketedPaste = false;  // CSI ?2004h/l
+
+    // Cursor shape (DECSCUSR)
+    CursorShape m_cursorShape = CursorShape::BlinkBlock;
+
+    // Application keypad mode (DECKPAM/DECKPNM)
+    bool m_applicationKeypad = false;
+    // Application cursor keys (DECCKM, ?1)
+    bool m_applicationCursorKeys = false;
+
+    // Tab stops (customizable via HTS/TBC)
+    std::vector<bool> m_tabStops;
+    void initTabStops();
+
+    // Last command exit code (OSC 133 D)
+    int m_lastExitCode = 0;
+    int m_commandOutputStart = -1; // global line where command output starts
 
     // Mouse reporting modes
     bool m_mouseButtonMode = false;   // ?1000 — report button press/release

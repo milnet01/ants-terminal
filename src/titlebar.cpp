@@ -8,6 +8,10 @@
 
 TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     setFixedHeight(36);
+    // Required for stylesheet background to paint when WA_TranslucentBackground
+    // is set on the top-level window (custom QWidget subclasses don't paint their
+    // stylesheet background by default in that mode).
+    setAttribute(Qt::WA_StyledBackground, true);
 
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(8, 0, 4, 0);

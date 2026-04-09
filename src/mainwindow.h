@@ -7,12 +7,16 @@
 #include <QTabWidget>
 #include <QActionGroup>
 #include <QLabel>
+#include <QTimer>
+#include <QProgressBar>
+#include <QPushButton>
 
 class TitleBar;
 class TerminalWidget;
 class CommandPalette;
 class AiDialog;
 class SshDialog;
+class SettingsDialog;
 class ClaudeAllowlistDialog;
 class ClaudeProjectsDialog;
 class ClaudeTranscriptDialog;
@@ -27,7 +31,7 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(bool quakeMode = false, QWidget *parent = nullptr);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -97,15 +101,41 @@ private:
     // SSH manager
     SshDialog *m_sshDialog = nullptr;
 
+    // Settings dialog
+    SettingsDialog *m_settingsDialog = nullptr;
+
+    // Broadcast mode
+    bool m_broadcastMode = false;
+    QAction *m_broadcastAction = nullptr;
+
+    // Status bar widgets
+    QLabel *m_statusCwd = nullptr;
+    QLabel *m_statusGitBranch = nullptr;
+    QLabel *m_statusProcess = nullptr;
+    QTimer *m_statusTimer = nullptr;
+    void updateStatusBar();
+    void updateTabTitles();
+
+    // Quake mode
+    bool m_quakeMode = false;
+    void setupQuakeMode();
+
+    // Handle trigger signals from terminals
+    void onTriggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
+
     // Claude Code integration
     ClaudeIntegration *m_claudeIntegration = nullptr;
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;
     ClaudeProjectsDialog *m_claudeProjects = nullptr;
     ClaudeTranscriptDialog *m_claudeTranscript = nullptr;
     QLabel *m_claudeStatusLabel = nullptr;
+    QProgressBar *m_claudeContextBar = nullptr;
+    QPushButton *m_claudeReviewBtn = nullptr;
+    QLabel *m_claudeErrorLabel = nullptr;
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
     void openClaudeProjectsDialog();
     void setupClaudeIntegration();
+    void showDiffViewer();
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS

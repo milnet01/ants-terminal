@@ -364,6 +364,18 @@ void ClaudeIntegration::setCwdProvider(std::function<QString()> provider) {
     m_cwdProvider = std::move(provider);
 }
 
+void ClaudeIntegration::setLastCommandProvider(std::function<QPair<int,QString>()> provider) {
+    m_lastCommandProvider = std::move(provider);
+}
+
+void ClaudeIntegration::setGitStatusProvider(std::function<QString()> provider) {
+    m_gitStatusProvider = std::move(provider);
+}
+
+void ClaudeIntegration::setEnvironmentProvider(std::function<QString()> provider) {
+    m_envProvider = std::move(provider);
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -403,6 +415,21 @@ void ClaudeIntegration::onMcpConnection() {
                 sessionTool["description"] = "Get terminal session metadata";
                 tools.append(sessionTool);
 
+                QJsonObject lastCmdTool;
+                lastCmdTool["name"] = "get_last_command";
+                lastCmdTool["description"] = "Get the last command's exit code and output (via shell integration)";
+                tools.append(lastCmdTool);
+
+                QJsonObject gitTool;
+                gitTool["name"] = "get_git_status";
+                gitTool["description"] = "Get git branch, status, and recent commits for the terminal's CWD";
+                tools.append(gitTool);
+
+                QJsonObject envTool;
+                envTool["name"] = "get_environment";
+                envTool["description"] = "Get shell environment info (PATH, virtualenv, key env vars)";
+                tools.append(envTool);
+
                 response["tools"] = tools;
             } else if (method == "tools/call") {
                 QJsonObject params = request.value("params").toObject();
@@ -432,6 +459,18 @@ void ClaudeIntegration::onMcpConnection() {
                     info["session_id"] = m_activeSessionId;
                     response["content"] = makeTextContent(
                         QJsonDocument(info).toJson(QJsonDocument::Compact));
+                } else if (toolName == "get_last_command" && m_lastCommandProvider) {
+                    auto [exitCode, output] = m_lastCommandProvider();
+                    QJsonObject info;
+                    info["exit_code"] = exitCode;
+                    info["output"] = output;
+                    info["failed"] = (exitCode != 0);
+                    response["content"] = makeTextContent(
+                        QJsonDocument(info).toJson(QJsonDocument::Compact));
+                } else if (toolName == "get_git_status" && m_gitStatusProvider) {
+                    response["content"] = makeTextContent(m_gitStatusProvider());
+                } else if (toolName == "get_environment" && m_envProvider) {
+                    response["content"] = makeTextContent(m_envProvider());
                 }
             }
 

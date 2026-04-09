@@ -93,6 +93,46 @@ public:
     QStringList claudeProjectDirs() const;
     void setClaudeProjectDirs(const QStringList &dirs);
 
+    // Highlight rules: [{pattern, fg, bg, enabled}]
+    QJsonArray highlightRules() const;
+    void setHighlightRules(const QJsonArray &rules);
+
+    // Trigger rules: [{pattern, action_type, action_value, enabled}]
+    QJsonArray triggerRules() const;
+    void setTriggerRules(const QJsonArray &rules);
+
+    // Profiles: {name -> {theme, font_size, opacity, ...}}
+    QJsonObject profiles() const;
+    void setProfiles(const QJsonObject &profiles);
+    QString activeProfile() const;
+    void setActiveProfile(const QString &name);
+
+    // Quake mode
+    bool quakeMode() const;
+    void setQuakeMode(bool enabled);
+    QString quakeHotkey() const;
+    void setQuakeHotkey(const QString &key);
+
+    // Broadcast mode
+    bool broadcastMode() const;
+    void setBroadcastMode(bool enabled);
+
+    // Font family
+    QString fontFamily() const;
+    void setFontFamily(const QString &family);
+
+    // Shell command override
+    QString shellCommand() const;
+    void setShellCommand(const QString &cmd);
+
+    // Tab title format: "title", "cwd", "process", "cwd-process"
+    QString tabTitleFormat() const;
+    void setTabTitleFormat(const QString &fmt);
+
+    // Raw JSON access for settings dialog
+    QJsonObject rawData() const { return m_data; }
+    void setRawData(const QJsonObject &data) { m_data = data; save(); }
+
     void save();
 
 private:

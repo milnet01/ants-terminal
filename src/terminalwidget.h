@@ -12,6 +12,7 @@
 #include <QRegularExpression>
 #include <QFile>
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <memory>
 
 class GlRenderer;
@@ -84,6 +85,10 @@ public:
     void setBackgroundAlpha(int alpha);
     int backgroundAlpha() const { return m_backgroundAlpha; }
 
+    // Window-level opacity (0.0-1.0), applied to background via per-pixel alpha
+    void setWindowOpacityLevel(double opacity);
+    double windowOpacityLevel() const { return m_windowOpacity; }
+
     // Access to grid for session save/restore
     TerminalGrid *grid() { return m_grid.get(); }
 
@@ -93,11 +98,52 @@ public:
     // Get the shell's PID (for process tree inspection)
     pid_t shellPid() const;
 
+    // Get the foreground process name (what's running in the shell)
+    QString foregroundProcess() const;
+
+    // Scrollback export
+    QString exportAsText() const;
+    QString exportAsHtml() const;
+
+    // Highlight rules (regex patterns with colors)
+    struct HighlightRule {
+        QRegularExpression pattern;
+        QColor fg;
+        QColor bg;
+    };
+    void setHighlightRules(const QJsonArray &rules);
+
+    // Trigger rules (regex -> action)
+    struct TriggerRule {
+        QRegularExpression pattern;
+        QString actionType; // "notify", "sound", "command"
+        QString actionValue;
+    };
+    void setTriggerRules(const QJsonArray &rules);
+
+    // Autocomplete
+    void setHistoryFile(const QString &path);
+
+    // Font family
+    void setFontFamily(const QString &family);
+    QString fontFamily() const { return m_font.family(); }
+
+    // Broadcast callback: called when key data should be sent to other terminals too
+    using BroadcastCallback = std::function<void(TerminalWidget *source, const QByteArray &data)>;
+    void setBroadcastCallback(BroadcastCallback cb) { m_broadcastCallback = std::move(cb); }
+
+    // Last command exit code (via OSC 133 D marker)
+    int lastExitCode() const;
+    // Last command output text (between OSC 133 C and D markers)
+    QString lastCommandOutput() const;
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);
     void imagePasted(const QImage &image);
     void claudePermissionDetected(const QString &rule);
+    void triggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
+    void commandFailed(int exitCode, const QString &output);
 
 protected:
     bool event(QEvent *event) override;
@@ -113,6 +159,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
     void inputMethodEvent(QInputMethodEvent *event) override;
     QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 
@@ -275,9 +322,30 @@ private:
 
     // Per-pixel background alpha (0=transparent, 255=opaque)
     int m_backgroundAlpha = 255;
+    double m_windowOpacity = 1.0;
 
     // Claude Code permission detection
     QTimer m_claudeDetectTimer;
     QString m_lastDetectedRule;
     void checkForClaudePermissionPrompt();
+
+    // Broadcast callback
+    BroadcastCallback m_broadcastCallback;
+
+    // Highlight rules
+    std::vector<HighlightRule> m_highlightRules;
+
+    // Trigger rules
+    std::vector<TriggerRule> m_triggerRules;
+    void checkTriggers(const QByteArray &data);
+
+    // Exit code tracking for error detection
+    int m_lastTrackedExitCode = 0;
+
+    // Autocomplete / history suggestions
+    QStringList m_historyEntries;
+    QString m_currentSuggestion;
+    bool m_historyLoaded = false;
+    void loadHistory();
+    void updateSuggestion();
 };

@@ -69,6 +69,13 @@ TerminalGrid::TerminalGrid(int rows, int cols)
         line.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
     }
     m_screenHyperlinks.resize(m_rows);
+    initTabStops();
+}
+
+void TerminalGrid::initTabStops() {
+    m_tabStops.assign(m_cols, false);
+    for (int i = 0; i < m_cols; i += 8)
+        m_tabStops[i] = true;
 }
 
 void TerminalGrid::setResponseCallback(ResponseCallback cb) {
@@ -276,7 +283,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         if (a.intermediate == "?") {
             for (int v : p) {
                 switch (v) {
-                case 1: break;
+                case 1: m_applicationCursorKeys = true; break;
                 case 6: m_originMode = true; break;
                 case 7: m_autoWrap = true; break;
                 case 25: m_cursorVisible = true; break;
@@ -316,7 +323,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         if (a.intermediate == "?") {
             for (int v : p) {
                 switch (v) {
-                case 1: break;
+                case 1: m_applicationCursorKeys = false; break;
                 case 6: m_originMode = false; break;
                 case 7: m_autoWrap = false; break;
                 case 25: m_cursorVisible = false; break;
@@ -364,6 +371,28 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 m_responseCallback("\x1B[>41;0;0c"); // xterm-like
         }
         break;
+    case 'q':
+        // DECSCUSR — Set Cursor Style (CSI Ps SP q)
+        if (a.intermediate == " ") {
+            int ps = p.empty() ? 0 : p[0];
+            if (ps >= 0 && ps <= 6)
+                m_cursorShape = static_cast<CursorShape>(ps);
+        }
+        break;
+    case 'g':
+        // TBC — Tab Clear
+        if (a.intermediate.empty()) {
+            int mode = p.empty() ? 0 : p[0];
+            if (mode == 0) {
+                // Clear tab stop at current position
+                if (m_cursorCol >= 0 && m_cursorCol < static_cast<int>(m_tabStops.size()))
+                    m_tabStops[m_cursorCol] = false;
+            } else if (mode == 3) {
+                // Clear all tab stops
+                std::fill(m_tabStops.begin(), m_tabStops.end(), false);
+            }
+        }
+        break;
     case 'n':
         if (a.intermediate.empty()) {
             if (!p.empty() && p[0] == 6 && m_responseCallback) {
@@ -389,6 +418,16 @@ void TerminalGrid::handleEsc(const VtAction &a) {
         case 'E': carriageReturn(); newLine(); break;
         case '7': saveCursor(); break;
         case '8': restoreCursor(); break;
+        case 'H': // HTS — Horizontal Tab Set
+            if (m_cursorCol >= 0 && m_cursorCol < static_cast<int>(m_tabStops.size()))
+                m_tabStops[m_cursorCol] = true;
+            break;
+        case '=': // DECKPAM — Application Keypad Mode
+            m_applicationKeypad = true;
+            break;
+        case '>': // DECKPNM — Normal Keypad Mode
+            m_applicationKeypad = false;
+            break;
         case 'c': {
             auto cb = std::move(m_responseCallback);
             *this = TerminalGrid(m_rows, m_cols);
@@ -505,10 +544,21 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             m_shellIntegState = 'C';
             if (!m_promptRegions.empty())
                 m_promptRegions.back().hasOutput = true;
+            m_commandOutputStart = globalLine;
             break;
-        case 'D': // Command finished
+        case 'D': { // Command finished
             m_shellIntegState = 0;
+            // Parse exit code: OSC 133 ; D ; exitcode ST
+            std::string rest = payload.substr(semi + 1);
+            size_t semi2 = rest.find(';');
+            if (semi2 != std::string::npos) {
+                std::string code = rest.substr(semi2 + 1);
+                try { m_lastExitCode = std::stoi(code); } catch (...) { m_lastExitCode = 0; }
+            } else {
+                m_lastExitCode = 0;
+            }
             break;
+        }
         }
         // Cap stored prompt regions
         while (static_cast<int>(m_promptRegions.size()) > MAX_PROMPT_REGIONS)
@@ -875,7 +925,14 @@ void TerminalGrid::carriageReturn() {
 }
 
 void TerminalGrid::tab() {
-    m_cursorCol = std::min(((m_cursorCol / 8) + 1) * 8, m_cols - 1);
+    // Advance to next tab stop (or end of line)
+    for (int c = m_cursorCol + 1; c < m_cols; ++c) {
+        if (c < static_cast<int>(m_tabStops.size()) && m_tabStops[c]) {
+            m_cursorCol = c;
+            return;
+        }
+    }
+    m_cursorCol = m_cols - 1;
 }
 
 void TerminalGrid::reverseIndex() {
@@ -1072,6 +1129,9 @@ void TerminalGrid::resize(int rows, int cols) {
     m_cursorRow = std::clamp(m_cursorRow, 0, m_rows - 1);
     m_cursorCol = std::clamp(m_cursorCol, 0, m_cols - 1);
     m_screenHyperlinks.resize(m_rows);
+
+    // Reinitialize tab stops for new width
+    initTabStops();
 }
 
 // --- Sixel Graphics (DCS q ... ST) ---

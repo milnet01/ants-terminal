@@ -72,6 +72,9 @@ public:
     void stopMcpServer();
     void setScrollbackProvider(std::function<QString(int)> provider);
     void setCwdProvider(std::function<QString()> provider);
+    void setLastCommandProvider(std::function<QPair<int,QString>()> provider);
+    void setGitStatusProvider(std::function<QString()> provider);
+    void setEnvironmentProvider(std::function<QString()> provider);
 
     // File change tracking from transcript
     QStringList recentlyChangedFiles() const { return m_changedFiles; }
@@ -126,6 +129,9 @@ private:
     QLocalServer *m_mcpServer = nullptr;
     std::function<QString(int)> m_scrollbackProvider;
     std::function<QString()> m_cwdProvider;
+    std::function<QPair<int,QString>()> m_lastCommandProvider;
+    std::function<QString()> m_gitStatusProvider;
+    std::function<QString()> m_envProvider;
 
     // Session tracking
     QString m_activeSessionId;

@@ -279,3 +279,101 @@ void Config::setClaudeProjectDirs(const QStringList &dirs) {
     m_data["claude_project_dirs"] = arr;
     save();
 }
+
+// Highlight rules
+QJsonArray Config::highlightRules() const {
+    return m_data.value("highlight_rules").toArray();
+}
+
+void Config::setHighlightRules(const QJsonArray &rules) {
+    m_data["highlight_rules"] = rules;
+    save();
+}
+
+// Trigger rules
+QJsonArray Config::triggerRules() const {
+    return m_data.value("trigger_rules").toArray();
+}
+
+void Config::setTriggerRules(const QJsonArray &rules) {
+    m_data["trigger_rules"] = rules;
+    save();
+}
+
+// Profiles
+QJsonObject Config::profiles() const {
+    return m_data.value("profiles").toObject();
+}
+
+void Config::setProfiles(const QJsonObject &profiles) {
+    m_data["profiles"] = profiles;
+    save();
+}
+
+QString Config::activeProfile() const {
+    return m_data.value("active_profile").toString("");
+}
+
+void Config::setActiveProfile(const QString &name) {
+    m_data["active_profile"] = name;
+    save();
+}
+
+// Quake mode
+bool Config::quakeMode() const {
+    return m_data.value("quake_mode").toBool(false);
+}
+
+void Config::setQuakeMode(bool enabled) {
+    m_data["quake_mode"] = enabled;
+    save();
+}
+
+QString Config::quakeHotkey() const {
+    return m_data.value("quake_hotkey").toString("F12");
+}
+
+void Config::setQuakeHotkey(const QString &key) {
+    m_data["quake_hotkey"] = key;
+    save();
+}
+
+// Broadcast mode
+bool Config::broadcastMode() const {
+    return m_data.value("broadcast_mode").toBool(false);
+}
+
+void Config::setBroadcastMode(bool enabled) {
+    m_data["broadcast_mode"] = enabled;
+    save();
+}
+
+// Font family
+QString Config::fontFamily() const {
+    return m_data.value("font_family").toString("");
+}
+
+void Config::setFontFamily(const QString &family) {
+    m_data["font_family"] = family;
+    save();
+}
+
+// Shell command
+QString Config::shellCommand() const {
+    return m_data.value("shell_command").toString("");
+}
+
+void Config::setShellCommand(const QString &cmd) {
+    m_data["shell_command"] = cmd;
+    save();
+}
+
+// Tab title format
+QString Config::tabTitleFormat() const {
+    return m_data.value("tab_title_format").toString("title");
+}
+
+void Config::setTabTitleFormat(const QString &fmt) {
+    m_data["tab_title_format"] = fmt;
+    save();
+}
