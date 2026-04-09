@@ -1,6 +1,7 @@
 #include "sessionmanager.h"
 #include "terminalgrid.h"
 
+#include <algorithm>
 #include <QDataStream>
 #include <QDir>
 #include <QFile>
@@ -131,7 +132,46 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed) {
     // Resize grid to match saved dimensions
     grid->resize(rows, cols);
 
-    // Read scrollback
+    // Helper to read a cell from stream
+    auto readCell = [&in](Cell &c) {
+        QRgb fg, bg;
+        uint8_t flags;
+        in >> c.codepoint >> fg >> bg >> flags;
+        c.attrs.fg = QColor::fromRgba(fg);
+        c.attrs.bg = QColor::fromRgba(bg);
+        c.attrs.bold = flags & 0x01;
+        c.attrs.italic = flags & 0x02;
+        c.attrs.underline = flags & 0x04;
+        c.attrs.inverse = flags & 0x08;
+        c.attrs.dim = flags & 0x10;
+        c.attrs.strikethrough = flags & 0x20;
+        c.isWideChar = flags & 0x40;
+        c.isWideCont = flags & 0x80;
+    };
+
+    // Helper to read combining characters
+    auto readCombining = [&in](std::unordered_map<int, std::vector<uint32_t>> &combining) -> bool {
+        int32_t combCount;
+        in >> combCount;
+        if (in.status() != QDataStream::Ok || combCount < 0 || combCount > 10000) return false;
+        for (int j = 0; j < combCount; ++j) {
+            int32_t col, cpCount;
+            in >> col >> cpCount;
+            if (in.status() != QDataStream::Ok || cpCount < 0 || cpCount > 8) return false;
+            std::vector<uint32_t> cps;
+            cps.reserve(cpCount);
+            for (int k = 0; k < cpCount; ++k) {
+                uint32_t cp;
+                in >> cp;
+                cps.push_back(cp);
+            }
+            if (!cps.empty())
+                combining[col] = std::move(cps);
+        }
+        return true;
+    };
+
+    // Read and restore scrollback lines
     int32_t sbSize;
     in >> sbSize;
     if (in.status() != QDataStream::Ok || sbSize < 0 || sbSize > 1000000) return false;
@@ -141,52 +181,58 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed) {
         bool wrapped;
         in >> cellCount >> wrapped;
         if (in.status() != QDataStream::Ok || cellCount < 0 || cellCount > 10000) return false;
-        for (int j = 0; j < cellCount; ++j) {
-            uint32_t cp; QRgb fg, bg; uint8_t flags;
-            in >> cp >> fg >> bg >> flags;
-        }
-        int32_t combCount;
-        in >> combCount;
-        if (in.status() != QDataStream::Ok || combCount < 0 || combCount > 10000) return false;
-        for (int j = 0; j < combCount; ++j) {
-            int32_t col, cpCount;
-            in >> col >> cpCount;
-            if (in.status() != QDataStream::Ok || cpCount < 0 || cpCount > 8) return false;
-            for (int k = 0; k < cpCount; ++k) {
-                uint32_t cp; in >> cp;
-            }
-        }
+
+        TermLine line;
+        line.softWrapped = wrapped;
+        line.cells.resize(cellCount);
+        for (int j = 0; j < cellCount; ++j)
+            readCell(line.cells[j]);
+        if (!readCombining(line.combining)) return false;
+
+        grid->pushScrollbackLine(std::move(line));
     }
 
-    // Read screen lines
+    // Read and restore screen lines
     int32_t screenRows;
     in >> screenRows;
     if (in.status() != QDataStream::Ok || screenRows < 0 || screenRows > 500) return false;
 
-    for (int row = 0; row < screenRows; ++row) {
+    for (int row = 0; row < screenRows && row < rows; ++row) {
+        int32_t colCount;
+        in >> colCount;
+        if (in.status() != QDataStream::Ok || colCount < 0 || colCount > 10000) return false;
+
+        TermLine &screenLine = grid->screenLine(row);
+        for (int col = 0; col < colCount && col < cols; ++col)
+            readCell(screenLine.cells[col]);
+        // Skip extra columns if saved grid was wider
+        for (int col = cols; col < colCount; ++col) {
+            Cell skip;
+            readCell(skip);
+        }
+        if (!readCombining(screenLine.combining)) return false;
+    }
+    // Skip extra rows if saved grid was taller
+    for (int row = rows; row < screenRows; ++row) {
         int32_t colCount;
         in >> colCount;
         if (in.status() != QDataStream::Ok || colCount < 0 || colCount > 10000) return false;
         for (int col = 0; col < colCount; ++col) {
-            uint32_t cp; QRgb fg, bg; uint8_t flags;
-            in >> cp >> fg >> bg >> flags;
+            Cell skip;
+            readCell(skip);
         }
-        int32_t combCount;
-        in >> combCount;
-        if (in.status() != QDataStream::Ok || combCount < 0 || combCount > 10000) return false;
-        for (int j = 0; j < combCount; ++j) {
-            int32_t col, cpCount;
-            in >> col >> cpCount;
-            if (in.status() != QDataStream::Ok || cpCount < 0 || cpCount > 8) return false;
-            for (int k = 0; k < cpCount; ++k) {
-                uint32_t cp; in >> cp;
-            }
-        }
+        std::unordered_map<int, std::vector<uint32_t>> skipComb;
+        if (!readCombining(skipComb)) return false;
     }
 
-    // Read window title
+    // Restore cursor position and title
+    grid->setCursorPosition(std::clamp(curRow, 0, rows - 1),
+                            std::clamp(curCol, 0, cols - 1));
+
     QString title;
     in >> title;
+    if (!title.isEmpty())
+        grid->setTitle(title);
 
     return in.status() == QDataStream::Ok;
 }

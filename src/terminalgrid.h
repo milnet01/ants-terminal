@@ -141,6 +141,12 @@ public:
     // Shell integration (OSC 133)
     const std::vector<PromptRegion> &promptRegions() const { return m_promptRegions; }
 
+    // Session restore: direct access for SessionManager
+    void pushScrollbackLine(TermLine &&line) { m_scrollback.push_back(std::move(line)); }
+    TermLine &screenLine(int row) { return m_screenLines[row]; }
+    void setCursorPosition(int row, int col) { m_cursorRow = row; m_cursorCol = col; }
+    void setTitle(const QString &title) { m_windowTitle = title; }
+
 private:
     void handlePrint(uint32_t cp);
     void handleExecute(char ch);
