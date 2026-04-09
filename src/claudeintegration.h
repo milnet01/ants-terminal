@@ -3,7 +3,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QLabel>
-#include <QProcess>
+#include <QProcessEnvironment>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFileSystemWatcher>

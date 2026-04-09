@@ -261,6 +261,13 @@ private:
     std::string m_kittyChunkBuffer; // For multi-chunk transmissions
     uint32_t m_kittyChunkId = 0;
 
+    // Buffer/resource limits
+    static constexpr int MAX_INLINE_IMAGES = 100;
+    static constexpr int MAX_KITTY_CACHE = 200;
+    static constexpr int MAX_IMAGE_DIM = 4096;
+    static constexpr int MAX_COMBINING_PER_CELL = 8;
+    static constexpr int MAX_PROMPT_REGIONS = 1000;
+
     // 256-color palette
     static QColor s_palette256[256];
     static bool s_paletteInitialized;

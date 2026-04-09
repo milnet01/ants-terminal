@@ -1,6 +1,7 @@
 #include "terminalgrid.h"
+
 #include <algorithm>
-#include <wchar.h>
+#include <cwchar>
 #include <QByteArray>
 
 QColor TerminalGrid::s_palette256[256] = {};
@@ -155,7 +156,7 @@ void TerminalGrid::handlePrint(uint32_t cp) {
             return;  // no previous cell to attach to
         }
         auto &comb = m_screenLines[m_cursorRow].combining[targetCol];
-        if (comb.size() < 8)  // limit combining marks per cell
+        if (static_cast<int>(comb.size()) < MAX_COMBINING_PER_CELL)
             comb.push_back(cp);
         return;
     }
@@ -510,7 +511,7 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             break;
         }
         // Cap stored prompt regions
-        while (m_promptRegions.size() > 1000)
+        while (static_cast<int>(m_promptRegions.size()) > MAX_PROMPT_REGIONS)
             m_promptRegions.erase(m_promptRegions.begin());
     }
     // OSC 1337 — iTerm2 inline images
@@ -566,7 +567,7 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     m_inlineImages.push_back(std::move(iimg));
 
     // Cap inline images to prevent memory exhaustion
-    while (m_inlineImages.size() > 100)
+    while (static_cast<int>(m_inlineImages.size()) > MAX_INLINE_IMAGES)
         m_inlineImages.erase(m_inlineImages.begin());
 
     // Advance cursor past image
@@ -1110,7 +1111,7 @@ void TerminalGrid::handleDcs(const std::string &payload) {
                 int count = 0;
                 ++i;
                 while (i < payload.size() && payload[i] >= '0' && payload[i] <= '9') {
-                    count = count * 10 + (payload[i] - '0');
+                    count = std::min(count * 10 + (payload[i] - '0'), MAX_IMAGE_DIM);
                     ++i;
                 }
                 if (i < payload.size() && payload[i] >= '?' && payload[i] <= '~') {
@@ -1130,7 +1131,7 @@ void TerminalGrid::handleDcs(const std::string &payload) {
                 int rp = 0;
                 while (i < payload.size() && rp < 4) {
                     if (payload[i] >= '0' && payload[i] <= '9') {
-                        rasterParams[rp] = rasterParams[rp] * 10 + (payload[i] - '0');
+                        rasterParams[rp] = std::min(rasterParams[rp] * 10 + (payload[i] - '0'), MAX_IMAGE_DIM);
                     } else if (payload[i] == ';') {
                         ++rp;
                     } else {
@@ -1147,7 +1148,7 @@ void TerminalGrid::handleDcs(const std::string &payload) {
         if (imgHeight == 0) imgHeight = y + 6;
     }
 
-    if (imgWidth <= 0 || imgHeight <= 0 || imgWidth > 4096 || imgHeight > 4096) return;
+    if (imgWidth <= 0 || imgHeight <= 0 || imgWidth > MAX_IMAGE_DIM || imgHeight > MAX_IMAGE_DIM) return;
 
     QImage image(imgWidth, imgHeight, QImage::Format_ARGB32);
     image.fill(Qt::transparent);
@@ -1177,7 +1178,7 @@ void TerminalGrid::handleDcs(const std::string &payload) {
             int count = 0;
             ++i;
             while (i < payload.size() && payload[i] >= '0' && payload[i] <= '9') {
-                count = count * 10 + (payload[i] - '0');
+                count = std::min(count * 10 + (payload[i] - '0'), MAX_IMAGE_DIM);
                 ++i;
             }
             if (i < payload.size() && payload[i] >= '?' && payload[i] <= '~') {
@@ -1199,10 +1200,9 @@ void TerminalGrid::handleDcs(const std::string &payload) {
             ++i;
             int idx = 0;
             while (i < payload.size() && payload[i] >= '0' && payload[i] <= '9') {
-                idx = idx * 10 + (payload[i] - '0');
+                idx = std::min(idx * 10 + (payload[i] - '0'), 255);
                 ++i;
             }
-            idx = std::clamp(idx, 0, 255);
             if (i < payload.size() && payload[i] == ';') {
                 // Color definition
                 ++i;
@@ -1210,7 +1210,7 @@ void TerminalGrid::handleDcs(const std::string &payload) {
                 int cp = 0;
                 while (i < payload.size() && cp < 5) {
                     if (payload[i] >= '0' && payload[i] <= '9') {
-                        colorParams[cp] = colorParams[cp] * 10 + (payload[i] - '0');
+                        colorParams[cp] = std::min(colorParams[cp] * 10 + (payload[i] - '0'), 100);
                     } else if (payload[i] == ';') {
                         ++cp;
                     } else {
@@ -1234,7 +1234,8 @@ void TerminalGrid::handleDcs(const std::string &payload) {
     }
 
     // Place image at cursor position
-    if (m_inlineImages.size() >= 100) m_inlineImages.erase(m_inlineImages.begin());
+    if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES)
+        m_inlineImages.erase(m_inlineImages.begin());
 
     InlineImage img;
     img.image = image;
@@ -1247,6 +1248,16 @@ void TerminalGrid::handleDcs(const std::string &payload) {
 }
 
 // --- Kitty Graphics Protocol (APC G ... ST) ---
+
+// Safe integer parsing helper (returns defaultVal on failure)
+static int safeStoi(const std::string &s, int defaultVal = 0) {
+    try { return std::stoi(s); }
+    catch (...) { return defaultVal; }
+}
+static uint32_t safeStoul(const std::string &s, uint32_t defaultVal = 0) {
+    try { return static_cast<uint32_t>(std::stoul(s)); }
+    catch (...) { return defaultVal; }
+}
 
 void TerminalGrid::handleApc(const std::string &payload) {
     if (payload.empty() || payload[0] != 'G') return;
@@ -1279,13 +1290,13 @@ void TerminalGrid::handleApc(const std::string &payload) {
     if (params.count('a')) action = params['a'][0];
 
     int format = 32; // Default: RGBA
-    if (params.count('f')) format = std::stoi(params['f']);
+    if (params.count('f')) format = safeStoi(params['f'], 32);
 
     uint32_t imageId = 0;
-    if (params.count('i')) imageId = static_cast<uint32_t>(std::stoul(params['i']));
+    if (params.count('i')) imageId = safeStoul(params['i']);
 
     int more = 0; // Chunking: 1 = more data coming
-    if (params.count('m')) more = std::stoi(params['m']);
+    if (params.count('m')) more = safeStoi(params['m']);
 
     // Handle chunked transmission
     if (more == 1) {
@@ -1328,9 +1339,9 @@ void TerminalGrid::handleApc(const std::string &payload) {
         return;
     }
 
-    // Decode image data
+    // Decode image data (cap at 10MB decoded to prevent DoS)
     QImage image;
-    if (!fullData.empty()) {
+    if (!fullData.empty() && fullData.size() <= 15 * 1024 * 1024) { // ~10MB decoded
         QByteArray base64Data = QByteArray::fromRawData(fullData.data(),
                                                          static_cast<int>(fullData.size()));
         QByteArray decoded = QByteArray::fromBase64(base64Data);
@@ -1341,9 +1352,9 @@ void TerminalGrid::handleApc(const std::string &payload) {
         } else if (format == 32 || format == 24) {
             // Raw pixel data
             int pixelW = 0, pixelH = 0;
-            if (params.count('s')) pixelW = std::stoi(params['s']);
-            if (params.count('v')) pixelH = std::stoi(params['v']);
-            if (pixelW > 0 && pixelH > 0 && pixelW <= 4096 && pixelH <= 4096) {
+            if (params.count('s')) pixelW = safeStoi(params['s']);
+            if (params.count('v')) pixelH = safeStoi(params['v']);
+            if (pixelW > 0 && pixelH > 0 && pixelW <= MAX_IMAGE_DIM && pixelH <= MAX_IMAGE_DIM) {
                 int bytesPerPixel = (format == 32) ? 4 : 3;
                 if (decoded.size() >= pixelW * pixelH * bytesPerPixel) {
                     QImage::Format fmt = (format == 32)
@@ -1366,7 +1377,7 @@ void TerminalGrid::handleApc(const std::string &payload) {
 
     // Store image if it has an ID
     if (imageId > 0 && !image.isNull()) {
-        if (m_kittyImages.size() >= 200) m_kittyImages.clear(); // Prevent unbounded growth
+        if (static_cast<int>(m_kittyImages.size()) >= MAX_KITTY_CACHE) m_kittyImages.clear();
         m_kittyImages[imageId] = image;
     }
 
@@ -1377,7 +1388,7 @@ void TerminalGrid::handleApc(const std::string &payload) {
             displayImg = m_kittyImages[imageId];
         }
         if (!displayImg.isNull()) {
-            if (m_inlineImages.size() >= 100)
+            if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES)
                 m_inlineImages.erase(m_inlineImages.begin());
 
             InlineImage img;
@@ -1390,11 +1401,11 @@ void TerminalGrid::handleApc(const std::string &payload) {
 
             // Use cols/rows if specified (cell units override pixel sizing)
             if (params.count('c')) {
-                img.cellWidth = std::stoi(params['c']);
+                img.cellWidth = safeStoi(params['c']);
                 img.pixelSized = false;
             }
             if (params.count('r')) {
-                img.cellHeight = std::stoi(params['r']);
+                img.cellHeight = safeStoi(params['r']);
                 if (!params.count('c')) img.pixelSized = false;
             }
 

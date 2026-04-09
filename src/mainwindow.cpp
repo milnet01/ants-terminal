@@ -325,6 +325,9 @@ void MainWindow::setupMenus() {
             connect(m_aiDialog, &AiDialog::insertCommand, this, [this](const QString &cmd) {
                 if (auto *t = focusedTerminal()) t->writeCommand(cmd);
             });
+            connect(m_aiDialog, &QDialog::finished, this, [this]() {
+                if (auto *t = focusedTerminal()) t->setFocus();
+            });
         }
         // Update context and config
         if (auto *t = focusedTerminal()) {
@@ -353,8 +356,12 @@ void MainWindow::setupMenus() {
 
     QAction *viewTranscript = claudeMenu->addAction("View &Transcript...");
     connect(viewTranscript, &QAction::triggered, this, [this]() {
-        if (!m_claudeTranscript)
+        if (!m_claudeTranscript) {
             m_claudeTranscript = new ClaudeTranscriptDialog(m_claudeIntegration, this);
+            connect(m_claudeTranscript, &QDialog::finished, this, [this]() {
+                if (auto *t = focusedTerminal()) t->setFocus();
+            });
+        }
         m_claudeTranscript->show();
         m_claudeTranscript->raise();
     });
@@ -446,8 +453,7 @@ void MainWindow::setupMenus() {
     QAction *recordAction = settingsMenu->addAction("&Record Session");
     recordAction->setCheckable(true);
     recordAction->setShortcut(QKeySequence(m_config.keybinding("record_session", "Ctrl+Shift+R")));
-    connect(recordAction, &QAction::toggled, this, [this, recordAction](bool checked) {
-        Q_UNUSED(recordAction);
+    connect(recordAction, &QAction::toggled, this, [this](bool checked) {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
         if (!t) return;
@@ -477,7 +483,7 @@ void MainWindow::setupMenus() {
     });
 
     QAction *nextBmAction = settingsMenu->addAction("Next Bookmark");
-    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark", "Ctrl+Shift+J")));
+    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark", "Ctrl+Shift+N")));
     connect(nextBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();

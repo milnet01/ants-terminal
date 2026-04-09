@@ -131,6 +131,8 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
     QJsonArray entries;
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return entries;
+    // Skip excessively large transcripts to prevent memory exhaustion
+    if (file.size() > 100 * 1024 * 1024) return entries;
 
     while (!file.atEnd()) {
         QByteArray line = file.readLine().trimmed();

@@ -1,6 +1,7 @@
 #include "glrenderer.h"
 #include "terminalgrid.h"
 
+#include <QDebug>
 #include <QPainter>
 #include <QFontMetrics>
 #include <QImage>
@@ -92,6 +93,7 @@ bool GlRenderer::initialize() {
     if (!m_bgShader.addShaderFromSourceCode(QOpenGLShader::Vertex, bgVertexShader) ||
         !m_bgShader.addShaderFromSourceCode(QOpenGLShader::Fragment, bgFragmentShader) ||
         !m_bgShader.link()) {
+        qWarning("GlRenderer: background shader failed: %s", qPrintable(m_bgShader.log()));
         return false;
     }
 
@@ -99,6 +101,7 @@ bool GlRenderer::initialize() {
     if (!m_glyphShader.addShaderFromSourceCode(QOpenGLShader::Vertex, glyphVertexShader) ||
         !m_glyphShader.addShaderFromSourceCode(QOpenGLShader::Fragment, glyphFragmentShader) ||
         !m_glyphShader.link()) {
+        qWarning("GlRenderer: glyph shader failed: %s", qPrintable(m_glyphShader.log()));
         return false;
     }
 
@@ -183,8 +186,8 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
 
     int rows = grid->rows();
     int cols = grid->cols();
-    int scrollbackSize = grid->scrollbackSize();
-    int viewStart = scrollbackSize - scrollOffset;
+    // Note: GL renderer currently only renders the active screen, not scrollback.
+    // Scrollback rendering uses the QPainter path in TerminalWidget.
 
     std::vector<CellQuad> bgQuads;
     std::vector<GlyphQuad> glyphQuads;
@@ -372,9 +375,9 @@ void GlRenderer::rasterizeGlyph(uint32_t codepoint, const QFont &font, GlyphEntr
         return;
     }
 
-    // Render glyph to a QImage
-    int imgW = std::max(advance, m_cellWidth * 2); // Extra space for wide chars
-    int imgH = m_cellHeight;
+    // Render glyph to a QImage (bound to prevent pathological allocations)
+    int imgW = std::clamp(std::max(advance, m_cellWidth * 2), 1, 512);
+    int imgH = std::clamp(m_cellHeight, 1, 512);
     QImage img(imgW, imgH, QImage::Format_Grayscale8);
     img.fill(0);
 
