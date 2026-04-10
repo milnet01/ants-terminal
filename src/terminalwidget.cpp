@@ -120,6 +120,25 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     // Performance overlay timer
     m_perfFrameTimer.start();
 
+    // Scrollbar (child widget overlaid on right edge)
+    m_scrollBar = new QScrollBar(Qt::Vertical, this);
+    m_scrollBar->setMinimum(0);
+    m_scrollBar->setMaximum(0);
+    m_scrollBar->setValue(0);
+    m_scrollBar->setStyleSheet(
+        "QScrollBar:vertical { background: transparent; width: 12px; margin: 0; }"
+        "QScrollBar::handle:vertical { background: rgba(255,255,255,80); border-radius: 4px; min-height: 20px; margin: 2px; }"
+        "QScrollBar::handle:vertical:hover { background: rgba(255,255,255,120); }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
+    );
+    connect(m_scrollBar, &QScrollBar::valueChanged, this, [this](int value) {
+        // Scrollbar value 0 = top of scrollback, max = bottom (scrollOffset 0)
+        int maxScroll = m_grid->scrollbackSize();
+        m_scrollOffset = maxScroll - value;
+        update();
+    });
+
     setMinimumSize(m_cellWidth * 20 + m_padding * 2, m_cellHeight * 5 + m_padding * 2);
     setMouseTracking(true);
 
@@ -707,6 +726,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     m_scrollOffset = 0;
+    updateScrollBar();
     m_cursorBlinkOn = true;
     m_cursorTimer.start();
 
@@ -820,6 +840,14 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         return;
     }
 
+    // Ctrl+arrow keys — word movement (xterm modifier encoding: CSI 1;5 X)
+    if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
+        if (key == Qt::Key_Left)  { if (m_pty) m_pty->write("\x1B[1;5D"); return; }
+        if (key == Qt::Key_Right) { if (m_pty) m_pty->write("\x1B[1;5C"); return; }
+        if (key == Qt::Key_Up)    { if (m_pty) m_pty->write("\x1B[1;5A"); return; }
+        if (key == Qt::Key_Down)  { if (m_pty) m_pty->write("\x1B[1;5B"); return; }
+    }
+
     // Ctrl+key combinations
     if (mods & Qt::ControlModifier && !(mods & Qt::ShiftModifier)) {
         if (key >= Qt::Key_A && key <= Qt::Key_Z) {
@@ -888,6 +916,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     case Qt::Key_Home:
         if (mods & Qt::ShiftModifier) {
             m_scrollOffset = m_grid->scrollbackSize();
+            updateScrollBar();
             update();
             return;
         }
@@ -896,6 +925,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     case Qt::Key_End:
         if (mods & Qt::ShiftModifier) {
             m_scrollOffset = 0;
+            updateScrollBar();
             update();
             return;
         }
@@ -911,6 +941,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         if (mods & Qt::ShiftModifier) {
             m_scrollOffset = std::min(m_scrollOffset + m_grid->rows(),
                                        m_grid->scrollbackSize());
+            updateScrollBar();
             update();
             return;
         }
@@ -919,6 +950,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     case Qt::Key_PageDown:
         if (mods & Qt::ShiftModifier) {
             m_scrollOffset = std::max(m_scrollOffset - m_grid->rows(), 0);
+            updateScrollBar();
             update();
             return;
         }
@@ -1013,6 +1045,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
     } else if (delta < 0) {
         m_scrollOffset = std::max(m_scrollOffset - 3, 0);
     }
+    updateScrollBar();
     update();
 }
 
@@ -1035,7 +1068,18 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
 
 void TerminalWidget::onPtyData(const QByteArray &data) {
     m_spanCacheDirty = true;
+
+    // Scroll anchoring: if the user has scrolled up, keep their viewport stable
+    // as new lines push content into scrollback.
+    int scrollbackBefore = m_grid->scrollbackSize();
+
     m_parser->feed(data.constData(), data.size());
+
+    if (m_scrollOffset > 0) {
+        int added = m_grid->scrollbackSize() - scrollbackBefore;
+        if (added > 0)
+            m_scrollOffset = std::min(m_scrollOffset + added, m_grid->scrollbackSize());
+    }
 
     // Session logging
     if (m_loggingEnabled && m_logFile && m_logFile->isOpen()) {
@@ -1084,6 +1128,8 @@ void TerminalWidget::onPtyData(const QByteArray &data) {
     m_syncOutputActive = m_grid->synchronizedOutput();
     if (!m_syncOutputActive || !wasSync)
         update();
+
+    updateScrollBar();
 
     // Restart Claude Code detection debounce timer
     m_claudeDetectTimer.start();
@@ -1185,7 +1231,8 @@ void TerminalWidget::navigatePrompt(int direction) {
 }
 
 void TerminalWidget::recalcGridSize() {
-    int availW = width() - m_padding * 2;
+    int scrollBarW = m_scrollBar ? m_scrollBar->width() : 0;
+    int availW = width() - m_padding * 2 - scrollBarW;
     int searchBarH = m_searchVisible ? m_searchBar->height() : 0;
     int availH = height() - m_padding * 2 - searchBarH;
     int cols = std::max(availW / m_cellWidth, 10);
@@ -1197,6 +1244,28 @@ void TerminalWidget::recalcGridSize() {
             m_pty->resize(rows, cols);
         }
     }
+    positionScrollBar();
+    updateScrollBar();
+}
+
+void TerminalWidget::positionScrollBar() {
+    if (!m_scrollBar) return;
+    int sbW = m_scrollBar->sizeHint().width();
+    int searchBarH = m_searchVisible ? m_searchBar->height() : 0;
+    m_scrollBar->setGeometry(width() - sbW, searchBarH, sbW, height() - searchBarH);
+}
+
+void TerminalWidget::updateScrollBar() {
+    if (!m_scrollBar) return;
+    int maxScroll = m_grid->scrollbackSize();
+    // Block signals to avoid re-entrant valueChanged -> scrollOffset update
+    m_scrollBar->blockSignals(true);
+    m_scrollBar->setMaximum(maxScroll);
+    m_scrollBar->setPageStep(m_grid->rows());
+    m_scrollBar->setValue(maxScroll - m_scrollOffset);
+    m_scrollBar->blockSignals(false);
+    // Show scrollbar only when there's scrollback
+    m_scrollBar->setVisible(maxScroll > 0);
 }
 
 QPoint TerminalWidget::pixelToCell(const QPoint &pos) const {
