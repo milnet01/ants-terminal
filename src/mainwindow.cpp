@@ -151,8 +151,11 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // Apply saved theme
     applyTheme(m_config.theme());
 
-    // Create first tab
+    // Create first tab (restoreSessions may replace it if there are saved sessions)
     newTab();
+
+    // Restore saved sessions from previous run
+    restoreSessions();
 
     // Claude Code integration
     setupClaudeIntegration();
@@ -1383,7 +1386,43 @@ void MainWindow::saveAllSessions() {
 }
 
 void MainWindow::restoreSessions() {
-    // Not auto-restoring on startup — expose via menu if needed
+    if (!m_config.sessionPersistence()) return;
+
+    QStringList sessions = SessionManager::savedSessions();
+    if (sessions.isEmpty()) return;
+
+    // Close the default empty tab that was created at startup
+    bool hadDefaultTab = (m_tabWidget->count() == 1);
+
+    for (const QString &tabId : sessions) {
+        auto *terminal = createTerminal();
+        connectTerminal(terminal);
+
+        int idx = m_tabWidget->addTab(terminal, "Shell");
+        m_tabSessionIds[terminal] = tabId;
+
+        if (!terminal->startShell()) continue;
+
+        // Restore scrollback into the grid
+        if (SessionManager::loadSession(tabId, terminal->grid())) {
+            terminal->update();
+        }
+
+        // Clean up the saved session file after restoring
+        SessionManager::removeSession(tabId);
+    }
+
+    // Remove the default empty tab if we restored sessions
+    if (hadDefaultTab && m_tabWidget->count() > 1) {
+        QWidget *defaultTab = m_tabWidget->widget(0);
+        m_tabSessionIds.remove(defaultTab);
+        m_tabWidget->removeTab(0);
+        defaultTab->deleteLater();
+    }
+
+    m_tabWidget->setCurrentIndex(0);
+    m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
+    if (auto *t = focusedTerminal()) t->setFocus();
 }
 
 void MainWindow::showEvent(QShowEvent *event) {
