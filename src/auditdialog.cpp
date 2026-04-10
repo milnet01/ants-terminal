@@ -161,6 +161,84 @@ void AuditDialog::populateChecks() {
         false, true, {}
     });
     m_checks.append({
+        "unsafe_c_funcs", "Unsafe C/C++ Functions",
+        "strcpy, sprintf, gets, strcat, mktemp, etc.", "Security",
+        "grep -rnI" + GI + " -E '\\b(strcpy|strcat|sprintf|vsprintf|gets|mktemp|tmpnam|strtok|scanf)\\s*\\(' . 2>/dev/null"
+        " | grep -v '// *safe' | head -50",
+        true, true, {}
+    });
+    m_checks.append({
+        "cmd_injection", "Command Injection Patterns",
+        "system(), popen(), exec() with string concatenation", "Security",
+        "grep -rnI" + GI + " -E '\\b(system|popen|exec[lv]?p?)\\s*\\(' . 2>/dev/null | head -30;"
+        " grep -rnI --include='*.py' -E '(subprocess\\.(call|run|Popen).*shell\\s*=\\s*True|os\\.system)' . 2>/dev/null | head -20;"
+        " grep -rnI --include='*.js' --include='*.ts' -E 'child_process\\.exec[^F]' . 2>/dev/null | head -20",
+        true, true, {}
+    });
+    m_checks.append({
+        "format_string", "Format String Vulnerabilities",
+        "printf/fprintf with non-literal format argument", "Security",
+        "grep -rnI" + GI + " -P '\\b[fs]?n?printf\\s*\\([^\"]*\\b\\w+\\s*\\)' . 2>/dev/null"
+        " | grep -vE 'printf\\s*\\(\\s*\"' | head -30",
+        false, true, {}
+    });
+    m_checks.append({
+        "insecure_http", "Insecure HTTP URLs",
+        "http:// URLs that should be https://", "Security",
+        "grep -rnI" + GI + " --include='*.json' --include='*.yaml' --include='*.yml'"
+        " --include='*.toml' --include='*.xml' --include='*.cfg'"
+        " -E 'http://[^l][^o][^c]' . 2>/dev/null"
+        " | grep -viE '(localhost|127\\.0\\.0|example\\.com|//comment|0\\.0\\.0\\.0)' | head -30",
+        true, true, {}
+    });
+    m_checks.append({
+        "unsafe_deser", "Unsafe Deserialization",
+        "eval(), pickle.loads(), yaml.load() without SafeLoader", "Security",
+        "grep -rnI --include='*.py' -E '\\b(pickle\\.loads?|yaml\\.load|marshal\\.loads?|eval)\\s*\\(' . 2>/dev/null"
+        " | grep -viE '(SafeLoader|safe_load|ast\\.literal_eval)' | head -20;"
+        " grep -rnI --include='*.js' --include='*.ts' -E '\\beval\\s*\\(' . 2>/dev/null | head -20;"
+        " grep -rnI --include='*.php' -E '\\b(unserialize|eval)\\s*\\(' . 2>/dev/null | head -20",
+        true, true, {}
+    });
+    m_checks.append({
+        "sql_injection", "SQL Injection Patterns",
+        "String concatenation/formatting in SQL queries", "Security",
+        "grep -rnI" + GI + " -iE '(execute|query|cursor\\.execute|raw_input).*(%s|%d|\\+.*\\+|\\.format|f\").*([Ss][Ee][Ll][Ee][Cc][Tt]|[Ii][Nn][Ss][Ee][Rr][Tt]|[Uu][Pp][Dd][Aa][Tt][Ee]|[Dd][Ee][Ll][Ee][Tt][Ee])' . 2>/dev/null | head -30;"
+        " grep -rnI" + GI + " -iE '([Ss][Ee][Ll][Ee][Cc][Tt]|[Ii][Nn][Ss][Ee][Rr][Tt]|[Uu][Pp][Dd][Aa][Tt][Ee]|[Dd][Ee][Ll][Ee][Tt][Ee]).*(%s|%d|\\+.*\\+|\\.format|f\")' . 2>/dev/null | head -30",
+        false, true, {}
+    });
+    m_checks.append({
+        "xss_patterns", "Cross-Site Scripting (XSS) Patterns",
+        "innerHTML, document.write, dangerouslySetInnerHTML", "Security",
+        "grep -rnI --include='*.js' --include='*.ts' --include='*.jsx' --include='*.tsx' --include='*.html'"
+        " -E '\\b(innerHTML|outerHTML|document\\.write|dangerouslySetInnerHTML|v-html)\\b' . 2>/dev/null | head -30",
+        false, true, {}
+    });
+    m_checks.append({
+        "path_traversal", "Path Traversal Patterns",
+        "Unsanitized path joins with user input", "Security",
+        "grep -rnI" + GI + " -E '\\.\\./' . 2>/dev/null"
+        " | grep -viE '(node_modules|vendor|build|/\\*|//|#|test|spec|mock|example)' | head -20;"
+        " grep -rnI --include='*.py' -E 'os\\.path\\.join.*request' . 2>/dev/null | head -10",
+        false, true, {}
+    });
+    m_checks.append({
+        "insecure_random", "Insecure Randomness",
+        "rand(), srand(), Math.random() for security use", "Security",
+        "grep -rnI" + GI + " -E '\\b(srand|rand)\\s*\\(' . 2>/dev/null"
+        " | grep -viE '(test|example|seed|arc4random|random_device)' | head -20;"
+        " grep -rnI --include='*.py' -E '\\brandom\\.(random|randint|choice)' . 2>/dev/null"
+        " | grep -viE '(test|mock|seed|secrets)' | head -20",
+        false, true, {}
+    });
+    m_checks.append({
+        "weak_crypto", "Weak Cryptography",
+        "MD5, SHA1, DES, RC4, ECB mode usage", "Security",
+        "grep -rnI" + GI + " -iE '\\b(md5|sha1|des|rc4|ecb)\\b' . 2>/dev/null"
+        " | grep -viE '(git|checksums?|hash.*file|integrity|content.hash|test|checksum|etag)' | head -30",
+        false, true, {}
+    });
+    m_checks.append({
         "readme_check", "README & License Check",
         "Verify documentation files exist", "General",
         "echo '=== README ===' && (ls README* readme* 2>/dev/null || echo 'No README found')"
@@ -415,6 +493,32 @@ void AuditDialog::buildUI() {
     m_runBtn->setMinimumWidth(120);
     connect(m_runBtn, &QPushButton::clicked, this, &AuditDialog::runAudit);
     btnRow->addWidget(m_runBtn);
+
+    m_reviewBtn = new QPushButton("Review with Claude", this);
+    m_reviewBtn->setFixedHeight(32);
+    m_reviewBtn->setMinimumWidth(160);
+    m_reviewBtn->setToolTip("Save results and ask Claude Code to review and fix findings");
+    m_reviewBtn->setVisible(false);
+    connect(m_reviewBtn, &QPushButton::clicked, this, [this]() {
+        QString text = plainTextResults();
+        if (text.isEmpty()) return;
+
+        // Write to a temp file that persists after dialog closes
+        auto *tmp = new QTemporaryFile(QDir::tempPath() + "/ants-audit-XXXXXX.txt");
+        tmp->setAutoRemove(false);
+        if (tmp->open()) {
+            tmp->write(text.toUtf8());
+            QString path = tmp->fileName();
+            tmp->close();
+            delete tmp;
+            emit reviewRequested(path);
+            close();
+        } else {
+            delete tmp;
+        }
+    });
+    btnRow->addWidget(m_reviewBtn);
+
     root->addLayout(btnRow);
 
     // Progress
@@ -481,6 +585,7 @@ void AuditDialog::runNextCheck() {
         m_progress->setValue(m_totalSelected);
         m_statusLabel->setText(QString("Audit complete - %1 checks run").arg(m_totalSelected));
         m_runBtn->setEnabled(true);
+        m_reviewBtn->setVisible(true);
         // Re-enable toggles
         for (auto &c : m_checks)
             if (c.toggle) c.toggle->setEnabled(c.available);
@@ -534,4 +639,16 @@ void AuditDialog::appendResult(const QString &title, const QString &output, bool
     // Auto-scroll to bottom
     auto *sb = m_results->verticalScrollBar();
     if (sb) sb->setValue(sb->maximum());
+}
+
+QString AuditDialog::plainTextResults() const {
+    // Convert the rich-text results to plain text for Claude
+    QString text = m_results->toPlainText().trimmed();
+    if (text.isEmpty()) return {};
+
+    QString header = "Project Audit Results\n"
+                     "Project: " + m_projectPath + "\n"
+                     "Detected: " + m_detectedTypes.join(", ") + "\n"
+                     "---\n\n";
+    return header + text;
 }

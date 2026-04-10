@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QProcess>
 #include <QTimer>
+#include <QTemporaryFile>
 
 class ToggleSwitch;
 
@@ -26,6 +27,10 @@ class AuditDialog : public QDialog {
 
 public:
     explicit AuditDialog(const QString &projectPath, QWidget *parent = nullptr);
+
+signals:
+    // Emitted when user clicks "Review with Claude" — carries path to temp results file
+    void reviewRequested(const QString &resultsFile);
 
 private:
     void detectProject();
@@ -53,4 +58,7 @@ private:
     QLabel *m_statusLabel = nullptr;
     QProcess *m_process = nullptr;
     QTimer *m_timeout = nullptr;
+
+    QPushButton *m_reviewBtn = nullptr;
+    QString plainTextResults() const;
 };

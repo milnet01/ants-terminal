@@ -4,6 +4,8 @@
 #include <QFont>
 #include <QSurfaceFormat>
 #include <QStringList>
+#include <QIcon>
+#include <QDir>
 
 int main(int argc, char *argv[]) {
     // Set default surface format with alpha for per-pixel transparency
@@ -19,6 +21,16 @@ int main(int argc, char *argv[]) {
     app.setApplicationName("Ants Terminal");
     app.setApplicationVersion("0.4.0");
     app.setStyle("Fusion");
+
+    // Application icon (taskbar, window manager, dialogs)
+    QIcon appIcon = QIcon::fromTheme("ants-terminal");
+    if (appIcon.isNull()) {
+        // Fallback: load from assets/ next to the executable
+        QString base = QApplication::applicationDirPath() + "/../assets/ants-terminal";
+        for (int sz : {16, 32, 48, 64, 128, 256})
+            appIcon.addFile(QString("%1-%2.png").arg(base).arg(sz), QSize(sz, sz));
+    }
+    app.setWindowIcon(appIcon);
 
     // Check for --quake / --dropdown flag
     QStringList args = app.arguments();

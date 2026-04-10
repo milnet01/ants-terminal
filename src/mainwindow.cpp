@@ -443,6 +443,17 @@ void MainWindow::setupMenus() {
         if (cwd.isEmpty()) cwd = QDir::currentPath();
         auto *dlg = new AuditDialog(cwd, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dlg, &AuditDialog::reviewRequested, this, [this](const QString &resultsFile) {
+            auto *t = focusedTerminal();
+            if (!t) t = currentTerminal();
+            if (!t) return;
+            // Send a Claude Code command that reads the audit file and fixes issues
+            QString cmd = QString("claude \"Read %1 and fix any real issues found in the project audit."
+                                  " Focus on bugs, security vulnerabilities, and code quality problems."
+                                  " Ignore informational items like line counts and file sizes."
+                                  " For each fix, explain what you changed and why.\"\n").arg(resultsFile);
+            t->writeCommand(cmd);
+        });
         dlg->show();
     });
 
@@ -1398,7 +1409,7 @@ void MainWindow::restoreSessions() {
         auto *terminal = createTerminal();
         connectTerminal(terminal);
 
-        int idx = m_tabWidget->addTab(terminal, "Shell");
+        m_tabWidget->addTab(terminal, "Shell");
         m_tabSessionIds[terminal] = tabId;
 
         if (!terminal->startShell()) continue;

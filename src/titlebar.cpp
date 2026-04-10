@@ -17,6 +17,21 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     layout->setContentsMargins(8, 0, 4, 0);
     layout->setSpacing(2);
 
+    // Application icon
+    m_iconLabel = new QLabel(this);
+    m_iconLabel->setFixedSize(24, 24);
+    m_iconLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    QIcon appIcon = QIcon::fromTheme("ants-terminal");
+    if (appIcon.isNull()) {
+        QString base = QApplication::applicationDirPath() + "/../assets/ants-terminal";
+        appIcon.addFile(base + "-32.png", QSize(32, 32));
+        appIcon.addFile(base + "-48.png", QSize(48, 48));
+    }
+    if (!appIcon.isNull())
+        m_iconLabel->setPixmap(appIcon.pixmap(20, 20));
+    layout->addWidget(m_iconLabel);
+    layout->addSpacing(4);
+
     m_titleLabel = new QLabel(this);
     m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents); // Pass clicks to TitleBar

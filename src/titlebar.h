@@ -4,6 +4,7 @@
 #include <QLabel>
 #include <QToolButton>
 #include <QHBoxLayout>
+#include <QIcon>
 
 class TitleBar : public QWidget {
     Q_OBJECT
@@ -33,6 +34,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
 
 private:
+    QLabel *m_iconLabel = nullptr;
     QLabel *m_titleLabel = nullptr;
     QPoint m_cursorOffset;     // Cursor offset from window corner at drag start
     QPoint m_knownWindowPos;   // Last known window position (from tracker)
