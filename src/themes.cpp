@@ -1,5 +1,11 @@
 #include "themes.h"
 #include <QStringList>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
 static std::vector<Theme> buildThemes() {
     std::vector<Theme> t;
@@ -161,9 +167,18 @@ static std::vector<Theme> buildThemes() {
     return t;
 }
 
-const std::vector<Theme> &Themes::all() {
-    static auto themes = buildThemes();
+static std::vector<Theme> &allThemes() {
+    static std::vector<Theme> themes;
+    if (themes.empty()) {
+        themes = buildThemes();
+        auto user = Themes::loadUserThemes();
+        themes.insert(themes.end(), user.begin(), user.end());
+    }
     return themes;
+}
+
+const std::vector<Theme> &Themes::all() {
+    return allThemes();
 }
 
 const Theme &Themes::byName(const QString &name) {
@@ -183,4 +198,68 @@ QStringList Themes::names() {
         result.append(t.name);
     }
     return result;
+}
+
+std::vector<Theme> Themes::loadUserThemes() {
+    std::vector<Theme> result;
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                  + "/ants-terminal/themes";
+    QDir themeDir(dir);
+    if (!themeDir.exists()) return result;
+
+    QStringList files = themeDir.entryList({"*.json"}, QDir::Files);
+    for (const QString &file : files) {
+        QFile f(themeDir.filePath(file));
+        if (!f.open(QIODevice::ReadOnly)) continue;
+        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        if (!doc.isObject()) continue;
+        QJsonObject obj = doc.object();
+
+        Theme th;
+        th.name = obj.value("name").toString(file.chopped(5)); // strip .json
+        th.isUserTheme = true;
+
+        auto parseColor = [](const QJsonValue &v, const QColor &fallback = QColor()) -> QColor {
+            if (v.isString()) return QColor(v.toString());
+            return fallback;
+        };
+
+        th.bgPrimary   = parseColor(obj["bg_primary"], QColor(0x1E, 0x1E, 0x2E));
+        th.bgSecondary = parseColor(obj["bg_secondary"], th.bgPrimary.darker(120));
+        th.textPrimary = parseColor(obj["text_primary"], QColor(0xCD, 0xD6, 0xF4));
+        th.textSecondary = parseColor(obj["text_secondary"], th.textPrimary.darker(130));
+        th.accent      = parseColor(obj["accent"], QColor(0x89, 0xB4, 0xFA));
+        th.border      = parseColor(obj["border"], th.bgPrimary.lighter(150));
+        th.cursor      = parseColor(obj["cursor"], th.accent);
+
+        // ANSI palette (optional)
+        QJsonArray ansiArr = obj["ansi"].toArray();
+        // Default ANSI colors (xterm-like)
+        QColor defaultAnsi[16] = {
+            QColor(0x45,0x47,0x5A), QColor(0xF3,0x8B,0xA8),
+            QColor(0xA6,0xE3,0xA1), QColor(0xF9,0xE2,0xAF),
+            QColor(0x89,0xB4,0xFA), QColor(0xF5,0xC2,0xE7),
+            QColor(0x94,0xE2,0xD5), QColor(0xBA,0xC2,0xDE),
+            QColor(0x58,0x5B,0x70), QColor(0xF3,0x8B,0xA8),
+            QColor(0xA6,0xE3,0xA1), QColor(0xF9,0xE2,0xAF),
+            QColor(0x89,0xB4,0xFA), QColor(0xF5,0xC2,0xE7),
+            QColor(0x94,0xE2,0xD5), QColor(0xA6,0xAD,0xC8),
+        };
+        for (int i = 0; i < 16; ++i) {
+            if (i < ansiArr.size())
+                th.ansi[i] = parseColor(ansiArr[i], defaultAnsi[i]);
+            else
+                th.ansi[i] = defaultAnsi[i];
+        }
+
+        result.push_back(th);
+    }
+    return result;
+}
+
+void Themes::reload() {
+    auto &themes = allThemes();
+    themes = buildThemes();
+    auto user = loadUserThemes();
+    themes.insert(themes.end(), user.begin(), user.end());
 }

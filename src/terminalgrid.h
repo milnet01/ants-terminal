@@ -136,6 +136,10 @@ public:
     using ResponseCallback = std::function<void(const std::string &)>;
     void setResponseCallback(ResponseCallback cb);
 
+    // Bell callback (invoked on BEL character)
+    using BellCallback = std::function<void()>;
+    void setBellCallback(BellCallback cb) { m_bellCallback = std::move(cb); }
+
     // Combining character access per line
     const std::unordered_map<int, std::vector<uint32_t>> &screenCombining(int row) const {
         return m_screenLines[row].combining;
@@ -182,7 +186,7 @@ private:
     void handleApc(const std::string &payload);  // Kitty graphics
 
     // CSI helpers
-    void handleSGR(const std::vector<int> &params);
+    void handleSGR(const std::vector<int> &params, const std::vector<bool> &colonSep = {});
     void eraseInDisplay(int mode);
     void eraseInLine(int mode);
     void insertLines(int count);
@@ -272,6 +276,9 @@ private:
 
     // Response callback
     ResponseCallback m_responseCallback;
+
+    // Bell callback
+    BellCallback m_bellCallback;
 
     // Alt screen buffer
     bool m_altScreenActive = false;

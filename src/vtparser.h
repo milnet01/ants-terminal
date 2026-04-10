@@ -22,6 +22,7 @@ struct VtAction {
     char controlChar = 0;         // For Execute
     char finalChar = 0;           // For CSI/ESC dispatch
     std::vector<int> params;      // CSI parameters
+    std::vector<bool> colonSep;   // true if param[i] was preceded by ':' (sub-parameter)
     std::string intermediate;     // Intermediate bytes
     std::string oscString;        // OSC payload
 };
@@ -62,6 +63,8 @@ private:
 
     // CSI accumulation
     std::vector<int> m_params;
+    std::vector<bool> m_colonSep;  // parallel to m_params: true if preceded by ':'
+    bool m_nextIsSubParam = false; // set by ':' separator for next param
     int m_currentParam = -1;  // -1 means "not started"
     std::string m_intermediate;
     std::string m_oscString;

@@ -106,6 +106,20 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     m_claudeDetectTimer.setInterval(300);
     connect(&m_claudeDetectTimer, &QTimer::timeout, this, &TerminalWidget::checkForClaudePermissionPrompt);
 
+    // Visual bell flash timer
+    m_bellFlashTimer.setSingleShot(true);
+    m_bellFlashTimer.setInterval(150);
+    connect(&m_bellFlashTimer, &QTimer::timeout, this, [this]() {
+        m_bellFlashActive = false;
+        update();
+    });
+
+    // Bell callback from grid
+    m_grid->setBellCallback([this]() { triggerVisualBell(); });
+
+    // Performance overlay timer
+    m_perfFrameTimer.start();
+
     setMinimumSize(m_cellWidth * 20 + m_padding * 2, m_cellHeight * 5 + m_padding * 2);
     setMouseTracking(true);
 
@@ -307,32 +321,53 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     p.fillRect(rect(), bgFill);
     p.setCompositionMode(QPainter::CompositionMode_SourceOver);
 
+    // Background image (rendered behind all content)
+    if (!m_backgroundImage.isNull()) {
+        p.setOpacity(0.15); // subtle background
+        p.drawImage(rect(), m_backgroundImage);
+        p.setOpacity(1.0);
+    }
+
     int scrollbackSize = m_grid->scrollbackSize();
     int viewStart = scrollbackSize - m_scrollOffset;
 
     BracketPair bp = (m_scrollOffset == 0) ? findMatchingBracket() : BracketPair{-1,-1,-1,-1};
 
+    // Invalidate span caches if content changed since last paint
+    if (m_spanCacheDirty)
+        invalidateSpanCaches();
+
     for (int vr = 0; vr < rows; ++vr) {
         int globalLine = viewStart + vr;
         int px_y = m_padding + vr * m_cellHeight;
 
-        auto urlSpans = detectUrls(globalLine);
+        // URL spans — use cache to avoid per-frame regex matching
+        auto urlCacheIt = m_urlSpanCache.find(globalLine);
+        if (urlCacheIt == m_urlSpanCache.end()) {
+            auto computed = detectUrls(globalLine);
+            urlCacheIt = m_urlSpanCache.emplace(globalLine, std::move(computed)).first;
+        }
+        const auto &urlSpans = urlCacheIt->second;
 
-        // Check highlight rules for this line
-        struct HighlightSpan { int start; int end; QColor fg; QColor bg; };
-        std::vector<HighlightSpan> hlSpans;
-        if (!m_highlightRules.empty()) {
-            QString lt = lineText(globalLine);
-            for (const auto &rule : m_highlightRules) {
-                auto it = rule.pattern.globalMatch(lt);
-                while (it.hasNext()) {
-                    auto m = it.next();
-                    hlSpans.push_back({static_cast<int>(m.capturedStart()),
-                                       static_cast<int>(m.capturedStart() + m.capturedLength() - 1),
-                                       rule.fg, rule.bg});
+        // Highlight spans — use cache to avoid per-frame regex matching
+        auto hlCacheIt = m_hlSpanCache.find(globalLine);
+        if (hlCacheIt == m_hlSpanCache.end()) {
+            std::vector<PaintHighlightSpan> computed;
+            if (!m_highlightRules.empty()) {
+                QString lt = lineText(globalLine);
+                for (const auto &rule : m_highlightRules) {
+                    auto it = rule.pattern.globalMatch(lt);
+                    while (it.hasNext()) {
+                        auto m = it.next();
+                        computed.push_back({static_cast<int>(m.capturedStart()),
+                                            static_cast<int>(m.capturedStart() + m.capturedLength() - 1),
+                                            rule.fg, rule.bg});
+                    }
                 }
             }
+            hlCacheIt = m_hlSpanCache.emplace(globalLine, std::move(computed)).first;
         }
+        const auto &hlSpans = hlCacheIt->second;
 
         // --- Ligature-aware text rendering ---
         // We accumulate runs of same-attribute cells and draw them together
@@ -618,6 +653,56 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         QString text = m_currentSuggestion.left(remaining);
         p.drawText(gx, gy + m_fontAscent, text);
     }
+
+    // Visual bell flash overlay
+    if (m_bellFlashActive) {
+        QColor flash = m_grid->defaultFg();
+        flash.setAlpha(40);
+        p.fillRect(rect(), flash);
+    }
+
+    // Performance overlay
+    if (m_showPerfOverlay) {
+        ++m_perfFrameCount;
+        qint64 elapsed = m_perfFrameTimer.elapsed();
+        if (elapsed >= 1000) {
+            m_perfFps = m_perfFrameCount * 1000.0 / elapsed;
+            m_perfFrameCount = 0;
+            m_perfFrameTimer.restart();
+        }
+
+        QStringList lines;
+        lines << QString("FPS: %1").arg(m_perfFps, 0, 'f', 1);
+        lines << QString("Paint: %1 us").arg(m_perfLastPaintUs);
+        lines << QString("Scrollback: %1").arg(m_grid->scrollbackSize());
+        lines << QString("Grid: %1x%2").arg(cols).arg(rows);
+        lines << QString("Scroll offset: %1").arg(m_scrollOffset);
+
+        // Measure and draw background
+        QFont perfFont = m_font;
+        perfFont.setPointSize(9);
+        p.setFont(perfFont);
+        QFontMetrics pfm(perfFont);
+        int lineH = pfm.height();
+        int maxW = 0;
+        for (const auto &l : lines) maxW = qMax(maxW, pfm.horizontalAdvance(l));
+        int boxW = maxW + 16;
+        int boxH = lines.size() * lineH + 12;
+        int bx = width() - boxW - 8;
+        int by = 8;
+
+        p.setPen(Qt::NoPen);
+        QColor overlay = m_grid->defaultBg();
+        overlay.setAlpha(200);
+        p.setBrush(overlay);
+        p.drawRoundedRect(bx, by, boxW, boxH, 4, 4);
+
+        p.setPen(m_grid->defaultFg());
+        for (int i = 0; i < lines.size(); ++i) {
+            p.drawText(bx + 8, by + 8 + (i + 1) * lineH - pfm.descent(), lines[i]);
+        }
+        p.setFont(m_font);
+    }
 }
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
@@ -675,6 +760,21 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     // Ctrl+Shift+F -- search
     if (key == Qt::Key_F && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         showSearchBar();
+        return;
+    }
+
+    // Ctrl+Shift+O -- select command output at cursor (semantic selection)
+    if (key == Qt::Key_O && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+        int globalLine = m_grid->scrollbackSize() + m_grid->cursorRow();
+        selectCommandOutput(globalLine);
+        return;
+    }
+
+    // Ctrl+Shift+F12 -- toggle performance overlay
+    if (key == Qt::Key_F12 && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+        m_showPerfOverlay = !m_showPerfOverlay;
+        if (m_showPerfOverlay) m_perfFrameTimer.restart();
+        update();
         return;
     }
 
@@ -858,6 +958,7 @@ void TerminalWidget::resizeEvent(QResizeEvent *event) {
     // QOpenGLWidget::resizeEvent recreates the internal FBO at the new size.
     // Without this call, the FBO stays at its initial size and gets stretched.
     QOpenGLWidget::resizeEvent(event);
+    m_spanCacheDirty = true;
     recalcGridSize();
 }
 
@@ -933,6 +1034,7 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
 }
 
 void TerminalWidget::onPtyData(const QByteArray &data) {
+    m_spanCacheDirty = true;
     m_parser->feed(data.constData(), data.size());
 
     // Session logging
@@ -1221,6 +1323,12 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
                 }
             }
         }
+        // Alt+Click selects entire command output block (semantic selection)
+        if (event->modifiers() & Qt::AltModifier) {
+            QPoint cell = pixelToCell(event->pos());
+            selectCommandOutput(cell.x());
+            return;
+        }
         clearSelection();
         m_selecting = true;
         m_selStart = pixelToCell(event->pos());
@@ -1414,6 +1522,12 @@ void TerminalWidget::copySelection() {
 
 // --- URL and File Path Detection ---
 
+void TerminalWidget::invalidateSpanCaches() const {
+    m_urlSpanCache.clear();
+    m_hlSpanCache.clear();
+    m_spanCacheDirty = false;
+}
+
 QString TerminalWidget::lineText(int globalLine) const {
     int cols = m_grid->cols();
     QString text;
@@ -1524,7 +1638,7 @@ void TerminalWidget::openFileAtPath(const QString &path) {
     int line = -1;
     int col = -1;
 
-    QRegularExpression lineColRe(R"(^(.+):(\d+)(?::(\d+))?$)");
+    static QRegularExpression lineColRe(R"(^(.+):(\d+)(?::(\d+))?$)");
     auto match = lineColRe.match(path);
     if (match.hasMatch()) {
         filePath = match.captured(1);
@@ -1942,27 +2056,119 @@ pid_t TerminalWidget::shellPid() const {
 // --- Claude Code permission detection ---
 
 void TerminalWidget::checkForClaudePermissionPrompt() {
-    // Scan last 5 lines for Claude Code permission prompt pattern
+    // Claude Code permission prompts have this structure:
+    //   <Tool header>          e.g. "Bash command", "Read", "Edit", etc.
+    //   <command/path details>
+    //   ...
+    //   y · yes / n · no
+    //   Esc to cancel · Tab to accept · Ctrl+e to explain
+    //
+    // Strategy: anchor on the distinctive footer, then scan backwards for the tool header.
+
     int scrollbackSize = m_grid->scrollbackSize();
     int totalLines = scrollbackSize + m_grid->rows();
-    int start = std::max(0, totalLines - 5);
+    int scanStart = std::max(0, totalLines - 30);
 
-    // Pattern: "Allow ToolName" or "Allow ToolName(args)"
-    static QRegularExpression promptRe(
-        R"((?:Allow|allow)\s+(\w+(?:\([^)]*\))?)\s*\?)"
-    );
-
-    for (int i = start; i < totalLines; ++i) {
+    // Step 1: Find the Claude Code prompt footer
+    // Two known formats:
+    //   a) "Tab to accept" (older/tool prompts)
+    //   b) "Do you want to proceed?" (newer permission prompts)
+    //   c) "y · yes / n · no" or "y/n" patterns
+    int footerLine = -1;
+    for (int i = totalLines - 1; i >= std::max(0, totalLines - 12); --i) {
         QString text = lineText(i);
-        auto match = promptRe.match(text);
-        if (match.hasMatch()) {
-            QString rule = match.captured(1);
-            if (rule != m_lastDetectedRule) {
-                m_lastDetectedRule = rule;
-                emit claudePermissionDetected(rule);
+        if (text.contains(QLatin1String("Tab to accept"))
+            || text.contains(QLatin1String("Do you want to proceed"))
+            || text.contains(QLatin1String("allow access to"))
+            || text.contains(QLatin1String("always allow"))) {
+            footerLine = i;
+            break;
+        }
+    }
+    if (footerLine < 0) {
+        // No prompt on screen — reset so we can detect the next one
+        m_lastDetectedRule.clear();
+        return;
+    }
+
+    // Step 2: Scan backwards from footer for the tool type header
+    static QRegularExpression bashRe(R"(Bash\s+command|Bash\()");
+    static QRegularExpression otherToolRe(
+        R"(\b(Read|Edit|Write|Glob|Grep|WebFetch|WebSearch|Agent|NotebookEdit|Bash|TaskCreate|TaskUpdate|Skill|ToolSearch)\b)");
+    // Also match "allow access to <path>" patterns from newer prompts
+    static QRegularExpression allowAccessRe(R"(allow\s+access\s+to\s+(.+?)(?:\s+from|\s*$))");
+
+    QString toolType;
+    int headerLine = -1;
+    QString extractedPath;
+
+    for (int i = footerLine; i >= scanStart; --i) {
+        QString text = lineText(i).trimmed();
+        if (text.isEmpty()) continue;
+
+        // Check for "allow access to <path>" pattern
+        auto am = allowAccessRe.match(text);
+        if (am.hasMatch()) {
+            extractedPath = am.captured(1).trimmed();
+        }
+
+        if (bashRe.match(text).hasMatch()) {
+            toolType = QStringLiteral("Bash");
+            headerLine = i;
+            break;
+        }
+        // Match other tool names on short-ish lines (likely headers, not content)
+        if (text.length() < 60) {
+            auto tm = otherToolRe.match(text);
+            if (tm.hasMatch()) {
+                toolType = tm.captured(1);
+                headerLine = i;
+                break;
             }
+        }
+    }
+    if (toolType.isEmpty()) {
+        // If we found an "allow access" path but no tool type, infer from path
+        if (!extractedPath.isEmpty()) {
+            toolType = QStringLiteral("Read"); // default for file access
+        } else {
             return;
         }
+    }
+
+    // Step 3: Extract command/path from lines between header and footer
+    QString toolArg;
+    if (headerLine >= 0) {
+        for (int j = headerLine + 1; j < footerLine; ++j) {
+            QString next = lineText(j).trimmed();
+            if (next.isEmpty()) continue;
+            // Stop at prompt UI elements
+            if (next.startsWith(QLatin1String("y ")) || next.startsWith(QLatin1String("n "))
+                || next == QLatin1String("y") || next == QLatin1String("n")
+                || next.contains(QLatin1String("Do you want"))
+                || next.contains(QLatin1String("Esc to cancel")))
+                break;
+            toolArg = next;
+            break;
+        }
+    }
+
+    // Step 4: Build the allowlist rule
+    QString rule;
+    if (!extractedPath.isEmpty()) {
+        // Use the more specific path from "allow access to" prompts
+        rule = toolType + QStringLiteral("(") + extractedPath + QStringLiteral(")");
+    } else if (toolType == QLatin1String("Bash") && !toolArg.isEmpty()) {
+        rule = QStringLiteral("Bash(") + toolArg + QStringLiteral(")");
+    } else if (!toolArg.isEmpty()) {
+        rule = toolType + QStringLiteral("(") + toolArg + QStringLiteral(")");
+    } else {
+        rule = toolType;
+    }
+
+    if (rule != m_lastDetectedRule) {
+        m_lastDetectedRule = rule;
+        emit claudePermissionDetected(rule);
     }
 }
 
@@ -2209,6 +2415,7 @@ void TerminalWidget::setHighlightRules(const QJsonArray &rules) {
         if (!bg.isEmpty()) rule.bg = QColor(bg);
         m_highlightRules.push_back(rule);
     }
+    m_spanCacheDirty = true;
     update();
 }
 
@@ -2343,4 +2550,84 @@ QString TerminalWidget::lastCommandOutput() const {
         output += '\n';
     }
     return output.trimmed();
+}
+
+// --- Visual Bell ---
+
+void TerminalWidget::triggerVisualBell() {
+    if (!m_visualBellEnabled) return;
+    m_bellFlashActive = true;
+    m_bellFlashTimer.start();
+    update();
+}
+
+// --- Per-style Font Families ---
+
+void TerminalWidget::setBoldFontFamily(const QString &family) {
+    if (family.isEmpty()) return;
+    m_fontBold = QFont(family, m_font.pointSize());
+    m_fontBold.setBold(true);
+    m_fontBold.setStyleHint(QFont::Monospace);
+    m_fontBold.setFixedPitch(true);
+    update();
+}
+
+void TerminalWidget::setItalicFontFamily(const QString &family) {
+    if (family.isEmpty()) return;
+    m_fontItalic = QFont(family, m_font.pointSize());
+    m_fontItalic.setItalic(true);
+    m_fontItalic.setStyleHint(QFont::Monospace);
+    m_fontItalic.setFixedPitch(true);
+    update();
+}
+
+void TerminalWidget::setBoldItalicFontFamily(const QString &family) {
+    if (family.isEmpty()) return;
+    m_fontBoldItalic = QFont(family, m_font.pointSize());
+    m_fontBoldItalic.setBold(true);
+    m_fontBoldItalic.setItalic(true);
+    m_fontBoldItalic.setStyleHint(QFont::Monospace);
+    m_fontBoldItalic.setFixedPitch(true);
+    update();
+}
+
+// --- Background Image ---
+
+void TerminalWidget::setBackgroundImage(const QString &path) {
+    m_backgroundImagePath = path;
+    if (path.isEmpty()) {
+        m_backgroundImage = QImage();
+    } else {
+        m_backgroundImage = QImage(path);
+        if (!m_backgroundImage.isNull())
+            m_backgroundImage = m_backgroundImage.scaled(size(), Qt::KeepAspectRatioByExpanding,
+                                                          Qt::SmoothTransformation);
+    }
+    update();
+}
+
+// --- Semantic Output Selection ---
+
+void TerminalWidget::selectCommandOutput(int globalLine) {
+    const auto &regions = m_grid->promptRegions();
+    if (regions.empty()) return;
+
+    // Find the prompt region that contains this line
+    for (size_t i = 0; i < regions.size(); ++i) {
+        int outputStart = regions[i].endLine; // output starts after prompt ends
+        int outputEnd = (i + 1 < regions.size()) ? regions[i + 1].startLine
+                                                  : m_grid->scrollbackSize() + m_grid->rows();
+
+        if (globalLine >= outputStart && globalLine < outputEnd) {
+            // Select this entire output region
+            m_hasSelection = true;
+            m_selStart = QPoint(outputStart, 0);
+            m_selEnd = QPoint(outputEnd - 1, m_grid->cols() - 1);
+            update();
+
+            // Auto-copy to clipboard
+            copySelection();
+            return;
+        }
+    }
 }

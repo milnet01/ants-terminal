@@ -129,6 +129,26 @@ public:
     QString tabTitleFormat() const;
     void setTabTitleFormat(const QString &fmt);
 
+    // Visual bell
+    bool visualBell() const;
+    void setVisualBell(bool enabled);
+
+    // Background image
+    QString backgroundImage() const;
+    void setBackgroundImage(const QString &path);
+
+    // Per-style font families
+    QString boldFontFamily() const;
+    void setBoldFontFamily(const QString &family);
+    QString italicFontFamily() const;
+    void setItalicFontFamily(const QString &family);
+    QString boldItalicFontFamily() const;
+    void setBoldItalicFontFamily(const QString &family);
+
+    // Tab groups (color labels)
+    QJsonObject tabGroups() const;
+    void setTabGroups(const QJsonObject &groups);
+
     // Raw JSON access for settings dialog
     QJsonObject rawData() const { return m_data; }
     void setRawData(const QJsonObject &data) { m_data = data; save(); }

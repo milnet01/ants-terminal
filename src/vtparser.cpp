@@ -164,14 +164,19 @@ void VtParser::processChar(uint32_t ch) {
             // Clamp to prevent overflow
             if (m_currentParam > 16384) m_currentParam = 16384;
         } else if (ch == ';') {
-            if (m_params.size() < 32) // Cap at 32 params to prevent DoS
+            if (m_params.size() < 32) { // Cap at 32 params to prevent DoS
                 m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
+                m_colonSep.push_back(m_nextIsSubParam);
+            }
             m_currentParam = -1;
+            m_nextIsSubParam = false;
         } else if (ch >= 0x20 && ch <= 0x2F) {
             // Intermediate byte
             if (m_currentParam >= 0) {
                 m_params.push_back(m_currentParam);
+                m_colonSep.push_back(m_nextIsSubParam);
                 m_currentParam = -1;
+                m_nextIsSubParam = false;
             }
             m_intermediate += static_cast<char>(ch);
             m_state = CsiIntermediate;
@@ -179,19 +184,25 @@ void VtParser::processChar(uint32_t ch) {
             // Final byte — dispatch
             if (m_currentParam >= 0) {
                 m_params.push_back(m_currentParam);
+                m_colonSep.push_back(m_nextIsSubParam);
             }
+            m_nextIsSubParam = false;
             VtAction a;
             a.type = VtAction::CsiDispatch;
             a.finalChar = static_cast<char>(ch);
             a.params = m_params;
+            a.colonSep = m_colonSep;
             a.intermediate = m_intermediate;
             m_callback(a);
             transition(Ground);
         } else if (ch == ':') {
-            // Sub-parameter separator (used in SGR colon syntax)
-            if (m_params.size() < 32)
+            // Sub-parameter separator (used in SGR colon syntax like 4:3 for curly underline)
+            if (m_params.size() < 32) {
                 m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
+                m_colonSep.push_back(m_nextIsSubParam);
+            }
             m_currentParam = -1;
+            m_nextIsSubParam = true;  // Mark next param as a colon sub-parameter
         } else if (ch < 0x20) {
             VtAction a;
             a.type = VtAction::Execute;
@@ -310,7 +321,9 @@ void VtParser::transition(State newState) {
     m_state = newState;
     if (newState == CsiEntry) {
         m_params.clear();
+        m_colonSep.clear();
         m_currentParam = -1;
+        m_nextIsSubParam = false;
         m_intermediate.clear();
     } else if (newState == Escape) {
         m_intermediate.clear();

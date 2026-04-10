@@ -6,6 +6,7 @@
 #include <QAction>
 #include <QVBoxLayout>
 #include <QList>
+#include <QPointer>
 
 class CommandPalette : public QWidget {
     Q_OBJECT
@@ -31,7 +32,7 @@ private:
     QLineEdit *m_input = nullptr;
     QListWidget *m_list = nullptr;
     QVBoxLayout *m_layout = nullptr;
-    QList<QAction *> m_allActions;
+    QList<QPointer<QAction>> m_allActions;
 
     void positionAndResize();
     void populateList(const QString &filter);

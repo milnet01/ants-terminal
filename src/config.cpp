@@ -382,3 +382,61 @@ void Config::setTabTitleFormat(const QString &fmt) {
     m_data["tab_title_format"] = fmt;
     save();
 }
+
+// Visual bell
+bool Config::visualBell() const {
+    return m_data.value("visual_bell").toBool(true);
+}
+
+void Config::setVisualBell(bool enabled) {
+    m_data["visual_bell"] = enabled;
+    save();
+}
+
+// Background image
+QString Config::backgroundImage() const {
+    return m_data.value("background_image").toString("");
+}
+
+void Config::setBackgroundImage(const QString &path) {
+    m_data["background_image"] = path;
+    save();
+}
+
+// Per-style font families
+QString Config::boldFontFamily() const {
+    return m_data.value("bold_font_family").toString("");
+}
+
+void Config::setBoldFontFamily(const QString &family) {
+    m_data["bold_font_family"] = family;
+    save();
+}
+
+QString Config::italicFontFamily() const {
+    return m_data.value("italic_font_family").toString("");
+}
+
+void Config::setItalicFontFamily(const QString &family) {
+    m_data["italic_font_family"] = family;
+    save();
+}
+
+QString Config::boldItalicFontFamily() const {
+    return m_data.value("bold_italic_font_family").toString("");
+}
+
+void Config::setBoldItalicFontFamily(const QString &family) {
+    m_data["bold_italic_font_family"] = family;
+    save();
+}
+
+// Tab groups
+QJsonObject Config::tabGroups() const {
+    return m_data.value("tab_groups").toObject();
+}
+
+void Config::setTabGroups(const QJsonObject &groups) {
+    m_data["tab_groups"] = groups;
+    save();
+}

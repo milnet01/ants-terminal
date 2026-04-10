@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QElapsedTimer>
 #include <QJsonArray>
+#include <unordered_map>
 #include <memory>
 
 class GlRenderer;
@@ -127,6 +128,25 @@ public:
     // Font family
     void setFontFamily(const QString &family);
     QString fontFamily() const { return m_font.family(); }
+
+    // Per-style font families
+    void setBoldFontFamily(const QString &family);
+    void setItalicFontFamily(const QString &family);
+    void setBoldItalicFontFamily(const QString &family);
+
+    // Visual bell
+    void setVisualBell(bool enabled) { m_visualBellEnabled = enabled; }
+    bool visualBell() const { return m_visualBellEnabled; }
+
+    // Background image
+    void setBackgroundImage(const QString &path);
+
+    // Performance overlay
+    void setShowPerformanceOverlay(bool show) { m_showPerfOverlay = show; update(); }
+    bool showPerformanceOverlay() const { return m_showPerfOverlay; }
+
+    // Semantic output selection (select command output block)
+    void selectCommandOutput(int globalLine);
 
     // Broadcast callback: called when key data should be sent to other terminals too
     using BroadcastCallback = std::function<void(TerminalWidget *source, const QByteArray &data)>;
@@ -335,6 +355,13 @@ private:
     // Highlight rules
     std::vector<HighlightRule> m_highlightRules;
 
+    // Paint-loop span caches (avoid per-frame regex matching)
+    struct PaintHighlightSpan { int start; int end; QColor fg; QColor bg; };
+    mutable std::unordered_map<int, std::vector<UrlSpan>> m_urlSpanCache;
+    mutable std::unordered_map<int, std::vector<PaintHighlightSpan>> m_hlSpanCache;
+    mutable bool m_spanCacheDirty = true;
+    void invalidateSpanCaches() const;
+
     // Trigger rules
     std::vector<TriggerRule> m_triggerRules;
     void checkTriggers(const QByteArray &data);
@@ -348,4 +375,21 @@ private:
     bool m_historyLoaded = false;
     void loadHistory();
     void updateSuggestion();
+
+    // Visual bell
+    bool m_visualBellEnabled = true;
+    bool m_bellFlashActive = false;
+    QTimer m_bellFlashTimer;
+    void triggerVisualBell();
+
+    // Background image
+    QImage m_backgroundImage;
+    QString m_backgroundImagePath;
+
+    // Performance overlay
+    bool m_showPerfOverlay = false;
+    QElapsedTimer m_perfFrameTimer;
+    int m_perfFrameCount = 0;
+    double m_perfFps = 0.0;
+    qint64 m_perfLastPaintUs = 0;
 };

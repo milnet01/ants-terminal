@@ -238,6 +238,7 @@ void TerminalGrid::handleExecute(char ch) {
         if (m_cursorCol > 0) --m_cursorCol;
         break;
     case '\a':
+        if (m_bellCallback) m_bellCallback();
         break;
     case '\x0E':
     case '\x0F':
@@ -273,7 +274,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
     case 'S': scrollUp(param(0)); break;
     case 'T': scrollDown(param(0)); break;
     case 'd': m_cursorRow = std::clamp(param(0, 1) - 1, 0, m_rows - 1); break;
-    case 'm': handleSGR(p); break;
+    case 'm': handleSGR(p, a.colonSep); break;
     case 'r':
         setScrollRegion(param(0, 1) - 1, p.size() > 1 ? param(1, m_rows) - 1 : m_rows - 1);
         break;
@@ -626,13 +627,18 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     m_cursorCol = 0;
 }
 
-void TerminalGrid::handleSGR(const std::vector<int> &params) {
+void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<bool> &colonSep) {
     if (params.empty()) {
         m_currentAttrs = CellAttrs{};
         m_currentAttrs.fg = m_defaultFg;
         m_currentAttrs.bg = m_defaultBg;
         return;
     }
+
+    // Helper: is params[i] a colon sub-parameter of the previous param?
+    auto isSubParam = [&](size_t idx) -> bool {
+        return idx < colonSep.size() && colonSep[idx];
+    };
 
     for (size_t i = 0; i < params.size(); ++i) {
         int code = params[i];
@@ -646,10 +652,10 @@ void TerminalGrid::handleSGR(const std::vector<int> &params) {
         case 2: m_currentAttrs.dim = true; break;
         case 3: m_currentAttrs.italic = true; break;
         case 4:
-            // SGR 4 — could be plain underline or 4:x colon-separated subparam
-            // Colon params arrive as consecutive params via our parser
-            // Check if next param looks like a subparam (0-5)
-            if (i + 1 < params.size() && params[i + 1] >= 0 && params[i + 1] <= 5) {
+            // SGR 4 — plain underline, or 4:x colon sub-param for underline style.
+            // Only consume next param as sub-param if it was colon-separated.
+            if (i + 1 < params.size() && isSubParam(i + 1) &&
+                params[i + 1] >= 0 && params[i + 1] <= 5) {
                 int style = params[++i];
                 m_currentAttrs.underlineStyle = static_cast<UnderlineStyle>(style);
                 m_currentAttrs.underline = (style != 0);

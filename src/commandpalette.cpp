@@ -33,7 +33,10 @@ CommandPalette::CommandPalette(QWidget *parent) : QWidget(parent) {
 }
 
 void CommandPalette::setActions(const QList<QAction *> &actions) {
-    m_allActions = actions;
+    m_allActions.clear();
+    m_allActions.reserve(actions.size());
+    for (QAction *a : actions)
+        m_allActions.append(QPointer<QAction>(a));
 }
 
 void CommandPalette::show() {
@@ -58,8 +61,9 @@ void CommandPalette::populateList(const QString &filter) {
     m_list->clear();
     QString lowerFilter = filter.toLower();
 
-    for (QAction *action : m_allActions) {
-        if (action->isSeparator() || action->text().isEmpty()) continue;
+    for (int idx = 0; idx < m_allActions.size(); ++idx) {
+        QAction *action = m_allActions[idx].data();
+        if (!action || action->isSeparator() || action->text().isEmpty()) continue;
         // Strip & accelerator markers for display and matching
         QString name = action->text().remove('&');
         if (!lowerFilter.isEmpty() && !name.toLower().contains(lowerFilter)) continue;
@@ -69,7 +73,7 @@ void CommandPalette::populateList(const QString &filter) {
         if (!action->shortcut().isEmpty()) {
             item->setText(name + "    " + action->shortcut().toString());
         }
-        item->setData(Qt::UserRole, QVariant::fromValue(static_cast<void *>(action)));
+        item->setData(Qt::UserRole, idx);
         m_list->addItem(item);
     }
 
@@ -93,12 +97,15 @@ void CommandPalette::executeSelected() {
     auto *item = m_list->currentItem();
     if (!item) return;
 
-    auto *action = static_cast<QAction *>(item->data(Qt::UserRole).value<void *>());
+    int idx = item->data(Qt::UserRole).toInt();
     hide();
     emit closed();
 
-    if (action && action->isEnabled())
-        action->trigger();
+    if (idx >= 0 && idx < m_allActions.size()) {
+        QAction *action = m_allActions[idx].data();
+        if (action && action->isEnabled())
+            action->trigger();
+    }
 }
 
 bool CommandPalette::eventFilter(QObject *obj, QEvent *event) {

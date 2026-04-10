@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QFontMetrics>
 #include <QImage>
+#include <QTextLayout>
 
 // Vertex shader for colored quads (backgrounds)
 // CPU expands quads to 6 vertices each, so shader just passes through
@@ -137,6 +138,7 @@ void GlRenderer::setFont(const QFont &regular, const QFont &bold,
     m_fontBoldItalic = boldItalic;
     // Clear glyph cache when font changes
     m_glyphCache.clear();
+    m_ligatureCache.clear();
     m_atlasX = 0;
     m_atlasY = 0;
     m_atlasRowHeight = 0;
@@ -195,6 +197,48 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
     glyphQuads.reserve(rows * cols / 2); // Estimate: 50% non-space
 
     for (int vr = 0; vr < rows; ++vr) {
+        // Accumulate text runs for ligature shaping
+        QString runText;
+        int runStartCol = 0;
+        bool runBold = false, runItalic = false;
+        QColor runFg;
+
+        auto flushRun = [&]() {
+            if (runText.isEmpty()) return;
+            float px_x = padding + runStartCol * m_cellWidth;
+            float px_y = padding + vr * m_cellHeight;
+
+            if (runText.length() >= 2) {
+                // Use ligature shaping for multi-char runs
+                const LigatureEntry &lig = getLigature(runText, runBold, runItalic);
+                if (lig.valid) {
+                    float gx = px_x + lig.bearingX;
+                    float gy = px_y + m_fontAscent - lig.bearingY;
+                    float uvW = lig.u1 - lig.u0;
+                    float uvH = lig.v1 - lig.v0;
+                    glyphQuads.push_back({gx, gy, (float)lig.width, (float)lig.height,
+                                          lig.u0, lig.v0, uvW, uvH,
+                                          (float)runFg.redF(), (float)runFg.greenF(),
+                                          (float)runFg.blueF(), 1.0f});
+                }
+            } else {
+                // Single char — use individual glyph cache
+                uint32_t cp = runText.at(0).unicode();
+                const GlyphEntry &glyph = getGlyph(cp, runBold, runItalic);
+                if (glyph.valid) {
+                    float gx = px_x + glyph.bearingX;
+                    float gy = px_y + m_fontAscent - glyph.bearingY;
+                    float uvW = glyph.u1 - glyph.u0;
+                    float uvH = glyph.v1 - glyph.v0;
+                    glyphQuads.push_back({gx, gy, (float)glyph.width, (float)glyph.height,
+                                          glyph.u0, glyph.v0, uvW, uvH,
+                                          (float)runFg.redF(), (float)runFg.greenF(),
+                                          (float)runFg.blueF(), 1.0f});
+                }
+            }
+            runText.clear();
+        };
+
         for (int col = 0; col < cols; ++col) {
             const Cell &c = grid->cellAt(vr, col);
             if (c.isWideCont) continue;
@@ -216,21 +260,23 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
                                    (float)bg.blueF(), (float)bg.alphaF()});
             }
 
-            // Glyph
+            // Accumulate text runs with same attributes
             if (c.codepoint != ' ' && c.codepoint != 0) {
-                const GlyphEntry &glyph = getGlyph(c.codepoint, c.attrs.bold, c.attrs.italic);
-                if (glyph.valid) {
-                    float gx = px_x + glyph.bearingX;
-                    float gy = px_y + m_fontAscent - glyph.bearingY;
-                    float uvW = glyph.u1 - glyph.u0;
-                    float uvH = glyph.v1 - glyph.v0;
-                    glyphQuads.push_back({gx, gy, (float)glyph.width, (float)glyph.height,
-                                          glyph.u0, glyph.v0, uvW, uvH,
-                                          (float)fg.redF(), (float)fg.greenF(),
-                                          (float)fg.blueF(), 1.0f});
+                bool sameAttrs = !runText.isEmpty() &&
+                    c.attrs.bold == runBold && c.attrs.italic == runItalic && fg == runFg;
+                if (!sameAttrs) {
+                    flushRun();
+                    runStartCol = col;
+                    runBold = c.attrs.bold;
+                    runItalic = c.attrs.italic;
+                    runFg = fg;
                 }
+                runText += QString::fromUcs4(reinterpret_cast<const char32_t *>(&c.codepoint), 1);
+            } else {
+                flushRun();
             }
         }
+        flushRun(); // end of row
     }
 
     // Cursor
@@ -453,6 +499,120 @@ void GlRenderer::uploadToAtlas(const QImage &img, GlyphEntry &entry) {
     }
 
     // Upload glyph to atlas
+    glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, m_atlasX, m_atlasY, w, h,
+                    GL_RED, GL_UNSIGNED_BYTE, img.constBits());
+
+    entry.u0 = static_cast<float>(m_atlasX) / m_atlasWidth;
+    entry.v0 = static_cast<float>(m_atlasY) / m_atlasHeight;
+    entry.u1 = static_cast<float>(m_atlasX + w) / m_atlasWidth;
+    entry.v1 = static_cast<float>(m_atlasY + h) / m_atlasHeight;
+    entry.valid = true;
+
+    m_atlasX += w + 1;
+    m_atlasRowHeight = std::max(m_atlasRowHeight, h);
+}
+
+// --- Ligature support ---
+
+const LigatureEntry &GlRenderer::getLigature(const QString &text, bool bold, bool italic) {
+    LigatureKey key{text, bold, italic};
+    auto it = m_ligatureCache.find(key);
+    if (it != m_ligatureCache.end())
+        return it.value();
+
+    LigatureEntry entry{};
+    const QFont *font = &m_fontRegular;
+    if (bold && italic) font = &m_fontBoldItalic;
+    else if (bold) font = &m_fontBold;
+    else if (italic) font = &m_fontItalic;
+
+    rasterizeLigature(text, *font, entry);
+    m_ligatureCache.insert(key, entry);
+    return m_ligatureCache[key];
+}
+
+void GlRenderer::rasterizeLigature(const QString &text, const QFont &font, LigatureEntry &entry) {
+    if (text.isEmpty()) { entry.valid = false; return; }
+
+    // Use QTextLayout for HarfBuzz-powered ligature shaping
+    QTextLayout layout(text, font);
+    layout.beginLayout();
+    QTextLine line = layout.createLine();
+    if (!line.isValid()) { entry.valid = false; return; }
+    line.setLineWidth(text.length() * m_cellWidth * 3); // generous
+    line.setPosition(QPointF(0, 0));
+    layout.endLayout();
+
+    QRectF br = layout.boundingRect();
+    int imgW = std::clamp(static_cast<int>(std::ceil(br.width())) + 2, 1, 1024);
+    int imgH = std::clamp(m_cellHeight, 1, 256);
+
+    QImage img(imgW, imgH, QImage::Format_Grayscale8);
+    img.fill(0);
+
+    QPainter painter(&img);
+    painter.setFont(font);
+    painter.setPen(Qt::white);
+    layout.draw(&painter, QPointF(0, 0));
+    painter.end();
+
+    // Find bounding box
+    int minX = imgW, maxX = 0, minY = imgH, maxY = 0;
+    for (int y = 0; y < imgH; ++y) {
+        const uint8_t *scanline = img.constScanLine(y);
+        for (int x = 0; x < imgW; ++x) {
+            if (scanline[x] > 0) {
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, y);
+                maxY = std::max(maxY, y);
+            }
+        }
+    }
+
+    if (minX > maxX) { entry.valid = false; return; }
+
+    QImage cropped = img.copy(minX, minY, maxX - minX + 1, maxY - minY + 1);
+
+    QFontMetrics fm(font);
+    entry.width = cropped.width();
+    entry.height = cropped.height();
+    entry.bearingX = minX;
+    entry.bearingY = fm.ascent() - minY;
+
+    uploadLigatureToAtlas(cropped, entry);
+}
+
+void GlRenderer::uploadLigatureToAtlas(const QImage &img, LigatureEntry &entry) {
+    int w = img.width();
+    int h = img.height();
+
+    if (m_atlasX + w > m_atlasWidth) {
+        m_atlasX = 0;
+        m_atlasY += m_atlasRowHeight + 1;
+        m_atlasRowHeight = 0;
+    }
+
+    if (m_atlasY + h > m_atlasHeight) {
+        if (m_atlasWidth < 4096) {
+            m_atlasWidth = 4096;
+            m_atlasHeight = 4096;
+            glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_atlasWidth, m_atlasHeight, 0,
+                         GL_RED, GL_UNSIGNED_BYTE, nullptr);
+        }
+        m_glyphCache.clear();
+        m_ligatureCache.clear();
+        m_atlasX = 0;
+        m_atlasY = 0;
+        m_atlasRowHeight = 0;
+        std::vector<uint8_t> zeros(m_atlasWidth * m_atlasHeight, 0);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_atlasWidth, m_atlasHeight,
+                        GL_RED, GL_UNSIGNED_BYTE, zeros.data());
+    }
+
     glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexSubImage2D(GL_TEXTURE_2D, 0, m_atlasX, m_atlasY, w, h,

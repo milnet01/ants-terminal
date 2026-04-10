@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QPropertyAnimation>
 
 class TitleBar;
 class TerminalWidget;
@@ -118,7 +119,21 @@ private:
 
     // Quake mode
     bool m_quakeMode = false;
+    bool m_quakeVisible = false;
+    QPropertyAnimation *m_quakeAnim = nullptr;
     void setupQuakeMode();
+    void toggleQuakeVisibility();
+
+    // Undo close tab
+    struct ClosedTabInfo {
+        QString cwd;
+        QString title;
+    };
+    QList<ClosedTabInfo> m_closedTabs; // max 10
+
+    // Tab color groups
+    QHash<int, QColor> m_tabColors; // tab index -> color
+    void showTabColorMenu(int tabIndex);
 
     // Handle trigger signals from terminals
     void onTriggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);

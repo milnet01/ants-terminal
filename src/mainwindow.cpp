@@ -44,6 +44,10 @@
 #include <QTextEdit>
 #include <QClipboard>
 #include <QHBoxLayout>
+#include <QPropertyAnimation>
+#include <QEasingCurve>
+#include <QCursor>
+#include <QColorDialog>
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Ants Terminal");
@@ -89,6 +93,13 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     m_tabWidget->setDocumentMode(true);
     connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
+
+    // Tab bar context menu for tab groups (color labels)
+    m_tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tabWidget->tabBar(), &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        int tabIdx = m_tabWidget->tabBar()->tabAt(pos);
+        if (tabIdx >= 0) showTabColorMenu(tabIdx);
+    });
 
     // Layout: title bar -> menu bar -> tabs
     QWidget *central = new QWidget(this);
@@ -188,6 +199,24 @@ void MainWindow::setupMenus() {
     QAction *closeTabAction = fileMenu->addAction("&Close Tab");
     closeTabAction->setShortcut(QKeySequence(m_config.keybinding("close_tab", "Ctrl+Shift+W")));
     connect(closeTabAction, &QAction::triggered, this, &MainWindow::closeCurrentTab);
+
+    QAction *undoCloseAction = fileMenu->addAction("&Undo Close Tab");
+    undoCloseAction->setShortcut(QKeySequence(m_config.keybinding("undo_close_tab", "Ctrl+Shift+Z")));
+    connect(undoCloseAction, &QAction::triggered, this, [this]() {
+        if (m_closedTabs.isEmpty()) {
+            statusBar()->showMessage("No closed tabs to restore", 3000);
+            return;
+        }
+        ClosedTabInfo info = m_closedTabs.takeFirst();
+        newTab();
+        // cd to the previous working directory
+        if (!info.cwd.isEmpty()) {
+            if (auto *t = focusedTerminal()) {
+                t->writeCommand("cd " + info.cwd + "\n");
+            }
+        }
+        statusBar()->showMessage("Restored tab: " + info.title, 3000);
+    });
 
     fileMenu->addSeparator();
 
@@ -310,6 +339,54 @@ void MainWindow::setupMenus() {
     paletteAction->setShortcut(QKeySequence(m_config.keybinding("command_palette", "Ctrl+Shift+P")));
     connect(paletteAction, &QAction::triggered, this, [this]() {
         if (m_commandPalette) m_commandPalette->show();
+    });
+
+    viewMenu->addSeparator();
+
+    // Reload user themes
+    QAction *reloadThemes = viewMenu->addAction("Reload &User Themes");
+    connect(reloadThemes, &QAction::triggered, this, [this, themesMenu]() {
+        Themes::reload();
+        // Rebuild theme menu
+        themesMenu->clear();
+        for (const QString &name : Themes::names()) {
+            QAction *a = themesMenu->addAction(name);
+            a->setCheckable(true);
+            a->setChecked(name == m_currentTheme);
+            m_themeGroup->addAction(a);
+            connect(a, &QAction::triggered, this, [this, name]() {
+                applyTheme(name);
+            });
+        }
+        statusBar()->showMessage("Themes reloaded", 3000);
+    });
+
+    // Performance overlay
+    QAction *perfAction = viewMenu->addAction("Performance &Overlay");
+    perfAction->setShortcut(QKeySequence("Ctrl+Shift+F12"));
+    perfAction->setCheckable(true);
+    connect(perfAction, &QAction::toggled, this, [this](bool checked) {
+        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        for (auto *t : terminals) t->setShowPerformanceOverlay(checked);
+    });
+
+    // Background image
+    QAction *bgImageAction = viewMenu->addAction("Set &Background Image...");
+    connect(bgImageAction, &QAction::triggered, this, [this]() {
+        QString path = QFileDialog::getOpenFileName(this, "Select Background Image", QString(),
+                                                     "Images (*.png *.jpg *.jpeg *.bmp *.webp)");
+        if (path.isEmpty()) {
+            // Clear background image
+            m_config.setBackgroundImage("");
+            QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+            for (auto *t : terminals) t->setBackgroundImage("");
+            statusBar()->showMessage("Background image cleared", 3000);
+        } else {
+            m_config.setBackgroundImage(path);
+            QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+            for (auto *t : terminals) t->setBackgroundImage(path);
+            statusBar()->showMessage("Background image set", 3000);
+        }
     });
 
     // Split menu
@@ -477,6 +554,16 @@ void MainWindow::setupMenus() {
         m_config.setAutoCopyOnSelect(checked);
         QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
         for (auto *t : terminals) t->setAutoCopyOnSelect(checked);
+    });
+
+    QAction *bellAction = settingsMenu->addAction("&Visual Bell");
+    bellAction->setCheckable(true);
+    bellAction->setChecked(m_config.visualBell());
+    connect(bellAction, &QAction::toggled, this, [this](bool checked) {
+        m_config.setVisualBell(checked);
+        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        for (auto *t : terminals) t->setVisualBell(checked);
+        statusBar()->showMessage(checked ? "Visual bell enabled" : "Visual bell disabled", 3000);
     });
 
     QAction *blurAction = settingsMenu->addAction("Background &Blur");
@@ -691,8 +778,19 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setImagePasteDir(m_config.imagePasteDir());
     terminal->setWindowOpacityLevel(m_config.opacity());
     terminal->setGpuRendering(m_config.gpuRendering());
+    terminal->setVisualBell(m_config.visualBell());
     QString family = m_config.fontFamily();
     if (!family.isEmpty()) terminal->setFontFamily(family);
+    // Per-style fonts
+    QString boldFamily = m_config.boldFontFamily();
+    if (!boldFamily.isEmpty()) terminal->setBoldFontFamily(boldFamily);
+    QString italicFamily = m_config.italicFontFamily();
+    if (!italicFamily.isEmpty()) terminal->setItalicFontFamily(italicFamily);
+    QString biFamily = m_config.boldItalicFontFamily();
+    if (!biFamily.isEmpty()) terminal->setBoldItalicFontFamily(biFamily);
+    // Background image
+    QString bgImg = m_config.backgroundImage();
+    if (!bgImg.isEmpty()) terminal->setBackgroundImage(bgImg);
 }
 
 void MainWindow::connectTerminal(TerminalWidget *terminal) {
@@ -956,6 +1054,18 @@ void MainWindow::closeTab(int index) {
     }
 
     QWidget *w = m_tabWidget->widget(index);
+
+    // Save info for undo-close-tab
+    TerminalWidget *term = w->findChild<TerminalWidget *>();
+    if (!term) term = qobject_cast<TerminalWidget *>(w);
+    if (term) {
+        ClosedTabInfo info;
+        info.cwd = term->shellCwd();
+        info.title = m_tabWidget->tabText(index);
+        m_closedTabs.prepend(info);
+        if (m_closedTabs.size() > 10) m_closedTabs.removeLast();
+    }
+
     m_tabSessionIds.remove(w);
     m_tabWidget->removeTab(index);
     w->deleteLater();
@@ -1680,16 +1790,60 @@ void MainWindow::updateTabTitles() {
 
 void MainWindow::setupQuakeMode() {
     m_quakeMode = true;
+    m_quakeVisible = true;
 
     // Set window to top of screen, full width
+    setWindowFlags(windowFlags() | Qt::WindowStaysOnTopHint | Qt::Tool);
     if (QScreen *screen = this->screen()) {
         QRect geo = screen->availableGeometry();
-        resize(geo.width(), geo.height() / 3);
+        int h = geo.height() / 3;
+        resize(geo.width(), h);
         move(geo.x(), geo.y());
     }
-
-    setWindowFlags(windowFlags() | Qt::WindowStaysOnTopHint);
     show();
+}
+
+void MainWindow::toggleQuakeVisibility() {
+    if (!m_quakeMode) return;
+
+    QScreen *screen = this->screen();
+    if (!screen) return;
+    QRect geo = screen->availableGeometry();
+    int h = height();
+
+    if (m_quakeVisible) {
+        // Slide up (hide)
+        if (!m_quakeAnim) {
+            m_quakeAnim = new QPropertyAnimation(this, "pos", this);
+            m_quakeAnim->setDuration(200);
+            m_quakeAnim->setEasingCurve(QEasingCurve::InQuad);
+        }
+        m_quakeAnim->stop();
+        m_quakeAnim->setStartValue(pos());
+        m_quakeAnim->setEndValue(QPoint(geo.x(), geo.y() - h));
+        connect(m_quakeAnim, &QPropertyAnimation::finished, this, [this]() {
+            hide();
+        }, Qt::UniqueConnection);
+        m_quakeAnim->start();
+        m_quakeVisible = false;
+    } else {
+        // Slide down (show)
+        move(geo.x(), geo.y() - h);
+        show();
+        raise();
+        activateWindow();
+        if (!m_quakeAnim) {
+            m_quakeAnim = new QPropertyAnimation(this, "pos", this);
+            m_quakeAnim->setDuration(200);
+            m_quakeAnim->setEasingCurve(QEasingCurve::OutQuad);
+        }
+        m_quakeAnim->stop();
+        m_quakeAnim->setStartValue(QPoint(geo.x(), geo.y() - h));
+        m_quakeAnim->setEndValue(QPoint(geo.x(), geo.y()));
+        m_quakeAnim->start();
+        m_quakeVisible = true;
+        if (auto *t = focusedTerminal()) t->setFocus();
+    }
 }
 
 // --- Trigger handler ---
@@ -1724,6 +1878,41 @@ void MainWindow::onTriggerFired(const QString &pattern, const QString &actionTyp
 }
 
 // --- Diff Viewer ---
+
+// --- Tab Color Groups ---
+
+void MainWindow::showTabColorMenu(int tabIndex) {
+    QMenu menu(this);
+    struct ColorEntry { QString name; QColor color; };
+    QList<ColorEntry> colors = {
+        {"None", QColor()},
+        {"Red", QColor(0xF3, 0x8B, 0xA8)},
+        {"Green", QColor(0xA6, 0xE3, 0xA1)},
+        {"Blue", QColor(0x89, 0xB4, 0xFA)},
+        {"Yellow", QColor(0xF9, 0xE2, 0xAF)},
+        {"Purple", QColor(0xCB, 0xA6, 0xF7)},
+        {"Orange", QColor(0xFA, 0xB3, 0x87)},
+        {"Teal", QColor(0x94, 0xE2, 0xD5)},
+    };
+    for (const auto &ce : colors) {
+        QAction *a = menu.addAction(ce.name);
+        if (ce.color.isValid()) {
+            QPixmap px(12, 12);
+            px.fill(ce.color);
+            a->setIcon(QIcon(px));
+        }
+        connect(a, &QAction::triggered, this, [this, tabIndex, ce]() {
+            if (ce.color.isValid()) {
+                m_tabColors[tabIndex] = ce.color;
+                m_tabWidget->tabBar()->setTabTextColor(tabIndex, ce.color);
+            } else {
+                m_tabColors.remove(tabIndex);
+                m_tabWidget->tabBar()->setTabTextColor(tabIndex, QColor()); // default
+            }
+        });
+    }
+    menu.exec(QCursor::pos());
+}
 
 void MainWindow::showDiffViewer() {
     auto *t = focusedTerminal();

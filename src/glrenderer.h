@@ -36,6 +36,28 @@ inline size_t qHash(const GlyphKey &k, size_t seed = 0) {
     return qHash(k.codepoint, seed) ^ qHash(k.bold, seed) ^ qHash(k.italic, seed);
 }
 
+// Key for ligature (multi-char sequence) cache lookup
+struct LigatureKey {
+    QString text;
+    bool bold;
+    bool italic;
+    bool operator==(const LigatureKey &o) const {
+        return text == o.text && bold == o.bold && italic == o.italic;
+    }
+};
+
+inline size_t qHash(const LigatureKey &k, size_t seed = 0) {
+    return qHash(k.text, seed) ^ qHash(k.bold, seed) ^ qHash(k.italic, seed);
+}
+
+// Atlas entry for a shaped ligature run
+struct LigatureEntry {
+    float u0, v0, u1, v1;
+    int width, height;
+    int bearingX, bearingY;
+    bool valid = false;
+};
+
 // Per-cell instance data for GPU rendering
 struct CellQuad {
     float x, y, w, h;     // Position and size in pixels
@@ -77,6 +99,11 @@ private:
     void rasterizeGlyph(uint32_t codepoint, const QFont &font, GlyphEntry &entry);
     void uploadToAtlas(const QImage &img, GlyphEntry &entry);
 
+    // Ligature support: shape a text run and return atlas entry
+    const LigatureEntry &getLigature(const QString &text, bool bold, bool italic);
+    void rasterizeLigature(const QString &text, const QFont &font, LigatureEntry &entry);
+    void uploadLigatureToAtlas(const QImage &img, LigatureEntry &entry);
+
     bool m_initialized = false;
 
     // Shaders
@@ -91,6 +118,7 @@ private:
     int m_atlasY = 0;
     int m_atlasRowHeight = 0;
     QHash<GlyphKey, GlyphEntry> m_glyphCache;
+    QHash<LigatureKey, LigatureEntry> m_ligatureCache;
 
     // Fonts
     QFont m_fontRegular;
