@@ -85,7 +85,17 @@ void ClaudeIntegration::pollClaudeProcess() {
         }
     }
 
-    ClaudeState newState = found ? ClaudeState::Idle : ClaudeState::NotRunning;
+    ClaudeState newState;
+    if (!found) {
+        newState = ClaudeState::NotRunning;
+    } else if (m_claudePid == 0) {
+        // Newly detected — start as Idle, transcript watcher will refine
+        newState = ClaudeState::Idle;
+    } else {
+        // Already tracking — keep current state (Thinking/ToolUse) intact;
+        // parseTranscriptForState() manages transitions via file watcher
+        newState = m_state;
+    }
 
     if (found && m_claudePid == 0) {
         m_claudePid = foundPid;
@@ -173,13 +183,17 @@ QStringList ClaudeIntegration::recentSessions() const {
 }
 
 void ClaudeIntegration::parseTranscriptForState(const QString &path) {
+    // Re-add the watch — QFileSystemWatcher can drop it after atomic saves
+    if (!m_transcriptWatcher.files().contains(path))
+        m_transcriptWatcher.addPath(path);
+
     // Read the last few lines of the transcript for current state
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return;
 
     // Seek to near the end
     qint64 size = file.size();
-    if (size > 4096) file.seek(size - 4096);
+    if (size > 8192) file.seek(size - 8192);
 
     QJsonObject lastEvent;
     while (!file.atEnd()) {
@@ -201,7 +215,11 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
         if (stopReason.isEmpty() || stopReason == "null") {
             newState = ClaudeState::Thinking;
             detail = "thinking";
+        } else if (stopReason == "tool_use") {
+            newState = ClaudeState::ToolUse;
+            detail = "tool use";
         } else {
+            // "end_turn", "max_tokens", etc. → waiting for user
             newState = ClaudeState::Idle;
             detail = "idle";
         }
@@ -219,6 +237,14 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
                 updateChangedFiles(block);
             }
         }
+    } else if (type == "result") {
+        // Tool result received — Claude is now thinking about the result
+        newState = ClaudeState::Thinking;
+        detail = "thinking";
+    } else if (type == "human" || type == "user") {
+        // User sent a message — Claude will start thinking
+        newState = ClaudeState::Thinking;
+        detail = "thinking";
     }
 
     // Estimate context usage from token counts
