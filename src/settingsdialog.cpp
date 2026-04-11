@@ -141,6 +141,11 @@ void SettingsDialog::setupAppearanceTab(QWidget *tab) {
 
     m_gpuRendering = new QCheckBox("GPU rendering (glyph atlas + GLSL shaders)", tab);
     layout->addRow(m_gpuRendering);
+
+    m_paddingSpinner = new QSpinBox(tab);
+    m_paddingSpinner->setRange(0, 32);
+    m_paddingSpinner->setSuffix(" px");
+    layout->addRow("Terminal Padding:", m_paddingSpinner);
 }
 
 void SettingsDialog::setupTerminalTab(QWidget *tab) {
@@ -458,6 +463,7 @@ void SettingsDialog::loadSettings() {
     m_opacitySlider->setValue(static_cast<int>(m_config->opacity() * 100));
     m_backgroundBlur->setChecked(m_config->backgroundBlur());
     m_gpuRendering->setChecked(m_config->gpuRendering());
+    m_paddingSpinner->setValue(m_config->terminalPadding());
 
     // Terminal
     m_scrollbackLines->setValue(m_config->scrollbackLines());
@@ -541,6 +547,7 @@ void SettingsDialog::applySettings() {
     m_config->setOpacity(m_opacitySlider->value() / 100.0);
     m_config->setBackgroundBlur(m_backgroundBlur->isChecked());
     m_config->setGpuRendering(m_gpuRendering->isChecked());
+    m_config->setTerminalPadding(m_paddingSpinner->value());
 
     // Terminal
     m_config->setScrollbackLines(m_scrollbackLines->value());

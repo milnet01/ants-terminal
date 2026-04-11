@@ -440,3 +440,12 @@ void Config::setTabGroups(const QJsonObject &groups) {
     m_data["tab_groups"] = groups;
     save();
 }
+
+int Config::terminalPadding() const {
+    return m_data.value("terminal_padding").toInt(4);
+}
+
+void Config::setTerminalPadding(int px) {
+    m_data["terminal_padding"] = px;
+    save();
+}

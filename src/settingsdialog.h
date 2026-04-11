@@ -63,6 +63,7 @@ private:
     QLabel *m_opacityLabel;
     QCheckBox *m_backgroundBlur;
     QCheckBox *m_gpuRendering;
+    QSpinBox *m_paddingSpinner;
 
     // Terminal
     QSpinBox *m_scrollbackLines;

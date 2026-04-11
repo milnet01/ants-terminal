@@ -145,6 +145,10 @@ public:
     QString boldItalicFontFamily() const;
     void setBoldItalicFontFamily(const QString &family);
 
+    // Terminal padding
+    int terminalPadding() const;
+    void setTerminalPadding(int px);
+
     // Tab groups (color labels)
     QJsonObject tabGroups() const;
     void setTabGroups(const QJsonObject &groups);

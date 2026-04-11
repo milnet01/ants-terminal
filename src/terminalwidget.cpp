@@ -30,6 +30,7 @@
 #include <QFileDialog>
 #include <QTextStream>
 #include <QJsonObject>
+#include <QSplitter>
 
 TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
@@ -128,6 +129,28 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     // Bell callback from grid
     m_grid->setBellCallback([this]() { triggerVisualBell(); });
 
+    // Smooth scrolling timer (16ms = ~60fps)
+    m_smoothScrollTimer.setInterval(16);
+    connect(&m_smoothScrollTimer, &QTimer::timeout, this, &TerminalWidget::smoothScrollStep);
+
+    // Selection auto-scroll timer (when dragging past edges)
+    m_selectionScrollTimer.setInterval(50);
+    connect(&m_selectionScrollTimer, &QTimer::timeout, this, [this]() {
+        if (m_selectionScrollDirection != 0 && m_selecting) {
+            int delta = m_selectionScrollDirection * 2;
+            m_scrollOffset = std::clamp(m_scrollOffset - delta, 0, m_grid->scrollbackSize());
+            m_selEnd = pixelToCell(m_lastMousePos);
+            m_hasSelection = (m_selStart != m_selEnd);
+            updateScrollBar();
+            update();
+        } else {
+            m_selectionScrollTimer.stop();
+        }
+    });
+
+    // Triple-click timer
+    m_lastClickTime.start();
+
     // Performance overlay timer
     m_perfFrameTimer.start();
 
@@ -147,6 +170,25 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
         // Scrollbar value 0 = top of scrollback, max = bottom (scrollOffset 0)
         int maxScroll = m_grid->scrollbackSize();
         m_scrollOffset = maxScroll - value;
+        update();
+    });
+
+    // Scroll-to-bottom floating button
+    m_scrollToBottomBtn = new QPushButton(this);
+    m_scrollToBottomBtn->setText("\u25BC");  // down arrow
+    m_scrollToBottomBtn->setFixedSize(32, 32);
+    m_scrollToBottomBtn->setToolTip("Scroll to bottom");
+    m_scrollToBottomBtn->hide();
+    m_scrollToBottomBtn->setStyleSheet(
+        "QPushButton { background: rgba(40,40,60,200); color: rgba(200,200,220,220); "
+        "border: 1px solid rgba(100,100,130,150); border-radius: 16px; font-size: 14px; }"
+        "QPushButton:hover { background: rgba(60,60,90,220); color: white; }"
+    );
+    connect(m_scrollToBottomBtn, &QPushButton::clicked, this, [this]() {
+        m_scrollOffset = 0;
+        m_newOutputMarkerLine = -1;
+        updateScrollBar();
+        updateScrollToBottomButton();
         update();
     });
 
@@ -290,6 +332,12 @@ void TerminalWidget::applyThemeColors(const QColor &fg, const QColor &bg,
     m_grid->setDefaultBg(bg);
     m_cursorColor = cursorColor;
 
+    // Cursor glow color (same as cursor, but only show in dark themes)
+    m_cursorGlowColor = cursorColor;
+    // Disable glow for light themes (bg luminance > 0.5)
+    if (bg.lightnessF() > 0.5)
+        m_cursorGlowColor = QColor();
+
     // Derive highlight colors from theme
     QColor accentColor = accent.isValid() ? accent : cursorColor;
     m_selectionBg = accentColor;
@@ -431,9 +479,14 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             if (c.attrs.dim) fg = fg.darker(150);
 
             bool isUrl = false;
+            bool isHoveredUrl = false;
             for (const auto &u : urlSpans) {
                 if (col >= u.startCol && col <= u.endCol) {
                     isUrl = true;
+                    // Check if this URL span is being hovered
+                    if (m_hoverGlobalLine == globalLine &&
+                        m_hoverCol >= u.startCol && m_hoverCol <= u.endCol)
+                        isHoveredUrl = true;
                     break;
                 }
             }
@@ -520,11 +573,13 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             }
 
             // Underline rendering (supports multiple styles + custom color)
-            if (c.attrs.underline || isUrl) {
+            if (c.attrs.underline || isUrl || isHoveredUrl) {
                 QColor ulColor = c.attrs.underlineColor.isValid() ? c.attrs.underlineColor : fg;
                 int ulY = px_y + m_cellHeight - 2;
                 int ulW = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
-                UnderlineStyle style = isUrl ? UnderlineStyle::Single : c.attrs.underlineStyle;
+                UnderlineStyle style = isHoveredUrl ? UnderlineStyle::Single
+                                     : isUrl ? UnderlineStyle::None  // URLs only underline on hover
+                                     : c.attrs.underlineStyle;
                 if (style == UnderlineStyle::None) style = UnderlineStyle::Single;
 
                 p.setPen(ulColor);
@@ -639,19 +694,29 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         int cy = m_padding + m_grid->cursorRow() * m_cellHeight;
         CursorShape shape = m_grid->cursorShape();
 
+        // Cursor glow effect (subtle radial glow behind cursor in dark themes)
+        if (m_hasFocus && m_cursorBlinkOn) {
+            QColor glow = m_cursorGlowColor.isValid() ? m_cursorGlowColor : m_cursorColor;
+            glow.setAlpha(30);
+            int glowSize = 4;
+            p.setPen(Qt::NoPen);
+            p.setBrush(glow);
+            p.drawRoundedRect(cx - glowSize, cy - glowSize,
+                              m_cellWidth + glowSize * 2, m_cellHeight + glowSize * 2,
+                              glowSize, glowSize);
+        }
+
         if (m_hasFocus) {
             switch (shape) {
             case CursorShape::BlinkBar:
             case CursorShape::SteadyBar:
-                // Thin vertical bar (2px wide)
                 p.fillRect(cx, cy, 2, m_cellHeight, m_cursorColor);
                 break;
             case CursorShape::BlinkUnderline:
             case CursorShape::SteadyUnderline:
-                // Underline cursor (2px tall at baseline)
                 p.fillRect(cx, cy + m_cellHeight - 2, m_cellWidth, 2, m_cursorColor);
                 break;
-            default: // Block cursor (default)
+            default: // Block cursor
                 p.fillRect(cx, cy, m_cellWidth, m_cellHeight, m_cursorColor);
                 {
                     int cursorGL = scrollbackSize + m_grid->cursorRow();
@@ -664,7 +729,9 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 break;
             }
         } else {
-            p.setPen(m_cursorColor);
+            // Unfocused: hollow outline cursor
+            QPen outlinePen(m_cursorColor, 1.5);
+            p.setPen(outlinePen);
             p.setBrush(Qt::NoBrush);
             p.drawRect(cx, cy, m_cellWidth - 1, m_cellHeight - 1);
         }
@@ -687,11 +754,82 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         p.drawText(gx, gy + m_fontAscent, text);
     }
 
+    // Dim overlay for unfocused split panes
+    if (!m_hasFocus && parentWidget() && qobject_cast<QSplitter *>(parentWidget())) {
+        QColor dim(0, 0, 0, 35);
+        p.fillRect(rect(), dim);
+    }
+
     // Visual bell flash overlay
     if (m_bellFlashActive) {
         QColor flash = m_grid->defaultFg();
         flash.setAlpha(40);
         p.fillRect(rect(), flash);
+    }
+
+    // New output separator line (when scrolled up and new output arrived)
+    if (m_newOutputMarkerLine >= 0 && m_scrollOffset > 0) {
+        int vr = m_newOutputMarkerLine - viewStart;
+        if (vr >= 0 && vr < rows) {
+            int markerY = m_padding + vr * m_cellHeight;
+            QColor markerColor = m_cursorColor;
+            markerColor.setAlpha(120);
+            QPen dashPen(markerColor, 1, Qt::DashLine);
+            p.setPen(dashPen);
+            p.drawLine(m_padding, markerY, width() - m_padding, markerY);
+            // Label
+            QFont smallFont = m_font;
+            smallFont.setPointSize(std::max(7, m_font.pointSize() - 2));
+            p.setFont(smallFont);
+            p.setPen(markerColor);
+            p.drawText(width() - 120, markerY - 2, "new output");
+            p.setFont(m_font);
+        }
+    }
+
+    // URL quick-select overlay labels
+    if (m_urlQuickSelectActive && !m_quickSelectLabels.empty()) {
+        QFont labelFont = m_font;
+        labelFont.setBold(true);
+        labelFont.setPointSize(std::max(8, m_font.pointSize() - 1));
+        p.setFont(labelFont);
+        QFontMetrics lfm(labelFont);
+
+        for (const auto &ql : m_quickSelectLabels) {
+            int vr = ql.globalLine - viewStart;
+            if (vr < 0 || vr >= rows) continue;
+            int lx = m_padding + ql.startCol * m_cellWidth - 2;
+            int ly = m_padding + vr * m_cellHeight;
+
+            // Draw label badge
+            int labelW = lfm.horizontalAdvance(ql.label) + 8;
+            int labelH = lfm.height() + 4;
+            QColor badgeBg = m_cursorColor;
+            p.setPen(Qt::NoPen);
+            p.setBrush(badgeBg);
+            p.drawRoundedRect(lx - labelW - 2, ly, labelW, labelH, 3, 3);
+            p.setPen(m_grid->defaultBg());
+            p.drawText(lx - labelW + 2, ly + lfm.ascent() + 2, ql.label);
+
+            // Highlight the URL span
+            QColor hlBg = m_cursorColor;
+            hlBg.setAlpha(40);
+            int spanW = (ql.endCol - ql.startCol + 1) * m_cellWidth;
+            p.fillRect(m_padding + ql.startCol * m_cellWidth, ly, spanW, m_cellHeight, hlBg);
+        }
+        p.setFont(m_font);
+
+        // Draw input so far at bottom
+        if (!m_quickSelectInput.isEmpty()) {
+            QColor inputBg = m_grid->defaultBg().darker(120);
+            inputBg.setAlpha(220);
+            int ibH = m_cellHeight + 8;
+            int ibY = height() - ibH - (m_searchVisible ? m_searchBar->height() : 0);
+            p.fillRect(0, ibY, width(), ibH, inputBg);
+            p.setPen(m_grid->defaultFg());
+            p.drawText(m_padding + 4, ibY + m_fontAscent + 4,
+                        "Quick Select: " + m_quickSelectInput);
+        }
     }
 
     // Performance overlay
@@ -739,7 +877,33 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 }
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
+    // URL quick-select mode input handling
+    if (m_urlQuickSelectActive) {
+        if (event->key() == Qt::Key_Escape) {
+            exitUrlQuickSelect();
+            return;
+        }
+        QString ch = event->text().toLower();
+        if (!ch.isEmpty() && ch[0].isLetter()) {
+            m_quickSelectInput += ch;
+            // Check for matching label
+            for (const auto &ql : m_quickSelectLabels) {
+                if (ql.label == m_quickSelectInput) {
+                    exitUrlQuickSelect();
+                    if (ql.isFilePath)
+                        openFileAtPath(ql.url);
+                    else
+                        QDesktopServices::openUrl(QUrl(ql.url));
+                    return;
+                }
+            }
+            update();
+        }
+        return;
+    }
+
     m_scrollOffset = 0;
+    m_newOutputMarkerLine = -1;
     updateScrollBar();
     m_cursorBlinkOn = true;
     m_cursorTimer.start();
@@ -794,6 +958,12 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     // Ctrl+Shift+F -- search
     if (key == Qt::Key_F && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         showSearchBar();
+        return;
+    }
+
+    // Ctrl+Shift+G -- URL quick-select mode
+    if (key == Qt::Key_G && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+        enterUrlQuickSelect();
         return;
     }
 
@@ -993,6 +1163,9 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     }
 
     if (!data.isEmpty() && m_pty) {
+        // Clear selection when user types (selection is now stale)
+        if (m_hasSelection)
+            clearSelection();
         m_pty->write(data);
         // Broadcast to other terminals if callback is set
         if (m_broadcastCallback)
@@ -1053,14 +1226,17 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
         }
     }
 
+    // Smooth scrolling: accumulate target and animate
     int delta = event->angleDelta().y();
-    if (delta > 0) {
-        m_scrollOffset = std::min(m_scrollOffset + 3, m_grid->scrollbackSize());
-    } else if (delta < 0) {
-        m_scrollOffset = std::max(m_scrollOffset - 3, 0);
-    }
-    updateScrollBar();
-    update();
+    double lines = delta / 40.0;  // ~3 lines per standard wheel notch (120 units)
+    m_smoothScrollTarget += lines;
+    int maxScroll = m_grid->scrollbackSize();
+    m_smoothScrollTarget = std::clamp(m_smoothScrollTarget,
+                                       -static_cast<double>(m_scrollOffset),
+                                       static_cast<double>(maxScroll - m_scrollOffset));
+    m_smoothScrollCurrent = 0.0;
+    if (!m_smoothScrollTimer.isActive())
+        m_smoothScrollTimer.start();
 }
 
 void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
@@ -1083,6 +1259,12 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
 void TerminalWidget::onPtyData(const QByteArray &data) {
     m_spanCacheDirty = true;
 
+    // Clear selection when screen content changes (e.g., 'clear' command, ED, etc.)
+    // Check for clear-screen sequences: ESC[2J, ESC[3J, ESC[H ESC[2J, or form feed
+    if (data.contains("\x1B[2J") || data.contains("\x1B[3J") || data.contains("\x0C")) {
+        clearSelection();
+    }
+
     // Scroll anchoring: if the user has scrolled up, keep their viewport stable
     // as new lines push content into scrollback.
     int scrollbackBefore = m_grid->scrollbackSize();
@@ -1091,8 +1273,14 @@ void TerminalWidget::onPtyData(const QByteArray &data) {
 
     if (m_scrollOffset > 0) {
         int added = m_grid->scrollbackSize() - scrollbackBefore;
-        if (added > 0)
+        if (added > 0) {
             m_scrollOffset = std::min(m_scrollOffset + added, m_grid->scrollbackSize());
+            // Set new output marker when user is scrolled up and new content arrives
+            if (m_newOutputMarkerLine < 0)
+                m_newOutputMarkerLine = m_grid->scrollbackSize() + m_grid->rows() - 1;
+        }
+    } else {
+        m_newOutputMarkerLine = -1;
     }
 
     // Session logging
@@ -1183,6 +1371,29 @@ void TerminalWidget::blinkCursor() {
     int cx = m_padding + m_grid->cursorCol() * m_cellWidth;
     int cy = m_padding + m_grid->cursorRow() * m_cellHeight;
     update(cx, cy, m_cellWidth, m_cellHeight);
+}
+
+void TerminalWidget::smoothScrollStep() {
+    if (std::abs(m_smoothScrollTarget) < 0.01) {
+        m_smoothScrollTimer.stop();
+        m_smoothScrollTarget = 0.0;
+        m_smoothScrollCurrent = 0.0;
+        return;
+    }
+    // Ease toward target: move 30% of remaining distance each frame
+    double step = m_smoothScrollTarget * 0.30;
+    if (std::abs(step) < 0.5) step = (m_smoothScrollTarget > 0) ? 0.5 : -0.5;
+    m_smoothScrollCurrent += step;
+    m_smoothScrollTarget -= step;
+
+    int intStep = static_cast<int>(m_smoothScrollCurrent);
+    if (intStep != 0) {
+        m_scrollOffset = std::clamp(m_scrollOffset + intStep, 0, m_grid->scrollbackSize());
+        m_smoothScrollCurrent -= intStep;
+        updateScrollBar();
+        updateScrollToBottomButton();
+        update();
+    }
 }
 
 void TerminalWidget::checkIdleNotification() {
@@ -1294,6 +1505,7 @@ void TerminalWidget::updateScrollBar() {
     m_scrollBar->blockSignals(false);
     // Show scrollbar only when there's scrollback
     m_scrollBar->setVisible(maxScroll > 0);
+    updateScrollToBottomButton();
 }
 
 QPoint TerminalWidget::pixelToCell(const QPoint &pos) const {
@@ -1405,6 +1617,12 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
     }
 
     if (event->button() == Qt::LeftButton) {
+        // Exit URL quick-select mode on any click
+        if (m_urlQuickSelectActive) {
+            exitUrlQuickSelect();
+            return;
+        }
+
         // Ctrl+Click opens URLs and file paths
         if (event->modifiers() & Qt::ControlModifier) {
             QPoint cell = pixelToCell(event->pos());
@@ -1426,9 +1644,39 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
             selectCommandOutput(cell.x());
             return;
         }
+
+        // Triple-click detection: select entire line
+        QPoint cell = pixelToCell(event->pos());
+        if (m_lastClickTime.elapsed() < 400 && cell.x() == m_lastClickCell.x()) {
+            m_clickCount++;
+        } else {
+            m_clickCount = 1;
+        }
+        m_lastClickTime.restart();
+        m_lastClickCell = cell;
+
+        if (m_clickCount >= 3) {
+            // Triple-click: select entire line
+            int globalLine = cell.x();
+            m_selStart = QPoint(globalLine, 0);
+            m_selEnd = QPoint(globalLine, m_grid->cols() - 1);
+            m_hasSelection = true;
+            m_selecting = false;
+            m_clickCount = 0;
+
+            QString text = selectedText();
+            if (!text.isEmpty()) {
+                QApplication::clipboard()->setText(text, QClipboard::Selection);
+                if (m_autoCopyOnSelect)
+                    QApplication::clipboard()->setText(text);
+            }
+            update();
+            return;
+        }
+
         clearSelection();
         m_selecting = true;
-        m_selStart = pixelToCell(event->pos());
+        m_selStart = cell;
         m_selEnd = m_selStart;
         update();
     }
@@ -1462,26 +1710,49 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     }
 
     if (m_selecting) {
+        m_lastMousePos = event->pos();
         m_selEnd = pixelToCell(event->pos());
         m_hasSelection = (m_selStart != m_selEnd);
+
+        // Auto-scroll when dragging past top/bottom edges
+        if (event->pos().y() < m_padding) {
+            m_selectionScrollDirection = 1; // scroll up (increase offset)
+            if (!m_selectionScrollTimer.isActive())
+                m_selectionScrollTimer.start();
+        } else if (event->pos().y() > height() - m_padding - (m_searchVisible ? m_searchBar->height() : 0)) {
+            m_selectionScrollDirection = -1; // scroll down (decrease offset)
+            if (!m_selectionScrollTimer.isActive())
+                m_selectionScrollTimer.start();
+        } else {
+            m_selectionScrollDirection = 0;
+            m_selectionScrollTimer.stop();
+        }
+
         update();
     }
 
-    // Change cursor for URLs/file paths with Ctrl held
-    if (event->modifiers() & Qt::ControlModifier) {
-        QPoint cell = pixelToCell(event->pos());
-        auto spans = detectUrls(cell.x());
-        bool onLink = false;
-        for (const auto &s : spans) {
-            if (cell.y() >= s.startCol && cell.y() <= s.endCol) {
-                onLink = true;
-                break;
-            }
+    // URL hover detection — underline on hover, show hand cursor
+    QPoint cell = pixelToCell(event->pos());
+    int oldHoverLine = m_hoverGlobalLine;
+    int oldHoverCol = m_hoverCol;
+    m_hoverGlobalLine = -1;
+    m_hoverCol = -1;
+
+    auto spans = detectUrls(cell.x());
+    bool onLink = false;
+    for (const auto &s : spans) {
+        if (cell.y() >= s.startCol && cell.y() <= s.endCol) {
+            onLink = true;
+            m_hoverGlobalLine = cell.x();
+            m_hoverCol = cell.y();
+            break;
         }
-        setCursor(onLink ? Qt::PointingHandCursor : Qt::IBeamCursor);
-    } else {
-        setCursor(Qt::IBeamCursor);
     }
+    setCursor(onLink ? Qt::PointingHandCursor : Qt::IBeamCursor);
+
+    // Repaint if hover state changed
+    if (m_hoverGlobalLine != oldHoverLine || m_hoverCol != oldHoverCol)
+        update();
 }
 
 void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
@@ -1492,6 +1763,8 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
 
     if (event->button() == Qt::LeftButton && m_selecting) {
         m_selecting = false;
+        m_selectionScrollTimer.stop();
+        m_selectionScrollDirection = 0;
         m_selEnd = pixelToCell(event->pos());
         m_hasSelection = (m_selStart != m_selEnd);
         if (m_hasSelection) {
@@ -1983,6 +2256,52 @@ TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
     return cacheAndReturn({-1, -1, -1, -1});
 }
 
+// --- URL Quick-Select Mode ---
+
+void TerminalWidget::enterUrlQuickSelect() {
+    m_urlQuickSelectActive = true;
+    m_quickSelectInput.clear();
+    m_quickSelectLabels.clear();
+
+    int scrollbackSize = m_grid->scrollbackSize();
+    int viewStart = scrollbackSize - m_scrollOffset;
+    int viewEnd = viewStart + m_grid->rows();
+
+    // Collect all URLs visible on screen
+    int labelIdx = 0;
+    QString labels = "asdfghjklqwertyuiopzxcvbnm";
+
+    for (int gl = viewStart; gl < viewEnd && labelIdx < labels.size(); ++gl) {
+        auto spans = detectUrls(gl);
+        for (const auto &s : spans) {
+            if (labelIdx >= labels.size()) break;
+            QuickSelectLabel ql;
+            ql.globalLine = gl;
+            ql.startCol = s.startCol;
+            ql.endCol = s.endCol;
+            ql.url = s.url;
+            ql.isFilePath = s.isFilePath;
+            ql.label = labels.mid(labelIdx, 1);
+            m_quickSelectLabels.push_back(ql);
+            ++labelIdx;
+        }
+    }
+
+    if (m_quickSelectLabels.empty()) {
+        m_urlQuickSelectActive = false;
+        return;
+    }
+
+    update();
+}
+
+void TerminalWidget::exitUrlQuickSelect() {
+    m_urlQuickSelectActive = false;
+    m_quickSelectInput.clear();
+    m_quickSelectLabels.clear();
+    update();
+}
+
 // --- Terminal Recording (asciicast v2) ---
 
 void TerminalWidget::startRecording(const QString &path) {
@@ -2110,6 +2429,26 @@ void TerminalWidget::setGpuRendering(bool enabled) {
         m_glRenderer.reset();
     }
     update();
+}
+
+void TerminalWidget::setPadding(int px) {
+    m_padding = qBound(0, px, 32);
+    recalcGridSize();
+    update();
+}
+
+void TerminalWidget::updateScrollToBottomButton() {
+    if (!m_scrollToBottomBtn) return;
+    if (m_scrollOffset > 0) {
+        int x = width() - 52;
+        int y = height() - 52;
+        if (m_searchVisible) y -= m_searchBar->height();
+        m_scrollToBottomBtn->move(x, y);
+        m_scrollToBottomBtn->show();
+        m_scrollToBottomBtn->raise();
+    } else {
+        m_scrollToBottomBtn->hide();
+    }
 }
 
 void TerminalWidget::setBackgroundAlpha(int alpha) {

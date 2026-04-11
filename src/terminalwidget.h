@@ -14,6 +14,7 @@
 #include <QElapsedTimer>
 #include <QJsonArray>
 #include <QScrollBar>
+#include <QPropertyAnimation>
 #include <unordered_map>
 #include <memory>
 
@@ -21,6 +22,7 @@ class GlRenderer;
 
 class QLabel;
 class QHBoxLayout;
+class QPushButton;
 
 class TerminalWidget : public QOpenGLWidget {
     Q_OBJECT
@@ -141,6 +143,14 @@ public:
     // Visual bell
     void setVisualBell(bool enabled) { m_visualBellEnabled = enabled; }
     bool visualBell() const { return m_visualBellEnabled; }
+
+    // Configurable padding
+    void setPadding(int px);
+    int padding() const { return m_padding; }
+
+    // URL quick-select mode
+    void enterUrlQuickSelect();
+    void exitUrlQuickSelect();
 
     // Background image
     void setBackgroundImage(const QString &path);
@@ -403,4 +413,40 @@ private:
     QScrollBar *m_scrollBar = nullptr;
     void updateScrollBar();
     void positionScrollBar();
+
+    // Smooth scrolling
+    double m_smoothScrollTarget = 0.0;
+    double m_smoothScrollCurrent = 0.0;
+    QTimer m_smoothScrollTimer;
+    void smoothScrollStep();
+
+    // Selection auto-scroll (drag past edge)
+    QTimer m_selectionScrollTimer;
+    int m_selectionScrollDirection = 0; // -1=up, 0=none, 1=down
+    QPoint m_lastMousePos;
+
+    // Triple-click
+    QElapsedTimer m_lastClickTime;
+    QPoint m_lastClickCell{-1, -1};
+    int m_clickCount = 0;
+
+    // URL hover
+    int m_hoverGlobalLine = -1;
+    int m_hoverCol = -1;
+
+    // Scroll-to-bottom button
+    QPushButton *m_scrollToBottomBtn = nullptr;
+    void updateScrollToBottomButton();
+
+    // New output marker (line number when user scrolled up and new output arrived)
+    int m_newOutputMarkerLine = -1;
+
+    // URL quick-select mode
+    bool m_urlQuickSelectActive = false;
+    struct QuickSelectLabel { int globalLine; int startCol; int endCol; QString url; QString label; bool isFilePath; };
+    std::vector<QuickSelectLabel> m_quickSelectLabels;
+    QString m_quickSelectInput;
+
+    // Cursor glow
+    QColor m_cursorGlowColor;
 };

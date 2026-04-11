@@ -693,6 +693,14 @@ void MainWindow::setupMenus() {
         if (t) t->prevBookmark();
     });
 
+    QAction *urlSelectAction = settingsMenu->addAction("Quick Select &URL");
+    urlSelectAction->setShortcut(QKeySequence(m_config.keybinding("url_quick_select", "Ctrl+Shift+G")));
+    connect(urlSelectAction, &QAction::triggered, this, [this]() {
+        TerminalWidget *t = focusedTerminal();
+        if (!t) t = currentTerminal();
+        if (t) t->enterUrlQuickSelect();
+    });
+
     settingsMenu->addSeparator();
 
     // Scrollback submenu
@@ -827,6 +835,7 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setWindowOpacityLevel(m_config.opacity());
     terminal->setGpuRendering(m_config.gpuRendering());
     terminal->setVisualBell(m_config.visualBell());
+    terminal->setPadding(m_config.terminalPadding());
     QString family = m_config.fontFamily();
     if (!family.isEmpty()) terminal->setFontFamily(family);
     // Per-style fonts
@@ -2084,6 +2093,27 @@ void MainWindow::onTriggerFired(const QString &pattern, const QString &actionTyp
 
 void MainWindow::showTabColorMenu(int tabIndex) {
     QMenu menu(this);
+
+    // Rename tab
+    QAction *renameAction = menu.addAction("Rename Tab...");
+    connect(renameAction, &QAction::triggered, this, [this, tabIndex]() {
+        QLineEdit *editor = new QLineEdit(m_tabWidget->tabBar());
+        editor->setText(m_tabWidget->tabText(tabIndex));
+        editor->selectAll();
+        QRect tabRect = m_tabWidget->tabBar()->tabRect(tabIndex);
+        editor->setGeometry(tabRect);
+        editor->setFocus();
+        editor->show();
+        connect(editor, &QLineEdit::editingFinished, this, [this, editor, tabIndex]() {
+            QString newName = editor->text().trimmed();
+            if (!newName.isEmpty())
+                m_tabWidget->setTabText(tabIndex, newName);
+            editor->deleteLater();
+        });
+    });
+
+    menu.addSeparator();
+
     struct ColorEntry { QString name; QColor color; };
     QList<ColorEntry> colors = {
         {"None", QColor()},
