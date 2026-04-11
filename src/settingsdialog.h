@@ -64,6 +64,10 @@ private:
     QCheckBox *m_backgroundBlur;
     QCheckBox *m_gpuRendering;
     QSpinBox *m_paddingSpinner;
+    QLineEdit *m_badgeEdit;
+    QCheckBox *m_autoColorScheme;
+    QComboBox *m_darkThemeCombo;
+    QComboBox *m_lightThemeCombo;
 
     // Terminal
     QSpinBox *m_scrollbackLines;

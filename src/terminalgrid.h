@@ -83,6 +83,9 @@ struct PromptRegion {
     int startLine;   // global line (scrollback + screen)
     int endLine;
     bool hasOutput = false;
+    qint64 commandStartMs = 0;  // epoch ms when command started (OSC 133 B)
+    qint64 commandEndMs = 0;    // epoch ms when command ended (OSC 133 D)
+    bool folded = false;        // whether output is collapsed
 };
 
 // Represents the terminal screen buffer and handles all actions from the parser.
@@ -173,6 +176,7 @@ public:
 
     // Shell integration (OSC 133)
     const std::vector<PromptRegion> &promptRegions() const { return m_promptRegions; }
+    std::vector<PromptRegion> &promptRegions() { return m_promptRegions; }
 
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {

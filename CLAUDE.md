@@ -120,3 +120,9 @@ cmake .. && make -j$(nproc)
 | `ssh_bookmarks` | array | `[]` | Saved SSH connections |
 | `plugin_dir` | string | `""` | Lua plugin directory |
 | `enabled_plugins` | array | `[]` | Active plugin names |
+| `snippets` | array | `[]` | Command snippets with placeholders |
+| `auto_profile_rules` | array | `[]` | Auto-switch profiles by pattern |
+| `badge_text` | string | `""` | Watermark text in terminal bg |
+| `auto_color_scheme` | bool | `false` | Auto-switch dark/light theme |
+| `dark_theme` | string | `"Dark"` | Theme for dark system mode |
+| `light_theme` | string | `"Light"` | Theme for light system mode |

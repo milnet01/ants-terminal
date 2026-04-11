@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cwchar>
 #include <QByteArray>
+#include <QDateTime>
 
 QColor TerminalGrid::s_palette256[256] = {};
 bool TerminalGrid::s_paletteInitialized = false;
@@ -552,12 +553,14 @@ void TerminalGrid::handleOsc(const std::string &payload) {
         switch (marker) {
         case 'A': // Prompt start
             m_shellIntegState = 'A';
-            m_promptRegions.push_back({globalLine, globalLine, false});
+            m_promptRegions.push_back({globalLine, globalLine, false, 0, 0, false});
             break;
         case 'B': // Command start (end of prompt)
             m_shellIntegState = 'B';
-            if (!m_promptRegions.empty())
+            if (!m_promptRegions.empty()) {
                 m_promptRegions.back().endLine = globalLine;
+                m_promptRegions.back().commandStartMs = QDateTime::currentMSecsSinceEpoch();
+            }
             break;
         case 'C': // Command output start
             m_shellIntegState = 'C';
@@ -567,6 +570,8 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             break;
         case 'D': { // Command finished
             m_shellIntegState = 0;
+            if (!m_promptRegions.empty())
+                m_promptRegions.back().commandEndMs = QDateTime::currentMSecsSinceEpoch();
             // Parse exit code: OSC 133 ; D ; exitcode ST
             std::string rest = payload.substr(semi + 1);
             size_t semi2 = rest.find(';');

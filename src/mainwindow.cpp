@@ -50,6 +50,15 @@
 #include <QCursor>
 #include <memory>
 #include <QColorDialog>
+#include <QGuiApplication>
+#include <QStyleHints>
+#include <QInputDialog>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QFormLayout>
+#include <QDialogButtonBox>
+#include <QRegularExpression>
+#include <QLineEdit>
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Ants Terminal");
@@ -188,6 +197,20 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // Quake mode (from config or constructor flag)
     if (quakeMode || m_config.quakeMode())
         setupQuakeMode();
+
+    // Hot-reload: watch config.json for external changes
+    m_configWatcher = new QFileSystemWatcher(this);
+    m_configWatcher->addPath(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                             + "/ants-terminal/config.json");
+    connect(m_configWatcher, &QFileSystemWatcher::fileChanged, this, &MainWindow::onConfigFileChanged);
+
+    // Dark/light mode auto-switching (Qt 6.5+ signal)
+    if (m_config.autoColorScheme()) {
+        connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
+                this, [this]() { onSystemColorSchemeChanged(); });
+        // Apply initial scheme
+        onSystemColorSchemeChanged();
+    }
 
     // Cleanup old sessions
     SessionManager::cleanupOldSessions(30);
@@ -581,6 +604,26 @@ void MainWindow::setupMenus() {
     QAction *reviewChanges = claudeMenu->addAction("&Review Changes...");
     connect(reviewChanges, &QAction::triggered, this, &MainWindow::showDiffViewer);
 
+    // Tools: Scratchpad
+    toolsMenu->addSeparator();
+    QAction *scratchpadAction = toolsMenu->addAction("&Scratchpad Editor...");
+    scratchpadAction->setShortcut(QKeySequence(m_config.keybinding("scratchpad", "Ctrl+Shift+Return")));
+    connect(scratchpadAction, &QAction::triggered, this, [this]() {
+        if (auto *t = focusedTerminal()) t->showScratchpad();
+    });
+
+    // Tools: Command Snippets
+    QAction *snippetsAction = toolsMenu->addAction("Command Sni&ppets...");
+    snippetsAction->setShortcut(QKeySequence(m_config.keybinding("snippets", "Ctrl+Shift+;")));
+    connect(snippetsAction, &QAction::triggered, this, &MainWindow::showSnippetsDialog);
+
+    // Tools: Fold/Unfold command output
+    QAction *foldAction = toolsMenu->addAction("Toggle &Fold Output");
+    foldAction->setShortcut(QKeySequence(m_config.keybinding("toggle_fold", "Ctrl+Shift+.")));
+    connect(foldAction, &QAction::triggered, this, [this]() {
+        if (auto *t = focusedTerminal()) t->toggleFoldAtCursor();
+    });
+
     // Settings menu
     QMenu *settingsMenu = m_menuBar->addMenu("S&ettings");
 
@@ -848,6 +891,9 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     // Background image
     QString bgImg = m_config.backgroundImage();
     if (!bgImg.isEmpty()) terminal->setBackgroundImage(bgImg);
+    // Badge text
+    QString badge = m_config.badgeText();
+    if (!badge.isEmpty()) terminal->setBadgeText(badge);
 }
 
 void MainWindow::connectTerminal(TerminalWidget *terminal) {
@@ -1951,6 +1997,9 @@ void MainWindow::updateStatusBar() {
     } else {
         m_statusProcess->hide();
     }
+
+    // Auto-profile switching (check rules periodically)
+    checkAutoProfileRules(t);
 }
 
 // --- Tab label customization ---
@@ -2216,5 +2265,270 @@ void MainWindow::showDiffViewer() {
 
     layout->addWidget(viewer);
     layout->addLayout(btnBox);
+    dialog->show();
+}
+
+// --- Hot-Reload Configuration ---
+
+void MainWindow::onConfigFileChanged(const QString &path) {
+    // Re-add the watch (QFileSystemWatcher drops the watch after some changes)
+    if (!m_configWatcher->files().contains(path))
+        m_configWatcher->addPath(path);
+
+    // Reload config from disk
+    m_config = Config();
+
+    // Re-apply all settings
+    applyTheme(m_config.theme());
+    applyFontSizeToAll(m_config.fontSize());
+
+    QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+    for (auto *t : terminals) {
+        applyConfigToTerminal(t);
+        t->setHighlightRules(m_config.highlightRules());
+        t->setTriggerRules(m_config.triggerRules());
+        QString family = m_config.fontFamily();
+        if (!family.isEmpty()) t->setFontFamily(family);
+    }
+
+    // Update broadcast
+    m_broadcastMode = m_config.broadcastMode();
+    if (m_broadcastAction)
+        m_broadcastAction->setChecked(m_broadcastMode);
+
+    statusBar()->showMessage("Config reloaded from disk", 3000);
+}
+
+// --- Dark/Light Mode Auto-Switching ---
+
+void MainWindow::onSystemColorSchemeChanged() {
+    if (!m_config.autoColorScheme()) return;
+
+    Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
+    QString themeName;
+    if (scheme == Qt::ColorScheme::Light)
+        themeName = m_config.lightTheme();
+    else
+        themeName = m_config.darkTheme();
+
+    if (!themeName.isEmpty() && themeName != m_currentTheme) {
+        applyTheme(themeName);
+        m_config.setTheme(themeName);
+        statusBar()->showMessage("Theme auto-switched to " + themeName, 3000);
+    }
+}
+
+// --- Auto-Profile Switching ---
+
+void MainWindow::checkAutoProfileRules(TerminalWidget *terminal) {
+    if (!terminal) return;
+
+    QJsonArray rules = m_config.autoProfileRules();
+    if (rules.isEmpty()) return;
+
+    QString cwd = terminal->shellCwd();
+    QString title = terminal->shellTitle();
+    QString process = terminal->foregroundProcess();
+
+    QJsonObject profiles = m_config.profiles();
+
+    for (const QJsonValue &rv : rules) {
+        QJsonObject rule = rv.toObject();
+        QString pattern = rule.value("pattern").toString();
+        QString type = rule.value("type").toString("title");
+        QString profileName = rule.value("profile").toString();
+
+        if (pattern.isEmpty() || profileName.isEmpty()) continue;
+        if (!profiles.contains(profileName)) continue;
+
+        QRegularExpression rx(pattern);
+        bool matches = false;
+
+        if (type == "title") matches = rx.match(title).hasMatch();
+        else if (type == "cwd") matches = rx.match(cwd).hasMatch();
+        else if (type == "process") matches = rx.match(process).hasMatch();
+
+        if (matches && profileName != m_lastAutoProfile) {
+            m_lastAutoProfile = profileName;
+
+            // Apply the profile settings
+            QJsonObject profile = profiles.value(profileName).toObject();
+            if (profile.contains("theme")) {
+                applyTheme(profile.value("theme").toString());
+            }
+            if (profile.contains("font_size")) {
+                int size = profile.value("font_size").toInt();
+                terminal->setFontSize(size);
+            }
+            if (profile.contains("opacity")) {
+                double opacity = profile.value("opacity").toDouble();
+                terminal->setWindowOpacityLevel(opacity);
+            }
+            if (profile.contains("badge_text")) {
+                terminal->setBadgeText(profile.value("badge_text").toString());
+            }
+
+            statusBar()->showMessage("Profile auto-switched to: " + profileName, 3000);
+            return;
+        }
+    }
+}
+
+// --- Command Snippets Dialog ---
+
+void MainWindow::showSnippetsDialog() {
+    QDialog *dialog = new QDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle("Command Snippets");
+    dialog->setMinimumSize(600, 400);
+    dialog->resize(700, 500);
+
+    auto *layout = new QVBoxLayout(dialog);
+
+    // Search bar
+    auto *searchEdit = new QLineEdit(dialog);
+    searchEdit->setPlaceholderText("Search snippets...");
+    layout->addWidget(searchEdit);
+
+    // Snippets list
+    auto *table = new QTableWidget(dialog);
+    table->setColumnCount(3);
+    table->setHorizontalHeaderLabels({"Name", "Command", "Description"});
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    layout->addWidget(table);
+
+    // Load snippets
+    QJsonArray snippets = m_config.snippets();
+    auto loadSnippets = [&, table](const QString &filter = "") {
+        table->setRowCount(0);
+        for (const QJsonValue &sv : snippets) {
+            QJsonObject s = sv.toObject();
+            QString name = s.value("name").toString();
+            QString cmd = s.value("command").toString();
+            QString desc = s.value("description").toString();
+            if (!filter.isEmpty() &&
+                !name.contains(filter, Qt::CaseInsensitive) &&
+                !cmd.contains(filter, Qt::CaseInsensitive) &&
+                !desc.contains(filter, Qt::CaseInsensitive))
+                continue;
+            int row = table->rowCount();
+            table->insertRow(row);
+            table->setItem(row, 0, new QTableWidgetItem(name));
+            table->setItem(row, 1, new QTableWidgetItem(cmd));
+            table->setItem(row, 2, new QTableWidgetItem(desc));
+        }
+    };
+    loadSnippets();
+
+    connect(searchEdit, &QLineEdit::textChanged, dialog, [loadSnippets](const QString &text) {
+        loadSnippets(text);
+    });
+
+    // Buttons
+    auto *btnLayout = new QHBoxLayout();
+    auto *addBtn = new QPushButton("Add", dialog);
+    auto *editBtn = new QPushButton("Edit", dialog);
+    auto *deleteBtn = new QPushButton("Delete", dialog);
+    auto *insertBtn = new QPushButton("Insert Command", dialog);
+    btnLayout->addWidget(addBtn);
+    btnLayout->addWidget(editBtn);
+    btnLayout->addWidget(deleteBtn);
+    btnLayout->addStretch();
+    btnLayout->addWidget(insertBtn);
+    layout->addLayout(btnLayout);
+
+    auto editSnippet = [this, &snippets, loadSnippets, table](int editIdx = -1) {
+        QDialog editDlg(this);
+        editDlg.setWindowTitle(editIdx >= 0 ? "Edit Snippet" : "Add Snippet");
+        auto *form = new QFormLayout(&editDlg);
+
+        auto *nameEdit = new QLineEdit(&editDlg);
+        auto *cmdEdit = new QLineEdit(&editDlg);
+        auto *descEdit = new QLineEdit(&editDlg);
+
+        if (editIdx >= 0 && editIdx < snippets.size()) {
+            QJsonObject s = snippets[editIdx].toObject();
+            nameEdit->setText(s.value("name").toString());
+            cmdEdit->setText(s.value("command").toString());
+            descEdit->setText(s.value("description").toString());
+        }
+
+        cmdEdit->setPlaceholderText("e.g. docker exec -it {{container}} bash");
+        descEdit->setPlaceholderText("Brief description");
+
+        form->addRow("Name:", nameEdit);
+        form->addRow("Command:", cmdEdit);
+        form->addRow("Description:", descEdit);
+
+        auto *btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        form->addRow(btns);
+        connect(btns, &QDialogButtonBox::accepted, &editDlg, &QDialog::accept);
+        connect(btns, &QDialogButtonBox::rejected, &editDlg, &QDialog::reject);
+
+        if (editDlg.exec() == QDialog::Accepted) {
+            QJsonObject s;
+            s["name"] = nameEdit->text();
+            s["command"] = cmdEdit->text();
+            s["description"] = descEdit->text();
+
+            if (editIdx >= 0)
+                snippets[editIdx] = s;
+            else
+                snippets.append(s);
+
+            m_config.setSnippets(snippets);
+            loadSnippets();
+        }
+    };
+
+    connect(addBtn, &QPushButton::clicked, dialog, [editSnippet]() { editSnippet(-1); });
+    connect(editBtn, &QPushButton::clicked, dialog, [editSnippet, table]() {
+        int row = table->currentRow();
+        if (row >= 0) editSnippet(row);
+    });
+    connect(deleteBtn, &QPushButton::clicked, dialog, [&snippets, loadSnippets, table, this]() {
+        int row = table->currentRow();
+        if (row >= 0 && row < snippets.size()) {
+            snippets.removeAt(row);
+            m_config.setSnippets(snippets);
+            loadSnippets();
+        }
+    });
+    connect(insertBtn, &QPushButton::clicked, dialog, [this, table, &snippets, dialog]() {
+        int row = table->currentRow();
+        if (row < 0 || row >= snippets.size()) return;
+        QJsonObject s = snippets[row].toObject();
+        QString cmd = s.value("command").toString();
+
+        // Replace {{placeholders}} with user input
+        static QRegularExpression placeholderRx("\\{\\{([^}]+)\\}\\}");
+        auto it = placeholderRx.globalMatch(cmd);
+        QStringList replaced;
+        while (it.hasNext()) {
+            auto m = it.next();
+            QString placeholder = m.captured(1);
+            if (replaced.contains(placeholder)) continue;
+            QString value = QInputDialog::getText(this, "Parameter: " + placeholder,
+                                                   placeholder + ":");
+            if (value.isEmpty()) return; // user cancelled
+            cmd.replace("{{" + placeholder + "}}", value);
+            replaced.append(placeholder);
+        }
+
+        if (auto *t = focusedTerminal()) {
+            t->writeCommand(cmd);
+        }
+        dialog->close();
+    });
+
+    // Double-click to insert
+    connect(table, &QTableWidget::doubleClicked, dialog, [insertBtn]() {
+        insertBtn->click();
+    });
+
     dialog->show();
 }

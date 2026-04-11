@@ -153,6 +153,26 @@ public:
     QJsonObject tabGroups() const;
     void setTabGroups(const QJsonObject &groups);
 
+    // Command snippets
+    QJsonArray snippets() const;
+    void setSnippets(const QJsonArray &snippets);
+
+    // Auto-profile switching rules: [{pattern, type, profile}]
+    QJsonArray autoProfileRules() const;
+    void setAutoProfileRules(const QJsonArray &rules);
+
+    // Badge text (displayed as watermark in terminal background)
+    QString badgeText() const;
+    void setBadgeText(const QString &text);
+
+    // Dark/light mode auto-switching
+    bool autoColorScheme() const;
+    void setAutoColorScheme(bool enabled);
+    QString darkTheme() const;
+    void setDarkTheme(const QString &name);
+    QString lightTheme() const;
+    void setLightTheme(const QString &name);
+
     // Raw JSON access for settings dialog
     QJsonObject rawData() const { return m_data; }
     void setRawData(const QJsonObject &data) { m_data = data; save(); }

@@ -23,6 +23,7 @@ class GlRenderer;
 class QLabel;
 class QHBoxLayout;
 class QPushButton;
+class QPlainTextEdit;
 
 class TerminalWidget : public QOpenGLWidget {
     Q_OBJECT
@@ -148,9 +149,23 @@ public:
     void setPadding(int px);
     int padding() const { return m_padding; }
 
-    // URL quick-select mode
+    // URL / hints quick-select mode (extended: URLs, paths, SHAs, IPs, emails)
     void enterUrlQuickSelect();
     void exitUrlQuickSelect();
+
+    // Command output folding (OSC 133 regions)
+    void toggleFoldAtCursor();
+
+    // Rectangular (column/block) selection
+    void setRectSelection(bool enabled) { m_rectSelection = enabled; }
+    bool rectSelection() const { return m_rectSelection; }
+
+    // Scratchpad (multi-line command editor)
+    void showScratchpad();
+    void hideScratchpad();
+
+    // Badge text (watermark in terminal background)
+    void setBadgeText(const QString &text);
 
     // Background image
     void setBackgroundImage(const QString &path);
@@ -449,4 +464,17 @@ private:
 
     // Cursor glow
     QColor m_cursorGlowColor;
+
+    // Rectangular (column/block) selection
+    bool m_rectSelection = false;
+
+    // Badge text (large watermark in background)
+    QString m_badgeText;
+
+    // Scratchpad overlay
+    QWidget *m_scratchpad = nullptr;
+
+    // Nerd Font symbol fallback
+    QFont m_nerdFallbackFont;
+    bool m_hasNerdFallback = false;
 };

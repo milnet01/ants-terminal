@@ -31,6 +31,7 @@
 #include <QTextStream>
 #include <QJsonObject>
 #include <QSplitter>
+#include <QPlainTextEdit>
 
 TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
@@ -87,6 +88,22 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
             m_fallbackFont = test;
             m_fallbackFont.setPointSize(m_font.pointSize());
             m_hasFallbackFont = true;
+            break;
+        }
+    }
+
+    // Nerd Font symbol fallback (Powerline, Devicons, etc.)
+    QStringList nerdFamilies = {"Symbols Nerd Font Mono", "Symbols Nerd Font",
+                                 "Hack Nerd Font Mono", "JetBrainsMono Nerd Font Mono",
+                                 "FiraCode Nerd Font Mono"};
+    for (const QString &family : nerdFamilies) {
+        QFont test(family);
+        QFontMetrics fm(test);
+        // Test with Powerline branch symbol (U+E0A0)
+        if (fm.horizontalAdvance(QChar(0xE0A0)) > 0) {
+            m_nerdFallbackFont = test;
+            m_nerdFallbackFont.setPointSize(m_font.pointSize());
+            m_hasNerdFallback = true;
             break;
         }
     }
@@ -271,6 +288,7 @@ void TerminalWidget::setFontSize(int size) {
     size = qBound(4, size, 48);
     m_font.setPointSize(size);
     if (m_hasFallbackFont) m_fallbackFont.setPointSize(size);
+    if (m_hasNerdFallback) m_nerdFallbackFont.setPointSize(size);
     updateFontMetrics();
     recalcGridSize();
     update();
@@ -378,6 +396,33 @@ bool TerminalWidget::event(QEvent *event) {
             keyPressEvent(ke);
             return true;
         }
+        // Scratchpad: Ctrl+Enter to send, Escape to close
+        if (m_scratchpad && m_scratchpad->isVisible()) {
+            if (ke->key() == Qt::Key_Escape) {
+                hideScratchpad();
+                return true;
+            }
+            if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
+                (ke->modifiers() & Qt::ControlModifier)) {
+                auto *edit = m_scratchpad->findChild<QPlainTextEdit *>();
+                if (edit) {
+                    QString text = edit->toPlainText();
+                    if (!text.isEmpty() && m_pty) {
+                        if (m_grid->bracketedPaste()) {
+                            m_pty->write(QByteArray("\x1B[200~"));
+                            m_pty->write(text.toUtf8());
+                            m_pty->write(QByteArray("\x1B[201~"));
+                        } else {
+                            m_pty->write(text.toUtf8());
+                        }
+                        m_pty->write("\r");
+                    }
+                    edit->clear();
+                    hideScratchpad();
+                }
+                return true;
+            }
+        }
     }
     return QOpenGLWidget::event(event);
 }
@@ -407,6 +452,20 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         p.setOpacity(0.15); // subtle background
         p.drawImage(rect(), m_backgroundImage);
         p.setOpacity(1.0);
+    }
+
+    // Badge watermark (large semi-transparent text in background)
+    if (!m_badgeText.isEmpty()) {
+        QFont badgeFont = m_font;
+        badgeFont.setPointSize(m_font.pointSize() * 4);
+        badgeFont.setBold(true);
+        p.setFont(badgeFont);
+        QColor badgeColor = m_grid->defaultFg();
+        badgeColor.setAlpha(20);
+        p.setPen(badgeColor);
+        QRect badgeRect = rect().adjusted(0, 0, -20, -20);
+        p.drawText(badgeRect, Qt::AlignBottom | Qt::AlignRight, m_badgeText);
+        p.setFont(m_font);
     }
 
     int scrollbackSize = m_grid->scrollbackSize();
@@ -667,6 +726,96 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         }
     }
 
+    // Command timestamps and fold indicators (OSC 133 shell integration)
+    {
+        const auto &regions = m_grid->promptRegions();
+        QFont smallFont = m_font;
+        smallFont.setPointSize(std::max(7, m_font.pointSize() - 2));
+        QFontMetrics sfm(smallFont);
+
+        for (size_t ri = 0; ri < regions.size(); ++ri) {
+            const auto &pr = regions[ri];
+            int vr = pr.startLine - viewStart;
+            if (vr < 0 || vr >= rows) continue;
+
+            int py = m_padding + vr * m_cellHeight;
+
+            // Command duration and timestamp (right-aligned)
+            if (pr.commandStartMs > 0) {
+                p.setFont(smallFont);
+                QColor dimColor = m_grid->defaultFg();
+                dimColor.setAlpha(100);
+                p.setPen(dimColor);
+
+                QString info;
+                if (pr.commandEndMs > 0) {
+                    qint64 durationMs = pr.commandEndMs - pr.commandStartMs;
+                    if (durationMs < 1000)
+                        info = QString("%1ms").arg(durationMs);
+                    else if (durationMs < 60000)
+                        info = QString("%1s").arg(durationMs / 1000.0, 0, 'f', 1);
+                    else
+                        info = QString("%1m%2s").arg(durationMs / 60000).arg((durationMs % 60000) / 1000);
+                    info += "  ";
+                }
+
+                QDateTime dt = QDateTime::fromMSecsSinceEpoch(pr.commandStartMs);
+                info += dt.toString("HH:mm:ss");
+
+                int textW = sfm.horizontalAdvance(info);
+                p.drawText(width() - textW - m_padding - 14, py + sfm.ascent(), info);
+                p.setFont(m_font);
+            }
+
+            // Fold indicator for completed command output
+            if (pr.hasOutput && pr.commandEndMs > 0 && ri + 1 < regions.size()) {
+                int foldX = m_padding - 2;
+                if (foldX < 0) foldX = 2;
+                QColor foldColor = m_cursorColor;
+                foldColor.setAlpha(120);
+                p.setPen(foldColor);
+                // Draw a small triangle (right = expanded, down = collapsed)
+                if (pr.folded) {
+                    // Right-pointing triangle (collapsed)
+                    QPolygon tri;
+                    tri << QPoint(foldX, py + 2)
+                        << QPoint(foldX, py + m_cellHeight - 2)
+                        << QPoint(foldX + 6, py + m_cellHeight / 2);
+                    p.setBrush(foldColor);
+                    p.drawPolygon(tri);
+                    p.setBrush(Qt::NoBrush);
+
+                    // Draw fold summary bar
+                    int outputStart = pr.endLine + 1;
+                    int nextStart = (ri + 1 < regions.size()) ? regions[ri + 1].startLine : outputStart;
+                    int foldedLines = nextStart - outputStart;
+                    if (foldedLines > 0) {
+                        int barY = py + m_cellHeight;
+                        QColor barBg = m_grid->defaultBg().lighter(130);
+                        barBg.setAlpha(80);
+                        p.fillRect(m_padding, barY, width() - m_padding * 2, m_cellHeight, barBg);
+                        p.setFont(smallFont);
+                        QColor foldText = m_grid->defaultFg();
+                        foldText.setAlpha(130);
+                        p.setPen(foldText);
+                        p.drawText(m_padding + 8, barY + sfm.ascent() + 2,
+                                   QString("... %1 lines hidden (click to expand)").arg(foldedLines));
+                        p.setFont(m_font);
+                    }
+                } else {
+                    // Down-pointing triangle (expanded)
+                    QPolygon tri;
+                    tri << QPoint(foldX, py + 3)
+                        << QPoint(foldX + 6, py + 3)
+                        << QPoint(foldX + 3, py + 3 + 5);
+                    p.setBrush(foldColor);
+                    p.drawPolygon(tri);
+                    p.setBrush(Qt::NoBrush);
+                }
+            }
+        }
+    }
+
     // Draw inline images
     for (const auto &img : m_grid->inlineImages()) {
         int px_x = m_padding + img.col * m_cellWidth;
@@ -832,6 +981,67 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         }
     }
 
+    // Sticky command header (pin command at top when scrolling through its output)
+    if (m_scrollOffset > 0) {
+        const auto &regions = m_grid->promptRegions();
+        // Find the prompt region whose output spans the current viewport top
+        for (int ri = static_cast<int>(regions.size()) - 1; ri >= 0; --ri) {
+            const auto &pr = regions[ri];
+            // The command output starts after pr.endLine; the next region starts at regions[ri+1].startLine
+            int outputStart = pr.endLine + 1;
+            int outputEnd = (ri + 1 < static_cast<int>(regions.size()))
+                            ? regions[ri + 1].startLine - 1
+                            : scrollbackSize + rows - 1;
+            // Viewport top line
+            if (outputStart <= viewStart && outputEnd >= viewStart && pr.hasOutput) {
+                // Extract the command text from the prompt region (startLine to endLine)
+                QString cmdText;
+                for (int gl = pr.startLine; gl <= pr.endLine; ++gl) {
+                    cmdText += lineText(gl).trimmed();
+                    if (gl < pr.endLine) cmdText += " ";
+                }
+                cmdText = cmdText.trimmed();
+                if (cmdText.isEmpty()) break;
+
+                // Draw sticky header bar at top
+                QColor headerBg = m_grid->defaultBg().lighter(120);
+                headerBg.setAlpha(230);
+                int headerH = m_cellHeight + 4;
+                p.fillRect(0, 0, width(), headerH, headerBg);
+
+                // Bottom border
+                QColor borderColor = m_cursorColor;
+                borderColor.setAlpha(100);
+                p.setPen(borderColor);
+                p.drawLine(0, headerH, width(), headerH);
+
+                // Command text
+                p.setPen(m_grid->defaultFg());
+                p.setFont(m_font);
+                QString truncated = cmdText;
+                int maxChars = (width() - m_padding * 2 - 80) / m_cellWidth;
+                if (truncated.length() > maxChars)
+                    truncated = truncated.left(maxChars - 1) + QChar(0x2026); // ellipsis
+                p.drawText(m_padding + 4, 2 + m_fontAscent, truncated);
+
+                // Duration (right side)
+                if (pr.commandStartMs > 0 && pr.commandEndMs > 0) {
+                    qint64 dur = pr.commandEndMs - pr.commandStartMs;
+                    QString durStr;
+                    if (dur < 1000) durStr = QString("%1ms").arg(dur);
+                    else if (dur < 60000) durStr = QString("%1s").arg(dur / 1000.0, 0, 'f', 1);
+                    else durStr = QString("%1m%2s").arg(dur / 60000).arg((dur % 60000) / 1000);
+                    QColor dimColor = m_grid->defaultFg();
+                    dimColor.setAlpha(130);
+                    p.setPen(dimColor);
+                    QFontMetrics fm(m_font);
+                    p.drawText(width() - fm.horizontalAdvance(durStr) - m_padding - 4, 2 + m_fontAscent, durStr);
+                }
+                break;
+            }
+        }
+    }
+
     // Performance overlay
     if (m_showPerfOverlay) {
         ++m_perfFrameCount;
@@ -890,10 +1100,14 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
             for (const auto &ql : m_quickSelectLabels) {
                 if (ql.label == m_quickSelectInput) {
                     exitUrlQuickSelect();
-                    if (ql.isFilePath)
+                    if (ql.isFilePath) {
                         openFileAtPath(ql.url);
-                    else
+                    } else if (ql.url.startsWith("http://") || ql.url.startsWith("https://")) {
                         QDesktopServices::openUrl(QUrl(ql.url));
+                    } else {
+                        // Non-URL match (SHA, IP, email) — copy to clipboard
+                        QApplication::clipboard()->setText(ql.url);
+                    }
                     return;
                 }
             }
@@ -971,6 +1185,19 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     if (key == Qt::Key_O && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         int globalLine = m_grid->scrollbackSize() + m_grid->cursorRow();
         selectCommandOutput(globalLine);
+        return;
+    }
+
+    // Ctrl+Shift+Enter -- open scratchpad (multi-line command editor)
+    if ((key == Qt::Key_Return || key == Qt::Key_Enter) &&
+        (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+        showScratchpad();
+        return;
+    }
+
+    // Ctrl+Shift+. -- toggle command output fold at cursor
+    if (key == Qt::Key_Period && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+        toggleFoldAtCursor();
         return;
     }
 
@@ -1638,11 +1865,40 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
                 }
             }
         }
-        // Alt+Click selects entire command output block (semantic selection)
+        // Alt+Click: rectangular selection mode start OR semantic output select
         if (event->modifiers() & Qt::AltModifier) {
+            if (event->modifiers() & Qt::ShiftModifier) {
+                // Alt+Shift+Click: semantic output selection
+                QPoint cell = pixelToCell(event->pos());
+                selectCommandOutput(cell.x());
+                return;
+            }
+            // Alt+drag starts rectangular/column selection
+            m_rectSelection = true;
             QPoint cell = pixelToCell(event->pos());
-            selectCommandOutput(cell.x());
+            clearSelection();
+            m_selecting = true;
+            m_selStart = cell;
+            m_selEnd = m_selStart;
+            update();
             return;
+        }
+
+        // Click on fold triangle to toggle fold
+        if (event->pos().x() < m_padding + 10) {
+            QPoint cell = pixelToCell(event->pos());
+            const auto &regions = m_grid->promptRegions();
+            for (auto &pr : regions) {
+                int vr = pr.startLine - (m_grid->scrollbackSize() - m_scrollOffset);
+                if (vr >= 0 && vr < m_grid->rows() && cell.x() == pr.startLine + m_grid->scrollbackSize() - m_scrollOffset) {
+                    // Close enough — toggle fold for prompt at this line
+                    if (pr.hasOutput && pr.commandEndMs > 0) {
+                        const_cast<PromptRegion &>(pr).folded = !pr.folded;
+                        update();
+                        return;
+                    }
+                }
+            }
         }
 
         // Triple-click detection: select entire line
@@ -1674,6 +1930,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
             return;
         }
 
+        m_rectSelection = false;
         clearSelection();
         m_selecting = true;
         m_selStart = cell;
@@ -1842,6 +2099,14 @@ bool TerminalWidget::isCellSelected(int globalLine, int col) const {
     int sLine = s.x(), sCol = s.y();
     int eLine = e.x(), eCol = e.y();
 
+    if (m_rectSelection) {
+        // Rectangular/column selection: same column range on every line
+        int minCol = std::min(m_selStart.y(), m_selEnd.y());
+        int maxCol = std::max(m_selStart.y(), m_selEnd.y());
+        return globalLine >= sLine && globalLine <= eLine &&
+               col >= minCol && col <= maxCol;
+    }
+
     if (globalLine < sLine || globalLine > eLine) return false;
     if (sLine == eLine) return col >= sCol && col <= eCol;
     if (globalLine == sLine) return col >= sCol;
@@ -1858,6 +2123,28 @@ QString TerminalWidget::selectedText() const {
 
     int cols = m_grid->cols();
     QString result;
+
+    if (m_rectSelection) {
+        // Rectangular selection: same column range on every line
+        int minCol = std::min(m_selStart.y(), m_selEnd.y());
+        int maxCol = std::max(m_selStart.y(), m_selEnd.y());
+        for (int gl = s.x(); gl <= e.x(); ++gl) {
+            QString line;
+            for (int c = minCol; c <= maxCol && c < cols; ++c) {
+                uint32_t cp = cellAtGlobal(gl, c).codepoint;
+                if (cp == 0) cp = ' ';
+                line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
+                if (auto *comb = combiningAt(gl, c)) {
+                    for (uint32_t combCp : *comb)
+                        line += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
+                }
+            }
+            while (line.endsWith(' ')) line.chop(1);
+            result += line;
+            if (gl < e.x()) result += '\n';
+        }
+        return result;
+    }
 
     for (int gl = s.x(); gl <= e.x(); ++gl) {
         int startCol = (gl == s.x()) ? s.y() : 0;
@@ -2271,7 +2558,13 @@ void TerminalWidget::enterUrlQuickSelect() {
     int labelIdx = 0;
     QString labels = "asdfghjklqwertyuiopzxcvbnm";
 
+    // Extended patterns: git SHAs, IP addresses, email addresses
+    static QRegularExpression rxSha("\\b[0-9a-f]{7,40}\\b");
+    static QRegularExpression rxIp("\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?::\\d+)?\\b");
+    static QRegularExpression rxEmail("\\b[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}\\b");
+
     for (int gl = viewStart; gl < viewEnd && labelIdx < labels.size(); ++gl) {
+        // First: URLs and file paths (from existing detection)
         auto spans = detectUrls(gl);
         for (const auto &s : spans) {
             if (labelIdx >= labels.size()) break;
@@ -2285,6 +2578,42 @@ void TerminalWidget::enterUrlQuickSelect() {
             m_quickSelectLabels.push_back(ql);
             ++labelIdx;
         }
+
+        // Then: extended patterns (SHAs, IPs, emails)
+        if (labelIdx >= labels.size()) break;
+        QString lt = lineText(gl);
+
+        auto addMatches = [&](const QRegularExpression &rx, bool isPath) {
+            auto it = rx.globalMatch(lt);
+            while (it.hasNext() && labelIdx < labels.size()) {
+                auto m = it.next();
+                int sc = static_cast<int>(m.capturedStart());
+                int ec = static_cast<int>(m.capturedStart() + m.capturedLength() - 1);
+                // Skip if overlapping with an existing URL span
+                bool overlaps = false;
+                for (const auto &existing : m_quickSelectLabels) {
+                    if (existing.globalLine == gl && sc <= existing.endCol && ec >= existing.startCol) {
+                        overlaps = true;
+                        break;
+                    }
+                }
+                if (overlaps) continue;
+
+                QuickSelectLabel ql;
+                ql.globalLine = gl;
+                ql.startCol = sc;
+                ql.endCol = ec;
+                ql.url = m.captured();
+                ql.isFilePath = isPath;
+                ql.label = labels.mid(labelIdx, 1);
+                m_quickSelectLabels.push_back(ql);
+                ++labelIdx;
+            }
+        };
+
+        addMatches(rxSha, false);
+        addMatches(rxIp, false);
+        addMatches(rxEmail, false);
     }
 
     if (m_quickSelectLabels.empty()) {
@@ -2300,6 +2629,106 @@ void TerminalWidget::exitUrlQuickSelect() {
     m_quickSelectInput.clear();
     m_quickSelectLabels.clear();
     update();
+}
+
+// --- Command Output Folding ---
+
+void TerminalWidget::toggleFoldAtCursor() {
+    int globalLine = m_grid->scrollbackSize() + m_grid->cursorRow();
+    std::vector<PromptRegion> &regions = m_grid->promptRegions();
+    for (size_t i = 0; i < regions.size(); ++i) {
+        if (globalLine >= regions[i].startLine && regions[i].hasOutput && regions[i].commandEndMs > 0) {
+            regions[i].folded = !regions[i].folded;
+            update();
+            return;
+        }
+    }
+}
+
+// --- Badge Text ---
+
+void TerminalWidget::setBadgeText(const QString &text) {
+    m_badgeText = text;
+    update();
+}
+
+// --- Scratchpad (Multi-line Command Editor) ---
+
+void TerminalWidget::showScratchpad() {
+    if (m_scratchpad) {
+        m_scratchpad->show();
+        m_scratchpad->findChild<QPlainTextEdit *>()->setFocus();
+        return;
+    }
+
+    m_scratchpad = new QWidget(this);
+    m_scratchpad->setObjectName("scratchpad");
+
+    auto *layout = new QVBoxLayout(m_scratchpad);
+    layout->setContentsMargins(12, 8, 12, 8);
+    layout->setSpacing(6);
+
+    auto *titleLabel = new QLabel("Scratchpad — compose multi-line command", m_scratchpad);
+    titleLabel->setStyleSheet("color: gray; font-size: 11px;");
+    layout->addWidget(titleLabel);
+
+    auto *edit = new QPlainTextEdit(m_scratchpad);
+    edit->setObjectName("scratchpadEdit");
+    edit->setPlaceholderText("Type your command here...\nCtrl+Enter to send, Escape to close");
+    edit->setMinimumHeight(100);
+    edit->setFont(m_font);
+    layout->addWidget(edit);
+
+    auto *btnLayout = new QHBoxLayout();
+    btnLayout->addStretch();
+    auto *sendBtn = new QPushButton("Send (Ctrl+Enter)", m_scratchpad);
+    auto *closeBtn = new QPushButton("Close (Esc)", m_scratchpad);
+    btnLayout->addWidget(sendBtn);
+    btnLayout->addWidget(closeBtn);
+    layout->addLayout(btnLayout);
+
+    // Style
+    m_scratchpad->setStyleSheet(
+        "QWidget#scratchpad { background: rgba(30,30,50,230); border: 1px solid rgba(100,100,140,150); border-radius: 8px; }"
+        "QPlainTextEdit { background: rgba(20,20,35,200); color: #CDD6F4; border: 1px solid rgba(80,80,110,120); border-radius: 4px; padding: 6px; }"
+        "QPushButton { background: rgba(60,60,90,200); color: #CDD6F4; border: 1px solid rgba(100,100,140,150); border-radius: 4px; padding: 4px 12px; }"
+        "QPushButton:hover { background: rgba(80,80,120,220); }"
+    );
+
+    connect(sendBtn, &QPushButton::clicked, this, [this, edit]() {
+        QString text = edit->toPlainText();
+        if (!text.isEmpty() && m_pty) {
+            // Send each line as a separate command to the PTY
+            if (m_grid->bracketedPaste()) {
+                m_pty->write(QByteArray("\x1B[200~"));
+                m_pty->write(text.toUtf8());
+                m_pty->write(QByteArray("\x1B[201~"));
+            } else {
+                m_pty->write(text.toUtf8());
+            }
+            m_pty->write("\r");
+        }
+        edit->clear();
+        hideScratchpad();
+    });
+
+    connect(closeBtn, &QPushButton::clicked, this, &TerminalWidget::hideScratchpad);
+
+    // Ctrl+Enter to send, Escape to close
+    edit->installEventFilter(this);
+
+    // Position and size
+    int padW = 40;
+    m_scratchpad->setGeometry(padW, height() / 2 - 100, width() - padW * 2, 200);
+    m_scratchpad->show();
+    edit->setFocus();
+}
+
+void TerminalWidget::hideScratchpad() {
+    if (m_scratchpad) {
+        m_scratchpad->hide();
+        setFocus();
+    }
 }
 
 // --- Terminal Recording (asciicast v2) ---

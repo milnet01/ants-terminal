@@ -146,6 +146,25 @@ void SettingsDialog::setupAppearanceTab(QWidget *tab) {
     m_paddingSpinner->setRange(0, 32);
     m_paddingSpinner->setSuffix(" px");
     layout->addRow("Terminal Padding:", m_paddingSpinner);
+
+    // Badge text (watermark in terminal background)
+    m_badgeEdit = new QLineEdit(tab);
+    m_badgeEdit->setPlaceholderText("e.g. hostname, project name...");
+    layout->addRow("Badge Text:", m_badgeEdit);
+
+    // Dark/light auto-switching
+    layout->addRow(new QLabel(""));  // spacer
+    m_autoColorScheme = new QCheckBox("Auto-switch theme with system dark/light mode", tab);
+    layout->addRow(m_autoColorScheme);
+
+    m_darkThemeCombo = new QComboBox(tab);
+    m_lightThemeCombo = new QComboBox(tab);
+    for (const QString &name : Themes::names()) {
+        m_darkThemeCombo->addItem(name);
+        m_lightThemeCombo->addItem(name);
+    }
+    layout->addRow("Dark Theme:", m_darkThemeCombo);
+    layout->addRow("Light Theme:", m_lightThemeCombo);
 }
 
 void SettingsDialog::setupTerminalTab(QWidget *tab) {
@@ -464,6 +483,10 @@ void SettingsDialog::loadSettings() {
     m_backgroundBlur->setChecked(m_config->backgroundBlur());
     m_gpuRendering->setChecked(m_config->gpuRendering());
     m_paddingSpinner->setValue(m_config->terminalPadding());
+    m_badgeEdit->setText(m_config->badgeText());
+    m_autoColorScheme->setChecked(m_config->autoColorScheme());
+    m_darkThemeCombo->setCurrentText(m_config->darkTheme());
+    m_lightThemeCombo->setCurrentText(m_config->lightTheme());
 
     // Terminal
     m_scrollbackLines->setValue(m_config->scrollbackLines());
@@ -503,7 +526,9 @@ void SettingsDialog::loadSettings() {
         {"ai_assistant", "Ctrl+Shift+A"}, {"claude_allowlist", "Ctrl+Shift+L"},
         {"claude_projects", "Ctrl+Shift+J"}, {"record_session", "Ctrl+Shift+R"},
         {"toggle_bookmark", "Ctrl+Shift+B"}, {"next_bookmark", "Ctrl+Shift+Down"},
-        {"prev_bookmark", "Ctrl+Shift+Up"},
+        {"prev_bookmark", "Ctrl+Shift+Up"}, {"url_quick_select", "Ctrl+Shift+G"},
+        {"scratchpad", "Ctrl+Shift+Return"}, {"snippets", "Ctrl+Shift+;"},
+        {"toggle_fold", "Ctrl+Shift+."},
     };
     for (auto &[action, defaultKey] : defaults) {
         int row = m_keybindingTable->rowCount();
@@ -548,6 +573,10 @@ void SettingsDialog::applySettings() {
     m_config->setBackgroundBlur(m_backgroundBlur->isChecked());
     m_config->setGpuRendering(m_gpuRendering->isChecked());
     m_config->setTerminalPadding(m_paddingSpinner->value());
+    m_config->setBadgeText(m_badgeEdit->text().trimmed());
+    m_config->setAutoColorScheme(m_autoColorScheme->isChecked());
+    m_config->setDarkTheme(m_darkThemeCombo->currentText());
+    m_config->setLightTheme(m_lightThemeCombo->currentText());
 
     // Terminal
     m_config->setScrollbackLines(m_scrollbackLines->value());

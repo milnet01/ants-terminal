@@ -449,3 +449,61 @@ void Config::setTerminalPadding(int px) {
     m_data["terminal_padding"] = px;
     save();
 }
+
+// Command snippets
+QJsonArray Config::snippets() const {
+    return m_data.value("snippets").toArray();
+}
+
+void Config::setSnippets(const QJsonArray &snippets) {
+    m_data["snippets"] = snippets;
+    save();
+}
+
+// Auto-profile switching rules
+QJsonArray Config::autoProfileRules() const {
+    return m_data.value("auto_profile_rules").toArray();
+}
+
+void Config::setAutoProfileRules(const QJsonArray &rules) {
+    m_data["auto_profile_rules"] = rules;
+    save();
+}
+
+// Badge text
+QString Config::badgeText() const {
+    return m_data.value("badge_text").toString("");
+}
+
+void Config::setBadgeText(const QString &text) {
+    m_data["badge_text"] = text;
+    save();
+}
+
+// Dark/light auto-switching
+bool Config::autoColorScheme() const {
+    return m_data.value("auto_color_scheme").toBool(false);
+}
+
+void Config::setAutoColorScheme(bool enabled) {
+    m_data["auto_color_scheme"] = enabled;
+    save();
+}
+
+QString Config::darkTheme() const {
+    return m_data.value("dark_theme").toString("Dark");
+}
+
+void Config::setDarkTheme(const QString &name) {
+    m_data["dark_theme"] = name;
+    save();
+}
+
+QString Config::lightTheme() const {
+    return m_data.value("light_theme").toString("Light");
+}
+
+void Config::setLightTheme(const QString &name) {
+    m_data["light_theme"] = name;
+    save();
+}

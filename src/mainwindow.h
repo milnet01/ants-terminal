@@ -11,6 +11,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QPropertyAnimation>
+#include <QFileSystemWatcher>
 
 class TitleBar;
 class TerminalWidget;
@@ -163,4 +164,18 @@ private:
 
     // XCB position tracker (Qt's pos()/moveEvent broken for frameless windows on KWin)
     XcbPositionTracker *m_posTracker = nullptr;
+
+    // Hot-reload: watch config.json for external changes
+    QFileSystemWatcher *m_configWatcher = nullptr;
+    void onConfigFileChanged(const QString &path);
+
+    // Dark/light mode auto-switching
+    void onSystemColorSchemeChanged();
+
+    // Auto-profile switching
+    void checkAutoProfileRules(TerminalWidget *terminal);
+    QString m_lastAutoProfile;
+
+    // Command snippets
+    void showSnippetsDialog();
 };
