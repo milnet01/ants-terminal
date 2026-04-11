@@ -490,6 +490,7 @@ void GlRenderer::uploadToAtlas(const QImage &img, GlyphEntry &entry) {
                          GL_RED, GL_UNSIGNED_BYTE, nullptr);
         }
         m_glyphCache.clear();
+        m_ligatureCache.clear();
         m_atlasX = 0;
         m_atlasY = 0;
         m_atlasRowHeight = 0;

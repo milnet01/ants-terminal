@@ -33,7 +33,9 @@ struct GlyphKey {
 };
 
 inline size_t qHash(const GlyphKey &k, size_t seed = 0) {
-    return qHash(k.codepoint, seed) ^ qHash(k.bold, seed) ^ qHash(k.italic, seed);
+    seed = qHash(k.codepoint, seed);
+    seed = qHash(k.bold, seed);
+    return qHash(k.italic, seed);
 }
 
 // Key for ligature (multi-char sequence) cache lookup
@@ -47,7 +49,9 @@ struct LigatureKey {
 };
 
 inline size_t qHash(const LigatureKey &k, size_t seed = 0) {
-    return qHash(k.text, seed) ^ qHash(k.bold, seed) ^ qHash(k.italic, seed);
+    seed = qHash(k.text, seed);
+    seed = qHash(k.bold, seed);
+    return qHash(k.italic, seed);
 }
 
 // Atlas entry for a shaped ligature run

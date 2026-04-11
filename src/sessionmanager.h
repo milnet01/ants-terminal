@@ -2,7 +2,6 @@
 
 #include <QString>
 #include <QByteArray>
-#include <QJsonArray>
 
 class TerminalGrid;
 

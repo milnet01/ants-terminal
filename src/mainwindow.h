@@ -12,6 +12,7 @@
 #include <QPushButton>
 #include <QPropertyAnimation>
 #include <QFileSystemWatcher>
+#include <QElapsedTimer>
 
 class TitleBar;
 class TerminalWidget;
@@ -179,4 +180,7 @@ private:
 
     // Command snippets
     void showSnippetsDialog();
+
+    // Uptime — skip session save if app ran < 5s (test/crash scenario)
+    QElapsedTimer m_uptimeTimer;
 };

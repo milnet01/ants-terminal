@@ -6,7 +6,6 @@
 #include <QTabWidget>
 #include <QComboBox>
 #include <QSpinBox>
-#include <QDoubleSpinBox>
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QSlider>

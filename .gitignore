@@ -29,5 +29,9 @@ ants-terminal
 # Claude Code (local settings, not shared)
 .claude/settings.local.json
 
+# Audit tooling
+.audit_cache/
+audit_config.yaml
+
 # Runtime / user data
 *.log

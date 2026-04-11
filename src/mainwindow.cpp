@@ -49,7 +49,6 @@
 #include <QEasingCurve>
 #include <QCursor>
 #include <memory>
-#include <QColorDialog>
 #include <QGuiApplication>
 #include <QStyleHints>
 #include <QInputDialog>
@@ -62,6 +61,7 @@
 #include <QSystemTrayIcon>
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
+    m_uptimeTimer.start();
     setWindowTitle("Ants Terminal");
     setWindowFlag(Qt::FramelessWindowHint);
 
@@ -1335,11 +1335,14 @@ void MainWindow::applyTheme(const QString &name) {
     m_titleBar->setThemeColors(theme.bgSecondary, theme.textPrimary,
                                 theme.accent, theme.border, theme.ansi[1]);
 
-    // Status bar labels use theme colors
+    // Status bar labels use theme colors (null-guarded for first call during construction)
     QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
-    m_statusCwd->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.textSecondary.name(), statusStyle));
-    m_statusGitBranch->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[2].name(), statusStyle));
-    m_statusProcess->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[4].name(), statusStyle));
+    if (m_statusCwd)
+        m_statusCwd->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.textSecondary.name(), statusStyle));
+    if (m_statusGitBranch)
+        m_statusGitBranch->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[2].name(), statusStyle));
+    if (m_statusProcess)
+        m_statusProcess->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[4].name(), statusStyle));
 
     // Restyle Claude integration widgets
     updateClaudeThemeColors();
@@ -1551,6 +1554,9 @@ void MainWindow::collectActions(QMenu *menu, QList<QAction *> &out) {
 
 void MainWindow::saveAllSessions() {
     if (!m_config.sessionPersistence()) return;
+    // Don't overwrite saved sessions if the app ran for less than 5 seconds —
+    // this protects against test launches and immediate crashes wiping real data
+    if (m_uptimeTimer.elapsed() < 5000) return;
 
     QStringList tabOrder;
     int activeIndex = 0;
@@ -2346,6 +2352,10 @@ void MainWindow::showDiffViewer() {
 // --- Hot-Reload Configuration ---
 
 void MainWindow::onConfigFileChanged(const QString &path) {
+    // Block watcher signals during reload to prevent infinite loop
+    // (applyTheme -> setTheme -> save -> triggers watcher -> onConfigFileChanged)
+    m_configWatcher->blockSignals(true);
+
     // Re-add the watch (QFileSystemWatcher drops the watch after some changes)
     if (!m_configWatcher->files().contains(path))
         m_configWatcher->addPath(path);
@@ -2372,6 +2382,7 @@ void MainWindow::onConfigFileChanged(const QString &path) {
         m_broadcastAction->setChecked(m_broadcastMode);
 
     statusBar()->showMessage("Config reloaded from disk", 3000);
+    m_configWatcher->blockSignals(false);
 }
 
 // --- Dark/Light Mode Auto-Switching ---
@@ -2476,11 +2487,13 @@ void MainWindow::showSnippetsDialog() {
     table->setSelectionMode(QAbstractItemView::SingleSelection);
     layout->addWidget(table);
 
-    // Load snippets
-    QJsonArray snippets = m_config.snippets();
-    auto loadSnippets = [&, table](const QString &filter = "") {
+    // Load snippets — heap-allocated so lambdas in the non-modal dialog
+    // don't reference a stack variable that goes out of scope
+    auto *snippets = new QJsonArray(m_config.snippets());
+    connect(dialog, &QObject::destroyed, dialog, [snippets]() { delete snippets; });
+    auto loadSnippets = [snippets, table](const QString &filter = "") {
         table->setRowCount(0);
-        for (const QJsonValue &sv : snippets) {
+        for (const QJsonValue &sv : *snippets) {
             QJsonObject s = sv.toObject();
             QString name = s.value("name").toString();
             QString cmd = s.value("command").toString();
@@ -2516,7 +2529,7 @@ void MainWindow::showSnippetsDialog() {
     btnLayout->addWidget(insertBtn);
     layout->addLayout(btnLayout);
 
-    auto editSnippet = [this, &snippets, loadSnippets](int editIdx = -1) {
+    auto editSnippet = [this, snippets, loadSnippets](int editIdx = -1) {
         QDialog editDlg(this);
         editDlg.setWindowTitle(editIdx >= 0 ? "Edit Snippet" : "Add Snippet");
         auto *form = new QFormLayout(&editDlg);
@@ -2525,8 +2538,8 @@ void MainWindow::showSnippetsDialog() {
         auto *cmdEdit = new QLineEdit(&editDlg);
         auto *descEdit = new QLineEdit(&editDlg);
 
-        if (editIdx >= 0 && editIdx < snippets.size()) {
-            QJsonObject s = snippets[editIdx].toObject();
+        if (editIdx >= 0 && editIdx < snippets->size()) {
+            QJsonObject s = (*snippets)[editIdx].toObject();
             nameEdit->setText(s.value("name").toString());
             cmdEdit->setText(s.value("command").toString());
             descEdit->setText(s.value("description").toString());
@@ -2551,11 +2564,11 @@ void MainWindow::showSnippetsDialog() {
             s["description"] = descEdit->text();
 
             if (editIdx >= 0)
-                snippets[editIdx] = s;
+                (*snippets)[editIdx] = s;
             else
-                snippets.append(s);
+                snippets->append(s);
 
-            m_config.setSnippets(snippets);
+            m_config.setSnippets(*snippets);
             loadSnippets();
         }
     };
@@ -2565,18 +2578,18 @@ void MainWindow::showSnippetsDialog() {
         int row = table->currentRow();
         if (row >= 0) editSnippet(row);
     });
-    connect(deleteBtn, &QPushButton::clicked, dialog, [&snippets, loadSnippets, table, this]() {
+    connect(deleteBtn, &QPushButton::clicked, dialog, [snippets, loadSnippets, table, this]() {
         int row = table->currentRow();
-        if (row >= 0 && row < snippets.size()) {
-            snippets.removeAt(row);
-            m_config.setSnippets(snippets);
+        if (row >= 0 && row < snippets->size()) {
+            snippets->removeAt(row);
+            m_config.setSnippets(*snippets);
             loadSnippets();
         }
     });
-    connect(insertBtn, &QPushButton::clicked, dialog, [this, table, &snippets, dialog]() {
+    connect(insertBtn, &QPushButton::clicked, dialog, [this, table, snippets, dialog]() {
         int row = table->currentRow();
-        if (row < 0 || row >= snippets.size()) return;
-        QJsonObject s = snippets[row].toObject();
+        if (row < 0 || row >= snippets->size()) return;
+        QJsonObject s = (*snippets)[row].toObject();
         QString cmd = s.value("command").toString();
 
         // Replace {{placeholders}} with user input

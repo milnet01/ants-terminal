@@ -203,6 +203,10 @@ public:
     // Clear screen content (keeps scrollback) — used after session restore
     void clearScreenContent();
 
+    // Debug logging — writes SGR/underline state to a log file
+    void setDebugLog(bool enabled);
+    bool debugLog() const { return m_debugLog; }
+
 private:
     void handlePrint(uint32_t cp);
     void handleExecute(char ch);
@@ -349,6 +353,10 @@ private:
     std::unordered_map<uint32_t, QImage> m_kittyImages;
     std::string m_kittyChunkBuffer; // For multi-chunk transmissions
     uint32_t m_kittyChunkId = 0;
+
+    // Debug logging
+    bool m_debugLog = false;
+    FILE *m_debugFile = nullptr;
 
     // Buffer/resource limits
     static constexpr int MAX_INLINE_IMAGES = 100;

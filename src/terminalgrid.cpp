@@ -2,9 +2,30 @@
 
 #include <QByteArray>
 #include <QDateTime>
+#include <QStandardPaths>
+#include <QDir>
 
 #include <algorithm>
 #include <cwchar>
+#include <cstdio>
+
+#define DBGLOG(fmt, ...) do { if (m_debugLog && m_debugFile) { fprintf(m_debugFile, fmt "\n", ##__VA_ARGS__); fflush(m_debugFile); } } while(0)
+
+void TerminalGrid::setDebugLog(bool enabled) {
+    m_debugLog = enabled;
+    if (enabled && !m_debugFile) {
+        QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+                      + "/ants-terminal";
+        QDir().mkpath(dir);
+        QString path = dir + "/debug_sgr.log";
+        m_debugFile = fopen(path.toUtf8().constData(), "w");
+        if (m_debugFile)
+            fprintf(m_debugFile, "=== Ants Terminal SGR debug log ===\n");
+    } else if (!enabled && m_debugFile) {
+        fclose(m_debugFile);
+        m_debugFile = nullptr;
+    }
+}
 
 QColor TerminalGrid::s_palette256[256] = {};
 bool TerminalGrid::s_paletteInitialized = false;
@@ -204,6 +225,10 @@ void TerminalGrid::handlePrint(uint32_t cp) {
     auto &c = cell(m_cursorRow, m_cursorCol);
     c.codepoint = cp;
     c.attrs = m_currentAttrs;
+    if (m_currentAttrs.underline && m_debugLog)
+        DBGLOG("PRINT U+%04X '%c' with underline=1 style=%d row=%d col=%d",
+               cp, (cp >= 0x20 && cp < 0x7F) ? (char)cp : '?',
+               (int)m_currentAttrs.underlineStyle, m_cursorRow, m_cursorCol);
     c.isWideChar = (charWidth == 2);
     c.isWideCont = false;
     m_screenLines[m_cursorRow].combining.erase(m_cursorCol);
@@ -745,6 +770,8 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
         int code = params[i];
         switch (code) {
         case 0:
+            if (m_currentAttrs.underline)
+                DBGLOG("SGR 0 (reset) -> underline OFF (was on) row=%d col=%d", m_cursorRow, m_cursorCol);
             m_currentAttrs = CellAttrs{};
             m_currentAttrs.fg = m_defaultFg;
             m_currentAttrs.bg = m_defaultBg;
@@ -760,9 +787,12 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
                 int style = params[++i];
                 m_currentAttrs.underlineStyle = static_cast<UnderlineStyle>(style);
                 m_currentAttrs.underline = (style != 0);
+                DBGLOG("SGR 4:%d -> underline=%d style=%d row=%d col=%d",
+                       style, m_currentAttrs.underline, style, m_cursorRow, m_cursorCol);
             } else {
                 m_currentAttrs.underline = true;
                 m_currentAttrs.underlineStyle = UnderlineStyle::Single;
+                DBGLOG("SGR 4 (plain) -> underline=1 row=%d col=%d", m_cursorRow, m_cursorCol);
             }
             break;
         case 7: m_currentAttrs.inverse = true; break;
@@ -775,6 +805,7 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
         case 22: m_currentAttrs.bold = false; m_currentAttrs.dim = false; break;
         case 23: m_currentAttrs.italic = false; break;
         case 24:
+            DBGLOG("SGR 24 -> underline OFF row=%d col=%d", m_cursorRow, m_cursorCol);
             m_currentAttrs.underline = false;
             m_currentAttrs.underlineStyle = UnderlineStyle::None;
             break;

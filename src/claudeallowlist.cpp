@@ -10,7 +10,6 @@
 #include <QDir>
 #include <QFile>
 #include <QSaveFile>
-#include <QMessageBox>
 #include <QRegularExpression>
 
 // Valid top-level tool names recognized by Claude Code

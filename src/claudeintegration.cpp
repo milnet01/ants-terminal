@@ -367,6 +367,7 @@ void ClaudeIntegration::onHookConnection() {
         connect(socket, &QLocalSocket::readyRead, this, [socket]() {
             QByteArray buf = socket->property("_buf").toByteArray();
             buf += socket->readAll();
+            if (buf.size() > 10 * 1024 * 1024) { socket->disconnectFromServer(); return; }
             socket->setProperty("_buf", buf);
         });
         connect(socket, &QLocalSocket::disconnected, this, [this, socket]() {
@@ -477,6 +478,7 @@ void ClaudeIntegration::onMcpConnection() {
             if (socket->property("_handled").toBool()) return;
             QByteArray buf = socket->property("_buf").toByteArray();
             buf += socket->readAll();
+            if (buf.size() > 10 * 1024 * 1024) { socket->disconnectFromServer(); return; }
             socket->setProperty("_buf", buf);
             QJsonDocument doc = QJsonDocument::fromJson(buf);
             if (!doc.isObject()) return; // wait for more data

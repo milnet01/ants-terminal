@@ -14,6 +14,10 @@
 Pty::Pty(QObject *parent) : QObject(parent) {}
 
 Pty::~Pty() {
+    // Disable notifier before closing FD to prevent reads on a closed/reused FD
+    delete m_readNotifier;
+    m_readNotifier = nullptr;
+
     if (m_childPid > 0) {
         ::kill(m_childPid, SIGHUP);
     }
@@ -87,13 +91,17 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             if (::chdir(dirBytes.constData()) != 0) {
                 // Fall back to home directory
                 const char *home = ::getenv("HOME");
-                if (home) ::chdir(home);
+                if (home && ::chdir(home) != 0) { /* last-resort fallback, ignore failure */ }
             }
         }
 
         // Set TERM so the shell knows our capabilities
         ::setenv("TERM", "xterm-256color", 1);
         ::setenv("COLORTERM", "truecolor", 1);
+        ::setenv("TERM_PROGRAM", "AntsTerminal", 1);
+        ::setenv("TERM_PROGRAM_VERSION", "0.4.0", 1);
+        // Dark background hint (15=white fg, 0=black bg) — used by vim, mutt
+        ::setenv("COLORFGBG", "15;0", 1);
 
         // Get just the shell name for argv[0]
         const char *shellName = ::strrchr(shellCStr, '/');

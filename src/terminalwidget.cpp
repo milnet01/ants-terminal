@@ -53,6 +53,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     m_font.setPointSize(11);
     m_font.setStyleHint(QFont::Monospace);
     m_font.setFixedPitch(true);
+    m_font.setKerning(false);  // Disable kerning for perfect monospace alignment
     // Enable font features (ligatures)
     m_font.setStyleStrategy(QFont::PreferDefault);
 
@@ -279,7 +280,7 @@ void TerminalWidget::updateFontMetrics() {
     m_cellHeight = fm.height();
     m_fontAscent = fm.ascent();
 
-    // Create bold/italic variants
+    // Create bold/italic variants (inherit kerning=off from base font)
     m_fontBold = m_font;
     m_fontBold.setBold(true);
     m_fontItalic = m_font;
@@ -287,6 +288,10 @@ void TerminalWidget::updateFontMetrics() {
     m_fontBoldItalic = m_font;
     m_fontBoldItalic.setBold(true);
     m_fontBoldItalic.setItalic(true);
+    // Ensure kerning is off on all variants
+    m_fontBold.setKerning(false);
+    m_fontItalic.setKerning(false);
+    m_fontBoldItalic.setKerning(false);
 }
 
 void TerminalWidget::setFontSize(int size) {
@@ -633,45 +638,69 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 }
             }
 
-            // Underline rendering (supports multiple styles + custom color)
-            if (c.attrs.underline || isUrl || isHoveredUrl) {
+            // Underline rendering (font-metric positioning like Konsole)
+            // In alt screen, suppress plain single underlines without custom color —
+            // TUI apps (Claude Code, etc.) set SGR 4 globally as decoration.
+            // Styled underlines (curly, dotted, dashed) and colored underlines are preserved
+            // since those are intentional (e.g. Neovim LSP diagnostics use 4:3 + SGR 58).
+            // Suppress plain single underlines without custom color — TUI apps like
+            // Claude Code set SGR 4 globally as decoration and never clear it.
+            // Styled underlines (curly 4:3, dotted 4:4, dashed 4:5) and colored
+            // underlines (SGR 58) are always rendered (Neovim LSP diagnostics, etc.)
+            bool suppressUl = c.attrs.underline
+                && c.attrs.underlineStyle == UnderlineStyle::Single
+                && !c.attrs.underlineColor.isValid();
+            if ((c.attrs.underline && !suppressUl) || isHoveredUrl) {
                 QColor ulColor = c.attrs.underlineColor.isValid() ? c.attrs.underlineColor : fg;
-                int ulY = px_y + m_cellHeight - 2;
+                // Position underline at the font's underline position (under baseline)
+                // This matches Konsole behavior and makes decorative underlines (used by
+                // TUI apps like Claude Code on every cell) blend with character glyphs
+                QFontMetrics fm(m_font);
+                int ulY = px_y + m_fontAscent + fm.underlinePos();
                 int ulW = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
+                int lineW = std::max(1, fm.lineWidth());
                 UnderlineStyle style = isHoveredUrl ? UnderlineStyle::Single
-                                     : isUrl ? UnderlineStyle::None  // URLs only underline on hover
                                      : c.attrs.underlineStyle;
                 if (style == UnderlineStyle::None) style = UnderlineStyle::Single;
 
-                p.setPen(ulColor);
+                QPen ulPen(ulColor, lineW);
+                p.setPen(ulPen);
                 switch (style) {
                 case UnderlineStyle::Single:
                     p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
                     break;
                 case UnderlineStyle::Double:
                     p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
-                    p.drawLine(px_x, ulY - 2, px_x + ulW - 1, ulY - 2);
+                    p.drawLine(px_x, ulY + lineW + 1, px_x + ulW - 1, ulY + lineW + 1);
                     break;
                 case UnderlineStyle::Curly: {
+                    // Font-proportional undercurl (wavelength/amplitude scale with font)
+                    qreal wavelength = m_cellWidth / 1.2;
+                    qreal amplitude = m_cellHeight / 8.0;
+                    int cycles = std::max(1, static_cast<int>(ulW / wavelength));
+                    qreal actualWL = static_cast<qreal>(ulW) / cycles;
                     QPainterPath path;
                     path.moveTo(px_x, ulY);
-                    for (int x = 0; x < ulW; x += 4) {
-                        int x0 = px_x + x;
-                        path.cubicTo(x0 + 1, ulY - 2, x0 + 3, ulY + 2, x0 + 4, ulY);
+                    for (int c = 0; c < cycles; ++c) {
+                        qreal x0 = px_x + c * actualWL;
+                        path.quadTo(x0 + actualWL * 0.25, ulY - amplitude,
+                                    x0 + actualWL * 0.5, ulY);
+                        path.quadTo(x0 + actualWL * 0.75, ulY + amplitude,
+                                    x0 + actualWL, ulY);
                     }
                     p.setBrush(Qt::NoBrush);
                     p.drawPath(path);
                     break;
                 }
                 case UnderlineStyle::Dotted: {
-                    QPen dotPen(ulColor, 1, Qt::DotLine);
+                    QPen dotPen(ulColor, lineW, Qt::DotLine);
                     p.setPen(dotPen);
                     p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
                     p.setPen(ulColor);
                     break;
                 }
                 case UnderlineStyle::Dashed: {
-                    QPen dashPen(ulColor, 1, Qt::DashLine);
+                    QPen dashPen(ulColor, lineW, Qt::DashLine);
                     p.setPen(dashPen);
                     p.drawLine(px_x, ulY, px_x + ulW - 1, ulY);
                     p.setPen(ulColor);
@@ -840,7 +869,9 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     }
 
     // Cursor — shape-aware (DECSCUSR: block, underline, bar)
-    if (m_scrollOffset == 0 && m_grid->cursorVisible() && (m_cursorBlinkOn || !m_hasFocus)) {
+    // Steady cursor shapes always show; blinking shapes respect blink timer
+    bool cursorShouldShow = m_cursorBlinkOn || !m_hasFocus || !m_grid->cursorBlink();
+    if (m_scrollOffset == 0 && m_grid->cursorVisible() && cursorShouldShow) {
         int cx = m_padding + m_grid->cursorCol() * m_cellWidth;
         int cy = m_padding + m_grid->cursorRow() * m_cellHeight;
         CursorShape shape = m_grid->cursorShape();
@@ -1192,6 +1223,16 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     // Ctrl+Shift+. -- toggle command output fold at cursor
     if (key == Qt::Key_Period && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         toggleFoldAtCursor();
+        return;
+    }
+
+    // Ctrl+Shift+F11 -- toggle SGR debug log
+    if (key == Qt::Key_F11 && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
+        bool on = !m_grid->debugLog();
+        m_grid->setDebugLog(on);
+        // Show status via visual bell or title
+        if (on) qDebug("SGR debug log: ON (~/.local/share/ants-terminal/debug_sgr.log)");
+        else qDebug("SGR debug log: OFF");
         return;
     }
 
@@ -1665,9 +1706,10 @@ void TerminalWidget::checkIdleNotification() {
 void TerminalWidget::pasteToTerminal(const QByteArray &data) {
     if (!m_pty || data.isEmpty()) return;
     if (m_grid->bracketedPaste()) {
-        // Strip any embedded \e[201~ that could prematurely end the bracketed paste
-        // and allow escape-sequence injection (CVE-2021-28848 class)
+        // Strip embedded bracket paste markers that could inject escape sequences
+        // (CVE-2021-28848 class: \e[201~ ends paste; \e[200~ starts a nested paste)
         QByteArray sanitized = data;
+        sanitized.replace("\x1B[200~", "");
         sanitized.replace("\x1B[201~", "");
         m_pty->write(QByteArray("\x1B[200~"));
         m_pty->write(sanitized);

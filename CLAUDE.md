@@ -19,14 +19,23 @@ A real terminal emulator built from scratch in C++ with Qt6.
 │   ├── terminalwidget.h/.cpp # QOpenGLWidget: renders grid, handles keyboard input
 │   ├── terminalgrid.h/.cpp   # Character grid, scrollback, processes VtActions
 │   ├── vtparser.h/.cpp       # VT100/xterm escape sequence state machine
-│   ├── pty.h/.cpp            # PTY management (forkpty, read/write, resize)
-│   ├── themes.h/.cpp         # 7 color themes with ANSI palette overrides
+│   ├── ptyhandler.h/.cpp     # PTY management (forkpty, read/write, resize)
+│   ├── themes.h/.cpp         # 11 color themes with ANSI palette overrides
 │   ├── config.h/.cpp         # Persistent JSON config (all settings)
 │   ├── commandpalette.h/.cpp # Ctrl+Shift+P searchable command overlay
 │   ├── glrenderer.h/.cpp     # OpenGL glyph atlas + shader-based renderer
 │   ├── sessionmanager.h/.cpp # Session save/restore (scrollback serialization)
 │   ├── aidialog.h/.cpp       # AI assistant dialog (OpenAI-compatible API)
 │   ├── sshdialog.h/.cpp      # SSH manager dialog (bookmarks + connection)
+│   ├── settingsdialog.h/.cpp # Settings dialog (all preferences)
+│   ├── titlebar.h/.cpp       # Custom frameless title bar
+│   ├── toggleswitch.h/.cpp   # Custom toggle switch widget
+│   ├── auditdialog.h/.cpp    # Security audit checks dialog
+│   ├── xcbpositiontracker.h/.cpp # KWin window position tracker
+│   ├── claudeintegration.h/.cpp  # Claude Code process detection + hooks
+│   ├── claudeallowlist.h/.cpp    # Claude Code permission rule editor
+│   ├── claudeprojects.h/.cpp     # Claude Code project/session browser
+│   ├── claudetranscript.h/.cpp   # Claude Code transcript viewer
 │   ├── luaengine.h/.cpp      # Lua 5.4 scripting engine (sandboxed)
 │   └── pluginmanager.h/.cpp  # Plugin discovery, loading, lifecycle
 ├── assets/                   # Icons

@@ -75,8 +75,17 @@ target_compile_options(ants-terminal PRIVATE
 target_compile_options(ants-terminal PRIVATE
     -fstack-protector-strong
     -fstack-clash-protection
-    $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=2>
+    -fcf-protection
+    $<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3>
+    -D_GLIBCXX_ASSERTIONS
 )
+
+# Sanitizer support (development builds)
+option(ANTS_SANITIZERS "Enable ASan+UBSan for debugging" OFF)
+if(ANTS_SANITIZERS)
+    target_compile_options(ants-terminal PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(ants-terminal PRIVATE -fsanitize=address,undefined)
+endif()
 target_link_options(ants-terminal PRIVATE
     -Wl,-z,relro
     -Wl,-z,now

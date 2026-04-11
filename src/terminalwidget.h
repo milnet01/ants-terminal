@@ -14,7 +14,6 @@
 #include <QElapsedTimer>
 #include <QJsonArray>
 #include <QScrollBar>
-#include <QPropertyAnimation>
 #include <unordered_map>
 #include <memory>
 
@@ -368,8 +367,7 @@ private:
     QFont m_fallbackFont;
     bool m_hasFallbackFont = false;
 
-    // Last mouse button state for SGR reporting
-    int m_lastMouseButton = -1;
+    // Last mouse cell for SGR reporting
     QPoint m_lastMouseCell{-1, -1};
 
     // Terminal recording (asciicast v2)
