@@ -1,7 +1,5 @@
 #include "ptyhandler.h"
 
-#include <QCoreApplication>
-
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>

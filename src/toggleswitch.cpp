@@ -25,18 +25,24 @@ void ToggleSwitch::setThumbX(int x) {
     update();
 }
 
+void ToggleSwitch::setThemeColors(const QColor &onColor, const QColor &offColor) {
+    m_onColor = onColor;
+    m_offColor = offColor;
+    update();
+}
+
 void ToggleSwitch::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
     QColor track = isEnabled()
-        ? (isChecked() ? QColor("#4CAF50") : QColor("#888888"))
-        : QColor("#444444");
+        ? (isChecked() ? m_onColor : m_offColor)
+        : m_offColor.darker(150);
     p.setPen(Qt::NoPen);
     p.setBrush(track);
     p.drawRoundedRect(0, 0, kW, kH, kH / 2, kH / 2);
 
-    QColor thumb = isEnabled() ? Qt::white : QColor("#777777");
+    QColor thumb = isEnabled() ? Qt::white : m_offColor.lighter(110);
     p.setBrush(thumb);
     p.drawEllipse(m_thumbX, (kH - kThumb) / 2, kThumb, kThumb);
 }

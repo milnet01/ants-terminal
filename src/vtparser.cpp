@@ -225,6 +225,7 @@ void VtParser::processChar(uint32_t ch) {
             a.finalChar = static_cast<char>(ch);
             a.params = m_params;
             a.intermediate = m_intermediate;
+            a.colonSep = m_colonSep;
             m_callback(a);
             transition(Ground);
         } else {

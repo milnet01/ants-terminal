@@ -72,12 +72,16 @@
 10. UTF-8 overlong encodings, surrogates, and out-of-range codepoints rejected (replaced with U+FFFD)
 11. SSH bookmarks never store passwords -- authentication is interactive
 12. AI API keys stored in 0600-permission config, never logged
-13. Lua plugins sandboxed: `os`, `io`, `debug`, `require`, `loadfile`, `setmetatable` removed from environment
+13. Lua plugins sandboxed: `os`, `io`, `debug`, `require`, `loadfile`, `setmetatable`, `coroutine` removed from environment
 14. Lua execution timeout: 10 million instruction limit per event handler
 15. Network requests only made with explicit user action (AI Send button)
 16. Network timeout: 30 seconds on all outgoing HTTP requests
 17. Session files validated on load: all sizes bounds-checked, max 100MB compressed
 18. GL resources cleaned up explicitly with context current -- never in destructors
+19. CSI 20t/21t (title reporting) and DECRQSS (DCS $q) intentionally NOT implemented -- prevents escape injection (CVE-2024-56803)
+20. Bracketed paste sanitizes embedded `\e[201~` from pasted text to prevent paste injection (CVE-2021-28848)
+21. Config and session files written atomically via temp file + rename
+22. SIGPIPE ignored globally -- PTY write errors handled via return codes
 
 ## Plugin Rules
 

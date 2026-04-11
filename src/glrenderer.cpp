@@ -534,7 +534,7 @@ const LigatureEntry &GlRenderer::getLigature(const QString &text, bool bold, boo
 }
 
 void GlRenderer::rasterizeLigature(const QString &text, const QFont &font, LigatureEntry &entry) {
-    if (text.isEmpty()) { entry.valid = false; return; }
+    if (text.isEmpty() || text.length() > 64) { entry.valid = false; return; }
 
     // Use QTextLayout for HarfBuzz-powered ligature shaping
     QTextLayout layout(text, font);

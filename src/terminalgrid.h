@@ -138,6 +138,8 @@ public:
     // Response callback (DA, DSR, CPR replies sent back to PTY)
     using ResponseCallback = std::function<void(const std::string &)>;
     void setResponseCallback(ResponseCallback cb);
+    // Send a response directly (used for unsolicited reports like color scheme change)
+    void sendResponse(const std::string &data) { if (m_responseCallback) m_responseCallback(data); }
 
     // Bell callback (invoked on BEL character)
     using BellCallback = std::function<void()>;
@@ -169,6 +171,16 @@ public:
 
     // Alt screen active (vim, htop, etc.)
     bool altScreenActive() const { return m_altScreenActive; }
+
+    // Kitty keyboard protocol
+    int kittyKeyFlags() const { return m_kittyKeyFlags; }
+
+    // Color palette update notifications (CSI ? 2031)
+    bool colorSchemeNotify() const { return m_colorSchemeNotify; }
+
+    // Desktop notification callback (OSC 9/777)
+    using NotifyCallback = std::function<void(const QString &title, const QString &body)>;
+    void setNotifyCallback(NotifyCallback cb) { m_notifyCallback = std::move(cb); }
 
     // OSC 8 hyperlinks (per screen line)
     const std::vector<HyperlinkSpan> &screenHyperlinks(int row) const;
@@ -288,6 +300,16 @@ private:
 
     // Synchronized output
     bool m_synchronizedOutput = false; // ?2026
+
+    // Color palette update notifications
+    bool m_colorSchemeNotify = false; // ?2031
+
+    // Kitty keyboard protocol
+    int m_kittyKeyFlags = 0;              // Current enhancement flags
+    std::vector<int> m_kittyKeyStack;     // Push/pop stack of flag levels
+
+    // Desktop notification callback (OSC 9/777)
+    NotifyCallback m_notifyCallback;
 
     // Response callback
     ResponseCallback m_responseCallback;

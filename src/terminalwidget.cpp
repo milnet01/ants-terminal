@@ -146,6 +146,11 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     // Bell callback from grid
     m_grid->setBellCallback([this]() { triggerVisualBell(); });
 
+    // Desktop notification callback (OSC 9/777)
+    m_grid->setNotifyCallback([this](const QString &title, const QString &body) {
+        emit desktopNotification(title, body);
+    });
+
     // Smooth scrolling timer (16ms = ~60fps)
     m_smoothScrollTimer.setInterval(16);
     connect(&m_smoothScrollTimer, &QTimer::timeout, this, &TerminalWidget::smoothScrollStep);
@@ -259,7 +264,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
 
 TerminalWidget::~TerminalWidget() {
     // Clean up GL resources while context is still valid
-    if (m_glRenderer) {
+    if (m_glRenderer && context() && context()->isValid()) {
         makeCurrent();
         m_glRenderer->cleanup();
         doneCurrent();
@@ -312,7 +317,10 @@ void TerminalWidget::setSessionLogging(bool enabled) {
                            + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")
                            + ".log";
         m_logFile = std::make_unique<QFile>(filename);
-        m_logFile->open(QIODevice::WriteOnly | QIODevice::Append);
+        if (!m_logFile->open(QIODevice::WriteOnly | QIODevice::Append)) {
+            qWarning("Failed to open log file: %s", qPrintable(filename));
+            m_logFile.reset();
+        }
     } else if (!enabled && m_logFile) {
         m_logFile->close();
         m_logFile.reset();
@@ -408,13 +416,7 @@ bool TerminalWidget::event(QEvent *event) {
                 if (edit) {
                     QString text = edit->toPlainText();
                     if (!text.isEmpty() && m_pty) {
-                        if (m_grid->bracketedPaste()) {
-                            m_pty->write(QByteArray("\x1B[200~"));
-                            m_pty->write(text.toUtf8());
-                            m_pty->write(QByteArray("\x1B[201~"));
-                        } else {
-                            m_pty->write(text.toUtf8());
-                        }
+                        pasteToTerminal(text.toUtf8());
                         m_pty->write("\r");
                     }
                     edit->clear();
@@ -1150,15 +1152,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
             }
         }
         if (mime->hasText() && m_pty) {
-            QString text = clipboard->text();
-            data = text.toUtf8();
-            if (m_grid->bracketedPaste()) {
-                m_pty->write(QByteArray("\x1B[200~"));
-                m_pty->write(data);
-                m_pty->write(QByteArray("\x1B[201~"));
-            } else {
-                m_pty->write(data);
-            }
+            pasteToTerminal(clipboard->text().toUtf8());
         }
         return;
     }
@@ -1294,7 +1288,19 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         m_currentSuggestion.clear();
     }
 
-    // Special keys
+    // Kitty keyboard protocol — encode key if mode is active
+    if (m_grid->kittyKeyFlags() > 0) {
+        QByteArray kittyData = encodeKittyKey(event);
+        if (!kittyData.isEmpty()) {
+            if (m_hasSelection) clearSelection();
+            if (m_pty) m_pty->write(kittyData);
+            if (m_broadcastCallback) m_broadcastCallback(this, kittyData);
+            return;
+        }
+        // Fall through to legacy encoding for keys not handled by Kitty
+    }
+
+    // Special keys (legacy encoding)
     switch (key) {
     case Qt::Key_Return:
     case Qt::Key_Enter:
@@ -1655,6 +1661,226 @@ void TerminalWidget::checkIdleNotification() {
     }
 }
 
+void TerminalWidget::pasteToTerminal(const QByteArray &data) {
+    if (!m_pty || data.isEmpty()) return;
+    if (m_grid->bracketedPaste()) {
+        // Strip any embedded \e[201~ that could prematurely end the bracketed paste
+        // and allow escape-sequence injection (CVE-2021-28848 class)
+        QByteArray sanitized = data;
+        sanitized.replace("\x1B[201~", "");
+        m_pty->write(QByteArray("\x1B[200~"));
+        m_pty->write(sanitized);
+        m_pty->write(QByteArray("\x1B[201~"));
+    } else {
+        m_pty->write(data);
+    }
+}
+
+QByteArray TerminalWidget::encodeKittyKey(QKeyEvent *event) const {
+    int flags = m_grid->kittyKeyFlags();
+    if (flags == 0) return {};  // Legacy mode — caller handles
+
+    Qt::KeyboardModifiers mods = event->modifiers();
+    int key = event->key();
+
+    // Build modifier value (1 + bitmask): shift=1, alt=2, ctrl=4, super=8
+    int modVal = 1;
+    if (mods & Qt::ShiftModifier)   modVal += 1;
+    if (mods & Qt::AltModifier)     modVal += 2;
+    if (mods & Qt::ControlModifier) modVal += 4;
+    if (mods & Qt::MetaModifier)    modVal += 8;  // Super/Meta key
+
+    // Map Qt key to Kitty key code
+    int keyCode = 0;
+    bool useLegacyFormat = false;  // true for keys using CSI number ~ or CSI 1;mod letter
+    char legacyFinal = 0;
+    int legacyNumber = 0;
+
+    // Functional keys that keep their legacy CSI encoding format
+    switch (key) {
+    case Qt::Key_Up:       legacyFinal = 'A'; useLegacyFormat = true; break;
+    case Qt::Key_Down:     legacyFinal = 'B'; useLegacyFormat = true; break;
+    case Qt::Key_Right:    legacyFinal = 'C'; useLegacyFormat = true; break;
+    case Qt::Key_Left:     legacyFinal = 'D'; useLegacyFormat = true; break;
+    case Qt::Key_Home:     legacyFinal = 'H'; useLegacyFormat = true; break;
+    case Qt::Key_End:      legacyFinal = 'F'; useLegacyFormat = true; break;
+    case Qt::Key_F1:       legacyFinal = 'P'; useLegacyFormat = true; break;
+    case Qt::Key_F2:       legacyFinal = 'Q'; useLegacyFormat = true; break;
+    case Qt::Key_F4:       legacyFinal = 'S'; useLegacyFormat = true; break;
+    case Qt::Key_F3:       legacyNumber = 13; useLegacyFormat = true; break;
+    case Qt::Key_F5:       legacyNumber = 15; useLegacyFormat = true; break;
+    case Qt::Key_F6:       legacyNumber = 17; useLegacyFormat = true; break;
+    case Qt::Key_F7:       legacyNumber = 18; useLegacyFormat = true; break;
+    case Qt::Key_F8:       legacyNumber = 19; useLegacyFormat = true; break;
+    case Qt::Key_F9:       legacyNumber = 20; useLegacyFormat = true; break;
+    case Qt::Key_F10:      legacyNumber = 21; useLegacyFormat = true; break;
+    case Qt::Key_F11:      legacyNumber = 23; useLegacyFormat = true; break;
+    case Qt::Key_F12:      legacyNumber = 24; useLegacyFormat = true; break;
+    case Qt::Key_Insert:   legacyNumber = 2;  useLegacyFormat = true; break;
+    case Qt::Key_Delete:   legacyNumber = 3;  useLegacyFormat = true; break;
+    case Qt::Key_PageUp:   legacyNumber = 5;  useLegacyFormat = true; break;
+    case Qt::Key_PageDown: legacyNumber = 6;  useLegacyFormat = true; break;
+    // Keys using CSI u format
+    case Qt::Key_Escape:    keyCode = 27; break;
+    case Qt::Key_Return:
+    case Qt::Key_Enter:     keyCode = 13; break;
+    case Qt::Key_Tab:       keyCode = 9; break;
+    case Qt::Key_Backtab:   keyCode = 9; break;  // Shift+Tab
+    case Qt::Key_Backspace: keyCode = 127; break;
+    default: break;
+    }
+
+    if (useLegacyFormat) {
+        // Legacy format: CSI 1;modifier letter or CSI number;modifier ~
+        if (legacyFinal) {
+            if (modVal <= 1)
+                return QByteArray("\x1B[") + legacyFinal;
+            return QByteArray("\x1B[1;") + QByteArray::number(modVal) + legacyFinal;
+        } else {
+            if (modVal <= 1)
+                return QByteArray("\x1B[") + QByteArray::number(legacyNumber) + "~";
+            return QByteArray("\x1B[") + QByteArray::number(legacyNumber)
+                   + ";" + QByteArray::number(modVal) + "~";
+        }
+    }
+
+    // For Enter/Tab/Backspace in disambiguate-only mode (flag 1, not flag 8):
+    // send legacy bytes, not CSI u
+    if (keyCode > 0 && (keyCode == 13 || keyCode == 9 || keyCode == 127)) {
+        if (!(flags & 8)) {
+            // Legacy behavior for these keys unless "all keys as escape codes" is set
+            return {};  // Let the normal handler deal with it
+        }
+    }
+
+    // Flag 1 (disambiguate): encode Escape as CSI 27 u
+    if (keyCode == 27 && (flags & 1) && !(flags & 8)) {
+        if (modVal <= 1)
+            return QByteArray("\x1B[27u");
+        return QByteArray("\x1B[27;") + QByteArray::number(modVal) + "u";
+    }
+
+    // Flag 8 (all keys as escape codes): encode everything via CSI u
+    if (flags & 8) {
+        if (keyCode == 0) {
+            // Text-producing key — use the Unicode codepoint (lowercase)
+            QString text = event->text();
+            if (text.isEmpty()) return {};
+            keyCode = text.at(0).toLower().unicode();
+        }
+        if (keyCode > 0) {
+            QByteArray result = QByteArray("\x1B[") + QByteArray::number(keyCode);
+            if (modVal > 1)
+                result += ";" + QByteArray::number(modVal);
+            result += "u";
+            return result;
+        }
+        return {};
+    }
+
+    // Flag 1 (disambiguate): ctrl+key and alt+key use CSI u
+    if ((flags & 1) && keyCode == 0) {
+        QString text = event->text();
+        if (text.isEmpty()) return {};
+        int cp = text.at(0).toLower().unicode();
+
+        // Only encode if there are modifiers that would be ambiguous
+        if (modVal > 1 && cp >= 0x20) {
+            QByteArray result = QByteArray("\x1B[") + QByteArray::number(cp);
+            result += ";" + QByteArray::number(modVal);
+            result += "u";
+            return result;
+        }
+    }
+
+    return {};  // Fall through to legacy encoding
+}
+
+void TerminalWidget::copySelectionRich() {
+    if (!m_hasSelection) return;
+
+    // Build both plain text and HTML
+    QString plainText = selectedText();
+    QString html = QStringLiteral("<pre style='font-family: monospace;'>");
+
+    // m_selStart/m_selEnd: x() = globalLine, y() = col
+    int startLine = std::min(m_selStart.x(), m_selEnd.x());
+    int endLine = std::max(m_selStart.x(), m_selEnd.x());
+    int startCol = (m_selStart.x() <= m_selEnd.x()) ? m_selStart.y() : m_selEnd.y();
+    int endCol = (m_selStart.x() <= m_selEnd.x()) ? m_selEnd.y() : m_selStart.y();
+
+    for (int line = startLine; line <= endLine; ++line) {
+        int colStart = (line == startLine) ? startCol : 0;
+        int colEnd = (line == endLine) ? endCol : m_grid->cols() - 1;
+
+        for (int col = colStart; col <= colEnd; ++col) {
+            const Cell &c = cellAtGlobal(line, col);
+            if (c.isWideCont) continue;
+
+            QColor fg = c.attrs.fg;
+            QColor bg = c.attrs.bg;
+            if (c.attrs.inverse) std::swap(fg, bg);
+
+            QString style;
+            style += QStringLiteral("color:%1;").arg(fg.name());
+            if (bg != m_grid->defaultBg())
+                style += QStringLiteral("background:%1;").arg(bg.name());
+            if (c.attrs.bold) style += "font-weight:bold;";
+            if (c.attrs.italic) style += "font-style:italic;";
+
+            uint32_t cp = c.codepoint;
+            if (cp == 0 || cp == ' ') {
+                html += ' ';
+            } else {
+                QString ch = QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
+                html += QStringLiteral("<span style='%1'>%2</span>")
+                            .arg(style, ch.toHtmlEscaped());
+            }
+        }
+        if (line < endLine) html += '\n';
+    }
+    html += QStringLiteral("</pre>");
+
+    auto *mimeData = new QMimeData();
+    mimeData->setText(plainText);
+    mimeData->setHtml(html);
+    QApplication::clipboard()->setMimeData(mimeData);
+}
+
+void TerminalWidget::clickToMoveCursor(int col, int row) {
+    if (!m_pty) return;
+
+    // Only works when cursor is in a prompt region (OSC 133)
+    int cursorGlobalLine = m_grid->scrollbackSize() + m_grid->cursorRow();
+    int cursorCol = m_grid->cursorCol();
+
+    // Check if we're in a prompt editing area (between OSC 133 B and C markers)
+    const auto &regions = m_grid->promptRegions();
+    bool inPrompt = false;
+    for (const auto &pr : regions) {
+        if (cursorGlobalLine >= pr.startLine && cursorGlobalLine <= pr.endLine && !pr.hasOutput) {
+            inPrompt = true;
+            break;
+        }
+    }
+    if (!inPrompt) return;
+
+    // Calculate offset from current cursor position and send arrow keys
+    int clickGlobalLine = m_grid->scrollbackSize() + row;
+    if (clickGlobalLine != cursorGlobalLine) return;  // Only same line
+
+    int delta = col - cursorCol;
+    if (delta == 0) return;
+
+    QByteArray arrows;
+    const char *arrow = (delta > 0) ? "\x1B[C" : "\x1B[D";
+    int count = std::abs(delta);
+    for (int i = 0; i < count && i < 200; ++i)
+        arrows += arrow;
+
+    m_pty->write(arrows);
+}
+
 void TerminalWidget::navigatePrompt(int direction) {
     const auto &regions = m_grid->promptRegions();
     if (regions.empty()) return;
@@ -1939,16 +2165,8 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
     }
     if (event->button() == Qt::MiddleButton && m_pty) {
         QString text = QApplication::clipboard()->text(QClipboard::Selection);
-        if (!text.isEmpty()) {
-            QByteArray data = text.toUtf8();
-            if (m_grid->bracketedPaste()) {
-                m_pty->write(QByteArray("\x1B[200~"));
-                m_pty->write(data);
-                m_pty->write(QByteArray("\x1B[201~"));
-            } else {
-                m_pty->write(data);
-            }
-        }
+        if (!text.isEmpty())
+            pasteToTerminal(text.toUtf8());
     }
 }
 
@@ -2034,6 +2252,10 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
                     QApplication::clipboard()->setText(text);
                 }
             }
+        } else {
+            // Simple click (no drag) — click-to-move cursor in prompt
+            QPoint cell = pixelToCell(event->pos());
+            clickToMoveCursor(cell.y(), cell.x() - m_grid->scrollbackSize());
         }
         update();
     }
@@ -2698,14 +2920,7 @@ void TerminalWidget::showScratchpad() {
     connect(sendBtn, &QPushButton::clicked, this, [this, edit]() {
         QString text = edit->toPlainText();
         if (!text.isEmpty() && m_pty) {
-            // Send each line as a separate command to the PTY
-            if (m_grid->bracketedPaste()) {
-                m_pty->write(QByteArray("\x1B[200~"));
-                m_pty->write(text.toUtf8());
-                m_pty->write(QByteArray("\x1B[201~"));
-            } else {
-                m_pty->write(text.toUtf8());
-            }
+            pasteToTerminal(text.toUtf8());
             m_pty->write("\r");
         }
         edit->clear();
@@ -3063,16 +3278,8 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     pasteAction->setShortcut(QKeySequence("Ctrl+Shift+V"));
     connect(pasteAction, &QAction::triggered, this, [this]() {
         QString text = QApplication::clipboard()->text();
-        if (!text.isEmpty() && m_pty) {
-            QByteArray data = text.toUtf8();
-            if (m_grid->bracketedPaste()) {
-                m_pty->write(QByteArray("\x1B[200~"));
-                m_pty->write(data);
-                m_pty->write(QByteArray("\x1B[201~"));
-            } else {
-                m_pty->write(data);
-            }
-        }
+        if (!text.isEmpty() && m_pty)
+            pasteToTerminal(text.toUtf8());
     });
 
     QAction *selectAllAction = menu.addAction("Select All");

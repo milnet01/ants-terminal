@@ -1,9 +1,10 @@
 #include "terminalgrid.h"
 
-#include <algorithm>
-#include <cwchar>
 #include <QByteArray>
 #include <QDateTime>
+
+#include <algorithm>
+#include <cwchar>
 
 QColor TerminalGrid::s_palette256[256] = {};
 bool TerminalGrid::s_paletteInitialized = false;
@@ -280,7 +281,6 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         setScrollRegion(param(0, 1) - 1, p.size() > 1 ? param(1, m_rows) - 1 : m_rows - 1);
         break;
     case 's': saveCursor(); break;
-    case 'u': restoreCursor(); break;
     case 'h':
         if (a.intermediate == "?") {
             for (int v : p) {
@@ -324,6 +324,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1006: m_mouseSgrMode = true; break;
                 case 2004: m_bracketedPaste = true; break;
                 case 2026: m_synchronizedOutput = true; break;
+                case 2031: m_colorSchemeNotify = true; break;
                 }
             }
         }
@@ -360,6 +361,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1006: m_mouseSgrMode = false; break;
                 case 2004: m_bracketedPaste = false; break;
                 case 2026: m_synchronizedOutput = false; break;
+                case 2031: m_colorSchemeNotify = false; break;
                 }
             }
         }
@@ -420,9 +422,56 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 // DSR: Device Status Report — terminal OK
                 m_responseCallback("\x1B[0n");
             }
+        } else if (a.intermediate == "?") {
+            // CSI ? 996 n — Color scheme query
+            if (!p.empty() && p[0] == 996 && m_responseCallback) {
+                // Report current color scheme preference (1=dark, 2=light)
+                m_responseCallback("\x1B[?996;1n");
+            }
+        }
+        break;
+    case 'u':
+        if (a.intermediate.empty()) {
+            // DECRC — Restore cursor position
+            restoreCursor();
+        } else if (a.intermediate == ">") {
+            // CSI > flags u — Kitty keyboard: push current flags, set new
+            int flags = (!p.empty() && p[0] > 0) ? p[0] : 0;
+            if (m_kittyKeyStack.size() < 16) // Cap stack size
+                m_kittyKeyStack.push_back(m_kittyKeyFlags);
+            m_kittyKeyFlags = flags & 0x1F; // Only bits 0-4 valid
+        } else if (a.intermediate == "<") {
+            // CSI < number u — Kitty keyboard: pop flags from stack
+            int count = (!p.empty() && p[0] > 0) ? p[0] : 1;
+            for (int i = 0; i < count && !m_kittyKeyStack.empty(); ++i) {
+                m_kittyKeyFlags = m_kittyKeyStack.back();
+                m_kittyKeyStack.pop_back();
+            }
+            if (m_kittyKeyStack.empty() && count > 0)
+                m_kittyKeyFlags = 0;
+        } else if (a.intermediate == "?") {
+            // CSI ? u — Kitty keyboard: query current flags
+            if (m_responseCallback) {
+                std::string r = "\x1B[?" + std::to_string(m_kittyKeyFlags) + "u";
+                m_responseCallback(r);
+            }
+        } else if (a.intermediate == "=") {
+            // CSI = flags ; mode u — Kitty keyboard: set/or/not flags
+            int flags = (!p.empty() && p[0] > 0) ? p[0] : 0;
+            int mode = (p.size() > 1 && p[1] > 0) ? p[1] : 1;
+            flags &= 0x1F;
+            switch (mode) {
+            case 1: m_kittyKeyFlags = flags; break;           // set
+            case 2: m_kittyKeyFlags |= flags; break;          // or
+            case 3: m_kittyKeyFlags &= ~flags; break;         // not
+            }
         }
         break;
     }
+    // SECURITY: CSI 20t/21t (XTWINOPS title reporting) intentionally NOT implemented.
+    // Reporting the window title allows escape-sequence injection attacks
+    // (CVE-2024-56803, CVE-2003-0063).  Similarly, DECRQSS (DCS $q) is not
+    // implemented to prevent echoing attacker-controlled data.
 }
 
 void TerminalGrid::handleEsc(const VtAction &a) {
@@ -591,6 +640,27 @@ void TerminalGrid::handleOsc(const std::string &payload) {
     // OSC 1337 — iTerm2 inline images
     else if (payload.compare(0, 5, "1337;") == 0) {
         handleOscImage(payload);
+    }
+    // OSC 9 — Desktop notification (body only, iTerm2/Ghostty style)
+    else if (oscNum == "9" && semi != std::string::npos && m_notifyCallback) {
+        QString body = QString::fromUtf8(payload.c_str() + semi + 1);
+        m_notifyCallback(QString(), body);
+    }
+    // OSC 777 — Desktop notification (notify;title;body, foot/Ghostty/WezTerm style)
+    else if (oscNum == "777" && semi != std::string::npos && m_notifyCallback) {
+        std::string rest = payload.substr(semi + 1);
+        // Format: notify;title;body
+        if (rest.compare(0, 7, "notify;") == 0) {
+            rest = rest.substr(7);
+            size_t semi2 = rest.find(';');
+            if (semi2 != std::string::npos) {
+                QString title = QString::fromUtf8(rest.c_str(), static_cast<int>(semi2));
+                QString body = QString::fromUtf8(rest.c_str() + semi2 + 1);
+                m_notifyCallback(title, body);
+            } else {
+                m_notifyCallback(QString(), QString::fromUtf8(rest.c_str()));
+            }
+        }
     }
 }
 

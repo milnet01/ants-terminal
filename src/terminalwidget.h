@@ -177,6 +177,9 @@ public:
     // Semantic output selection (select command output block)
     void selectCommandOutput(int globalLine);
 
+    // Rich clipboard — copy with text/html preserving terminal colors
+    void copySelectionRich();
+
     // Broadcast callback: called when key data should be sent to other terminals too
     using BroadcastCallback = std::function<void(TerminalWidget *source, const QByteArray &data)>;
     void setBroadcastCallback(BroadcastCallback cb) { m_broadcastCallback = std::move(cb); }
@@ -194,6 +197,7 @@ signals:
     void triggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
     void commandFailed(int exitCode, const QString &output);
     void outputReceived();  // debounced notification of PTY output
+    void desktopNotification(const QString &title, const QString &body);
 
 protected:
     bool event(QEvent *event) override;
@@ -261,6 +265,15 @@ private:
 
     // Prompt navigation (OSC 133 shell integration)
     void navigatePrompt(int direction); // -1 = prev, +1 = next
+
+    // Bracketed paste helper — sanitizes text and wraps with mode markers
+    void pasteToTerminal(const QByteArray &data);
+
+    // Kitty keyboard protocol encoding
+    QByteArray encodeKittyKey(QKeyEvent *event) const;
+
+    // Click-to-move cursor in shell prompt
+    void clickToMoveCursor(int col, int row);
 
     // Bracket matching
     struct BracketPair { int line1; int col1; int line2; int col2; };

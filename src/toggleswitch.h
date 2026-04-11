@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractButton>
+#include <QColor>
 
 class QPropertyAnimation;
 
@@ -15,6 +16,9 @@ public:
     int thumbX() const { return m_thumbX; }
     void setThumbX(int x);
 
+    // Theme-aware colors
+    void setThemeColors(const QColor &onColor, const QColor &offColor);
+
 protected:
     void paintEvent(QPaintEvent *) override;
     void checkStateSet() override;
@@ -24,4 +28,6 @@ private:
     void animate();
     int m_thumbX = 3;
     QPropertyAnimation *m_anim;
+    QColor m_onColor{"#4CAF50"};
+    QColor m_offColor{"#888888"};
 };

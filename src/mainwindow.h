@@ -149,6 +149,7 @@ private:
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
     void openClaudeProjectsDialog();
     void setupClaudeIntegration();
+    void updateClaudeThemeColors();
     void showDiffViewer();
 
     // Plugin manager

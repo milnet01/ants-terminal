@@ -133,7 +133,7 @@ void LuaEngine::sandboxEnvironment() {
         "os", "io", "loadfile", "dofile", "load",
         "rawget", "rawset", "rawequal", "rawlen",
         "setmetatable", "getmetatable", "collectgarbage",
-        "require", "package", "debug",
+        "require", "package", "debug", "coroutine",
         nullptr
     };
     for (int i = 0; dangerous[i]; ++i) {

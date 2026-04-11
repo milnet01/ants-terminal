@@ -1,15 +1,16 @@
 #include "sessionmanager.h"
 #include "terminalgrid.h"
 
-#include <algorithm>
-#include <sys/stat.h>
 #include <QDataStream>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QStandardPaths>
-#include <QDateTime>
+
+#include <algorithm>
+#include <sys/stat.h>
 
 QString SessionManager::sessionDir() {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
@@ -259,11 +260,19 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
     QByteArray data = serialize(grid, cwd);
     QString path = sessionPath(tabId);
     if (path.isEmpty()) return;
+    QString tmpPath = path + QStringLiteral(".tmp");
     mode_t oldMask = ::umask(0077);
-    QFile file(path);
+    QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly)) {
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        file.write(data);
+        if (file.write(data) == data.size()) {
+            file.close();
+            QFile::remove(path);
+            QFile::rename(tmpPath, path);
+        } else {
+            file.close();
+            QFile::remove(tmpPath);
+        }
     }
     ::umask(oldMask);
 }
@@ -296,8 +305,9 @@ QStringList SessionManager::savedSessions() {
 
 void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
     QString path = sessionDir() + "/tab_order.txt";
+    QString tmpPath = path + QStringLiteral(".tmp");
     mode_t oldMask = ::umask(0077);
-    QFile file(path);
+    QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         // First line: active tab index
@@ -307,6 +317,9 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
             file.write("\n");
         }
         file.flush();
+        file.close();
+        QFile::remove(path);
+        QFile::rename(tmpPath, path);
     }
     ::umask(oldMask);
 }

@@ -81,15 +81,16 @@ void TitleBar::setTitle(const QString &title) {
 }
 
 void TitleBar::setThemeColors(const QColor &bg, const QColor &fg,
-                               const QColor &accent, const QColor &border) {
+                               const QColor &accent, const QColor &border,
+                               const QColor &danger) {
     QString ss = QString(
         "TitleBar { background-color: %1; border-bottom: 1px solid %4; }"
         "QLabel { color: %2; font-weight: bold; background: transparent; }"
         "QToolButton { color: %2; background: transparent; border: none;"
         "  border-radius: 4px; font-size: 14px; }"
         "QToolButton:hover { background-color: %3; color: %1; }"
-        "QToolButton#closeBtn:hover { background-color: #e74856; color: white; }"
-    ).arg(bg.name(), fg.name(), accent.name(), border.name());
+        "QToolButton#closeBtn:hover { background-color: %5; color: white; }"
+    ).arg(bg.name(), fg.name(), accent.name(), border.name(), danger.name());
     setStyleSheet(ss);
 }
 

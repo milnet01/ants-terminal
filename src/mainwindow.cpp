@@ -59,6 +59,7 @@
 #include <QDialogButtonBox>
 #include <QRegularExpression>
 #include <QLineEdit>
+#include <QSystemTrayIcon>
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("Ants Terminal");
@@ -173,15 +174,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
 
     // Status bar info widgets (CWD, git branch, process)
     m_statusCwd = new QLabel(this);
-    m_statusCwd->setStyleSheet("color: gray; padding: 0 8px; font-size: 11px;");
     statusBar()->addWidget(m_statusCwd, 1);
 
     m_statusGitBranch = new QLabel(this);
-    m_statusGitBranch->setStyleSheet("color: #A6E3A1; padding: 0 8px; font-size: 11px;");
     statusBar()->addWidget(m_statusGitBranch);
 
     m_statusProcess = new QLabel(this);
-    m_statusProcess->setStyleSheet("color: #89B4FA; padding: 0 8px; font-size: 11px;");
     statusBar()->addWidget(m_statusProcess);
 
     // Status update timer (every 2 seconds)
@@ -322,6 +320,16 @@ void MainWindow::setupMenus() {
 
     // Edit menu
     QMenu *editMenu = m_menuBar->addMenu("&Edit");
+
+    QAction *richCopyAction = editMenu->addAction("Copy with &Colors");
+    richCopyAction->setShortcut(QKeySequence(m_config.keybinding("rich_copy", "Ctrl+Shift+Alt+C")));
+    connect(richCopyAction, &QAction::triggered, this, [this]() {
+        TerminalWidget *t = focusedTerminal();
+        if (!t) t = currentTerminal();
+        if (t) t->copySelectionRich();
+    });
+
+    editMenu->addSeparator();
 
     QAction *clearLineAction = editMenu->addAction("Clear &Input Line");
     clearLineAction->setShortcut(QKeySequence(m_config.keybinding("clear_line", "Ctrl+Shift+U")));
@@ -939,6 +947,24 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     // Trigger signals
     connect(terminal, &TerminalWidget::triggerFired, this, &MainWindow::onTriggerFired);
 
+    // Desktop notifications (OSC 9/777)
+    connect(terminal, &TerminalWidget::desktopNotification, this,
+            [this](const QString &title, const QString &body) {
+        // Only show notification if window is not focused (avoid distracting the user)
+        if (!isActiveWindow()) {
+            auto *tray = QSystemTrayIcon::isSystemTrayAvailable()
+                ? findChild<QSystemTrayIcon *>() : nullptr;
+            if (tray) {
+                tray->showMessage(title.isEmpty() ? "Ants Terminal" : title, body);
+            } else {
+                // Fallback: use notify-send
+                QProcess::startDetached("notify-send", {
+                    title.isEmpty() ? "Ants Terminal" : title, body
+                });
+            }
+        }
+    });
+
     // Apply highlight and trigger rules from config
     terminal->setHighlightRules(m_config.highlightRules());
     terminal->setTriggerRules(m_config.triggerRules());
@@ -985,7 +1011,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         });
 
         // Remove button when prompt goes away (new terminal output after grace period)
-        QTimer::singleShot(1000, addBtn, [this, terminal, addBtn]() {
+        QTimer::singleShot(1000, addBtn, [terminal, addBtn]() {
             auto conn = std::make_shared<QMetaObject::Connection>();
             *conn = connect(terminal, &TerminalWidget::outputReceived, addBtn, [addBtn, conn]() {
                 QObject::disconnect(*conn);
@@ -1283,7 +1309,7 @@ void MainWindow::applyTheme(const QString &name) {
         "QTabBar::tab:selected { color: %3; border-bottom: 2px solid %5; }"
         "QTabBar::tab:hover { background-color: %1; color: %3; }"
         "QTabBar::close-button { image: none; }"
-        "QTabBar::close-button:hover { background-color: #e74856; border-radius: 3px; }"
+        "QTabBar::close-button:hover { background-color: %7; border-radius: 3px; }"
         "QSplitter::handle { background-color: %4; }"
         "QSplitter::handle:horizontal { width: 2px; }"
         "QSplitter::handle:vertical { height: 2px; }"
@@ -1301,12 +1327,22 @@ void MainWindow::applyTheme(const QString &name) {
           theme.textPrimary.name(),
           theme.border.name(),
           theme.accent.name(),
-          theme.textSecondary.name());
+          theme.textSecondary.name(),
+          theme.ansi[1].name());  // ANSI red for close/danger
 
     setStyleSheet(ss);
 
     m_titleBar->setThemeColors(theme.bgSecondary, theme.textPrimary,
-                                theme.accent, theme.border);
+                                theme.accent, theme.border, theme.ansi[1]);
+
+    // Status bar labels use theme colors
+    QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
+    m_statusCwd->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.textSecondary.name(), statusStyle));
+    m_statusGitBranch->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[2].name(), statusStyle));
+    m_statusProcess->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[4].name(), statusStyle));
+
+    // Restyle Claude integration widgets
+    updateClaudeThemeColors();
 
     // Apply colors + window opacity to ALL terminal widgets
     double opacity = m_config.opacity();
@@ -1315,6 +1351,16 @@ void MainWindow::applyTheme(const QString &name) {
         t->applyThemeColors(theme.textPrimary, theme.bgPrimary, theme.cursor,
                              theme.accent, theme.border);
         t->setWindowOpacityLevel(opacity);
+    }
+
+    // Color palette update notification (CSI ? 2031 h) — tell apps the scheme changed
+    // 1=dark, 2=light (heuristic: dark themes have bg luminance < 128)
+    int scheme = (theme.bgPrimary.lightnessF() < 0.5) ? 1 : 2;
+    for (auto *t : terminals) {
+        if (t->grid() && t->grid()->colorSchemeNotify()) {
+            // Unsolicited report: CSI ? 997 ; scheme n
+            t->grid()->sendResponse("\x1B[?997;" + std::to_string(scheme) + "n");
+        }
     }
 
     statusBar()->showMessage(QString("Theme: %1").arg(name), 3000);
@@ -1360,7 +1406,7 @@ void MainWindow::moveViaKWin(int targetX, int targetY) {
             "--session", "--dest=org.kde.KWin", "--print-reply",
             "/Scripting", "org.kde.kwin.Scripting.start"
         });
-        connect(proc2, &QProcess::finished, this, [this, proc2, scriptPath]() {
+        connect(proc2, &QProcess::finished, this, [proc2, scriptPath]() {
             proc2->deleteLater();
             QProcess::startDetached("dbus-send", {
                 "--session", "--dest=org.kde.KWin", "--print-reply",
@@ -1423,7 +1469,7 @@ void MainWindow::centerWindow() {
             "--session", "--dest=org.kde.KWin", "--print-reply",
             "/Scripting", "org.kde.kwin.Scripting.start"
         });
-        connect(proc2, &QProcess::finished, this, [this, proc2, scriptPath]() {
+        connect(proc2, &QProcess::finished, this, [proc2, scriptPath]() {
             proc2->deleteLater();
             QProcess::startDetached("dbus-send", {
                 "--session", "--dest=org.kde.KWin", "--print-reply",
@@ -1632,6 +1678,25 @@ void MainWindow::showEvent(QShowEvent *event) {
     }
 }
 
+void MainWindow::updateClaudeThemeColors() {
+    const Theme &th = Themes::byName(m_currentTheme);
+    QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
+    if (m_claudeStatusLabel)
+        m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; %2").arg(th.textSecondary.name(), statusStyle));
+    if (m_claudeContextBar)
+        m_claudeContextBar->setStyleSheet(
+            QStringLiteral("QProgressBar { border: 1px solid %1; border-radius: 3px; background: %2; font-size: 10px; color: %3; }"
+                    "QProgressBar::chunk { background: %4; border-radius: 2px; }")
+                .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), th.ansi[2].name()));
+    if (m_claudeReviewBtn)
+        m_claudeReviewBtn->setStyleSheet(
+            QStringLiteral("QPushButton { background: %1; color: %2; border: 1px solid %3; border-radius: 3px; padding: 0 6px; font-size: 10px; }"
+                    "QPushButton:hover { background: %3; }")
+                .arg(th.bgSecondary.name(), th.textPrimary.name(), th.border.name()));
+    if (m_claudeErrorLabel)
+        m_claudeErrorLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 4px; font-size: 11px;").arg(th.ansi[1].name()));
+}
+
 void MainWindow::setupClaudeIntegration() {
     m_claudeIntegration = new ClaudeIntegration(this);
 
@@ -1648,9 +1713,7 @@ void MainWindow::setupClaudeIntegration() {
     m_claudeContextBar->setFixedWidth(80);
     m_claudeContextBar->setFixedHeight(14);
     m_claudeContextBar->setFormat("%p%");
-    m_claudeContextBar->setStyleSheet(
-        "QProgressBar { border: 1px solid #45475A; border-radius: 3px; background: #313244; font-size: 10px; color: #CDD6F4; }"
-        "QProgressBar::chunk { background: #A6E3A1; border-radius: 2px; }");
+    // Styled dynamically by updateClaudeThemeColors()
     m_claudeContextBar->setToolTip("Claude Code context window usage");
     m_claudeContextBar->hide();
     statusBar()->addPermanentWidget(m_claudeContextBar);
@@ -1658,16 +1721,14 @@ void MainWindow::setupClaudeIntegration() {
     // Review Changes button (shown when Claude edits files)
     m_claudeReviewBtn = new QPushButton("Review Changes", this);
     m_claudeReviewBtn->setFixedHeight(18);
-    m_claudeReviewBtn->setStyleSheet(
-        "QPushButton { background: #45475A; color: #CDD6F4; border: 1px solid #585B70; border-radius: 3px; padding: 0 6px; font-size: 10px; }"
-        "QPushButton:hover { background: #585B70; }");
+    // Styled dynamically by updateClaudeThemeColors()
     m_claudeReviewBtn->hide();
     statusBar()->addPermanentWidget(m_claudeReviewBtn);
     connect(m_claudeReviewBtn, &QPushButton::clicked, this, &MainWindow::showDiffViewer);
 
     // Error indicator label
     m_claudeErrorLabel = new QLabel(this);
-    m_claudeErrorLabel->setStyleSheet("color: #F38BA8; padding: 0 4px; font-size: 11px;");
+    // Styled dynamically by updateClaudeThemeColors()
     m_claudeErrorLabel->hide();
     statusBar()->addPermanentWidget(m_claudeErrorLabel);
 
@@ -1678,21 +1739,27 @@ void MainWindow::setupClaudeIntegration() {
             m_claudeStatusLabel->hide();
             m_claudeContextBar->hide();
             break;
-        case ClaudeState::Idle:
+        case ClaudeState::Idle: {
+            const Theme &th = Themes::byName(m_currentTheme);
             m_claudeStatusLabel->setText("Claude: idle");
-            m_claudeStatusLabel->setStyleSheet("color: #A6E3A1; padding: 0 8px; font-size: 11px;");
+            m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 8px; font-size: 11px;").arg(th.ansi[2].name()));
             m_claudeStatusLabel->show();
             break;
-        case ClaudeState::Thinking:
+        }
+        case ClaudeState::Thinking: {
+            const Theme &th = Themes::byName(m_currentTheme);
             m_claudeStatusLabel->setText("Claude: thinking...");
-            m_claudeStatusLabel->setStyleSheet("color: #89B4FA; padding: 0 8px; font-size: 11px;");
+            m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 8px; font-size: 11px;").arg(th.ansi[4].name()));
             m_claudeStatusLabel->show();
             break;
-        case ClaudeState::ToolUse:
+        }
+        case ClaudeState::ToolUse: {
+            const Theme &th = Themes::byName(m_currentTheme);
             m_claudeStatusLabel->setText(QString("Claude: %1").arg(detail));
-            m_claudeStatusLabel->setStyleSheet("color: #F9E2AF; padding: 0 8px; font-size: 11px;");
+            m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 8px; font-size: 11px;").arg(th.ansi[3].name()));
             m_claudeStatusLabel->show();
             break;
+        }
         }
     });
 
@@ -1702,12 +1769,14 @@ void MainWindow::setupClaudeIntegration() {
         m_claudeContextBar->setValue(percent);
         m_claudeContextBar->show();
         // Color-code: green < 60%, yellow 60-80%, red > 80%
-        QString chunkColor = "#A6E3A1";
-        if (percent > 80) chunkColor = "#F38BA8";
-        else if (percent > 60) chunkColor = "#F9E2AF";
+        const Theme &th = Themes::byName(m_currentTheme);
+        QString chunkColor = th.ansi[2].name();  // green
+        if (percent > 80) chunkColor = th.ansi[1].name();  // red
+        else if (percent > 60) chunkColor = th.ansi[3].name();  // yellow
         m_claudeContextBar->setStyleSheet(
-            QString("QProgressBar { border: 1px solid #45475A; border-radius: 3px; background: #313244; font-size: 10px; color: #CDD6F4; }"
-                    "QProgressBar::chunk { background: %1; border-radius: 2px; }").arg(chunkColor));
+            QStringLiteral("QProgressBar { border: 1px solid %1; border-radius: 3px; background: %2; font-size: 10px; color: %3; }"
+                    "QProgressBar::chunk { background: %4; border-radius: 2px; }")
+                .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), chunkColor));
         if (percent >= 80) {
             m_claudeContextBar->setToolTip(
                 QString("Context %1% — consider using /compact").arg(percent));
@@ -1736,12 +1805,16 @@ void MainWindow::setupClaudeIntegration() {
         btnLayout->setContentsMargins(0, 0, 0, 0);
         btnLayout->setSpacing(4);
 
+        const Theme &th = Themes::byName(m_currentTheme);
         auto *allowBtn = new QPushButton("Allow", btnWidget);
-        allowBtn->setStyleSheet("QPushButton { background: #A6E3A1; color: #1E1E2E; border-radius: 3px; padding: 1px 8px; font-size: 10px; }");
+        allowBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+            .arg(th.ansi[2].name(), th.bgPrimary.name()));
         auto *denyBtn = new QPushButton("Deny", btnWidget);
-        denyBtn->setStyleSheet("QPushButton { background: #F38BA8; color: #1E1E2E; border-radius: 3px; padding: 1px 8px; font-size: 10px; }");
+        denyBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+            .arg(th.ansi[1].name(), th.bgPrimary.name()));
         auto *addBtn = new QPushButton("Add to allowlist", btnWidget);
-        addBtn->setStyleSheet("QPushButton { background: #45475A; color: #CDD6F4; border-radius: 3px; padding: 1px 8px; font-size: 10px; }");
+        addBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+            .arg(th.bgSecondary.name(), th.textPrimary.name()));
 
         btnLayout->addWidget(allowBtn);
         btnLayout->addWidget(denyBtn);
@@ -1765,7 +1838,7 @@ void MainWindow::setupClaudeIntegration() {
         // Remove buttons when prompt goes away (new terminal output after grace period)
         auto *term = currentTerminal();
         if (term) {
-            QTimer::singleShot(1000, btnWidget, [this, term, btnWidget]() {
+            QTimer::singleShot(1000, btnWidget, [term, btnWidget]() {
                 auto conn = std::make_shared<QMetaObject::Connection>();
                 *conn = connect(term, &TerminalWidget::outputReceived, btnWidget, [btnWidget, conn]() {
                     QObject::disconnect(*conn);
@@ -2233,18 +2306,20 @@ void MainWindow::showDiffViewer() {
     viewer->setReadOnly(true);
     viewer->setFont(QFont("Monospace", 10));
 
-    // Simple diff colorization
-    QString html = "<pre style='color: #CDD6F4; background: #1E1E2E;'>";
+    // Simple diff colorization using theme colors
+    const Theme &th = Themes::byName(m_currentTheme);
+    QString html = QStringLiteral("<pre style='color: %1; background: %2;'>")
+                       .arg(th.textPrimary.name(), th.bgPrimary.name());
     for (const QString &line : diff.split('\n')) {
         QString escaped = line.toHtmlEscaped();
         if (line.startsWith('+') && !line.startsWith("+++"))
-            html += "<span style='color: #A6E3A1;'>" + escaped + "</span>\n";
+            html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[2].name()) + escaped + "</span>\n";
         else if (line.startsWith('-') && !line.startsWith("---"))
-            html += "<span style='color: #F38BA8;'>" + escaped + "</span>\n";
+            html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[1].name()) + escaped + "</span>\n";
         else if (line.startsWith("@@"))
-            html += "<span style='color: #89B4FA;'>" + escaped + "</span>\n";
+            html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[4].name()) + escaped + "</span>\n";
         else if (line.startsWith("diff ") || line.startsWith("index "))
-            html += "<span style='color: #F9E2AF;'>" + escaped + "</span>\n";
+            html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[3].name()) + escaped + "</span>\n";
         else
             html += escaped + "\n";
     }
@@ -2441,7 +2516,7 @@ void MainWindow::showSnippetsDialog() {
     btnLayout->addWidget(insertBtn);
     layout->addLayout(btnLayout);
 
-    auto editSnippet = [this, &snippets, loadSnippets, table](int editIdx = -1) {
+    auto editSnippet = [this, &snippets, loadSnippets](int editIdx = -1) {
         QDialog editDlg(this);
         editDlg.setWindowTitle(editIdx >= 0 ? "Edit Snippet" : "Add Snippet");
         auto *form = new QFormLayout(&editDlg);

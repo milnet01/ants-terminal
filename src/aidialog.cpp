@@ -162,6 +162,12 @@ void AiDialog::onReplyReadyRead() {
     // Append new data to SSE line buffer to handle chunk boundaries correctly
     m_sseLineBuffer += m_currentReply->readAll();
 
+    // Cap buffer to prevent unbounded growth from misbehaving servers
+    if (m_sseLineBuffer.size() > 10 * 1024 * 1024) {
+        m_sseLineBuffer.clear();
+        return;
+    }
+
     // Process complete lines (SSE lines are terminated by \n)
     while (true) {
         int nlPos = m_sseLineBuffer.indexOf('\n');

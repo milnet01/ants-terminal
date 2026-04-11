@@ -47,7 +47,7 @@
 ## Plugin System Standards
 
 - Lua 5.4 embedded via C API with sandboxed environment
-- Dangerous globals removed: `os`, `io`, `loadfile`, `dofile`, `require`, `debug`, `setmetatable`, `collectgarbage`
+- Dangerous globals removed: `os`, `io`, `loadfile`, `dofile`, `require`, `debug`, `setmetatable`, `collectgarbage`, `coroutine`
 - Instruction count hook for timeout protection (10M instructions max)
 - Plugin events fired synchronously on Qt event loop
 - Plugin API namespaced under `ants.*` table
@@ -76,6 +76,9 @@
 - Combining characters stored in per-line side table, not per-cell, to minimize memory overhead
 - Sixel graphics: two-pass rendering (dimension scan + pixel paint), 4096x4096 max
 - Kitty graphics: chunked base64 reassembly, image cache (200 entries), PNG/RGBA/RGB formats
+- Kitty keyboard protocol: progressive enhancement via CSI > u (push), CSI < u (pop), CSI ? u (query), CSI = u (set)
+- Desktop notifications: OSC 9 (body-only) and OSC 777 (notify;title;body) supported
+- Color palette update notifications: CSI ? 2031 h/l mode, CSI ? 996 n query, CSI ? 997 n unsolicited report
 
 ## Widget Guidelines
 

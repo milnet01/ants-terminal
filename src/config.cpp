@@ -30,12 +30,23 @@ void Config::load() {
 
 void Config::save() {
     QString path = configPath();
+    QString tmpPath = path + QStringLiteral(".tmp");
+
     // Set restrictive umask before creating file to avoid brief world-readable window
     mode_t oldMask = ::umask(0077);
-    QFile file(path);
+    QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly)) {
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        file.write(QJsonDocument(m_data).toJson());
+        QByteArray json = QJsonDocument(m_data).toJson();
+        if (file.write(json) == json.size()) {
+            file.close();
+            // Atomic rename — prevents corruption if crash occurs mid-write
+            QFile::remove(path);
+            QFile::rename(tmpPath, path);
+        } else {
+            file.close();
+            QFile::remove(tmpPath);
+        }
     }
     ::umask(oldMask);
 }

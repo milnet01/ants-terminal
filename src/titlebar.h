@@ -13,7 +13,8 @@ public:
 
     void setTitle(const QString &title);
     void setThemeColors(const QColor &bg, const QColor &fg,
-                        const QColor &accent, const QColor &border);
+                        const QColor &accent, const QColor &border,
+                        const QColor &danger = QColor("#e74856"));
 
     QToolButton *centerButton() const { return m_centerBtn; }
 
