@@ -1,7 +1,6 @@
 #include "ptyhandler.h"
 
 #include <QCoreApplication>
-#include <QStandardPaths>
 
 #include <cerrno>
 #include <csignal>
@@ -12,7 +11,6 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <utmp.h>
 #include <pwd.h>
 
 Pty::Pty(QObject *parent) : QObject(parent) {}
@@ -45,7 +43,7 @@ Pty::~Pty() {
     }
 }
 
-bool Pty::start(const QString &shell) {
+bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols) {
     // Determine which shell to use
     QString shellPath = shell;
     if (shellPath.isEmpty()) {
@@ -64,8 +62,8 @@ bool Pty::start(const QString &shell) {
     }
 
     struct winsize ws = {};
-    ws.ws_row = 24;
-    ws.ws_col = 80;
+    ws.ws_row = static_cast<unsigned short>(rows);
+    ws.ws_col = static_cast<unsigned short>(cols);
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
 
@@ -76,9 +74,24 @@ bool Pty::start(const QString &shell) {
     }
 
     if (m_childPid == 0) {
-        // Child process — exec the shell
+        // Child process — close inherited file descriptors (CWE-403)
+        // Prevents leaking parent's sockets/FDs (AI network, plugins, etc.)
+        for (int fd = 3; fd < 1024; ++fd)
+            ::close(fd);
+
+        // Exec the shell
         QByteArray shellBytes = shellPath.toLocal8Bit();
         const char *shellCStr = shellBytes.constData();
+
+        // Change to requested working directory before exec
+        if (!workDir.isEmpty()) {
+            QByteArray dirBytes = workDir.toLocal8Bit();
+            if (::chdir(dirBytes.constData()) != 0) {
+                // Fall back to home directory
+                const char *home = ::getenv("HOME");
+                if (home) ::chdir(home);
+            }
+        }
 
         // Set TERM so the shell knows our capabilities
         ::setenv("TERM", "xterm-256color", 1);
@@ -96,9 +109,13 @@ bool Pty::start(const QString &shell) {
         ::_exit(127);
     }
 
-    // Parent process — set master to non-blocking
+    // Parent process — set O_CLOEXEC so master FD doesn't leak to child processes
+    ::fcntl(m_masterFd, F_SETFD, FD_CLOEXEC);
+
+    // Set master to non-blocking
     int flags = ::fcntl(m_masterFd, F_GETFL);
-    ::fcntl(m_masterFd, F_SETFL, flags | O_NONBLOCK);
+    if (flags >= 0)
+        ::fcntl(m_masterFd, F_SETFL, flags | O_NONBLOCK);
 
     m_readNotifier = new QSocketNotifier(m_masterFd, QSocketNotifier::Read, this);
     connect(m_readNotifier, &QSocketNotifier::activated, this, &Pty::onReadReady);
@@ -142,8 +159,13 @@ void Pty::onReadReady() {
             // EOF or error — child exited
             m_readNotifier->setEnabled(false);
             int status = 0;
-            ::waitpid(m_childPid, &status, 0);
-            emit finished(WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+            int exitCode = -1;
+            pid_t w = ::waitpid(m_childPid, &status, WNOHANG);
+            if (w > 0) {
+                exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+            }
+            m_childPid = -1; // Prevent double-reap in destructor
+            emit finished(exitCode);
             break;
         } else {
             // EAGAIN — no more data right now

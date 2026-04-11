@@ -106,6 +106,17 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     m_claudeDetectTimer.setInterval(300);
     connect(&m_claudeDetectTimer, &QTimer::timeout, this, &TerminalWidget::checkForClaudePermissionPrompt);
 
+    // Sync output safety timeout — if sync mode stays on for >500ms
+    // (e.g. truncated sequence), force a repaint so the screen isn't frozen
+    m_syncTimer.setSingleShot(true);
+    m_syncTimer.setInterval(500);
+    connect(&m_syncTimer, &QTimer::timeout, this, [this]() {
+        if (m_syncOutputActive) {
+            m_syncOutputActive = false;
+            update();
+        }
+    });
+
     // Visual bell flash timer
     m_bellFlashTimer.setSingleShot(true);
     m_bellFlashTimer.setInterval(150);
@@ -253,18 +264,21 @@ void TerminalWidget::sendToPty(const QByteArray &data) {
         m_pty->write(data);
 }
 
-bool TerminalWidget::startShell() {
+bool TerminalWidget::startShell(const QString &workDir) {
     m_pty = new Pty(this);
     connect(m_pty, &Pty::dataReceived, this, &TerminalWidget::onPtyData);
     connect(m_pty, &Pty::finished, this, &TerminalWidget::onPtyFinished);
 
     recalcGridSize();
 
-    if (!m_pty->start()) {
+    int rows = m_grid->rows();
+    int cols = m_grid->cols();
+    if (!m_pty->start(QString(), workDir, rows, cols)) {
         return false;
     }
 
-    m_pty->resize(m_grid->rows(), m_grid->cols());
+    // Ensure PTY matches grid (no-op if forkpty already used correct size)
+    m_pty->resize(rows, cols);
     return true;
 }
 
@@ -1123,11 +1137,21 @@ void TerminalWidget::onPtyData(const QByteArray &data) {
         emit titleChanged(title);
     }
 
-    // Synchronized output: defer screen update until mode is turned off
+    // Synchronized output (DEC mode 2026): defer screen update until the
+    // application signals the frame is complete by disabling sync mode.
+    // Only repaint when sync is OFF at the end of this data chunk.  The old
+    // condition `!syncActive || !wasSync` incorrectly painted partial frames
+    // when a sync-on arrived without its matching sync-off in the same read.
     bool wasSync = m_syncOutputActive;
     m_syncOutputActive = m_grid->synchronizedOutput();
-    if (!m_syncOutputActive || !wasSync)
+    if (!m_syncOutputActive) {
         update();
+        m_syncTimer.stop();
+    } else if (!wasSync) {
+        // Sync just started — arm a safety timeout so the screen still
+        // updates if the matching sync-off never arrives (truncated data).
+        m_syncTimer.start();
+    }
 
     updateScrollBar();
 
@@ -1228,6 +1252,10 @@ void TerminalWidget::navigatePrompt(int direction) {
         m_scrollOffset = 0;
         update();
     }
+}
+
+void TerminalWidget::forceRecalcSize() {
+    recalcGridSize();
 }
 
 void TerminalWidget::recalcGridSize() {
@@ -2125,6 +2153,9 @@ pid_t TerminalWidget::shellPid() const {
 // --- Claude Code permission detection ---
 
 void TerminalWidget::checkForClaudePermissionPrompt() {
+    // Notify listeners that the terminal has recent output (debounced)
+    emit outputReceived();
+
     // Claude Code permission prompts have this structure:
     //   <Tool header>          e.g. "Bash command", "Read", "Edit", etc.
     //   <command/path details>

@@ -3,7 +3,14 @@ project(ants-terminal VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Default build type if not specified
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus)
 
@@ -17,7 +24,6 @@ if(NOT LUA_FOUND)
     find_package(Lua 5.4 QUIET)
     if(LUA_FOUND)
         set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
-        set(LUA_LIBRARIES ${LUA_LIBRARIES})
     endif()
 endif()
 
@@ -58,6 +64,25 @@ target_link_libraries(ants-terminal PRIVATE
 )
 
 target_include_directories(ants-terminal PRIVATE src)
+
+# Compiler warnings (required by STANDARDS.md)
+target_compile_options(ants-terminal PRIVATE
+    -Wall -Wextra -Wpedantic
+    -Wformat -Wformat-security
+)
+
+# Security hardening
+target_compile_options(ants-terminal PRIVATE
+    -fstack-protector-strong
+    -fstack-clash-protection
+    $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=2>
+)
+target_link_options(ants-terminal PRIVATE
+    -Wl,-z,relro
+    -Wl,-z,now
+    -Wl,-z,noexecstack
+)
+set_target_properties(ants-terminal PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Lua plugin system (optional)
 if(LUA_FOUND)

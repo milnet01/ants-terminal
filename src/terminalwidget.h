@@ -29,7 +29,7 @@ public:
     explicit TerminalWidget(QWidget *parent = nullptr);
     ~TerminalWidget() override;
 
-    bool startShell();
+    bool startShell(const QString &workDir = QString());
     void applyThemeColors(const QColor &fg, const QColor &bg,
                           const QColor &cursorColor,
                           const QColor &accent = QColor(),
@@ -93,6 +93,9 @@ public:
 
     // Access to grid for session save/restore
     TerminalGrid *grid() { return m_grid.get(); }
+
+    // Force grid size recalculation (call after session restore)
+    void forceRecalcSize();
 
     // Get the shell's current working directory (via /proc/PID/cwd)
     QString shellCwd() const;
@@ -165,6 +168,7 @@ signals:
     void claudePermissionDetected(const QString &rule);
     void triggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
     void commandFailed(int exitCode, const QString &output);
+    void outputReceived();  // debounced notification of PTY output
 
 protected:
     bool event(QEvent *event) override;
@@ -319,6 +323,7 @@ private:
 
     // Synchronized output buffering
     bool m_syncOutputActive = false;
+    QTimer m_syncTimer;  // safety timeout for stuck sync mode
     QByteArray m_syncBuffer;
 
     // Font fallback for missing glyphs (emoji, CJK)

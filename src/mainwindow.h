@@ -42,8 +42,6 @@ protected:
 
 private slots:
     void onTitleChanged(const QString &title);
-    void onShellExited(int code);
-    void onImagePasted(const QImage &image);
     void toggleMaximize();
 
     void newTab();
@@ -159,6 +157,9 @@ private:
 
     // Tab UUIDs for session persistence
     QHash<QWidget *, QString> m_tabSessionIds;
+
+    // First-show flag (per-instance, not static)
+    bool m_firstShow = true;
 
     // XCB position tracker (Qt's pos()/moveEvent broken for frameless windows on KWin)
     XcbPositionTracker *m_posTracker = nullptr;

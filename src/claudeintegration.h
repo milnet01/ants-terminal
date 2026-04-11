@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QTimer>
-#include <QLabel>
 #include <QProcessEnvironment>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -65,7 +64,6 @@ public:
     // Hook server (receives events from Claude Code hooks)
     bool startHookServer();
     void stopHookServer();
-    int hookServerPort() const;
 
     // MCP server for terminal capabilities
     bool startMcpServer(const QString &socketPath);
@@ -75,9 +73,6 @@ public:
     void setLastCommandProvider(std::function<QPair<int,QString>()> provider);
     void setGitStatusProvider(std::function<QString()> provider);
     void setEnvironmentProvider(std::function<QString()> provider);
-
-    // File change tracking from transcript
-    QStringList recentlyChangedFiles() const { return m_changedFiles; }
 
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
@@ -91,6 +86,10 @@ public:
 
     // Auto-configure hooks in .claude/settings.local.json
     static void ensureHooksConfigured(const QString &projectDir, int port);
+
+    // Terminal output notification — call when PTY output is received while
+    // Claude is running so status detection can supplement transcript parsing
+    void notifyTerminalOutput();
 
 signals:
     void stateChanged(ClaudeState state, const QString &detail);
@@ -121,6 +120,8 @@ private:
     // Process polling
     QTimer m_pollTimer;
     pid_t m_claudePid = 0;
+    bool m_hasRecentOutput = false;  // terminal received output recently
+    QDateTime m_lastOutputTimestamp;
 
     // Hook server
     QLocalServer *m_hookServer = nullptr;
@@ -135,5 +136,6 @@ private:
 
     // Session tracking
     QString m_activeSessionId;
+    QString m_transcriptPath;
     QFileSystemWatcher m_transcriptWatcher;
 };

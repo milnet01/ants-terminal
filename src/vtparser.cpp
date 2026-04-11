@@ -129,7 +129,8 @@ void VtParser::processChar(uint32_t ch) {
 
     case EscapeIntermediate:
         if (ch >= 0x20 && ch <= 0x2F) {
-            m_intermediate += static_cast<char>(ch);
+            if (m_intermediate.size() < 8) // Cap intermediate bytes (real sequences use 1-2)
+                m_intermediate += static_cast<char>(ch);
         } else if (ch >= 0x30 && ch <= 0x7E) {
             VtAction a;
             a.type = VtAction::EscDispatch;
@@ -216,7 +217,8 @@ void VtParser::processChar(uint32_t ch) {
 
     case CsiIntermediate:
         if (ch >= 0x20 && ch <= 0x2F) {
-            m_intermediate += static_cast<char>(ch);
+            if (m_intermediate.size() < 8) // Cap intermediate bytes
+                m_intermediate += static_cast<char>(ch);
         } else if (ch >= 0x40 && ch <= 0x7E) {
             VtAction a;
             a.type = VtAction::CsiDispatch;
@@ -283,8 +285,23 @@ void VtParser::processChar(uint32_t ch) {
             m_callback(a);
             transition(Escape);
         } else {
-            if (m_dcsString.size() < 10 * 1024 * 1024) // 10MB cap
-                m_dcsString += static_cast<char>(ch);
+            if (m_dcsString.size() < 10 * 1024 * 1024) { // 10MB cap
+                if (ch < 0x80) {
+                    m_dcsString += static_cast<char>(ch);
+                } else if (ch < 0x800) {
+                    m_dcsString += static_cast<char>(0xC0 | (ch >> 6));
+                    m_dcsString += static_cast<char>(0x80 | (ch & 0x3F));
+                } else if (ch < 0x10000) {
+                    m_dcsString += static_cast<char>(0xE0 | (ch >> 12));
+                    m_dcsString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                    m_dcsString += static_cast<char>(0x80 | (ch & 0x3F));
+                } else {
+                    m_dcsString += static_cast<char>(0xF0 | (ch >> 18));
+                    m_dcsString += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
+                    m_dcsString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                    m_dcsString += static_cast<char>(0x80 | (ch & 0x3F));
+                }
+            }
         }
         break;
 
@@ -302,8 +319,23 @@ void VtParser::processChar(uint32_t ch) {
             m_callback(a);
             transition(Escape);
         } else {
-            if (m_apcString.size() < 10 * 1024 * 1024) // 10MB cap
-                m_apcString += static_cast<char>(ch);
+            if (m_apcString.size() < 10 * 1024 * 1024) { // 10MB cap
+                if (ch < 0x80) {
+                    m_apcString += static_cast<char>(ch);
+                } else if (ch < 0x800) {
+                    m_apcString += static_cast<char>(0xC0 | (ch >> 6));
+                    m_apcString += static_cast<char>(0x80 | (ch & 0x3F));
+                } else if (ch < 0x10000) {
+                    m_apcString += static_cast<char>(0xE0 | (ch >> 12));
+                    m_apcString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                    m_apcString += static_cast<char>(0x80 | (ch & 0x3F));
+                } else {
+                    m_apcString += static_cast<char>(0xF0 | (ch >> 18));
+                    m_apcString += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
+                    m_apcString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                    m_apcString += static_cast<char>(0x80 | (ch & 0x3F));
+                }
+            }
         }
         break;
 

@@ -403,7 +403,12 @@ void ClaudeProjectsDialog::onNewProjectInDir() {
         QLineEdit::Normal, "", &ok);
     if (!ok || projectName.trimmed().isEmpty()) return;
 
-    QString projectPath = baseDir + "/" + projectName.trimmed();
+    QString name = projectName.trimmed();
+    if (name.contains('/') || name.contains("..")) {
+        QMessageBox::warning(this, "Error", "Invalid project name (cannot contain '/' or '..')");
+        return;
+    }
+    QString projectPath = baseDir + "/" + name;
 
     // Create the directory
     if (!QDir().mkpath(projectPath)) {

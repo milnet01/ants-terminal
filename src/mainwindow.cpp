@@ -17,6 +17,7 @@
 #include "pluginmanager.h"
 #endif
 
+#include <algorithm>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QShowEvent>
@@ -47,6 +48,7 @@
 #include <QPropertyAnimation>
 #include <QEasingCurve>
 #include <QCursor>
+#include <memory>
 #include <QColorDialog>
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
@@ -212,14 +214,44 @@ void MainWindow::setupMenus() {
         }
         ClosedTabInfo info = m_closedTabs.takeFirst();
         newTab();
-        // cd to the previous working directory
+        // cd to the previous working directory (shell-quote to prevent injection)
         if (!info.cwd.isEmpty()) {
             if (auto *t = focusedTerminal()) {
-                t->writeCommand("cd " + info.cwd + "\n");
+                QString escaped = info.cwd;
+                escaped.replace("'", "'\\''");
+                t->writeCommand("cd '" + escaped + "'\n");
             }
         }
         statusBar()->showMessage("Restored tab: " + info.title, 3000);
     });
+
+    QAction *nextTabAction = fileMenu->addAction("Ne&xt Tab");
+    nextTabAction->setShortcut(QKeySequence(m_config.keybinding("next_tab", "Ctrl+PgDown")));
+    connect(nextTabAction, &QAction::triggered, this, [this]() {
+        int next = m_tabWidget->currentIndex() + 1;
+        if (next >= m_tabWidget->count()) next = 0;
+        m_tabWidget->setCurrentIndex(next);
+    });
+
+    QAction *prevTabAction = fileMenu->addAction("Pre&v Tab");
+    prevTabAction->setShortcut(QKeySequence(m_config.keybinding("prev_tab", "Ctrl+PgUp")));
+    connect(prevTabAction, &QAction::triggered, this, [this]() {
+        int prev = m_tabWidget->currentIndex() - 1;
+        if (prev < 0) prev = m_tabWidget->count() - 1;
+        m_tabWidget->setCurrentIndex(prev);
+    });
+
+    // Alt+1..9 to jump to tab by index
+    for (int i = 1; i <= 9; ++i) {
+        auto *a = new QAction(this);
+        a->setShortcut(QKeySequence(QString("Alt+%1").arg(i)));
+        connect(a, &QAction::triggered, this, [this, i]() {
+            int idx = (i == 9) ? m_tabWidget->count() - 1 : i - 1;
+            if (idx >= 0 && idx < m_tabWidget->count())
+                m_tabWidget->setCurrentIndex(idx);
+        });
+        addAction(a);
+    }
 
     fileMenu->addSeparator();
 
@@ -350,7 +382,9 @@ void MainWindow::setupMenus() {
     QAction *reloadThemes = viewMenu->addAction("Reload &User Themes");
     connect(reloadThemes, &QAction::triggered, this, [this, themesMenu]() {
         Themes::reload();
-        // Rebuild theme menu
+        // Clear old actions from group before rebuilding
+        for (auto *a : m_themeGroup->actions())
+            m_themeGroup->removeAction(a);
         themesMenu->clear();
         for (const QString &name : Themes::names()) {
             QAction *a = themesMenu->addAction(name);
@@ -838,8 +872,6 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         }
     });
 
-    connect(terminal, &TerminalWidget::imagePasted, this, &MainWindow::onImagePasted);
-
     // Broadcast callback
     terminal->setBroadcastCallback([this](TerminalWidget *source, const QByteArray &data) {
         if (!m_broadcastMode) return;
@@ -866,26 +898,56 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         }
     });
 
+    // Notify Claude integration of terminal output for activity detection
+    connect(terminal, &TerminalWidget::outputReceived, this, [this]() {
+        if (m_claudeIntegration)
+            m_claudeIntegration->notifyTerminalOutput();
+    });
+
     // Claude Code permission detection → status bar notification
-    connect(terminal, &TerminalWidget::claudePermissionDetected, this, [this](const QString &rule) {
+    connect(terminal, &TerminalWidget::claudePermissionDetected, this, [this, terminal](const QString &rawRule) {
+        // Only show for the currently active tab
+        if (terminal != focusedTerminal() && terminal != currentTerminal()) return;
+
+        // Normalize and generalize the detected rule
+        QString rule = ClaudeAllowlistDialog::normalizeRule(rawRule);
+        QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
+        if (!gen.isEmpty()) rule = gen;
+
         // Remove any existing allowlist button to prevent accumulation
         auto existing = statusBar()->findChildren<QPushButton *>("claudeAllowBtn");
         for (auto *btn : existing) btn->deleteLater();
 
         statusBar()->showMessage(
-            QString("Claude Code permission: %1 — ").arg(rule), 10000);
+            QString("Claude Code permission: %1 — ").arg(rule), 0);
         auto *addBtn = new QPushButton("Add to allowlist", statusBar());
         addBtn->setObjectName("claudeAllowBtn");
         statusBar()->addPermanentWidget(addBtn);
         connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn]() {
             openClaudeAllowlistDialog(rule);
             addBtn->deleteLater();
+            statusBar()->clearMessage();
         });
-        QTimer::singleShot(10000, addBtn, &QObject::deleteLater);
+
+        // Remove button when prompt goes away (new terminal output after grace period)
+        QTimer::singleShot(1000, addBtn, [this, terminal, addBtn]() {
+            auto conn = std::make_shared<QMetaObject::Connection>();
+            *conn = connect(terminal, &TerminalWidget::outputReceived, addBtn, [addBtn, conn]() {
+                QObject::disconnect(*conn);
+                addBtn->deleteLater();
+            });
+        });
     });
 }
 
 void MainWindow::newTab() {
+    // Inherit CWD from the currently focused terminal
+    QString inheritCwd;
+    if (auto *prev = focusedTerminal())
+        inheritCwd = prev->shellCwd();
+    else if (auto *prev = currentTerminal())
+        inheritCwd = prev->shellCwd();
+
     auto *terminal = createTerminal();
     connectTerminal(terminal);
 
@@ -894,7 +956,7 @@ void MainWindow::newTab() {
     m_tabWidget->setCurrentIndex(idx);
     m_tabSessionIds[terminal] = tabId;
 
-    if (!terminal->startShell()) {
+    if (!terminal->startShell(inheritCwd)) {
         statusBar()->showMessage("Failed to start shell!");
     }
 
@@ -954,6 +1016,14 @@ void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
         if (tabIdx < 0) return;
 
         auto *splitter = new QSplitter(orientation);
+
+        // Transfer session ID from the terminal to the splitter
+        QString sessionId = m_tabSessionIds.value(current);
+        if (!sessionId.isEmpty()) {
+            m_tabSessionIds.remove(current);
+            m_tabSessionIds[splitter] = sessionId;
+        }
+
         current->setParent(nullptr);
         splitter->addWidget(current);
         splitter->addWidget(newTerm);
@@ -1037,6 +1107,13 @@ void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {
             // This splitter is the tab root
             int tabIdx = m_tabWidget->indexOf(splitter);
             if (tabIdx >= 0) {
+                // Transfer session ID from splitter back to the surviving child
+                QString sessionId = m_tabSessionIds.value(splitter);
+                if (!sessionId.isEmpty()) {
+                    m_tabSessionIds.remove(splitter);
+                    m_tabSessionIds[child] = sessionId;
+                }
+
                 child->setParent(nullptr);
                 splitter->setParent(nullptr);
                 m_tabWidget->removeTab(tabIdx);
@@ -1105,6 +1182,8 @@ void MainWindow::onTabChanged(int /*index*/) {
         if (m_claudeIntegration)
             m_claudeIntegration->setShellPid(t->shellPid());
     }
+    // Update status bar immediately so CWD/git/process reflect the new tab
+    updateStatusBar();
 }
 
 TerminalWidget *MainWindow::currentTerminal() const {
@@ -1335,17 +1414,6 @@ void MainWindow::onTitleChanged(const QString &title) {
     m_titleBar->setTitle(windowTitle);
 }
 
-void MainWindow::onShellExited(int code) {
-    statusBar()->showMessage(QString("Shell exited with code %1").arg(code));
-}
-
-void MainWindow::onImagePasted(const QImage &image) {
-    Q_UNUSED(image);
-    // Image saving + path insertion is now handled by TerminalWidget
-    QString dir = m_config.imagePasteDir();
-    if (dir.isEmpty()) dir = QDir::homePath() + "/Pictures/ClaudePaste";
-    statusBar()->showMessage(QString("Image pasted -> %1").arg(dir), 5000);
-}
 
 void MainWindow::collectActions(QMenu *menu, QList<QAction *> &out) {
     for (QAction *action : menu->actions()) {
@@ -1383,6 +1451,10 @@ void MainWindow::collectActions(QMenu *menu, QList<QAction *> &out) {
 void MainWindow::saveAllSessions() {
     if (!m_config.sessionPersistence()) return;
 
+    QStringList tabOrder;
+    int activeIndex = 0;
+    int currentIdx = m_tabWidget->currentIndex();
+
     for (int i = 0; i < m_tabWidget->count(); ++i) {
         QWidget *w = m_tabWidget->widget(i);
         auto *t = qobject_cast<TerminalWidget *>(w);
@@ -1390,20 +1462,42 @@ void MainWindow::saveAllSessions() {
         if (!t) continue;
 
         QString tabId = m_tabSessionIds.value(w);
+        // For split tabs, the widget (w) is a QSplitter, not the TerminalWidget.
+        // Try looking up by the TerminalWidget itself if the tab widget lookup failed.
+        if (tabId.isEmpty() && t != w)
+            tabId = m_tabSessionIds.value(t);
         if (tabId.isEmpty()) continue;
 
-        SessionManager::saveSession(tabId, t->grid());
+        // Track active index as position within tabOrder, not the tab widget
+        if (i == currentIdx)
+            activeIndex = tabOrder.size();
+
+        tabOrder.append(tabId);
+        SessionManager::saveSession(tabId, t->grid(), t->shellCwd());
     }
+    SessionManager::saveTabOrder(tabOrder, activeIndex);
 }
 
 void MainWindow::restoreSessions() {
     if (!m_config.sessionPersistence()) return;
 
-    QStringList sessions = SessionManager::savedSessions();
+    // Use saved tab order if available, fall back to file modification time
+    int activeIndex = 0;
+    QStringList sessions = SessionManager::loadTabOrder(&activeIndex);
+    if (sessions.isEmpty())
+        sessions = SessionManager::savedSessions();
     if (sessions.isEmpty()) return;
 
     // Close the default empty tab that was created at startup
     bool hadDefaultTab = (m_tabWidget->count() == 1);
+
+    // Collect terminals and their start directories for deferred shell startup
+    struct RestoredTab {
+        TerminalWidget *terminal;
+        QString startDir;
+        QString tabId;
+    };
+    QList<RestoredTab> restoredTabs;
 
     for (const QString &tabId : sessions) {
         auto *terminal = createTerminal();
@@ -1412,15 +1506,27 @@ void MainWindow::restoreSessions() {
         m_tabWidget->addTab(terminal, "Shell");
         m_tabSessionIds[terminal] = tabId;
 
-        if (!terminal->startShell()) continue;
+        // Restore scrollback, screen, and working directory
+        QString savedCwd;
+        SessionManager::loadSession(tabId, terminal->grid(), &savedCwd);
 
-        // Restore scrollback into the grid
-        if (SessionManager::loadSession(tabId, terminal->grid())) {
-            terminal->update();
+        // Restore tab title from saved window title
+        QString savedTitle = terminal->grid()->windowTitle();
+        if (!savedTitle.isEmpty()) {
+            if (savedTitle.length() > 30)
+                savedTitle = savedTitle.left(27) + "...";
+            m_tabWidget->setTabText(m_tabWidget->count() - 1, savedTitle);
         }
 
-        // Clean up the saved session file after restoring
-        SessionManager::removeSession(tabId);
+        // Clear screen buffer so new shell starts with a clean display
+        // (scrollback history is preserved from the restore above)
+        terminal->grid()->clearScreenContent();
+
+        QString startDir;
+        if (!savedCwd.isEmpty() && QDir(savedCwd).exists())
+            startDir = savedCwd;
+
+        restoredTabs.append({terminal, startDir, tabId});
     }
 
     // Remove the default empty tab if we restored sessions
@@ -1431,9 +1537,30 @@ void MainWindow::restoreSessions() {
         defaultTab->deleteLater();
     }
 
-    m_tabWidget->setCurrentIndex(0);
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
-    if (auto *t = focusedTerminal()) t->setFocus();
+
+    // Defer tab activation and shell startup until after the event loop has
+    // processed layout — widgets need their final geometry so that the grid
+    // size computed by startShell matches the actual widget size. Without this,
+    // non-active tabs get a size mismatch that triggers SIGWINCH, causing bash
+    // to redraw its prompt (the "double prompt" bug).
+    int idx = std::clamp(activeIndex, 0, m_tabWidget->count() - 1);
+    QTimer::singleShot(0, this, [this, restoredTabs, idx]() {
+        m_tabWidget->setCurrentIndex(idx);
+
+        for (const auto &tab : restoredTabs) {
+            // Recalc grid size now that the widget has its real geometry
+            tab.terminal->forceRecalcSize();
+
+            if (!tab.terminal->startShell(tab.startDir))
+                continue;
+
+            tab.terminal->update();
+            SessionManager::removeSession(tab.tabId);
+        }
+
+        if (auto *t = focusedTerminal()) t->setFocus();
+    });
 }
 
 void MainWindow::showEvent(QShowEvent *event) {
@@ -1442,9 +1569,8 @@ void MainWindow::showEvent(QShowEvent *event) {
     // Center window on first show via KWin scripting.
     // Qt's move()/pos() are broken for frameless windows on KWin compositor,
     // so we always center on open. KWin scripting is the only reliable positioning method.
-    static bool firstShow = true;
-    if (firstShow) {
-        firstShow = false;
+    if (m_firstShow) {
+        m_firstShow = false;
         QTimer::singleShot(150, this, [this]() {
             centerWindow();
         });
@@ -1541,9 +1667,13 @@ void MainWindow::setupClaudeIntegration() {
 
     connect(m_claudeIntegration, &ClaudeIntegration::permissionRequested,
             this, [this](const QString &tool, const QString &input) {
-        QString rule = tool;
-        if (!input.isEmpty()) rule += "(" + input + ")";
-        statusBar()->showMessage(QString("Claude permission: %1").arg(rule), 15000);
+        QString rawRule = tool;
+        if (!input.isEmpty()) rawRule += "(" + input + ")";
+        // Normalize and generalize to a useful allowlist pattern
+        QString rule = ClaudeAllowlistDialog::normalizeRule(rawRule);
+        QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
+        if (!gen.isEmpty()) rule = gen;
+        statusBar()->showMessage(QString("Claude permission: %1").arg(rule), 0);
 
         // Enhanced permission action buttons
         auto *btnWidget = new QWidget(statusBar());
@@ -1563,17 +1693,31 @@ void MainWindow::setupClaudeIntegration() {
         btnLayout->addWidget(addBtn);
         statusBar()->addPermanentWidget(btnWidget);
 
-        connect(allowBtn, &QPushButton::clicked, btnWidget, [btnWidget]() {
+        connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget]() {
             btnWidget->deleteLater();
+            statusBar()->clearMessage();
         });
-        connect(denyBtn, &QPushButton::clicked, btnWidget, [btnWidget]() {
+        connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget]() {
             btnWidget->deleteLater();
+            statusBar()->clearMessage();
         });
         connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget]() {
             openClaudeAllowlistDialog(rule);
             btnWidget->deleteLater();
+            statusBar()->clearMessage();
         });
-        QTimer::singleShot(15000, btnWidget, &QObject::deleteLater);
+
+        // Remove buttons when prompt goes away (new terminal output after grace period)
+        auto *term = currentTerminal();
+        if (term) {
+            QTimer::singleShot(1000, btnWidget, [this, term, btnWidget]() {
+                auto conn = std::make_shared<QMetaObject::Connection>();
+                *conn = connect(term, &TerminalWidget::outputReceived, btnWidget, [btnWidget, conn]() {
+                    QObject::disconnect(*conn);
+                    btnWidget->deleteLater();
+                });
+            });
+        }
     });
 
     // Set up MCP server with all providers
@@ -1660,8 +1804,12 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
     QString settingsPath = cwd + "/.claude/settings.local.json";
 
     m_claudeDialog->setSettingsPath(settingsPath);
-    if (!prefillRule.isEmpty())
+    if (!prefillRule.isEmpty()) {
         m_claudeDialog->prefillRule(prefillRule);
+        // Auto-save immediately so Claude Code picks up the rule right away
+        m_claudeDialog->saveSettings();
+        statusBar()->showMessage("Rule added to allowlist — takes effect on next permission check", 5000);
+    }
     m_claudeDialog->show();
     m_claudeDialog->raise();
 }
@@ -1742,6 +1890,9 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 // --- Status bar ---
 
 void MainWindow::updateStatusBar() {
+    if (!m_statusCwd || !m_statusGitBranch || !m_statusProcess)
+        return;
+
     auto *t = focusedTerminal();
     if (!t) t = currentTerminal();
     if (!t) return;

@@ -140,11 +140,15 @@ public:
     using BellCallback = std::function<void()>;
     void setBellCallback(BellCallback cb) { m_bellCallback = std::move(cb); }
 
-    // Combining character access per line
+    // Combining character access per line (bounds-checked)
     const std::unordered_map<int, std::vector<uint32_t>> &screenCombining(int row) const {
+        static const std::unordered_map<int, std::vector<uint32_t>> s_empty;
+        if (row < 0 || row >= m_rows) return s_empty;
         return m_screenLines[row].combining;
     }
     const std::unordered_map<int, std::vector<uint32_t>> &scrollbackCombining(int idx) const {
+        static const std::unordered_map<int, std::vector<uint32_t>> s_empty;
+        if (idx < 0 || idx >= static_cast<int>(m_scrollback.size())) return s_empty;
         return m_scrollback[idx].combining;
     }
 
@@ -170,11 +174,18 @@ public:
     // Shell integration (OSC 133)
     const std::vector<PromptRegion> &promptRegions() const { return m_promptRegions; }
 
-    // Session restore: direct access for SessionManager
-    void pushScrollbackLine(TermLine &&line) { m_scrollback.push_back(std::move(line)); }
+    // Session restore: direct access for SessionManager (respects max scrollback)
+    void pushScrollbackLine(TermLine &&line) {
+        m_scrollback.push_back(std::move(line));
+        while (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
+            m_scrollback.pop_front();
+    }
     TermLine &screenLine(int row) { return m_screenLines[row]; }
     void setCursorPosition(int row, int col) { m_cursorRow = row; m_cursorCol = col; }
     void setTitle(const QString &title) { m_windowTitle = title; }
+
+    // Clear screen content (keeps scrollback) — used after session restore
+    void clearScreenContent();
 
 private:
     void handlePrint(uint32_t cp);
@@ -284,6 +295,9 @@ private:
     bool m_altScreenActive = false;
     std::vector<TermLine> m_altScreen;
     int m_altCursorRow = 0, m_altCursorCol = 0;
+    std::vector<std::vector<HyperlinkSpan>> m_altScreenHyperlinks;
+    std::vector<InlineImage> m_altInlineImages;
+    std::vector<PromptRegion> m_altPromptRegions;
 
     QString m_windowTitle;
 

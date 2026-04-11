@@ -44,11 +44,11 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
         if (!m_lastResponse.isEmpty()) {
             // Extract code blocks or the last line that looks like a command
             QString cmd;
-            // Look for ```...``` blocks
-            int start = m_lastResponse.lastIndexOf("```");
-            if (start >= 0) {
-                int end = m_lastResponse.indexOf("```", start + 3);
-                if (end > start) {
+            // Find the last complete ```...``` code block
+            int end = m_lastResponse.lastIndexOf("```");
+            if (end > 0) {
+                int start = m_lastResponse.lastIndexOf("```", end - 1);
+                if (start >= 0 && start < end) {
                     cmd = m_lastResponse.mid(start + 3, end - start - 3).trimmed();
                     // Remove language identifier (e.g., "bash\n")
                     int nl = cmd.indexOf('\n');

@@ -2,10 +2,12 @@
 #include "terminalgrid.h"
 
 #include <algorithm>
+#include <sys/stat.h>
 #include <QDataStream>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QDateTime>
 
@@ -17,10 +19,13 @@ QString SessionManager::sessionDir() {
 }
 
 QString SessionManager::sessionPath(const QString &tabId) {
+    // Validate tabId to prevent path traversal (must be UUID-like: alnum + hyphens)
+    static const QRegularExpression validId(QStringLiteral("^[a-zA-Z0-9\\-]+$"));
+    if (!validId.match(tabId).hasMatch()) return {};
     return sessionDir() + "/session_" + tabId + ".dat";
 }
 
-QByteArray SessionManager::serialize(const TerminalGrid *grid) {
+QByteArray SessionManager::serialize(const TerminalGrid *grid, const QString &cwd) {
     QByteArray raw;
     QDataStream out(&raw, QIODevice::WriteOnly);
     out.setVersion(QDataStream::Qt_6_0);
@@ -104,16 +109,21 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid) {
     // Window title
     out << grid->windowTitle();
 
+    // V2: Working directory
+    out << cwd;
+
     // Compress
     return qCompress(raw, 6);
 }
 
-bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed) {
+bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed, QString *cwd) {
     // Reject excessively large compressed data (100MB limit)
     if (compressed.size() > 100 * 1024 * 1024) return false;
 
     QByteArray raw = qUncompress(compressed);
     if (raw.isEmpty()) return false;
+    // Guard against decompression bombs (zlib can expand ~1000:1)
+    if (raw.size() > 500 * 1024 * 1024) return false;
 
     QDataStream in(&raw, QIODevice::ReadOnly);
     in.setVersion(QDataStream::Qt_6_0);
@@ -234,25 +244,38 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed) {
     if (!title.isEmpty())
         grid->setTitle(title);
 
+    // V2: Read working directory if present
+    if (version >= 2 && !in.atEnd()) {
+        QString savedCwd;
+        in >> savedCwd;
+        if (cwd && !savedCwd.isEmpty())
+            *cwd = savedCwd;
+    }
+
     return in.status() == QDataStream::Ok;
 }
 
-void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid) {
-    QByteArray data = serialize(grid);
+void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid, const QString &cwd) {
+    QByteArray data = serialize(grid, cwd);
     QString path = sessionPath(tabId);
+    if (path.isEmpty()) return;
+    mode_t oldMask = ::umask(0077);
     QFile file(path);
     if (file.open(QIODevice::WriteOnly)) {
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         file.write(data);
     }
+    ::umask(oldMask);
 }
 
-bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid) {
+bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid, QString *cwd) {
     QString path = sessionPath(tabId);
+    if (path.isEmpty()) return false;
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return false;
+    if (file.size() > 100 * 1024 * 1024) return false; // 100MB limit before reading
     QByteArray data = file.readAll();
-    return restore(grid, data);
+    return restore(grid, data, cwd);
 }
 
 void SessionManager::removeSession(const QString &tabId) {
@@ -261,7 +284,7 @@ void SessionManager::removeSession(const QString &tabId) {
 
 QStringList SessionManager::savedSessions() {
     QDir dir(sessionDir());
-    QStringList files = dir.entryList({"session_*.dat"}, QDir::Files, QDir::Time);
+    QStringList files = dir.entryList({"session_*.dat"}, QDir::Files, QDir::Time | QDir::Reversed);
     QStringList ids;
     for (const QString &f : files) {
         QString id = f.mid(8); // Remove "session_"
@@ -269,6 +292,69 @@ QStringList SessionManager::savedSessions() {
         ids.append(id);
     }
     return ids;
+}
+
+void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
+    QString path = sessionDir() + "/tab_order.txt";
+    mode_t oldMask = ::umask(0077);
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        // First line: active tab index
+        file.write(QStringLiteral("active:%1\n").arg(activeIndex).toUtf8());
+        for (const QString &id : tabIds) {
+            file.write(id.toUtf8());
+            file.write("\n");
+        }
+        file.flush();
+    }
+    ::umask(oldMask);
+}
+
+QStringList SessionManager::loadTabOrder(int *activeIndex) {
+    QString path = sessionDir() + "/tab_order.txt";
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return {};
+
+    QStringList ids;
+    while (!file.atEnd()) {
+        QString line = QString::fromUtf8(file.readLine()).trimmed();
+        if (line.isEmpty()) continue;
+        // Parse active tab index line
+        if (line.startsWith(QLatin1String("active:"))) {
+            if (activeIndex)
+                *activeIndex = line.mid(7).toInt();
+            continue;
+        }
+        ids.append(line);
+    }
+
+    // Remove the manifest after reading
+    file.close();
+    QFile::remove(path);
+
+    // Only return IDs whose session files actually exist,
+    // adjusting active index to account for filtered-out entries
+    QStringList valid;
+    int adjustedActive = 0;
+    int savedActive = activeIndex ? *activeIndex : 0;
+
+    for (int i = 0; i < ids.size(); ++i) {
+        if (QFile::exists(sessionPath(ids[i]))) {
+            if (i == savedActive)
+                adjustedActive = valid.size();
+            valid.append(ids[i]);
+        }
+    }
+
+    if (activeIndex) {
+        if (valid.isEmpty())
+            *activeIndex = 0;
+        else
+            *activeIndex = std::clamp(adjustedActive, 0, static_cast<int>(valid.size()) - 1);
+    }
+
+    return valid;
 }
 
 void SessionManager::cleanupOldSessions(int maxAgeDays) {

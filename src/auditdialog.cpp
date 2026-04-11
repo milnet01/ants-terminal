@@ -15,8 +15,8 @@
 AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
     : QDialog(parent), m_projectPath(projectPath) {
     setWindowTitle("Project Audit");
-    setMinimumSize(750, 600);
-    resize(850, 700);
+    setMinimumSize(900, 600);
+    resize(1050, 750);
 
     m_process = new QProcess(this);
     m_process->setWorkingDirectory(m_projectPath);
@@ -63,6 +63,8 @@ void AuditDialog::detectProject() {
         m_detectedTypes << "Rust";
     if (dir.exists("go.mod"))
         m_detectedTypes << "Go";
+    if (dir.exists("pom.xml") || dir.exists("build.gradle") || dir.exists("build.gradle.kts"))
+        m_detectedTypes << "Java";
 
     // Scan top-level + one level deep for language indicators
     QDirIterator it(m_projectPath, QDir::Files, QDirIterator::NoIteratorFlags);
@@ -115,18 +117,25 @@ bool AuditDialog::toolExists(const QString &tool) {
 
 void AuditDialog::populateChecks() {
     // Exclude patterns common to all find/grep commands
-    const QString X = " -not -path './.git/*' -not -path './build/*'"
-                      " -not -path './node_modules/*' -not -path './.cache/*'";
+    const QString X = " -not -path './.git/*' -not -path './build/*' -not -path './build-*/*'"
+                      " -not -path './node_modules/*' -not -path './.cache/*'"
+                      " -not -path './dist/*' -not -path './vendor/*'";
+    const QString GX = " --exclude-dir=.git --exclude-dir=build --exclude-dir='build-*'"
+                       " --exclude-dir=node_modules --exclude-dir=.cache"
+                       " --exclude-dir=dist --exclude-dir=vendor";
+    // Security scans also exclude the audit dialog itself (its check descriptions
+    // contain the very patterns being searched for, causing false positives)
+    const QString SX = GX + " --exclude=auditdialog.cpp --exclude=auditdialog.h";
     const QString GI = " --include='*.cpp' --include='*.h' --include='*.c'"
                        " --include='*.py' --include='*.js' --include='*.ts'"
                        " --include='*.go' --include='*.rs' --include='*.sh'"
                        " --include='*.lua' --include='*.java'";
 
-    // ---- Generic (always available) ----
+    // ---- General ----
     m_checks.append({
         "todo_scan", "TODO / FIXME Scanner",
         "Find TODO, FIXME, HACK, XXX annotations", "General",
-        "grep -rnI" + GI + " -E '(TODO|FIXME|HACK|XXX)(\\(|:|\\s)' . 2>/dev/null | head -100",
+        "grep -rnI" + GX + GI + " -E '(TODO|FIXME|HACK|XXX)(\\(|:|\\s)' . 2>/dev/null | head -100",
         true, true, {}
     });
     m_checks.append({
@@ -146,12 +155,77 @@ void AuditDialog::populateChecks() {
         false, true, {}
     });
     m_checks.append({
+        "readme_check", "README & License Check",
+        "Verify documentation files exist", "General",
+        "echo '=== README ===' && { f=$(ls README* readme* 2>/dev/null); [ -n \"$f\" ] && echo \"$f\" || echo 'No README found'; }"
+        " && echo '=== LICENSE ===' && { f=$(ls LICENSE* license* COPYING* 2>/dev/null); [ -n \"$f\" ] && echo \"$f\" || echo 'No LICENSE found'; }",
+        false, true, {}
+    });
+    m_checks.append({
+        "dup_files", "Duplicate File Detection",
+        "Find files with identical content", "General",
+        "find ." + X + " -type f -size +100c \\( -name '*.cpp' -o -name '*.h' -o -name '*.py'"
+        " -o -name '*.js' -o -name '*.ts' \\) -exec md5sum {} + 2>/dev/null"
+        " | sort | uniq -Dw32 | head -30",
+        false, true, {}
+    });
+    m_checks.append({
+        "dangling_symlinks", "Dangling Symlinks",
+        "Symlinks pointing to non-existent targets", "General",
+        "find ." + X + " -type l ! -exec test -e {} \\; -print 2>/dev/null | head -30",
+        false, true, {}
+    });
+    m_checks.append({
+        "conflict_markers", "Git Conflict Markers",
+        "Unresolved merge conflicts in source", "General",
+        "grep -rnI" + GX + GI + " -E '^(<{7}|>{7}|={7})' . 2>/dev/null | head -20",
+        true, true, {}
+    });
+    m_checks.append({
+        "binary_in_repo", "Binary Files in Source",
+        "Non-text files tracked alongside source", "General",
+        "find ." + X + " -type f \\( -name '*.exe' -o -name '*.dll' -o -name '*.dylib'"
+        " -o -name '*.bin' -o -name '*.dat' -o -name '*.db' -o -name '*.sqlite'"
+        " -o -name '*.class' -o -name '*.pyc' -o -name '*.pyo' \\) 2>/dev/null | head -30",
+        false, true, {}
+    });
+    m_checks.append({
+        "encoding_check", "Source Encoding Check",
+        "Non-UTF-8 or BOM-prefixed source files", "General",
+        "find ." + X + " -type f \\( -name '*.cpp' -o -name '*.h' -o -name '*.c'"
+        " -o -name '*.py' -o -name '*.js' -o -name '*.ts' \\)"
+        " -exec file {} \\; 2>/dev/null | grep -viE '(UTF-8|ASCII|empty)' | head -20",
+        false, true, {}
+    });
+    m_checks.append({
+        "long_files", "Overly Long Source Files",
+        "Source files exceeding 1000 lines", "General",
+        "find ." + X + " -type f \\( -name '*.cpp' -o -name '*.h' -o -name '*.c'"
+        " -o -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.go'"
+        " -o -name '*.rs' -o -name '*.java' \\)"
+        " -exec awk 'END{if(NR>1000)print NR\" \"FILENAME}' {} \\; 2>/dev/null | sort -rn | head -20",
+        false, true, {}
+    });
+    m_checks.append({
+        "debug_leftovers", "Debug / Temp Code",
+        "console.log, print(), debug statements left in source", "General",
+        "grep -rnI" + GX + " --include='*.js' --include='*.ts' --include='*.jsx' --include='*.tsx'"
+        " -E '\\bconsole\\.(log|debug|trace)\\(' . 2>/dev/null | head -20;"
+        " grep -rnI" + GX + " --include='*.py' -E '^\\s*(print\\(|pdb\\.|breakpoint\\()' . 2>/dev/null | head -20;"
+        " grep -rnI" + GX + " --include='*.cpp' --include='*.c' --include='*.h'"
+        " -E '\\b(qDebug|std::cerr|std::cout)\\s*(<{2}|\\()' . 2>/dev/null"
+        " | grep -viE '(//|/\\*|error|warn|fatal)' | head -20",
+        false, true, {}
+    });
+
+    // ---- Security ----
+    m_checks.append({
         "secrets_scan", "Hardcoded Secrets Scan",
         "Grep for API keys, passwords, tokens in source", "Security",
-        "grep -rnI" + GI + " --include='*.json' --include='*.yaml' --include='*.yml'"
+        "grep -rnI" + SX + GI + " --include='*.json' --include='*.yaml' --include='*.yml'"
         " --include='*.toml' --include='*.cfg' --include='*.ini'"
         " -iE '(api[_-]?key|password|secret[_-]?key|auth[_-]?token|credentials)\\s*[:=]' . 2>/dev/null"
-        " | grep -viE '(test|example|mock|dummy|placeholder|TODO|FIXME|template|sample)' | head -50",
+        " | grep -viE '(test|example|mock|dummy|placeholder|TODO|FIXME|template|sample|EchoMode|setPlaceholder)' | head -50",
         true, true, {}
     });
     m_checks.append({
@@ -161,96 +235,121 @@ void AuditDialog::populateChecks() {
         false, true, {}
     });
     m_checks.append({
+        "config_perms", "Sensitive Config Permissions",
+        "Config files that should be owner-only (0600)", "Security",
+        "find ." + X + " -type f \\( -name '*.json' -o -name '*.yaml' -o -name '*.yml'"
+        " -o -name '*.toml' -o -name '*.ini' -o -name '*.cfg' -o -name '*.env' \\)"
+        " -perm /077 2>/dev/null | head -20",
+        false, true, {}
+    });
+    m_checks.append({
         "unsafe_c_funcs", "Unsafe C/C++ Functions",
         "strcpy, sprintf, gets, strcat, mktemp, etc.", "Security",
-        "grep -rnI" + GI + " -E '\\b(strcpy|strcat|sprintf|vsprintf|gets|mktemp|tmpnam|strtok|scanf)\\s*\\(' . 2>/dev/null"
+        "grep -rnI" + SX + GI + " -E '\\b(strcpy|strcat|sprintf|vsprintf|gets|mktemp|tmpnam|strtok|scanf)\\s*\\(' . 2>/dev/null"
         " | grep -v '// *safe' | head -50",
         true, true, {}
     });
     m_checks.append({
         "cmd_injection", "Command Injection Patterns",
-        "system(), popen(), exec() with string concatenation", "Security",
-        "grep -rnI" + GI + " -E '\\b(system|popen|exec[lv]?p?)\\s*\\(' . 2>/dev/null | head -30;"
-        " grep -rnI --include='*.py' -E '(subprocess\\.(call|run|Popen).*shell\\s*=\\s*True|os\\.system)' . 2>/dev/null | head -20;"
-        " grep -rnI --include='*.js' --include='*.ts' -E 'child_process\\.exec[^F]' . 2>/dev/null | head -20",
+        "system(), popen() with dynamic arguments", "Security",
+        "grep -rnI" + SX + GI + " -E '\\b(system|popen|exec[lv]?p?)\\s*\\(' . 2>/dev/null"
+        " | grep -vE '(\\.exec\\(|app\\.exec|menu\\.exec|dialog\\.exec|QApplication)' | head -30;"
+        " grep -rnI" + SX + " --include='*.py' -E '(subprocess\\.(call|run|Popen).*shell\\s*=\\s*True|os\\.system)' . 2>/dev/null | head -20;"
+        " grep -rnI" + SX + " --include='*.js' --include='*.ts' -E 'child_process\\.exec[^F]' . 2>/dev/null | head -20",
         true, true, {}
     });
     m_checks.append({
         "format_string", "Format String Vulnerabilities",
         "printf/fprintf with non-literal format argument", "Security",
-        "grep -rnI" + GI + " -P '\\b[fs]?n?printf\\s*\\([^\"]*\\b\\w+\\s*\\)' . 2>/dev/null"
+        "grep -rnI" + SX + GI + " -P '\\b[fs]?n?printf\\s*\\([^\"]*\\b\\w+\\s*\\)' . 2>/dev/null"
         " | grep -vE 'printf\\s*\\(\\s*\"' | head -30",
         false, true, {}
     });
     m_checks.append({
         "insecure_http", "Insecure HTTP URLs",
         "http:// URLs that should be https://", "Security",
-        "grep -rnI" + GI + " --include='*.json' --include='*.yaml' --include='*.yml'"
+        "grep -rnI" + SX + GI + " --include='*.json' --include='*.yaml' --include='*.yml'"
         " --include='*.toml' --include='*.xml' --include='*.cfg'"
         " -E 'http://[^l][^o][^c]' . 2>/dev/null"
-        " | grep -viE '(localhost|127\\.0\\.0|example\\.com|//comment|0\\.0\\.0\\.0)' | head -30",
+        " | grep -viE '(localhost|127\\.0\\.0|example\\.com|//comment|0\\.0\\.0\\.0|placeholder)' | head -30",
         true, true, {}
     });
     m_checks.append({
         "unsafe_deser", "Unsafe Deserialization",
         "eval(), pickle.loads(), yaml.load() without SafeLoader", "Security",
-        "grep -rnI --include='*.py' -E '\\b(pickle\\.loads?|yaml\\.load|marshal\\.loads?|eval)\\s*\\(' . 2>/dev/null"
+        "grep -rnI" + SX + " --include='*.py' -E '\\b(pickle\\.loads?|yaml\\.load|marshal\\.loads?|eval)\\s*\\(' . 2>/dev/null"
         " | grep -viE '(SafeLoader|safe_load|ast\\.literal_eval)' | head -20;"
-        " grep -rnI --include='*.js' --include='*.ts' -E '\\beval\\s*\\(' . 2>/dev/null | head -20;"
-        " grep -rnI --include='*.php' -E '\\b(unserialize|eval)\\s*\\(' . 2>/dev/null | head -20",
+        " grep -rnI" + SX + " --include='*.js' --include='*.ts' -E '\\beval\\s*\\(' . 2>/dev/null | head -20;"
+        " grep -rnI" + SX + " --include='*.php' -E '\\b(unserialize|eval)\\s*\\(' . 2>/dev/null | head -20",
         true, true, {}
     });
     m_checks.append({
         "sql_injection", "SQL Injection Patterns",
         "String concatenation/formatting in SQL queries", "Security",
-        "grep -rnI" + GI + " -iE '(execute|query|cursor\\.execute|raw_input).*(%s|%d|\\+.*\\+|\\.format|f\").*([Ss][Ee][Ll][Ee][Cc][Tt]|[Ii][Nn][Ss][Ee][Rr][Tt]|[Uu][Pp][Dd][Aa][Tt][Ee]|[Dd][Ee][Ll][Ee][Tt][Ee])' . 2>/dev/null | head -30;"
-        " grep -rnI" + GI + " -iE '([Ss][Ee][Ll][Ee][Cc][Tt]|[Ii][Nn][Ss][Ee][Rr][Tt]|[Uu][Pp][Dd][Aa][Tt][Ee]|[Dd][Ee][Ll][Ee][Tt][Ee]).*(%s|%d|\\+.*\\+|\\.format|f\")' . 2>/dev/null | head -30",
+        "grep -rnI" + SX + GI + " -iE '(execute|query|cursor\\.execute|raw_input).*(%s|%d|\\+.*\\+|\\.format|f\").*([Ss][Ee][Ll][Ee][Cc][Tt]|[Ii][Nn][Ss][Ee][Rr][Tt]|[Uu][Pp][Dd][Aa][Tt][Ee]|[Dd][Ee][Ll][Ee][Tt][Ee])' . 2>/dev/null | head -30;"
+        " grep -rnI" + SX + GI + " -iE '([Ss][Ee][Ll][Ee][Cc][Tt]|[Ii][Nn][Ss][Ee][Rr][Tt]|[Uu][Pp][Dd][Aa][Tt][Ee]|[Dd][Ee][Ll][Ee][Tt][Ee]).*(%s|%d|\\+.*\\+|\\.format|f\")' . 2>/dev/null | head -30",
         false, true, {}
     });
     m_checks.append({
-        "xss_patterns", "Cross-Site Scripting (XSS) Patterns",
+        "xss_patterns", "Cross-Site Scripting (XSS)",
         "innerHTML, document.write, dangerouslySetInnerHTML", "Security",
-        "grep -rnI --include='*.js' --include='*.ts' --include='*.jsx' --include='*.tsx' --include='*.html'"
+        "grep -rnI" + SX + " --include='*.js' --include='*.ts' --include='*.jsx' --include='*.tsx' --include='*.html'"
         " -E '\\b(innerHTML|outerHTML|document\\.write|dangerouslySetInnerHTML|v-html)\\b' . 2>/dev/null | head -30",
         false, true, {}
     });
     m_checks.append({
         "path_traversal", "Path Traversal Patterns",
         "Unsanitized path joins with user input", "Security",
-        "grep -rnI" + GI + " -E '\\.\\./' . 2>/dev/null"
+        "grep -rnI" + SX + GI + " -E '\\.\\./' . 2>/dev/null"
         " | grep -viE '(node_modules|vendor|build|/\\*|//|#|test|spec|mock|example)' | head -20;"
-        " grep -rnI --include='*.py' -E 'os\\.path\\.join.*request' . 2>/dev/null | head -10",
+        " grep -rnI" + SX + " --include='*.py' -E 'os\\.path\\.join.*request' . 2>/dev/null | head -10",
         false, true, {}
     });
     m_checks.append({
         "insecure_random", "Insecure Randomness",
         "rand(), srand(), Math.random() for security use", "Security",
-        "grep -rnI" + GI + " -E '\\b(srand|rand)\\s*\\(' . 2>/dev/null"
+        "grep -rnI" + SX + GI + " -E '\\b(srand|rand)\\s*\\(' . 2>/dev/null"
         " | grep -viE '(test|example|seed|arc4random|random_device)' | head -20;"
-        " grep -rnI --include='*.py' -E '\\brandom\\.(random|randint|choice)' . 2>/dev/null"
+        " grep -rnI" + SX + " --include='*.py' -E '\\brandom\\.(random|randint|choice)' . 2>/dev/null"
         " | grep -viE '(test|mock|seed|secrets)' | head -20",
         false, true, {}
     });
     m_checks.append({
         "weak_crypto", "Weak Cryptography",
         "MD5, SHA1, DES, RC4, ECB mode usage", "Security",
-        "grep -rnI" + GI + " -iE '\\b(md5|sha1|des|rc4|ecb)\\b' . 2>/dev/null"
+        "grep -rnI" + SX + GI + " -iE '\\b(md5|sha1|des|rc4|ecb)\\b' . 2>/dev/null"
         " | grep -viE '(git|checksums?|hash.*file|integrity|content.hash|test|checksum|etag)' | head -30",
         false, true, {}
     });
     m_checks.append({
-        "readme_check", "README & License Check",
-        "Verify documentation files exist", "General",
-        "echo '=== README ===' && (ls README* readme* 2>/dev/null || echo 'No README found')"
-        " && echo '=== LICENSE ===' && (ls LICENSE* license* COPYING* 2>/dev/null || echo 'No LICENSE found')",
+        "hardcoded_ips", "Hardcoded IPs & Ports",
+        "IP addresses and port numbers in source", "Security",
+        "grep -rnI" + SX + GI + " -E '\\b([0-9]{1,3}\\.){3}[0-9]{1,3}\\b' . 2>/dev/null"
+        " | grep -viE '(127\\.0\\.0\\.1|0\\.0\\.0\\.0|255\\.255|example|test|mock|version|license)' | head -20",
         false, true, {}
     });
     m_checks.append({
-        "dup_files", "Duplicate File Detection",
-        "Find files with identical content", "General",
-        "find ." + X + " -type f -size +100c \\( -name '*.cpp' -o -name '*.h' -o -name '*.py'"
-        " -o -name '*.js' -o -name '*.ts' \\) -exec md5sum {} + 2>/dev/null"
-        " | sort | uniq -Dw32 | head -30",
+        "env_files", "Exposed Environment Files",
+        ".env, .env.local, credentials files in repo", "Security",
+        "find ." + X + " -type f \\( -name '.env' -o -name '.env.*' -o -name 'credentials'"
+        " -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx'"
+        " -o -name 'id_rsa' -o -name 'id_ed25519' -o -name '*.keystore' \\) 2>/dev/null | head -20",
+        true, true, {}
+    });
+    m_checks.append({
+        "temp_files", "Temporary/Backup Files",
+        "Editor backups, swap files, OS metadata in repo", "Security",
+        "find ." + X + " -type f \\( -name '*.swp' -o -name '*.swo' -o -name '*~'"
+        " -o -name '.DS_Store' -o -name 'Thumbs.db' -o -name '*.bak'"
+        " -o -name '*.orig' -o -name '*.tmp' \\) 2>/dev/null | head -20",
+        false, true, {}
+    });
+    m_checks.append({
+        "resource_leaks", "Resource Leak Patterns",
+        "fopen/open without close, unchecked returns", "Security",
+        "grep -rnI" + SX + " --include='*.c' --include='*.cpp'"
+        " -E '\\b(fopen|open|socket|accept)\\s*\\(' . 2>/dev/null"
+        " | grep -viE '(close|fclose|RAII|unique_ptr|shared_ptr|QFile|QSaveFile|auto_ptr)' | head -30",
         false, true, {}
     });
 
@@ -269,6 +368,22 @@ void AuditDialog::populateChecks() {
             " && echo '=== Merged (can delete) ===' && git branch -v --merged 2>/dev/null | grep -v '^\\*'",
             false, true, {}
         });
+        m_checks.append({
+            "git_large_history", "Large Files in Git History",
+            "Blobs > 1MB ever committed (may bloat repo)", "Git",
+            "git rev-list --objects --all 2>/dev/null"
+            " | git cat-file --batch-check='%(objecttype) %(objectsize) %(rest)' 2>/dev/null"
+            " | awk '$1==\"blob\" && $2>1048576 {printf \"%.1fMB %s\\n\", $2/1048576, $3}'"
+            " | sort -rn | head -20",
+            false, true, {}
+        });
+        m_checks.append({
+            "git_sensitive", "Sensitive Files in Git",
+            "Private keys, secrets, credentials ever committed", "Git",
+            "git ls-files 2>/dev/null | grep -iE '(id_rsa|id_ed25519|\\.pem|\\.key|\\.env|credentials|secret|password)'"
+            " | grep -viE '(example|template|sample|test|mock|lock|CLAUDE\\.md)' | head -20",
+            false, true, {}
+        });
     }
 
     // ---- C/C++ ----
@@ -279,8 +394,20 @@ void AuditDialog::populateChecks() {
             hasCppcheck ? "Warnings, performance, portability" : "(cppcheck not installed)",
             "C/C++",
             "cppcheck --enable=warning,performance,portability --quiet --inline-suppr"
-            " --suppress=missingInclude --suppress=unmatchedSuppression -j$(nproc) . 2>&1 | head -100",
+            " --suppress=missingInclude --suppress=unmatchedSuppression"
+            " -i build -i build-test -i build-release -i node_modules"
+            " -j$(nproc) . 2>&1 | head -100",
             hasCppcheck, hasCppcheck, {}
+        });
+        m_checks.append({
+            "cppcheck_unused", "Dead Code Detection",
+            hasCppcheck ? "Unused functions (single-threaded scan)" : "(cppcheck not installed)",
+            "C/C++",
+            "cppcheck --enable=unusedFunction --quiet --inline-suppr"
+            " --suppress=missingInclude --suppress=unmatchedSuppression"
+            " -i build -i build-test -i build-release -i node_modules"
+            " . 2>&1 | head -50",
+            false, hasCppcheck, {}
         });
         bool hasClangTidy = toolExists("clang-tidy");
         m_checks.append({
@@ -290,6 +417,34 @@ void AuditDialog::populateChecks() {
             "find . -name '*.cpp'" + X + " | head -15"
             " | xargs -I{} clang-tidy {} -- -std=c++20 -I src 2>&1 | head -100",
             false, hasClangTidy, {}
+        });
+        m_checks.append({
+            "header_guards", "Missing Header Guards",
+            "Headers without #pragma once or include guards", "C/C++",
+            "find ." + X + " -name '*.h' -o -name '*.hpp' | while read f; do"
+            " head -5 \"$f\" | grep -qE '(#pragma once|#ifndef .+_H)' || echo \"$f\";"
+            " done 2>/dev/null | head -20",
+            false, true, {}
+        });
+        m_checks.append({
+            "compiler_warnings", "Compiler Warnings Check",
+            "Build with -Wall -Wextra and capture warnings", "C/C++",
+            "if [ -f CMakeLists.txt ]; then"
+            " tmpdir=$(mktemp -d) && cd \"$tmpdir\""
+            " && cmake -DCMAKE_CXX_FLAGS='-Wall -Wextra -Wno-unused-parameter' \"$OLDPWD\" 2>/dev/null"
+            " && make -j$(nproc) 2>&1 | grep -E '(warning:|error:)' | head -60;"
+            " rm -rf \"$tmpdir\";"
+            " fi",
+            false, true, {}
+        });
+        m_checks.append({
+            "memory_patterns", "Memory Management Patterns",
+            "new/malloc without smart pointers or free", "C/C++",
+            "grep -rnI" + SX + " --include='*.cpp' --include='*.c'"
+            " -E '\\b(new |malloc|calloc|realloc)\\b' . 2>/dev/null"
+            " | grep -vE '(unique_ptr|shared_ptr|make_unique|make_shared|delete|free|RAII|nothrow|placement|override|Q_NEW|qMalloc)'"
+            " | head -30",
+            false, true, {}
         });
     }
 
@@ -308,7 +463,7 @@ void AuditDialog::populateChecks() {
             "bandit", "Bandit Security Scan",
             hasBandit ? "Python security issue detection" : "(bandit not installed)",
             "Python",
-            "bandit -r . -q 2>&1 | head -100",
+            "bandit -r . -q --exclude=./build,./build-test,./node_modules 2>&1 | head -100",
             hasBandit, hasBandit, {}
         });
         bool hasMypy = toolExists("mypy");
@@ -318,6 +473,14 @@ void AuditDialog::populateChecks() {
             "Python",
             "mypy . --ignore-missing-imports 2>&1 | tail -20",
             false, hasMypy, {}
+        });
+        bool hasRuff = toolExists("ruff");
+        m_checks.append({
+            "ruff", "Ruff Linter",
+            hasRuff ? "Fast Python linting (flake8 + more)" : "(ruff not installed)",
+            "Python",
+            "ruff check . 2>&1 | head -80",
+            hasRuff, hasRuff, {}
         });
     }
 
@@ -336,6 +499,13 @@ void AuditDialog::populateChecks() {
             hasNpm ? "Lint JavaScript/TypeScript" : "(npm not installed)",
             "JavaScript",
             "npx eslint . --max-warnings=50 2>&1 | head -100",
+            false, hasNpm, {}
+        });
+        m_checks.append({
+            "outdated_deps", "Outdated Dependencies",
+            hasNpm ? "Check for outdated npm packages" : "(npm not installed)",
+            "JavaScript",
+            "npm outdated 2>&1 | head -30",
             false, hasNpm, {}
         });
     }
@@ -378,6 +548,14 @@ void AuditDialog::populateChecks() {
             "govulncheck ./... 2>&1 | head -50",
             false, hasVuln, {}
         });
+        bool hasLint = toolExists("golangci-lint");
+        m_checks.append({
+            "golangci_lint", "golangci-lint",
+            hasLint ? "Comprehensive Go linting" : "(golangci-lint not installed)",
+            "Go",
+            "golangci-lint run ./... 2>&1 | head -100",
+            false, hasLint, {}
+        });
     }
 
     // ---- Shell ----
@@ -389,6 +567,31 @@ void AuditDialog::populateChecks() {
             "Shell",
             "find . -name '*.sh'" + X + " -exec shellcheck {} + 2>&1 | head -100",
             hasSC, hasSC, {}
+        });
+    }
+
+    // ---- Lua ----
+    if (m_detectedTypes.contains("Lua")) {
+        bool hasLuacheck = toolExists("luacheck");
+        m_checks.append({
+            "luacheck", "Luacheck Analysis",
+            hasLuacheck ? "Static analysis for Lua scripts" : "(luacheck not installed)",
+            "Lua",
+            "find . -name '*.lua'" + X + " -exec luacheck {} + 2>&1 | head -100",
+            hasLuacheck, hasLuacheck, {}
+        });
+    }
+
+    // ---- Java ----
+    if (m_detectedTypes.contains("Java")) {
+        bool hasSpotbugs = toolExists("spotbugs");
+        m_checks.append({
+            "spotbugs", "SpotBugs Analysis",
+            hasSpotbugs ? "Find bug patterns in Java code" : "(spotbugs not installed)",
+            "Java",
+            "find . -name '*.class'" + X + " | head -1 >/dev/null 2>&1"
+            " && spotbugs -textui -effort:max . 2>&1 | head -80 || echo 'No compiled .class files found'",
+            false, hasSpotbugs, {}
         });
     }
 }

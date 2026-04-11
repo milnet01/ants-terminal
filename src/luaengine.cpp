@@ -2,6 +2,7 @@
 
 #include <lua5.4/lua.hpp>
 #include <QDebug>
+#include <QFile>
 #include <cstdlib>
 
 // Helper to retrieve LuaEngine* from Lua state upvalue
@@ -36,15 +37,15 @@ void *LuaEngine::luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     return result;
 }
 
-static PluginEvent eventFromString(const char *name) {
-    if (strcmp(name, "output") == 0) return PluginEvent::Output;
-    if (strcmp(name, "line") == 0) return PluginEvent::Line;
-    if (strcmp(name, "prompt") == 0) return PluginEvent::Prompt;
-    if (strcmp(name, "keypress") == 0) return PluginEvent::KeyPress;
-    if (strcmp(name, "title_changed") == 0) return PluginEvent::TitleChanged;
-    if (strcmp(name, "tab_created") == 0) return PluginEvent::TabCreated;
-    if (strcmp(name, "tab_closed") == 0) return PluginEvent::TabClosed;
-    return PluginEvent::Output; // default
+static bool eventFromString(const char *name, PluginEvent &out) {
+    if (strcmp(name, "output") == 0) { out = PluginEvent::Output; return true; }
+    if (strcmp(name, "line") == 0) { out = PluginEvent::Line; return true; }
+    if (strcmp(name, "prompt") == 0) { out = PluginEvent::Prompt; return true; }
+    if (strcmp(name, "keypress") == 0) { out = PluginEvent::KeyPress; return true; }
+    if (strcmp(name, "title_changed") == 0) { out = PluginEvent::TitleChanged; return true; }
+    if (strcmp(name, "tab_created") == 0) { out = PluginEvent::TabCreated; return true; }
+    if (strcmp(name, "tab_closed") == 0) { out = PluginEvent::TabClosed; return true; }
+    return false;
 }
 
 LuaEngine::LuaEngine(QObject *parent) : QObject(parent) {}
@@ -127,11 +128,11 @@ void LuaEngine::registerApi() {
 }
 
 void LuaEngine::sandboxEnvironment() {
-    // Remove dangerous globals
+    // Remove dangerous globals (getmetatable allows string metatable manipulation)
     const char *dangerous[] = {
         "os", "io", "loadfile", "dofile", "load",
         "rawget", "rawset", "rawequal", "rawlen",
-        "setmetatable", "collectgarbage",
+        "setmetatable", "getmetatable", "collectgarbage",
         "require", "package", "debug",
         nullptr
     };
@@ -143,6 +144,18 @@ void LuaEngine::sandboxEnvironment() {
 
 bool LuaEngine::loadScript(const QString &path) {
     if (!m_state) return false;
+
+    // Reject compiled bytecode — Lua 5.4 has no bytecode verifier, so
+    // crafted bytecode can corrupt memory and escape the sandbox.
+    QFile check(path);
+    if (check.open(QIODevice::ReadOnly)) {
+        char first = 0;
+        if (check.read(&first, 1) == 1 && first == '\x1b') {
+            emit logMessage(QString("Rejected binary bytecode: %1").arg(path));
+            return false;
+        }
+        check.close();
+    }
 
     int result = luaL_dofile(m_state, path.toUtf8().constData());
     if (result != LUA_OK) {
@@ -277,7 +290,9 @@ int LuaEngine::lua_ants_on(lua_State *L) {
     luaL_checktype(L, 2, LUA_TFUNCTION);
 
     if (engine) {
-        PluginEvent event = eventFromString(eventName);
+        PluginEvent event;
+        if (!eventFromString(eventName, event))
+            return luaL_error(L, "unknown event: %s", eventName);
         // Store function reference in registry
         lua_pushvalue(L, 2);
         int ref = luaL_ref(L, LUA_REGISTRYINDEX);

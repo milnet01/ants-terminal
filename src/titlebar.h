@@ -4,7 +4,6 @@
 #include <QLabel>
 #include <QToolButton>
 #include <QHBoxLayout>
-#include <QIcon>
 
 class TitleBar : public QWidget {
     Q_OBJECT

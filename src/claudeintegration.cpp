@@ -85,49 +85,74 @@ void ClaudeIntegration::pollClaudeProcess() {
         }
     }
 
-    ClaudeState newState;
     if (!found) {
-        newState = ClaudeState::NotRunning;
-    } else if (m_claudePid == 0) {
-        // Newly detected — start as Idle, transcript watcher will refine
-        newState = ClaudeState::Idle;
-    } else {
-        // Already tracking — keep current state (Thinking/ToolUse) intact;
-        // parseTranscriptForState() manages transitions via file watcher
-        newState = m_state;
+        m_claudePid = 0;
+        m_transcriptPath.clear();
+        if (m_state != ClaudeState::NotRunning) {
+            m_state = ClaudeState::NotRunning;
+            emit stateChanged(m_state, m_currentTool);
+        }
+        return;
     }
 
-    if (found && m_claudePid == 0) {
+    if (m_claudePid == 0) {
+        // Newly detected Claude process
         m_claudePid = foundPid;
-        // Try to find the active session transcript
+        m_lastOutputTimestamp = QDateTime::currentDateTime();
+
+        // Find the most recently modified transcript across ALL projects
         QString home = QDir::homePath();
         QDir claudeDir(home + "/.claude/projects");
         if (claudeDir.exists()) {
-            // Find most recently modified transcript
-            QFileInfoList transcripts;
+            QFileInfo newest;
             for (const QString &projDir : claudeDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
                 QDir proj(claudeDir.filePath(projDir));
-                for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time)) {
-                    transcripts.append(fi);
+                for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files)) {
+                    if (!newest.exists() || fi.lastModified() > newest.lastModified())
+                        newest = fi;
                 }
             }
-            if (!transcripts.isEmpty()) {
-                // Watch the most recent transcript
-                QString transcriptPath = transcripts.first().absoluteFilePath();
-                if (!m_transcriptWatcher.files().contains(transcriptPath)) {
-                    m_transcriptWatcher.addPath(transcriptPath);
-                    connect(&m_transcriptWatcher, &QFileSystemWatcher::fileChanged,
-                            this, &ClaudeIntegration::parseTranscriptForState);
-                }
+            if (newest.exists()) {
+                m_transcriptPath = newest.absoluteFilePath();
+
+                // Remove old watches to avoid stale watchers
+                QStringList oldFiles = m_transcriptWatcher.files();
+                if (!oldFiles.isEmpty())
+                    m_transcriptWatcher.removePaths(oldFiles);
+
+                m_transcriptWatcher.addPath(m_transcriptPath);
+
+                // Connect signal only once (disconnect first to avoid duplicates)
+                disconnect(&m_transcriptWatcher, &QFileSystemWatcher::fileChanged,
+                           this, &ClaudeIntegration::parseTranscriptForState);
+                connect(&m_transcriptWatcher, &QFileSystemWatcher::fileChanged,
+                        this, &ClaudeIntegration::parseTranscriptForState);
             }
         }
-    } else if (!found) {
-        m_claudePid = 0;
+
+        // Set initial Idle state, then let transcript parse refine it
+        if (m_state != ClaudeState::Idle) {
+            m_state = ClaudeState::Idle;
+            emit stateChanged(m_state, "idle");
+        }
     }
 
-    if (newState != m_state) {
-        m_state = newState;
-        emit stateChanged(m_state, m_currentTool);
+    // Clear "recent output" flag if no output for >5 seconds
+    if (m_hasRecentOutput && m_lastOutputTimestamp.isValid() &&
+        m_lastOutputTimestamp.msecsTo(QDateTime::currentDateTime()) > 5000) {
+        m_hasRecentOutput = false;
+    }
+
+    // Parse transcript on EVERY poll cycle for reliability —
+    // QFileSystemWatcher can miss rapid changes on Linux
+    if (!m_transcriptPath.isEmpty())
+        parseTranscriptForState(m_transcriptPath);
+}
+
+void ClaudeIntegration::notifyTerminalOutput() {
+    if (m_claudePid > 0) {
+        m_hasRecentOutput = true;
+        m_lastOutputTimestamp = QDateTime::currentDateTime();
     }
 }
 
@@ -196,9 +221,15 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     if (size > 8192) file.seek(size - 8192);
 
     QJsonObject lastEvent;
+    bool firstLine = (size > 8192); // first line after seek is likely truncated
     while (!file.atEnd()) {
         QByteArray line = file.readLine().trimmed();
         if (line.isEmpty()) continue;
+        if (firstLine) {
+            // Skip the first line after seeking — it's likely a partial JSON line
+            firstLine = false;
+            continue;
+        }
         QJsonDocument doc = QJsonDocument::fromJson(line);
         if (doc.isObject()) lastEvent = doc.object();
     }
@@ -243,6 +274,20 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
         detail = "thinking";
     } else if (type == "human" || type == "user") {
         // User sent a message — Claude will start thinking
+        newState = ClaudeState::Thinking;
+        detail = "thinking";
+    } else if (type == "attachment") {
+        // Attachment follows a user message — Claude should be thinking
+        if (m_state == ClaudeState::Idle)
+            newState = ClaudeState::Thinking;
+        detail = "thinking";
+    }
+    // Unknown event types: leave state unchanged
+
+    // Output-based activity override: if the terminal is actively receiving
+    // output from a running Claude process, it's not idle regardless of what
+    // the transcript says (the transcript may lag behind actual activity)
+    if (newState == ClaudeState::Idle && m_claudePid > 0 && m_hasRecentOutput) {
         newState = ClaudeState::Thinking;
         detail = "thinking";
     }
@@ -297,6 +342,8 @@ bool ClaudeIntegration::startHookServer() {
         m_hookServer = nullptr;
         return false;
     }
+    // Restrict socket permissions to owner only
+    QFile::setPermissions(socketPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 
     connect(m_hookServer, &QLocalServer::newConnection,
             this, &ClaudeIntegration::onHookConnection);
@@ -311,21 +358,24 @@ void ClaudeIntegration::stopHookServer() {
     }
 }
 
-int ClaudeIntegration::hookServerPort() const {
-    return m_hookServer ? 1 : 0; // Unix socket, not TCP port
-}
 
 void ClaudeIntegration::onHookConnection() {
     while (m_hookServer->hasPendingConnections()) {
         QLocalSocket *socket = m_hookServer->nextPendingConnection();
-        connect(socket, &QLocalSocket::readyRead, this, [this, socket]() {
-            QByteArray data = socket->readAll();
+        // Buffer incoming data — readyRead may fire with partial JSON
+        socket->setProperty("_buf", QByteArray());
+        connect(socket, &QLocalSocket::readyRead, this, [socket]() {
+            QByteArray buf = socket->property("_buf").toByteArray();
+            buf += socket->readAll();
+            socket->setProperty("_buf", buf);
+        });
+        connect(socket, &QLocalSocket::disconnected, this, [this, socket]() {
+            QByteArray data = socket->property("_buf").toByteArray();
             QJsonDocument doc = QJsonDocument::fromJson(data);
             if (doc.isObject())
                 processHookEvent(doc.object());
             socket->deleteLater();
         });
-        connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
     }
 }
 
@@ -380,6 +430,8 @@ bool ClaudeIntegration::startMcpServer(const QString &socketPath) {
         m_mcpServer = nullptr;
         return false;
     }
+    // Restrict socket permissions to owner only
+    QFile::setPermissions(socketPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 
     connect(m_mcpServer, &QLocalServer::newConnection,
             this, &ClaudeIntegration::onMcpConnection);
@@ -417,10 +469,18 @@ void ClaudeIntegration::setEnvironmentProvider(std::function<QString()> provider
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
+        // Buffer incoming data — readyRead may fire with partial JSON.
+        // Try to parse on each readyRead; process once valid JSON is received.
+        socket->setProperty("_buf", QByteArray());
+        socket->setProperty("_handled", false);
         connect(socket, &QLocalSocket::readyRead, this, [this, socket]() {
-            QByteArray data = socket->readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(data);
-            if (!doc.isObject()) { socket->deleteLater(); return; }
+            if (socket->property("_handled").toBool()) return;
+            QByteArray buf = socket->property("_buf").toByteArray();
+            buf += socket->readAll();
+            socket->setProperty("_buf", buf);
+            QJsonDocument doc = QJsonDocument::fromJson(buf);
+            if (!doc.isObject()) return; // wait for more data
+            socket->setProperty("_handled", true);
 
             QJsonObject request = doc.object();
             QString method = request.value("method").toString();

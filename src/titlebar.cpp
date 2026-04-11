@@ -2,8 +2,8 @@
 
 #include <QMouseEvent>
 #include <QWindow>
-#include <QTimer>
 #include <QApplication>
+#include <QIcon>
 #include <QCursor>
 
 TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {

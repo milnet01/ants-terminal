@@ -3,7 +3,6 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QApplication>
-#include <QMenu>
 
 CommandPalette::CommandPalette(QWidget *parent) : QWidget(parent) {
     setWindowFlags(Qt::Widget);
@@ -40,7 +39,9 @@ void CommandPalette::setActions(const QList<QAction *> &actions) {
 }
 
 void CommandPalette::show() {
+    m_input->blockSignals(true);
     m_input->clear();
+    m_input->blockSignals(false);
     populateList("");
     positionAndResize();
     QWidget::show();

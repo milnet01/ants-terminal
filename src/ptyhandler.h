@@ -12,7 +12,8 @@ public:
     explicit Pty(QObject *parent = nullptr);
     ~Pty() override;
 
-    bool start(const QString &shell = QString());
+    bool start(const QString &shell = QString(), const QString &workDir = QString(),
+               int rows = 24, int cols = 80);
     void write(const QByteArray &data);
     void resize(int rows, int cols);
     pid_t childPid() const { return m_childPid; }

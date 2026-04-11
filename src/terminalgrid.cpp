@@ -296,6 +296,9 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_altCursorRow = m_cursorRow;
                         m_altCursorCol = m_cursorCol;
                         m_altScreen = m_screenLines;
+                        m_altScreenHyperlinks = m_screenHyperlinks;
+                        m_altInlineImages = m_inlineImages;
+                        m_altPromptRegions = m_promptRegions;
                         for (auto &line : m_screenLines) {
                             for (auto &c : line.cells) {
                                 c.codepoint = ' ';
@@ -305,6 +308,10 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                             }
                             line.combining.clear();
                         }
+                        for (auto &hl : m_screenHyperlinks)
+                            hl.clear();
+                        m_inlineImages.clear();
+                        m_promptRegions.clear();
                         m_cursorRow = 0;
                         m_cursorCol = 0;
                     }
@@ -334,8 +341,15 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                     if (m_altScreenActive) {
                         m_altScreenActive = false;
                         m_screenLines = m_altScreen;
+                        m_screenHyperlinks = m_altScreenHyperlinks;
+                        m_inlineImages = m_altInlineImages;
+                        m_promptRegions = m_altPromptRegions;
                         m_cursorRow = m_altCursorRow;
                         m_cursorCol = m_altCursorCol;
+                        m_altScreen.clear();
+                        m_altScreenHyperlinks.clear();
+                        m_altInlineImages.clear();
+                        m_altPromptRegions.clear();
                     }
                     break;
                 case 1000: m_mouseButtonMode = false; break;
@@ -431,8 +445,10 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             break;
         case 'c': {
             auto cb = std::move(m_responseCallback);
+            auto bellCb = std::move(m_bellCallback);
             *this = TerminalGrid(m_rows, m_cols);
             m_responseCallback = std::move(cb);
+            m_bellCallback = std::move(bellCb);
             break;
         }
         }
@@ -520,7 +536,9 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                 if (!decoded.isEmpty()) {
                     // Emit clipboard set via response callback with special prefix
                     if (m_responseCallback) {
-                        std::string clipData = "\x00OSC52:" + std::string(decoded.constData(), decoded.size());
+                        std::string clipData(1, '\0');
+                        clipData += "OSC52:";
+                        clipData += std::string(decoded.constData(), decoded.size());
                         m_responseCallback(clipData);
                     }
                 }
@@ -586,6 +604,7 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     QByteArray decoded = QByteArray::fromBase64(QByteArray::fromRawData(b64data.data(), b64data.size()));
     QImage img;
     if (!img.loadFromData(decoded)) return;
+    if (img.width() > MAX_IMAGE_DIM || img.height() > MAX_IMAGE_DIM) return;
 
     // Parse optional width/height in cells
     // Default: scale image to fit reasonable cell dimensions
@@ -915,8 +934,8 @@ void TerminalGrid::saveCursor() {
 }
 
 void TerminalGrid::restoreCursor() {
-    m_cursorRow = m_savedRow;
-    m_cursorCol = m_savedCol;
+    m_cursorRow = std::clamp(m_savedRow, 0, m_rows - 1);
+    m_cursorCol = std::clamp(m_savedCol, 0, m_cols - 1);
     m_currentAttrs = m_savedAttrs;
 }
 
@@ -966,7 +985,9 @@ void TerminalGrid::clearRow(int row, int startCol, int endCol) {
         cells[c].codepoint = ' ';
         cells[c].attrs = CellAttrs{};
         cells[c].attrs.fg = m_defaultFg;
-        cells[c].attrs.bg = m_defaultBg;
+        cells[c].attrs.bg = m_currentAttrs.bg.isValid() ? m_currentAttrs.bg : m_defaultBg;
+        cells[c].isWideChar = false;
+        cells[c].isWideCont = false;
     }
     m_screenLines[row].softWrapped = false;
     // Clear combining characters
@@ -976,6 +997,14 @@ void TerminalGrid::clearRow(int row, int startCol, int endCol) {
         for (int c = startCol; c < endCol && c < m_cols; ++c)
             m_screenLines[row].combining.erase(c);
     }
+}
+
+void TerminalGrid::clearScreenContent() {
+    for (int r = 0; r < m_rows; ++r)
+        clearRow(r);
+    m_cursorRow = 0;
+    m_cursorCol = 0;
+    m_wrapNext = false;
 }
 
 void TerminalGrid::resize(int rows, int cols) {
@@ -1417,6 +1446,8 @@ void TerminalGrid::handleApc(const std::string &payload) {
         if (format == 100) {
             // PNG format
             image.loadFromData(decoded, "PNG");
+            if (image.width() > MAX_IMAGE_DIM || image.height() > MAX_IMAGE_DIM)
+                image = QImage(); // Reject oversized
         } else if (format == 32 || format == 24) {
             // Raw pixel data
             int pixelW = 0, pixelH = 0;
