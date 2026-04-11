@@ -95,7 +95,9 @@ Underline color is independently settable via `CSI 58;2;R;G;B m`. Used by Neovim
 ### Selection and Copy/Paste
 
 - **Click and drag** to select text across lines
+- **Alt+drag** for rectangular/column selection (great for `ls -l`, `ps aux`, log timestamps)
 - **Double-click** to select a word
+- **Triple-click** to select an entire line
 - **Ctrl+Shift+C** to copy selection to clipboard
 - **Ctrl+Shift+V** to paste text (or images) from clipboard
 - **Middle-click** to paste the X11 primary selection
@@ -105,11 +107,13 @@ Underline color is independently settable via `CSI 58;2;R;G;B m`. Used by Neovim
 
 Paste images directly from the clipboard with **Ctrl+Shift+V**. Images are automatically saved as timestamped PNGs to `~/Pictures/ClaudePaste/` (configurable) and the **full filepath is inserted into the terminal** as text. This enables seamless screenshot sharing with Claude Code -- just paste and press Enter.
 
-### URL Detection & OSC 8 Hyperlinks
+### URL Detection & Extended Hints Mode
 
 URLs (`http://`, `https://`, `ftp://`, `file://`) are automatically detected, underlined, and colored with the theme accent. Hold **Ctrl** and the cursor changes to a pointing hand -- **Ctrl+Click** opens the URL in your default browser.
 
 Applications can also emit **explicit hyperlinks** via the OSC 8 protocol (`ESC ] 8 ; params ; URI ST`). These take priority over regex-detected URLs.
+
+Press **Ctrl+Shift+G** to enter **hints mode** -- all URLs, file paths, git SHAs, IP addresses, and email addresses on screen get labeled with a letter badge. Press the letter to open URLs, open file paths in your editor, or copy other patterns to clipboard.
 
 ### Search in Scrollback
 
@@ -130,6 +134,26 @@ Toggle bookmarks on any line with **Ctrl+Shift+B**. Navigate between bookmarks w
 ### Prompt Navigation (OSC 133)
 
 When your shell emits OSC 133 markers, jump between command prompts with **Ctrl+Shift+Up/Down**.
+
+### Sticky Command Header
+
+When scrolling through long command output, the command that produced it pins to the top of the viewport as a sticky header. Shows the command text and execution duration. Automatically uses OSC 133 shell integration markers.
+
+### Command Timestamps & Duration
+
+Each command prompt displays execution time (e.g. "2.3s") and timestamp (HH:mm:ss) in dim right-aligned text. Requires OSC 133 shell integration.
+
+### Command Output Folding
+
+Click the triangle indicator in the left gutter to collapse/expand completed command output blocks, or use **Ctrl+Shift+.**. Collapsed output shows a summary bar with line count.
+
+### Scratchpad (Multi-line Command Editor)
+
+Press **Ctrl+Shift+Enter** to open a floating text editor for composing complex multi-line commands. Write your pipeline or loop in the scratchpad, then press **Ctrl+Enter** to send it to the shell (uses bracketed paste for proper handling).
+
+### Command Snippets Library
+
+Press **Ctrl+Shift+;** to open the snippets dialog. Save frequently-used commands with names, descriptions, and `{{placeholder}}` parameters. When inserting a snippet, you're prompted for each placeholder value. Snippets are searchable and persist across sessions.
 
 ### Mouse Reporting
 
@@ -253,11 +277,27 @@ Deep integration with [Claude Code](https://claude.ai/claude-code) for AI-assist
 
 All keyboard shortcuts can be customized via the `keybindings` section in `config.json`.
 
-### Font Fallback
+### Font Fallback & Nerd Font Symbols
 
-The terminal automatically detects and uses fallback fonts for characters not available in the primary font.
+The terminal automatically detects and uses fallback fonts for characters not available in the primary font. **Nerd Font symbols** (Powerline, Devicons, etc.) are automatically detected -- if you have any Nerd Font installed, Powerline prompts and Starship icons will render correctly even without using a patched font as your primary font.
 
-### 7 Built-in Themes
+### Tab/Pane Badges
+
+Set a badge text in Settings > Appearance to display a large, semi-transparent watermark in the terminal background. Useful for identifying terminals at a glance (e.g., showing hostname, project name, or environment).
+
+### Dark/Light Auto-Switching
+
+Enable "Auto-switch theme with system dark/light mode" in Settings > Appearance. Configure separate themes for dark and light modes -- the terminal automatically switches when your system color scheme changes.
+
+### Auto Profile Switching
+
+Configure rules in `auto_profile_rules` to automatically switch terminal profiles based on patterns. Match against window title, current directory, or foreground process. Useful for changing appearance when SSHing to production or switching to root.
+
+### Hot-Reload Configuration
+
+Edit `~/.config/ants-terminal/config.json` externally and changes are applied instantly without restarting. Theme, fonts, keybindings, opacity, and all other settings update live.
+
+### 11 Built-in Themes
 
 Switch themes from the **View** menu. Your choice is saved between sessions.
 
@@ -270,6 +310,10 @@ Switch themes from the **View** menu. Your choice is saved between sessions.
 | **Monokai** | `#272822` | `#66D9EF` | Warm classic |
 | **Solarized Dark** | `#002B36` | `#268BD2` | Ethan Schoonover |
 | **Gruvbox** | `#282828` | `#FABD2F` | Retro warm |
+| **Tokyo Night** | `#1A1B26` | `#7AA2F7` | Japanese cityscape |
+| **Catppuccin Latte** | `#EFF1F5` | `#1E66F5` | Pastel light |
+| **One Dark** | `#282C34` | `#61AFEF` | Atom editor |
+| **Kanagawa** | `#1F1F28` | `#7E9CD8` | Muted Japanese |
 
 ### Window Management
 
@@ -358,6 +402,9 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 | Ctrl+Shift+V | Paste from clipboard (text or image with auto-save) |
 | Ctrl+Shift+U | Clear entire input line |
 | Middle-click | Paste X11 primary selection |
+| Alt+Drag | Rectangular/column selection |
+| Ctrl+Shift+Enter | Open scratchpad (multi-line command editor) |
+| Ctrl+Enter | Send scratchpad command (inside scratchpad) |
 
 ### Navigation
 
@@ -405,6 +452,9 @@ sudo make install   # installs to /usr/local/bin/ants-terminal
 | Ctrl+Shift+A | AI Assistant |
 | Ctrl+Shift+S | SSH Manager |
 | Ctrl+Shift+R | Toggle session recording |
+| Ctrl+Shift+G | Extended hints mode (URLs, SHAs, IPs, emails) |
+| Ctrl+Shift+; | Command snippets library |
+| Ctrl+Shift+. | Toggle command output fold |
 | Ctrl+Shift+J | Claude Code Projects & Sessions |
 | Ctrl+Shift+L | Claude Code Allowlist Editor |
 
@@ -574,7 +624,13 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
     "plugin_dir": "",
     "enabled_plugins": [],
     "claude_project_dirs": [],
-    "keybindings": {}
+    "keybindings": {},
+    "snippets": [],
+    "auto_profile_rules": [],
+    "badge_text": "",
+    "auto_color_scheme": false,
+    "dark_theme": "Dark",
+    "light_theme": "Light"
 }
 ```
 
@@ -602,6 +658,12 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 | `enabled_plugins` | array | `[]` | List of enabled plugin names |
 | `claude_project_dirs` | array | `[]` | Directories for Claude Code projects |
 | `keybindings` | object | `{}` | Custom keybindings (action -> key) |
+| `snippets` | array | `[]` | Saved command snippets with placeholders |
+| `auto_profile_rules` | array | `[]` | Auto profile switch rules |
+| `badge_text` | string | `""` | Watermark text in terminal background |
+| `auto_color_scheme` | bool | `false` | Auto dark/light theme switching |
+| `dark_theme` | string | `"Dark"` | Theme for dark system mode |
+| `light_theme` | string | `"Light"` | Theme for light system mode |
 
 ---
 
