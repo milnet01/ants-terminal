@@ -102,6 +102,9 @@ void TerminalGrid::setMaxScrollback(int lines) {
     m_maxScrollback = std::max(1000, lines);
     while (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
         m_scrollback.pop_front();
+    // Keep scrollback hyperlinks in sync
+    while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
+        m_scrollbackHyperlinks.pop_front();
 }
 
 void TerminalGrid::setDefaultFg(const QColor &c) {
@@ -296,6 +299,8 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_altScreenActive = true;
                         m_altCursorRow = m_cursorRow;
                         m_altCursorCol = m_cursorCol;
+                        m_altScrollTop = m_scrollTop;
+                        m_altScrollBottom = m_scrollBottom;
                         m_altScreen = m_screenLines;
                         m_altScreenHyperlinks = m_screenHyperlinks;
                         m_altInlineImages = m_inlineImages;
@@ -348,6 +353,8 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_promptRegions = m_altPromptRegions;
                         m_cursorRow = m_altCursorRow;
                         m_cursorCol = m_altCursorCol;
+                        m_scrollTop = m_altScrollTop;
+                        m_scrollBottom = m_altScrollBottom;
                         m_altScreen.clear();
                         m_altScreenHyperlinks.clear();
                         m_altInlineImages.clear();

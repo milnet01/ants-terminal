@@ -321,6 +321,7 @@ private:
     bool m_altScreenActive = false;
     std::vector<TermLine> m_altScreen;
     int m_altCursorRow = 0, m_altCursorCol = 0;
+    int m_altScrollTop = 0, m_altScrollBottom = 0;
     std::vector<std::vector<HyperlinkSpan>> m_altScreenHyperlinks;
     std::vector<InlineImage> m_altInlineImages;
     std::vector<PromptRegion> m_altPromptRegions;

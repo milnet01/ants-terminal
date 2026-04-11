@@ -40,8 +40,9 @@ void Config::save() {
         QByteArray json = QJsonDocument(m_data).toJson();
         if (file.write(json) == json.size()) {
             file.close();
-            // Atomic rename — prevents corruption if crash occurs mid-write
-            QFile::remove(path);
+            // Atomic rename — on POSIX rename(2) atomically replaces the
+            // destination, so no need to remove first (avoids a crash window
+            // where the file is deleted but not yet renamed).
             QFile::rename(tmpPath, path);
         } else {
             file.close();

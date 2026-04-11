@@ -1144,8 +1144,8 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
                     + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz")
                     + ".png";
                 if (img.save(filename)) {
-                    // Insert the filepath into the terminal
-                    if (m_pty) m_pty->write(filename.toUtf8());
+                    // Insert the filepath into the terminal (respect bracket paste)
+                    pasteToTerminal(filename.toUtf8());
                 }
                 emit imagePasted(img);
                 return;
@@ -1236,7 +1236,20 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         return;
     }
 
-    // Shift+Enter -- literal newline
+    // Kitty keyboard protocol — must be checked BEFORE legacy Ctrl+key handlers
+    // so that Ctrl+A-Z, Ctrl+arrows, Shift+Enter etc. are properly encoded
+    if (m_grid->kittyKeyFlags() > 0) {
+        QByteArray kittyData = encodeKittyKey(event);
+        if (!kittyData.isEmpty()) {
+            if (m_hasSelection) clearSelection();
+            if (m_pty) m_pty->write(kittyData);
+            if (m_broadcastCallback) m_broadcastCallback(this, kittyData);
+            return;
+        }
+        // Fall through to legacy encoding for keys not handled by Kitty
+    }
+
+    // Shift+Enter -- literal newline (legacy only — Kitty handles above)
     if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (mods & Qt::ShiftModifier)) {
         if (m_pty) {
             data = QByteArray("\x16\n", 2);
@@ -1286,18 +1299,6 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         key != Qt::Key_Right && key != Qt::Key_Left &&
         key != Qt::Key_Shift && key != Qt::Key_Control && key != Qt::Key_Alt) {
         m_currentSuggestion.clear();
-    }
-
-    // Kitty keyboard protocol — encode key if mode is active
-    if (m_grid->kittyKeyFlags() > 0) {
-        QByteArray kittyData = encodeKittyKey(event);
-        if (!kittyData.isEmpty()) {
-            if (m_hasSelection) clearSelection();
-            if (m_pty) m_pty->write(kittyData);
-            if (m_broadcastCallback) m_broadcastCallback(this, kittyData);
-            return;
-        }
-        // Fall through to legacy encoding for keys not handled by Kitty
     }
 
     // Special keys (legacy encoding)
@@ -1895,12 +1896,14 @@ void TerminalWidget::navigatePrompt(int direction) {
             if (regions[i].startLine < viewTop - 1) {
                 m_scrollOffset = scrollbackSize - regions[i].startLine;
                 m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+                updateScrollBar();
                 update();
                 return;
             }
         }
         // Already at topmost prompt — scroll to start
         m_scrollOffset = scrollbackSize;
+        updateScrollBar();
         update();
     } else {
         // Find the prompt region whose startLine is below current viewTop
@@ -1908,12 +1911,14 @@ void TerminalWidget::navigatePrompt(int direction) {
             if (region.startLine > viewTop + 1) {
                 m_scrollOffset = scrollbackSize - region.startLine;
                 m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+                updateScrollBar();
                 update();
                 return;
             }
         }
         // Already at bottommost prompt — scroll to end
         m_scrollOffset = 0;
+        updateScrollBar();
         update();
     }
 }
@@ -2116,7 +2121,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
             const auto &regions = m_grid->promptRegions();
             for (auto &pr : regions) {
                 int vr = pr.startLine - (m_grid->scrollbackSize() - m_scrollOffset);
-                if (vr >= 0 && vr < m_grid->rows() && cell.x() == pr.startLine + m_grid->scrollbackSize() - m_scrollOffset) {
+                if (vr >= 0 && vr < m_grid->rows() && cell.x() == pr.startLine) {
                     // Close enough — toggle fold for prompt at this line
                     if (pr.hasOutput && pr.commandEndMs > 0) {
                         const_cast<PromptRegion &>(pr).folded = !pr.folded;

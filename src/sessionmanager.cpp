@@ -267,7 +267,6 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         if (file.write(data) == data.size()) {
             file.close();
-            QFile::remove(path);
             QFile::rename(tmpPath, path);
         } else {
             file.close();
@@ -318,7 +317,6 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
         }
         file.flush();
         file.close();
-        QFile::remove(path);
         QFile::rename(tmpPath, path);
     }
     ::umask(oldMask);
