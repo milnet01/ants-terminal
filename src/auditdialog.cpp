@@ -118,6 +118,9 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
     loadBaseline();
     loadSuppressions();
     populateChecks();
+    const int userRules = loadUserRules();
+    if (userRules > 0)
+        m_detectedTypes << QString("User rules: %1").arg(userRules);
     buildUI();
 }
 
@@ -1063,6 +1066,97 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
 
 QString AuditDialog::suppressionPath() const {
     return m_projectPath + "/.audit_suppress";
+}
+
+// ---------------------------------------------------------------------------
+// User-defined rule loader — <project>/audit_rules.json
+// ---------------------------------------------------------------------------
+//
+// Schema is a thin translation of the AuditCheck struct to JSON so users
+// can add project-specific checks (or tune existing ones by overriding the
+// hardcoded id) without rebuilding. Rules load after populateChecks() so
+// hardcoded checks remain the baseline; user rules only augment.
+//
+// The loader is permissive — missing fields get sensible defaults, unknown
+// fields are ignored. Tool commands are NOT sandboxed (they run through
+// /bin/bash like every other check), so audit_rules.json is a trust
+// boundary. This is a local dev tool, so we treat it like .gitattributes
+// or .git/hooks — your repo, your rules.
+QString AuditDialog::userRulesPath() const {
+    return m_projectPath + "/audit_rules.json";
+}
+
+int AuditDialog::loadUserRules() {
+    QFile f(userRulesPath());
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    f.close();
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        qWarning("audit_rules.json: %s", qPrintable(err.errorString()));
+        return 0;
+    }
+    const QJsonArray rules = doc.object().value("rules").toArray();
+
+    // Enum string decoders — match severityLabel / typeLabel lowercase.
+    auto parseSeverity = [](const QString &s) -> Severity {
+        const QString v = s.toLower();
+        if (v == "blocker")  return Severity::Blocker;
+        if (v == "critical") return Severity::Critical;
+        if (v == "major")    return Severity::Major;
+        if (v == "minor")    return Severity::Minor;
+        return Severity::Info;
+    };
+    auto parseType = [](const QString &s) -> CheckType {
+        const QString v = s.toLower();
+        if (v == "smell" || v == "code_smell" || v == "codesmell") return CheckType::CodeSmell;
+        if (v == "bug")      return CheckType::Bug;
+        if (v == "hotspot")  return CheckType::Hotspot;
+        if (v == "vuln" || v == "vulnerability") return CheckType::Vulnerability;
+        return CheckType::Info;
+    };
+
+    int loaded = 0;
+    for (const QJsonValue &v : rules) {
+        if (!v.isObject()) continue;
+        const QJsonObject o = v.toObject();
+        const QString id = o.value("id").toString();
+        if (id.isEmpty()) continue;
+
+        AuditCheck c;
+        c.id          = id;
+        c.name        = o.value("name").toString(id);
+        c.description = o.value("description").toString();
+        c.category    = o.value("category").toString("User");
+        c.command     = o.value("command").toString();
+        if (c.command.isEmpty()) continue;   // command is required
+        c.type        = parseType(o.value("type").toString("info"));
+        c.severity    = parseSeverity(o.value("severity").toString("minor"));
+        c.autoSelect  = o.value("auto_select").toBool(false);
+        c.available   = true;
+
+        // Filter block.
+        const QJsonArray drop = o.value("drop_if_contains").toArray();
+        for (const QJsonValue &x : drop) c.filter.dropIfContains << x.toString();
+        const QJsonArray keep = o.value("keep_only_if_contains").toArray();
+        for (const QJsonValue &x : keep) c.filter.keepOnlyIfContains << x.toString();
+        c.filter.dropIfMatches = o.value("drop_if_matches").toString();
+        c.filter.maxLines = o.value("max_lines").toInt(100);
+
+        // If a rule with this id was already added by populateChecks() we
+        // replace it — user rules win. Otherwise append.
+        bool replaced = false;
+        for (int i = 0; i < m_checks.size(); ++i) {
+            if (m_checks[i].id == id) {
+                m_checks[i] = c;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) m_checks.append(c);
+        ++loaded;
+    }
+    return loaded;
 }
 
 void AuditDialog::loadSuppressions() {

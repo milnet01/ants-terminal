@@ -147,6 +147,18 @@ private:
     // is recorded so the UI can show "(+N more)".
     static void capFindings(CheckResult &r, int cap);
 
+    // Load user-defined rules from <project>/audit_rules.json. Schema:
+    //   { "version": 1, "rules": [ { id, name, description, category,
+    //       severity: info|minor|major|critical|blocker,
+    //       type:     info|smell|bug|hotspot|vuln,
+    //       command, auto_select, max_lines,
+    //       drop_if_contains: [...], keep_only_if_contains: [...],
+    //       drop_if_matches: "regex" } ] }
+    // User rules are appended to m_checks after hardcoded checks and inherit
+    // the same filter / parse / suppress / baseline machinery.
+    int  loadUserRules();
+    QString userRulesPath() const;
+
     // Load user-maintained dedup keys from <project>/.audit_suppress.
     // Format evolution:
     //   v1 (legacy): one dedup-key per line, '#' comments allowed.
