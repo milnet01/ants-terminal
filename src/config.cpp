@@ -62,7 +62,7 @@ void Config::setTheme(const QString &name) {
 }
 
 int Config::fontSize() const {
-    return m_data.value("font_size").toInt(11);
+    return qBound(4, m_data.value("font_size").toInt(11), 48);
 }
 
 void Config::setFontSize(int size) {
@@ -94,7 +94,7 @@ void Config::setWindowGeometryBase64(const QString &base64) {
 }
 
 int Config::scrollbackLines() const {
-    return m_data.value("scrollback_lines").toInt(50000);
+    return qBound(1000, m_data.value("scrollback_lines").toInt(50000), 1000000);
 }
 
 void Config::setScrollbackLines(int lines) {
@@ -103,7 +103,7 @@ void Config::setScrollbackLines(int lines) {
 }
 
 double Config::opacity() const {
-    return m_data.value("opacity").toDouble(1.0);
+    return qBound(0.1, m_data.value("opacity").toDouble(1.0), 1.0);
 }
 
 void Config::setOpacity(double value) {
@@ -180,7 +180,7 @@ void Config::setGpuRendering(bool enabled) {
 
 // Per-pixel background alpha
 int Config::backgroundAlpha() const {
-    return m_data.value("background_alpha").toInt(255);
+    return qBound(0, m_data.value("background_alpha").toInt(255), 255);
 }
 
 void Config::setBackgroundAlpha(int alpha) {
@@ -227,7 +227,7 @@ void Config::setAiModel(const QString &model) {
 }
 
 int Config::aiContextLines() const {
-    return m_data.value("ai_context_lines").toInt(50);
+    return qBound(10, m_data.value("ai_context_lines").toInt(50), 500);
 }
 
 void Config::setAiContextLines(int lines) {
