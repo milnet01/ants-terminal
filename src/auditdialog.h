@@ -151,6 +151,18 @@ private:
     void loadSuppressions();
     QString suppressionPath() const;
 
+    // Trend tracking — save a severity-count snapshot after each run, read
+    // the prior one to compute delta (shown in the summary banner).
+    struct TrendSnapshot {
+        QString timestamp;   // ISO 8601
+        int total = 0;
+        int bySev[5] = {0, 0, 0, 0, 0};
+    };
+    QString trendPath() const;
+    TrendSnapshot loadLastSnapshot() const;
+    void appendSnapshot(const TrendSnapshot &s);
+    static constexpr int kMaxTrendHistory = 50;
+
     // Present accumulated results sorted by severity with a summary banner.
     void renderResults();
 

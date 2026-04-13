@@ -980,6 +980,64 @@ void AuditDialog::loadSuppressions() {
 }
 
 // ---------------------------------------------------------------------------
+// Trend tracking — severity-count snapshots across audit runs
+// ---------------------------------------------------------------------------
+//
+// Stored as a JSON array of {timestamp, total, blocker, critical, major,
+// minor, info} objects at <project>/.audit_cache/trend.json. Capped at
+// kMaxTrendHistory entries (FIFO eviction).
+
+QString AuditDialog::trendPath() const {
+    return m_projectPath + "/.audit_cache/trend.json";
+}
+
+AuditDialog::TrendSnapshot AuditDialog::loadLastSnapshot() const {
+    TrendSnapshot s;
+    QFile f(trendPath());
+    if (!f.open(QIODevice::ReadOnly)) return s;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    f.close();
+    if (!doc.isArray()) return s;
+    const QJsonArray arr = doc.array();
+    if (arr.isEmpty()) return s;
+    const QJsonObject last = arr.last().toObject();
+    s.timestamp     = last.value("timestamp").toString();
+    s.total         = last.value("total").toInt();
+    s.bySev[0]      = last.value("info").toInt();
+    s.bySev[1]      = last.value("minor").toInt();
+    s.bySev[2]      = last.value("major").toInt();
+    s.bySev[3]      = last.value("critical").toInt();
+    s.bySev[4]      = last.value("blocker").toInt();
+    return s;
+}
+
+void AuditDialog::appendSnapshot(const TrendSnapshot &s) {
+    QDir().mkpath(m_projectPath + "/.audit_cache");
+    QJsonArray arr;
+    QFile f(trendPath());
+    if (f.open(QIODevice::ReadOnly)) {
+        arr = QJsonDocument::fromJson(f.readAll()).array();
+        f.close();
+    }
+    QJsonObject entry;
+    entry["timestamp"] = s.timestamp;
+    entry["total"]     = s.total;
+    entry["info"]      = s.bySev[0];
+    entry["minor"]     = s.bySev[1];
+    entry["major"]     = s.bySev[2];
+    entry["critical"]  = s.bySev[3];
+    entry["blocker"]   = s.bySev[4];
+    arr.append(entry);
+    // Evict oldest if we've hit the cap.
+    while (arr.size() > kMaxTrendHistory) arr.removeFirst();
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+        f.close();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Baseline persistence
 // ---------------------------------------------------------------------------
 
@@ -1385,6 +1443,47 @@ void AuditDialog::renderResults() {
     }
     totalSuppressed = m_suppressedKeys.size();
 
+    // Compute trend delta against the last saved snapshot BEFORE writing our
+    // own, so the user sees "vs previous run" rather than "vs this run".
+    // Persist the new snapshot afterward.
+    const TrendSnapshot prev = loadLastSnapshot();
+    TrendSnapshot curr;
+    curr.timestamp = QDateTime::currentDateTime().toString(Qt::ISODate);
+    curr.total     = totalFindings;
+    for (int i = 0; i < 5; ++i) curr.bySev[i] = bySev[i];
+
+    auto delta = [](int cur, int was) {
+        if (cur == was) return QString("±0");
+        const int d = cur - was;
+        return QString(d > 0 ? "+%1" : "%1").arg(d);
+    };
+    auto deltaColor = [](int cur, int was, bool higherIsWorse = true) {
+        if (cur == was) return QStringLiteral("#888");
+        const bool worse = higherIsWorse ? (cur > was) : (cur < was);
+        return worse ? QStringLiteral("#E74856") : QStringLiteral("#4CAF50");
+    };
+
+    QString trendLine;
+    if (!prev.timestamp.isEmpty() && !m_showNewOnly) {
+        trendLine = QString(
+            "<br><span style='font-size:10px;'>"
+            "Trend vs %1:  "
+            "Total <span style='color:%2;'>%3</span>  ·  "
+            "<span style='color:#8B0000;'>BLK</span> <span style='color:%4;'>%5</span>  ·  "
+            "<span style='color:#E74856;'>CRT</span> <span style='color:%6;'>%7</span>  ·  "
+            "<span style='color:#FFA500;'>MAJ</span> <span style='color:%8;'>%9</span>"
+            "</span>"
+        ).arg(prev.timestamp.left(10),
+              deltaColor(curr.total, prev.total),
+              delta(curr.total, prev.total),
+              deltaColor(curr.bySev[4], prev.bySev[4]),
+              delta(curr.bySev[4], prev.bySev[4]),
+              deltaColor(curr.bySev[3], prev.bySev[3]),
+              delta(curr.bySev[3], prev.bySev[3]),
+              deltaColor(curr.bySev[2], prev.bySev[2]),
+              delta(curr.bySev[2], prev.bySev[2]));
+    }
+
     // Summary banner.
     QString banner = QString(
         "<div style='background:#222; color:#eee; padding:6px 10px; border-radius:4px;"
@@ -1407,15 +1506,20 @@ void AuditDialog::renderResults() {
      .arg(bySev[(int)Severity::Major])
      .arg(bySev[(int)Severity::Minor])
      .arg(bySev[(int)Severity::Info])
-     .arg(totalSuppressed > 0
+     .arg((totalSuppressed > 0
           ? QString("<br><span style='color:#888; font-size:10px;'>"
                     "%1 suppression(s) loaded from .audit_suppress · "
                     "%2 new since baseline</span>")
               .arg(totalSuppressed).arg(m_hasBaseline ? totalNew : 0)
           : (m_hasBaseline ? QString("<br><span style='color:#888; font-size:10px;'>"
                                      "%1 new since baseline</span>").arg(totalNew)
-                           : QString()));
+                           : QString()))
+          + trendLine);
     m_results->append(banner);
+
+    // Persist the snapshot for next run's trend line. Skip if we're in
+    // showNewOnly mode — that's a filtered view, not an authoritative count.
+    if (!m_showNewOnly) appendSnapshot(curr);
 
     // Per-check sections.
     for (const auto &r : sorted) {
