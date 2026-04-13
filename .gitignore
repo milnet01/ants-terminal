@@ -41,12 +41,19 @@ desktop.ini
 # Claude Code (local settings, history, allowlist — all personal)
 .claude/
 
-# Audit tooling
+# Audit tooling and audit-run worklog artifacts
 .audit_cache/
 audit_config.yaml
 .cache/
 docs/AUTOMATED_AUDIT_REPORT*
 docs/trend_snapshot_*.json
+# Root-level audit artifacts emitted by the staged-audit workflow
+# (Phase 1–4 worklogs; deliberately kept local since they name files
+# and line numbers that change between runs)
+DISCOVERY.md
+AUDIT.md
+EXPERIMENTAL.md
+FIXPLAN.md
 __pycache__/
 *.pyc
 *.pyo
