@@ -2272,20 +2272,29 @@ void MainWindow::onTriggerFired(const QString &pattern, const QString &actionTyp
 void MainWindow::showTabColorMenu(int tabIndex) {
     QMenu menu(this);
 
+    // Capture the tab's QWidget so we resolve the (possibly-shifted) index at
+    // action time. Right-click + close-other-tab was renaming / recolouring
+    // the wrong tab.
+    QWidget *tabWidget = m_tabWidget->widget(tabIndex);
+    if (!tabWidget) return;
+
     // Rename tab
     QAction *renameAction = menu.addAction("Rename Tab...");
-    connect(renameAction, &QAction::triggered, this, [this, tabIndex]() {
+    connect(renameAction, &QAction::triggered, this, [this, tabWidget]() {
+        int idx = m_tabWidget->indexOf(tabWidget);
+        if (idx < 0) return;
         QLineEdit *editor = new QLineEdit(m_tabWidget->tabBar());
-        editor->setText(m_tabWidget->tabText(tabIndex));
+        editor->setText(m_tabWidget->tabText(idx));
         editor->selectAll();
-        QRect tabRect = m_tabWidget->tabBar()->tabRect(tabIndex);
+        QRect tabRect = m_tabWidget->tabBar()->tabRect(idx);
         editor->setGeometry(tabRect);
         editor->setFocus();
         editor->show();
-        connect(editor, &QLineEdit::editingFinished, this, [this, editor, tabIndex]() {
+        connect(editor, &QLineEdit::editingFinished, this, [this, editor, tabWidget]() {
+            int curIdx = m_tabWidget->indexOf(tabWidget);
             QString newName = editor->text().trimmed();
-            if (!newName.isEmpty())
-                m_tabWidget->setTabText(tabIndex, newName);
+            if (curIdx >= 0 && !newName.isEmpty())
+                m_tabWidget->setTabText(curIdx, newName);
             editor->deleteLater();
         });
     });
@@ -2310,13 +2319,15 @@ void MainWindow::showTabColorMenu(int tabIndex) {
             px.fill(ce.color);
             a->setIcon(QIcon(px));
         }
-        connect(a, &QAction::triggered, this, [this, tabIndex, ce]() {
+        connect(a, &QAction::triggered, this, [this, tabWidget, ce]() {
+            int idx = m_tabWidget->indexOf(tabWidget);
+            if (idx < 0) return;
             if (ce.color.isValid()) {
-                m_tabColors[tabIndex] = ce.color;
-                m_tabWidget->tabBar()->setTabTextColor(tabIndex, ce.color);
+                m_tabColors[idx] = ce.color;
+                m_tabWidget->tabBar()->setTabTextColor(idx, ce.color);
             } else {
-                m_tabColors.remove(tabIndex);
-                m_tabWidget->tabBar()->setTabTextColor(tabIndex, QColor()); // default
+                m_tabColors.remove(idx);
+                m_tabWidget->tabBar()->setTabTextColor(idx, QColor()); // default
             }
         });
     }
