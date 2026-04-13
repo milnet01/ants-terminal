@@ -586,27 +586,50 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                     m_hyperlinkId.clear();
                 }
             } else {
-                // Open hyperlink
-                if (m_hyperlinkActive) {
-                    // Close previous first
-                    HyperlinkSpan span;
-                    span.startCol = m_hyperlinkStartCol;
-                    span.endCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
-                    span.uri = m_hyperlinkUri;
-                    span.id = m_hyperlinkId;
-                    if (m_hyperlinkStartRow < m_rows)
-                        m_screenHyperlinks[m_hyperlinkStartRow].push_back(std::move(span));
+                // Validate URI scheme — STANDARDS.md §Security and RULES.md
+                // rule 7 mandate only http/https/ftp/file/mailto. A hostile
+                // program could otherwise emit `javascript:` / `data:` /
+                // `vnc:` and get Ctrl+click activation via QDesktopServices.
+                auto colonPos = uri.find(':');
+                bool validScheme = false;
+                if (colonPos != std::string::npos && colonPos > 0) {
+                    std::string scheme(uri.begin(), uri.begin() + colonPos);
+                    for (auto &c : scheme) {
+                        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+                    }
+                    validScheme = (scheme == "http"   || scheme == "https" ||
+                                   scheme == "ftp"    || scheme == "file"  ||
+                                   scheme == "mailto");
                 }
-                m_hyperlinkActive = true;
-                m_hyperlinkUri = uri;
-                m_hyperlinkStartCol = m_cursorCol;
-                m_hyperlinkStartRow = m_cursorRow;
-                // Parse id from params (id=value)
-                m_hyperlinkId.clear();
-                auto idpos = params.find("id=");
-                if (idpos != std::string::npos) {
-                    auto idend = params.find(':', idpos);
-                    m_hyperlinkId = params.substr(idpos + 3, idend != std::string::npos ? idend - idpos - 3 : std::string::npos);
+                if (!validScheme) {
+                    // Drop the OSC 8 entirely; the following text remains
+                    // un-hyperlinked but still prints normally.
+                    m_hyperlinkActive = false;
+                    m_hyperlinkUri.clear();
+                    m_hyperlinkId.clear();
+                } else {
+                    // Open hyperlink
+                    if (m_hyperlinkActive) {
+                        // Close previous first
+                        HyperlinkSpan span;
+                        span.startCol = m_hyperlinkStartCol;
+                        span.endCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
+                        span.uri = m_hyperlinkUri;
+                        span.id = m_hyperlinkId;
+                        if (m_hyperlinkStartRow < m_rows)
+                            m_screenHyperlinks[m_hyperlinkStartRow].push_back(std::move(span));
+                    }
+                    m_hyperlinkActive = true;
+                    m_hyperlinkUri = uri;
+                    m_hyperlinkStartCol = m_cursorCol;
+                    m_hyperlinkStartRow = m_cursorRow;
+                    // Parse id from params (id=value)
+                    m_hyperlinkId.clear();
+                    auto idpos = params.find("id=");
+                    if (idpos != std::string::npos) {
+                        auto idend = params.find(':', idpos);
+                        m_hyperlinkId = params.substr(idpos + 3, idend != std::string::npos ? idend - idpos - 3 : std::string::npos);
+                    }
                 }
             }
         }
