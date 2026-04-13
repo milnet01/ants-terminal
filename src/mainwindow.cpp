@@ -1261,6 +1261,7 @@ void MainWindow::closeTab(int index) {
     }
 
     QWidget *w = m_tabWidget->widget(index);
+    if (!w) return;
 
     // Save info for undo-close-tab — prefer the focused pane for split layouts
     TerminalWidget *term = activeTerminalInTab(w);
