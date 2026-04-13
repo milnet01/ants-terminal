@@ -72,13 +72,51 @@ void ClaudeIntegration::pollClaudeProcess() {
         }
     }
 
+    // Match the executable, not any substring. "grep claude file" or a user
+    // with "~/bin/claude-search" must NOT be mistaken for Claude Code.
+    auto basename = [](const QString &path) -> QString {
+        int slash = path.lastIndexOf('/');
+        return slash >= 0 ? path.mid(slash + 1) : path;
+    };
+    auto isClaudeBin = [](const QString &name) {
+        return name == QLatin1String("claude") || name == QLatin1String("claude-code");
+    };
+
     for (pid_t pid : childPids) {
         QFile cmdFile(QString("/proc/%1/cmdline").arg(pid));
         if (!cmdFile.open(QIODevice::ReadOnly)) continue;
-        QString cmdline = QString::fromUtf8(cmdFile.readAll()).replace('\0', ' ').toLower();
+        QByteArray raw = cmdFile.readAll();
         cmdFile.close();
+        // /proc/<pid>/cmdline is NUL-separated argv.
+        QList<QByteArray> argv = raw.split('\0');
+        // Trailing empty element from the final NUL — drop it if present.
+        while (!argv.isEmpty() && argv.last().isEmpty()) argv.removeLast();
+        if (argv.isEmpty()) continue;
 
-        if (cmdline.contains("claude") || cmdline.contains("claude-code")) {
+        QString arg0 = basename(QString::fromUtf8(argv.first()));
+        bool match = isClaudeBin(arg0);
+
+        // Node/deno/bun launchers: inspect argv[1..] for a script basename.
+        if (!match && (arg0 == QLatin1String("node") ||
+                       arg0 == QLatin1String("deno") ||
+                       arg0 == QLatin1String("bun"))) {
+            for (qsizetype i = 1; i < argv.size(); ++i) {
+                QString scriptName = basename(QString::fromUtf8(argv[i]));
+                // Strip a trailing .js/.mjs/.cjs/.ts so "cli.js" and similar
+                // don't prevent a match — though typically the interesting
+                // basename is the parent directory, not the script. We match
+                // on the path containing "/claude/" or "/claude-code/".
+                QString full = QString::fromUtf8(argv[i]);
+                if (isClaudeBin(scriptName) ||
+                    full.contains(QLatin1String("/claude-code/")) ||
+                    full.contains(QLatin1String("/claude/"))) {
+                    match = true;
+                    break;
+                }
+            }
+        }
+
+        if (match) {
             found = true;
             foundPid = pid;
             break;
