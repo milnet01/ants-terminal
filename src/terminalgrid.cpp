@@ -132,9 +132,9 @@ void TerminalGrid::setDefaultFg(const QColor &c) {
     QColor oldFg = m_defaultFg;
     m_defaultFg = c;
     for (auto &line : m_screenLines)
-        for (auto &cell : line.cells)
-            if (cell.attrs.fg == oldFg)
-                cell.attrs.fg = c;
+        for (auto &c2 : line.cells)
+            if (c2.attrs.fg == oldFg)
+                c2.attrs.fg = c;
     if (m_currentAttrs.fg == oldFg)
         m_currentAttrs.fg = c;
 }
@@ -143,9 +143,9 @@ void TerminalGrid::setDefaultBg(const QColor &c) {
     QColor oldBg = m_defaultBg;
     m_defaultBg = c;
     for (auto &line : m_screenLines)
-        for (auto &cell : line.cells)
-            if (cell.attrs.bg == oldBg)
-                cell.attrs.bg = c;
+        for (auto &c2 : line.cells)
+            if (c2.attrs.bg == oldBg)
+                c2.attrs.bg = c;
     if (m_currentAttrs.bg == oldBg)
         m_currentAttrs.bg = c;
 }

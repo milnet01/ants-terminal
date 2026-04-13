@@ -181,7 +181,7 @@ public:
 
 private:
     void load();
-    QString configPath() const;
+    static QString configPath();
 
     QJsonObject m_data;
 };

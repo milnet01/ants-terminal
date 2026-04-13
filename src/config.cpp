@@ -11,7 +11,7 @@ Config::Config() {
     load();
 }
 
-QString Config::configPath() const {
+QString Config::configPath() {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
                   + "/ants-terminal";
     QDir().mkpath(dir);
