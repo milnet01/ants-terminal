@@ -188,6 +188,10 @@ public:
     // Last command output text (between OSC 133 C and D markers)
     QString lastCommandOutput() const;
 
+    // Prompt navigation (OSC 133 shell integration). -1 = previous, +1 = next.
+    // Public so MainWindow can expose via menu / command palette entries.
+    void navigatePrompt(int direction);
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);
@@ -261,9 +265,6 @@ private:
     void searchPrev();
     bool isCellSearchMatch(int globalLine, int col) const;
     bool isCellCurrentMatch(int globalLine, int col) const;
-
-    // Prompt navigation (OSC 133 shell integration)
-    void navigatePrompt(int direction); // -1 = prev, +1 = next
 
     // Bracketed paste helper — sanitizes text and wraps with mode markers
     void pasteToTerminal(const QByteArray &data);

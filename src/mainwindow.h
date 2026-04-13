@@ -117,6 +117,10 @@ private:
     QTimer *m_statusMessageTimer = nullptr;
     void updateStatusBar();
     void updateTabTitles();
+    // Git branch cache — avoid synchronous .git/HEAD tree walk on every poll
+    QString m_gitCacheCwd;
+    QString m_gitCacheBranch;
+    qint64 m_gitCacheMs = 0;
     // Route status messages to m_statusMessage instead of statusBar()->showMessage(),
     // which would hide the git branch and cwd labels while displayed.
     void showStatusMessage(const QString &msg, int timeoutMs = 0);

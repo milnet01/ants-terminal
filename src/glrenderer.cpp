@@ -165,7 +165,11 @@ void GlRenderer::setViewportSize(int width, int height) {
 void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
                          const QColor &defaultBg, const QColor &cursorColor,
                          int cursorRow, int cursorCol, bool cursorVisible, bool cursorBlink) {
-    if (!m_initialized || !grid) return;
+    // Viewport guard: Qt's QOpenGLWidget lifecycle normally calls resizeGL()
+    // (which sets the viewport) before paintGL(), but if a widget is resized
+    // to 0x0 or render() is somehow called before resizeGL, proj[0]/proj[5]
+    // would divide by zero. Cheap defensive check.
+    if (!m_initialized || !grid || m_viewWidth <= 0 || m_viewHeight <= 0) return;
 
     glViewport(0, 0, m_viewWidth, m_viewHeight);
 

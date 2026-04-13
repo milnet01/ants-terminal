@@ -412,6 +412,21 @@ void MainWindow::setupMenus() {
         if (m_commandPalette) m_commandPalette->show();
     });
 
+    // OSC 133 prompt navigation — discoverable in menu + command palette.
+    // Works when the shell emits OSC 133 A/B/C markers (bash/zsh/fish integration).
+    // No shortcut here: TerminalWidget::keyPressEvent intercepts Ctrl+Shift+Up/Down
+    // directly (before Qt dispatches to menu shortcuts), which is why the label
+    // shows the hint inline rather than relying on Qt's QAction shortcut display.
+    QAction *prevPromptAction = viewMenu->addAction("Previous &Prompt\tCtrl+Shift+Up");
+    connect(prevPromptAction, &QAction::triggered, this, [this]() {
+        if (auto *t = focusedTerminal()) t->navigatePrompt(-1);
+    });
+
+    QAction *nextPromptAction = viewMenu->addAction("Next P&rompt\tCtrl+Shift+Down");
+    connect(nextPromptAction, &QAction::triggered, this, [this]() {
+        if (auto *t = focusedTerminal()) t->navigatePrompt(1);
+    });
+
     viewMenu->addSeparator();
 
     // Reload user themes
@@ -1224,6 +1239,21 @@ TerminalWidget *MainWindow::focusedTerminal() const {
     return currentTerminal();
 }
 
+// For a given tab root (a TerminalWidget or a QSplitter of panes), return the
+// "active" terminal — the descendant that currently holds focus if any, else
+// the first one in the subtree. findChild() alone returns an arbitrary first
+// child, which gives the wrong pane in split layouts.
+static TerminalWidget *activeTerminalInTab(QWidget *root) {
+    if (!root) return nullptr;
+    if (auto *t = qobject_cast<TerminalWidget *>(root)) return t;
+    // Prefer a descendant that currently has focus
+    const QList<TerminalWidget *> terms = root->findChildren<TerminalWidget *>();
+    for (TerminalWidget *t : terms) {
+        if (t && t->hasFocus()) return t;
+    }
+    return terms.isEmpty() ? nullptr : terms.first();
+}
+
 void MainWindow::closeTab(int index) {
     if (m_tabWidget->count() <= 1) {
         close();
@@ -1232,9 +1262,8 @@ void MainWindow::closeTab(int index) {
 
     QWidget *w = m_tabWidget->widget(index);
 
-    // Save info for undo-close-tab
-    TerminalWidget *term = w->findChild<TerminalWidget *>();
-    if (!term) term = qobject_cast<TerminalWidget *>(w);
+    // Save info for undo-close-tab — prefer the focused pane for split layouts
+    TerminalWidget *term = activeTerminalInTab(w);
     if (term) {
         ClosedTabInfo info;
         info.cwd = term->shellCwd();
@@ -1273,13 +1302,9 @@ void MainWindow::onTabChanged(int /*index*/) {
 }
 
 TerminalWidget *MainWindow::currentTerminal() const {
-    QWidget *w = m_tabWidget->currentWidget();
-    if (!w) return nullptr;
-    // If it's directly a TerminalWidget
-    if (auto *t = qobject_cast<TerminalWidget *>(w))
-        return t;
-    // Otherwise find the first TerminalWidget in the widget tree
-    return w->findChild<TerminalWidget *>();
+    // Prefer the focused pane so split layouts dispatch commands correctly;
+    // falls back to the first pane in the tab subtree.
+    return activeTerminalInTab(m_tabWidget->currentWidget());
 }
 
 void MainWindow::applyTheme(const QString &name) {
@@ -1569,8 +1594,7 @@ void MainWindow::saveAllSessions() {
 
     for (int i = 0; i < m_tabWidget->count(); ++i) {
         QWidget *w = m_tabWidget->widget(i);
-        auto *t = qobject_cast<TerminalWidget *>(w);
-        if (!t) t = w->findChild<TerminalWidget *>();
+        auto *t = activeTerminalInTab(w);
         if (!t) continue;
 
         QString tabId = m_tabSessionIds.value(w);
@@ -2057,24 +2081,34 @@ void MainWindow::updateStatusBar() {
     if (!t) t = currentTerminal();
     if (!t) return;
 
-    // Git branch (read .git/HEAD)
+    // Git branch (read .git/HEAD). Cached per-cwd for 5 seconds — the poll
+    // timer runs every 2s, and walking the directory tree + reading HEAD
+    // synchronously can stutter the UI on network mounts or deep trees.
     QString fullCwd = t->shellCwd();
     QString gitBranch;
     if (!fullCwd.isEmpty()) {
-        QString dir = fullCwd;
-        while (!dir.isEmpty() && dir != "/") {
-            QFile head(dir + "/.git/HEAD");
-            if (head.open(QIODevice::ReadOnly)) {
-                QString ref = QString::fromUtf8(head.readAll()).trimmed();
-                if (ref.startsWith("ref: refs/heads/"))
-                    gitBranch = ref.mid(16);
-                else if (ref.length() >= 7)
-                    gitBranch = ref.left(7); // detached HEAD
-                break;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (fullCwd == m_gitCacheCwd && now - m_gitCacheMs < 5000) {
+            gitBranch = m_gitCacheBranch;
+        } else {
+            QString dir = fullCwd;
+            while (!dir.isEmpty() && dir != "/") {
+                QFile head(dir + "/.git/HEAD");
+                if (head.open(QIODevice::ReadOnly)) {
+                    QString ref = QString::fromUtf8(head.readAll()).trimmed();
+                    if (ref.startsWith("ref: refs/heads/"))
+                        gitBranch = ref.mid(16);
+                    else if (ref.length() >= 7)
+                        gitBranch = ref.left(7); // detached HEAD
+                    break;
+                }
+                int slash = dir.lastIndexOf('/');
+                if (slash <= 0) break;
+                dir = dir.left(slash);
             }
-            int slash = dir.lastIndexOf('/');
-            if (slash <= 0) break;
-            dir = dir.left(slash);
+            m_gitCacheCwd = fullCwd;
+            m_gitCacheBranch = gitBranch;
+            m_gitCacheMs = now;
         }
     }
     if (!gitBranch.isEmpty()) {
@@ -2105,8 +2139,7 @@ void MainWindow::updateTabTitles() {
 
     for (int i = 0; i < m_tabWidget->count(); ++i) {
         QWidget *w = m_tabWidget->widget(i);
-        auto *t = qobject_cast<TerminalWidget *>(w);
-        if (!t) t = w->findChild<TerminalWidget *>();
+        auto *t = activeTerminalInTab(w);
         if (!t) continue;
 
         QString label;

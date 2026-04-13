@@ -82,6 +82,11 @@
 20. Bracketed paste sanitizes embedded `\e[201~` from pasted text to prevent paste injection (CVE-2021-28848)
 21. Config and session files written atomically via temp file + rename
 22. SIGPIPE ignored globally -- PTY write errors handled via return codes
+23. OSC 52 clipboard write capped at 1MB decoded to prevent abuse-style pastes
+24. AI endpoint scheme validated -- plaintext `http://` warns once per session
+    when an API key is configured (localhost is permitted silently for Ollama/LM Studio)
+25. UTF-8 accumulator writes are atomic -- `appendUtf8()` computes encoded
+    length first and aborts cleanly instead of partial writes that overshoot maxBytes
 
 ## Plugin Rules
 

@@ -87,6 +87,12 @@
 - Use `setObjectName()` for widgets that need specific QSS styling
 - All theme-dependent colors must be set via `applyThemeColors()` or equivalent
 - Keyboard shortcuts defined in `MainWindow::setupMenus()` for discoverability
+- In split-pane layouts, resolve "the tab's terminal" via a helper that prefers
+  the focused descendant and only falls back to first-child — `findChild<>()`
+  alone returns arbitrary order and misdirects commands to the wrong pane
+- When a TerminalWidget key handler consumes a key (Ctrl+Shift+Up/Down for OSC
+  133 prompt nav), do NOT assign the same QKeySequence to a menu QAction — the
+  shortcut will never fire from the terminal and Qt emits an ambiguity warning
 
 ## Memory Management
 
@@ -112,6 +118,9 @@
 - Scrollback operations should be O(1) amortized (deque, not vector)
 - Glyph atlas eviction: clear and rebuild when full (simple, avoids fragmentation)
 - Session serialization uses qCompress (zlib level 6) for space efficiency
+- Status-bar pollers that read filesystem metadata (git HEAD, foreground process)
+  must cache per-cwd for 5+ seconds -- poll timer fires every 2s and synchronous
+  reads on network mounts can stutter the UI
 
 ## Security
 

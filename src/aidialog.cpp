@@ -145,7 +145,20 @@ void AiDialog::sendRequest(const QString &userMessage) {
     body["stream"] = true;
     body["max_tokens"] = 1024;
 
-    QNetworkRequest req{QUrl(m_endpoint)};
+    QUrl url(m_endpoint);
+    // Warn once per session if the user has configured an API key against a
+    // plaintext HTTP endpoint — the Bearer token would travel in cleartext.
+    // Localhost is permitted silently (Ollama/LM Studio default to http://127.0.0.1).
+    if (!m_apiKey.isEmpty() && url.scheme() == "http") {
+        const QString host = url.host();
+        const bool isLocal = (host == "localhost" || host == "127.0.0.1" || host == "::1");
+        if (!isLocal && !m_httpWarned) {
+            m_httpWarned = true;
+            appendMessage("System", "Warning: endpoint uses plaintext HTTP — API key will be sent unencrypted. Prefer https:// for remote providers.");
+        }
+    }
+
+    QNetworkRequest req{url};
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     req.setTransferTimeout(30000); // 30-second timeout
     if (!m_apiKey.isEmpty())

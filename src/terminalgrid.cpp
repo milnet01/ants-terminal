@@ -611,10 +611,21 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             // std::string selection = rest.substr(0, semi2); // c, p, s, etc.
             std::string b64 = rest.substr(semi2 + 1);
             if (b64 == "?") {
-                // Query — not supported for security
+                // Query — not supported for security (terminal exfil vector)
             } else {
+                // Cap clipboard writes at 1MB decoded (base64 expands ~4/3, so
+                // ~1.33MB encoded). Larger pastes are almost certainly abuse;
+                // real user copy operations are well below this.
+                constexpr int kMaxClipboardBytes = 1 * 1024 * 1024;
+                if (b64.size() > static_cast<size_t>(kMaxClipboardBytes) * 4 / 3 + 16) {
+                    // Silently drop oversized payload
+                    return;
+                }
                 QByteArray decoded = QByteArray::fromBase64(
                     QByteArray::fromRawData(b64.data(), static_cast<int>(b64.size())));
+                if (decoded.size() > kMaxClipboardBytes) {
+                    return;
+                }
                 if (!decoded.isEmpty()) {
                     // Emit clipboard set via response callback with special prefix
                     if (m_responseCallback) {
@@ -1568,7 +1579,11 @@ void TerminalGrid::handleApc(const std::string &payload) {
             if (params.count('v')) pixelH = safeStoi(params['v']);
             if (pixelW > 0 && pixelH > 0 && pixelW <= MAX_IMAGE_DIM && pixelH <= MAX_IMAGE_DIM) {
                 int bytesPerPixel = (format == 32) ? 4 : 3;
-                if (decoded.size() >= pixelW * pixelH * bytesPerPixel) {
+                // Use int64 intermediates — multiplication stays safe even if
+                // MAX_IMAGE_DIM is raised later (4096*4096*4 = 67MB fits int32
+                // today, but this is a defense against future changes).
+                int64_t required = static_cast<int64_t>(pixelW) * pixelH * bytesPerPixel;
+                if (static_cast<int64_t>(decoded.size()) >= required) {
                     QImage::Format fmt = (format == 32)
                         ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
                     image = QImage(reinterpret_cast<const uchar *>(decoded.constData()),

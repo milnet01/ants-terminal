@@ -55,7 +55,16 @@ void VtParser::flushCodepoint(uint32_t cp) {
 }
 
 void VtParser::appendUtf8(std::string &out, uint32_t ch, size_t maxBytes) {
-    if (out.size() >= maxBytes) return;
+    // Compute encoded length first so we can reject atomically without a
+    // partial write that would overshoot maxBytes by up to 3 bytes.
+    size_t need;
+    if (ch < 0x80)        need = 1;
+    else if (ch < 0x800)  need = 2;
+    else if (ch < 0x10000) need = 3;
+    else                  need = 4;
+
+    if (out.size() + need > maxBytes) return;
+
     if (ch < 0x80) {
         out += static_cast<char>(ch);
     } else if (ch < 0x800) {
