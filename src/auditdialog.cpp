@@ -1511,7 +1511,7 @@ void AuditDialog::buildUI() {
     });
     btnRow->addWidget(m_newOnlyBtn);
 
-    // Recent-changes scope toggle
+    // Recent-changes scope toggle (file-level).
     auto *recentBtn = new QPushButton("Recent changes only", this);
     recentBtn->setCheckable(true);
     recentBtn->setFixedHeight(32);
@@ -1520,11 +1520,33 @@ void AuditDialog::buildUI() {
         m_detectedTypes.contains("Git")
         ? "Scope audit findings to files touched in the last 10 commits"
         : "Recent-changes mode requires a Git repository");
-    connect(recentBtn, &QPushButton::toggled, this, [this](bool on) {
+
+    // Stricter variant — filters by diff hunks, not just file membership.
+    // Answers "what would a CI PR-review flag" without noise from pre-
+    // existing issues in touched files.
+    auto *linesBtn = new QPushButton("Changed lines only", this);
+    linesBtn->setCheckable(true);
+    linesBtn->setFixedHeight(32);
+    linesBtn->setEnabled(m_detectedTypes.contains("Git"));
+    linesBtn->setToolTip(
+        m_detectedTypes.contains("Git")
+        ? "Only findings on lines modified in the last 10 commits (vs. HEAD~N)"
+        : "Changed-lines mode requires a Git repository");
+
+    connect(recentBtn, &QPushButton::toggled, this, [this, linesBtn](bool on) {
         m_recentOnly = on;
-        // Next run() picks up the new scope; existing results aren't re-run.
+        // Disabling file-level scope implicitly disables the stricter
+        // line-level mode too.
+        if (!on && linesBtn->isChecked()) linesBtn->setChecked(false);
+    });
+    connect(linesBtn, &QPushButton::toggled, this, [this, recentBtn](bool on) {
+        m_recentLinesOnly = on;
+        // Line-level is a stricter subset of file-level — keep the outer
+        // toggle in sync so both behave predictably.
+        if (on && !recentBtn->isChecked()) recentBtn->setChecked(true);
     });
     btnRow->addWidget(recentBtn);
+    btnRow->addWidget(linesBtn);
 
     m_baselineBtn = new QPushButton("Save baseline", this);
     m_baselineBtn->setFixedHeight(32);
@@ -1656,6 +1678,7 @@ void AuditDialog::runAudit() {
 
     // Compute the "recent files" list if the user opted into scoped audit.
     m_recentFiles.clear();
+    m_recentLines.clear();
     if (m_recentOnly && m_detectedTypes.contains("Git")) {
         QProcess git;
         git.setWorkingDirectory(m_projectPath);
@@ -1673,6 +1696,41 @@ void AuditDialog::runAudit() {
                 // Keep only files that still exist on disk.
                 if (QFile::exists(m_projectPath + "/" + p))
                     m_recentFiles << p;
+            }
+        }
+
+        // Line-level scoping: ask git for the diff with zero context, parse
+        // the hunk headers (`@@ -old,count +new,count @@`) and record the
+        // destination line range for each file. Uses HEAD~N..HEAD so new
+        // commits + uncommitted working-tree changes both land in the map.
+        if (m_recentLinesOnly) {
+            QProcess gitDiff;
+            gitDiff.setWorkingDirectory(m_projectPath);
+            gitDiff.start("git", {"diff", "--unified=0",
+                                  QString("HEAD~%1").arg(m_recentCommits)});
+            if (gitDiff.waitForFinished(8000) && gitDiff.exitCode() == 0) {
+                const QStringList dlines =
+                    QString::fromUtf8(gitDiff.readAllStandardOutput())
+                        .split('\n', Qt::KeepEmptyParts);
+                static const QRegularExpression reFileHdr(R"(^\+\+\+ b/(.+)$)");
+                static const QRegularExpression reHunk(
+                    R"(^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@)");
+                QString curFile;
+                for (const QString &dl : dlines) {
+                    auto mf = reFileHdr.match(dl);
+                    if (mf.hasMatch()) { curFile = mf.captured(1); continue; }
+                    auto mh = reHunk.match(dl);
+                    if (mh.hasMatch() && !curFile.isEmpty()) {
+                        const int start = mh.captured(1).toInt();
+                        const int count = mh.captured(2).isEmpty()
+                                          ? 1 : mh.captured(2).toInt();
+                        // count=0 means pure deletion — nothing to attribute
+                        // to an added line; skip.
+                        if (count <= 0) continue;
+                        auto &set = m_recentLines[curFile];
+                        for (int i = 0; i < count; ++i) set.insert(start + i);
+                    }
+                }
             }
         }
     }
@@ -1781,14 +1839,24 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
         if (m_recentOnly && !f.file.isEmpty()) {
             // Match by either exact path or project-relative path suffix.
             bool isRecent = recent.contains(f.file);
+            QString matchedFile = f.file;
             if (!isRecent) {
                 for (const QString &rf : m_recentFiles) {
                     if (f.file.endsWith(rf) || rf.endsWith(f.file)) {
-                        isRecent = true; break;
+                        isRecent = true;
+                        matchedFile = rf;
+                        break;
                     }
                 }
             }
             if (!isRecent) continue;
+
+            // Stricter: drop findings whose line isn't within a diff hunk.
+            if (m_recentLinesOnly && f.line > 0) {
+                const auto it = m_recentLines.constFind(matchedFile);
+                if (it == m_recentLines.constEnd() || !it->contains(f.line))
+                    continue;
+            }
         }
         if (seenKeys.contains(f.dedupKey)) continue;
         seenKeys.insert(f.dedupKey);

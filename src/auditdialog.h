@@ -229,9 +229,15 @@ private:
 
     // "Recent changes only" mode — scope each check to files touched in the
     // last N commits. Zero/disabled = whole-project audit.
+    // When m_recentLinesOnly is also on, findings are further filtered to the
+    // exact line ranges from `git diff -U0` — catches what CI would flag in
+    // a PR review without the noise of pre-existing issues elsewhere in the
+    // changed file.
     bool m_recentOnly = false;
+    bool m_recentLinesOnly = false;
     int  m_recentCommits = 10;
-    QStringList m_recentFiles;     // computed at runAudit() start
+    QStringList m_recentFiles;                 // computed at runAudit() start
+    QHash<QString, QSet<int>> m_recentLines;   // file → {modified line numbers}
 
     // Project context docs to attach to the Claude-review handoff. Loaded
     // lazily when "Review with Claude" is pressed.
