@@ -27,7 +27,7 @@ protected:
 private:
     void animate();
     int m_thumbX = 3;
-    QPropertyAnimation *m_anim;
+    QPropertyAnimation *m_anim = nullptr;
     QColor m_onColor{"#4CAF50"};
     QColor m_offColor{"#888888"};
 };
