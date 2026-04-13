@@ -76,6 +76,7 @@ struct Finding {
     int     line = -1;     // 1-based line number; -1 if not parseable
     QString message;       // the full raw output line (trimmed)
     QString dedupKey;      // SHA-256(file:line:checkId:title) hex, truncated
+    bool    highConfidence = false; // true when ≥2 distinct tools flag the same line
 };
 
 // One finding row after post-processing; kept per-check so we can sort the

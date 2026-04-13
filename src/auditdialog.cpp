@@ -1858,7 +1858,32 @@ static QString typeLabel(CheckType t) {
 void AuditDialog::renderResults() {
     m_results->clear();
     m_findingsByKey.clear();
-    // Populate key→finding lookup for the anchor click handler.
+
+    // Multi-tool correlation: group findings by {file, line}. When a pair is
+    // flagged by two or more distinct tools, mark every finding on that line
+    // as high-confidence. Elevates cross-validated findings above single-
+    // tool noise and answers the user question "which of these should I
+    // trust?" without changing the severity ordering.
+    {
+        struct Bucket { QSet<QString> sources; QList<Finding*> fs; };
+        QHash<QString, Bucket> byLoc;
+        for (auto &r : m_completedResults) {
+            for (Finding &f : r.findings) {
+                if (f.file.isEmpty() || f.line <= 0) continue;
+                const QString k = f.file + ":" + QString::number(f.line);
+                auto &b = byLoc[k];
+                b.sources.insert(f.source);
+                b.fs.append(&f);
+            }
+        }
+        for (auto it = byLoc.begin(); it != byLoc.end(); ++it) {
+            if (it.value().sources.size() >= 2)
+                for (Finding *p : it.value().fs) p->highConfidence = true;
+        }
+    }
+
+    // Populate key→finding lookup for the anchor click handler. Done after
+    // correlation so the lookup reflects the highConfidence flag.
     for (const auto &r : m_completedResults)
         for (const Finding &f : r.findings)
             m_findingsByKey.insert(f.dedupKey, f);
@@ -2037,9 +2062,14 @@ void AuditDialog::renderResults() {
                 "font-size:9px; text-decoration:none;' "
                 "title='Click to suppress this finding'>%1</a>")
                 .arg(f.dedupKey);
-            rows << QString("%1%2  %3%4")
+            const QString confTag = f.highConfidence
+                ? QStringLiteral(" <span style='color:#FFD700; font-weight:bold;'"
+                                 " title='Flagged by 2+ tools'>★</span>")
+                : QString();
+            rows << QString("%1%2%3  %4%5")
                     .arg(loc,
                          f.message.toHtmlEscaped(),
+                         confTag,
                          keyAnchor,
                          isNew ? " <span style='color:#4CAF50; font-weight:bold;'>NEW</span>"
                                : "");
@@ -2140,7 +2170,10 @@ QString AuditDialog::exportSarif() const {
             partialFp["primaryLocationLineHash"] = f.dedupKey;
             res["partialFingerprints"] = partialFp;
 
-            res["properties"] = QJsonObject{{"source", f.source}};
+            res["properties"] = QJsonObject{
+                {"source", f.source},
+                {"highConfidence", f.highConfidence},
+            };
             results.append(res);
         }
     }
@@ -2199,6 +2232,7 @@ QString AuditDialog::exportHtml() const {
             o["line"]      = f.line;
             o["message"]   = f.message;
             o["dedupKey"]  = f.dedupKey;
+            o["highConf"]  = f.highConfidence;
             findingsJson.append(o);
         }
     }
@@ -2357,7 +2391,8 @@ QString AuditDialog::exportHtml() const {
       shown += filtered.length;
       const rows = filtered.map(f => {
         const loc = f.file ? `<span class="loc">${escape(f.file)}${f.line > 0 ? ':' + f.line : ''}</span>  ` : '';
-        return `<div class="row">${loc}${escape(f.message)}<span class="key">${escape(f.dedupKey)}</span></div>`;
+        const star = f.highConf ? ' <span title="Flagged by 2+ tools" style="color:#FFD700;">★</span>' : '';
+        return `<div class="row">${loc}${escape(f.message)}${star}<span class="key">${escape(f.dedupKey)}</span></div>`;
       }).join('');
       const det = document.createElement('details');
       det.className = 'check';
