@@ -381,6 +381,21 @@ make -j$(nproc)
 sudo make install   # installs to /usr/local/bin/ants-terminal
 ```
 
+### Desktop Entry (App Menu Integration)
+
+`ants-terminal.desktop.in` is a template — generate your local copy by
+substituting the absolute path to your checkout:
+
+```bash
+# From the repo root:
+sed "s|@INSTALL_DIR@|$PWD|" ants-terminal.desktop.in > ants-terminal.desktop
+cp ants-terminal.desktop ~/.local/share/applications/
+cp assets/ants-terminal-256.png ~/.local/share/icons/hicolor/256x256/apps/ants-terminal.png
+```
+
+The generated `ants-terminal.desktop` is git-ignored since it contains a
+machine-specific path.
+
 ---
 
 ## Keyboard Shortcuts
@@ -744,8 +759,8 @@ ants-terminal/
 ├── CLAUDE.md                   # Development context
 ├── STANDARDS.md                # Coding standards
 ├── RULES.md                    # Development rules
-├── launch.sh                   # Desktop launcher wrapper
-├── ants-terminal.desktop       # Desktop entry file
+├── launch.sh                   # Self-locating launcher wrapper
+├── ants-terminal.desktop.in    # Desktop entry template (@INSTALL_DIR@)
 ├── assets/                     # App icons (16-256px PNGs)
 └── src/
     ├── main.cpp                # Entry point, OpenGL format setup

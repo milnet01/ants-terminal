@@ -15,8 +15,8 @@ class TerminalWidget;
 // Metadata for a single Claude Code session
 struct ClaudeSession {
     QString sessionId;
-    QString projectPath;     // decoded real path (e.g. /mnt/Storage/Scripts/Linux/Ants)
-    QString projectEncoded;  // encoded dir name (e.g. -mnt-Storage-Scripts-Linux-Ants)
+    QString projectPath;     // decoded real path (e.g. $HOME/projects/myapp)
+    QString projectEncoded;  // encoded dir name (e.g. -home-user-projects-myapp)
     QString transcriptPath;  // full path to .jsonl file
     QString name;            // session name (from metadata, if any)
     QString firstMessage;    // first user message (summary)

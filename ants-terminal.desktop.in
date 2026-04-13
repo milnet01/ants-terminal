@@ -1,7 +1,9 @@
 [Desktop Entry]
 Name=Ants Terminal
 Comment=A modern terminal with themes, image support, and more
-Exec=/mnt/Storage/Scripts/Linux/Ants/launch.sh
+# Replace @INSTALL_DIR@ with the absolute path to the checked-out repo,
+# e.g. /home/username/projects/ants-terminal — see README § Install.
+Exec=@INSTALL_DIR@/launch.sh
 Icon=ants-terminal
 Terminal=false
 Type=Application

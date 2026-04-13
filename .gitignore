@@ -27,6 +27,9 @@ CMakeLists.txt.user*
 # Binary
 ants-terminal
 
+# Generated from ants-terminal.desktop.in — contains local install path
+ants-terminal.desktop
+
 # OS
 .DS_Store
 Thumbs.db
