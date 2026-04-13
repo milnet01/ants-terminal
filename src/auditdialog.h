@@ -238,6 +238,11 @@ private:
     // code-scanning, VSCode SARIF Viewer, SonarQube, etc.
     QString exportSarif() const;
 
+    // Single-file HTML report — self-contained (no external CDN or JS deps)
+    // with severity pills, text filter, and per-check collapsible cards.
+    // Useful for attaching to bug reports or sharing with teammates.
+    QString exportHtml() const;
+
     QLabel *m_pathLabel = nullptr;
     QLabel *m_typesLabel = nullptr;
     QPushButton *m_runBtn = nullptr;
@@ -251,5 +256,6 @@ private:
 
     QPushButton *m_reviewBtn = nullptr;
     QPushButton *m_sarifBtn = nullptr;
+    QPushButton *m_htmlBtn = nullptr;
     QString plainTextResults() const;
 };

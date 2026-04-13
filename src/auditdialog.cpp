@@ -1467,6 +1467,25 @@ void AuditDialog::buildUI() {
     });
     btnRow->addWidget(m_sarifBtn);
 
+    m_htmlBtn = new QPushButton("Export HTML", this);
+    m_htmlBtn->setFixedHeight(32);
+    m_htmlBtn->setVisible(false);
+    m_htmlBtn->setToolTip("Save a single-file HTML report (browser-viewable, no external assets)");
+    connect(m_htmlBtn, &QPushButton::clicked, this, [this]() {
+        if (m_completedResults.isEmpty()) return;
+        QDir().mkpath(m_projectPath + "/.audit_cache");
+        const QString path = m_projectPath + "/.audit_cache/audit-"
+                           + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
+                           + ".html";
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            f.write(exportHtml().toUtf8());
+            f.close();
+            m_statusLabel->setText("HTML report saved: " + path);
+        }
+    });
+    btnRow->addWidget(m_htmlBtn);
+
     m_reviewBtn = new QPushButton("Review with Claude", this);
     m_reviewBtn->setFixedHeight(32);
     m_reviewBtn->setMinimumWidth(160);
@@ -1600,6 +1619,7 @@ void AuditDialog::runNextCheck() {
         m_reviewBtn->setVisible(true);
         m_baselineBtn->setVisible(true);
         if (m_sarifBtn) m_sarifBtn->setVisible(true);
+        if (m_htmlBtn)  m_htmlBtn->setVisible(true);
         for (auto &c : m_checks)
             if (c.toggle) c.toggle->setEnabled(c.available);
         return;
@@ -2058,6 +2078,233 @@ QString AuditDialog::exportSarif() const {
     root["runs"] = runs;
 
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+// ---------------------------------------------------------------------------
+// Single-file HTML report export
+// ---------------------------------------------------------------------------
+//
+// Embeds findings as an inline JSON payload + ~120 lines of vanilla JS/CSS
+// that render severity pills, a text filter, and per-check collapsible
+// cards. No external assets — the file opens standalone in any browser.
+QString AuditDialog::exportHtml() const {
+    // Build a compact JSON payload that the page renders client-side.
+    QJsonArray findingsJson;
+    for (const CheckResult &cr : m_completedResults) {
+        if (cr.warning) continue;
+        for (const Finding &f : cr.findings) {
+            if (m_suppressedKeys.contains(f.dedupKey)) continue;
+            QJsonObject o;
+            o["checkId"]   = f.checkId;
+            o["checkName"] = f.checkName;
+            o["category"]  = f.category;
+            o["type"]      = typeLabel(f.type);
+            o["severity"]  = severityLabel(f.severity);
+            o["source"]    = f.source;
+            o["file"]      = f.file;
+            o["line"]      = f.line;
+            o["message"]   = f.message;
+            o["dedupKey"]  = f.dedupKey;
+            findingsJson.append(o);
+        }
+    }
+
+    QJsonObject meta;
+    meta["project"]    = m_projectPath;
+    meta["detected"]   = m_detectedTypes.join(", ");
+    meta["generated"]  = QDateTime::currentDateTime().toString(Qt::ISODate);
+    meta["findings"]   = findingsJson;
+
+    QString payload = QString::fromUtf8(
+        QJsonDocument(meta).toJson(QJsonDocument::Compact));
+    // Defuse any </script> lookalikes inside finding messages. JSON parsers
+    // treat "<\/" as equivalent to "</", so this is always safe.
+    payload.replace("</", "<\\/");
+
+    // clang-format off
+    // Template is a raw string — escape the literal `)"` delimiter only.
+    static const char *kTemplate = R"HTML(<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ants audit — {{PROJECT}}</title>
+<style>
+  :root {
+    --bg:       #1e1e1e;
+    --surface:  #2a2a2a;
+    --border:   #3a3a3a;
+    --text:     #e0e0e0;
+    --muted:    #8a8a8a;
+    --accent:   #89b4fa;
+    --blocker:  #8b0000;
+    --critical: #e74856;
+    --major:    #ffa500;
+    --minor:    #ffd700;
+    --info:     #4caf50;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); margin: 0; padding: 24px;
+    line-height: 1.5;
+  }
+  header { margin-bottom: 16px; }
+  h1 { margin: 0 0 4px; font-size: 20px; }
+  .meta { color: var(--muted); font-size: 12px; }
+  .controls {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px; margin-bottom: 16px;
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  }
+  .pill {
+    padding: 4px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;
+    border: 1px solid var(--border); user-select: none;
+    background: var(--bg); color: var(--text);
+  }
+  .pill[data-active="false"] { opacity: 0.4; }
+  .pill.BLOCKER  { color: var(--blocker);  border-color: var(--blocker); }
+  .pill.CRITICAL { color: var(--critical); border-color: var(--critical); }
+  .pill.MAJOR    { color: var(--major);    border-color: var(--major); }
+  .pill.MINOR    { color: var(--minor);    border-color: var(--minor); }
+  .pill.INFO     { color: var(--info);     border-color: var(--info); }
+  #q {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 10px; min-width: 280px; font-size: 13px;
+  }
+  .check {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; margin-bottom: 10px; overflow: hidden;
+  }
+  .check summary {
+    cursor: pointer; padding: 10px 14px; font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .check summary::-webkit-details-marker { display: none; }
+  .tag {
+    font-size: 10px; padding: 2px 7px; border-radius: 3px;
+    text-transform: uppercase; font-weight: 600; letter-spacing: 0.3px;
+  }
+  .tag.BLOCKER  { background: var(--blocker);  color: white; }
+  .tag.CRITICAL { background: var(--critical); color: white; }
+  .tag.MAJOR    { background: var(--major);    color: black; }
+  .tag.MINOR    { background: var(--minor);    color: black; }
+  .tag.INFO     { background: var(--info);     color: black; }
+  .rows {
+    padding: 0 14px 10px; font-family: 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+  }
+  .row {
+    padding: 3px 0; border-top: 1px solid var(--border);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .row:first-child { border-top: none; }
+  .loc { color: var(--accent); }
+  .key { color: var(--muted); font-size: 10px; margin-left: 8px; }
+  .empty { padding: 20px; color: var(--muted); font-style: italic; text-align: center; }
+  footer { margin-top: 20px; color: var(--muted); font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ants audit report</h1>
+  <div class="meta" id="meta"></div>
+</header>
+<div class="controls">
+  <input type="search" id="q" placeholder="Filter by file, message, rule…">
+  <span class="pill BLOCKER"  data-sev="BLOCKER"  data-active="true">Blocker</span>
+  <span class="pill CRITICAL" data-sev="CRITICAL" data-active="true">Critical</span>
+  <span class="pill MAJOR"    data-sev="MAJOR"    data-active="true">Major</span>
+  <span class="pill MINOR"    data-sev="MINOR"    data-active="true">Minor</span>
+  <span class="pill INFO"     data-sev="INFO"     data-active="true">Info</span>
+</div>
+<div id="results"></div>
+<footer>Generated by ants-audit — single-file report · no external assets</footer>
+
+<script id="data" type="application/json">{{PAYLOAD}}</script>
+<script>
+(function () {
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const SEV_ORDER = { BLOCKER: 4, CRITICAL: 3, MAJOR: 2, MINOR: 1, INFO: 0 };
+  const meta = document.getElementById('meta');
+  meta.textContent = `Project: ${DATA.project} · Detected: ${DATA.detected} · ${DATA.generated}`;
+
+  // Group by check.
+  const byCheck = new Map();
+  for (const f of DATA.findings) {
+    if (!byCheck.has(f.checkId)) byCheck.set(f.checkId, { meta: f, findings: [] });
+    byCheck.get(f.checkId).findings.push(f);
+  }
+
+  // Sort checks by highest-severity finding.
+  const checks = Array.from(byCheck.values()).sort((a, b) =>
+    SEV_ORDER[b.meta.severity] - SEV_ORDER[a.meta.severity]);
+
+  const results = document.getElementById('results');
+  const activeSevs = new Set(['BLOCKER', 'CRITICAL', 'MAJOR', 'MINOR', 'INFO']);
+  let q = '';
+
+  function escape(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    })[c]);
+  }
+
+  function render() {
+    results.innerHTML = '';
+    let shown = 0;
+    for (const c of checks) {
+      const filtered = c.findings.filter(f => {
+        if (!activeSevs.has(f.severity)) return false;
+        if (!q) return true;
+        const hay = (f.file + ' ' + f.message + ' ' + f.checkId).toLowerCase();
+        return hay.includes(q);
+      });
+      if (filtered.length === 0) continue;
+      shown += filtered.length;
+      const rows = filtered.map(f => {
+        const loc = f.file ? `<span class="loc">${escape(f.file)}${f.line > 0 ? ':' + f.line : ''}</span>  ` : '';
+        return `<div class="row">${loc}${escape(f.message)}<span class="key">${escape(f.dedupKey)}</span></div>`;
+      }).join('');
+      const det = document.createElement('details');
+      det.className = 'check';
+      det.open = SEV_ORDER[c.meta.severity] >= 2;  // open major+
+      det.innerHTML = `
+        <summary>
+          <span class="tag ${c.meta.severity}">${c.meta.severity}</span>
+          <strong>${escape(c.meta.checkName)}</strong>
+          <span class="key">· ${escape(c.meta.category)} · ${escape(c.meta.source)} · ${filtered.length} finding${filtered.length === 1 ? '' : 's'}</span>
+        </summary>
+        <div class="rows">${rows}</div>`;
+      results.appendChild(det);
+    }
+    if (shown === 0) {
+      results.innerHTML = '<div class="empty">No findings match current filters.</div>';
+    }
+  }
+
+  document.querySelectorAll('.pill').forEach(p => {
+    p.addEventListener('click', () => {
+      const sev = p.dataset.sev;
+      if (activeSevs.has(sev)) { activeSevs.delete(sev); p.dataset.active = 'false'; }
+      else                     { activeSevs.add(sev);    p.dataset.active = 'true'; }
+      render();
+    });
+  });
+  document.getElementById('q').addEventListener('input', e => {
+    q = e.target.value.trim().toLowerCase(); render();
+  });
+  render();
+})();
+</script>
+</body>
+</html>
+)HTML";
+    // clang-format on
+
+    QString html = QString::fromUtf8(kTemplate);
+    html.replace("{{PROJECT}}", QFileInfo(m_projectPath).fileName().toHtmlEscaped());
+    html.replace("{{PAYLOAD}}", payload);
+    return html;
 }
 
 QString AuditDialog::plainTextResults() const {
