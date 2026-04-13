@@ -46,12 +46,29 @@
 
 ## Plugin System Standards
 
+The plugin-author-facing contract lives in [PLUGINS.md](PLUGINS.md); this
+section captures the internal invariants the runtime must preserve to
+keep that contract honest.
+
 - Lua 5.4 embedded via C API with sandboxed environment
-- Dangerous globals removed: `os`, `io`, `loadfile`, `dofile`, `require`, `debug`, `setmetatable`, `collectgarbage`, `coroutine`
+- Dangerous globals removed: `os`, `io`, `loadfile`, `dofile`, `load`,
+  `require`, `package`, `debug`, `setmetatable`, `getmetatable`,
+  `rawget`, `rawset`, `rawequal`, `rawlen`, `collectgarbage`,
+  `coroutine` — keep PLUGINS.md's sandbox table in sync with any change here
 - Instruction count hook for timeout protection (10M instructions max)
-- Plugin events fired synchronously on Qt event loop
-- Plugin API namespaced under `ants.*` table
+- Heap budget enforced by custom allocator (10 MB Lua heap cap)
+- Bytecode rejection at load: first-byte check for `0x1B` refuses
+  `.luac`-style inputs (prevents sandbox escapes via forged bytecode)
+- Plugin events fired synchronously on Qt event loop — any plugin
+  stalling its handler stalls the terminal; no worker threads
+- Plugin API namespaced under `ants.*` table; adding a new function
+  requires an entry in PLUGINS.md's API section and a CHANGELOG note
 - Plugins stored in `~/.config/ants-terminal/plugins/<name>/init.lua`
+  with optional `manifest.json`
+- **Single source of truth**: `luaengine.cpp` enforces the sandbox;
+  `pluginmanager.cpp` handles discovery/lifecycle; PLUGINS.md documents
+  what's exposed. Drift is a bug — if you find a discrepancy, the doc
+  is authoritative until a fix lands
 
 ## Network Standards
 
@@ -162,10 +179,35 @@
   string-aware filter. External linters (cppcheck, clang-tidy, clazy, pylint …)
   are comment-aware natively — never add them to this set
 - SARIF export is the canonical machine-readable format; HTML is presentation-
-  only and derived from the same per-finding data
+  only and derived from the same per-finding data. SARIF emits
+  `physicalLocation.contextRegion` for ±3 snippet lines plus a
+  `properties.blame` bag — external tools (GitHub Code Scanning, SonarQube)
+  consume these via the sarif-tools de-facto convention
 - `audit_rules.json` is a trust boundary — its `command` field runs through
   `/bin/bash` unconditionally. Treat it like `.git/hooks`: your repo, your
   commands, no sandbox
+- Pipeline order for post-parse filtering must be preserved:
+  `suppressed dedup-key` → `applyPathRules` (generated + path rules) →
+  `inlineSuppressed` → `recent-only scope` → dedup within check. Changing
+  the order breaks invariants (e.g. severity-shifted findings must survive
+  generated-file skip *before* inline-suppression checks read the file)
+- Inline suppression scan is per-file-cached via `m_fileLineCache` — scans
+  are O(1) amortized across findings in the same file. Never bypass the
+  cache; a runaway check on a large file can otherwise read it hundreds of
+  times
+- Generated-file detection (`isGeneratedFile`) is path-based and absolute —
+  matches are skipped regardless of any path-rule override. If a user
+  genuinely wants findings in `moc_*` they must rename the file
+- Confidence score is computed at render time (not stored per Finding on
+  disk). Baseline/trend persistence uses dedup keys, not confidence —
+  confidence is a display signal, not an identity
+- Git blame enrichment times out at 2s per (file, line) and caches in
+  `m_blameCache`. Never call `git blame` from the paint path — prefetch
+  during `renderResults()` so the UI stays responsive
+- AI triage uses the project's existing `Config::aiEndpoint/aiApiKey/aiModel`
+  — never add a separate "audit AI" config section. Response must be JSON
+  `{verdict, confidence, reasoning}`; any provider wrap (e.g. ```json …```)
+  is stripped before parsing
 
 ## Git
 

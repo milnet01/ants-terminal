@@ -1,0 +1,270 @@
+# Changelog
+
+All notable changes to Ants Terminal are documented here.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Sections use the standard categories — **Added** for new features, **Changed**
+for changes in existing behavior, **Deprecated** for soon-to-be-removed features,
+**Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
+for security-relevant changes.
+
+## [Unreleased]
+
+### Added
+
+- `ROADMAP.md` — release-plan for 0.6 through 1.0 and beyond, organized
+  by theme (🎨 Features / ⚡ Performance / 🔌 Plugins / 🖥 Platform /
+  🔒 Security / 🧰 Dev experience). Every item carries prior-art links.
+- `PLUGINS.md` — plugin-author standards. Complete enumeration of the
+  current `ants.*` API surface, events, sandbox boundaries, resource
+  limits, manifest format, and forward-looking API (0.6 capability
+  manifest, 0.7 triggers, 0.8 marketplace).
+
+### Changed
+
+- `README.md` — navbar now links to `PLUGINS.md`, `ROADMAP.md`,
+  and `CHANGELOG.md`. Plugins section points to PLUGINS.md as the
+  source of truth; keeps a quick-start summary table inline.
+- `CLAUDE.md`, `STANDARDS.md`, `RULES.md` — cross-linked to the new
+  docs; plugin-system sections defer to PLUGINS.md for the author
+  contract and document internal invariants separately.
+
+## [0.5.0] — 2026-04-13
+
+### Added
+
+**Project Audit — context-aware upgrade** (this release's headline feature).
+The audit pipeline now collects and applies context at every stage, closing
+the gap with commercial tools (CodeQL, Semgrep, SonarQube, DeepSource).
+
+- **Inline suppression directives.** Findings can be silenced directly in
+  source via `// ants-audit: disable[=rule-id]` (same line),
+  `disable-next-line`, and `disable-file` (first 20 lines). Foreign markers
+  are also honored for cross-tool compatibility: clang-tidy `NOLINT` /
+  `NOLINTNEXTLINE`, cppcheck `cppcheck-suppress`, flake8 `noqa`, bandit
+  `nosec`, semgrep `nosemgrep`, gitleaks `#gitleaks:allow`, eslint
+  `eslint-disable-*`, pylint `pylint: disable`. Rule-list parsing and
+  glob matching (`google-*`) are supported.
+- **Generated-file auto-skip.** Findings in `moc_*`, `ui_*`, `qrc_*`,
+  `*.pb.cc`/`*.pb.h`, `*.grpc.pb.*`, flex/bison outputs, `/generated/`
+  paths, and `*_generated.*` files are dropped before rendering.
+- **Path-based rules** in `audit_rules.json`. A new `path_rules[]` block
+  takes entries of `{glob, skip, severity_shift, skip_rules[]}` to
+  configure per-directory severity shifts and skips (e.g. `tests/**`
+  shifts everything down one severity band; `third_party/**` skips
+  entirely). Glob syntax supports `**`, `*`, `?`.
+- **Code snippets** (±3 lines) attached to every `file:line` finding,
+  cached per-file, rendered with the finding line highlighted. Exposed
+  via SARIF `physicalLocation.contextRegion`, embedded in the HTML
+  report's expandable `[details]` panel, and included in the Claude
+  review handoff.
+- **Git blame enrichment.** Author, author date, and short SHA shown
+  next to every finding. Cached per `(file, line)` with a 2 s timeout;
+  auto-disabled for non-git projects. Exported via SARIF
+  `properties.blame` bag (sarif-tools de-facto convention).
+- **Confidence score 0-100.** Replaces the binary `highConfidence` flag
+  with a weighted sum: severity × 15 + 20 cross-tool agreement + 10
+  external AST tool − 20 test-path, clamped, adjusted by explicit AI
+  verdicts. Displayed as a coloured pip in the UI; exported in SARIF
+  (`properties.confidence`) and HTML.
+- **Severity pill filter + live text filter** in the dialog, matching the
+  HTML export's UX. Filters across file name, message, rule id, and
+  author (via blame). Re-renders instantly.
+- **Sort by confidence** toggle reorders every check's findings by
+  confidence descending — the "which should I look at first" view.
+- **Collapsible `[details]`** per finding. Click to reveal snippet
+  context and an inline "🧠 Triage with AI" action. Expanded state
+  persists across re-renders.
+- **Semgrep** integration (optional). When `semgrep` is available, a
+  Security-category check runs `p/security-audit` plus language packs
+  (`p/c`, `p/cpp`, `p/python`, `p/javascript`, `p/typescript`). Picks
+  up project-local `.semgrep.yml` automatically. Complements clazy's
+  Qt-aware AST lane.
+- **AI triage per finding.** Click "🧠 Triage with AI" inside an
+  expanded finding to POST rule + message + snippet + blame to the
+  project's configured OpenAI-compatible endpoint. Response parsed
+  as `{verdict, confidence, reasoning}`; verdict badge rendered
+  inline, confidence score adjusted accordingly. Opt-in per click,
+  respects `Config::aiEnabled`.
+- **Version stamp on all audit outputs.** Dialog title, dialog types
+  label, SARIF `driver.version`, HTML report meta line, and plain-text
+  Claude handoff now all carry `ants-audit v<PROJECT_VERSION>` pulled
+  from a single CMake `add_compile_definitions(ANTS_VERSION=…)` source
+  of truth.
+- **Single-source-of-truth versioning infrastructure.**
+  `CMakeLists.txt` `project(... VERSION 0.5.0)` propagates via
+  `add_compile_definitions(ANTS_VERSION=…)` to every caller. Four
+  previously-hardcoded `"0.4.0"` literals retired: `main.cpp`
+  (`setApplicationVersion`), `auditdialog.cpp` (SARIF driver),
+  `ptyhandler.cpp` (`TERM_PROGRAM_VERSION` env), and
+  `claudeintegration.cpp` (MCP `serverInfo.version`).
+
+### Changed
+
+- **`audit_rules.json` schema** extended with `path_rules[]`. Existing
+  `rules[]` entries load unchanged; loader documents both blocks.
+- **SARIF export** now emits `physicalLocation.contextRegion` with the
+  full ±3 snippet for every finding that has a `file:line` location,
+  plus `properties.blame` and `properties.confidence`. `properties`
+  also carries `aiTriage` when the user triaged that finding.
+- **HTML report** template upgraded with confidence pips, blame tags,
+  verdict badges, and per-finding expandable snippet panels. Added
+  CSS classes (`.conf-pip`, `.blame`, `.verdict`, `.snippet`, `.hit`).
+  `DATA.version` now propagated through the inline payload.
+- **Plain-text Claude handoff** body lines carry `[conf N · blame · AI]`
+  tags and a 3-line indented snippet per finding. Header gains a
+  `Generator:` line.
+- **`dropFindingsInCommentsOrStrings`** still opt-in per check via the
+  existing `kSourceScannedChecks` set, but is now augmented by the
+  inline-suppression scan (applied to *every* finding with a
+  `file:line`). Pipeline order documented in `STANDARDS.md`.
+
+### Security
+
+- Inline suppression scan reads files through a bounded per-file cache
+  (4 MB cap) — runaway check on a huge file cannot stall the dialog.
+- Git blame shells out with a 2 s timeout and is auto-disabled when
+  not in a git repository.
+- AI triage respects the project's existing `ai_enabled` config and
+  refuses non-http/https endpoints.
+
+### Tests / Tooling
+
+- `tests/audit_self_test.sh` extended with 18 suppression-token
+  assertions covering every honored marker (ants-native,
+  NOLINT/NOLINTNEXTLINE, cppcheck-suppress, noqa, nosec, nosemgrep,
+  gitleaks-allow, eslint-disable-*, pylint: disable) plus negative
+  cases. Total: 23 rule tests passing.
+- `ANTS_VERSION` compile definition wired via CMake
+  `add_compile_definitions`. `main.cpp` and `auditdialog.cpp` no
+  longer carry hardcoded version strings.
+
+### Docs
+
+- `README.md` — expanded "Project Audit Dialog" section with examples
+  of inline suppression directives and `audit_rules.json` schema
+  including `path_rules`; semgrep added to optional dependencies.
+- `CLAUDE.md` — pipeline order, confidence formula, generated-file
+  patterns, new design decisions around context-awareness.
+- `STANDARDS.md` — context-awareness pipeline order invariants, blame
+  cache rules, AI triage config sourcing.
+- `RULES.md` — three new audit rules covering inline-suppression
+  preference, `path_rules` vs. hardcoded paths, and "confidence is
+  display-only, not a gate".
+
+## [0.4.0] — 2026-04-13
+
+### Added
+
+**Project Audit dialog — full feature arc.** Over the course of eight
+incremental commits, the audit panel evolved from a regex-heavy scanner
+into a structured, AST-aware, cross-validated tool.
+
+- **SonarQube-style taxonomy** — every finding carries a type
+  (Info / CodeSmell / Bug / Hotspot / Vulnerability) and a 5-level
+  severity (Info / Minor / Major / Critical / Blocker).
+- **Per-finding dedup keys** (SHA-256 of `file:line:checkId:title`).
+- **Baseline diff** — save current findings to
+  `.audit_cache/baseline.json`; later runs highlight only new findings.
+- **Trend tracking** — severity counts persisted at
+  `.audit_cache/trend.json` (last 50 runs) and rendered as a delta
+  banner against the previous run.
+- **Recent-changes scope** — restrict findings to files touched in
+  the last N commits, or (stricter) to exact diff hunk line ranges
+  via `git diff --unified=0 HEAD~N`.
+- **Multi-tool correlation** — ★ badge on findings flagged at the
+  same `file:line` by ≥2 distinct tools.
+- **clazy integration** — Qt-aware AST checks (`connect-3arg-lambda`,
+  `container-inside-loop`, `old-style-connect`, `qt-keywords`, etc.)
+  via `clazy-standalone`, reading the project's
+  `compile_commands.json`. Retires three FP-prone regex checks.
+- **Comment/string-aware filtering** — per-check opt-in state-machine
+  scan that drops matches inside `//`, `/* */`, or `"strings"`.
+- **SARIF v2.1.0 export** — OASIS-standard JSON consumed by GitHub
+  Code Scanning, VSCode SARIF Viewer, SonarQube, CodeQL. Includes
+  per-rule catalogue, `partialFingerprints`, and per-finding
+  properties bag.
+- **Single-file HTML report** — no external assets, embedded JSON
+  payload + vanilla JS. Severity pills, text filter, collapsible
+  check cards.
+- **Interactive suppression** — click any dedup hash to prompt for
+  a reason and append to `.audit_suppress` (JSONL v2: `{key, rule,
+  reason, timestamp}` per line).
+- **User-defined rules** via `<project>/audit_rules.json`. Flat
+  schema mirrors the internal `AuditCheck` struct. User rules run
+  through the full filter / parse / dedup / suppress pipeline.
+- **CTest harness** — `tests/audit_self_test.sh` with per-rule
+  `bad.*`/`good.*` fixtures using `// @expect <rule-id>` markers;
+  count-based assertion.
+- **Review with Claude** handoff — emits a plain-text report with
+  `CLAUDE.md`, `STANDARDS.md`, `RULES.md`, and `CONTRIBUTING.md`
+  prepended so Claude can weigh findings against documented rules.
+
+### Changed
+
+- `.audit_suppress` upgraded from v1 plain-key-per-line to v2 JSONL;
+  v1 still loads, first write converts in place with a migration
+  marker.
+- Audit rule pack format: JSON (`audit_rules.json`), not YAML —
+  `QJsonDocument` is built-in; flat schema's readability gap with
+  YAML is small enough that a parser dependency isn't worth it.
+
+### Security
+
+- `audit_rules.json` is a trust boundary — its `command` field runs
+  through `/bin/bash` unconditionally. Documented analogous to
+  `.git/hooks`: your repo, your commands, no sandbox.
+
+## [0.3.0]
+
+### Added
+
+- Claude Code deep integration: live status bar, project/session
+  browser (Ctrl+Shift+J), permission allowlist editor (Ctrl+Shift+L),
+  transcript viewer, slash-command shortcuts.
+- 12 professional UX features: hot-reload config, column selection,
+  sticky headers, tab renaming/coloring, snippets, auto-profile
+  switching, badge watermarks, dark/light auto-switching, Nerd Font
+  fallback, scrollbar, Ctrl+arrow word movement, scroll anchoring.
+- Session persistence: save/restore scrollback via `QDataStream` +
+  `qCompress` binary serialization.
+- AI assistant dialog: OpenAI-compatible chat completions with SSE
+  streaming, configurable endpoint/model.
+- SSH manager: bookmark editor, PTY-based `ssh` connection.
+- Lua 5.4 plugin system: sandboxed `ants` API, instruction-count
+  timeout, event-driven handlers.
+- GPU rendering path: QOpenGLWidget with glyph atlas, GLSL 3.3
+  shaders.
+
+### Fixed
+
+- Six rounds of comprehensive security + correctness audits covering
+  PTY FD leaks, bracketed-paste injection, SIGPIPE, Lua coroutine
+  escape, hardcoded colours, atomic config writes, and more.
+
+## [0.2.0]
+
+### Added
+
+- Full C++ terminal emulator rewrite: custom VT100/xterm state-machine
+  parser, `TerminalGrid` with scrollback + alt screen, PTY via
+  `forkpty`, QPainter rendering with `QTextLayout` ligature shaping.
+- Mouse reporting (SGR format), focus reporting (mode 1004),
+  synchronized output (mode 2026).
+- OSC 8 hyperlinks, OSC 52 clipboard write, OSC 133 shell-integration
+  markers, OSC 9 / 777 desktop notifications.
+- Sixel graphics (DCS), Kitty graphics protocol (APC), iTerm2 images
+  (OSC 1337).
+- Kitty keyboard protocol with progressive enhancement (push / pop /
+  query / set).
+- Combining characters via per-line side table.
+- Command palette (Ctrl+Shift+P), tab management with custom frameless
+  titlebar, split panes via nested `QSplitter`s, 11 built-in themes.
+
+## [0.1.0]
+
+### Added
+
+- Initial release: basic terminal emulator prototype.

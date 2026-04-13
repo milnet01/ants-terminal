@@ -17,8 +17,14 @@
   <a href="#themes">Themes</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#configuration">Configuration</a> &bull;
-  <a href="#plugins">Plugins</a> &bull;
+  <a href="PLUGINS.md">Plugins</a> &bull;
+  <a href="ROADMAP.md">Roadmap</a> &bull;
+  <a href="CHANGELOG.md">Changelog</a> &bull;
   <a href="#license">License</a>
+</p>
+
+<p align="center">
+  Current version: <strong>0.5.0</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
 </p>
 
 ---
@@ -296,17 +302,100 @@ Highlights:
 - **Multi-tool correlation** — a ★ badge appears on findings that two
   or more distinct tools flag at the same `file:line`. Orthogonal to
   severity; surfaces cross-validated hits above single-tool noise.
+- **Confidence score (0-100)** — weighted sum of severity, cross-tool
+  agreement, tool class (AST-aware vs. regex), and path heuristics
+  (test files and generated code shed confidence). Shown as a coloured
+  pip next to every finding; toggle "Sort by confidence" to surface
+  the most trustworthy findings first.
 - **Comment/string-aware filtering** — grep-style pattern checks run
   a tiny state-machine over the source to drop matches that live in
   `//` comments, `/* */` blocks, or `"string literals"`.
+- **Inline suppression directives** — recognises ants-native
+  `// ants-audit: disable[=rule-id]` (same line), `disable-next-line`
+  (line above), and `disable-file` (first 20 lines), plus pass-through
+  for every major tool's native markers: clang-tidy `NOLINT` /
+  `NOLINTNEXTLINE`, cppcheck `cppcheck-suppress`, flake8 `noqa`,
+  bandit `nosec`, semgrep `nosemgrep`, gitleaks `#gitleaks:allow`,
+  eslint `eslint-disable-*`, pylint `pylint: disable`.
+- **Generated-file auto-skip** — findings in `moc_*`, `ui_*`, `qrc_*`,
+  `*.pb.cc` / `*.pb.h`, `/generated/` paths, and `*_generated.*` files
+  are dropped silently. Stops Qt MOC output and protobuf-generated
+  code from drowning the report.
+- **Path-based rules** — extend `audit_rules.json` with `path_rules[]`
+  entries to shift severity or skip findings by glob, e.g. lowering
+  everything under `tests/**` by one severity band or skipping every
+  `**/moc_*.cpp`.
+- **Code snippet context (±3 lines)** — every finding with a
+  `file:line` expands on click to show the surrounding lines, with
+  the finding line highlighted. SARIF export includes this as
+  `physicalLocation.contextRegion` (consumed by GitHub Code Scanning
+  and VSCode's SARIF Viewer natively).
+- **Git blame enrichment** — each finding is tagged with the last
+  author, author date, and short SHA. Cached per `(file, line)` so
+  the enrichment pass adds 1-2s to a run on a 50-finding audit.
+- **AI triage (optional)** — click "🧠 Triage with AI" on any
+  expanded finding to send the rule, message, snippet, and blame to
+  the project's configured OpenAI-compatible endpoint (the same one
+  powering the AI assistant). The response is parsed as
+  `{verdict, confidence, reasoning}` and displayed inline as a
+  coloured verdict badge.
+- **Live filter + severity pills** — filter findings across all
+  checks by text (matches file, message, rule, author) or toggle
+  severity pills to hide whole categories. "Sort by confidence"
+  reorders every check's findings by their computed confidence.
+- **Semgrep integration (optional)** — when `semgrep` is installed,
+  a Security-category check runs `p/security-audit` + language-
+  specific community rule packs. Adds structural pattern matching
+  beyond grep for cross-cutting vulnerability families; complements
+  clazy's Qt-aware AST checks.
 - **Exports** — SARIF v2.1.0 (OASIS standard, consumed by GitHub Code
-  Scanning / VSCode SARIF Viewer / SonarQube) and a single-file HTML
-  report with severity filter pills, text search, and collapsible
-  check cards (no external assets).
+  Scanning / VSCode SARIF Viewer / SonarQube) with `contextRegion`
+  and `properties.blame` bag populated; single-file HTML report with
+  severity filter pills, text search, collapsible check cards,
+  inline snippet reveal, and verdict badges (no external assets).
 - **Claude review handoff** — "Review with Claude" emits a plain-text
-  report with `CLAUDE.md`, `STANDARDS.md`, `RULES.md`, and
-  `CONTRIBUTING.md` prepended, then signals the main window to open
-  a Claude Code session on the report.
+  report with snippets and confidence/blame/verdict tags, plus
+  `CLAUDE.md`, `STANDARDS.md`, `RULES.md`, and `CONTRIBUTING.md`
+  prepended, then signals the main window to open a Claude Code
+  session on the report.
+
+Sample `audit_rules.json` showing the full schema:
+
+```json
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "no-std-cout",
+      "name": "Direct std::cout in production code",
+      "description": "Use qDebug() or the logging subsystem instead",
+      "category": "Project",
+      "severity": "minor",
+      "type": "smell",
+      "command": "grep -rnI --include='*.cpp' --include='*.h' -E 'std::cout\\s*<<' src/",
+      "auto_select": true,
+      "max_lines": 50,
+      "drop_if_contains": ["// allow-cout", "example", "debug only"]
+    }
+  ],
+  "path_rules": [
+    { "glob": "tests/**",           "severity_shift": -2 },
+    { "glob": "**/moc_*.cpp",       "skip": true },
+    { "glob": "third_party/**",     "skip": true },
+    { "glob": "src/legacy/**",      "severity_shift": -1, "skip_rules": ["memory_patterns"] }
+  ]
+}
+```
+
+Inline suppression examples:
+
+```cpp
+// ants-audit: disable-file=secrets_scan
+const char *kDemoToken = "dummy-token-for-demo";   // ants-audit: disable=secrets_scan
+auto *raw = new char[N];                           // NOLINT(cppcoreguidelines-owning-memory)
+// ants-audit: disable-next-line
+printf(userInput);
+```
 
 ### Claude Code Integration
 
@@ -388,6 +477,7 @@ Switch themes from the **View** menu. Your choice is saved between sessions.
 | libutil | -- | Included with glibc (provides `forkpty`) |
 | Lua 5.4 | 5.4.x | Optional -- enables plugin system |
 | clazy | 1.17+ | Optional -- enables Qt-aware AST checks in the Project Audit dialog |
+| semgrep | 1.0+ | Optional -- enables structural pattern matching (`p/security-audit` + language packs) in the Project Audit dialog |
 | cppcheck / clang-tidy / shellcheck / pylint / bandit / ruff | any | Optional -- each enables the matching ecosystem check if installed |
 
 ### Install Dependencies
@@ -750,7 +840,9 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 
 ## Plugins
 
-### Creating a Plugin
+See [**PLUGINS.md**](PLUGINS.md) for the full plugin-authoring guide,
+API reference, event list, sandbox boundaries, resource limits, and
+forward-compatibility notes. Quick-start:
 
 1. Create a directory: `~/.config/ants-terminal/plugins/my-plugin/`
 2. Create `init.lua`:
@@ -774,7 +866,7 @@ end)
 }
 ```
 
-### Plugin API
+### Plugin API (summary)
 
 | Function | Description |
 |----------|-------------|
@@ -785,6 +877,10 @@ end)
 | `ants.get_cwd()` | Get current working directory |
 | `ants.set_status(text)` | Set status bar text |
 | `ants.log(message)` | Log message to status bar |
+
+Full signatures, return values, examples, and planned additions (0.6
+capability manifest, 0.7 triggers, 0.8 marketplace) live in
+[PLUGINS.md](PLUGINS.md).
 
 ### Events
 

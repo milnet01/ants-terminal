@@ -44,6 +44,9 @@ A real terminal emulator built from scratch in C++ with Qt6.
 ├── tests/
 │   ├── audit_self_test.sh    # CTest regression driver for audit rule regexes
 │   └── audit_fixtures/       # Per-rule bad.*/good.* pairs with `// @expect <rule-id>`
+├── CHANGELOG.md              # Version history (Keep a Changelog format)
+├── ROADMAP.md                # Release-plan for 0.6 through 1.0 and beyond
+├── PLUGINS.md                # Plugin authoring guide (source of truth for API)
 ├── STANDARDS.md
 ├── RULES.md
 └── README.md
@@ -77,13 +80,22 @@ Reverse flow: **TerminalGrid -> ResponseCallback -> PTY** (for DA, CPR, DSR)
 - `PluginManager`: discovers plugins in ~/.config/ants-terminal/plugins/, loads init.lua
 - `SessionManager`: serializes scrollback + screen to compressed binary, saves/restores
 - `AuditDialog`: project-level static analysis panel. Runs a catalogue of checks
-  (grep / find / cppcheck / clang-tidy / clazy-standalone / ecosystem linters)
-  through a shared pipeline: `OutputFilter` → `parseFindings` → dedup (SHA-256)
-  → suppression (`.audit_suppress` JSONL) → baseline diff → trend snapshot →
-  render + SARIF v2.1.0 / single-file HTML export. Supports recent-changes
-  scope (file-level and diff-line-level) and user rule packs via
-  `<project>/audit_rules.json`. Multi-tool correlation tags findings flagged
-  by ≥2 distinct tools (★ in UI, `highConfidence` in SARIF)
+  (grep / find / cppcheck / clang-tidy / clazy-standalone / semgrep / ecosystem
+  linters) through a shared pipeline: `OutputFilter` → `parseFindings` → dedup
+  (SHA-256) → generated-file skip → path-rule severity shifts → inline
+  suppression scan → `.audit_suppress` JSONL suppress → baseline diff → trend
+  snapshot → enrichment (snippet ±3 / git blame / confidence 0-100) → render
+  + SARIF v2.1.0 (with `contextRegion` + `properties.blame`) / single-file HTML
+  export. Recent-changes scope (file-level and diff-line-level) and user rule
+  packs via `<project>/audit_rules.json` — now including `path_rules` for
+  glob-based severity shifts / skips. Inline suppressions honor both ants-
+  native `// ants-audit: disable[=rule]` and foreign markers (`NOLINT`,
+  `cppcheck-suppress`, `noqa`, `nosec`, `nosemgrep`, `#gitleaks:allow`,
+  `eslint-disable-*`, `pylint: disable`). Per-finding "🧠 Triage with AI"
+  POSTs rule + snippet + blame to the configured OpenAI-compatible endpoint
+  and displays `{verdict, confidence, reasoning}` inline. Multi-tool
+  correlation tags cross-validated findings (★ in UI); confidence score
+  (0-100) replaces the binary flag for sort and filter
 
 ## Building
 
@@ -100,6 +112,10 @@ cmake .. && make -j$(nproc)
   in the Project Audit dialog. Requires a populated `build*/compile_commands.json`
   (CMake emits one with `CMAKE_EXPORT_COMPILE_COMMANDS=ON`, which we default on).
   Absent = the check self-disables; no error.
+- **semgrep** (`pip install semgrep` or `zypper in semgrep`): enables the
+  Semgrep structural-pattern lane alongside clazy. Uses `p/security-audit` +
+  language packs (`p/c`, `p/cpp`, `p/python`, `p/javascript`). Auto-includes
+  a project-local `.semgrep.yml` if present. Missing = silent no-op.
 - **cppcheck / clang-tidy / shellcheck / pylint / bandit / ruff / …**: each
   audit check probes with `which <tool>` and self-disables if missing.
 
@@ -168,6 +184,39 @@ cppcheck --enable=all --std=c++20 --library=qt \
 - Audit test harness is shell-based against fixture dirs (`bad.*`/`good.*` with
   `// @expect` markers) — no C++ unit framework, no link-time coupling to
   auditdialog internals
+- Audit context-awareness follows reference-tool conventions: inline
+  suppression directives recognize clang-tidy (`NOLINT`/`NOLINTNEXTLINE`),
+  cppcheck (`cppcheck-suppress`), flake8 (`noqa`), bandit (`nosec`), semgrep
+  (`nosemgrep`), gitleaks (`#gitleaks:allow`), eslint (`eslint-disable-*`),
+  pylint (`pylint: disable`) plus ants-native `// ants-audit: disable[=rule]`.
+  Generated files (`moc_*`, `ui_*`, `qrc_*`, `*.pb.cc/.h`, `/generated/`,
+  `_generated.*`) are auto-skipped. SARIF exports include `contextRegion`
+  (±3 lines around the finding) and a `properties.blame` bag following the
+  sarif-tools de-facto convention
+- Confidence score (0-100) replaces the binary `highConfidence` flag: base
+  = severity×15, +20 cross-tool, +10 external AST tool, −20 test path,
+  adjusted by explicit AI-triage verdicts. Sorted-by-confidence view
+  surfaces the most trustworthy findings first
+- Versioning follows [SemVer](https://semver.org). `project(... VERSION X.Y.Z)`
+  in `CMakeLists.txt` is the single source of truth; `add_compile_definitions(
+  ANTS_VERSION="${PROJECT_VERSION}")` propagates it to `main.cpp`
+  (setApplicationVersion), `auditdialog.cpp` (SARIF driver, dialog title,
+  types-label badge, HTML meta, plain-text handoff header). Bump in
+  `CMakeLists.txt` and every caller picks it up on rebuild — never hardcode
+  version strings in `.cpp`/`.h` files
+- Release notes live in `CHANGELOG.md` at project root following
+  [Keep a Changelog](https://keepachangelog.com) format. Every bump touches
+  three files: `CMakeLists.txt` (VERSION), `CHANGELOG.md` (new dated
+  section), and `README.md` (the "Current version" line)
+- `ROADMAP.md` is the forward-looking record — release-arc themes (0.6
+  polish, 0.7 shell integration, 0.8 multiplexing/marketplace, 0.9
+  platform/a11y, 1.0 stability) with prior-art links. When you complete
+  an item, move it from ROADMAP.md (status 📋) into the matching
+  CHANGELOG.md section (✅ Done) for the release it shipped in
+- `PLUGINS.md` is the plugin-author contract — when `luaengine.cpp` /
+  `pluginmanager.cpp` change what the `ants.*` API exposes, update
+  PLUGINS.md in the same commit. The doc is the contract; CI doesn't
+  check drift yet (honor system)
 
 ## Config Keys
 

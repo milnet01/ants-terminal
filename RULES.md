@@ -57,6 +57,20 @@
    written, documents a conscious decision. Cleanup is manual
 5. Baselines (`.audit_cache/baseline.json`) represent "accepted state at time T".
    Regenerate only when the state materially changes, not to mask new findings
+6. Inline suppression directives are the preferred way to silence a specific
+   finding long-term — `.audit_suppress` is for findings where the source
+   file can't take a comment (binary, vendored, third-party). Prefer
+   ants-native `// ants-audit: disable=<rule-id>` over foreign markers for
+   in-project code; foreign markers (`NOLINT`, `noqa`, `nosec`, …) are
+   honored for cross-tool compatibility but aren't the primary convention
+7. `path_rules` in `audit_rules.json` configure path-based severity shifts
+   and skips — prefer them over hardcoding path patterns in the C++ check
+   catalogue. Generated-file patterns (`moc_*`, `ui_*`, `*.pb.cc`, etc.) are
+   hardcoded because they're universal to Qt projects; everything else is
+   project-policy and belongs in JSON
+8. Confidence score is an ordering / display hint, not a hard threshold.
+   Never gate actions ("auto-suppress below 30") on it — users review
+   findings; the tool doesn't decide for them
 
 ## Code Quality
 
@@ -106,12 +120,27 @@
 
 ## Plugin Rules
 
+Plugin authoring surface is documented in detail in [PLUGINS.md](PLUGINS.md).
+These rules are the project-level invariants the runtime must preserve.
+
 1. Plugins live in `~/.config/ants-terminal/plugins/<name>/`
 2. Each plugin must have an `init.lua` entry point
 3. Optional `manifest.json` provides metadata (name, version, description, author)
 4. Plugins can only interact via the `ants` API -- no direct access to Qt or terminal internals
 5. Event handlers returning `false` cancel the event (keypress interception)
 6. Plugin errors are logged, never crash the terminal
+7. PLUGINS.md is the contract with plugin authors — when adding /
+   renaming / removing an `ants.*` function or event, update PLUGINS.md
+   in the same commit. CHANGELOG.md gets a plugin-API entry
+8. Breaking changes to the plugin API happen only at major version
+   bumps (0.x → 1.0, never 0.6 → 0.7). Additions are always backward-
+   compatible
+9. New events must fire synchronously on the Qt event loop (no worker
+   threads) and carry their data as a single string argument to keep
+   the handler signature uniform
+10. Sandbox additions (exposing a new global, allowing a previously-
+    removed stdlib) require a security review and a capability-
+    manifest entry (from 0.6 onward)
 
 ## Release Checklist
 
