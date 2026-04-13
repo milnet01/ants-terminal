@@ -958,6 +958,83 @@ void AuditDialog::capFindings(CheckResult &r, int cap) {
 }
 
 // ---------------------------------------------------------------------------
+// Comment/string-aware line classification — the single biggest false-
+// positive source for grep-style pattern checks. Runs a tiny state machine
+// over the file up to the target line and reports whether that line's
+// contents are actually code (vs. // comment, /* comment */, or "string").
+// ---------------------------------------------------------------------------
+
+bool AuditDialog::lineIsCode(const QString &absPath, int line) {
+    if (line <= 0 || absPath.isEmpty()) return true;
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return true;
+    // Scanning arbitrary files on audit is I/O-heavy. Cap to 2 MB so a
+    // runaway check doesn't stall the dialog; larger files fall through
+    // as "code" (the safe default that preserves findings).
+    if (f.size() > 2 * 1024 * 1024) return true;
+    const QByteArray all = f.readAll();
+    f.close();
+
+    // State: 0=code, 1=line-comment (until \n), 2=block-comment, 3=string.
+    int state = 0;
+    int curLine = 1;
+    bool hasCodeOnLine = false;
+    QChar stringQuote;
+
+    const QString src = QString::fromUtf8(all);
+    for (int i = 0; i < src.size(); ++i) {
+        const QChar c = src[i];
+        const QChar n = (i + 1 < src.size()) ? src[i + 1] : QChar();
+
+        if (curLine == line) {
+            if (state == 0 && !c.isSpace()) hasCodeOnLine = true;
+        } else if (curLine > line) {
+            break;
+        }
+
+        if (c == '\n') {
+            if (state == 1) state = 0;
+            ++curLine;
+            continue;
+        }
+
+        switch (state) {
+        case 0:  // code
+            if (c == '/' && n == '/') { state = 1; ++i; }
+            else if (c == '/' && n == '*') { state = 2; ++i; }
+            else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+            break;
+        case 1:  // line comment — terminated only by newline (handled above)
+            break;
+        case 2:  // block comment
+            if (c == '*' && n == '/') { state = 0; ++i; }
+            break;
+        case 3:  // string
+            if (c == '\\') { ++i; }  // skip escape
+            else if (c == stringQuote) state = 0;
+            break;
+        }
+    }
+    return hasCodeOnLine;
+}
+
+void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
+    // Only makes sense for checks that produce file:line findings.
+    if (r.findings.isEmpty()) return;
+
+    QList<Finding> kept;
+    for (const Finding &f : r.findings) {
+        if (f.file.isEmpty() || f.line <= 0) { kept.append(f); continue; }
+        // Resolve relative path against the project root.
+        const QString abs = QFileInfo(f.file).isAbsolute()
+                          ? f.file
+                          : (m_projectPath + "/" + f.file);
+        if (lineIsCode(abs, f.line)) kept.append(f);
+    }
+    r.findings = kept;
+}
+
+// ---------------------------------------------------------------------------
 // Suppression file
 // ---------------------------------------------------------------------------
 
@@ -1216,6 +1293,27 @@ void AuditDialog::buildUI() {
     connect(m_runBtn, &QPushButton::clicked, this, &AuditDialog::runAudit);
     btnRow->addWidget(m_runBtn);
 
+    // SARIF export (industry-standard JSON, consumed by GitHub Code Scanning,
+    // VSCode SARIF Viewer, SonarQube, CodeQL, etc.). Appears after a run.
+    m_sarifBtn = new QPushButton("Export SARIF", this);
+    m_sarifBtn->setFixedHeight(32);
+    m_sarifBtn->setVisible(false);
+    m_sarifBtn->setToolTip("Save findings as SARIF v2.1.0 JSON for CI / IDE viewers");
+    connect(m_sarifBtn, &QPushButton::clicked, this, [this]() {
+        if (m_completedResults.isEmpty()) return;
+        QDir().mkpath(m_projectPath + "/.audit_cache");
+        const QString path = m_projectPath + "/.audit_cache/audit-"
+                           + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
+                           + ".sarif";
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            f.write(exportSarif().toUtf8());
+            f.close();
+            m_statusLabel->setText("SARIF saved: " + path);
+        }
+    });
+    btnRow->addWidget(m_sarifBtn);
+
     m_reviewBtn = new QPushButton("Review with Claude", this);
     m_reviewBtn->setFixedHeight(32);
     m_reviewBtn->setMinimumWidth(160);
@@ -1342,6 +1440,7 @@ void AuditDialog::runNextCheck() {
         m_runBtn->setEnabled(true);
         m_reviewBtn->setVisible(true);
         m_baselineBtn->setVisible(true);
+        if (m_sarifBtn) m_sarifBtn->setVisible(true);
         for (auto &c : m_checks)
             if (c.toggle) c.toggle->setEnabled(c.available);
         return;
@@ -1422,6 +1521,21 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
         seenKeys.insert(f.dedupKey);
         r.findings.append(f);
     }
+
+    // Comment/string-aware filtering for source-pattern checks. External
+    // static analyzers (cppcheck, clang-tidy, pylint, …) already understand
+    // comments, so skip them — applying the filter could remove real
+    // findings that point to comment-adjacent declarations.
+    static const QSet<QString> kSourceScannedChecks = {
+        "secrets_scan", "unsafe_c_funcs", "cmd_injection", "cmd_injection_dyn",
+        "format_string", "insecure_http", "unsafe_deser", "hardcoded_ips",
+        "weak_crypto", "memory_patterns", "debug_leftovers", "todo_scan",
+        "qt_openurl_unchecked", "qt_hardcoded_colors",
+        "qt_findchild_direct", "qt_connect_this_capture",
+    };
+    if (kSourceScannedChecks.contains(check.id))
+        dropFindingsInCommentsOrStrings(r);
+
     capFindings(r, kMaxFindingsPerCheck);
     r.findingCount = r.findings.size() + r.omittedCount;
     m_completedResults.append(r);
@@ -1663,6 +1777,114 @@ void AuditDialog::renderResults() {
 // ---------------------------------------------------------------------------
 // Plain-text export for the Claude Review handoff
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// SARIF v2.1.0 export (OASIS standard, consumed by GitHub code-scanning,
+// VSCode SARIF viewer, SonarQube, etc.)
+// ---------------------------------------------------------------------------
+//
+// Minimal compliant document: one run, one tool (ants-audit), a catalogue
+// of rules we emitted, and one result per finding. SARIF level mapping:
+//   Blocker / Critical → "error"
+//   Major / Minor      → "warning"
+//   Info               → "note"
+
+QString AuditDialog::exportSarif() const {
+    auto sarifLevel = [](Severity s) -> QString {
+        switch (s) {
+            case Severity::Blocker:
+            case Severity::Critical: return "error";
+            case Severity::Major:
+            case Severity::Minor:    return "warning";
+            case Severity::Info:     return "note";
+        }
+        return "none";
+    };
+
+    // Build the rule catalogue deduplicated by check id.
+    QMap<QString, AuditCheck> ruleById;
+    for (const auto &c : m_checks) ruleById.insert(c.id, c);
+
+    QJsonArray rules;
+    for (auto it = ruleById.constBegin(); it != ruleById.constEnd(); ++it) {
+        const auto &c = it.value();
+        QJsonObject r;
+        r["id"] = c.id;
+        r["name"] = c.name;
+        QJsonObject shortDesc;  shortDesc["text"] = c.name;
+        QJsonObject fullDesc;   fullDesc["text"]  = c.description;
+        r["shortDescription"] = shortDesc;
+        r["fullDescription"]  = fullDesc;
+        QJsonObject defCfg; defCfg["level"] = sarifLevel(c.severity);
+        r["defaultConfiguration"] = defCfg;
+        r["properties"] = QJsonObject{
+            {"category",  c.category},
+            {"type",      typeLabel(c.type)},
+            {"severity",  severityLabel(c.severity)},
+        };
+        rules.append(r);
+    }
+
+    QJsonArray results;
+    for (const CheckResult &cr : m_completedResults) {
+        if (cr.warning || cr.findings.isEmpty()) continue;
+        for (const Finding &f : cr.findings) {
+            QJsonObject res;
+            res["ruleId"]   = f.checkId;
+            res["level"]    = sarifLevel(f.severity);
+            QJsonObject msg;
+            msg["text"]     = f.message;
+            res["message"]  = msg;
+
+            if (!f.file.isEmpty()) {
+                QJsonObject loc, physLoc, artLoc, region;
+                artLoc["uri"] = f.file;
+                physLoc["artifactLocation"] = artLoc;
+                if (f.line > 0) {
+                    region["startLine"] = f.line;
+                    physLoc["region"]   = region;
+                }
+                loc["physicalLocation"] = physLoc;
+                QJsonArray locs; locs.append(loc);
+                res["locations"] = locs;
+            }
+            QJsonObject partialFp;
+            partialFp["primaryLocationLineHash"] = f.dedupKey;
+            res["partialFingerprints"] = partialFp;
+
+            res["properties"] = QJsonObject{{"source", f.source}};
+            results.append(res);
+        }
+    }
+
+    QJsonObject driver;
+    driver["name"] = "ants-audit";
+    driver["version"] = "0.4.0";
+    driver["informationUri"] = "https://github.com/milnet01/ants-terminal";
+    driver["rules"] = rules;
+
+    QJsonObject tool;
+    tool["driver"] = driver;
+
+    QJsonObject run;
+    run["tool"] = tool;
+    run["results"] = results;
+    QJsonObject invocation;
+    invocation["workingDirectory"] = QJsonObject{{"uri", m_projectPath}};
+    invocation["startTimeUtc"]     = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    QJsonArray invocations; invocations.append(invocation);
+    run["invocations"] = invocations;
+
+    QJsonArray runs; runs.append(run);
+
+    QJsonObject root;
+    root["$schema"] = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/"
+                      "Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json";
+    root["version"] = "2.1.0";
+    root["runs"] = runs;
+
+    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
 
 QString AuditDialog::plainTextResults() const {
     if (m_completedResults.isEmpty()) return {};

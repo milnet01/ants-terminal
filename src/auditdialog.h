@@ -205,6 +205,20 @@ private:
     // lazily when "Review with Claude" is pressed.
     QString readProjectDoc(const QString &name) const;
 
+    // Filter findings whose source location lives inside a comment or string
+    // literal (per-file state-machine scan). Reference-tool-proven #1 source
+    // of pattern-match false positives — e.g. "new" inside "// allocate with
+    // new" used to flag every audit.
+    void dropFindingsInCommentsOrStrings(CheckResult &r) const;
+    // Classify the 1-based line of a file as code / comment-only / string-
+    // literal-only. Returns true if the line is safe to keep (code or
+    // unknown file), false if it's confined to comments/strings.
+    static bool lineIsCode(const QString &absPath, int line);
+
+    // SARIF v2.1.0 export — OASIS-standard JSON format consumed by GitHub
+    // code-scanning, VSCode SARIF Viewer, SonarQube, etc.
+    QString exportSarif() const;
+
     QLabel *m_pathLabel = nullptr;
     QLabel *m_typesLabel = nullptr;
     QPushButton *m_runBtn = nullptr;
@@ -217,5 +231,6 @@ private:
     QTimer *m_timeout = nullptr;
 
     QPushButton *m_reviewBtn = nullptr;
+    QPushButton *m_sarifBtn = nullptr;
     QString plainTextResults() const;
 };
