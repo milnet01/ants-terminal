@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QCryptographicHash>
 
 #include <algorithm>
 
@@ -110,6 +111,7 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
 
     detectProject();
     loadBaseline();
+    loadSuppressions();
     populateChecks();
     buildUI();
 }
@@ -848,6 +850,136 @@ AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
 }
 
 // ---------------------------------------------------------------------------
+// Parsing raw command output into Findings
+// ---------------------------------------------------------------------------
+//
+// Most checker output follows a small family of shapes:
+//   file:line:col: message               (cppcheck, clang-tidy, gcc, grep -n)
+//   file:line: message                   (shellcheck, luacheck, various)
+//   file                                 (find, ls, wc output)
+//   free-form                            (git status, build logs, whatever)
+//
+// We parse in that order and fall back to treating the line as a free-form
+// finding with no file/line. Parsing is best-effort; incorrectly-parsed
+// lines still appear, just without navigable location metadata.
+
+static QString sourceForCheck(const QString &checkId) {
+    if (checkId.startsWith("cppcheck"))  return "cppcheck";
+    if (checkId == "clang_tidy")         return "clang-tidy";
+    if (checkId == "pylint")             return "pylint";
+    if (checkId == "bandit")             return "bandit";
+    if (checkId == "ruff")               return "ruff";
+    if (checkId == "mypy")               return "mypy";
+    if (checkId == "shellcheck")         return "shellcheck";
+    if (checkId == "luacheck")           return "luacheck";
+    if (checkId == "cargo_clippy")       return "cargo-clippy";
+    if (checkId == "cargo_audit")        return "cargo-audit";
+    if (checkId == "go_vet")             return "go vet";
+    if (checkId == "govulncheck")        return "govulncheck";
+    if (checkId == "golangci_lint")      return "golangci-lint";
+    if (checkId == "eslint")             return "eslint";
+    if (checkId == "npm_audit")          return "npm audit";
+    if (checkId.startsWith("git_"))      return "git";
+    if (checkId == "compiler_warnings")  return "gcc";
+    // find-based checks
+    if (checkId == "large_files" || checkId == "dup_files" ||
+        checkId == "dangling_symlinks" || checkId == "binary_in_repo" ||
+        checkId == "env_files" || checkId == "temp_files" ||
+        checkId == "file_perms" || checkId == "header_guards" ||
+        checkId == "line_stats" || checkId == "long_files" ||
+        checkId == "encoding_check")
+        return "find";
+    return "grep";
+}
+
+static QString computeDedup(const QString &file, int line,
+                            const QString &checkId, const QString &title) {
+    const QString raw = QString("%1:%2:%3:%4").arg(file).arg(line).arg(checkId, title);
+    return QString::fromLatin1(
+        QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Sha256)
+            .toHex().left(16));
+}
+
+QList<Finding> AuditDialog::parseFindings(const QString &body, const AuditCheck &check) {
+    QList<Finding> out;
+    if (body.isEmpty()) return out;
+
+    // Patterns. Greedy on file segment, which can contain slashes but not
+    // colons or whitespace (matches the conventions of every tool we wrap).
+    static const QRegularExpression reFileLineCol(
+        R"(^([^\s:]+):(\d+):(?:\d+:)?\s*(.*)$)");
+    static const QRegularExpression reFileLine(
+        R"(^([^\s:]+):(\d+):\s*(.*)$)");
+    // A bare filename: path with at least one '/' OR an extension.
+    static const QRegularExpression reJustFile(
+        R"(^([^\s:]+\.[A-Za-z0-9_]+)$|^([^\s:]+/[^\s:]+)$)");
+
+    const QString source = sourceForCheck(check.id);
+    const QStringList lines = body.split('\n', Qt::SkipEmptyParts);
+    for (const QString &rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty()) continue;
+
+        Finding f;
+        f.checkId   = check.id;
+        f.checkName = check.name;
+        f.category  = check.category;
+        f.type      = check.type;
+        f.severity  = check.severity;
+        f.source    = source;
+        f.message   = line;
+
+        auto m1 = reFileLineCol.match(line);
+        auto m2 = reFileLine.match(line);
+        auto m3 = reJustFile.match(line);
+        if (m1.hasMatch()) {
+            f.file = m1.captured(1);
+            f.line = m1.captured(2).toInt();
+        } else if (m2.hasMatch()) {
+            f.file = m2.captured(1);
+            f.line = m2.captured(2).toInt();
+        } else if (m3.hasMatch()) {
+            f.file = m3.captured(1).isEmpty() ? m3.captured(2) : m3.captured(1);
+        }
+
+        // Title = first 80 chars of the (trimmed) body part — used in the
+        // dedup hash so two tools flagging the same line still collide.
+        const QString title = line.left(80);
+        f.dedupKey = computeDedup(f.file, f.line, check.id, title);
+        out.append(f);
+    }
+    return out;
+}
+
+void AuditDialog::capFindings(CheckResult &r, int cap) {
+    if (cap <= 0 || r.findings.size() <= cap) return;
+    r.omittedCount = r.findings.size() - cap;
+    r.findings.erase(r.findings.begin() + cap, r.findings.end());
+}
+
+// ---------------------------------------------------------------------------
+// Suppression file
+// ---------------------------------------------------------------------------
+
+QString AuditDialog::suppressionPath() const {
+    return m_projectPath + "/.audit_suppress";
+}
+
+void AuditDialog::loadSuppressions() {
+    m_suppressedKeys.clear();
+    QFile f(suppressionPath());
+    if (!f.open(QIODevice::ReadOnly)) return;
+    const QStringList lines = QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts);
+    f.close();
+    for (const QString &raw : lines) {
+        const QString line = raw.trimmed();
+        if (line.isEmpty() || line.startsWith('#')) continue;
+        // Key is the first whitespace-delimited token; rest is free-form comment.
+        m_suppressedKeys.insert(line.section(QRegularExpression(R"(\s+)"), 0, 0));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Baseline persistence
 // ---------------------------------------------------------------------------
 
@@ -872,15 +1004,14 @@ void AuditDialog::saveBaseline() {
     QDir().mkpath(m_projectPath + "/.audit_cache");
     QJsonArray arr;
     for (const CheckResult &r : m_completedResults) {
-        if (r.output.isEmpty()) continue;
-        // Fingerprint = checkId + first line of output. Coarse but stable
-        // against re-orderings.
-        const QString firstLine = r.output.section('\n', 0, 0).trimmed();
-        if (!firstLine.isEmpty())
-            arr.append(r.checkId + ":" + firstLine);
+        // Per-finding fingerprints — stable across unrelated code changes,
+        // because dedupKey is (file:line:checkId:title-hash).
+        for (const Finding &f : r.findings)
+            arr.append(f.dedupKey);
     }
     QJsonObject root;
     root["generated"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    root["version"] = 2;               // v2 = per-finding dedupKey
     root["fingerprints"] = arr;
     QFile f(baselinePath());
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -888,7 +1019,8 @@ void AuditDialog::saveBaseline() {
         f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
         f.close();
         loadBaseline();
-        m_statusLabel->setText("Baseline saved.");
+        if (m_newOnlyBtn) m_newOnlyBtn->setEnabled(true);
+        m_statusLabel->setText(QString("Baseline saved — %1 fingerprints").arg(arr.size()));
     }
 }
 
@@ -1140,18 +1272,32 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
     else if (!errOutput.isEmpty())
         output += "\n" + errOutput;
 
-    // Apply declarative post-filter
+    // Apply declarative post-filter (noise excludes, head caps, etc).
     const FilterResult filtered = applyFilter(output, check.filter);
 
     CheckResult r;
-    r.checkId = check.id;
+    r.checkId   = check.id;
     r.checkName = check.name;
-    r.category = check.category;
-    r.type = check.type;
-    r.severity = check.severity;
-    r.output = filtered.body;
-    r.findingCount = filtered.count;
-    r.warning = false;
+    r.category  = check.category;
+    r.type      = check.type;
+    r.severity  = check.severity;
+    r.source    = sourceForCheck(check.id);
+    r.output    = filtered.body;
+    r.warning   = false;
+
+    // Parse body into structured findings. Suppress any finding whose
+    // dedup hash appears in .audit_suppress. Dedup across findings within
+    // this single check (exact-duplicate message lines).
+    QSet<QString> seenKeys;
+    QList<Finding> parsed = parseFindings(filtered.body, check);
+    for (const Finding &f : parsed) {
+        if (m_suppressedKeys.contains(f.dedupKey)) continue;
+        if (seenKeys.contains(f.dedupKey)) continue;
+        seenKeys.insert(f.dedupKey);
+        r.findings.append(f);
+    }
+    capFindings(r, kMaxFindingsPerCheck);
+    r.findingCount = r.findings.size() + r.omittedCount;
     m_completedResults.append(r);
 
     ++m_checksRun;
@@ -1198,7 +1344,7 @@ static QString typeLabel(CheckType t) {
 void AuditDialog::renderResults() {
     m_results->clear();
 
-    // Sort: highest severity first, then by category then name.
+    // Sort: highest severity first, then by category, then by name.
     std::vector<CheckResult> sorted(m_completedResults.begin(), m_completedResults.end());
     std::sort(sorted.begin(), sorted.end(), [](const CheckResult &a, const CheckResult &b) {
         if (a.severity != b.severity) return a.severity > b.severity;
@@ -1206,25 +1352,40 @@ void AuditDialog::renderResults() {
         return a.checkName < b.checkName;
     });
 
-    // Apply "new since baseline" filter if the user asked for it.
-    auto isNew = [this](const CheckResult &r) {
+    // Baseline comparison is now per-finding (via dedupKey), not per-check.
+    auto findingIsNew = [this](const Finding &f) {
         if (!m_hasBaseline) return true;
-        const QString firstLine = r.output.section('\n', 0, 0).trimmed();
-        if (firstLine.isEmpty()) return false;
-        return !m_baselineFingerprints.contains(r.checkId + ":" + firstLine);
+        return !m_baselineFingerprints.contains(f.dedupKey);
+    };
+    auto checkHasNew = [&](const CheckResult &r) {
+        if (!m_hasBaseline) return true;
+        for (const Finding &f : r.findings)
+            if (findingIsNew(f)) return true;
+        return false;
     };
 
-    // Counts by severity (post-filter if showNewOnly is active).
+    // Counts by severity.
     int bySev[5] = {0, 0, 0, 0, 0};
     int totalFindings = 0;
+    int totalNew = 0;
+    int totalSuppressed = 0;    // kept for display; not sure how many the file hid
     for (const auto &r : sorted) {
-        if (r.output.isEmpty() || r.warning) continue;
-        if (m_showNewOnly && !isNew(r)) continue;
-        bySev[static_cast<int>(r.severity)] += r.findingCount;
-        totalFindings += r.findingCount;
+        if (r.warning) continue;
+        for (const Finding &f : r.findings) {
+            if (m_showNewOnly && !findingIsNew(f)) continue;
+            ++bySev[static_cast<int>(f.severity)];
+            ++totalFindings;
+            if (findingIsNew(f)) ++totalNew;
+        }
+        if (r.omittedCount > 0 && !m_showNewOnly) {
+            // overflow beyond per-check cap — count toward its severity
+            bySev[static_cast<int>(r.severity)] += r.omittedCount;
+            totalFindings += r.omittedCount;
+        }
     }
+    totalSuppressed = m_suppressedKeys.size();
 
-    // Summary banner
+    // Summary banner.
     QString banner = QString(
         "<div style='background:#222; color:#eee; padding:6px 10px; border-radius:4px;"
         " margin-bottom:10px; font-family:monospace;'>"
@@ -1236,6 +1397,7 @@ void AuditDialog::renderResults() {
         "<span style='color:#FFA500;'>MAJOR: %6</span> · "
         "<span style='color:#FFD700;'>MINOR: %7</span> · "
         "<span style='color:#4CAF50;'>INFO: %8</span>"
+        "%9"
         "</div>"
     ).arg(sorted.size())
      .arg(totalFindings)
@@ -1244,37 +1406,86 @@ void AuditDialog::renderResults() {
      .arg(bySev[(int)Severity::Critical])
      .arg(bySev[(int)Severity::Major])
      .arg(bySev[(int)Severity::Minor])
-     .arg(bySev[(int)Severity::Info]);
+     .arg(bySev[(int)Severity::Info])
+     .arg(totalSuppressed > 0
+          ? QString("<br><span style='color:#888; font-size:10px;'>"
+                    "%1 suppression(s) loaded from .audit_suppress · "
+                    "%2 new since baseline</span>")
+              .arg(totalSuppressed).arg(m_hasBaseline ? totalNew : 0)
+          : (m_hasBaseline ? QString("<br><span style='color:#888; font-size:10px;'>"
+                                     "%1 new since baseline</span>").arg(totalNew)
+                           : QString()));
     m_results->append(banner);
 
-    // Per-check sections
+    // Per-check sections.
     for (const auto &r : sorted) {
-        if (m_showNewOnly && !isNew(r)) continue;
-        const bool clean = r.output.isEmpty() && !r.warning;
-        const QString body = clean ? "No issues found." : r.output;
+        if (m_showNewOnly && !checkHasNew(r)) continue;
+        const bool clean = r.findings.isEmpty() && r.omittedCount == 0 && !r.warning;
         const QString color = r.warning ? "#E74856" : severityColor(r.severity);
-        const bool newTag = m_hasBaseline && !clean && !r.warning && isNew(r);
 
+        // Header
         m_results->append(QString(
-            "<div style='margin-bottom:10px;'>"
-            "<span style='color:%1; font-weight:bold;'>[%2] %3 %4 %5</span>"
-            "<span style='color:#888; font-size:10px;'>  · %6</span>"
-            "%7"
-            "<pre style='margin:2px 0; white-space:pre-wrap;'>%8</pre>"
+            "<div style='margin-bottom:4px;'>"
+            "<span style='color:%1; font-weight:bold;'>[%2] %3 — %4%5</span>"
+            "<span style='color:#888; font-size:10px;'>  · %6 · %7</span>"
             "</div>"
-        ).arg(color, severityLabel(r.severity), typeLabel(r.type).toUpper(),
+        ).arg(color,
+              severityLabel(r.severity),
+              typeLabel(r.type).toUpper(),
               r.checkName.toHtmlEscaped(),
-              r.warning ? "(timeout)" : "",
+              r.warning ? " (timeout)" : "",
               r.category.toHtmlEscaped(),
-              newTag ? " <span style='color:#4CAF50; font-weight:bold;'>NEW</span>" : "",
-              body.toHtmlEscaped()));
+              r.source));
+
+        if (r.warning) {
+            m_results->append(QString("<pre style='margin:2px 0 10px 10px; color:#c00;'>%1</pre>")
+                              .arg(r.output.toHtmlEscaped()));
+            continue;
+        }
+        if (clean) {
+            m_results->append("<div style='margin:2px 0 10px 10px; color:#888;'>"
+                              "No issues found.</div>");
+            continue;
+        }
+
+        // Build findings body. Each finding line gets:
+        //   file:line · message       (monospace)
+        //   - optional NEW tag (baseline diff)
+        //   - dedup hash at end (small, grey, for .audit_suppress copy-paste)
+        QStringList rows;
+        for (const Finding &f : r.findings) {
+            if (m_showNewOnly && !findingIsNew(f)) continue;
+            const bool isNew = m_hasBaseline && findingIsNew(f);
+            const QString loc = f.file.isEmpty()
+                              ? QString()
+                              : (f.line >= 0
+                                 ? QString("<span style='color:#89B4FA;'>%1:%2</span>  ")
+                                     .arg(f.file.toHtmlEscaped()).arg(f.line)
+                                 : QString("<span style='color:#89B4FA;'>%1</span>  ")
+                                     .arg(f.file.toHtmlEscaped()));
+            rows << QString("%1%2<span style='color:#888; font-size:9px;'>  %3</span>%4")
+                    .arg(loc,
+                         f.message.toHtmlEscaped(),
+                         f.dedupKey,
+                         isNew ? " <span style='color:#4CAF50; font-weight:bold;'>NEW</span>"
+                               : "");
+        }
+        if (r.omittedCount > 0 && !m_showNewOnly) {
+            rows << QString("<span style='color:#FFA500;'>… and %1 more (capped at %2 per check)</span>")
+                    .arg(r.omittedCount).arg(kMaxFindingsPerCheck);
+        }
+        m_results->append("<div style='margin:0 0 10px 10px;'><pre style='white-space:pre-wrap; margin:0;'>"
+                          + rows.join("\n") + "</pre></div>");
     }
 
     auto *sb = m_results->verticalScrollBar();
-    if (sb) sb->setValue(0);  // Reset to top to show summary
+    if (sb) sb->setValue(0);
 
-    m_statusLabel->setText(QString("Audit complete — %1 findings across %2 checks")
-                           .arg(totalFindings).arg(sorted.size()));
+    m_statusLabel->setText(QString("Audit complete — %1 findings across %2 checks%3")
+                           .arg(totalFindings).arg(sorted.size())
+                           .arg(m_hasBaseline
+                                ? QString(" (%1 new since baseline)").arg(totalNew)
+                                : QString()));
 }
 
 // ---------------------------------------------------------------------------
@@ -1288,6 +1499,9 @@ QString AuditDialog::plainTextResults() const {
                      "Project: " + m_projectPath + "\n"
                      "Detected: " + m_detectedTypes.join(", ") + "\n";
     if (m_hasBaseline) header += "Baseline: loaded\n";
+    if (!m_suppressedKeys.isEmpty())
+        header += QString("Suppressions: %1 loaded from .audit_suppress\n")
+                    .arg(m_suppressedKeys.size());
     header += "---\n\n";
 
     // Re-sort a copy for the plain-text report.
@@ -1299,11 +1513,33 @@ QString AuditDialog::plainTextResults() const {
 
     QString body;
     for (const auto &r : sorted) {
-        if (r.output.isEmpty() && !r.warning) continue;
-        body += QString("--- [%1] %2 (%3 / %4) ---\n%5\n\n")
+        if (r.warning) {
+            body += QString("--- [%1] %2 (%3 / %4) [%5] ---\n(warning) %6\n\n")
+                    .arg(severityLabel(r.severity), r.checkName,
+                         typeLabel(r.type), r.category, r.source, r.output);
+            continue;
+        }
+        if (r.findings.isEmpty() && r.omittedCount == 0) continue;
+
+        body += QString("--- [%1] %2 (%3 / %4) [%5] — %6 finding(s) ---\n")
                 .arg(severityLabel(r.severity), r.checkName,
-                     typeLabel(r.type), r.category,
-                     r.warning ? QString("(%1) %2").arg("warning", r.output) : r.output);
+                     typeLabel(r.type), r.category, r.source)
+                .arg(r.findings.size() + r.omittedCount);
+        for (const Finding &f : r.findings) {
+            if (!f.file.isEmpty() && f.line >= 0)
+                body += QString("%1:%2  %3  [%4]\n").arg(f.file)
+                                                    .arg(f.line)
+                                                    .arg(f.message)
+                                                    .arg(f.dedupKey);
+            else if (!f.file.isEmpty())
+                body += QString("%1  %2  [%3]\n").arg(f.file, f.message, f.dedupKey);
+            else
+                body += QString("%1  [%2]\n").arg(f.message, f.dedupKey);
+        }
+        if (r.omittedCount > 0)
+            body += QString("… and %1 more (capped at %2 per check)\n")
+                    .arg(r.omittedCount).arg(kMaxFindingsPerCheck);
+        body += "\n";
     }
     if (body.isEmpty()) body = "No issues found.\n";
 

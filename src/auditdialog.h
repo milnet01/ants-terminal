@@ -61,6 +61,22 @@ struct AuditCheck {
     ToggleSwitch *toggle = nullptr;
 };
 
+// Individual finding parsed from a check's output. One per issue, not one
+// per check — lets us dedup across tools, suppress individually, and render
+// severity-sorted even within a check's output.
+struct Finding {
+    QString checkId;       // originating check
+    QString checkName;
+    QString category;      // General, Security, Qt, …
+    CheckType type;
+    Severity severity;
+    QString source;        // "cppcheck", "grep", "find", "clang-tidy", …
+    QString file;          // "src/terminalgrid.cpp" or empty
+    int     line = -1;     // 1-based line number; -1 if not parseable
+    QString message;       // the full raw output line (trimmed)
+    QString dedupKey;      // SHA-256(file:line:checkId:title) hex, truncated
+};
+
 // One finding row after post-processing; kept per-check so we can sort the
 // final report by severity and compute summary counts.
 struct CheckResult {
@@ -69,9 +85,12 @@ struct CheckResult {
     QString category;
     CheckType type;
     Severity severity;
-    QString output;         // post-filter output body (may be empty = no issues)
-    int findingCount = 0;   // non-empty output line count (0 = clean)
-    bool warning = false;   // timeout / start-failed
+    QString source;                // primary tool for this check
+    QList<Finding> findings;       // parsed individual findings
+    int omittedCount = 0;          // from per-check cap — "+ N more"
+    QString output;                // raw (post-filter) output for fallback display
+    int findingCount = 0;          // convenience: findings.size() + omittedCount
+    bool warning = false;          // timeout / start-failed
 };
 
 class AuditDialog : public QDialog {
@@ -115,6 +134,23 @@ private:
     struct FilterResult { QString body; int count; };
     static FilterResult applyFilter(const QString &raw, const OutputFilter &f);
 
+    // Parse command output lines into structured Findings. Understands:
+    //   file:line:col: msg           (grep -n, cppcheck, clang-tidy, gcc)
+    //   file:line: msg               (shellcheck, some linters)
+    //   file                         (find, ls output)
+    //   other                        (whole line is a free-form message)
+    static QList<Finding> parseFindings(const QString &body,
+                                        const AuditCheck &check);
+
+    // Apply per-check cap; overflow entries are dropped and omittedCount
+    // is recorded so the UI can show "(+N more)".
+    static void capFindings(CheckResult &r, int cap);
+
+    // Load user-maintained dedup keys from <project>/.audit_suppress (one
+    // key per line, `#` comments allowed).
+    void loadSuppressions();
+    QString suppressionPath() const;
+
     // Present accumulated results sorted by severity with a summary banner.
     void renderResults();
 
@@ -138,6 +174,14 @@ private:
     QSet<QString> m_baselineFingerprints;
     bool m_hasBaseline = false;
     bool m_showNewOnly = false;  // UI toggle
+
+    // Persistent per-project suppressions (by Finding::dedupKey) — read from
+    // <project>/.audit_suppress at load time, suppressed findings are hidden
+    // from results.
+    QSet<QString> m_suppressedKeys;
+
+    // Per-check cap to prevent one noisy check from drowning out signal.
+    static constexpr int kMaxFindingsPerCheck = 100;
 
     QLabel *m_pathLabel = nullptr;
     QLabel *m_typesLabel = nullptr;
