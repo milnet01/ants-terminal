@@ -549,9 +549,25 @@ void ClaudeIntegration::onMcpConnection() {
 
             QJsonObject request = doc.object();
             QString method = request.value("method").toString();
-            QJsonObject response;
+            QJsonValue reqId = request.value("id");
 
-            if (method == "tools/list") {
+            // Build either `result` (success) or `error` (failure). The
+            // envelope ({jsonrpc, id, result/error}) is added at the end.
+            QJsonObject result;
+            QJsonObject error;
+            bool haveResult = false;
+
+            if (method == "initialize") {
+                QJsonObject caps;
+                caps["tools"] = QJsonObject();
+                QJsonObject serverInfo;
+                serverInfo["name"] = "ants-terminal";
+                serverInfo["version"] = "0.4.0";
+                result["protocolVersion"] = "2025-11-25";
+                result["capabilities"] = caps;
+                result["serverInfo"] = serverInfo;
+                haveResult = true;
+            } else if (method == "tools/list") {
                 QJsonArray tools;
 
                 QJsonObject scrollbackTool;
@@ -593,7 +609,8 @@ void ClaudeIntegration::onMcpConnection() {
                 envTool["description"] = "Get shell environment info (PATH, virtualenv, key env vars)";
                 tools.append(envTool);
 
-                response["tools"] = tools;
+                result["tools"] = tools;
+                haveResult = true;
             } else if (method == "tools/call") {
                 QJsonObject params = request.value("params").toObject();
                 QString toolName = params.value("name").toString();
@@ -607,12 +624,15 @@ void ClaudeIntegration::onMcpConnection() {
                     return arr;
                 };
 
+                bool toolHandled = false;
                 if (toolName == "get_scrollback" && m_scrollbackProvider) {
                     int lines = params.value("arguments").toObject()
                                      .value("lines").toInt(50);
-                    response["content"] = makeTextContent(m_scrollbackProvider(lines));
+                    result["content"] = makeTextContent(m_scrollbackProvider(lines));
+                    toolHandled = true;
                 } else if (toolName == "get_cwd" && m_cwdProvider) {
-                    response["content"] = makeTextContent(m_cwdProvider());
+                    result["content"] = makeTextContent(m_cwdProvider());
+                    toolHandled = true;
                 } else if (toolName == "get_session_info") {
                     QJsonObject info;
                     info["state"] = static_cast<int>(m_state);
@@ -620,25 +640,52 @@ void ClaudeIntegration::onMcpConnection() {
                     info["context_percent"] = m_contextPercent;
                     info["changed_files"] = QJsonArray::fromStringList(m_changedFiles);
                     info["session_id"] = m_activeSessionId;
-                    response["content"] = makeTextContent(
+                    result["content"] = makeTextContent(
                         QJsonDocument(info).toJson(QJsonDocument::Compact));
+                    toolHandled = true;
                 } else if (toolName == "get_last_command" && m_lastCommandProvider) {
                     auto [exitCode, output] = m_lastCommandProvider();
                     QJsonObject info;
                     info["exit_code"] = exitCode;
                     info["output"] = output;
                     info["failed"] = (exitCode != 0);
-                    response["content"] = makeTextContent(
+                    result["content"] = makeTextContent(
                         QJsonDocument(info).toJson(QJsonDocument::Compact));
+                    toolHandled = true;
                 } else if (toolName == "get_git_status" && m_gitStatusProvider) {
-                    response["content"] = makeTextContent(m_gitStatusProvider());
+                    result["content"] = makeTextContent(m_gitStatusProvider());
+                    toolHandled = true;
                 } else if (toolName == "get_environment" && m_envProvider) {
-                    response["content"] = makeTextContent(m_envProvider());
+                    result["content"] = makeTextContent(m_envProvider());
+                    toolHandled = true;
                 }
+
+                if (toolHandled) {
+                    haveResult = true;
+                } else {
+                    // JSON-RPC application error: tool not found or provider missing.
+                    error["code"] = -32602; // Invalid params
+                    error["message"] = QString("Unknown tool: %1").arg(toolName);
+                }
+            } else {
+                // JSON-RPC -32601 = Method not found
+                error["code"] = -32601;
+                error["message"] = QString("Method not found: %1").arg(method);
             }
 
-            // Send response
-            QByteArray resp = QJsonDocument(response).toJson(QJsonDocument::Compact);
+            // Notifications (no id) must NOT receive a response per JSON-RPC 2.0.
+            if (reqId.isUndefined() || reqId.isNull()) {
+                socket->disconnectFromServer();
+                return;
+            }
+
+            QJsonObject envelope;
+            envelope["jsonrpc"] = "2.0";
+            envelope["id"] = reqId;
+            if (haveResult) envelope["result"] = result;
+            else            envelope["error"]  = error;
+
+            QByteArray resp = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
             socket->write(resp);
             socket->flush();
             socket->disconnectFromServer();
