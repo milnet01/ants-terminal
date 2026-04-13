@@ -589,19 +589,6 @@ void MainWindow::setupMenus() {
 
     claudeMenu->addSeparator();
 
-    QAction *configureHooks = claudeMenu->addAction("Configure &Hooks for this Project");
-    connect(configureHooks, &QAction::triggered, this, [this]() {
-        if (auto *t = focusedTerminal()) {
-            QString cwd = t->shellCwd();
-            if (!cwd.isEmpty()) {
-                ClaudeIntegration::ensureHooksConfigured(cwd, 0);
-                showStatusMessage("Claude Code hooks configured in " + cwd, 5000);
-            }
-        }
-    });
-
-    claudeMenu->addSeparator();
-
     // Model switching submenu
     QMenu *modelMenu = claudeMenu->addMenu("Switch &Model");
     for (auto &[label, cmd] : std::initializer_list<std::pair<const char*, const char*>>{

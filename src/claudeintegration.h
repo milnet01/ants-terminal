@@ -84,9 +84,6 @@ public:
     // Environment setup
     static QProcessEnvironment claudeEnv();
 
-    // Auto-configure hooks in .claude/settings.local.json
-    static void ensureHooksConfigured(const QString &projectDir, int port);
-
     // Terminal output notification — call when PTY output is received while
     // Claude is running so status detection can supplement transcript parsing
     void notifyTerminalOutput();
