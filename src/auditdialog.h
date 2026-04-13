@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QDialog>
-#include <QTextEdit>
+#include <QTextBrowser>
 #include <QPushButton>
 #include <QProgressBar>
 #include <QLabel>
@@ -10,6 +10,7 @@
 #include <QTemporaryFile>
 #include <QRegularExpression>
 #include <QSet>
+#include <QHash>
 
 class ToggleSwitch;
 
@@ -146,10 +147,24 @@ private:
     // is recorded so the UI can show "(+N more)".
     static void capFindings(CheckResult &r, int cap);
 
-    // Load user-maintained dedup keys from <project>/.audit_suppress (one
-    // key per line, `#` comments allowed).
+    // Load user-maintained dedup keys from <project>/.audit_suppress.
+    // Format evolution:
+    //   v1 (legacy): one dedup-key per line, '#' comments allowed.
+    //   v2 (current): one JSON object per line — JSONL with fields
+    //     {"key", "rule", "reason", "timestamp"}. Loader auto-detects.
     void loadSuppressions();
     QString suppressionPath() const;
+
+    // Append a suppression entry — always writes JSONL v2. If the file is
+    // still in v1 format it's converted in-place on first write.
+    void saveSuppression(const QString &dedupKey,
+                         const QString &ruleId,
+                         const QString &reason);
+
+    // Slot wired to QTextBrowser::anchorClicked in the results pane —
+    // interprets ants-suppress://<key> links, shows the reason prompt, and
+    // persists via saveSuppression().
+    void onResultAnchorClicked(const QUrl &url);
 
     // Trend tracking — save a severity-count snapshot after each run, read
     // the prior one to compute delta (shown in the summary banner).
@@ -192,6 +207,10 @@ private:
     // from results.
     QSet<QString> m_suppressedKeys;
 
+    // Lookup table populated at render time so the anchor click handler can
+    // find a finding's context (file, message, rule) from just the dedup key.
+    QHash<QString, Finding> m_findingsByKey;
+
     // Per-check cap to prevent one noisy check from drowning out signal.
     static constexpr int kMaxFindingsPerCheck = 100;
 
@@ -225,7 +244,7 @@ private:
     QPushButton *m_baselineBtn = nullptr;
     QPushButton *m_newOnlyBtn = nullptr;
     QProgressBar *m_progress = nullptr;
-    QTextEdit *m_results = nullptr;
+    QTextBrowser *m_results = nullptr;
     QLabel *m_statusLabel = nullptr;
     QProcess *m_process = nullptr;
     QTimer *m_timeout = nullptr;

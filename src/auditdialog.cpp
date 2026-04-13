@@ -17,6 +17,11 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QCryptographicHash>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QUrl>
+#include <QUrlQuery>
+#include <QTextBrowser>
 
 #include <algorithm>
 
@@ -1069,9 +1074,139 @@ void AuditDialog::loadSuppressions() {
     for (const QString &raw : lines) {
         const QString line = raw.trimmed();
         if (line.isEmpty() || line.startsWith('#')) continue;
-        // Key is the first whitespace-delimited token; rest is free-form comment.
+
+        // v2 (JSONL): `{"key": "...", "rule": "...", ...}`
+        if (line.startsWith('{')) {
+            const QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8());
+            if (doc.isObject()) {
+                const QString key = doc.object().value("key").toString();
+                if (!key.isEmpty()) m_suppressedKeys.insert(key);
+                continue;
+            }
+            // Malformed JSON — fall through to legacy parse as a last resort.
+        }
+
+        // v1 legacy: first whitespace-delimited token is the key.
         m_suppressedKeys.insert(line.section(QRegularExpression(R"(\s+)"), 0, 0));
     }
+}
+
+void AuditDialog::saveSuppression(const QString &dedupKey,
+                                  const QString &ruleId,
+                                  const QString &reason) {
+    if (dedupKey.isEmpty()) return;
+    if (m_suppressedKeys.contains(dedupKey)) return;
+
+    // Build the new JSONL entry.
+    QJsonObject entry;
+    entry["key"]       = dedupKey;
+    entry["rule"]      = ruleId;
+    entry["reason"]    = reason;
+    entry["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+    const QString path = suppressionPath();
+    QFile f(path);
+
+    // If the existing file is in v1 (plain-text keys) format, convert it to
+    // JSONL on first write so the user sees a consistent format afterwards.
+    // Detect by peeking at the first non-comment line.
+    bool needsConvert = false;
+    QStringList legacyKeys;
+    if (f.exists() && f.open(QIODevice::ReadOnly)) {
+        const QStringList lines = QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts);
+        f.close();
+        for (const QString &raw : lines) {
+            const QString line = raw.trimmed();
+            if (line.isEmpty() || line.startsWith('#')) continue;
+            if (!line.startsWith('{')) {
+                needsConvert = true;
+                legacyKeys << line.section(QRegularExpression(R"(\s+)"), 0, 0);
+            }
+            // JSONL lines are already v2 — we'll append to them as-is.
+        }
+    }
+
+    if (needsConvert) {
+        // Rewrite whole file: existing JSONL lines (if any) preserved +
+        // legacy keys upgraded with a migration marker.
+        QStringList rebuilt;
+        QFile rf(path);
+        if (rf.open(QIODevice::ReadOnly)) {
+            const QStringList lines = QString::fromUtf8(rf.readAll()).split('\n', Qt::SkipEmptyParts);
+            rf.close();
+            for (const QString &raw : lines) {
+                const QString line = raw.trimmed();
+                if (line.isEmpty()) continue;
+                if (line.startsWith('#') || line.startsWith('{')) {
+                    rebuilt << line;
+                }
+            }
+        }
+        const QString now = QDateTime::currentDateTime().toString(Qt::ISODate);
+        for (const QString &k : legacyKeys) {
+            QJsonObject o;
+            o["key"]       = k;
+            o["rule"]      = "unknown";
+            o["reason"]    = "migrated from v1 plain-text format";
+            o["timestamp"] = now;
+            rebuilt << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+        }
+        rebuilt << QString::fromUtf8(QJsonDocument(entry).toJson(QJsonDocument::Compact));
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            f.write(rebuilt.join('\n').toUtf8());
+            f.write("\n");
+            f.close();
+        }
+    } else {
+        // Simple append.
+        if (f.open(QIODevice::WriteOnly | QIODevice::Append)) {
+            if (f.size() == 0) {
+                f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+                f.write("# ants-audit suppressions (JSONL). Entries hide the matching "
+                        "finding by dedup key.\n");
+            }
+            f.write(QJsonDocument(entry).toJson(QJsonDocument::Compact));
+            f.write("\n");
+            f.close();
+        }
+    }
+
+    m_suppressedKeys.insert(dedupKey);
+}
+
+void AuditDialog::onResultAnchorClicked(const QUrl &url) {
+    if (url.scheme() != "ants-suppress") return;
+    const QString key = url.host().isEmpty() ? url.path().mid(1) : url.host();
+    if (key.isEmpty()) return;
+
+    const Finding f = m_findingsByKey.value(key);
+    const QString where = (!f.file.isEmpty() && f.line > 0)
+        ? QString("%1:%2").arg(f.file).arg(f.line)
+        : (f.file.isEmpty() ? QStringLiteral("(no location)") : f.file);
+
+    const QString prompt = QString(
+        "Suppress this finding from future audits?\n\n"
+        "Rule:     %1\n"
+        "Location: %2\n"
+        "Message:  %3\n\n"
+        "Optional reason (saved alongside the suppression):")
+        .arg(f.checkName.isEmpty() ? key : f.checkName,
+             where,
+             f.message.left(200));
+
+    bool ok = false;
+    const QString reason = QInputDialog::getText(
+        this, "Suppress finding", prompt,
+        QLineEdit::Normal, QString(), &ok);
+    if (!ok) return;
+
+    saveSuppression(key, f.checkId.isEmpty() ? QStringLiteral("unknown") : f.checkId, reason);
+
+    // Re-render results minus the suppressed finding.
+    if (!m_completedResults.isEmpty()) renderResults();
+    if (m_statusLabel)
+        m_statusLabel->setText(QString("Suppressed %1 (%2)").arg(key.left(8), f.checkId));
 }
 
 // ---------------------------------------------------------------------------
@@ -1368,10 +1503,16 @@ void AuditDialog::buildUI() {
     m_statusLabel->setVisible(false);
     root->addWidget(m_statusLabel);
 
-    m_results = new QTextEdit(this);
+    m_results = new QTextBrowser(this);
     m_results->setReadOnly(true);
     m_results->setFont(QFont("monospace", 9));
     m_results->setVisible(false);
+    // Custom ants-suppress:// scheme is handled internally; tell QTextBrowser
+    // not to try to open any clicked link as a navigable URL.
+    m_results->setOpenLinks(false);
+    m_results->setOpenExternalLinks(false);
+    connect(m_results, &QTextBrowser::anchorClicked,
+            this, &AuditDialog::onResultAnchorClicked);
     root->addWidget(m_results, 2);
 }
 
@@ -1602,6 +1743,11 @@ static QString typeLabel(CheckType t) {
 
 void AuditDialog::renderResults() {
     m_results->clear();
+    m_findingsByKey.clear();
+    // Populate key→finding lookup for the anchor click handler.
+    for (const auto &r : m_completedResults)
+        for (const Finding &f : r.findings)
+            m_findingsByKey.insert(f.dedupKey, f);
 
     // Sort: highest severity first, then by category, then by name.
     std::vector<CheckResult> sorted(m_completedResults.begin(), m_completedResults.end());
@@ -1631,6 +1777,7 @@ void AuditDialog::renderResults() {
     for (const auto &r : sorted) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
+            if (m_suppressedKeys.contains(f.dedupKey)) continue;
             if (m_showNewOnly && !findingIsNew(f)) continue;
             ++bySev[static_cast<int>(f.severity)];
             ++totalFindings;
@@ -1759,6 +1906,7 @@ void AuditDialog::renderResults() {
         //   - dedup hash at end (small, grey, for .audit_suppress copy-paste)
         QStringList rows;
         for (const Finding &f : r.findings) {
+            if (m_suppressedKeys.contains(f.dedupKey)) continue;
             if (m_showNewOnly && !findingIsNew(f)) continue;
             const bool isNew = m_hasBaseline && findingIsNew(f);
             const QString loc = f.file.isEmpty()
@@ -1768,10 +1916,17 @@ void AuditDialog::renderResults() {
                                      .arg(f.file.toHtmlEscaped()).arg(f.line)
                                  : QString("<span style='color:#89B4FA;'>%1</span>  ")
                                      .arg(f.file.toHtmlEscaped()));
-            rows << QString("%1%2<span style='color:#888; font-size:9px;'>  %3</span>%4")
+            // Dedup key is clickable — routes to onResultAnchorClicked()
+            // which shows a reason prompt and writes a JSONL suppression line.
+            const QString keyAnchor = QString(
+                "<a href='ants-suppress://%1' style='color:#666; "
+                "font-size:9px; text-decoration:none;' "
+                "title='Click to suppress this finding'>%1</a>")
+                .arg(f.dedupKey);
+            rows << QString("%1%2  %3%4")
                     .arg(loc,
                          f.message.toHtmlEscaped(),
-                         f.dedupKey,
+                         keyAnchor,
                          isNew ? " <span style='color:#4CAF50; font-weight:bold;'>NEW</span>"
                                : "");
         }
