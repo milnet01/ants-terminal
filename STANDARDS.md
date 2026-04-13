@@ -141,6 +141,31 @@
 - Each new widget should be independently instantiable
 - Theme changes verified visually across all themes
 - Build must compile cleanly with no warnings (`-Wall -Wextra`)
+- CTest must pass (`cd build && ctest --output-on-failure`). New audit rules
+  land with a fixture dir under `tests/audit_fixtures/<rule-id>/` containing
+  `bad.*` (`// @expect <rule-id>` markers on each expected match) and
+  `good.*` (no matches). Register the rule pattern in `tests/audit_self_test.sh`.
+
+## Audit Dialog Standards
+
+- Check catalogue entries use the three helpers: `addGrepCheck` / `addFindCheck`
+  / `addToolCheck`. Ad-hoc `m_checks.append({...})` only when no helper fits
+  (multi-command pipelines with language-specific shapes)
+- All security-category checks inherit the `kCommonNoiseExcludes` filter —
+  the shared helper applies it; hand-rolled entries must replicate
+- Qt-specific semantic checks belong to clazy — do NOT re-add regex checks for
+  findChild misuse, connect-capture lifetime, old-style-connect, or container-
+  inside-loop. Those produce false positives clazy avoids
+- Every check contributes a `source` string via `sourceForCheck()` so the
+  multi-tool correlation step can detect cross-tool hits
+- `kSourceScannedChecks` lists checks whose output we run through the comment/
+  string-aware filter. External linters (cppcheck, clang-tidy, clazy, pylint …)
+  are comment-aware natively — never add them to this set
+- SARIF export is the canonical machine-readable format; HTML is presentation-
+  only and derived from the same per-finding data
+- `audit_rules.json` is a trust boundary — its `command` field runs through
+  `/bin/bash` unconditionally. Treat it like `.git/hooks`: your repo, your
+  commands, no sandbox
 
 ## Git
 

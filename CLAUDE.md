@@ -30,7 +30,9 @@ A real terminal emulator built from scratch in C++ with Qt6.
 │   ├── settingsdialog.h/.cpp # Settings dialog (all preferences)
 │   ├── titlebar.h/.cpp       # Custom frameless title bar
 │   ├── toggleswitch.h/.cpp   # Custom toggle switch widget
-│   ├── auditdialog.h/.cpp    # Security audit checks dialog
+│   ├── auditdialog.h/.cpp    # Project audit: clazy + cppcheck + grep checks,
+│   │                         # SARIF v2.1.0 + HTML export, JSONL suppressions,
+│   │                         # baseline/trend, user rules (audit_rules.json)
 │   ├── xcbpositiontracker.h/.cpp # KWin window position tracker
 │   ├── claudeintegration.h/.cpp  # Claude Code process detection + hooks
 │   ├── claudeallowlist.h/.cpp    # Claude Code permission rule editor
@@ -39,6 +41,9 @@ A real terminal emulator built from scratch in C++ with Qt6.
 │   ├── luaengine.h/.cpp      # Lua 5.4 scripting engine (sandboxed)
 │   └── pluginmanager.h/.cpp  # Plugin discovery, loading, lifecycle
 ├── assets/                   # Icons
+├── tests/
+│   ├── audit_self_test.sh    # CTest regression driver for audit rule regexes
+│   └── audit_fixtures/       # Per-rule bad.*/good.* pairs with `// @expect <rule-id>`
 ├── STANDARDS.md
 ├── RULES.md
 └── README.md
@@ -71,6 +76,14 @@ Reverse flow: **TerminalGrid -> ResponseCallback -> PTY** (for DA, CPR, DSR)
 - `LuaEngine`: embedded Lua 5.4 with sandboxed `ants` API and event handlers
 - `PluginManager`: discovers plugins in ~/.config/ants-terminal/plugins/, loads init.lua
 - `SessionManager`: serializes scrollback + screen to compressed binary, saves/restores
+- `AuditDialog`: project-level static analysis panel. Runs a catalogue of checks
+  (grep / find / cppcheck / clang-tidy / clazy-standalone / ecosystem linters)
+  through a shared pipeline: `OutputFilter` → `parseFindings` → dedup (SHA-256)
+  → suppression (`.audit_suppress` JSONL) → baseline diff → trend snapshot →
+  render + SARIF v2.1.0 / single-file HTML export. Supports recent-changes
+  scope (file-level and diff-line-level) and user rule packs via
+  `<project>/audit_rules.json`. Multi-tool correlation tags findings flagged
+  by ≥2 distinct tools (★ in UI, `highConfidence` in SARIF)
 
 ## Building
 
@@ -83,6 +96,29 @@ cmake .. && make -j$(nproc)
 ### Optional Dependencies
 
 - **Lua 5.4** (`lua54-devel`): enables plugin system. Without it, plugins are disabled at compile time.
+- **clazy** (`zypper in clazy` on Tumbleweed): enables the Qt-aware AST check
+  in the Project Audit dialog. Requires a populated `build*/compile_commands.json`
+  (CMake emits one with `CMAKE_EXPORT_COMPILE_COMMANDS=ON`, which we default on).
+  Absent = the check self-disables; no error.
+- **cppcheck / clang-tidy / shellcheck / pylint / bandit / ruff / …**: each
+  audit check probes with `which <tool>` and self-disables if missing.
+
+### Testing
+
+```bash
+cd build && ctest --output-on-failure
+```
+
+One CTest target (`audit_rule_fixtures`) that runs `tests/audit_self_test.sh`
+to verify audit rule regexes match their `bad.*` fixture files and none of
+their `good.*` counterparts. Count-based assertion (not line numbers — more
+robust to fixture editing). To add a rule test:
+
+1. `mkdir tests/audit_fixtures/<rule-id>/`
+2. Drop a `bad.cpp` with N `// @expect <rule-id>` markers on lines that
+   should match, plus a `good.cpp` with zero matches.
+3. Add `run_rule "<rule-id>" '<regex>'` to `tests/audit_self_test.sh`
+   (regex must mirror the `addGrepCheck()` call in `auditdialog.cpp`).
 
 ### Static Analysis
 
@@ -121,6 +157,17 @@ cppcheck --enable=all --std=c++20 --library=qt \
 - Lua plugin sandbox removes dangerous globals, adds instruction count timeout
 - Session persistence uses QDataStream + qCompress for efficient binary serialization
 - Per-pixel transparency separate from window opacity (background alpha vs window alpha)
+- Audit rule pack uses JSON (`audit_rules.json`) not YAML — QJsonDocument is
+  built-in; flat schema makes YAML's readability win marginal. Hardcoded checks
+  stay in C++; `audit_rules.json` only appends / overrides
+- Audit uses clazy-standalone (Qt-aware AST) rather than embedding libclang —
+  clazy ships every Qt check we need, reads our existing `compile_commands.json`,
+  and retires several regex-based Qt checks that were FP-prone
+- `.audit_suppress` is JSONL v2 (`{key, rule, reason, timestamp}` per line);
+  v1 plain-key lines still load, first write converts in place
+- Audit test harness is shell-based against fixture dirs (`bad.*`/`good.*` with
+  `// @expect` markers) — no C++ unit framework, no link-time coupling to
+  auditdialog internals
 
 ## Config Keys
 

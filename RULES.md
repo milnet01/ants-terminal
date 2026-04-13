@@ -42,6 +42,22 @@
 6. Test with all themes
 7. Update CLAUDE.md if architecture or patterns change
 
+## Audit Rules
+
+1. Project-specific policy checks (e.g. "all openUrl calls must front-load a
+   scheme allowlist") live in `audit_rules.json` at the project root, not in
+   `auditdialog.cpp`. Hardcoded checks are reserved for generic patterns worth
+   shipping to every user of the app
+2. Regex rule IDs and patterns must stay in sync with fixtures under
+   `tests/audit_fixtures/<rule-id>/`. When a pattern changes in
+   `auditdialog.cpp` it must also change in `tests/audit_self_test.sh`
+3. Never re-add a regex check that clazy covers semantically (findChild misuse,
+   connect-3arg-lambda, container-inside-loop, old-style-connect, qt-keywords)
+4. `.audit_suppress` is append-only during normal operation — an entry, once
+   written, documents a conscious decision. Cleanup is manual
+5. Baselines (`.audit_cache/baseline.json`) represent "accepted state at time T".
+   Regenerate only when the state materially changes, not to mask new findings
+
 ## Code Quality
 
 1. No unused imports or dead code

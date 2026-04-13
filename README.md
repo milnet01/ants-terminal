@@ -257,6 +257,57 @@ ants.set_status("Custom status text")
 - **Translucent background** -- works with KDE Plasma / KWin compositor
 - **Background blur** -- toggleable in Settings menu (requires compositor support)
 
+### Project Audit Dialog
+
+Press **Tools > Project Audit** to open a built-in static-analysis panel
+over the current project. The dialog auto-detects language and framework
+(C/C++, Qt, Python, JS/TS, Rust, Go, Shell, Lua, Java, Git) and runs a
+catalogue of checks spanning general hygiene, security, and per-ecosystem
+linters.
+
+Highlights:
+
+- **AST-aware Qt checks** via [clazy](https://github.com/KDE/clazy)
+  (connect-3arg-lambda, container-inside-loop, old-style-connect, etc.) —
+  reads `compile_commands.json` from the active build directory.
+- **SonarQube-style taxonomy** — every finding carries a type
+  (Info / CodeSmell / Bug / Hotspot / Vulnerability) and a 5-level
+  severity (Info / Minor / Major / Critical / Blocker).
+- **Per-finding dedup keys** (SHA-256 of file:line:checkId:title) power
+  stable baselines, suppressions, and trend tracking across runs.
+- **Baseline diff** — save current findings, later runs highlight only
+  what's new; toggle "New since baseline" to hide known issues.
+- **Trend tracking** — severity counts persisted at
+  `.audit_cache/trend.json` (last 50 runs) and shown as a delta banner
+  against the previous run.
+- **Interactive suppression** — click the dedup-key hash next to any
+  finding to add it (with an optional reason) to `.audit_suppress`.
+  File format is JSONL: `{"key", "rule", "reason", "timestamp"}` per line.
+- **User-defined rules** — drop an `audit_rules.json` at the project
+  root to append or override checks without rebuilding the app. Schema
+  matches the internal `AuditCheck` struct: `id`, `name`, `severity`,
+  `type`, `command`, `drop_if_contains`, `keep_only_if_contains`,
+  `drop_if_matches`, `max_lines`. User rules run through the full
+  filter / parse / dedup / suppress pipeline like built-ins.
+- **Recent-changes scope** — toggle to restrict findings to files
+  touched in the last 10 commits, or the stricter "Changed lines only"
+  toggle which filters to exact diff hunk ranges (what CI pre-merge
+  review would flag).
+- **Multi-tool correlation** — a ★ badge appears on findings that two
+  or more distinct tools flag at the same `file:line`. Orthogonal to
+  severity; surfaces cross-validated hits above single-tool noise.
+- **Comment/string-aware filtering** — grep-style pattern checks run
+  a tiny state-machine over the source to drop matches that live in
+  `//` comments, `/* */` blocks, or `"string literals"`.
+- **Exports** — SARIF v2.1.0 (OASIS standard, consumed by GitHub Code
+  Scanning / VSCode SARIF Viewer / SonarQube) and a single-file HTML
+  report with severity filter pills, text search, and collapsible
+  check cards (no external assets).
+- **Claude review handoff** — "Review with Claude" emits a plain-text
+  report with `CLAUDE.md`, `STANDARDS.md`, `RULES.md`, and
+  `CONTRIBUTING.md` prepended, then signals the main window to open
+  a Claude Code session on the report.
+
 ### Claude Code Integration
 
 Deep integration with [Claude Code](https://claude.ai/claude-code) for AI-assisted development workflows.
@@ -336,6 +387,8 @@ Switch themes from the **View** menu. Your choice is saved between sessions.
 | CMake | 3.20+ | |
 | libutil | -- | Included with glibc (provides `forkpty`) |
 | Lua 5.4 | 5.4.x | Optional -- enables plugin system |
+| clazy | 1.17+ | Optional -- enables Qt-aware AST checks in the Project Audit dialog |
+| cppcheck / clang-tidy / shellcheck / pylint / bandit / ruff | any | Optional -- each enables the matching ecosystem check if installed |
 
 ### Install Dependencies
 
@@ -374,6 +427,18 @@ make -j$(nproc)
 ```bash
 ./ants-terminal
 ```
+
+### Tests
+
+```bash
+cd build && ctest --output-on-failure
+```
+
+Runs `tests/audit_self_test.sh`, which asserts each audit rule's grep
+pattern matches exactly the expected lines in its fixture `bad.*` and
+nothing in its `good.*`. Takes ~40 ms. Extend by adding a new
+`tests/audit_fixtures/<rule-id>/` directory and a `run_rule` entry in
+the shell script.
 
 ### Install System-wide
 
@@ -539,6 +604,7 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
 | **ClaudeProjects** | `claudeprojects.h/cpp` | Project/session browser and resume dialog |
 | **ClaudeAllowlist** | `claudeallowlist.h/cpp` | Permission rule editor for Claude settings |
 | **ClaudeTranscript** | `claudetranscript.h/cpp` | Session transcript viewer |
+| **AuditDialog** | `auditdialog.h/cpp` | Static analysis panel, SARIF/HTML export, baseline diff, trend tracking |
 | **Themes** | `themes.h/cpp` | 7 color themes with ANSI palette overrides |
 | **Config** | `config.h/cpp` | JSON config persistence (0600 perms) |
 
@@ -782,8 +848,13 @@ ants-terminal/
     ├── claudeprojects.h/cpp    # Claude Code project/session browser
     ├── claudeallowlist.h/cpp   # Claude Code permission editor
     ├── claudetranscript.h/cpp  # Claude Code transcript viewer
+    ├── auditdialog.h/cpp       # Project audit panel + SARIF/HTML export
     ├── luaengine.h/cpp         # Lua 5.4 scripting engine
     └── pluginmanager.h/cpp     # Plugin discovery + loading
+
+tests/
+├── audit_self_test.sh         # CTest regression harness for audit rule patterns
+└── audit_fixtures/            # Per-rule bad.*/good.* fixture pairs with @expect markers
 ```
 
 ---
