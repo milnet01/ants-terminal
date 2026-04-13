@@ -11,23 +11,32 @@ CMakeFiles/
 CMakeCache.txt
 Makefile
 compile_commands.json
+CMakeLists.txt.user*
+*.pro.user*
 
 # IDE
 .idea/
 .vscode/
+*.code-workspace
 *.swp
 *.swo
 *~
+.#*
+\#*\#
 
 # Binary
 ants-terminal
 
 # OS
 .DS_Store
+Thumbs.db
+desktop.ini
 *.bak
+*.orig
+*.rej
 
-# Claude Code (local settings, not shared)
-.claude/settings.local.json
+# Claude Code (local settings, history, allowlist — all personal)
+.claude/
 
 # Audit tooling
 .audit_cache/
@@ -35,6 +44,34 @@ audit_config.yaml
 .cache/
 docs/AUTOMATED_AUDIT_REPORT*
 docs/trend_snapshot_*.json
+__pycache__/
+*.pyc
+*.pyo
+
+# Coverage / sanitizers
+*.gcda
+*.gcno
+*.gcov
+coverage.*
+.coverage
+lcov.info
+
+# Core dumps
+core
+core.*
+*.core
+vgcore.*
 
 # Runtime / user data
 *.log
+*.pid
+*.sock
+
+# Screenshots / scratch that might be dropped in by mistake
+Screenshot_*.png
+screenshot*.png
+scratch/
+tmp/
+.env
+.env.*
+!.env.example
