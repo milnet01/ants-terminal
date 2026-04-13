@@ -180,13 +180,6 @@ void ClaudeIntegration::pollClaudeProcess() {
         parseTranscriptForState(m_transcriptPath);
 }
 
-void ClaudeIntegration::notifyTerminalOutput() {
-    // No-op. We previously used terminal output activity to override stale
-    // Idle states, but Claude Code's TUI continuously redraws (cursor blink,
-    // elapsed time, status line), so the flag was perpetually true and kept
-    // the state stuck on Thinking. Transcript parsing is authoritative.
-}
-
 // --- Session Transcripts ---
 
 QString ClaudeIntegration::activeSessionPath() const {

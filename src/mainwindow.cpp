@@ -993,12 +993,6 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         }
     });
 
-    // Notify Claude integration of terminal output for activity detection
-    connect(terminal, &TerminalWidget::outputReceived, this, [this]() {
-        if (m_claudeIntegration)
-            m_claudeIntegration->notifyTerminalOutput();
-    });
-
     // Claude Code permission detection → status bar notification
     connect(terminal, &TerminalWidget::claudePermissionDetected, this, [this, terminal](const QString &rawRule) {
         // Only show for the currently active tab

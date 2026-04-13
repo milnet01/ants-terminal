@@ -84,10 +84,6 @@ public:
     // Environment setup
     static QProcessEnvironment claudeEnv();
 
-    // Terminal output notification — call when PTY output is received while
-    // Claude is running so status detection can supplement transcript parsing
-    void notifyTerminalOutput();
-
 signals:
     void stateChanged(ClaudeState state, const QString &detail);
     void toolStarted(const QString &toolName, const QString &input);

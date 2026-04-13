@@ -681,8 +681,8 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                     qreal actualWL = static_cast<qreal>(ulW) / cycles;
                     QPainterPath path;
                     path.moveTo(px_x, ulY);
-                    for (int c = 0; c < cycles; ++c) {
-                        qreal x0 = px_x + c * actualWL;
+                    for (int cyc = 0; cyc < cycles; ++cyc) {
+                        qreal x0 = px_x + cyc * actualWL;
                         path.quadTo(x0 + actualWL * 0.25, ulY - amplitude,
                                     x0 + actualWL * 0.5, ulY);
                         path.quadTo(x0 + actualWL * 0.75, ulY + amplitude,
@@ -1677,7 +1677,7 @@ void TerminalWidget::checkIdleNotification() {
     // If no output for 3 seconds after a burst, and window is not focused
     if (m_lastOutputTime.elapsed() > 3000) {
         m_hadRecentOutput = false;
-        if (!m_hasFocus && !m_notifiedIdle) {
+        if (!m_hasFocus) {
             m_notifiedIdle = true;
 
             // Try to get command info from OSC 133 prompt regions
@@ -2766,8 +2766,8 @@ TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
 
     uint32_t ch = getCellCodepoint(cursorGL, cursorCol);
 
-    char32_t openBrackets[]  = {'(', '[', '{'};
-    char32_t closeBrackets[] = {')', ']', '}'};
+    static constexpr char32_t openBrackets[]  = {'(', '[', '{'};
+    static constexpr char32_t closeBrackets[] = {')', ']', '}'};
 
     auto cacheAndReturn = [this](BracketPair bp) {
         m_cachedBracket = bp;
@@ -3495,11 +3495,11 @@ QString TerminalWidget::exportAsHtml() const {
 
 QString TerminalWidget::foregroundProcess() const {
     if (!m_pty) return {};
-    int shellPid = m_pty->childPid();
-    if (shellPid <= 0) return {};
+    int pid = m_pty->childPid();
+    if (pid <= 0) return {};
 
     // Read /proc/PID/stat to get the foreground process group
-    QFile statFile(QString("/proc/%1/stat").arg(shellPid));
+    QFile statFile(QString("/proc/%1/stat").arg(pid));
     if (!statFile.open(QIODevice::ReadOnly)) return {};
     QString stat = QString::fromUtf8(statFile.readAll());
 
@@ -3511,7 +3511,7 @@ QString TerminalWidget::foregroundProcess() const {
     if (fields.size() < 5) return {};
     int tpgid = fields[4].toInt(); // terminal foreground process group
 
-    if (tpgid <= 0 || tpgid == shellPid) return {};
+    if (tpgid <= 0 || tpgid == pid) return {};
 
     // Read the foreground process name from /proc/tpgid/comm
     QFile commFile(QString("/proc/%1/comm").arg(tpgid));

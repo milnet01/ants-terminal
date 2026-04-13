@@ -161,8 +161,10 @@ void Pty::onReadReady() {
         ssize_t n = ::read(m_masterFd, buf, sizeof(buf));
         if (n > 0) {
             emit dataReceived(QByteArray(buf, static_cast<int>(n)));
-        } else if (n == 0 || (n < 0 && errno != EAGAIN && errno != EINTR)) {
-            // EOF or error — child exited
+        } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
+            // n == 0 → EOF (child closed the PTY).
+            // n < 0  → read error; EAGAIN/EINTR hit the final else below,
+            //          anything else means the child has exited.
             m_readNotifier->setEnabled(false);
             int status = 0;
             int exitCode = -1;
