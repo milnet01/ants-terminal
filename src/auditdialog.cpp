@@ -1187,6 +1187,21 @@ void AuditDialog::buildUI() {
     });
     btnRow->addWidget(m_newOnlyBtn);
 
+    // Recent-changes scope toggle
+    auto *recentBtn = new QPushButton("Recent changes only", this);
+    recentBtn->setCheckable(true);
+    recentBtn->setFixedHeight(32);
+    recentBtn->setEnabled(m_detectedTypes.contains("Git"));
+    recentBtn->setToolTip(
+        m_detectedTypes.contains("Git")
+        ? "Scope audit findings to files touched in the last 10 commits"
+        : "Recent-changes mode requires a Git repository");
+    connect(recentBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_recentOnly = on;
+        // Next run() picks up the new scope; existing results aren't re-run.
+    });
+    btnRow->addWidget(recentBtn);
+
     m_baselineBtn = new QPushButton("Save baseline", this);
     m_baselineBtn->setFixedHeight(32);
     m_baselineBtn->setVisible(false);
@@ -1245,6 +1260,20 @@ void AuditDialog::buildUI() {
 }
 
 // ---------------------------------------------------------------------------
+// Project documentation helpers — used by the Claude-review handoff to
+// attach documented standards so Claude can weigh findings against project
+// rules when suggesting fixes.
+// ---------------------------------------------------------------------------
+
+QString AuditDialog::readProjectDoc(const QString &name) const {
+    QFile f(m_projectPath + "/" + name);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QByteArray bytes = f.read(64 * 1024);  // Cap at 64 KB per doc
+    f.close();
+    return QString::fromUtf8(bytes).trimmed();
+}
+
+// ---------------------------------------------------------------------------
 // Audit execution
 // ---------------------------------------------------------------------------
 
@@ -1254,6 +1283,29 @@ void AuditDialog::runAudit() {
     m_progress->setVisible(true);
     m_statusLabel->setVisible(true);
     m_completedResults.clear();
+
+    // Compute the "recent files" list if the user opted into scoped audit.
+    m_recentFiles.clear();
+    if (m_recentOnly && m_detectedTypes.contains("Git")) {
+        QProcess git;
+        git.setWorkingDirectory(m_projectPath);
+        git.start("git", {"log", QString("-n%1").arg(m_recentCommits),
+                          "--name-only", "--format=", "--diff-filter=ACMR"});
+        if (git.waitForFinished(5000) && git.exitCode() == 0) {
+            const QStringList lines =
+                QString::fromUtf8(git.readAllStandardOutput())
+                    .split('\n', Qt::SkipEmptyParts);
+            QSet<QString> seen;
+            for (const QString &raw : lines) {
+                const QString p = raw.trimmed();
+                if (p.isEmpty() || seen.contains(p)) continue;
+                seen.insert(p);
+                // Keep only files that still exist on disk.
+                if (QFile::exists(m_projectPath + "/" + p))
+                    m_recentFiles << p;
+            }
+        }
+    }
 
     m_totalSelected = 0;
     for (const auto &c : m_checks)
@@ -1343,13 +1395,29 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
     r.output    = filtered.body;
     r.warning   = false;
 
-    // Parse body into structured findings. Suppress any finding whose
-    // dedup hash appears in .audit_suppress. Dedup across findings within
-    // this single check (exact-duplicate message lines).
+    // Parse body into structured findings. Apply in order:
+    //   1. Suppress any finding whose dedup hash is in .audit_suppress
+    //   2. In "recent-only" mode: drop findings whose file isn't in the
+    //      recent-commits set (unfiled findings always pass)
+    //   3. Dedup within this single check (exact-duplicate message lines)
     QSet<QString> seenKeys;
     QList<Finding> parsed = parseFindings(filtered.body, check);
+    QSet<QString> recent;
+    if (m_recentOnly) for (const QString &p : m_recentFiles) recent.insert(p);
     for (const Finding &f : parsed) {
         if (m_suppressedKeys.contains(f.dedupKey)) continue;
+        if (m_recentOnly && !f.file.isEmpty()) {
+            // Match by either exact path or project-relative path suffix.
+            bool isRecent = recent.contains(f.file);
+            if (!isRecent) {
+                for (const QString &rf : m_recentFiles) {
+                    if (f.file.endsWith(rf) || rf.endsWith(f.file)) {
+                        isRecent = true; break;
+                    }
+                }
+            }
+            if (!isRecent) continue;
+        }
         if (seenKeys.contains(f.dedupKey)) continue;
         seenKeys.insert(f.dedupKey);
         r.findings.append(f);
@@ -1606,7 +1674,26 @@ QString AuditDialog::plainTextResults() const {
     if (!m_suppressedKeys.isEmpty())
         header += QString("Suppressions: %1 loaded from .audit_suppress\n")
                     .arg(m_suppressedKeys.size());
+    if (m_recentOnly)
+        header += QString("Scope: files touched in last %1 commits (%2 file(s))\n")
+                    .arg(m_recentCommits).arg(m_recentFiles.size());
     header += "---\n\n";
+
+    // Attach the project's own standards docs when present. Gives the
+    // Claude-review handoff enough context to weigh findings against
+    // documented project rules rather than generic best practice.
+    auto appendDocIfPresent = [this, &header](const QString &name, const QString &label) {
+        const QString doc = readProjectDoc(name);
+        if (doc.isEmpty()) return;
+        header += QString("=== %1 (%2) ===\n").arg(label, name);
+        header += doc;
+        header += "\n\n";
+    };
+    appendDocIfPresent("CLAUDE.md",      "Project conventions");
+    appendDocIfPresent("STANDARDS.md",   "Project coding standards");
+    appendDocIfPresent("RULES.md",       "Project rules");
+    appendDocIfPresent("CONTRIBUTING.md","Contributing guidelines");
+    header += "=== Findings ===\n\n";
 
     // Re-sort a copy for the plain-text report.
     std::vector<CheckResult> sorted(m_completedResults.begin(), m_completedResults.end());

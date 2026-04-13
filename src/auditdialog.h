@@ -195,6 +195,16 @@ private:
     // Per-check cap to prevent one noisy check from drowning out signal.
     static constexpr int kMaxFindingsPerCheck = 100;
 
+    // "Recent changes only" mode — scope each check to files touched in the
+    // last N commits. Zero/disabled = whole-project audit.
+    bool m_recentOnly = false;
+    int  m_recentCommits = 10;
+    QStringList m_recentFiles;     // computed at runAudit() start
+
+    // Project context docs to attach to the Claude-review handoff. Loaded
+    // lazily when "Review with Claude" is pressed.
+    QString readProjectDoc(const QString &name) const;
+
     QLabel *m_pathLabel = nullptr;
     QLabel *m_typesLabel = nullptr;
     QPushButton *m_runBtn = nullptr;
