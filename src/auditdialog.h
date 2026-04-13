@@ -77,6 +77,20 @@ struct Finding {
     QString message;       // the full raw output line (trimmed)
     QString dedupKey;      // SHA-256(file:line:checkId:title) hex, truncated
     bool    highConfidence = false; // true when ≥2 distinct tools flag the same line
+
+    // Context-aware enrichment — populated during renderResults() so all
+    // exports (UI, HTML, SARIF, plain-text) see the same data.
+    int     confidence = -1;   // 0-100 weighted score; -1 = not computed yet
+    QString snippet;           // ±N lines around the finding (newline-joined)
+    int     snippetStart = 0;  // first line number of the snippet
+    // git-blame bag — empty when not a git repo or blame failed.
+    QString blameAuthor;       // e.g. "Anthony Schemel"
+    QString blameDate;         // ISO date of author time ("2026-04-11")
+    QString blameSha;          // 8-char short SHA
+    // AI-triage cache — populated when user clicks "🧠 Triage" on this finding.
+    QString aiVerdict;         // "TRUE_POSITIVE" | "FALSE_POSITIVE" | "NEEDS_REVIEW"
+    int     aiConfidence = -1; // 0-100 from the model, -1 = not triaged
+    QString aiReasoning;       // model's explanation (truncated to ~600 chars)
 };
 
 // One finding row after post-processing; kept per-check so we can sort the
@@ -149,16 +163,41 @@ private:
     static void capFindings(CheckResult &r, int cap);
 
     // Load user-defined rules from <project>/audit_rules.json. Schema:
-    //   { "version": 1, "rules": [ { id, name, description, category,
+    //   { "version": 1,
+    //     "rules": [ { id, name, description, category,
     //       severity: info|minor|major|critical|blocker,
     //       type:     info|smell|bug|hotspot|vuln,
     //       command, auto_select, max_lines,
     //       drop_if_contains: [...], keep_only_if_contains: [...],
-    //       drop_if_matches: "regex" } ] }
+    //       drop_if_matches: "regex" } ],
+    //     "path_rules": [ { glob, skip?, severity_shift?, skip_rules?[] } ]
+    //   }
     // User rules are appended to m_checks after hardcoded checks and inherit
-    // the same filter / parse / suppress / baseline machinery.
+    // the same filter / parse / suppress / baseline machinery. Path rules
+    // apply during the parse pipeline regardless of which check produced the
+    // finding — see applyPathRules().
     int  loadUserRules();
     QString userRulesPath() const;
+
+    // Per-project path rule — loaded from audit_rules.json. Three effects:
+    //   skip=true          — drop the finding entirely
+    //   severity_shift=-N  — shift severity down N levels (+N shifts up)
+    //   skip_rules=[...]   — drop finding if its checkId is in the list
+    // Evaluated in declaration order; first matching rule wins per axis.
+    struct PathRule {
+        QString glob;                 // e.g. "tests/**", "**/moc_*.cpp"
+        QRegularExpression compiled;  // pre-compiled from glob
+        bool    skip = false;
+        int     severityShift = 0;
+        QStringList skipRules;
+    };
+    QList<PathRule> m_pathRules;
+    // Apply path rules + generated-file skip to a single finding; returns
+    // false if the finding should be dropped entirely.
+    bool applyPathRules(Finding &f) const;
+    static bool isGeneratedFile(const QString &path);
+    // Compile a glob string (supporting ** and *) into a QRegularExpression.
+    static QRegularExpression globToRegex(const QString &glob);
 
     // Load user-maintained dedup keys from <project>/.audit_suppress.
     // Format evolution:
@@ -253,6 +292,47 @@ private:
     // unknown file), false if it's confined to comments/strings.
     static bool lineIsCode(const QString &absPath, int line);
 
+    // Inline suppression directive scan. Recognises both ants-native tokens
+    // and passthrough markers from other tools (clang-tidy NOLINT,
+    // cppcheck-suppress, flake8 noqa, bandit nosec, semgrep nosemgrep,
+    // gitleaks-allow, eslint-disable-*, pylint: disable). Returns true iff
+    // the finding's line is explicitly suppressed for its rule id.
+    bool inlineSuppressed(const Finding &f) const;
+    // Low-level helper: does `commentText` (already-stripped "// ..." body)
+    // contain a suppression token that matches `ruleId`? Returns true if:
+    //   - bare suppress (no rule list)     → always suppress
+    //   - rule-list contains ruleId        → suppress
+    //   - glob 'rule-*' matches ruleId     → suppress
+    static bool commentSuppresses(const QString &commentText, const QString &ruleId);
+
+    // Read ±radius lines around `line` from `absPath`. Returns the extracted
+    // text (newline-joined) and the starting line number via out-params.
+    // Used for snippet context and AI-triage payloads.
+    QString readSnippet(const QString &absPath, int line, int radius,
+                        int *startLineOut = nullptr) const;
+    // Per-file cache — a single audit run may touch dozens of findings in the
+    // same file; reading once is much cheaper than per-finding disk I/O.
+    mutable QHash<QString, QStringList> m_fileLineCache;
+
+    // Git-blame enrichment — shells out to `git blame --porcelain -L N,N`,
+    // caches by (relPath:line) so multiple findings on the same line are
+    // free. Populates Finding::blameAuthor/Date/Sha in place.
+    void enrichWithBlame(Finding &f) const;
+    struct BlameEntry { QString author; QString date; QString sha; };
+    mutable QHash<QString, BlameEntry> m_blameCache;
+    bool m_blameEnabled = true;   // auto-disabled if not a git repo
+
+    // Confidence score (0-100) computed from severity, multi-tool agreement,
+    // tool class, path heuristics. Populated during renderResults() after
+    // correlation. Formula is documented inline at the definition.
+    static int computeConfidence(const Finding &f);
+
+    // Fire-and-forget AI triage of a single finding. POSTs the rule +
+    // snippet + blame to the project's configured OpenAI-compatible chat
+    // endpoint; updates Finding::aiVerdict/aiConfidence/aiReasoning on the
+    // next render. Requires Config::aiEnabled + ai_endpoint + ai_api_key.
+    void requestAiTriage(const QString &dedupKey);
+
     // SARIF v2.1.0 export — OASIS-standard JSON format consumed by GitHub
     // code-scanning, VSCode SARIF Viewer, SonarQube, etc.
     QString exportSarif() const;
@@ -277,4 +357,17 @@ private:
     QPushButton *m_sarifBtn = nullptr;
     QPushButton *m_htmlBtn = nullptr;
     QString plainTextResults() const;
+
+    // Filter bar — shown once results exist. Severity pill toggles, a live
+    // text filter, and a "sort by confidence" toggle. All live-re-render.
+    class QLineEdit   *m_filterInput = nullptr;
+    QList<QPushButton*> m_sevPills;        // one per Severity
+    QPushButton        *m_confidenceSortBtn = nullptr;
+    QWidget            *m_filterBar = nullptr;
+    QString             m_textFilter;                          // lowercased
+    QSet<int>           m_activeSeverities = {0, 1, 2, 3, 4};  // all on by default
+    bool                m_sortByConfidence = false;
+    // Per-finding expand state for the collapsible snippet/blame/triage
+    // section. Keyed by dedupKey so toggles survive re-renders.
+    QSet<QString>       m_expandedKeys;
 };

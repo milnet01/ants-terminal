@@ -99,7 +99,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         ::setenv("TERM", "xterm-256color", 1);
         ::setenv("COLORTERM", "truecolor", 1);
         ::setenv("TERM_PROGRAM", "AntsTerminal", 1);
-        ::setenv("TERM_PROGRAM_VERSION", "0.4.0", 1);
+        ::setenv("TERM_PROGRAM_VERSION", ANTS_VERSION, 1);
         // Dark background hint (15=white fg, 0=black bg) — used by vim, mutt
         ::setenv("COLORFGBG", "15;0", 1);
 

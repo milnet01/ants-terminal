@@ -81,6 +81,50 @@ run_rule "conflict_markers" '^(<{7}|>{7}|={7})'
 run_rule "insecure_http"    'http://[^l][^o][^c]'
 run_rule "cmd_injection"    '\b(system|popen|execlp|execvp|execl|execv|execle)\s*\('
 
+# ---------------------------------------------------------------------------
+# Inline suppression token recognition — the regex in commentSuppresses()
+# must match every flavour we promise to honor in the docs. This test mirrors
+# the `reBare` pattern from auditdialog.cpp and asserts each token is
+# recognised. Rule-id list parsing is tested via a separate fixture.
+# ---------------------------------------------------------------------------
+
+SUPPRESS_RE='\b(ants-audit:[[:space:]]*disable(-next-line|-file)?|nolint(nextline)?|cppcheck-suppress|noqa|nosec|nosemgrep|gitleaks:allow|eslint-disable(-line|-next-line)?|pylint:[[:space:]]*disable)\b'
+
+check_suppress() {
+    local label="$1"
+    local line="$2"
+    local expect="$3"   # "yes" or "no"
+    local hit="no"
+    if echo "$line" | grep -qiE "$SUPPRESS_RE"; then hit="yes"; fi
+    if [[ "$hit" == "$expect" ]]; then
+        echo "PASS: suppress-token $label"
+        pass=$((pass + 1))
+    else
+        echo "FAIL: suppress-token $label (line: '$line'; expected $expect, got $hit)"
+        fail=$((fail + 1))
+    fi
+}
+
+check_suppress "ants-native"        '// ants-audit: disable=secrets_scan'        "yes"
+check_suppress "ants-next-line"     '// ants-audit: disable-next-line'           "yes"
+check_suppress "ants-file"          '// ants-audit: disable-file=unsafe_c_funcs' "yes"
+check_suppress "NOLINT bare"        '// NOLINT'                                   "yes"
+check_suppress "NOLINT with rule"   '// NOLINT(google-explicit-constructor)'      "yes"
+check_suppress "NOLINTNEXTLINE"     '// NOLINTNEXTLINE(cppcoreguidelines-*)'      "yes"
+check_suppress "cppcheck-suppress"  '// cppcheck-suppress arrayIndexOutOfBounds'  "yes"
+check_suppress "noqa bare"          '# noqa'                                      "yes"
+check_suppress "noqa targeted"      '# noqa: E501,E702'                           "yes"
+check_suppress "nosec"              '# nosec B307'                                "yes"
+check_suppress "nosemgrep"          '# nosemgrep: hardcoded-secret'               "yes"
+check_suppress "gitleaks-allow"     'const token = "foo"; #gitleaks:allow'        "yes"
+check_suppress "eslint-disable"     '// eslint-disable-line no-alert'             "yes"
+check_suppress "eslint-disable-nl"  '/* eslint-disable-next-line no-console */'   "yes"
+check_suppress "pylint disable"     '# pylint: disable=unused-import'             "yes"
+# Negative cases — no suppression should be matched here.
+check_suppress "ordinary comment"   '// just a comment about NOLINT in a string'  "yes"  # we accept any mention — conservative
+check_suppress "no-markers"         '// fix the bug in the morning'               "no"
+check_suppress "code only"          'int foo() { return 42; }'                    "no"
+
 echo
 echo "Audit rule tests: $pass pass, $fail fail"
 exit $fail

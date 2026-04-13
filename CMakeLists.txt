@@ -1,11 +1,16 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.4.0 LANGUAGES CXX)
+project(ants-terminal VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Single source of truth for the application version. Consumed by main.cpp
+# (setApplicationVersion) and auditdialog.cpp (SARIF driver.version, UI badge).
+# Bump in PROJECT() above; every caller picks up the new value on rebuild.
+add_compile_definitions(ANTS_VERSION="${PROJECT_VERSION}")
 
 # Default build type if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)

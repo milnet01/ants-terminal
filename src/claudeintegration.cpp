@@ -555,7 +555,7 @@ void ClaudeIntegration::onMcpConnection() {
                 caps["tools"] = QJsonObject();
                 QJsonObject serverInfo;
                 serverInfo["name"] = "ants-terminal";
-                serverInfo["version"] = "0.4.0";
+                serverInfo["version"] = QStringLiteral(ANTS_VERSION);
                 result["protocolVersion"] = "2025-11-25";
                 result["capabilities"] = caps;
                 result["serverInfo"] = serverInfo;

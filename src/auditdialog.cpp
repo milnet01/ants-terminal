@@ -1,5 +1,6 @@
 #include "auditdialog.h"
 #include "toggleswitch.h"
+#include "config.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -22,6 +23,11 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <QTextBrowser>
+#include <QLineEdit>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QRegularExpression>
 
 #include <algorithm>
 
@@ -79,7 +85,7 @@ const QStringList kCommonNoiseExcludes = {
 
 AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
     : QDialog(parent), m_projectPath(projectPath) {
-    setWindowTitle("Project Audit");
+    setWindowTitle(QStringLiteral("Project Audit — ants-audit v") + ANTS_VERSION);
     setMinimumSize(900, 600);
     resize(1050, 750);
 
@@ -115,12 +121,15 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
     });
 
     detectProject();
+    m_blameEnabled = m_detectedTypes.contains("Git");
     loadBaseline();
     loadSuppressions();
     populateChecks();
     const int userRules = loadUserRules();
     if (userRules > 0)
         m_detectedTypes << QString("User rules: %1").arg(userRules);
+    if (!m_pathRules.isEmpty())
+        m_detectedTypes << QString("Path rules: %1").arg(m_pathRules.size());
     buildUI();
 }
 
@@ -678,6 +687,50 @@ void AuditDialog::populateChecks() {
                        "", {}, 20 });
     }
 
+    // ========== Semgrep (structural pattern matching) ==========
+    //
+    // Optional extra lane alongside clazy / cppcheck. Semgrep's strength is
+    // structural patterns (it reads the AST, not just regex) so its findings
+    // are lower-FP than grep-based checks. Community rule packs `p/c` and
+    // `p/cpp` cover buffer overflows, int overflow, unsafe memory ops,
+    // etc. — things our hardcoded regex `unsafe_c_funcs` approximates more
+    // crudely.
+    //
+    // Silent no-op when `semgrep` is missing. User can pin a project-local
+    // `audit_rules.semgrep.yaml` (or `.semgrep.yml`) and it's picked up
+    // automatically. We ask for text output (file:line:col:msg) so our
+    // existing parseFindings() pattern matches without a JSON pivot.
+    const bool hasSemgrep = toolExists("semgrep");
+    if (hasSemgrep) {
+        const bool hasCpp = m_detectedTypes.contains("C/C++");
+        const bool hasPy  = m_detectedTypes.contains("Python");
+        const bool hasJs  = m_detectedTypes.contains("JavaScript");
+        // Pick community packs matching detected languages. `p/security-audit`
+        // is universally useful. Project-local `.semgrep.yml` (if present)
+        // is auto-included by semgrep.
+        QStringList packs = {"p/security-audit"};
+        if (hasCpp) packs << "p/c" << "p/cpp";
+        if (hasPy)  packs << "p/python";
+        if (hasJs)  packs << "p/javascript" << "p/typescript";
+        QString cfg;
+        for (const QString &p : packs) cfg += " --config=" + p;
+        m_checks.append({
+            "semgrep", "Semgrep (structural patterns)",
+            "AST-aware pattern matching (" + packs.join(", ") + ")",
+            "Security",
+            "semgrep --timeout 30 --quiet --error --disable-version-check"
+            + cfg +
+            " --exclude build --exclude 'build-*' --exclude node_modules"
+            " --exclude .audit_cache --exclude vendor"
+            " . 2>&1 | head -120",
+            CheckType::Vulnerability, Severity::Major,
+            { /*dropIfContains*/ {"❯", "Scan Status", "Scanning", "Ran ",
+                                  "Scan complete", "files scanned"},
+              "", {}, 120 },
+            false, true, nullptr
+        });
+    }
+
     // ========== Python ==========
     if (m_detectedTypes.contains("Python")) {
         const bool hasPylint = toolExists("pylint");
@@ -892,6 +945,7 @@ static QString sourceForCheck(const QString &checkId) {
     if (checkId.startsWith("cppcheck"))  return "cppcheck";
     if (checkId == "clang_tidy")         return "clang-tidy";
     if (checkId == "clazy")              return "clazy";
+    if (checkId == "semgrep")            return "semgrep";
     if (checkId == "pylint")             return "pylint";
     if (checkId == "bandit")             return "bandit";
     if (checkId == "ruff")               return "ruff";
@@ -1061,6 +1115,394 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
 }
 
 // ---------------------------------------------------------------------------
+// Inline suppression directives
+// ---------------------------------------------------------------------------
+//
+// Recognises both ants-native markers and the de-facto conventions used by
+// every mature tool. A finding is suppressed if any of these appear on the
+// finding's line or the line immediately above it (or on any of the first 20
+// lines for file-scope markers):
+//
+//   ants-native (preferred for cross-rule hits):
+//     // ants-audit: disable                      — suppress everything on this line
+//     // ants-audit: disable=rule-id,other-rule   — targeted
+//     // ants-audit: disable-next-line[=rule-id]  — applies to the line below
+//     // ants-audit: disable-file[=rule-id]       — file-scope (first 20 lines)
+//
+//   Passthrough (respect what the upstream tool already honors):
+//     // NOLINT / NOLINT(rule)                          — clang-tidy
+//     // NOLINTNEXTLINE / NOLINTNEXTLINE(rule)          — clang-tidy (prev line)
+//     // cppcheck-suppress[=id | [id1,id2]]             — cppcheck
+//     # noqa / noqa: E501                               — flake8
+//     # nosec / nosec B101                              — bandit
+//     # nosemgrep / nosemgrep: rule-id                  — semgrep
+//     # gitleaks:allow                                  — gitleaks
+//     // eslint-disable-line / -next-line [rule]        — eslint
+//     # pylint: disable=code                            — pylint
+//
+// Parsing deliberately lenient: we extract the comment body (anything after
+// //, /*, #, --, ;, <!--) and check for the tokens anywhere in it.
+
+namespace {
+
+// Strip any common comment-prefix from the start of a line; returns the body
+// (or the original string if nothing matches). Also strips the closing `*/`
+// or `-->` for block forms.
+QString commentBody(const QString &rawLine) {
+    QString s = rawLine.trimmed();
+    // Order matters — longer tokens first.
+    struct Prefix { const char *open; const char *close; };
+    static const Prefix kPrefixes[] = {
+        {"<!--", "-->"},
+        {"/*",   "*/"},
+        {"//",   nullptr},
+        {"--",   nullptr},   // SQL / Lua / Haskell
+        {"#",    nullptr},   // Python / shell / Perl / Ruby / YAML / make
+        {";",    nullptr},   // ini / asm
+    };
+    for (const auto &p : kPrefixes) {
+        if (s.startsWith(QLatin1String(p.open))) {
+            s = s.mid(int(QLatin1String(p.open).size()));
+            if (p.close) {
+                const int end = s.lastIndexOf(QLatin1String(p.close));
+                if (end >= 0) s = s.left(end);
+            }
+            return s.trimmed();
+        }
+    }
+    // Fall back: trailing comment on a code line (e.g. `x = 1; // ...`).
+    // Handle `//` and `#` and ` -- ` (SQL) specifically.
+    int pos = s.indexOf("//");
+    if (pos < 0) pos = s.indexOf(" #");
+    if (pos < 0) pos = s.indexOf(" -- ");
+    if (pos >= 0) return s.mid(pos).replace(QRegularExpression(R"(^[/#\s-]+)"), "").trimmed();
+    return {};
+}
+
+// Read the file (cached by the caller) into lines. Cheap wrapper for the
+// directive scanner; shared with readSnippet() via m_fileLineCache.
+QStringList readFileLines(const QString &absPath, QHash<QString, QStringList> &cache) {
+    auto it = cache.constFind(absPath);
+    if (it != cache.constEnd()) return it.value();
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        cache.insert(absPath, {});
+        return {};
+    }
+    // Cap at 4 MB to bound worst-case memory on enormous generated files.
+    const QByteArray all = f.size() < 4 * 1024 * 1024 ? f.readAll() : QByteArray();
+    f.close();
+    const QStringList lines = QString::fromUtf8(all).split('\n', Qt::KeepEmptyParts);
+    cache.insert(absPath, lines);
+    return lines;
+}
+
+} // namespace
+
+bool AuditDialog::commentSuppresses(const QString &commentText, const QString &ruleId) {
+    if (commentText.isEmpty()) return false;
+
+    // Lowercase for case-insensitive token matching — rule ids are already
+    // lowercase-alnum so this doesn't lose info.
+    const QString body = commentText.toLower();
+    const QString rule = ruleId.toLower();
+
+    // The "bare" forms (no rule list) — any of these suppresses everything.
+    // Matched conservatively: must be a whole word with `\b` semantics.
+    static const QRegularExpression reBare(
+        R"(\b(?:ants-audit:\s*disable(?:-next-line|-file)?|nolint(?:nextline)?|cppcheck-suppress|noqa|nosec|nosemgrep|gitleaks:allow|eslint-disable(?:-line|-next-line)?|pylint:\s*disable)\b)",
+        QRegularExpression::CaseInsensitiveOption);
+    const auto bareMatch = reBare.match(body);
+    if (!bareMatch.hasMatch()) return false;
+
+    // Extract the rule-list payload, if any, following one of:
+    //   `: rule1, rule2`    (noqa/nosec/nosemgrep/pylint:disable style)
+    //   `=rule1,rule2`      (ants-audit, eslint, pylint variants)
+    //   `(rule1, rule2)`    (clang-tidy, cppcheck block form)
+    //   `[id1,id2]`         (cppcheck-suppress alt)
+    //   ` rule1 rule2`      (eslint bare)
+    // If none present → bare form → suppress everything.
+    const int tokEnd = bareMatch.capturedEnd();
+    const QString tail = body.mid(tokEnd).trimmed();
+
+    // Nothing after the token = bare suppress.
+    if (tail.isEmpty() || tail.startsWith("--")) return true;
+
+    // Pull out anything that looks like a rule-id list.
+    static const QRegularExpression reList(
+        R"([:=(\[\s]\s*([a-z0-9_\-\*\s,\.]+?)(?:[)\]-]|$))",
+        QRegularExpression::CaseInsensitiveOption);
+    const auto listMatch = reList.match(QString(" ") + tail);  // leading space ensures capture
+    if (!listMatch.hasMatch()) return true;   // token present but shape unknown → conservative suppress
+
+    const QString listStr = listMatch.captured(1);
+    const QStringList ids =
+        listStr.split(QRegularExpression(R"([,\s]+)"), Qt::SkipEmptyParts);
+    for (const QString &raw : ids) {
+        const QString id = raw.trimmed();
+        if (id.isEmpty()) continue;
+        // Exact match or glob like `google-*`.
+        if (id == rule) return true;
+        if (id.contains('*')) {
+            QString pat = QRegularExpression::escape(id);
+            pat.replace("\\*", ".*");
+            if (QRegularExpression("^" + pat + "$",
+                    QRegularExpression::CaseInsensitiveOption)
+                    .match(rule).hasMatch()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool AuditDialog::inlineSuppressed(const Finding &f) const {
+    if (f.file.isEmpty() || f.line <= 0) return false;
+    const QString abs = QFileInfo(f.file).isAbsolute()
+                      ? f.file
+                      : (m_projectPath + "/" + f.file);
+    const QStringList lines = readFileLines(abs, m_fileLineCache);
+    if (lines.isEmpty()) return false;
+
+    // 1. file-scope: scan first 20 lines for disable-file markers.
+    const int fileHeaderEnd = std::min<int>(20, lines.size());
+    for (int i = 0; i < fileHeaderEnd; ++i) {
+        const QString body = commentBody(lines[i]);
+        if (body.contains("ants-audit:", Qt::CaseInsensitive) &&
+            body.contains("disable-file", Qt::CaseInsensitive)) {
+            if (commentSuppresses(body, f.checkId)) return true;
+        }
+    }
+
+    // 2. same-line: a trailing comment on the finding's line.
+    const int lineIdx = f.line - 1;
+    if (lineIdx >= 0 && lineIdx < lines.size()) {
+        const QString body = commentBody(lines[lineIdx]);
+        if (!body.isEmpty() && commentSuppresses(body, f.checkId)) return true;
+    }
+
+    // 3. previous-line: disable-next-line / NOLINTNEXTLINE / eslint-disable-next-line.
+    const int prevIdx = f.line - 2;
+    if (prevIdx >= 0 && prevIdx < lines.size()) {
+        const QString body = commentBody(lines[prevIdx]);
+        if (!body.isEmpty() &&
+            (body.contains("next-line", Qt::CaseInsensitive) ||
+             body.contains("NOLINTNEXTLINE") ||
+             body.contains("disable-next"))) {
+            if (commentSuppresses(body, f.checkId)) return true;
+        }
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+// Generated-file detection & glob handling
+// ---------------------------------------------------------------------------
+
+bool AuditDialog::isGeneratedFile(const QString &path) {
+    if (path.isEmpty()) return false;
+    const QString base = QFileInfo(path).fileName();
+
+    // Qt MOC / UIC / RCC outputs
+    if (base.startsWith("moc_"))         return true;
+    if (base.startsWith("qrc_"))         return true;
+    if (base.startsWith("ui_"))          return true;
+    if (base.endsWith(".moc"))           return true;
+
+    // Protobuf / gRPC
+    if (base.endsWith(".pb.cc") || base.endsWith(".pb.h"))   return true;
+    if (base.endsWith(".grpc.pb.cc") || base.endsWith(".grpc.pb.h")) return true;
+
+    // Flex/Bison/ANTLR
+    if (base.endsWith(".yy.cc") || base.endsWith(".tab.cc")) return true;
+
+    // `*_generated.*` — gRPC-lite, flatbuffers, etc.
+    static const QRegularExpression reGenerated(
+        R"(_generated\.[a-z0-9]+$)", QRegularExpression::CaseInsensitiveOption);
+    if (reGenerated.match(base).hasMatch()) return true;
+
+    // /generated/ directory anywhere in the path
+    if (path.contains("/generated/", Qt::CaseInsensitive)) return true;
+    if (path.contains("/__generated__/", Qt::CaseInsensitive)) return true;
+
+    // Build dirs (defensive; populateChecks already excludes these)
+    if (path.contains("/build/") || path.contains("/build-"))  return true;
+    if (path.contains("/CMakeFiles/")) return true;
+
+    return false;
+}
+
+QRegularExpression AuditDialog::globToRegex(const QString &glob) {
+    // Convert a minimal subset of glob to regex:
+    //   **   — any path (including slashes)
+    //   *    — any segment (no slashes)
+    //   ?    — one char (no slash)
+    // Everything else is escaped.
+    QString re;
+    re.reserve(glob.size() * 2);
+    re.append('^');
+    for (int i = 0; i < glob.size(); ++i) {
+        const QChar c = glob[i];
+        if (c == '*' && i + 1 < glob.size() && glob[i + 1] == '*') {
+            re.append(".*");
+            ++i;
+        } else if (c == '*') {
+            re.append("[^/]*");
+        } else if (c == '?') {
+            re.append("[^/]");
+        } else {
+            re.append(QRegularExpression::escape(QString(c)));
+        }
+    }
+    re.append('$');
+    return QRegularExpression(re);
+}
+
+bool AuditDialog::applyPathRules(Finding &f) const {
+    if (f.file.isEmpty()) return true;
+
+    // Generated-file skip is absolute — happens before user overrides.
+    if (isGeneratedFile(f.file)) return false;
+
+    for (const PathRule &rule : m_pathRules) {
+        if (!rule.compiled.match(f.file).hasMatch()) continue;
+
+        if (rule.skipRules.contains(f.checkId)) return false;
+        if (rule.skip) return false;
+
+        if (rule.severityShift != 0) {
+            int s = static_cast<int>(f.severity) + rule.severityShift;
+            s = std::clamp(s, 0, 4);
+            f.severity = static_cast<Severity>(s);
+        }
+        // Keep evaluating — later rules can further tune severity.
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Code-snippet reader — ±radius lines around the finding line
+// ---------------------------------------------------------------------------
+
+QString AuditDialog::readSnippet(const QString &absPath, int line, int radius,
+                                  int *startLineOut) const {
+    if (absPath.isEmpty() || line <= 0) return {};
+    const QStringList lines = readFileLines(absPath, m_fileLineCache);
+    if (lines.isEmpty()) return {};
+
+    const int lineIdx = line - 1;
+    const int begin = std::max<int>(0, lineIdx - radius);
+    const int end   = std::min<int>(lines.size() - 1, lineIdx + radius);
+    if (startLineOut) *startLineOut = begin + 1;
+
+    QStringList out;
+    out.reserve(end - begin + 1);
+    for (int i = begin; i <= end; ++i) out.append(lines[i]);
+    return out.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Git blame enrichment — per (file, line) cached
+// ---------------------------------------------------------------------------
+
+void AuditDialog::enrichWithBlame(Finding &f) const {
+    if (!m_blameEnabled) return;
+    if (f.file.isEmpty() || f.line <= 0) return;
+    const QString key = f.file + ":" + QString::number(f.line);
+    auto it = m_blameCache.constFind(key);
+    if (it != m_blameCache.constEnd()) {
+        f.blameAuthor = it->author;
+        f.blameDate   = it->date;
+        f.blameSha    = it->sha;
+        return;
+    }
+
+    QProcess git;
+    git.setWorkingDirectory(m_projectPath);
+    git.start("git", {"blame", "--porcelain",
+                      "-L", QString("%1,%1").arg(f.line),
+                      "HEAD", "--", f.file});
+    if (!git.waitForFinished(2000)) {
+        git.kill();
+        m_blameCache.insert(key, {});
+        return;
+    }
+    if (git.exitCode() != 0) {
+        m_blameCache.insert(key, {});
+        return;
+    }
+    BlameEntry b;
+    const QStringList out =
+        QString::fromUtf8(git.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+    if (out.isEmpty()) { m_blameCache.insert(key, {}); return; }
+
+    // First line: <sha> <old-line> <new-line> [group-size]
+    const QStringList firstParts = out.first().split(' ');
+    if (!firstParts.isEmpty()) b.sha = firstParts.first().left(8);
+
+    for (const QString &ln : out) {
+        if (ln.startsWith("author ")) b.author = ln.mid(7).trimmed();
+        else if (ln.startsWith("author-time ")) {
+            const qint64 t = ln.mid(12).trimmed().toLongLong();
+            if (t > 0)
+                b.date = QDateTime::fromSecsSinceEpoch(t).toString("yyyy-MM-dd");
+        }
+    }
+    m_blameCache.insert(key, b);
+    f.blameAuthor = b.author;
+    f.blameDate   = b.date;
+    f.blameSha    = b.sha;
+}
+
+// ---------------------------------------------------------------------------
+// Confidence score — replaces the binary `highConfidence` ★
+// ---------------------------------------------------------------------------
+//
+// Weighted sum keyed to signals reference tools surface publicly:
+//   - severity is the biggest single factor (~60% of the ceiling)
+//   - multi-tool agreement is strong positive (CodeQL / Snyk model)
+//   - external AST tools (cppcheck/clang-tidy/clazy/bandit/…) rank above
+//     raw regex grep because they already understand comments/strings/AST
+//   - test paths and generated files get a penalty
+//   - AI triage (when present) can raise or lower confidence explicitly
+// Clamped to [0, 100].
+
+int AuditDialog::computeConfidence(const Finding &f) {
+    int score = 10;  // floor
+    // Severity base: Info=0, Minor=15, Major=30, Critical=45, Blocker=60
+    score += static_cast<int>(f.severity) * 15;
+
+    if (f.highConfidence) score += 20;
+
+    // External AST/semantic tools — hand-curated list that matches sources
+    // produced by sourceForCheck().
+    static const QSet<QString> kExternalTools = {
+        "cppcheck", "clang-tidy", "clazy", "semgrep",
+        "pylint", "bandit", "ruff", "mypy", "shellcheck", "luacheck",
+        "cargo-clippy", "cargo-audit", "go vet", "govulncheck",
+        "golangci-lint", "eslint", "npm audit", "gcc",
+    };
+    if (kExternalTools.contains(f.source)) score += 10;
+
+    // Path-based penalties
+    const QString lp = f.file.toLower();
+    const bool inTests = lp.contains("/tests/") || lp.contains("/test/") ||
+                         lp.contains("test_") || lp.endsWith("_test.py") ||
+                         lp.endsWith("_test.go") || lp.endsWith(".test.js") ||
+                         lp.endsWith(".spec.js");
+    if (inTests) score -= 20;
+
+    // Pure grep + message very short → likely noisy
+    if (f.source == "grep" && f.message.size() < 30) score -= 5;
+
+    // Explicit AI triage shifts confidence into its own band.
+    if (f.aiVerdict == "FALSE_POSITIVE") score = std::min(score, 30);
+    if (f.aiVerdict == "TRUE_POSITIVE")  score = std::max(score, 80);
+
+    return std::clamp(score, 0, 100);
+}
+
+// ---------------------------------------------------------------------------
 // Suppression file
 // ---------------------------------------------------------------------------
 
@@ -1115,6 +1557,24 @@ int AuditDialog::loadUserRules() {
         if (v == "vuln" || v == "vulnerability") return CheckType::Vulnerability;
         return CheckType::Info;
     };
+
+    // Load `path_rules[]` first so count-based reporting reflects both axes.
+    const QJsonArray pathRules = doc.object().value("path_rules").toArray();
+    m_pathRules.clear();
+    for (const QJsonValue &v : pathRules) {
+        if (!v.isObject()) continue;
+        const QJsonObject o = v.toObject();
+        const QString glob = o.value("glob").toString();
+        if (glob.isEmpty()) continue;
+        PathRule pr;
+        pr.glob          = glob;
+        pr.compiled      = globToRegex(glob);
+        pr.skip          = o.value("skip").toBool(false);
+        pr.severityShift = o.value("severity_shift").toInt(0);
+        const QJsonArray sr = o.value("skip_rules").toArray();
+        for (const QJsonValue &x : sr) pr.skipRules << x.toString();
+        m_pathRules.append(pr);
+    }
 
     int loaded = 0;
     for (const QJsonValue &v : rules) {
@@ -1270,10 +1730,25 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
 }
 
 void AuditDialog::onResultAnchorClicked(const QUrl &url) {
-    if (url.scheme() != "ants-suppress") return;
+    const QString scheme = url.scheme();
     const QString key = url.host().isEmpty() ? url.path().mid(1) : url.host();
     if (key.isEmpty()) return;
 
+    // Toggle the per-finding details expand state; cheap — no network.
+    if (scheme == "ants-expand") {
+        if (m_expandedKeys.contains(key)) m_expandedKeys.remove(key);
+        else                              m_expandedKeys.insert(key);
+        if (!m_completedResults.isEmpty()) renderResults();
+        return;
+    }
+
+    // Fire an AI triage request; response lands async via requestAiTriage().
+    if (scheme == "ants-triage") {
+        requestAiTriage(key);
+        return;
+    }
+
+    if (scheme != "ants-suppress") return;
     const Finding f = m_findingsByKey.value(key);
     const QString where = (!f.file.isEmpty() && f.line > 0)
         ? QString("%1:%2").arg(f.file).arg(f.line)
@@ -1421,7 +1896,9 @@ void AuditDialog::buildUI() {
 
     m_typesLabel = new QLabel(this);
     const QString types = m_detectedTypes.isEmpty() ? "Unknown" : m_detectedTypes.join(", ");
-    QString typesText = "<b>Detected:</b> " + types;
+    QString typesText = "<b>Detected:</b> " + types +
+                        "  ·  <span style='color:#888;'>ants-audit v" +
+                        QString::fromLatin1(ANTS_VERSION) + "</span>";
     if (m_hasBaseline) typesText += "  ·  <i>Baseline loaded</i>";
     m_typesLabel->setText(typesText);
     m_typesLabel->setTextFormat(Qt::RichText);
@@ -1638,6 +2115,66 @@ void AuditDialog::buildUI() {
     m_statusLabel->setVisible(false);
     root->addWidget(m_statusLabel);
 
+    // Filter bar — severity pills + live text filter + confidence-sort toggle.
+    // Hidden until the first audit run produces results. Wired to m_textFilter
+    // / m_activeSeverities / m_sortByConfidence and re-renders on every change.
+    m_filterBar = new QWidget(this);
+    auto *filterRow = new QHBoxLayout(m_filterBar);
+    filterRow->setContentsMargins(0, 0, 0, 0);
+    filterRow->setSpacing(6);
+
+    m_filterInput = new QLineEdit(m_filterBar);
+    m_filterInput->setPlaceholderText("Filter by file, message, rule, author…");
+    m_filterInput->setClearButtonEnabled(true);
+    connect(m_filterInput, &QLineEdit::textChanged, this, [this](const QString &s) {
+        m_textFilter = s.trimmed().toLower();
+        if (!m_completedResults.isEmpty()) renderResults();
+    });
+    filterRow->addWidget(m_filterInput, 1);
+
+    struct SevSpec { const char *label; Severity sev; const char *color; };
+    static const SevSpec kSevs[] = {
+        {"BLK", Severity::Blocker,  "#8B0000"},
+        {"CRT", Severity::Critical, "#E74856"},
+        {"MAJ", Severity::Major,    "#FFA500"},
+        {"MIN", Severity::Minor,    "#FFD700"},
+        {"INF", Severity::Info,     "#4CAF50"},
+    };
+    for (const auto &sp : kSevs) {
+        auto *pill = new QPushButton(sp.label, m_filterBar);
+        pill->setCheckable(true);
+        pill->setChecked(true);
+        pill->setFixedSize(44, 26);
+        pill->setToolTip(QString("Show %1 findings").arg(sp.label));
+        pill->setStyleSheet(QString(
+            "QPushButton { border:1px solid %1; color:%1; background:transparent; "
+            "  border-radius:12px; font-size:10px; font-weight:bold; }"
+            "QPushButton:checked { background:%1; color:white; }"
+            "QPushButton:!checked { color:#555; border-color:#555; }"
+        ).arg(sp.color));
+        const int sevIndex = static_cast<int>(sp.sev);
+        connect(pill, &QPushButton::toggled, this, [this, sevIndex](bool on) {
+            if (on) m_activeSeverities.insert(sevIndex);
+            else    m_activeSeverities.remove(sevIndex);
+            if (!m_completedResults.isEmpty()) renderResults();
+        });
+        filterRow->addWidget(pill);
+        m_sevPills.append(pill);
+    }
+
+    m_confidenceSortBtn = new QPushButton("Sort by confidence", m_filterBar);
+    m_confidenceSortBtn->setCheckable(true);
+    m_confidenceSortBtn->setFixedHeight(26);
+    m_confidenceSortBtn->setToolTip("Sort findings within each check by confidence score (highest first)");
+    connect(m_confidenceSortBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_sortByConfidence = on;
+        if (!m_completedResults.isEmpty()) renderResults();
+    });
+    filterRow->addWidget(m_confidenceSortBtn);
+
+    m_filterBar->setVisible(false);
+    root->addWidget(m_filterBar);
+
     m_results = new QTextBrowser(this);
     m_results->setReadOnly(true);
     m_results->setFont(QFont("monospace", 9));
@@ -1770,8 +2307,9 @@ void AuditDialog::runNextCheck() {
         m_runBtn->setEnabled(true);
         m_reviewBtn->setVisible(true);
         m_baselineBtn->setVisible(true);
-        if (m_sarifBtn) m_sarifBtn->setVisible(true);
-        if (m_htmlBtn)  m_htmlBtn->setVisible(true);
+        if (m_sarifBtn)    m_sarifBtn->setVisible(true);
+        if (m_htmlBtn)     m_htmlBtn->setVisible(true);
+        if (m_filterBar)   m_filterBar->setVisible(true);
         for (auto &c : m_checks)
             if (c.toggle) c.toggle->setEnabled(c.available);
         return;
@@ -1827,15 +2365,19 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
 
     // Parse body into structured findings. Apply in order:
     //   1. Suppress any finding whose dedup hash is in .audit_suppress
-    //   2. In "recent-only" mode: drop findings whose file isn't in the
+    //   2. Drop generated / path-rule-skipped findings
+    //   3. Drop findings suppressed by inline directive in the file
+    //   4. In "recent-only" mode: drop findings whose file isn't in the
     //      recent-commits set (unfiled findings always pass)
-    //   3. Dedup within this single check (exact-duplicate message lines)
+    //   5. Dedup within this single check (exact-duplicate message lines)
     QSet<QString> seenKeys;
     QList<Finding> parsed = parseFindings(filtered.body, check);
     QSet<QString> recent;
     if (m_recentOnly) for (const QString &p : m_recentFiles) recent.insert(p);
-    for (const Finding &f : parsed) {
+    for (Finding &f : parsed) {
         if (m_suppressedKeys.contains(f.dedupKey)) continue;
+        if (!applyPathRules(f)) continue;       // generated files + path rules
+        if (inlineSuppressed(f)) continue;      // inline // ants-audit: disable ...
         if (m_recentOnly && !f.file.isEmpty()) {
             // Match by either exact path or project-relative path suffix.
             bool isRecent = recent.contains(f.file);
@@ -1949,6 +2491,33 @@ void AuditDialog::renderResults() {
                 for (Finding *p : it.value().fs) p->highConfidence = true;
         }
     }
+
+    // Enrichment pass: snippet + blame + confidence score, in place. Expensive
+    // operations are bounded per run (blame shells out once per unique file:
+    // line; snippet reads are cached in m_fileLineCache). Skip when a finding
+    // has no file:line — free-form findings don't benefit from enrichment.
+    //
+    // We also seed Finding::aiVerdict from the existing key→finding cache so
+    // confidence reflects any prior AI triage from this session.
+    m_fileLineCache.clear();   // reset on every render — files may have changed
+    int enriched = 0;
+    const int kSnippetBudget = 300;        // per-render cap (cheap but bounded)
+    for (auto &r : m_completedResults) {
+        for (Finding &f : r.findings) {
+            if (f.file.isEmpty() || f.line <= 0) continue;
+            if (enriched >= kSnippetBudget) break;
+            const QString abs = QFileInfo(f.file).isAbsolute()
+                              ? f.file
+                              : (m_projectPath + "/" + f.file);
+            if (f.snippet.isEmpty())
+                f.snippet = readSnippet(abs, f.line, 3, &f.snippetStart);
+            if (f.blameSha.isEmpty()) enrichWithBlame(f);
+            ++enriched;
+        }
+    }
+    for (auto &r : m_completedResults)
+        for (Finding &f : r.findings)
+            f.confidence = computeConfidence(f);
 
     // Populate key→finding lookup for the anchor click handler. Done after
     // correlation so the lookup reflects the highConfidence flag.
@@ -2107,14 +2676,34 @@ void AuditDialog::renderResults() {
             continue;
         }
 
-        // Build findings body. Each finding line gets:
-        //   file:line · message       (monospace)
-        //   - optional NEW tag (baseline diff)
-        //   - dedup hash at end (small, grey, for .audit_suppress copy-paste)
+        // Build findings body. Each finding row now carries:
+        //   confidence pip + file:line · message                  (header)
+        //   ★ cross-tool hit · NEW · blame tag                    (inline tags)
+        //   [details] snippet (±3) + ai triage button             (collapsed)
+        //
+        // Sorting: within a check, higher confidence first when m_sortByConfidence.
+        // Filtering: respects active severity pills and the text filter input.
+        std::vector<const Finding*> sortedFindings;
+        sortedFindings.reserve(r.findings.size());
+        for (const Finding &f : r.findings) sortedFindings.push_back(&f);
+        if (m_sortByConfidence) {
+            std::stable_sort(sortedFindings.begin(), sortedFindings.end(),
+                [](const Finding *a, const Finding *b) {
+                    return a->confidence > b->confidence;
+                });
+        }
+
         QStringList rows;
-        for (const Finding &f : r.findings) {
+        for (const Finding *pf : sortedFindings) {
+            const Finding &f = *pf;
             if (m_suppressedKeys.contains(f.dedupKey)) continue;
             if (m_showNewOnly && !findingIsNew(f)) continue;
+            if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
+            if (!m_textFilter.isEmpty()) {
+                const QString hay = (f.file + " " + f.message + " " +
+                                     f.checkId + " " + f.blameAuthor).toLower();
+                if (!hay.contains(m_textFilter)) continue;
+            }
             const bool isNew = m_hasBaseline && findingIsNew(f);
             const QString loc = f.file.isEmpty()
                               ? QString()
@@ -2123,8 +2712,18 @@ void AuditDialog::renderResults() {
                                      .arg(f.file.toHtmlEscaped()).arg(f.line)
                                  : QString("<span style='color:#89B4FA;'>%1</span>  ")
                                      .arg(f.file.toHtmlEscaped()));
-            // Dedup key is clickable — routes to onResultAnchorClicked()
-            // which shows a reason prompt and writes a JSONL suppression line.
+
+            // Confidence pip — small colored dot with the numeric score on hover.
+            QString pipColor = "#4CAF50";  // green ≥70
+            if (f.confidence < 40)      pipColor = "#E74856";
+            else if (f.confidence < 70) pipColor = "#FFA500";
+            const QString pip = QString(
+                "<span title='Confidence %1/100' style='color:%2; "
+                "font-family:monospace; font-size:11px; font-weight:bold;'>"
+                "●</span><span style='color:#666; font-size:9px;'>%1</span>  ")
+                .arg(f.confidence).arg(pipColor);
+
+            // Dedup-key suppress anchor.
             const QString keyAnchor = QString(
                 "<a href='ants-suppress://%1' style='color:#666; "
                 "font-size:9px; text-decoration:none;' "
@@ -2134,20 +2733,103 @@ void AuditDialog::renderResults() {
                 ? QStringLiteral(" <span style='color:#FFD700; font-weight:bold;'"
                                  " title='Flagged by 2+ tools'>★</span>")
                 : QString();
-            rows << QString("%1%2%3  %4%5")
-                    .arg(loc,
-                         f.message.toHtmlEscaped(),
-                         confTag,
-                         keyAnchor,
-                         isNew ? " <span style='color:#4CAF50; font-weight:bold;'>NEW</span>"
-                               : "");
+            // Blame tag — "by <author> · <date> · <sha>"
+            QString blameTag;
+            if (!f.blameSha.isEmpty()) {
+                QStringList parts;
+                if (!f.blameAuthor.isEmpty()) parts << f.blameAuthor;
+                if (!f.blameDate.isEmpty())   parts << f.blameDate;
+                parts << f.blameSha;
+                blameTag = QString(" <span style='color:#888; font-size:9px;' "
+                                   "title='git blame'>[%1]</span>")
+                               .arg(parts.join(" · ").toHtmlEscaped());
+            }
+            // AI triage verdict badge (if previously triaged).
+            QString verdictBadge;
+            if (!f.aiVerdict.isEmpty()) {
+                QString vc = "#888";
+                if (f.aiVerdict == "TRUE_POSITIVE")  vc = "#E74856";
+                if (f.aiVerdict == "FALSE_POSITIVE") vc = "#4CAF50";
+                if (f.aiVerdict == "NEEDS_REVIEW")   vc = "#FFA500";
+                QString verdictLabel = f.aiVerdict;
+                verdictLabel.replace('_', ' ');
+                verdictBadge = QString(
+                    " <span style='color:%1; font-size:9px; font-weight:bold;' "
+                    "title='AI triage: %2/100 — %3'>%4</span>")
+                    .arg(vc, QString::number(f.aiConfidence),
+                         f.aiReasoning.left(160).toHtmlEscaped(),
+                         verdictLabel);
+            }
+
+            // Clickable "details" toggle — shows snippet + AI-triage link.
+            const bool expanded = m_expandedKeys.contains(f.dedupKey);
+            const QString toggleAnchor = QString(
+                " <a href='ants-expand://%1' style='color:#666; font-size:9px; "
+                "text-decoration:none;' title='%2 context'>%3</a>")
+                .arg(f.dedupKey,
+                     expanded ? "Hide" : "Show",
+                     expanded ? "[hide]" : "[details]");
+
+            QString header = QString("%1%2%3%4%5%6  %7%8")
+                                .arg(pip, loc,
+                                     f.message.toHtmlEscaped(),
+                                     confTag, blameTag, verdictBadge,
+                                     keyAnchor, toggleAnchor);
+            if (isNew)
+                header += " <span style='color:#4CAF50; font-weight:bold;'>NEW</span>";
+
+            if (expanded && (!f.snippet.isEmpty() || !f.aiVerdict.isEmpty())) {
+                QString body;
+                if (!f.snippet.isEmpty()) {
+                    // Render snippet with line numbers; highlight the finding line.
+                    QStringList lines = f.snippet.split('\n');
+                    QStringList numbered;
+                    for (int i = 0; i < lines.size(); ++i) {
+                        const int ln = f.snippetStart + i;
+                        const bool hit = (ln == f.line);
+                        const QString marker = hit ? "▸" : " ";
+                        const QString bg = hit
+                            ? "background:#2a1a1a; color:#e0e0e0;"
+                            : "color:#999;";
+                        numbered << QString(
+                            "<span style='%1 font-family:monospace; "
+                            "font-size:11px;'>%2 %3 %4</span>")
+                            .arg(bg)
+                            .arg(QString::number(ln).rightJustified(5))
+                            .arg(marker, lines[i].toHtmlEscaped());
+                    }
+                    body += "<div style='margin:4px 0 4px 24px; padding:6px; "
+                            "background:#151515; border-left:2px solid #444;'>"
+                            + numbered.join("<br>") + "</div>";
+                }
+                // AI triage action link (always shown when expanded) — sends
+                // the finding to the configured AI endpoint on click.
+                QString triageLink;
+                if (f.aiVerdict.isEmpty()) {
+                    triageLink = QString(
+                        "<a href='ants-triage://%1' style='color:#89B4FA; "
+                        "font-size:10px;'>🧠 Triage with AI</a>").arg(f.dedupKey);
+                } else {
+                    triageLink = QString(
+                        "<span style='color:#888; font-size:10px;'>"
+                        "AI triage: %1 (%2/100) — %3</span>")
+                        .arg(f.aiVerdict, QString::number(f.aiConfidence),
+                             f.aiReasoning.left(220).toHtmlEscaped());
+                }
+                body += "<div style='margin:2px 0 6px 24px; font-size:10px;'>"
+                      + triageLink + "</div>";
+                header += "<br>" + body;
+            }
+
+            rows << header;
         }
         if (r.omittedCount > 0 && !m_showNewOnly) {
             rows << QString("<span style='color:#FFA500;'>… and %1 more (capped at %2 per check)</span>")
                     .arg(r.omittedCount).arg(kMaxFindingsPerCheck);
         }
-        m_results->append("<div style='margin:0 0 10px 10px;'><pre style='white-space:pre-wrap; margin:0;'>"
-                          + rows.join("\n") + "</pre></div>");
+        if (rows.isEmpty()) continue;  // everything filtered out — hide the check
+        m_results->append("<div style='margin:0 0 10px 10px;'><div style='white-space:pre-wrap; margin:0;'>"
+                          + rows.join("<br>") + "</div></div>");
     }
 
     auto *sb = m_results->verticalScrollBar();
@@ -2158,6 +2840,161 @@ void AuditDialog::renderResults() {
                            .arg(m_hasBaseline
                                 ? QString(" (%1 new since baseline)").arg(totalNew)
                                 : QString()));
+}
+
+// ---------------------------------------------------------------------------
+// AI triage — per-finding classification via OpenAI-compatible chat endpoint
+// ---------------------------------------------------------------------------
+//
+// Shape: user clicks "🧠 Triage with AI" inside an expanded finding row.
+// We POST a small prompt (rule + snippet + blame) to the project's configured
+// /v1/chat/completions endpoint (same one powering AiDialog), expecting a
+// JSON object {verdict, confidence, reasoning}. The response updates the
+// Finding in place and re-renders so the verdict badge appears.
+//
+// Deliberately simple: one QNetworkAccessManager per call (cheap, short-
+// lived), no streaming, 30s timeout matching STANDARDS.md. Failures surface
+// in the status bar; Finding stays untouched so the user can retry.
+
+void AuditDialog::requestAiTriage(const QString &dedupKey) {
+    if (dedupKey.isEmpty()) return;
+    Finding f = m_findingsByKey.value(dedupKey);
+    if (f.checkId.isEmpty()) return;
+
+    // Prefer a previously-computed snippet; fall back to a fresh read.
+    if (f.snippet.isEmpty() && !f.file.isEmpty() && f.line > 0) {
+        const QString abs = QFileInfo(f.file).isAbsolute()
+                          ? f.file
+                          : (m_projectPath + "/" + f.file);
+        f.snippet = readSnippet(abs, f.line, 5, &f.snippetStart);
+    }
+
+    Config cfg;
+    const QString endpoint = cfg.aiEndpoint();
+    const QString apiKey   = cfg.aiApiKey();
+    const QString model    = cfg.aiModel().isEmpty() ? QStringLiteral("gpt-4o-mini")
+                                                     : cfg.aiModel();
+    if (!cfg.aiEnabled() || endpoint.isEmpty()) {
+        if (m_statusLabel)
+            m_statusLabel->setText("AI triage: configure AI in Settings first");
+        return;
+    }
+
+    // Compose prompt. Keep it concise — the model doesn't need our whole
+    // rule catalogue, just the rule name + description + snippet.
+    const QString sys =
+        "You are a static analysis triage assistant. Classify a finding "
+        "as TRUE_POSITIVE, FALSE_POSITIVE, or NEEDS_REVIEW. Respond ONLY "
+        "with a compact JSON object of shape "
+        "{\"verdict\":\"...\",\"confidence\":<0-100>,\"reasoning\":\"...\"}. "
+        "Keep reasoning under 50 words.";
+    QString userMsg;
+    userMsg += "Rule: " + f.checkId + " — " + f.checkName + "\n";
+    userMsg += "Severity: " + severityLabel(f.severity) + "\n";
+    userMsg += "Source: " + f.source + "\n";
+    if (!f.file.isEmpty())
+        userMsg += QString("File: %1:%2\n").arg(f.file).arg(f.line);
+    userMsg += "Message: " + f.message + "\n";
+    if (!f.snippet.isEmpty()) {
+        userMsg += "\nSnippet:\n```\n";
+        userMsg += f.snippet;
+        userMsg += "\n```\n";
+    }
+    if (!f.blameAuthor.isEmpty())
+        userMsg += QString("\nLast modified: %1 by %2 (%3)\n")
+                       .arg(f.blameDate, f.blameAuthor, f.blameSha);
+
+    QJsonArray messages;
+    messages.append(QJsonObject{{"role", "system"},  {"content", sys}});
+    messages.append(QJsonObject{{"role", "user"},    {"content", userMsg}});
+
+    QJsonObject body;
+    body["model"]       = model;
+    body["messages"]    = messages;
+    body["temperature"] = 0.2;
+    body["stream"]      = false;
+    // Response-format JSON for providers that honor it; harmless otherwise.
+    body["response_format"] = QJsonObject{{"type", "json_object"}};
+
+    QUrl endpointUrl(endpoint);
+    // Append /v1/chat/completions if the user gave a bare host.
+    if (!endpointUrl.path().contains("chat/completions")) {
+        const QString p = endpointUrl.path();
+        endpointUrl.setPath((p.endsWith('/') ? p : p + "/") + "v1/chat/completions");
+    }
+    if (endpointUrl.scheme() != "https" && endpointUrl.scheme() != "http") {
+        if (m_statusLabel) m_statusLabel->setText("AI triage: endpoint must be http(s)");
+        return;
+    }
+
+    QNetworkRequest req(endpointUrl);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!apiKey.isEmpty())
+        req.setRawHeader("Authorization", ("Bearer " + apiKey).toUtf8());
+    req.setTransferTimeout(30000);
+
+    auto *mgr = new QNetworkAccessManager(this);
+    QNetworkReply *reply = mgr->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    if (m_statusLabel)
+        m_statusLabel->setText("AI triage: querying " + endpointUrl.host() + "…");
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, mgr, dedupKey]() {
+        reply->deleteLater();
+        mgr->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            if (m_statusLabel)
+                m_statusLabel->setText("AI triage failed: " + reply->errorString());
+            return;
+        }
+        const QByteArray data = reply->readAll();
+        const QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (!doc.isObject()) {
+            if (m_statusLabel) m_statusLabel->setText("AI triage: invalid response");
+            return;
+        }
+        // OpenAI shape: choices[0].message.content holds the assistant reply.
+        const QJsonArray choices = doc.object().value("choices").toArray();
+        if (choices.isEmpty()) {
+            if (m_statusLabel) m_statusLabel->setText("AI triage: empty response");
+            return;
+        }
+        QString content = choices.first().toObject()
+                              .value("message").toObject()
+                              .value("content").toString();
+        // Some providers wrap the JSON in ```...```. Strip.
+        content = content.trimmed();
+        if (content.startsWith("```")) {
+            const int nl = content.indexOf('\n');
+            if (nl > 0) content = content.mid(nl + 1);
+            if (content.endsWith("```"))
+                content.chop(3);
+            content = content.trimmed();
+        }
+        const QJsonDocument inner = QJsonDocument::fromJson(content.toUtf8());
+        if (!inner.isObject()) {
+            if (m_statusLabel) m_statusLabel->setText("AI triage: non-JSON verdict");
+            return;
+        }
+        const QJsonObject o = inner.object();
+        const QString verdict = o.value("verdict").toString("NEEDS_REVIEW").toUpper();
+        const int conf = std::clamp(o.value("confidence").toInt(50), 0, 100);
+        const QString reasoning = o.value("reasoning").toString().left(600);
+
+        // Write back into every CheckResult that carries this key.
+        for (auto &r : m_completedResults) {
+            for (Finding &f : r.findings) {
+                if (f.dedupKey != dedupKey) continue;
+                f.aiVerdict     = verdict;
+                f.aiConfidence  = conf;
+                f.aiReasoning   = reasoning;
+                f.confidence    = computeConfidence(f);
+            }
+        }
+        m_expandedKeys.insert(dedupKey);   // auto-expand to show the verdict
+        renderResults();
+        if (m_statusLabel)
+            m_statusLabel->setText(QString("AI triage: %1 (%2/100)").arg(verdict).arg(conf));
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -2230,6 +3067,17 @@ QString AuditDialog::exportSarif() const {
                     region["startLine"] = f.line;
                     physLoc["region"]   = region;
                 }
+                // SARIF contextRegion — the ±3 lines around the finding.
+                // Consumers (GitHub Code Scanning, SonarQube, VSCode viewer)
+                // render this as the inline code preview.
+                if (!f.snippet.isEmpty() && f.snippetStart > 0) {
+                    QJsonObject ctxRegion;
+                    ctxRegion["startLine"] = f.snippetStart;
+                    ctxRegion["endLine"]   = f.snippetStart
+                                           + f.snippet.count('\n');
+                    ctxRegion["snippet"]   = QJsonObject{{"text", f.snippet}};
+                    physLoc["contextRegion"] = ctxRegion;
+                }
                 loc["physicalLocation"] = physLoc;
                 QJsonArray locs; locs.append(loc);
                 res["locations"] = locs;
@@ -2238,17 +3086,37 @@ QString AuditDialog::exportSarif() const {
             partialFp["primaryLocationLineHash"] = f.dedupKey;
             res["partialFingerprints"] = partialFp;
 
-            res["properties"] = QJsonObject{
+            QJsonObject props{
                 {"source", f.source},
                 {"highConfidence", f.highConfidence},
+                {"confidence", f.confidence},
             };
+            // Git-blame bag — sarif-tools de-facto convention, not in the
+            // formal schema but consumed by GitHub Code Scanning UI.
+            if (!f.blameSha.isEmpty()) {
+                QJsonObject blame{
+                    {"author",      f.blameAuthor},
+                    {"author-time", f.blameDate},
+                    {"sha",         f.blameSha},
+                };
+                props["blame"] = blame;
+            }
+            // AI triage verdict (present only if user ran it).
+            if (!f.aiVerdict.isEmpty()) {
+                props["aiTriage"] = QJsonObject{
+                    {"verdict",    f.aiVerdict},
+                    {"confidence", f.aiConfidence},
+                    {"reasoning",  f.aiReasoning},
+                };
+            }
+            res["properties"] = props;
             results.append(res);
         }
     }
 
     QJsonObject driver;
     driver["name"] = "ants-audit";
-    driver["version"] = "0.4.0";
+    driver["version"] = QStringLiteral(ANTS_VERSION);
     driver["informationUri"] = "https://github.com/milnet01/ants-terminal";
     driver["rules"] = rules;
 
@@ -2301,6 +3169,23 @@ QString AuditDialog::exportHtml() const {
             o["message"]   = f.message;
             o["dedupKey"]  = f.dedupKey;
             o["highConf"]  = f.highConfidence;
+            o["confidence"] = f.confidence;
+            o["snippet"]   = f.snippet;
+            o["snippetStart"] = f.snippetStart;
+            if (!f.blameSha.isEmpty()) {
+                o["blame"] = QJsonObject{
+                    {"author", f.blameAuthor},
+                    {"date",   f.blameDate},
+                    {"sha",    f.blameSha},
+                };
+            }
+            if (!f.aiVerdict.isEmpty()) {
+                o["ai"] = QJsonObject{
+                    {"verdict",    f.aiVerdict},
+                    {"confidence", f.aiConfidence},
+                    {"reasoning",  f.aiReasoning},
+                };
+            }
             findingsJson.append(o);
         }
     }
@@ -2309,6 +3194,7 @@ QString AuditDialog::exportHtml() const {
     meta["project"]    = m_projectPath;
     meta["detected"]   = m_detectedTypes.join(", ");
     meta["generated"]  = QDateTime::currentDateTime().toString(Qt::ISODate);
+    meta["version"]    = QString::fromLatin1(ANTS_VERSION);
     meta["findings"]   = findingsJson;
 
     QString payload = QString::fromUtf8(
@@ -2390,12 +3276,33 @@ QString AuditDialog::exportHtml() const {
     font-size: 12px;
   }
   .row {
-    padding: 3px 0; border-top: 1px solid var(--border);
+    padding: 6px 0; border-top: 1px solid var(--border);
     white-space: pre-wrap; word-break: break-word;
   }
   .row:first-child { border-top: none; }
   .loc { color: var(--accent); }
   .key { color: var(--muted); font-size: 10px; margin-left: 8px; }
+  .blame { color: var(--muted); font-size: 10px; margin-left: 6px; }
+  .conf-pip { font-weight: bold; margin-right: 4px; }
+  .conf-hi  { color: #4caf50; }
+  .conf-md  { color: #ffa500; }
+  .conf-lo  { color: #e74856; }
+  .verdict { font-size: 10px; margin-left: 6px; font-weight: 600; }
+  .verdict.TRUE_POSITIVE  { color: var(--critical); }
+  .verdict.FALSE_POSITIVE { color: var(--info); }
+  .verdict.NEEDS_REVIEW   { color: var(--major); }
+  .snippet {
+    margin: 6px 0 0 24px; padding: 6px 10px; background: var(--bg);
+    border-left: 2px solid var(--border); border-radius: 3px;
+    font-size: 11px; line-height: 1.35; overflow-x: auto;
+  }
+  .snippet .ln    { color: var(--muted); user-select: none; margin-right: 6px; }
+  .snippet .hit   { background: rgba(231,72,86,0.15); }
+  .snippet .hit .ln { color: var(--critical); }
+  details.fx { margin-left: 24px; margin-top: 4px; }
+  details.fx summary { cursor: pointer; color: var(--accent); font-size: 10px; }
+  details.fx summary::-webkit-details-marker { display: none; }
+  .reason { color: var(--muted); font-size: 10px; margin-top: 4px; }
   .empty { padding: 20px; color: var(--muted); font-style: italic; text-align: center; }
   footer { margin-top: 20px; color: var(--muted); font-size: 11px; text-align: center; }
 </style>
@@ -2414,7 +3321,7 @@ QString AuditDialog::exportHtml() const {
   <span class="pill INFO"     data-sev="INFO"     data-active="true">Info</span>
 </div>
 <div id="results"></div>
-<footer>Generated by ants-audit — single-file report · no external assets</footer>
+<footer>Generated by ants-audit · single-file report · no external assets</footer>
 
 <script id="data" type="application/json">{{PAYLOAD}}</script>
 <script>
@@ -2422,7 +3329,7 @@ QString AuditDialog::exportHtml() const {
   const DATA = JSON.parse(document.getElementById('data').textContent);
   const SEV_ORDER = { BLOCKER: 4, CRITICAL: 3, MAJOR: 2, MINOR: 1, INFO: 0 };
   const meta = document.getElementById('meta');
-  meta.textContent = `Project: ${DATA.project} · Detected: ${DATA.detected} · ${DATA.generated}`;
+  meta.textContent = `Project: ${DATA.project} · Detected: ${DATA.detected} · ants-audit v${DATA.version || '?'} · ${DATA.generated}`;
 
   // Group by check.
   const byCheck = new Map();
@@ -2460,7 +3367,30 @@ QString AuditDialog::exportHtml() const {
       const rows = filtered.map(f => {
         const loc = f.file ? `<span class="loc">${escape(f.file)}${f.line > 0 ? ':' + f.line : ''}</span>  ` : '';
         const star = f.highConf ? ' <span title="Flagged by 2+ tools" style="color:#FFD700;">★</span>' : '';
-        return `<div class="row">${loc}${escape(f.message)}${star}<span class="key">${escape(f.dedupKey)}</span></div>`;
+        const confCls = (f.confidence >= 70) ? 'conf-hi'
+                      : (f.confidence >= 40) ? 'conf-md' : 'conf-lo';
+        const pip = (typeof f.confidence === 'number')
+          ? `<span class="conf-pip ${confCls}" title="Confidence ${f.confidence}/100">●</span>`
+          : '';
+        const blame = f.blame
+          ? `<span class="blame" title="git blame">[${escape(f.blame.author)} · ${escape(f.blame.date)} · ${escape(f.blame.sha)}]</span>`
+          : '';
+        const verdict = f.ai
+          ? `<span class="verdict ${f.ai.verdict}" title="AI: ${f.ai.confidence}/100">${f.ai.verdict.replace('_',' ')}</span>`
+          : '';
+        let snippet = '';
+        if (f.snippet) {
+          const lines = f.snippet.split('\n').map((ln, idx) => {
+            const num = (f.snippetStart || 0) + idx;
+            const hit = (num === f.line);
+            return `<div class="${hit ? 'hit' : ''}"><span class="ln">${String(num).padStart(5)}</span>${escape(ln)}</div>`;
+          }).join('');
+          snippet = `<details class="fx"><summary>[details]</summary>
+            <div class="snippet">${lines}</div>
+            ${f.ai ? `<div class="reason">${escape(f.ai.reasoning || '')}</div>` : ''}
+          </details>`;
+        }
+        return `<div class="row">${pip}${loc}${escape(f.message)}${star}${blame}${verdict}<span class="key">${escape(f.dedupKey)}</span>${snippet}</div>`;
       }).join('');
       const det = document.createElement('details');
       det.className = 'check';
@@ -2508,6 +3438,7 @@ QString AuditDialog::plainTextResults() const {
     if (m_completedResults.isEmpty()) return {};
 
     QString header = "Project Audit Results\n"
+                     "Generator: ants-audit v" + QString::fromLatin1(ANTS_VERSION) + "\n"
                      "Project: " + m_projectPath + "\n"
                      "Detected: " + m_detectedTypes.join(", ") + "\n";
     if (m_hasBaseline) header += "Baseline: loaded\n";
@@ -2557,15 +3488,34 @@ QString AuditDialog::plainTextResults() const {
                      typeLabel(r.type), r.category, r.source)
                 .arg(r.findings.size() + r.omittedCount);
         for (const Finding &f : r.findings) {
+            QString line;
             if (!f.file.isEmpty() && f.line >= 0)
-                body += QString("%1:%2  %3  [%4]\n").arg(f.file)
-                                                    .arg(f.line)
-                                                    .arg(f.message)
-                                                    .arg(f.dedupKey);
+                line = QString("%1:%2  %3").arg(f.file).arg(f.line).arg(f.message);
             else if (!f.file.isEmpty())
-                body += QString("%1  %2  [%3]\n").arg(f.file, f.message, f.dedupKey);
+                line = QString("%1  %2").arg(f.file, f.message);
             else
-                body += QString("%1  [%2]\n").arg(f.message, f.dedupKey);
+                line = f.message;
+            // Inline tags kept compact so Claude's context budget doesn't get
+            // eaten by boilerplate — priority order: confidence, high-conf ★,
+            // blame, triage verdict.
+            QStringList tags{QString("conf %1").arg(f.confidence)};
+            if (f.highConfidence) tags << "★";
+            if (!f.blameSha.isEmpty())
+                tags << QString("%1 @ %2").arg(f.blameAuthor, f.blameDate);
+            if (!f.aiVerdict.isEmpty())
+                tags << QString("AI: %1 (%2)").arg(f.aiVerdict).arg(f.aiConfidence);
+            body += line + "  " + QString("[%1] [%2]").arg(tags.join(" · "), f.dedupKey) + "\n";
+            // Include a 3-line snippet when we have one; expensive on token
+            // count but essential for Claude to propose targeted fixes.
+            if (!f.snippet.isEmpty()) {
+                const QStringList lines = f.snippet.split('\n');
+                for (int i = 0; i < lines.size(); ++i) {
+                    const int ln = f.snippetStart + i;
+                    const QChar marker = (ln == f.line) ? QChar('>') : QChar(' ');
+                    body += QString("    %1 %2| %3\n")
+                                .arg(marker).arg(ln, 5).arg(lines[i]);
+                }
+            }
         }
         if (r.omittedCount > 0)
             body += QString("… and %1 more (capped at %2 per check)\n")

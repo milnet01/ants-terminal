@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
 
     QApplication app(argc, argv);
     app.setApplicationName("Ants Terminal");
-    app.setApplicationVersion("0.4.0");
+    app.setApplicationVersion(ANTS_VERSION);
     app.setStyle("Fusion");
 
     // Application icon (taskbar, window manager, dialogs)
