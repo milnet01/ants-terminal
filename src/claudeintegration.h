@@ -120,8 +120,6 @@ private:
     // Process polling
     QTimer m_pollTimer;
     pid_t m_claudePid = 0;
-    bool m_hasRecentOutput = false;  // terminal received output recently
-    QDateTime m_lastOutputTimestamp;
 
     // Hook server
     QLocalServer *m_hookServer = nullptr;

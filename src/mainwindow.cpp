@@ -153,15 +153,21 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
         if (auto *t = focusedTerminal()) t->writeCommand(text);
     });
     connect(m_pluginManager, &PluginManager::statusMessage, this, [this](const QString &msg) {
-        statusBar()->showMessage(msg, 5000);
+        showStatusMessage(msg, 5000);
     });
     connect(m_pluginManager, &PluginManager::logMessage, this, [this](const QString &msg) {
-        statusBar()->showMessage("Plugin: " + msg, 3000);
+        showStatusMessage("Plugin: " + msg, 3000);
     });
 #endif
 
     // Apply saved theme
     applyTheme(m_config.theme());
+
+    // Claude Code integration — must be set up BEFORE newTab(), otherwise
+    // the null-guarded m_claudeIntegration->setShellPid() call in newTab()
+    // is a no-op for the first tab and polling never starts (so the
+    // Claude status widget never appears in the status bar).
+    setupClaudeIntegration();
 
     // Create first tab (restoreSessions may replace it if there are saved sessions)
     newTab();
@@ -169,15 +175,14 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // Restore saved sessions from previous run
     restoreSessions();
 
-    // Claude Code integration
-    setupClaudeIntegration();
-
-    // Status bar info widgets (CWD, git branch, process)
-    m_statusCwd = new QLabel(this);
-    statusBar()->addWidget(m_statusCwd, 1);
-
+    // Status bar info widgets (git branch, status message, process).
+    // Transient status messages go into m_statusMessage (not statusBar()->showMessage),
+    // so the git branch label stays visible to the left of them.
     m_statusGitBranch = new QLabel(this);
     statusBar()->addWidget(m_statusGitBranch);
+
+    m_statusMessage = new QLabel(this);
+    statusBar()->addWidget(m_statusMessage, 1);
 
     m_statusProcess = new QLabel(this);
     statusBar()->addWidget(m_statusProcess);
@@ -230,7 +235,7 @@ void MainWindow::setupMenus() {
     undoCloseAction->setShortcut(QKeySequence(m_config.keybinding("undo_close_tab", "Ctrl+Shift+Z")));
     connect(undoCloseAction, &QAction::triggered, this, [this]() {
         if (m_closedTabs.isEmpty()) {
-            statusBar()->showMessage("No closed tabs to restore", 3000);
+            showStatusMessage("No closed tabs to restore", 3000);
             return;
         }
         ClosedTabInfo info = m_closedTabs.takeFirst();
@@ -243,7 +248,7 @@ void MainWindow::setupMenus() {
                 t->writeCommand("cd '" + escaped + "'\n");
             }
         }
-        statusBar()->showMessage("Restored tab: " + info.title, 3000);
+        showStatusMessage("Restored tab: " + info.title, 3000);
     });
 
     QAction *nextTabAction = fileMenu->addAction("Ne&xt Tab");
@@ -426,7 +431,7 @@ void MainWindow::setupMenus() {
                 applyTheme(name);
             });
         }
-        statusBar()->showMessage("Themes reloaded", 3000);
+        showStatusMessage("Themes reloaded", 3000);
     });
 
     // Performance overlay
@@ -448,12 +453,12 @@ void MainWindow::setupMenus() {
             m_config.setBackgroundImage("");
             QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
             for (auto *t : terminals) t->setBackgroundImage("");
-            statusBar()->showMessage("Background image cleared", 3000);
+            showStatusMessage("Background image cleared", 3000);
         } else {
             m_config.setBackgroundImage(path);
             QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
             for (auto *t : terminals) t->setBackgroundImage(path);
-            statusBar()->showMessage("Background image set", 3000);
+            showStatusMessage("Background image set", 3000);
         }
     });
 
@@ -575,7 +580,7 @@ void MainWindow::setupMenus() {
             QString cwd = t->shellCwd();
             if (!cwd.isEmpty()) {
                 ClaudeIntegration::ensureHooksConfigured(cwd, 0);
-                statusBar()->showMessage("Claude Code hooks configured in " + cwd, 5000);
+                showStatusMessage("Claude Code hooks configured in " + cwd, 5000);
             }
         }
     });
@@ -643,7 +648,7 @@ void MainWindow::setupMenus() {
         // Apply to all terminals
         QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
         for (auto *t : terminals) t->setSessionLogging(checked);
-        statusBar()->showMessage(checked ? "Session logging enabled" : "Session logging disabled", 3000);
+        showStatusMessage(checked ? "Session logging enabled" : "Session logging disabled", 3000);
     });
 
     QAction *autoCopyAction = settingsMenu->addAction("&Auto-copy on Select");
@@ -662,7 +667,7 @@ void MainWindow::setupMenus() {
         m_config.setVisualBell(checked);
         QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
         for (auto *t : terminals) t->setVisualBell(checked);
-        statusBar()->showMessage(checked ? "Visual bell enabled" : "Visual bell disabled", 3000);
+        showStatusMessage(checked ? "Visual bell enabled" : "Visual bell disabled", 3000);
     });
 
     QAction *blurAction = settingsMenu->addAction("Background &Blur");
@@ -671,7 +676,7 @@ void MainWindow::setupMenus() {
     connect(blurAction, &QAction::toggled, this, [this](bool checked) {
         m_config.setBackgroundBlur(checked);
         // WA_TranslucentBackground is always set at construction time
-        statusBar()->showMessage(checked ? "Blur enabled (restart for full effect)" : "Blur disabled", 3000);
+        showStatusMessage(checked ? "Blur enabled (restart for full effect)" : "Blur disabled", 3000);
     });
 
     // GPU rendering toggle
@@ -682,7 +687,7 @@ void MainWindow::setupMenus() {
         m_config.setGpuRendering(checked);
         QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
         for (auto *t : terminals) t->setGpuRendering(checked);
-        statusBar()->showMessage(checked ? "GPU rendering enabled" : "GPU rendering disabled", 3000);
+        showStatusMessage(checked ? "GPU rendering enabled" : "GPU rendering disabled", 3000);
     });
 
     // Session persistence toggle
@@ -691,7 +696,7 @@ void MainWindow::setupMenus() {
     persistAction->setChecked(m_config.sessionPersistence());
     connect(persistAction, &QAction::toggled, this, [this](bool checked) {
         m_config.setSessionPersistence(checked);
-        statusBar()->showMessage(checked ? "Session persistence enabled" : "Session persistence disabled", 3000);
+        showStatusMessage(checked ? "Session persistence enabled" : "Session persistence disabled", 3000);
     });
 
     settingsMenu->addSeparator();
@@ -710,10 +715,10 @@ void MainWindow::setupMenus() {
             QString path = dir + "/recording_"
                 + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".cast";
             t->startRecording(path);
-            statusBar()->showMessage("Recording: " + path, 5000);
+            showStatusMessage("Recording: " + path, 5000);
         } else {
             t->stopRecording();
-            statusBar()->showMessage("Recording stopped", 3000);
+            showStatusMessage("Recording stopped", 3000);
         }
     });
 
@@ -768,7 +773,7 @@ void MainWindow::setupMenus() {
             m_config.setScrollbackLines(lines);
             QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
             for (auto *t : terminals) t->setMaxScrollback(lines);
-            statusBar()->showMessage(QString("Scrollback: %1 lines").arg(lines), 3000);
+            showStatusMessage(QString("Scrollback: %1 lines").arg(lines), 3000);
         });
     }
 
@@ -782,7 +787,7 @@ void MainWindow::setupMenus() {
     connect(m_broadcastAction, &QAction::toggled, this, [this](bool checked) {
         m_broadcastMode = checked;
         m_config.setBroadcastMode(checked);
-        statusBar()->showMessage(checked ? "Broadcast mode ON — input sent to all panes"
+        showStatusMessage(checked ? "Broadcast mode ON — input sent to all panes"
                                          : "Broadcast mode OFF", 3000);
     });
 
@@ -805,7 +810,7 @@ void MainWindow::setupMenus() {
             stream << t->exportAsHtml();
         else
             stream << t->exportAsText();
-        statusBar()->showMessage("Scrollback exported to " + path, 5000);
+        showStatusMessage("Scrollback exported to " + path, 5000);
     });
 
     settingsMenu->addSeparator();
@@ -841,7 +846,7 @@ void MainWindow::setupMenus() {
                 if (m_config.quakeMode() && !m_quakeMode)
                     setupQuakeMode();
 
-                statusBar()->showMessage("Settings applied", 3000);
+                showStatusMessage("Settings applied", 3000);
             });
             connect(m_settingsDialog, &QDialog::finished, this, [this]() {
                 if (auto *t = focusedTerminal()) t->setFocus();
@@ -857,7 +862,7 @@ void MainWindow::setupMenus() {
     QAction *reloadPluginsAction = settingsMenu->addAction("Reload &Plugins");
     connect(reloadPluginsAction, &QAction::triggered, this, [this]() {
         m_pluginManager->reloadAll(m_config.enabledPlugins());
-        statusBar()->showMessage(
+        showStatusMessage(
             QString("Loaded %1 plugins").arg(m_pluginManager->pluginCount()), 3000);
     });
 #endif
@@ -999,7 +1004,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         auto existing = statusBar()->findChildren<QPushButton *>("claudeAllowBtn");
         for (auto *btn : existing) btn->deleteLater();
 
-        statusBar()->showMessage(
+        showStatusMessage(
             QString("Claude Code permission: %1 — ").arg(rule), 0);
         auto *addBtn = new QPushButton("Add to allowlist", statusBar());
         addBtn->setObjectName("claudeAllowBtn");
@@ -1007,7 +1012,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn]() {
             openClaudeAllowlistDialog(rule);
             addBtn->deleteLater();
-            statusBar()->clearMessage();
+            clearStatusMessage();
         });
 
         // Remove button when prompt goes away (new terminal output after grace period)
@@ -1038,7 +1043,7 @@ void MainWindow::newTab() {
     m_tabSessionIds[terminal] = tabId;
 
     if (!terminal->startShell(inheritCwd)) {
-        statusBar()->showMessage("Failed to start shell!");
+        showStatusMessage("Failed to start shell!");
     }
 
     terminal->setFocus();
@@ -1115,7 +1120,7 @@ void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
     }
 
     if (!newTerm->startShell()) {
-        statusBar()->showMessage("Failed to start shell!");
+        showStatusMessage("Failed to start shell!");
     }
     newTerm->setFocus();
 }
@@ -1337,10 +1342,10 @@ void MainWindow::applyTheme(const QString &name) {
 
     // Status bar labels use theme colors (null-guarded for first call during construction)
     QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
-    if (m_statusCwd)
-        m_statusCwd->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.textSecondary.name(), statusStyle));
     if (m_statusGitBranch)
         m_statusGitBranch->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[2].name(), statusStyle));
+    if (m_statusMessage)
+        m_statusMessage->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.textPrimary.name(), statusStyle));
     if (m_statusProcess)
         m_statusProcess->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[4].name(), statusStyle));
 
@@ -1366,7 +1371,7 @@ void MainWindow::applyTheme(const QString &name) {
         }
     }
 
-    statusBar()->showMessage(QString("Theme: %1").arg(name), 3000);
+    showStatusMessage(QString("Theme: %1").arg(name), 3000);
 }
 
 void MainWindow::moveViaKWin(int targetX, int targetY) {
@@ -1504,7 +1509,7 @@ void MainWindow::applyFontSizeToAll(int size) {
     for (auto *t : terminals) {
         t->setFontSize(size);
     }
-    statusBar()->showMessage(QString("Font size: %1pt").arg(size), 3000);
+    showStatusMessage(QString("Font size: %1pt").arg(size), 3000);
 }
 
 void MainWindow::onTitleChanged(const QString &title) {
@@ -1791,7 +1796,7 @@ void MainWindow::setupClaudeIntegration() {
 
     connect(m_claudeIntegration, &ClaudeIntegration::fileChanged,
             this, [this](const QString &path) {
-        statusBar()->showMessage(QString("Claude edited: %1").arg(path), 3000);
+        showStatusMessage(QString("Claude edited: %1").arg(path), 3000);
         m_claudeReviewBtn->show();
     });
 
@@ -1803,7 +1808,7 @@ void MainWindow::setupClaudeIntegration() {
         QString rule = ClaudeAllowlistDialog::normalizeRule(rawRule);
         QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
         if (!gen.isEmpty()) rule = gen;
-        statusBar()->showMessage(QString("Claude permission: %1").arg(rule), 0);
+        showStatusMessage(QString("Claude permission: %1").arg(rule), 0);
 
         // Enhanced permission action buttons
         auto *btnWidget = new QWidget(statusBar());
@@ -1829,16 +1834,16 @@ void MainWindow::setupClaudeIntegration() {
 
         connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget]() {
             btnWidget->deleteLater();
-            statusBar()->clearMessage();
+            clearStatusMessage();
         });
         connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget]() {
             btnWidget->deleteLater();
-            statusBar()->clearMessage();
+            clearStatusMessage();
         });
         connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget]() {
             openClaudeAllowlistDialog(rule);
             btnWidget->deleteLater();
-            statusBar()->clearMessage();
+            clearStatusMessage();
         });
 
         // Remove buttons when prompt goes away (new terminal output after grace period)
@@ -1942,7 +1947,7 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
         m_claudeDialog->prefillRule(prefillRule);
         // Auto-save immediately so Claude Code picks up the rule right away
         m_claudeDialog->saveSettings();
-        statusBar()->showMessage("Rule added to allowlist — takes effect on next permission check", 5000);
+        showStatusMessage("Rule added to allowlist — takes effect on next permission check", 5000);
     }
     m_claudeDialog->show();
     m_claudeDialog->raise();
@@ -2023,23 +2028,34 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 
 // --- Status bar ---
 
+void MainWindow::showStatusMessage(const QString &msg, int timeoutMs) {
+    // Label is created in the constructor before anything that can emit a status
+    // message, so a null check here would just mask bugs.
+    if (!m_statusMessage) return;
+    m_statusMessage->setText(msg);
+    if (m_statusMessageTimer) m_statusMessageTimer->stop();
+    if (timeoutMs > 0) {
+        if (!m_statusMessageTimer) {
+            m_statusMessageTimer = new QTimer(this);
+            m_statusMessageTimer->setSingleShot(true);
+            connect(m_statusMessageTimer, &QTimer::timeout, this, &MainWindow::clearStatusMessage);
+        }
+        m_statusMessageTimer->start(timeoutMs);
+    }
+}
+
+void MainWindow::clearStatusMessage() {
+    if (m_statusMessage) m_statusMessage->clear();
+    if (m_statusMessageTimer) m_statusMessageTimer->stop();
+}
+
 void MainWindow::updateStatusBar() {
-    if (!m_statusCwd || !m_statusGitBranch || !m_statusProcess)
+    if (!m_statusGitBranch || !m_statusProcess)
         return;
 
     auto *t = focusedTerminal();
     if (!t) t = currentTerminal();
     if (!t) return;
-
-    // CWD
-    QString cwd = t->shellCwd();
-    if (!cwd.isEmpty()) {
-        // Show abbreviated path
-        QString home = QDir::homePath();
-        if (cwd.startsWith(home))
-            cwd = "~" + cwd.mid(home.length());
-        m_statusCwd->setText(cwd);
-    }
 
     // Git branch (read .git/HEAD)
     QString fullCwd = t->shellCwd();
@@ -2212,7 +2228,7 @@ void MainWindow::onTriggerFired(const QString &pattern, const QString &actionTyp
             QProcess::startDetached("/bin/sh", {"-c", actionValue});
         }
     }
-    statusBar()->showMessage(QString("Trigger: '%1' matched").arg(pattern), 3000);
+    showStatusMessage(QString("Trigger: '%1' matched").arg(pattern), 3000);
 }
 
 // --- Diff Viewer ---
@@ -2297,7 +2313,7 @@ void MainWindow::showDiffViewer() {
     }
 
     if (diff.isEmpty()) {
-        statusBar()->showMessage("No changes detected in git", 3000);
+        showStatusMessage("No changes detected in git", 3000);
         return;
     }
 
@@ -2381,7 +2397,7 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     if (m_broadcastAction)
         m_broadcastAction->setChecked(m_broadcastMode);
 
-    statusBar()->showMessage("Config reloaded from disk", 3000);
+    showStatusMessage("Config reloaded from disk", 3000);
     m_configWatcher->blockSignals(false);
 }
 
@@ -2400,7 +2416,7 @@ void MainWindow::onSystemColorSchemeChanged() {
     if (!themeName.isEmpty() && themeName != m_currentTheme) {
         applyTheme(themeName);
         m_config.setTheme(themeName);
-        statusBar()->showMessage("Theme auto-switched to " + themeName, 3000);
+        showStatusMessage("Theme auto-switched to " + themeName, 3000);
     }
 }
 
@@ -2454,7 +2470,7 @@ void MainWindow::checkAutoProfileRules(TerminalWidget *terminal) {
                 terminal->setBadgeText(profile.value("badge_text").toString());
             }
 
-            statusBar()->showMessage("Profile auto-switched to: " + profileName, 3000);
+            showStatusMessage("Profile auto-switched to: " + profileName, 3000);
             return;
         }
     }

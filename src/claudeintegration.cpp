@@ -98,7 +98,6 @@ void ClaudeIntegration::pollClaudeProcess() {
     if (m_claudePid == 0) {
         // Newly detected Claude process
         m_claudePid = foundPid;
-        m_lastOutputTimestamp = QDateTime::currentDateTime();
 
         // Find the most recently modified transcript across ALL projects
         QString home = QDir::homePath();
@@ -137,12 +136,6 @@ void ClaudeIntegration::pollClaudeProcess() {
         }
     }
 
-    // Clear "recent output" flag if no output for >5 seconds
-    if (m_hasRecentOutput && m_lastOutputTimestamp.isValid() &&
-        m_lastOutputTimestamp.msecsTo(QDateTime::currentDateTime()) > 5000) {
-        m_hasRecentOutput = false;
-    }
-
     // Parse transcript on EVERY poll cycle for reliability —
     // QFileSystemWatcher can miss rapid changes on Linux
     if (!m_transcriptPath.isEmpty())
@@ -150,10 +143,10 @@ void ClaudeIntegration::pollClaudeProcess() {
 }
 
 void ClaudeIntegration::notifyTerminalOutput() {
-    if (m_claudePid > 0) {
-        m_hasRecentOutput = true;
-        m_lastOutputTimestamp = QDateTime::currentDateTime();
-    }
+    // No-op. We previously used terminal output activity to override stale
+    // Idle states, but Claude Code's TUI continuously redraws (cursor blink,
+    // elapsed time, status line), so the flag was perpetually true and kept
+    // the state stuck on Thinking. Transcript parsing is authoritative.
 }
 
 // --- Session Transcripts ---
@@ -212,94 +205,126 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     if (!m_transcriptWatcher.files().contains(path))
         m_transcriptWatcher.addPath(path);
 
-    // Read the last few lines of the transcript for current state
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return;
 
-    // Seek to near the end
+    // Read the last 32KB of the transcript. Claude Code writes several
+    // metadata-only events at the end of each turn (`system/turn_duration`,
+    // `last-prompt`, `permission-mode`, `file-history-snapshot`, `summary`),
+    // so we need enough buffer to walk back past them to the real
+    // state-determining event (`assistant`/`user`/`attachment`).
     qint64 size = file.size();
-    if (size > 8192) file.seek(size - 8192);
+    constexpr qint64 kWindow = 32768;
+    if (size > kWindow) file.seek(size - kWindow);
 
-    QJsonObject lastEvent;
-    bool firstLine = (size > 8192); // first line after seek is likely truncated
+    QList<QJsonObject> events;
+    bool firstLine = (size > kWindow); // first line after seek is likely truncated
     while (!file.atEnd()) {
         QByteArray line = file.readLine().trimmed();
         if (line.isEmpty()) continue;
         if (firstLine) {
-            // Skip the first line after seeking — it's likely a partial JSON line
             firstLine = false;
             continue;
         }
         QJsonDocument doc = QJsonDocument::fromJson(line);
-        if (doc.isObject()) lastEvent = doc.object();
+        if (doc.isObject()) events.append(doc.object());
     }
 
-    if (lastEvent.isEmpty()) return;
+    if (events.isEmpty()) return;
 
-    QString type = lastEvent.value("type").toString();
+    // Metadata event types that don't affect run state. They can appear after
+    // `assistant/end_turn`, so naively looking at only the last event would
+    // miss the real terminal state of the turn.
+    static const QSet<QString> kMetadataTypes = {
+        QStringLiteral("system"),
+        QStringLiteral("last-prompt"),
+        QStringLiteral("permission-mode"),
+        QStringLiteral("file-history-snapshot"),
+        QStringLiteral("summary"),
+        QStringLiteral("meta"),
+    };
+
+    // Update context% from the most recent event carrying usage info. Walk
+    // backward — `assistant` events have a `message.usage.input_tokens` field.
+    for (int i = events.size() - 1; i >= 0; --i) {
+        QJsonObject usage = events[i].value("message").toObject()
+                                     .value("usage").toObject();
+        int inputTokens = usage.value("input_tokens").toInt();
+        if (inputTokens > 0) {
+            // Rough estimate: 200K context window
+            m_contextPercent = std::min(100, inputTokens * 100 / 200000);
+            emit contextUpdated(m_contextPercent);
+            break;
+        }
+    }
+
+    // Find the most recent state-determining event by walking backward.
+    QJsonObject stateEvent;
+    for (int i = events.size() - 1; i >= 0; --i) {
+        QString t = events[i].value("type").toString();
+        if (!kMetadataTypes.contains(t)) {
+            stateEvent = events[i];
+            break;
+        }
+    }
+    if (stateEvent.isEmpty()) return;
+
+    QString type = stateEvent.value("type").toString();
     ClaudeState newState = m_state;
     QString detail;
 
     if (type == "assistant") {
-        QJsonObject msg = lastEvent.value("message").toObject();
+        QJsonObject msg = stateEvent.value("message").toObject();
         QString stopReason = msg.value("stop_reason").toString();
-        if (stopReason.isEmpty() || stopReason == "null") {
-            newState = ClaudeState::Thinking;
-            detail = "thinking";
-        } else if (stopReason == "tool_use") {
-            newState = ClaudeState::ToolUse;
-            detail = "tool use";
-        } else {
-            // "end_turn", "max_tokens", etc. → waiting for user
-            newState = ClaudeState::Idle;
-            detail = "idle";
-        }
-
-        // Check for tool use in content
         QJsonArray content = msg.value("content").toArray();
+
+        // Detect tool_use in content blocks (more reliable than stop_reason alone)
+        QString toolName;
+        bool hasToolUse = false;
         for (const QJsonValue &c : content) {
             QJsonObject block = c.toObject();
             if (block.value("type").toString() == "tool_use") {
-                newState = ClaudeState::ToolUse;
-                m_currentTool = block.value("name").toString();
-                detail = m_currentTool;
-
-                // Track file changes
+                hasToolUse = true;
+                toolName = block.value("name").toString();
                 updateChangedFiles(block);
+                break;
             }
         }
-    } else if (type == "result") {
-        // Tool result received — Claude is now thinking about the result
-        newState = ClaudeState::Thinking;
-        detail = "thinking";
-    } else if (type == "human" || type == "user") {
-        // User sent a message — Claude will start thinking
-        newState = ClaudeState::Thinking;
-        detail = "thinking";
-    } else if (type == "attachment") {
-        // Attachment follows a user message — Claude should be thinking
-        if (m_state == ClaudeState::Idle)
+
+        if (hasToolUse || stopReason == "tool_use") {
+            newState = ClaudeState::ToolUse;
+            m_currentTool = toolName;
+            detail = toolName.isEmpty() ? QStringLiteral("tool use") : toolName;
+        } else if (stopReason.isEmpty() || stopReason == "null") {
+            // Still streaming — stop_reason not yet finalized
             newState = ClaudeState::Thinking;
-        detail = "thinking";
-    }
-    // Unknown event types: leave state unchanged
-
-    // Output-based activity override: if the terminal is actively receiving
-    // output from a running Claude process, it's not idle regardless of what
-    // the transcript says (the transcript may lag behind actual activity)
-    if (newState == ClaudeState::Idle && m_claudePid > 0 && m_hasRecentOutput) {
+            detail = "thinking";
+        } else {
+            // end_turn, max_tokens, stop_sequence, refusal → waiting for user
+            newState = ClaudeState::Idle;
+            detail = "idle";
+        }
+    } else if (type == "user" || type == "human") {
+        // `user` wraps both real user messages and tool_result entries. Either
+        // way Claude is processing — state is Thinking.
+        QJsonValue content = stateEvent.value("message").toObject().value("content");
+        bool isToolResult = false;
+        if (content.isArray()) {
+            for (const QJsonValue &c : content.toArray()) {
+                if (c.toObject().value("type").toString() == "tool_result") {
+                    isToolResult = true;
+                    break;
+                }
+            }
+        }
+        newState = ClaudeState::Thinking;
+        detail = isToolResult ? QStringLiteral("processing result")
+                              : QStringLiteral("thinking");
+    } else if (type == "attachment") {
         newState = ClaudeState::Thinking;
         detail = "thinking";
     }
-
-    // Estimate context usage from token counts
-    QJsonObject usage = lastEvent.value("message").toObject().value("usage").toObject();
-    int inputTokens = usage.value("input_tokens").toInt();
-    if (inputTokens > 0) {
-        // Rough estimate: 200K context window
-        m_contextPercent = std::min(100, inputTokens * 100 / 200000);
-        emit contextUpdated(m_contextPercent);
-    }
+    // Any other state-determining type we don't recognize: leave state unchanged.
 
     if (newState != m_state) {
         m_state = newState;

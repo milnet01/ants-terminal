@@ -110,12 +110,17 @@ private:
     QAction *m_broadcastAction = nullptr;
 
     // Status bar widgets
-    QLabel *m_statusCwd = nullptr;
     QLabel *m_statusGitBranch = nullptr;
+    QLabel *m_statusMessage = nullptr;
     QLabel *m_statusProcess = nullptr;
     QTimer *m_statusTimer = nullptr;
+    QTimer *m_statusMessageTimer = nullptr;
     void updateStatusBar();
     void updateTabTitles();
+    // Route status messages to m_statusMessage instead of statusBar()->showMessage(),
+    // which would hide the git branch and cwd labels while displayed.
+    void showStatusMessage(const QString &msg, int timeoutMs = 0);
+    void clearStatusMessage();
 
     // Quake mode
     bool m_quakeMode = false;
