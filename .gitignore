@@ -32,6 +32,9 @@ ants-terminal
 # Audit tooling
 .audit_cache/
 audit_config.yaml
+.cache/
+docs/AUTOMATED_AUDIT_REPORT*
+docs/trend_snapshot_*.json
 
 # Runtime / user data
 *.log
