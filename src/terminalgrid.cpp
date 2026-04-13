@@ -330,6 +330,10 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_altScreenHyperlinks = m_screenHyperlinks;
                         m_altInlineImages = m_inlineImages;
                         m_altPromptRegions = m_promptRegions;
+                        // DECSC-equivalent: save SGR + origin + wrap alongside cursor.
+                        m_altSavedAttrs = m_currentAttrs;
+                        m_altSavedOriginMode = m_originMode;
+                        m_altSavedAutoWrap = m_autoWrap;
                         for (auto &line : m_screenLines) {
                             for (auto &c : line.cells) {
                                 c.codepoint = ' ';
@@ -380,6 +384,10 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_cursorCol = m_altCursorCol;
                         m_scrollTop = m_altScrollTop;
                         m_scrollBottom = m_altScrollBottom;
+                        // Restore DECSC-equivalent state saved on entry.
+                        m_currentAttrs = m_altSavedAttrs;
+                        m_originMode = m_altSavedOriginMode;
+                        m_autoWrap = m_altSavedAutoWrap;
                         m_altScreen.clear();
                         m_altScreenHyperlinks.clear();
                         m_altInlineImages.clear();

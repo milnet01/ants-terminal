@@ -329,6 +329,13 @@ private:
     std::vector<std::vector<HyperlinkSpan>> m_altScreenHyperlinks;
     std::vector<InlineImage> m_altInlineImages;
     std::vector<PromptRegion> m_altPromptRegions;
+    // DECSC state checkpointed on 1049/47/1047 entry, restored on exit.
+    // xterm docs: "Save cursor as in DECSC" — DEC VT510 DECSC saves cursor
+    // position, SGR attributes, origin mode, wrap flag. We snapshot the
+    // three pieces this grid actually tracks.
+    CellAttrs m_altSavedAttrs;
+    bool m_altSavedOriginMode = false;
+    bool m_altSavedAutoWrap = true;
 
     QString m_windowTitle;
 
