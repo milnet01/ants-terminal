@@ -349,8 +349,9 @@ private:
     std::vector<PromptRegion> m_promptRegions;
     int m_shellIntegState = 0; // 0=none, 'A'=prompt start, 'B'=command start, 'C'=output start
 
-    // Kitty graphics image cache (id -> QImage)
+    // Kitty graphics image cache (id -> QImage); FIFO eviction via m_kittyImageOrder
     std::unordered_map<uint32_t, QImage> m_kittyImages;
+    std::deque<uint32_t> m_kittyImageOrder; // insertion order, oldest at front
     std::string m_kittyChunkBuffer; // For multi-chunk transmissions
     uint32_t m_kittyChunkId = 0;
 

@@ -1539,9 +1539,13 @@ void TerminalGrid::handleApc(const std::string &payload) {
         if (params.count('d')) deleteType = params['d'][0];
         if (deleteType == 'a') {
             m_kittyImages.clear();
+            m_kittyImageOrder.clear();
             m_inlineImages.clear();
         } else if (deleteType == 'i' && imageId > 0) {
-            m_kittyImages.erase(imageId);
+            if (m_kittyImages.erase(imageId) > 0) {
+                auto it = std::find(m_kittyImageOrder.begin(), m_kittyImageOrder.end(), imageId);
+                if (it != m_kittyImageOrder.end()) m_kittyImageOrder.erase(it);
+            }
         }
         // Send response
         if (m_responseCallback) {
@@ -1602,10 +1606,23 @@ void TerminalGrid::handleApc(const std::string &payload) {
         return;
     }
 
-    // Store image if it has an ID
+    // Store image if it has an ID. Evict the oldest single entry on overflow
+    // rather than clearing the whole cache (avoids thrashing warm images).
     if (imageId > 0 && !image.isNull()) {
-        if (static_cast<int>(m_kittyImages.size()) >= MAX_KITTY_CACHE) m_kittyImages.clear();
+        auto existing = m_kittyImages.find(imageId);
+        if (existing != m_kittyImages.end()) {
+            // Replacing: drop old position in the FIFO so it's re-appended as newest.
+            auto it = std::find(m_kittyImageOrder.begin(), m_kittyImageOrder.end(), imageId);
+            if (it != m_kittyImageOrder.end()) m_kittyImageOrder.erase(it);
+        }
+        while (static_cast<int>(m_kittyImages.size()) >= MAX_KITTY_CACHE
+               && !m_kittyImageOrder.empty()) {
+            uint32_t oldest = m_kittyImageOrder.front();
+            m_kittyImageOrder.pop_front();
+            m_kittyImages.erase(oldest);
+        }
         m_kittyImages[imageId] = image;
+        m_kittyImageOrder.push_back(imageId);
     }
 
     // Display if action is T (transmit+display) or p (display stored)
