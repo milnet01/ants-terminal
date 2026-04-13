@@ -108,3 +108,20 @@ else()
 endif()
 
 install(TARGETS ants-terminal DESTINATION bin)
+
+# ---------------------------------------------------------------------------
+# Tests — audit rule fixtures (ctest)
+# ---------------------------------------------------------------------------
+# Shell-based harness that runs each audit grep pattern against a small
+# fixture tree and asserts the expected match counts. Keeps the rule
+# regexes in sync with src/auditdialog.cpp; CI runs `ctest` after the
+# build to catch drift.
+option(ANTS_TESTS "Build tests (includes audit rule regression tests)" ON)
+if(ANTS_TESTS)
+    enable_testing()
+    add_test(NAME audit_rule_fixtures
+             COMMAND bash ${CMAKE_SOURCE_DIR}/tests/audit_self_test.sh)
+    set_tests_properties(audit_rule_fixtures PROPERTIES
+        LABELS "audit;fast"
+        TIMEOUT 30)
+endif()

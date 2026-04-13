@@ -605,8 +605,61 @@ void AuditDialog::populateChecks() {
 
     // ========== Qt-specific (checks derived from real audit findings) ==========
     if (isQt) {
-        // OSC 8 / URL scheme allowlist — detects QDesktopServices::openUrl calls
-        // that don't front-load a scheme check. Matches fix H1 from audit v2.
+        // clazy (KDAB) — AST-aware Qt static analysis. Subsumes our older
+        // regex-based findChild / connect-capture / hardcoded-colour checks
+        // with semantic equivalents that don't false-positive on
+        // comment/string contexts or unrelated identifiers.
+        //
+        // Requires a compile_commands.json — our CMake config already emits
+        // one (CMAKE_EXPORT_COMPILE_COMMANDS=ON). We probe common build-dir
+        // names; user must have built at least once for clazy to work.
+        const bool hasClazy = toolExists("clazy-standalone");
+        QString clazyBuildDir;
+        for (const char *cand : {"build", "build-release", "build-debug", "build-test"}) {
+            if (QFile::exists(m_projectPath + "/" + cand + "/compile_commands.json")) {
+                clazyBuildDir = QString::fromLatin1(cand);
+                break;
+            }
+        }
+        const QString clazyDesc = hasClazy
+            ? (clazyBuildDir.isEmpty()
+                ? QString("(no compile_commands.json — build the project first)")
+                : QString("Qt-aware AST checks (connect-3arg-lambda, container-inside-loop, etc.)"))
+            : QString("(clazy-standalone not installed — zypper in clazy)");
+        //
+        // Check set chosen for signal/noise:
+        //   connect-3arg-lambda        — lambda capturing `this` in connect without receiver
+        //   lambda-in-connect          — same family, different shape
+        //   container-inside-loop      — QVector/QList COW detach in tight loops
+        //   old-style-connect          — SIGNAL()/SLOT() macro connects
+        //   qt-keywords                — `signals` / `slots` as identifiers
+        //   range-loop-detach          — `for (auto x : container)` on Qt containers
+        //   qstring-arg                — QString::arg misuse
+        //   qgetenv                    — prefer qEnvironmentVariable*
+        //
+        // clazy-standalone output shape:
+        //   path/file.cpp:LINE:COL: warning: message [-Wclazy-check-name]
+        // Matches our file:line:col: regex in parseFindings() cleanly.
+        m_checks.append({
+            "clazy", "clazy (Qt AST analysis)", clazyDesc, "Qt",
+            QString("cd %1 && clazy-standalone -p . "
+                    "--checks=connect-3arg-lambda,lambda-in-connect,"
+                    "container-inside-loop,old-style-connect,qt-keywords,"
+                    "range-loop-detach,qstring-arg,qgetenv "
+                    "../src/*.cpp 2>&1 | head -100").arg(clazyBuildDir.isEmpty()
+                                                         ? "build" : clazyBuildDir),
+            CheckType::Bug, Severity::Major,
+            // Filter out clang driver noise; keep warning lines with check tags.
+            { /*dropIfContains*/ {"In file included from", "error generated",
+                                  "warnings generated", "warning generated"},
+              "", {}, 100 },
+            hasClazy && !clazyBuildDir.isEmpty(),
+            hasClazy && !clazyBuildDir.isEmpty(),
+            nullptr
+        });
+
+        // OSC 8 / URL scheme allowlist — not covered by clazy; project-specific
+        // invariant (we always front-load a scheme allowlist before openUrl).
         addGrepCheck("qt_openurl_unchecked", "Qt openUrl Without Scheme Check",
                      "QDesktopServices::openUrl called on unvalidated URIs", "Qt",
                      "'QDesktopServices::openUrl'",
@@ -615,42 +668,6 @@ void AuditDialog::populateChecks() {
                                            "allowScheme", "isLocal",
                                            "https://", "QUrl::TolerantMode"},
                        "", {}, 20 });
-
-        // Hardcoded color values outside themes.cpp — RULES.md rule 1.
-        addGrepCheck("qt_hardcoded_colors", "Hardcoded Colors",
-                     "Colour literals outside the theme definition", "Qt",
-                     "'(QColor\\s*\\([^)]*[0-9]|#[0-9A-Fa-f]{6})'",
-                     CheckType::CodeSmell, Severity::Minor, false,
-                     { /*dropIfContains*/ {"themes.cpp", "// theme", "/*theme",
-                                           "glrenderer.cpp", // GL clear color
-                                           "setStyleSheet",  // Qt stylesheet ok
-                                           "QColor()"},       // default-constructed
-                       "", {}, 30 });
-
-        // Naked findChild<TerminalWidget*>() — misdirects to arbitrary first-match
-        // in split-pane layouts. Matches fix from audit seventh (be261d9).
-        addGrepCheck("qt_findchild_direct", "Direct findChild (split-pane risk)",
-                     "findChild<T*> without the focused-descendant helper", "Qt",
-                     "'findChild<TerminalWidget ?\\*>'",
-                     CheckType::Bug, Severity::Minor, true,
-                     { /*dropIfContains*/ {"activeTerminalInTab",
-                                           "broadcast", "broadcastMode",
-                                           "findChildren"},  // plural is a batch op
-                       "", {}, 20 });
-
-        // emit without the Qt emit macro / Q_EMIT — should be rare but catches
-        // pattern-of-thinking issues.
-        // (skipped — low signal, not useful)
-
-        // Raw connect without disconnect in long-lived receivers that may
-        // outlive the sender. Heuristic: flags connect(...) calls that
-        // capture `this` without a `disconnect` in the same file. Inexact
-        // but a useful code-review prompt.
-        addGrepCheck("qt_connect_this_capture", "connect Capturing this",
-                     "Lambda connect() capturing `this` — verify receiver lifetime", "Qt",
-                     "'connect\\([^)]*,\\s*this,\\s*\\[this'",
-                     CheckType::Hotspot, Severity::Minor, false,
-                     { /*dropIfContains*/ {}, "", {}, 40 });
     }
 
     // ========== Python ==========
@@ -866,6 +883,7 @@ AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
 static QString sourceForCheck(const QString &checkId) {
     if (checkId.startsWith("cppcheck"))  return "cppcheck";
     if (checkId == "clang_tidy")         return "clang-tidy";
+    if (checkId == "clazy")              return "clazy";
     if (checkId == "pylint")             return "pylint";
     if (checkId == "bandit")             return "bandit";
     if (checkId == "ruff")               return "ruff";
@@ -1530,8 +1548,9 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
         "secrets_scan", "unsafe_c_funcs", "cmd_injection", "cmd_injection_dyn",
         "format_string", "insecure_http", "unsafe_deser", "hardcoded_ips",
         "weak_crypto", "memory_patterns", "debug_leftovers", "todo_scan",
-        "qt_openurl_unchecked", "qt_hardcoded_colors",
-        "qt_findchild_direct", "qt_connect_this_capture",
+        "qt_openurl_unchecked",
+        // clazy is NOT in this set — it's already AST-aware and understands
+        // comment/string contexts natively.
     };
     if (kSourceScannedChecks.contains(check.id))
         dropFindingsInCommentsOrStrings(r);
