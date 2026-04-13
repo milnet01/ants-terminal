@@ -215,8 +215,15 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
         onSystemColorSchemeChanged();
     }
 
-    // Cleanup old sessions
+    // Cleanup old sessions at startup, then once every 24 h for long-running
+    // instances (desktop-wide Quake tile, tmux-like usage).
     SessionManager::cleanupOldSessions(30);
+    auto *sessionCleanupTimer = new QTimer(this);
+    sessionCleanupTimer->setInterval(24 * 60 * 60 * 1000);
+    connect(sessionCleanupTimer, &QTimer::timeout, this, []() {
+        SessionManager::cleanupOldSessions(30);
+    });
+    sessionCleanupTimer->start();
 }
 
 void MainWindow::setupMenus() {
