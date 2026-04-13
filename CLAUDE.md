@@ -84,6 +84,16 @@ cmake .. && make -j$(nproc)
 
 - **Lua 5.4** (`lua54-devel`): enables plugin system. Without it, plugins are disabled at compile time.
 
+### Static Analysis
+
+Cppcheck requires `--library=qt` for this codebase. Without it, cppcheck misparses the Qt `emit` macro as a type and reports every signal emission as a local-variable shadow. The correct invocation:
+
+```bash
+cppcheck --enable=all --std=c++20 --library=qt \
+         --suppress=missingIncludeSystem --suppress=unusedFunction \
+         --suppress=unknownMacro -I src src/
+```
+
 ## Conventions
 
 - Signals/slots for cross-component communication
