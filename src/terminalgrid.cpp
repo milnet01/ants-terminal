@@ -1165,52 +1165,72 @@ void TerminalGrid::clearScreenContent() {
 void TerminalGrid::resize(int rows, int cols) {
     if (rows == m_rows && cols == m_cols) return;
 
-    // --- Reflow scrollback when width changes ---
-    if (cols != m_cols && !m_scrollback.empty()) {
-        // 1. Join soft-wrapped scrollback lines into logical lines
-        std::vector<std::vector<Cell>> logicalLines;
-        std::vector<Cell> current;
-        for (auto &sl : m_scrollback) {
-            // Trim trailing spaces
+    // A "logical line" is a join of all cells from one or more soft-wrapped
+    // lines, plus a parallel combining map keyed by position-in-the-join.
+    struct LogicalLine {
+        std::vector<Cell> cells;
+        std::unordered_map<int, std::vector<uint32_t>> combining;
+    };
+
+    auto joinLogical = [](auto &lines) {
+        std::vector<LogicalLine> out;
+        LogicalLine cur;
+        for (auto &sl : lines) {
             auto &cells = sl.cells;
             int len = static_cast<int>(cells.size());
             while (len > 0 && cells[len - 1].codepoint == ' ') --len;
-            current.insert(current.end(), cells.begin(), cells.begin() + len);
+            int before = static_cast<int>(cur.cells.size());
+            cur.cells.insert(cur.cells.end(), cells.begin(), cells.begin() + len);
+            // Merge combining entries, shifted by the logical-line offset.
+            // Drop any entry whose source col fell inside the trimmed trailing
+            // spaces (its base cell is gone).
+            for (auto &kv : sl.combining) {
+                if (kv.first < len)
+                    cur.combining[before + kv.first] = kv.second;
+            }
             if (!sl.softWrapped) {
-                logicalLines.push_back(std::move(current));
-                current.clear();
+                out.push_back(std::move(cur));
+                cur = {};
             }
         }
-        if (!current.empty()) {
-            logicalLines.push_back(std::move(current));
-        }
+        if (!cur.cells.empty() || !cur.combining.empty()) out.push_back(std::move(cur));
+        return out;
+    };
 
-        // 2. Re-wrap to new width
-        m_scrollback.clear();
-        for (auto &logical : logicalLines) {
-            if (logical.empty()) {
-                TermLine tl;
-                tl.cells.resize(cols);
-                for (auto &c : tl.cells) { c.attrs.fg = m_defaultFg; c.attrs.bg = m_defaultBg; }
-                m_scrollback.push_back(std::move(tl));
-                continue;
-            }
-            int pos = 0;
-            int total = static_cast<int>(logical.size());
-            while (pos < total) {
-                int chunk = std::min(cols, total - pos);
-                TermLine tl;
-                tl.cells.resize(cols);
-                for (int i = 0; i < chunk; ++i) tl.cells[i] = logical[pos + i];
-                for (int i = chunk; i < cols; ++i) {
-                    tl.cells[i].attrs.fg = m_defaultFg;
-                    tl.cells[i].attrs.bg = m_defaultBg;
-                }
-                pos += chunk;
-                tl.softWrapped = (pos < total); // still more to wrap
-                m_scrollback.push_back(std::move(tl));
-            }
+    auto rewrap = [cols, this](LogicalLine &logical, std::vector<TermLine> &out) {
+        if (logical.cells.empty()) {
+            TermLine tl;
+            tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+            out.push_back(std::move(tl));
+            return;
         }
+        int pos = 0;
+        int total = static_cast<int>(logical.cells.size());
+        while (pos < total) {
+            int chunk = std::min(cols, total - pos);
+            TermLine tl;
+            tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+            for (int i = 0; i < chunk; ++i) tl.cells[i] = logical.cells[pos + i];
+            // Redistribute combining entries that fall in [pos, pos+chunk).
+            for (auto &kv : logical.combining) {
+                if (kv.first >= pos && kv.first < pos + chunk)
+                    tl.combining[kv.first - pos] = kv.second;
+            }
+            pos += chunk;
+            tl.softWrapped = (pos < total);
+            out.push_back(std::move(tl));
+        }
+    };
+
+    // --- Reflow scrollback when width changes ---
+    if (cols != m_cols && !m_scrollback.empty()) {
+        auto logicalLines = joinLogical(m_scrollback);
+        m_scrollback.clear();
+        std::vector<TermLine> scratch;
+        for (auto &logical : logicalLines) {
+            rewrap(logical, scratch);
+        }
+        for (auto &tl : scratch) m_scrollback.push_back(std::move(tl));
 
         // Trim to limit
         while (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
@@ -1219,41 +1239,10 @@ void TerminalGrid::resize(int rows, int cols) {
 
     // Reflow screen lines when width changes
     if (cols != m_cols && !m_altScreenActive) {
-        // Join soft-wrapped screen lines into logical lines
-        std::vector<std::vector<Cell>> logicalScreen;
-        std::vector<Cell> cur;
-        for (auto &sl : m_screenLines) {
-            auto &cells = sl.cells;
-            int len = static_cast<int>(cells.size());
-            while (len > 0 && cells[len - 1].codepoint == ' ') --len;
-            cur.insert(cur.end(), cells.begin(), cells.begin() + len);
-            if (!sl.softWrapped) {
-                logicalScreen.push_back(std::move(cur));
-                cur.clear();
-            }
-        }
-        if (!cur.empty()) logicalScreen.push_back(std::move(cur));
-
-        // Re-wrap into new width
+        auto logicalScreen = joinLogical(m_screenLines);
         std::vector<TermLine> reflowed;
         for (auto &logical : logicalScreen) {
-            if (logical.empty()) {
-                TermLine tl;
-                tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-                reflowed.push_back(std::move(tl));
-                continue;
-            }
-            int pos = 0;
-            int total = static_cast<int>(logical.size());
-            while (pos < total) {
-                int chunk = std::min(cols, total - pos);
-                TermLine tl;
-                tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-                for (int i = 0; i < chunk; ++i) tl.cells[i] = logical[pos + i];
-                pos += chunk;
-                tl.softWrapped = (pos < total);
-                reflowed.push_back(std::move(tl));
-            }
+            rewrap(logical, reflowed);
         }
 
         // If we have more reflowed lines than fit on screen, push excess to scrollback
