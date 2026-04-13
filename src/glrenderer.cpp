@@ -468,7 +468,8 @@ void GlRenderer::rasterizeGlyph(uint32_t codepoint, const QFont &font, GlyphEntr
     uploadToAtlas(cropped, entry);
 }
 
-void GlRenderer::uploadToAtlas(const QImage &img, GlyphEntry &entry) {
+void GlRenderer::placeAndUploadToAtlas(const QImage &img,
+                                       float &u0, float &v0, float &u1, float &v1) {
     int w = img.width();
     int h = img.height();
 
@@ -499,20 +500,24 @@ void GlRenderer::uploadToAtlas(const QImage &img, GlyphEntry &entry) {
                         GL_RED, GL_UNSIGNED_BYTE, zeros.data());
     }
 
-    // Upload glyph to atlas
+    // Upload to atlas
     glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexSubImage2D(GL_TEXTURE_2D, 0, m_atlasX, m_atlasY, w, h,
                     GL_RED, GL_UNSIGNED_BYTE, img.constBits());
 
-    entry.u0 = static_cast<float>(m_atlasX) / m_atlasWidth;
-    entry.v0 = static_cast<float>(m_atlasY) / m_atlasHeight;
-    entry.u1 = static_cast<float>(m_atlasX + w) / m_atlasWidth;
-    entry.v1 = static_cast<float>(m_atlasY + h) / m_atlasHeight;
-    entry.valid = true;
+    u0 = static_cast<float>(m_atlasX) / m_atlasWidth;
+    v0 = static_cast<float>(m_atlasY) / m_atlasHeight;
+    u1 = static_cast<float>(m_atlasX + w) / m_atlasWidth;
+    v1 = static_cast<float>(m_atlasY + h) / m_atlasHeight;
 
     m_atlasX += w + 1;
     m_atlasRowHeight = std::max(m_atlasRowHeight, h);
+}
+
+void GlRenderer::uploadToAtlas(const QImage &img, GlyphEntry &entry) {
+    placeAndUploadToAtlas(img, entry.u0, entry.v0, entry.u1, entry.v1);
+    entry.valid = true;
 }
 
 // --- Ligature support ---
@@ -587,44 +592,6 @@ void GlRenderer::rasterizeLigature(const QString &text, const QFont &font, Ligat
 }
 
 void GlRenderer::uploadLigatureToAtlas(const QImage &img, LigatureEntry &entry) {
-    int w = img.width();
-    int h = img.height();
-
-    if (m_atlasX + w > m_atlasWidth) {
-        m_atlasX = 0;
-        m_atlasY += m_atlasRowHeight + 1;
-        m_atlasRowHeight = 0;
-    }
-
-    if (m_atlasY + h > m_atlasHeight) {
-        if (m_atlasWidth < 4096) {
-            m_atlasWidth = 4096;
-            m_atlasHeight = 4096;
-            glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_atlasWidth, m_atlasHeight, 0,
-                         GL_RED, GL_UNSIGNED_BYTE, nullptr);
-        }
-        m_glyphCache.clear();
-        m_ligatureCache.clear();
-        m_atlasX = 0;
-        m_atlasY = 0;
-        m_atlasRowHeight = 0;
-        std::vector<uint8_t> zeros(m_atlasWidth * m_atlasHeight, 0);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_atlasWidth, m_atlasHeight,
-                        GL_RED, GL_UNSIGNED_BYTE, zeros.data());
-    }
-
-    glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, m_atlasX, m_atlasY, w, h,
-                    GL_RED, GL_UNSIGNED_BYTE, img.constBits());
-
-    entry.u0 = static_cast<float>(m_atlasX) / m_atlasWidth;
-    entry.v0 = static_cast<float>(m_atlasY) / m_atlasHeight;
-    entry.u1 = static_cast<float>(m_atlasX + w) / m_atlasWidth;
-    entry.v1 = static_cast<float>(m_atlasY + h) / m_atlasHeight;
+    placeAndUploadToAtlas(img, entry.u0, entry.v0, entry.u1, entry.v1);
     entry.valid = true;
-
-    m_atlasX += w + 1;
-    m_atlasRowHeight = std::max(m_atlasRowHeight, h);
 }

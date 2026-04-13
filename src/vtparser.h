@@ -58,6 +58,9 @@ private:
     void feedByte(uint8_t byte);
     void flushCodepoint(uint32_t cp);
 
+    // Append a codepoint to an OSC/DCS/APC accumulator as UTF-8, bounded by maxBytes
+    static void appendUtf8(std::string &out, uint32_t ch, size_t maxBytes);
+
     ActionCallback m_callback;
     State m_state = Ground;
 

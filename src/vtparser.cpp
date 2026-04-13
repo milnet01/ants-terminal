@@ -54,6 +54,25 @@ void VtParser::flushCodepoint(uint32_t cp) {
     processChar(cp);
 }
 
+void VtParser::appendUtf8(std::string &out, uint32_t ch, size_t maxBytes) {
+    if (out.size() >= maxBytes) return;
+    if (ch < 0x80) {
+        out += static_cast<char>(ch);
+    } else if (ch < 0x800) {
+        out += static_cast<char>(0xC0 | (ch >> 6));
+        out += static_cast<char>(0x80 | (ch & 0x3F));
+    } else if (ch < 0x10000) {
+        out += static_cast<char>(0xE0 | (ch >> 12));
+        out += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (ch & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (ch >> 18));
+        out += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (ch & 0x3F));
+    }
+}
+
 void VtParser::processChar(uint32_t ch) {
     // C0 controls are handled in almost every state
     if (ch < 0x20 || ch == 0x7F) {
@@ -251,24 +270,7 @@ void VtParser::processChar(uint32_t ch) {
             m_callback(a);
             transition(Escape);
         } else {
-            if (m_oscString.size() < 10 * 1024 * 1024) { // 10MB for inline images
-                // Encode back to UTF-8
-                if (ch < 0x80) {
-                    m_oscString += static_cast<char>(ch);
-                } else if (ch < 0x800) {
-                    m_oscString += static_cast<char>(0xC0 | (ch >> 6));
-                    m_oscString += static_cast<char>(0x80 | (ch & 0x3F));
-                } else if (ch < 0x10000) {
-                    m_oscString += static_cast<char>(0xE0 | (ch >> 12));
-                    m_oscString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-                    m_oscString += static_cast<char>(0x80 | (ch & 0x3F));
-                } else {
-                    m_oscString += static_cast<char>(0xF0 | (ch >> 18));
-                    m_oscString += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
-                    m_oscString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-                    m_oscString += static_cast<char>(0x80 | (ch & 0x3F));
-                }
-            }
+            appendUtf8(m_oscString, ch, 10 * 1024 * 1024); // 10MB cap for inline images
         }
         break;
 
@@ -286,23 +288,7 @@ void VtParser::processChar(uint32_t ch) {
             m_callback(a);
             transition(Escape);
         } else {
-            if (m_dcsString.size() < 10 * 1024 * 1024) { // 10MB cap
-                if (ch < 0x80) {
-                    m_dcsString += static_cast<char>(ch);
-                } else if (ch < 0x800) {
-                    m_dcsString += static_cast<char>(0xC0 | (ch >> 6));
-                    m_dcsString += static_cast<char>(0x80 | (ch & 0x3F));
-                } else if (ch < 0x10000) {
-                    m_dcsString += static_cast<char>(0xE0 | (ch >> 12));
-                    m_dcsString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-                    m_dcsString += static_cast<char>(0x80 | (ch & 0x3F));
-                } else {
-                    m_dcsString += static_cast<char>(0xF0 | (ch >> 18));
-                    m_dcsString += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
-                    m_dcsString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-                    m_dcsString += static_cast<char>(0x80 | (ch & 0x3F));
-                }
-            }
+            appendUtf8(m_dcsString, ch, 10 * 1024 * 1024); // 10MB cap
         }
         break;
 
@@ -320,23 +306,7 @@ void VtParser::processChar(uint32_t ch) {
             m_callback(a);
             transition(Escape);
         } else {
-            if (m_apcString.size() < 10 * 1024 * 1024) { // 10MB cap
-                if (ch < 0x80) {
-                    m_apcString += static_cast<char>(ch);
-                } else if (ch < 0x800) {
-                    m_apcString += static_cast<char>(0xC0 | (ch >> 6));
-                    m_apcString += static_cast<char>(0x80 | (ch & 0x3F));
-                } else if (ch < 0x10000) {
-                    m_apcString += static_cast<char>(0xE0 | (ch >> 12));
-                    m_apcString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-                    m_apcString += static_cast<char>(0x80 | (ch & 0x3F));
-                } else {
-                    m_apcString += static_cast<char>(0xF0 | (ch >> 18));
-                    m_apcString += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
-                    m_apcString += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-                    m_apcString += static_cast<char>(0x80 | (ch & 0x3F));
-                }
-            }
+            appendUtf8(m_apcString, ch, 10 * 1024 * 1024); // 10MB cap
         }
         break;
 

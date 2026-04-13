@@ -1,4 +1,5 @@
 #include "settingsdialog.h"
+#include "config.h"
 #include "themes.h"
 
 #include <QFormLayout>

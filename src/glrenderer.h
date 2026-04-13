@@ -108,6 +108,13 @@ private:
     void rasterizeLigature(const QString &text, const QFont &font, LigatureEntry &entry);
     void uploadLigatureToAtlas(const QImage &img, LigatureEntry &entry);
 
+    // Shared placement + upload for glyph/ligature atlas entries.
+    // Writes the UV rectangle into the given outputs. May grow or clear the
+    // atlas if full; callers must handle cache invalidation via m_glyphCache
+    // / m_ligatureCache (which are cleared by this routine when it resizes).
+    void placeAndUploadToAtlas(const QImage &img,
+                               float &u0, float &v0, float &u1, float &v1);
+
     bool m_initialized = false;
 
     // Shaders

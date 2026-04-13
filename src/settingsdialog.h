@@ -1,7 +1,5 @@
 #pragma once
 
-#include "config.h"
-
 #include <QDialog>
 #include <QTabWidget>
 #include <QComboBox>
@@ -14,6 +12,8 @@
 #include <QKeySequenceEdit>
 #include <QPushButton>
 #include <QLabel>
+
+class Config;
 
 class SettingsDialog : public QDialog {
     Q_OBJECT
