@@ -63,6 +63,7 @@ Reverse flow: **TerminalGrid -> ResponseCallback -> PTY** (for DA, CPR, DSR)
   - Mouse/focus/sync modes, OSC 8 hyperlinks, OSC 52 clipboard, OSC 133 shell integration
   - Kitty keyboard protocol (progressive enhancement with push/pop stack)
   - Desktop notifications (OSC 9/777), color palette notifications (CSI ? 2031)
+  - OSC 9;4 progress reporting (ConEmu / MS Terminal) — disambiguated from OSC 9 notification by first-byte peek (`4;` → progress, else → notify body)
   - Combining chars stored in per-line side table (`TermLine::combining`)
   - Response callback for DA1/DA2/CPR/DSR sequences
   - Sixel graphics (DCS), Kitty graphics (APC), iTerm2 images (OSC 1337)

@@ -12,15 +12,129 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+Nothing yet — see [0.6.0](#060--2026-04-14) for the current unreleased-at-HEAD
+work arc. Items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
+
+## [0.6.0] — 2026-04-14
+
+**Theme:** make the two features that already make Ants distinctive
+(plugins + audit) production-grade. Ships the full context polish + plugin v2
+arc from the 0.6 roadmap — scrollback regex search, OSC 9;4 progress,
+multi-line paste confirmation, OSC 8 homograph warning, LRU glyph-atlas
+eviction, cell-level dirty tracking, per-plugin Lua VMs, manifest v2 with
+declarative permissions + capability-gated APIs, plugin keybindings, and
+hot reload.
+
 ### Added
 
-- `ROADMAP.md` — release-plan for 0.6 through 1.0 and beyond, organized
-  by theme (🎨 Features / ⚡ Performance / 🔌 Plugins / 🖥 Platform /
-  🔒 Security / 🧰 Dev experience). Every item carries prior-art links.
-- `PLUGINS.md` — plugin-author standards. Complete enumeration of the
-  current `ants.*` API surface, events, sandbox boundaries, resource
-  limits, manifest format, and forward-looking API (0.6 capability
-  manifest, 0.7 triggers, 0.8 marketplace).
+#### 🎨 Features
+
+- **Scrollback regex search**. Ctrl+Shift+F search bar gains three toggle
+  buttons: `.*` (regex mode via `QRegularExpression`), `Aa` (match case),
+  and `Ab` (whole word, wraps the pattern in `\b…\b`). Alt+R / Alt+C /
+  Alt+W flip toggles without leaving the input. Invalid regex patterns
+  render the input with a red border and show the error in the match-
+  counter tooltip (`!/!`). Zero-width matches (`\b`, `^`) are detected
+  and skipped to avoid infinite loops. Matches Kitty / iTerm2 / WezTerm
+  behavior; closes the Ghostty 1.3 gap.
+- **OSC 9;4 progress reporting**. Parses ConEmu / Microsoft Terminal
+  `ESC]9;4;state;percent ST` sequences. State 0 clears, 1 shows a normal
+  blue progress bar, 2 shows a red error bar, 3 shows an indeterminate
+  (full-width) lavender bar, 4 shows a yellow warning bar. Renders as a
+  3-pixel strip along the bottom edge of the terminal (above the
+  scrollbar) and as a small colored dot next to the tab title. Coexists
+  with the existing OSC 9 desktop-notification handler via payload
+  disambiguation (`9;4;…` vs. `9;<body>`). Spec:
+  [MS Terminal progress sequences](https://learn.microsoft.com/en-us/windows/terminal/tutorials/progress-bar-sequences).
+- **Click-to-move-cursor on shell prompts** (previously in code, now
+  documented). When the cursor is in an OSC 133 prompt region with no
+  output yet, clicking on the same line sends the appropriate run of
+  `ESC [ C` / `ESC [ D` arrow sequences to reposition the cursor. Capped
+  at 200 arrows to guard against runaway sends.
+
+#### ⚡ Performance
+
+- **LRU glyph-atlas eviction**. Replaces the old "clear everything on
+  overflow" behavior with a warm-half retention policy: entries touched
+  within the last 300 frames are kept, colder ones are re-rasterized
+  into a fresh atlas. Median-based fallback handles cold-boot overflow.
+  Eliminates the paint stall on long ligature-heavy sessions. See
+  `glrenderer.cpp:compactAtlas`.
+- **Per-line dirty tracking**. `TermLine` gains a `dirty` flag set by
+  every grid mutation (print, erase, scroll, alt-screen swap, resize).
+  `TerminalWidget::invalidateSpanCaches()` now does targeted eviction —
+  only URL / highlight caches for dirty lines get dropped, not the whole
+  map. Big win on high-throughput output that only touches a few lines.
+  (Full cell-level render-path partial-update is deferred; the dirty
+  primitive is in place for that work.)
+
+#### 🔒 Security
+
+- **Multi-line paste confirmation**. Dialog appears when the pasted
+  payload contains a newline, the string `sudo `, a curl/wget/fetch
+  piped into `sh`/`bash`/`python`/etc., or any non-TAB/LF/CR control
+  character. Policy is independent of bracketed paste — iTerm2 /
+  Microsoft Terminal got bitten by conflating the two
+  ([MS Terminal #13014](https://github.com/microsoft/terminal/issues/13014)).
+  Config key: `confirm_multiline_paste` (default `true`). UI:
+  Settings → Behavior → "Confirm multi-line / dangerous pastes".
+- **Per-terminal OSC 52 write quota**. 32 writes/min + 1 MB/min per
+  grid, independent of the existing 1 MB per-string cap. Protects
+  against drip-feed exfiltration.
+- **OSC 8 homograph warning**. When an OSC 8 hyperlink's visible label
+  encodes a hostname-looking token (`github.com`) that doesn't match
+  the actual URL host (`github.evil.example.com`), a confirm dialog
+  shows both and requires explicit opt-in. Strips leading `www.` for
+  fair comparison.
+
+#### 🔌 Plugins — manifest v2 + capability model
+
+- **Per-plugin Lua VMs**. Each plugin gets its own `lua_State`, heap
+  budget (10 MB), and instruction hook (10 M ops). One VM stalling or
+  leaking globals can no longer affect others. `PluginManager` owns
+  a map of `(name → LuaEngine *)` and fans out events to each in turn.
+- **Declarative permissions in `manifest.json`**. Plugins declare a
+  `"permissions": ["clipboard.write", "settings"]` array. On first
+  load, a permission dialog lists each requested capability and lets
+  the user accept / un-check individual grants. Grants persist in
+  `config.json` under `plugin_grants`; subsequent loads don't re-prompt
+  unless the manifest requests a new permission. Un-granted permissions
+  surface as *missing API functions* (not `nil` stubs) so plugins can
+  feature-detect with `if ants.clipboard then … end`.
+- **`ants.clipboard.write(text)`** — gated by `"clipboard.write"`
+  permission. Writes to the system clipboard via QApplication.
+- **`ants.settings.get(key)` / `ants.settings.set(key, value)`** — gated
+  by `"settings"` permission. Per-plugin key/value store, persisted
+  under `plugin_settings.<plugin_name>.<key>` in `config.json`. Manifest
+  can declare a `"settings_schema"` JSON-Schema subset (plumbing in
+  place; schema-driven Settings UI is a follow-up item).
+- **Plugin keybinding registration** via manifest `"keybindings"` block:
+  `{"my-action": "Ctrl+Shift+K"}`. Firing the shortcut dispatches a
+  `keybinding` event to the owning plugin with the action id as the
+  payload. `ants.on("keybinding", function(id) ... end)` listens. The
+  shortcut lives on the MainWindow; invalid sequences log a warning.
+- **Plugin hot reload** via `QFileSystemWatcher`. Watches `init.lua`,
+  `manifest.json`, and the plugin directory itself; on change, debounced
+  150 ms, the plugin VM is torn down (fires `unload` event) and
+  re-initialized (fires `load` event). Enabled only when
+  `ANTS_PLUGIN_DEV=1` — idle cost is zero otherwise.
+- **`ants._version`** exposes `ANTS_VERSION` string so plugins can
+  feature-detect without hardcoding.
+- **`ants._plugin_name`** exposes the plugin's declared manifest name.
+- **New events**: `load`, `unload` (lifecycle), `keybinding` (manifest
+  shortcuts). Added to `eventFromString()` in `luaengine.cpp`.
+
+#### 🧰 Dev experience
+
+- **`ants-terminal --new-plugin <name>` CLI**. Creates a plugin skeleton
+  at `~/.config/ants-terminal/plugins/<name>/` with `init.lua`,
+  `manifest.json` (empty `permissions` array), and `README.md` templates.
+  Validates the name against `[A-Za-z][A-Za-z0-9_-]{0,63}`.
+- **`ANTS_PLUGIN_DEV=1`** env var enables verbose plugin logging on
+  scan/load, plus hot reload. Cached per-process via a static.
+- **`--help` / `--version`** flags wired through `QCommandLineParser`
+  (previously `--version` set via `setApplicationVersion` but no CLI
+  handler existed).
 
 ### Changed
 
@@ -30,6 +144,12 @@ for security-relevant changes.
 - `CLAUDE.md`, `STANDARDS.md`, `RULES.md` — cross-linked to the new
   docs; plugin-system sections defer to PLUGINS.md for the author
   contract and document internal invariants separately.
+- `PluginManager` no longer exposes a single `engine()` accessor;
+  callers use `engineFor(name)` to get the per-plugin VM. Event
+  delivery fans out over all loaded engines.
+- Paste path now runs through `TerminalWidget::confirmDangerousPaste`
+  before the bracketed-paste wrap — confirmation policy is
+  independent of PTY-side behavior.
 
 ## [0.5.0] — 2026-04-13
 

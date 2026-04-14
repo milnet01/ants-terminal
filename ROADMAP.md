@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.5.0 (2026-04-13). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.0 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -28,7 +28,7 @@ they move based on contributor bandwidth and real-world usage feedback.
 ## Table of Contents
 
 1. [0.5.0 — shipped](#050--shipped-2026-04-13)
-2. [0.6.0 — context polish + plugin v2](#060--context-polish--plugin-v2-target-2026-05)
+2. [0.6.0 — shipped](#060--shipped-2026-04-14)
 3. [0.7.0 — shell integration + triggers](#070--shell-integration--triggers-target-2026-06)
 4. [0.8.0 — multiplexing + marketplace](#080--multiplexing--marketplace-target-2026-08)
 5. [0.9.0 — platform + a11y](#090--platform--a11y-target-2026-10)
@@ -48,90 +48,82 @@ version stamping on every export).
 
 ---
 
-## 0.6.0 — context polish + plugin v2 (target: 2026-05)
+## 0.6.0 — shipped (2026-04-14)
 
 **Theme of the release:** make the two features that already make Ants
 distinctive (plugins + audit) production-grade. No sprawl; polish what's
-there before adding a multiplexer.
+there before adding a multiplexer. Reference:
+[CHANGELOG.md §0.6.0](CHANGELOG.md#060--2026-04-14).
 
 ### 🎨 Features
 
-- 📋 **Scrollback regex search with replace-all highlight**. Ghostty 1.3
-  shipped this as its #1 most-requested feature
-  ([notes](https://ghostty.org/docs/install/release-notes/1-3-0)). Wire
-  `Ctrl+Shift+F` → floating bar, regex toggle, case toggle, match count,
-  next/prev jump, all-match highlight overlay.
-- 📋 **OSC 9;4 progress reporting**. Parse `ESC ] 9 ; 4 ; state ; pct ST`
-  and render a thin progress strip on the tab. Shells already emit it
-  ([Microsoft docs](https://learn.microsoft.com/en-us/windows/terminal/tutorials/progress-bar-sequences)).
-- 📋 **Click-to-move-cursor on shell prompts**. When OSC 133 says the
-  cursor is at a prompt, clicking elsewhere on that line sends the
-  correct arrow-key count. Ghostty 1.3 feature.
-- 💭 **Kitty Unicode-placeholder graphics** (U+10EEEE + diacritics). Makes
-  images survive `tmux`; small spec, big compat win
-  ([PR #5664](https://github.com/kovidgoyal/kitty/pull/5664)).
+- ✅ **Scrollback regex search**. `Ctrl+Shift+F` floating bar with
+  three toggles — `.*` (regex), `Aa` (case), `Ab` (whole word,
+  Alt+R/C/W) — plus match counter, next/prev jump, all-match
+  highlight overlay, current-match accent, invalid-pattern feedback.
+  Ghostty 1.3 parity.
+- ✅ **OSC 9;4 progress reporting**. Parses
+  `ESC ] 9 ; 4 ; state ; pct ST` (ConEmu / Microsoft Terminal), renders
+  a thin colored strip along the bottom edge plus a tab-icon dot.
+- ✅ **Click-to-move-cursor on shell prompts** (previously in code;
+  docs promoted).
+- 💭 **Kitty Unicode-placeholder graphics** (U+10EEEE + diacritics).
+  Moved to 0.7 backlog — scope-wise a standalone item, not a blocker.
 
 ### 🔌 Plugins — manifest v2 + capability model
 
-This is the big plugin-system expansion. See [PLUGINS.md →
-Roadmap](PLUGINS.md#06--capability-manifest--clipboard--settings-schema)
-for the author-facing contract.
-
-- 📋 **Declarative permissions in `manifest.json`** — borrow the browser-
-  extension model: `permissions: ["read_output", "write_pty",
-  "clipboard.write", "fs:~/.local/share/myplugin", "net:https://api.x.com"]`.
-  Un-granted permissions surface as `nil` in the Lua env. First launch
-  shows the list and asks the user to accept.
-- 📋 **Per-plugin Lua VMs**. Today plugins share one `lua_State`, which
-  leaks globals. Give each plugin its own VM with its own instruction /
-  heap budget, so one misbehaving plugin can't destabilize others.
-- 📋 **`ants.settings.get(key)` / `ants.settings.set(key, value)`** with
-  a JSON-Schema `"settings_schema"` in `manifest.json`; Settings dialog
-  auto-renders a tab for plugins that declare one (Tabby-style
-  ConfigProvider [docs](https://deepwiki.com/Eugeny/tabby/9.2-plugin-development)).
-- 📋 **`ants.clipboard.write(text)`** gated by `clipboard.write`.
-- 📋 **Hot reload** via `QFileSystemWatcher` on plugin dirs. Adds
-  `on_load` / `on_unload` lifecycle hooks.
-- 📋 **Plugin keybinding registration** via `"keybindings"` manifest
-  block. Resolves conflicts against the global keymap at load time.
-- 📋 **`ants._version`** exposes the terminal version as a Lua string
-  so plugins can feature-detect without hardcoding.
+- ✅ **Declarative permissions in `manifest.json`** — `permissions`
+  array with first-load confirmation dialog, persisted per-plugin grants
+  in `config.json` (`plugin_grants`). Un-granted permissions = missing
+  API functions (not `nil` stubs) so plugins can feature-detect.
+- ✅ **Per-plugin Lua VMs** — each plugin gets its own `lua_State`,
+  10 MB heap budget, 10 M instruction hook. `PluginManager` fans
+  events out over all loaded VMs.
+- ✅ **`ants.settings.get / .set`** — gated by `"settings"`. Backed by
+  `config.json`'s `plugin_settings.<name>.<key>`. Settings-dialog
+  auto-render of `"settings_schema"` is follow-up (API + store in
+  place).
+- ✅ **`ants.clipboard.write(text)`** — gated by `"clipboard.write"`.
+- ✅ **Hot reload** via `QFileSystemWatcher` on `init.lua` /
+  `manifest.json` / plugin dir. Fires `load` / `unload` lifecycle
+  events. Enabled only when `ANTS_PLUGIN_DEV=1`.
+- ✅ **Plugin keybindings** — `manifest.json` `"keybindings":
+  {"action-id": "Ctrl+Shift+X"}` block. Firing the shortcut sends a
+  `keybinding` event to the owning plugin.
+- ✅ **`ants._version`** + **`ants._plugin_name`** exposed.
 
 ### ⚡ Performance
 
-- 📋 **LRU glyph-atlas eviction**. Today we clear and rebuild on overflow;
-  switch to per-glyph `last_used_frame` counter, evict oldest 10% when
-  full. Eliminates the redraw stutter when a long-running ligature-heavy
-  session cycles through glyphs.
-- 📋 **Cell-level dirty tracking**. Add `dirty: bool` to `Cell` (or a
-  per-row bitmap). Clear after render. Repaint cost drops from
-  O(rows×cols) to O(changed cells). Ghostty + foot both use this
-  approach ([HN thread](https://news.ycombinator.com/item?id=42518110)).
+- ✅ **LRU glyph-atlas eviction**. Per-glyph `lastFrame` counter,
+  warm-half retention on overflow, median-based fallback. See
+  `glrenderer.cpp:compactAtlas`.
+- ✅ **Per-line dirty tracking** (partial). `TermLine::dirty` set by
+  grid mutations; `TerminalWidget::invalidateSpanCaches()` does
+  targeted eviction of URL / highlight caches. Full cell-level
+  render-path partial-update remains as future work — primitive is in
+  place.
 - 💭 **EGL_EXT_swap_buffers_with_damage + EGL_EXT_buffer_age** on the GL
-  path. Mesa has shipped both since ~2014. Reported swing: 60W → 50W GPU
-  draw on partial-frame updates.
+  path. Deferred — narrow Mesa-only win, revisit in 0.9 platform pass.
 
 ### 🔒 Security
 
-- 📋 **Multi-line paste confirmation**. Dialog appears when clipboard
-  contains `\n`, `sudo `, `curl … | sh`, or control chars. iTerm2,
-  Tabby, Microsoft Terminal all do this
-  ([Tabby #2131](https://github.com/Eugeny/tabby/issues/2131)).
-  Important: policy independent of bracketed-paste — Microsoft Terminal
-  #13014 caught flak for turning the warning off when bracketed-paste
-  was active.
-- 📋 **Per-host OSC 52 write quota**: 32 writes/min + 1 MB/min per
-  terminal, independent of the existing per-string cap.
-- 📋 **OSC 8 homograph warning**: when the visible link text differs
-  from the URL host, show a confirm dialog (browser-style).
+- ✅ **Multi-line paste confirmation**. Dialog on `\n` / `sudo ` /
+  `curl … | sh` / control chars. Policy independent of bracketed-paste
+  mode. Config key `confirm_multiline_paste` (default on).
+- ✅ **Per-terminal OSC 52 write quota**: 32 writes/min + 1 MB/min
+  (independent of the 1 MB per-string cap).
+- ✅ **OSC 8 homograph warning**: when visible label's hostname ≠
+  URL host, a confirm dialog shows both and requires opt-in.
 
 ### 🧰 Dev experience
 
-- 📋 **Plugin scaffolding command**: `ants-terminal --new-plugin my-plugin`
-  creates a directory with `init.lua`, `manifest.json`, and a `README.md`
-  template.
-- 📋 **Plugin dev mode**: env var `ANTS_PLUGIN_DEV=1` enables verbose
-  logging + hot reload for in-development plugins.
+- ✅ **`ants-terminal --new-plugin <name>`** — scaffolds init.lua /
+  manifest.json / README.md from templates. Name validated against
+  `[A-Za-z][A-Za-z0-9_-]{0,63}`.
+- ✅ **`ANTS_PLUGIN_DEV=1`** — verbose logging on plugin scan/load,
+  plus hot reload.
+- ✅ **`--help` / `--version`** CLI flags wired via
+  `QCommandLineParser`.
 
 ---
 

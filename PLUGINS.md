@@ -61,29 +61,49 @@ Every plugin lives in a directory under `~/.config/ants-terminal/plugins/`:
 
 ## Manifest (`manifest.json`)
 
-Optional but strongly recommended. The loader reads four fields today:
+Optional but strongly recommended. **Manifest v2** (shipped in 0.6.0) adds
+`permissions`, `keybindings`, and `settings_schema` on top of the v1 metadata:
 
 ```json
 {
   "name":        "Git Branch Badge",
   "version":     "1.2.0",
   "description": "Show git branch + dirty marker in the status bar.",
-  "author":      "Your Name <you@example.com>"
+  "author":      "Your Name <you@example.com>",
+  "permissions": ["clipboard.write", "settings"],
+  "keybindings": {
+    "open-palette": "Ctrl+Alt+G"
+  },
+  "settings_schema": {
+    "poll_ms": { "type": "integer", "default": 2000, "min": 500, "max": 60000 }
+  }
 }
 ```
 
 **Field contracts:**
 
-| Field         | Type   | Required | Default       | Notes                                       |
-|---------------|--------|----------|---------------|---------------------------------------------|
-| `name`        | string | no       | directory     | Human-readable display name                 |
-| `version`     | string | no       | `"0.1.0"`     | **[SemVer](https://semver.org)** encouraged |
-| `description` | string | no       | `""`          | One sentence; ~80 char soft limit           |
-| `author`      | string | no       | `""`          | Name + email or URL                         |
+| Field             | Type    | Required | Default    | Notes                                                       |
+|-------------------|---------|----------|------------|-------------------------------------------------------------|
+| `name`            | string  | no       | directory  | Human-readable display name                                 |
+| `version`         | string  | no       | `"0.1.0"`  | **[SemVer](https://semver.org)** encouraged                 |
+| `description`     | string  | no       | `""`       | One sentence; ~80 char soft limit                           |
+| `author`          | string  | no       | `""`       | Name + email or URL                                         |
+| `permissions`     | array   | no       | `[]`       | Capability strings (see below). Prompts user on first load. |
+| `keybindings`     | object  | no       | `{}`       | `{"action-id": "Ctrl+Shift+X"}` — fires `keybinding` event. |
+| `settings_schema` | object  | no       | `{}`       | JSON-Schema subset. UI auto-render is 0.7 follow-up.        |
 
-Unknown fields are currently ignored. **Plugin authors: do not rely on
-unknown-field preservation** — planned v2 manifest fields (see the
-[Roadmap](#roadmap-planned-apis--not-yet-available)) will repurpose some.
+**Permission strings (0.6):**
+
+| Permission        | Grants                                                    |
+|-------------------|-----------------------------------------------------------|
+| `clipboard.write` | `ants.clipboard.write(text)` — write system clipboard     |
+| `settings`        | `ants.settings.get(key)` / `ants.settings.set(key, v)` — per-plugin k/v store |
+
+Un-granted permissions result in the corresponding `ants.*` table being
+**absent** (not `nil`), so plugins can feature-detect with
+`if ants.clipboard then ... end`. Grants persist in `config.json`
+(`plugin_grants.<name>: [...]`); subsequent loads don't re-prompt unless
+the manifest requests a new permission the user hasn't yet granted.
 
 ## Entry Point (`init.lua`)
 
@@ -118,22 +138,32 @@ ants.on("line", function(line)
 end)
 ```
 
-**Lifecycle:**
+**Lifecycle (0.6+):**
 
-- `init.lua` runs **once**, synchronously, when the plugin is first enabled
-  (either at terminal startup for already-enabled plugins, or when the user
-  toggles it on in Settings → Plugins).
-- There is **no `on_load` / `on_unload` hook** today. When the user disables
-  a plugin or the terminal exits, the whole Lua state is `lua_close()`d and
-  your plugin simply stops. Don't rely on cleanup.
-- Plugins should be **idempotent to re-entry**: if you register a timer
-  or a handler, double-registration on reload (planned hot-reload, see
-  Roadmap) should not duplicate effects.
+- `init.lua` runs **once**, synchronously, when the plugin's VM is created
+  (at terminal startup for already-enabled plugins, or when the user toggles
+  it on in Settings → Plugins, or when hot-reload fires with
+  `ANTS_PLUGIN_DEV=1`).
+- A `load` event fires **once** immediately after `init.lua` returns — use
+  `ants.on("load", fn)` for deferred setup that needs the full ants API
+  ready.
+- An `unload` event fires right before `lua_close()` on shutdown, plugin
+  disable, or hot-reload. Use it to save state (`ants.settings.set(...)`)
+  or cancel any external work. The VM closes immediately after, so no
+  further ants calls will run.
+- Plugins run in **isolated VMs** — shared `lua_State` globals from other
+  plugins are not visible. Each plugin gets its own 10 MB heap and 10 M
+  instruction budget.
+- Plugins should still be **idempotent on re-init**: hot reload tears the
+  whole VM down and re-creates it, so re-registered handlers simply
+  replace the old ones.
 
-## The `ants.*` API — Current (v0.5.0)
+## The `ants.*` API — Current (v0.6.0)
 
-This is the complete surface as of **0.5.0**. Functions not listed here
-do not exist and will raise `attempt to call a nil value`.
+This is the complete surface as of **0.6.0**. Functions not listed here
+do not exist and will raise `attempt to call a nil value`. Permissioned
+functions (marked 🔒) are only present when the corresponding permission
+is granted.
 
 ### `ants.send(text)`
 
@@ -212,6 +242,44 @@ ants.on("keypress", function(key)
 end)
 ```
 
+### `ants._version` / `ants._plugin_name`
+
+Read-only strings. `ants._version` is the terminal version (e.g. `"0.6.0"`);
+`ants._plugin_name` is the plugin's declared manifest name. Use them for
+feature detection without string-hardcoding:
+
+```lua
+if ants._version and ants._version >= "0.6" then
+    -- 0.6+ API available
+end
+```
+
+### 🔒 `ants.clipboard.write(text)`
+
+Requires manifest permission `"clipboard.write"`. Writes to the system
+clipboard. No return value. Only available if the user granted the
+permission at load time.
+
+```lua
+if ants.clipboard then
+    ants.clipboard.write("copied from plugin")
+end
+```
+
+### 🔒 `ants.settings.get(key)` / `ants.settings.set(key, value)`
+
+Requires manifest permission `"settings"`. Per-plugin key/value store,
+persisted in the main `config.json`. Values are strings; encode structured
+data with `string.format` / manual JSON. Returns `nil` for unset keys.
+
+```lua
+if ants.settings then
+    local last_run = ants.settings.get("last_run") or "never"
+    ants.settings.set("last_run", os.date())  -- (os removed in sandbox;
+    -- this is just an illustration — in practice, use a string you already have)
+end
+```
+
 ## Events
 
 | Event name       | Handler signature             | Cancellable | When it fires                                        |
@@ -223,6 +291,9 @@ end)
 | `"title_changed"`| `function(new_title)`         | no          | OSC 0/1/2 title change                               |
 | `"tab_created"`  | `function(tab_info)`          | no          | New tab opened (includes splits)                     |
 | `"tab_closed"`   | `function(tab_info)`          | no          | Tab/pane closed                                      |
+| `"keybinding"`   | `function(action_id)`         | no          | Manifest `"keybindings"` shortcut fired              |
+| `"load"`         | `function(plugin_name)`       | no          | Once after `init.lua` returns — deferred init hook   |
+| `"unload"`       | `function(plugin_name)`       | no          | Just before VM shutdown — save state here            |
 
 **Return-value contract:** only `"keypress"` acts on the return value.
 Returning `false` suppresses default handling; any other value (including
@@ -263,7 +334,7 @@ abuse):
 | Read/write user files outside `~/.config/ants-terminal/plugins/<me>/` | blocked — no `io` | Settings persistence is planned; see Roadmap |
 | Spawn processes | blocked — no `os.execute` | `ants.send` can run shell commands *in your terminal* — user-visible, not covert |
 | Open network sockets | blocked — no `io`, no `socket` lib | Planned: capability-gated `ants.net` |
-| Read other plugins' state | blocked — separate Lua environments not yet per-plugin; today they share a VM | Planned for 0.6.0: per-plugin VM |
+| Read other plugins' state | blocked — each plugin runs in its own `lua_State` (0.6+) | Hit `ants.settings` to persist your own state |
 | Read arbitrary env vars | blocked — no `os.getenv` | Planned: curated `ants.env.get(name)` for whitelisted vars |
 | Write to clipboard | not exposed yet | Planned: `ants.clipboard.write(text)` |
 | Read clipboard | not exposed and not planned | OSC 52 read is disabled system-wide for security |
@@ -409,30 +480,27 @@ The following are targeted for upcoming minor releases. See
 `ROADMAP.md` for the full schedule. **Do not ship plugins that rely
 on these today** — they'll fail with `attempt to call a nil value`.
 
-### 0.6 — capability manifest + clipboard + settings schema
+### 0.6 — capability manifest + clipboard + settings schema ✅ (shipped 2026-04-14)
 
-- **`manifest.json` v2** with declarative permissions:
-  ```json
-  {
-    "name": "my-plugin",
-    "version": "1.0.0",
-    "api_version": "0.6",
-    "permissions": ["read_output", "write_pty", "clipboard.write",
-                    "fs:~/.local/share/myplugin", "net:https://api.example.com"],
-    "settings_schema": { "type": "object", "properties": { ... } },
-    "keybindings": [{ "chord": "Ctrl+Shift+G", "action": "git_status" }]
-  }
-  ```
-  At first run, the user sees the permission list and accepts/declines.
-  Un-granted permissions surface as `nil` functions in the Lua env.
-- **`ants.clipboard.write(text)`** — gated by `clipboard.write` permission.
-- **`ants.settings.get(key)`** / **`ants.settings.set(key, value)`** —
-  persisted to `~/.config/ants-terminal/plugins/<name>/settings.json`.
-- **Per-plugin Lua state** — currently all plugins share one VM, which
-  leaks state via globals. 0.6 gives each plugin its own VM.
-- **`ants._version`** — Lua string of the terminal version.
-- **Hot reload** — `QFileSystemWatcher` notices `init.lua` changes and
-  reloads the plugin. `on_unload` + `on_load` hooks become available.
+**All of the below are live in 0.6.0.** See the
+[manifest contract](#manifest-manifestjson) and the
+[`ants.*` API](#the-ants-api--current-v060) section for concrete docs.
+
+- ✅ **`manifest.json` v2** with declarative `permissions`, `keybindings`,
+  and `settings_schema` fields. First-load prompt + persisted grants in
+  `config.json`.
+- ✅ **`ants.clipboard.write(text)`** — gated by `clipboard.write`.
+- ✅ **`ants.settings.get/set`** — gated by `settings`; backed by
+  `config.json` (`plugin_settings.<name>.<key>`). **Note:** the 0.6 store
+  is a flat string k/v — the JSON-Schema-driven Settings UI auto-render
+  is deferred to 0.7.
+- ✅ **Per-plugin Lua VMs** — each plugin gets its own `lua_State` with
+  independent 10 MB heap + 10 M instruction budget.
+- ✅ **`ants._version`** and **`ants._plugin_name`** exposed.
+- ✅ **Hot reload** via `QFileSystemWatcher` — enabled when
+  `ANTS_PLUGIN_DEV=1`. Fires `load` / `unload` lifecycle events.
+- ✅ **Plugin keybindings** — `manifest.json` `"keybindings"` block.
+  Firing sends a `keybinding` event with the action id.
 
 ### 0.7 — richer events + command palette registration
 

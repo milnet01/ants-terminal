@@ -19,6 +19,13 @@
 6. Window state (size, position, theme, font size) persists between sessions
 7. Use `std::unique_ptr` or Qt parent-child ownership for all heap allocations -- no raw `new`/`delete`
 8. Validate and bound all external input (PTY data, clipboard, config values)
+9. **No workarounds unless no viable solution exists.** Diagnose the root cause
+   and fix the underlying issue. Bypass-style fixes (silencing warnings,
+   wrapping with try/catch to swallow, `--no-verify`, commenting out broken
+   code) are last-resort patches, not defaults. When a workaround is genuinely
+   the only option, document the underlying constraint in a comment right next
+   to it so future readers know it's deliberate, not neglect. Applies equally
+   to build failures, test failures, and runtime bugs.
 
 ## Architecture Rules
 
