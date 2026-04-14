@@ -366,6 +366,70 @@ void AuditDialog::populateChecks() {
         CheckType::CodeSmell, Severity::Minor, {}, true, true, nullptr
     });
 
+    // Observability: `catch (...) { }` with no logging / rethrow silently
+    // swallows errors, masking bugs that only manifest as "nothing happened".
+    // Conservative first cut: flag the *empty-body* same-line form only.
+    // Matches `catch (...) {}`, `catch (const E& e) { }`, etc. Single-statement
+    // trivial bodies (`catch (...) { return -1; }`) are out of scope for this
+    // pattern — extending requires multi-line regex plumbing (`grep -Pzo`)
+    // that addGrepCheck doesn't expose today. See ROADMAP 0.7 §Dev experience.
+    addGrepCheck("silent_catch", "Silent catch(...) Handler",
+                 "Empty catch blocks swallow exceptions without logging or rethrow",
+                 "General",
+                 "'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}'",
+                 CheckType::CodeSmell, Severity::Minor, true);
+
+    // Build-flag recommender. Nudges toward better compile-time coverage by
+    // flagging absence of battle-tested warning flags in the top-level
+    // CMakeLists.txt. Severity Minor — missing flags aren't bugs, just missed
+    // opportunities. Anchors at line 1 (grep doesn't locate the exact hit,
+    // and the finding is file-level anyway). No-op on projects without a
+    // CMakeLists.txt (Meson, Bazel, plain Makefile, etc.).
+    //
+    // Comment-line filter (`grep -v '^[[:space:]]*#'`) is crucial — any
+    // CMakeLists that *discusses* a flag in a comment (for instance ours,
+    // explaining why -Wconversion is disabled) would otherwise cause a false
+    // negative. We strip comment-only lines before scanning.
+    m_checks.append({
+        "missing_build_flags", "Missing Compiler Warning Flags",
+        "CMakeLists.txt lacks recommended -W flags for compile-time coverage",
+        "General",
+        "f=CMakeLists.txt; [ -f \"$f\" ] || exit 0; "
+        "code=$(grep -v '^[[:space:]]*#' \"$f\"); "
+        "printf '%s' \"$code\" | grep -qE -- '-Wformat=2\\b' || "
+        "  printf '%s:1: recommended compiler flag missing: -Wformat=2\\n' \"$f\"; "
+        "printf '%s' \"$code\" | grep -qE -- '-Wshadow\\b' || "
+        "  printf '%s:1: recommended compiler flag missing: -Wshadow (or -Wshadow=local)\\n' \"$f\"; "
+        "printf '%s' \"$code\" | grep -qE -- '-Wnull-dereference\\b' || "
+        "  printf '%s:1: recommended compiler flag missing: -Wnull-dereference\\n' \"$f\"; "
+        "printf '%s' \"$code\" | grep -qE -- '-Wconversion\\b' || "
+        "  printf '%s:1: recommended compiler flag missing: -Wconversion\\n' \"$f\"",
+        CheckType::CodeSmell, Severity::Minor, {}, true, true, nullptr
+    });
+
+    // CI presence. A project with no continuous-integration config ships
+    // regressions silently — the rule flags projects missing *all* of the
+    // common CI file conventions. Severity Major — not actionable by
+    // automated fix, but worth a loud "you have no safety net" warning.
+    // Covers the five most common self-hosted/SaaS CI systems; other
+    // bespoke setups (Drone, Woodpecker, Buildkite pipelines checked in as
+    // `.buildkite/`) can be added on demand via audit_rules.json overrides.
+    m_checks.append({
+        "no_ci", "Continuous Integration Missing",
+        "Project has no CI configuration — regressions may ship silently",
+        "General",
+        "found=''; "
+        "if [ -d .github/workflows ] && ls .github/workflows/*.y*ml >/dev/null 2>&1; then found=.github/workflows; fi; "
+        "[ -f .gitlab-ci.yml ] && found=.gitlab-ci.yml; "
+        "[ -d .circleci ] && found=.circleci; "
+        "[ -f .travis.yml ] && found=.travis.yml; "
+        "[ -f Jenkinsfile ] && found=Jenkinsfile; "
+        "[ -n \"$found\" ] && exit 0; "
+        "printf '.:1: no CI configuration detected "
+        "(checked: .github/workflows/, .gitlab-ci.yml, .circleci/, .travis.yml, Jenkinsfile)\\n'",
+        CheckType::CodeSmell, Severity::Major, {}, true, true, nullptr
+    });
+
     addFindCheck("dup_files", "Duplicate File Detection",
                  "Files with identical content", "General",
                  "-type f -size +100c \\( -name '*.cpp' -o -name '*.h' -o -name '*.py'"

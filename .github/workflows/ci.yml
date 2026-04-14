@@ -46,7 +46,7 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure
 
-      - name: Run cppcheck (audit rule: Qt-aware static analysis)
+      - name: "Run cppcheck (audit rule: Qt-aware static analysis)"
         run: |
           cppcheck --enable=all --std=c++20 --library=qt \
                    --suppress=missingIncludeSystem \
@@ -55,3 +55,52 @@ jobs:
                    --suppress=normalCheckLevelMaxBranches \
                    --error-exitcode=0 \
                    -I src src/
+
+  # Dedicated ASan + UBSan build. Smoke-tests the binary under sanitizers
+  # so initialization-path bugs (config load, command-line parsing, Qt setup)
+  # are caught on every push. Runtime coverage today is narrow — `--version`
+  # exits before GUI bring-up — but the compile itself validates that no code
+  # path is sanitizer-incompatible, and `QT_QPA_PLATFORM=offscreen` means we
+  # can broaden later without a display.
+  #
+  # detect_leaks=0: Qt initializes global singletons with bounded lifetimes
+  # that look like leaks to LSan on a fast-exit path. Re-enable once we
+  # have a real unit-test suite that does full app lifecycle.
+  build-asan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install Qt6 + build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            qt6-base-dev qt6-base-dev-tools \
+            libqt6opengl6-dev libqt6openglwidgets6 \
+            liblua5.4-dev
+
+      - name: Configure (Debug + ASan/UBSan)
+        run: cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DANTS_SANITIZERS=ON
+
+      - name: Build
+        run: cmake --build build-asan --parallel
+
+      - name: Run audit-rule tests under sanitizers
+        working-directory: build-asan
+        env:
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --output-on-failure
+
+      - name: Smoke-test binary init paths
+        working-directory: build-asan
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          ./ants-terminal --version
+          ./ants-terminal --help

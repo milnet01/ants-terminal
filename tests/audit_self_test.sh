@@ -86,6 +86,7 @@ run_rule "hardcoded_ips"    '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
 run_rule "weak_crypto"      '\b(md5|sha1|des|rc4|ecb)\b'
 run_rule "memory_patterns"  '\b(new |malloc|calloc|realloc)\b'
 run_rule "qt_openurl_unchecked" 'QDesktopServices::openUrl'
+run_rule "silent_catch"     'catch\s*\([^)]*\)\s*\{\s*\}'
 
 # ---------------------------------------------------------------------------
 # Inline suppression token recognition — the regex in commentSuppresses()

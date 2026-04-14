@@ -14,6 +14,61 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.7] — 2026-04-14
+
+**Theme:** close the remaining grep-shaped items from 0.7.0 §Dev experience
+in one sweep, plus fix the CI workflow file which — it turns out — had
+never parsed (unquoted colon in a step `name` rejected the entire YAML).
+
+### Added
+
+- **Audit rule `silent_catch`.** Flags empty same-line `catch (...) {}`
+  handlers that swallow exceptions without logging or rethrow. Conservative
+  first cut (same-line empty body only); extending to multi-line / single-
+  statement trivial bodies needs `grep -Pzo` plumbing and is deferred.
+- **Audit rule `missing_build_flags`.** Nudges projects toward better
+  compile-time coverage by flagging absence of `-Wformat=2`, `-Wshadow`,
+  `-Wnull-dereference`, and `-Wconversion` in the top-level `CMakeLists.txt`.
+  Strips comment-only lines before matching so a CMakeLists that *discusses*
+  a flag in a comment (e.g. why it's disabled) doesn't cause a false negative.
+  Severity Minor — this is a nudge, not a bug. Correctly reports one finding
+  on our own tree: `-Wconversion`, which is intentionally off (noisy in
+  combination with Qt), documented in `CMakeLists.txt`.
+- **Audit rule `no_ci`.** Detects projects missing CI configuration
+  (`.github/workflows/`, `.gitlab-ci.yml`, `.circleci/`, `.travis.yml`,
+  `Jenkinsfile`). Severity Major — regressions ship silently without a CI
+  safety net.
+- **Sanitizer CI job (`build-asan`).** New parallel GitHub Actions job
+  builds with `-DANTS_SANITIZERS=ON` (ASan + UBSan), runs ctest under
+  sanitizers, and smoke-tests the binary (`--version`, `--help`) with
+  `QT_QPA_PLATFORM=offscreen` so initialization-path bugs surface on every
+  push. `detect_leaks=0` for now — Qt global singletons on fast-exit paths
+  look like leaks to LSan; re-enable once we have a real unit-test suite
+  exercising full app lifecycle.
+- **`CONTRIBUTING.md`.** Short actionable guide derived from `STANDARDS.md`:
+  build modes, where tests live, step-by-step for adding an audit rule,
+  version-bump checklist, commit conventions, what-not-to-send.
+- **Fixtures for `silent_catch`** — `bad.cpp` with three `@expect` markers,
+  `good.cpp` with logging/rethrow/return-with-value catch bodies that must
+  not match.
+
+### Fixed
+
+- **CI workflow was never parsing.** `name: Run cppcheck (audit rule:
+  Qt-aware static analysis)` had an unquoted `:` inside the scalar, which
+  GitHub Actions' YAML parser rejected as "mapping values are not allowed
+  here" — the workflow file was dropped entirely and no jobs ran for 0.6.5
+  or 0.6.6. Fixed by double-quoting the step name. The parse error was
+  silent on GitHub's side (workflow-file runs showed 0 jobs with a
+  one-line "workflow file issue" notice); caught here by running PyYAML's
+  strict parser over the file locally.
+
+### Changed
+
+- **ROADMAP** — moved four items from 0.7.0 §Dev experience to 0.6.7
+  shipped (silent-catch rule, build-flag recommender, no-CI check,
+  sanitizer-in-ctest hookup, CONTRIBUTING.md).
+
 ## [0.6.6] — 2026-04-14
 
 **Theme:** close the first Dev-experience item queued in 0.7 after the 0.6.5

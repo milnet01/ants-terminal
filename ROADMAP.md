@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.6 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.7 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -215,29 +215,27 @@ the next run.
   `QNetworkReply*` member, it must either abort the reply in its
   destructor or parent the reply to an auto-destroying lifetime. Motivating
   case: pre-0.6.5 `AiDialog`.
-- 📋 **Observability rule: silent `catch (...)`.** Flag `catch (…) {}`
-  blocks with fewer than N statements (default 2) and no call to a
-  logging macro or qWarning/qDebug/qCDebug. Allow-list the site with the
-  existing inline-suppression comment.
+- ✅ **Observability rule: silent `catch (...)`.** Shipped in 0.6.7 as
+  `silent_catch` — flags empty same-line `catch(...) {}` handlers.
+  Extending to multi-line / single-statement trivial bodies remains future
+  work (`grep -Pzo` plumbing). See [CHANGELOG.md §0.6.7](CHANGELOG.md#067--2026-04-14).
 - ✅ **Self-consistency: fixture-per-`addGrepCheck`.** Shipped in 0.6.6 —
   `audit_fixture_coverage` rule in the dialog + CI-enforced cross-check in
   `tests/audit_self_test.sh`. See [CHANGELOG.md §0.6.6](CHANGELOG.md#066--2026-04-14).
-- 📋 **Build-flag recommender.** Parse `CMakeLists.txt` (or
-  `compile_commands.json`) for the warning flags in use; flag the absence
-  of `-Wformat=2`, `-Wshadow` (or `-Wshadow=local`), `-Wnull-dereference`,
-  `-Wconversion`. Severity Minor — shipped-as-is is fine, this is a
-  nudge toward better compile-time coverage.
-- 📋 **No-CI check.** Flag projects with no `.github/workflows/`, no
-  `.gitlab-ci.yml`, and no `.circleci/` directory. Severity Major —
-  regressions ship silently without any CI.
-- 📋 **Sanitizer-in-ctest hookup.** Wire `ANTS_SANITIZERS=ON` into a
-  dedicated CI job (or a `make check-asan` target) so the ASan/UBSan path
-  gets exercised on every push — currently available but only runs when
-  a contributor remembers to opt in.
-- 📋 **`CONTRIBUTING.md`.** Short doc derived from `STANDARDS.md`:
-  where tests live, how to add an audit rule, how to run the sanitizer
-  build, expected commit message shape. Lowers the barrier for outside
-  contributors once CI is public.
+- ✅ **Build-flag recommender.** Shipped in 0.6.7 as `missing_build_flags`
+  — scans the top-level `CMakeLists.txt` for `-Wformat=2`, `-Wshadow`,
+  `-Wnull-dereference`, `-Wconversion`. See
+  [CHANGELOG.md §0.6.7](CHANGELOG.md#067--2026-04-14).
+- ✅ **No-CI check.** Shipped in 0.6.7 as `no_ci` — covers `.github/workflows/`,
+  `.gitlab-ci.yml`, `.circleci/`, `.travis.yml`, and `Jenkinsfile`. See
+  [CHANGELOG.md §0.6.7](CHANGELOG.md#067--2026-04-14).
+- ✅ **Sanitizer-in-ctest hookup.** Shipped in 0.6.7 — dedicated `build-asan`
+  job in `.github/workflows/ci.yml` runs ctest + a binary smoke test under
+  ASan/UBSan with `QT_QPA_PLATFORM=offscreen` on every push. See
+  [CHANGELOG.md §0.6.7](CHANGELOG.md#067--2026-04-14).
+- ✅ **`CONTRIBUTING.md`.** Shipped in 0.6.7 — derived from `STANDARDS.md`,
+  covers build modes, test layout, adding an audit rule, version-bump
+  checklist. See [CHANGELOG.md §0.6.7](CHANGELOG.md#067--2026-04-14).
 
 ---
 
