@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.16 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.17 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -129,7 +129,32 @@ else()
     message(STATUS "Lua 5.4 not found — plugin system disabled")
 endif()
 
-install(TARGETS ants-terminal DESTINATION bin)
+include(GNUInstallDirs)
+
+install(TARGETS ants-terminal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# ---------------------------------------------------------------------------
+# Desktop integration — freedesktop.org spec + AppStream metainfo
+# ---------------------------------------------------------------------------
+# Reverse-DNS naming (org.ants.Terminal) is what AppStream and .desktop both
+# expect — `launchable` in the metainfo ties the two files together by the
+# shared stem. Installed under share/ so distro packagers can override with
+# DESTDIR for split-staging builds.
+install(FILES packaging/linux/org.ants.Terminal.desktop
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+
+install(FILES packaging/linux/org.ants.Terminal.metainfo.xml
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo)
+
+# Hicolor icon theme — six sizes. Install each under the matching
+# <size>x<size>/apps/ subdir and RENAME to the generic `ants-terminal.png`
+# so the .desktop `Icon=ants-terminal` lookup resolves via the standard
+# icon-theme index at runtime.
+foreach(_sz IN ITEMS 16 32 48 64 128 256)
+    install(FILES assets/ants-terminal-${_sz}.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${_sz}x${_sz}/apps
+            RENAME ants-terminal.png)
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Tests — audit rule fixtures (ctest)

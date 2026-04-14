@@ -14,6 +14,63 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.17] — 2026-04-14
+
+**Theme:** ROADMAP §H2 (Distribution-readiness bundle 2 of 4) —
+AppStream metainfo and a spec-compliant desktop entry so Ants appears
+in GNOME Software / KDE Discover catalogues once a distro packages it.
+Fully additive, no runtime code changes.
+
+### Added
+
+- **`packaging/linux/org.ants.Terminal.metainfo.xml`** — [AppStream 1.0][as1]
+  descriptor: `id` / `name` / `summary` / multi-paragraph
+  `description` / `categories` / `keywords` / `url` (homepage,
+  bugtracker, vcs, help, contribute) / `provides/binary` /
+  `supports/control` / `content_rating` (OARS 1.1, all-none) /
+  `launchable` tying to the `.desktop` id / `releases` with 0.6.14–
+  0.6.17 changelog summaries. `metadata_license` CC0-1.0,
+  `project_license` MIT. Validated by `appstreamcli validate`
+  (pedantic clean aside from the reverse-DNS uppercase hint, which
+  matches the convention used by `org.gnome.Terminal` and
+  `org.kde.Konsole`).
+- **`packaging/linux/org.ants.Terminal.desktop`** — reverse-DNS app
+  id so it round-trips with the metainfo `launchable`. Fields:
+  `Type=Application`, `Terminal=false`, `Categories=Qt;System;Terminal-
+  Emulator;` (exactly one main category — avoids the multi-listing
+  menu hint), `Keywords=` tightened, `StartupWMClass=ants-terminal`,
+  `TryExec=ants-terminal`. Two `Desktop Action` entries — `NewWindow`
+  and `QuakeMode` (wires `--quake`) — for right-click launcher
+  integration in most DEs. Validated by `desktop-file-validate` clean.
+- **CMake install rules** (`include(GNUInstallDirs)`) for the desktop
+  file (`share/applications/`), metainfo XML (`share/metainfo/`), and
+  the six hicolor icons renamed to `ants-terminal.png` under
+  `share/icons/hicolor/<size>x<size>/apps/`. `DESTDIR=…` staging works
+  out of the box for distro build roots.
+- **CI validation job** — `.github/workflows/ci.yml` installs
+  `appstream` + `desktop-file-utils` and runs `appstreamcli validate
+  --explain` + `desktop-file-validate` on every push so schema drift
+  in the packaging files fails the build instead of landing in a
+  release tarball.
+
+### Changed
+
+- README **Install System-wide** section replaces the bare `make
+  install` with `cmake --install build`, adds a table of every path
+  the install rule lays down (bin/ desktop/ metainfo/ hicolor icons),
+  and notes `DESTDIR=…` support for packagers.
+- README **Desktop Entry** section split into two paths: the dev
+  workflow (`ants-terminal.desktop.in` + `launch.sh` for running
+  uninstalled from the build tree) and the distro workflow (the new
+  `packaging/linux/` files installed via CMake). Dev path unchanged;
+  packaged path is new.
+- README **Project Structure** map mentions `packaging/linux/`.
+- ROADMAP §H2 status 📋 → ✅ in both the distribution-adoption
+  overview table and the §0.7.0 📦 narrative section, with links to
+  this CHANGELOG entry.
+
+[as1]: https://www.freedesktop.org/software/appstream/docs/
+
 ## [0.6.16] — 2026-04-14
 
 **Theme:** ROADMAP §H1 (Distribution-readiness bundle 1 of 4) —

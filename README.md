@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>0.6.16</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
+  Current version: <strong>0.6.17</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
 </p>
 
 ---
@@ -533,13 +533,27 @@ the shell script.
 ### Install System-wide
 
 ```bash
-sudo make install   # installs to /usr/local/bin/ants-terminal
+sudo cmake --install build   # installs to /usr/local by default
 ```
 
-### Desktop Entry (App Menu Integration)
+That picks up every install rule in `CMakeLists.txt`:
 
-`ants-terminal.desktop.in` is a template — generate your local copy by
-substituting the absolute path to your checkout:
+| Path | What |
+|------|------|
+| `<prefix>/bin/ants-terminal` | Binary |
+| `<prefix>/share/applications/org.ants.Terminal.desktop` | App-menu entry |
+| `<prefix>/share/metainfo/org.ants.Terminal.metainfo.xml` | AppStream metadata (GNOME Software, KDE Discover) |
+| `<prefix>/share/icons/hicolor/<size>/apps/ants-terminal.png` | Icon at six sizes (16/32/48/64/128/256) |
+
+Distros should stage into a build root with `DESTDIR=…` (all rules use
+`GNUInstallDirs`, so Debian/Fedora/openSUSE/Arch packaging tooling
+works without patches).
+
+### Desktop Entry for development (run uninstalled)
+
+If you prefer to run straight out of the build tree without a
+system install, `ants-terminal.desktop.in` is a template that points at
+your checkout via `launch.sh`:
 
 ```bash
 # From the repo root:
@@ -549,7 +563,8 @@ cp assets/ants-terminal-256.png ~/.local/share/icons/hicolor/256x256/apps/ants-t
 ```
 
 The generated `ants-terminal.desktop` is git-ignored since it contains a
-machine-specific path.
+machine-specific path. The packaged entry under `packaging/linux/` is
+the one distros ship.
 
 ---
 
@@ -924,6 +939,7 @@ ants-terminal/
 ├── launch.sh                   # Self-locating launcher wrapper
 ├── ants-terminal.desktop.in    # Desktop entry template (@INSTALL_DIR@)
 ├── assets/                     # App icons (16-256px PNGs)
+├── packaging/linux/            # Spec-compliant .desktop + AppStream metainfo
 └── src/
     ├── main.cpp                # Entry point, OpenGL format setup
     ├── mainwindow.h/cpp        # Window, menus, themes, dialogs

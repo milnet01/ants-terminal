@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.15 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.17 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -43,7 +43,7 @@ release; this section is the rollup so nothing falls by the wayside.
 | Bundle | What ships | Status | Target release |
 |--------|------------|--------|----------------|
 | **H1** | `SECURITY.md` coordinated-disclosure policy, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) | ✅ | 0.6.16 |
-| **H2** | AppStream `org.ants.Terminal.metainfo.xml`, polished desktop entry (`org.ants.Terminal.desktop`), icon install rules | 📋 | 0.7.0 |
+| **H2** | AppStream `org.ants.Terminal.metainfo.xml`, polished desktop entry (`org.ants.Terminal.desktop`), icon install rules | ✅ | 0.6.17 |
 | **H3** | Man page `ants-terminal.1` + CMake install rule | 📋 | 0.7.0 |
 | **H4** | Bash / zsh / fish completions + CMake install rules | 📋 | 0.7.0 |
 | **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | 📋 | 0.8.0 |
@@ -61,8 +61,13 @@ release; this section is the rollup so nothing falls by the wayside.
 
 Already shipped (as of this ROADMAP revision):
 
-- ✅ **`.desktop` file** (pre-0.5 ancestor — will be polished + renamed to `org.ants.Terminal.desktop` under H2)
-- ✅ **Icons at multiple sizes** — `assets/ants-terminal-{16,32,48,64,128,256}.png` ready for hicolor-theme install under H2
+- ✅ **`.desktop` file** — pre-0.5 ancestor preserved as
+  `ants-terminal.desktop.in` for the dev-symlink workflow; 0.6.17
+  adds a spec-compliant `packaging/linux/org.ants.Terminal.desktop`
+  for distro installs
+- ✅ **Icons at multiple sizes** — `assets/ants-terminal-{16,32,48,64,128,256}.png`,
+  installed under `share/icons/hicolor/<size>x<size>/apps/ants-terminal.png`
+  by 0.6.17's CMake rules
 - ✅ **CHANGELOG.md + SemVer discipline** — every release has a dated section with categorical bullets
 - ✅ **CI with ASan + UBSan** — the `build-asan` lane runs sanitized ctest + binary smoke on every push
 - ✅ **Audit pipeline** — clazy + cppcheck + grep rules + fixture-enforced regression coverage
@@ -70,8 +75,8 @@ Already shipped (as of this ROADMAP revision):
 Gating items (blocks adoption **today**, not just for being default):
 
 1. **No distro packages anywhere** — H5 + H6 unblock this.
-2. **No AppStream metadata** — H2 unblocks GNOME Software / KDE Discover discovery.
-3. **No SECURITY.md** — H1. Distro security teams need a disclosure contact before shipping.
+2. ~~**No AppStream metadata** — H2 unblocks GNOME Software / KDE Discover discovery.~~ ✅ Shipped in 0.6.17.
+3. ~~**No SECURITY.md** — H1. Distro security teams need a disclosure contact before shipping.~~ ✅ Shipped in 0.6.16.
 4. **Linux-only + X11-only dropdown** — H8 (macOS) and §0.7.0 Wayland-native Quake widen the addressable audience.
 
 ---
@@ -310,18 +315,21 @@ for the full multi-release plan.
   Security Advisory listed as conduct reporting channels. Clears the
   Debian / Fedora / Ubuntu security-team review gate. See
   [CHANGELOG.md §0.6.16](CHANGELOG.md#0616--2026-04-14).
-- 📋 **H2 — AppStream metainfo + polished desktop entry**. Create
-  `packaging/linux/org.ants.Terminal.metainfo.xml` (AppStream 1.0
-  schema with summary / description / screenshots / releases /
-  categories / OARS content rating / keywords). Rename
-  `ants-terminal.desktop` → `org.ants.Terminal.desktop` to match the
-  reverse-DNS convention the spec requires, add `MimeType=` for
-  relevant schemes (`x-scheme-handler/ssh`, `x-scheme-handler/telnet`),
-  tighten `Keywords=`, ensure `StartupWMClass=ants-terminal`. CMake
-  install rules for the desktop file, metainfo, and the existing
-  hicolor icons (16/32/48/64/128/256). Validate with
-  `appstreamcli validate` + `desktop-file-validate` in CI. Unblocks
-  GNOME Software + KDE Discover discovery.
+- ✅ **H2 — AppStream metainfo + polished desktop entry**. Shipped in
+  0.6.17. `packaging/linux/org.ants.Terminal.metainfo.xml` (AppStream
+  1.0 with summary / description / releases / categories / keywords /
+  OARS content rating / supports / provides / launchable) and
+  `packaging/linux/org.ants.Terminal.desktop` (reverse-DNS id,
+  tightened Keywords, StartupWMClass, two Desktop Actions for
+  NewWindow + QuakeMode). CMake install rules via `GNUInstallDirs`
+  cover desktop / metainfo / six hicolor icons, and CI runs
+  `appstreamcli validate --explain` + `desktop-file-validate` on every
+  push. `MimeType=` entries deliberately omitted — Ants doesn't
+  register any URL-scheme handlers, so claiming them would be false
+  metadata. Follow-up: add real UI screenshots under
+  `docs/screenshots/` and a `<screenshots>` block in the metainfo so
+  GNOME Software tiles render a preview instead of the app icon. See
+  [CHANGELOG.md §0.6.17](CHANGELOG.md#0617--2026-04-14).
 - 📋 **H3 — Man page**. `ants-terminal.1` in troff (or scdoc →
   `man`), covering synopsis, description, CLI flags (`--version`,
   `--help`, `--new-plugin`), config keys overview (with a pointer to

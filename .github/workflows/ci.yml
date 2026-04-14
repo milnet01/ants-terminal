@@ -56,6 +56,24 @@ jobs:
                    --error-exitcode=0 \
                    -I src src/
 
+      # Packaging artefact validation (H2 — distribution readiness).
+      # Runs the same validators distro packagers invoke during package
+      # review, so schema drift in the desktop entry or AppStream metainfo
+      # fails CI instead of landing in a release tarball.
+      - name: Install AppStream + desktop-file validators
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            appstream desktop-file-utils
+
+      - name: Validate AppStream metainfo
+        run: |
+          appstreamcli validate --explain \
+            packaging/linux/org.ants.Terminal.metainfo.xml
+
+      - name: Validate desktop entry
+        run: |
+          desktop-file-validate packaging/linux/org.ants.Terminal.desktop
+
   # Dedicated ASan + UBSan build. Smoke-tests the binary under sanitizers
   # so initialization-path bugs (config load, command-line parsing, Qt setup)
   # are caught on every push. Runtime coverage today is narrow — `--version`

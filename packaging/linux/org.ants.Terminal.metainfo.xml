@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo for Ants Terminal.
+
+  Consumed by GNOME Software, KDE Discover, and distro appstream catalogues
+  (Debian DEP-11, Fedora AppStream, openSUSE OBS, Arch pacman-contrib).
+  The `id` matches the `.desktop` filename stem (reverse-DNS) so that
+  `launchable` can tie the two together.
+
+  Validate with:
+    appstreamcli validate packaging/linux/org.ants.Terminal.metainfo.xml
+    desktop-file-validate packaging/linux/org.ants.Terminal.desktop
+
+  When cutting a release, add a new <release/> entry at the top of the
+  <releases/> list (newest first) with version/date and a short summary
+  of user-visible changes — distros surface this in the update-details UI.
+
+  TODO(screenshots): add a <screenshots/> block once we commit real UI
+  captures under docs/screenshots/. Current omission produces a validator
+  warning (informational), not an error; GNOME Software falls back to the
+  app icon for the store tile until screenshots land.
+-->
+<component type="desktop-application">
+  <id>org.ants.Terminal</id>
+  <launchable type="desktop-id">org.ants.Terminal.desktop</launchable>
+
+  <name>Ants Terminal</name>
+  <summary>Modern, themeable terminal emulator with GPU rendering and plugins</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <developer id="org.ants">
+    <name>Ants Terminal Contributors</name>
+  </developer>
+
+  <description>
+    <p>
+      Ants Terminal is a fast, feature-rich terminal emulator written from
+      scratch in C++20 with Qt6. It targets the capabilities modern
+      terminal users expect — true-color themes, ligatures, hyperlinks,
+      inline images, and a scriptable plugin system — without dragging
+      in a web runtime.
+    </p>
+    <p>Key features:</p>
+    <ul>
+      <li>Eleven built-in themes with full ANSI palette overrides, plus automatic dark/light switching that follows the system color scheme.</li>
+      <li>Optional OpenGL glyph-atlas renderer for GPU-accelerated draws; QPainter path with ligature-aware text shaping (HarfBuzz) remains the default.</li>
+      <li>Inline images via Sixel, Kitty graphics protocol, and iTerm2 OSC 1337. Image paste auto-saves to disk — optimized for LLM / coding-agent workflows.</li>
+      <li>Shell integration via OSC 133 (prompt jump, exit-status marks). OSC 8 hyperlinks, OSC 52 clipboard, OSC 9/777 desktop notifications, OSC 9;4 progress reporting.</li>
+      <li>Kitty keyboard protocol with progressive enhancement, synchronized output, SGR mouse reporting, focus reporting.</li>
+      <li>Embedded Lua 5.4 plugin system (sandboxed) with documented <code>ants.*</code> API. Session persistence saves scrollback across restarts.</li>
+      <li>Built-in Project Audit panel: clazy + cppcheck + semgrep + regex rules with SARIF v2.1.0 export, AI-assisted triage, and confidence scoring.</li>
+      <li>Configurable keybindings, command snippets, auto-profile rules, SSH bookmarks, and an OpenAI-compatible AI assistant dialog.</li>
+    </ul>
+  </description>
+
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>terminal</keyword>
+    <keyword>console</keyword>
+    <keyword>shell</keyword>
+    <keyword>bash</keyword>
+    <keyword>emulator</keyword>
+    <keyword>tty</keyword>
+    <keyword>command</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/milnet01/ants-terminal</url>
+  <url type="bugtracker">https://github.com/milnet01/ants-terminal/issues</url>
+  <url type="vcs-browser">https://github.com/milnet01/ants-terminal</url>
+  <url type="help">https://github.com/milnet01/ants-terminal/blob/main/README.md</url>
+  <url type="contribute">https://github.com/milnet01/ants-terminal/blob/main/CONTRIBUTING.md</url>
+
+  <provides>
+    <binary>ants-terminal</binary>
+  </provides>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.6.17" date="2026-04-14">
+      <description>
+        <p>Distribution-readiness bundle H2: AppStream metainfo and spec-compliant desktop entry.</p>
+        <ul>
+          <li>Added <code>org.ants.Terminal.metainfo.xml</code> for GNOME Software and KDE Discover discovery.</li>
+          <li>Added <code>org.ants.Terminal.desktop</code> following the reverse-DNS naming convention.</li>
+          <li>CMake install rules for desktop entry, metainfo, and hicolor-theme icons at six sizes.</li>
+          <li>CI validates packaging artefacts with <code>appstreamcli</code> and <code>desktop-file-validate</code>.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.6.16" date="2026-04-14">
+      <description>
+        <p>Distribution-readiness bundle H1: community and security policy documents.</p>
+        <ul>
+          <li>Added <code>CODE_OF_CONDUCT.md</code> (Contributor Covenant 2.1) with dedicated reporting channels.</li>
+          <li>Changelogged the previously shipped <code>SECURITY.md</code> coordinated-disclosure policy.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.6.15" date="2026-04-14">
+      <description>
+        <p>Incremental scrollback reflow with a fast path for standalone lines.</p>
+      </description>
+    </release>
+    <release version="0.6.14" date="2026-04-14">
+      <description>
+        <p>Security hardening — URI scheme allowlist in <code>addRowHyperlink</code>.</p>
+      </description>
+    </release>
+  </releases>
+</component>

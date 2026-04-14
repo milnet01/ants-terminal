@@ -1,0 +1,25 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Ants Terminal
+GenericName=Terminal
+Comment=Modern, themeable terminal emulator with GPU rendering and plugins
+Exec=ants-terminal
+TryExec=ants-terminal
+Icon=ants-terminal
+Terminal=false
+Categories=Qt;System;TerminalEmulator;
+Keywords=terminal;console;shell;bash;emulator;tty;command;
+StartupNotify=true
+StartupWMClass=ants-terminal
+PrefersNonDefaultGPU=false
+SingleMainWindow=false
+Actions=NewWindow;QuakeMode;
+
+[Desktop Action NewWindow]
+Name=New Window
+Exec=ants-terminal
+
+[Desktop Action QuakeMode]
+Name=Drop-down (Quake) Window
+Exec=ants-terminal --quake
