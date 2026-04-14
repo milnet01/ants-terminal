@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QStandardPaths>
 #include <QDir>
+#include <QSet>
 
 #include <algorithm>
 #include <cwchar>
@@ -1274,6 +1275,28 @@ void TerminalGrid::addRowHyperlink(int row, int startCol, int endCol,
                                    const QString &uri) {
     if (row < 0 || row >= m_rows) return;
     if (uri.isEmpty()) return;
+
+    // 0.6.14 security — enforce the same URI scheme allowlist OSC 8 uses
+    // (see handleOsc 8 branch ~line 605). make_hyperlink trigger rules
+    // expand $1..$9 backrefs from the PTY output into the URL template,
+    // and the output is attacker-controllable (SSH, remote shell, any
+    // inner-tty process). Without this check, an innocent template like
+    // `https://example.com/$1` can be weaponized when the pattern matches
+    // an attacker-supplied string containing `javascript:` or `data:`.
+    // Drop the hyperlink silently on unknown scheme — matches OSC 8
+    // behavior (text still prints, just isn't clickable).
+    {
+        int colonPos = uri.indexOf(':');
+        if (colonPos <= 0) return;
+        QString scheme = uri.left(colonPos).toLower();
+        static const QSet<QString> kAllowed = {
+            QStringLiteral("http"),  QStringLiteral("https"),
+            QStringLiteral("ftp"),   QStringLiteral("file"),
+            QStringLiteral("mailto")
+        };
+        if (!kAllowed.contains(scheme)) return;
+    }
+
     // m_screenHyperlinks is grown on demand by the OSC 8 path; mirror that
     // semantics here so a trigger-created hyperlink on an otherwise empty
     // hyperlink row Just Works.

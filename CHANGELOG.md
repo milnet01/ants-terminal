@@ -14,6 +14,37 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.14] — 2026-04-14
+
+**Theme:** small security follow-up to 0.6.13 — catch a URI-scheme
+injection vector in the new `make_hyperlink` trigger action that
+self-review after shipping turned up. No ROADMAP transition; this is
+a hardening patch on an already-shipped feature.
+
+### Security
+
+- **URI scheme allowlist in `TerminalGrid::addRowHyperlink()`**. The
+  `make_hyperlink` trigger action expands `$0..$9` backrefs from the
+  matched PTY output into the URL template — and PTY output is
+  attacker-controllable (SSH sessions, remote shells, any inner-tty
+  process). Without a scheme check, an innocent-looking template
+  like `https://example.com/$1` could be weaponized when the
+  pattern matches an attacker-supplied string that expands to
+  `javascript:alert(1)` or `data:text/html,...`. The new check
+  mirrors the existing OSC 8 allowlist (`http`, `https`, `ftp`,
+  `file`, `mailto`); hyperlinks with any other scheme are silently
+  dropped, matching OSC 8's drop-on-bad-scheme semantics — text
+  still prints, it just isn't clickable.
+
+### Notes
+
+- Same allowlist used by OSC 8 remote hyperlink parsing in
+  `handleOsc()`; kept in lockstep so both sources share the same
+  threat model.
+- No config schema change, no plugin API change, no UI change.
+- `QSet` added to `terminalgrid.cpp` includes for the allowlist
+  storage.
+
 ## [0.6.13] — 2026-04-14
 
 **Theme:** close out the last deferred bullet from the 0.6.9 trigger-system
