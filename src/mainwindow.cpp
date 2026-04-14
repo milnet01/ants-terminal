@@ -304,13 +304,21 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
                              + "/ants-terminal/config.json");
     connect(m_configWatcher, &QFileSystemWatcher::fileChanged, this, &MainWindow::onConfigFileChanged);
 
-    // Dark/light mode auto-switching (Qt 6.5+ signal)
+    // Dark/light mode auto-switching (Qt 6.5+ signal). Older Qt builds
+    // (Ubuntu 22.04 / 24.04 LTS ship 6.2 / 6.4) lack the colorScheme()
+    // accessor and colorSchemeChanged signal — feature self-disables there;
+    // setting still appears in the UI but has no effect. No fallback wiring
+    // (e.g. parsing GTK theme files) — too platform-specific to be worth it
+    // when Qt 6.5+ is broadly available on Tumbleweed/Fedora/Arch and
+    // becoming standard.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     if (m_config.autoColorScheme()) {
         connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
                 this, [this]() { onSystemColorSchemeChanged(); });
         // Apply initial scheme
         onSystemColorSchemeChanged();
     }
+#endif
 
     // Cleanup old sessions at startup, then once every 24 h for long-running
     // instances (desktop-wide Quake tile, tmux-like usage).
@@ -2580,6 +2588,7 @@ void MainWindow::onConfigFileChanged(const QString &path) {
 // --- Dark/Light Mode Auto-Switching ---
 
 void MainWindow::onSystemColorSchemeChanged() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     if (!m_config.autoColorScheme()) return;
 
     Qt::ColorScheme scheme = QGuiApplication::styleHints()->colorScheme();
@@ -2594,6 +2603,10 @@ void MainWindow::onSystemColorSchemeChanged() {
         m_config.setTheme(themeName);
         showStatusMessage("Theme auto-switched to " + themeName, 3000);
     }
+#endif
+    // Pre-Qt-6.5: slot is wired only above the version guard, so this body
+    // is unreachable on those builds. Keeping the signature available in
+    // both branches avoids a header version check too.
 }
 
 // --- Auto-Profile Switching ---
