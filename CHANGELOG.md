@@ -14,6 +14,37 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.3] — 2026-04-14
+
+**Theme:** Claude Code status responsiveness. Replaces the 2-second transcript
+poll with an inotify-driven event pipeline; state transitions now surface in
+~50ms instead of up to 2s, with lower steady-state CPU.
+
+### Changed
+
+- **Transcript state updates are event-driven.** `ClaudeIntegration` already
+  had a `QFileSystemWatcher` on the active transcript but bypassed it with
+  an unconditional per-poll parse ("QFileSystemWatcher can miss rapid
+  changes on Linux"). That was over-defensive — QFSW's only real miss
+  modes are atomic rename-over (already handled by the re-add in
+  `parseTranscriptForState`) and full file replacement (now handled by a
+  slow backstop). The watcher's `fileChanged` signal now drives a 50ms
+  single-shot debounce timer that coalesces streaming-output bursts
+  (during an assistant turn Claude writes dozens of JSONL lines per
+  second) into at most ~20 parses/sec. Net effect: "Claude:
+  thinking…/compacting…/idle" transitions flip in ~50ms instead of up to
+  2000ms, and the CPU no longer re-parses 32KB of JSON every 2 seconds
+  when nothing has changed.
+
+- **Process-presence poll kept at 2s, with a 20s transcript backstop.**
+  Polling `/proc` for claude-code starting/stopping under our shell has
+  no clean event equivalent (we're not the direct parent, and netlink
+  proc-connector needs elevated caps), but it's cheap — ~40 bytes read
+  per cycle. The poll now also re-parses the transcript once every 10
+  cycles (~20s) as a defensive net for the rare file-replaced case where
+  QFSW loses its watch; the re-parse also re-arms the watch via the
+  existing `addPath`-if-missing check.
+
 ## [0.6.2] — 2026-04-14
 
 **Theme:** Claude Code status readability. Adds a dedicated "compacting" state

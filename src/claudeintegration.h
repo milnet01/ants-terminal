@@ -115,6 +115,13 @@ private:
     QTimer m_pollTimer;
     pid_t m_claudePid = 0;
 
+    // Transcript parsing is event-driven (QFileSystemWatcher -> inotify) with a
+    // debounce timer to coalesce streaming-output bursts, plus a slow backstop
+    // tick counter that forces a re-parse every N poll cycles in case the
+    // watcher missed a file-replaced event.
+    QTimer m_transcriptDebounce;
+    int m_transcriptBackstopTicks = 0;
+
     // Hook server
     QLocalServer *m_hookServer = nullptr;
 

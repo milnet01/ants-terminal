@@ -12,9 +12,32 @@
 #include <QApplication>
 
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
-    // Poll for Claude Code process every 2 seconds
+    // Poll for Claude Code process every 2 seconds. This is only for
+    // detecting claude-code starting/stopping under our shell — transcript
+    // state changes are event-driven via m_transcriptWatcher below.
     m_pollTimer.setInterval(2000);
     connect(&m_pollTimer, &QTimer::timeout, this, &ClaudeIntegration::pollClaudeProcess);
+
+    // Coalesce bursts from the transcript watcher. During streaming assistant
+    // output Claude Code appends many JSONL lines per second; each would
+    // otherwise trigger a parse. 50ms is short enough that UI latency stays
+    // imperceptible and long enough to collapse a typical write-burst.
+    m_transcriptDebounce.setSingleShot(true);
+    m_transcriptDebounce.setInterval(50);
+    connect(&m_transcriptDebounce, &QTimer::timeout, this, [this]() {
+        if (!m_transcriptPath.isEmpty())
+            parseTranscriptForState(m_transcriptPath);
+    });
+
+    // QFileSystemWatcher wraps inotify; this costs ~1KB of kernel memory per
+    // watched path and zero CPU when the file is quiescent. The signal is
+    // wired once here instead of per-session to avoid the disconnect/connect
+    // dance the old polling code was doing.
+    connect(&m_transcriptWatcher, &QFileSystemWatcher::fileChanged,
+            this, [this](const QString &) {
+        if (!m_transcriptDebounce.isActive())
+            m_transcriptDebounce.start();
+    });
 }
 
 ClaudeIntegration::~ClaudeIntegration() {
@@ -152,18 +175,16 @@ void ClaudeIntegration::pollClaudeProcess() {
             if (newest.exists()) {
                 m_transcriptPath = newest.absoluteFilePath();
 
-                // Remove old watches to avoid stale watchers
+                // Swap watch to the new transcript. Signal hookup happens
+                // once in the constructor, so no disconnect/connect dance.
                 QStringList oldFiles = m_transcriptWatcher.files();
                 if (!oldFiles.isEmpty())
                     m_transcriptWatcher.removePaths(oldFiles);
-
                 m_transcriptWatcher.addPath(m_transcriptPath);
 
-                // Connect signal only once (disconnect first to avoid duplicates)
-                disconnect(&m_transcriptWatcher, &QFileSystemWatcher::fileChanged,
-                           this, &ClaudeIntegration::parseTranscriptForState);
-                connect(&m_transcriptWatcher, &QFileSystemWatcher::fileChanged,
-                        this, &ClaudeIntegration::parseTranscriptForState);
+                // Seed state from the current transcript tail — without this
+                // the UI would show "Idle" until the next write event fires.
+                parseTranscriptForState(m_transcriptPath);
             }
         }
 
@@ -174,10 +195,15 @@ void ClaudeIntegration::pollClaudeProcess() {
         }
     }
 
-    // Parse transcript on EVERY poll cycle for reliability —
-    // QFileSystemWatcher can miss rapid changes on Linux
-    if (!m_transcriptPath.isEmpty())
+    // Backstop re-parse: event-driven path handles ~99% of updates, but a
+    // file-replaced event can unbind the inotify watch in edge cases. Once
+    // every 10 poll cycles (~20s) we re-parse unconditionally — parse is
+    // cheap (~32KB read) and this also re-arms the watch via the
+    // addPath-if-missing check at the top of parseTranscriptForState.
+    if (!m_transcriptPath.isEmpty() && ++m_transcriptBackstopTicks >= 10) {
+        m_transcriptBackstopTicks = 0;
         parseTranscriptForState(m_transcriptPath);
+    }
 }
 
 // --- Session Transcripts ---
