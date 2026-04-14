@@ -39,17 +39,21 @@
 // Edit once, applies everywhere.
 namespace {
 
-// find(1) exclude expression (paths)
+// find(1) exclude expression (paths).
+// `external/` and `third_party/` hold vendored code we don't maintain;
+// findings there aren't actionable. Same rationale as `vendor/`.
 const QString kFindExcl =
     " -not -path './.git/*' -not -path './build/*' -not -path './build-*/*'"
     " -not -path './node_modules/*' -not -path './.cache/*'"
-    " -not -path './dist/*' -not -path './vendor/*' -not -path './.audit_cache/*'";
+    " -not -path './dist/*' -not -path './vendor/*' -not -path './.audit_cache/*'"
+    " -not -path './external/*' -not -path './third_party/*'";
 
-// grep(1) exclude-dir list (bare, no file-include filter)
+// grep(1) exclude-dir list (bare, no file-include filter).
 const QString kGrepExcl =
     " --exclude-dir=.git --exclude-dir=build --exclude-dir='build-*'"
     " --exclude-dir=node_modules --exclude-dir=.cache"
-    " --exclude-dir=dist --exclude-dir=vendor --exclude-dir=.audit_cache";
+    " --exclude-dir=dist --exclude-dir=vendor --exclude-dir=.audit_cache"
+    " --exclude-dir=external --exclude-dir=third_party";
 
 // Security scans also skip auditdialog.cpp/.h — its check descriptions
 // contain the very patterns being searched for (unsafe function names,
@@ -75,6 +79,19 @@ const QStringList kCommonNoiseExcludes = {
     "dummy", "Dummy",
     "TODO:", "FIXME:",
     "//  removed", "// cppcheck-suppress",
+};
+
+// Filesystems that don't enforce POSIX permission bits. On these, every file
+// reports as world-writable regardless of intent, so the `file_perms` check
+// produces 100% false positives. Values match the `stat -f -c %T` output
+// on Linux (FUSE mounts commonly report "fuseblk"; NTFS-3G appears as
+// "fuseblk" too, but explicit "ntfs"/"ntfs3" covers the kernel driver).
+const QSet<QString> kNonPosixFilesystems = {
+    "fuseblk", "fuse", "fuse.sshfs", "fuse.glusterfs",
+    "ntfs", "ntfs3",
+    "msdos", "vfat", "exfat",
+    "cifs", "smbfs", "smb2",
+    "9p",
 };
 
 } // namespace
@@ -122,6 +139,17 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
 
     detectProject();
     m_blameEnabled = m_detectedTypes.contains("Git");
+
+    // Probe the filesystem type once (e.g. "ext2/ext3", "btrfs", "fuseblk",
+    // "ntfs", "vfat"). Used by populateChecks() to conditionally skip
+    // POSIX-only checks on filesystems that don't enforce them.
+    {
+        QProcess st;
+        st.start("stat", {"-f", "-c", "%T", m_projectPath});
+        if (st.waitForFinished(2000) && st.exitCode() == 0)
+            m_projectFsType = QString::fromUtf8(st.readAllStandardOutput()).trimmed();
+    }
+
     loadBaseline();
     loadSuppressions();
     populateChecks();
@@ -131,6 +159,15 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
     if (!m_pathRules.isEmpty())
         m_detectedTypes << QString("Path rules: %1").arg(m_pathRules.size());
     buildUI();
+}
+
+// Returns false when the project lives on a filesystem that doesn't enforce
+// POSIX permission bits (FAT/NTFS/FUSE/SMB/9p). On those mounts the kernel
+// typically maps every file to u=rwx,g=rwx,o=rwx, so permission-based
+// security checks are meaningless.
+bool AuditDialog::isPosixFilesystem() const {
+    if (m_projectFsType.isEmpty()) return true;  // detection failed — assume POSIX
+    return !kNonPosixFilesystems.contains(m_projectFsType);
 }
 
 // ---------------------------------------------------------------------------
@@ -306,9 +343,13 @@ void AuditDialog::populateChecks() {
                  "-type l ! -exec test -e {} \\; -print | head -30",
                  CheckType::Bug, Severity::Minor, false);
 
+    // Exactly 7 sigil chars anchored at start of line, followed by whitespace
+    // or end of line. Without the trailing anchor, section-heading underlines
+    // (e.g. `===========` in vendored single-header libraries) get flagged as
+    // merge conflicts. Includes `|{7}` for the diff3 merge-base marker.
     addGrepCheck("conflict_markers", "Git Conflict Markers",
                  "Unresolved merge conflicts in source", "General",
-                 "'^(<{7}|>{7}|={7})'",
+                 "'^(<{7}|\\|{7}|={7}|>{7})(\\s|$)'",
                  CheckType::Bug, Severity::Blocker, true);
 
     addFindCheck("binary_in_repo", "Binary Files in Source",
@@ -368,10 +409,34 @@ void AuditDialog::populateChecks() {
                   "--include='*.json' --include='*.yaml' --include='*.yml'",
                   "--include='*.toml' --include='*.cfg' --include='*.ini'"});
 
-    addFindCheck("file_perms", "World-Writable Files",
-                 "World-writable or group-writable files", "Security",
-                 "-type f \\( -perm -002 -o -perm -020 \\) | head -30",
-                 CheckType::Vulnerability, Severity::Major, false);
+    if (isPosixFilesystem()) {
+        addFindCheck("file_perms", "World-Writable Files",
+                     "World-writable or group-writable files", "Security",
+                     "-type f \\( -perm -002 -o -perm -020 \\) | head -30",
+                     CheckType::Vulnerability, Severity::Major, false);
+    } else {
+        // On non-POSIX filesystems every file appears world-writable because
+        // the mount maps all Unix perms to 0777. Running the check produces
+        // ~every file in the tree as a "finding" — noise with no signal.
+        // Emit an INFO placeholder that explains the skip instead.
+        const QString fs = m_projectFsType.isEmpty() ? "(unknown)" : m_projectFsType;
+        const QString msg =
+            QString("Scan skipped: project root is on filesystem '%1', which "
+                    "does not enforce POSIX permissions. All files would "
+                    "appear world-writable regardless of intent. Re-run on "
+                    "an ext4/xfs/btrfs/apfs/zfs mount to audit permissions.")
+                .arg(fs);
+        // `printf` keeps the message on a single output line so it parses
+        // cleanly as one Finding rather than being split per newline.
+        m_checks.append({
+            "file_perms", "World-Writable Files",
+            "Skipped on non-POSIX filesystem", "Security",
+            "printf '%s\\n' " + QString("\"%1\"").arg(msg),
+            CheckType::Info, Severity::Info,
+            { /*dropIfContains*/ {}, "", {}, 0 },
+            false, true, nullptr
+        });
+    }
 
     // Unsafe C functions — tightened. sprintf/strtok are flagged but common
     // safe uses (format-string literal) are filtered out in-app.
@@ -2651,10 +2716,21 @@ void AuditDialog::renderResults() {
         const bool clean = r.findings.isEmpty() && r.omittedCount == 0 && !r.warning;
         const QString color = r.warning ? "#E74856" : severityColor(r.severity);
 
+        // Corroborated-finding count — same signal as the ★ badge, summarised
+        // at the category level so the reader can prioritise at a glance.
+        int corroborated = 0;
+        for (const Finding &f : r.findings)
+            if (f.highConfidence) ++corroborated;
+        const QString corroSuffix = corroborated > 0
+            ? QString(" <span title='Cross-validated by ≥2 tools' "
+                      "style='color:#FFD700; font-size:10px;'>"
+                      "(%1 corroborated)</span>").arg(corroborated)
+            : QString();
+
         // Header
         m_results->append(QString(
             "<div style='margin-bottom:4px;'>"
-            "<span style='color:%1; font-weight:bold;'>[%2] %3 — %4%5</span>"
+            "<span style='color:%1; font-weight:bold;'>[%2] %3 — %4%5</span>%8"
             "<span style='color:#888; font-size:10px;'>  · %6 · %7</span>"
             "</div>"
         ).arg(color,
@@ -2663,7 +2739,8 @@ void AuditDialog::renderResults() {
               r.checkName.toHtmlEscaped(),
               r.warning ? " (timeout)" : "",
               r.category.toHtmlEscaped(),
-              r.source));
+              r.source,
+              corroSuffix));
 
         if (r.warning) {
             m_results->append(QString("<pre style='margin:2px 0 10px 10px; color:#c00;'>%1</pre>")
@@ -3448,6 +3525,11 @@ QString AuditDialog::plainTextResults() const {
     if (m_recentOnly)
         header += QString("Scope: files touched in last %1 commits (%2 file(s))\n")
                     .arg(m_recentCommits).arg(m_recentFiles.size());
+    header +=
+        "Legend: `conf N` = 0-100 confidence score (higher = more tools\n"
+        "        corroborate). `★` = flagged by ≥2 distinct tools on the\n"
+        "        same file:line. `N corroborated` in a category header means\n"
+        "        that many of the findings in that check carry the ★.\n";
     header += "---\n\n";
 
     // Attach the project's own standards docs when present. Gives the
@@ -3464,6 +3546,73 @@ QString AuditDialog::plainTextResults() const {
     appendDocIfPresent("STANDARDS.md",   "Project coding standards");
     appendDocIfPresent("RULES.md",       "Project rules");
     appendDocIfPresent("CONTRIBUTING.md","Contributing guidelines");
+
+    // 5-phase workflow scaffold for the downstream Claude session. Gives the
+    // consumer a verification + approval gate rather than letting it plunge
+    // straight into fixes — a common failure mode where regex false positives
+    // get "fixed" into real bugs because nothing proved they were real first.
+    header +=
+        "=== How to process this report ===\n"
+        "\n"
+        "Follow these five phases in order. Don't jump to fixes.\n"
+        "\n"
+        "PHASE 1 — BASELINE\n"
+        "  Run the existing test suite. Record pass/fail counts, build warnings,\n"
+        "  lint output. If anything is broken before you start, surface that\n"
+        "  first — don't proceed until the user acknowledges.\n"
+        "\n"
+        "PHASE 2 — VERIFY\n"
+        "  For every BLOCKER, CRITICAL, and MAJOR finding, mark it VERIFIED,\n"
+        "  UNCONFIRMED, or FALSE-POSITIVE with a one-line justification citing\n"
+        "  file:line evidence. Criteria:\n"
+        "    - Bug:       reproduce with a code trace or a failing test.\n"
+        "    - Security:  confirm the pattern is exploitable in context\n"
+        "                 (attacker-reachable data flow), not just a regex\n"
+        "                 match on a keyword.\n"
+        "    - Dead code: confirm no callers — including dynamic dispatch,\n"
+        "                 registries, reflection, exported API, tests, and\n"
+        "                 build scripts.\n"
+        "  Confidence scores (0-100) are inline next to each finding: higher\n"
+        "  means more tools corroborate it. Prefer triaging high-confidence\n"
+        "  findings first.\n"
+        "\n"
+        "PHASE 3 — CITATIONS\n"
+        "  For any dependency / CVE finding you intend to fix, cite an\n"
+        "  authoritative URL (NVD, GitHub advisory, upstream changelog) and\n"
+        "  cross-check the CVE's affected version range against the pinned\n"
+        "  version in the lockfile. A CVE against a version lower than what's\n"
+        "  pinned is FALSE-POSITIVE, not a fix target.\n"
+        "\n"
+        "PHASE 4 — APPROVAL GATE\n"
+        "  Produce a findings list with file:line, severity, verification\n"
+        "  status, proposed fix, and blast radius (files touched, public-API\n"
+        "  impact). Wait for user approval before touching code for any\n"
+        "  non-trivial finding. You may proceed directly on:\n"
+        "    - unused imports / obviously dead local helpers with no callers\n"
+        "    - typo'd conditionals that have a reproducing test\n"
+        "    - formatting-only fixes for lint rules already enforced in CI\n"
+        "\n"
+        "PHASE 5 — IMPLEMENT + TEST\n"
+        "  Fix root causes, not symptoms. No --no-verify, no swallowed\n"
+        "  exceptions, no commented-out broken code, no capped loops that\n"
+        "  hide a real divergence. If a workaround is genuinely unavoidable,\n"
+        "  leave a comment documenting the constraint next to it.\n"
+        "  Every behavioural fix gets a regression test — a fix without a\n"
+        "  test will come back. Keep edits scoped to each finding; no\n"
+        "  drive-by refactoring of surrounding code.\n"
+        "  After fixes, re-run the full suite and include a pre/post diff of\n"
+        "  tests passed/failed/skipped, build warnings, and finding counts\n"
+        "  by severity.\n"
+        "\n"
+        "DELIVERABLE\n"
+        "  (1) Findings list with VERIFIED / UNCONFIRMED / FALSE-POSITIVE tags\n"
+        "  (2) Changes made — files touched, why, test evidence\n"
+        "  (3) Deferred items — why deferred, what would unblock them\n"
+        "  (4) Baseline comparison — tests / warnings / findings before vs after\n"
+        "\n"
+        "Be terse and concrete. Skip categories with no findings rather than\n"
+        "writing \"none found\" filler for each.\n\n";
+
     header += "=== Findings ===\n\n";
 
     // Re-sort a copy for the plain-text report.
@@ -3483,10 +3632,23 @@ QString AuditDialog::plainTextResults() const {
         }
         if (r.findings.isEmpty() && r.omittedCount == 0) continue;
 
-        body += QString("--- [%1] %2 (%3 / %4) [%5] — %6 finding(s) ---\n")
+        // Count cross-tool-corroborated findings for the category header.
+        // A finding is corroborated when ≥2 distinct tools flagged the same
+        // file:line — the same signal that drives the ★ badge and boosts
+        // computeConfidence(). Surfaced here so the downstream consumer can
+        // prioritise triage without having to read every finding tag first.
+        int corroborated = 0;
+        for (const Finding &f : r.findings)
+            if (f.highConfidence) ++corroborated;
+        const QString corroTag = corroborated > 0
+            ? QString(" (%1 corroborated)").arg(corroborated)
+            : QString();
+
+        body += QString("--- [%1] %2 (%3 / %4) [%5] — %6 finding(s)%7 ---\n")
                 .arg(severityLabel(r.severity), r.checkName,
                      typeLabel(r.type), r.category, r.source)
-                .arg(r.findings.size() + r.omittedCount);
+                .arg(r.findings.size() + r.omittedCount)
+                .arg(corroTag);
         for (const Finding &f : r.findings) {
             QString line;
             if (!f.file.isEmpty() && f.line >= 0)

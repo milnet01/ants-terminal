@@ -169,7 +169,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     connect(&m_selectionScrollTimer, &QTimer::timeout, this, [this]() {
         if (m_selectionScrollDirection != 0 && m_selecting) {
             int delta = m_selectionScrollDirection * 2;
-            m_scrollOffset = std::clamp(m_scrollOffset - delta, 0, m_grid->scrollbackSize());
+            // Direction convention matches wheelEvent: +offset = older (up), -offset = newer (down).
+            // Dragging past top → direction=+1 → offset increases (reveal older).
+            // Dragging past bottom → direction=-1 → offset decreases (reveal newer).
+            m_scrollOffset = std::clamp(m_scrollOffset + delta, 0, m_grid->scrollbackSize());
             m_selEnd = pixelToCell(m_lastMousePos);
             m_hasSelection = (m_selStart != m_selEnd);
             updateScrollBar();

@@ -14,6 +14,75 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.4] — 2026-04-14
+
+**Theme:** Project Audit signal-to-noise. Addresses a reviewer-provided brief
+after a 2026-04-14 audit run surfaced 26 BLOCKER findings that were all false
+positives from ASCII section underlines in a vendored single-header library,
+and 30 MAJOR world-writable-file findings that were a FUSE-mount artefact.
+
+### Fixed
+
+- **Selection auto-scroll direction was inverted.** Dragging a selection
+  past the bottom edge of the viewport scrolled *up* into older scrollback
+  instead of revealing newer lines below (and symmetrically at the top
+  edge). The auto-scroll timer in `TerminalWidget` applied
+  `m_scrollOffset - delta` with a signed direction, which inverted the
+  intent; flipped to `+ delta` so the direction convention now matches
+  `wheelEvent` / `smoothScrollStep` — `+offset` reveals older content,
+  `-offset` reveals newer.
+
+- **Conflict-marker regex no longer matches ASCII underlines.** The
+  `conflict_markers` rule required exactly 7 sigil chars at start-of-line
+  but had no trailing anchor, so `===========` (and longer banners in
+  vendored headers) still matched. Tightened to
+  `^(<{7}|\|{7}|={7}|>{7})(\s|$)`. Also added `|{7}` for the diff3-style
+  merge-base marker that the old pattern missed entirely. A
+  `conflict_markers` self-test fixture now carries eight ASCII-underline
+  canaries in `good.cpp` so regressions are caught by the existing CTest
+  driver.
+
+- **World-writable check on non-POSIX mounts.** On filesystems that don't
+  enforce POSIX permission bits (FUSE, NTFS, vfat/exfat, CIFS, 9p) every
+  file reports as world-writable because the mount maps all Unix perms
+  to 0777. `AuditDialog` now probes `stat -f -c %T <project>` at
+  construction; when the result is in a known non-POSIX list the
+  `file_perms` check is replaced with an INFO note explaining the skip,
+  instead of producing ~every file in the tree as a finding.
+
+### Changed
+
+- **Default exclude list broadened.** `kFindExcl` and `kGrepExcl` now
+  exclude `external/` and `third_party/` in addition to the existing
+  `vendor/`, `build/`, `node_modules/`, `.cache/`, `dist/`, `.git/`,
+  `.audit_cache/`. Vendored code is not project-maintained, so findings
+  there aren't actionable and used to drown out real signal.
+
+- **Category headers surface multi-tool corroboration.** The HTML and
+  plain-text renders now append `(N corroborated)` to each category
+  header when one or more of its findings are flagged by ≥2 distinct
+  tools on the same file:line — the same signal that drives the ★ badge
+  and boosts the confidence score. Lets the downstream consumer
+  prioritise triage at a glance instead of having to scan every finding's
+  inline tags.
+
+- **Confidence legend in the plain-text header.** The `conf N` and ★
+  tags were opaque without documentation. A four-line legend now sits
+  in the handoff header explaining what the score means and how
+  corroboration feeds into it.
+
+### Added
+
+- **5-phase workflow scaffold in the Claude Review handoff.** The
+  `/tmp/ants-audit-*.txt` export used by the "Review with Claude"
+  button now carries a BASELINE → VERIFY → CITATIONS → APPROVAL →
+  IMPLEMENT+TEST prompt between the project-docs block and the
+  findings list. Stops the downstream session from plunging straight
+  into fixes without verifying findings are real, cross-checking CVE
+  version ranges, or committing a regression test per fix. Aligns with
+  the project's existing no-workarounds rule (documented in
+  `CLAUDE.md`).
+
 ## [0.6.3] — 2026-04-14
 
 **Theme:** Claude Code status responsiveness. Replaces the 2-second transcript

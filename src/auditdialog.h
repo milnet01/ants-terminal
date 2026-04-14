@@ -243,6 +243,15 @@ private:
     QString m_projectPath;
     QStringList m_detectedTypes;
 
+    // Filesystem type of the project root (e.g. "ext2/ext3", "btrfs", "fuseblk",
+    // "ntfs", "vfat"). Populated once at construction via `stat -f -c %T`.
+    // Used to suppress POSIX-only checks (e.g. world-writable permissions)
+    // when the project lives on a filesystem that doesn't enforce them — on
+    // such mounts, every file appears world-writable regardless of intent.
+    // Empty string if detection failed; treated as POSIX in that case.
+    QString m_projectFsType;
+    bool isPosixFilesystem() const;  // returns false for fuseblk/ntfs/vfat/…
+
     QList<AuditCheck> m_checks;
     QList<CheckResult> m_completedResults;   // accumulated for renderResults()
     int m_currentCheck = -1;
