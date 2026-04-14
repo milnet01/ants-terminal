@@ -198,6 +198,25 @@ public:
     // Public so MainWindow can expose via menu / command palette entries.
     void navigatePrompt(int direction);
 
+    // Command-block helpers (0.7.0). Block = one PromptRegion. index is
+    // into m_grid->promptRegions(); validity is the caller's problem (-1
+    // for "no block at that line"). The context menu is the primary caller.
+    //   promptRegionIndexAtLine: finds the region whose range contains
+    //     globalLine (prompt line or its output). Returns -1 if none.
+    //   commandTextAt: extracts just the command (strips PS1 using the B
+    //     marker column). Multi-line commands are joined with newlines.
+    //   outputTextAt: extracts output lines between C and next A (or D).
+    //   rerunCommandAt: writes the command text + '\r' to the PTY.
+    //   toggleFoldAt: flips region.folded and triggers a repaint.
+    //   exportBlockAsCast: writes a standalone asciicast v2 file with this
+    //     block's output as a single event chunk.
+    int promptRegionIndexAtLine(int globalLine) const;
+    QString commandTextAt(int index) const;
+    QString outputTextAt(int index) const;
+    void rerunCommandAt(int index);
+    void toggleFoldAt(int index);
+    bool exportBlockAsCast(int index, const QString &path) const;
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);

@@ -701,12 +701,18 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             if (!m_promptRegions.empty()) {
                 m_promptRegions.back().endLine = globalLine;
                 m_promptRegions.back().commandStartMs = QDateTime::currentMSecsSinceEpoch();
+                // Record the cursor column at B fire — this is where the PS1
+                // ends and the user's command text begins on the prompt line.
+                // Block UI uses this to extract just the command (strip PS1).
+                m_promptRegions.back().commandStartCol = m_cursorCol;
             }
             break;
         case 'C': // Command output start
             m_shellIntegState = 'C';
-            if (!m_promptRegions.empty())
+            if (!m_promptRegions.empty()) {
                 m_promptRegions.back().hasOutput = true;
+                m_promptRegions.back().outputStartLine = globalLine;
+            }
             m_commandOutputStart = globalLine;
             break;
         case 'D': { // Command finished
@@ -732,6 +738,11 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             } else {
                 m_lastExitCode = 0;
             }
+            // Record the exit code on the closing region (0.7.0 block UI reads
+            // region.exitCode directly so it can paint per-block pass/fail
+            // indicators without relying on the grid-global most-recent value).
+            if (!m_promptRegions.empty())
+                m_promptRegions.back().exitCode = m_lastExitCode;
             // Notify consumers (TerminalWidget → MainWindow → PluginManager
             // command_finished event). Fires after exit code is parsed so the
             // payload is complete.

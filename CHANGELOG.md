@@ -14,6 +14,88 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.10] — 2026-04-14
+
+**Theme:** ship the **command-block UI bundle** from 0.7.0 §Features
+(shell integration). OSC 133 prompt regions already carried the data;
+this release wires the UI that makes blocks first-class citizens —
+per-block context menu, pass/fail status stripe, asciicast export of
+a single block. Also formalizes asciinema recording (the recorder
+itself has shipped — it's now marked ✅ on the roadmap).
+
+### Added
+
+- **Command-block context menu.** Right-click inside an OSC 133
+  prompt region surfaces block-scoped actions without requiring a
+  selection: **Copy Command** (extracts just the command text via the
+  OSC 133 B cursor column so PS1 is stripped), **Copy Output**
+  (extracts the range between the C marker and the next region),
+  **Re-run Command** (writes the captured command + `\r` to the PTY —
+  bypasses paste confirmation since it's your own history, not
+  external input), **Fold / Unfold Output** (toggles the existing
+  fold triangle for this specific region rather than the cursor
+  region), and **Share Block as .cast…** (exports one block to a
+  standalone asciicast v2 file). The menu header shows
+  `Command Block (exit N)` when the block has finished so users can
+  see pass/fail before acting. Actions are gated on block state —
+  Re-run requires `commandEndMs > 0`, Copy Output requires
+  `hasOutput`, and so on.
+- **Per-block exit-code status stripe.** A 2px vertical bar painted
+  on the far-left gutter of every finished prompt line — green for
+  `exit_code == 0`, red otherwise. Unlike the fold triangle it shows
+  on the most recent finished block too (no successor region
+  required). Gives at-a-glance scannability of long scrollback for
+  pass/fail.
+- **`exportBlockAsCast(int, QString)`** — writes a standalone
+  asciicast v2 file with a single command block's output. Header =
+  current grid dimensions + `commandStartMs` timestamp. Event stream
+  = two records: the command echo at t=0.0, and the captured output
+  at t=duration (synthesized; we don't have per-byte timing for
+  historical blocks). Players replay as a prompt followed by the
+  output dump — honest about what we recorded. Shared via the
+  **Share Block as .cast…** context menu action; file extension
+  `.cast` per the [asciicast v2 spec](https://docs.asciinema.org/manual/asciicast/v2/).
+- **Block-text extraction helpers** on `TerminalWidget` —
+  `promptRegionIndexAtLine(int)`, `commandTextAt(int)`,
+  `outputTextAt(int)`, `rerunCommandAt(int)`, `toggleFoldAt(int)`.
+  Public so plugin code and future UI (marketplace, block sharing
+  service) can consume the same semantics.
+
+### Changed
+
+- **`PromptRegion` now carries three new fields** — `exitCode`
+  (stored in the OSC 133 D handler alongside `m_lastExitCode`; lets
+  block UI paint per-region pass/fail instead of relying on the
+  grid-global most-recent value), `commandStartCol` (cursor column
+  at OSC 133 B fire — lets `commandTextAt` strip PS1 from the
+  extracted command), and `outputStartLine` (global line where OSC
+  133 C fired, so output extraction doesn't guess based on
+  `endLine + 1`). All additive; existing consumers unaffected.
+- **ROADMAP 0.7.0 §Features.** "Command blocks as first-class UI"
+  and "Asciinema recording (`.cast` v2)" move from 📋 (planned) to
+  ✅ (shipped in 0.6.10). Four bullets consolidated under the
+  command-block item — navigation (`Ctrl+Shift+Up`/`Down`) was
+  already wired in an earlier release, metadata display (duration
+  + timestamp + exit stripe) completes here, per-block menu ships
+  here, asciinema recorder was already implemented (now marked
+  shipped). The "suppress output noise" sub-bullet from the
+  original 0.7.0 design was deferred — it's ill-defined without a
+  noise heuristic and not worth blocking the bundle on. Semantic
+  history (Cmd-click on path:line:col) and OSC 133 HMAC remain as
+  future work.
+
+### Notes
+
+- No plugin API changes in this release. `PLUGINS.md` not bumped.
+- No new permission gates. The context menu is client-side UI;
+  `rerunCommandAt` uses the same `m_pty->write` path the user's own
+  keystrokes use.
+- Multi-line wrapped commands are captured correctly — `commandTextAt`
+  follows the region from `endLine` through `outputStartLine - 1`
+  (or the next region's `startLine - 1` when no output was captured),
+  joining lines with `\n`. Trailing-space padding is stripped per
+  line.
+
 ## [0.6.9] — 2026-04-14
 
 **Theme:** ship the **trigger system bundle** from 0.7.0 §Plugins —

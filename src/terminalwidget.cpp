@@ -859,6 +859,20 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 p.setFont(m_font);
             }
 
+            // Exit-code status stripe (0.7.0). A 2px vertical bar along the
+            // left gutter of the prompt line — green for success, red for
+            // failure. Rendered whenever the command has completed
+            // (commandEndMs > 0); unlike the fold triangle, it shows on the
+            // most recent finished block too, since it doesn't need a
+            // successor region to compute anything.
+            if (pr.commandEndMs > 0) {
+                QColor statusColor = (pr.exitCode == 0)
+                    ? QColor(0x9E, 0xCE, 0x6A)   // green (success)
+                    : QColor(0xF7, 0x76, 0x8E);  // red (failure)
+                statusColor.setAlpha(200);
+                p.fillRect(0, py, 2, m_cellHeight, statusColor);
+            }
+
             // Fold indicator for completed command output
             if (pr.hasOutput && pr.commandEndMs > 0 && ri + 1 < regions.size()) {
                 int foldX = m_padding - 2;
@@ -3652,6 +3666,58 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
         }
     }
 
+    // Command-block actions (0.7.0) — when the right-click lands inside an
+    // OSC 133 prompt region, the user gets block-scoped entries that work
+    // without a selection. See commandTextAt / outputTextAt / rerunCommandAt
+    // / exportBlockAsCast in this file for the extraction semantics.
+    int blockIdx = promptRegionIndexAtLine(cell.x());
+    if (blockIdx >= 0) {
+        menu.addSeparator();
+        const auto &pr = m_grid->promptRegions()[blockIdx];
+        QAction *header = menu.addAction(
+            pr.commandEndMs > 0
+                ? QString("Command Block (exit %1)").arg(pr.exitCode)
+                : QString("Command Block"));
+        header->setEnabled(false);
+
+        QAction *copyCmd = menu.addAction("Copy Command");
+        connect(copyCmd, &QAction::triggered, this, [this, blockIdx]() {
+            QString cmd = commandTextAt(blockIdx);
+            if (!cmd.isEmpty()) QApplication::clipboard()->setText(cmd);
+        });
+
+        QAction *copyOut = menu.addAction("Copy Output");
+        copyOut->setEnabled(pr.hasOutput);
+        connect(copyOut, &QAction::triggered, this, [this, blockIdx]() {
+            QString out = outputTextAt(blockIdx);
+            if (!out.isEmpty()) QApplication::clipboard()->setText(out);
+        });
+
+        QAction *rerun = menu.addAction("Re-run Command");
+        rerun->setEnabled(pr.commandEndMs > 0);  // don't re-run mid-execution
+        connect(rerun, &QAction::triggered, this, [this, blockIdx]() {
+            rerunCommandAt(blockIdx);
+        });
+
+        if (pr.hasOutput && pr.commandEndMs > 0) {
+            QAction *fold = menu.addAction(pr.folded ? "Unfold Output" : "Fold Output");
+            connect(fold, &QAction::triggered, this, [this, blockIdx]() {
+                toggleFoldAt(blockIdx);
+            });
+        }
+
+        QAction *share = menu.addAction("Share Block as .cast...");
+        share->setEnabled(pr.hasOutput && pr.commandEndMs > 0);
+        connect(share, &QAction::triggered, this, [this, blockIdx]() {
+            QString defaultName = QString("block_%1.cast")
+                .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+            QString path = QFileDialog::getSaveFileName(
+                this, "Share Block as Asciicast", defaultName,
+                "Asciicast (*.cast)");
+            if (!path.isEmpty()) exportBlockAsCast(blockIdx, path);
+        });
+    }
+
     menu.addSeparator();
 
     QAction *exportText = menu.addAction("Export Scrollback as Text...");
@@ -4044,4 +4110,173 @@ void TerminalWidget::selectCommandOutput(int globalLine) {
             return;
         }
     }
+}
+
+// --- Command-block helpers (0.7.0) ---
+//
+// Block = one PromptRegion. Range = [startLine, nextRegion.startLine) (or end
+// of grid for the last region). Inside a block:
+//   prompt line   : region.startLine ... region.endLine
+//   command text  : line[endLine], columns [commandStartCol..cols)
+//                   plus any soft-wrapped continuation lines up to outputStartLine
+//   output text   : outputStartLine ... nextRegion.startLine - 1 (or grid end)
+
+int TerminalWidget::promptRegionIndexAtLine(int globalLine) const {
+    const auto &regions = m_grid->promptRegions();
+    if (regions.empty()) return -1;
+    int gridEnd = m_grid->scrollbackSize() + m_grid->rows();
+    for (size_t i = 0; i < regions.size(); ++i) {
+        int start = regions[i].startLine;
+        int end = (i + 1 < regions.size()) ? regions[i + 1].startLine : gridEnd;
+        if (globalLine >= start && globalLine < end) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+QString TerminalWidget::commandTextAt(int index) const {
+    const auto &regions = m_grid->promptRegions();
+    if (index < 0 || index >= static_cast<int>(regions.size())) return {};
+    const PromptRegion &pr = regions[index];
+
+    // Command starts on endLine at commandStartCol. It may wrap onto subsequent
+    // lines until output starts (OSC 133 C) or until the next prompt region.
+    int cmdEndLine = pr.endLine;
+    if (pr.outputStartLine > pr.endLine) cmdEndLine = pr.outputStartLine - 1;
+    else if (index + 1 < static_cast<int>(regions.size()) &&
+             regions[index + 1].startLine > pr.endLine)
+        cmdEndLine = regions[index + 1].startLine - 1;
+
+    QString cmd;
+    for (int gl = pr.endLine; gl <= cmdEndLine; ++gl) {
+        QString line = lineText(gl);
+        if (gl == pr.endLine) {
+            // First line — strip the PS1 prefix up to commandStartCol.
+            if (pr.commandStartCol > 0 && pr.commandStartCol < line.size())
+                line = line.mid(pr.commandStartCol);
+            else if (pr.commandStartCol >= line.size())
+                line.clear();
+        }
+        // Trim trailing whitespace (cells past the command are padded with spaces).
+        while (!line.isEmpty() && line.back().isSpace() && line.back() != '\n')
+            line.chop(1);
+        if (!cmd.isEmpty()) cmd += '\n';
+        cmd += line;
+    }
+    return cmd;
+}
+
+QString TerminalWidget::outputTextAt(int index) const {
+    const auto &regions = m_grid->promptRegions();
+    if (index < 0 || index >= static_cast<int>(regions.size())) return {};
+    const PromptRegion &pr = regions[index];
+    if (!pr.hasOutput) return {};
+
+    int outStart = (pr.outputStartLine > 0) ? pr.outputStartLine : pr.endLine + 1;
+    int outEnd = (index + 1 < static_cast<int>(regions.size()))
+                     ? regions[index + 1].startLine
+                     : m_grid->scrollbackSize() + m_grid->rows();
+    if (outStart >= outEnd) return {};
+
+    QString text;
+    for (int gl = outStart; gl < outEnd; ++gl) {
+        QString line = lineText(gl);
+        while (!line.isEmpty() && line.back().isSpace() && line.back() != '\n')
+            line.chop(1);
+        text += line;
+        text += '\n';
+    }
+    return text;
+}
+
+void TerminalWidget::rerunCommandAt(int index) {
+    QString cmd = commandTextAt(index);
+    if (cmd.isEmpty() || !m_pty) return;
+    // Write the command followed by carriage return (Enter). pasteToTerminal
+    // is not used here because we want the command executed, not pasted — and
+    // the multi-line paste confirmation would be wrong for user-initiated
+    // re-runs of their own history.
+    m_pty->write(cmd.toUtf8());
+    m_pty->write(QByteArray("\r"));
+}
+
+void TerminalWidget::toggleFoldAt(int index) {
+    auto &regions = m_grid->promptRegions();
+    if (index < 0 || index >= static_cast<int>(regions.size())) return;
+    PromptRegion &pr = regions[index];
+    if (!pr.hasOutput || pr.commandEndMs == 0) return;  // mirrors toggleFoldAtCursor gating
+    pr.folded = !pr.folded;
+    update();
+}
+
+bool TerminalWidget::exportBlockAsCast(int index, const QString &path) const {
+    const auto &regions = m_grid->promptRegions();
+    if (index < 0 || index >= static_cast<int>(regions.size())) return false;
+    const PromptRegion &pr = regions[index];
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+        return false;
+
+    // Asciicast v2: one header object + one JSON array per output event.
+    // Spec: https://docs.asciinema.org/manual/asciicast/v2/
+    //
+    // We don't have per-byte timing for a captured block (we only know
+    // commandStartMs / commandEndMs), so we synthesize two events: the
+    // command echo at t=0, and the entire output at
+    // t=(commandEndMs - commandStartMs)/1000. Players replay this as a
+    // near-instant prompt followed by the output dump — honest about what
+    // we recorded.
+    qint64 timestamp = pr.commandStartMs > 0
+                           ? pr.commandStartMs / 1000
+                           : QDateTime::currentSecsSinceEpoch();
+    QString header = QString(
+        R"({"version": 2, "width": %1, "height": %2, "timestamp": %3, "env": {"TERM": "xterm-256color"}})"
+    ).arg(m_grid->cols()).arg(m_grid->rows()).arg(timestamp);
+    file.write(header.toUtf8());
+    file.write("\n");
+
+    auto escapeJson = [](const QString &s) {
+        QString out;
+        out.reserve(s.size() + 8);
+        for (QChar c : s) {
+            ushort u = c.unicode();
+            switch (u) {
+            case '\\': out += "\\\\"; break;
+            case '"':  out += "\\\""; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (u < 0x20) out += QString("\\u%1").arg(u, 4, 16, QChar('0'));
+                else out += c;
+            }
+        }
+        return out;
+    };
+
+    QString cmd = commandTextAt(index);
+    QString output = outputTextAt(index);
+
+    // t=0: command echo (with trailing \r\n so the shell prompt look is realistic)
+    if (!cmd.isEmpty()) {
+        QString evt = QString(R"([0.0, "o", "%1\r\n"])").arg(escapeJson(cmd));
+        file.write(evt.toUtf8());
+        file.write("\n");
+    }
+
+    // t=duration: output dump
+    double durSec = 0.1;
+    if (pr.commandEndMs > pr.commandStartMs && pr.commandStartMs > 0)
+        durSec = (pr.commandEndMs - pr.commandStartMs) / 1000.0;
+    if (!output.isEmpty()) {
+        QString evt = QString(R"([%1, "o", "%2"])")
+            .arg(durSec, 0, 'f', 3).arg(escapeJson(output));
+        file.write(evt.toUtf8());
+        file.write("\n");
+    }
+
+    file.close();
+    return true;
 }

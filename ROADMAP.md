@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.9 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.10 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -133,17 +133,24 @@ there before adding a multiplexer. Reference:
 
 ### 🎨 Features — shell integration beyond OSC 133
 
-- 📋 **Command blocks as first-class UI** (Warp's headline feature,
-  [docs](https://docs.warp.dev/terminal/blocks)). OSC 133 markers
-  already give us the data; wire the UI:
-  - Collapsible prompt → command → output groups
-  - `Cmd/Ctrl+Up` / `Cmd/Ctrl+Down` jump to previous/next prompt
-  - Per-block menu: copy command, copy output, re-run, share as
-    `.cast`, suppress output noise
-  - Exit code + duration + CWD as block metadata
-- 📋 **Asciinema recording** (`.cast` v2 format,
-  [spec](https://docs.asciinema.org/manual/asciicast/v2/)). Single JSON
-  header line + event lines. Menu entry `File → Record session`.
+- ✅ **Command blocks as first-class UI** (Warp parity,
+  [docs](https://docs.warp.dev/terminal/blocks)). Shipped across
+  several releases and consolidated in 0.6.10. Prompt → command →
+  output grouping via `OSC 133` markers, `Ctrl+Shift+Up` /
+  `Ctrl+Shift+Down` jump-to-prev/next prompt, collapsible output with
+  "… N lines hidden" summary bar, duration + timestamp in the prompt
+  gutter, 2px pass/fail status stripe, and per-block right-click
+  menu: Copy Command, Copy Output, Re-run Command, Fold/Unfold,
+  Share Block as `.cast`. "Suppress output noise" is deferred — the
+  original sub-bullet didn't define a noise heuristic and wasn't
+  worth blocking the bundle. See
+  [CHANGELOG.md §0.6.10](CHANGELOG.md#0610--2026-04-14).
+- ✅ **Asciinema recording** (`.cast` v2 format,
+  [spec](https://docs.asciinema.org/manual/asciicast/v2/)). Shipped.
+  Full-session recording via `Settings → Record Session` (default
+  `Ctrl+Shift+R`); per-block export via the command-block context
+  menu in 0.6.10. Asciicast v2 header + event-stream format. See
+  [CHANGELOG.md §0.6.10](CHANGELOG.md#0610--2026-04-14).
 - 💭 **Semantic history**: Cmd-click on `path:line:col` in output opens
   the file in the configured IDE (`vscode://file/{path}:{line}`, etc.).
   Works by scraping scrollback; no shell cooperation needed.

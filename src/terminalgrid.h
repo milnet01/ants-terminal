@@ -101,6 +101,9 @@ struct PromptRegion {
     qint64 commandStartMs = 0;  // epoch ms when command started (OSC 133 B)
     qint64 commandEndMs = 0;    // epoch ms when command ended (OSC 133 D)
     bool folded = false;        // whether output is collapsed
+    int exitCode = 0;           // parsed from OSC 133 D (0.7.0). Only meaningful when commandEndMs > 0.
+    int commandStartCol = 0;    // cursor column at OSC 133 B fire — lets UI extract command text from the prompt line (0.7.0).
+    int outputStartLine = -1;   // global line at OSC 133 C — where command output begins, -1 if unset (0.7.0).
 };
 
 // Represents the terminal screen buffer and handles all actions from the parser.
