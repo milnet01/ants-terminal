@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.14 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.15 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -203,9 +203,16 @@ there before adding a multiplexer. Reference:
 - 📋 **Decouple read/parse/render thread**. Today everything's on the
   Qt GUI thread. Move PTY read + VT parse to a worker; push `VtAction`
   diffs over a lock-free ring to the render path.
-- 💭 **Incremental reflow on resize**. Track `wrap_col` per line;
-  skip re-wrapping lines whose width is still ≤ `wrap_col` under
-  the new width. O(scrollback) pause on window-drag disappears.
+- ✅ **Incremental reflow on resize**. Shipped in 0.6.15. The original
+  research note called for tracking `wrap_col` per line; the actual
+  implementation works on equivalent information already on the line
+  (`softWrapped` flag + a single-pass content-width check): standalone
+  lines that fit the new width get an in-place `cells.resize()` with
+  default-attr padding or trailing-blank trim, skipping the
+  allocation-heavy `joinLogical` / `rewrap` round-trip. Multi-line
+  soft-wrap sequences still go through the full logic so correctness
+  is preserved. See
+  [CHANGELOG.md §0.6.15](CHANGELOG.md#0615--2026-04-14).
 
 ### 🖥 Platform
 

@@ -1457,15 +1457,87 @@ void TerminalGrid::resize(int rows, int cols) {
         }
     };
 
-    // --- Reflow scrollback when width changes ---
+    // --- Reflow scrollback when width changes (0.6.15 — incremental) ---
+    //
+    // Most scrollback lines are standalone: `softWrapped == false` AND they
+    // aren't the middle of a prior soft-wrap sequence. For such lines whose
+    // content width fits the new `cols`, we can just resize the cells vector
+    // in place — no join-into-logical, no rewrap-into-TermLines, no
+    // allocation of scratch vectors, no cell-by-cell copy. Soft-wrap
+    // sequences (multi-line logical lines) and standalone lines that DON'T
+    // fit still go through the slow join/rewrap path so their existing
+    // correctness guarantees (combining-char position merging, wide-char
+    // boundary respect, trailing-space trim) are preserved verbatim.
+    //
+    // Win scales with scrollback size — a 50k-line scrollback where most
+    // lines are ≤ the new cols reduces from O(N) allocations / cell copies
+    // to O(N) cheap in-place resizes.
     if (cols != m_cols && !m_scrollback.empty()) {
-        auto logicalLines = joinLogical(m_scrollback);
-        m_scrollback.clear();
-        std::vector<TermLine> scratch;
-        for (auto &logical : logicalLines) {
-            rewrap(logical, scratch);
+        std::deque<TermLine> newScrollback;
+        std::vector<TermLine> pending; // current soft-wrap sequence
+
+        auto flushPending = [&]() {
+            if (pending.empty()) return;
+            auto logicals = joinLogical(pending);
+            std::vector<TermLine> reflowed;
+            for (auto &L : logicals) rewrap(L, reflowed);
+            for (auto &tl : reflowed) newScrollback.push_back(std::move(tl));
+            pending.clear();
+        };
+
+        auto contentWidth = [](const TermLine &tl) {
+            int len = static_cast<int>(tl.cells.size());
+            while (len > 0 && tl.cells[len - 1].codepoint == ' ') --len;
+            return len;
+        };
+
+        auto inPlaceResize = [this, cols](TermLine &tl) {
+            int oldSize = static_cast<int>(tl.cells.size());
+            if (oldSize == cols) return;
+            if (cols > oldSize) {
+                tl.cells.resize(cols);
+                for (int c = oldSize; c < cols; ++c) {
+                    tl.cells[c] = Cell{};
+                    tl.cells[c].attrs.fg = m_defaultFg;
+                    tl.cells[c].attrs.bg = m_defaultBg;
+                }
+            } else {
+                tl.cells.resize(cols);
+                // Drop combining entries at now-removed columns to match
+                // joinLogical's trim-tail semantics.
+                std::vector<int> toDrop;
+                for (auto &kv : tl.combining) {
+                    if (kv.first >= cols) toDrop.push_back(kv.first);
+                }
+                for (int k : toDrop) tl.combining.erase(k);
+            }
+        };
+
+        for (auto &tl : m_scrollback) {
+            bool inSequence = !pending.empty() || tl.softWrapped;
+            if (inSequence) {
+                bool willEnd = !tl.softWrapped; // read before move
+                pending.push_back(std::move(tl));
+                if (willEnd) flushPending();
+            } else {
+                int cw = contentWidth(tl);
+                if (cw <= cols) {
+                    inPlaceResize(tl);
+                    newScrollback.push_back(std::move(tl));
+                } else {
+                    // Doesn't fit — fall through to slow path as a 1-line
+                    // sequence so rewrap() handles the split exactly as
+                    // before.
+                    pending.push_back(std::move(tl));
+                    flushPending();
+                }
+            }
         }
-        for (auto &tl : scratch) m_scrollback.push_back(std::move(tl));
+        // Flush any pending remainder. Defensive — the last scrollback line
+        // should have softWrapped=false so this is usually a no-op.
+        flushPending();
+
+        m_scrollback = std::move(newScrollback);
 
         // Trim to limit
         while (static_cast<int>(m_scrollback.size()) > m_maxScrollback)

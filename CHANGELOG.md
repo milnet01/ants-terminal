@@ -14,6 +14,56 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.15] — 2026-04-14
+
+**Theme:** the **incremental reflow** optimization from ROADMAP §0.7.0
+Performance. Resizing a terminal with a long scrollback used to re-join
+every line into a logical-line buffer and re-wrap every logical line
+back into TermLines, allocating scratch vectors and copying cells
+cell-by-cell — O(scrollback) allocation churn on every width change.
+This release adds a fast path for the common case: standalone lines
+(not part of a soft-wrap sequence) whose content fits the new width
+get resized in place, skipping join/rewrap entirely.
+
+### Changed
+
+- **Incremental scrollback reflow** in `TerminalGrid::resize()`. The
+  new algorithm walks scrollback once:
+  - **Fast path** (standalone line, `softWrapped == false`, not mid-
+    sequence, content width ≤ new cols): `tl.cells.resize(cols)`
+    with default-attr padding when growing, or trim trailing blanks +
+    drop combining-char entries at now-removed columns when shrinking.
+    No allocation of scratch TermLines. No cell-by-cell copy.
+  - **Slow path** (soft-wrap sequence OR standalone that doesn't fit):
+    the existing `joinLogical` + `rewrap` round-trip, unchanged. This
+    preserves correctness for trailing-space trim, combining-char
+    position merging, and wide-character boundary handling.
+  Typical scrollback is dominated by standalone lines ≤ the new width,
+  so the fast path handles most rows. Multi-line soft-wrap sequences
+  (long commands that wrapped at the prompt's edge) still round-trip
+  through the full logic so nothing regresses there.
+- ROADMAP transition: §0.7.0 → ⚡ Performance → "Incremental reflow on
+  resize" 💭→✅ with a link to this CHANGELOG section. See
+  [ROADMAP.md](ROADMAP.md#070--shell-integration--triggers-target-2026-06).
+
+### Notes
+
+- **No behavior change on correctness.** The fast path only applies
+  when the line's logical-line representation would be a single
+  TermLine identical (up to trailing blanks) to the one we produce by
+  direct resize. For every case the slow path is still reachable via
+  the existing code.
+- **Screen-line reflow is unchanged.** Screen rows are already
+  small-N (typically ≤ 50) so the O(N) savings aren't worth the
+  added branch complexity; the joinLogical/rewrap loop runs on
+  `m_screenLines` as before.
+- **Alt-screen and scrollback-hyperlink reflow paths unchanged.**
+  Alt-screen is explicitly `simple copy` today; scrollback hyperlink
+  spans are not re-wrapped at all (pre-existing behavior) — both
+  outside the scope of this optimization.
+- **No plugin API change, no config schema change, no UI change.**
+  `PLUGINS.md` does not need a bump.
+
 ## [0.6.14] — 2026-04-14
 
 **Theme:** small security follow-up to 0.6.13 — catch a URI-scheme
