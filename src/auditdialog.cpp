@@ -849,6 +849,52 @@ void AuditDialog::populateChecks() {
                                            "allowScheme", "isLocal",
                                            "https://", "QUrl::TolerantMode"},
                        "", {}, 20 });
+
+        // Unbounded callback payloads. Detects PTY / OSC / IPC byte buffers
+        // forwarded straight into a user-supplied `*Callback(...)` without a
+        // length cap. Motivating case: pre-0.6.5 OSC 9 / OSC 777 notifier
+        // shovelled the entire escape body (potentially MB) into the desktop
+        // notification callback, which then crashed the notification daemon
+        // and/or amplified a malformed-OSC DoS.
+        //
+        // Same-line shape: any identifier ending in `Callback` invoked with
+        // `QString::fromUtf8(<expr>.c_str()…)` somewhere in its argument list.
+        // The runtime filter then drops lines that already cap with `.left(`,
+        // `.truncate(`, `.mid(`, `.chopped(`, or `.chop(` — the canonical
+        // bounding primitives. Multi-line callback invocations are out of
+        // scope (would need `grep -Pzo`).
+        addGrepCheck("unbounded_callback_payloads", "Unbounded Callback Payloads",
+                     "Raw byte-buffer forwarded to a *Callback() without "
+                     ".left()/.truncate() cap — DoS amplifier", "Qt",
+                     "'\\w*[Cc]allback\\s*\\(.*QString::fromUtf8\\([^)]*\\.c_str\\(\\)'",
+                     CheckType::Vulnerability, Severity::Major, true,
+                     { /*dropIfContains*/ {".left(", ".truncate(", ".mid(",
+                                           ".chopped(", ".chop("},
+                       "", {}, 30 });
+
+        // QNetworkReply 3-arg lambda lifetime trap. Matches the dangerous
+        // shape from the pre-0.6.5 AiDialog incident: a 3-arg connect to a
+        // QNetworkReply signal whose third argument is a bare lambda. With
+        // no context object, Qt cannot auto-disconnect when the lambda's
+        // captured owner is destroyed. If the owning dialog is closed
+        // mid-flight, the reply still fires and the lambda dereferences a
+        // dangling pointer → use-after-free.
+        //
+        // The safe alternatives are all 4-arg shapes (sender, signal,
+        // context, slot) — both the member-function-pointer slot and the
+        // lambda slot variants auto-disconnect when `context` is destroyed.
+        //
+        // Pattern detects 3-arg-lambda by requiring `[` immediately after
+        // the signal's trailing comma. 4-arg shapes have an identifier
+        // (`this`, `mgr`, `m_widget`, etc.) in that slot, so they don't
+        // match. Single-line only — multi-line connect formatting is a
+        // known false-negative (rare in practice).
+        addGrepCheck("qnetworkreply_no_abort", "QNetworkReply Connect Without Context",
+                     "3-arg connect() to QNetworkReply lambda — no auto-disconnect, "
+                     "use-after-free risk if owner is destroyed mid-flight (use the "
+                     "4-arg form with `this` as context)", "Qt",
+                     "'connect\\s*\\([^,]*,\\s*&QNetworkReply::(readyRead|finished|errorOccurred|sslErrors)\\s*,\\s*\\['",
+                     CheckType::Vulnerability, Severity::Major, true);
     }
 
     // ========== Semgrep (structural pattern matching) ==========

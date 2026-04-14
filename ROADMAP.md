@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.7 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.8 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -206,15 +206,17 @@ Each item is a rule / self-check the in-app `AuditDialog` should grow so
 findings like the ones we caught manually would be caught automatically on
 the next run.
 
-- 📋 **Qt rule: unbounded callback payloads.** Detect call sites that
-  forward `QString::fromUtf8(payload.c_str() + N)` (or similar) directly
-  to a user-supplied callback without a `.left(…)` / `.truncate(…)` cap.
-  Motivating case: OSC 9 / OSC 777 notification body pre-0.6.5.
-- 📋 **Qt rule: `QNetworkReply` connects without abort-in-dtor.** AST /
-  regex check: if a class connects to `readyRead` or `finished` on a
-  `QNetworkReply*` member, it must either abort the reply in its
-  destructor or parent the reply to an auto-destroying lifetime. Motivating
-  case: pre-0.6.5 `AiDialog`.
+- ✅ **Qt rule: unbounded callback payloads.** Shipped in 0.6.8 as
+  `unbounded_callback_payloads` — same-line regex flags
+  `QString::fromUtf8(<expr>.c_str()…)` forwarded to a `*Callback(…)`
+  without a `.left()` / `.truncate()` / `.mid()` / `.chopped()` /
+  `.chop()` cap. See [CHANGELOG.md §0.6.8](CHANGELOG.md#068--2026-04-14).
+- ✅ **Qt rule: `QNetworkReply` connects without context.** Shipped in
+  0.6.8 as `qnetworkreply_no_abort` — flags 3-arg `connect()` to
+  QNetworkReply signals whose third argument is a bare lambda (no
+  context object means no auto-disconnect on owner destruction → UAF
+  if reply fires after `this` is gone). The 4-arg form is enforced.
+  See [CHANGELOG.md §0.6.8](CHANGELOG.md#068--2026-04-14).
 - ✅ **Observability rule: silent `catch (...)`.** Shipped in 0.6.7 as
   `silent_catch` — flags empty same-line `catch(...) {}` handlers.
   Extending to multi-line / single-statement trivial bodies remains future

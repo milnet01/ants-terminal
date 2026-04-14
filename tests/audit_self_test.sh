@@ -87,6 +87,8 @@ run_rule "weak_crypto"      '\b(md5|sha1|des|rc4|ecb)\b'
 run_rule "memory_patterns"  '\b(new |malloc|calloc|realloc)\b'
 run_rule "qt_openurl_unchecked" 'QDesktopServices::openUrl'
 run_rule "silent_catch"     'catch\s*\([^)]*\)\s*\{\s*\}'
+run_rule "unbounded_callback_payloads" '\w*[Cc]allback\s*\(.*QString::fromUtf8\([^)]*\.c_str\(\)'
+run_rule "qnetworkreply_no_abort" 'connect\s*\([^,]*,\s*&QNetworkReply::(readyRead|finished|errorOccurred|sslErrors)\s*,\s*\['
 
 # ---------------------------------------------------------------------------
 # Inline suppression token recognition — the regex in commentSuppresses()

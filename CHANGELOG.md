@@ -14,6 +14,51 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.8] — 2026-04-14
+
+**Theme:** close the two remaining Qt-specific audit rules from
+0.7.0 §Dev experience. With these in place, the entire 0.7.0
+"Project Audit tool" lane is shipped — every motivating case
+surfaced by the 0.6.5 audit pass now has automated coverage.
+
+### Added
+
+- **Audit rule `unbounded_callback_payloads`.** Same-line regex flags
+  PTY / OSC / IPC byte buffers forwarded straight into a user-supplied
+  `*Callback(…)` without a length cap (`.left()` / `.truncate()` /
+  `.mid()` / `.chopped()` / `.chop()`). Motivating case: pre-0.6.5
+  OSC 9 / OSC 777 notification body shovelled the entire escape payload
+  (potentially MB) into the desktop notifier, which then crashed the
+  notification daemon and/or amplified a malformed-OSC DoS. Fix shipped
+  in 0.6.5; the rule prevents the regression. Severity Major.
+  `terminalgrid.cpp` is the canonical safe call site (filtered at
+  runtime by `.left(kMaxNotifyBody)`); rule produces zero findings on
+  our tree.
+- **Audit rule `qnetworkreply_no_abort`.** Detects the dangerous shape
+  from the pre-0.6.5 AiDialog incident: a 3-arg `connect()` to a
+  QNetworkReply signal whose third argument is a bare lambda. With no
+  context object, Qt cannot auto-disconnect when the lambda's captured
+  `this` is destroyed — owner closed mid-flight → reply fires later →
+  use-after-free. Pattern enforces the 4-arg form (sender, signal,
+  context, slot), which Qt protects via auto-disconnect on context
+  destruction. Severity Major. Covers `readyRead`, `finished`,
+  `errorOccurred`, `sslErrors`. Single-line only — multi-line connect
+  formatting is a known false-negative (rare in practice). Ants's own
+  AiDialog and AuditDialog use the safe 4-arg shape and are not flagged.
+- **Fixtures for both new rules.** `bad.cpp` with three `@expect`
+  markers each, `good.cpp` with the corresponding safe shapes that must
+  not match the regex. Wired through `audit_self_test.sh` so CI catches
+  regressions on every push (now 14 rules, 46 total checks pass).
+
+### Changed
+
+- **ROADMAP** — moved the two remaining 0.7.0 §Dev experience
+  audit-rule items (`unbounded_callback_payloads`,
+  `qnetworkreply_no_abort`) from 📋 to ✅. The Project Audit tool
+  lane in 0.7.0 is now fully shipped; remaining 0.7.0 work is
+  features (command blocks, asciinema), the trigger system, and the
+  performance / platform / security items.
+
 ## [0.6.7] — 2026-04-14
 
 **Theme:** close the remaining grep-shaped items from 0.7.0 §Dev experience
