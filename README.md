@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>0.6.15</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
+  Current version: <strong>0.6.16</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
 </p>
 
 ---
@@ -958,6 +958,8 @@ tests/
 ## Contributing
 
 Contributions are welcome! This project is built from scratch with no terminal library dependencies, so understanding the VT100 state machine and PTY layer is helpful context.
+
+Before contributing, please read [`CONTRIBUTING.md`](CONTRIBUTING.md) (build + PR conventions) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) (Contributor Covenant 2.1). Security issues and conduct reports go through the private channels documented in [`SECURITY.md`](SECURITY.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) respectively — not public GitHub issues.
 
 1. Fork the repository
 2. Create a feature branch

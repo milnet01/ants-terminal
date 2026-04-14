@@ -42,7 +42,7 @@ release; this section is the rollup so nothing falls by the wayside.
 
 | Bundle | What ships | Status | Target release |
 |--------|------------|--------|----------------|
-| **H1** | `SECURITY.md` coordinated-disclosure policy, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) | 📋 | 0.7.0 |
+| **H1** | `SECURITY.md` coordinated-disclosure policy, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) | ✅ | 0.6.16 |
 | **H2** | AppStream `org.ants.Terminal.metainfo.xml`, polished desktop entry (`org.ants.Terminal.desktop`), icon install rules | 📋 | 0.7.0 |
 | **H3** | Man page `ants-terminal.1` + CMake install rule | 📋 | 0.7.0 |
 | **H4** | Bash / zsh / fish completions + CMake install rules | 📋 | 0.7.0 |
@@ -301,14 +301,15 @@ maintainer could pick up tomorrow." See the
 [distribution-adoption overview](#distribution-adoption-overview)
 for the full multi-release plan.
 
-- 📋 **H1 — `SECURITY.md` + `CODE_OF_CONDUCT.md`**. Coordinated-
-  disclosure policy with supported-versions table, reporting channel
-  (GitHub Security Advisory + encrypted email), disclosure timeline,
-  severity rubric, in/out of scope lists, and an acknowledgement of
-  the hardening we already do. Contributor Covenant 2.1 verbatim
-  with our contact info. Gating for Debian / Fedora / Ubuntu
-  security-team review. Partially done in the working tree —
-  `SECURITY.md` drafted as of this commit.
+- ✅ **H1 — `SECURITY.md` + `CODE_OF_CONDUCT.md`**. Shipped in 0.6.16.
+  Coordinated-disclosure policy with supported-versions table,
+  reporting channel (GitHub Security Advisory + encrypted email),
+  disclosure timeline, severity rubric, in/out of scope lists, and an
+  acknowledgement of the hardening we already do. Contributor Covenant
+  2.1 verbatim with a dedicated maintainer email + the private GitHub
+  Security Advisory listed as conduct reporting channels. Clears the
+  Debian / Fedora / Ubuntu security-team review gate. See
+  [CHANGELOG.md §0.6.16](CHANGELOG.md#0616--2026-04-14).
 - 📋 **H2 — AppStream metainfo + polished desktop entry**. Create
   `packaging/linux/org.ants.Terminal.metainfo.xml` (AppStream 1.0
   schema with summary / description / screenshots / releases /

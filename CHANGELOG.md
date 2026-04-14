@@ -14,6 +14,53 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.16] — 2026-04-14
+
+**Theme:** ROADMAP §H1 (Distribution-readiness bundle 1 of 4) —
+community and security policy docs that distro packaging teams look
+for before accepting a package. Fully additive, docs-only.
+
+### Added
+
+- **`CODE_OF_CONDUCT.md`** — [Contributor Covenant 2.1][cc21] verbatim
+  with two reporting channels: a dedicated maintainer email and the
+  private GitHub Security Advisory (tagged `[conduct]` for triage) for
+  reporters who prefer GitHub's private-report flow. Email is listed
+  first per CoC convention — no GitHub account required. Ships
+  ROADMAP §H1.
+- **`SECURITY.md`** — coordinated-disclosure policy: supported-versions
+  table, reporting channels (GitHub Security Advisory preferred;
+  signed encrypted email for reporters who need it), 48h / 7d / 30d /
+  90d disclosure timeline, severity rubric (Critical / High / Medium /
+  Low), in-scope / out-of-scope lists, and an acknowledgement of the
+  hardening already in the tree (image-bomb budgets, URI scheme
+  allowlist, plugin sandbox, OSC 52 quotas, multi-line paste
+  confirmation, compile-time hardening flags, ASan + UBSan CI).
+  Completes ROADMAP §H1. (The file itself landed in commit
+  `4599813`; this release changelogs it alongside the CoC.)
+- **Distribution-adoption plan in `ROADMAP.md`** — new 📦 theme plus a
+  rollup section covering bundles H1–H16 (security/CoC, AppStream +
+  desktop, man page, shell completions, distro packaging for
+  openSUSE / Arch / Debian, Flatpak, docs site, macOS, accessibility,
+  i18n, reproducible builds, SBOM, distro submissions, deb/rpm
+  signing). Nothing ships from this plan yet except H1; it exists so
+  later releases have a single source of truth for packaging work.
+
+### Changed
+
+- ROADMAP transition: §H1 status 📋 → ✅ in both the
+  distribution-adoption overview table and the §0.7.0 📦 narrative
+  section, with links to this CHANGELOG entry.
+- README's **Contributing** section now links `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, and `SECURITY.md` before the step-by-step
+  fork/PR instructions, so first-time contributors see the policy
+  docs before they see the mechanics.
+- `CONTRIBUTING.md` intro references the CoC (participation
+  agreement) and `SECURITY.md` (private channel for sensitive
+  reports) so the rules aren't buried.
+
+[cc21]: https://www.contributor-covenant.org/version/2/1/code_of_conduct/
+
 ## [0.6.15] — 2026-04-14
 
 **Theme:** the **incremental reflow** optimization from ROADMAP §0.7.0

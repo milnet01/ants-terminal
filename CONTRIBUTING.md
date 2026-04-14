@@ -5,6 +5,13 @@ actionable guide derived from [STANDARDS.md](STANDARDS.md) — the authoritative
 source for style, architecture, and invariants. Start here, follow the links
 for depth.
 
+By participating in this project you agree to abide by the
+[Code of Conduct](CODE_OF_CONDUCT.md) (Contributor Covenant 2.1).
+Sensitive reports (security issues, conduct violations) go through the
+private channels described in [`SECURITY.md`](SECURITY.md) and
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) respectively — please don't
+file them as public GitHub issues.
+
 ## Quick start
 
 ```bash
