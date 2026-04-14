@@ -12,8 +12,26 @@ for security-relevant changes.
 
 ## [Unreleased]
 
-Nothing yet — see [0.6.0](#060--2026-04-14) for the current unreleased-at-HEAD
-work arc. Items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
+Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
+
+## [0.6.1] — 2026-04-14
+
+**Theme:** scroll-anchor correctness. One-liner fix for a long-standing drift
+bug that only surfaced with a full scrollback buffer.
+
+### Fixed
+
+- **Scroll anchor drifts when scrollback is at its cap.** While scrolled up
+  reading history, bursts of new output (e.g. Claude Code redrawing its
+  prompt / spinner) appeared to "redraw text at the current history
+  position" — actually the pinned viewport was sliding by one content-line
+  per pushed line. Root cause: the anchor math in `onPtyData` diffed
+  `scrollbackSize()` before/after parsing, but once the buffer hits
+  `scrollback_lines` (default 50k) each push also pops a stale line from
+  the front, so the size delta is always zero and the anchor thinks
+  nothing happened. `TerminalGrid` now exposes a monotonic
+  `scrollbackPushed()` counter that keeps incrementing through the cap;
+  `TerminalWidget` diffs that instead. Below-cap behavior is unchanged.
 
 ## [0.6.0] — 2026-04-14
 

@@ -1077,6 +1077,7 @@ void TerminalGrid::scrollUp(int count) {
     for (int i = 0; i < count; ++i) {
         if (m_scrollTop == 0 && !m_altScreenActive) {
             m_scrollback.push_back(std::move(m_screenLines[m_scrollTop]));
+            ++m_scrollbackPushed;
             if (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
                 m_scrollback.pop_front();
             // Move hyperlinks to scrollback

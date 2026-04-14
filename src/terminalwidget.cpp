@@ -1620,18 +1620,26 @@ void TerminalWidget::onPtyData(const QByteArray &data) {
     }
 
     // Scroll anchoring: if the user has scrolled up, keep their viewport stable
-    // as new lines push content into scrollback.
-    int scrollbackBefore = m_grid->scrollbackSize();
+    // as new lines push content into scrollback. We diff the monotonic push counter
+    // (not scrollbackSize()) because once the buffer is full, each push pops a stale
+    // line from the front and the size stays constant — using the size delta made
+    // the viewport drift by one content-line per push whenever scrollback was capped.
+    uint64_t pushedBefore = m_grid->scrollbackPushed();
 
     m_parser->feed(data.constData(), data.size());
 
     if (m_scrollOffset > 0) {
-        int added = m_grid->scrollbackSize() - scrollbackBefore;
-        if (added > 0) {
-            m_scrollOffset = std::min(m_scrollOffset + added, m_grid->scrollbackSize());
+        uint64_t added64 = m_grid->scrollbackPushed() - pushedBefore;
+        if (added64 > 0) {
+            // scrollbackSize() caps the useful range — anything larger saturates via
+            // the std::min below, so clipping here avoids any uint64→int overflow risk.
+            int sbSize = m_grid->scrollbackSize();
+            int added = (added64 > static_cast<uint64_t>(sbSize))
+                          ? sbSize : static_cast<int>(added64);
+            m_scrollOffset = std::min(m_scrollOffset + added, sbSize);
             // Set new output marker when user is scrolled up and new content arrives
             if (m_newOutputMarkerLine < 0)
-                m_newOutputMarkerLine = m_grid->scrollbackSize() + m_grid->rows() - 1;
+                m_newOutputMarkerLine = sbSize + m_grid->rows() - 1;
         }
     } else {
         m_newOutputMarkerLine = -1;

@@ -136,6 +136,11 @@ public:
     int scrollbackSize() const { return static_cast<int>(m_scrollback.size()); }
     const std::vector<Cell> &scrollbackLine(int index) const { return m_scrollback[index].cells; }
     bool scrollbackLineWrapped(int index) const { return m_scrollback[index].softWrapped; }
+    // Monotonic counter of lines ever pushed into scrollback — unlike scrollbackSize()
+    // it keeps incrementing after the buffer hits m_maxScrollback (where a push pops a
+    // stale line off the front). Scroll-anchor math must diff this, not the size, or
+    // the viewport drifts by one content-line per push once the buffer is full.
+    uint64_t scrollbackPushed() const { return m_scrollbackPushed; }
 
     // Configurable scrollback limit
     void setMaxScrollback(int lines);
@@ -300,6 +305,8 @@ private:
 
     std::deque<TermLine> m_scrollback;
     int m_maxScrollback = 50000;
+    // Monotonic — total lines ever pushed (for scroll-anchor drift correction when capped)
+    uint64_t m_scrollbackPushed = 0;
 
     QColor m_defaultFg{0xCD, 0xD6, 0xF4};  // Light text
     QColor m_defaultBg{0x1E, 0x1E, 0x2E};  // Dark bg
