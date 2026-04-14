@@ -160,6 +160,15 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
         update();  // repaint to draw/hide the progress strip
     });
 
+    // 0.6.9 — trigger system bundle: forward shell-integration + iTerm2 hooks
+    // out as Qt signals so MainWindow can dispatch them as plugin events.
+    m_grid->setCommandFinishedCallback([this](int exitCode, qint64 durationMs) {
+        emit commandFinished(exitCode, durationMs);
+    });
+    m_grid->setUserVarCallback([this](const QString &name, const QString &value) {
+        emit userVarChanged(name, value);
+    });
+
     // Smooth scrolling timer (16ms = ~60fps)
     m_smoothScrollTimer.setInterval(16);
     connect(&m_smoothScrollTimer, &QTimer::timeout, this, &TerminalWidget::smoothScrollStep);
@@ -3820,6 +3829,12 @@ void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
         if (!rule.pattern.isValid()) continue;
         rule.actionType = obj["action_type"].toString("notify");
         rule.actionValue = obj["action_value"].toString();
+        // 0.6.9 — instant flag (iTerm2 convention): when true, fire on every
+        // PTY chunk (useful for in-progress prompts like password prompts).
+        // When false (default), fires only on completed-line evaluation —
+        // which today still runs per chunk; non-instant rules become eligible
+        // only after a newline-terminated chunk to reduce mid-line spam.
+        rule.instant = obj["instant"].toBool(false);
         m_triggerRules.push_back(rule);
     }
 }
@@ -3827,8 +3842,20 @@ void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
 void TerminalWidget::checkTriggers(const QByteArray &data) {
     if (m_triggerRules.empty()) return;
     QString text = QString::fromUtf8(data);
+    // Non-instant rules wait for a newline-terminated chunk so they react to
+    // settled output rather than mid-line partial matches. Instant rules
+    // (e.g. password prompt watchers) get every chunk.
+    bool chunkEndsLine = (!text.isEmpty()) &&
+                         (text.endsWith('\n') || text.endsWith('\r'));
     for (const auto &rule : m_triggerRules) {
-        if (rule.pattern.match(text).hasMatch()) {
+        if (!rule.instant && !chunkEndsLine) continue;
+        QRegularExpressionMatch m = rule.pattern.match(text);
+        if (!m.hasMatch()) continue;
+        // run_script gets a separate signal carrying the matched substring so
+        // the plugin handler receives the actual hit, not just the rule id.
+        if (rule.actionType == QLatin1String("run_script")) {
+            emit triggerRunScript(rule.actionValue, m.captured(0));
+        } else {
             emit triggerFired(rule.pattern.pattern(), rule.actionType, rule.actionValue);
         }
     }

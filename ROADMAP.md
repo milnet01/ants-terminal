@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.8 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.9 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -154,22 +154,27 @@ there before adding a multiplexer. Reference:
 
 ### 🔌 Plugins — trigger system
 
-- 📋 **Trigger rules** as config: `{regex, action, params, instant}`
-  evaluated per output line. Actions: `HighlightLine`, `HighlightText`,
-  `MakeHyperlink`, `InjectText`, `RingBell`, `PostNotification`,
-  `RunScript` (Lua function by name)
-  ([iTerm2 docs](https://iterm2.com/documentation-triggers.html)).
-  "Instant" triggers evaluate before the line is complete — for
-  password prompts.
-- 📋 **User-vars channel**: parse `ESC ] 1337 ; SetUserVar=NAME=<b64> ST`
-  and fire `user_var_changed` event. Lets a shell plugin pipe state
-  (git branch, k8s context, virtualenv) to plugins without prompt
-  parsing ([WezTerm docs](https://wezterm.org/recipes/passing-data.html)).
-- 📋 **Command-palette registration**: `ants.palette.register({
-  title, action, hotkey})`. Mirrors WezTerm's
-  `augment-command-palette` event.
-- 📋 Events: `command_finished` (exit + duration), `pane_focused`,
-  `theme_changed`, `window_config_reloaded`.
+- ✅ **Trigger rules** with `instant` flag and new action types
+  (`bell`, `inject`, `run_script` alongside the existing `notify` /
+  `sound` / `command`). Shipped in 0.6.9. The `HighlightLine` /
+  `HighlightText` / `MakeHyperlink` actions from the iTerm2 reference
+  are deferred — they need grid-cell mutation surgery and are tracked
+  as a follow-up; everything else from the iTerm2 trigger doc has
+  parity. See [CHANGELOG.md §0.6.9](CHANGELOG.md#069--2026-04-14).
+- ✅ **User-vars channel**: OSC 1337 SetUserVar parsing + the
+  `user_var_changed` event. Shipped in 0.6.9. Disambiguated from
+  inline images by the byte after `1337;`. NAME ≤ 128 chars; decoded
+  value capped at 4 KiB. See
+  [CHANGELOG.md §0.6.9](CHANGELOG.md#069--2026-04-14).
+- ✅ **Command-palette registration**: `ants.palette.register({title,
+  action, hotkey})` shipped in 0.6.9. Always-on (no permission gate),
+  optional global QShortcut. Entry triggers fire scoped
+  `palette_action` event. See
+  [CHANGELOG.md §0.6.9](CHANGELOG.md#069--2026-04-14).
+- ✅ Events: `command_finished` (exit + duration), `pane_focused`,
+  `theme_changed`, `window_config_reloaded`, `user_var_changed`,
+  `palette_action`. All shipped in 0.6.9. See
+  [CHANGELOG.md §0.6.9](CHANGELOG.md#069--2026-04-14).
 
 ### ⚡ Performance
 

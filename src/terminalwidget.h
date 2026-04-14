@@ -120,11 +120,17 @@ public:
     };
     void setHighlightRules(const QJsonArray &rules);
 
-    // Trigger rules (regex -> action)
+    // Trigger rules (regex -> action). 0.6.9 adds:
+    //   - actions: "bell", "inject", "run_script" (Lua function/action id)
+    //   - instant: fire on every PTY chunk vs. only on completed lines
+    //     (today checkTriggers runs on every chunk; instant is honored as the
+    //     current behavior, while non-instant batches into completed-line
+    //     evaluation — matches iTerm2's "Instant" flag semantics).
     struct TriggerRule {
         QRegularExpression pattern;
-        QString actionType; // "notify", "sound", "command"
+        QString actionType;  // "notify"|"sound"|"command"|"bell"|"inject"|"run_script"
         QString actionValue;
+        bool instant = false;
     };
     void setTriggerRules(const QJsonArray &rules);
 
@@ -202,6 +208,15 @@ signals:
     void outputReceived();  // debounced notification of PTY output
     void desktopNotification(const QString &title, const QString &body);
     void progressChanged(int state, int percent);  // OSC 9;4: state = ProgressState enum, percent = 0-100
+    // 0.6.9 — trigger system bundle:
+    //   commandFinished: emitted on OSC 133 D (after exit code parsed).
+    //   userVarChanged:  emitted on OSC 1337;SetUserVar=NAME=base64(value).
+    //   triggerRunScript: emitted by trigger system when an action_type is
+    //     "run_script" — actionValue is the action id, payload is the
+    //     matched substring. Routed by MainWindow into a plugin event.
+    void commandFinished(int exitCode, qint64 durationMs);
+    void userVarChanged(const QString &name, const QString &value);
+    void triggerRunScript(const QString &actionId, const QString &matched);
 
 protected:
     bool event(QEvent *event) override;

@@ -132,13 +132,7 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_commandPalette, &CommandPalette::closed, this, [this]() {
         if (auto *t = focusedTerminal()) t->setFocus();
     });
-    // Collect all menu actions for the palette
-    QList<QAction *> allActions;
-    for (QAction *menuAction : m_menuBar->actions()) {
-        if (menuAction->menu())
-            collectActions(menuAction->menu(), allActions);
-    }
-    m_commandPalette->setActions(allActions);
+    rebuildCommandPalette();
 
 #ifdef ANTS_LUA_PLUGINS
     // Initialize plugin system
@@ -255,6 +249,25 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
             [this](const QString &pluginName, const QString &key, const QString &value) {
                 m_config.setPluginSetting(pluginName, key, value);
             });
+    // 0.6.9 — palette entries from ants.palette.register({...}). Each call
+    // appends one entry and rebuilds the Ctrl+Shift+P list. Hot reload
+    // discards all entries first (via pluginsReloaded below) so stale
+    // entries from removed plugins don't survive across reloads.
+    connect(m_pluginManager, &PluginManager::paletteEntryRegistered, this,
+            &MainWindow::onPluginPaletteRegistered);
+    // Drop all plugin palette entries on a full reload — init.lua re-runs
+    // and re-registers anything that should still be there. Without this
+    // each reload would double-register every entry.
+    connect(m_pluginManager, &PluginManager::pluginsReloaded, this, [this]() {
+        // Tear down all plugin entries; they'll be re-added by re-running
+        // init.lua during scanAndLoad.
+        for (auto &e : m_pluginPaletteEntries) {
+            if (e.qaction)  e.qaction->deleteLater();
+            if (e.shortcut) e.shortcut->deleteLater();
+        }
+        m_pluginPaletteEntries.clear();
+        rebuildCommandPalette();
+    });
 #endif
 
     // Apply saved theme
@@ -960,6 +973,15 @@ void MainWindow::setupMenus() {
                 if (m_config.quakeMode() && !m_quakeMode)
                     setupQuakeMode();
 
+#ifdef ANTS_LUA_PLUGINS
+                // 0.6.9 — let plugins react to settings changes (re-read their
+                // own settings, refresh status text, etc.). Payload is empty
+                // because the relevant config bits are accessed via
+                // ants.settings.get on demand.
+                if (m_pluginManager)
+                    m_pluginManager->fireEvent(PluginEvent::WindowConfigReloaded, QString());
+#endif
+
                 showStatusMessage("Settings applied", 3000);
             });
             connect(m_settingsDialog, &QDialog::finished, this, [this]() {
@@ -1066,6 +1088,40 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
 
     // Trigger signals
     connect(terminal, &TerminalWidget::triggerFired, this, &MainWindow::onTriggerFired);
+
+#ifdef ANTS_LUA_PLUGINS
+    // 0.6.9 — forward shell-integration + iTerm2 hooks out as plugin events.
+    // command_finished payload: "exit_code=N&duration_ms=N" (URL-form so
+    // plugins can parse with a simple split — no escaping needed).
+    connect(terminal, &TerminalWidget::commandFinished, this,
+            [this](int exitCode, qint64 durationMs) {
+        if (m_pluginManager) {
+            m_pluginManager->fireEvent(PluginEvent::CommandFinished,
+                QString("exit_code=%1&duration_ms=%2").arg(exitCode).arg(durationMs));
+        }
+    });
+    // user_var_changed payload: "NAME=value" (raw — names are already
+    // identifier-shaped per the OSC 1337 SetUserVar spec).
+    connect(terminal, &TerminalWidget::userVarChanged, this,
+            [this](const QString &name, const QString &value) {
+        if (m_pluginManager) {
+            m_pluginManager->fireEvent(PluginEvent::UserVarChanged,
+                                        name + QStringLiteral("=") + value);
+        }
+    });
+    // run_script trigger action: route the matched substring to plugins as a
+    // PaletteAction event with the action id as payload. Plugins listening
+    // for the matching id can dispatch their own logic.
+    connect(terminal, &TerminalWidget::triggerRunScript, this,
+            [this](const QString &actionId, const QString &matched) {
+        if (m_pluginManager) {
+            // Broadcast — any plugin can react; payload "actionId\tmatched"
+            // gives the plugin both the dispatch key and the captured text.
+            m_pluginManager->fireEvent(PluginEvent::PaletteAction,
+                                        actionId + QStringLiteral("\t") + matched);
+        }
+    });
+#endif
 
     // OSC 9;4 progress reporting — show a small colored dot as the tab icon.
     // ConEmu / Microsoft Terminal convention.
@@ -1417,7 +1473,7 @@ void MainWindow::closeCurrentTab() {
     closeTab(m_tabWidget->currentIndex());
 }
 
-void MainWindow::onTabChanged(int /*index*/) {
+void MainWindow::onTabChanged(int index) {
     auto *t = focusedTerminal();
     if (!t) t = currentTerminal();
     if (t) {
@@ -1429,6 +1485,18 @@ void MainWindow::onTabChanged(int /*index*/) {
     }
     // Update status bar immediately so CWD/git/process reflect the new tab
     updateStatusBar();
+
+#ifdef ANTS_LUA_PLUGINS
+    // 0.6.9 — fire `pane_focused` so plugins can swap context (per-pane
+    // status, badge, ssh-connection-aware behavior). Today this fires on
+    // tab switches; once split-pane focus tracking lands the same event
+    // covers within-tab pane changes without further plugin churn.
+    if (m_pluginManager) {
+        QString tabTitle = (index >= 0 && index < m_tabWidget->count())
+                           ? m_tabWidget->tabText(index) : QString();
+        m_pluginManager->fireEvent(PluginEvent::PaneFocused, tabTitle);
+    }
+#endif
 }
 
 TerminalWidget *MainWindow::currentTerminal() const {
@@ -1525,6 +1593,12 @@ void MainWindow::applyTheme(const QString &name) {
             t->grid()->sendResponse("\x1B[?997;" + std::to_string(scheme) + "n");
         }
     }
+
+#ifdef ANTS_LUA_PLUGINS
+    // 0.6.9 — fire `theme_changed` event so plugins can swap palette/icon
+    // assets, redraw status-bar widgets, etc. Payload is the new theme name.
+    if (m_pluginManager) m_pluginManager->fireEvent(PluginEvent::ThemeChanged, name);
+#endif
 
     showStatusMessage(QString("Theme: %1").arg(name), 3000);
 }
@@ -2394,11 +2468,18 @@ void MainWindow::onTriggerFired(const QString &pattern, const QString &actionTyp
             << QVariantMap()        // hints
             << int(5000);           // timeout ms
         QDBusConnection::sessionBus().send(msg);
-    } else if (actionType == "sound") {
+    } else if (actionType == "sound" || actionType == "bell") {
         QApplication::beep();
     } else if (actionType == "command") {
         if (!actionValue.isEmpty()) {
             QProcess::startDetached("/bin/sh", {"-c", actionValue});
+        }
+    } else if (actionType == "inject") {
+        // Inject text directly into the focused PTY. \n / \r in the action
+        // value pass through verbatim so a "yes\n" rule can auto-answer a
+        // prompt — caller's responsibility to scope this with a tight regex.
+        if (auto *t = focusedTerminal()) {
+            t->sendToPty(actionValue.toUtf8());
         }
     }
     showStatusMessage(QString("Trigger: '%1' matched").arg(pattern), 3000);
@@ -2825,3 +2906,90 @@ void MainWindow::showSnippetsDialog() {
 
     dialog->show();
 }
+
+// --- Command palette rebuild + plugin entries (0.6.9) ---
+
+void MainWindow::rebuildCommandPalette() {
+    if (!m_commandPalette) return;
+    QList<QAction *> all;
+    for (QAction *menuAction : m_menuBar->actions()) {
+        if (menuAction->menu())
+            collectActions(menuAction->menu(), all);
+    }
+#ifdef ANTS_LUA_PLUGINS
+    // Append plugin-registered entries last so they sort below built-ins —
+    // keeps muscle memory for users who already know the menu hierarchy.
+    for (const auto &e : m_pluginPaletteEntries) {
+        if (e.qaction) all.append(e.qaction);
+    }
+#endif
+    m_commandPalette->setActions(all);
+}
+
+#ifdef ANTS_LUA_PLUGINS
+void MainWindow::onPluginPaletteRegistered(const QString &pluginName,
+                                            const QString &title,
+                                            const QString &action,
+                                            const QString &hotkey) {
+    // Defensive de-dup: a single plugin re-registering the same (title, action)
+    // tuple replaces the prior entry rather than stacking a duplicate. Common
+    // when init.lua runs more than once during a hot-reload race.
+    for (int i = 0; i < m_pluginPaletteEntries.size(); ++i) {
+        const auto &e = m_pluginPaletteEntries[i];
+        if (e.plugin == pluginName && e.title == title && e.action == action) {
+            if (e.qaction)  e.qaction->deleteLater();
+            if (e.shortcut) e.shortcut->deleteLater();
+            m_pluginPaletteEntries.removeAt(i);
+            break;
+        }
+    }
+
+    PluginPaletteEntry entry;
+    entry.plugin = pluginName;
+    entry.title  = title;
+    entry.action = action;
+    entry.hotkey = hotkey;
+
+    // Visible label: "<plugin>: <title>" so the palette stays scannable when
+    // multiple plugins contribute entries with similar names.
+    QString label = QString("%1: %2").arg(pluginName, title);
+    entry.qaction = new QAction(label, this);
+    if (!hotkey.isEmpty()) {
+        QKeySequence ks(hotkey);
+        if (!ks.isEmpty()) entry.qaction->setShortcut(ks);
+    }
+    QString plugin = pluginName;  // capture by value
+    QString actionId = action;
+    connect(entry.qaction, &QAction::triggered, this, [this, plugin, actionId]() {
+        if (m_pluginManager) m_pluginManager->firePaletteAction(plugin, actionId);
+    });
+
+    // Optional standalone QShortcut so the hotkey works even when the palette
+    // isn't open. Mirrors the manifest "keybindings" mechanism — registered
+    // here per-entry so plugin authors can choose the entry-vs-keybinding
+    // scope (palette only vs always-active).
+    if (!hotkey.isEmpty()) {
+        QKeySequence ks(hotkey);
+        if (!ks.isEmpty()) {
+            entry.shortcut = new QShortcut(ks, this);
+            connect(entry.shortcut, &QShortcut::activated, this,
+                    [this, plugin, actionId]() {
+                if (m_pluginManager) m_pluginManager->firePaletteAction(plugin, actionId);
+            });
+        }
+    }
+
+    m_pluginPaletteEntries.append(entry);
+    rebuildCommandPalette();
+}
+
+void MainWindow::clearPluginPaletteEntriesFor(const QString &pluginName) {
+    for (int i = m_pluginPaletteEntries.size() - 1; i >= 0; --i) {
+        if (m_pluginPaletteEntries[i].plugin != pluginName) continue;
+        if (m_pluginPaletteEntries[i].qaction)  m_pluginPaletteEntries[i].qaction->deleteLater();
+        if (m_pluginPaletteEntries[i].shortcut) m_pluginPaletteEntries[i].shortcut->deleteLater();
+        m_pluginPaletteEntries.removeAt(i);
+    }
+    rebuildCommandPalette();
+}
+#endif

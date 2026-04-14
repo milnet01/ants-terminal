@@ -148,6 +148,27 @@ private:
     // Handle trigger signals from terminals
     void onTriggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
 
+    // 0.6.9 — palette entries registered by plugins via ants.palette.register({...}).
+    // Maintained as a parallel list to the menu-derived QActions; whenever this
+    // changes (plugin load/reload/unload, new register call) we rebuild the
+    // CommandPalette's full action list. Hotkey strings, when non-empty, get
+    // QShortcut wrappers that route through PluginManager::firePaletteAction.
+#ifdef ANTS_LUA_PLUGINS
+    struct PluginPaletteEntry {
+        QString plugin;     // owning plugin name
+        QString title;      // visible label
+        QString action;     // payload echoed back to plugin
+        QString hotkey;     // empty if no shortcut
+        QAction *qaction = nullptr;     // owned by `this`
+        QShortcut *shortcut = nullptr;  // owned by `this`, optional
+    };
+    QList<PluginPaletteEntry> m_pluginPaletteEntries;
+    void rebuildCommandPalette();
+    void onPluginPaletteRegistered(const QString &pluginName, const QString &title,
+                                    const QString &action, const QString &hotkey);
+    void clearPluginPaletteEntriesFor(const QString &pluginName);
+#endif
+
     // Claude Code integration
     ClaudeIntegration *m_claudeIntegration = nullptr;
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;

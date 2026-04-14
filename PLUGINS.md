@@ -1,6 +1,6 @@
 # Ants Terminal — Plugin Authoring Standards
 
-> **Audience**: plugin authors writing against `ants-terminal` **v0.5.0**
+> **Audience**: plugin authors writing against `ants-terminal` **v0.6.9**
 > (Lua 5.4 runtime). For internal plugin-system architecture notes aimed at
 > Ants-Terminal contributors, see `STANDARDS.md` → "Plugin System Standards".
 
@@ -20,7 +20,7 @@ those drift from this doc, the doc wins and an issue should be filed.
 1. [Directory Layout](#directory-layout)
 2. [Manifest (`manifest.json`)](#manifest-manifestjson)
 3. [Entry Point (`init.lua`)](#entry-point-initlua)
-4. [The `ants.*` API — Current (v0.5.0)](#the-ants-api--current-v050)
+4. [The `ants.*` API — Current (v0.6.9)](#the-ants-api--current-v069)
 5. [Events](#events)
 6. [Sandbox Boundaries](#sandbox-boundaries)
 7. [Resource Limits](#resource-limits)
@@ -158,9 +158,9 @@ end)
   whole VM down and re-creates it, so re-registered handlers simply
   replace the old ones.
 
-## The `ants.*` API — Current (v0.6.0)
+## The `ants.*` API — Current (v0.6.9)
 
-This is the complete surface as of **0.6.0**. Functions not listed here
+This is the complete surface as of **0.6.9**. Functions not listed here
 do not exist and will raise `attempt to call a nil value`. Permissioned
 functions (marked 🔒) are only present when the corresponding permission
 is granted.
@@ -266,6 +266,41 @@ if ants.clipboard then
 end
 ```
 
+### `ants.palette.register({title, action, hotkey})`
+
+**Available in 0.6.9+.** Adds an entry to the Ctrl+Shift+P command
+palette. No permission required — the entry is opt-in (the user has to
+open the palette and pick it). When a `hotkey` is provided, it is also
+registered as a global QShortcut so the entry can be triggered without
+opening the palette.
+
+```lua
+ants.palette.register({
+    title  = "Reload dotfiles",
+    action = "reload-dotfiles",     -- payload echoed back via palette_action
+    hotkey = "Ctrl+Alt+R",          -- optional
+})
+
+ants.on("palette_action", function(payload)
+    -- For palette-entry triggers, payload is the action id you registered.
+    -- For run_script trigger actions, payload is "<action_id>\t<matched>".
+    if payload == "reload-dotfiles" then
+        ants.send("source ~/.zshrc\n")
+    end
+end)
+```
+
+| Field    | Type   | Required | Notes                                                          |
+|----------|--------|----------|----------------------------------------------------------------|
+| `title`  | string | yes      | Displayed in palette as `"<plugin_name>: <title>"`             |
+| `action` | string | yes      | Payload echoed back to your `palette_action` handler           |
+| `hotkey` | string | no       | Qt key-sequence string (e.g. `"Ctrl+Shift+G"`); optional       |
+
+**Lifecycle:** entries are torn down on plugin reload; re-register in
+`init.lua` (which re-runs on hot-reload) to persist them across reloads.
+Re-registering the same `(title, action)` tuple replaces the prior entry
+rather than stacking duplicates.
+
 ### 🔒 `ants.settings.get(key)` / `ants.settings.set(key, value)`
 
 Requires manifest permission `"settings"`. Per-plugin key/value store,
@@ -282,18 +317,24 @@ end
 
 ## Events
 
-| Event name       | Handler signature             | Cancellable | When it fires                                        |
-|------------------|-------------------------------|-------------|------------------------------------------------------|
-| `"output"`       | `function(chunk)`             | no          | Every chunk of PTY output, post-decode, pre-display  |
-| `"line"`         | `function(line)`              | no          | A complete logical line arrives (newline-terminated) |
-| `"prompt"`       | `function(marker_data)`       | no          | OSC 133 A/B/C/D marker parsed                        |
-| `"keypress"`     | `function(key)` returns bool? | **yes**     | User pressed a key (before the grid sees it)         |
-| `"title_changed"`| `function(new_title)`         | no          | OSC 0/1/2 title change                               |
-| `"tab_created"`  | `function(tab_info)`          | no          | New tab opened (includes splits)                     |
-| `"tab_closed"`   | `function(tab_info)`          | no          | Tab/pane closed                                      |
-| `"keybinding"`   | `function(action_id)`         | no          | Manifest `"keybindings"` shortcut fired              |
-| `"load"`         | `function(plugin_name)`       | no          | Once after `init.lua` returns — deferred init hook   |
-| `"unload"`       | `function(plugin_name)`       | no          | Just before VM shutdown — save state here            |
+| Event name                | Handler signature             | Cancellable | When it fires                                        |
+|---------------------------|-------------------------------|-------------|------------------------------------------------------|
+| `"output"`                | `function(chunk)`             | no          | Every chunk of PTY output, post-decode, pre-display  |
+| `"line"`                  | `function(line)`              | no          | A complete logical line arrives (newline-terminated) |
+| `"prompt"`                | `function(marker_data)`       | no          | OSC 133 A/B/C/D marker parsed                        |
+| `"keypress"`              | `function(key)` returns bool? | **yes**     | User pressed a key (before the grid sees it)         |
+| `"title_changed"`         | `function(new_title)`         | no          | OSC 0/1/2 title change                               |
+| `"tab_created"`           | `function(tab_info)`          | no          | New tab opened (includes splits)                     |
+| `"tab_closed"`            | `function(tab_info)`          | no          | Tab/pane closed                                      |
+| `"keybinding"`            | `function(action_id)`         | no          | Manifest `"keybindings"` shortcut fired              |
+| `"load"`                  | `function(plugin_name)`       | no          | Once after `init.lua` returns — deferred init hook   |
+| `"unload"`                | `function(plugin_name)`       | no          | Just before VM shutdown — save state here            |
+| `"command_finished"` 0.6.9| `function(payload)`           | no          | OSC 133 D — payload `"exit_code=N&duration_ms=N"`    |
+| `"pane_focused"` 0.6.9    | `function(tab_title)`         | no          | Tab/pane focus changed                               |
+| `"theme_changed"` 0.6.9   | `function(theme_name)`        | no          | Theme switched (manual or auto dark/light)           |
+| `"window_config_reloaded"` 0.6.9 | `function(_)`          | no          | Settings → Apply, or `config.json` watcher fired     |
+| `"user_var_changed"` 0.6.9 | `function(payload)`          | no          | OSC 1337 SetUserVar — payload `"NAME=value"`         |
+| `"palette_action"` 0.6.9  | `function(payload)`           | no          | Registered palette entry / `run_script` trigger fired |
 
 **Return-value contract:** only `"keypress"` acts on the return value.
 Returning `false` suppresses default handling; any other value (including
@@ -502,26 +543,37 @@ on these today** — they'll fail with `attempt to call a nil value`.
 - ✅ **Plugin keybindings** — `manifest.json` `"keybindings"` block.
   Firing sends a `keybinding` event with the action id.
 
-### 0.7 — richer events + command palette registration
+### 0.6.9 — trigger system + richer events ✅ (shipped 2026-04-14)
 
-- **`ants.palette.register({title, action, hotkey})`** — inject entries
-  into the Ctrl+Shift+P palette.
-- Events: `"output_line"` (post-OSC-133-grouped), `"command_finished"`
-  (exit code + duration), `"pane_focused"`, `"theme_changed"`,
-  `"window_config_reloaded"`.
-- **User-vars channel**: WezTerm-style `OSC 1337;SetUserVar=NAME=<b64>`
-  produces a `"user_var_changed"` event. Lets a shell plugin pipeline
-  state (git branch, k8s context) into terminal UI without prompt
-  parsing.
+**All of the below are live in 0.6.9.**
 
-### 0.8 — trigger system + plugin marketplace
+- ✅ **`ants.palette.register({title, action, hotkey})`** — see the
+  [palette section](#antspaletteregistertitle-action-hotkey) above.
+- ✅ Events: `"command_finished"`, `"pane_focused"`, `"theme_changed"`,
+  `"window_config_reloaded"`, `"user_var_changed"`, `"palette_action"` —
+  see the [events table](#events) above.
+- ✅ **User-vars channel**: OSC 1337 SetUserVar parsing →
+  `"user_var_changed"` event. NAME ≤ 128 chars; decoded value ≤ 4 KiB.
+- ✅ **Trigger system extensions**: `instant` flag and new action types
+  (`bell`, `inject`, `run_script`) on top of the existing `notify` /
+  `sound` / `command`. `run_script` broadcasts to plugins as a
+  `palette_action` event with payload `"<action_id>\t<matched>"`.
 
-- **Trigger rules** as first-class config: `{regex, action, params}`
-  evaluated per output line; `ants.trigger.register(…)` lets plugins
-  add triggers programmatically.
-- **Plugin marketplace**: signed manifest (Ed25519), public index
-  served from a static site, inline install from Settings → Plugins →
-  Browse.
+### 0.7 — output_line + ants.trigger.register
+
+- **`"output_line"`** event — fires post-OSC-133-grouped (one event per
+  command's output, batched, instead of one per chunk).
+- **`ants.trigger.register(rule)`** — programmatic equivalent of the
+  config-file trigger rules. Same rule schema; lets plugins install /
+  remove triggers without user editing of `config.json`.
+
+### 0.8 — plugin marketplace
+
+- **Signed manifest packaging** (Ed25519), public index served from a
+  static site, inline install from Settings → Plugins → Browse.
+- **Trigger grid-mutation actions**: `HighlightLine`, `HighlightText`,
+  `MakeHyperlink` — require per-cell color overrides + parser-external
+  OSC 8 injection; deferred from the 0.6.9 trigger bundle.
 
 ### 0.9+ — WebAssembly plugins (opt-in)
 

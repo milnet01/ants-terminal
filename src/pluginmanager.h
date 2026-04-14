@@ -64,6 +64,11 @@ public:
     using PermissionPrompt = std::function<QStringList(const PluginInfo &info,
                                                        const QStringList &requested)>;
     void setPermissionPrompt(PermissionPrompt p) { m_permissionPrompt = std::move(p); }
+
+    // Fire a palette_action event to a specific plugin's VM. Used by MainWindow
+    // when the user triggers a plugin-registered palette entry (via click or
+    // shortcut). Targeted, not broadcast — only the registering plugin sees it.
+    void firePaletteAction(const QString &pluginName, const QString &actionId);
     // Persisted per-plugin grants (plugin -> permission list). Called back by
     // the permission prompt and used for subsequent loads without asking.
     using GrantStore = std::function<QStringList(const QString &pluginName)>;
@@ -84,6 +89,11 @@ signals:
     void settingsGetRequested(const QString &pluginName, const QString &key, QString &out);
     void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value);
     void pluginsReloaded();
+    // 0.6.9 — ants.palette.register() forward. MainWindow rebuilds the
+    // Ctrl+Shift+P palette + (when hotkey is non-empty) wires a QShortcut
+    // that calls back into PluginManager::firePaletteAction(plugin, action).
+    void paletteEntryRegistered(const QString &pluginName, const QString &title,
+                                const QString &action, const QString &hotkey);
 
 private:
     void loadPlugin(const PluginInfo &info);

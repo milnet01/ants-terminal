@@ -711,8 +711,13 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             break;
         case 'D': { // Command finished
             m_shellIntegState = 0;
-            if (!m_promptRegions.empty())
-                m_promptRegions.back().commandEndMs = QDateTime::currentMSecsSinceEpoch();
+            qint64 endMs = QDateTime::currentMSecsSinceEpoch();
+            qint64 durationMs = 0;
+            if (!m_promptRegions.empty()) {
+                m_promptRegions.back().commandEndMs = endMs;
+                qint64 startMs = m_promptRegions.back().commandStartMs;
+                if (startMs > 0) durationMs = endMs - startMs;
+            }
             // Parse exit code: OSC 133 ; D ; exitcode ST
             std::string rest = payload.substr(semi + 1);
             size_t semi2 = rest.find(';');
@@ -727,6 +732,11 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             } else {
                 m_lastExitCode = 0;
             }
+            // Notify consumers (TerminalWidget → MainWindow → PluginManager
+            // command_finished event). Fires after exit code is parsed so the
+            // payload is complete.
+            if (m_commandFinishedCallback)
+                m_commandFinishedCallback(m_lastExitCode, durationMs);
             break;
         }
         }
@@ -734,9 +744,37 @@ void TerminalGrid::handleOsc(const std::string &payload) {
         while (static_cast<int>(m_promptRegions.size()) > MAX_PROMPT_REGIONS)
             m_promptRegions.erase(m_promptRegions.begin());
     }
-    // OSC 1337 — iTerm2 inline images
+    // OSC 1337 — iTerm2 multi-purpose channel.
+    //   ESC ] 1337 ; File=<params>:<base64>      → inline image
+    //   ESC ] 1337 ; SetUserVar=<NAME>=<base64>  → user-var (WezTerm/iTerm2)
+    // Disambiguate by the byte after "1337;": 'F' (File=...) vs 'S' (SetUserVar=...).
+    // Cheap prefix peek avoids running the image-decode path on user-var traffic
+    // and vice versa.
     else if (payload.compare(0, 5, "1337;") == 0) {
-        handleOscImage(payload);
+        if (payload.compare(5, 11, "SetUserVar=") == 0 && m_userVarCallback) {
+            // Format: SetUserVar=NAME=<base64-value>
+            std::string rest = payload.substr(16);  // strip "1337;SetUserVar="
+            size_t eq = rest.find('=');
+            if (eq != std::string::npos) {
+                std::string name = rest.substr(0, eq);
+                std::string b64  = rest.substr(eq + 1);
+                // Reject empty / overlong names. iTerm2 caps NAME to identifier-
+                // ish; we match that pragmatically (≤128 chars, non-empty).
+                if (!name.empty() && name.size() <= 128) {
+                    QByteArray decoded = QByteArray::fromBase64(
+                        QByteArray::fromRawData(b64.data(), static_cast<int>(b64.size())));
+                    // Cap decoded value at 4 KiB — this is a status payload, not
+                    // a transport. Anything larger is hostile or buggy.
+                    constexpr int kMaxUserVarBytes = 4096;
+                    if (decoded.size() > kMaxUserVarBytes)
+                        decoded.truncate(kMaxUserVarBytes);
+                    m_userVarCallback(QString::fromUtf8(name.c_str(), static_cast<int>(name.size())),
+                                       QString::fromUtf8(decoded));
+                }
+            }
+        } else {
+            handleOscImage(payload);
+        }
     }
     // OSC 9;4 — ConEmu / Microsoft Terminal progress reporting
     // Spec: https://learn.microsoft.com/en-us/windows/terminal/tutorials/progress-bar-sequences

@@ -14,6 +14,93 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.9] — 2026-04-14
+
+**Theme:** ship the **trigger system bundle** from 0.7.0 §Plugins —
+four items that share LuaEngine / PluginManager / OSC-dispatch
+plumbing and are cleaner to land together than to drip-feed across
+four releases. Sets up shell-aware plugin workflows for 0.7.
+
+### Added
+
+- **Trigger system extensions.** `TriggerRule` JSON schema gains an
+  `instant` boolean (iTerm2 convention — `true` fires on every PTY
+  chunk for in-progress matches like password prompts; `false`
+  defaults to firing only on newline-terminated chunks so settled
+  output doesn't double-fire mid-line) and three new `action_type`
+  values: `bell` (alias for `sound` — explicit per iTerm2's vocabulary),
+  `inject` (writes `action_value` directly to the focused PTY — useful
+  for "yes\n" auto-confirm rules), and `run_script` (broadcasts to
+  plugins as a `palette_action` event with payload
+  `"<action_id>\t<matched_substring>"`). Existing `notify` / `sound` /
+  `command` actions unchanged.
+- **OSC 1337 SetUserVar channel.** Parses
+  `ESC ] 1337 ; SetUserVar=NAME=<base64-value> ST` (iTerm2 / WezTerm
+  convention) and fires a `user_var_changed` plugin event with payload
+  `"NAME=value"`. Disambiguated from inline images by the byte after
+  `1337;` (`S` for SetUserVar, `F` for File). NAME capped at 128 chars,
+  decoded value capped at 4 KiB — this is a status channel, not a
+  transport. Lets a shell hook pipe state (git branch, k8s context,
+  virtualenv) into plugins without prompt-text scraping.
+- **`ants.palette.register({title, action, hotkey})`.** Lua API for
+  plugins to inject Ctrl+Shift+P palette entries. `title` and `action`
+  required; `hotkey` optional (when set, registers a global QShortcut
+  that fires the same action). Entries appear as `"<plugin>: <title>"`
+  to keep the palette scannable across plugins. Triggering an entry
+  fires a `palette_action` event with `action` as payload, scoped to
+  the registering plugin only — broadcast events use a different
+  payload format (`"<id>\t<match>"` from `run_script` triggers).
+- **Five new plugin events:**
+  - `command_finished` — fires on OSC 133 D; payload
+    `"exit_code=N&duration_ms=N"` (URL-form so plugins can split on
+    `&` without escaping).
+  - `pane_focused` — fires on tab switch; payload = tab title. Today
+    fires on tab changes; will cover within-tab pane focus when split-
+    pane focus tracking lands.
+  - `theme_changed` — fires after `applyTheme()` completes; payload =
+    theme name. Lets plugins swap palette/icon assets to match.
+  - `window_config_reloaded` — fires after Settings → Apply; payload
+    empty (plugins re-read settings via `ants.settings.get` on demand).
+  - `user_var_changed` — fires on OSC 1337 SetUserVar (see above).
+  - `palette_action` — fires when a registered palette entry is
+    triggered, or when a `run_script` trigger matches.
+- **`TerminalGrid` callbacks.** New `setCommandFinishedCallback`,
+  `setUserVarCallback`. Wired by `TerminalWidget` to corresponding
+  Qt signals (`commandFinished`, `userVarChanged`, `triggerRunScript`)
+  which `MainWindow` forwards into `PluginManager::fireEvent`.
+
+### Changed
+
+- **Command palette is now dynamic.** `MainWindow::rebuildCommandPalette()`
+  collects menu actions and plugin-registered entries on every change
+  (plugin load/reload/unload, individual `register` calls). On
+  `pluginsReloaded` signal, all plugin entries are torn down so a
+  removed plugin's entries don't survive across reloads — init.lua
+  re-runs on reload and re-registers anything that should still appear.
+- **PLUGINS.md** — documents the six new events, the `palette` API,
+  the `instant` flag, the new trigger action types. The 0.7 roadmap
+  section in PLUGINS.md is updated to reflect what's now shipped vs
+  what remains.
+- **ROADMAP.md** — moves all four trigger-system items from 📋 to ✅
+  in 0.7.0 §Plugins. Remaining 0.7.0 work is shell-integration UI
+  (command blocks, asciinema), performance (SIMD VT-parser scan,
+  decoupled threads), platform (Wayland Quake mode), and security
+  (plugin capability audit UI, image-bomb defenses).
+
+### Notes
+
+- The trigger system's `HighlightLine` / `HighlightText` /
+  `MakeHyperlink` actions from the original ROADMAP item are deferred
+  — they require grid-cell mutation (per-cell color overrides + OSC 8
+  hyperlink injection from outside the parser) which is a bigger
+  surgery than the dispatch-level actions shipped here. The actions
+  shipped (`notify`, `sound`/`bell`, `command`, `inject`, `run_script`,
+  `PostNotification` via `notify`) cover the iTerm2 trigger doc's
+  most-used cases. Grid-mutation actions are tracked as a follow-up.
+- `pane_focused` fires on tab switches today; once split-pane focus
+  tracking lands, the same event covers within-tab pane changes —
+  plugin handlers don't need to change.
+
 ## [0.6.8] — 2026-04-14
 
 **Theme:** close the two remaining Qt-specific audit rules from

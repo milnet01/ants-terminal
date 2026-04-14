@@ -23,6 +23,13 @@ enum class PluginEvent {
     Keybinding,   // A manifest keybinding fired — data = action id
     Load,         // Plugin loaded (fires once per plugin VM init)
     Unload,       // Plugin about to unload (save state, cleanup)
+    // 0.6.9 — trigger system bundle
+    CommandFinished,      // OSC 133 D — payload "exit_code=N&duration_ms=N"
+    PaneFocused,          // Tab/pane focus changed — payload = tab title
+    ThemeChanged,         // Theme switched — payload = theme name
+    WindowConfigReloaded, // Settings applied / config.json reloaded
+    UserVarChanged,       // OSC 1337;SetUserVar=NAME=value — payload "NAME=value"
+    PaletteAction,        // ants.palette.register() entry triggered — payload = action id
 };
 
 // Lua scripting engine with sandboxed API.
@@ -72,6 +79,12 @@ signals:
     // Handlers (PluginManager / MainWindow) forward to the Config layer.
     void settingsGetRequested(const QString &pluginName, const QString &key, QString &outValue);
     void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value);
+    // ants.palette.register({title, action, hotkey}) — appends a Ctrl+Shift+P
+    // entry. PluginManager forwards to MainWindow which rebuilds the palette
+    // and (when hotkey is non-empty) wires a global QShortcut. action is the
+    // payload echoed back via PaletteAction event when the entry fires.
+    void paletteEntryRegistered(const QString &pluginName, const QString &title,
+                                const QString &action, const QString &hotkey);
 
 private:
     // Lua C API callbacks (static, use upvalues for 'this' pointer)
@@ -85,6 +98,7 @@ private:
     static int lua_ants_clipboard_write(lua_State *L);
     static int lua_ants_settings_get(lua_State *L);
     static int lua_ants_settings_set(lua_State *L);
+    static int lua_ants_palette_register(lua_State *L);
 
     void registerApi();
     void sandboxEnvironment();

@@ -67,6 +67,14 @@ void PluginManager::wireEngine(LuaEngine *engine) {
             this, &PluginManager::settingsGetRequested);
     connect(engine, &LuaEngine::settingsSetRequested,
             this, &PluginManager::settingsSetRequested);
+    connect(engine, &LuaEngine::paletteEntryRegistered,
+            this, &PluginManager::paletteEntryRegistered);
+}
+
+void PluginManager::firePaletteAction(const QString &pluginName, const QString &actionId) {
+    if (auto *engine = m_engines.value(pluginName, nullptr)) {
+        engine->fireEvent(PluginEvent::PaletteAction, actionId);
+    }
 }
 
 static void parseManifestInto(PluginInfo &info, const QJsonObject &obj) {

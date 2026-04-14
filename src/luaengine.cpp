@@ -48,6 +48,13 @@ static bool eventFromString(const char *name, PluginEvent &out) {
     if (strcmp(name, "keybinding") == 0) { out = PluginEvent::Keybinding; return true; }
     if (strcmp(name, "load") == 0) { out = PluginEvent::Load; return true; }
     if (strcmp(name, "unload") == 0) { out = PluginEvent::Unload; return true; }
+    // 0.6.9 — trigger system bundle
+    if (strcmp(name, "command_finished") == 0) { out = PluginEvent::CommandFinished; return true; }
+    if (strcmp(name, "pane_focused") == 0) { out = PluginEvent::PaneFocused; return true; }
+    if (strcmp(name, "theme_changed") == 0) { out = PluginEvent::ThemeChanged; return true; }
+    if (strcmp(name, "window_config_reloaded") == 0) { out = PluginEvent::WindowConfigReloaded; return true; }
+    if (strcmp(name, "user_var_changed") == 0) { out = PluginEvent::UserVarChanged; return true; }
+    if (strcmp(name, "palette_action") == 0) { out = PluginEvent::PaletteAction; return true; }
     return false;
 }
 
@@ -158,6 +165,18 @@ void LuaEngine::registerApi() {
         lua_pushcfunction(m_state, lua_ants_settings_set);
         lua_setfield(m_state, -2, "set");
         lua_setfield(m_state, -2, "settings");
+    }
+
+    // palette.register({title, action, hotkey}) — always-on. Adds a UI entry
+    // visible only via the user's existing Ctrl+Shift+P, no privileged
+    // capability is granted; rejected at registration if the entry shape is
+    // invalid. Hotkey wiring happens in MainWindow (QShortcut). The plugin
+    // receives a `palette_action` event with `action` as payload when fired.
+    {
+        lua_newtable(m_state);
+        lua_pushcfunction(m_state, lua_ants_palette_register);
+        lua_setfield(m_state, -2, "register");
+        lua_setfield(m_state, -2, "palette");
     }
 
     lua_setglobal(m_state, "ants");
@@ -382,5 +401,35 @@ int LuaEngine::lua_ants_settings_set(lua_State *L) {
                                            QString::fromUtf8(key),
                                            QString::fromUtf8(value));
     }
+    return 0;
+}
+
+int LuaEngine::lua_ants_palette_register(lua_State *L) {
+    LuaEngine *engine = getEngine(L);
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    // Pull title / action / hotkey out of the table — all strings, hotkey
+    // optional. action is the payload echoed back via PaletteAction event;
+    // title is the visible label; hotkey is a Qt key sequence string.
+    lua_getfield(L, 1, "title");
+    const char *title = lua_tostring(L, -1);
+    lua_getfield(L, 1, "action");
+    const char *action = lua_tostring(L, -1);
+    lua_getfield(L, 1, "hotkey");
+    const char *hotkey = lua_tostring(L, -1);
+
+    if (!title || !title[0] || !action || !action[0]) {
+        lua_pop(L, 3);
+        return luaL_error(L, "ants.palette.register requires non-empty 'title' and 'action'");
+    }
+
+    if (engine) {
+        emit engine->paletteEntryRegistered(
+            engine->pluginName(),
+            QString::fromUtf8(title),
+            QString::fromUtf8(action),
+            hotkey ? QString::fromUtf8(hotkey) : QString());
+    }
+    lua_pop(L, 3);
     return 0;
 }

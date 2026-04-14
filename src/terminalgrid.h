@@ -208,6 +208,19 @@ public:
     ProgressState progressState() const { return m_progressState; }
     int progressValue() const { return m_progressValue; }
 
+    // Command-finished callback (OSC 133 D). Fires once per shell-emitted
+    // command end with the parsed exit code and wall-clock duration in ms
+    // (computed from the matching B marker; 0 if no B was seen).
+    using CommandFinishedCallback = std::function<void(int exitCode, qint64 durationMs)>;
+    void setCommandFinishedCallback(CommandFinishedCallback cb) { m_commandFinishedCallback = std::move(cb); }
+
+    // User-var callback (iTerm2 OSC 1337;SetUserVar=NAME=<base64-value>).
+    // Decoded value is forwarded as UTF-8 — non-UTF-8 payloads decode best-
+    // effort. Fires once per `SetUserVar=` directive; duplicate sets fire
+    // again so the consumer can react to value changes.
+    using UserVarCallback = std::function<void(const QString &name, const QString &value)>;
+    void setUserVarCallback(UserVarCallback cb) { m_userVarCallback = std::move(cb); }
+
     // OSC 8 hyperlinks (per screen line)
     const std::vector<HyperlinkSpan> &screenHyperlinks(int row) const;
     const std::vector<HyperlinkSpan> &scrollbackHyperlinks(int idx) const;
@@ -367,6 +380,12 @@ private:
     ProgressCallback m_progressCallback;
     ProgressState m_progressState = ProgressState::None;
     int m_progressValue = 0;  // 0-100
+
+    // Command-finished + user-var callbacks (0.6.9 trigger system bundle).
+    // Both are owned-by-grid functions invoked synchronously from the OSC
+    // dispatch path; consumers (TerminalWidget) translate to Qt signals.
+    CommandFinishedCallback m_commandFinishedCallback;
+    UserVarCallback m_userVarCallback;
 
     // OSC 52 per-terminal write quota — independent of the 1 MB per-string cap.
     // 32 writes/min + 1 MB/min. Counters reset when the minute window advances.
