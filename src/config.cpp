@@ -129,6 +129,15 @@ void Config::setAutoCopyOnSelect(bool enabled) {
     save();
 }
 
+bool Config::confirmMultilinePaste() const {
+    return m_data.value("confirm_multiline_paste").toBool(true);  // default on
+}
+
+void Config::setConfirmMultilinePaste(bool enabled) {
+    m_data["confirm_multiline_paste"] = enabled;
+    save();
+}
+
 QString Config::editorCommand() const {
     return m_data.value("editor_command").toString("");
 }
@@ -277,6 +286,45 @@ void Config::setEnabledPlugins(const QStringList &plugins) {
     for (const QString &p : plugins)
         arr.append(p);
     m_data["enabled_plugins"] = arr;
+    save();
+}
+
+// --- Manifest v2 per-plugin grants + settings ---
+// Config shape (JSON):
+//   "plugin_grants": { "<pluginName>": ["perm1", "perm2"], ... }
+//   "plugin_settings": { "<pluginName>": { "key": "value", ... }, ... }
+
+QStringList Config::pluginGrants(const QString &pluginName) const {
+    QStringList out;
+    QJsonObject grants = m_data.value("plugin_grants").toObject();
+    QJsonArray arr = grants.value(pluginName).toArray();
+    for (const QJsonValue &v : arr) out.append(v.toString());
+    return out;
+}
+
+void Config::setPluginGrants(const QString &pluginName, const QStringList &grants) {
+    QJsonObject all = m_data.value("plugin_grants").toObject();
+    QJsonArray arr;
+    for (const QString &g : grants) arr.append(g);
+    all[pluginName] = arr;
+    m_data["plugin_grants"] = all;
+    save();
+}
+
+QString Config::pluginSetting(const QString &pluginName, const QString &key) const {
+    QJsonObject all = m_data.value("plugin_settings").toObject();
+    QJsonObject plugin = all.value(pluginName).toObject();
+    QJsonValue v = plugin.value(key);
+    if (!v.isString()) return QString();
+    return v.toString();
+}
+
+void Config::setPluginSetting(const QString &pluginName, const QString &key, const QString &value) {
+    QJsonObject all = m_data.value("plugin_settings").toObject();
+    QJsonObject plugin = all.value(pluginName).toObject();
+    plugin[key] = value;
+    all[pluginName] = plugin;
+    m_data["plugin_settings"] = all;
     save();
 }
 

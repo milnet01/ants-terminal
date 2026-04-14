@@ -40,6 +40,10 @@ public:
     bool autoCopyOnSelect() const;
     void setAutoCopyOnSelect(bool enabled);
 
+    // Confirm pastes that look dangerous (multi-line, sudo, curl | sh, control chars)
+    bool confirmMultilinePaste() const;
+    void setConfirmMultilinePaste(bool enabled);
+
     QString editorCommand() const;
     void setEditorCommand(const QString &cmd);
 
@@ -88,6 +92,13 @@ public:
     void setPluginDir(const QString &dir);
     QStringList enabledPlugins() const;
     void setEnabledPlugins(const QStringList &plugins);
+
+    // Manifest v2: per-plugin permission grants, persisted across runs.
+    QStringList pluginGrants(const QString &pluginName) const;
+    void setPluginGrants(const QString &pluginName, const QStringList &grants);
+    // Plugin-owned key/value settings (backing store for ants.settings.get/set)
+    QString pluginSetting(const QString &pluginName, const QString &key) const;
+    void setPluginSetting(const QString &pluginName, const QString &key, const QString &value);
 
     // Claude Code project directories (where to look for / create projects)
     QStringList claudeProjectDirs() const;

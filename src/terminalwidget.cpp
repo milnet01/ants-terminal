@@ -17,6 +17,8 @@
 #include <QLabel>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QShortcut>
+#include <QMessageBox>
 #include <QMenu>
 #include <QDesktopServices>
 #include <QUrl>
@@ -152,6 +154,12 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
         emit desktopNotification(title, body);
     });
 
+    // Progress reporting callback (OSC 9;4 / ConEmu)
+    m_grid->setProgressCallback([this](ProgressState state, int percent) {
+        emit progressChanged(static_cast<int>(state), percent);
+        update();  // repaint to draw/hide the progress strip
+    });
+
     // Smooth scrolling timer (16ms = ~60fps)
     m_smoothScrollTimer.setInterval(16);
     connect(&m_smoothScrollTimer, &QTimer::timeout, this, &TerminalWidget::smoothScrollStep);
@@ -233,6 +241,22 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     m_searchInput->setMinimumWidth(200);
     searchLayout->addWidget(m_searchInput);
 
+    // Toggle buttons: regex / case-sensitive / whole-word (checkable, compact)
+    auto makeToggle = [this](const QString &text, const QString &tip) {
+        auto *btn = new QPushButton(text, m_searchBar);
+        btn->setCheckable(true);
+        btn->setFixedSize(28, 24);
+        btn->setToolTip(tip);
+        btn->setFocusPolicy(Qt::NoFocus);
+        return btn;
+    };
+    m_searchRegexBtn = makeToggle(".*", "Regex mode (Alt+R)");
+    m_searchCaseBtn  = makeToggle("Aa", "Match case (Alt+C)");
+    m_searchWordBtn  = makeToggle("Ab", "Whole word (Alt+W)");
+    searchLayout->addWidget(m_searchRegexBtn);
+    searchLayout->addWidget(m_searchCaseBtn);
+    searchLayout->addWidget(m_searchWordBtn);
+
     m_searchLabel = new QLabel("0/0", m_searchBar);
     searchLayout->addWidget(m_searchLabel);
 
@@ -261,6 +285,31 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     connect(nextBtn, &QPushButton::clicked, this, &TerminalWidget::searchNext);
     connect(prevBtn, &QPushButton::clicked, this, &TerminalWidget::searchPrev);
     connect(closeBtn, &QPushButton::clicked, this, &TerminalWidget::hideSearchBar);
+
+    connect(m_searchRegexBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_searchRegexMode = on;
+        performSearch();
+    });
+    connect(m_searchCaseBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_searchCaseSensitive = on;
+        performSearch();
+    });
+    connect(m_searchWordBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_searchWholeWord = on;
+        performSearch();
+    });
+
+    // Alt+R / Alt+C / Alt+W toggle regex / case / whole-word while the search
+    // bar has focus. WidgetWithChildrenShortcut scopes to the search bar so
+    // these don't leak to the terminal or other widgets.
+    auto addToggleShortcut = [this](QKeySequence seq, QPushButton *btn) {
+        auto *sc = new QShortcut(seq, m_searchBar);
+        sc->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(sc, &QShortcut::activated, btn, [btn]() { btn->toggle(); });
+    };
+    addToggleShortcut(QKeySequence("Alt+R"), m_searchRegexBtn);
+    addToggleShortcut(QKeySequence("Alt+C"), m_searchCaseBtn);
+    addToggleShortcut(QKeySequence("Alt+W"), m_searchWordBtn);
 }
 
 TerminalWidget::~TerminalWidget() {
@@ -1117,6 +1166,36 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         }
         p.setFont(m_font);
     }
+
+    // OSC 9;4 progress strip — thin bar along the bottom edge.
+    // Matches Microsoft Terminal's visual convention: blue/red/yellow fill by
+    // state, ~3px tall, drawn above anything except the search bar.
+    if (m_grid->progressState() != ProgressState::None) {
+        int stripH = 3;
+        int stripY = height() - stripH;
+        // Reserve right-hand gap for the scroll bar if one is showing
+        int stripRight = width();
+        if (m_scrollBar && m_scrollBar->isVisible()) {
+            stripRight -= m_scrollBar->width();
+        }
+        QColor stripColor;
+        bool full = false;
+        switch (m_grid->progressState()) {
+            case ProgressState::Normal:        stripColor = QColor(0x89, 0xB4, 0xFA); break; // blue
+            case ProgressState::Error:         stripColor = QColor(0xF3, 0x8B, 0xA8); break; // red
+            case ProgressState::Warning:       stripColor = QColor(0xF9, 0xE2, 0xAF); break; // yellow
+            case ProgressState::Indeterminate: stripColor = QColor(0xB4, 0xBE, 0xFE); full = true; break; // lavender
+            default: break;
+        }
+        // Background channel (dim)
+        QColor bgStrip = stripColor;
+        bgStrip.setAlpha(60);
+        p.fillRect(0, stripY, stripRight, stripH, bgStrip);
+        // Fill channel
+        int pct = full ? 100 : std::clamp(m_grid->progressValue(), 0, 100);
+        int fillW = stripRight * pct / 100;
+        p.fillRect(0, stripY, fillW, stripH, stripColor);
+    }
 }
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
@@ -1705,6 +1784,12 @@ void TerminalWidget::checkIdleNotification() {
 
 void TerminalWidget::pasteToTerminal(const QByteArray &data) {
     if (!m_pty || data.isEmpty()) return;
+
+    // Defense-in-depth: paste-confirmation dialog is policy-independent of
+    // bracketed paste. MS Terminal #13014 took flak for disabling the warning
+    // when bracketed paste was active; we do NOT follow that pattern.
+    if (!confirmDangerousPaste(data)) return;
+
     if (m_grid->bracketedPaste()) {
         // Strip embedded bracket paste markers that could inject escape sequences
         // (CVE-2021-28848 class: \e[201~ ends paste; \e[200~ starts a nested paste)
@@ -1717,6 +1802,61 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data) {
     } else {
         m_pty->write(data);
     }
+}
+
+bool TerminalWidget::confirmDangerousPaste(const QByteArray &data) {
+    if (!m_confirmMultilinePaste) return true;
+
+    // Classify: does this paste look risky?
+    bool hasNewline = data.contains('\n') || data.contains('\r');
+    bool hasSudo = data.contains("sudo ") || data.startsWith("sudo\t");
+    // "curl … | sh" / "wget … | sh" — classic supply-chain footgun
+    QRegularExpression pipeRun(
+        R"((?:curl|wget|fetch|bash\s+<)[^\n]*\|\s*(?:sh|bash|zsh|fish|python|python3|perl|ruby|nu))",
+        QRegularExpression::CaseInsensitiveOption);
+    bool hasPipeExec = pipeRun.match(QString::fromUtf8(data)).hasMatch();
+    bool hasControl = false;
+    for (char c : data) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        // Allow TAB, LF, CR; everything else below 0x20 or DEL is suspicious
+        if ((uc < 0x20 && uc != '\t' && uc != '\n' && uc != '\r') || uc == 0x7F) {
+            hasControl = true;
+            break;
+        }
+    }
+
+    if (!hasNewline && !hasSudo && !hasPipeExec && !hasControl) return true;
+
+    QStringList reasons;
+    if (hasNewline)   reasons << "contains newline(s)";
+    if (hasSudo)      reasons << "contains `sudo`";
+    if (hasPipeExec)  reasons << "pipes to shell (`| sh` / `| bash`)";
+    if (hasControl)   reasons << "contains control characters";
+
+    // Build a preview — show up to 20 lines, truncating long lines.
+    QString preview = QString::fromUtf8(data);
+    QStringList lines = preview.split('\n');
+    const int maxLines = 20;
+    bool truncated = false;
+    if (lines.size() > maxLines) {
+        lines = lines.mid(0, maxLines);
+        truncated = true;
+    }
+    for (QString &ln : lines) {
+        if (ln.size() > 120) ln = ln.left(117) + "...";
+    }
+    if (truncated) lines << QString("… (%1 more lines)").arg(preview.count('\n') + 1 - maxLines);
+
+    QMessageBox box(this);
+    box.setWindowTitle("Confirm paste");
+    box.setIcon(QMessageBox::Warning);
+    box.setText(QString("Paste looks risky: %1.\nReview before confirming.")
+                .arg(reasons.join(", ")));
+    box.setInformativeText(lines.join('\n'));
+    box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+    if (auto *okBtn = box.button(QMessageBox::Ok)) okBtn->setText("&Paste");
+    box.setDefaultButton(QMessageBox::Cancel);
+    return box.exec() == QMessageBox::Ok;
 }
 
 QByteArray TerminalWidget::encodeKittyKey(QKeyEvent *event) const {
@@ -2132,7 +2272,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
                     if (s.isFilePath) {
                         openFileAtPath(s.url);
                     } else {
-                        QDesktopServices::openUrl(QUrl(s.url));
+                        openHyperlink(s, cell.x());
                     }
                     return;
                 }
@@ -2449,8 +2589,31 @@ void TerminalWidget::copySelection() {
 // --- URL and File Path Detection ---
 
 void TerminalWidget::invalidateSpanCaches() const {
-    m_urlSpanCache.clear();
-    m_hlSpanCache.clear();
+    // Targeted invalidation: only drop cache entries for screen lines that the
+    // grid has flagged dirty since the last paint. Scrollback lines, which the
+    // grid doesn't track mutations on, are left alone — they're immutable once
+    // pushed. Big win on high-throughput output that only touches a few lines.
+    const int scrollbackSize = m_grid->scrollbackSize();
+    const int rows = m_grid->rows();
+    bool anyDirty = false;
+    for (int r = 0; r < rows; ++r) {
+        if (m_grid->screenLineDirty(r)) {
+            int gl = scrollbackSize + r;
+            m_urlSpanCache.erase(gl);
+            m_hlSpanCache.erase(gl);
+            anyDirty = true;
+        }
+    }
+    // If the grid grew via scrollback, entries there are still valid, but
+    // globalLine indexing for screen entries has shifted — drop those.
+    if (anyDirty) {
+        for (int r = 0; r < rows; ++r) {
+            int gl = scrollbackSize + r;
+            m_urlSpanCache.erase(gl);
+            m_hlSpanCache.erase(gl);
+        }
+    }
+    m_grid->clearAllScreenDirty();
     m_spanCacheDirty = false;
 }
 
@@ -2558,6 +2721,44 @@ std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) 
     return spans;
 }
 
+void TerminalWidget::openHyperlink(const UrlSpan &span, int globalLine) {
+    // Homograph check: only relevant for OSC 8 where visible text ≠ URL text.
+    // When the visible label itself is a URL/hostname that doesn't match the
+    // actual URL host, warn the user before following the link.
+    if (span.isOsc8) {
+        QString visible = lineText(globalLine).mid(span.startCol,
+                                                    span.endCol - span.startCol + 1);
+        // Extract a candidate hostname from the visible label: look for
+        // `scheme://host` or a bare hostname token.
+        QString visibleHost;
+        static QRegularExpression hostRe(
+            R"((?:[a-z][a-z0-9+.\-]*://)?((?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)+[a-z]{2,}))",
+            QRegularExpression::CaseInsensitiveOption);
+        auto m = hostRe.match(visible);
+        if (m.hasMatch()) visibleHost = m.captured(1).toLower();
+
+        QString actualHost = QUrl(span.url).host().toLower();
+        // Strip leading "www." for comparison; many labels write github.com for www.github.com
+        auto strip = [](QString h) {
+            if (h.startsWith("www.")) h = h.mid(4);
+            return h;
+        };
+        if (!visibleHost.isEmpty() && !actualHost.isEmpty() &&
+            strip(visibleHost) != strip(actualHost)) {
+            QMessageBox box(this);
+            box.setWindowTitle("Suspicious hyperlink");
+            box.setIcon(QMessageBox::Warning);
+            box.setText(QString("The link text says %1 but the URL points to %2.")
+                        .arg(visibleHost, actualHost));
+            box.setInformativeText(QString("Destination:\n%1").arg(span.url));
+            box.setStandardButtons(QMessageBox::Open | QMessageBox::Cancel);
+            box.setDefaultButton(QMessageBox::Cancel);
+            if (box.exec() != QMessageBox::Open) return;
+        }
+    }
+    QDesktopServices::openUrl(QUrl(span.url));
+}
+
 void TerminalWidget::openFileAtPath(const QString &path) {
     // Parse path:line:col format
     QString filePath = path;
@@ -2630,13 +2831,22 @@ void TerminalWidget::showSearchBar() {
     QColor fg = m_grid->defaultFg();
     QColor barBg = bg.darker(110);
     QColor borderColor = m_bracketHighlightBg;
-    m_searchBar->setStyleSheet(QString(
+    QColor accentBg = m_searchCurrentBg;
+    QColor accentFg = m_searchCurrentFg;
+    QString barStyle = QString(
         "QWidget#searchBar { background-color: %1; border-bottom: 1px solid %2; }"
-        "QLineEdit { background: %3; color: %4; border: 1px solid %2; border-radius: 4px; padding: 2px 6px; }"
         "QLabel { color: %5; }"
-        "QPushButton { background: transparent; color: %5; border: none; font-size: 12px; }"
+        "QPushButton { background: transparent; color: %5; border: 1px solid transparent; border-radius: 4px; font-size: 12px; }"
         "QPushButton:hover { color: %4; }"
-    ).arg(barBg.name(), borderColor.name(), bg.name(), fg.name(), fg.darker(130).name()));
+        "QPushButton:checked { background: %6; color: %7; border: 1px solid %6; }"
+    ).arg(barBg.name(), borderColor.name(), bg.name(), fg.name(),
+          fg.darker(130).name(), accentBg.name(), accentFg.name());
+    QString inputBase = QString(
+        "QLineEdit { background: %1; color: %2; border: 1px solid %3; border-radius: 4px; padding: 2px 6px; }"
+    ).arg(bg.name(), fg.name(), borderColor.name());
+    m_searchBar->setStyleSheet(barStyle);
+    m_searchInput->setProperty("baseStyle", inputBase);
+    m_searchInput->setStyleSheet(inputBase);
     m_searchBar->show();
     m_searchInput->setFocus();
     m_searchInput->selectAll();
@@ -2659,9 +2869,21 @@ void TerminalWidget::performSearch() {
     m_searchText = m_searchInput->text();
     m_searchMatches.clear();
     m_currentMatchIdx = -1;
+    m_searchPatternInvalid = false;
+
+    // Update input styling for invalid regex feedback
+    auto applyInputStyle = [this](bool invalid) {
+        QString base = m_searchInput->property("baseStyle").toString();
+        if (invalid) {
+            m_searchInput->setStyleSheet(base + " QLineEdit { border: 1px solid #f38ba8; }");
+        } else {
+            m_searchInput->setStyleSheet(base);
+        }
+    };
 
     if (m_searchText.isEmpty()) {
         m_searchLabel->setText("0/0");
+        applyInputStyle(false);
         update();
         return;
     }
@@ -2669,12 +2891,43 @@ void TerminalWidget::performSearch() {
     int scrollbackSize = m_grid->scrollbackSize();
     int totalLines = scrollbackSize + m_grid->rows();
 
+    // Build the effective pattern. Non-regex mode → escape user input; whole-word wraps in \b.
+    QString effectivePattern = m_searchRegexMode
+        ? m_searchText
+        : QRegularExpression::escape(m_searchText);
+    if (m_searchWholeWord) {
+        effectivePattern = QStringLiteral("\\b(?:") + effectivePattern + QStringLiteral(")\\b");
+    }
+
+    QRegularExpression::PatternOptions opts =
+        QRegularExpression::UseUnicodePropertiesOption;
+    if (!m_searchCaseSensitive) {
+        opts |= QRegularExpression::CaseInsensitiveOption;
+    }
+
+    QRegularExpression re(effectivePattern, opts);
+    if (!re.isValid()) {
+        m_searchPatternInvalid = true;
+        m_searchLabel->setText("!/!");
+        m_searchLabel->setToolTip(re.errorString());
+        applyInputStyle(true);
+        update();
+        return;
+    }
+    m_searchLabel->setToolTip(QString());
+    applyInputStyle(false);
+
     for (int gl = 0; gl < totalLines; ++gl) {
         QString text = lineText(gl);
-        int pos = 0;
-        while ((pos = text.indexOf(m_searchText, pos, Qt::CaseInsensitive)) >= 0) {
-            m_searchMatches.push_back({gl, pos, static_cast<int>(m_searchText.length())});
-            pos += m_searchText.length();
+        auto it = re.globalMatch(text);
+        while (it.hasNext()) {
+            auto m = it.next();
+            int len = static_cast<int>(m.capturedLength());
+            if (len <= 0) {
+                // Guard against zero-width matches (e.g. `\b`, `^`) — skip to avoid infinite loop
+                break;
+            }
+            m_searchMatches.push_back({gl, static_cast<int>(m.capturedStart()), len});
         }
     }
 
@@ -3363,12 +3616,13 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     // Open URL (if cursor is on a link)
     QPoint cell = pixelToCell(event->pos());
     auto spans = detectUrls(cell.x());
+    int ctxLine = cell.x();
     for (const auto &s : spans) {
         if (cell.y() >= s.startCol && cell.y() <= s.endCol) {
             QAction *openUrl = menu.addAction("Open Link");
-            connect(openUrl, &QAction::triggered, this, [s, this]() {
+            connect(openUrl, &QAction::triggered, this, [s, ctxLine, this]() {
                 if (s.isFilePath) openFileAtPath(s.url);
-                else QDesktopServices::openUrl(QUrl(s.url));
+                else openHyperlink(s, ctxLine);
             });
             QAction *copyUrl = menu.addAction("Copy Link");
             connect(copyUrl, &QAction::triggered, this, [s]() {

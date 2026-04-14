@@ -20,6 +20,7 @@ struct GlyphEntry {
     int bearingX, bearingY;
     int advance;
     bool valid = false;
+    uint64_t lastFrame = 0; // LRU: frame counter on last access
 };
 
 // Key for glyph cache lookup
@@ -60,6 +61,7 @@ struct LigatureEntry {
     int width, height;
     int bearingX, bearingY;
     bool valid = false;
+    uint64_t lastFrame = 0; // LRU: frame counter on last access
 };
 
 // Per-cell instance data for GPU rendering
@@ -109,11 +111,15 @@ private:
     void uploadLigatureToAtlas(const QImage &img, LigatureEntry &entry);
 
     // Shared placement + upload for glyph/ligature atlas entries.
-    // Writes the UV rectangle into the given outputs. May grow or clear the
-    // atlas if full; callers must handle cache invalidation via m_glyphCache
-    // / m_ligatureCache (which are cleared by this routine when it resizes).
+    // Writes the UV rectangle into the given outputs. May grow, compact (LRU
+    // eviction), or clear the atlas if full.
     void placeAndUploadToAtlas(const QImage &img,
                                float &u0, float &v0, float &u1, float &v1);
+
+    // LRU compaction — drop cold entries, re-pack the warm ones into a fresh
+    // atlas. Called from placeAndUploadToAtlas on overflow. Never recurses
+    // into itself (guarded by m_compacting).
+    void compactAtlas();
 
     bool m_initialized = false;
 
@@ -130,6 +136,10 @@ private:
     int m_atlasRowHeight = 0;
     QHash<GlyphKey, GlyphEntry> m_glyphCache;
     QHash<LigatureKey, LigatureEntry> m_ligatureCache;
+
+    // LRU machinery
+    uint64_t m_frameCounter = 0;  // incremented in render()
+    bool m_compacting = false;    // guards compactAtlas against recursion
 
     // Fonts
     QFont m_fontRegular;

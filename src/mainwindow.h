@@ -13,6 +13,7 @@
 #include <QPropertyAnimation>
 #include <QFileSystemWatcher>
 #include <QElapsedTimer>
+#include <QShortcut>
 
 class TitleBar;
 class TerminalWidget;
@@ -165,6 +166,7 @@ private:
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS
     PluginManager *m_pluginManager = nullptr;
+    QList<QShortcut *> m_pluginShortcuts; // shortcuts registered via manifest "keybindings"
 #endif
 
     // Tab UUIDs for session persistence

@@ -56,8 +56,23 @@ struct Cell {
 struct TermLine {
     std::vector<Cell> cells;
     bool softWrapped = false; // true if line was wrapped at right edge (not \n)
+    // Dirty bit — set whenever this line's cells mutate. Consumers (span caches,
+    // future partial-repaint paths) read + clear it to skip re-work on clean
+    // lines. Scoped to screen lines only; scrollback is treated as immutable
+    // once pushed.
+    bool dirty = true;
     // Combining characters: col -> list of combining codepoints (zero overhead when empty)
     std::unordered_map<int, std::vector<uint32_t>> combining;
+};
+
+// OSC 9;4 progress state (ConEmu / Microsoft Terminal convention)
+// Spec: https://learn.microsoft.com/en-us/windows/terminal/tutorials/progress-bar-sequences
+enum class ProgressState : uint8_t {
+    None = 0,           // state 0: remove progress
+    Normal = 1,         // state 1: progress value (blue bar)
+    Error = 2,          // state 2: error state (red bar)
+    Indeterminate = 3,  // state 3: indeterminate (animated bar)
+    Warning = 4,        // state 4: paused / warning (yellow bar)
 };
 
 // Inline image placed in the terminal
@@ -182,6 +197,12 @@ public:
     using NotifyCallback = std::function<void(const QString &title, const QString &body)>;
     void setNotifyCallback(NotifyCallback cb) { m_notifyCallback = std::move(cb); }
 
+    // Progress reporting callback (OSC 9;4 / ConEmu)
+    using ProgressCallback = std::function<void(ProgressState state, int percent)>;
+    void setProgressCallback(ProgressCallback cb) { m_progressCallback = std::move(cb); }
+    ProgressState progressState() const { return m_progressState; }
+    int progressValue() const { return m_progressValue; }
+
     // OSC 8 hyperlinks (per screen line)
     const std::vector<HyperlinkSpan> &screenHyperlinks(int row) const;
     const std::vector<HyperlinkSpan> &scrollbackHyperlinks(int idx) const;
@@ -202,6 +223,26 @@ public:
 
     // Clear screen content (keeps scrollback) — used after session restore
     void clearScreenContent();
+
+    // Per-line dirty tracking. Callers (span caches, partial-paint paths) can
+    // query which screen lines have been mutated since the last render, then
+    // clear the flags to acknowledge. Scrollback lines are treated as
+    // immutable once pushed and are not tracked.
+    bool screenLineDirty(int row) const {
+        return (row >= 0 && row < m_rows) ? m_screenLines[row].dirty : false;
+    }
+    void clearScreenLineDirty(int row) {
+        if (row >= 0 && row < m_rows) m_screenLines[row].dirty = false;
+    }
+    void clearAllScreenDirty() {
+        for (auto &line : m_screenLines) line.dirty = false;
+    }
+    void markScreenDirty(int row) {
+        if (row >= 0 && row < m_rows) m_screenLines[row].dirty = true;
+    }
+    void markAllScreenDirty() {
+        for (auto &line : m_screenLines) line.dirty = true;
+    }
 
     // Debug logging — writes SGR/underline state to a log file
     void setDebugLog(bool enabled);
@@ -314,6 +355,19 @@ private:
 
     // Desktop notification callback (OSC 9/777)
     NotifyCallback m_notifyCallback;
+
+    // Progress reporting (OSC 9;4)
+    ProgressCallback m_progressCallback;
+    ProgressState m_progressState = ProgressState::None;
+    int m_progressValue = 0;  // 0-100
+
+    // OSC 52 per-terminal write quota — independent of the 1 MB per-string cap.
+    // 32 writes/min + 1 MB/min. Counters reset when the minute window advances.
+    qint64 m_osc52WindowStartMs = 0;
+    int m_osc52WriteCount = 0;
+    qint64 m_osc52WriteBytes = 0;
+    static constexpr int OSC52_MAX_WRITES_PER_MIN = 32;
+    static constexpr qint64 OSC52_MAX_BYTES_PER_MIN = 1 * 1024 * 1024;
 
     // Response callback
     ResponseCallback m_responseCallback;

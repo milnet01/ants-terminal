@@ -201,6 +201,7 @@ signals:
     void commandFailed(int exitCode, const QString &output);
     void outputReceived();  // debounced notification of PTY output
     void desktopNotification(const QString &title, const QString &body);
+    void progressChanged(int state, int percent);  // OSC 9;4: state = ProgressState enum, percent = 0-100
 
 protected:
     bool event(QEvent *event) override;
@@ -254,6 +255,9 @@ private:
     std::vector<UrlSpan> detectUrls(int globalLine) const;
     QString lineText(int globalLine) const;
     void openFileAtPath(const QString &path);
+    // Opens a hyperlink, with OSC 8 homograph-attack warning when the visible
+    // label encodes a hostname that doesn't match the URL host.
+    void openHyperlink(const UrlSpan &span, int globalLine);
 
     // Search
     struct SearchMatch { int globalLine; int col; int length; };
@@ -268,6 +272,15 @@ private:
 
     // Bracketed paste helper — sanitizes text and wraps with mode markers
     void pasteToTerminal(const QByteArray &data);
+    // Returns true if the paste should proceed (user confirmed or no prompt needed)
+    bool confirmDangerousPaste(const QByteArray &data);
+
+    // Enable/disable multi-line paste confirmation (bound from config)
+    bool m_confirmMultilinePaste = true;
+public:
+    void setConfirmMultilinePaste(bool enabled) { m_confirmMultilinePaste = enabled; }
+    bool confirmMultilinePaste() const { return m_confirmMultilinePaste; }
+private:
 
     // Kitty keyboard protocol encoding
     QByteArray encodeKittyKey(QKeyEvent *event) const;
@@ -327,7 +340,14 @@ private:
     QWidget *m_searchBar = nullptr;
     QLineEdit *m_searchInput = nullptr;
     QLabel *m_searchLabel = nullptr;
+    QPushButton *m_searchRegexBtn = nullptr;
+    QPushButton *m_searchCaseBtn = nullptr;
+    QPushButton *m_searchWordBtn = nullptr;
     bool m_searchVisible = false;
+    bool m_searchRegexMode = false;
+    bool m_searchCaseSensitive = false;
+    bool m_searchWholeWord = false;
+    bool m_searchPatternInvalid = false;
     QString m_searchText;
     std::vector<SearchMatch> m_searchMatches;
     int m_currentMatchIdx = -1;

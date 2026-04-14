@@ -231,6 +231,7 @@ void TerminalGrid::handlePrint(uint32_t cp) {
                (int)m_currentAttrs.underlineStyle, m_cursorRow, m_cursorCol);
     c.isWideChar = (charWidth == 2);
     c.isWideCont = false;
+    markScreenDirty(m_cursorRow);
     m_screenLines[m_cursorRow].combining.erase(m_cursorCol);
 
     if (charWidth == 2 && m_cursorCol + 1 < m_cols) {
@@ -322,6 +323,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1047:
                     if (!m_altScreenActive) {
                         m_altScreenActive = true;
+                        markAllScreenDirty();
                         m_altCursorRow = m_cursorRow;
                         m_altCursorCol = m_cursorCol;
                         m_altScrollTop = m_scrollTop;
@@ -376,6 +378,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1047:
                     if (m_altScreenActive) {
                         m_altScreenActive = false;
+                        markAllScreenDirty();
                         m_screenLines = m_altScreen;
                         m_screenHyperlinks = m_altScreenHyperlinks;
                         m_inlineImages = m_altInlineImages;
@@ -658,6 +661,21 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                     return;
                 }
                 if (!decoded.isEmpty()) {
+                    // Per-terminal rolling 60s write quota (independent of the
+                    // per-string cap). Protects against drip-feed exfiltration
+                    // and against runaway programs. Silently drop once the
+                    // window's budget is exhausted.
+                    qint64 now = QDateTime::currentMSecsSinceEpoch();
+                    if (now - m_osc52WindowStartMs >= 60'000) {
+                        m_osc52WindowStartMs = now;
+                        m_osc52WriteCount = 0;
+                        m_osc52WriteBytes = 0;
+                    }
+                    if (m_osc52WriteCount >= OSC52_MAX_WRITES_PER_MIN) return;
+                    if (m_osc52WriteBytes + decoded.size() > OSC52_MAX_BYTES_PER_MIN) return;
+                    m_osc52WriteCount += 1;
+                    m_osc52WriteBytes += decoded.size();
+
                     // Emit clipboard set via response callback with special prefix
                     if (m_responseCallback) {
                         std::string clipData(1, '\0');
@@ -714,6 +732,30 @@ void TerminalGrid::handleOsc(const std::string &payload) {
     // OSC 1337 — iTerm2 inline images
     else if (payload.compare(0, 5, "1337;") == 0) {
         handleOscImage(payload);
+    }
+    // OSC 9;4 — ConEmu / Microsoft Terminal progress reporting
+    // Spec: https://learn.microsoft.com/en-us/windows/terminal/tutorials/progress-bar-sequences
+    // Payload: "9;4;<state>;<percent>"  (percent optional for state 0/3)
+    else if (oscNum == "9" && semi != std::string::npos &&
+             payload.size() >= semi + 3 &&
+             payload[semi + 1] == '4' && payload[semi + 2] == ';') {
+        std::string rest = payload.substr(semi + 3);
+        size_t semi2 = rest.find(';');
+        int stateNum = 0;
+        int percent = 0;
+        try {
+            stateNum = std::stoi(semi2 == std::string::npos ? rest : rest.substr(0, semi2));
+            if (semi2 != std::string::npos) {
+                percent = std::stoi(rest.substr(semi2 + 1));
+            }
+        } catch (...) {
+            return;  // malformed — ignore
+        }
+        if (stateNum < 0 || stateNum > 4) return;
+        percent = std::clamp(percent, 0, 100);
+        m_progressState = static_cast<ProgressState>(stateNum);
+        m_progressValue = (stateNum == 0 || stateNum == 3) ? 0 : percent;
+        if (m_progressCallback) m_progressCallback(m_progressState, m_progressValue);
     }
     // OSC 9 — Desktop notification (body only, iTerm2/Ghostty style)
     else if (oscNum == "9" && semi != std::string::npos && m_notifyCallback) {
@@ -961,6 +1003,7 @@ void TerminalGrid::eraseInLine(int mode) {
 void TerminalGrid::insertLines(int count) {
     int bottom = m_scrollBottom;
     if (m_cursorRow < m_scrollTop || m_cursorRow > bottom) return;
+    markAllScreenDirty();
     count = std::min(count, bottom - m_cursorRow + 1);
     for (int i = 0; i < count; ++i) {
         m_screenLines.erase(m_screenLines.begin() + bottom);
@@ -973,6 +1016,7 @@ void TerminalGrid::insertLines(int count) {
 void TerminalGrid::deleteLines(int count) {
     int bottom = m_scrollBottom;
     if (m_cursorRow < m_scrollTop || m_cursorRow > bottom) return;
+    markAllScreenDirty();
     count = std::min(count, bottom - m_cursorRow + 1);
     for (int i = 0; i < count; ++i) {
         m_screenLines.erase(m_screenLines.begin() + m_cursorRow);
@@ -983,6 +1027,7 @@ void TerminalGrid::deleteLines(int count) {
 }
 
 void TerminalGrid::deleteChars(int count) {
+    markScreenDirty(m_cursorRow);
     auto &row = screenRow(m_cursorRow);
     count = std::min(count, m_cols - m_cursorCol);
     row.erase(row.begin() + m_cursorCol, row.begin() + m_cursorCol + count);
@@ -1006,6 +1051,7 @@ void TerminalGrid::deleteChars(int count) {
 }
 
 void TerminalGrid::insertBlanks(int count) {
+    markScreenDirty(m_cursorRow);
     auto &row = screenRow(m_cursorRow);
     count = std::min(count, m_cols - m_cursorCol);
     Cell blank;
@@ -1027,6 +1073,7 @@ void TerminalGrid::insertBlanks(int count) {
 }
 
 void TerminalGrid::scrollUp(int count) {
+    markAllScreenDirty();
     for (int i = 0; i < count; ++i) {
         if (m_scrollTop == 0 && !m_altScreenActive) {
             m_scrollback.push_back(std::move(m_screenLines[m_scrollTop]));
@@ -1055,6 +1102,7 @@ void TerminalGrid::scrollUp(int count) {
 }
 
 void TerminalGrid::scrollDown(int count) {
+    markAllScreenDirty();
     for (int i = 0; i < count; ++i) {
         m_screenLines.erase(m_screenLines.begin() + m_scrollBottom);
         TermLine tl;
@@ -1145,6 +1193,7 @@ void TerminalGrid::clearRow(int row, int startCol, int endCol) {
         cells[c].isWideCont = false;
     }
     m_screenLines[row].softWrapped = false;
+    markScreenDirty(row);
     // Clear combining characters
     if (startCol == 0 && endCol >= m_cols) {
         m_screenLines[row].combining.clear();
@@ -1313,6 +1362,9 @@ void TerminalGrid::resize(int rows, int cols) {
 
     // Reinitialize tab stops for new width
     initTabStops();
+
+    // Layout changed — force span caches + full repaint.
+    markAllScreenDirty();
 }
 
 // --- Sixel Graphics (DCS q ... ST) ---

@@ -171,6 +171,9 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
     // would divide by zero. Cheap defensive check.
     if (!m_initialized || !grid || m_viewWidth <= 0 || m_viewHeight <= 0) return;
 
+    // Advance LRU clock — used by compactAtlas() to drop cold glyphs on overflow
+    ++m_frameCounter;
+
     glViewport(0, 0, m_viewWidth, m_viewHeight);
 
     // Clear with default background
@@ -400,8 +403,10 @@ void GlRenderer::renderGlyphs(const std::vector<GlyphQuad> &quads) {
 const GlyphEntry &GlRenderer::getGlyph(uint32_t codepoint, bool bold, bool italic) {
     GlyphKey key{codepoint, bold, italic};
     auto it = m_glyphCache.find(key);
-    if (it != m_glyphCache.end())
+    if (it != m_glyphCache.end()) {
+        it.value().lastFrame = m_frameCounter;  // LRU touch
         return it.value();
+    }
 
     // Rasterize the glyph
     GlyphEntry entry{};
@@ -411,6 +416,7 @@ const GlyphEntry &GlRenderer::getGlyph(uint32_t codepoint, bool bold, bool itali
     else if (italic) font = &m_fontItalic;
 
     rasterizeGlyph(codepoint, *font, entry);
+    entry.lastFrame = m_frameCounter;
     m_glyphCache.insert(key, entry);
     return m_glyphCache[key];
 }
@@ -484,24 +490,49 @@ void GlRenderer::placeAndUploadToAtlas(const QImage &img,
         m_atlasRowHeight = 0;
     }
 
-    // Check if atlas is full — double size if possible, else clear and restart
+    // Atlas overflow: first, try doubling the atlas (one-time, up to 4096²).
+    // If already at max, compact via LRU — keep the warm half of cached entries,
+    // drop the cold half, re-pack into a fresh atlas. Prevents the full-cache
+    // stall that the old "clear-and-rebuild" strategy caused on long sessions
+    // with many ligatures.
     if (m_atlasY + h > m_atlasHeight) {
         if (m_atlasWidth < 4096) {
-            // Double the atlas size to reduce stall frequency
             m_atlasWidth = 4096;
             m_atlasHeight = 4096;
             glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_atlasWidth, m_atlasHeight, 0,
                          GL_RED, GL_UNSIGNED_BYTE, nullptr);
+            // Reset swizzle mask (recreated texture loses it on some drivers)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_ONE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_ONE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_ONE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, GL_RED);
+            m_glyphCache.clear();
+            m_ligatureCache.clear();
+            m_atlasX = 0;
+            m_atlasY = 0;
+            m_atlasRowHeight = 0;
+        } else if (!m_compacting) {
+            compactAtlas();
+        } else {
+            // Compaction itself overflowed — fall back to full clear to avoid
+            // infinite recursion. Rare: survivors are <= warm half of prior.
+            m_glyphCache.clear();
+            m_ligatureCache.clear();
+            m_atlasX = 0;
+            m_atlasY = 0;
+            m_atlasRowHeight = 0;
+            std::vector<uint8_t> zeros(m_atlasWidth * m_atlasHeight, 0);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_atlasWidth, m_atlasHeight,
+                            GL_RED, GL_UNSIGNED_BYTE, zeros.data());
         }
-        m_glyphCache.clear();
-        m_ligatureCache.clear();
-        m_atlasX = 0;
-        m_atlasY = 0;
-        m_atlasRowHeight = 0;
-        std::vector<uint8_t> zeros(m_atlasWidth * m_atlasHeight, 0);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_atlasWidth, m_atlasHeight,
-                        GL_RED, GL_UNSIGNED_BYTE, zeros.data());
+
+        // After compaction/resize, advance to next row if still needed
+        if (m_atlasX + w > m_atlasWidth) {
+            m_atlasX = 0;
+            m_atlasY += m_atlasRowHeight + 1;
+            m_atlasRowHeight = 0;
+        }
     }
 
     // Upload to atlas
@@ -524,13 +555,90 @@ void GlRenderer::uploadToAtlas(const QImage &img, GlyphEntry &entry) {
     entry.valid = true;
 }
 
+void GlRenderer::compactAtlas() {
+    if (m_compacting) return;  // paranoia — re-entry guard
+    m_compacting = true;
+
+    // Threshold: keep anything used within the last CONFIG_HOT_FRAMES frames,
+    // *plus* anything that beats the median (so on a cold boot we still keep
+    // ~half). Tuned for ~5s hot window at 60fps.
+    constexpr uint64_t kHotFrames = 300;
+    uint64_t cutoff = (m_frameCounter > kHotFrames) ? (m_frameCounter - kHotFrames) : 0;
+
+    // Collect warm glyph keys
+    QList<GlyphKey> warmGlyphs;
+    for (auto it = m_glyphCache.constBegin(); it != m_glyphCache.constEnd(); ++it) {
+        if (it.value().valid && it.value().lastFrame >= cutoff) {
+            warmGlyphs.append(it.key());
+        }
+    }
+    // If the cutoff kept too little (<25% of entries), lower the bar: sort by
+    // lastFrame and keep the top half.
+    if (warmGlyphs.size() < m_glyphCache.size() / 4) {
+        QList<QPair<uint64_t, GlyphKey>> all;
+        all.reserve(m_glyphCache.size());
+        for (auto it = m_glyphCache.constBegin(); it != m_glyphCache.constEnd(); ++it) {
+            if (it.value().valid) all.append({it.value().lastFrame, it.key()});
+        }
+        std::sort(all.begin(), all.end(),
+                  [](const auto &a, const auto &b) { return a.first > b.first; });
+        warmGlyphs.clear();
+        int keep = all.size() / 2;
+        for (int i = 0; i < keep; ++i) warmGlyphs.append(all[i].second);
+    }
+
+    // Same logic for ligatures
+    QList<LigatureKey> warmLigs;
+    for (auto it = m_ligatureCache.constBegin(); it != m_ligatureCache.constEnd(); ++it) {
+        if (it.value().valid && it.value().lastFrame >= cutoff) {
+            warmLigs.append(it.key());
+        }
+    }
+    if (warmLigs.size() < m_ligatureCache.size() / 4) {
+        QList<QPair<uint64_t, LigatureKey>> all;
+        all.reserve(m_ligatureCache.size());
+        for (auto it = m_ligatureCache.constBegin(); it != m_ligatureCache.constEnd(); ++it) {
+            if (it.value().valid) all.append({it.value().lastFrame, it.key()});
+        }
+        std::sort(all.begin(), all.end(),
+                  [](const auto &a, const auto &b) { return a.first > b.first; });
+        warmLigs.clear();
+        int keep = all.size() / 2;
+        for (int i = 0; i < keep; ++i) warmLigs.append(all[i].second);
+    }
+
+    // Wipe atlas + caches
+    m_glyphCache.clear();
+    m_ligatureCache.clear();
+    m_atlasX = 0;
+    m_atlasY = 0;
+    m_atlasRowHeight = 0;
+    std::vector<uint8_t> zeros(m_atlasWidth * m_atlasHeight, 0);
+    glBindTexture(GL_TEXTURE_2D, m_atlasTexture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_atlasWidth, m_atlasHeight,
+                    GL_RED, GL_UNSIGNED_BYTE, zeros.data());
+
+    // Re-rasterize warm entries. lastFrame stays as of now so they're not
+    // immediately re-evicted on next overflow.
+    for (const auto &k : warmGlyphs) {
+        (void)getGlyph(k.codepoint, k.bold, k.italic);
+    }
+    for (const auto &k : warmLigs) {
+        (void)getLigature(k.text, k.bold, k.italic);
+    }
+
+    m_compacting = false;
+}
+
 // --- Ligature support ---
 
 const LigatureEntry &GlRenderer::getLigature(const QString &text, bool bold, bool italic) {
     LigatureKey key{text, bold, italic};
     auto it = m_ligatureCache.find(key);
-    if (it != m_ligatureCache.end())
+    if (it != m_ligatureCache.end()) {
+        it.value().lastFrame = m_frameCounter;  // LRU touch
         return it.value();
+    }
 
     LigatureEntry entry{};
     const QFont *font = &m_fontRegular;
@@ -539,6 +647,7 @@ const LigatureEntry &GlRenderer::getLigature(const QString &text, bool bold, boo
     else if (italic) font = &m_fontItalic;
 
     rasterizeLigature(text, *font, entry);
+    entry.lastFrame = m_frameCounter;
     m_ligatureCache.insert(key, entry);
     return m_ligatureCache[key];
 }

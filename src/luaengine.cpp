@@ -45,6 +45,9 @@ static bool eventFromString(const char *name, PluginEvent &out) {
     if (strcmp(name, "title_changed") == 0) { out = PluginEvent::TitleChanged; return true; }
     if (strcmp(name, "tab_created") == 0) { out = PluginEvent::TabCreated; return true; }
     if (strcmp(name, "tab_closed") == 0) { out = PluginEvent::TabClosed; return true; }
+    if (strcmp(name, "keybinding") == 0) { out = PluginEvent::Keybinding; return true; }
+    if (strcmp(name, "load") == 0) { out = PluginEvent::Load; return true; }
+    if (strcmp(name, "unload") == 0) { out = PluginEvent::Unload; return true; }
     return false;
 }
 
@@ -96,6 +99,7 @@ void LuaEngine::registerApi() {
     // Create 'ants' table
     lua_newtable(m_state);
 
+    // --- Always-on surface (no permission required) ---
     // ants.send(text)
     lua_pushcfunction(m_state, lua_ants_send);
     lua_setfield(m_state, -2, "send");
@@ -123,6 +127,38 @@ void LuaEngine::registerApi() {
     // ants.log(message)
     lua_pushcfunction(m_state, lua_ants_log);
     lua_setfield(m_state, -2, "log");
+
+    // ants._version — terminal version string (lets plugins feature-detect)
+    lua_pushstring(m_state, ANTS_VERSION);
+    lua_setfield(m_state, -2, "_version");
+
+    // ants._plugin_name — plugin's declared name (manifest.json "name")
+    lua_pushstring(m_state, m_pluginName.toUtf8().constData());
+    lua_setfield(m_state, -2, "_plugin_name");
+
+    // --- Permissioned surface ---
+    // Each capability exposes one or more functions gated by the plugin's
+    // manifest "permissions" array. Functions absent from the env when the
+    // permission is missing (not stubbed with nil) so plugins can feature-
+    // detect with `if ants.clipboard then ...`.
+
+    // clipboard.write — requires "clipboard.write"
+    if (hasPermission("clipboard.write")) {
+        lua_newtable(m_state);
+        lua_pushcfunction(m_state, lua_ants_clipboard_write);
+        lua_setfield(m_state, -2, "write");
+        lua_setfield(m_state, -2, "clipboard");
+    }
+
+    // settings.get / settings.set — requires "settings"
+    if (hasPermission("settings")) {
+        lua_newtable(m_state);
+        lua_pushcfunction(m_state, lua_ants_settings_get);
+        lua_setfield(m_state, -2, "get");
+        lua_pushcfunction(m_state, lua_ants_settings_set);
+        lua_setfield(m_state, -2, "set");
+        lua_setfield(m_state, -2, "settings");
+    }
 
     lua_setglobal(m_state, "ants");
 }
@@ -306,6 +342,45 @@ int LuaEngine::lua_ants_log(lua_State *L) {
     const char *msg = luaL_checkstring(L, 1);
     if (engine) {
         emit engine->logMessage(QString::fromUtf8(msg));
+    }
+    return 0;
+}
+
+int LuaEngine::lua_ants_clipboard_write(lua_State *L) {
+    LuaEngine *engine = getEngine(L);
+    const char *text = luaL_checkstring(L, 1);
+    if (engine && engine->hasPermission("clipboard.write")) {
+        emit engine->clipboardWriteRequested(QString::fromUtf8(text));
+    }
+    return 0;
+}
+
+int LuaEngine::lua_ants_settings_get(lua_State *L) {
+    LuaEngine *engine = getEngine(L);
+    const char *key = luaL_checkstring(L, 1);
+    if (engine && engine->hasPermission("settings")) {
+        QString out;
+        emit engine->settingsGetRequested(engine->pluginName(),
+                                           QString::fromUtf8(key), out);
+        if (out.isNull()) {
+            lua_pushnil(L);
+        } else {
+            lua_pushstring(L, out.toUtf8().constData());
+        }
+        return 1;
+    }
+    lua_pushnil(L);
+    return 1;
+}
+
+int LuaEngine::lua_ants_settings_set(lua_State *L) {
+    LuaEngine *engine = getEngine(L);
+    const char *key = luaL_checkstring(L, 1);
+    const char *value = luaL_checkstring(L, 2);
+    if (engine && engine->hasPermission("settings")) {
+        emit engine->settingsSetRequested(engine->pluginName(),
+                                           QString::fromUtf8(key),
+                                           QString::fromUtf8(value));
     }
     return 0;
 }

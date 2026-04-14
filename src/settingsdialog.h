@@ -50,6 +50,7 @@ private:
     QCheckBox *m_sessionPersistence;
     QCheckBox *m_sessionLogging;
     QCheckBox *m_autoCopy;
+    QCheckBox *m_confirmMultilinePaste;
     QLineEdit *m_editorCmd;
     QLineEdit *m_imagePasteDir;
     QComboBox *m_tabTitleFormat;

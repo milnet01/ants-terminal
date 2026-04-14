@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QObject>
 #include <QHash>
 #include <functional>
@@ -19,9 +20,15 @@ enum class PluginEvent {
     TitleChanged, // Window title changed
     TabCreated,   // New tab created
     TabClosed,    // Tab closed
+    Keybinding,   // A manifest keybinding fired — data = action id
+    Load,         // Plugin loaded (fires once per plugin VM init)
+    Unload,       // Plugin about to unload (save state, cleanup)
 };
 
-// Lua scripting engine with sandboxed API
+// Lua scripting engine with sandboxed API.
+// One instance per loaded plugin (per-plugin VM isolation) — memory budget,
+// instruction hook, and event handlers all belong to this VM alone, so a
+// misbehaving plugin cannot destabilize others. See PluginManager.
 class LuaEngine : public QObject {
     Q_OBJECT
 
@@ -29,12 +36,20 @@ public:
     explicit LuaEngine(QObject *parent = nullptr);
     ~LuaEngine() override;
 
+    // Set before initialize() to tag the VM with its plugin identity + grant
+    // set. Permissions are capability strings (see PLUGINS.md). An empty
+    // permission list means "default surface" (the legacy API pre-v2).
+    void setPluginName(const QString &name) { m_pluginName = name; }
+    QString pluginName() const { return m_pluginName; }
+    void setPermissions(const QStringList &perms) { m_permissions = perms; }
+    bool hasPermission(const QString &perm) const { return m_permissions.contains(perm); }
+
     bool initialize();
     bool loadScript(const QString &path);
     void shutdown();
     bool isInitialized() const { return m_state != nullptr; }
 
-    // Memory limit for Lua allocations (default 10MB)
+    // Memory limit for Lua allocations (default 10MB per-VM)
     static constexpr size_t MAX_LUA_MEMORY = 10 * 1024 * 1024;
 
     // Fire events to all registered handlers
@@ -50,6 +65,13 @@ signals:
     void showNotification(const QString &title, const QString &message);
     void setStatusText(const QString &text);
     void logMessage(const QString &msg);
+    // Emitted when a permissioned API is called. Handlers can perform the
+    // privileged work (e.g. write the system clipboard for clipboard.write).
+    void clipboardWriteRequested(const QString &text);
+    // Plugin settings — per-plugin key/value with JSON-Schema backed UI.
+    // Handlers (PluginManager / MainWindow) forward to the Config layer.
+    void settingsGetRequested(const QString &pluginName, const QString &key, QString &outValue);
+    void settingsSetRequested(const QString &pluginName, const QString &key, const QString &value);
 
 private:
     // Lua C API callbacks (static, use upvalues for 'this' pointer)
@@ -60,6 +82,9 @@ private:
     static int lua_ants_set_status(lua_State *L);
     static int lua_ants_on(lua_State *L);
     static int lua_ants_log(lua_State *L);
+    static int lua_ants_clipboard_write(lua_State *L);
+    static int lua_ants_settings_get(lua_State *L);
+    static int lua_ants_settings_set(lua_State *L);
 
     void registerApi();
     void sandboxEnvironment();
@@ -67,6 +92,8 @@ private:
     // Custom memory allocator with limit
     static void *luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize);
 
+    QString m_pluginName;
+    QStringList m_permissions;
     lua_State *m_state = nullptr;
     size_t m_luaMemUsage = 0;  // Current Lua memory usage in bytes
     bool m_timedOut = false;    // Set by instruction hook, checked after pcall

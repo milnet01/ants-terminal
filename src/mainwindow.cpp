@@ -58,6 +58,7 @@
 #include <QDialogButtonBox>
 #include <QRegularExpression>
 #include <QLineEdit>
+#include <QPainter>
 #include <QSystemTrayIcon>
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
@@ -148,7 +149,91 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     }
     m_pluginManager = new PluginManager(this);
     m_pluginManager->setPluginDir(pluginDir);
+
+    // Persist + retrieve manifest v2 grants via Config
+    m_pluginManager->setGrantStore(
+        [this](const QString &name) { return m_config.pluginGrants(name); },
+        [this](const QString &name, const QStringList &grants) {
+            m_config.setPluginGrants(name, grants);
+        });
+
+    // Permission prompt: dialog listing requested permissions with Accept/Deny.
+    // Users get the browser-extension UX — explicit opt-in for each permission.
+    m_pluginManager->setPermissionPrompt(
+        [this](const PluginInfo &info, const QStringList &requested) -> QStringList {
+            QDialog dlg(this);
+            dlg.setWindowTitle(QString("Plugin permissions: %1").arg(info.name));
+            auto *layout = new QVBoxLayout(&dlg);
+            auto *label = new QLabel(QString(
+                "The plugin <b>%1</b> (v%2) is requesting the following "
+                "permissions. Uncheck any you don't want to grant.")
+                .arg(info.name, info.version), &dlg);
+            label->setWordWrap(true);
+            layout->addWidget(label);
+            QList<QCheckBox *> boxes;
+            for (const QString &p : requested) {
+                auto *cb = new QCheckBox(p, &dlg);
+                cb->setChecked(true);
+                // Permission descriptions
+                QString tip = p;
+                if (p == "clipboard.write") tip = "Write to the system clipboard.";
+                else if (p == "settings")   tip = "Store key/value settings under the plugin's name.";
+                else if (p == "net")        tip = "Reserved for future use (network access).";
+                cb->setToolTip(tip);
+                layout->addWidget(cb);
+                boxes << cb;
+            }
+            auto *btns = new QDialogButtonBox(
+                QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+            btns->button(QDialogButtonBox::Ok)->setText("Accept");
+            btns->button(QDialogButtonBox::Cancel)->setText("Deny all");
+            connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+            connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+            layout->addWidget(btns);
+            QStringList out;
+            if (dlg.exec() == QDialog::Accepted) {
+                for (int i = 0; i < boxes.size(); ++i) {
+                    if (boxes[i]->isChecked()) out << requested[i];
+                }
+            }
+            return out;
+        });
+
     m_pluginManager->scanAndLoad(m_config.enabledPlugins());
+
+    // Manifest v2: register plugin keybindings. Rescan on pluginsReloaded so
+    // hot-reload picks up newly-added or changed shortcuts without restart.
+    auto registerPluginKeybindings = [this]() {
+        // Drop any previously-registered plugin shortcuts
+        for (auto *sc : m_pluginShortcuts) sc->deleteLater();
+        m_pluginShortcuts.clear();
+        for (const auto &info : m_pluginManager->plugins()) {
+            if (!info.enabled) continue;
+            const QJsonObject &kb = info.keybindings;
+            for (auto it = kb.constBegin(); it != kb.constEnd(); ++it) {
+                QString actionId = it.key();
+                QString seq = it.value().toString();
+                if (seq.isEmpty()) continue;
+                QKeySequence ks(seq);
+                if (ks.isEmpty()) {
+                    showStatusMessage(QString("Plugin %1: invalid keybinding '%2' for '%3'")
+                                       .arg(info.name, seq, actionId), 6000);
+                    continue;
+                }
+                auto *sc = new QShortcut(ks, this);
+                QString pluginName = info.name;
+                connect(sc, &QShortcut::activated, this, [this, pluginName, actionId]() {
+                    // Route to the plugin's keybinding handler; payload = actionId
+                    if (auto *engine = m_pluginManager->engineFor(pluginName)) {
+                        engine->fireEvent(PluginEvent::Keybinding, actionId);
+                    }
+                });
+                m_pluginShortcuts.append(sc);
+            }
+        }
+    };
+    registerPluginKeybindings();
+    connect(m_pluginManager, &PluginManager::pluginsReloaded, this, registerPluginKeybindings);
     connect(m_pluginManager, &PluginManager::sendToTerminal, this, [this](const QString &text) {
         if (auto *t = focusedTerminal()) t->writeCommand(text);
     });
@@ -158,6 +243,18 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_pluginManager, &PluginManager::logMessage, this, [this](const QString &msg) {
         showStatusMessage("Plugin: " + msg, 3000);
     });
+    // ants.clipboard.write — capability-gated clipboard write
+    connect(m_pluginManager, &PluginManager::clipboardWriteRequested, this,
+            [](const QString &text) { QApplication::clipboard()->setText(text); });
+    // ants.settings.get / set — backed by Config::pluginSetting[s]
+    connect(m_pluginManager, &PluginManager::settingsGetRequested, this,
+            [this](const QString &pluginName, const QString &key, QString &out) {
+                out = m_config.pluginSetting(pluginName, key);
+            });
+    connect(m_pluginManager, &PluginManager::settingsSetRequested, this,
+            [this](const QString &pluginName, const QString &key, const QString &value) {
+                m_config.setPluginSetting(pluginName, key, value);
+            });
 #endif
 
     // Apply saved theme
@@ -895,6 +992,7 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setMaxScrollback(m_config.scrollbackLines());
     terminal->setSessionLogging(m_config.sessionLogging());
     terminal->setAutoCopyOnSelect(m_config.autoCopyOnSelect());
+    terminal->setConfirmMultilinePaste(m_config.confirmMultilinePaste());
     terminal->setEditorCommand(m_config.editorCommand());
     terminal->setImagePasteDir(m_config.imagePasteDir());
     terminal->setWindowOpacityLevel(m_config.opacity());
@@ -960,6 +1058,41 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
 
     // Trigger signals
     connect(terminal, &TerminalWidget::triggerFired, this, &MainWindow::onTriggerFired);
+
+    // OSC 9;4 progress reporting — show a small colored dot as the tab icon.
+    // ConEmu / Microsoft Terminal convention.
+    connect(terminal, &TerminalWidget::progressChanged, this,
+            [this, terminal](int state, int /*percent*/) {
+        // Find which tab this terminal is in
+        int tabIdx = -1;
+        for (int i = 0; i < m_tabWidget->count(); ++i) {
+            QWidget *w = m_tabWidget->widget(i);
+            if (w == terminal || w->isAncestorOf(terminal)) { tabIdx = i; break; }
+        }
+        if (tabIdx < 0) return;
+
+        if (state == 0) {
+            m_tabWidget->setTabIcon(tabIdx, QIcon());
+            return;
+        }
+        QColor dot;
+        switch (state) {
+            case 1: dot = QColor(0x89, 0xB4, 0xFA); break; // Normal — blue
+            case 2: dot = QColor(0xF3, 0x8B, 0xA8); break; // Error — red
+            case 3: dot = QColor(0xB4, 0xBE, 0xFE); break; // Indeterminate — lavender
+            case 4: dot = QColor(0xF9, 0xE2, 0xAF); break; // Warning — yellow
+            default: return;
+        }
+        QPixmap pm(12, 12);
+        pm.fill(Qt::transparent);
+        QPainter pp(&pm);
+        pp.setRenderHint(QPainter::Antialiasing);
+        pp.setBrush(dot);
+        pp.setPen(Qt::NoPen);
+        pp.drawEllipse(1, 1, 10, 10);
+        pp.end();
+        m_tabWidget->setTabIcon(tabIdx, QIcon(pm));
+    });
 
     // Desktop notifications (OSC 9/777)
     connect(terminal, &TerminalWidget::desktopNotification, this,
