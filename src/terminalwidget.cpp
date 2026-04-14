@@ -2844,11 +2844,71 @@ void TerminalWidget::openFileAtPath(const QString &path) {
             editor = "xdg-open";
     }
 
+    // Editor-specific argv shapes for path:line:col jump. Keep this list of
+    // common Linux editors in sync with what users typically set as their
+    // editor_command — without per-editor handling we'd just open at line 1
+    // even when the click came from a `src/foo.cpp:42:10` capture, which
+    // defeats the point of the semantic-history click. Reference syntax:
+    //   code         --goto <path>:<line>[:<col>]
+    //   code-insiders --goto … (same as code)
+    //   codium       --goto … (VSCodium)
+    //   kate         -l <line> [-c <col>] <path>
+    //   sublime/subl <path>:<line>[:<col>]
+    //   nvim/vim     +<line> <path>
+    //   nano         +<line>[,<col>] <path>
+    //   helix/hx     <path>:<line>[:<col>]
+    //   micro        <path>:<line>[:<col>]
+    //   jetbrains (idea, pycharm, clion, goland, webstorm, rider, …)
+    //                --line <line> [--column <col>] <path>
     QStringList args;
-    if (editor == "code" && line > 0) {
-        args << "--goto" << QString("%1:%2%3").arg(filePath).arg(line).arg(col > 0 ? QString(":%1").arg(col) : "");
-    } else if (editor == "kate" && line > 0) {
-        args << "-l" << QString::number(line) << filePath;
+    QString editorBase = QFileInfo(editor).fileName();
+    auto isCodeFamily = [&]() {
+        return editorBase == "code" || editorBase == "code-insiders"
+            || editorBase == "codium" || editorBase == "vscodium";
+    };
+    auto isJetBrains = [&]() {
+        static const QStringList jb = {
+            "idea", "pycharm", "clion", "goland", "webstorm",
+            "rider", "rubymine", "phpstorm", "datagrip"
+        };
+        return jb.contains(editorBase);
+    };
+    if (line > 0) {
+        if (isCodeFamily()) {
+            args << "--goto" << QString("%1:%2%3").arg(filePath).arg(line)
+                                                  .arg(col > 0 ? QString(":%1").arg(col) : "");
+        } else if (editorBase == "kate") {
+            args << "-l" << QString::number(line);
+            if (col > 0) args << "-c" << QString::number(col);
+            args << filePath;
+        } else if (editorBase == "subl" || editorBase == "sublime_text"
+                || editorBase == "hx" || editorBase == "helix"
+                || editorBase == "micro") {
+            // These editors all accept the same path:line:col goto syntax
+            // VSCode's --goto uses internally — append directly.
+            args << QString("%1:%2%3").arg(filePath).arg(line)
+                                       .arg(col > 0 ? QString(":%1").arg(col) : "");
+        } else if (editorBase == "nvim" || editorBase == "vim"
+                || editorBase == "vi"   || editorBase == "ex") {
+            // vi-family: +N file (col jump goes via -c "normal Mc|" — too
+            // hostile for a casual click; line-only is the sensible default).
+            args << QString("+%1").arg(line) << filePath;
+        } else if (editorBase == "nano") {
+            // nano: +line[,col] file
+            args << (col > 0 ? QString("+%1,%2").arg(line).arg(col)
+                             : QString("+%1").arg(line))
+                 << filePath;
+        } else if (isJetBrains()) {
+            args << "--line" << QString::number(line);
+            if (col > 0) args << "--column" << QString::number(col);
+            args << filePath;
+        } else {
+            // Unknown editor — best-effort: just pass the path. If users
+            // need line jump for an editor not above, they can set
+            // editor_command to one of the recognized names (or wrap their
+            // editor in a small shell script that translates).
+            args << filePath;
+        }
     } else {
         args << filePath;
     }

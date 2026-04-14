@@ -14,6 +14,53 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.12] — 2026-04-14
+
+**Theme:** close out the **semantic-history** ROADMAP item (which was
+already implemented but never promoted on the roadmap) and round out
+its editor coverage so the line/column jump works for editors beyond
+just VS Code and Kate.
+
+### Added
+
+- **Editor jump support for nvim, vim, sublime, JetBrains IDEs,
+  helix, and micro** in `TerminalWidget::openFileAtPath()`. Ctrl-click
+  on a `path:line:col` capture in scrollback (compiler / linter /
+  stack-trace output) now opens the file at the cited location for:
+  - **VS Code family**: `code`, `code-insiders`, `codium`, `vscodium`
+    via `--goto <path>:<line>:<col>`
+  - **Kate**: `-l <line>` + `-c <col>` (col was previously ignored)
+  - **Sublime / Helix / Micro**: `<path>:<line>:<col>` argv shape
+  - **Vi family**: `nvim`, `vim`, `vi`, `ex` via `+<line> <path>`
+  - **Nano**: `+<line>,<col> <path>`
+  - **JetBrains IDEs**: `idea`, `pycharm`, `clion`, `goland`,
+    `webstorm`, `rider`, `rubymine`, `phpstorm`, `datagrip` via
+    `--line <line>` + `--column <col>`
+  - **Anything else**: best-effort (open the path, no jump). Users
+    can wrap their editor in a small shell script if it isn't on the
+    list yet.
+  Editor name match uses `QFileInfo(editor).fileName()` so absolute
+  paths (`/usr/local/bin/code`) and bare names (`code`) both work.
+
+### Changed
+
+- ROADMAP transition: §0.7.0 → 🎨 Features → "Semantic history"
+  💭→✅. The OSC 7-less implementation was already shipped (uses
+  `/proc/<pid>/cwd` to resolve relative paths); this release just
+  documents the existing behavior and broadens the editor list. See
+  [CHANGELOG.md §0.6.12](CHANGELOG.md#0612--2026-04-14).
+
+### Notes
+
+- **No new config keys, no new permissions, no plugin API change.**
+  PLUGINS.md does not need a bump.
+- The path-detection regex is unchanged from 0.6.x — the existing
+  `(?:^|[\s("'])((\.{0,2}/)?[a-zA-Z0-9_\-./]+\.[a-zA-Z0-9_]+(?::(\d+)(?::(\d+))?)?)`
+  pattern in `detectUrls()` already captures `path:line:col` and was
+  the basis for the original semantic-history routing.
+- Line jump is suppressed when the captured line is 0 (unparseable)
+  so editors don't see a bogus `+0` / `--line 0` arg.
+
 ## [0.6.11] — 2026-04-14
 
 **Theme:** ship the **0.7.0 security pair** — a UI for auditing and

@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.11 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.12 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -151,9 +151,18 @@ there before adding a multiplexer. Reference:
   `Ctrl+Shift+R`); per-block export via the command-block context
   menu in 0.6.10. Asciicast v2 header + event-stream format. See
   [CHANGELOG.md §0.6.10](CHANGELOG.md#0610--2026-04-14).
-- 💭 **Semantic history**: Cmd-click on `path:line:col` in output opens
-  the file in the configured IDE (`vscode://file/{path}:{line}`, etc.).
-  Works by scraping scrollback; no shell cooperation needed.
+- ✅ **Semantic history**. Shipped in 0.6.x and broadened in 0.6.12.
+  Ctrl-click on a `path:line:col` capture in scrollback (compiler /
+  linter / stack-trace output) opens the file at the cited line/col
+  via `TerminalWidget::openFileAtPath()`. Detection lives in
+  `detectUrls()` (regex captures `path:line[:col]`); CWD resolution
+  uses `/proc/<pid>/cwd` so relative paths Just Work without shell
+  cooperation. 0.6.12 broadened the editor switch from VS Code + Kate
+  only to also cover the VS Code family (`code-insiders`, `codium`),
+  vi-family (`nvim`, `vim`), `nano`, Sublime / Helix / Micro
+  (`path:line:col` argv shape), and JetBrains IDEs (`--line N
+  --column M`). See
+  [CHANGELOG.md §0.6.12](CHANGELOG.md#0612--2026-04-14).
 - 💭 **Shell-side HMAC verification** for OSC 133 markers — protects
   the command-block UI from forged markers written by an inner TTY
   process. Key passed via `ANTS_OSC133_KEY` env; shell hook computes
