@@ -1167,8 +1167,8 @@ void MainWindow::newTab() {
     QString inheritCwd;
     if (auto *prev = focusedTerminal())
         inheritCwd = prev->shellCwd();
-    else if (auto *prev = currentTerminal())
-        inheritCwd = prev->shellCwd();
+    else if (auto *fallback = currentTerminal())
+        inheritCwd = fallback->shellCwd();
 
     auto *terminal = createTerminal();
     connectTerminal(terminal);

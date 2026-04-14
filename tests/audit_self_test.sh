@@ -80,6 +80,10 @@ run_rule "secrets_scan"     '(api[_-]?key|password|secret[_-]?key|auth[_-]?token
 run_rule "conflict_markers" '^(<{7}|\|{7}|={7}|>{7})(\s|$)'
 run_rule "insecure_http"    'http://[^l][^o][^c]'
 run_rule "cmd_injection"    '\b(system|popen|execlp|execvp|execl|execv|execle)\s*\('
+run_rule "todo_scan"        '(TODO|FIXME|HACK|XXX)(\(|:|\s)'
+run_rule "format_string"    '\b[fs]?n?printf\s*\([^"]*\b\w+\s*\)'
+run_rule "hardcoded_ips"    '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
+run_rule "weak_crypto"      '\b(md5|sha1|des|rc4|ecb)\b'
 
 # ---------------------------------------------------------------------------
 # Inline suppression token recognition — the regex in commentSuppresses()

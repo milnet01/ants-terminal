@@ -1,0 +1,57 @@
+# Minimal CI: compile-check + run the audit-rule regression suite.
+# Runs on push to main and on every PR so regressions to the rule regexes
+# are caught before merge.
+#
+# Hardening notes (matches audit STANDARDS.md §Supply chain):
+#   • `permissions: contents: read` — override the overbroad default token.
+#   • actions/checkout pinned by 40-char SHA with `# v4.2.2` for humans.
+#     Tags are mutable; SHAs are not (cf. tj-actions/changed-files, 2025).
+#   • No secrets referenced; no `pull_request_target`; no self-hosted runners.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install Qt6 + build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            qt6-base-dev qt6-base-dev-tools \
+            libqt6opengl6-dev libqt6openglwidgets6 \
+            liblua5.4-dev cppcheck
+
+      - name: Configure (Release + warnings-as-warnings)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        working-directory: build
+        run: ctest --output-on-failure
+
+      - name: Run cppcheck (audit rule: Qt-aware static analysis)
+        run: |
+          cppcheck --enable=all --std=c++20 --library=qt \
+                   --suppress=missingIncludeSystem \
+                   --suppress=unusedFunction \
+                   --suppress=unknownMacro \
+                   --suppress=normalCheckLevelMaxBranches \
+                   --error-exitcode=0 \
+                   -I src src/

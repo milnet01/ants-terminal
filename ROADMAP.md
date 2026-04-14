@@ -199,6 +199,48 @@ there before adding a multiplexer. Reference:
   at 16384×16384 and total in-memory image bytes per terminal at
   256 MB. Reject with an inline error.
 
+### 🧰 Dev experience — Project Audit tool
+
+Surfaced by the 0.6.5 audit pass (see [CHANGELOG.md §0.6.5](CHANGELOG.md#065--2026-04-14)).
+Each item is a rule / self-check the in-app `AuditDialog` should grow so
+findings like the ones we caught manually would be caught automatically on
+the next run.
+
+- 📋 **Qt rule: unbounded callback payloads.** Detect call sites that
+  forward `QString::fromUtf8(payload.c_str() + N)` (or similar) directly
+  to a user-supplied callback without a `.left(…)` / `.truncate(…)` cap.
+  Motivating case: OSC 9 / OSC 777 notification body pre-0.6.5.
+- 📋 **Qt rule: `QNetworkReply` connects without abort-in-dtor.** AST /
+  regex check: if a class connects to `readyRead` or `finished` on a
+  `QNetworkReply*` member, it must either abort the reply in its
+  destructor or parent the reply to an auto-destroying lifetime. Motivating
+  case: pre-0.6.5 `AiDialog`.
+- 📋 **Observability rule: silent `catch (...)`.** Flag `catch (…) {}`
+  blocks with fewer than N statements (default 2) and no call to a
+  logging macro or qWarning/qDebug/qCDebug. Allow-list the site with the
+  existing inline-suppression comment.
+- 📋 **Self-consistency: fixture-per-`addGrepCheck`.** Audit tool inspects
+  `src/auditdialog.cpp` for `addGrepCheck("id", …)` and reports any id
+  without a matching `tests/audit_fixtures/<id>/` directory. Would have
+  caught the `todo_scan` / `format_string` / `hardcoded_ips` /
+  `weak_crypto` gap pre-0.6.5.
+- 📋 **Build-flag recommender.** Parse `CMakeLists.txt` (or
+  `compile_commands.json`) for the warning flags in use; flag the absence
+  of `-Wformat=2`, `-Wshadow` (or `-Wshadow=local`), `-Wnull-dereference`,
+  `-Wconversion`. Severity Minor — shipped-as-is is fine, this is a
+  nudge toward better compile-time coverage.
+- 📋 **No-CI check.** Flag projects with no `.github/workflows/`, no
+  `.gitlab-ci.yml`, and no `.circleci/` directory. Severity Major —
+  regressions ship silently without any CI.
+- 📋 **Sanitizer-in-ctest hookup.** Wire `ANTS_SANITIZERS=ON` into a
+  dedicated CI job (or a `make check-asan` target) so the ASan/UBSan path
+  gets exercised on every push — currently available but only runs when
+  a contributor remembers to opt in.
+- 📋 **`CONTRIBUTING.md`.** Short doc derived from `STANDARDS.md`:
+  where tests live, how to add an audit rule, how to run the sanitizer
+  build, expected commit message shape. Lowers the barrier for outside
+  contributors once CI is public.
+
 ---
 
 ## 0.8.0 — multiplexing + marketplace (target: 2026-08)

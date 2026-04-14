@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.4 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.5 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,9 +71,26 @@ target_link_libraries(ants-terminal PRIVATE
 target_include_directories(ants-terminal PRIVATE src)
 
 # Compiler warnings (required by STANDARDS.md)
+#
+# -Wformat=2 upgrades -Wformat to include non-literal format strings, %n usage,
+# and missing-argument diagnostics — catches the same class of bug the audit
+# `format_string` rule flags at the regex layer.
+#
+# -Wshadow=local (not full -Wshadow) catches a local shadowing another local
+# — the actual bug class. Full -Wshadow also flags parameter-vs-member name
+# collisions which are pervasive Qt convention (`void setData(QByteArray data)`
+# style) and would drown the signal.
+#
+# -Wnull-dereference catches paths where a pointer known-null reaches a
+# dereference — often from Qt getters (findChild, parent, qobject_cast).
+#
+# -Wconversion / -Wsign-conversion are noisy by nature; kept OFF for now to
+# avoid drowning real findings. Flip on individually when a quiet pass is
+# worth it (see ROADMAP: "Tighten narrowing conversions").
 target_compile_options(ants-terminal PRIVATE
     -Wall -Wextra -Wpedantic
-    -Wformat -Wformat-security
+    -Wformat=2 -Wformat-security
+    -Wshadow=local -Wnull-dereference
 )
 
 # Security hardening

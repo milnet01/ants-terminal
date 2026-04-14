@@ -14,6 +14,73 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.5] — 2026-04-14
+
+**Theme:** second audit of the day. Ran the 5-phase prompt
+(`/mnt/Storage/Scripts/audit_prompt.md`) against the post-0.6.4 tree. Five
+subagent reports converged on three real High findings, three Medium, and a
+batch of noise. Five subagent claims were rejected on Phase 4 verification
+(documented in the commit body) — keeping the signal honest matters more than
+the count.
+
+### Security
+
+- **Cap OSC 9 / OSC 777 desktop-notification payloads at 1024 bytes (title
+  at 256).** The VT parser caps an OSC payload at 10 MB so inline-image
+  escapes round-trip cleanly; `handleOsc()` was forwarding that whole
+  payload to the notification callback as a QString. A program inside the
+  terminal could spam the freedesktop notification daemon with multi-MB
+  titles. `src/terminalgrid.cpp:761-790` now `.left(N)`-clamps before the
+  callback, matching the OSC 52 clipboard-cap pattern.
+- **Cap accumulated SSE response buffer in AiDialog at 10 MB.**
+  `m_sseLineBuffer` already had this cap on the pipe side (`src/aidialog.cpp:179`);
+  `m_streamBuffer` — which holds *parsed* content — did not. A misbehaving
+  or hostile endpoint could stream past `max_tokens` indefinitely. Once
+  capped, we append a single `[response truncated]` marker and drop
+  subsequent chunks.
+- **AiDialog now has a destructor that aborts any in-flight reply.** Qt
+  auto-disconnects signals from a destroyed receiver, but there's a narrow
+  window during member destruction where a reply can still fire
+  `readyRead` / `finished` on a partially-destructed AiDialog. Explicit
+  `abort() + deleteLater()` closes the window.
+
+### Changed
+
+- **Stricter compile flags.** Added `-Wformat=2`, `-Wshadow=local`, and
+  `-Wnull-dereference` to the default warning set. `-Wshadow=local` was
+  picked over the full `-Wshadow` deliberately: the project uses
+  Qt-idiomatic `void setData(QByteArray data)` patterns where parameter
+  names legitimately match member accessors; flagging those would drown
+  the real `int x = …; if (cond) { int x = …; }` shadowing that the flag
+  exists to catch. Surfaced two legitimate local-vs-local shadows
+  (`mainwindow.cpp:1170` and `auditdialog.cpp:3062`), both renamed.
+- **Silent `catch (…)` blocks in OSC handlers now route to the existing
+  `DBGLOG` channel.** Three sites in `src/terminalgrid.cpp` (OSC 133 D,
+  OSC 9;4, OSC 1337 param parse) write a diagnostic line when their
+  `std::stoi` throws, guarded by `m_debugLog` so there's zero cost when
+  debug isn't enabled. The two Kitty-graphics `safeStoi`/`safeStoul`
+  helpers stay intentionally silent — documented with a comment — because
+  they fire per-chunk in the APC parameter loop and logging would flood.
+
+### Added
+
+- **`.github/workflows/ci.yml`.** Runs `ctest` plus the `cppcheck` Qt-aware
+  pass on every push to `main` and every PR. `actions/checkout` pinned by
+  40-char SHA (not tag) per STANDARDS.md §Supply chain. Workflow token
+  scoped to `contents: read`.
+- **Four new audit-rule regression fixtures** under
+  `tests/audit_fixtures/`: `todo_scan`, `format_string`, `hardcoded_ips`,
+  `weak_crypto`. These four rules ship in `auditdialog.cpp` but had no
+  `bad/good` fixture pair, so regex drift would have shipped silently.
+  `tests/audit_self_test.sh` now covers 9 of the 9 unconditional
+  `addGrepCheck()` rules; `ctest` exercises 27 assertions (up from 23).
+- **`launch.sh` now starts with `set -eu`.** Three-line wrapper, but free
+  hardening against silent failures if a typo lands in a future edit.
+- **`-Wl` cert-err33-c fix.** `src/ptyhandler.cpp:112`'s argv0
+  `::snprintf` return value was being ignored; now `(void)`-cast with a
+  comment explaining the truncation is a known-acceptable loss (the
+  written buffer is a login-marker, not a lookup key).
+
 ## [0.6.4] — 2026-04-14
 
 **Theme:** Project Audit signal-to-noise. Addresses a reviewer-provided brief

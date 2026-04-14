@@ -107,9 +107,12 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         const char *shellName = ::strrchr(shellCStr, '/');
         shellName = shellName ? shellName + 1 : shellCStr;
 
-        // Login shell (prefix with -)
+        // Login shell (prefix with -). Truncation is acceptable — shellName
+        // comes from the ShellEntry we just validated, and argv[0] is a
+        // display/login-marker, not a lookup key, so the cast silences the
+        // cert-err33-c diagnostic without losing any real guarantee.
         char argv0[256];
-        ::snprintf(argv0, sizeof(argv0), "-%s", shellName);
+        (void)::snprintf(argv0, sizeof(argv0), "-%s", shellName);
 
         ::execlp(shellCStr, argv0, nullptr);
         ::_exit(127);

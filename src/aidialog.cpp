@@ -6,6 +6,18 @@
 #include <QNetworkRequest>
 #include <QScrollBar>
 
+AiDialog::~AiDialog() {
+    // Abort and drop any in-flight reply before member teardown runs. Qt
+    // auto-disconnects signals from a destroyed receiver, but there's a
+    // narrow window during member destruction where slots can still fire
+    // on a partially-destructed AiDialog. Explicit abort closes the window.
+    if (m_currentReply) {
+        m_currentReply->abort();
+        m_currentReply->deleteLater();
+        m_currentReply = nullptr;
+    }
+}
+
 AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("AI Assistant");
     setMinimumSize(500, 400);
@@ -122,6 +134,7 @@ void AiDialog::sendRequest(const QString &userMessage) {
     m_sendBtn->setEnabled(false);
     m_streamBuffer.clear();
     m_sseLineBuffer.clear();
+    m_streamTruncated = false;
 
     QJsonObject systemMsg;
     systemMsg["role"] = "system";
@@ -204,6 +217,18 @@ void AiDialog::onReplyReadyRead() {
         QJsonObject delta = choices[0].toObject()["delta"].toObject();
         QString content = delta["content"].toString();
         if (!content.isEmpty()) {
+            // Cap the accumulated response buffer to guard against a
+            // misbehaving endpoint streaming unbounded content past
+            // max_tokens. m_sseLineBuffer guards the pipe side; this
+            // guards the parsed-content side. 10MB mirrors that cap.
+            constexpr int kMaxStreamBuffer = 10 * 1024 * 1024;
+            if (m_streamBuffer.size() >= kMaxStreamBuffer) {
+                if (!m_streamTruncated) {
+                    m_streamBuffer += QStringLiteral("\n[response truncated]");
+                    m_streamTruncated = true;
+                }
+                continue;
+            }
             m_streamBuffer += content;
         }
     }

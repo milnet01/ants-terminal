@@ -718,7 +718,12 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             size_t semi2 = rest.find(';');
             if (semi2 != std::string::npos) {
                 std::string code = rest.substr(semi2 + 1);
-                try { m_lastExitCode = std::stoi(code); } catch (...) { m_lastExitCode = 0; }
+                try {
+                    m_lastExitCode = std::stoi(code);
+                } catch (...) {
+                    DBGLOG("OSC 133 D exit-code parse failed: '%s'", code.c_str());
+                    m_lastExitCode = 0;
+                }
             } else {
                 m_lastExitCode = 0;
             }
@@ -749,6 +754,7 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                 percent = std::stoi(rest.substr(semi2 + 1));
             }
         } catch (...) {
+            DBGLOG("OSC 9;4 progress parse failed: '%s'", rest.c_str());
             return;  // malformed — ignore
         }
         if (stateNum < 0 || stateNum > 4) return;
@@ -758,23 +764,31 @@ void TerminalGrid::handleOsc(const std::string &payload) {
         if (m_progressCallback) m_progressCallback(m_progressState, m_progressValue);
     }
     // OSC 9 — Desktop notification (body only, iTerm2/Ghostty style)
+    //
+    // The VT parser caps OSC payloads at 10MB (vtparser.cpp:282) to cover
+    // inline-image escape sequences. Notifications are short by nature; a
+    // multi-MB body here is either a mistake or an attempt to spam the
+    // freedesktop notification daemon. Clamp aggressively before forwarding.
     else if (oscNum == "9" && semi != std::string::npos && m_notifyCallback) {
-        QString body = QString::fromUtf8(payload.c_str() + semi + 1);
+        constexpr int kMaxNotifyBody = 1024;
+        QString body = QString::fromUtf8(payload.c_str() + semi + 1).left(kMaxNotifyBody);
         m_notifyCallback(QString(), body);
     }
     // OSC 777 — Desktop notification (notify;title;body, foot/Ghostty/WezTerm style)
     else if (oscNum == "777" && semi != std::string::npos && m_notifyCallback) {
+        constexpr int kMaxNotifyTitle = 256;
+        constexpr int kMaxNotifyBody = 1024;
         std::string rest = payload.substr(semi + 1);
         // Format: notify;title;body
         if (rest.compare(0, 7, "notify;") == 0) {
             rest = rest.substr(7);
             size_t semi2 = rest.find(';');
             if (semi2 != std::string::npos) {
-                QString title = QString::fromUtf8(rest.c_str(), static_cast<int>(semi2));
-                QString body = QString::fromUtf8(rest.c_str() + semi2 + 1);
+                QString title = QString::fromUtf8(rest.c_str(), static_cast<int>(semi2)).left(kMaxNotifyTitle);
+                QString body = QString::fromUtf8(rest.c_str() + semi2 + 1).left(kMaxNotifyBody);
                 m_notifyCallback(title, body);
             } else {
-                m_notifyCallback(QString(), QString::fromUtf8(rest.c_str()));
+                m_notifyCallback(QString(), QString::fromUtf8(rest.c_str()).left(kMaxNotifyBody));
             }
         }
     }
@@ -811,7 +825,8 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
         pos += key.size() + 1;
         auto end = params.find(';', pos);
         std::string val = (end != std::string::npos) ? params.substr(pos, end - pos) : params.substr(pos);
-        try { return std::stoi(val); } catch (...) { return -1; }
+        try { return std::stoi(val); }
+        catch (...) { DBGLOG("OSC 1337 param '%s' int-parse failed: '%s'", key.c_str(), val.c_str()); return -1; }
     };
 
     int pw = parseParam("width");
@@ -1543,7 +1558,9 @@ void TerminalGrid::handleDcs(const std::string &payload) {
 
 // --- Kitty Graphics Protocol (APC G ... ST) ---
 
-// Safe integer parsing helper (returns defaultVal on failure)
+// Safe integer parsing helpers (returns defaultVal on failure). Used in
+// the Kitty graphics APC-parameter loop which fires per chunk of a paste
+// and would flood any log attached here — kept intentionally silent.
 static int safeStoi(const std::string &s, int defaultVal = 0) {
     try { return std::stoi(s); }
     catch (...) { return defaultVal; }

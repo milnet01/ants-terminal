@@ -3057,14 +3057,16 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
         const int conf = std::clamp(o.value("confidence").toInt(50), 0, 100);
         const QString reasoning = o.value("reasoning").toString().left(600);
 
-        // Write back into every CheckResult that carries this key.
+        // Write back into every CheckResult that carries this key. Renamed
+        // from `f` to `fi` so -Wshadow=local stays clean — an outer `f` at
+        // line ~2938 is uncaptured here, but GCC warns anyway.
         for (auto &r : m_completedResults) {
-            for (Finding &f : r.findings) {
-                if (f.dedupKey != dedupKey) continue;
-                f.aiVerdict     = verdict;
-                f.aiConfidence  = conf;
-                f.aiReasoning   = reasoning;
-                f.confidence    = computeConfidence(f);
+            for (Finding &fi : r.findings) {
+                if (fi.dedupKey != dedupKey) continue;
+                fi.aiVerdict     = verdict;
+                fi.aiConfidence  = conf;
+                fi.aiReasoning   = reasoning;
+                fi.confidence    = computeConfidence(fi);
             }
         }
         m_expandedKeys.insert(dedupKey);   // auto-expand to show the verdict

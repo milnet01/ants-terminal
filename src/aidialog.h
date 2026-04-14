@@ -50,4 +50,11 @@ private:
     QString m_streamBuffer;   // Accumulates streaming response
     QByteArray m_sseLineBuffer; // Buffers incomplete SSE lines across TCP chunks
     bool m_httpWarned = false;  // Show plaintext-HTTP warning once per dialog instance
+    bool m_streamTruncated = false; // Marker appended once when m_streamBuffer hits cap
+
+public:
+    // Abort any in-flight reply before members start destructing. Without
+    // this, a reply arriving during the narrow window of member destruction
+    // can deliver readyRead/finished to a partially-destroyed AiDialog.
+    ~AiDialog() override;
 };
