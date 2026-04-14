@@ -205,6 +205,28 @@ public:
     using NotifyCallback = std::function<void(const QString &title, const QString &body)>;
     void setNotifyCallback(NotifyCallback cb) { m_notifyCallback = std::move(cb); }
 
+    // Per-row completion callback (0.6.13). Fires from newLine() BEFORE the
+    // actual cursor/scroll motion, so the callback sees the screen row that
+    // the cursor was leaving (and any mutation it applies via
+    // applyRowAttrs / addRowHyperlink lands on the right row before that
+    // row may be pushed to scrollback). Used by TerminalWidget to run the
+    // grid-mutation trigger rules (highlight_line, highlight_text,
+    // make_hyperlink) on the just-completed line. Passes the screen row
+    // index; the widget computes the global line as needed.
+    using LineCompletionCallback = std::function<void(int screenRow)>;
+    void setLineCompletionCallback(LineCompletionCallback cb) {
+        m_lineCompletionCallback = std::move(cb);
+    }
+
+    // Grid mutation helpers for trigger actions (0.6.13).
+    // Override fg/bg attrs for cols [startCol..endCol] (inclusive) on screen
+    // `row`. A default-constructed (invalid) QColor means "leave unchanged"
+    // — so callers can set fg only, bg only, or both.
+    void applyRowAttrs(int row, int startCol, int endCol,
+                       const QColor &fg, const QColor &bg);
+    // Push an OSC 8-equivalent hyperlink span onto screen `row`.
+    void addRowHyperlink(int row, int startCol, int endCol, const QString &uri);
+
     // Progress reporting callback (OSC 9;4 / ConEmu)
     using ProgressCallback = std::function<void(ProgressState state, int percent)>;
     void setProgressCallback(ProgressCallback cb) { m_progressCallback = std::move(cb); }
@@ -378,6 +400,9 @@ private:
 
     // Desktop notification callback (OSC 9/777)
     NotifyCallback m_notifyCallback;
+
+    // Line-completion callback (0.6.13, trigger system grid-mutation actions)
+    LineCompletionCallback m_lineCompletionCallback;
 
     // Progress reporting (OSC 9;4)
     ProgressCallback m_progressCallback;

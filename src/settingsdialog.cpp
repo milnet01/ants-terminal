@@ -253,8 +253,15 @@ void SettingsDialog::setupTriggersTab(QWidget *tab) {
 
     auto *desc = new QLabel(
         "Triggers run actions when a regex pattern matches terminal output.\n"
-        "Action types: notify (desktop notification), sound (system bell), command (run shell command).", tab);
+        "<b>Dispatch:</b> notify (desktop), sound (bell), command (shell cmd), "
+        "bell (visual+audible), inject (write to PTY), run_script (plugin event).\n"
+        "<b>Grid mutation:</b> highlight_line (Action Value = <code>#fg</code> or "
+        "<code>#fg/#bg</code>) recolors the whole line; highlight_text same value "
+        "format but only the matched substring; make_hyperlink (Action Value = "
+        "URL template with <code>$0..$9</code> backrefs) turns the match into a "
+        "clickable OSC 8-equivalent link.", tab);
     desc->setWordWrap(true);
+    desc->setTextFormat(Qt::RichText);
     layout->addWidget(desc);
 
     m_triggerTable = new QTableWidget(0, 4, tab);
@@ -568,7 +575,17 @@ void SettingsDialog::addTriggerRow(const QString &pattern, const QString &action
     m_triggerTable->setItem(row, 0, new QTableWidgetItem(pattern));
 
     auto *typeCombo = new QComboBox();
-    typeCombo->addItems({"notify", "sound", "command"});
+    // Dispatch types (fire a signal, side-effect outside the grid):
+    //   notify, sound, command, bell, inject, run_script
+    // Grid-mutation types (recolor cells / add hyperlink spans in place):
+    //   highlight_line, highlight_text, make_hyperlink
+    // The two groups dispatch via different code paths (checkTriggers vs
+    // onGridLineCompleted) but share the same rule schema so the UI can
+    // list them in one combo.
+    typeCombo->addItems({
+        "notify", "sound", "command", "bell", "inject", "run_script",
+        "highlight_line", "highlight_text", "make_hyperlink"
+    });
     typeCombo->setCurrentText(actionType);
     m_triggerTable->setCellWidget(row, 1, typeCombo);
 

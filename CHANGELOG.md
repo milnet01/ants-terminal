@@ -14,6 +14,96 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.13] — 2026-04-14
+
+**Theme:** close out the last deferred bullet from the 0.6.9 trigger-system
+bundle — the iTerm2 **HighlightLine**, **HighlightText**, and
+**MakeHyperlink** actions, which needed grid-cell mutation surgery that
+chunk-level matching (checkTriggers) couldn't provide. This release adds
+a new line-completion callback on `TerminalGrid` that fires from
+`newLine()` with the row the cursor is leaving, and `TerminalWidget`
+runs the grid-mutation subset of trigger rules against the finalized
+line text there — so matches map to exact col ranges on a real row, and
+mutations land before the row scrolls into scrollback.
+
+### Added
+
+- **`highlight_line` trigger action** — when the pattern matches in
+  finalized output, recolors the **entire line** the match landed on.
+  Action Value format: `"#fg"` (fg only), `"#fg/#bg"` (both), or
+  `"/#bg"` (bg only). Empty-string slots mean "leave unchanged" —
+  so partial overrides compose cleanly with the line's existing SGR
+  attributes.
+- **`highlight_text` trigger action** — same color-string format as
+  `highlight_line`, but recolors **only the matched substring** using
+  the regex's capture-0 span as the col range.
+- **`make_hyperlink` trigger action** — turns the matched substring
+  into a clickable OSC 8-equivalent hyperlink. Action Value is a URL
+  **template** with `$0..$9` backrefs expanded against regex capture
+  groups (`$0` = whole match, `$1..$9` = groups). Example: pattern
+  `#(\d+)` + template `https://github.com/milnet01/ants-terminal/issues/$1`
+  → a clickable issue link on every `#123` reference in output. Matches
+  iTerm2's MakeHyperlink contract.
+- **`TerminalGrid::setLineCompletionCallback(…)`** — new public API.
+  Fired from `newLine()` **before** any cursor/scroll motion with the
+  screen row the cursor was leaving. Used by TerminalWidget to run
+  grid-mutation trigger rules; any other consumer can hook in for
+  per-line post-processing (e.g., future trigger-system actions that
+  need line-level context).
+- **`TerminalGrid::applyRowAttrs(row, startCol, endCol, fg, bg)`** —
+  overrides per-cell fg/bg on an inclusive col range of a screen row.
+  Invalid QColor() leaves that channel untouched so callers can write
+  fg-only, bg-only, or both. Marks the row dirty for re-paint.
+- **`TerminalGrid::addRowHyperlink(row, startCol, endCol, uri)`** —
+  pushes a hyperlink span onto the screen row's per-line
+  `m_screenHyperlinks` vector with the same shape the OSC 8 parser
+  uses. Auto-grows the vector if the row index is past the current
+  end. Rows scrolling into scrollback preserve the span via the
+  existing scrollUp move-semantics path.
+- **`TerminalWidget::onGridLineCompleted(int screenRow)`** — dispatch
+  handler installed as the grid's line-completion callback. Iterates
+  rules, filters to the three new grid-mutation types, runs
+  `globalMatch()` on the finalized line text, and invokes the
+  appropriate `applyRowAttrs` / `addRowHyperlink` for each match (so
+  multiple hits on one line all apply).
+
+### Changed
+
+- **Settings → Triggers dropdown** now exposes all action types. The
+  hardcoded `{"notify", "sound", "command"}` list was hiding the
+  `bell` / `inject` / `run_script` types shipped in 0.6.9 from the
+  UI; 0.6.13 adds those plus the three new grid-mutation types so
+  every trigger rule supported by the backend is reachable from
+  Settings. The trigger-tab description was also expanded to document
+  the Action Value format for each type.
+- `TerminalWidget::checkTriggers()` now **skips** the three new
+  grid-mutation types — those dispatch through `onGridLineCompleted`
+  instead. Routing them through both paths would double-fire and
+  match on raw PTY byte chunks (which don't map to grid cells)
+  instead of finalized line text.
+- ROADMAP transition: §0.7.0 → 🔌 Plugins trigger system — the
+  "HighlightLine / HighlightText / MakeHyperlink actions from the
+  iTerm2 reference are deferred" caveat on the 0.6.9 bullet is now
+  resolved; the bullet is marked fully complete.
+
+### Notes
+
+- **Grid-mutation triggers fire on line completion only** — i.e.,
+  when `newLine()` is called after a `\n`. The `instant` flag is not
+  honored for these three types (it wouldn't make sense — the mid-
+  line text isn't final, and half-matched mutations would flash
+  then get overwritten). Dispatch types (notify/sound/etc.) still
+  honor `instant` via the existing chunk-level matcher.
+- **No config schema change.** Same `{pattern, action_type,
+  action_value, instant, enabled}` rule shape from 0.6.9; the new
+  types just teach both `checkTriggers` and `onGridLineCompleted`
+  how to interpret `action_type` and `action_value`.
+- **Multi-match support** — `highlight_text` and `make_hyperlink`
+  both use `globalMatch()` so every occurrence on a line is
+  decorated (not just the first).
+- **No plugin API surface change.** `PLUGINS.md` does not need a
+  bump; trigger rules live in config, not in the `ants.*` API.
+
 ## [0.6.12] — 2026-04-14
 
 **Theme:** close out the **semantic-history** ROADMAP item (which was

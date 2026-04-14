@@ -1232,11 +1232,63 @@ void TerminalGrid::restoreCursor() {
 }
 
 void TerminalGrid::newLine() {
+    // 0.6.13 — fire the line-completion callback BEFORE any cursor/scroll
+    // motion so the callback sees (and can mutate) the row the cursor was
+    // leaving. If we're at scrollBottom and about to scroll, the mutation
+    // still lands on the right cells — scrollUp moves the row into
+    // scrollback via std::move, preserving the just-applied attrs. Used
+    // by the trigger-system grid-mutation actions (highlight_line,
+    // highlight_text, make_hyperlink).
+    if (m_lineCompletionCallback && m_cursorRow >= 0 && m_cursorRow < m_rows) {
+        m_lineCompletionCallback(m_cursorRow);
+    }
     if (m_cursorRow == m_scrollBottom) {
         scrollUp(1);
     } else if (m_cursorRow < m_rows - 1) {
         ++m_cursorRow;
     }
+}
+
+// 0.6.13 — grid mutation helpers for trigger-system HighlightLine /
+// HighlightText / MakeHyperlink action types. Operate on screen rows (not
+// scrollback) because these fire from the line-completion callback while
+// the row is still active. Both clamp inputs so the caller can pass
+// untrusted column ranges (e.g. from regex matches on text that may be
+// wider than the grid after line wrap).
+void TerminalGrid::applyRowAttrs(int row, int startCol, int endCol,
+                                 const QColor &fg, const QColor &bg) {
+    if (row < 0 || row >= m_rows) return;
+    auto &line = m_screenLines[row];
+    int maxCol = static_cast<int>(line.cells.size());
+    int start = std::max(0, startCol);
+    int end   = std::min(maxCol - 1, endCol);
+    if (end < start) return;
+    for (int c = start; c <= end; ++c) {
+        if (fg.isValid()) line.cells[c].attrs.fg = fg;
+        if (bg.isValid()) line.cells[c].attrs.bg = bg;
+    }
+    line.dirty = true;
+}
+
+void TerminalGrid::addRowHyperlink(int row, int startCol, int endCol,
+                                   const QString &uri) {
+    if (row < 0 || row >= m_rows) return;
+    if (uri.isEmpty()) return;
+    // m_screenHyperlinks is grown on demand by the OSC 8 path; mirror that
+    // semantics here so a trigger-created hyperlink on an otherwise empty
+    // hyperlink row Just Works.
+    if (row >= static_cast<int>(m_screenHyperlinks.size()))
+        m_screenHyperlinks.resize(row + 1);
+    int maxCol = static_cast<int>(m_screenLines[row].cells.size());
+    int start = std::max(0, startCol);
+    int end   = std::min(maxCol - 1, endCol);
+    if (end < start) return;
+    HyperlinkSpan span;
+    span.startCol = start;
+    span.endCol   = end;
+    span.uri      = uri.toStdString();
+    m_screenHyperlinks[row].push_back(std::move(span));
+    m_screenLines[row].dirty = true;
 }
 
 void TerminalGrid::carriageReturn() {

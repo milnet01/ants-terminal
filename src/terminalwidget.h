@@ -128,7 +128,11 @@ public:
     //     evaluation — matches iTerm2's "Instant" flag semantics).
     struct TriggerRule {
         QRegularExpression pattern;
-        QString actionType;  // "notify"|"sound"|"command"|"bell"|"inject"|"run_script"
+        // Dispatch types (emit via checkTriggers → triggerFired signal):
+        //   "notify" | "sound" | "command" | "bell" | "inject" | "run_script"
+        // Grid-mutation types (run via onLineCompleted, mutate grid cells):
+        //   "highlight_line" | "highlight_text" | "make_hyperlink"  (0.6.13)
+        QString actionType;
         QString actionValue;
         bool instant = false;
     };
@@ -462,6 +466,12 @@ private:
     // Trigger rules
     std::vector<TriggerRule> m_triggerRules;
     void checkTriggers(const QByteArray &data);
+    // 0.6.13 — grid-mutation trigger dispatch. Called by the TerminalGrid
+    // line-completion callback once per newline, passing the screen row
+    // that the cursor was leaving. Runs `highlight_line`, `highlight_text`,
+    // and `make_hyperlink` rules against the finalized line text and applies
+    // attr / hyperlink mutations directly to the grid row.
+    void onGridLineCompleted(int screenRow);
 
     // Exit code tracking for error detection
     int m_lastTrackedExitCode = 0;

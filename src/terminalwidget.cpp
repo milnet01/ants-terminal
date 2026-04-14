@@ -169,6 +169,15 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
         emit userVarChanged(name, value);
     });
 
+    // 0.6.13 — grid-mutation trigger actions. Fires on every newLine() in
+    // the grid; we look up the finalized row's text and run the subset of
+    // trigger rules that mutate the grid (highlight_line / highlight_text /
+    // make_hyperlink). Kept separate from checkTriggers() — that one sees
+    // raw PTY chunks and can't map matches to grid cells.
+    m_grid->setLineCompletionCallback([this](int screenRow) {
+        onGridLineCompleted(screenRow);
+    });
+
     // Smooth scrolling timer (16ms = ~60fps)
     m_smoothScrollTimer.setInterval(16);
     connect(&m_smoothScrollTimer, &QTimer::timeout, this, &TerminalWidget::smoothScrollStep);
@@ -3974,6 +3983,13 @@ void TerminalWidget::checkTriggers(const QByteArray &data) {
     bool chunkEndsLine = (!text.isEmpty()) &&
                          (text.endsWith('\n') || text.endsWith('\r'));
     for (const auto &rule : m_triggerRules) {
+        // Skip grid-mutation types — those run via onGridLineCompleted where
+        // we have a line-to-cell mapping. Routing them here would double-fire
+        // and produce the wrong semantics (we'd match raw chunk bytes instead
+        // of the finalized line).
+        if (rule.actionType == QLatin1String("highlight_line")
+         || rule.actionType == QLatin1String("highlight_text")
+         || rule.actionType == QLatin1String("make_hyperlink")) continue;
         if (!rule.instant && !chunkEndsLine) continue;
         QRegularExpressionMatch m = rule.pattern.match(text);
         if (!m.hasMatch()) continue;
@@ -3985,6 +4001,104 @@ void TerminalWidget::checkTriggers(const QByteArray &data) {
             emit triggerFired(rule.pattern.pattern(), rule.actionType, rule.actionValue);
         }
     }
+}
+
+// 0.6.13 — grid-mutation trigger dispatch. Called from the grid's
+// line-completion callback once per newline, passing the screen row the
+// cursor was leaving. Runs the subset of trigger rules that mutate the grid
+// (highlight_line, highlight_text, make_hyperlink) on the finalized line
+// text. Mutations land on the screen row directly — if that row is about
+// to scroll into scrollback, scrollUp's std::move preserves the applied
+// attrs/hyperlinks.
+//
+// actionValue grammar for the new types:
+//   highlight_line / highlight_text:  "#fg" | "#fg/#bg" | "/#bg"
+//     (either color may be blank; caller may set fg only, bg only, or both)
+//   make_hyperlink: URL template using $0..$9 backrefs against the match
+//     capture groups — mirrors iTerm2's MakeHyperlink contract.
+void TerminalWidget::onGridLineCompleted(int screenRow) {
+    if (m_triggerRules.empty()) return;
+    if (screenRow < 0 || screenRow >= m_grid->rows()) return;
+
+    // Helper: parse "fg/bg" or "fg" or "/bg" into two QColors. Blank slots
+    // return default-constructed (invalid) QColors, which applyRowAttrs
+    // treats as "leave unchanged."
+    auto parseColors = [](const QString &spec) -> std::pair<QColor, QColor> {
+        QString fg, bg;
+        int slash = spec.indexOf('/');
+        if (slash < 0) {
+            fg = spec.trimmed();
+        } else {
+            fg = spec.left(slash).trimmed();
+            bg = spec.mid(slash + 1).trimmed();
+        }
+        QColor fgC = fg.isEmpty() ? QColor() : QColor(fg);
+        QColor bgC = bg.isEmpty() ? QColor() : QColor(bg);
+        return {fgC, bgC};
+    };
+
+    // Helper: expand $0..$9 in the URL template against match captures.
+    // $0 = whole match; $1..$9 = capture groups. Unknown refs pass through
+    // unchanged (matches iTerm2 behavior — safer than silently stripping).
+    auto expandTemplate = [](const QString &tmpl,
+                             const QRegularExpressionMatch &m) -> QString {
+        QString out;
+        out.reserve(tmpl.size() + 32);
+        for (int i = 0; i < tmpl.size(); ++i) {
+            QChar ch = tmpl[i];
+            if (ch == '$' && i + 1 < tmpl.size()
+                && tmpl[i + 1].isDigit()) {
+                int idx = tmpl[i + 1].digitValue();
+                if (idx <= m.lastCapturedIndex())
+                    out += m.captured(idx);
+                ++i;
+            } else {
+                out += ch;
+            }
+        }
+        return out;
+    };
+
+    // Global-line view is what lineText() expects.
+    int globalLine = m_grid->scrollbackSize() + screenRow;
+    QString text = lineText(globalLine);
+    if (text.isEmpty()) return;
+
+    for (const auto &rule : m_triggerRules) {
+        const QString &kind = rule.actionType;
+        bool isHighlightLine = (kind == QLatin1String("highlight_line"));
+        bool isHighlightText = (kind == QLatin1String("highlight_text"));
+        bool isMakeLink      = (kind == QLatin1String("make_hyperlink"));
+        if (!(isHighlightLine || isHighlightText || isMakeLink)) continue;
+
+        auto it = rule.pattern.globalMatch(text);
+        while (it.hasNext()) {
+            QRegularExpressionMatch m = it.next();
+            if (!m.hasMatch()) break;
+
+            if (isHighlightLine) {
+                auto [fg, bg] = parseColors(rule.actionValue);
+                // Whole line, regardless of match span.
+                m_grid->applyRowAttrs(screenRow, 0, m_grid->cols() - 1, fg, bg);
+            } else if (isHighlightText) {
+                auto [fg, bg] = parseColors(rule.actionValue);
+                int start = m.capturedStart(0);
+                int end   = m.capturedEnd(0) - 1;
+                m_grid->applyRowAttrs(screenRow, start, end, fg, bg);
+            } else if (isMakeLink) {
+                QString uri = expandTemplate(rule.actionValue, m);
+                if (!uri.isEmpty()) {
+                    int start = m.capturedStart(0);
+                    int end   = m.capturedEnd(0) - 1;
+                    m_grid->addRowHyperlink(screenRow, start, end, uri);
+                }
+            }
+        }
+    }
+    // Span caches keyed by global line need to be invalidated so the next
+    // paint picks up the new attrs / hyperlink.
+    invalidateSpanCaches();
+    update();
 }
 
 // --- History / Autocomplete ---

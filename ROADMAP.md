@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.12 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.13 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -170,13 +170,15 @@ there before adding a multiplexer. Reference:
 
 ### 🔌 Plugins — trigger system
 
-- ✅ **Trigger rules** with `instant` flag and new action types
-  (`bell`, `inject`, `run_script` alongside the existing `notify` /
-  `sound` / `command`). Shipped in 0.6.9. The `HighlightLine` /
-  `HighlightText` / `MakeHyperlink` actions from the iTerm2 reference
-  are deferred — they need grid-cell mutation surgery and are tracked
-  as a follow-up; everything else from the iTerm2 trigger doc has
-  parity. See [CHANGELOG.md §0.6.9](CHANGELOG.md#069--2026-04-14).
+- ✅ **Trigger rules** with `instant` flag and the full iTerm2 action
+  set — `bell`, `inject`, `run_script`, `notify`, `sound`, `command`
+  shipped in 0.6.9; the three deferred grid-mutation actions
+  `highlight_line`, `highlight_text`, and `make_hyperlink` shipped in
+  0.6.13 via a new `TerminalGrid` line-completion callback so matches
+  map to exact col ranges on a real row before the row scrolls into
+  scrollback. Full parity with the iTerm2 trigger doc. See
+  [CHANGELOG.md §0.6.9](CHANGELOG.md#069--2026-04-14) and
+  [CHANGELOG.md §0.6.13](CHANGELOG.md#0613--2026-04-14).
 - ✅ **User-vars channel**: OSC 1337 SetUserVar parsing + the
   `user_var_changed` event. Shipped in 0.6.9. Disambiguated from
   inline images by the byte after `1337;`. NAME ≤ 128 chars; decoded
