@@ -19,22 +19,74 @@ they move based on contributor bandwidth and real-world usage feedback.
 - 🎨 **Features** — user-visible capabilities
 - ⚡ **Performance** — runtime cost reductions
 - 🔌 **Plugins** — extensibility surface
-- 🖥 **Platform** — packaging, ports, accessibility
+- 🖥 **Platform** — ports (macOS, Windows), Wayland native support, a11y
 - 🔒 **Security** — attack-surface reductions
 - 🧰 **Dev experience** — tooling, testing, docs
+- 📦 **Packaging & distribution** — the work of getting Ants into distros
+  as an installable, auditable, default-able terminal. See the
+  [distribution-adoption overview](#distribution-adoption-overview) for
+  the full multi-release plan.
+
+---
+
+## Distribution-adoption overview
+
+Becoming a distribution's **default** terminal is a long game — every
+mainstream default is built by the desktop-environment team itself
+(Konsole/KDE, gnome-terminal/GNOME). Outside projects like Ghostty,
+WezTerm, Kitty, Alacritty are widely **packaged** but not default
+anywhere. Our realistic target is: **get packaged everywhere, accrue
+the quality signals distros look for, and let small/niche distros
+adopt first.** The work is tracked below under the 📦 theme in each
+release; this section is the rollup so nothing falls by the wayside.
+
+| Bundle | What ships | Status | Target release |
+|--------|------------|--------|----------------|
+| **H1** | `SECURITY.md` coordinated-disclosure policy, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) | 📋 | 0.7.0 |
+| **H2** | AppStream `org.ants.Terminal.metainfo.xml`, polished desktop entry (`org.ants.Terminal.desktop`), icon install rules | 📋 | 0.7.0 |
+| **H3** | Man page `ants-terminal.1` + CMake install rule | 📋 | 0.7.0 |
+| **H4** | Bash / zsh / fish completions + CMake install rules | 📋 | 0.7.0 |
+| **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | 📋 | 0.8.0 |
+| **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + Flathub submission | 📋 | 0.8.0 |
+| **H7** | Project website + docs site (GitHub Pages) with screenshots, getting-started, plugin authoring | 📋 | 0.8.0 |
+| **H8** | macOS port (Qt6 builds cleanly; need `posix_spawn`/`openpty` + NSWindow observer + notarized `.app`) | 📋 | 0.9.0 |
+| **H9** | AT-SPI / ATK accessibility — `QAccessibleInterface` for `TerminalWidget`, `text-changed` events batched on OSC 133 D | 📋 | 0.9.0 |
+| **H10** | i18n scaffolding — `lupdate`/`linguist` flow, `tr()` on UI strings, `.qm` files for en/es/fr/de | 📋 | 0.9.0 |
+| **H11** | Reproducible-build verification + SBOM (`cmake --build` under `SOURCE_DATE_EPOCH`; generate SPDX SBOM) | 💭 | 0.9.0 |
+| **H12** | Windows port (ConPTY + Qt6 Windows plugin; sign + MSI) | 💭 | Beyond 1.0 |
+| **H13** | Distro-outreach pitch: file "intent-to-package" bugs in Debian / Fedora / NixOS; write launch post for r/linux, Hacker News, Phoronix tip line, LWN | 📋 | 0.8.0 |
+| **H14** | Grow bus factor ≥ 2: second maintainer with commit rights, documented governance | 💭 | 1.0.0+ |
+| **H15** | FOSDEM lightning talk / devroom slot (Linux desktop devroom is where distro maintainers converge) | 💭 | Beyond 1.0 |
+| **H16** | Sponsorship / funding: GitHub Sponsors, Open Collective, or similar | 💭 | Beyond 1.0 |
+
+Already shipped (as of this ROADMAP revision):
+
+- ✅ **`.desktop` file** (pre-0.5 ancestor — will be polished + renamed to `org.ants.Terminal.desktop` under H2)
+- ✅ **Icons at multiple sizes** — `assets/ants-terminal-{16,32,48,64,128,256}.png` ready for hicolor-theme install under H2
+- ✅ **CHANGELOG.md + SemVer discipline** — every release has a dated section with categorical bullets
+- ✅ **CI with ASan + UBSan** — the `build-asan` lane runs sanitized ctest + binary smoke on every push
+- ✅ **Audit pipeline** — clazy + cppcheck + grep rules + fixture-enforced regression coverage
+
+Gating items (blocks adoption **today**, not just for being default):
+
+1. **No distro packages anywhere** — H5 + H6 unblock this.
+2. **No AppStream metadata** — H2 unblocks GNOME Software / KDE Discover discovery.
+3. **No SECURITY.md** — H1. Distro security teams need a disclosure contact before shipping.
+4. **Linux-only + X11-only dropdown** — H8 (macOS) and §0.7.0 Wayland-native Quake widen the addressable audience.
 
 ---
 
 ## Table of Contents
 
-1. [0.5.0 — shipped](#050--shipped-2026-04-13)
-2. [0.6.0 — shipped](#060--shipped-2026-04-14)
-3. [0.7.0 — shell integration + triggers](#070--shell-integration--triggers-target-2026-06)
-4. [0.8.0 — multiplexing + marketplace](#080--multiplexing--marketplace-target-2026-08)
-5. [0.9.0 — platform + a11y](#090--platform--a11y-target-2026-10)
-6. [1.0.0 — stability milestone](#100--stability-milestone-target-2026-12)
-7. [Beyond 1.0 — long-horizon](#beyond-10--long-horizon)
-8. [How to propose a roadmap item](#how-to-propose-a-roadmap-item)
+1. [Distribution-adoption overview](#distribution-adoption-overview)
+2. [0.5.0 — shipped](#050--shipped-2026-04-13)
+3. [0.6.0 — shipped](#060--shipped-2026-04-14)
+4. [0.7.0 — shell integration + triggers](#070--shell-integration--triggers-target-2026-06)
+5. [0.8.0 — multiplexing + marketplace](#080--multiplexing--marketplace-target-2026-08)
+6. [0.9.0 — platform + a11y](#090--platform--a11y-target-2026-10)
+7. [1.0.0 — stability milestone](#100--stability-milestone-target-2026-12)
+8. [Beyond 1.0 — long-horizon](#beyond-10--long-horizon)
+9. [How to propose a roadmap item](#how-to-propose-a-roadmap-item)
 
 ---
 
@@ -240,6 +292,49 @@ there before adding a multiplexer. Reference:
   for. See
   [CHANGELOG.md §0.6.11](CHANGELOG.md#0611--2026-04-14).
 
+### 📦 Distribution readiness (H1–H4)
+
+Near-term packaging-polish work — all fully additive, zero C++ code
+changes, no new runtime dependencies. Together these four bundles
+take Ants from "side project on GitHub" to "package a distro
+maintainer could pick up tomorrow." See the
+[distribution-adoption overview](#distribution-adoption-overview)
+for the full multi-release plan.
+
+- 📋 **H1 — `SECURITY.md` + `CODE_OF_CONDUCT.md`**. Coordinated-
+  disclosure policy with supported-versions table, reporting channel
+  (GitHub Security Advisory + encrypted email), disclosure timeline,
+  severity rubric, in/out of scope lists, and an acknowledgement of
+  the hardening we already do. Contributor Covenant 2.1 verbatim
+  with our contact info. Gating for Debian / Fedora / Ubuntu
+  security-team review. Partially done in the working tree —
+  `SECURITY.md` drafted as of this commit.
+- 📋 **H2 — AppStream metainfo + polished desktop entry**. Create
+  `packaging/linux/org.ants.Terminal.metainfo.xml` (AppStream 1.0
+  schema with summary / description / screenshots / releases /
+  categories / OARS content rating / keywords). Rename
+  `ants-terminal.desktop` → `org.ants.Terminal.desktop` to match the
+  reverse-DNS convention the spec requires, add `MimeType=` for
+  relevant schemes (`x-scheme-handler/ssh`, `x-scheme-handler/telnet`),
+  tighten `Keywords=`, ensure `StartupWMClass=ants-terminal`. CMake
+  install rules for the desktop file, metainfo, and the existing
+  hicolor icons (16/32/48/64/128/256). Validate with
+  `appstreamcli validate` + `desktop-file-validate` in CI. Unblocks
+  GNOME Software + KDE Discover discovery.
+- 📋 **H3 — Man page**. `ants-terminal.1` in troff (or scdoc →
+  `man`), covering synopsis, description, CLI flags (`--version`,
+  `--help`, `--new-plugin`), config keys overview (with a pointer to
+  `CLAUDE.md` / README), environment variables
+  (`ANTS_PLUGIN_DEV=1`), files (`~/.config/ants-terminal/*`), bugs
+  (GitHub link), author, see-also. CMake install rule to
+  `${CMAKE_INSTALL_MANDIR}/man1/`. The "this is finished software"
+  signal distro packagers look for.
+- 📋 **H4 — Shell completions (bash / zsh / fish)**. Hand-written
+  completions for the current CLI flags, installable to the
+  conventional locations (`/usr/share/bash-completion/completions/`,
+  `/usr/share/zsh/site-functions/`, `/usr/share/fish/completions/`).
+  Another "packager expects these" box to check.
+
 ### 🧰 Dev experience — Project Audit tool
 
 Surfaced by the 0.6.5 audit pass (see [CHANGELOG.md §0.6.5](CHANGELOG.md#065--2026-04-14)).
@@ -334,11 +429,54 @@ a modern terminal" release.
 - 💭 **BTree scrollback** — O(log n) scroll-to-line instead of O(n)
   for jump-to-timestamp features.
 
+### 📦 Distribution readiness (H5–H7, H13)
+
+Mid-term packaging work — this is where Ants moves from
+"packageable-in-theory" to "actually installable on every major
+distro." Each sub-bullet can ship independently once H1–H4 land.
+
+- 📋 **H5 — ready-to-submit distro packaging files**. Commit the
+  packaging recipes to the tree under `packaging/<distro>/` so
+  packagers have a starting point and we can dogfood the builds:
+  - `packaging/opensuse/ants-terminal.spec` — RPM spec targeting
+    openSUSE Tumbleweed; submit via OBS to `devel:languages:misc`
+    or a dedicated project. `%{?_smp_mflags}` parallel build,
+    `%check` stanza runs ctest, macros for Qt6 + Lua 5.4.
+  - `packaging/archlinux/PKGBUILD` — Arch AUR recipe. `check()`
+    runs ctest; package built against system Qt6. Published under
+    `ants-terminal-git` and `ants-terminal` (release tag).
+  - `packaging/debian/` — Debian-style source tree with
+    `control`, `rules`, `changelog`, `copyright`, `compat`.
+    Suitable for `debuild -uc -us` or a Launchpad PPA; eventual
+    target is ITP → official archive.
+  - `packaging/README.md` — one-page "how to build a package for
+    distro X" pointing at each recipe.
+- 📋 **H6 — Flatpak packaging**. Ship `org.ants.Terminal.yml`
+  against `org.kde.Platform//6.7`. PTY inside Flatpak needs
+  `flatpak-spawn --host` — Ghostty precedent. Submit to Flathub
+  once stable. One artifact that runs on every distro unlocks
+  sandboxed adoption without per-distro packaging work.
+- 📋 **H7 — project website + docs site**. Static GitHub Pages site
+  at `ants-terminal.github.io` (or equivalent) with: screenshots,
+  installation instructions (once H5/H6 land), plugin authoring
+  guide (move `PLUGINS.md` body here, keep the file as a pointer),
+  quickstart, architecture overview, video/asciicast demos.
+  Content-as-code (markdown → static site generator) so the docs
+  ship from the same repo.
+- 📋 **H13 — distro-outreach launch**. Once H1–H7 are shipped:
+  file **intent-to-package** bugs / RFPs in Debian / Fedora /
+  NixOS / openSUSE / Arch (as applicable); write a
+  **"Why Ants Terminal"** post for r/linux, Hacker News, Phoronix
+  tip line, LWN. Focus angle: **the only Linux terminal with a
+  built-in capability-audited Lua plugin system + AI triage +
+  first-class shell-integration blocks**. Measure via watching
+  the GitHub stars + install metrics, not vanity.
+
 ### 🖥 Platform
 
-- 📋 **Flatpak packaging**. Ship `org.ants.Terminal.yml` against
-  `org.kde.Platform//6.7`. PTY inside Flatpak needs `flatpak-spawn
-  --host` — Ghostty precedent.
+(See the 📦 Distribution readiness section above for the Flatpak +
+source-package packaging work; items that don't fit there live
+here.)
 
 ---
 
@@ -348,33 +486,51 @@ a modern terminal" release.
 
 ### 🖥 Platform
 
-- 📋 **macOS port**. Qt6 ports cleanly; replace `forkpty` with
+- 📋 **H8 — macOS port**. Qt6 ports cleanly; replace `forkpty` with
   `posix_spawn` + `openpty`, swap `xcbpositiontracker` for
-  `NSWindow` KVO observers, sign+notarize the `.app`.
-- 💭 **Windows port**. ConPTY via `CreatePseudoConsole` replaces
-  PTY; `xcbpositiontracker` becomes a no-op. Qt6's Windows platform
-  plugin handles the rest.
+  `NSWindow` KVO observers, sign+notarize the `.app`. Expands the
+  addressable audience — a terminal that only runs on Linux is not
+  a "Linux terminal project", it's a "Linux-only terminal" —
+  distinction matters for cross-platform press coverage.
+- 💭 **H12 — Windows port**. ConPTY via `CreatePseudoConsole`
+  replaces PTY; `xcbpositiontracker` becomes a no-op. Qt6's
+  Windows platform plugin handles the rest. Sign + ship MSI /
+  MSIX. Moved to Beyond 1.0 in practice — gating on macOS port
+  completing first.
 
 ### 🖥 Accessibility
 
-- 📋 **AT-SPI/ATK support**. Qt6 has AT-SPI over D-Bus natively. Work:
-  implement `QAccessibleInterface` for `TerminalWidget` exposing
-  role `Terminal`; fire `text-changed` / `text-inserted` on grid
-  mutations (gate on OSC 133 `D` markers to batch); expose cursor as
-  caret ([freedesktop AT-SPI2](https://www.freedesktop.org/wiki/Accessibility/AT-SPI2/)).
-  Without this, Orca reads nothing in the terminal.
+- 📋 **H9 — AT-SPI/ATK support**. Qt6 has AT-SPI over D-Bus natively.
+  Work: implement `QAccessibleInterface` for `TerminalWidget`
+  exposing role `Terminal`; fire `text-changed` / `text-inserted`
+  on grid mutations (gate on OSC 133 `D` markers to batch); expose
+  cursor as caret
+  ([freedesktop AT-SPI2](https://www.freedesktop.org/wiki/Accessibility/AT-SPI2/)).
+  Without this, Orca reads nothing in the terminal. Ubuntu /
+  Fedora accessibility review gates on this.
 - 💭 **Screen-magnifier-friendly rendering**: honor
   `QGuiApplication::styleHints()->mousePressAndHoldInterval()` and
   provide high-contrast theme variants.
 
 ### 🌍 Internationalization
 
-- 📋 **i18n scaffolding**. Qt's `lupdate` / `linguist` flow; wrap all
-  UI strings with `tr()`; ship `.qm` files in `assets/i18n/`. Today
-  we have zero `tr()` usage. Start with English → Spanish, French,
-  German as a proof of concept.
+- 📋 **H10 — i18n scaffolding**. Qt's `lupdate` / `linguist` flow;
+  wrap all UI strings with `tr()`; ship `.qm` files in
+  `assets/i18n/`. Today we have zero `tr()` usage. Start with
+  English → Spanish, French, German as a proof of concept. Some
+  distros gate review on this.
 - 💭 **Right-to-left text support** — bidirectional text in the grid.
   Non-trivial; defer until demand is concrete.
+
+### 📦 Distribution readiness (H11)
+
+- 💭 **H11 — reproducible builds + SBOM**. Build under
+  `SOURCE_DATE_EPOCH` so binary hashes are deterministic; generate
+  an SPDX SBOM (`spdx-tools` or `syft`) alongside release
+  artifacts. Reproducibility is a distro / supply-chain trust
+  signal; the SBOM gives downstream security teams (Debian,
+  NixOS) a machine-readable dep inventory without having to scrape
+  our build system.
 
 ### 🧰 Dev experience
 
@@ -393,10 +549,17 @@ a modern terminal" release.
 - 📋 **Performance regression suite**: CI benchmarks (grid throughput,
   scrollback allocation, paint-loop time) with commit-level deltas.
 - 📋 **Documentation pass**: every user-facing feature has at least one
-  screenshot + one animated demo.
-- 📋 **Security audit + disclosure policy**. `SECURITY.md` with
-  coordinated-disclosure process; in-place response to any CVE-class
-  issue within 30 days.
+  screenshot + one animated demo. Rolls up into H7 (docs site).
+- 📋 **External security audit**. `SECURITY.md` disclosure policy
+  itself ships early under H1 (0.7.0); the 1.0 item is the
+  **external** audit — budget a third-party review of the VT
+  parser, plugin sandbox, and OSC-8/OSC-52 surfaces before
+  stamping 1.0.
+- 📋 **H14 — bus factor ≥ 2 + governance doc**. Second maintainer
+  with commit rights; a short `GOVERNANCE.md` describing
+  decision-making, release process, conflict resolution. Distros
+  treat single-maintainer projects as a risk — a documented
+  second maintainer clears the bar.
 - 📋 **Plugin migration guide** for any manifest/API changes between
   0.9 and 1.0.
 
@@ -444,6 +607,21 @@ contributors don't duplicate research.
   shaping step to a compute shader; keep the atlas path we already
   have.
 
+### 📦 Distribution & community (H15–H16)
+
+- 💭 **H15 — conference presence**. FOSDEM lightning talk or a
+  devroom slot (the Linux desktop devroom is where distro
+  maintainers converge). Other options: LinuxFest Northwest,
+  Everything Open, SCaLE. One talk reaches more maintainers than
+  a hundred issues. Submit in the CFP window for whatever
+  conference the project is scope-ready for at the time.
+- 💭 **H16 — sponsorship / funding model**. GitHub Sponsors + Open
+  Collective. Even small recurring funding signals project
+  longevity to distro security teams (they care about "who pays
+  for the 30-day CVE response?"). Tiered: individual ($5/mo),
+  plugin-author ($20/mo with logo on docs site), corporate
+  ($250/mo with logo + priority issue triage).
+
 ---
 
 ## How to propose a roadmap item
@@ -456,7 +634,7 @@ Open a GitHub issue with:
 3. **Prior art**: has another terminal solved this? Which one, how?
    Link the source.
 4. **Scope hint**: is this a weekend change, a week, or a month?
-5. **Category**: which theme (🎨/⚡/🔌/🖥/🔒/🧰) does it belong to?
+5. **Category**: which theme (🎨/⚡/🔌/🖥/🔒/🧰/📦) does it belong to?
 
 Items that fit naturally into the current release arc land in that
 release. Items that don't get queued here with a 💭 marker until
