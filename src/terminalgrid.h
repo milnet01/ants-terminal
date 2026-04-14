@@ -445,6 +445,43 @@ private:
     std::string m_kittyChunkBuffer; // For multi-chunk transmissions
     uint32_t m_kittyChunkId = 0;
 
+    // Image-bomb defense (0.6.11). Tracks total decoded image bytes held by
+    // this terminal across both the inline-display vector (m_inlineImages)
+    // and the Kitty cache (m_kittyImages). canFit() is consulted before a
+    // decode allocates a QImage; on overflow the decoder rejects with an
+    // inline error so the user sees the cap was hit (instead of OOM-ing the
+    // process). 256 MB matches the per-terminal upper bound called out in
+    // ROADMAP.md §0.7.0 → "Image-bomb defenses". Same QImage stored in
+    // multiple containers is counted multiple times — Qt COW means the
+    // physical footprint is usually smaller, so the budget is conservative
+    // (we may reject earlier than strictly necessary; we never reject too
+    // late). MAX_IMAGE_DIM (4096) remains the per-image dimension cap.
+    struct ImageBudget {
+        static constexpr size_t MAX_BYTES = 256ULL * 1024ULL * 1024ULL;
+        size_t used = 0;
+        bool canFit(size_t bytes) const { return bytes <= MAX_BYTES - used; }
+        void add(size_t bytes) { used += bytes; }
+        void release(size_t bytes) { used = (bytes >= used) ? 0 : used - bytes; }
+        void reset() { used = 0; }
+    };
+    ImageBudget m_imageBudget;
+    // Helper: estimate decoded byte cost of a QImage. QImage::sizeInBytes()
+    // is the canonical Qt API but only available since 5.10; we always have
+    // it on Qt6 — kept as a wrapper so the call site reads intentionally.
+    static size_t imageByteCost(const QImage &img) {
+        return img.isNull() ? 0 : static_cast<size_t>(img.sizeInBytes());
+    }
+    // Print a short ASCII error message at the cursor in the warning color.
+    // Used by the image-bomb decoders to signal rejection without surfacing
+    // a desktop notification (which would be more disruptive than the
+    // failed image).
+    void writeInlineError(const QString &text);
+    // Recompute the image-budget counter from scratch. Used on alt-screen
+    // enter/exit where m_inlineImages is swapped/cleared in bulk and
+    // tracking each individual move would be brittle. O(N) where N ≤
+    // MAX_INLINE_IMAGES + MAX_KITTY_CACHE so cost is bounded.
+    void recomputeImageBudget();
+
     // Debug logging
     bool m_debugLog = false;
     FILE *m_debugFile = nullptr;

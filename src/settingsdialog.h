@@ -12,6 +12,8 @@
 #include <QKeySequenceEdit>
 #include <QPushButton>
 #include <QLabel>
+#include <QList>
+#include <QMap>
 
 class Config;
 
@@ -19,7 +21,24 @@ class SettingsDialog : public QDialog {
     Q_OBJECT
 
 public:
+    // Lightweight plugin display struct — decouples SettingsDialog from
+    // pluginmanager.h (which pulls in luaengine.h and the Lua-gated build).
+    // MainWindow translates its PluginInfo list into this form before
+    // handing it to the dialog.
+    struct PluginDisplay {
+        QString name;
+        QString version;
+        QString description;
+        QString author;
+        QStringList permissions;
+    };
+
     explicit SettingsDialog(Config *config, QWidget *parent = nullptr);
+
+    // Populate the Plugins tab. Must be called before show() (or the tab
+    // will display "no plugins discovered"). Tab is always present; empty
+    // list just changes the message.
+    void setPlugins(const QList<PluginDisplay> &plugins);
 
 signals:
     void settingsChanged();
@@ -33,6 +52,8 @@ private:
     void setupTriggersTab(QWidget *tab);
     void setupKeybindingsTab(QWidget *tab);
     void setupProfilesTab(QWidget *tab);
+    void setupPluginsTab(QWidget *tab);
+    void populatePluginsTab();
 
     void loadSettings();
     void applySettings();
@@ -96,4 +117,15 @@ private:
     QPushButton *m_profileSave;
     QPushButton *m_profileDelete;
     QPushButton *m_profileLoad;
+
+    // Plugins — manifest v2 capability audit UI (0.6.11)
+    // m_pluginsContainer holds the scrollable vertical list of plugin
+    // group boxes that is rebuilt whenever setPlugins() is called.
+    // m_pluginPermissionChecks maps plugin name → (permission → checkbox)
+    // so applySettings() can collect granted permissions without re-parsing
+    // the layout.
+    QWidget *m_pluginsContainer = nullptr;
+    QLabel *m_pluginsEmptyLabel = nullptr;
+    QList<PluginDisplay> m_plugins;
+    QMap<QString, QMap<QString, QCheckBox *>> m_pluginPermissionChecks;
 };

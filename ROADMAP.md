@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.10 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.11 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -204,12 +204,23 @@ there before adding a multiplexer. Reference:
 
 ### 🔒 Security
 
-- 📋 **Plugin capability audit UI**: Settings → Plugins → `<name>`
-  shows the full permission list, with a toggle to revoke individual
-  capabilities. Revocation takes effect at next plugin reload.
-- 📋 **Image-bomb defenses**: cap decoded sixel/Kitty/iTerm2 dimensions
-  at 16384×16384 and total in-memory image bytes per terminal at
-  256 MB. Reject with an inline error.
+- ✅ **Plugin capability audit UI**. Shipped in 0.6.11. Settings →
+  **Plugins** lists every discovered plugin and renders each declared
+  permission as a checkbox — checked = granted, unchecked = revoked.
+  Revocations persist to `config.plugin_grants[<name>]` and take
+  effect at next plugin reload (matches the first-load permission
+  prompt's grant semantics). See
+  [CHANGELOG.md §0.6.11](CHANGELOG.md#0611--2026-04-14).
+- ✅ **Image-bomb defenses**. Shipped in 0.6.11. New
+  `TerminalGrid::ImageBudget` tracks total decoded image bytes
+  across the inline-display vector + the Kitty cache; cap is **256 MB
+  per terminal**. Sixel rejects up front from declared raster size;
+  Kitty PNG / iTerm2 OSC 1337 reject post-decode. Inline red error
+  text surfaces the rejection (no desktop notification). Per-image
+  dimension cap (`MAX_IMAGE_DIM = 4096`) was already in place and
+  remains stricter than the 16384 the original ROADMAP item called
+  for. See
+  [CHANGELOG.md §0.6.11](CHANGELOG.md#0611--2026-04-14).
 
 ### 🧰 Dev experience — Project Audit tool
 

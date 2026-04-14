@@ -988,6 +988,25 @@ void MainWindow::setupMenus() {
                 if (auto *t = focusedTerminal()) t->setFocus();
             });
         }
+        // Hand off the current plugin snapshot each time the dialog opens so
+        // hot-reloads / new installs are reflected in the capability-audit
+        // tab without needing to recreate the dialog. When plugins are
+        // compiled out the list is empty and the tab shows a guidance note.
+        QList<SettingsDialog::PluginDisplay> pluginDisplays;
+#ifdef ANTS_LUA_PLUGINS
+        if (m_pluginManager) {
+            for (const auto &info : m_pluginManager->plugins()) {
+                SettingsDialog::PluginDisplay d;
+                d.name = info.name;
+                d.version = info.version;
+                d.description = info.description;
+                d.author = info.author;
+                d.permissions = info.permissions;
+                pluginDisplays << d;
+            }
+        }
+#endif
+        m_settingsDialog->setPlugins(pluginDisplays);
         m_settingsDialog->show();
         m_settingsDialog->raise();
     });

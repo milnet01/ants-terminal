@@ -14,6 +14,97 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.11] — 2026-04-14
+
+**Theme:** ship the **0.7.0 security pair** — a UI for auditing and
+revoking plugin capabilities, plus image-bomb defenses for the inline
+graphics decoders. Both items were the smallest, lowest-risk slice of
+the remaining 0.7.0 work; bundling them keeps the security theme
+closing out before the riskier threading/platform work begins.
+
+### Added
+
+- **Plugin capability audit UI.** Settings → **Plugins** lists every
+  discovered plugin with its name, version, author, description, and
+  the full set of permissions declared in its `manifest.json`. Each
+  permission renders as a checkbox whose initial state reflects the
+  current grant in `config.plugin_grants[<name>]`. Unchecking + Apply
+  persists the revocation; **takes effect at the next plugin reload**
+  (matches the existing first-load permission prompt's grant
+  semantics). When no plugins are loaded — either Lua is not
+  compiled in or the plugin directory is empty — the tab shows a
+  guidance message pointing at `PLUGINS.md`. Permission descriptions
+  match the first-load dialog wording so users see the same
+  language across both surfaces. Closes
+  [ROADMAP.md §0.7.0 → "Plugin capability audit UI"](ROADMAP.md#070--shell-integration--triggers-target-2026-06).
+- **Image-bomb defenses.** New `ImageBudget` class (private to
+  `TerminalGrid`) tracks total decoded image bytes across every
+  inline-display entry (Sixel + Kitty `T`/`p` + iTerm2 OSC 1337) and
+  the Kitty graphics cache. Cap = **256 MB per terminal** — when a
+  decode would push the total past the cap, the decoder rejects the
+  payload up front (Sixel) or post-decode (Kitty PNG / iTerm2
+  OSC 1337 — those don't carry pre-decode dimensions in the params
+  block) and surfaces an inline error in the warning color
+  (`[ants: <kind> WxH (NN MB) exceeds 256 MB image budget]`). Every
+  eviction site (inline-image FIFO drain, Kitty cache eviction, Kitty
+  delete-by-id, Kitty delete-all) releases bytes back to the budget.
+  Alt-screen swap calls `recomputeImageBudget()` so the counter stays
+  accurate when the active and saved containers cross paths. Existing
+  per-image dimension cap (`MAX_IMAGE_DIM = 4096`) remains in force —
+  ROADMAP specified 16384 as the upper bound but our existing 4096 is
+  stricter. Closes
+  [ROADMAP.md §0.7.0 → "Image-bomb defenses"](ROADMAP.md#070--shell-integration--triggers-target-2026-06).
+- **`SettingsDialog::PluginDisplay`** — lightweight POD struct
+  decoupling the Settings dialog from `pluginmanager.h` (and from the
+  Lua-gated build chain). MainWindow translates each `PluginInfo` into
+  this form before handing the list to the dialog via `setPlugins()`,
+  so the Plugins tab compiles and runs even without Lua support.
+- **`TerminalGrid::writeInlineError(QString)`** — emits a short red
+  ASCII diagnostic line at the cursor (CR+LF after) for surfacing
+  image-bomb rejections without the disruption of a desktop
+  notification. Color matches the command-block status stripe red.
+- **`TerminalGrid::recomputeImageBudget()`** — bulk-recompute helper
+  for the alt-screen swap path where individual add/release tracking
+  would be brittle. O(N) over the inline + cache vectors.
+
+### Changed
+
+- `SettingsDialog` constructor now wires a "Plugins" tab between
+  "Profiles" and the OK/Cancel button row. `applySettings()` collects
+  checked permissions per plugin and calls
+  `Config::setPluginGrants(name, granted)` for every plugin in the
+  audit list — including the "all unchecked" case so revocation
+  persists as an empty grant array.
+- `MainWindow::settingsAction` lambda now gathers the current plugin
+  snapshot from `m_pluginManager->plugins()` (or an empty list when
+  `ANTS_LUA_PLUGINS` is undefined) and calls `setPlugins()` on the
+  dialog every time it opens — so hot-reloads / new installs are
+  reflected without recreating the dialog.
+- `TerminalGrid` Sixel / Kitty / iTerm2 decode paths and every
+  image-eviction site now consult / update the per-terminal
+  `ImageBudget`. RIS (`ESC c`) replaces the entire `TerminalGrid`
+  via `*this = TerminalGrid(...)`, which naturally resets the budget
+  alongside the containers; no special-case code needed.
+- ROADMAP transitions: "Plugin capability audit UI" 📋→✅ and
+  "Image-bomb defenses" 📋→✅ in §0.7.0 → 🔒 Security, both linked
+  back to this CHANGELOG section.
+
+### Notes
+
+- **Plugin permissions storage on disk is unchanged** — same
+  `config.plugin_grants[<name>] = [...]` shape from manifest v2
+  (0.6.0). The new UI is additive: it reads what the first-load
+  permission prompt already wrote and exposes it for editing.
+- **Image budget is conservative.** Same `QImage` stored in both
+  `m_inlineImages` and `m_kittyImages` is counted twice even though
+  Qt's COW means the underlying bitmap is allocated once. We may
+  reject earlier than strictly necessary; we never reject too late.
+- **No plugin API surface changed** — `PLUGINS.md` does not need a
+  bump. The audit UI sits entirely outside the `ants.*` API.
+- No new permissions were introduced; the descriptions for
+  `clipboard.write`, `settings`, and `net` mirror the first-load
+  dialog text in `mainwindow.cpp`.
+
 ## [0.6.10] — 2026-04-14
 
 **Theme:** ship the **command-block UI bundle** from 0.7.0 §Features

@@ -349,6 +349,12 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                             hl.clear();
                         m_inlineImages.clear();
                         m_promptRegions.clear();
+                        // Bytes for the just-cleared images are still
+                        // referenced by m_altInlineImages (saved above) so
+                        // they remain allocated until alt-screen exit;
+                        // recompute keeps the budget counter in sync with
+                        // both containers.
+                        recomputeImageBudget();
                         m_cursorRow = 0;
                         m_cursorCol = 0;
                     }
@@ -395,6 +401,9 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_altScreenHyperlinks.clear();
                         m_altInlineImages.clear();
                         m_altPromptRegions.clear();
+                        // Restored m_inlineImages above; recompute so the
+                        // budget reflects only the images still referenced.
+                        recomputeImageBudget();
                     }
                     break;
                 case 1000: m_mouseButtonMode = false; break;
@@ -860,6 +869,18 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     if (!img.loadFromData(decoded)) return;
     if (img.width() > MAX_IMAGE_DIM || img.height() > MAX_IMAGE_DIM) return;
 
+    // Image-bomb defense: reject post-decode if the decoded bitmap would
+    // push us over the per-terminal byte budget. We measure here (after
+    // loadFromData) because OSC 1337 doesn't carry pixel dimensions in the
+    // params block — we only learn the true size from QImage.
+    size_t imgBytes = imageByteCost(img);
+    if (!m_imageBudget.canFit(imgBytes)) {
+        writeInlineError(QString("[ants: image %1×%2 (%3 MB) exceeds 256 MB image budget]")
+                             .arg(img.width()).arg(img.height())
+                             .arg(imgBytes / (1024 * 1024)));
+        return;
+    }
+
     // Parse optional width/height in cells
     // Default: scale image to fit reasonable cell dimensions
     int cellW = std::min(img.width() / 8, m_cols - m_cursorCol);
@@ -889,11 +910,14 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     iimg.col = m_cursorCol;
     iimg.cellWidth = cellW;
     iimg.cellHeight = cellH;
+    m_imageBudget.add(imageByteCost(iimg.image));
     m_inlineImages.push_back(std::move(iimg));
 
     // Cap inline images to prevent memory exhaustion
-    while (static_cast<int>(m_inlineImages.size()) > MAX_INLINE_IMAGES)
+    while (static_cast<int>(m_inlineImages.size()) > MAX_INLINE_IMAGES) {
+        m_imageBudget.release(imageByteCost(m_inlineImages.front().image));
         m_inlineImages.erase(m_inlineImages.begin());
+    }
 
     // Advance cursor past image
     m_cursorRow += cellH;
@@ -1219,6 +1243,28 @@ void TerminalGrid::carriageReturn() {
     m_cursorCol = 0;
 }
 
+// 0.6.11 — image-bomb defense. Writes a short red diagnostic line into the
+// grid at the cursor (followed by CR+LF so subsequent output starts fresh).
+// Reused by every image decoder when ImageBudget::canFit returns false.
+// Stays in pure ASCII so no UTF-8 decoder is needed on the print path.
+void TerminalGrid::writeInlineError(const QString &text) {
+    CellAttrs saved = m_currentAttrs;
+    CellAttrs warn = m_currentAttrs;
+    warn.fg = QColor(0xF7, 0x76, 0x8E); // red — same as command-block status stripe
+    m_currentAttrs = warn;
+    for (QChar ch : text) handlePrint(static_cast<uint32_t>(ch.unicode()));
+    m_currentAttrs = saved;
+    carriageReturn();
+    newLine();
+}
+
+void TerminalGrid::recomputeImageBudget() {
+    size_t total = 0;
+    for (const auto &img : m_inlineImages) total += imageByteCost(img.image);
+    for (const auto &kv  : m_kittyImages) total += imageByteCost(kv.second);
+    m_imageBudget.used = total;
+}
+
 void TerminalGrid::tab() {
     // Advance to next tab stop (or end of line)
     for (int c = m_cursorCol + 1; c < m_cols; ++c) {
@@ -1508,6 +1554,17 @@ void TerminalGrid::handleDcs(const std::string &payload) {
 
     if (imgWidth <= 0 || imgHeight <= 0 || imgWidth > MAX_IMAGE_DIM || imgHeight > MAX_IMAGE_DIM) return;
 
+    // Budget check before allocating — Sixel is ARGB32 (4 bytes/pixel).
+    // Reject up front so a large declared "Pv" / repeat count can't drive
+    // the decode toward 256 MB before we notice.
+    size_t projectedBytes = static_cast<size_t>(imgWidth) * imgHeight * 4;
+    if (!m_imageBudget.canFit(projectedBytes)) {
+        writeInlineError(QString("[ants: sixel %1×%2 (%3 MB) exceeds 256 MB image budget]")
+                             .arg(imgWidth).arg(imgHeight)
+                             .arg(projectedBytes / (1024 * 1024)));
+        return;
+    }
+
     QImage image(imgWidth, imgHeight, QImage::Format_ARGB32);
     image.fill(Qt::transparent);
 
@@ -1592,8 +1649,10 @@ void TerminalGrid::handleDcs(const std::string &payload) {
     }
 
     // Place image at cursor position
-    if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES)
+    if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES) {
+        m_imageBudget.release(imageByteCost(m_inlineImages.front().image));
         m_inlineImages.erase(m_inlineImages.begin());
+    }
 
     InlineImage img;
     img.image = image;
@@ -1602,6 +1661,7 @@ void TerminalGrid::handleDcs(const std::string &payload) {
     img.cellWidth = imgWidth;
     img.cellHeight = imgHeight;
     img.pixelSized = true;
+    m_imageBudget.add(imageByteCost(img.image));
     m_inlineImages.push_back(img);
 }
 
@@ -1680,8 +1740,12 @@ void TerminalGrid::handleApc(const std::string &payload) {
             m_kittyImages.clear();
             m_kittyImageOrder.clear();
             m_inlineImages.clear();
+            m_imageBudget.reset(); // all bytes released
         } else if (deleteType == 'i' && imageId > 0) {
-            if (m_kittyImages.erase(imageId) > 0) {
+            auto delIt = m_kittyImages.find(imageId);
+            if (delIt != m_kittyImages.end()) {
+                m_imageBudget.release(imageByteCost(delIt->second));
+                m_kittyImages.erase(delIt);
                 auto it = std::find(m_kittyImageOrder.begin(), m_kittyImageOrder.end(), imageId);
                 if (it != m_kittyImageOrder.end()) m_kittyImageOrder.erase(it);
             }
@@ -1715,6 +1779,11 @@ void TerminalGrid::handleApc(const std::string &payload) {
             image.loadFromData(decoded, "PNG");
             if (image.width() > MAX_IMAGE_DIM || image.height() > MAX_IMAGE_DIM)
                 image = QImage(); // Reject oversized
+            // Image-bomb defense: PNGs can decode to far more bytes than
+            // their compressed payload — measure post-decode and reject if
+            // it would push us past the 256 MB per-terminal cap.
+            if (!image.isNull() && !m_imageBudget.canFit(imageByteCost(image)))
+                image = QImage();
         } else if (format == 32 || format == 24) {
             // Raw pixel data
             int pixelW = 0, pixelH = 0;
@@ -1726,7 +1795,14 @@ void TerminalGrid::handleApc(const std::string &payload) {
                 // MAX_IMAGE_DIM is raised later (4096*4096*4 = 67MB fits int32
                 // today, but this is a defense against future changes).
                 int64_t required = static_cast<int64_t>(pixelW) * pixelH * bytesPerPixel;
-                if (static_cast<int64_t>(decoded.size()) >= required) {
+                // Image-bomb defense: refuse to allocate the .copy() buffer
+                // if it wouldn't fit in budget. Checked against the projected
+                // QImage::sizeInBytes() (Format_RGBA8888 = 4 bytes/pixel,
+                // Format_RGB888 = 3, both with the same row stride QImage
+                // would compute internally — close enough for budgeting).
+                size_t projected = static_cast<size_t>(pixelW) * pixelH * bytesPerPixel;
+                if (static_cast<int64_t>(decoded.size()) >= required
+                    && m_imageBudget.canFit(projected)) {
                     QImage::Format fmt = (format == 32)
                         ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
                     image = QImage(reinterpret_cast<const uchar *>(decoded.constData()),
@@ -1751,6 +1827,9 @@ void TerminalGrid::handleApc(const std::string &payload) {
         auto existing = m_kittyImages.find(imageId);
         if (existing != m_kittyImages.end()) {
             // Replacing: drop old position in the FIFO so it's re-appended as newest.
+            // Release the bytes for the existing image — the new one will
+            // re-add (possibly different) bytes a few lines below.
+            m_imageBudget.release(imageByteCost(existing->second));
             auto it = std::find(m_kittyImageOrder.begin(), m_kittyImageOrder.end(), imageId);
             if (it != m_kittyImageOrder.end()) m_kittyImageOrder.erase(it);
         }
@@ -1758,8 +1837,13 @@ void TerminalGrid::handleApc(const std::string &payload) {
                && !m_kittyImageOrder.empty()) {
             uint32_t oldest = m_kittyImageOrder.front();
             m_kittyImageOrder.pop_front();
-            m_kittyImages.erase(oldest);
+            auto evictIt = m_kittyImages.find(oldest);
+            if (evictIt != m_kittyImages.end()) {
+                m_imageBudget.release(imageByteCost(evictIt->second));
+                m_kittyImages.erase(evictIt);
+            }
         }
+        m_imageBudget.add(imageByteCost(image));
         m_kittyImages[imageId] = image;
         m_kittyImageOrder.push_back(imageId);
     }
@@ -1771,8 +1855,10 @@ void TerminalGrid::handleApc(const std::string &payload) {
             displayImg = m_kittyImages[imageId];
         }
         if (!displayImg.isNull()) {
-            if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES)
+            if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES) {
+                m_imageBudget.release(imageByteCost(m_inlineImages.front().image));
                 m_inlineImages.erase(m_inlineImages.begin());
+            }
 
             InlineImage img;
             img.image = displayImg;
@@ -1792,6 +1878,7 @@ void TerminalGrid::handleApc(const std::string &payload) {
                 if (!params.count('c')) img.pixelSized = false;
             }
 
+            m_imageBudget.add(imageByteCost(img.image));
             m_inlineImages.push_back(img);
         }
     }

@@ -11,6 +11,7 @@
 #include <QColorDialog>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QScrollArea>
 
 SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
     : QDialog(parent), m_config(config) {
@@ -53,6 +54,10 @@ SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
     auto *profilesTab = new QWidget();
     setupProfilesTab(profilesTab);
     m_tabs->addTab(profilesTab, "Profiles");
+
+    auto *pluginsTab = new QWidget();
+    setupPluginsTab(pluginsTab);
+    m_tabs->addTab(pluginsTab, "Plugins");
 
     mainLayout->addWidget(m_tabs, 1);
 
@@ -403,6 +408,120 @@ void SettingsDialog::setupProfilesTab(QWidget *tab) {
     });
 }
 
+// -----------------------------------------------------------------------------
+// Plugins tab — manifest v2 capability audit UI (0.6.11)
+// -----------------------------------------------------------------------------
+// Settings → Plugins lists every discovered plugin and, for each, the full
+// set of permissions it declared in manifest.json. Each permission is rendered
+// as a checkbox whose initial state reflects what's currently granted
+// (config.plugin_grants[name]). Unchecking + Apply revokes that capability at
+// next plugin reload — same semantics as the first-load permission prompt in
+// MainWindow. The tab is always present; when no plugins are loaded (either
+// Lua is not compiled in or the user has no plugins installed), we show an
+// explanatory label and hide the scroll list.
+void SettingsDialog::setupPluginsTab(QWidget *tab) {
+    auto *layout = new QVBoxLayout(tab);
+
+    auto *header = new QLabel(
+        "Plugin capability audit. Each plugin lists the permissions it "
+        "declared in its <code>manifest.json</code>. Uncheck any capability "
+        "to revoke it; revocations take effect at the next plugin reload.",
+        tab);
+    header->setWordWrap(true);
+    header->setTextFormat(Qt::RichText);
+    layout->addWidget(header);
+
+    m_pluginsEmptyLabel = new QLabel(
+        "<i>No plugins discovered. See PLUGINS.md for the authoring guide "
+        "and set <code>plugin_dir</code> in config.json to a directory "
+        "containing plugin folders.</i>",
+        tab);
+    m_pluginsEmptyLabel->setWordWrap(true);
+    m_pluginsEmptyLabel->setTextFormat(Qt::RichText);
+    layout->addWidget(m_pluginsEmptyLabel);
+
+    auto *scroll = new QScrollArea(tab);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    m_pluginsContainer = new QWidget(scroll);
+    auto *containerLayout = new QVBoxLayout(m_pluginsContainer);
+    containerLayout->setContentsMargins(0, 0, 0, 0);
+    containerLayout->addStretch(1);
+    scroll->setWidget(m_pluginsContainer);
+    layout->addWidget(scroll, 1);
+}
+
+void SettingsDialog::setPlugins(const QList<PluginDisplay> &plugins) {
+    m_plugins = plugins;
+    populatePluginsTab();
+}
+
+void SettingsDialog::populatePluginsTab() {
+    if (!m_pluginsContainer) return;
+
+    // Clear existing group boxes + checkbox map. Takes ownership via
+    // deleteLater so destroyed widgets don't stale-reference the map.
+    m_pluginPermissionChecks.clear();
+    auto *layout = qobject_cast<QVBoxLayout *>(m_pluginsContainer->layout());
+    if (!layout) return;
+    while (QLayoutItem *item = layout->takeAt(0)) {
+        if (QWidget *w = item->widget()) w->deleteLater();
+        delete item;
+    }
+
+    if (m_plugins.isEmpty()) {
+        m_pluginsEmptyLabel->setVisible(true);
+        layout->addStretch(1);
+        return;
+    }
+    m_pluginsEmptyLabel->setVisible(false);
+
+    // Permission → friendly description. Kept in sync with the first-load
+    // permission prompt in mainwindow.cpp so users see the same wording.
+    auto describe = [](const QString &p) -> QString {
+        if (p == "clipboard.write") return "Write to the system clipboard.";
+        if (p == "settings")        return "Store key/value settings under the plugin's name.";
+        if (p == "net")             return "Reserved for future use (network access).";
+        return QString();
+    };
+
+    for (const auto &info : m_plugins) {
+        auto *group = new QGroupBox(
+            QString("%1 (v%2)%3")
+                .arg(info.name, info.version,
+                     info.author.isEmpty() ? QString() : QString(" — ") + info.author),
+            m_pluginsContainer);
+        auto *groupLayout = new QVBoxLayout(group);
+
+        if (!info.description.isEmpty()) {
+            auto *desc = new QLabel(info.description, group);
+            desc->setWordWrap(true);
+            desc->setStyleSheet("color: palette(mid);");
+            groupLayout->addWidget(desc);
+        }
+
+        if (info.permissions.isEmpty()) {
+            auto *none = new QLabel(
+                "<i>This plugin declared no permissions.</i>", group);
+            none->setTextFormat(Qt::RichText);
+            groupLayout->addWidget(none);
+        } else {
+            QStringList granted = m_config->pluginGrants(info.name);
+            for (const QString &perm : info.permissions) {
+                auto *cb = new QCheckBox(perm, group);
+                cb->setChecked(granted.contains(perm));
+                QString tip = describe(perm);
+                if (!tip.isEmpty()) cb->setToolTip(tip);
+                groupLayout->addWidget(cb);
+                m_pluginPermissionChecks[info.name][perm] = cb;
+            }
+        }
+
+        layout->addWidget(group);
+    }
+    layout->addStretch(1);
+}
+
 void SettingsDialog::addHighlightRow(const QString &pattern, const QString &fg,
                                       const QString &bg, bool enabled) {
     int row = m_highlightTable->rowCount();
@@ -638,6 +757,19 @@ void SettingsDialog::applySettings() {
         if (actionItem && keyEdit) {
             m_config->setKeybinding(actionItem->text(), keyEdit->keySequence().toString());
         }
+    }
+
+    // Plugins — collect checked permissions per plugin and persist. We write
+    // for every plugin we know about (including ones with zero checked boxes
+    // so that revocation-to-none is persisted as an empty array rather than
+    // leaving the old grant list in place).
+    for (auto pit = m_pluginPermissionChecks.constBegin();
+         pit != m_pluginPermissionChecks.constEnd(); ++pit) {
+        QStringList granted;
+        for (auto cit = pit.value().constBegin(); cit != pit.value().constEnd(); ++cit) {
+            if (cit.value() && cit.value()->isChecked()) granted << cit.key();
+        }
+        m_config->setPluginGrants(pit.key(), granted);
     }
 
     emit settingsChanged();
