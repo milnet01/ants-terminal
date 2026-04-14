@@ -331,6 +331,41 @@ void AuditDialog::populateChecks() {
         CheckType::Info, Severity::Info, {}, false, true, nullptr
     });
 
+    // Self-consistency: every addGrepCheck() id in src/auditdialog.cpp must
+    // have a fixture directory under tests/audit_fixtures/<id>/. Catches new
+    // rules merged without regression coverage — the exact gap that slipped
+    // through in 0.6.5 (todo_scan / format_string / hardcoded_ips / weak_crypto
+    // shipped for a cycle with no fixtures). No-op on projects that don't
+    // follow this convention: the grep yields no ids when src/auditdialog.cpp
+    // is absent or has no addGrepCheck calls.
+    //
+    // Shape: enumerate `addGrepCheck("<id>", …)` lines, dedup by id (awk
+    // '!seen[$1]++' keeps the first occurrence deterministically — some rules
+    // have two calls for the Qt/non-Qt branches), and report each id without
+    // a matching fixture dir. Output uses the parseFindings()-friendly
+    // `file:line: message` shape so findings link directly to the registration
+    // site.
+    m_checks.append({
+        "audit_fixture_coverage", "Audit Rule Fixture Coverage",
+        "addGrepCheck() rules missing tests/audit_fixtures/<id>/", "General",
+        "f=src/auditdialog.cpp; [ -f \"$f\" ] || exit 0; "
+        "grep -nE 'addGrepCheck\\(\"[a-zA-Z_][a-zA-Z0-9_-]*\"' \"$f\" "
+        "| while IFS= read -r entry; do "
+        "    lineno=\"${entry%%:*}\"; "
+        "    id=$(printf '%s' \"$entry\" "
+        "         | sed -n 's/.*addGrepCheck(\"\\([a-zA-Z_][a-zA-Z0-9_-]*\\)\".*/\\1/p'); "
+        "    [ -z \"$id\" ] && continue; "
+        "    printf '%s\\t%s\\n' \"$id\" \"$lineno\"; "
+        "  done "
+        "| awk '!seen[$1]++' "
+        "| while IFS=$'\\t' read -r id lineno; do "
+        "    [ -d \"tests/audit_fixtures/$id\" ] && continue; "
+        "    printf '%s:%s: rule \"%s\" has no fixture directory "
+        "(tests/audit_fixtures/%s/)\\n' \"$f\" \"$lineno\" \"$id\" \"$id\"; "
+        "  done",
+        CheckType::CodeSmell, Severity::Minor, {}, true, true, nullptr
+    });
+
     addFindCheck("dup_files", "Duplicate File Detection",
                  "Files with identical content", "General",
                  "-type f -size +100c \\( -name '*.cpp' -o -name '*.h' -o -name '*.py'"

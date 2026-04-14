@@ -84,6 +84,8 @@ run_rule "todo_scan"        '(TODO|FIXME|HACK|XXX)(\(|:|\s)'
 run_rule "format_string"    '\b[fs]?n?printf\s*\([^"]*\b\w+\s*\)'
 run_rule "hardcoded_ips"    '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
 run_rule "weak_crypto"      '\b(md5|sha1|des|rc4|ecb)\b'
+run_rule "memory_patterns"  '\b(new |malloc|calloc|realloc)\b'
+run_rule "qt_openurl_unchecked" 'QDesktopServices::openUrl'
 
 # ---------------------------------------------------------------------------
 # Inline suppression token recognition — the regex in commentSuppresses()
@@ -128,6 +130,42 @@ check_suppress "pylint disable"     '# pylint: disable=unused-import'           
 check_suppress "ordinary comment"   '// just a comment about NOLINT in a string'  "yes"  # we accept any mention — conservative
 check_suppress "no-markers"         '// fix the bug in the morning'               "no"
 check_suppress "code only"          'int foo() { return 42; }'                    "no"
+
+echo
+
+# ---------------------------------------------------------------------------
+# Fixture-coverage cross-check. Every addGrepCheck() id in src/auditdialog.cpp
+# must have both:
+#   1. a run_rule "<id>" line in this script  (regression test exists)
+#   2. a tests/audit_fixtures/<id>/ directory (fixture exists)
+#
+# Mirrors the "audit_fixture_coverage" runtime check in AuditDialog. The
+# runtime check surfaces findings to the dev; this assertion blocks merges
+# in CI. Belt-and-suspenders — new rules can't ship without test coverage.
+# ---------------------------------------------------------------------------
+
+SRC_FILE="$SCRIPT_DIR/../src/auditdialog.cpp"
+if [[ -f "$SRC_FILE" ]]; then
+    # Extract unique rule ids from every addGrepCheck("id", ...) call.
+    mapfile -t rule_ids < <(
+        grep -oE 'addGrepCheck\("[a-zA-Z_][a-zA-Z0-9_-]*"' "$SRC_FILE" \
+            | sed -E 's/.*"([a-zA-Z_][a-zA-Z0-9_-]*)"/\1/' \
+            | sort -u
+    )
+    for id in "${rule_ids[@]}"; do
+        missing=()
+        [[ -d "$FIXTURE_DIR/$id" ]] || missing+=("fixture-dir")
+        grep -qE "^run_rule[[:space:]]+\"$id\"" "${BASH_SOURCE[0]}" \
+            || missing+=("run_rule-line")
+        if [[ ${#missing[@]} -eq 0 ]]; then
+            echo "PASS: fixture-coverage $id"
+            pass=$((pass + 1))
+        else
+            echo "FAIL: fixture-coverage $id (missing: ${missing[*]})"
+            fail=$((fail + 1))
+        fi
+    done
+fi
 
 echo
 echo "Audit rule tests: $pass pass, $fail fail"

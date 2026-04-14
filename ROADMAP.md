@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.0 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.6 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -219,11 +219,9 @@ the next run.
   blocks with fewer than N statements (default 2) and no call to a
   logging macro or qWarning/qDebug/qCDebug. Allow-list the site with the
   existing inline-suppression comment.
-- 📋 **Self-consistency: fixture-per-`addGrepCheck`.** Audit tool inspects
-  `src/auditdialog.cpp` for `addGrepCheck("id", …)` and reports any id
-  without a matching `tests/audit_fixtures/<id>/` directory. Would have
-  caught the `todo_scan` / `format_string` / `hardcoded_ips` /
-  `weak_crypto` gap pre-0.6.5.
+- ✅ **Self-consistency: fixture-per-`addGrepCheck`.** Shipped in 0.6.6 —
+  `audit_fixture_coverage` rule in the dialog + CI-enforced cross-check in
+  `tests/audit_self_test.sh`. See [CHANGELOG.md §0.6.6](CHANGELOG.md#066--2026-04-14).
 - 📋 **Build-flag recommender.** Parse `CMakeLists.txt` (or
   `compile_commands.json`) for the warning flags in use; flag the absence
   of `-Wformat=2`, `-Wshadow` (or `-Wshadow=local`), `-Wnull-dereference`,

@@ -14,6 +14,39 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.6] — 2026-04-14
+
+**Theme:** close the first Dev-experience item queued in 0.7 after the 0.6.5
+audit. One new audit rule + matching CI enforcement, backfill the two
+fixtures it immediately surfaced.
+
+### Added
+
+- **Audit self-check: fixture-per-`addGrepCheck`.** New `audit_fixture_coverage`
+  rule in the Project Audit dialog enumerates every `addGrepCheck("id", …)`
+  call in `src/auditdialog.cpp`, dedups by id, and reports any id without a
+  matching `tests/audit_fixtures/<id>/` directory. Catches the exact gap we
+  hit in 0.6.5 — four rules shipped a cycle without regression fixtures.
+  Silent no-op on projects that don't follow this convention (grep yields no
+  ids). Output uses the parseFindings-friendly `file:line: message` shape so
+  findings link directly to the registration site.
+- **CI-enforced fixture-coverage cross-check** in `tests/audit_self_test.sh`.
+  Belt-and-suspenders: the runtime check surfaces findings to the dev on next
+  audit run; the test-harness assertion blocks merges in CI when a new rule
+  id lacks either a fixture dir OR a `run_rule` line in the script. Mirrors
+  the runtime check exactly. Added to ctest output as
+  `PASS/FAIL: fixture-coverage <id>`.
+- **Fixture coverage for `memory_patterns` and `qt_openurl_unchecked`** —
+  the two real gaps the new rule just surfaced. Each gets `bad.cpp` with
+  `@expect` markers and a `good.cpp` that avoids matching tokens (including
+  in comments — the pattern is case-sensitive and line-based, so comment
+  wording had to use UPPER-CASE or non-literal phrasing).
+
+### Changed
+
+- **ROADMAP** — moved the "Self-consistency: fixture-per-`addGrepCheck`" item
+  from 0.7.0 §Dev experience to 0.6.6 shipped.
+
 ## [0.6.5] — 2026-04-14
 
 **Theme:** second audit of the day. Ran the 5-phase prompt
