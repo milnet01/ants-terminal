@@ -55,6 +55,16 @@ DISCOVERY.md
 AUDIT.md
 EXPERIMENTAL.md
 FIXPLAN.md
+# Ad-hoc audit briefs, reports, and handoff copies dropped in the repo
+# root — naming conventions that have shown up in practice. These are
+# by their nature transient and run-specific, so they should stay local.
+project_audit_*.md
+audit_report_*.md
+audit_report_*.txt
+audit_brief_*.md
+ants-audit-*.txt
+ants-audit-*.sarif
+ants-audit-*.html
 __pycache__/
 *.pyc
 *.pyo
