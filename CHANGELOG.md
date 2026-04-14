@@ -14,6 +14,26 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.2] — 2026-04-14
+
+**Theme:** Claude Code status readability. Adds a dedicated "compacting" state
+so the status bar doesn't flatten a multi-second `/compact` into generic
+"thinking…".
+
+### Added
+
+- **"Claude: compacting…" status.** New `ClaudeState::Compacting` surfaces
+  when a `/compact` is in flight, rendered in magenta so it's visually
+  distinct from idle (green), thinking (blue), and tool use (yellow).
+  Detection is transcript-driven: the parser walks the existing 32KB tail
+  window looking for a `user` event whose string content contains
+  `<command-name>/compact</command-name>`, and only fires while no
+  subsequent `isCompactSummary:true` user event (the condensed-history
+  marker Claude Code writes when compaction finishes) has appeared. The
+  `PreCompact` hook path now routes through the same state, so terminals
+  that have the hook server wired up get the same indicator without the
+  2-second poll latency.
+
 ## [0.6.1] — 2026-04-14
 
 **Theme:** scroll-anchor correctness. One-liner fix for a long-standing drift

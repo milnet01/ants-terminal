@@ -1917,6 +1917,16 @@ void MainWindow::setupClaudeIntegration() {
             m_claudeStatusLabel->show();
             break;
         }
+        case ClaudeState::Compacting: {
+            // Magenta (ansi[5]) — distinct from idle (green), thinking (blue),
+            // and tool use (yellow) so a glance tells you "context is being
+            // rewritten, don't type yet".
+            const Theme &th = Themes::byName(m_currentTheme);
+            m_claudeStatusLabel->setText(QStringLiteral("Claude: compacting..."));
+            m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 8px; font-size: 11px;").arg(th.ansi[5].name()));
+            m_claudeStatusLabel->show();
+            break;
+        }
         }
     });
 

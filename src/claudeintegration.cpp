@@ -357,6 +357,33 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     }
     // Any other state-determining type we don't recognize: leave state unchanged.
 
+    // /compact override. The command is recorded in the transcript as a user
+    // event with string content "<command-name>/compact</command-name>...".
+    // Compaction completes when Claude writes another user event carrying the
+    // condensed history with `isCompactSummary:true`. While the former is the
+    // most recent real user message and no matching summary has followed,
+    // surface Compacting — otherwise the UI just says "thinking..." for the
+    // entire (often multi-second) summarization turn. Walks the same 32KB
+    // window we already read; if an old /compact falls outside the window we
+    // silently fall back to the generic state, which is acceptable.
+    bool inCompact = false;
+    for (int i = events.size() - 1; i >= 0; --i) {
+        if (events[i].value("type").toString() != QLatin1String("user")) continue;
+        // Found an already-completed compact first → nothing in flight.
+        if (events[i].value("isCompactSummary").toBool()) break;
+        QJsonValue content = events[i].value("message").toObject().value("content");
+        if (!content.isString()) continue;  // tool_result arrays, skip
+        if (content.toString().contains(
+                QStringLiteral("<command-name>/compact</command-name>"))) {
+            inCompact = true;
+        }
+        break;  // first genuine user message decides
+    }
+    if (inCompact) {
+        newState = ClaudeState::Compacting;
+        detail = QStringLiteral("compacting");
+    }
+
     if (newState != m_state) {
         m_state = newState;
         emit stateChanged(m_state, detail);
@@ -470,7 +497,8 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
             input = toolInput.value("file_path").toString();
         emit permissionRequested(toolName, input);
     } else if (hookName == "PreCompact") {
-        emit stateChanged(ClaudeState::Thinking, "compacting context");
+        m_state = ClaudeState::Compacting;
+        emit stateChanged(m_state, QStringLiteral("compacting"));
     }
 }
 

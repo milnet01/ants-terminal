@@ -40,6 +40,7 @@ enum class ClaudeState {
     Idle,
     Thinking,
     ToolUse,
+    Compacting,   // /compact in flight — detected from transcript or PreCompact hook
 };
 
 // Comprehensive Claude Code integration for Ants Terminal
