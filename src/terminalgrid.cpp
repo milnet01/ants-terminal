@@ -1164,7 +1164,15 @@ void TerminalGrid::insertBlanks(int count) {
 void TerminalGrid::scrollUp(int count) {
     markAllScreenDirty();
     for (int i = 0; i < count; ++i) {
-        if (m_scrollTop == 0 && !m_altScreenActive) {
+        // Preserve the top screen line in scrollback only when:
+        //   - we're on the real (main) screen, not the alt screen,
+        //   - the scroll region starts at row 0 (DECSTBM),
+        //   - and scrollback insertion hasn't been paused by the viewport
+        //     layer (happens while the user is scrolled up in history —
+        //     TUI redraws like Claude Code's would otherwise interleave
+        //     intermediate frames into the scrollback the user is trying
+        //     to read).
+        if (m_scrollTop == 0 && !m_altScreenActive && !m_scrollbackInsertPaused) {
             m_scrollback.push_back(std::move(m_screenLines[m_scrollTop]));
             ++m_scrollbackPushed;
             if (static_cast<int>(m_scrollback.size()) > m_maxScrollback)

@@ -195,6 +195,19 @@ public:
     // Alt screen active (vim, htop, etc.)
     bool altScreenActive() const { return m_altScreenActive; }
 
+    // Scrollback-insert pause. When true, lines that scroll off the top of
+    // the screen are NOT pushed into scrollback — they're just dropped.
+    // The TerminalWidget sets this while the user is scrolled up into
+    // history so that TUI-redraw traffic (Claude Code, spinners, progress
+    // bars that re-emit their content via cursor movement on the main
+    // screen) doesn't interleave intermediate frames into scrollback and
+    // shift the user's reading position. Scrollback growth resumes when
+    // the user scrolls back to the bottom. This is a policy knob, not a
+    // mode-toggle: grid semantics are unchanged while paused; we simply
+    // choose not to persist lines that are about to fall off.
+    void setScrollbackInsertPaused(bool paused) { m_scrollbackInsertPaused = paused; }
+    bool scrollbackInsertPaused() const { return m_scrollbackInsertPaused; }
+
     // Kitty keyboard protocol
     int kittyKeyFlags() const { return m_kittyKeyFlags; }
 
@@ -428,6 +441,10 @@ private:
 
     // Bell callback
     BellCallback m_bellCallback;
+
+    // Pause scrollback insertion while the user is scrolled up (see
+    // setScrollbackInsertPaused). False = normal terminal behaviour.
+    bool m_scrollbackInsertPaused = false;
 
     // Alt screen buffer
     bool m_altScreenActive = false;

@@ -1540,6 +1540,13 @@ void MainWindow::applyTheme(const QString &name) {
     // UI chrome (title bar, menus, tabs, status bar) always uses opaque backgrounds.
     // Opacity and background alpha only affect the terminal content area — this is
     // handled in TerminalWidget::paintEvent via m_windowOpacity / m_backgroundAlpha.
+    //
+    // Qt stylesheet cascade: a stylesheet set on QMainWindow applies to its
+    // QObject descendants, which includes child QDialogs — so the dialog
+    // selectors below reach every popup (Settings, Audit, AI, SSH, Claude*,
+    // QMessageBox/QInputDialog/etc.) as long as they were created with the
+    // main window as their parent. Untagged QDialog must therefore stay
+    // anchor-selected here and not rely on dialog-local setStyleSheet().
     QString ss = QString(
         "QMainWindow { background-color: %1; }"
         "QMenuBar { background-color: %2; color: %3; border-bottom: 1px solid %4; }"
@@ -1569,6 +1576,72 @@ void MainWindow::applyTheme(const QString &name) {
         "  outline: none; padding: 4px 0; }"
         "QListWidget#commandPaletteList::item { padding: 6px 14px; }"
         "QListWidget#commandPaletteList::item:selected { background-color: %5; color: %1; }"
+
+        // ---- Pop-up / dialog theming ----
+        // QMessageBox, QInputDialog, QColorDialog, QFileDialog, and our own
+        // QDialog subclasses (Settings/Audit/AI/SSH/Claude*) all cascade from
+        // here. Colors match the terminal's active theme.
+        "QDialog { background-color: %2; color: %3; }"
+        "QLabel { color: %3; background: transparent; }"
+        "QPushButton { background-color: %1; color: %3;"
+        "  border: 1px solid %4; padding: 6px 14px; border-radius: 4px; min-width: 60px; }"
+        "QPushButton:hover { background-color: %5; color: %2; border-color: %5; }"
+        "QPushButton:pressed { background-color: %4; }"
+        "QPushButton:default { border: 1px solid %5; }"
+        "QPushButton:disabled { color: %6; border-color: %4; background-color: %2; }"
+        "QLineEdit { background-color: %1; color: %3; border: 1px solid %4;"
+        "  padding: 5px 8px; border-radius: 3px;"
+        "  selection-background-color: %5; selection-color: %2; }"
+        "QLineEdit:focus { border: 1px solid %5; }"
+        "QLineEdit:disabled { color: %6; }"
+        "QTextEdit, QPlainTextEdit, QTextBrowser { background-color: %1; color: %3;"
+        "  border: 1px solid %4; selection-background-color: %5; selection-color: %2; }"
+        "QCheckBox { color: %3; spacing: 6px; background: transparent; }"
+        "QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid %4;"
+        "  background: %1; border-radius: 3px; }"
+        "QCheckBox::indicator:checked { background: %5; border-color: %5; }"
+        "QRadioButton { color: %3; spacing: 6px; background: transparent; }"
+        "QRadioButton::indicator { width: 14px; height: 14px; border: 1px solid %4;"
+        "  background: %1; border-radius: 7px; }"
+        "QRadioButton::indicator:checked { background: %5; border-color: %5; }"
+        "QComboBox { background-color: %1; color: %3; border: 1px solid %4;"
+        "  padding: 4px 8px; border-radius: 3px; min-width: 80px; }"
+        "QComboBox:hover { border-color: %5; }"
+        "QComboBox::drop-down { border: none; width: 20px; }"
+        "QComboBox QAbstractItemView { background-color: %2; color: %3;"
+        "  border: 1px solid %4; selection-background-color: %5; selection-color: %2;"
+        "  outline: none; }"
+        "QSpinBox, QDoubleSpinBox { background-color: %1; color: %3;"
+        "  border: 1px solid %4; padding: 4px 6px; border-radius: 3px; }"
+        "QSpinBox:focus, QDoubleSpinBox:focus { border-color: %5; }"
+        "QGroupBox { color: %3; border: 1px solid %4; border-radius: 4px;"
+        "  margin-top: 10px; padding-top: 8px; background: transparent; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 10px;"
+        "  padding: 0 4px; color: %3; }"
+        "QListWidget, QTreeWidget, QTableWidget { background-color: %1; color: %3;"
+        "  border: 1px solid %4; selection-background-color: %5; selection-color: %2;"
+        "  alternate-background-color: %2; outline: none; }"
+        "QListWidget::item:hover, QTreeWidget::item:hover, QTableWidget::item:hover"
+        "  { background: %2; }"
+        "QHeaderView::section { background-color: %2; color: %3;"
+        "  border: 1px solid %4; padding: 4px 8px; }"
+        "QScrollBar:vertical { background-color: %2; width: 12px; margin: 0; border: none; }"
+        "QScrollBar::handle:vertical { background-color: %4; border-radius: 6px;"
+        "  min-height: 20px; margin: 2px; }"
+        "QScrollBar::handle:vertical:hover { background-color: %5; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
+        "QScrollBar:horizontal { background-color: %2; height: 12px; margin: 0; border: none; }"
+        "QScrollBar::handle:horizontal { background-color: %4; border-radius: 6px;"
+        "  min-width: 20px; margin: 2px; }"
+        "QScrollBar::handle:horizontal:hover { background-color: %5; }"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; border: none; }"
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }"
+        "QToolTip { background-color: %2; color: %3; border: 1px solid %4; padding: 4px; }"
+        "QProgressBar { background-color: %1; color: %3; border: 1px solid %4;"
+        "  border-radius: 3px; text-align: center; }"
+        "QProgressBar::chunk { background-color: %5; }"
+        "QDialogButtonBox QPushButton { min-width: 80px; }"
     ).arg(theme.bgPrimary.name(),
           theme.bgSecondary.name(),
           theme.textPrimary.name(),
@@ -1578,6 +1651,17 @@ void MainWindow::applyTheme(const QString &name) {
           theme.ansi[1].name());  // ANSI red for close/danger
 
     setStyleSheet(ss);
+
+    // Cascade to any already-open top-level dialog that was created with
+    // this MainWindow as parent. Qt already propagates via the object tree,
+    // but dialogs cached across theme changes (m_settingsDialog, m_aiDialog,
+    // m_auditDialog …) are re-polished here so the live widgets pick up the
+    // new palette without needing to re-instantiate.
+    for (QWidget *child : findChildren<QDialog *>()) {
+        child->style()->unpolish(child);
+        child->style()->polish(child);
+        child->update();
+    }
 
     m_titleBar->setThemeColors(theme.bgSecondary, theme.textPrimary,
                                 theme.accent, theme.border, theme.ansi[1]);

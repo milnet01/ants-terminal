@@ -14,6 +14,87 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.21] — 2026-04-15
+
+**Theme:** audit-tool noise reduction, dialog theming, and a long-
+standing main-screen-TUI scrollback corruption fix. Self-audit triage
+turned up a GNU grep 3.12 argument-ordering quirk that silently
+disabled the `--include` file-type filter, producing the bulk of the
+CRITICAL/MAJOR false positives. Same release extends the QSS cascade
+so every popup dialog inherits the terminal's active theme, and adds
+a scrollback-insert pause that stops TUI redraws from interleaving
+intermediate frames into the history the user is trying to read.
+
+### Changed
+
+- **Scroll-lock on scrollback read (main-screen TUI fix).** When a
+  TUI program runs on the main screen (Claude Code v2.1+ is the
+  flagship example — it renders its approval prompts and context bar
+  via cursor movement + overwrite, not alt-screen) and the user has
+  scrolled up to read history, every cursor-up-and-rewrite cycle that
+  extends past the scroll region used to push the overwritten top
+  line into scrollback. With a redraw-heavy TUI that fires many
+  frames per second (spinner, context growth, expanding tool blocks),
+  this interleaved duplicate frames into the scrollback the user was
+  reading — the user's perceived position stayed stable (viewport
+  anchor shifts with `scrollbackPushed`), but the history below their
+  read point filled with duplicated content and the "scrolled" view
+  drifted. Fix: `TerminalGrid::scrollUp()` now honours a new
+  `scrollbackInsertPaused` flag, set by `TerminalWidget::onPtyData()`
+  while `m_scrollOffset > 0`. Lines that would have been pushed into
+  scrollback during a paused window are simply dropped (they were
+  about to be overwritten in-place anyway). Flag auto-clears on the
+  next PTY packet once the user returns to the bottom.
+- **Dialog theming cascade.** `MainWindow::applyTheme()` now ships
+  a comprehensive QSS covering `QDialog`, `QLabel`, `QPushButton`,
+  `QLineEdit`, `QTextEdit` / `QPlainTextEdit` / `QTextBrowser`,
+  `QCheckBox`, `QRadioButton`, `QComboBox`, `QSpinBox` /
+  `QDoubleSpinBox`, `QGroupBox`, `QListWidget` / `QTreeWidget` /
+  `QTableWidget`, `QHeaderView`, `QScrollBar` (v+h), `QToolTip`,
+  `QProgressBar`, and `QDialogButtonBox`. Every pop-up created with
+  the main window as parent (Settings, Audit, AI, SSH, Claude
+  Projects/Transcript/Allowlist, homograph-link warning, permission
+  prompts, `QMessageBox`, `QInputDialog`, `QFileDialog`, `QColorDialog`,
+  …) now paints with the terminal's active theme colors — no more
+  light-gray system defaults leaking through. Cached dialogs are
+  re-polished on theme switch so live widgets pick up new colors
+  without re-instantiation.
+
+### Fixed
+
+- **Audit: grep argument-ordering bug (major noise source).** GNU grep
+  3.12 silently drops the `--include=<glob>` filter whenever a file-level
+  `--exclude=<name>` appears earlier on the command line — every file
+  under the search root is scanned regardless of extension. Our
+  `addGrepCheck()` builder put `kGrepExclSec` (which carried
+  `--exclude=auditdialog.cpp --exclude=auditdialog.h`) before
+  `kGrepIncludeSource`, so security scans that should have been scoped
+  to source files were also matching `.md`, `.xml`, `CMakeLists.txt`,
+  and the audit tool's own pattern-definition strings. Split the
+  exclude-dir and file-exclude portions, append file-excludes AFTER all
+  `--include` flags (including caller-supplied extras). Cuts the
+  CRITICAL `cmd_injection` false-positive count from 8 → 4 (remaining
+  hits are either real — `execlp` in the forkpty child, by design — or
+  intentional test fixtures).
+- **Audit: `lineIsCode()` over-counted string-only lines as code.**
+  The comment/string-aware filter flagged continuation lines like
+  `"system(), popen()…", "Security",` as real code because the
+  string-delimiter character itself was treated as a code token.
+  Tightened to require an identifier- or operator-class character
+  outside strings/comments before a line counts as code. Drops the
+  remaining self-referential matches in `auditdialog.cpp`'s own
+  pattern-definition arguments without affecting legitimate mixed
+  code+string lines like `int n = f("foo");`.
+- **Audit: cppcheck `invalidSuppression` noise.** cppcheck's own
+  `--inline-suppr` parser misreads documentation comments that mention
+  the literal `cppcheck-suppress` token (e.g. the passthrough-marker
+  docs in `auditdialog.cpp`) as actual suppression directives and
+  emits `invalidSuppression` errors. Added `--suppress=invalidSuppression`
+  to both cppcheck invocations — the category catches only meta-parsing
+  failures, never real code bugs, so losing it has no downside. Also
+  restructured the offending docs (`auditdialog.{h,cpp}`) so the token
+  no longer appears as the first word of a comment body.
+
 ## [0.6.20] — 2026-04-15
 
 **Theme:** ROADMAP §H5 (Distribution-readiness bundle 5) — ready-to-submit

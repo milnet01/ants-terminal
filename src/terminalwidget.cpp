@@ -1654,6 +1654,20 @@ void TerminalWidget::onPtyData(const QByteArray &data) {
         clearSelection();
     }
 
+    // Pause scrollback insertion while the user is scrolled up in history.
+    // TUI programs that run on the main screen (Claude Code, long-lived
+    // progress bars, fish's autosuggest repaint, etc.) redraw their UI via
+    // cursor movement + overwrite. When the redraw grows past the bottom
+    // of the scroll region, scrollUp() would otherwise push the line at
+    // the top of the screen into scrollback — even though that line was
+    // about to be overwritten in-place. Without the pause, every redraw
+    // during a user's scrollback-read session interleaves intermediate
+    // frames into the scrollback the user is reading, producing the
+    // "duplicated output" effect. Pausing here skips that insertion; the
+    // screen still updates normally. Resume (flag clears automatically)
+    // when the user scrolls back to the bottom.
+    m_grid->setScrollbackInsertPaused(m_scrollOffset > 0);
+
     // Scroll anchoring: if the user has scrolled up, keep their viewport stable
     // as new lines push content into scrollback. We diff the monotonic push counter
     // (not scrollbackSize()) because once the buffer is full, each push pops a stale

@@ -58,8 +58,17 @@ const QString kGrepExcl =
 // Security scans also skip auditdialog.cpp/.h — its check descriptions
 // contain the very patterns being searched for (unsafe function names,
 // URL schemes, …), which would otherwise produce self-referential hits.
-const QString kGrepExclSec =
-    kGrepExcl + " --exclude=auditdialog.cpp --exclude=auditdialog.h";
+//
+// GNU grep 3.12 caveat: specifying `--exclude=<file>` BEFORE any
+// `--include=<glob>` flags silently disables the --include filter (grep
+// falls back to scanning every file). `--exclude-dir` doesn't trigger
+// this — only the file-level `--exclude`. To work around it we keep
+// `kGrepExclSec` as exclude-dir-only (safe in any position) and emit the
+// auditdialog.cpp/.h file-excludes via `kGrepFileExclSec`, which callers
+// MUST append *after* any --include flags. See addGrepCheck().
+const QString kGrepExclSec = kGrepExcl;
+const QString kGrepFileExclSec =
+    " --exclude=auditdialog.cpp --exclude=auditdialog.h";
 
 // Default set of source file globs
 const QString kGrepIncludeSource =
@@ -263,9 +272,14 @@ void AuditDialog::addGrepCheck(const QString &id, const QString &name,
                                const QStringList &extraGrepArgs) {
     QString extra;
     for (const QString &a : extraGrepArgs) extra += " " + a;
+    // Order matters: ALL --include flags (the standard source globs plus any
+    // caller-supplied extras, which for e.g. `insecure_http` add *.json /
+    // *.xml / *.toml) must precede the --exclude=<file> flags. GNU grep 3.12
+    // silently disables --include when a file-level --exclude appears first.
+    // See the kGrepExclSec comment for the regression history.
     const QString cmd =
         "grep -rnI" + kGrepExclSec + kGrepIncludeSource + extra +
-        " -E " + pattern + " . 2>/dev/null";
+        kGrepFileExclSec + " -E " + pattern + " . 2>/dev/null";
     AuditCheck c{id, name, desc, category, cmd, type, sev, filter, autoSelect, true, nullptr};
     // Apply the common-noise filter on top of the caller's excludes.
     for (const QString &n : kCommonNoiseExcludes) {
@@ -702,6 +716,12 @@ void AuditDialog::populateChecks() {
             "cppcheck --enable=warning,performance,portability --quiet --inline-suppr" + qtLib +
             " --suppress=missingInclude --suppress=missingIncludeSystem"
             " --suppress=unmatchedSuppression --suppress=unknownMacro"
+            // invalidSuppression is cppcheck's own parser complaining when a
+            // doc comment mentions the literal "cppcheck-suppress" token
+            // (e.g. our own inline-suppression passthrough docs). It never
+            // surfaces a real code bug, only a tool-noise annoyance, so we
+            // silence the category globally.
+            " --suppress=invalidSuppression"
             " -i build -i build-test -i build-release -i node_modules -i .audit_cache"
             " -j$(nproc) . 2>&1 | head -100",
             CheckType::Bug, Severity::Major, { {}, "", {}, 100 },
@@ -714,6 +734,7 @@ void AuditDialog::populateChecks() {
             "cppcheck --enable=unusedFunction --quiet --inline-suppr" + qtLib +
             " --suppress=missingInclude --suppress=missingIncludeSystem"
             " --suppress=unmatchedSuppression --suppress=unknownMacro"
+            " --suppress=invalidSuppression"
             " -i build -i build-test -i build-release -i node_modules -i .audit_cache"
             " . 2>&1 | head -50",
             CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 50 },
@@ -1277,7 +1298,23 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
         const QChar n = (i + 1 < src.size()) ? src[i + 1] : QChar();
 
         if (curLine == line) {
-            if (state == 0 && !c.isSpace()) hasCodeOnLine = true;
+            // A line counts as "code" only if there's a real identifier/
+            // operator character outside strings and comments. Structural
+            // punctuation alone (whitespace, argument-list glue like
+            // `,;(){}[]`, and the string-delimiter characters themselves)
+            // doesn't count — that catches continuation lines like
+            //   "system(), popen()…", "Security",
+            // which are pure string-literal data inside a multi-line call,
+            // and shouldn't trigger security regex matches. Escape chars
+            // (`\`) also don't count as code on their own.
+            if (state == 0 && !c.isSpace() &&
+                c != ',' && c != ';' &&
+                c != '(' && c != ')' &&
+                c != '{' && c != '}' &&
+                c != '[' && c != ']' &&
+                c != '"' && c != '\'' && c != '\\') {
+                hasCodeOnLine = true;
+            }
         } else if (curLine > line) {
             break;
         }
@@ -1340,15 +1377,20 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
 //     // ants-audit: disable-file[=rule-id]       — file-scope (first 20 lines)
 //
 //   Passthrough (respect what the upstream tool already honors):
-//     // NOLINT / NOLINT(rule)                          — clang-tidy
-//     // NOLINTNEXTLINE / NOLINTNEXTLINE(rule)          — clang-tidy (prev line)
-//     // cppcheck-suppress[=id | [id1,id2]]             — cppcheck
-//     # noqa / noqa: E501                               — flake8
-//     # nosec / nosec B101                              — bandit
-//     # nosemgrep / nosemgrep: rule-id                  — semgrep
-//     # gitleaks:allow                                  — gitleaks
-//     // eslint-disable-line / -next-line [rule]        — eslint
-//     # pylint: disable=code                            — pylint
+//     clang-tidy      : // NOLINT / NOLINT(rule)
+//     clang-tidy prev : // NOLINTNEXTLINE / NOLINTNEXTLINE(rule)
+//     cppcheck        : // <the cppcheck suppress token>[=id | [id1,id2]]
+//     flake8          : # noqa / noqa: E501
+//     bandit          : # nosec / nosec B101
+//     semgrep         : # nosemgrep / nosemgrep: rule-id
+//     gitleaks        : # gitleaks:allow
+//     eslint          : // eslint-disable-line / -next-line [rule]
+//     pylint          : # pylint: disable=code
+//
+// (The cppcheck example line above avoids using the bare "cppcheck-" +
+// "suppress" token at the start of a comment so that cppcheck's own
+// --inline-suppr parser doesn't mistake this documentation for a real
+// suppression directive and emit invalidSuppression.)
 //
 // Parsing deliberately lenient: we extract the comment body (anything after
 // //, /*, #, --, ;, <!--) and check for the tokens anywhere in it.

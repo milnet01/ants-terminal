@@ -302,10 +302,13 @@ private:
     static bool lineIsCode(const QString &absPath, int line);
 
     // Inline suppression directive scan. Recognises both ants-native tokens
-    // and passthrough markers from other tools (clang-tidy NOLINT,
-    // cppcheck-suppress, flake8 noqa, bandit nosec, semgrep nosemgrep,
+    // and passthrough markers from other tools (clang-tidy NOLINT, cppcheck
+    // suppress-comments, flake8 noqa, bandit nosec, semgrep nosemgrep,
     // gitleaks-allow, eslint-disable-*, pylint: disable). Returns true iff
     // the finding's line is explicitly suppressed for its rule id.
+    // (Doc deliberately avoids putting the literal "cppcheck-" + "suppress"
+    // token at the start of a comment line — cppcheck's --inline-suppr
+    // parser would otherwise pick it up and emit invalidSuppression.)
     bool inlineSuppressed(const Finding &f) const;
     // Low-level helper: does `commentText` (already-stripped "// ..." body)
     // contain a suppression token that matches `ruleId`? Returns true if:
