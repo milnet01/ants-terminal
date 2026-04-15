@@ -2245,6 +2245,17 @@ void TerminalWidget::positionScrollBar() {
 void TerminalWidget::updateScrollBar() {
     if (!m_scrollBar) return;
     int maxScroll = m_grid->scrollbackSize();
+    // 0.6.27 — clamp m_scrollOffset against the current scrollback size.
+    // When the shell runs `clear` (which on xterm-256color emits
+    // `\E[H\E[2J\E[3J`), the grid wipes scrollback but m_scrollOffset is
+    // a widget-side value that would otherwise stay at its pre-clear
+    // value. That left the scroll-to-bottom button visible with nothing
+    // to scroll to, and let wheel-scrolling paint phantom empty rows
+    // (viewStart = scrollbackSize - m_scrollOffset going negative).
+    // Clamping here — the single choke-point called after every output
+    // batch — keeps the widget's scroll state consistent with the grid.
+    if (m_scrollOffset > maxScroll) m_scrollOffset = maxScroll;
+    if (m_scrollOffset < 0) m_scrollOffset = 0;
     // Block signals to avoid re-entrant valueChanged -> scrollOffset update
     m_scrollBar->blockSignals(true);
     m_scrollBar->setMaximum(maxScroll);

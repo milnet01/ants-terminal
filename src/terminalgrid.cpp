@@ -1101,11 +1101,26 @@ void TerminalGrid::eraseInDisplay(int mode) {
     // on main screen, preserve the scrollback (conversation history is
     // what the user cares about) and extend the suppression window so the
     // replay's scrollUps don't duplicate into scrollback.
+    //
+    // 0.6.27 disambiguator — the user's `clear` command on
+    // xterm-256color (via ncurses with E3 capability) emits the SAME
+    // 2J/3J pair, just in the opposite order relative to the cursor-home
+    // operation: `clear` is `\E[H\E[2J\E[3J` whereas Ink is
+    // `\E[2J\E[3J\E[H`. When 3J arrives after 2J, the cursor position
+    // distinguishes them: for `clear`, the H ran first so cursor sits at
+    // (0,0); for Ink the H hasn't run yet so cursor is still wherever it
+    // was before the overflow (typically at the bottom of the screen,
+    // because that's where output was landing when the overflow
+    // triggered). Treating cursor-at-origin as "user-initiated clear"
+    // wipes scrollback on `clear` while still preserving it for Ink's
+    // overflow repaint.
+    const bool cursorAtOrigin = (m_cursorRow == 0 && m_cursorCol == 0);
     const bool isInkOverflowRepaint =
         mode == 3 &&
         m_recentMode2Timer.isValid() &&
         m_recentMode2Timer.elapsed() < kMode2FollowupWindowMs &&
-        !m_altScreenActive;
+        !m_altScreenActive &&
+        !cursorAtOrigin;
 
     switch (mode) {
     case 0:

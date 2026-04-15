@@ -147,6 +147,47 @@ int runInkOverflowScenario() {
     return failures;
 }
 
+// The `clear` command on xterm-256color (via ncurses with E3 capability)
+// emits `\E[H\E[2J\E[3J` — same 2J/3J pair as Ink's overflow-repaint but
+// with `\E[H` emitted FIRST. Disambiguator: at the time 3J arrives, the
+// cursor is at (0,0) for `clear` (H ran first), but is at its pre-clear
+// position for Ink (H comes after 3J). This scenario pins that `clear`
+// wipes scrollback as the user expects, even though the byte-level
+// 2J/3J pair within the Ink-window is otherwise identical.
+int runUserClearScenario() {
+    TerminalGrid grid(kRows, kCols);
+    VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
+
+    auto feed = [&](const std::string &s) {
+        parser.feed(s.data(), static_cast<int>(s.size()));
+    };
+
+    for (int i = 0; i < kLinesPerPhase; ++i) {
+        feed("pre-clear line " + std::to_string(i) + "\r\n");
+    }
+    const int sbBefore = grid.scrollbackSize();
+    if (sbBefore == 0) {
+        std::fprintf(stderr, "[user-clear] FAIL: setup didn't populate scrollback\n");
+        return 1;
+    }
+
+    // Exact bytes `clear` emits on TERM=xterm-256color (verified via
+    // `clear | od -c`): cursor-home, erase-display, clear-scrollback.
+    feed("\x1b[H\x1b[2J\x1b[3J");
+    const int sbAfter = grid.scrollbackSize();
+
+    if (sbAfter != 0) {
+        std::fprintf(stderr,
+                     "[user-clear] FAIL: scrollback=%d after `clear` "
+                     "(\\E[H\\E[2J\\E[3J) — user-initiated clear was "
+                     "misclassified as Ink-overflow-repaint.\n",
+                     sbAfter);
+        return 1;
+    }
+    std::fprintf(stderr, "[user-clear] sb=%d → 0  PASS\n", sbBefore);
+    return 0;
+}
+
 // Standalone CSI 3J (no recent CSI 2J) must still clear scrollback — this
 // is the explicit user-initiated "clear scrollback" semantics. Regression
 // guard for the Ink-overflow fix: make sure we didn't break the legitimate
@@ -196,6 +237,7 @@ int main() {
     failures += runScenario("identical-repaint-1J",   "\x1b[24;80H\x1b[1J\x1b[H", /*identical=*/true);
     failures += runInkOverflowScenario();
     failures += runStandaloneMode3Scenario();
+    failures += runUserClearScenario();
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d scenario(s) failed.\n", failures);

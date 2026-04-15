@@ -10,6 +10,74 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.6.27] — 2026-04-15
+
+**Theme:** `clear`-command scrollback fix, scroll-offset clamp,
+tab-close visibility, Claude "prompting" status, and allowlist-button
+lifecycle tightening.
+
+### Fixed
+
+- **`clear` now properly wipes scrollback.** On `TERM=xterm-256color`
+  (set by `PtyHandler`), `ncurses` `clear` emits `\E[H\E[2J\E[3J`
+  (verified via `clear | od -c`). The 0.6.26 Ink-overflow-repaint
+  heuristic — "mode 3 within 50 ms of mode 2 = Ink frame-reset, preserve
+  scrollback" — false-matched this byte-burst because the `2J`+`3J` pair
+  is identical to Ink's `clearTerminal`. User-reported symptom: after
+  `clear`, the scrollbar remained scrollable showing nothing, because
+  `m_scrollback` still held the pre-`clear` lines.
+
+  Disambiguator: cursor position at the moment `3J` arrives. `clear`
+  emits `H` FIRST so cursor sits at (0,0); Ink emits `H` LAST so cursor
+  is still wherever the overflowing output left it (bottom of the
+  screen in practice). Treating cursor-at-origin as "user-initiated
+  clear" wipes scrollback on `clear` while still preserving it for Ink
+  — because Ink's overflow only triggers when output has filled past
+  the viewport, by construction the cursor is never at (0,0) when Ink's
+  `3J` fires. New `user-clear` scenario in
+  `tests/features/scrollback_redraw/test_redraw.cpp` pins the
+  behaviour; the existing `ink-overflow-repaint` scenario continues to
+  pass.
+- **Scroll-to-bottom button no longer lingers after scrollback
+  shrinks.** `TerminalWidget::m_scrollOffset` is a widget-side value
+  that wasn't re-clamped when `TerminalGrid::m_scrollback.clear()` ran
+  (via `\E[3J`). The scrollbar's `setValue` clamp hid the symptom for
+  the scrollbar itself, but `m_scrollOffset > 0` was still the
+  show-button condition and the viewport-rendering base (`viewStart =
+  scrollbackSize - m_scrollOffset` went negative, painting phantom
+  blank rows). Clamping `m_scrollOffset` to `[0, scrollbackSize]` in
+  `updateScrollBar()` — the single choke-point called after every
+  output batch — keeps the widget state consistent with the grid.
+- **Tab close (×) button is now always visible.** The theme
+  stylesheet had `QTabBar::close-button { image: none; }`, which hid
+  the × glyph entirely and left only an invisible hover hit-target. New
+  users didn't discover the close affordance unless they happened to
+  mouse over it. Removing the `image` rule lets Qt fall back to the
+  platform close icon (`QStyle::SP_TitleBarCloseButton`), which adapts
+  to the active palette. Hover still applies an ansi-red background
+  (%7) for "will-click" feedback.
+- **"Add to allowlist" button now also clears the accompanying status
+  message on dismiss.** Clicking the × button cleared the message, but
+  the `claudePermissionCleared` path (prompt disappears on
+  approve/decline) just deleted the button and left the
+  "Claude Code permission: …" text stuck in the status bar. Both paths
+  now call `clearStatusMessage()` symmetrically.
+
+### Added
+
+- **Claude status bar says "Claude: prompting" while a permission
+  prompt is waiting.** Previously the label kept showing "Claude: idle"
+  because `ClaudeIntegration`'s transcript-driven state machine is
+  unaware of the on-screen permission UI. For a user scrolled up in
+  history — who can't see the prompt directly — "idle" was
+  misleading. The prompt state is now tracked per-window as a boolean
+  overlay on top of the `ClaudeState`: any detected prompt flips the
+  label to yellow "Claude: prompting" regardless of the underlying
+  state, and the prompt-cleared signal reverts it to the base state.
+  Implementation consolidates the label-rendering switch into a single
+  `MainWindow::applyClaudeStatusLabel()` method so prompt and state
+  changes share one code path.
+
 ## [0.6.26] — 2026-04-15
 
 **Theme:** UX polish — status bar consistency, focus handling, Ink

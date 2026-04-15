@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.h"
+#include "claudeintegration.h"  // for ClaudeState — used by applyClaudeStatusLabel()
 #include "themes.h"
 
 #include <QMainWindow>
@@ -183,6 +184,17 @@ private:
     QProgressBar *m_claudeContextBar = nullptr;
     QPushButton *m_claudeReviewBtn = nullptr;
     QLabel *m_claudeErrorLabel = nullptr;
+    // 0.6.27 — cached last state/detail so the Claude status label can be
+    // re-rendered when the permission-prompt overlay toggles without having
+    // to wait for the next ClaudeIntegration::stateChanged tick. When
+    // m_claudePromptActive is true, the label shows "Claude: prompting"
+    // regardless of the underlying state (user's scrolled-up case from
+    // 2026-04-15 — they can't see the prompt directly so the status bar
+    // is the only at-a-glance indicator).
+    ClaudeState m_claudeLastState = ClaudeState::NotRunning;
+    QString m_claudeLastDetail;
+    bool m_claudePromptActive = false;
+    void applyClaudeStatusLabel();
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
     void openClaudeProjectsDialog();
     void setupClaudeIntegration();

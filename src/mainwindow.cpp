@@ -1318,15 +1318,24 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
             clearStatusMessage();
         });
 
+        // 0.6.27 — mark prompt active so the Claude status label switches
+        // to "Claude: prompting". Useful when the user is scrolled up in
+        // the terminal history and can't see the prompt directly.
+        m_claudePromptActive = true;
+        applyClaudeStatusLabel();
+
         // Remove button only when the prompt actually disappears from the
         // screen. Anchoring to `outputReceived` (as an earlier version did)
         // retracted the button on the next Claude Code repaint tick — which
         // fires continuously during the prompt's own cursor/spinner animation
         // and nuked the button while the user was still looking at it.
         auto conn = std::make_shared<QMetaObject::Connection>();
-        *conn = connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn, [addBtn, conn]() {
+        *conn = connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn, [this, addBtn, conn]() {
             QObject::disconnect(*conn);
             addBtn->deleteLater();
+            clearStatusMessage();
+            m_claudePromptActive = false;
+            applyClaudeStatusLabel();
         });
     });
 }
@@ -1679,7 +1688,17 @@ void MainWindow::applyTheme(const QString &name) {
         "  border: none; border-bottom: 2px solid transparent; }"
         "QTabBar::tab:selected { color: %3; border-bottom: 2px solid %5; }"
         "QTabBar::tab:hover { background-color: %1; color: %3; }"
-        "QTabBar::close-button { image: none; }"
+        // 0.6.27 — was `image: none`, which hid the × glyph entirely and
+        // left only an invisible hover hit-target. Users didn't discover
+        // the close affordance unless they happened to mouse over it.
+        // Removing the `image` rule lets Qt fall back to the platform
+        // close icon (QStyle::SP_TitleBarCloseButton / SP_DockWidgetCloseButton)
+        // which adapts to the active QPalette. The 14×14 box + margins
+        // give the × breathing room; hover still applies an ansi-red
+        // background (%7) for "will-click" feedback.
+        "QTabBar::close-button {"
+        "  subcontrol-position: right; margin: 2px; padding: 1px;"
+        "  width: 14px; height: 14px; border-radius: 3px; }"
         "QTabBar::close-button:hover { background-color: %7; border-radius: 3px; }"
         "QSplitter::handle { background-color: %4; }"
         "QSplitter::handle:horizontal { width: 2px; }"
@@ -2160,6 +2179,70 @@ void MainWindow::showEvent(QShowEvent *event) {
     }
 }
 
+// 0.6.27 — central renderer for the "Claude: …" status-bar label. Kept
+// as a single method so the permission-prompt overlay ("Claude:
+// prompting") and the underlying ClaudeIntegration state ("Claude: idle
+// / thinking / tool-use / compacting") share one code path and stay in
+// sync. User rationale (2026-04-15): when scrolled up in scrollback
+// reading history, the user can't see Claude's live prompt — the
+// status-bar label is the only at-a-glance signal that a response is
+// waiting on them, so "idle" misrepresents the state.
+void MainWindow::applyClaudeStatusLabel() {
+    if (!m_claudeStatusLabel) return;
+    const Theme &th = Themes::byName(m_currentTheme);
+    const QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
+
+    // NotRunning hides both label and the context progress bar regardless
+    // of prompt state — no Claude process = nothing to announce.
+    if (m_claudeLastState == ClaudeState::NotRunning) {
+        m_claudeStatusLabel->hide();
+        if (m_claudeContextBar) m_claudeContextBar->hide();
+        return;
+    }
+
+    QString text;
+    QColor color;
+
+    // Prompt-active overrides the base state — a waiting permission
+    // prompt is what the user needs to see, regardless of whether
+    // ClaudeIntegration last reported idle/thinking/tool-use (the TUI
+    // often sits on a prompt *during* a tool-use sequence, and the
+    // transcript-driven state lags the on-screen reality).
+    if (m_claudePromptActive) {
+        text = QStringLiteral("Claude: prompting");
+        color = th.ansi[3];  // yellow — "attention needed"
+    } else {
+        switch (m_claudeLastState) {
+        case ClaudeState::NotRunning:
+            return;  // handled above
+        case ClaudeState::Idle:
+            text = QStringLiteral("Claude: idle");
+            color = th.ansi[2];  // green
+            break;
+        case ClaudeState::Thinking:
+            text = QStringLiteral("Claude: thinking...");
+            color = th.ansi[4];  // blue
+            break;
+        case ClaudeState::ToolUse:
+            text = QStringLiteral("Claude: %1").arg(m_claudeLastDetail);
+            color = th.ansi[3];  // yellow
+            break;
+        case ClaudeState::Compacting:
+            // Magenta (ansi[5]) — distinct from idle (green), thinking
+            // (blue), and tool use (yellow) so a glance tells you
+            // "context is being rewritten, don't type yet".
+            text = QStringLiteral("Claude: compacting...");
+            color = th.ansi[5];  // magenta
+            break;
+        }
+    }
+
+    m_claudeStatusLabel->setText(text);
+    m_claudeStatusLabel->setStyleSheet(
+        QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));
+    m_claudeStatusLabel->show();
+}
+
 void MainWindow::updateClaudeThemeColors() {
     const Theme &th = Themes::byName(m_currentTheme);
     QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
@@ -2262,43 +2345,9 @@ void MainWindow::setupClaudeIntegration() {
 
     connect(m_claudeIntegration, &ClaudeIntegration::stateChanged,
             this, [this](ClaudeState state, const QString &detail) {
-        switch (state) {
-        case ClaudeState::NotRunning:
-            m_claudeStatusLabel->hide();
-            m_claudeContextBar->hide();
-            break;
-        case ClaudeState::Idle: {
-            const Theme &th = Themes::byName(m_currentTheme);
-            m_claudeStatusLabel->setText("Claude: idle");
-            m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 8px; font-size: 11px;").arg(th.ansi[2].name()));
-            m_claudeStatusLabel->show();
-            break;
-        }
-        case ClaudeState::Thinking: {
-            const Theme &th = Themes::byName(m_currentTheme);
-            m_claudeStatusLabel->setText("Claude: thinking...");
-            m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 8px; font-size: 11px;").arg(th.ansi[4].name()));
-            m_claudeStatusLabel->show();
-            break;
-        }
-        case ClaudeState::ToolUse: {
-            const Theme &th = Themes::byName(m_currentTheme);
-            m_claudeStatusLabel->setText(QString("Claude: %1").arg(detail));
-            m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 8px; font-size: 11px;").arg(th.ansi[3].name()));
-            m_claudeStatusLabel->show();
-            break;
-        }
-        case ClaudeState::Compacting: {
-            // Magenta (ansi[5]) — distinct from idle (green), thinking (blue),
-            // and tool use (yellow) so a glance tells you "context is being
-            // rewritten, don't type yet".
-            const Theme &th = Themes::byName(m_currentTheme);
-            m_claudeStatusLabel->setText(QStringLiteral("Claude: compacting..."));
-            m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 8px; font-size: 11px;").arg(th.ansi[5].name()));
-            m_claudeStatusLabel->show();
-            break;
-        }
-        }
+        m_claudeLastState = state;
+        m_claudeLastDetail = detail;
+        applyClaudeStatusLabel();
     });
 
     connect(m_claudeIntegration, &ClaudeIntegration::contextUpdated,
