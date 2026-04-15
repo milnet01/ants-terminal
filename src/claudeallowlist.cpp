@@ -327,45 +327,103 @@ QString ClaudeAllowlistDialog::normalizeRule(const QString &raw) {
 }
 
 QString ClaudeAllowlistDialog::generalizeRule(const QString &rule) {
-    // Don't generalize if it's already a wildcard pattern
+    // Already a wildcard pattern — nothing useful to do.
     if (rule.endsWith(" *)") || rule.endsWith(" **)"))
         return {};
 
-    // For cd && cmd patterns, generalize to the actual command (not cd)
-    // e.g. Bash(cd /path && cmake --build . -j16) → Bash(cmake *)
-    // Claude Code uses "cd path && cmd" often; the user wants to allow cmd, not cd
-    static QRegularExpression cdAnd(R"(^Bash\(cd\s+\S+\s+&&\s+(\S+)\s+.+\)$)");
-    auto m = cdAnd.match(rule);
-    if (m.hasMatch()) {
-        QString cmd = m.captured(1);
-        if (cmd != "rm" && cmd != "sudo" && !cmd.startsWith("SUDO"))
-            return QStringLiteral("Bash(") + cmd + " *)";
+    // Extract Bash(...) content. Non-Bash rules (Read/Write/Edit/WebFetch/
+    // etc.) have no shell-operator generalisation path.
+    static QRegularExpression bashWrap(R"(^Bash\((.*)\)$)");
+    auto bm = bashWrap.match(rule);
+    if (!bm.hasMatch()) return {};
+    const QString content = bm.captured(1);
+
+    // Split on shell operators (&& || ; |), preserving them.
+    //
+    // Regex rule: the operator must be followed by whitespace (\s+), but
+    // the preceding-whitespace is optional (\s*). This catches the common
+    // idiomatic form `cmd1; cmd2` (no space before ;, one after) without
+    // false-positively splitting quoted operators like `grep 'a|b'` (no
+    // whitespace after the |) — the `\s+` trailing requirement keeps
+    // quoted/embedded operators safe. Trade-off: rare form `cmd1 ;cmd2`
+    // (space before, none after) also won't split, but it's uncommon
+    // enough in permission-prompt scrapes that the safety win is worth
+    // it.
+    //
+    // Order matters within the alternation: `||` and `&&` must come
+    // before the bare `|` (otherwise `|` captures half of `||`).
+    static QRegularExpression opRe(R"(\s*(&&|\|\||;|\|)\s+)");
+
+    QStringList segments;
+    QStringList operators;
+    qsizetype pos = 0;
+    auto it = opRe.globalMatch(content);
+    while (it.hasNext()) {
+        auto m = it.next();
+        segments << content.mid(pos, m.capturedStart() - pos);
+        operators << m.captured(1);
+        pos = m.capturedEnd();
+    }
+    segments << content.mid(pos);
+
+    // Safety denylist — any segment that is rm, bare sudo, or a
+    // SUDO_* variable assignment (other than SUDO_ASKPASS — that's the
+    // project-standard form handled separately below) means we refuse to
+    // generalise. Over-broad rm/sudo rules are the kind of thing we
+    // don't want the button offering with a single click.
+    for (const QString &seg : segments) {
+        const QString s = seg.trimmed();
+        if (s == "rm" || s.startsWith("rm ")) return {};
+        if (s == "sudo" || s.startsWith("sudo ")) return {};
+        if (s.startsWith("SUDO_") && !s.startsWith("SUDO_ASKPASS=")) return {};
     }
 
-    // For SUDO_ASKPASS with specific commands, suggest broader pattern
-    // But only up to the actual command, not fully wildcarded sudo
-    static QRegularExpression sudoSpecific(
-        R"(^Bash\(SUDO_ASKPASS=\S+\s+sudo\s+-A\s+(\S+)\s+.+\)$)");
-    m = sudoSpecific.match(rule);
-    if (m.hasMatch()) {
-        QString cmd = m.captured(1);
-        return QStringLiteral("Bash(") + s_sudoPrefix + cmd + " *)";
+    // Project-standard SUDO_ASKPASS form — a single-segment rule of
+    // shape `SUDO_ASKPASS=… sudo -A <cmd> <args>` generalises to the
+    // same prefix with wildcarded args on the specific subcommand.
+    if (segments.size() == 1) {
+        static QRegularExpression sudoSpecific(
+            R"(^SUDO_ASKPASS=\S+\s+sudo\s+-A\s+(\S+)\s+.+$)");
+        auto m = sudoSpecific.match(content);
+        if (m.hasMatch()) {
+            const QString cmd = m.captured(1);
+            return QStringLiteral("Bash(") + s_sudoPrefix + cmd + " *)";
+        }
     }
 
-    // For Bash commands with specific subcommands, suggest the base command wildcard
-    // e.g. Bash(git status --short) → Bash(git *)
-    // e.g. Bash(gh pr create --title "x") → Bash(gh *)
-    static QRegularExpression bashSpecific(R"(^Bash\(([a-zA-Z0-9_./-]+)\s+.+\)$)");
-    m = bashSpecific.match(rule);
-    if (m.hasMatch()) {
-        QString baseCmd = m.captured(1);
-        // Don't generalize rm, sudo, SUDO_ASKPASS (keep specific for safety)
-        if (baseCmd == "rm" || baseCmd == "sudo" || baseCmd.startsWith("SUDO"))
-            return {};
-        return QStringLiteral("Bash(") + baseCmd + " *)";
+    // Generalise each segment independently: base command + " *" if the
+    // segment carries args, otherwise keep the bare command. This is
+    // how the user's own settings.local.json encodes compound allowlist
+    // entries (e.g. `Bash(cd * && git *)`, `Bash(cat * | *)`).
+    static QRegularExpression segCmd(R"(^([A-Za-z_][\w./-]*)(\s+.+)?$)");
+    QStringList genSegments;
+    for (const QString &seg : segments) {
+        const QString s = seg.trimmed();
+        auto m = segCmd.match(s);
+        if (!m.hasMatch()) {
+            // Can't parse a leading command — leave as-is so a partial
+            // generalisation is still offered rather than returning
+            // empty for the whole rule.
+            genSegments << s;
+            continue;
+        }
+        const QString base = m.captured(1);
+        const bool hasArgs = m.capturedLength(2) > 0;
+        genSegments << (hasArgs ? base + " *" : base);
     }
 
-    return {};
+    // Reassemble with original operators, space-padded to match the
+    // format the user's settings.local.json uses throughout.
+    QString result = genSegments.value(0);
+    for (int i = 0; i < operators.size(); ++i) {
+        result += " " + operators[i] + " " + genSegments.value(i + 1);
+    }
+
+    // If nothing actually changed (e.g. single-segment Bash(make) with
+    // no args), there's no useful generalisation to offer.
+    if (result == content) return {};
+
+    return QStringLiteral("Bash(") + result + ")";
 }
 
 bool ClaudeAllowlistDialog::ruleSubsumes(const QString &broad, const QString &narrow) {

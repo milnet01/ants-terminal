@@ -282,4 +282,28 @@ if(ANTS_TESTS)
     set_tests_properties(claude_status_bar PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # allowlist_add — asserts rule normalisation + generalisation covers
+    # every shell splitter (&&, ;, |, ||) and honors the safety denylist
+    # (rm, bare sudo, SUDO_*). Widget lifecycle (button appear / disappear
+    # on approve/decline) documented in spec §C but not tested here —
+    # future GUI-enabled test can drive it. See
+    # tests/features/allowlist_add/spec.md.
+    add_executable(test_allowlist_add
+        tests/features/allowlist_add/test_allowlist_add.cpp
+        src/claudeallowlist.cpp
+    )
+    target_link_libraries(test_allowlist_add PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_allowlist_add PRIVATE src)
+    target_compile_options(test_allowlist_add PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME allowlist_add COMMAND test_allowlist_add)
+    set_tests_properties(allowlist_add PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
 endif()

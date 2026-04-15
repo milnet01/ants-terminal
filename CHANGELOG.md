@@ -29,6 +29,20 @@ suppression works at the bottom too.
 
 ### Fixed
 
+- **Add-to-Allowlist rule generalisation now covers every shell
+  splitter.** `generalizeRule()` previously only handled `cd X && cmd`
+  (and even that dropped the `cd` prefix, producing rules that Claude
+  Code's allowlist matcher rejected on the next compound invocation).
+  User feedback: the "Add to allowlist" button would add a rule that
+  re-prompted on the very next turn. Rewritten to split on `&&`, `||`,
+  `;`, `|` while preserving compound structure: `Bash(cd /x && make y)`
+  now generalises to `Bash(cd * && make *)` (matching the convention
+  already in the user's `settings.local.json`), `Bash(cat f | grep x)`
+  to `Bash(cat * | grep *)`, etc. Safety denylist retained and
+  extended to ALL segments (any `rm`/bare-`sudo`/`SUDO_*` anywhere in
+  the chain blocks generalisation). Feature test in
+  `tests/features/allowlist_add/` exercises 23 cases covering every
+  splitter variant and the denylist.
 - **Claude Code status bar no longer shows stale state after tab switch.**
   User-reported: "Claude status indicator doesn't work half the time."
   Root cause: `ClaudeIntegration::setShellPid()` re-pointed the watcher
