@@ -972,6 +972,11 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
             }
             break;
         case 7: m_currentAttrs.inverse = true; break;
+        case 8:  // SGR 8 — conceal. Not stored as a cell attr (would need a
+                 // render-side hide); acknowledged here so it doesn't fall
+                 // through to `default:` silently. Rare in practice (mutt is
+                 // the main consumer).
+            break;
         case 9: m_currentAttrs.strikethrough = true; break;
         case 21:
             // SGR 21 — double underline (also used as bold off)
@@ -986,7 +991,17 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
             m_currentAttrs.underlineStyle = UnderlineStyle::None;
             break;
         case 27: m_currentAttrs.inverse = false; break;
+        case 28:  // SGR 28 — reveal (no-conceal). Mirror of case 8; no state.
+            break;
         case 29: m_currentAttrs.strikethrough = false; break;
+
+        // SGR 53 / 55 — overline / no-overline. Rarely requested but standard
+        // per ECMA-48. Acknowledged as no-ops (we don't store an overline
+        // attr) so Claude Code / other TUI apps using them don't get their
+        // codes reinterpreted by `default:` fall-through. If future demand
+        // surfaces we'll add an UnderlineStyle::Overline or separate flag.
+        case 53: break;
+        case 55: break;
 
         // Underline color: CSI 58;2;r;g;b m or CSI 58;5;idx m
         case 58:

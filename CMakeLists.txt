@@ -232,4 +232,28 @@ if(ANTS_TESTS)
     set_tests_properties(scrollback_redraw PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # sgr_attribute_reset — asserts every SGR set/reset pair (bold, italic,
+    # underline, inverse, strikethrough) + SGR 0 full-reset correctly clear
+    # the cell attribute on subsequent writes. See
+    # tests/features/sgr_attribute_reset/spec.md. Guards against the
+    # 0.6.22 visual-artifact class where decorative SGR attrs leaked
+    # across Claude Code's TUI task-list items.
+    add_executable(test_sgr_attribute_reset
+        tests/features/sgr_attribute_reset/test_sgr_reset.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_sgr_attribute_reset PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_sgr_attribute_reset PRIVATE src)
+    target_compile_options(test_sgr_attribute_reset PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME sgr_attribute_reset COMMAND test_sgr_attribute_reset)
+    set_tests_properties(sgr_attribute_reset PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
 endif()

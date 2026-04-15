@@ -29,6 +29,21 @@ suppression works at the bottom too.
 
 ### Fixed
 
+- **Visual artifacts from leaked SGR decorations.** User-reported: TUI
+  apps (Claude Code v2.1+ is the motivating case) leave strikethrough /
+  plain-single underline active across rows, producing horizontal
+  dashed lines on otherwise-blank rows and leaked decorations on
+  pending task-list items. Two-layer fix: (a) render-side filter skips
+  strikethrough and plain single-color underline draws on empty-glyph
+  cells (space / null codepoint) — the attribute is still recorded,
+  just not painted where it has no glyph to decorate, so "underlined
+  text with a space in the middle" still draws correctly per-glyph;
+  (b) SGR 8 / 28 (conceal / reveal) and SGR 53 / 55 (overline /
+  no-overline) now have explicit handlers instead of falling through
+  to the default branch silently. Hovered-URL underline hint always
+  draws regardless of cell content. See
+  `tests/features/sgr_attribute_reset/spec.md` for the invariant
+  asserted by CTest.
 - **Scrollback no longer accumulates duplicates during main-screen TUI
   repaints.** On main-screen full-display erase (`CSI 2J`,
   `eraseInDisplay(2)`), open a 250 ms sliding window during which

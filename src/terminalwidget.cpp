@@ -708,19 +708,34 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 }
             }
 
-            // Underline rendering (font-metric positioning like Konsole)
-            // In alt screen, suppress plain single underlines without custom color —
-            // TUI apps (Claude Code, etc.) set SGR 4 globally as decoration.
-            // Styled underlines (curly, dotted, dashed) and colored underlines are preserved
-            // since those are intentional (e.g. Neovim LSP diagnostics use 4:3 + SGR 58).
-            // Suppress plain single underlines without custom color — TUI apps like
-            // Claude Code set SGR 4 globally as decoration and never clear it.
-            // Styled underlines (curly 4:3, dotted 4:4, dashed 4:5) and colored
-            // underlines (SGR 58) are always rendered (Neovim LSP diagnostics, etc.)
+            // 0.6.22 — render-side filter: cell decorations (underline /
+            // strikethrough) are visually meaningful only on cells that
+            // carry a visible glyph. On space (0x20) and null cells, the
+            // decoration has nothing to decorate — but our cells still
+            // carry the SGR attrs from when they were written / scrolled
+            // in. Drawing strikethrough or underline on those produces
+            // the long "horizontal-line on otherwise-blank row" artifact
+            // users see when TUI apps (Claude Code, etc.) leave SGR 9 /
+            // SGR 4 active across rows. Skipping the draw on space cells
+            // is purely cosmetic — the underlying attrs remain intact —
+            // but eliminates the visual noise without policing what apps
+            // are allowed to emit.
+            const bool isGlyphCell = (c.codepoint != ' ' && c.codepoint != 0);
+
+            // Underline rendering (font-metric positioning like Konsole).
+            // Suppress plain single underlines without custom color — TUI apps
+            // like Claude Code set SGR 4 globally as decoration and never
+            // clear it. Styled underlines (curly 4:3, dotted 4:4, dashed 4:5)
+            // and colored underlines (SGR 58) are always rendered (Neovim LSP
+            // diagnostics, etc.) Hovered URLs always show the hint regardless
+            // of cell content.
             bool suppressUl = c.attrs.underline
                 && c.attrs.underlineStyle == UnderlineStyle::Single
                 && !c.attrs.underlineColor.isValid();
-            if ((c.attrs.underline && !suppressUl) || isHoveredUrl) {
+            const bool drawUnderline =
+                ((c.attrs.underline && !suppressUl) || isHoveredUrl) &&
+                (isHoveredUrl || isGlyphCell);   // hover hints draw on space too
+            if (drawUnderline) {
                 QColor ulColor = c.attrs.underlineColor.isValid() ? c.attrs.underlineColor : fg;
                 // Position underline at the font's underline position (under baseline)
                 // This matches Konsole behavior and makes decorative underlines (used by
@@ -779,7 +794,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 default: break;
                 }
             }
-            if (c.attrs.strikethrough) {
+            if (c.attrs.strikethrough && isGlyphCell) {
                 p.setPen(fg);
                 int sy = px_y + m_cellHeight / 2;
                 p.drawLine(px_x, sy, px_x + m_cellWidth - 1, sy);
