@@ -1504,6 +1504,10 @@ void MainWindow::onTabChanged(int index) {
     }
     // Update status bar immediately so CWD/git/process reflect the new tab
     updateStatusBar();
+    // 0.6.22 — Review Changes enabled state is tab-local (different tabs
+    // can be in different repos / states). Re-check against the new tab's
+    // cwd on every switch.
+    refreshReviewButton();
 
 #ifdef ANTS_LUA_PLUGINS
     // 0.6.9 — fire `pane_focused` so plugins can swap context (per-pane
@@ -2138,7 +2142,14 @@ void MainWindow::setupClaudeIntegration() {
     connect(m_claudeIntegration, &ClaudeIntegration::fileChanged,
             this, [this](const QString &path) {
         showStatusMessage(QString("Claude edited: %1").arg(path), 3000);
-        m_claudeReviewBtn->show();
+        // 0.6.22 — refreshReviewButton decides visibility + enabled state:
+        //   * not a git repo (or no cwd) → hidden entirely
+        //   * git repo with no diff     → visible but disabled
+        //   * git repo with diff        → visible and enabled
+        // This replaces the old unconditional show() which could leave
+        // the button visible in non-git contexts (where clicking it
+        // only produced a "No changes detected" toast).
+        refreshReviewButton();
     });
 
     connect(m_claudeIntegration, &ClaudeIntegration::permissionRequested,
@@ -2657,6 +2668,65 @@ void MainWindow::showTabColorMenu(int tabIndex) {
     menu.exec(QCursor::pos());
 }
 
+void MainWindow::refreshReviewButton() {
+    if (!m_claudeReviewBtn) return;
+
+    auto *t = focusedTerminal();
+    if (!t) t = currentTerminal();
+    if (!t) {
+        // No active terminal — button has nothing to review against.
+        m_claudeReviewBtn->hide();
+        return;
+    }
+
+    const QString cwd = t->shellCwd();
+    if (cwd.isEmpty()) {
+        m_claudeReviewBtn->hide();
+        return;
+    }
+
+    // Async git state check. Default-hide while the check is in flight
+    // — hide() rather than disable() here, because non-git repos are
+    // the common case we're trying to stop cluttering the status bar.
+    // The finished handler promotes to visible+enabled only when a
+    // real diff is present.
+    auto *proc = new QProcess(this);
+    proc->setWorkingDirectory(cwd);
+    proc->setProgram("git");
+    // Compare worktree + index against HEAD. Exit codes:
+    //   0   = clean repo (no diff)
+    //   1   = diff present
+    //   128 = not a git repo / bad ref / git internal error
+    proc->setArguments({"diff", "--quiet", "HEAD"});
+
+    QPointer<QPushButton> btn = m_claudeReviewBtn;
+    QPointer<QProcess> guard = proc;
+    connect(proc, &QProcess::finished, this,
+            [btn, guard](int exitCode, QProcess::ExitStatus status) {
+        if (btn) {
+            if (status != QProcess::NormalExit) {
+                btn->hide();           // git crashed — treat as no-repo
+            } else if (exitCode == 1) {
+                btn->setEnabled(true); // diff present
+                btn->show();
+            } else if (exitCode == 0) {
+                btn->setEnabled(false);// clean repo
+                btn->show();           // show as disabled so user sees Claude edited something
+            } else {
+                btn->hide();           // 128 / other — not a git repo
+            }
+        }
+        if (guard) guard->deleteLater();
+    });
+    connect(proc, &QProcess::errorOccurred, this,
+            [btn, guard](QProcess::ProcessError) {
+        // git missing / perm denied / process never started.
+        if (btn) btn->hide();
+        if (guard) guard->deleteLater();
+    });
+    proc->start();
+}
+
 void MainWindow::showDiffViewer() {
     auto *t = focusedTerminal();
     if (!t) return;
@@ -2682,6 +2752,11 @@ void MainWindow::showDiffViewer() {
 
     if (diff.isEmpty()) {
         showStatusMessage("No changes detected in git", 3000);
+        // 0.6.22 — re-check the button state so a second click doesn't
+        // repeat the same toast. refreshReviewButton will disable (or
+        // hide) as appropriate; future fileChanged events / tab switches
+        // re-run it and flip back to enabled when diffs exist.
+        refreshReviewButton();
         return;
     }
 

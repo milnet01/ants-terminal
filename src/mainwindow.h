@@ -183,6 +183,12 @@ private:
     void setupClaudeIntegration();
     void updateClaudeThemeColors();
     void showDiffViewer();
+    // Re-check git diff state and enable/disable the Review Changes
+    // button accordingly. Async (QProcess) so it never blocks the UI
+    // thread. Called on fileChanged events, tab switches, and after
+    // the diff viewer finds no changes (to avoid clicking a button
+    // that then shows "no changes" again).
+    void refreshReviewButton();
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS

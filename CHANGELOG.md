@@ -29,6 +29,17 @@ suppression works at the bottom too.
 
 ### Fixed
 
+- **"Review Changes" button is now state-reactive.** User-reported:
+  clicking the button sometimes produced a "No changes detected" toast
+  and did nothing else, because the button was shown unconditionally
+  on every `fileChanged` signal without checking whether a diff
+  actually existed by the time the user clicked. Three-state design:
+  `git diff --quiet HEAD` (async, off the UI thread) determines
+  (a) **hidden** — no active terminal, no cwd, or cwd is not a git
+  repo; (b) **visible + disabled** — clean git repo (Claude edited
+  something but diff is gone); (c) **visible + enabled** — real diff
+  present. Re-checked on `fileChanged`, on tab switch, and after the
+  diff viewer finds empty output.
 - **Add-to-Allowlist rule generalisation now covers every shell
   splitter.** `generalizeRule()` previously only handled `cd X && cmd`
   (and even that dropped the `cd` prefix, producing rules that Claude
