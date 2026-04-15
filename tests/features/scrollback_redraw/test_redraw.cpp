@@ -77,6 +77,112 @@ int runScenario(const char *scenarioName, const char *clearSeq, bool repaintIden
 
 }  // namespace
 
+// Stronger Ink-overflow-repaint scenario: emits the exact byte-sequence the
+// ink/ansi-escapes `clearTerminal` constant produces when Ink's
+// renderInteractiveFrame decides a frame is overflowing
+// (ink/build/ink.js:705 shouldClearTerminal=true):
+//
+//   CSI 2J   CSI 3J   CSI H   <fullStaticOutput + output>
+//
+// Two invariants this scenario pins down, beyond the existing
+// "scrollback must not grow by L2 lines":
+//   (a) Pre-existing scrollback from phase 1 must NOT be wiped — the
+//       CSI 3J in this pattern is Ink's frame-reset marker, NOT the user
+//       asking to delete their conversation history.
+//   (b) The subsequent replay (phase 2 content) must not duplicate into
+//       scrollback even though the mode-3 clear historically bypassed the
+//       suppression window.
+int runInkOverflowScenario() {
+    TerminalGrid grid(kRows, kCols);
+    VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
+
+    auto feed = [&](const std::string &s) {
+        parser.feed(s.data(), static_cast<int>(s.size()));
+    };
+
+    // Phase 1 — natural streaming output. Produces kLinesPerPhase - kRows
+    // lines of scrollback the user expects to be able to scroll up to read.
+    for (int i = 0; i < kLinesPerPhase; ++i) {
+        feed("transcript line " + std::to_string(i) + "\r\n");
+    }
+    const int sbAfterPhase1 = grid.scrollbackSize();
+
+    // Phase 2 — Ink's overflow-repaint: CSI 2J CSI 3J CSI H + full replay.
+    // This is the exact byte-burst ink/ansi-escapes clearTerminal emits.
+    feed("\x1b[2J\x1b[3J\x1b[H");
+    for (int i = 0; i < kLinesPerPhase; ++i) {
+        feed("transcript line " + std::to_string(i) + "\r\n");
+    }
+    const int sbAfterPhase2 = grid.scrollbackSize();
+
+    const int growth = sbAfterPhase2 - sbAfterPhase1;
+    const int threshold = kRows + 10;
+
+    int failures = 0;
+
+    // Invariant (a): scrollback must not have been wiped.
+    if (sbAfterPhase2 < sbAfterPhase1 - kRows) {
+        std::fprintf(stderr,
+                     "[ink-overflow-repaint] FAIL: scrollback was wiped — "
+                     "phase1=%d phase2=%d (Ink CSI 3J was treated as "
+                     "user clear-scrollback instead of frame-reset).\n",
+                     sbAfterPhase1, sbAfterPhase2);
+        failures++;
+    }
+    // Invariant (b): no duplication — growth stays bounded.
+    if (growth > threshold) {
+        std::fprintf(stderr,
+                     "[ink-overflow-repaint] FAIL: scrollback grew by %d "
+                     "lines across the Ink repaint (threshold %d) — the "
+                     "replay duplicated into scrollback.\n",
+                     growth, threshold);
+        failures++;
+    }
+    if (failures == 0) {
+        std::fprintf(stderr,
+                     "[ink-overflow-repaint] phase1=%d phase2=%d growth=%d "
+                     "threshold=%d PASS\n",
+                     sbAfterPhase1, sbAfterPhase2, growth, threshold);
+    }
+    return failures;
+}
+
+// Standalone CSI 3J (no recent CSI 2J) must still clear scrollback — this
+// is the explicit user-initiated "clear scrollback" semantics. Regression
+// guard for the Ink-overflow fix: make sure we didn't break the legitimate
+// meaning of mode 3.
+int runStandaloneMode3Scenario() {
+    TerminalGrid grid(kRows, kCols);
+    VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
+
+    auto feed = [&](const std::string &s) {
+        parser.feed(s.data(), static_cast<int>(s.size()));
+    };
+
+    for (int i = 0; i < kLinesPerPhase; ++i) {
+        feed("pre-clear line " + std::to_string(i) + "\r\n");
+    }
+    const int sbBefore = grid.scrollbackSize();
+    if (sbBefore == 0) {
+        std::fprintf(stderr, "[standalone-3J] FAIL: setup didn't populate scrollback\n");
+        return 1;
+    }
+
+    // Standalone CSI 3J — no preceding CSI 2J. User-initiated clear.
+    feed("\x1b[3J");
+    const int sbAfter = grid.scrollbackSize();
+
+    if (sbAfter != 0) {
+        std::fprintf(stderr,
+                     "[standalone-3J] FAIL: scrollback=%d after standalone "
+                     "CSI 3J — user's clear-scrollback request was ignored.\n",
+                     sbAfter);
+        return 1;
+    }
+    std::fprintf(stderr, "[standalone-3J] sb=%d → 0  PASS\n", sbBefore);
+    return 0;
+}
+
 int main() {
     // Canonical + equivalent-effect variants. Claude Code uses CSI 2J + CSI H
     // (the first two); some TUIs and older terminals use CSI H + CSI 0J
@@ -88,6 +194,8 @@ int main() {
     failures += runScenario("diverged-repaint-2J",    "\x1b[2J\x1b[H",         /*identical=*/false);
     failures += runScenario("identical-repaint-0J",   "\x1b[H\x1b[0J",         /*identical=*/true);
     failures += runScenario("identical-repaint-1J",   "\x1b[24;80H\x1b[1J\x1b[H", /*identical=*/true);
+    failures += runInkOverflowScenario();
+    failures += runStandaloneMode3Scenario();
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d scenario(s) failed.\n", failures);

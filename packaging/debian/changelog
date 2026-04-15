@@ -1,3 +1,37 @@
+ants-terminal (0.6.26-1) unstable; urgency=medium
+
+  * Ink-TUI overflow-repaint no longer wipes scrollback or duplicates
+    the replay. CSI 2J followed within 50 ms by CSI 3J on the main
+    screen (Ink's clearTerminal: CSI 2J + CSI 3J + CSI H + fullStatic
+    + output) is now recognised as a frame-reset marker — scrollback
+    is preserved and the 0.6.22 suppression window is armed for the
+    incoming replay. Standalone CSI 3J still clears scrollback as the
+    user explicitly requested. Two new conformance scenarios in
+    tests/features/scrollback_redraw pin both behaviours.
+  * Status bar is now height-consistent (32 px floor). Previously the
+    bar grew when the transient "Add to allowlist" button appeared
+    and shrank when it went away, because QStatusBar's size hint
+    tracks its tallest child.
+  * "Review Changes" button now matches sibling status-bar buttons
+    via the global QPushButton stylesheet. The 0.6.26 "bold at 11 px
+    to fix Gruvbox contrast" attempt produced squished small-caps
+    rendering on Fusion + monospace. Distinct disabled state (dashed
+    border + italic + muted fg) makes clean-repo visibility unambiguous.
+  * Git-branch chip now has a vertical divider separating it from the
+    transient-status slot, visible on every theme including the
+    low-contrast ones where the chip treatment alone blended in.
+  * Focus auto-returns to the active terminal when focus lands on
+    chrome widgets with no dialog open — clicking a status bar
+    button or closing a menu no longer parks keystrokes on the chrome.
+  * Claude Code context-usage progress bar is hidden until a real
+    non-zero percent arrives; fresh tabs no longer show a persistent
+    0% widget.
+  * Tab-colour badge replaced with a vertical gradient (transparent
+    top → chosen colour bottom). Active-tab accent underline is
+    preserved by excluding the bottom 2 px from the gradient area.
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Wed, 15 Apr 2026 20:00:00 +0000
+
 ants-terminal (0.6.25-1) unstable; urgency=medium
 
   * Fix viewport shifting when streaming content arrives while user is

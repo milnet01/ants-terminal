@@ -1413,22 +1413,33 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     // inside the PTY might otherwise map CSI 13;2u to.
     //
     // Regression origin: some TUIs (e.g. Claude Code v2.1+ when the
-    // clipboard carries an image) map the Kitty-encoded Shift+Enter
-    // sequence to "paste clipboard" rather than "insert newline", so
-    // pressing Shift+Enter with an image on the clipboard pasted the
-    // image instead of inserting a newline. Fixing that behaviour at
-    // the TUI layer isn't reachable from here; the terminal's defence
-    // is to send the same byte sequence that bash/readline have
-    // recognised as "literal-insert newline" for decades — `\x16\n`
-    // (quoted-insert + LF) — so the contract holds uniformly across
-    // shells and TUIs regardless of clipboard state.
+    // clipboard carries an image) map Kitty-encoded Shift+Enter *and*
+    // the readline-quoted-insert byte `\x16` to "paste clipboard"
+    // rather than "insert newline". The 0.6.23 fix (send `\x16\n`) held
+    // up in bash but broke again in Claude Code because Claude's Ink-
+    // based TUI treats `\x16` itself as paste. Fixing that at the TUI
+    // layer isn't reachable from here.
+    //
+    // Defence: when the app has bracketed-paste mode on (DECSET 2004),
+    // wrap the literal LF in bracketed-paste markers — this is the
+    // universally-honored "here is pasted text, treat it as content"
+    // signal. Ink / Claude Code reads that as a literal newline;
+    // readline (with enable-bracketed-paste, the default in bash 4.4+)
+    // also inserts the LF literally without submitting.
+    //
+    // When bracketed-paste is off (pure raw shell, legacy apps),
+    // fall back to `\x16\n` — still the best bash/readline escape
+    // hatch outside bracketed-paste mode.
     if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (mods & Qt::ShiftModifier)
         && !(mods & Qt::ControlModifier)) {
-        if (m_pty) {
-            data = QByteArray("\x16\n", 2);
-            m_pty->write(data);
+        QByteArray seq;
+        if (m_grid && m_grid->bracketedPaste()) {
+            seq = QByteArray("\x1B[200~\n\x1B[201~", 8);
+        } else {
+            seq = QByteArray("\x16\n", 2);
         }
-        if (m_broadcastCallback) m_broadcastCallback(this, QByteArray("\x16\n", 2));
+        if (m_pty) m_pty->write(seq);
+        if (m_broadcastCallback) m_broadcastCallback(this, seq);
         return;
     }
 
@@ -1600,6 +1611,14 @@ void TerminalWidget::resizeEvent(QResizeEvent *event) {
     QOpenGLWidget::resizeEvent(event);
     m_spanCacheDirty = true;
     recalcGridSize();
+    // Reposition the floating scroll-to-bottom button relative to the new
+    // geometry. Without this, it stays pinned to its old (width()-52,
+    // height()-52) coordinates and slides off the visible area when the
+    // window shrinks — or leaves a gap when the window grows. User
+    // report (2026-04-15): "button for back to bottom is now stretched
+    // and goes off the window" — the apparent stretching was actually
+    // the button clipping against the widget edge after a resize.
+    updateScrollToBottomButton();
 }
 
 void TerminalWidget::focusInEvent(QFocusEvent *) {

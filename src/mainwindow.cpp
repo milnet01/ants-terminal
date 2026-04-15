@@ -25,6 +25,10 @@
 #include <QShowEvent>
 #include <QMoveEvent>
 #include <QMenuBar>
+#include <QFrame>
+#include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QPointer>
 #include <QStatusBar>
 #include <QToolButton>
 #include <QScreen>
@@ -294,8 +298,35 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // Status bar info widgets (git branch, status message, process).
     // Transient status messages go into m_statusMessage (not statusBar()->showMessage),
     // so the git branch label stays visible to the left of them.
+    //
+    // 0.6.26 — pin the bar to a consistent minimum height. User report:
+    // status bar's height jumped when the transient "Add to allowlist"
+    // button appeared (tall, inherits global QPushButton padding) and
+    // shrank when it disappeared, leaving only label-height widgets.
+    // QStatusBar's size hint is max(child size hints); without a floor,
+    // it follows the tallest child. Pinning a floor that covers the
+    // default button height keeps the bar visually stable as children
+    // come and go. Value chosen to match global QPushButton: text height
+    // (~14px at the app font) + padding 6px·2 + border 1px·2 ≈ 28–30px,
+    // plus a small QStatusBar internal margin → 32px is comfortable.
+    statusBar()->setMinimumHeight(32);
+
     m_statusGitBranch = new QLabel(this);
     statusBar()->addWidget(m_statusGitBranch);
+
+    // 0.6.26 — the "chip" styling on the branch label (rounded bg + border)
+    // blends into the status bar background on low-contrast themes (Gruvbox
+    // especially). A hard QFrame::VLine between the branch label and the
+    // transient-status slot gives a deterministic divider that survives
+    // every theme. Cheap widget, painted from the theme's border color via
+    // the global QFrame stylesheet / palette.
+    m_statusGitSep = new QFrame(this);
+    m_statusGitSep->setFrameShape(QFrame::VLine);
+    m_statusGitSep->setFrameShadow(QFrame::Plain);
+    m_statusGitSep->setFixedWidth(1);
+    m_statusGitSep->setContentsMargins(0, 4, 0, 4);
+    m_statusGitSep->hide();  // shown whenever the branch label is shown
+    statusBar()->addWidget(m_statusGitSep);
 
     m_statusMessage = new QLabel(this);
     statusBar()->addWidget(m_statusMessage, 1);
@@ -309,6 +340,53 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateStatusBar);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateTabTitles);
     m_statusTimer->start();
+
+    // 0.6.26 — auto-return focus to the active terminal whenever focus
+    // lands on "chrome" widgets (status bar buttons, tab bar, menu bar
+    // leftovers) without an active dialog. User report: "If there is no
+    // window open, please always ensure focus is set to the terminal
+    // prompt." Clicking a status bar button (Review Changes, Add to
+    // allowlist, etc.) previously left keyboard focus parked on the
+    // button or status bar, so subsequent keystrokes didn't reach the
+    // terminal until the user clicked it.
+    //
+    // Redirection rule: walk the new focus widget's parent chain.
+    //   - TerminalWidget / QDialog / QMenu / QMenuBar / CommandPalette
+    //     / text-input widgets → accept focus (user legitimately meant
+    //     to type into, or is interacting with, that widget).
+    //   - QStatusBar / QTabBar → mark for redirect.
+    //   - Everything else (bare QMainWindow, QWidget chrome) → redirect.
+    // Gated on !activeModalWidget() so a modal dialog's internal focus
+    // changes aren't hijacked.
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *now) {
+        if (!now) return;                         // app-wide focus loss (Alt-Tab)
+        if (QApplication::activeModalWidget()) return;  // modal dialog owns focus
+
+        bool shouldRedirect = true;
+        for (QWidget *w = now; w; w = w->parentWidget()) {
+            if (qobject_cast<TerminalWidget *>(w)) { shouldRedirect = false; break; }
+            if (w->inherits("QDialog"))            { shouldRedirect = false; break; }
+            if (w->inherits("QMenu") ||
+                w->inherits("QMenuBar"))           { shouldRedirect = false; break; }
+            if (w->inherits("CommandPalette"))     { shouldRedirect = false; break; }
+            if (qobject_cast<QLineEdit *>(w) ||
+                qobject_cast<QTextEdit *>(w) ||
+                qobject_cast<QPlainTextEdit *>(w)) { shouldRedirect = false; break; }
+            if (w->inherits("QStatusBar") ||
+                w->inherits("QTabBar"))            { break; }  // keep shouldRedirect = true
+        }
+        if (!shouldRedirect) return;
+
+        // Defer one tick — the focusChanged signal fires *during* Qt's
+        // focus-dispatch; calling setFocus() synchronously triggers an
+        // immediate recursive focusChanged that can confuse some styles.
+        if (auto *t = focusedTerminal()) {
+            QPointer<TerminalWidget> guard(t);
+            QTimer::singleShot(0, this, [guard]() {
+                if (guard) guard->setFocus(Qt::OtherFocusReason);
+            });
+        }
+    });
 
     // Broadcast mode from config
     m_broadcastMode = m_config.broadcastMode();
@@ -1707,8 +1785,31 @@ void MainWindow::applyTheme(const QString &name) {
 
     // Status bar labels use theme colors (null-guarded for first call during construction)
     QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
+    // Git branch label gets a "chip" treatment — rounded background + border
+    // + tighter padding — so it reads as a distinct section and doesn't blend
+    // into adjacent transient status messages. User report (2026-04-15):
+    // when a status message appeared beside the branch label, the branch
+    // name visually merged with the message text. The chip gives a clean
+    // visual boundary without needing a Qt QFrame splitter (which would
+    // add vertical separators and look overwrought in a status bar).
     if (m_statusGitBranch)
-        m_statusGitBranch->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[2].name(), statusStyle));
+        m_statusGitBranch->setStyleSheet(
+            QStringLiteral("QLabel { color: %1; background: %2; border: 1px solid %3; "
+                          "border-radius: 3px; padding: 1px 8px; margin: 2px 6px 2px 4px; "
+                          "font-size: 11px; font-weight: 600; }")
+                .arg(theme.ansi[2].name(), theme.bgSecondary.name(), theme.border.name()));
+    if (m_statusGitSep)
+        // Hard divider between the branch chip and the transient-status slot.
+        // textSecondary (not border) because border is often nearly invisible
+        // against bgPrimary on low-contrast themes (Gruvbox-dark, Nord, Solarized);
+        // textSecondary is the muted-but-readable role that every theme tunes
+        // for foreground legibility. Using background-color (not palette) to
+        // paint the QFrame::VLine works around Fusion's habit of drawing
+        // VLines in the window's palette midlight/dark roles, which also
+        // disappear on dark themes.
+        m_statusGitSep->setStyleSheet(
+            QStringLiteral("QFrame { background-color: %1; border: none; }")
+                .arg(theme.textSecondary.name()));
     if (m_statusMessage)
         m_statusMessage->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.textPrimary.name(), statusStyle));
     if (m_statusProcess)
@@ -2069,19 +2170,54 @@ void MainWindow::updateClaudeThemeColors() {
             QStringLiteral("QProgressBar { border: 1px solid %1; border-radius: 3px; background: %2; font-size: 10px; color: %3; }"
                     "QProgressBar::chunk { background: %4; border-radius: 2px; }")
                 .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), th.ansi[2].name()));
-    if (m_claudeReviewBtn)
-        // :disabled uses textPrimary + italic + dissolved border. The earlier
-        // textSecondary approach (5e2ac58) still failed WCAG AA on themes
-        // where textSecondary is deliberately muted (One Dark #5C6370 on
-        // bgSecondary #21252B ≈ 3:1 contrast). Using textPrimary guarantees
-        // legibility on every theme; the italic + borderless-look combo
-        // still communicates "nothing to review right now, but the action
-        // exists" without making the label vanish.
-        m_claudeReviewBtn->setStyleSheet(
-            QStringLiteral("QPushButton { background: %1; color: %2; border: 1px solid %3; border-radius: 3px; padding: 0 6px; font-size: 10px; }"
-                    "QPushButton:hover { background: %3; }"
-                    "QPushButton:disabled { color: %2; border-color: %1; font-style: italic; }")
-                .arg(th.bgSecondary.name(), th.textPrimary.name(), th.border.name()));
+    if (m_claudeReviewBtn) {
+        // 0.6.26 — side-by-side with the "Add to allowlist" button in the
+        // status bar, the custom-styled Review Changes button looked wildly
+        // out of place (see screenshot attached to the original report).
+        // "Add to allowlist" is created at mainwindow.cpp:1234 with *no*
+        // stylesheet, so it inherits the global QPushButton rule from
+        // mainwindow.cpp:1625-1630 — that's the target styling. Stop
+        // over-styling the enabled state: reset the font to Qt's default,
+        // clear any fixedHeight so the size-hint matches its sibling.
+        //
+        // Disabled state — the button stays visible on clean git repos so
+        // the user still sees "Claude edited something" (see
+        // refreshReviewButton at mainwindow.cpp:~2763). The visual must
+        // clearly read as non-actionable without shouting. Three layered
+        // cues: italic text (typographic "this is passive"), dashed border
+        // (borrowed from common desktop-toolkit conventions for disabled
+        // chip buttons), and textSecondary on bgSecondary (muted palette).
+        // Only the :disabled selector is set on the widget, so the global
+        // QPushButton enabled/hover/pressed rules still apply for the
+        // enabled state — no duplication, no drift.
+        //
+        // Palette force-set: survives the "dim on Gruvbox" contrast issue
+        // on the enabled state regardless of how Qt composites the text
+        // rect on a statusbar-parented widget (pre-0.6.26 this was
+        // rendered dim even with the stylesheet's color property set —
+        // root cause: platform style composited a reduced-alpha overlay).
+        m_claudeReviewBtn->setFont(QFont());
+        m_claudeReviewBtn->setMinimumHeight(0);
+        m_claudeReviewBtn->setMaximumHeight(QWIDGETSIZE_MAX);
+        m_claudeReviewBtn->setStyleSheet(QStringLiteral(
+            "QPushButton:disabled {"
+            "  color: %1;"
+            "  background-color: %2;"
+            "  border: 1px dashed %3;"
+            "  font-style: italic;"
+            "}").arg(th.textSecondary.name(),
+                     th.bgSecondary.name(),
+                     th.border.name()));
+
+        QPalette pal = m_claudeReviewBtn->palette();
+        pal.setColor(QPalette::Active,   QPalette::ButtonText, th.textPrimary);
+        pal.setColor(QPalette::Inactive, QPalette::ButtonText, th.textPrimary);
+        pal.setColor(QPalette::Disabled, QPalette::ButtonText, th.textSecondary);
+        pal.setColor(QPalette::Active,   QPalette::WindowText, th.textPrimary);
+        pal.setColor(QPalette::Inactive, QPalette::WindowText, th.textPrimary);
+        pal.setColor(QPalette::Disabled, QPalette::WindowText, th.textSecondary);
+        m_claudeReviewBtn->setPalette(pal);
+    }
     if (m_claudeErrorLabel)
         m_claudeErrorLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 4px; font-size: 11px;").arg(th.ansi[1].name()));
 }
@@ -2107,10 +2243,13 @@ void MainWindow::setupClaudeIntegration() {
     m_claudeContextBar->hide();
     statusBar()->addPermanentWidget(m_claudeContextBar);
 
-    // Review Changes button (shown when Claude edits files)
+    // Review Changes button (shown when Claude edits files). Size/height
+    // intentionally left at Qt's default so it matches the sibling
+    // "Add to allowlist" button (mainwindow.cpp:1234) that inherits the
+    // global QPushButton stylesheet. updateClaudeThemeColors() applies the
+    // palette force-set for contrast without adding compact-height
+    // overrides that would re-introduce the size mismatch.
     m_claudeReviewBtn = new QPushButton("Review Changes", this);
-    m_claudeReviewBtn->setFixedHeight(18);
-    // Styled dynamically by updateClaudeThemeColors()
     m_claudeReviewBtn->hide();
     statusBar()->addPermanentWidget(m_claudeReviewBtn);
     connect(m_claudeReviewBtn, &QPushButton::clicked, this, &MainWindow::showDiffViewer);
@@ -2164,7 +2303,19 @@ void MainWindow::setupClaudeIntegration() {
 
     connect(m_claudeIntegration, &ClaudeIntegration::contextUpdated,
             this, [this](int percent) {
-        // Update context pressure bar
+        // 0.6.26 — contextUpdated(0) is emitted by ClaudeIntegration::setShellPid
+        // on every tab switch as part of the state reset (alongside
+        // stateChanged(NotRunning)). Previously we called show() here
+        // unconditionally, which re-exposed the bar at 0% immediately after
+        // the NotRunning handler had hidden it — so a fresh tab (or a tab
+        // where Claude was never started) still painted a "0%" widget in
+        // the status bar. Treat 0 as "no session / nothing to show" and
+        // hide. The bar only re-appears once Claude emits a real,
+        // non-zero context percentage (claudeintegration.cpp:333-334).
+        if (percent <= 0) {
+            m_claudeContextBar->hide();
+            return;
+        }
         m_claudeContextBar->setValue(percent);
         m_claudeContextBar->show();
         // Color-code: green < 60%, yellow 60-80%, red > 80%
@@ -2487,8 +2638,10 @@ void MainWindow::updateStatusBar() {
     if (!gitBranch.isEmpty()) {
         m_statusGitBranch->setText(" " + gitBranch);
         m_statusGitBranch->show();
+        if (m_statusGitSep) m_statusGitSep->show();
     } else {
         m_statusGitBranch->hide();
+        if (m_statusGitSep) m_statusGitSep->hide();
     }
 
     // Foreground process

@@ -89,6 +89,20 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.26" date="2026-04-15">
+      <description>
+        <p>UX polish pass — status bar consistency, focus handling, Ink overflow-repaint fix, and tab colour gradient.</p>
+        <ul>
+          <li>Claude Code (Ink/React TUI) overflow-repaint no longer destroys scrollback or duplicates the replay. <code>CSI 2J</code> followed within 50 ms by <code>CSI 3J</code> on the main screen is now treated as Ink's <code>clearTerminal</code> frame-reset marker (see <code>ink/build/ink.js:705</code>) rather than a user-initiated scrollback wipe — scrollback is preserved and the suppression window is armed for the subsequent replay. Standalone <code>CSI 3J</code> (user-initiated <code>clear -x</code>) still wipes scrollback as expected. Two new feature-conformance scenarios assert both behaviours.</li>
+          <li>Status bar is now height-stable. <code>QStatusBar</code>'s size hint had been tracking its tallest child, so the bar grew when the transient "Add to allowlist" button appeared and shrank when it went away. A 32 px minimum-height floor keeps the bar consistent whether or not a button is attached.</li>
+          <li>"Review Changes" status-bar button now matches the sibling "Add to allowlist" button's enabled look — it inherits the global <code>QPushButton</code> style instead of its own custom stylesheet (the 0.6.26 "bold to fix Gruvbox contrast" attempt made lowercase letters squish into a small-caps look on Fusion + monospace). Disabled state gets its own visual language (dashed border, italic, muted fg) so a clean-repo state reads clearly as non-actionable.</li>
+          <li>Git branch chip now has a hard vertical divider separating it from the transient-status slot, visible on low-contrast themes where the chip's rounded-background treatment was indistinguishable from the status bar background.</li>
+          <li>Focus auto-returns to the active terminal whenever focus lands on chrome widgets (status bar buttons, tab bar) with no dialog open. Clicking a status bar button, answering a prompt, etc., no longer leaves the keyboard parked on the button.</li>
+          <li>Claude Code context-usage progress bar is hidden until the first real (non-zero) context percentage arrives. A fresh tab, or a tab where Claude was never started, no longer paints a persistent "0%" widget.</li>
+          <li>Tab-colour badge replaced with a vertical gradient (transparent top → chosen colour bottom). The active-tab 2 px accent underline is preserved by excluding the bottom two pixels from the gradient area.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.25" date="2026-04-15">
       <description>
         <p>User-reported scrollback regression fix plus packaging-rule hardening.</p>

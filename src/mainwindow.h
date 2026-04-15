@@ -28,6 +28,7 @@ class ClaudeIntegration;
 class ColoredTabBar;
 class ColoredTabWidget;
 class QSplitter;
+class QFrame;
 class XcbPositionTracker;
 #ifdef ANTS_LUA_PLUGINS
 class PluginManager;
@@ -115,6 +116,7 @@ private:
 
     // Status bar widgets
     QLabel *m_statusGitBranch = nullptr;
+    QFrame *m_statusGitSep = nullptr;  // vertical divider after branch chip
     QLabel *m_statusMessage = nullptr;
     QLabel *m_statusProcess = nullptr;
     QTimer *m_statusTimer = nullptr;

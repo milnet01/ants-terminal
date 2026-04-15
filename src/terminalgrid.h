@@ -461,11 +461,27 @@ private:
     // the window *extends* it (kCsiClearRedrawWindowMs from last scrollUp),
     // so the window survives the entire repaint burst regardless of its
     // length, but closes promptly when the app goes quiet. Alt-screen is
-    // unaffected (already bypasses scrollback). Mode-3 erase (which clears
-    // scrollback explicitly) is also unaffected — user opted in.
+    // unaffected (already bypasses scrollback).
+    //
+    // 0.6.26 — Ink-repaint handling. Claude Code (Ink/React TUI) v2.1+
+    // emits `CSI 2J + CSI 3J + CSI H + fullStaticOutput + output` from
+    // renderInteractiveFrame when the rendered frame overflows the
+    // viewport (see ink/build/ink.js:700 and ansi-escapes/base.js:124
+    // clearTerminal = eraseScreen + "\x1B[3J" + "\x1B[H"). Naive
+    // handling of that sequence destroys the user's scrollback (mode 3
+    // clear) AND still leaves subsequent duplicates if the suppression
+    // window closes mid-repaint. The `m_recentMode2Timer` tracks whether
+    // CSI 2J just fired; if CSI 3J arrives inside that window it's
+    // treated as Ink's overflow-repaint marker — scrollback clear is
+    // *skipped* (preserving history) and the suppression window is
+    // re-armed (preventing duplicates as the replay streams in).
+    // Standalone CSI 3J (e.g. `printf '\e[3J'` at a shell prompt, no
+    // recent CSI 2J) still clears scrollback as the user requested.
     bool m_csiClearRedrawActive = false;
     QElapsedTimer m_csiClearRedrawTimer;
+    QElapsedTimer m_recentMode2Timer;
     static constexpr qint64 kCsiClearRedrawWindowMs = 250;
+    static constexpr qint64 kMode2FollowupWindowMs = 50;
 
     // Alt screen buffer
     bool m_altScreenActive = false;

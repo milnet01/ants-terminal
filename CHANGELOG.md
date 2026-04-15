@@ -10,6 +10,74 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.6.26] — 2026-04-15
+
+**Theme:** UX polish — status bar consistency, focus handling, Ink
+overflow-repaint fix, tab-colour gradient.
+
+### Fixed
+
+- **Ink overflow-repaint no longer wipes scrollback or duplicates
+  the replay.** Claude Code's Ink/React TUI emits
+  `CSI 2J + CSI 3J + CSI H + fullStaticOutput + output` whenever its
+  rendered frame overflows the viewport (see `ink/build/ink.js:705`,
+  `ansi-escapes/base.js:124` `clearTerminal`). Previously the `CSI 3J`
+  part of that burst wiped the user's conversation history and the
+  subsequent replay duplicated into scrollback. Now `CSI 3J` arriving
+  within 50 ms of `CSI 2J` on the main screen is classified as Ink's
+  frame-reset marker: scrollback is preserved, and the 0.6.22
+  suppression window is armed for the replay so the scroll-off lines
+  don't duplicate. Standalone `CSI 3J` (user-initiated `clear -x` or
+  similar) still wipes scrollback as the user requested. Two new
+  conformance scenarios — `ink-overflow-repaint` and `standalone-3J`
+  — in `tests/features/scrollback_redraw/test_redraw.cpp` pin both
+  behaviours.
+- **Claude Code context progress bar no longer paints persistent
+  "0%".** `ClaudeIntegration::setShellPid` emits
+  `stateChanged(NotRunning)` + `contextUpdated(0)` on every tab
+  switch. The `stateChanged` slot hid the bar; the `contextUpdated(0)`
+  slot unconditionally re-showed it. Fresh tabs, or tabs where Claude
+  was never started, now stay hidden until a real non-zero percent
+  is emitted.
+- **Review Changes button no longer renders in small-caps monospace.**
+  The 0.6.26-in-progress "bold at 11 px to clear Gruvbox contrast"
+  attempt combined with Qt's app-wide monospace font (main.cpp:150-153)
+  and Fusion style produced squished lowercase letterforms that read
+  as uppercase. Button now inherits the global `QPushButton`
+  stylesheet so it matches the sibling "Add to allowlist" button.
+  Disabled state gets its own distinctive visual (dashed border +
+  italic + muted fg) so a clean-repo state reads clearly as
+  non-actionable.
+- **Status bar is now height-consistent.** `QStatusBar`'s size hint
+  tracks its tallest child, so the bar jumped when the transient
+  "Add to allowlist" button appeared and shrank when it went away.
+  A 32 px `setMinimumHeight` floor covering the default
+  `QPushButton` size keeps the bar stable regardless of transient
+  widget presence.
+
+### Added
+
+- **Git-branch chip ↔ transient-status-slot divider.** A 1-px
+  vertical `QFrame::VLine` painted in `textSecondary` (not `border`,
+  because `border` is nearly invisible against `bgPrimary` on
+  low-contrast themes like Gruvbox-dark and Nord). Gives a
+  deterministic visual boundary every theme renders correctly.
+- **Focus auto-return to active terminal.** Connected to
+  `QApplication::focusChanged`. When focus lands on chrome widgets
+  (`QStatusBar`, `QTabBar`, bare `QMainWindow`) with no active modal,
+  keyboard focus is deferred-set back to the terminal one tick
+  later. Dialogs, menus, command palette, `QLineEdit`/`QTextEdit`
+  input widgets, and `TerminalWidget` descendants all retain focus
+  legitimately — the whitelist is specifically tuned to avoid
+  hijacking user-meant focus.
+- **Tab-colour gradient.** Per-tab colour badge changed from a 3 px
+  bottom strip to a vertical gradient — transparent at the top,
+  140/255 alpha of the chosen colour at the bottom. Tab text stays
+  readable across every theme while the colour reads as an
+  intentional wash. The active-tab 2 px accent underline
+  (`QTabBar::tab:selected { border-bottom }`) is preserved by
+  excluding the bottom 2 px from the gradient area.
+
 ## [0.6.25] — 2026-04-15
 
 **Theme:** a user-reported scrollback regression from 0.6.24's

@@ -1093,6 +1093,20 @@ void TerminalGrid::eraseInDisplay(int mode) {
         (mode == 0 && m_cursorRow == 0 && m_cursorCol == 0) ||
         (mode == 1 && m_cursorRow == m_rows - 1 && m_cursorCol == m_cols - 1);
 
+    // 0.6.26 — detect Ink's overflow-repaint: CSI 2J CSI 3J CSI H
+    // (clearTerminal in ansi-escapes). The CSI 3J in that sequence is NOT
+    // the user asking to wipe scrollback — it's Ink forcing a viewport
+    // reset before it replays its fullStaticOutput + dynamic frame (see
+    // ink/build/ink.js:705). When we see mode 3 within a few ms of mode 2
+    // on main screen, preserve the scrollback (conversation history is
+    // what the user cares about) and extend the suppression window so the
+    // replay's scrollUps don't duplicate into scrollback.
+    const bool isInkOverflowRepaint =
+        mode == 3 &&
+        m_recentMode2Timer.isValid() &&
+        m_recentMode2Timer.elapsed() < kMode2FollowupWindowMs &&
+        !m_altScreenActive;
+
     switch (mode) {
     case 0:
         eraseInLine(0);
@@ -1105,15 +1119,32 @@ void TerminalGrid::eraseInDisplay(int mode) {
     case 2:
     case 3:
         for (int r = 0; r < m_rows; ++r) clearRow(r);
-        if (mode == 3) m_scrollback.clear();
+        // Mode 3 clears scrollback *unless* it's the Ink-repaint pattern.
+        // Standalone `\e[3J` (no recent 2J, or on alt screen) is the
+        // explicit user-asked clear-scrollback semantics.
+        if (mode == 3 && !isInkOverflowRepaint) m_scrollback.clear();
         break;
     }
 
-    // 0.6.22 (extended 0.6.24) — open the scrollback-push suppression
-    // window on any main-screen full-clear. Mode 3 already nukes
-    // scrollback by request, so no window needed. Alt-screen doesn't
-    // touch scrollback at all, so skip there too.
-    if (fullClearLikeMode2 && mode != 3 && !m_altScreenActive) {
+    // Record the mode-2 time so a follow-up mode-3 in the same byte-burst
+    // can be classified as Ink-repaint instead of user-clear.
+    if (mode == 2) {
+        m_recentMode2Timer.start();
+    }
+
+    // 0.6.22 (extended 0.6.24, 0.6.26) — open the scrollback-push
+    // suppression window on any main-screen full-clear. The window is
+    // armed for mode 2 canonically; mode 0 from (0,0); mode 1 from
+    // bottom-right; AND mode 3 when it's part of Ink's overflow repaint
+    // (because that sequence is followed by a fullStaticOutput replay
+    // whose overflow lines would otherwise duplicate into scrollback).
+    // Standalone mode 3 (user-initiated clear) still gets no window —
+    // the user explicitly asked for scrollback to be wiped and anything
+    // that follows is normal shell output they want to keep.
+    const bool armWindow =
+        (fullClearLikeMode2 && mode != 3 && !m_altScreenActive) ||
+        isInkOverflowRepaint;
+    if (armWindow) {
         m_csiClearRedrawActive = true;
         m_csiClearRedrawTimer.start();
     }
