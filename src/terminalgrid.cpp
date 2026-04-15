@@ -1220,17 +1220,30 @@ void TerminalGrid::scrollUp(int count) {
             }
         }
 
-        // Preserve the top screen line in scrollback only when:
+        // Preserve the top screen line in scrollback when:
         //   - we're on the real (main) screen, not the alt screen,
-        //   - the scroll region starts at row 0 (DECSTBM),
-        //   - scrollback insertion hasn't been paused by the viewport
-        //     layer (happens while the user is scrolled up in history —
-        //     TUI redraws like Claude Code's would otherwise interleave
-        //     intermediate frames into the scrollback the user is trying
-        //     to read),
-        //   - and we're not inside a post-CSI-2J redraw window.
+        //   - the scroll region starts at row 0 (DECSTBM), AND
+        //   - we're not inside the post-full-clear suppression window
+        //     *with the user at the bottom*. The window only guards
+        //     against the "scrollback doubles on TUI repaint" symptom,
+        //     which is only observable when the user can see the tail
+        //     (scrollOffset == 0); suppressing pushes while the user is
+        //     scrolled up (scrollOffset > 0) removed content they were
+        //     about to read and — because scrollbackPushed() stayed
+        //     constant — also kept TerminalWidget's scroll anchor from
+        //     advancing, so the screen-scroll in scrollUp() bled into
+        //     viewport rows that overlapped the screen. Fix (0.6.25):
+        //     when the user is scrolled up, ALWAYS push — the anchor
+        //     in TerminalWidget::onOutputReceived advances scrollOffset
+        //     by the push count, keeping viewStart stable. Accepting
+        //     the push pollution here is the lesser evil: the user's
+        //     viewport stays readable, which is the invariant they
+        //     actually notice. See tests/features/scrollback_redraw/
+        //     spec.md §Viewport-stable.
+        const bool suppressForDoublingGuard =
+            inCsiClearWindow && !m_scrollbackInsertPaused;
         if (m_scrollTop == 0 && !m_altScreenActive &&
-            !m_scrollbackInsertPaused && !inCsiClearWindow) {
+            !suppressForDoublingGuard) {
             m_scrollback.push_back(std::move(m_screenLines[m_scrollTop]));
             ++m_scrollbackPushed;
             if (static_cast<int>(m_scrollback.size()) > m_maxScrollback)

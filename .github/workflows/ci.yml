@@ -82,6 +82,16 @@ jobs:
         run: |
           groff -man -Tutf8 -wall packaging/linux/ants-terminal.1 > /dev/null
 
+      # Packaging version-drift gate. Runs the same
+      # packaging_version_drift audit rule the AuditDialog surfaces —
+      # but here it fails CI when any packaging file disagrees with
+      # CMakeLists.txt project(VERSION). Closes the "rule exists but
+      # nobody ran it" gap that let 0.6.23 ship with four stale
+      # packaging files. Script is the single source of truth;
+      # src/auditdialog.cpp invokes the same script.
+      - name: Check packaging version drift
+        run: bash packaging/check-version-drift.sh
+
       # Shell completion lint (H4 — distribution readiness). Each shell's
       # parse-only flag (`-n` for bash/zsh, `--no-execute` for fish) catches
       # syntax regressions without running the completion logic, matching

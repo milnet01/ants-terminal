@@ -1,3 +1,27 @@
+ants-terminal (0.6.25-1) unstable; urgency=medium
+
+  * Fix viewport shifting when streaming content arrives while user is
+    scrolled up in history. Previously the 0.6.21 pause and the
+    0.6.22/0.6.24 CSI-clear window both skipped scrollback pushes,
+    freezing the scroll anchor and letting the screen-scroll mechanics
+    push content through the user's viewport. Always push while
+    scrolled up — the anchor advances m_scrollOffset to compensate.
+    The doubling-protection window still fires at the bottom (the only
+    case where the doubling symptom is observable by the user).
+    Feature test asserts viewport content is invariant across
+    streaming for deep-scroll and shallow-scroll cases.
+  * Extend the packaging-version-drift audit rule to scan the AppStream
+    metainfo file (packaging/linux/org.ants.Terminal.metainfo.xml); the
+    file couples to every release but the rule did not previously cover
+    it. Detected via the ninth periodic audit (2026-04-15).
+  * Move the check logic out of src/auditdialog.cpp and into a
+    standalone packaging/check-version-drift.sh script, and wire it
+    into the CI pipeline so drift fails a release PR before merge
+    (closes the honor-system gap that let the 0.6.23 release ship with
+    four stale packaging files).
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Wed, 15 Apr 2026 17:00:00 +0000
+
 ants-terminal (0.6.24-1) unstable; urgency=medium
 
   * Status-bar "Add to allowlist" button now persists for the full life

@@ -470,40 +470,28 @@ void AuditDialog::populateChecks() {
     // (spec, PKGBUILD, debian/changelog, README) that had silently lagged
     // three releases behind the CMake floor.
     //
-    // Extracts the truth from CMakeLists then diffs each packaging file. Emits
-    // one finding per drifted file. No-op on projects without a
-    // `project(... VERSION X.Y.Z ...)` line.
+    // 0.6.25 — The ninth audit (2026-04-15) flagged two failures:
+    //   1. The rule missed AppStream metainfo (file couples to every
+    //      release, was not scanned).
+    //   2. The rule ran only when the dev remembered to open the audit
+    //      dialog — honor-system enforcement failed for the 0.6.23 tag.
+    // Both closed by extracting the check logic into
+    // `packaging/check-version-drift.sh` and invoking that script from
+    // here AND from `.github/workflows/ci.yml`. The script is the single
+    // source of truth; auditdialog and CI can't drift apart from each
+    // other any more. The script itself covers AppStream metainfo too.
     //
-    // Note on regex escapes: the spec scan keys off the literal "Version: "
-    // token; the `$$` is a bash escape of a literal `$`, needed so the shell
-    // doesn't expand. The regex is deliberately tolerant of whitespace
-    // variants (e.g. "Version:  0.6.22" with multiple spaces).
+    // The script emits one finding per drifted file on stdout in the
+    // audit `FILE:LINE: message` format, and exits with a count of
+    // drifts (capped at 125). The audit dialog's parser ignores the
+    // exit code; CI uses the non-zero exit to fail the job. No-op
+    // (exit 0, no output) when CMakeLists.txt is absent or unparseable.
     m_checks.append({
         "packaging_version_drift", "Packaging Version Drift",
         "Packaging files out of sync with CMakeLists.txt project(VERSION)",
         "Build",
-        "cml=CMakeLists.txt; [ -f \"$cml\" ] || exit 0; "
-        "truth=$(grep -oE 'project\\s*\\([^)]*VERSION\\s+[0-9]+\\.[0-9]+\\.[0-9]+' \"$cml\" "
-        "        | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+$' | head -1); "
-        "[ -z \"$truth\" ] && exit 0; "
-        "check() { "
-        "  local file=$1 pattern=$2 label=$3; "
-        "  [ -f \"$file\" ] || return; "
-        "  local got=$(grep -oE \"$pattern\" \"$file\" | head -1); "
-        "  [ -z \"$got\" ] && return; "
-        "  local v=$(echo \"$got\" | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -1); "
-        "  [ -z \"$v\" ] && return; "
-        "  if [ \"$v\" != \"$truth\" ]; then "
-        "    local lineno=$(grep -nE \"$pattern\" \"$file\" | head -1 | cut -d: -f1); "
-        "    printf '%s:%s: %s version %s drifts from CMakeLists.txt %s\\n' "
-        "      \"$file\" \"$lineno\" \"$label\" \"$v\" \"$truth\"; "
-        "  fi; "
-        "}; "
-        "check packaging/opensuse/ants-terminal.spec 'Version:\\s+[0-9]+\\.[0-9]+\\.[0-9]+' 'openSUSE spec'; "
-        "check packaging/archlinux/PKGBUILD 'pkgver=[0-9]+\\.[0-9]+\\.[0-9]+' 'Arch PKGBUILD'; "
-        "check packaging/debian/changelog 'ants-terminal \\([0-9]+\\.[0-9]+\\.[0-9]+' 'Debian changelog'; "
-        "check packaging/linux/ants-terminal.1 'ants-terminal [0-9]+\\.[0-9]+\\.[0-9]+' 'Man page'; "
-        "check README.md 'Current version:.*[0-9]+\\.[0-9]+\\.[0-9]+' 'README'",
+        "[ -x packaging/check-version-drift.sh ] "
+        "  && bash packaging/check-version-drift.sh || exit 0",
         CheckType::CodeSmell, Severity::Minor, {}, false, true, nullptr
     });
 

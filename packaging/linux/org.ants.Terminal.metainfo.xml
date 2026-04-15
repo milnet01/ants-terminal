@@ -89,6 +89,17 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.25" date="2026-04-15">
+      <description>
+        <p>User-reported scrollback regression fix plus packaging-rule hardening.</p>
+        <ul>
+          <li>Scrolled-up viewport no longer shifts when streaming content arrives. The 0.6.21 pause and 0.6.22/0.6.24 CSI-clear window both skipped scrollback pushes, which froze the scroll anchor and let screen-scroll mechanics bleed into the user's viewport. Fix: push to scrollback while the user is scrolled up (anchor adjusts <code>m_scrollOffset</code> to compensate); the doubling-protection window still fires for the at-bottom case where the doubling symptom is observable.</li>
+          <li>Extended the <code>packaging-version-drift</code> audit rule to scan <code>org.ants.Terminal.metainfo.xml</code>. The file's <code>&lt;release version=&gt;</code> entry is version-coupled to every release but was not previously checked. Flagged by the ninth periodic audit (2026-04-15).</li>
+          <li>Extracted the drift-check logic into <code>packaging/check-version-drift.sh</code> — a standalone script that is the single source of truth. Both <code>src/auditdialog.cpp</code> and the CI workflow invoke the same script, so they can no longer drift apart.</li>
+          <li>Wired the script into <code>.github/workflows/ci.yml</code> as a gating check; a PR that bumps CMakeLists.txt without updating every packaging file now fails CI instead of merging and requiring a follow-up tag.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.24" date="2026-04-15">
       <description>
         <p>Status-bar button-lifecycle and legibility fixes alongside the full-clear scrollback suppression extension.</p>

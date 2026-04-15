@@ -10,6 +10,82 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.6.25] — 2026-04-15
+
+**Theme:** a user-reported scrollback regression from 0.6.24's
+CSI-clear window extension, plus the two packaging-audit follow-ups
+from the ninth periodic audit (`audit_2026_04_15`).
+
+### Fixed
+
+- **Viewport no longer shifts when streaming content arrives while
+  the user is scrolled up in history.** User report (2026-04-15):
+  with ~500 lines in the terminal, scrolled up a few lines, with
+  Claude Code actively streaming — the content at the viewport kept
+  getting overwritten ("line 251 becomes line 250"). Root cause:
+  the 0.6.21 scrolled-up pause and the 0.6.22 (extended 0.6.24)
+  post-full-clear suppression window both skipped scrollback pushes
+  to protect against TUI redraw pollution. Skipping the push kept
+  `TerminalGrid::scrollbackPushed()` frozen, which kept
+  `TerminalWidget::onOutputReceived`'s scroll anchor from advancing
+  `m_scrollOffset`. The screen still scrolled on every LF, so the
+  viewport rows overlapping the screen got overwritten in place,
+  and — worse — the anchor never re-pinned to the user's reading
+  position in scrollback, so every subsequent push (once the
+  suppression let up) moved the viewport further from where the
+  user wanted to be. The 0.6.24 broadening to `CSI 0J` / `CSI 1J`
+  made the window arm during the far more common "home + erase to
+  end" repaint idiom, so the regression surfaced as near-continuous
+  viewport drift during Claude Code activity. Fix: when the user is
+  scrolled up (`m_scrollbackInsertPaused == true`), always push to
+  scrollback — even inside the CSI-clear window. The anchor then
+  advances `m_scrollOffset` by the push count, keeping `viewStart`
+  pinned to the user's reading position. The doubling-protection
+  window keeps its teeth for the at-bottom case (the only case where
+  the doubling symptom is observable). New feature test
+  `tests/features/scrollback_redraw/test_viewport_stable.cpp`
+  asserts content at viewport rows is invariant across streaming
+  for both the pause-only path and the CSI-clear path, across scroll
+  offsets from barely-scrolled-up to deep-in-history. `spec.md`
+  gains a §Viewport-stable companion contract documenting the
+  invariant and its scope (must-hold when viewport is entirely in
+  scrollback; partial guarantee when viewport overlaps the screen,
+  since screen writes are inherently visible there).
+
+### Changed
+
+- **`packaging-version-drift` rule now scans AppStream metainfo.** The
+  ninth audit noted that
+  `packaging/linux/org.ants.Terminal.metainfo.xml` couples to every
+  release — its `<release version="X.Y.Z">` list has to advance on
+  each bump — but the drift rule was not scanning it. Added to the
+  rule's coverage list; the grep extracts the newest declared release
+  (metainfo lists releases newest-first, so `head -1` captures the
+  latest) and diffs it against CMakeLists.txt's `project(VERSION)`.
+  Verified end-to-end: a contrived CMake bump to `0.9.99` now emits
+  six findings (five packaging recipes + the metainfo entry) instead
+  of five.
+- **Drift-check logic extracted into
+  `packaging/check-version-drift.sh`.** The check used to live as a
+  ~20-line bash string embedded in `src/auditdialog.cpp`. That meant
+  CI couldn't reuse it without duplicating the logic and risking a
+  new axis of drift. The script is now the single source of truth;
+  `auditdialog.cpp` invokes it with a minimal `[ -x … ] && bash … ||
+  exit 0` wrapper (graceful no-op when the tree is missing the
+  script), and CI invokes it directly so a non-zero exit fails the
+  job. Audit dialog's parser continues to ignore exit codes — same
+  as before — so the CI-friendly non-zero-on-drift exit semantics
+  don't break the in-app view.
+- **CI gate: `Check packaging version drift` step in
+  `.github/workflows/ci.yml`.** Runs the script after every push and
+  pull request. A PR that bumps `CMakeLists.txt` without updating
+  every coupled file — spec, PKGBUILD, debian/changelog, man page,
+  AppStream metainfo, README — now fails CI before merge. Closes
+  the honor-system gap that let 0.6.23 ship with four stale
+  packaging files (and would have let this very release ship with
+  drifted metainfo if the new metainfo coverage had not been added
+  in the same commit).
+
 ## [0.6.24] — 2026-04-15
 
 ### Fixed

@@ -106,3 +106,60 @@ the implementation may change as long as the invariant holds.
 - **0.6.22:** full mitigation. Sliding window triggered by main-screen
   `CSI 2J` composes with the 0.6.21 offset pause; either trigger
   suppresses. This test passes.
+- **0.6.25:** viewport-stable invariant added (see §Viewport-stable
+  below). The 0.6.21 pause and the 0.6.22/0.6.24 suppression window
+  both skipped scrollback pushes — which froze
+  `TerminalGrid::scrollbackPushed()`, which in turn kept
+  `TerminalWidget`'s scroll anchor from advancing `m_scrollOffset`.
+  The screen still scrolled on every `LF`, so the rows of a scrolled-
+  up user's viewport that overlapped the screen got overwritten in
+  place (user report: "line 251 becomes line 250"). Fix: when the
+  user is scrolled up, ALWAYS push to scrollback; the widget anchor
+  advances `m_scrollOffset` by the push count, keeping `viewStart`
+  pinned. Doubling protection remains for the user-at-bottom path —
+  the only path where the doubling symptom is observable.
+
+---
+
+## §Viewport-stable — companion contract
+
+### Contract
+
+Given a user who has scrolled up in history (`m_scrollOffset > 0`)
+and is reading a specific logical line of scrollback, streaming new
+output from the running program must not change the *content* at the
+user's viewport rows.
+
+Formally: let `snapshot(offset)` return the viewport's 2D grid of
+codepoints at a given `m_scrollOffset`. For any `offset0 > 0` and any
+amount of subsequent output `data`:
+
+    snapshot_before = snapshot(offset0)
+    feed(data)                                   # pushes may or may not happen
+    offset1 = offset0 + pushes_during_feed       # anchor adjustment
+    snapshot_after = snapshot(offset1)
+    ⟹ snapshot_before == snapshot_after   (content invariant)
+
+### Scope
+
+- **Must hold** when the viewport is entirely in scrollback
+  (`offset ≥ rows`). This is the user's real-world scenario — scroll
+  up to read something that has passed off the screen.
+- **Partial guarantee** when the viewport overlaps the screen
+  (`offset < rows`). Rows that fall within scrollback are stable;
+  rows that fall within the screen mutate as the program writes,
+  which is inherent terminal semantics the library cannot override —
+  no terminal can promise "program writes to the screen are invisible
+  to the user while they're scrolled up slightly."
+
+`test_viewport_stable.cpp` asserts the must-hold case across the
+pause-only path (pure scrolled-up, no `CSI 2J`) and the CSI-clear
+path (pause + suppression window both active).
+
+### Why this complements §Contract above
+
+The §Contract invariant ("no doubling") is about the **at-bottom**
+user seeing scrollback grow with duplicate content. This invariant is
+about the **scrolled-up** user seeing their reading position shift.
+They're separate failure modes with separate test coverage; the
+0.6.25 fix has to preserve both simultaneously.

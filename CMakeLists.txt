@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.24 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.25 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -231,6 +231,31 @@ if(ANTS_TESTS)
     )
     add_test(NAME scrollback_redraw COMMAND test_scrollback_redraw)
     set_tests_properties(scrollback_redraw PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # viewport_stable — asserts that a user scrolled up in history does
+    # not see their viewport shift when streaming content arrives. Sibling
+    # to scrollback_redraw but covers a different invariant: the
+    # redraw test checks "scrollback must not double" (user-at-bottom
+    # concern); this test checks "viewport content must not change under
+    # the scrolled-up user" (user-scrolled-up concern). Both must hold
+    # simultaneously after the 0.6.25 fix. See spec.md §Viewport-stable.
+    add_executable(test_viewport_stable
+        tests/features/scrollback_redraw/test_viewport_stable.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_viewport_stable PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_viewport_stable PRIVATE src)
+    target_compile_options(test_viewport_stable PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME viewport_stable COMMAND test_viewport_stable)
+    set_tests_properties(viewport_stable PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
