@@ -17,7 +17,14 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus)
+# Qt6 version floor. 6.2 is the first LTS that ships the full set of
+# components we need (DBus was stabilised in 6.2; Qt6OpenGLWidgets
+# reached feature parity there). Building against older Qt6 releases
+# (6.0 / 6.1) compiles but silently loses DBus on some distros and
+# trips shader-compile edge cases in the OpenGL renderer — without
+# this floor a rolling-distro user with an older qt6-base installed
+# alongside a newer one could pick up the wrong one.
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus)
 
 # Lua 5.4 (optional — plugin system)
 find_package(PkgConfig)
