@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.18 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.19 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -162,6 +162,23 @@ endforeach()
 # on MANPATH (true for /usr and /usr/local out of the box).
 install(FILES packaging/linux/ants-terminal.1
         DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+
+# Shell completions (bash / zsh / fish). Hand-written for the current
+# QCommandLineParser surface (-h/-v/--quake/--dropdown/--new-plugin); each
+# file is installed to the conventional vendor location for its shell so
+# distro packages don't have to relocate them:
+#   bash → ${datarootdir}/bash-completion/completions/ants-terminal
+#   zsh  → ${datarootdir}/zsh/site-functions/_ants-terminal
+#   fish → ${datarootdir}/fish/vendor_completions.d/ants-terminal.fish
+# All three are auto-discovered without requiring the user to source
+# anything by hand.
+install(FILES packaging/completions/ants-terminal.bash
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/bash-completion/completions
+        RENAME ants-terminal)
+install(FILES packaging/completions/_ants-terminal
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions)
+install(FILES packaging/completions/ants-terminal.fish
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fish/vendor_completions.d)
 
 # ---------------------------------------------------------------------------
 # Tests — audit rule fixtures (ctest)

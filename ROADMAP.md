@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.18 (2026-04-15). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.19 (2026-04-15). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -45,7 +45,7 @@ release; this section is the rollup so nothing falls by the wayside.
 | **H1** | `SECURITY.md` coordinated-disclosure policy, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) | ✅ | 0.6.16 |
 | **H2** | AppStream `org.ants.Terminal.metainfo.xml`, polished desktop entry (`org.ants.Terminal.desktop`), icon install rules | ✅ | 0.6.17 |
 | **H3** | Man page `ants-terminal.1` + CMake install rule | ✅ | 0.6.18 |
-| **H4** | Bash / zsh / fish completions + CMake install rules | 📋 | 0.7.0 |
+| **H4** | Bash / zsh / fish completions + CMake install rules | ✅ | 0.6.19 |
 | **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | 📋 | 0.8.0 |
 | **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + Flathub submission | 📋 | 0.8.0 |
 | **H7** | Project website + docs site (GitHub Pages) with screenshots, getting-started, plugin authoring | 📋 | 0.8.0 |
@@ -348,11 +348,22 @@ for the full multi-release plan.
   `groff -man -Tutf8 -wall …` so syntax regressions fail the build
   the same way `appstreamcli` / `desktop-file-validate` do for H2.
   See [CHANGELOG.md §0.6.18](CHANGELOG.md#0618--2026-04-15).
-- 📋 **H4 — Shell completions (bash / zsh / fish)**. Hand-written
-  completions for the current CLI flags, installable to the
-  conventional locations (`/usr/share/bash-completion/completions/`,
-  `/usr/share/zsh/site-functions/`, `/usr/share/fish/completions/`).
-  Another "packager expects these" box to check.
+- ✅ **H4 — Shell completions (bash / zsh / fish)**. Shipped in
+  0.6.19. `packaging/completions/ants-terminal.bash` registers an
+  `_ants_terminal` function via `complete -F`;
+  `packaging/completions/_ants-terminal` is a `#compdef` script using
+  `_arguments` with proper exclusion groups (`--quake` ⇄ `--dropdown`,
+  `-h` / `-v` short-circuit); `packaging/completions/ants-terminal.fish`
+  uses one `complete -c` declaration per flag with manpage-aligned
+  descriptions. CMake installs each to the conventional vendor
+  location (`${datarootdir}/bash-completion/completions/ants-terminal`,
+  `${datarootdir}/zsh/site-functions/_ants-terminal`,
+  `${datarootdir}/fish/vendor_completions.d/ants-terminal.fish`); all
+  three are auto-discovered on system-wide installs. CI lints each
+  file with the matching shell's `-n` / `--no-execute` flag so syntax
+  regressions fail the build. Closes the H1–H4 distribution slice;
+  remaining packaging work (H5 distro recipes, H6 Flatpak, H7 docs
+  site) lives in 0.8.0+. See [CHANGELOG.md §0.6.19](CHANGELOG.md#0619--2026-04-15).
 
 ### 🧰 Dev experience — Project Audit tool
 

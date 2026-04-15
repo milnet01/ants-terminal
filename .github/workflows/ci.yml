@@ -60,10 +60,10 @@ jobs:
       # Runs the same validators distro packagers invoke during package
       # review, so schema drift in the desktop entry or AppStream metainfo
       # fails CI instead of landing in a release tarball.
-      - name: Install AppStream + desktop-file validators + groff
+      - name: Install AppStream + desktop-file validators + groff + shells
         run: |
           sudo apt-get install -y --no-install-recommends \
-            appstream desktop-file-utils groff
+            appstream desktop-file-utils groff zsh fish
 
       - name: Validate AppStream metainfo
         run: |
@@ -81,6 +81,16 @@ jobs:
       - name: Lint ants-terminal.1 with groff
         run: |
           groff -man -Tutf8 -wall packaging/linux/ants-terminal.1 > /dev/null
+
+      # Shell completion lint (H4 — distribution readiness). Each shell's
+      # parse-only flag (`-n` for bash/zsh, `--no-execute` for fish) catches
+      # syntax regressions without running the completion logic, matching
+      # the H2 / H3 fail-in-CI-not-in-tarball pattern.
+      - name: Lint shell completions (bash / zsh / fish)
+        run: |
+          bash -n packaging/completions/ants-terminal.bash
+          zsh  -n packaging/completions/_ants-terminal
+          fish --no-execute packaging/completions/ants-terminal.fish
 
   # Dedicated ASan + UBSan build. Smoke-tests the binary under sanitizers
   # so initialization-path bugs (config load, command-line parsing, Qt setup)

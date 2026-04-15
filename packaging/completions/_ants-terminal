@@ -1,0 +1,22 @@
+#compdef ants-terminal
+# zsh completion for ants-terminal(1).
+#
+# Source of truth: this file. Installed by CMake to
+#   ${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions/_ants-terminal
+# which is on $fpath out of the box for system-wide zsh installs.
+#
+# CLI surface mirrored here is the same surface enumerated in the manpage and
+# parsed in src/main.cpp via QCommandLineParser. Keep the three in sync.
+
+_ants-terminal() {
+    local -a args
+    args=(
+        '(- *)'{-h,--help}'[Display a short usage summary and exit]'
+        '(- *)'{-v,--version}'[Print the program version and exit]'
+        '(--quake --dropdown)'{--quake,--dropdown}'[Run in Quake / drop-down mode]'
+        '--new-plugin[Scaffold a new Lua plugin and exit]:plugin name:'
+    )
+    _arguments -s -S $args
+}
+
+_ants-terminal "$@"

@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>0.6.18</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
+  Current version: <strong>0.6.19</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
 </p>
 
 ---
@@ -545,6 +545,9 @@ That picks up every install rule in `CMakeLists.txt`:
 | `<prefix>/share/metainfo/org.ants.Terminal.metainfo.xml` | AppStream metadata (GNOME Software, KDE Discover) |
 | `<prefix>/share/icons/hicolor/<size>/apps/ants-terminal.png` | Icon at six sizes (16/32/48/64/128/256) |
 | `<prefix>/share/man/man1/ants-terminal.1` | Section-1 manual page (`man ants-terminal`) |
+| `<prefix>/share/bash-completion/completions/ants-terminal` | Bash tab-completion |
+| `<prefix>/share/zsh/site-functions/_ants-terminal` | Zsh tab-completion |
+| `<prefix>/share/fish/vendor_completions.d/ants-terminal.fish` | Fish tab-completion |
 
 Distros should stage into a build root with `DESTDIR=…` (all rules use
 `GNUInstallDirs`, so Debian/Fedora/openSUSE/Arch packaging tooling

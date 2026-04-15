@@ -14,6 +14,51 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.19] — 2026-04-15
+
+**Theme:** ROADMAP §H4 (Distribution-readiness bundle 4 of 4) — shell
+completions for the current `QCommandLineParser` surface, installed to
+the conventional vendor locations for bash, zsh, and fish so distro
+packages don't have to relocate them. Closes the H1–H4 distribution
+slice; remaining packaging work (H5 spec/PKGBUILD/debian, H6 Flatpak,
+H7 docs site) lives in 0.8.0+. Fully additive, no runtime code changes.
+
+### Added
+
+- **`packaging/completions/ants-terminal.bash`** — [bash-completion][bash-completion]
+  function `_ants_terminal` registered via `complete -F`. Suggests the
+  full long/short option set; suppresses suggestions after `--new-plugin`
+  (the next token is a freeform plugin name with no useful enumeration).
+- **`packaging/completions/_ants-terminal`** — [zsh `#compdef`][zsh-compsys]
+  function using `_arguments`, with mutually-exclusive groups so `--quake`
+  and `--dropdown` only offer the unspecified alias, and `-h` / `-v`
+  short-circuit further completion (`(- *)` exclusion).
+- **`packaging/completions/ants-terminal.fish`** — [fish `complete`][fish-complete]
+  declarations, one per flag, with descriptions that mirror the manpage
+  one-liners. `--new-plugin` declared `-r -x` so fish knows it consumes
+  the next token but doesn't try to file-complete it.
+- **CMake install rules** for all three files at the GNU vendor
+  locations: `${datarootdir}/bash-completion/completions/ants-terminal`,
+  `${datarootdir}/zsh/site-functions/_ants-terminal`, and
+  `${datarootdir}/fish/vendor_completions.d/ants-terminal.fish`. All
+  three are auto-discovered without the user sourcing anything by hand.
+- **CI lint job** — `.github/workflows/ci.yml` runs `bash -n` on the
+  bash file, `zsh -n` on the zsh file, and `fish --no-execute` on the
+  fish file so syntax regressions fail the build the same way the H2
+  AppStream / desktop-entry validators and H3 groff lint do.
+
+### Changed
+
+- README **Install System-wide** table gains three rows for the
+  completion files so the install footprint stays self-documenting.
+- ROADMAP §H4 status 📋 → ✅ in both the distribution-adoption
+  overview table and the §0.7.0 📦 narrative section, with links back
+  to this CHANGELOG entry. Closes out the H1–H4 distribution slice.
+
+[bash-completion]: https://github.com/scop/bash-completion
+[zsh-compsys]: https://zsh.sourceforge.io/Doc/Release/Completion-System.html
+[fish-complete]: https://fishshell.com/docs/current/cmds/complete.html
+
 ## [0.6.18] — 2026-04-15
 
 **Theme:** ROADMAP §H3 (Distribution-readiness bundle 3 of 4) — a
