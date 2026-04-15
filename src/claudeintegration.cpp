@@ -9,7 +9,7 @@
 #include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QSet>
-#include <QApplication>
+#include <QCoreApplication>
 
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
     // Poll for Claude Code process every 2 seconds. This is only for
@@ -48,6 +48,27 @@ ClaudeIntegration::~ClaudeIntegration() {
 // --- Process Detection ---
 
 void ClaudeIntegration::setShellPid(pid_t pid) {
+    // 0.6.22 — on tab switch, the caller hands us the new tab's shell PID.
+    // Without this clear, the cached m_state / m_currentTool / context%
+    // from the previous tab persisted until the next poll tick (~1s
+    // later), causing the user-reported "Claude status indicator doesn't
+    // work half the time" symptom — tab A's "Claude: thinking..." bled
+    // into tab B. Reset state immediately when the PID changes so the UI
+    // reflects the tab switch within the current event-loop iteration.
+    // Same-PID calls (rebind on identical shell) are idempotent.
+    if (pid != m_shellPid) {
+        m_state = ClaudeState::NotRunning;
+        m_currentTool.clear();
+        m_contextPercent = 0;
+        m_claudePid = 0;            // force pollClaudeProcess to re-detect
+        m_activeSessionId.clear();
+        if (!m_transcriptPath.isEmpty()) {
+            m_transcriptWatcher.removePath(m_transcriptPath);
+            m_transcriptPath.clear();
+        }
+        emit stateChanged(ClaudeState::NotRunning, QString());
+        emit contextUpdated(0);
+    }
     m_shellPid = pid;
     if (pid > 0)
         m_pollTimer.start();
@@ -443,7 +464,7 @@ bool ClaudeIntegration::startHookServer() {
 
     m_hookServer = new QLocalServer(this);
     QString socketPath = QDir::tempPath() + "/ants-claude-hooks-" +
-                         QString::number(QApplication::applicationPid());
+                         QString::number(QCoreApplication::applicationPid());
     QLocalServer::removeServer(socketPath);
 
     if (!m_hookServer->listen(socketPath)) {

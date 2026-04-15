@@ -29,6 +29,21 @@ suppression works at the bottom too.
 
 ### Fixed
 
+- **Claude Code status bar no longer shows stale state after tab switch.**
+  User-reported: "Claude status indicator doesn't work half the time."
+  Root cause: `ClaudeIntegration::setShellPid()` re-pointed the watcher
+  to the new tab's shell PID but left the cached `m_state` /
+  `m_currentTool` / `m_contextPercent` from the previous tab intact
+  until the next poll tick (~1 s later). Tab A's "Claude:
+  thinking..." bled into tab B's status until polling caught up. Fix:
+  when `setShellPid()` receives a PID different from the current one,
+  immediately clear the cached state, drop the transcript watch, and
+  emit `stateChanged(NotRunning, "")` + `contextUpdated(0)` so the UI
+  reflects the switch within the current event-loop iteration. Paired
+  with a new feature test
+  (`tests/features/claude_status_bar/spec.md`) that verified the
+  fix both ways — fails against the un-fixed `setShellPid`, passes
+  with the one-line state-clear.
 - **Visual artifacts from leaked SGR decorations.** User-reported: TUI
   apps (Claude Code v2.1+ is the motivating case) leave strikethrough /
   plain-single underline active across rows, producing horizontal

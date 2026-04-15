@@ -85,6 +85,13 @@ public:
     // Environment setup
     static QProcessEnvironment claudeEnv();
 
+    // Exposed for tests/features/claude_status_bar/. Driving the transcript
+    // parser directly with a synthetic .jsonl file is how the feature test
+    // exercises the full (last-event → ClaudeState) mapping without
+    // spawning a real Claude Code process. Safe to call from production
+    // code too (the file-watcher path uses it directly).
+    void parseTranscriptForState(const QString &path);
+
 signals:
     void stateChanged(ClaudeState state, const QString &detail);
     void toolStarted(const QString &toolName, const QString &input);
@@ -102,7 +109,7 @@ private slots:
 
 private:
     void processHookEvent(const QJsonObject &event);
-    void parseTranscriptForState(const QString &path);
+    // parseTranscriptForState is declared above (public, for tests).
     void updateChangedFiles(const QJsonObject &event);
 
     pid_t m_shellPid = 0;

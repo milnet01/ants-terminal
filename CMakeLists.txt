@@ -24,7 +24,7 @@ endif()
 # trips shader-compile edge cases in the OpenGL renderer — without
 # this floor a rolling-distro user with an older qt6-base installed
 # alongside a newer one could pick up the wrong one.
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus Test)
 
 # Lua 5.4 (optional — plugin system)
 find_package(PkgConfig)
@@ -254,6 +254,32 @@ if(ANTS_TESTS)
     )
     add_test(NAME sgr_attribute_reset COMMAND test_sgr_attribute_reset)
     set_tests_properties(sgr_attribute_reset PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # claude_status_bar — asserts the Claude Code status-bar contract:
+    # transcript → ClaudeState mapping covers every documented last-event
+    # variant, setShellPid clears stale state on tab-switch, and
+    # contextUpdated fires with the right percent derived from
+    # usage.input_tokens. See tests/features/claude_status_bar/spec.md.
+    # Needs Qt6::Network because ClaudeIntegration's MCP server hooks pull
+    # in QLocalSocket/QLocalServer which chain through Network.
+    add_executable(test_claude_status_bar
+        tests/features/claude_status_bar/test_claude_status.cpp
+        src/claudeintegration.cpp
+    )
+    target_link_libraries(test_claude_status_bar PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Network
+        Qt6::Test
+    )
+    target_include_directories(test_claude_status_bar PRIVATE src)
+    target_compile_options(test_claude_status_bar PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME claude_status_bar COMMAND test_claude_status_bar)
+    set_tests_properties(claude_status_bar PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 endif()
