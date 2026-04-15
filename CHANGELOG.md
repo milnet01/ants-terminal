@@ -14,6 +14,67 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.20] — 2026-04-15
+
+**Theme:** ROADMAP §H5 (Distribution-readiness bundle 5) — ready-to-submit
+packaging recipes for the three mainstream non-Flatpak distros. Each
+recipe drives the existing CMake install rules (no build-system forks,
+no per-distro patches) and runs the audit-rule regression suite in its
+`%check` / `check()` / `dh_auto_test` step. Fully additive, no runtime
+code changes.
+
+### Added
+
+- **`packaging/opensuse/ants-terminal.spec`** — openSUSE RPM spec
+  targeting Tumbleweed. Uses the core [openSUSE CMake macros][suse-cmake]
+  (`%cmake`, `%cmake_build`, `%cmake_install`, `%ctest`, `%autosetup`)
+  so the file is close to portable to Fedora. BuildRequires declared
+  via `cmake(Qt6*)` pkgconfig-style entries so OBS resolves them
+  against whichever Qt6 stack the target project carries. `%files`
+  enumerates all fifteen install paths explicitly so a missing or
+  relocated artefact fails the OBS build instead of producing a
+  silently-incomplete package.
+- **`packaging/archlinux/PKGBUILD`** — [AUR][aur] recipe on the release
+  track (package name `ants-terminal`). `check()` runs ctest. `sha256sums`
+  is `SKIP` in the in-tree recipe with a comment pointing packagers at
+  `updpkgsums` since the upstream tarball doesn't exist until the tag
+  is pushed. A rolling `-git` variant is documented in
+  `packaging/README.md` (three-line diff: `pkgname`, `source`,
+  `pkgver()`).
+- **`packaging/debian/`** — Debian source tree: `control`, `rules`,
+  `changelog`, `copyright`, `source/format`. `debhelper-compat 13`
+  drives `dh $@ --buildsystem=cmake` with Ninja as the backend; DEP-5
+  `copyright` carries the full MIT license text.
+  `DEB_BUILD_MAINT_OPTIONS = hardening=+all` stacks dpkg-buildflags'
+  hardening wrappers on top of our CMake hardening flags. Suitable
+  for `debuild -uc -us`, a Launchpad PPA, or an eventual Debian ITP.
+- **`packaging/README.md`** — one-page build / submission guide for
+  all three recipes: local-build recipe, OBS / AUR / PPA submission
+  flow, `dch` / `osc vc` / `updpkgsums` version-bump recipes, and
+  the `-git` variant diff for Arch.
+
+### Changed
+
+- `CMakeLists.txt` `project(... VERSION 0.6.19)` → `0.6.20`. The
+  single-source-of-truth macro `ANTS_VERSION` propagates to
+  `setApplicationVersion`, the SARIF driver, the dialog title badge,
+  and the HTML-export metadata on rebuild.
+- `packaging/linux/ants-terminal.1` `.TH` line now reads
+  `ants-terminal 0.6.20` (was stuck at `0.6.18` — missed the 0.6.19
+  bump). groff ships the version string in its header/footer, so
+  `man ants-terminal` now matches `ants-terminal --version` again.
+- README current-version line bumped to 0.6.20. The **Install
+  footprint** table didn't need to change — H5 is pure packaging
+  metadata, not new installed files.
+- ROADMAP §H5 status 📋 → ✅ in both the distribution-adoption
+  overview table and the §0.8.0 📦 narrative section, with a link
+  back to this CHANGELOG entry. H1–H5 distribution slice now five
+  bundles deep; remaining 0.8.0 packaging work is H6 (Flatpak) and
+  H7 (docs site).
+
+[suse-cmake]: https://en.opensuse.org/openSUSE:Packaging_for_Leap
+[aur]: https://wiki.archlinux.org/title/Arch_User_Repository
+
 ## [0.6.19] — 2026-04-15
 
 **Theme:** ROADMAP §H4 (Distribution-readiness bundle 4 of 4) — shell

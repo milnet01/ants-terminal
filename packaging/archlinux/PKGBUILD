@@ -1,0 +1,57 @@
+# Maintainer: Ants Terminal Contributors <ants-terminal@users.noreply.github.com>
+#
+# Arch User Repository (AUR) recipe for Ants Terminal — the release track.
+# Build with `makepkg -si` from this directory, or submit to AUR under the
+# package name `ants-terminal`. A rolling variant (`ants-terminal-git`)
+# that follows main is documented in ../README.md; it shares the same
+# build()/check()/package() body and only differs in pkgver() + source.
+#
+# Version is kept in lockstep with CMakeLists.txt PROJECT(VERSION). Bump
+# both when releasing. Regenerate sha256sums with `updpkgsums` after the
+# upstream tag is published on GitHub.
+
+pkgname=ants-terminal
+pkgver=0.6.20
+pkgrel=1
+pkgdesc='Qt6 terminal emulator with Lua plugins and a project-audit dialog'
+arch=('x86_64')
+url='https://github.com/milnet01/ants-terminal'
+license=('MIT')
+depends=(
+  'qt6-base'
+  'lua'
+  'hicolor-icon-theme'
+)
+makedepends=(
+  'cmake'
+  'ninja'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# SKIP is intentional for the in-tree recipe: the v$pkgver tarball does
+# not exist until the upstream tag is pushed. Packagers submitting to
+# AUR must run `updpkgsums` after the tag is live so the checksum is
+# pinned in the uploaded PKGBUILD.
+sha256sums=('SKIP')
+
+build() {
+  cmake -S "$pkgname-$pkgver" -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DANTS_TESTS=ON \
+    -Wno-dev
+  cmake --build build
+}
+
+check() {
+  # Audit-rule regression suite — shell + fixture tree, GUI-free.
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+
+  # Arch convention: MIT is not in /usr/share/common-licenses, so each
+  # MIT-licensed package ships its own LICENSE under /usr/share/licenses.
+  install -Dm644 "$pkgname-$pkgver/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

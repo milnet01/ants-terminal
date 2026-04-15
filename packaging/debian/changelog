@@ -1,0 +1,8 @@
+ants-terminal (0.6.20-1) unstable; urgency=medium
+
+  * Initial Debian packaging (ROADMAP H5).
+    Ships debian/{control,rules,changelog,copyright,source/format}
+    so the tree builds cleanly under `debuild -uc -us` and is ready
+    for an ITP / Launchpad PPA submission.
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Wed, 15 Apr 2026 12:00:00 +0000

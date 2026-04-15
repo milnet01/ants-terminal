@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+# Debian rules for Ants Terminal.
+#
+# debhelper-compat 13 (declared in debian/control Build-Depends) means
+# dh automatically drives configure / build / test / install / clean
+# via the CMake buildsystem. We only override the configure step to
+# force Ninja — faster builds on multi-core builders, and matches what
+# upstream CI runs.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --buildsystem=cmake --builddirectory=build
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-G Ninja \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DANTS_TESTS=ON
+
+override_dh_auto_test:
+	# Audit-rule regression suite — shell + fixture tree, GUI-free.
+	dh_auto_test -- --output-on-failure

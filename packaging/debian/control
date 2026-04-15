@@ -1,0 +1,40 @@
+Source: ants-terminal
+Section: x11
+Priority: optional
+Maintainer: Ants Terminal Contributors <ants-terminal@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.20),
+               ninja-build,
+               pkg-config,
+               qt6-base-dev,
+               qt6-base-dev-tools,
+               libqt6opengl6-dev,
+               libqt6openglwidgets6,
+               liblua5.4-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/milnet01/ants-terminal
+Vcs-Git: https://github.com/milnet01/ants-terminal.git
+Vcs-Browser: https://github.com/milnet01/ants-terminal
+Rules-Requires-Root: no
+
+Package: ants-terminal
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         hicolor-icon-theme
+Description: Qt6 terminal emulator with Lua plugins and project-audit dialog
+ Ants Terminal is a terminal emulator built from scratch in C++20 with
+ Qt6. Features include a VT100/xterm parser with Kitty keyboard and
+ Kitty graphics, Sixel, OSC 8 hyperlinks, and OSC 133 shell-integration
+ blocks; an OpenGL glyph-atlas renderer (optional); a Ctrl+Shift+P
+ command palette; an AI-triage dialog over any OpenAI-compatible
+ endpoint; an SSH bookmark manager; and a Lua 5.4 plugin system with
+ a sandboxed ants.* API.
+ .
+ The bundled Project Audit dialog runs cppcheck, clazy, semgrep, and
+ grep rules through a shared pipeline with SHA-256 dedup, baseline and
+ trend tracking, inline-suppression scanning (clang-tidy NOLINT,
+ cppcheck-suppress, flake8 noqa, bandit nosec, semgrep nosemgrep,
+ gitleaks allow markers, eslint-disable, pylint disable, plus the
+ ants-native ants-audit:disable comment), and SARIF v2.1.0 + HTML
+ export.

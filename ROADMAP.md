@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.19 (2026-04-15). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.20 (2026-04-15). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -46,7 +46,7 @@ release; this section is the rollup so nothing falls by the wayside.
 | **H2** | AppStream `org.ants.Terminal.metainfo.xml`, polished desktop entry (`org.ants.Terminal.desktop`), icon install rules | ✅ | 0.6.17 |
 | **H3** | Man page `ants-terminal.1` + CMake install rule | ✅ | 0.6.18 |
 | **H4** | Bash / zsh / fish completions + CMake install rules | ✅ | 0.6.19 |
-| **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | 📋 | 0.8.0 |
+| **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | ✅ | 0.6.20 |
 | **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + Flathub submission | 📋 | 0.8.0 |
 | **H7** | Project website + docs site (GitHub Pages) with screenshots, getting-started, plugin authoring | 📋 | 0.8.0 |
 | **H8** | macOS port (Qt6 builds cleanly; need `posix_spawn`/`openpty` + NSWindow observer + notarized `.app`) | 📋 | 0.9.0 |
@@ -465,22 +465,39 @@ Mid-term packaging work — this is where Ants moves from
 "packageable-in-theory" to "actually installable on every major
 distro." Each sub-bullet can ship independently once H1–H4 land.
 
-- 📋 **H5 — ready-to-submit distro packaging files**. Commit the
-  packaging recipes to the tree under `packaging/<distro>/` so
-  packagers have a starting point and we can dogfood the builds:
-  - `packaging/opensuse/ants-terminal.spec` — RPM spec targeting
-    openSUSE Tumbleweed; submit via OBS to `devel:languages:misc`
-    or a dedicated project. `%{?_smp_mflags}` parallel build,
-    `%check` stanza runs ctest, macros for Qt6 + Lua 5.4.
-  - `packaging/archlinux/PKGBUILD` — Arch AUR recipe. `check()`
-    runs ctest; package built against system Qt6. Published under
-    `ants-terminal-git` and `ants-terminal` (release tag).
-  - `packaging/debian/` — Debian-style source tree with
-    `control`, `rules`, `changelog`, `copyright`, `compat`.
-    Suitable for `debuild -uc -us` or a Launchpad PPA; eventual
-    target is ITP → official archive.
-  - `packaging/README.md` — one-page "how to build a package for
-    distro X" pointing at each recipe.
+- ✅ **H5 — ready-to-submit distro packaging files**. Shipped in
+  0.6.20. Each recipe drives the existing CMake install rules with
+  zero source patches and runs the audit-rule regression suite in
+  its own test stage:
+  - `packaging/opensuse/ants-terminal.spec` — openSUSE RPM spec
+    targeting Tumbleweed. Uses core macros (`%cmake`,
+    `%cmake_build`, `%cmake_install`, `%ctest`, `%autosetup`) so
+    the file is close to portable to Fedora. BuildRequires
+    declared via `cmake(Qt6*)` pkgconfig-style entries; `%files`
+    enumerates all fifteen install paths explicitly so a missing
+    artefact fails the OBS build instead of producing a
+    silently-incomplete package. Submit via OBS to
+    `devel:languages:misc` or a dedicated project; changelog lives
+    in a separate `.changes` file per openSUSE convention.
+  - `packaging/archlinux/PKGBUILD` — Arch AUR release recipe
+    (`ants-terminal`). `check()` runs ctest; built against system
+    Qt6 and lua. `sha256sums=('SKIP')` in-tree with a comment
+    pointing packagers at `updpkgsums` once the upstream tag is
+    live. The `-git` rolling variant is documented in
+    `packaging/README.md` (three-line diff: `pkgname`, `source`,
+    `pkgver()`).
+  - `packaging/debian/` — `control`, `rules`, `changelog`,
+    `copyright`, `source/format`. `debhelper-compat 13` drives
+    `dh $@ --buildsystem=cmake` with Ninja as the backend; DEP-5
+    `copyright` carries the full MIT license text;
+    `DEB_BUILD_MAINT_OPTIONS = hardening=+all` stacks
+    dpkg-buildflags' hardening wrappers on top of our CMake
+    hardening flags. Suitable for `debuild -uc -us` or a Launchpad
+    PPA; eventual target is ITP → official archive.
+  - `packaging/README.md` — one-page build / submission guide for
+    all three recipes.
+
+  See [CHANGELOG.md §0.6.20](CHANGELOG.md#0620--2026-04-15).
 - 📋 **H6 — Flatpak packaging**. Ship `org.ants.Terminal.yml`
   against `org.kde.Platform//6.7`. PTY inside Flatpak needs
   `flatpak-spawn --host` — Ghostty precedent. Submit to Flathub
