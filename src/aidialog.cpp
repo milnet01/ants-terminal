@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QNetworkRequest>
 #include <QScrollBar>
+#include <QUrl>
 
 AiDialog::~AiDialog() {
     // Abort and drop any in-flight reply before member teardown runs. Qt
@@ -94,7 +95,17 @@ void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
     if (m_endpoint.isEmpty()) {
         m_statusLabel->setText("No AI endpoint configured. Set ai_endpoint in config.json");
     } else {
-        m_statusLabel->setText("Endpoint: " + m_endpoint + " | Model: " + m_model);
+        // 0.6.22 — redact basic-auth credentials before displaying. A user
+        // who pasted `https://user:password@host/v1` into ai_endpoint
+        // would otherwise see the plaintext password on the status label
+        // and in any screenshot they shared. QUrl with PrettyDecoded and
+        // the RemoveUserInfo flag strips userinfo cleanly without
+        // touching the rest of the URL.
+        const QUrl parsed(m_endpoint);
+        const QString display = parsed.isValid()
+            ? parsed.toString(QUrl::RemoveUserInfo | QUrl::PrettyDecoded)
+            : m_endpoint;   // fall back to raw if parse failed
+        m_statusLabel->setText("Endpoint: " + display + " | Model: " + m_model);
     }
 }
 
