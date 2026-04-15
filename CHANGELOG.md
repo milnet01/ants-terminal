@@ -44,6 +44,21 @@ suppression works at the bottom too.
   `terminalgrid.h` (`m_csiClearRedrawActive`, `m_csiClearRedrawTimer`,
   `kCsiClearRedrawWindowMs`).
 
+### Added — Test infrastructure
+
+- **Feature-conformance test harness (`tests/features/`).** New test
+  lane alongside the existing `audit_rule_fixtures`. Each feature
+  subdirectory ships a `spec.md` (human contract — reviewed like
+  code) and a C++ test executable that exercises the feature through
+  its public API and asserts the contract holds. GUI-free, fast,
+  labelled `features` so CI and local `ctest -L features` pick them
+  up. First test landed: `scrollback_redraw` — the regression guard
+  for this release's headline fix. Verified that it FAILS against
+  0.6.21 code (growth=77 vs. threshold=34, reproducing the doubling)
+  and PASSES against 0.6.22 — i.e. it *would have caught the
+  incomplete 0.6.21 fix at commit time*. See `tests/features/README.md`
+  for the authoring guide and rationale. CLAUDE.md updated.
+
 ### Changed — Packaging
 
 - **openSUSE spec, Arch PKGBUILD, Debian changelog, AppStream metainfo

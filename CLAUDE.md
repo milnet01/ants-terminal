@@ -126,9 +126,11 @@ cmake .. && make -j$(nproc)
 cd build && ctest --output-on-failure
 ```
 
-One CTest target (`audit_rule_fixtures`) that runs `tests/audit_self_test.sh`
-to verify audit rule regexes match their `bad.*` fixture files and none of
-their `good.*` counterparts. Count-based assertion (not line numbers — more
+Two test lanes:
+
+**`audit_rule_fixtures`** — runs `tests/audit_self_test.sh` to verify
+audit rule regexes match their `bad.*` fixture files and none of their
+`good.*` counterparts. Count-based assertion (not line numbers — more
 robust to fixture editing). To add a rule test:
 
 1. `mkdir tests/audit_fixtures/<rule-id>/`
@@ -136,6 +138,29 @@ robust to fixture editing). To add a rule test:
    should match, plus a `good.cpp` with zero matches.
 3. Add `run_rule "<rule-id>" '<regex>'` to `tests/audit_self_test.sh`
    (regex must mirror the `addGrepCheck()` call in `auditdialog.cpp`).
+
+**Feature-conformance (`tests/features/*`, label `features`)** — each
+subdirectory pairs a `spec.md` (human contract) with a C++ executable
+that exercises the feature through its public API and asserts the
+contract holds. Compiled as standalone CTest targets linking only the
+`src/*.cpp` objects each test actually exercises (GUI-free, fast).
+Purpose: catch *behavioral* regressions unit tests miss — e.g. the
+0.6.22 scrollback fix would have caught the incomplete 0.6.21 fix at
+commit time, because the 0.6.21 fix passed unit tests but failed the
+"scrollback must not double on CSI 2J repaint" invariant. To add a
+feature test:
+
+1. `mkdir tests/features/<feature-name>/`
+2. Write `spec.md` — invariants in plain English, reviewable by humans.
+3. Write `test_<feature>.cpp` — exit 0 on pass, non-zero on fail, print
+   enough context on failure to diagnose without reproducing.
+4. Wire into `CMakeLists.txt` as `add_executable` + `add_test` with
+   label `features;fast`.
+5. Run the test against the *pre-fix* code (via `git checkout <prev-sha>
+   -- src/...`) and confirm it fails — prevents writing a test that
+   passes on broken code. Restore the fix afterwards.
+
+See `tests/features/README.md` for the full authoring guide.
 
 ### Static Analysis
 

@@ -195,4 +195,34 @@ if(ANTS_TESTS)
     set_tests_properties(audit_rule_fixtures PROPERTIES
         LABELS "audit;fast"
         TIMEOUT 30)
+
+    # -----------------------------------------------------------------------
+    # Feature-conformance tests (tests/features/). See tests/features/README.md
+    # for the design rationale. Each test is a standalone executable that
+    # links against the minimum set of src/*.cpp objects needed to exercise
+    # its feature — NOT the full ants-terminal target (which needs PTY, X11,
+    # OpenGL, etc.). Keeps the tests GUI-free and fast enough for CI.
+    # -----------------------------------------------------------------------
+
+    # scrollback_redraw — asserts main-screen CSI 2J repaint doesn't double
+    # scrollback. Would have caught both the pre-0.6.21 regression AND the
+    # incomplete 0.6.21 fix (which covered scrolled-up users but not the
+    # bottom-of-screen case). See tests/features/scrollback_redraw/spec.md.
+    add_executable(test_scrollback_redraw
+        tests/features/scrollback_redraw/test_redraw.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_scrollback_redraw PRIVATE
+        Qt6::Core
+        Qt6::Gui      # QColor, QImage, transitively required by terminalgrid.h
+    )
+    target_include_directories(test_scrollback_redraw PRIVATE src)
+    target_compile_options(test_scrollback_redraw PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME scrollback_redraw COMMAND test_scrollback_redraw)
+    set_tests_properties(scrollback_redraw PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
 endif()
