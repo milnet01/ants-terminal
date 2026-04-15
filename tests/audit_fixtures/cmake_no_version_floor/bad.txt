@@ -1,0 +1,7 @@
+# Pretend CMakeLists.txt content. Each find_package call WITHOUT a
+# version floor should match the regex.
+
+find_package(Qt6 REQUIRED COMPONENTS Core)              # @expect cmake_no_version_floor
+find_package( Qt5 REQUIRED COMPONENTS Widgets Network)  # @expect cmake_no_version_floor
+find_package(Boost REQUIRED)                            # @expect cmake_no_version_floor
+find_package( Protobuf REQUIRED  COMPONENTS protoc)     # @expect cmake_no_version_floor

@@ -1,0 +1,12 @@
+# Pretend CMakeLists.txt content. Each find_package call DOES have a
+# version floor (digit between package name and REQUIRED), so the
+# regex must NOT match.
+
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core)
+find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets Network)
+find_package(Boost 1.74 REQUIRED)
+find_package(Protobuf 3.21.0 REQUIRED COMPONENTS protoc)
+
+# Comments mentioning find_package without a version are commentary,
+# not calls, but this fixture validates the regex; comment-vs-code
+# distinction is handled by lineIsCode() at the application layer.

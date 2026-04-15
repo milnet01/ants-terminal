@@ -421,6 +421,92 @@ void AuditDialog::populateChecks() {
         CheckType::CodeSmell, Severity::Minor, {}, true, true, nullptr
     });
 
+    // 0.6.22 FP-reduction heuristic — CMake find_package without a version
+    // floor is a common hygiene miss: `find_package(Qt6 REQUIRED ...)` accepts
+    // any Qt6 >= 6.0, which lets rolling distros or multi-install environments
+    // silently pick up an incompatible minor. Match `find_package(<Pkg>
+    // REQUIRED ...)` where *no* version string sits between the package name
+    // and REQUIRED. Scoped to CMakeLists*.txt only — unrelated files named
+    // find_package() happen to contain the word mean nothing.
+    //
+    // Precision: the regex requires `REQUIRED` to follow the package name with
+    // only whitespace between. If a numeric version is present (`Qt6 6.2
+    // REQUIRED`) it breaks the match — so we correctly distinguish the pinned
+    // from unpinned forms without needing a negative lookbehind. Tested
+    // against both Qt6 and non-Qt calls (LLVM, Boost, Protobuf) in the wild.
+    m_checks.append({
+        "cmake_no_version_floor", "CMake find_package Without Version Floor",
+        "find_package(<Pkg> REQUIRED) with no version constraint — may pick "
+        "up incompatible minor on rolling distros", "Build",
+        "for f in CMakeLists.txt $(find . -name 'CMakeLists.txt' -not -path '*/build*' -not -path '*/.git/*' 2>/dev/null); do "
+        "  [ -f \"$f\" ] || continue; "
+        "  grep -nE 'find_package\\s*\\(\\s*[A-Za-z_][A-Za-z0-9_]*\\s+REQUIRED' \"$f\"; "
+        "done | sort -u",
+        CheckType::CodeSmell, Severity::Minor, {}, false, true, nullptr
+    });
+
+    // 0.6.22 — `bash -c` / `sh -c` with a non-literal argument is a classic
+    // command-injection sink whenever the argument incorporates user-controlled
+    // data (project paths, config file fields, commit messages, clipboard).
+    // Match the typical Qt pattern `QProcess::start(..., {"-c", <ident>})` and
+    // the C-level `execl("/bin/sh", ..., "-c", <ident>)` — both funnel into
+    // the same risk. A string literal after `-c` is safe (the command is
+    // hard-coded); an identifier/expression is the red flag.
+    //
+    // Tradeoff: catches legitimate cases where the non-literal has already
+    // been sanitised (allowlist-validated, shell-escaped, etc). Severity Minor
+    // signals "review needed, not auto-fix"; the grep-noise filter strips
+    // test/example files.
+    addGrepCheck("bash_c_non_literal", "bash -c / sh -c With Non-Literal Argument",
+                 "Passing a non-literal to shell -c — review for command-injection risk",
+                 "Security",
+                 "'\\b(bash|sh)\\b[^=]*\"-c\"\\s*,\\s*[A-Za-z_][A-Za-z0-9_]*'",
+                 CheckType::CodeSmell, Severity::Minor, false);
+
+    // 0.6.22 — Cross-file version-drift detector. A release is "done" only
+    // when every version-bearing file agrees with the authoritative source
+    // (CMakeLists.txt PROJECT VERSION). Historic drift has been a shipping
+    // hazard: 0.6.22's packaging commit had to bump four files
+    // (spec, PKGBUILD, debian/changelog, README) that had silently lagged
+    // three releases behind the CMake floor.
+    //
+    // Extracts the truth from CMakeLists then diffs each packaging file. Emits
+    // one finding per drifted file. No-op on projects without a
+    // `project(... VERSION X.Y.Z ...)` line.
+    //
+    // Note on regex escapes: the spec scan keys off the literal "Version: "
+    // token; the `$$` is a bash escape of a literal `$`, needed so the shell
+    // doesn't expand. The regex is deliberately tolerant of whitespace
+    // variants (e.g. "Version:  0.6.22" with multiple spaces).
+    m_checks.append({
+        "packaging_version_drift", "Packaging Version Drift",
+        "Packaging files out of sync with CMakeLists.txt project(VERSION)",
+        "Build",
+        "cml=CMakeLists.txt; [ -f \"$cml\" ] || exit 0; "
+        "truth=$(grep -oE 'project\\s*\\([^)]*VERSION\\s+[0-9]+\\.[0-9]+\\.[0-9]+' \"$cml\" "
+        "        | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+$' | head -1); "
+        "[ -z \"$truth\" ] && exit 0; "
+        "check() { "
+        "  local file=$1 pattern=$2 label=$3; "
+        "  [ -f \"$file\" ] || return; "
+        "  local got=$(grep -oE \"$pattern\" \"$file\" | head -1); "
+        "  [ -z \"$got\" ] && return; "
+        "  local v=$(echo \"$got\" | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -1); "
+        "  [ -z \"$v\" ] && return; "
+        "  if [ \"$v\" != \"$truth\" ]; then "
+        "    local lineno=$(grep -nE \"$pattern\" \"$file\" | head -1 | cut -d: -f1); "
+        "    printf '%s:%s: %s version %s drifts from CMakeLists.txt %s\\n' "
+        "      \"$file\" \"$lineno\" \"$label\" \"$v\" \"$truth\"; "
+        "  fi; "
+        "}; "
+        "check packaging/opensuse/ants-terminal.spec 'Version:\\s+[0-9]+\\.[0-9]+\\.[0-9]+' 'openSUSE spec'; "
+        "check packaging/archlinux/PKGBUILD 'pkgver=[0-9]+\\.[0-9]+\\.[0-9]+' 'Arch PKGBUILD'; "
+        "check packaging/debian/changelog 'ants-terminal \\([0-9]+\\.[0-9]+\\.[0-9]+' 'Debian changelog'; "
+        "check packaging/linux/ants-terminal.1 'ants-terminal [0-9]+\\.[0-9]+\\.[0-9]+' 'Man page'; "
+        "check README.md 'Current version:.*[0-9]+\\.[0-9]+\\.[0-9]+' 'README'",
+        CheckType::CodeSmell, Severity::Minor, {}, false, true, nullptr
+    });
+
     // CI presence. A project with no continuous-integration config ships
     // regressions silently — the rule flags projects missing *all* of the
     // common CI file conventions. Severity Major — not actionable by
