@@ -1,0 +1,219 @@
+.\" ants-terminal -- manpage source (groff -man / mandoc -man)
+.\"
+.\" Source of truth: this file. Bump the date and version on each release;
+.\" CMake installs it to ${CMAKE_INSTALL_MANDIR}/man1/ants-terminal.1.
+.\" Validate locally with:  mandoc -Tlint packaging/linux/ants-terminal.1
+.\"                         groff -man -Tutf8 -wall packaging/linux/ants-terminal.1 >/dev/null
+.\"
+.TH ANTS-TERMINAL 1 "2026-04-15" "ants-terminal 0.6.18" "User Commands"
+.
+.SH NAME
+ants-terminal \- modern, themeable terminal emulator with GPU rendering and Lua plugins
+.
+.SH SYNOPSIS
+.B ants-terminal
+.RI [ OPTIONS ]
+.
+.SH DESCRIPTION
+.B ants-terminal
+is a Qt6 terminal emulator written from scratch in C++20.
+It includes a custom VT100/xterm escape-sequence parser, a PTY driver
+backed by
+.BR forkpty (3),
+hardware-accelerated rendering via
+.BR QOpenGLWidget
+(with an optional glyph-atlas GLSL renderer), inline graphics
+(Sixel / Kitty / iTerm2), eleven built-in color themes, an
+OpenAI-compatible AI assistant pane, an SSH bookmark manager, and an
+optional sandboxed Lua 5.4 plugin system.
+.PP
+With no options, it launches a single window running the user's login
+shell (the
+.B SHELL
+environment variable, falling back to
+.IR /bin/bash )
+inside a fresh PTY.
+.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Display a short usage summary and exit.
+.TP
+.BR \-v ", " \-\-version
+Print the program version and exit.
+.TP
+.BR \-\-quake ", " \-\-dropdown
+Run in
+.I Quake
+/ drop-down mode: the window is pinned to the top of the active screen,
+spans its full width, occupies one third of the available height, and
+slides in and out of view via the configured global hotkey. Useful as a
+desktop-wide always-available scratch terminal.
+.TP
+.BI \-\-new\-plugin " NAME"
+Scaffold a new Lua plugin in the user's plugin directory and exit
+without launching a window.
+.I NAME
+must match
+.RB [ A\-Za\-z ][ A\-Za\-z0\-9_\- ]{0,63}.
+The command creates
+.IR ~/.config/ants\-terminal/plugins/NAME/
+containing
+.IR init.lua ,
+.IR manifest.json ,
+and a starter
+.IR README.md .
+The plugin is created disabled; enable it under
+Settings \(-> Plugins or by adding the name to
+.I enabled_plugins
+in
+.IR config.json .
+See
+.B PLUGINS.md
+in the source tree for the full
+.B ants.*
+API reference.
+.
+.SH ENVIRONMENT
+.TP
+.B SHELL
+Path of the login shell to spawn under the PTY. Falls back to
+.I /bin/bash
+when unset.
+.TP
+.B HOME
+Used to locate per-user state (config, themes, plugins, sessions) when
+.B XDG_CONFIG_HOME
+and
+.B XDG_DATA_HOME
+are unset.
+.TP
+.B XDG_CONFIG_HOME
+Per-user configuration root. Ants Terminal stores its config under
+.IR $XDG_CONFIG_HOME/ants\-terminal/
+(default
+.IR ~/.config/ants\-terminal/ ).
+.TP
+.B XDG_DATA_HOME
+Per-user runtime data root. Ants Terminal stores sessions, recordings,
+and logs under
+.IR $XDG_DATA_HOME/ants\-terminal/
+(default
+.IR ~/.local/share/ants\-terminal/ ).
+.TP
+.B ANTS_PLUGIN_DEV
+When set to
+.BR 1 ,
+the Lua plugin manager logs verbosely on load and reload, and the
+plugin directory is watched so edits to
+.I init.lua
+take effect without restarting the terminal. Intended for plugin
+authors only.
+.TP
+.B QT_QPA_PLATFORM
+Standard Qt platform-abstraction selector. Set to
+.B offscreen
+when running headless (CI, sanitizer smoke tests).
+.
+.SH FILES
+.TP
+.I ~/.config/ants-terminal/config.json
+Persistent configuration. Mode
+.B 0600.
+Created on first run with defaults; edited live when changed via
+Settings.
+.TP
+.I ~/.config/ants-terminal/themes/*.json
+Optional user theme files. Each defines a theme name plus the 16-color
+ANSI palette and default foreground / background colors. Picked up at
+startup.
+.TP
+.I ~/.config/ants-terminal/plugins/<name>/
+Lua plugin directory created by
+.BR \-\-new\-plugin .
+Each plugin contains
+.IR init.lua ,
+.IR manifest.json ,
+and an optional
+.IR README.md .
+.TP
+.I ~/.local/share/ants-terminal/sessions/
+Compressed binary snapshots of scrollback and screen state, written
+when
+.B session_persistence
+is enabled in the config.
+.TP
+.I ~/.local/share/ants-terminal/recordings/
+Saved terminal recordings (input + output stream).
+.TP
+.I ~/.local/share/ants-terminal/logs/
+Per-session log files written by Settings \(-> Logging.
+.TP
+.I <project>/audit_rules.json
+Optional per-project rule pack consumed by the in-app Project Audit
+dialog. Appends to or overrides the built-in rule set; supports
+.IR path_rules
+for glob-based severity shifts.
+.TP
+.I <project>/.audit_suppress
+JSONL suppression list (v2:
+.I {key, rule, reason, timestamp}
+per line) for the Project Audit dialog. v1 plain-key lines are still
+loaded and rewritten on the first save.
+.
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit \(em either the GUI session ended cleanly or
+.BR \-\-help / \-\-version / \-\-new\-plugin
+completed.
+.TP
+.B 2
+.BR \-\-new\-plugin :
+the plugin name failed validation.
+.TP
+.B 3
+.BR \-\-new\-plugin :
+a plugin with that name already exists.
+.TP
+.B 4
+.BR \-\-new\-plugin :
+could not create the plugin directory.
+.TP
+.B 5
+.BR \-\-new\-plugin :
+could not write one of the scaffolded files.
+.
+.SH BUGS
+Report issues at
+.UR https://github.com/milnet01/ants\-terminal/issues
+.UE .
+For coordinated security disclosure see
+.B SECURITY.md
+in the source tree (private GitHub Security Advisory or encrypted
+email).
+.
+.SH AUTHORS
+Ants Terminal is developed by Anthony Schemel and contributors. See
+the project's git log for the full credit list.
+.
+.SH SEE ALSO
+.BR xterm (1),
+.BR konsole (1),
+.BR gnome\-terminal (1),
+.BR tmux (1),
+.BR ssh (1),
+.BR forkpty (3),
+.BR appstreamcli (1),
+.BR desktop\-file\-validate (1).
+.PP
+Project documentation:
+.B README.md ,
+.B CHANGELOG.md ,
+.B ROADMAP.md ,
+.B PLUGINS.md ,
+.B CONTRIBUTING.md ,
+.B SECURITY.md
+\(em all in the source tree at
+.UR https://github.com/milnet01/ants\-terminal
+.UE .

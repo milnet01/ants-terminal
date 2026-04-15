@@ -14,6 +14,50 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.18] — 2026-04-15
+
+**Theme:** ROADMAP §H3 (Distribution-readiness bundle 3 of 4) — a
+spec-compliant `man 1 ants-terminal` page so distro packagers and
+users alike get the standard Unix discovery experience (`man
+ants-terminal`, `apropos terminal`, `whatis ants-terminal`). Fully
+additive, no runtime code changes.
+
+### Added
+
+- **`packaging/linux/ants-terminal.1`** — [groff -man][groff-man]
+  source covering `NAME` / `SYNOPSIS` / `DESCRIPTION` / `OPTIONS`
+  (`-h`/`--help`, `-v`/`--version`, `--quake`/`--dropdown`, and
+  `--new-plugin <name>` with its full validation contract) /
+  `ENVIRONMENT` (`SHELL`, `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+  `ANTS_PLUGIN_DEV`, `QT_QPA_PLATFORM`) / `FILES` (config /
+  themes / plugins / sessions / recordings / logs / `audit_rules.json`
+  / `.audit_suppress`) / `EXIT STATUS` (the four `--new-plugin` codes)
+  / `BUGS` / `AUTHORS` / `SEE ALSO` (cross-refs to xterm, konsole,
+  gnome-terminal, tmux, ssh, forkpty(3), appstreamcli,
+  desktop-file-validate). Renders cleanly under both `groff -man` and
+  `man -l`.
+- **CMake install rule** for the man page — `install(FILES … DESTINATION
+  ${CMAKE_INSTALL_MANDIR}/man1)`. DESTDIR-staged install verified to
+  drop the page at `…/share/man/man1/ants-terminal.1`, which `man-db`
+  picks up automatically once the prefix is on `MANPATH` (true for
+  `/usr` and `/usr/local` out of the box).
+- **CI lint job** — `.github/workflows/ci.yml` installs `groff` and
+  runs `groff -man -Tutf8 -wall packaging/linux/ants-terminal.1
+  >/dev/null` so syntax regressions in the man source fail the build
+  the same way `appstreamcli` / `desktop-file-validate` do for the
+  desktop entry and metainfo XML.
+
+### Changed
+
+- README **Install System-wide** table gains a row for the man page so
+  the install footprint stays self-documenting alongside the binary,
+  desktop entry, metainfo, and icons.
+- ROADMAP §H3 status 📋 → ✅ in both the distribution-adoption
+  overview table and the §0.7.0 📦 narrative section, with links back
+  to this CHANGELOG entry.
+
+[groff-man]: https://man7.org/linux/man-pages/man7/groff_man.7.html
+
 ## [0.6.17] — 2026-04-14
 
 **Theme:** ROADMAP §H2 (Distribution-readiness bundle 2 of 4) —

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.17 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.18 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -155,6 +155,13 @@ foreach(_sz IN ITEMS 16 32 48 64 128 256)
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${_sz}x${_sz}/apps
             RENAME ants-terminal.png)
 endforeach()
+
+# Man page (section 1 — user commands). Source-of-truth groff lives under
+# packaging/linux/; CMake places it at the GNU-standard mandir. man-db /
+# mandoc / less-via-man pick it up automatically once the install root is
+# on MANPATH (true for /usr and /usr/local out of the box).
+install(FILES packaging/linux/ants-terminal.1
+        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 
 # ---------------------------------------------------------------------------
 # Tests — audit rule fixtures (ctest)

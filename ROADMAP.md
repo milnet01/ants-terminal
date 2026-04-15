@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.17 (2026-04-14). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.18 (2026-04-15). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -44,7 +44,7 @@ release; this section is the rollup so nothing falls by the wayside.
 |--------|------------|--------|----------------|
 | **H1** | `SECURITY.md` coordinated-disclosure policy, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) | ✅ | 0.6.16 |
 | **H2** | AppStream `org.ants.Terminal.metainfo.xml`, polished desktop entry (`org.ants.Terminal.desktop`), icon install rules | ✅ | 0.6.17 |
-| **H3** | Man page `ants-terminal.1` + CMake install rule | 📋 | 0.7.0 |
+| **H3** | Man page `ants-terminal.1` + CMake install rule | ✅ | 0.6.18 |
 | **H4** | Bash / zsh / fish completions + CMake install rules | 📋 | 0.7.0 |
 | **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | 📋 | 0.8.0 |
 | **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + Flathub submission | 📋 | 0.8.0 |
@@ -330,14 +330,24 @@ for the full multi-release plan.
   `docs/screenshots/` and a `<screenshots>` block in the metainfo so
   GNOME Software tiles render a preview instead of the app icon. See
   [CHANGELOG.md §0.6.17](CHANGELOG.md#0617--2026-04-14).
-- 📋 **H3 — Man page**. `ants-terminal.1` in troff (or scdoc →
-  `man`), covering synopsis, description, CLI flags (`--version`,
-  `--help`, `--new-plugin`), config keys overview (with a pointer to
-  `CLAUDE.md` / README), environment variables
-  (`ANTS_PLUGIN_DEV=1`), files (`~/.config/ants-terminal/*`), bugs
-  (GitHub link), author, see-also. CMake install rule to
-  `${CMAKE_INSTALL_MANDIR}/man1/`. The "this is finished software"
-  signal distro packagers look for.
+- ✅ **H3 — Man page**. Shipped in 0.6.18.
+  `packaging/linux/ants-terminal.1` in `groff -man` covering synopsis,
+  description, every CLI flag (`-h`/`--help`, `-v`/`--version`,
+  `--quake`/`--dropdown`, `--new-plugin <name>` with the full
+  validation contract), environment variables (`SHELL`, `HOME`,
+  `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `ANTS_PLUGIN_DEV`,
+  `QT_QPA_PLATFORM`), files
+  (`~/.config/ants-terminal/{config.json,themes,plugins}`,
+  `~/.local/share/ants-terminal/{sessions,recordings,logs}`,
+  `<project>/{audit_rules.json,.audit_suppress}`), exit status (the
+  four `--new-plugin` codes), bugs (GitHub issues link, SECURITY.md
+  for embargoed reports), authors, and see-also (xterm, konsole,
+  gnome-terminal, tmux, ssh, forkpty(3), appstreamcli,
+  desktop-file-validate). CMake install rule to
+  `${CMAKE_INSTALL_MANDIR}/man1/`. CI lints the source with
+  `groff -man -Tutf8 -wall …` so syntax regressions fail the build
+  the same way `appstreamcli` / `desktop-file-validate` do for H2.
+  See [CHANGELOG.md §0.6.18](CHANGELOG.md#0618--2026-04-15).
 - 📋 **H4 — Shell completions (bash / zsh / fish)**. Hand-written
   completions for the current CLI flags, installable to the
   conventional locations (`/usr/share/bash-completion/completions/`,

@@ -60,10 +60,10 @@ jobs:
       # Runs the same validators distro packagers invoke during package
       # review, so schema drift in the desktop entry or AppStream metainfo
       # fails CI instead of landing in a release tarball.
-      - name: Install AppStream + desktop-file validators
+      - name: Install AppStream + desktop-file validators + groff
         run: |
           sudo apt-get install -y --no-install-recommends \
-            appstream desktop-file-utils
+            appstream desktop-file-utils groff
 
       - name: Validate AppStream metainfo
         run: |
@@ -73,6 +73,14 @@ jobs:
       - name: Validate desktop entry
         run: |
           desktop-file-validate packaging/linux/org.ants.Terminal.desktop
+
+      # Man page lint (H3 — distribution readiness). `-wall` upgrades all
+      # groff_man warnings to a non-zero exit so missing macros / broken
+      # cross-refs / bad escape sequences fail CI instead of landing in a
+      # release tarball.
+      - name: Lint ants-terminal.1 with groff
+        run: |
+          groff -man -Tutf8 -wall packaging/linux/ants-terminal.1 > /dev/null
 
   # Dedicated ASan + UBSan build. Smoke-tests the binary under sanitizers
   # so initialization-path bugs (config load, command-line parsing, Qt setup)
