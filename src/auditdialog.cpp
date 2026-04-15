@@ -593,6 +593,43 @@ void AuditDialog::populateChecks() {
     });
 
     // ========== Security ==========
+
+    // 0.6.22 — Trivy filesystem scanner. Three lanes in one invocation:
+    //   * vuln       — dependency CVEs (lockfiles, SBOM-derivable manifests)
+    //   * secret     — high-entropy + signature-based secret detection
+    //   * misconfig  — Dockerfile / k8s / Terraform / GitHub Actions hardening
+    //                  rules
+    //
+    // Self-disables when trivy isn't on PATH. JSON output piped to jq for
+    // a flat `path:line: severity: scanner/rule-id: title` format that
+    // parseFindings() can consume directly. Severity floor MEDIUM keeps the
+    // signal/noise reasonable for a generalist scanner; CRITICAL trivy hits
+    // (real CVE in a pinned dep, hardcoded production secret) are typically
+    // worth dropping everything for.
+    //
+    // The jq filter uses `.Title // .Description // "(no description)"` for
+    // vulnerabilities because Trivy occasionally omits Title for low-noise
+    // CVEs but always populates Description. Empty-result skip via the `?`
+    // suffix on each array selector means a clean tree produces no output
+    // (rather than `null` or "{}" lines that would parse as fake findings).
+    const bool hasTrivy = toolExists("trivy");
+    const bool hasJq    = toolExists("jq");
+    const QString trivyCmd = QString::fromLatin1(R"TRIVY(trivy fs --quiet --scanners vuln,secret,misconfig --format json --severity MEDIUM,HIGH,CRITICAL --skip-dirs build,build-test,build-release,build-asan,.audit_cache,node_modules,vendor,.git,Testing . 2>/dev/null | jq -r '.Results[]? | .Target as $f | (.Vulnerabilities[]? | "\($f):1: \(.Severity): vuln/\(.VulnerabilityID): \(.Title // .Description // "(no description)")"), (.Secrets[]? | "\($f):\(.StartLine): \(.Severity): secret/\(.RuleID): \(.Title)"), (.Misconfigurations[]? | "\($f):1: \(.Severity): misconfig/\(.ID): \(.Title)")' 2>/dev/null | head -100)TRIVY");
+    const QString trivyDesc = (hasTrivy && hasJq)
+        ? QString("Filesystem-wide vuln + secret + misconfig scan (MEDIUM+)")
+        : (!hasTrivy
+            ? QString("(trivy not installed — zypper in trivy)")
+            : QString("(jq not installed — needed to parse Trivy JSON; zypper in jq)"));
+    m_checks.append({
+        "trivy_fs", "Trivy Filesystem Scan", trivyDesc, "Security",
+        trivyCmd,
+        CheckType::Vulnerability, Severity::Major,
+        { /*dropIfContains*/ {}, "", {}, 100 },
+        hasTrivy && hasJq,   // auto-select when usable
+        hasTrivy && hasJq,   // available
+        nullptr
+    });
+
     addGrepCheck("secrets_scan", "Hardcoded Secrets Scan",
                  "API keys, passwords, tokens in source", "Security",
                  "'(api[_-]?key|password|secret[_-]?key|auth[_-]?token|credentials)\\s*[:=]'",

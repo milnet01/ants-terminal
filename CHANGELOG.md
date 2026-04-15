@@ -44,6 +44,26 @@ suppression works at the bottom too.
   `terminalgrid.h` (`m_csiClearRedrawActive`, `m_csiClearRedrawTimer`,
   `kCsiClearRedrawWindowMs`).
 
+### Added — Audit tooling
+
+- **Trivy filesystem-scan lane in Project Audit.** New "Trivy
+  Filesystem Scan" check runs `trivy fs` with the `vuln`, `secret`,
+  and `misconfig` scanners in one invocation, severity-floor
+  MEDIUM. Output is piped through `jq` into the standard
+  `path:line: severity: scanner/rule-id: title` shape so
+  `parseFindings()` consumes it directly. Self-disables when
+  either `trivy` or `jq` is missing (the description text
+  explains how to install). Auto-selected when both are present.
+- **Three new audit rules.** `cmake_no_version_floor` (find_package
+  REQUIRED with no version constraint), `bash_c_non_literal`
+  (`bash -c <ident>` injection-sink heuristic, restricted to lines
+  containing `bash` / `sh` so it doesn't flag `grep -c`), and
+  `packaging_version_drift` (cross-file consistency: extracts
+  CMakeLists.txt project(VERSION X.Y.Z) and diffs it against
+  every packaging recipe). Both regex-based rules ship with
+  bad/good fixture pairs under `tests/audit_fixtures/`; the
+  drift check is exercised by the audit dialog itself.
+
 ### Added — Test infrastructure
 
 - **Feature-conformance test harness (`tests/features/`).** New test
