@@ -2,11 +2,23 @@
 
 ## Contract
 
-When a program running on the **main screen** emits `CSI 2J` (erase-
-display mode 2) followed by a re-paint of content that was previously
+When a program running on the **main screen** emits any erase-display
+sequence that produces the same post-state as `CSI 2J` (every visible
+cell cleared) followed by a re-paint of content that was previously
 visible, the terminal's scrollback must **not grow by more than
 `rows + small_slack` lines** across the repaint. The repaint overwrites
 the previous view; it does not *accumulate* alongside it.
+
+The equivalent-effect shapes that the contract covers:
+
+- `CSI 2J` (mode 2 erase display) — canonical full-screen clear. Cursor
+  position irrelevant.
+- `CSI H; CSI 0J` — move-home + erase-to-end. When cursor is at `(0,0)`,
+  mode 0 clears every row.
+- Any `CSI N;M H; CSI 1J` where `(N,M)` is the bottom-right corner —
+  mode 1 clears everything above the cursor plus the cursor row up to
+  the cursor, which at the corner is every cell. Rare in practice but
+  included for correctness.
 
 ## Rationale
 
@@ -71,7 +83,11 @@ The 0.6.22 implementation opens a 250 ms sliding window on main-screen
 `eraseInDisplay(2)`. Each `scrollUp()` during the window extends it.
 The window closes when no `scrollUp()` fires for ≥ 250 ms, after which
 normal scrollback behavior resumes. Alt-screen entry defensively
-clears the window flag.
+clears the window flag. The coverage was broadened post-0.6.23 to also
+arm the window on the two equivalent-effect shapes listed in §Contract
+(mode-0-from-home and mode-1-from-corner), because the underlying bug
+isn't specific to the canonical sequence — it's specific to the
+post-state (blank screen) plus subsequent overflow during redraw.
 
 This file is the contract; `test_redraw.cpp` asserts the invariant;
 the implementation may change as long as the invariant holds.

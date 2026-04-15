@@ -1082,6 +1082,17 @@ QColor TerminalGrid::parseRGBColor(const std::vector<int> &params, size_t &i) {
 }
 
 void TerminalGrid::eraseInDisplay(int mode) {
+    // Full-clear detection — a mode-0 erase from (0,0) or a mode-1 erase
+    // from the bottom-right corner produces the same post-state as mode 2
+    // (every visible cell cleared). Some TUIs emit `CSI H; CSI 0J` instead
+    // of the canonical `CSI 2J; CSI H` and hit the same scrollback-doubling
+    // pattern on redraw. The 0.6.22 suppression window is armed for all
+    // three equivalent-effect shapes.
+    const bool fullClearLikeMode2 =
+        mode == 2 ||
+        (mode == 0 && m_cursorRow == 0 && m_cursorCol == 0) ||
+        (mode == 1 && m_cursorRow == m_rows - 1 && m_cursorCol == m_cols - 1);
+
     switch (mode) {
     case 0:
         eraseInLine(0);
@@ -1095,15 +1106,16 @@ void TerminalGrid::eraseInDisplay(int mode) {
     case 3:
         for (int r = 0; r < m_rows; ++r) clearRow(r);
         if (mode == 3) m_scrollback.clear();
-        // 0.6.22 — open the scrollback-push suppression window on main-
-        // screen mode-2 erase. Mode 3 already nukes scrollback by request,
-        // so no window needed. Alt-screen doesn't touch scrollback at all,
-        // so skip there too.
-        if (mode == 2 && !m_altScreenActive) {
-            m_csiClearRedrawActive = true;
-            m_csiClearRedrawTimer.start();
-        }
         break;
+    }
+
+    // 0.6.22 (extended 0.6.24) — open the scrollback-push suppression
+    // window on any main-screen full-clear. Mode 3 already nukes
+    // scrollback by request, so no window needed. Alt-screen doesn't
+    // touch scrollback at all, so skip there too.
+    if (fullClearLikeMode2 && mode != 3 && !m_altScreenActive) {
+        m_csiClearRedrawActive = true;
+        m_csiClearRedrawTimer.start();
     }
 }
 

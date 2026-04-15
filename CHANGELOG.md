@@ -10,9 +10,51 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
-## [Unreleased]
+## [0.6.24] — 2026-04-15
 
-Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
+### Fixed
+
+- **Status-bar "Add to allowlist" button now persists for the life of
+  the permission prompt.** The previous lifecycle retracted the button
+  on the next `TerminalWidget::outputReceived` signal after a 1 s grace
+  — but Claude Code v2.1+ repaints its TUI continuously (cursor blink,
+  spinner animation) even while the prompt is still visible, so the
+  button vanished within seconds of appearing. Introduced a stricter
+  `claudePermissionCleared` signal that fires only when the grid scan
+  detects the prompt footer is no longer on screen, and rewired both
+  the grid-scan and hook-stream button paths to retract against that
+  signal instead. The button now stays visible for as long as the
+  prompt is on screen.
+- **"Review Changes" button legible on every theme, including those
+  with deliberately-muted `textSecondary`.** The 5e2ac58 fix gave the
+  disabled state an explicit `textSecondary` color — which works for
+  themes where textSecondary is ~70% luminance, but still fails WCAG
+  AA on themes like One Dark (`#5C6370` on `bgSecondary #21252B` ≈
+  3:1 contrast). Switched to `textPrimary` + italic + dissolved
+  border: guarantees legibility across all 11 themes while the italic
+  still communicates "nothing to review right now."
+- **Scrollback-doubling suppression window now covers all full-clear
+  shapes, not just `CSI 2J`.** The 0.6.22 fix armed the 250 ms
+  suppression window only on `eraseInDisplay` mode 2; a ninth-audit
+  probe found that `CSI H; CSI 0J` and `CSI N;M H; CSI 1J`
+  (with `(N,M)` at the bottom-right corner) produce the same
+  post-state — every visible cell cleared — and therefore exhibit
+  the same doubling bug on subsequent redraw. The window is now
+  armed for all three equivalent-effect shapes. Added two regression
+  scenarios to `tests/features/scrollback_redraw/` (`identical-repaint-0J`
+  and `identical-repaint-1J`) that reproduce the bug pre-fix and pass
+  post-fix. Spec §Contract updated to document the broader invariant.
+
+### Changed
+
+- **Packaging files caught up to 0.6.24.** The 0.6.23 release tag
+  shipped with `CMakeLists.txt` at 0.6.23 but the openSUSE spec,
+  Arch PKGBUILD, Debian changelog, and man page still reading 0.6.22
+  — the exact drift the `packaging-version-drift` audit rule (0.6.22)
+  was written to catch. Rule wasn't run on the 0.6.23 release commit.
+  Also added `org.ants.Terminal.metainfo.xml` release entries for
+  0.6.23 and 0.6.24 (AppStream metadata is not currently checked by
+  the audit rule — follow-up item).
 
 ## [0.6.23] — 2026-04-15
 

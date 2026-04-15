@@ -3618,8 +3618,17 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
         }
     }
     if (footerLine < 0) {
-        // No prompt on screen — reset so we can detect the next one
-        m_lastDetectedRule.clear();
+        // No prompt on screen — reset so we can detect the next one.
+        // If we previously had a detection live, notify listeners so they
+        // can retract UI tied to the prompt (e.g. the status-bar "Add to
+        // allowlist" button). We must NOT retract that UI on every output
+        // tick — Claude Code v2.1+ repaints its TUI continuously while
+        // the prompt is still visible, so tying the retraction to output
+        // would nuke the button within seconds of it appearing.
+        if (!m_lastDetectedRule.isEmpty()) {
+            m_lastDetectedRule.clear();
+            emit claudePermissionCleared();
+        }
         return;
     }
 

@@ -89,6 +89,29 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.24" date="2026-04-15">
+      <description>
+        <p>Status-bar button-lifecycle and legibility fixes alongside the full-clear scrollback suppression extension.</p>
+        <ul>
+          <li>Status-bar "Add to allowlist" button now persists for the full life of the Claude Code permission prompt — previously the button was retracted on the next repaint tick, vanishing within seconds of the prompt appearing.</li>
+          <li>"Review Changes" button disabled-state text now readable on every theme. Previous textSecondary-based fix still failed WCAG AA on One Dark / Kanagawa; switched to textPrimary + italic + dissolved border so the label stays legible while still communicating the disabled state.</li>
+          <li>Extended the 0.6.22 suppression window to <code>CSI H; CSI 0J</code> and corner-cursor <code>CSI 1J</code> — both produce the same post-state as <code>CSI 2J</code> and therefore exhibit the same doubling bug on TUI redraw bursts. Regression tests for both shapes added to <code>tests/features/scrollback_redraw/</code>.</li>
+          <li>Packaging recipes (openSUSE spec, Arch PKGBUILD, Debian changelog, man page) bumped to 0.6.24 after drifting two releases behind — the exact drift the <code>packaging-version-drift</code> audit rule was written to catch.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.6.23" date="2026-04-15">
+      <description>
+        <p>Three user-reported UX fixes, an event-driven status-bar contract, and the first 0.7.0 performance item — SIMD VT-parser scan.</p>
+        <ul>
+          <li>Allowlist "already covered" check no longer blocks legitimate compound rules — subsumption now splits on shell operators (<code>&amp;&amp;</code>, <code>||</code>, <code>;</code>, <code>|</code>) and requires every segment to match before declaring coverage.</li>
+          <li>Right-click tab colour picker now renders visibly — a new <code>ColoredTabBar</code> paints a 3-px strip outside stylesheet influence (was defeated by QSS specificity).</li>
+          <li>Status bar clears event-scoped transients (Allow buttons, notifications) on tab switch so state from one tab never leaks into another.</li>
+          <li>Fixed a Shift+Enter paste-image regression.</li>
+          <li>SIMD ground-state scan (SSE2 / NEON) — bulk <code>Print</code> emission on runs of safe printable-ASCII, with byte-identical action-stream regression guards.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.22" date="2026-04-15">
       <description>
         <p>Root-cause fix for main-screen TUI scrollback doubling, plus packaging catch-up across all recipes.</p>

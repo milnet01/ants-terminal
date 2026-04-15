@@ -25,7 +25,7 @@ constexpr int kRows = 24;
 constexpr int kCols = 80;
 constexpr int kLinesPerPhase = 100;   // L1 = L2 = 100, both > kRows.
 
-int runScenario(const char *scenarioName, bool repaintIdenticalContent) {
+int runScenario(const char *scenarioName, const char *clearSeq, bool repaintIdenticalContent) {
     TerminalGrid grid(kRows, kCols);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
 
@@ -40,12 +40,13 @@ int runScenario(const char *scenarioName, bool repaintIdenticalContent) {
     }
     const int sbAfterPhase1 = grid.scrollbackSize();
 
-    // Phase 2 — simulate a TUI repaint. CSI 2J erases the visible screen;
-    // CSI H homes the cursor; then bulk-print the same content again.
-    // Without the 0.6.22 fix, each newline during this phase would push
-    // a line to scrollback, doubling it. With the fix, the sliding
-    // suppression window drops those pushes.
-    feed("\x1b[2J\x1b[H");
+    // Phase 2 — simulate a TUI repaint. `clearSeq` is the erase-and-home
+    // sequence under test — the canonical pattern is `CSI 2J; CSI H`, but
+    // some TUIs use equivalent-effect variants like `CSI H; CSI 0J` which
+    // produces the same post-state and therefore must suppress the same way.
+    // Without the suppression window, each newline during this phase pushes
+    // a line to scrollback, doubling it.
+    feed(clearSeq);
     for (int i = 0; i < kLinesPerPhase; ++i) {
         if (repaintIdenticalContent)
             feed("phase1 line " + std::to_string(i) + "\r\n");  // same as phase 1
@@ -77,13 +78,16 @@ int runScenario(const char *scenarioName, bool repaintIdenticalContent) {
 }  // namespace
 
 int main() {
-    // Two scenarios — the Claude-Code-style (identical content, the common
-    // case) and the diverged-content case (TUI with new data between
-    // paints, which must ALSO be suppressed because scrollback can't tell
-    // content apart at the byte level during a CSI 2J window).
+    // Canonical + equivalent-effect variants. Claude Code uses CSI 2J + CSI H
+    // (the first two); some TUIs and older terminals use CSI H + CSI 0J
+    // (move home, erase to end — same post-state as CSI 2J from home).
+    // CSI 1J from the bottom-right corner produces the same post-state too,
+    // though in practice no TUI emits that pattern — guarded for correctness.
     int failures = 0;
-    failures += runScenario("identical-repaint", /*repaintIdenticalContent=*/true);
-    failures += runScenario("diverged-repaint",  /*repaintIdenticalContent=*/false);
+    failures += runScenario("identical-repaint-2J",   "\x1b[2J\x1b[H",         /*identical=*/true);
+    failures += runScenario("diverged-repaint-2J",    "\x1b[2J\x1b[H",         /*identical=*/false);
+    failures += runScenario("identical-repaint-0J",   "\x1b[H\x1b[0J",         /*identical=*/true);
+    failures += runScenario("identical-repaint-1J",   "\x1b[24;80H\x1b[1J\x1b[H", /*identical=*/true);
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d scenario(s) failed.\n", failures);

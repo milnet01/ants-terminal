@@ -1,3 +1,34 @@
+ants-terminal (0.6.24-1) unstable; urgency=medium
+
+  * Status-bar "Add to allowlist" button now persists for the full life
+    of the Claude Code permission prompt (was retracted mid-prompt by
+    the TUI's own repaint traffic).
+  * "Review Changes" disabled state legible on every theme, including
+    One Dark and Kanagawa where the previous textSecondary-based fix
+    still failed WCAG AA.
+  * Extend the main-screen scrollback-doubling suppression window to
+    cover `CSI H; CSI 0J` and corner-cursor `CSI 1J` in addition to
+    `CSI 2J`. All three sequences produce the same post-state (every
+    visible cell cleared) and therefore triggered the same
+    scrollback-doubling bug under TUI repaint bursts.
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Wed, 15 Apr 2026 16:00:00 +0000
+
+ants-terminal (0.6.23-1) unstable; urgency=medium
+
+  * Fix allowlist subsumption false-positive that rejected legitimate
+    compound rules like `Bash(make * | tail * && ctest * | tail *)`
+    when a simple-prefix rule existed for the first segment.
+  * Fix right-click tab colour picker having no visible effect
+    (stylesheet specificity beat setTabTextColor).
+  * Event-driven status bar: clear transient widgets on tab switch
+    so stale Allow buttons / notifications don't cross between tabs.
+  * Fix Shift+Enter paste-image regression.
+  * SIMD VT-parser ground-state scan (SSE2 / NEON) — bulk Print
+    emission on runs of safe printable-ASCII.
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Wed, 15 Apr 2026 15:00:00 +0000
+
 ants-terminal (0.6.22-1) unstable; urgency=medium
 
   * Fix main-screen TUI scrollback-doubling regression (root cause:

@@ -226,6 +226,13 @@ signals:
     void shellExited(int code);
     void imagePasted(const QImage &image);
     void claudePermissionDetected(const QString &rule);
+    // Fires when a previously-detected Claude Code permission prompt is no
+    // longer on screen (user responded, or prompt scrolled off). Used by
+    // mainwindow to retract the status-bar allowlist button. This is
+    // stricter than `outputReceived` — the latter fires on every repaint
+    // tick while the prompt is still up, which would retract the button
+    // prematurely during Claude Code's continuous TUI animation.
+    void claudePermissionCleared();
     void triggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
     void commandFailed(int exitCode, const QString &output);
     void outputReceived();  // debounced notification of PTY output

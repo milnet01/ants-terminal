@@ -1240,13 +1240,15 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
             clearStatusMessage();
         });
 
-        // Remove button when prompt goes away (new terminal output after grace period)
-        QTimer::singleShot(1000, addBtn, [terminal, addBtn]() {
-            auto conn = std::make_shared<QMetaObject::Connection>();
-            *conn = connect(terminal, &TerminalWidget::outputReceived, addBtn, [addBtn, conn]() {
-                QObject::disconnect(*conn);
-                addBtn->deleteLater();
-            });
+        // Remove button only when the prompt actually disappears from the
+        // screen. Anchoring to `outputReceived` (as an earlier version did)
+        // retracted the button on the next Claude Code repaint tick — which
+        // fires continuously during the prompt's own cursor/spinner animation
+        // and nuked the button while the user was still looking at it.
+        auto conn = std::make_shared<QMetaObject::Connection>();
+        *conn = connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn, [addBtn, conn]() {
+            QObject::disconnect(*conn);
+            addBtn->deleteLater();
         });
     });
 }
@@ -2068,16 +2070,18 @@ void MainWindow::updateClaudeThemeColors() {
                     "QProgressBar::chunk { background: %4; border-radius: 2px; }")
                 .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), th.ansi[2].name()));
     if (m_claudeReviewBtn)
-        // :disabled explicit — without it, Qt's default disabled palette
-        // renders text at ~40% alpha against our bgSecondary, which is
-        // illegible on dark themes. Use textSecondary instead: it is the
-        // theme's "muted but still readable" foreground and communicates
-        // "clean repo, nothing to review" without hiding the label.
+        // :disabled uses textPrimary + italic + dissolved border. The earlier
+        // textSecondary approach (5e2ac58) still failed WCAG AA on themes
+        // where textSecondary is deliberately muted (One Dark #5C6370 on
+        // bgSecondary #21252B ≈ 3:1 contrast). Using textPrimary guarantees
+        // legibility on every theme; the italic + borderless-look combo
+        // still communicates "nothing to review right now, but the action
+        // exists" without making the label vanish.
         m_claudeReviewBtn->setStyleSheet(
             QStringLiteral("QPushButton { background: %1; color: %2; border: 1px solid %3; border-radius: 3px; padding: 0 6px; font-size: 10px; }"
                     "QPushButton:hover { background: %3; }"
-                    "QPushButton:disabled { color: %4; border-color: %3; }")
-                .arg(th.bgSecondary.name(), th.textPrimary.name(), th.border.name(), th.textSecondary.name()));
+                    "QPushButton:disabled { color: %2; border-color: %1; font-style: italic; }")
+                .arg(th.bgSecondary.name(), th.textPrimary.name(), th.border.name()));
     if (m_claudeErrorLabel)
         m_claudeErrorLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 4px; font-size: 11px;").arg(th.ansi[1].name()));
 }
@@ -2237,15 +2241,17 @@ void MainWindow::setupClaudeIntegration() {
             clearStatusMessage();
         });
 
-        // Remove buttons when prompt goes away (new terminal output after grace period)
+        // Remove buttons when the prompt disappears from the screen.
+        // Same lesson as the grid-scan path above: don't tie retraction to
+        // `outputReceived`, which fires on every repaint and would retract
+        // the buttons while the prompt is still visible. `claudePermissionCleared`
+        // fires only on the transition to "no prompt on screen".
         auto *term = currentTerminal();
         if (term) {
-            QTimer::singleShot(1000, btnWidget, [term, btnWidget]() {
-                auto conn = std::make_shared<QMetaObject::Connection>();
-                *conn = connect(term, &TerminalWidget::outputReceived, btnWidget, [btnWidget, conn]() {
-                    QObject::disconnect(*conn);
-                    btnWidget->deleteLater();
-                });
+            auto conn = std::make_shared<QMetaObject::Connection>();
+            *conn = connect(term, &TerminalWidget::claudePermissionCleared, btnWidget, [btnWidget, conn]() {
+                QObject::disconnect(*conn);
+                btnWidget->deleteLater();
             });
         }
     });
