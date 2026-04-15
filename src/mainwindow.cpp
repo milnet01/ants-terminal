@@ -2035,10 +2035,16 @@ void MainWindow::updateClaudeThemeColors() {
                     "QProgressBar::chunk { background: %4; border-radius: 2px; }")
                 .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), th.ansi[2].name()));
     if (m_claudeReviewBtn)
+        // :disabled explicit — without it, Qt's default disabled palette
+        // renders text at ~40% alpha against our bgSecondary, which is
+        // illegible on dark themes. Use textSecondary instead: it is the
+        // theme's "muted but still readable" foreground and communicates
+        // "clean repo, nothing to review" without hiding the label.
         m_claudeReviewBtn->setStyleSheet(
             QStringLiteral("QPushButton { background: %1; color: %2; border: 1px solid %3; border-radius: 3px; padding: 0 6px; font-size: 10px; }"
-                    "QPushButton:hover { background: %3; }")
-                .arg(th.bgSecondary.name(), th.textPrimary.name(), th.border.name()));
+                    "QPushButton:hover { background: %3; }"
+                    "QPushButton:disabled { color: %4; border-color: %3; }")
+                .arg(th.bgSecondary.name(), th.textPrimary.name(), th.border.name(), th.textSecondary.name()));
     if (m_claudeErrorLabel)
         m_claudeErrorLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 4px; font-size: 11px;").arg(th.ansi[1].name()));
 }
