@@ -1406,8 +1406,34 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         return;
     }
 
+    // Shift+Enter — unconditional literal-newline escape, handled BEFORE
+    // the Kitty keyboard protocol encoder. The contract is: Shift+Enter
+    // always produces an in-buffer newline, never a submit, and never
+    // anything else — regardless of what escape sequence the TUI running
+    // inside the PTY might otherwise map CSI 13;2u to.
+    //
+    // Regression origin: some TUIs (e.g. Claude Code v2.1+ when the
+    // clipboard carries an image) map the Kitty-encoded Shift+Enter
+    // sequence to "paste clipboard" rather than "insert newline", so
+    // pressing Shift+Enter with an image on the clipboard pasted the
+    // image instead of inserting a newline. Fixing that behaviour at
+    // the TUI layer isn't reachable from here; the terminal's defence
+    // is to send the same byte sequence that bash/readline have
+    // recognised as "literal-insert newline" for decades — `\x16\n`
+    // (quoted-insert + LF) — so the contract holds uniformly across
+    // shells and TUIs regardless of clipboard state.
+    if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (mods & Qt::ShiftModifier)
+        && !(mods & Qt::ControlModifier)) {
+        if (m_pty) {
+            data = QByteArray("\x16\n", 2);
+            m_pty->write(data);
+        }
+        if (m_broadcastCallback) m_broadcastCallback(this, QByteArray("\x16\n", 2));
+        return;
+    }
+
     // Kitty keyboard protocol — must be checked BEFORE legacy Ctrl+key handlers
-    // so that Ctrl+A-Z, Ctrl+arrows, Shift+Enter etc. are properly encoded
+    // so that Ctrl+A-Z, Ctrl+arrows etc. are properly encoded.
     if (m_grid->kittyKeyFlags() > 0) {
         QByteArray kittyData = encodeKittyKey(event);
         if (!kittyData.isEmpty()) {
@@ -1417,15 +1443,6 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
             return;
         }
         // Fall through to legacy encoding for keys not handled by Kitty
-    }
-
-    // Shift+Enter -- literal newline (legacy only — Kitty handles above)
-    if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (mods & Qt::ShiftModifier)) {
-        if (m_pty) {
-            data = QByteArray("\x16\n", 2);
-            m_pty->write(data);
-        }
-        return;
     }
 
     // Ctrl+arrow keys — word movement (xterm modifier encoding: CSI 1;5 X)

@@ -1,11 +1,120 @@
 #include "vtparser.h"
 
+#include <cstddef>
+
+#if defined(__SSE2__)
+#  include <emmintrin.h>
+#  define ANTS_VTPARSER_HAS_SSE2 1
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__)
+#  include <arm_neon.h>
+#  define ANTS_VTPARSER_HAS_NEON 1
+#endif
+
+namespace {
+
+// Scan for the first byte in [data, data+len) that the state machine would
+// need to treat as special when consumed in Ground state with no pending
+// UTF-8 continuation: any C0 control (<0x20), DEL (0x7F), or high-bit byte
+// (≥0x80, which starts a multi-byte UTF-8 sequence). A byte in the
+// printable-ASCII range [0x20..0x7E] is *safe* — in Ground state it is
+// emitted verbatim as a Print action with the byte as its codepoint, and
+// the state machine never changes.
+//
+// Returns the index of the first non-safe byte, or `len` if the entire span
+// is safe. The scan is the SIMD hot path for TUI-repaint workloads where a
+// single PTY read can be thousands of printable-ASCII bytes punctuated by
+// a few escape sequences.
+//
+// Correctness: this function MUST return the exact same index as the
+// byte-at-a-time scalar fallback. The fast-path in feed() relies on that
+// equivalence to emit Print actions for the safe run without running the
+// full state machine. The feature test at tests/features/vtparser_simd_scan/
+// asserts action-stream equivalence against the scalar path.
+static std::size_t scanSafeAsciiRun(const std::uint8_t *data, std::size_t len) noexcept {
+    std::size_t i = 0;
+
+#if defined(ANTS_VTPARSER_HAS_SSE2)
+    // Signed-compare trick: XOR with 0x80 maps unsigned bytes into a signed
+    // space where the safe range [0x20..0x7E] becomes [-96..-2]. Anything
+    // outside is either < -96 (C0 controls) or > -2 (0x7F + all high-bit
+    // bytes). Two signed cmpgt + or + movemask flags any interesting byte
+    // in a 16-byte chunk.
+    const __m128i kSignFlip = _mm_set1_epi8(static_cast<char>(0x80));
+    const __m128i kLowBound = _mm_set1_epi8(static_cast<char>(-96));  // 0x20 - 0x80
+    const __m128i kHighBound = _mm_set1_epi8(static_cast<char>(-2));  // 0x7E - 0x80
+    while (i + 16 <= len) {
+        __m128i b = _mm_loadu_si128(reinterpret_cast<const __m128i *>(data + i));
+        __m128i s = _mm_xor_si128(b, kSignFlip);
+        __m128i lowMask = _mm_cmpgt_epi8(kLowBound, s);   // s < -96  ↔ original < 0x20
+        __m128i highMask = _mm_cmpgt_epi8(s, kHighBound); // s > -2   ↔ original >= 0x7F
+        __m128i interesting = _mm_or_si128(lowMask, highMask);
+        int mask = _mm_movemask_epi8(interesting);
+        if (mask != 0) {
+            return i + static_cast<std::size_t>(__builtin_ctz(static_cast<unsigned>(mask)));
+        }
+        i += 16;
+    }
+#elif defined(ANTS_VTPARSER_HAS_NEON)
+    const uint8x16_t kLowBound = vdupq_n_u8(0x20);
+    const uint8x16_t kHighBound = vdupq_n_u8(0x7E);
+    while (i + 16 <= len) {
+        uint8x16_t b = vld1q_u8(data + i);
+        uint8x16_t lowMask = vcltq_u8(b, kLowBound);   // b < 0x20
+        uint8x16_t highMask = vcgtq_u8(b, kHighBound); // b > 0x7E  (covers 0x7F + 0x80+)
+        uint8x16_t interesting = vorrq_u8(lowMask, highMask);
+        // Reduce to two 64-bit lanes; a byte is interesting iff its lane is 0xFF.
+        uint64_t lo = vgetq_lane_u64(vreinterpretq_u64_u8(interesting), 0);
+        uint64_t hi = vgetq_lane_u64(vreinterpretq_u64_u8(interesting), 1);
+        if (lo != 0) {
+            return i + static_cast<std::size_t>(__builtin_ctzll(lo) / 8);
+        }
+        if (hi != 0) {
+            return i + 8 + static_cast<std::size_t>(__builtin_ctzll(hi) / 8);
+        }
+        i += 16;
+    }
+#endif
+
+    // Scalar tail (also serves as the full fallback on architectures without
+    // SSE2 or NEON). Compilers typically auto-vectorize this well enough that
+    // the scalar-only path is still fast, but we keep the explicit SIMD above
+    // because auto-vectorization varies across -O levels and compilers.
+    while (i < len) {
+        std::uint8_t b = data[i];
+        if (b < 0x20 || b >= 0x7F) return i;
+        ++i;
+    }
+    return len;
+}
+
+} // namespace
+
 VtParser::VtParser(ActionCallback callback)
     : m_callback(std::move(callback)) {}
 
 void VtParser::feed(const char *data, int length) {
-    for (int i = 0; i < length; ++i) {
-        feedByte(static_cast<uint8_t>(data[i]));
+    int i = 0;
+    while (i < length) {
+        // Fast path: Ground state with no pending UTF-8 continuation is the
+        // dominant case during TUI repaints. Skip the per-byte state machine
+        // for runs of printable ASCII by scanning with SIMD, then emit the
+        // runs as Print actions directly. The scalar fallback below handles
+        // every other byte one at a time.
+        if (m_state == Ground && m_utf8Remaining == 0) {
+            std::size_t run = scanSafeAsciiRun(
+                reinterpret_cast<const std::uint8_t *>(data + i),
+                static_cast<std::size_t>(length - i));
+            for (std::size_t k = 0; k < run; ++k) {
+                VtAction a;
+                a.type = VtAction::Print;
+                a.codepoint = static_cast<std::uint8_t>(data[i + static_cast<int>(k)]);
+                m_callback(a);
+            }
+            i += static_cast<int>(run);
+            if (i >= length) break;
+        }
+        feedByte(static_cast<std::uint8_t>(data[i]));
+        ++i;
     }
 }
 

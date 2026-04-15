@@ -14,6 +14,105 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.23] — 2026-04-15
+
+**Theme:** status-bar event-driven contract + three user-reported UX
+fixes (allowlist subsumption false-positive, tab-colour picker had no
+visible effect, Shift+Enter paste-image regression) and the first
+0.7.0 performance item — SIMD VT-parser scan.
+
+### Fixed
+
+- **Allowlist "already covered" check no longer blocks legitimate
+  compound rules.** User-reported via screenshot: clicking
+  **Add to allowlist** for `Bash(make * | tail * && ctest * | tail *)`
+  opened the dialog with the right compound rule, but a pink warning
+  said *"Already covered by existing rule: Bash(make *)"* and refused
+  to add it — so the next compound invocation re-prompted. Root
+  cause: `ClaudeAllowlistDialog::ruleSubsumes` did a flat
+  `narrowInner.startsWith(broadPrefix + " ")` check, which was true
+  for any compound command whose first segment matched. Fix: split
+  the narrow rule on shell splitters (`&&`, `||`, `;`, `|`) and
+  require every segment to start with the broad prefix before
+  declaring subsumption. Matches the per-segment semantics
+  `generalizeRule` has used since 0.6.22. A compound broad rule
+  deliberately returns `false` rather than risk a false positive —
+  a duplicate rule is benign, a false-positive warning is not.
+  `ruleSubsumes` promoted from `private` to `public` so the feature
+  test can exercise the contract directly. Feature test in
+  `tests/features/allowlist_add/` adds 16 cases including the exact
+  reproduction + simple-prefix regression guards + all four
+  splitters. See `tests/features/allowlist_add/spec.md` §C.
+- **Right-click tab → choose colour now renders visibly.** The
+  context-menu's "Red / Green / Blue / …" picker stored the choice
+  in `m_tabColors[idx]` and called `setTabTextColor`, but the
+  window-level stylesheet rule `QTabBar::tab { color: %6; }` beat
+  `setTabTextColor` on QSS specificity, so the colour was stored
+  and never rendered. Fix: new `ColoredTabBar` subclass (storage
+  via `QTabBar::tabData` — survives drag-reorder and auto-drops on
+  close, unlike an index-keyed map) + a trivial `ColoredTabWidget`
+  wrapper that installs it at construction (QTabWidget::setTabBar
+  is protected). `paintEvent` overlays a 3-px bottom strip in the
+  chosen colour *after* the base class paints, outside stylesheet
+  influence. MainWindow's context-menu handler now calls
+  `m_coloredTabBar->setTabColor(idx, color)` and the stale
+  `m_tabColors` map is removed. New feature test
+  `tests/features/tab_color/` asserts round-trip through
+  `setTabColor`/`tabColor`, colour-follows-tab across `moveTab`
+  (drag reorder), and cleanup on `removeTab` with no index leak
+  into a newly-inserted tab. See `tests/features/tab_color/spec.md`.
+- **Status bar now clears event-scoped transients on tab switch.**
+  User-stated contract: the status bar is event-driven — state /
+  location widgets (git branch, foreground process, Claude state,
+  context %, Review Changes button) are always visible and reflect
+  the active tab; transient notifications carry a timeout; widgets
+  tied to a specific event are visible only while the event is live
+  on its originating tab. `MainWindow::onTabChanged` now calls
+  `clearStatusMessage()`, hides `m_claudeErrorLabel`, and
+  `deleteLater`'s every `QPushButton` on the status bar with
+  `objectName == "claudeAllowBtn"` at the top of the handler —
+  before state-bar refresh (`updateStatusBar`, `refreshReviewButton`,
+  `setShellPid`) paints the new tab's state. Without the cleanup,
+  switching from "tab A asked permission" to tab B left the Allow
+  button visible inviting approval of the wrong prompt, and
+  theme-change notifications from tab A lingered for five seconds
+  on tab B. Contract codified in
+  `tests/features/claude_status_bar/spec.md` §D (new section).
+- **Shift+Enter no longer pastes the clipboard image.** User-reported:
+  with a picture on the clipboard, Shift+Enter inserted the image
+  (saved to disk, filepath pasted) instead of the literal newline.
+  The keypress was being routed through the Kitty keyboard-protocol
+  encoder when `kittyKeyFlags() > 0`, which emits `CSI 13;2u` for
+  Shift+Enter; some TUIs (Claude Code v2.1+ among them) treat that
+  sequence as "paste clipboard" when an image is present. Fix: move
+  the Shift+Enter literal-newline block to fire *before* the Kitty
+  encoder so the sequence Ants puts on the wire is always
+  `\x16\n` (readline quoted-insert + LF) regardless of the
+  negotiated Kitty flags. Ctrl+Shift+Enter's scratchpad continues
+  to take precedence; the new guard
+  `!(mods & Qt::ControlModifier)` makes that explicit.
+  `src/terminalwidget.cpp` keyPressEvent reorder.
+
+### Added
+
+- **SIMD VT-parser scan (0.7.0 Performance ROADMAP item).** The
+  Ground state now fast-paths runs of printable-ASCII bytes (`0x20
+  ..0x7E`) via a 16-byte-wide SIMD lane, avoiding per-byte
+  state-machine work. Implementation in `src/vtparser.cpp` uses
+  SSE2 on x86_64 and NEON on ARM64 with a scalar tail / fallback;
+  a signed-compare trick (XOR 0x80 → two `cmpgt_epi8`s against
+  pre-computed bounds) flags any byte outside the safe range in
+  one `movemask` + `ctz`. TUI repaints (the workload that drove
+  the 0.6.22 scrollback-doubling fix) are the biggest winner —
+  thousands of printable bytes at a time now go through a tight
+  SIMD loop instead of four function calls per byte. New feature
+  test `tests/features/vtparser_simd_scan/` asserts the emitted
+  action stream is byte-identical across whole-buffer, byte-by-byte,
+  and pseudo-random-chunk feed strategies over a 38-case corpus
+  including every offset-mod-16 alignment for an interesting byte
+  (regression guard against scan-boundary off-by-ones). See
+  `tests/features/vtparser_simd_scan/spec.md`.
+
 ## [0.6.22] — 2026-04-15
 
 **Theme:** root-cause fix for the main-screen TUI "scrollback doubling"

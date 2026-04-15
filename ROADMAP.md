@@ -253,10 +253,17 @@ there before adding a multiplexer. Reference:
 
 ### ⚡ Performance
 
-- 📋 **SIMD VT-parser scan**. Ghostty's read thread scans for `0x1B`,
-  `0x07`, `0x9B` via CPU SIMD before dispatching to the state machine.
-  Dominant parser speedup in Ghostty's benchmark
-  ([repo](https://github.com/ghostty-org/ghostty)).
+- ✅ **SIMD VT-parser scan**. Shipped in 0.6.23. Ground-state hot path
+  now scans 16 bytes at a time via SSE2 (x86_64) / NEON (ARM64) for
+  the next non-printable-ASCII byte, then bulk-emits `Print` actions
+  for the safe run without running the full state machine. A signed-
+  compare trick (XOR 0x80 → two `cmpgt_epi8` against pre-computed
+  bounds) flags any interesting byte with one `movemask`. Regression
+  guard: `tests/features/vtparser_simd_scan/` asserts byte-identical
+  action streams across whole-buffer, byte-by-byte, and pseudo-random-
+  chunk feeds over a 38-case corpus covering every offset-mod-16
+  alignment for the scan boundary. See
+  [CHANGELOG.md §0.6.23](CHANGELOG.md#0623--2026-04-15).
 - 📋 **Decouple read/parse/render thread**. Today everything's on the
   Qt GUI thread. Move PTY read + VT parse to a worker; push `VtAction`
   diffs over a lock-free ring to the render path.

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.22 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.23 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,6 +50,7 @@ add_executable(ants-terminal
     src/themes.cpp
     src/config.cpp
     src/commandpalette.cpp
+    src/coloredtabbar.cpp
     src/glrenderer.cpp
     src/sessionmanager.cpp
     src/aidialog.cpp
@@ -304,6 +305,51 @@ if(ANTS_TESTS)
     )
     add_test(NAME allowlist_add COMMAND test_allowlist_add)
     set_tests_properties(allowlist_add PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # tab_color — asserts ColoredTabBar stores per-tab colours via
+    # QTabBar::tabData so they survive drag-reorder (moveTab) and
+    # auto-drop on removeTab. Guards the 0.6.23 fix for "right-click
+    # tab, choose colour, nothing happens" which was caused by
+    # stylesheet winning over setTabTextColor AND by index-keyed
+    # MainWindow storage going stale on reorder. See
+    # tests/features/tab_color/spec.md.
+    add_executable(test_tab_color
+        tests/features/tab_color/test_tab_color.cpp
+        src/coloredtabbar.cpp
+    )
+    target_link_libraries(test_tab_color PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_tab_color PRIVATE src)
+    target_compile_options(test_tab_color PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME tab_color COMMAND test_tab_color)
+    set_tests_properties(tab_color PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # vtparser_simd_scan — asserts that VtParser's SIMD fast-path (0.7.0
+    # performance work, scans 16 bytes at a time for the next non-printable-
+    # ASCII byte via SSE2/NEON) emits an action stream byte-identical to the
+    # scalar path for every feed strategy: single-shot, byte-by-byte, and
+    # pseudo-random chunking. Guards against the scan boundary diverging
+    # from scalar semantics at any offset mod 16. See
+    # tests/features/vtparser_simd_scan/spec.md.
+    add_executable(test_vtparser_simd_scan
+        tests/features/vtparser_simd_scan/test_vtparser_simd.cpp
+        src/vtparser.cpp
+    )
+    target_include_directories(test_vtparser_simd_scan PRIVATE src)
+    target_compile_options(test_vtparser_simd_scan PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME vtparser_simd_scan COMMAND test_vtparser_simd_scan)
+    set_tests_properties(vtparser_simd_scan PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 endif()

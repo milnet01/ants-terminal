@@ -1,4 +1,6 @@
 #include "mainwindow.h"
+
+#include "coloredtabbar.h"
 #include "terminalwidget.h"
 #include "titlebar.h"
 #include "commandpalette.h"
@@ -99,8 +101,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // Standalone menu bar
     m_menuBar = new QMenuBar(this);
 
-    // Tab widget
-    m_tabWidget = new QTabWidget(this);
+    // Tab widget with custom ColoredTabBar so per-tab colour groups
+    // render independently of the QTabBar::tab { color: … } stylesheet
+    // rule (which would otherwise pre-empt any setTabTextColor call
+    // and silently suppress the user's chosen colour).
+    m_tabWidget = new ColoredTabWidget(this);
+    m_coloredTabBar = m_tabWidget->coloredTabBar();
     m_tabWidget->setTabsClosable(true);
     m_tabWidget->setMovable(true);
     m_tabWidget->setDocumentMode(true);
@@ -108,9 +114,9 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
 
     // Tab bar context menu for tab groups (color labels)
-    m_tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_tabWidget->tabBar(), &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
-        int tabIdx = m_tabWidget->tabBar()->tabAt(pos);
+    m_coloredTabBar->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_coloredTabBar, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        int tabIdx = m_coloredTabBar->tabAt(pos);
         if (tabIdx >= 0) showTabColorMenu(tabIdx);
     });
 
@@ -1493,6 +1499,33 @@ void MainWindow::closeCurrentTab() {
 }
 
 void MainWindow::onTabChanged(int index) {
+    // Status-bar event-driven contract: every widget on the status bar
+    // falls into one of three categories, each with its own lifecycle.
+    //
+    //   1. State / location widgets (git branch, foreground process,
+    //      Claude state, context %, Review Changes button) — always
+    //      visible, reflect the active tab. Refreshed below via
+    //      updateStatusBar() + setShellPid() + refreshReviewButton().
+    //
+    //   2. Transient notifications (m_statusMessage) — carry a timeout;
+    //      but a notification that originated on tab A has no meaning
+    //      after the user switches away. Clear on tab change rather
+    //      than let it bleed until its own timer expires.
+    //
+    //   3. Event-tied widgets (permission "Add to allowlist" button,
+    //      error label for a failed command) — visible ONLY while the
+    //      event is live on its originating tab. Tab switch ends the
+    //      user's engagement with that tab's event; the widget must
+    //      vanish or it misleadingly appears tied to the new tab's
+    //      state.
+    //
+    // See tests/features/claude_status_bar/spec.md §D.
+    clearStatusMessage();
+    if (m_claudeErrorLabel) m_claudeErrorLabel->hide();
+    const auto staleAllowBtns =
+        statusBar()->findChildren<QPushButton *>(QStringLiteral("claudeAllowBtn"));
+    for (QPushButton *btn : staleAllowBtns) btn->deleteLater();
+
     auto *t = focusedTerminal();
     if (!t) t = currentTerminal();
     if (t) {
@@ -2661,14 +2694,11 @@ void MainWindow::showTabColorMenu(int tabIndex) {
         }
         connect(a, &QAction::triggered, this, [this, tabWidget, ce]() {
             int idx = m_tabWidget->indexOf(tabWidget);
-            if (idx < 0) return;
-            if (ce.color.isValid()) {
-                m_tabColors[idx] = ce.color;
-                m_tabWidget->tabBar()->setTabTextColor(idx, ce.color);
-            } else {
-                m_tabColors.remove(idx);
-                m_tabWidget->tabBar()->setTabTextColor(idx, QColor()); // default
-            }
+            if (idx < 0 || !m_coloredTabBar) return;
+            // ColoredTabBar stores the colour in QTabBar::tabData, which
+            // survives drag-reorder and auto-drops when a tab is
+            // removed. No MainWindow-side bookkeeping required.
+            m_coloredTabBar->setTabColor(idx, ce.color);
         });
     }
     menu.exec(QCursor::pos());

@@ -25,6 +25,8 @@ class ClaudeAllowlistDialog;
 class ClaudeProjectsDialog;
 class ClaudeTranscriptDialog;
 class ClaudeIntegration;
+class ColoredTabBar;
+class ColoredTabWidget;
 class QSplitter;
 class XcbPositionTracker;
 #ifdef ANTS_LUA_PLUGINS
@@ -86,7 +88,8 @@ private:
 
     TitleBar *m_titleBar = nullptr;
     QMenuBar *m_menuBar = nullptr;
-    QTabWidget *m_tabWidget = nullptr;
+    ColoredTabWidget *m_tabWidget = nullptr;
+    ColoredTabBar *m_coloredTabBar = nullptr;  // = m_tabWidget->coloredTabBar()
     Config m_config;
     QString m_currentTheme;
 
@@ -141,8 +144,8 @@ private:
     };
     QList<ClosedTabInfo> m_closedTabs; // max 10
 
-    // Tab color groups
-    QHash<int, QColor> m_tabColors; // tab index -> color
+    // Tab color groups — storage lives in m_coloredTabBar (QTabBar::tabData
+    // per tab); MainWindow only exposes the context-menu entry point.
     void showTabColorMenu(int tabIndex);
 
     // Handle trigger signals from terminals

@@ -433,23 +433,53 @@ bool ClaudeAllowlistDialog::ruleSubsumes(const QString &broad, const QString &na
     if (!broad.contains('(') && narrow.startsWith(broad + "("))
         return true;
 
-    // Bash glob: Bash(git *) subsumes Bash(git status *)
-    static QRegularExpression bashGlob(R"(^Bash\((.+?)(\s+\*)\)$)");
+    // Bash glob: Bash(git *) subsumes Bash(git status *).
+    //
+    // Claude Code's allowlist matcher evaluates compound commands
+    // (chained with &&, ||, ;, |) segment-by-segment — a simple
+    // "Bash(cmd *)" rule therefore covers a compound narrow rule only
+    // when *every* segment starts with "cmd ". A flat prefix check
+    // (the pre-0.6.23 behavior) would wrongly claim "Bash(make *)"
+    // subsumes "Bash(make x | tail y && ctest z | tail w)" because the
+    // whole string starts with "make "; the dialog would then block the
+    // user from adding the compound rule Claude Code actually needs and
+    // keep re-prompting on every invocation.
+    //
+    // generalizeRule() already splits on the same splitter set when
+    // producing compound rules; subsumption must use matching semantics.
+    static const QRegularExpression bashGlob(R"(^Bash\((.+?)(\s+\*)\)$)");
     auto bm = bashGlob.match(broad);
-    auto nm = bashGlob.match(narrow);
 
     if (bm.hasMatch()) {
         QString broadPrefix = bm.captured(1);
-        // The narrow rule must start with the same prefix
-        // Extract the command inside Bash(...)
-        static QRegularExpression bashInner(R"(^Bash\((.+)\)$)");
+
+        static const QRegularExpression bashInner(R"(^Bash\((.+)\)$)");
         auto ni = bashInner.match(narrow);
-        if (ni.hasMatch()) {
-            QString narrowInner = ni.captured(1);
-            if (narrowInner.startsWith(broadPrefix + " ") || narrowInner == broadPrefix) {
-                return true;
-            }
+        if (!ni.hasMatch()) return false;
+
+        const QString narrowInner = ni.captured(1);
+
+        // Same splitter set as generalizeRule(): &&, ||, ;, |.
+        static const QRegularExpression splitter(R"(\s*(?:&&|\|\||;|\|)\s*)");
+
+        // A compound broadPrefix would need segment-wise matching against
+        // the narrow in both directions, which the current matcher
+        // semantics don't model cleanly. Return false rather than risk a
+        // false positive — duplicate compound rules in the Allow list are
+        // benign; a false-positive "already covered" warning blocks a
+        // rule the user actually needs.
+        if (broadPrefix.contains(splitter)) return false;
+
+        const QStringList segments =
+            narrowInner.split(splitter, Qt::SkipEmptyParts);
+        if (segments.isEmpty()) return false;
+
+        for (const QString &segRaw : segments) {
+            const QString seg = segRaw.trimmed();
+            if (!(seg.startsWith(broadPrefix + " ") || seg == broadPrefix))
+                return false;
         }
+        return true;
     }
 
     // SUDO_ASKPASS: Bash(SUDO...sudo -A zypper *) subsumes Bash(SUDO...sudo -A zypper install *)

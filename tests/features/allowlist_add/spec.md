@@ -42,7 +42,33 @@ pattern. Return an empty string when no sensible generalisation applies
 - Already-wildcard patterns (`Bash(cmd *)` or `Bash(cmd **)`) return
   empty — nothing useful to do.
 
-### C. Button lifecycle
+### C. Rule subsumption (`ruleSubsumes`)
+
+Before the dialog auto-adds a rule (or writes the user's manual addition),
+it checks whether an existing rule already covers the new one. The check
+MUST match Claude Code's allowlist-matcher semantics — any mismatch
+either blocks a rule the user needs (false positive) or creates a
+redundant rule (false negative, benign).
+
+- Equal rules subsume each other.
+- A bare tool name (`Read`) subsumes any qualified form (`Read(path)`).
+- A simple `Bash(cmd *)` rule subsumes a simple narrow rule whose
+  command starts with `cmd ` or is exactly `cmd`.
+- A simple `Bash(cmd *)` rule subsumes a **compound** narrow rule
+  (segments separated by `&&`, `||`, `;`, `|`) **only if every segment**
+  independently starts with `cmd ` (or equals `cmd`). Matches Claude
+  Code's per-segment evaluation. Flat-prefix-based subsumption is
+  prohibited — `Bash(make *)` does NOT subsume
+  `Bash(make x | tail y && ctest z | tail w)` because the `tail` and
+  `ctest` segments need their own rules.
+- Path-glob rules (`Read(//etc/**)`) subsume narrower paths under the
+  same tool (`Read(//etc/passwd)`).
+- **Compound broad rules** (containing splitters in the pattern
+  itself) deliberately return false. Segment-wise compound-vs-compound
+  matching isn't modeled; prefer a redundant rule over a false claim
+  of coverage.
+
+### D. Button lifecycle
 
 The "Add to allowlist" button appears on the status bar when the
 terminal emits `claudePermissionDetected`. The button:
@@ -86,6 +112,10 @@ terminal emits `claudePermissionDetected`. The button:
 - `normalizeRule` contract for every documented input form.
 - `generalizeRule` contract for single-command, `&&`, `;`, `|`, `||`
   patterns, and the safety denylist (`rm`, bare `sudo`, `SUDO_*`).
+- `ruleSubsumes` contract for simple-vs-simple, simple-vs-compound
+  (including the 0.6.22-era reproduction where `Bash(make *)` was
+  wrongly reported as subsuming a pipe+&& chain), and compound-broad
+  safe fallback.
 - Idempotency: `normalizeRule(normalizeRule(x)) == normalizeRule(x)`
   and `generalizeRule(generalizeRule(x)) == "" (or input)`.
 
@@ -103,3 +133,13 @@ terminal emits `claudePermissionDetected`. The button:
   invocations, so the button's usefulness depended on which
   splitter was in play. This spec + test commit that across all four
   splitters, with the safety denylist carved out.
+- **0.6.23:** user-reported: clicking "Add to allowlist" for a
+  compound command opened the dialog with a correct compound rule
+  (`Bash(make * | tail * && ctest * | tail *)`) — but the dialog's
+  subsumption check claimed `Bash(make *)` already covered it, refusing
+  to add. Root cause: `ruleSubsumes` did a flat `startsWith(broad
+  prefix)` check; any compound narrow whose first segment matched
+  looked subsumed even when later segments (tail/ctest) weren't. Fix:
+  split the narrow rule on shell splitters and require every segment
+  to match the broad prefix before declaring subsumption. Matches the
+  per-segment semantics `generalizeRule` has used since 0.6.22.

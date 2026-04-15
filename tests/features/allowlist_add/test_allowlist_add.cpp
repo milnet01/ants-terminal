@@ -13,7 +13,6 @@
 #include <QCoreApplication>
 
 #include <cstdio>
-#include <string>
 
 namespace {
 
@@ -126,6 +125,79 @@ int checkGeneralize() {
     return failures;
 }
 
+struct SubCase {
+    const char *label;
+    const char *broad;
+    const char *narrow;
+    bool expected;
+};
+
+// `ruleSubsumes` contract — asserts segment-aware semantics. The key
+// regressions this guards against:
+//   (a) A simple "Bash(cmd *)" rule must NOT be reported as subsuming a
+//       compound narrow rule whose segments don't all start with "cmd " —
+//       that was the 0.6.22 bug where "Bash(make *)" wrongly blocked
+//       "Bash(make * | tail * && ctest * | tail *)" from being added.
+//   (b) Simple-vs-simple behavior unchanged: prefix match still subsumes.
+//   (c) Compound narrow where EVERY segment does match the broad prefix
+//       is legitimately subsumed (e.g. Bash(git *) covers
+//       Bash(git status && git push)).
+const SubCase kSubsume[] = {
+    // (b) Simple subsumption — preserved from pre-0.6.23 behavior.
+    {"simple-prefix",          "Bash(git *)",     "Bash(git status)",           true},
+    {"simple-exact-prefix",    "Bash(git *)",     "Bash(git)",                  true},
+    {"simple-different-cmd",   "Bash(git *)",     "Bash(make test)",            false},
+    {"bare-tool-any",          "Read",            "Read(//etc/passwd)",         true},
+    {"bare-tool-diff",         "Read",            "Write(//tmp/x)",             false},
+    {"path-glob",              "Read(//etc/**)",  "Read(//etc/passwd)",         true},
+    {"path-glob-diff-prefix",  "Read(//etc/**)",  "Read(//tmp/x)",              false},
+
+    // (c) Compound narrow, every segment covered → legitimately subsumed.
+    {"compound-all-git-and",   "Bash(git *)",
+     "Bash(git status && git push)",                                            true},
+    {"compound-all-git-pipe",  "Bash(git *)",
+     "Bash(git log | git show)",                                                true},
+    {"compound-all-make-semi", "Bash(make *)",
+     "Bash(make build ; make test)",                                            true},
+
+    // (a) THE HEADLINE BUG: simple broad does NOT subsume compound narrow
+    // when any segment diverges. The exact 0.6.22 reproduction case:
+    {"reproduction-case",      "Bash(make *)",
+     "Bash(make * | tail * && ctest * | tail *)",                               false},
+    {"compound-pipe-diverge",  "Bash(make *)",
+     "Bash(make x | tail y)",                                                   false},
+    {"compound-and-diverge",   "Bash(make *)",
+     "Bash(make x && echo done)",                                               false},
+    {"compound-or-diverge",    "Bash(make *)",
+     "Bash(make x || echo failed)",                                             false},
+    {"compound-semi-diverge",  "Bash(git *)",
+     "Bash(git status ; make test)",                                            false},
+
+    // Compound broad: err on the side of false (safe) — matcher semantics
+    // for segment-wise compound-vs-compound aren't modeled yet. A false
+    // negative means at worst a redundant rule; a false positive blocks
+    // the user from adding a rule they need.
+    {"compound-broad-skip",    "Bash(make * && echo *)",
+     "Bash(make test && echo done)",                                            false},
+};
+
+int checkSubsume() {
+    int failures = 0;
+    for (const auto &c : kSubsume) {
+        const bool got = ClaudeAllowlistDialog::ruleSubsumes(
+            QString::fromUtf8(c.broad), QString::fromUtf8(c.narrow));
+        const bool ok = (got == c.expected);
+        std::fprintf(stderr,
+                     "[sub/ %-24s] broad='%s' narrow='%s' got=%s want=%s  %s\n",
+                     c.label, c.broad, c.narrow,
+                     got ? "true" : "false",
+                     c.expected ? "true" : "false",
+                     ok ? "PASS" : "FAIL");
+        if (!ok) ++failures;
+    }
+    return failures;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -134,6 +206,7 @@ int main(int argc, char **argv) {
     int failures = 0;
     failures += checkNormalize();
     failures += checkGeneralize();
+    failures += checkSubsume();
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d case(s) failed.\n", failures);

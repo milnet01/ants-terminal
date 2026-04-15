@@ -39,6 +39,45 @@ The status-bar label showing Claude Code's current state MUST:
    > 0`, emit `contextUpdated(percent)` where `percent = min(100,
    input_tokens * 100 / 200_000)`.
 
+## D. Whole-status-bar event-driven contract
+
+The Claude state label is one widget among many on the status bar; the
+status bar itself follows a three-category lifecycle. Every widget
+added to `statusBar()` falls into exactly one category, and the
+category determines when the widget updates or disappears.
+
+| Category | Visibility | Trigger for update | Trigger for removal |
+|---|---|---|---|
+| **State / location** — git branch, foreground process, Claude state, context %, Review Changes button | Always visible for the active tab | Timer poll *and* immediately on tab change | Never removed (may hide self when irrelevant, e.g. Review button with clean repo) |
+| **Transient notification** — "Theme: Dark", "Rule added to allowlist", "Scrollback exported to …" | Visible for a bounded time window | `showStatusMessage(text, timeoutMs)` — timeoutMs is REQUIRED for true notifications | `clearStatusMessage()` when the timer fires OR on tab change (stale for the new tab) |
+| **Event-tied widget** — "Add to allowlist" button, per-command error label | Visible only while its originating event is live on its originating tab | Created when the event fires | Destroyed when the event concludes (user approves/denies, next output arrives, *or* user switches tabs away from the event's tab) |
+
+Concrete invariants enforced by `MainWindow::onTabChanged` (see
+`src/mainwindow.cpp`):
+
+1. `clearStatusMessage()` is called — any notification from the prior
+   tab disappears.
+2. `m_claudeErrorLabel->hide()` is called — a failed-command error
+   from tab A doesn't display while tab B is active.
+3. Every `QPushButton` on the status bar with `objectName ==
+   "claudeAllowBtn"` is `deleteLater()`'d — permission buttons are
+   event-tied and the event's scope ends at tab switch.
+4. State-bar refresh (`updateStatusBar()`, `refreshReviewButton()`,
+   `setShellPid()`) is invoked *after* the transient-clear so the new
+   tab's state paints over a clean slate, not over a flash of old
+   content.
+
+### Rationale
+
+Without the tab-switch cleanup, the status bar reads as if its
+widgets belong to the window rather than the tab. A user switching
+from "Claude Code asked permission on tab A" to tab B would see the
+Allow button still visible, inviting them to approve a prompt that
+isn't theirs. A notification about the theme change in tab A would
+linger for five seconds while the user operates tab B. Both violate
+the principle that the status bar is a reflection of the *active*
+tab's state.
+
 ## Rationale
 
 - Claude Code is the project's flagship integration and the #1 source

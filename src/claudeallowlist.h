@@ -24,6 +24,14 @@ public:
     static QString normalizeRule(const QString &raw);
     static QString generalizeRule(const QString &rule);
 
+    // Returns true iff `broad` is a superset of `narrow` under Claude Code's
+    // segment-aware matching semantics. A simple "Bash(cmd *)" rule only
+    // subsumes a compound narrow rule (split on &&, ||, ;, |) if *every*
+    // segment starts with "cmd "; otherwise Claude Code would still prompt
+    // for the un-covered segments. Public so the feature test can exercise
+    // the contract directly (no widget harness required).
+    static bool ruleSubsumes(const QString &broad, const QString &narrow);
+
 private slots:
     void onAddRule();
     void onRemoveRule();
@@ -35,7 +43,6 @@ private:
     QListWidget *currentList() const;
 
     // Rule validation and correction
-    static bool ruleSubsumes(const QString &broad, const QString &narrow);
     bool isDuplicate(QListWidget *list, const QString &rule) const;
     QString findSubsumingRule(QListWidget *list, const QString &rule) const;
     void showValidationHint(const QString &msg, bool isError = false);
