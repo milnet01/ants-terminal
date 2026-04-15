@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <functional>
 #include <QColor>
+#include <QElapsedTimer>
 #include <QImage>
 #include <QString>
 
@@ -445,6 +446,26 @@ private:
     // Pause scrollback insertion while the user is scrolled up (see
     // setScrollbackInsertPaused). False = normal terminal behaviour.
     bool m_scrollbackInsertPaused = false;
+
+    // 0.6.22 — CSI 2J "redraw window" suppression. Main-screen full-display
+    // erase (CSI 2J) almost always precedes a TUI full-screen re-paint
+    // (Claude Code v2.1+ is the motivating case — it clears+repaints its
+    // entire transcript view on *every* internal state update, not just
+    // /compact). Without this suppression, each scroll-off line produced
+    // by the re-paint is pushed into scrollback, producing N× duplicates
+    // after N repaints.
+    //
+    // Policy: when eraseInDisplay(2) fires on the main screen, open a
+    // time window. While the window is open, scrollUp() drops the
+    // push-to-scrollback step instead of appending. Each scrollUp during
+    // the window *extends* it (kCsiClearRedrawWindowMs from last scrollUp),
+    // so the window survives the entire repaint burst regardless of its
+    // length, but closes promptly when the app goes quiet. Alt-screen is
+    // unaffected (already bypasses scrollback). Mode-3 erase (which clears
+    // scrollback explicitly) is also unaffected — user opted in.
+    bool m_csiClearRedrawActive = false;
+    QElapsedTimer m_csiClearRedrawTimer;
+    static constexpr qint64 kCsiClearRedrawWindowMs = 250;
 
     // Alt screen buffer
     bool m_altScreenActive = false;

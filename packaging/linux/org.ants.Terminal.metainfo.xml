@@ -89,6 +89,42 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.22" date="2026-04-15">
+      <description>
+        <p>Root-cause fix for main-screen TUI scrollback doubling, plus packaging catch-up across all recipes.</p>
+        <ul>
+          <li>Scrollback no longer accumulates duplicates when a main-screen TUI (Claude Code v2.1+) repaints via <code>CSI 2J</code> — a 250 ms sliding window now suppresses scrollback pushes during the repaint burst.</li>
+          <li>Packaging recipes (openSUSE spec, Arch PKGBUILD, Debian changelog) bumped to 0.6.22 after drifting three releases behind.</li>
+          <li>openSUSE spec gains <code>%post</code>/<code>%postun</code> scriptlets for desktop-database and icon-cache refresh.</li>
+          <li>Debian gains <code>postinst</code>/<code>postrm</code> scripts for the same purpose.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.6.21" date="2026-04-15">
+      <description>
+        <p>Audit-tool noise reduction, dialog theming, and a scrollback-insert pause for users actively reading history while a TUI repaints.</p>
+        <ul>
+          <li>Fixed a GNU grep 3.12 argument-ordering quirk that silently disabled the audit's <code>--include</code> file-type filter.</li>
+          <li>Extended the QSS cascade so every popup dialog inherits the terminal's active theme.</li>
+          <li>Added a scrollback-insert pause that stops TUI redraws from interleaving intermediate frames into the user's reading position.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.6.20" date="2026-04-15">
+      <description>
+        <p>Distribution-adoption bundle H5: OBS, AUR, and Debian packaging recipes.</p>
+      </description>
+    </release>
+    <release version="0.6.19" date="2026-04-14">
+      <description>
+        <p>Distribution-readiness bundle H4: bash, zsh, and fish shell completions plus CMake install rules.</p>
+      </description>
+    </release>
+    <release version="0.6.18" date="2026-04-14">
+      <description>
+        <p>Distribution-readiness bundle H3: ants-terminal(1) man page with CMake install rule.</p>
+      </description>
+    </release>
     <release version="0.6.17" date="2026-04-14">
       <description>
         <p>Distribution-readiness bundle H2: AppStream metainfo and spec-compliant desktop entry.</p>

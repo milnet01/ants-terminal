@@ -26,7 +26,7 @@
 # both when releasing.
 
 Name:           ants-terminal
-Version:        0.6.20
+Version:        0.6.22
 Release:        0
 Summary:        Qt6 terminal emulator with Lua plugins and a project-audit dialog
 License:        MIT
@@ -84,6 +84,18 @@ export.
 
 %install
 %cmake_install
+
+# Desktop DB + icon cache refresh. openSUSE's packaging guide recommends
+# these %post/%postun scriptlets for any package that ships a .desktop
+# entry or hicolor icons — without them, minimal Tumbleweed images won't
+# see the launcher until the next session restart.
+%post
+/usr/bin/update-desktop-database -q %{_datadir}/applications &>/dev/null || :
+/usr/bin/gtk-update-icon-cache -q %{_datadir}/icons/hicolor &>/dev/null || :
+
+%postun
+/usr/bin/update-desktop-database -q %{_datadir}/applications &>/dev/null || :
+/usr/bin/gtk-update-icon-cache -q %{_datadir}/icons/hicolor &>/dev/null || :
 
 %check
 # Audit-rule regression suite. Pure shell + fixture tree, no GUI needed;

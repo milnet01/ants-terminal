@@ -324,6 +324,9 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1047:
                     if (!m_altScreenActive) {
                         m_altScreenActive = true;
+                        // 0.6.22 — alt-screen doesn't touch scrollback; make sure
+                        // a stale redraw window doesn't leak across the boundary.
+                        m_csiClearRedrawActive = false;
                         markAllScreenDirty();
                         m_altCursorRow = m_cursorRow;
                         m_altCursorCol = m_cursorCol;
@@ -1077,6 +1080,14 @@ void TerminalGrid::eraseInDisplay(int mode) {
     case 3:
         for (int r = 0; r < m_rows; ++r) clearRow(r);
         if (mode == 3) m_scrollback.clear();
+        // 0.6.22 — open the scrollback-push suppression window on main-
+        // screen mode-2 erase. Mode 3 already nukes scrollback by request,
+        // so no window needed. Alt-screen doesn't touch scrollback at all,
+        // so skip there too.
+        if (mode == 2 && !m_altScreenActive) {
+            m_csiClearRedrawActive = true;
+            m_csiClearRedrawTimer.start();
+        }
         break;
     }
 }
@@ -1164,15 +1175,35 @@ void TerminalGrid::insertBlanks(int count) {
 void TerminalGrid::scrollUp(int count) {
     markAllScreenDirty();
     for (int i = 0; i < count; ++i) {
+        // 0.6.22 — sliding-window check for the CSI 2J redraw suppression.
+        // If the window was opened by eraseInDisplay(2) and this scrollUp
+        // is still within kCsiClearRedrawWindowMs of the last in-window
+        // event, extend the window (keeping it alive for the rest of the
+        // repaint burst) and force-drop the push. Once the app goes quiet
+        // for ≥ kCsiClearRedrawWindowMs, close the window so subsequent
+        // output pushes to scrollback normally.
+        bool inCsiClearWindow = false;
+        if (m_csiClearRedrawActive) {
+            if (m_csiClearRedrawTimer.isValid() &&
+                m_csiClearRedrawTimer.elapsed() < kCsiClearRedrawWindowMs) {
+                inCsiClearWindow = true;
+                m_csiClearRedrawTimer.restart();
+            } else {
+                m_csiClearRedrawActive = false;
+            }
+        }
+
         // Preserve the top screen line in scrollback only when:
         //   - we're on the real (main) screen, not the alt screen,
         //   - the scroll region starts at row 0 (DECSTBM),
-        //   - and scrollback insertion hasn't been paused by the viewport
+        //   - scrollback insertion hasn't been paused by the viewport
         //     layer (happens while the user is scrolled up in history —
         //     TUI redraws like Claude Code's would otherwise interleave
         //     intermediate frames into the scrollback the user is trying
-        //     to read).
-        if (m_scrollTop == 0 && !m_altScreenActive && !m_scrollbackInsertPaused) {
+        //     to read),
+        //   - and we're not inside a post-CSI-2J redraw window.
+        if (m_scrollTop == 0 && !m_altScreenActive &&
+            !m_scrollbackInsertPaused && !inCsiClearWindow) {
             m_scrollback.push_back(std::move(m_screenLines[m_scrollTop]));
             ++m_scrollbackPushed;
             if (static_cast<int>(m_scrollback.size()) > m_maxScrollback)

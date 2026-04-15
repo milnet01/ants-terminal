@@ -1,3 +1,22 @@
+ants-terminal (0.6.22-1) unstable; urgency=medium
+
+  * Fix main-screen TUI scrollback-doubling regression (root cause:
+    Claude Code v2.1+ repaints its entire TUI on every state update,
+    filling scrollback with duplicates). Now suppressed via a 250 ms
+    sliding window anchored to main-screen CSI 2J.
+  * Add debian/postinst and debian/postrm hooks to refresh the icon
+    cache and desktop database on install/remove.
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Wed, 15 Apr 2026 14:00:00 +0000
+
+ants-terminal (0.6.21-1) unstable; urgency=medium
+
+  * Audit-tool noise-reduction (GNU grep 3.12 argument-ordering fix),
+    theme-consistent popup dialogs, and a scrollback-insert pause while
+    the user is reading history through a TUI repaint.
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Tue, 15 Apr 2026 13:00:00 +0000
+
 ants-terminal (0.6.20-1) unstable; urgency=medium
 
   * Initial Debian packaging (ROADMAP H5).

@@ -1,0 +1,21 @@
+#!/bin/sh
+# postrm — refresh desktop DB + hicolor icon cache after the .desktop
+# entry and icons are removed, so stale entries disappear from menus
+# without requiring a session restart.
+
+set -e
+
+case "$1" in
+    remove|purge|upgrade|deconfigure)
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications || true
+        fi
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

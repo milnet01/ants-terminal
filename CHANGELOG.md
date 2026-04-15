@@ -14,6 +14,50 @@ for security-relevant changes.
 
 Nothing yet — items queued for 0.7 live in [ROADMAP.md](ROADMAP.md).
 
+## [0.6.22] — 2026-04-15
+
+**Theme:** root-cause fix for the main-screen TUI "scrollback doubling"
+regression, plus packaging catch-up (four recipes bumped to 0.6.22, three
+missing AppStream `<release>` entries, openSUSE `%post`/`%postun`
+scriptlets, Debian `postinst`/`postrm`). The scrollback fix is the
+headline — Claude Code v2.1+ repaints its entire TUI on *every* state
+update (not just `/compact`), and each repaint was pushing a full-screen
+worth of duplicate content into scrollback. 0.6.21's scrollback-insert
+pause only triggered while the user was scrolled up; this release adds
+a sliding time window anchored to main-screen `CSI 2J`, so the
+suppression works at the bottom too.
+
+### Fixed
+
+- **Scrollback no longer accumulates duplicates during main-screen TUI
+  repaints.** On main-screen full-display erase (`CSI 2J`,
+  `eraseInDisplay(2)`), open a 250 ms sliding window during which
+  `scrollUp()` drops the push-to-scrollback step. Each scrollUp during
+  the window extends it, so the window survives the entire repaint
+  burst regardless of length, but closes promptly when the app goes
+  quiet. Alt-screen bypasses scrollback already and is unaffected;
+  mode-3 erase (which clears scrollback by request) is also unaffected.
+  Defensively cleared on alt-screen entry. The 0.6.21 `m_scrollOffset
+  > 0` pause (for users actively reading history) is retained — the
+  two triggers compose (either one suppresses). File: `terminalgrid.cpp`
+  `eraseInDisplay()` + `scrollUp()`; header additions in
+  `terminalgrid.h` (`m_csiClearRedrawActive`, `m_csiClearRedrawTimer`,
+  `kCsiClearRedrawWindowMs`).
+
+### Changed — Packaging
+
+- **openSUSE spec, Arch PKGBUILD, Debian changelog, AppStream metainfo
+  all bumped to 0.6.22.** Prior releases had drifted: spec and PKGBUILD
+  still showed 0.6.20, metainfo's most recent `<release>` was 0.6.17
+  (so 0.6.18/.19/.20/.21 were invisible to GNOME Software / KDE
+  Discover users reading the metainfo catalogue).
+- **openSUSE spec gets `%post`/`%postun` scriptlets** (`update-desktop-
+  database`, `gtk-update-icon-cache`). Without these, minimal
+  Tumbleweed images won't see the launcher in the application menu
+  until next session restart. Matches Fedora/openSUSE packaging
+  guidelines for any package shipping a `.desktop` entry + hicolor
+  icons.
+
 ## [0.6.21] — 2026-04-15
 
 **Theme:** audit-tool noise reduction, dialog theming, and a long-
