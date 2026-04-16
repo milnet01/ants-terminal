@@ -363,12 +363,33 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     }
     statusBar()->addWidget(m_statusProcess);
 
-    // Status update timer (every 2 seconds)
+    // Status update timer (every 2 seconds). updateStatusBar() walks the
+    // terminal's cwd for .git/HEAD (for the branch label) and the
+    // /proc/PID/comm (for the foreground-process label). refreshReviewButton()
+    // spawns a non-blocking `git diff --quiet HEAD` — both cheap, both
+    // async. Coupling both to the same tick ensures the Review Changes
+    // button reflects git state changes the user made outside of Claude's
+    // hooks (manual `git add`, edits from another editor, etc.) without
+    // waiting for a tab-switch. Previously refreshReviewButton was tied
+    // only to tab-switch + hook fileChanged, which left the button hidden
+    // on boot in a dirty repo and during hookless workflows.
     m_statusTimer = new QTimer(this);
     m_statusTimer->setInterval(2000);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateStatusBar);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateTabTitles);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshReviewButton);
     m_statusTimer->start();
+
+    // Populate the status bar immediately so the user sees correct state
+    // on boot instead of waiting 2 s for the first timer tick. onTabChanged
+    // fires during initial addTab() above but *before* the status widgets
+    // here were created, so those updates were no-ops (guarded against
+    // null m_statusGitBranch). This is the first call after the widgets
+    // exist.
+    QTimer::singleShot(0, this, [this]() {
+        updateStatusBar();
+        refreshReviewButton();
+    });
 
     // 0.6.26 — auto-return focus to the active terminal whenever focus
     // lands on "chrome" widgets (status bar buttons, tab bar, menu bar
@@ -1640,9 +1661,23 @@ void MainWindow::onTabChanged(int index) {
     // See tests/features/claude_status_bar/spec.md §D.
     clearStatusMessage();
     if (m_claudeErrorLabel) m_claudeErrorLabel->hide();
+    // QWidget (not QPushButton) — the hook-server path creates a QWidget
+    // container holding Allow/Deny/Add-to-allowlist buttons and names the
+    // container "claudeAllowBtn"; the scroll-scan path creates a bare
+    // QPushButton with the same objectName. Finding by QWidget covers
+    // both.
     const auto staleAllowBtns =
-        statusBar()->findChildren<QPushButton *>(QStringLiteral("claudeAllowBtn"));
-    for (QPushButton *btn : staleAllowBtns) btn->deleteLater();
+        statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"));
+    for (QWidget *w : staleAllowBtns) w->deleteLater();
+    // The prompt-active flag drives the Claude status label. Both
+    // permission paths set it true when a prompt goes live; tab-switch
+    // ends the user's engagement with that prompt, so the flag must
+    // reset or the next tab reads "Claude: prompting" for a prompt that
+    // belongs to the previous tab.
+    if (m_claudePromptActive) {
+        m_claudePromptActive = false;
+        applyClaudeStatusLabel();
+    }
 
     auto *t = focusedTerminal();
     if (!t) t = currentTerminal();
@@ -2440,8 +2475,22 @@ void MainWindow::setupClaudeIntegration() {
         if (!gen.isEmpty()) rule = gen;
         showStatusMessage(QString("Claude permission: %1").arg(rule), 0);
 
+        // Dedup: a PermissionRequest hook that arrives while a scroll-scan
+        // permission button is already on screen should not stack a second
+        // button group beside it. Remove any existing "claudeAllowBtn"
+        // widgets (from either path) first — same objectName as the
+        // scroll-scan path so the onTabChanged cleanup catches both.
+        for (auto *w : statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn")))
+            w->deleteLater();
+
         // Enhanced permission action buttons
         auto *btnWidget = new QWidget(statusBar());
+        // 0.6.29 — same objectName as the scroll-scan path's button
+        // (see line ~1342) so the tab-switch cleanup in onTabChanged
+        // (line ~1643) removes both. Previously this widget had no
+        // objectName, so switching tabs mid-prompt left a stranded
+        // button group visible on the wrong tab.
+        btnWidget->setObjectName(QStringLiteral("claudeAllowBtn"));
         auto *btnLayout = new QHBoxLayout(btnWidget);
         btnLayout->setContentsMargins(0, 0, 0, 0);
         btnLayout->setSpacing(4);
@@ -2462,18 +2511,33 @@ void MainWindow::setupClaudeIntegration() {
         btnLayout->addWidget(addBtn);
         statusBar()->addPermanentWidget(btnWidget);
 
-        connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget]() {
+        // Mark prompt active so the Claude status label switches to
+        // "prompting" — matches the scroll-scan path's behavior and
+        // gives the user a second at-a-glance indicator beyond the
+        // button group itself.
+        m_claudePromptActive = true;
+        applyClaudeStatusLabel();
+
+        auto clearPromptActive = [this]() {
+            m_claudePromptActive = false;
+            applyClaudeStatusLabel();
+        };
+
+        connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
             btnWidget->deleteLater();
             clearStatusMessage();
+            clearPromptActive();
         });
-        connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget]() {
+        connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
             btnWidget->deleteLater();
             clearStatusMessage();
+            clearPromptActive();
         });
-        connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget]() {
+        connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget, clearPromptActive]() {
             openClaudeAllowlistDialog(rule);
             btnWidget->deleteLater();
             clearStatusMessage();
+            clearPromptActive();
         });
 
         // Remove buttons when the prompt disappears from the screen.
@@ -2481,12 +2545,18 @@ void MainWindow::setupClaudeIntegration() {
         // `outputReceived`, which fires on every repaint and would retract
         // the buttons while the prompt is still visible. `claudePermissionCleared`
         // fires only on the transition to "no prompt on screen".
-        auto *term = currentTerminal();
-        if (term) {
+        //
+        // Listen on ALL terminals (not just currentTerminal) so a prompt
+        // raised via hook on tab A disappears when the user approves/declines
+        // in tab A even after briefly visiting tab B. Multiple connects are
+        // fine; each disconnects itself via the shared pointer once fired.
+        for (auto *term : m_tabWidget->findChildren<TerminalWidget *>()) {
             auto conn = std::make_shared<QMetaObject::Connection>();
-            *conn = connect(term, &TerminalWidget::claudePermissionCleared, btnWidget, [btnWidget, conn]() {
+            *conn = connect(term, &TerminalWidget::claudePermissionCleared,
+                            btnWidget, [btnWidget, conn, clearPromptActive]() {
                 QObject::disconnect(*conn);
                 btnWidget->deleteLater();
+                clearPromptActive();
             });
         }
     });
@@ -2577,9 +2647,21 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
     m_claudeDialog->setSettingsPath(settingsPath);
     if (!prefillRule.isEmpty()) {
         m_claudeDialog->prefillRule(prefillRule);
-        // Auto-save immediately so Claude Code picks up the rule right away
-        m_claudeDialog->saveSettings();
-        showStatusMessage("Rule added to allowlist — takes effect on next permission check", 5000);
+        // Auto-save immediately so Claude Code picks up the rule right away.
+        // Surface a specific error if the save failed (permissions, disk full,
+        // settings.local.json on a read-only mount). Previously the return
+        // value was ignored and the "rule added" toast always appeared even
+        // when the write silently failed — user reported "Add to allowlist
+        // does nothing" with the save failing against a read-only .claude
+        // directory inherited from a worktree checkout.
+        if (m_claudeDialog->saveSettings()) {
+            showStatusMessage(
+                QString("Rule added to allowlist → %1").arg(settingsPath), 5000);
+        } else {
+            showStatusMessage(
+                QString("Could not write allowlist: %1 (check permissions)").arg(settingsPath),
+                8000);
+        }
     }
     m_claudeDialog->show();
     m_claudeDialog->raise();
@@ -3014,26 +3096,54 @@ void MainWindow::refreshReviewButton() {
 
 void MainWindow::showDiffViewer() {
     auto *t = focusedTerminal();
-    if (!t) return;
+    if (!t) {
+        // Earliest silent-return site in the handler. Previously the
+        // Review Changes button would do nothing and give no feedback
+        // whenever the current tab was closed mid-click or the terminal
+        // widget couldn't be resolved — user-reported as "no window pops
+        // up." Now the user at least sees *why*.
+        showStatusMessage("Review Changes: no active terminal", 4000);
+        return;
+    }
     QString cwd = t->shellCwd();
-    if (cwd.isEmpty()) return;
+    if (cwd.isEmpty()) {
+        showStatusMessage("Review Changes: could not determine working directory "
+                          "(shell may not be running yet)", 4000);
+        return;
+    }
 
-    // Run git diff to get changes
+    // Run git diff to get changes. Combine working-tree and staged diffs
+    // in a single pass (`git diff HEAD` = tracked-file delta between
+    // worktree AND index vs HEAD) so the viewer doesn't silently hide
+    // half the changes when the user has ONLY staged content (which the
+    // previous --stat --patch (worktree only) returned empty for, then
+    // fell through to --cached — losing the stat summary). `HEAD` covers
+    // both staged and unstaged in one command and matches what
+    // refreshReviewButton() already uses as its enablement probe.
     QProcess git;
     git.setWorkingDirectory(cwd);
     git.setProgram("git");
-    git.setArguments({"diff", "--stat", "--patch"});
+    git.setArguments({"diff", "--stat", "--patch", "HEAD"});
     git.start();
-    git.waitForFinished(5000);
+    if (!git.waitForFinished(5000)) {
+        showStatusMessage(
+            QString("Review Changes: git didn't finish within 5 s (cwd: %1)").arg(cwd),
+            4000);
+        return;
+    }
+    if (git.exitStatus() != QProcess::NormalExit || git.exitCode() > 1) {
+        // exit 128 = not a git repo / bad ref; shouldn't happen if button
+        // was enabled, but guard anyway so "nothing happens" never repeats.
+        QString err = QString::fromUtf8(git.readAllStandardError()).trimmed();
+        showStatusMessage(
+            QString("Review Changes: git failed (%1)")
+                .arg(err.isEmpty() ? QString("exit %1").arg(git.exitCode()) : err),
+            5000);
+        refreshReviewButton();
+        return;
+    }
 
     QString diff = QString::fromUtf8(git.readAllStandardOutput()).trimmed();
-    if (diff.isEmpty()) {
-        // Also check staged changes
-        git.setArguments({"diff", "--cached", "--stat", "--patch"});
-        git.start();
-        git.waitForFinished(5000);
-        diff = QString::fromUtf8(git.readAllStandardOutput()).trimmed();
-    }
 
     if (diff.isEmpty()) {
         showStatusMessage("No changes detected in git", 3000);

@@ -10,6 +10,86 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.6.29] — 2026-04-16
+
+**Theme:** Status-bar reliability pass — nail down every user-reported
+status-bar symptom in one go: git branch chip elided to "…" when the
+statusbar had plenty of space, Review Changes button not appearing
+until a tab-switch, Add-to-Allowlist button silently no-op on save
+failure, Claude status label 2 s stale after tab-switch, Review
+Changes click "does nothing" with no feedback.
+
+### Added
+
+- **Feature-conformance test: `status_bar_elision`**
+  (`tests/features/status_bar_elision/`) — spec + test covering the
+  ElidedLabel elision policy. Three assertions: short text never
+  elides, over-cap text elides with a non-empty tooltip, and the
+  statusbar layout's QBoxLayout squeeze never drops short chips to
+  "…" (the user-reported regression vector). Fails against pre-fix
+  `src/elidedlabel.h`, passes on fix.
+
+### Changed
+
+- **`ElidedLabel::minimumSizeHint` + `sizeHint` now compute against
+  `m_fullText`**, not `QLabel::sizeHint()` which reports the
+  *displayed* (possibly already elided) text. This is the root-cause
+  fix for the user-reported "git branch shows `…` instead of `main`"
+  regression: the previous 3-char minimum let QStatusBar squeeze the
+  chip below what "main" required, `fontMetrics().elidedText()`
+  returned "…" for the squeezed width, the shorter displayed text
+  fed back into `sizeHint`, and the widget was stuck on a fixed
+  point it couldn't escape. `minimumSizeHint` now returns
+  `full-text-width + padding` capped at `maximumWidth`, so short
+  text is guaranteed to fit and only genuinely over-cap text elides.
+- **`refreshReviewButton()` now fires on every 2 s status-bar tick**
+  via the shared `m_statusTimer`. Previously only `onTabChanged` and
+  the Claude Code `fileChanged` hook triggered it, so a dirty repo
+  at startup (no tab-switch, no hook fired) left the Review Changes
+  button hidden. Also called once via `QTimer::singleShot(0)` at end
+  of the MainWindow constructor so the button appears immediately
+  on boot rather than 2 s later.
+- **`ClaudeIntegration::setShellPid` calls `pollClaudeProcess()`
+  immediately** after arming the timer. Previously the Claude status
+  label was `NotRunning` for up to 2 s after every tab-switch to a
+  tab where Claude was actually running, until the next poll tick
+  caught up — user-visible as "status doesn't update right away."
+- **Add-to-Allowlist button unified across both creation paths.**
+  The hook-server button-group QWidget (Allow/Deny/Add-to-allowlist)
+  now carries `objectName "claudeAllowBtn"` matching the scroll-scan
+  path's bare QPushButton; `onTabChanged` now searches for
+  `QWidget` (not just `QPushButton`) with that objectName so both
+  paths are cleaned on tab-switch. Hook-server path also listens on
+  *every* terminal for `claudePermissionCleared` instead of only
+  `currentTerminal()`, so a brief visit to another tab doesn't
+  orphan the button.
+- **Both permission paths now set/clear `m_claudePromptActive`**
+  so the Claude status label consistently reads "Claude: prompting"
+  while a prompt is live, and `onTabChanged` resets the flag so the
+  next tab doesn't inherit the previous tab's prompt state.
+- **`showDiffViewer` no longer has silent `return` branches.** The
+  user-reported "Review Changes shows but click does nothing"
+  symptom was a combination of missing feedback when
+  `focusedTerminal` returned null, empty `shellCwd`, or the
+  underlying `git diff` returned non-zero. Each case now emits an
+  explicit `showStatusMessage`. Also combined worktree + index diff
+  into a single `git diff HEAD` (matches what `refreshReviewButton`
+  uses for its enablement probe) instead of two sequential calls
+  where the second was only reached on empty-worktree cases.
+
+### Fixed
+
+- **`ClaudeAllowlistDialog::saveSettings` now returns `bool`** and
+  all three callers (prompt-prefill auto-save,
+  `QDialogButtonBox::accepted`, Apply-button `onApply`) surface
+  failure to the user: the prefill path shows a status message with
+  the target path; OK/Apply surface an error in the dialog's
+  validation label and refuse to `accept()` so the user can retry.
+  Previously every `QSaveFile` open / write / commit failure was
+  swallowed — the user saw the "Rule added to allowlist" toast even
+  when the write had failed, then Claude Code re-prompted and the
+  user reported "Add to allowlist does nothing."
+
 ## [0.6.28] — 2026-04-16
 
 **Theme:** End-to-end feature review — same-class overflow sweep across

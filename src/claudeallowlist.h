@@ -18,7 +18,12 @@ public:
 
     void setSettingsPath(const QString &path);
     void prefillRule(const QString &rule);
-    void saveSettings();
+    // Returns true on successful write, false on any failure (path empty,
+    // mkdir failed, open/write/commit failed). Caller is responsible for
+    // surfacing the error to the user — the dialog previously swallowed
+    // every failure mode silently, making the "Add to allowlist" button
+    // appear to do nothing when the settings file wasn't writable.
+    bool saveSettings();
 
     // Rule normalization (public so mainwindow can pre-process rules)
     static QString normalizeRule(const QString &raw);

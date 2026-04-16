@@ -70,10 +70,18 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
         emit contextUpdated(0);
     }
     m_shellPid = pid;
-    if (pid > 0)
+    if (pid > 0) {
         m_pollTimer.start();
-    else
+        // Run one poll immediately so the Claude status label shows the
+        // correct state for the new tab within the current event-loop
+        // iteration rather than "NotRunning" for up to 2 s until the
+        // next timer tick. Without this, tab-switching to a tab where
+        // Claude IS running briefly reads as "Claude: not running,"
+        // which the user sees as the status bar being inaccurate.
+        pollClaudeProcess();
+    } else {
         m_pollTimer.stop();
+    }
 }
 
 void ClaudeIntegration::pollClaudeProcess() {

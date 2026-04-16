@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.28 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.29 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -332,6 +332,36 @@ if(ANTS_TESTS)
     set_tests_properties(allowlist_add PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # status_bar_elision — asserts ElidedLabel's elision policy:
+    # short text never elides, over-cap text does, and minimumSizeHint
+    # returns at least the full-text width (capped at maximumWidth) so
+    # QStatusBar's QBoxLayout can't squeeze a short-text chip down to
+    # "…". Guards the 0.6.29 regression fix for the git branch chip
+    # user-reported as rendering "…" instead of "main". ElidedLabel is
+    # header-only, so no src/*.cpp is linked — the test exercises the
+    # widget directly inside a QMainWindow+QStatusBar harness to
+    # reproduce the tight-layout squeeze. Needs Qt6::Widgets because
+    # we instantiate a real QMainWindow/QStatusBar. Runs under
+    # QT_QPA_PLATFORM=offscreen in CI so no display is required. See
+    # tests/features/status_bar_elision/spec.md.
+    add_executable(test_status_bar_elision
+        tests/features/status_bar_elision/test_status_bar_elision.cpp
+    )
+    target_link_libraries(test_status_bar_elision PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_status_bar_elision PRIVATE src)
+    target_compile_options(test_status_bar_elision PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME status_bar_elision COMMAND test_status_bar_elision)
+    set_tests_properties(status_bar_elision PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # tab_color — asserts ColoredTabBar stores per-tab colours via
     # QTabBar::tabData so they survive drag-reorder (moveTab) and

@@ -145,7 +145,12 @@ ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) 
         QDialogButtonBox::Ok | QDialogButtonBox::Apply | QDialogButtonBox::Cancel,
         this);
     connect(dialogBtns, &QDialogButtonBox::accepted, this, [this]() {
-        saveSettings();
+        if (!saveSettings()) {
+            showValidationHint(
+                QStringLiteral("Save failed — check permissions on %1").arg(m_settingsPath),
+                /*isError=*/true);
+            return;  // Don't accept() a failed save — user keeps the dialog open to retry
+        }
         accept();
     });
     connect(dialogBtns, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -203,8 +208,8 @@ void ClaudeAllowlistDialog::loadSettings() {
     loadList(m_askList, perms.value("ask").toArray());
 }
 
-void ClaudeAllowlistDialog::saveSettings() {
-    if (m_settingsPath.isEmpty()) return;
+bool ClaudeAllowlistDialog::saveSettings() {
+    if (m_settingsPath.isEmpty()) return false;
 
     // Read existing file to preserve non-permission keys
     QJsonObject root;
@@ -235,15 +240,19 @@ void ClaudeAllowlistDialog::saveSettings() {
     root["permissions"] = perms;
 
     // Create .claude directory if needed
-    QDir().mkpath(QFileInfo(m_settingsPath).absolutePath());
+    if (!QDir().mkpath(QFileInfo(m_settingsPath).absolutePath()))
+        return false;
 
     // Atomic write with 0600 permissions
     QSaveFile file(m_settingsPath);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-        file.commit();
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    if (file.write(payload) != payload.size()) {
+        file.cancelWriting();
+        return false;
     }
+    return file.commit();
 }
 
 QListWidget *ClaudeAllowlistDialog::currentList() const {
@@ -612,5 +621,11 @@ void ClaudeAllowlistDialog::onPresetSelected(int index) {
 }
 
 void ClaudeAllowlistDialog::onApply() {
-    saveSettings();
+    if (saveSettings()) {
+        showValidationHint(QStringLiteral("Saved."), /*isError=*/false);
+    } else {
+        showValidationHint(
+            QStringLiteral("Save failed — check permissions on %1").arg(m_settingsPath),
+            /*isError=*/true);
+    }
 }

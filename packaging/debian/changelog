@@ -1,3 +1,22 @@
+ants-terminal (0.6.29-1) unstable; urgency=medium
+
+  * Status-bar reliability fixes: git branch chip no longer elides to
+    "…" when there's plenty of space (ElidedLabel minimumSizeHint now
+    reflects the full-text width, capped at maximumWidth, so short text
+    always renders in full). Review Changes button refreshes on every
+    2 s status tick and at startup — previously only tab-switch or
+    Claude hooks refreshed it, so a dirty repo at launch stayed
+    hidden. Add-to-allowlist button: both the scroll-scan and
+    hook-server paths now share the same objectName so tab-switch
+    cleanup catches both; saveSettings returns a bool and failures
+    are surfaced in-UI instead of swallowed. Claude status label
+    polls immediately on tab-switch (not 2 s later).
+  * New tests/features/status_bar_elision feature test locks the
+    short-text-never-elides invariant in a real QMainWindow +
+    QStatusBar harness.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 16 Apr 2026 18:00:00 +0000
+
 ants-terminal (0.6.28-1) unstable; urgency=medium
 
   * End-to-end feature review + status-bar overflow polish. New

@@ -89,6 +89,20 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.29" date="2026-04-16">
+      <description>
+        <p>Status-bar reliability pass — nail down every user-reported symptom in one go: git branch chip "…" under tight layout, Review Changes button not appearing until a tab-switch, Add-to-Allowlist button silently no-op on save failure, Claude status label 2 s stale after tab-switch.</p>
+        <ul>
+          <li><code>ElidedLabel::minimumSizeHint</code> now returns the full-text width (capped at <code>maximumWidth</code>). Short text is guaranteed to render without elision regardless of layout squeeze — the statusbar's QBoxLayout previously compressed chips to a 3-char minimum and the text came out as "…" even with ample space. <code>sizeHint</code> also no longer reflects post-elision text (avoiding the chicken-and-egg loop where elision fed its own minimum).</li>
+          <li>Review Changes button is now refreshed on every 2 s status-bar tick (not only tab-switch + Claude hook <code>fileChanged</code>). Dirty repos on startup show the button immediately; manual <code>git add</code> / <code>git commit</code> / external editor workflows flip the button live without needing Claude hooks.</li>
+          <li><code>ClaudeIntegration::setShellPid</code> calls <code>pollClaudeProcess()</code> immediately on PID change so the status label reflects the new tab within one event-loop iteration rather than being <code>NotRunning</code> for up to 2 s until the next timer tick.</li>
+          <li><code>ClaudeAllowlistDialog::saveSettings</code> now returns <code>bool</code>; all three callers (prompt-prefill, OK, Apply) surface failure to the user via status message or validation label. Previously every open/write/commit failure was swallowed and the button appeared to do nothing.</li>
+          <li>Add-to-Allowlist button is now prompt-scoped in both creation paths: the hook-server button-group QWidget has <code>objectName "claudeAllowBtn"</code> matching the scroll-scan path, so <code>onTabChanged</code> cleans up both; the hook-server path's cleared-listener covers every terminal (not just <code>currentTerminal()</code>) so approving on the originating tab after a brief visit to another still clears the button.</li>
+          <li><code>showDiffViewer</code> replaces every silent <code>return</code> with an explicit status message so the Review Changes button can't click through to nothing — previously a failed <code>focusedTerminal</code>, empty <code>shellCwd</code>, or non-zero git exit all disappeared without feedback. Combined <code>git diff HEAD</code> in a single invocation (covers worktree + index) rather than two.</li>
+          <li>New <code>tests/features/status_bar_elision</code> feature test locks the short-text-never-elides invariant inside a real QMainWindow + QStatusBar harness; fails against pre-fix <code>ElidedLabel</code>, passes on fix.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.28" date="2026-04-16">
       <description>
         <p>End-to-end feature review — same-class overflow sweep across the status bar, title bar, and audit dialog; quake-mode toggle fix; combining-character preservation on resize; disk-write durability hardening; auto-profile regex caching.</p>

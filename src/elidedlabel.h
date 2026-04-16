@@ -40,21 +40,58 @@ public:
 
     Qt::TextElideMode elideMode() const { return m_elideMode; }
 
-    // Let the label shrink; QLabel's default minimumSizeHint() is the width
-    // of the full text, which defeats elision inside a stretch layout.
+    // Minimum width policy: never compress the widget below what it takes
+    // to render the full text, *unless* the full text is wider than
+    // maximumWidth() — at which point elision kicks in and the minimum is
+    // the cap width. Without this, QStatusBar's QBoxLayout was free to
+    // squeeze the branch chip down to 3-char width ("…") even when the
+    // statusbar had plenty of space; the user reported seeing "…" where
+    // their branch name (6 chars) should have fit in ~50 px. Short text
+    // must always show in full; only genuinely-over-cap text elides.
+    //
+    // CRITICAL: base the size on `m_fullText`, not on `QLabel::sizeHint()`
+    // which reports the *displayed* text's width. Once elision has
+    // already run, displayed is "…" and sizeHint is tiny — so relying on
+    // it creates a chicken-and-egg loop where the widget shrinks itself
+    // and then can't grow back. Compute from the full text directly via
+    // fontMetrics. Include the stylesheet-style padding via contentsMargins
+    // is unreliable across Qt versions; instead we add a small fixed
+    // fudge (sum of two averageCharWidth) to cover the typical
+    // padding: 1px 8px from the chip stylesheet plus a safety margin.
     QSize minimumSizeHint() const override {
-        QSize s = QLabel::minimumSizeHint();
-        // Room for "…" plus a couple of glyphs — prevents the widget from
-        // collapsing to zero width, which would hide it entirely.
-        int minW = fontMetrics().averageCharWidth() * 3;
-        return QSize(minW, s.height());
+        const QFontMetrics fm(font());
+        const int textW = fm.horizontalAdvance(m_fullText);
+        const int padding = fm.averageCharWidth() * 2;  // ~16 px fudge
+        int w = textW + padding;
+        const int cap = maximumWidth();
+        if (cap > 0 && cap < QWIDGETSIZE_MAX && w > cap) {
+            w = cap;
+        }
+        // Also respect a minimum floor of 3 averageChar widths (the pre-fix
+        // behavior) for safety when fullText is empty — the widget should
+        // still be a non-zero width placeholder rather than disappearing
+        // entirely in a stretch layout.
+        const int floor = fm.averageCharWidth() * 3;
+        if (w < floor) w = floor;
+        return QSize(w, fm.height());
     }
 
     QSize sizeHint() const override {
-        // Cap preferred width at the un-elided text width, but don't force
-        // growth beyond maximumWidth() (Qt clamps automatically).
-        QSize s = QLabel::sizeHint();
-        return s;
+        // Like minimumSizeHint, base sizeHint on the full text's width
+        // (plus padding fudge) so the layout gives us enough room to
+        // render without elision when space allows. QLabel's default
+        // sizeHint reports the *displayed* text which has already been
+        // elided — capturing that becomes a fixed point the widget
+        // can never escape.
+        const QFontMetrics fm(font());
+        const int textW = fm.horizontalAdvance(m_fullText);
+        const int padding = fm.averageCharWidth() * 2;
+        int w = textW + padding;
+        const int cap = maximumWidth();
+        if (cap > 0 && cap < QWIDGETSIZE_MAX && w > cap) {
+            w = cap;
+        }
+        return QSize(w, fm.height());
     }
 
 protected:
