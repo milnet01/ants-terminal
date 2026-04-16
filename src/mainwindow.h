@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "claudeintegration.h"  // for ClaudeState — used by applyClaudeStatusLabel()
+#include "elidedlabel.h"        // ElidedLabel — status-bar text slots
 #include "themes.h"
 
 #include <QMainWindow>
@@ -115,11 +116,15 @@ private:
     bool m_broadcastMode = false;
     QAction *m_broadcastAction = nullptr;
 
-    // Status bar widgets
-    QLabel *m_statusGitBranch = nullptr;
-    QFrame *m_statusGitSep = nullptr;  // vertical divider after branch chip
-    QLabel *m_statusMessage = nullptr;
-    QLabel *m_statusProcess = nullptr;
+    // Status bar widgets. The three text slots are ElidedLabels so they
+    // truncate with "…" to a bounded width instead of growing unbounded
+    // and pushing siblings off-screen — e.g. a long foreground-process
+    // name (kernel TASK_COMM_LEN caps at 15 but kept defensive here) or
+    // a long transient message ("Claude permission: Bash(git log…)").
+    ElidedLabel *m_statusGitBranch = nullptr;
+    QFrame *m_statusGitSep = nullptr;     // vertical divider after branch chip
+    ElidedLabel *m_statusMessage = nullptr;
+    ElidedLabel *m_statusProcess = nullptr;
     QTimer *m_statusTimer = nullptr;
     QTimer *m_statusMessageTimer = nullptr;
     void updateStatusBar();
@@ -180,7 +185,10 @@ private:
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;
     ClaudeProjectsDialog *m_claudeProjects = nullptr;
     ClaudeTranscriptDialog *m_claudeTranscript = nullptr;
-    QLabel *m_claudeStatusLabel = nullptr;
+    // m_claudeStatusLabel shows "Claude: <state-or-tool-name>" — ToolUse's
+    // detail can be an arbitrary tool name from the transcript, so cap it
+    // the same way the status-bar message slot is capped.
+    ElidedLabel *m_claudeStatusLabel = nullptr;
     QProgressBar *m_claudeContextBar = nullptr;
     QPushButton *m_claudeReviewBtn = nullptr;
     QLabel *m_claudeErrorLabel = nullptr;

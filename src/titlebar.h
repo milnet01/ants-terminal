@@ -1,5 +1,7 @@
 #pragma once
 
+#include "elidedlabel.h"
+
 #include <QWidget>
 #include <QLabel>
 #include <QToolButton>
@@ -35,7 +37,13 @@ protected:
 
 private:
     QLabel *m_iconLabel = nullptr;
-    QLabel *m_titleLabel = nullptr;
+    // Window title can be arbitrarily long (user-controlled via OSC 0/2,
+    // typically reflecting shell title + cwd). Without elision the label
+    // pushes the minimize/maximize/close buttons off-screen when the title
+    // exceeds available width between the center-button and the chrome
+    // buttons. ElidedLabel truncates to fit; full title stays readable in
+    // the tooltip.
+    ElidedLabel *m_titleLabel = nullptr;
     QPoint m_cursorOffset;     // Cursor offset from window corner at drag start
     QPoint m_knownWindowPos;   // Last known window position (from tracker)
     bool m_systemDragActive = false;

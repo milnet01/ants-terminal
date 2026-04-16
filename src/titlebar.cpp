@@ -32,8 +32,9 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     layout->addWidget(m_iconLabel);
     layout->addSpacing(4);
 
-    m_titleLabel = new QLabel(this);
+    m_titleLabel = new ElidedLabel(this);
     m_titleLabel->setAlignment(Qt::AlignCenter);
+    m_titleLabel->setElideMode(Qt::ElideMiddle);   // preserve both "cmd" prefix and "cwd" suffix
     m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents); // Pass clicks to TitleBar
     layout->addStretch();
     layout->addWidget(m_titleLabel);
@@ -77,7 +78,7 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
 }
 
 void TitleBar::setTitle(const QString &title) {
-    m_titleLabel->setText(title);
+    m_titleLabel->setFullText(title);
 }
 
 void TitleBar::setThemeColors(const QColor &bg, const QColor &fg,

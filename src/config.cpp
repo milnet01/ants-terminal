@@ -6,6 +6,7 @@
 #include <QStandardPaths>
 
 #include <sys/stat.h>
+#include <unistd.h>    // fsync — durability guarantee before atomic rename
 
 Config::Config() {
     load();
@@ -39,6 +40,13 @@ void Config::save() {
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         QByteArray json = QJsonDocument(m_data).toJson();
         if (file.write(json) == json.size()) {
+            // 0.6.28 — fsync before rename. QFile::close flushes userspace
+            // buffers but doesn't force a kernel flush to disk; a kernel
+            // crash or power loss between close() and rename() on ext4
+            // with data=ordered can leave a zero-sized config.json after
+            // reboot. fsync on the temp fd, then rename — matches the
+            // classic "write-rename-fsync" pattern used by SQLite/Git.
+            ::fsync(file.handle());
             file.close();
             // Atomic rename — on POSIX rename(2) atomically replaces the
             // destination, so no need to remove first (avoids a crash window

@@ -2138,7 +2138,7 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
     // Re-render results minus the suppressed finding.
     if (!m_completedResults.isEmpty()) renderResults();
     if (m_statusLabel)
-        m_statusLabel->setText(QString("Suppressed %1 (%2)").arg(key.left(8), f.checkId));
+        m_statusLabel->setFullText(QString("Suppressed %1 (%2)").arg(key.left(8), f.checkId));
 }
 
 // ---------------------------------------------------------------------------
@@ -2240,7 +2240,7 @@ void AuditDialog::saveBaseline() {
         f.close();
         loadBaseline();
         if (m_newOnlyBtn) m_newOnlyBtn->setEnabled(true);
-        m_statusLabel->setText(QString("Baseline saved — %1 fingerprints").arg(arr.size()));
+        m_statusLabel->setFullText(QString("Baseline saved — %1 fingerprints").arg(arr.size()));
     }
 }
 
@@ -2418,7 +2418,7 @@ void AuditDialog::buildUI() {
         if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             f.write(exportSarif().toUtf8());
             f.close();
-            m_statusLabel->setText("SARIF saved: " + path);
+            m_statusLabel->setFullText("SARIF saved: " + path);
         }
     });
     btnRow->addWidget(m_sarifBtn);
@@ -2437,7 +2437,7 @@ void AuditDialog::buildUI() {
         if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             f.write(exportHtml().toUtf8());
             f.close();
-            m_statusLabel->setText("HTML report saved: " + path);
+            m_statusLabel->setFullText("HTML report saved: " + path);
         }
     });
     btnRow->addWidget(m_htmlBtn);
@@ -2474,7 +2474,8 @@ void AuditDialog::buildUI() {
     m_progress->setVisible(false);
     root->addWidget(m_progress);
 
-    m_statusLabel = new QLabel(this);
+    m_statusLabel = new ElidedLabel(this);
+    m_statusLabel->setElideMode(Qt::ElideRight);
     m_statusLabel->setVisible(false);
     root->addWidget(m_statusLabel);
 
@@ -2640,7 +2641,7 @@ void AuditDialog::runAudit() {
         if (c.toggle && c.toggle->isChecked()) ++m_totalSelected;
 
     if (m_totalSelected == 0) {
-        m_statusLabel->setText("No checks selected.");
+        m_statusLabel->setFullText("No checks selected.");
         m_progress->setVisible(false);
         return;
     }
@@ -2679,7 +2680,7 @@ void AuditDialog::runNextCheck() {
     }
 
     const auto &check = m_checks[m_currentCheck];
-    m_statusLabel->setText("Running: " + check.name + "…");
+    m_statusLabel->setFullText("Running: " + check.name + "…");
     m_progress->setValue(m_checksRun);
 
     m_timeout->start(30000);
@@ -3210,7 +3211,7 @@ void AuditDialog::renderResults() {
     auto *sb = m_results->verticalScrollBar();
     if (sb) sb->setValue(0);
 
-    m_statusLabel->setText(QString("Audit complete — %1 findings across %2 checks%3")
+    m_statusLabel->setFullText(QString("Audit complete — %1 findings across %2 checks%3")
                            .arg(totalFindings).arg(sorted.size())
                            .arg(m_hasBaseline
                                 ? QString(" (%1 new since baseline)").arg(totalNew)
@@ -3251,7 +3252,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
                                                      : cfg.aiModel();
     if (!cfg.aiEnabled() || endpoint.isEmpty()) {
         if (m_statusLabel)
-            m_statusLabel->setText("AI triage: configure AI in Settings first");
+            m_statusLabel->setFullText("AI triage: configure AI in Settings first");
         return;
     }
 
@@ -3306,7 +3307,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
         endpointUrl.setPath((p.endsWith('/') ? p : p + "/") + "v1/chat/completions");
     }
     if (endpointUrl.scheme() != "https" && endpointUrl.scheme() != "http") {
-        if (m_statusLabel) m_statusLabel->setText("AI triage: endpoint must be http(s)");
+        if (m_statusLabel) m_statusLabel->setFullText("AI triage: endpoint must be http(s)");
         return;
     }
 
@@ -3319,26 +3320,26 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     auto *mgr = new QNetworkAccessManager(this);
     QNetworkReply *reply = mgr->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
     if (m_statusLabel)
-        m_statusLabel->setText("AI triage: querying " + endpointUrl.host() + "…");
+        m_statusLabel->setFullText("AI triage: querying " + endpointUrl.host() + "…");
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, mgr, dedupKey]() {
         reply->deleteLater();
         mgr->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             if (m_statusLabel)
-                m_statusLabel->setText("AI triage failed: " + reply->errorString());
+                m_statusLabel->setFullText("AI triage failed: " + reply->errorString());
             return;
         }
         const QByteArray data = reply->readAll();
         const QJsonDocument doc = QJsonDocument::fromJson(data);
         if (!doc.isObject()) {
-            if (m_statusLabel) m_statusLabel->setText("AI triage: invalid response");
+            if (m_statusLabel) m_statusLabel->setFullText("AI triage: invalid response");
             return;
         }
         // OpenAI shape: choices[0].message.content holds the assistant reply.
         const QJsonArray choices = doc.object().value("choices").toArray();
         if (choices.isEmpty()) {
-            if (m_statusLabel) m_statusLabel->setText("AI triage: empty response");
+            if (m_statusLabel) m_statusLabel->setFullText("AI triage: empty response");
             return;
         }
         QString content = choices.first().toObject()
@@ -3355,7 +3356,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
         }
         const QJsonDocument inner = QJsonDocument::fromJson(content.toUtf8());
         if (!inner.isObject()) {
-            if (m_statusLabel) m_statusLabel->setText("AI triage: non-JSON verdict");
+            if (m_statusLabel) m_statusLabel->setFullText("AI triage: non-JSON verdict");
             return;
         }
         const QJsonObject o = inner.object();
@@ -3378,7 +3379,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
         m_expandedKeys.insert(dedupKey);   // auto-expand to show the verdict
         renderResults();
         if (m_statusLabel)
-            m_statusLabel->setText(QString("AI triage: %1 (%2/100)").arg(verdict).arg(conf));
+            m_statusLabel->setFullText(QString("AI triage: %1 (%2/100)").arg(verdict).arg(conf));
     });
 }
 

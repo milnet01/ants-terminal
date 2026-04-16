@@ -10,6 +10,101 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.6.28] — 2026-04-16
+
+**Theme:** End-to-end feature review — same-class overflow sweep across
+chrome widgets, quake-mode toggle fix, combining-character preservation
+on resize, disk-write durability hardening, and auto-profile regex
+caching.
+
+### Added
+
+- **`ElidedLabel` widget** (`src/elidedlabel.h`) — QLabel that
+  truncates its full text with "…" to fit the current widget width,
+  re-eliding on every resize and exposing the un-elided string via
+  tooltip. Header-only; drop-in replacement wherever dynamic strings
+  could outgrow a bounded slot.
+- **Feature-conformance test: `combining_on_resize`**
+  (`tests/features/combining_on_resize/`) — exercises the three
+  invariants covering the new resize fix (I1 main-screen preservation,
+  I2 alt-screen preservation, I3 shrink-range eviction). Confirmed to
+  fail against pre-fix `src/terminalgrid.cpp` and pass against the fix.
+
+### Changed
+
+- **Status-bar text slots elide on overflow.** The three text widgets
+  — git branch (`m_statusGitBranch`, cap 220 px, elide right),
+  transient message (`m_statusMessage`, stretch, elide middle), and
+  foreground process (`m_statusProcess`, cap 160 px, elide right) —
+  now cap out and show "…" instead of growing unbounded. User report:
+  when the transient-message slot showed "Claude permission:
+  Bash(git log …)" it pushed the git-branch chip and process indicator
+  off the right edge. Middle-elide keeps both the leading label and
+  the trailing detail visible in the message slot.
+- **Same treatment applied to the other overflow-risk labels:**
+  - `TitleBar::m_titleLabel` — window title from OSC 0/2 is
+    user-controlled and can push the minimize/maximize/close buttons
+    off a frameless window. Middle-elide keeps "cmd" prefix and "cwd"
+    suffix both visible.
+  - `MainWindow::m_claudeStatusLabel` — "Claude: `<tool-name>`" in the
+    ToolUse state accepts an arbitrary tool name from the transcript
+    (MCP tools, custom tools); right-elide caps at 220 px.
+  - `AuditDialog::m_statusLabel` — "Running: `<check-name>…`",
+    "SARIF saved: `<path>`", and friends were unbounded; right-elide
+    keeps the dialog footer stable.
+- **Auto-profile rule regexes cached across poll ticks.**
+  `checkAutoProfileRules` previously compiled a fresh
+  `QRegularExpression` per rule on every 2 s tick — 10 rules × 30
+  ticks/min = 300 wasteful JIT compiles/min. Cached keyed on pattern
+  string in a function-local static `QHash`. Invalid patterns (from
+  mistyped user config) are now detected via `QRegularExpression::isValid()`
+  and surfaced via a one-shot status message instead of silently
+  never matching.
+
+### Fixed
+
+- **Quake-mode window no longer hides itself 200 ms after a show
+  toggle.** The `m_quakeAnim` `QPropertyAnimation` is reused across
+  hide/show toggles. The hide branch connected `finished→hide()` with
+  `Qt::UniqueConnection`, but Qt can't dedupe lambda-wrapped slots, and
+  the stale connection from the previous hide fired at the end of the
+  show slide-down — the window flashed in then vanished. Fix:
+  `QObject::disconnect(m_quakeAnim, &finished, this, nullptr)` before
+  every `start()`, and re-attach the `hide()` slot only on the hide
+  branch. Show branch has no `finished` listener (the animation simply
+  lands at its on-screen end value).
+- **Terminal resize preserves combining characters on both main and
+  alt screen.** The simple-copy path in `TerminalGrid::resize()`
+  (taken when `cols` is unchanged or when the alt-screen buffer is
+  being resized alongside main) walked `TermLine::cells` only and
+  default-constructed the `combining` side table — stripping accents,
+  ZWJ sequences, and variation selectors off every on-screen cell
+  whenever the user dragged the window edge. Symptom: filenames like
+  `résumé.pdf` or `naïve.cpp` in `ls` output mutated to
+  `re?sume?.pdf` / `nai?ve.cpp` on every resize. Fix: copy
+  `TermLine::combining` and `softWrapped` alongside cells; filter out
+  combining entries whose column exceeds the new width (shrink case).
+  Alt-screen TUIs (vim, less, htop) that render accented filenames
+  see the same bug and the same fix.
+- **Config + session disk writes `fsync()` before atomic rename.**
+  `Config::save`, `SessionManager::saveSession`, and
+  `SessionManager::saveTabOrder` each follow the write-to-`.tmp`
+  + rename pattern for atomicity, but `QFile::close` flushes only
+  userspace buffers. On ext4 `data=ordered` (the common default), a
+  kernel crash or power loss between `close()` and `rename()` can
+  leave a zero-sized file replacing the previous good one —
+  silently losing config or a whole session's scrollback. Matches
+  the write-rename-fsync pattern used by SQLite/Git.
+
+### Dev experience
+
+- Packaging files caught up with the CMakeLists version. Pre-0.6.28
+  CI had been red since 0.6.27 landed without the five packaging
+  files (`.spec`, `PKGBUILD`, `debian/changelog`, man page,
+  `metainfo.xml`) being bumped in lockstep —
+  `packaging/check-version-drift.sh` correctly flagged the drift and
+  blocked the merge. All six files now agree at 0.6.28 and CI passes.
+
 ## [0.6.27] — 2026-04-15
 
 **Theme:** `clear`-command scrollback fix, scroll-offset clamp,

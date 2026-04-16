@@ -14,6 +14,7 @@
 #include "claudeprojects.h"
 #include "claudetranscript.h"
 #include "auditdialog.h"
+#include "elidedlabel.h"
 
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
@@ -311,7 +312,20 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // plus a small QStatusBar internal margin → 32px is comfortable.
     statusBar()->setMinimumHeight(32);
 
-    m_statusGitBranch = new QLabel(this);
+    // Status-bar text slots use ElidedLabel so long strings (long branch
+    // names on feature branches, long transient messages like
+    // "Claude permission: Bash(git log -- path/…)", long /proc/PID/comm
+    // on non-Linux kernels) truncate with "…" instead of pushing other
+    // widgets off-screen. Each slot has a pragma max width — the branch
+    // chip and the process label are fixed (side widgets, must not grow),
+    // while the transient-message slot keeps stretch=1 and elides to
+    // whatever width the layout gave it.
+    {
+        auto *lbl = new ElidedLabel(this);
+        lbl->setElideMode(Qt::ElideRight);
+        lbl->setMaximumWidth(220);
+        m_statusGitBranch = lbl;
+    }
     statusBar()->addWidget(m_statusGitBranch);
 
     // 0.6.26 — the "chip" styling on the branch label (rounded bg + border)
@@ -328,10 +342,25 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     m_statusGitSep->hide();  // shown whenever the branch label is shown
     statusBar()->addWidget(m_statusGitSep);
 
-    m_statusMessage = new QLabel(this);
+    {
+        // Middle slot (stretch=1) — elide-middle keeps both the leading
+        // label ("Claude permission:") and the trailing detail visible
+        // when the combined string overflows available width.
+        auto *lbl = new ElidedLabel(this);
+        lbl->setElideMode(Qt::ElideMiddle);
+        m_statusMessage = lbl;
+    }
     statusBar()->addWidget(m_statusMessage, 1);
 
-    m_statusProcess = new QLabel(this);
+    {
+        auto *lbl = new ElidedLabel(this);
+        lbl->setElideMode(Qt::ElideRight);
+        // Kernel caps /proc/PID/comm at 15 glyphs on Linux, but the
+        // rendered pixel width depends on the font — 160px covers the
+        // widest ASCII glyph stream at font_size=11–13 with room to spare.
+        lbl->setMaximumWidth(160);
+        m_statusProcess = lbl;
+    }
     statusBar()->addWidget(m_statusProcess);
 
     // Status update timer (every 2 seconds)
@@ -2237,7 +2266,7 @@ void MainWindow::applyClaudeStatusLabel() {
         }
     }
 
-    m_claudeStatusLabel->setText(text);
+    m_claudeStatusLabel->setFullText(text);
     m_claudeStatusLabel->setStyleSheet(
         QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));
     m_claudeStatusLabel->show();
@@ -2309,7 +2338,13 @@ void MainWindow::setupClaudeIntegration() {
     m_claudeIntegration = new ClaudeIntegration(this);
 
     // Status bar indicator for Claude Code state
-    m_claudeStatusLabel = new QLabel(this);
+    m_claudeStatusLabel = new ElidedLabel(this);
+    m_claudeStatusLabel->setElideMode(Qt::ElideRight);
+    // "Claude: <tool-name>" for ToolUse — tool names come unvetted from
+    // the transcript (MCP names, custom tools) and can be long. Cap at
+    // 220px so the label never displaces the context-bar or Review
+    // Changes button. Width tracks m_statusGitBranch for visual parity.
+    m_claudeStatusLabel->setMaximumWidth(220);
     m_claudeStatusLabel->setStyleSheet("color: gray; padding: 0 8px; font-size: 11px;");
     m_claudeStatusLabel->hide();
     statusBar()->addPermanentWidget(m_claudeStatusLabel);
@@ -2629,7 +2664,7 @@ void MainWindow::showStatusMessage(const QString &msg, int timeoutMs) {
     // Label is created in the constructor before anything that can emit a status
     // message, so a null check here would just mask bugs.
     if (!m_statusMessage) return;
-    m_statusMessage->setText(msg);
+    m_statusMessage->setFullText(msg);
     if (m_statusMessageTimer) m_statusMessageTimer->stop();
     if (timeoutMs > 0) {
         if (!m_statusMessageTimer) {
@@ -2642,7 +2677,7 @@ void MainWindow::showStatusMessage(const QString &msg, int timeoutMs) {
 }
 
 void MainWindow::clearStatusMessage() {
-    if (m_statusMessage) m_statusMessage->clear();
+    if (m_statusMessage) m_statusMessage->setFullText(QString());
     if (m_statusMessageTimer) m_statusMessageTimer->stop();
 }
 
@@ -2685,7 +2720,7 @@ void MainWindow::updateStatusBar() {
         }
     }
     if (!gitBranch.isEmpty()) {
-        m_statusGitBranch->setText(" " + gitBranch);
+        m_statusGitBranch->setFullText(" " + gitBranch);
         m_statusGitBranch->show();
         if (m_statusGitSep) m_statusGitSep->show();
     } else {
@@ -2696,7 +2731,7 @@ void MainWindow::updateStatusBar() {
     // Foreground process
     QString proc = t->foregroundProcess();
     if (!proc.isEmpty()) {
-        m_statusProcess->setText(proc);
+        m_statusProcess->setFullText(proc);
         m_statusProcess->show();
     } else {
         m_statusProcess->hide();
@@ -2773,33 +2808,39 @@ void MainWindow::toggleQuakeVisibility() {
     QRect geo = screen->availableGeometry();
     int h = height();
 
+    // m_quakeAnim is reused across hide/show toggles. Previously we
+    // connected finished→hide() in the hide branch with UniqueConnection;
+    // Qt can't dedupe lambdas, and even if it could, the same slot is
+    // needed on both branches' end-states (animation end = whatever the
+    // current "done" action is). On the show branch the stale
+    // finished→hide() connection from a prior hide fired right after the
+    // slide-down animation completed — the window would appear for 200 ms
+    // and then vanish. Fix: disconnect all finished() slots before every
+    // start(), and only add the hide() slot on the hide branch.
+    if (!m_quakeAnim) {
+        m_quakeAnim = new QPropertyAnimation(this, "pos", this);
+        m_quakeAnim->setDuration(200);
+    }
+    m_quakeAnim->stop();
+    QObject::disconnect(m_quakeAnim, &QPropertyAnimation::finished, this, nullptr);
+
     if (m_quakeVisible) {
         // Slide up (hide)
-        if (!m_quakeAnim) {
-            m_quakeAnim = new QPropertyAnimation(this, "pos", this);
-            m_quakeAnim->setDuration(200);
-            m_quakeAnim->setEasingCurve(QEasingCurve::InQuad);
-        }
-        m_quakeAnim->stop();
+        m_quakeAnim->setEasingCurve(QEasingCurve::InQuad);
         m_quakeAnim->setStartValue(pos());
         m_quakeAnim->setEndValue(QPoint(geo.x(), geo.y() - h));
         connect(m_quakeAnim, &QPropertyAnimation::finished, this, [this]() {
             hide();
-        }, Qt::UniqueConnection);
+        });
         m_quakeAnim->start();
         m_quakeVisible = false;
     } else {
-        // Slide down (show)
+        // Slide down (show) — no finished() slot needed.
         move(geo.x(), geo.y() - h);
         show();
         raise();
         activateWindow();
-        if (!m_quakeAnim) {
-            m_quakeAnim = new QPropertyAnimation(this, "pos", this);
-            m_quakeAnim->setDuration(200);
-            m_quakeAnim->setEasingCurve(QEasingCurve::OutQuad);
-        }
-        m_quakeAnim->stop();
+        m_quakeAnim->setEasingCurve(QEasingCurve::OutQuad);
         m_quakeAnim->setStartValue(QPoint(geo.x(), geo.y() - h));
         m_quakeAnim->setEndValue(QPoint(geo.x(), geo.y()));
         m_quakeAnim->start();
@@ -3126,6 +3167,18 @@ void MainWindow::checkAutoProfileRules(TerminalWidget *terminal) {
 
     QJsonObject profiles = m_config.profiles();
 
+    // 0.6.28 — cache compiled regexes across the 2 s poll tick. The old
+    // code compiled QRegularExpression(pattern) on every rule on every
+    // tick; 10 rules × 1 focused-terminal × 30 ticks/min = 300 JIT
+    // compiles/min for no reason, because patterns almost never change
+    // between ticks. Cache is a function-local static keyed on the raw
+    // pattern string — patterns retired from config stay in cache but
+    // that's a few bytes apiece. The `warned` set holds patterns we've
+    // already logged as invalid so the status line doesn't flood on
+    // every tick with the same regex syntax error.
+    static QHash<QString, QRegularExpression> s_patternCache;
+    static QSet<QString> s_warnedInvalid;
+
     for (const QJsonValue &rv : rules) {
         QJsonObject rule = rv.toObject();
         QString pattern = rule.value("pattern").toString();
@@ -3135,7 +3188,25 @@ void MainWindow::checkAutoProfileRules(TerminalWidget *terminal) {
         if (pattern.isEmpty() || profileName.isEmpty()) continue;
         if (!profiles.contains(profileName)) continue;
 
-        QRegularExpression rx(pattern);
+        auto it = s_patternCache.find(pattern);
+        if (it == s_patternCache.end()) {
+            QRegularExpression compiled(pattern);
+            if (!compiled.isValid()) {
+                // Warn once per invalid pattern, then drop the rule
+                // silently for future ticks until the pattern is edited
+                // to something valid (which would create a new cache key).
+                if (!s_warnedInvalid.contains(pattern)) {
+                    s_warnedInvalid.insert(pattern);
+                    showStatusMessage(
+                        QStringLiteral("Auto-profile rule skipped — invalid regex: %1")
+                            .arg(compiled.errorString()),
+                        5000);
+                }
+                continue;
+            }
+            it = s_patternCache.insert(pattern, compiled);
+        }
+        const QRegularExpression &rx = it.value();
         bool matches = false;
 
         if (type == "title") matches = rx.match(title).hasMatch();

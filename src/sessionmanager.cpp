@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <sys/stat.h>
+#include <unistd.h>    // fsync — durability guarantee before atomic rename
 
 QString SessionManager::sessionDir() {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
@@ -266,6 +267,11 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
     if (file.open(QIODevice::WriteOnly)) {
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         if (file.write(data) == data.size()) {
+            // fsync before rename — see Config::save for rationale.
+            // Scrollback blobs are worth durability; losing a session
+            // from the last 200 ms of the previous run to a kernel
+            // crash is a worse outcome than the one-syscall cost.
+            ::fsync(file.handle());
             file.close();
             QFile::rename(tmpPath, path);
         } else {
@@ -316,6 +322,10 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
             file.write("\n");
         }
         file.flush();
+        // fsync after flush — flush is Qt-layer (kernel-layer not guaranteed).
+        // tab_order.txt is what anchors session restore order: if this file
+        // is missing or empty after a crash, saved session blobs orphan.
+        ::fsync(file.handle());
         file.close();
         QFile::rename(tmpPath, path);
     }

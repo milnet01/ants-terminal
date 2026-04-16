@@ -1708,28 +1708,47 @@ void TerminalGrid::resize(int rows, int cols) {
         m_cursorRow = std::clamp(m_cursorRow, 0, rows - 1);
         m_cursorCol = std::clamp(m_cursorCol, 0, cols - 1);
     } else {
-        // No reflow needed (same width or alt screen) — simple copy
+        // No reflow needed (same width or alt screen) — simple copy.
+        // 0.6.28 — preserve the per-line combining-char side table. The
+        // old copy walked cells only, so resize that widened/shrank the
+        // terminal wiped accents/ZWJ/diacritics on all lines. Filter
+        // entries whose column is now out of bounds (shrink case).
         std::vector<TermLine> newScreen(rows);
         for (auto &line : newScreen)
             line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
         int copyRows = std::min(rows, m_rows);
         int copyCols = std::min(cols, m_cols);
-        for (int r = 0; r < copyRows; ++r)
+        for (int r = 0; r < copyRows; ++r) {
             for (int c = 0; c < copyCols; ++c)
                 newScreen[r].cells[c] = m_screenLines[r].cells[c];
+            newScreen[r].softWrapped = m_screenLines[r].softWrapped;
+            for (const auto &kv : m_screenLines[r].combining) {
+                if (kv.first < copyCols)
+                    newScreen[r].combining.emplace(kv.first, kv.second);
+            }
+        }
         m_screenLines = std::move(newScreen);
     }
 
-    // Also resize alt screen buffer if it exists
+    // Also resize alt screen buffer if it exists. Same combining-map
+    // preservation as the main-screen simple-copy path above — alt-screen
+    // TUIs (vim, less, htop) render accented filenames and ZWJ emoji that
+    // would otherwise disappear on window resize.
     if (!m_altScreen.empty()) {
         std::vector<TermLine> newAlt(rows);
         for (auto &line : newAlt)
             line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
         int altCopyRows = std::min(rows, static_cast<int>(m_altScreen.size()));
         int altCopyCols = std::min(cols, m_cols);
-        for (int r = 0; r < altCopyRows; ++r)
+        for (int r = 0; r < altCopyRows; ++r) {
             for (int c = 0; c < altCopyCols && c < static_cast<int>(m_altScreen[r].cells.size()); ++c)
                 newAlt[r].cells[c] = m_altScreen[r].cells[c];
+            newAlt[r].softWrapped = m_altScreen[r].softWrapped;
+            for (const auto &kv : m_altScreen[r].combining) {
+                if (kv.first < altCopyCols)
+                    newAlt[r].combining.emplace(kv.first, kv.second);
+            }
+        }
         m_altScreen = std::move(newAlt);
         m_altCursorRow = std::clamp(m_altCursorRow, 0, rows - 1);
         m_altCursorCol = std::clamp(m_altCursorCol, 0, cols - 1);

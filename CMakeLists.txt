@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.27 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.28 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -375,6 +375,30 @@ if(ANTS_TESTS)
     )
     add_test(NAME vtparser_simd_scan COMMAND test_vtparser_simd_scan)
     set_tests_properties(vtparser_simd_scan PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # combining_on_resize — asserts that TerminalGrid::resize preserves the
+    # per-line combining-char side table on both main screen and alt
+    # screen, and cleanly evicts combining entries whose column falls
+    # outside the new width. Regression test for the 0.6.28 fix; before
+    # it, every window resize wiped accents/ZWJ/diacritics because the
+    # simple-copy path walked cells only. See spec.md.
+    add_executable(test_combining_on_resize
+        tests/features/combining_on_resize/test_combining.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_combining_on_resize PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_combining_on_resize PRIVATE src)
+    target_compile_options(test_combining_on_resize PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME combining_on_resize COMMAND test_combining_on_resize)
+    set_tests_properties(combining_on_resize PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 endif()

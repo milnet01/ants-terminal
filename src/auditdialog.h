@@ -1,5 +1,7 @@
 #pragma once
 
+#include "elidedlabel.h"
+
 #include <QDialog>
 #include <QTextBrowser>
 #include <QPushButton>
@@ -361,7 +363,10 @@ private:
     QPushButton *m_newOnlyBtn = nullptr;
     QProgressBar *m_progress = nullptr;
     QTextBrowser *m_results = nullptr;
-    QLabel *m_statusLabel = nullptr;
+    // "Running: <check-name>…", "SARIF saved: <path>", etc. — long paths /
+    // long check names would push downstream widgets off. ElidedLabel keeps
+    // the dialog footer stable-width regardless of message length.
+    ElidedLabel *m_statusLabel = nullptr;
     QProcess *m_process = nullptr;
     QTimer *m_timeout = nullptr;
 

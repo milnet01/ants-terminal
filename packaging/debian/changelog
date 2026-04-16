@@ -1,3 +1,30 @@
+ants-terminal (0.6.28-1) unstable; urgency=medium
+
+  * End-to-end feature review + status-bar overflow polish. New
+    ElidedLabel widget caps the three status-bar text slots (git branch,
+    transient message, foreground process) so long strings truncate with
+    "…" instead of pushing sibling widgets off-screen. Same treatment
+    applied to the window title-bar label, the "Claude: …" label, and
+    the audit-dialog status label.
+  * Quake-mode toggle no longer auto-hides the window 200 ms after a
+    show toggle. The finished→hide() slot from the previous hide toggle
+    persisted on the reused QPropertyAnimation; now disconnected before
+    every start() and only re-attached on the hide branch.
+  * Resize (both main-screen simple-copy and alt-screen paths) now
+    preserves the per-line combining-char side table. Pre-0.6.28 every
+    resize wiped accents / ZWJ / diacritics because the copy walked
+    cells only. New tests/features/combining_on_resize feature test
+    pins the behaviour — fails against pre-fix code, passes on fix.
+  * Config + session writes now fsync the temp file before atomic
+    rename, closing the kernel-crash data-loss window between close()
+    and rename() on ext4 data=ordered.
+  * Auto-profile rule regex compilation is cached across the 2 s
+    poll tick (was recompiled per-rule per-tick), and invalid patterns
+    are detected via QRegularExpression::isValid() and warned once
+    instead of silently never matching.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 16 Apr 2026 00:00:00 +0000
+
 ants-terminal (0.6.26-1) unstable; urgency=medium
 
   * Ink-TUI overflow-repaint no longer wipes scrollback or duplicates

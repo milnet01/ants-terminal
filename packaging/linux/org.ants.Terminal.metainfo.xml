@@ -89,6 +89,29 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.28" date="2026-04-16">
+      <description>
+        <p>End-to-end feature review — same-class overflow sweep across the status bar, title bar, and audit dialog; quake-mode toggle fix; combining-character preservation on resize; disk-write durability hardening; auto-profile regex caching.</p>
+        <ul>
+          <li>New <code>ElidedLabel</code> widget truncates long text with "…" to a bounded width. Applied to the three status-bar text slots (git branch, transient message, foreground process), the window title label, the Claude status label, and the audit-dialog status label — each previously grew unbounded and pushed siblings off-screen.</li>
+          <li>Quake-mode toggle no longer auto-hides the window 200 ms after a show toggle. The reused <code>QPropertyAnimation</code>'s <code>finished→hide()</code> slot from a prior hide toggle was still connected on the show branch; the slot is now disconnected before every <code>start()</code> and re-attached only on the hide branch.</li>
+          <li>Terminal resize preserves the per-line combining-character side table on both main and alt screens. Pre-0.6.28 every resize wiped accents, ZWJ sequences, and diacritics because the simple-copy path walked cells only. Shrink cases cleanly evict combining entries whose column falls outside the new width. New <code>tests/features/combining_on_resize</code> feature test pins the three invariants.</li>
+          <li>Config and session writes now <code>fsync()</code> the temp file before atomic rename, closing the kernel-crash data-loss window on ext4 <code>data=ordered</code>.</li>
+          <li>Auto-profile rule regex is cached across the 2 s poll tick instead of recompiled per-rule-per-tick, and invalid patterns are detected via <code>QRegularExpression::isValid()</code> and warned once rather than silently never matching.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.6.27" date="2026-04-15">
+      <description>
+        <p>Seventh release in the 0.6 UX polish pass — ncurses <code>clear</code> scrollback fix, scroll-offset clamp, tab-close visibility, Claude "prompting" state.</p>
+        <ul>
+          <li>ncurses <code>clear</code> now correctly wipes scrollback on <code>TERM=xterm-256color</code>. The 0.6.26 Ink-overflow-repaint heuristic was false-matching the byte-burst because <code>clear</code>'s <code>\E[H\E[2J\E[3J</code> sequence overlaps with Ink's <code>clearTerminal</code>. Disambiguated via cursor position at <code>3J</code> time — <code>clear</code> emits <code>H</code> first so the cursor sits at (0,0); Ink emits <code>H</code> last so the cursor is at the bottom.</li>
+          <li>Scroll-to-bottom button no longer lingers when scrollback shrinks. <code>m_scrollOffset</code> is now re-clamped in the single <code>updateScrollBar()</code> choke-point after every output batch.</li>
+          <li>Tab close (×) button is always visible — removed the stylesheet rule that hid the glyph and left only an invisible hover hit-target.</li>
+          <li>Claude status bar now shows "Claude: prompting" when a permission prompt is waiting, even if the transcript-driven state still reports idle/thinking. Critical when the user is scrolled up in history and can't see the live prompt.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.26" date="2026-04-15">
       <description>
         <p>UX polish pass — status bar consistency, focus handling, Ink overflow-repaint fix, and tab colour gradient.</p>
