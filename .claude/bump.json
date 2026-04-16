@@ -1,0 +1,44 @@
+{
+  "$comment": "Recipe consumed by ~/.claude/skills/bump/SKILL.md. Bumps every version-bearing file in one /bump invocation; check-version-drift.sh enforces that no file is missed.",
+  "version_source": "CMakeLists.txt",
+  "version_pattern": "project\\([^)]*VERSION\\s+([0-9]+\\.[0-9]+\\.[0-9]+)",
+  "files": [
+    {
+      "path": "CMakeLists.txt",
+      "pattern": "VERSION {OLD} LANGUAGES",
+      "replace": "VERSION {NEW} LANGUAGES"
+    },
+    {
+      "path": "packaging/opensuse/ants-terminal.spec",
+      "pattern": "Version:        {OLD}",
+      "replace": "Version:        {NEW}"
+    },
+    {
+      "path": "packaging/archlinux/PKGBUILD",
+      "pattern": "pkgver={OLD}",
+      "replace": "pkgver={NEW}"
+    },
+    {
+      "path": "packaging/linux/ants-terminal.1",
+      "pattern": "ants-terminal {OLD}",
+      "replace": "ants-terminal {NEW}"
+    },
+    {
+      "path": "README.md",
+      "pattern": "Current version: <strong>{OLD}</strong>",
+      "replace": "Current version: <strong>{NEW}</strong>"
+    },
+    {
+      "path": "ROADMAP.md",
+      "pattern": "**Current version:** {OLD}",
+      "replace": "**Current version:** {NEW} ({TODAY})"
+    }
+  ],
+  "post_check": "bash packaging/check-version-drift.sh",
+  "todos": [
+    "Add `## [{NEW}] — {TODAY}` section to CHANGELOG.md with the actual change body. Include Theme, then categorized bullets (Added/Changed/Fixed/Security as needed). Read 0.6.29 as a style reference.",
+    "Prepend `<release version=\"{NEW}\" date=\"{TODAY}\">…</release>` to packaging/linux/org.ants.Terminal.metainfo.xml. The body is HTML <p> + <ul><li>… ; mirror the CHANGELOG entry but in HTML.",
+    "Prepend a new `ants-terminal ({NEW}-1) unstable; urgency=medium` block to packaging/debian/changelog with body bullets and `-- Anthony Schemel <aant.schemel@gmail.com>  <RFC2822 date>` footer. Use `dch -v {NEW}-1` if you want it formatted automatically.",
+    "Run `cd build && cmake --build . --parallel && ctest --output-on-failure` to verify nothing broke."
+  ]
+}

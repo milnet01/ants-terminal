@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /mnt/Storage/Scripts/Linux/Ants/packaging/hook-on-cmakelists-edit.sh",
+            "statusMessage": "Checking packaging-version drift…",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -39,8 +39,16 @@ desktop.ini
 *.orig
 *.rej
 
-# Claude Code (local settings, history, allowlist — all personal)
-.claude/
+# Claude Code (local settings, history, allowlist — mostly personal).
+# Drop the trailing slash so the negations below can re-include specific
+# files; with `.claude/` git short-circuits at the directory and ignores
+# the !.claude/foo lines.
+.claude/*
+# Team-shared Claude Code config that SHOULD be in version control:
+#   settings.json — project-level hooks (e.g. PostToolUse drift check)
+#   bump.json     — recipe consumed by the user-level /bump skill
+!.claude/settings.json
+!.claude/bump.json
 
 # Audit tooling and audit-run worklog artifacts
 .audit_cache/
