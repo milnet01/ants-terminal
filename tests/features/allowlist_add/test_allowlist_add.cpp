@@ -1,16 +1,31 @@
-// Feature-conformance test for spec.md — asserts rule normalisation
-// and generalisation cover every documented splitter (&&, ;, |, ||)
-// and honor the safety denylist.
+// Feature-conformance test for spec.md — asserts
+//   (A/B/C) rule normalisation + generalisation + subsumption
+//           (every splitter, safety denylist, segment-aware subsumption).
+//   (D)     hook-path button retraction: the production site must
+//           connect toolFinished + sessionStopped, not only
+//           claudePermissionCleared. Source-grep assertion.
+//   (E)     openClaudeAllowlistDialog must call show+raise+activate so
+//           the dialog becomes the active window on a frameless parent.
+//           API-level + source-grep pair, same pattern as
+//           tests/features/review_changes_click.
 //
-// Links against src/claudeallowlist.cpp. Widget/event-loop lifecycle
-// covered by spec §C but not by this test (out of scope — needs
-// QApplication + MainWindow harness).
+// Links against src/claudeallowlist.cpp for the rule-logic tests. The
+// §D/§E assertions grep src/mainwindow.cpp directly (SRC_MAINWINDOW_PATH
+// baked in by CMake) — no MainWindow instantiation required.
+//
+// Runs under QT_QPA_PLATFORM=offscreen; QApplication::activeWindow is
+// reliable under offscreen (tracks the most-recently-activated
+// top-level QWidget regardless of real WM).
 //
 // Exit 0 = all assertions hold. Non-zero = regression.
 
 #include "claudeallowlist.h"
 
-#include <QCoreApplication>
+#include <QApplication>
+#include <QDialog>
+#include <QFile>
+#include <QMainWindow>
+#include <QString>
 
 #include <cstdio>
 
@@ -198,15 +213,244 @@ int checkSubsume() {
     return failures;
 }
 
+// --- §E API-level invariant -------------------------------------------------
+//
+// A QDialog shown on a frameless QMainWindow parent becomes the active
+// window ONLY after show+raise+activateWindow. show() + raise() alone
+// is not sufficient — the dialog is raised in the stacking order but
+// not marked as the input-focus target, so when a queued refocus (from
+// the focusChanged redirect lambda in mainwindow.cpp) fires it can
+// re-activate the main window over it. Exactly the same invariant as
+// tests/features/review_changes_click's Invariant A; we duplicate it
+// here so the allowlist-add test fails independently if the dialog's
+// show sequence ever reverts.
+
+int checkDialogActivation() {
+    int failures = 0;
+
+    QMainWindow win;
+    // Match the project's MainWindow flag at mainwindow.cpp:74. Without
+    // FramelessWindowHint, most WMs auto-activate child dialogs via the
+    // WM_TRANSIENT_FOR hint on decorated windows — the bug only
+    // manifests on frameless parents.
+    win.setWindowFlag(Qt::FramelessWindowHint);
+    win.resize(800, 600);
+    win.show();
+    QApplication::processEvents();
+
+    if (QApplication::activeWindow() != &win) {
+        std::fprintf(stderr,
+            "[E1/harness-precondition] main window not active after show — "
+            "QT_QPA_PLATFORM=offscreen not set?  FAIL\n");
+        ++failures;
+    }
+
+    auto *dialog = new QDialog(&win);
+    dialog->setWindowTitle("Claude Code Allowlist");
+    dialog->resize(400, 300);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    // The exact sequence openClaudeAllowlistDialog must end with.
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+    QApplication::processEvents();
+
+    if (!dialog->isVisible()) {
+        std::fprintf(stderr,
+            "[E1/visible] dialog not visible after show()  FAIL\n");
+        ++failures;
+    }
+    if (QApplication::activeWindow() != dialog) {
+        std::fprintf(stderr,
+            "[E1/active] dialog did not become active window after "
+            "raise()+activateWindow()  FAIL\n");
+        ++failures;
+    }
+
+    dialog->close();
+    QApplication::processEvents();
+    return failures;
+}
+
+// --- Helpers for production-binding assertions ------------------------------
+
+// Extract the body of a top-level function by name from a source string.
+// Returns empty QString if the function isn't found or braces don't
+// balance. Caller is responsible for matching the canonical signature
+// passed in.
+QString extractFunctionBody(const QString &src, const QString &signature) {
+    const int start = src.indexOf(signature);
+    if (start < 0) return QString();
+    int braceStart = src.indexOf(QChar('{'), start);
+    if (braceStart < 0) return QString();
+    int depth = 1;
+    int i = braceStart + 1;
+    while (i < src.size() && depth > 0) {
+        QChar c = src.at(i);
+        if (c == QChar('{')) ++depth;
+        else if (c == QChar('}')) --depth;
+        ++i;
+    }
+    if (depth != 0) return QString();
+    return src.mid(braceStart, i - braceStart);
+}
+
+// Read src/mainwindow.cpp. Path baked in by CMake as SRC_MAINWINDOW_PATH.
+QString readMainWindowSrc() {
+    const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        std::fprintf(stderr,
+                     "FAIL: cannot open %s — test harness wiring broken\n",
+                     qUtf8Printable(path));
+        return QString();
+    }
+    return QString::fromUtf8(f.readAll());
+}
+
+// --- §E production binding: openClaudeAllowlistDialog calls show+raise+activate ---
+
+int checkDialogShowSequence() {
+    int failures = 0;
+    const QString src = readMainWindowSrc();
+    if (src.isEmpty()) return 1;
+
+    const QString body = extractFunctionBody(
+        src,
+        QStringLiteral(
+            "void MainWindow::openClaudeAllowlistDialog("
+            "const QString &prefillRule)"));
+    if (body.isEmpty()) {
+        std::fprintf(stderr,
+            "[E2/find] openClaudeAllowlistDialog not found in mainwindow.cpp "
+            "— function renamed?  FAIL\n");
+        return 1;
+    }
+
+    // We don't care about the exact receiver expression (m_claudeDialog
+    // vs. m_claudeDialog-> vs. some wrapped call) — what matters is that
+    // the three calls all appear inside the function body. A simple
+    // substring check is sufficient because this function body contains
+    // no string literals that mention these method names.
+    struct Req {
+        const char *needle;
+        const char *why;
+    };
+    const Req kRequired[] = {
+        {"->show()",
+         "openClaudeAllowlistDialog no longer calls show() on the dialog"},
+        {"->raise()",
+         "openClaudeAllowlistDialog no longer calls raise() — dialog may open "
+         "behind frameless main window (0.6.31 bug regression)"},
+        {"->activateWindow()",
+         "openClaudeAllowlistDialog no longer calls activateWindow() — user "
+         "reports 'Add to allowlist click does nothing' (0.6.31 bug regression)"},
+    };
+    for (const auto &r : kRequired) {
+        if (!body.contains(QString::fromUtf8(r.needle))) {
+            std::fprintf(stderr, "[E2/%s] %s  FAIL\n", r.needle, r.why);
+            ++failures;
+        }
+    }
+    return failures;
+}
+
+// --- §D production binding: hook-path permissionRequested handler --------
+//
+// The user-reported 0.6.30 bug: the "Add to allowlist" button lingered
+// on the status bar long after the underlying prompt was resolved.
+// Root cause: the hook-path (ClaudeIntegration::permissionRequested)
+// button listened ONLY to TerminalWidget::claudePermissionCleared for
+// retraction — a signal gated on the terminal scroll-scanner having
+// independently observed the prompt (terminalwidget.cpp:3658). When a
+// prompt reaches the hook but not the scanner (unmatched footer
+// format, prompt off-screen, headless session), the clear signal
+// never fires and the button is orphaned.
+//
+// The fix: also connect toolFinished and sessionStopped from
+// ClaudeIntegration. Proxy signals, but Claude Code has no canonical
+// PermissionResolved event.
+//
+// This assertion reads mainwindow.cpp and checks that the lambda body
+// wired to `permissionRequested` contains connect() calls for those
+// two signals. If a future refactor drops either connect, the button
+// goes back to hanging indefinitely on hook-only prompts — exactly
+// the user-reported 0.6.30 symptom.
+
+int checkHookPathRetraction() {
+    int failures = 0;
+    const QString src = readMainWindowSrc();
+    if (src.isEmpty()) return 1;
+
+    // Locate the connect() to permissionRequested — the lambda body
+    // following it contains the button creation and the retraction
+    // wiring we care about. We bracket the search between the
+    // permissionRequested connect and the next top-level connect /
+    // function call that follows the hook handler block. The reliable
+    // anchor is the "Set up MCP server" comment that immediately
+    // follows the permissionRequested handler.
+    const QString startAnchor =
+        QStringLiteral("ClaudeIntegration::permissionRequested");
+    const QString endAnchor =
+        QStringLiteral("// Set up MCP server");
+    const int startIdx = src.indexOf(startAnchor);
+    const int endIdx = src.indexOf(endAnchor, startIdx);
+    if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) {
+        std::fprintf(stderr,
+            "[D/locate] permissionRequested handler not found between "
+            "expected anchors — refactor broke the test harness's scope bracketing.  FAIL\n");
+        return 1;
+    }
+    const QString handler = src.mid(startIdx, endIdx - startIdx);
+
+    struct Req {
+        const char *needle;
+        const char *why;
+    };
+    const Req kRequired[] = {
+        {"ClaudeIntegration::toolFinished",
+         "hook-path permissionRequested handler no longer connects "
+         "toolFinished — button orphaned when scroll-scanner never "
+         "observed the prompt (0.6.30 bug regression)"},
+        {"ClaudeIntegration::sessionStopped",
+         "hook-path permissionRequested handler no longer connects "
+         "sessionStopped — button orphaned when session ends without "
+         "scroll-scan seeing the prompt (0.6.30 bug regression)"},
+        // Existing connection must also still be present — this guards
+        // against someone \"fixing\" the new wiring by replacing rather
+        // than adding. The TerminalWidget path is still the fastest
+        // retraction trigger when it does fire.
+        {"TerminalWidget::claudePermissionCleared",
+         "hook-path permissionRequested handler dropped "
+         "claudePermissionCleared — loses the fast retraction path when "
+         "scroll-scanner does see the prompt"},
+    };
+    for (const auto &r : kRequired) {
+        if (!handler.contains(QString::fromUtf8(r.needle))) {
+            std::fprintf(stderr, "[D/%s] %s  FAIL\n", r.needle, r.why);
+            ++failures;
+        }
+    }
+    return failures;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+    // QApplication (not QCoreApplication) — §E uses QDialog + QMainWindow,
+    // which require the GUI app singleton. Rule-logic tests (§A/B/C) are
+    // GUI-independent but a QApplication covers them too (it IS-A
+    // QCoreApplication).
+    QApplication app(argc, argv);
 
     int failures = 0;
     failures += checkNormalize();
     failures += checkGeneralize();
     failures += checkSubsume();
+    failures += checkDialogActivation();
+    failures += checkDialogShowSequence();
+    failures += checkHookPathRetraction();
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d case(s) failed.\n", failures);

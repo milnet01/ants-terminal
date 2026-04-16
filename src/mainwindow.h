@@ -156,6 +156,16 @@ private:
     // per tab); MainWindow only exposes the context-menu entry point.
     void showTabColorMenu(int tabIndex);
 
+    // Persist per-tab colour choices across restarts. Storage lives in the
+    // `tab_groups` config key as a JSON object mapping the tab's UUID
+    // (m_tabSessionIds value) to an "#rrggbbaa" hex string. Keyed by UUID
+    // rather than index so drag-reorder doesn't invalidate entries, and
+    // rather than tab title so rename doesn't silently orphan them.
+    // Persistence is unconditional (not gated on session_persistence) —
+    // user requested colours survive even with session restore disabled.
+    void persistTabColor(QWidget *tabRoot, const QColor &color);
+    void applyPersistedTabColor(QWidget *tabRoot);
+
     // Handle trigger signals from terminals
     void onTriggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
 

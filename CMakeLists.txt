@@ -309,12 +309,19 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # allowlist_add — asserts rule normalisation + generalisation covers
-    # every shell splitter (&&, ;, |, ||) and honors the safety denylist
-    # (rm, bare sudo, SUDO_*). Widget lifecycle (button appear / disappear
-    # on approve/decline) documented in spec §C but not tested here —
-    # future GUI-enabled test can drive it. See
-    # tests/features/allowlist_add/spec.md.
+    # allowlist_add — asserts (A) rule normalisation, (B) generalisation
+    # across every shell splitter, (C) segment-aware subsumption,
+    # (D) hook-path button retraction wiring (toolFinished +
+    # sessionStopped on ClaudeIntegration, not only
+    # claudePermissionCleared on TerminalWidget), (E)
+    # openClaudeAllowlistDialog calls show+raise+activateWindow so the
+    # dialog becomes the active window on a frameless parent.
+    # See tests/features/allowlist_add/spec.md.
+    #
+    # §D and §E production bindings grep src/mainwindow.cpp at runtime
+    # — SRC_MAINWINDOW_PATH baked in as a compile definition below.
+    # §E also does an API-level QDialog+QMainWindow lifecycle check,
+    # which needs QApplication + offscreen QPA.
     add_executable(test_allowlist_add
         tests/features/allowlist_add/test_allowlist_add.cpp
         src/claudeallowlist.cpp
@@ -328,10 +335,14 @@ if(ANTS_TESTS)
     target_compile_options(test_allowlist_add PRIVATE
         -Wall -Wextra -Wpedantic
     )
+    target_compile_definitions(test_allowlist_add PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
     add_test(NAME allowlist_add COMMAND test_allowlist_add)
     set_tests_properties(allowlist_add PROPERTIES
         LABELS "features;fast"
-        TIMEOUT 10)
+        TIMEOUT 10
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # status_bar_elision — asserts ElidedLabel's elision policy:
     # short text never elides, over-cap text does, and minimumSizeHint
@@ -363,6 +374,49 @@ if(ANTS_TESTS)
         TIMEOUT 10
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # review_changes_click — asserts the two API-level invariants that
+    # make the Review Changes status-bar button produce a visible
+    # dialog:
+    #   (A) QDialog on a frameless QMainWindow parent needs show() +
+    #       raise() + activateWindow() to reliably become the active
+    #       window — show() alone is WM-dependent and flaky on KWin.
+    #   (B) The focus-redirect lambda at mainwindow.cpp:~411 queues a
+    #       deferred setFocus() on the terminal when status-bar chrome
+    #       takes focus; the fire-time re-check must skip the refocus
+    #       when a QDialog has since become active, so the dialog's
+    #       input focus isn't stolen (which would re-raise the main
+    #       window over it on KWin).
+    # Regression test for user report "Review Changes button does
+    # nothing when I click it" — the button IS active and git DOES
+    # detect changes, but the dialog was created behind the main
+    # window. See tests/features/review_changes_click/spec.md.
+    # Pure API-level harness — no src/*.cpp linked; topology is
+    # reproduced with QMainWindow + QStatusBar + QDialog + QTimer.
+    add_executable(test_review_changes_click
+        tests/features/review_changes_click/test_review_changes_click.cpp
+    )
+    target_link_libraries(test_review_changes_click PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_review_changes_click PRIVATE src)
+    target_compile_options(test_review_changes_click PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    # Production-binding check: the test opens src/mainwindow.cpp at
+    # runtime to verify showDiffViewer still calls raise() and
+    # activateWindow(). Bake the absolute source path in at compile
+    # time so the test runs correctly from the build directory.
+    target_compile_definitions(test_review_changes_click PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME review_changes_click COMMAND test_review_changes_click)
+    set_tests_properties(review_changes_click PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     # tab_color — asserts ColoredTabBar stores per-tab colours via
     # QTabBar::tabData so they survive drag-reorder (moveTab) and
     # auto-drop on removeTab. Guards the 0.6.23 fix for "right-click
@@ -373,6 +427,7 @@ if(ANTS_TESTS)
     add_executable(test_tab_color
         tests/features/tab_color/test_tab_color.cpp
         src/coloredtabbar.cpp
+        src/config.cpp
     )
     target_link_libraries(test_tab_color PRIVATE
         Qt6::Core

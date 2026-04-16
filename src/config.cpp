@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QStandardPaths>
 
+#include <cstdio>      // std::rename — atomic POSIX rename (overwrites dest)
 #include <sys/stat.h>
 #include <unistd.h>    // fsync — durability guarantee before atomic rename
 
@@ -51,7 +52,15 @@ void Config::save() {
             // Atomic rename — on POSIX rename(2) atomically replaces the
             // destination, so no need to remove first (avoids a crash window
             // where the file is deleted but not yet renamed).
-            QFile::rename(tmpPath, path);
+            //
+            // MUST use std::rename (POSIX rename(2)) rather than QFile::rename:
+            // QFile::rename refuses to overwrite an existing destination and
+            // returns false, silently leaving config.json untouched while
+            // config.json.tmp accumulates on disk. That path broke every save
+            // after the first — theme / font / tab_groups changes all
+            // evaporated on restart. POSIX rename(2) atomically replaces.
+            std::rename(tmpPath.toLocal8Bit().constData(),
+                        path.toLocal8Bit().constData());
         } else {
             file.close();
             QFile::remove(tmpPath);

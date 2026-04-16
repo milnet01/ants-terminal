@@ -433,7 +433,39 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
         if (auto *t = focusedTerminal()) {
             QPointer<TerminalWidget> guard(t);
             QTimer::singleShot(0, this, [guard]() {
-                if (guard) guard->setFocus(Qt::OtherFocusReason);
+                if (!guard) return;
+                // Re-check at firing time: if the status-bar button's
+                // handler (e.g. showDiffViewer, openClaudeAllowlistDialog)
+                // has since spawned a dialog, the user is now engaged
+                // with that dialog and refocusing the terminal would
+                // steal input focus and — on KWin with a frameless
+                // parent — re-raise the main window over the freshly-
+                // shown dialog.
+                //
+                // The focusChanged queue-time check at line ~418 couldn't
+                // see this because the dialog didn't exist yet — the
+                // chain was `button → QStatusBar → QMainWindow`. Walking
+                // top-level widgets HERE at fire time catches dialogs
+                // created between queue and fire.
+                //
+                // Why topLevelWidgets + isVisible instead of
+                // QApplication::activeWindow(): activateWindow()'s effect
+                // propagates via a platform event that, on some WMs/
+                // offscreen platforms, only applies on the NEXT event-
+                // loop iteration. The dialog may have been show()+raise()
+                // +activateWindow()'d by the click handler yet not yet
+                // be the reported activeWindow() when the singleShot
+                // fires. Visibility, however, is synchronous — show()
+                // sets the visible flag before returning.
+                const QWidget *mainWin = guard->window();
+                for (QWidget *w : QApplication::topLevelWidgets()) {
+                    if (w == mainWin) continue;
+                    if (!w->isVisible()) continue;
+                    if (w->inherits("QDialog")) {
+                        return;  // a dialog is live — don't steal its focus
+                    }
+                }
+                guard->setFocus(Qt::OtherFocusReason);
             });
         }
     });
@@ -1622,6 +1654,20 @@ void MainWindow::closeTab(int index) {
         if (m_closedTabs.size() > 10) m_closedTabs.removeLast();
     }
 
+    // Drop any persisted tab-colour entry before we forget the UUID —
+    // otherwise the config would accumulate orphan entries for closed
+    // tabs that no future tab will ever re-use (UUIDs are unique).
+    {
+        QString tabId = m_tabSessionIds.value(w);
+        if (!tabId.isEmpty()) {
+            QJsonObject groups = m_config.tabGroups();
+            if (groups.contains(tabId)) {
+                groups.remove(tabId);
+                m_config.setTabGroups(groups);
+            }
+        }
+    }
+
     m_tabSessionIds.remove(w);
     m_tabWidget->removeTab(index);
     w->deleteLater();
@@ -2171,6 +2217,10 @@ void MainWindow::restoreSessions() {
 
         m_tabWidget->addTab(terminal, "Shell");
         m_tabSessionIds[terminal] = tabId;
+        // Re-apply any persisted colour tag for this UUID. Must happen
+        // after addTab (tab has an index) and after m_tabSessionIds is
+        // populated (so applyPersistedTabColor can resolve the UUID).
+        applyPersistedTabColor(terminal);
 
         // Restore scrollback, screen, and working directory
         QString savedCwd;
@@ -2559,6 +2609,47 @@ void MainWindow::setupClaudeIntegration() {
                 clearPromptActive();
             });
         }
+
+        // 0.6.31 — `claudePermissionCleared` above only fires if the terminal
+        // scroll-scanner previously emitted `claudePermissionDetected` for
+        // this prompt (gated on `m_lastDetectedRule` being non-empty in
+        // terminalwidget.cpp:3658). When a PermissionRequest HOOK fires for
+        // a prompt the scroll-scanner never saw — unmatched prompt format,
+        // prompt already scrolled past the 12-line lookback window, or a
+        // headless Claude Code session where the hook is the only signal
+        // — `m_lastDetectedRule` stays empty and `claudePermissionCleared`
+        // never fires, orphaning the button forever. User-reported symptom:
+        // "Claude Code permission: Bash(cd * && cmake * | tail *) —" visible
+        // with no live prompt in any terminal.
+        //
+        // Retract on `toolFinished` (permission was granted and the tool
+        // completed), `sessionStopped` (session ended — prompt is moot),
+        // and `permissionRequested` (a new prompt implicitly resolves the
+        // previous one; the existing `findChildren` dedup at the top of
+        // this handler already removes the old btnWidget, which auto-
+        // disconnects these connections via the btnWidget context).
+        //
+        // These are proxy signals — Claude Code has no canonical
+        // "PermissionResolved" hook (confirmed in claudeintegration.cpp
+        // processHookEvent; PermissionRequest has no inverse). Using
+        // toolFinished/sessionStopped errs on the side of closing the
+        // button too early (user never clicks it) rather than too late
+        // (button lingers indefinitely on a resolved prompt, inviting a
+        // misdirected click).
+        auto finishedConn = std::make_shared<QMetaObject::Connection>();
+        *finishedConn = connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
+                                btnWidget, [btnWidget, finishedConn, clearPromptActive](const QString &, bool) {
+            QObject::disconnect(*finishedConn);
+            btnWidget->deleteLater();
+            clearPromptActive();
+        });
+        auto stoppedConn = std::make_shared<QMetaObject::Connection>();
+        *stoppedConn = connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
+                               btnWidget, [btnWidget, stoppedConn, clearPromptActive](const QString &) {
+            QObject::disconnect(*stoppedConn);
+            btnWidget->deleteLater();
+            clearPromptActive();
+        });
     });
 
     // Set up MCP server with all providers
@@ -2664,7 +2755,22 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
         }
     }
     m_claudeDialog->show();
+    // raise() + activateWindow() are load-bearing, not cosmetic — same
+    // constraint as showDiffViewer (see the comment at the end of that
+    // function). The "Add to allowlist" button that invokes this dialog
+    // lives on the status bar of a frameless QMainWindow. KWin's window
+    // stacking on a frameless parent, combined with the focusChanged
+    // redirect lambda at line ~411 that queues a terminal->setFocus()
+    // when the status-bar button briefly takes focus, places the dialog
+    // BEHIND the main window unless we both raise() and activateWindow().
+    // raise() fixes stacking order; activateWindow() makes the dialog the
+    // input-focus target so the queued terminal-refocus becomes a no-op
+    // (the dialog-visible check at line ~464 sees it and bails). Without
+    // activateWindow(), the user reports: "Add to allowlist click does
+    // nothing — no dialog opens, no visible effect" — the dialog IS up,
+    // just obscured by the main window.
     m_claudeDialog->raise();
+    m_claudeDialog->activateWindow();
 }
 
 void MainWindow::openClaudeProjectsDialog() {
@@ -3028,11 +3134,56 @@ void MainWindow::showTabColorMenu(int tabIndex) {
             if (idx < 0 || !m_coloredTabBar) return;
             // ColoredTabBar stores the colour in QTabBar::tabData, which
             // survives drag-reorder and auto-drops when a tab is
-            // removed. No MainWindow-side bookkeeping required.
+            // removed. No MainWindow-side bookkeeping required for the
+            // in-session state.
             m_coloredTabBar->setTabColor(idx, ce.color);
+            // Persist the choice to config so it survives a restart.
+            // Keyed by the tab's UUID (m_tabSessionIds), NOT its index —
+            // indices go stale on drag-reorder but UUIDs are stable for
+            // the lifetime of the tab.
+            persistTabColor(tabWidget, ce.color);
         });
     }
     menu.exec(QCursor::pos());
+}
+
+void MainWindow::persistTabColor(QWidget *tabRoot, const QColor &color) {
+    // Resolve this tab's UUID. For split-pane tabs the root widget is a
+    // QSplitter which holds the UUID; for single-pane tabs it's the
+    // TerminalWidget itself. Both paths funnel through m_tabSessionIds.
+    const QString tabId = m_tabSessionIds.value(tabRoot);
+    if (tabId.isEmpty()) return;
+
+    QJsonObject groups = m_config.tabGroups();
+    if (color.isValid()) {
+        // Store as "#rrggbbaa" so alpha round-trips losslessly. The
+        // colour-picker entries are all alpha=255, but storing the alpha
+        // keeps the format future-proof if a custom-colour entry lands
+        // later.
+        groups[tabId] = color.name(QColor::HexArgb);
+    } else {
+        // None / clear — drop the entry entirely so the JSON doesn't
+        // accumulate empty strings for every tab the user ever touched.
+        groups.remove(tabId);
+    }
+    m_config.setTabGroups(groups);
+}
+
+void MainWindow::applyPersistedTabColor(QWidget *tabRoot) {
+    if (!m_coloredTabBar) return;
+    const QString tabId = m_tabSessionIds.value(tabRoot);
+    if (tabId.isEmpty()) return;
+
+    const QJsonObject groups = m_config.tabGroups();
+    const QString hex = groups.value(tabId).toString();
+    if (hex.isEmpty()) return;
+
+    const QColor c(hex);
+    if (!c.isValid()) return;
+
+    const int idx = m_tabWidget->indexOf(tabRoot);
+    if (idx < 0) return;
+    m_coloredTabBar->setTabColor(idx, c);
 }
 
 void MainWindow::refreshReviewButton() {
@@ -3201,6 +3352,27 @@ void MainWindow::showDiffViewer() {
     layout->addWidget(viewer);
     layout->addLayout(btnBox);
     dialog->show();
+    // raise() + activateWindow() are required here, not cosmetic. The
+    // Review Changes button lives on the status bar of a frameless
+    // QMainWindow (see line 74: Qt::FramelessWindowHint). When a QDialog
+    // is spawned directly from a status-bar button click, KWin's window
+    // stacking heuristics can place the new dialog BEHIND the frameless
+    // parent — the transient-for relationship that normally promotes
+    // child dialogs to the top of the stacking order is brittle without
+    // a proper WM-decorated parent. Compounded by the focusChanged
+    // lambda at ~line 411 which queued a `terminal->setFocus()` when
+    // the button took focus; that queued refocus fires AFTER show()
+    // returns and can pull focus (and on KWin, raise order) back to
+    // the main window. Symptom: user clicks "Review Changes", button
+    // highlights, but "no window comes up" — it is up, just obscured.
+    // raise() forces the dialog to the top of the stacking order;
+    // activateWindow() makes the dialog the input-focus target so the
+    // queued terminal-refocus becomes a no-op (the terminal isn't in
+    // the focus chain anymore because the dialog owns it). Sibling
+    // dialogs (AI at line ~776, Claude Transcript at ~830) already
+    // follow this pattern; showDiffViewer was the outlier.
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 // --- Hot-Reload Configuration ---

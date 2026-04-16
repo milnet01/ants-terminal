@@ -70,23 +70,56 @@ redundant rule (false negative, benign).
 
 ### D. Button lifecycle
 
-The "Add to allowlist" button appears on the status bar when the
-terminal emits `claudePermissionDetected`. The button:
+The "Add to allowlist" button appears on the status bar when either
+(a) the terminal scroll-scanner emits `claudePermissionDetected` or
+(b) the ClaudeIntegration HTTP hook emits `permissionRequested`. The
+button:
 
 1. **Is unique.** Any pre-existing button is removed before a new one
    is shown. Multiple back-to-back prompts don't accumulate buttons.
 2. **Is prompt-scoped.** It must disappear when the prompt is no longer
-   relevant. Current impl: after a 1000 ms grace (to ride out the
-   brief quiet window right after the prompt), the first
-   `outputReceived` signal from the terminal removes it. This covers
-   both "user clicked yes" and "user clicked no / new output arrived"
-   cases from a single timer+signal pattern.
+   relevant. Retraction triggers:
+   - Scroll-scan path: `TerminalWidget::claudePermissionCleared` —
+     fires once the footer pattern ("Tab to accept" / "Do you want
+     to proceed") leaves the last 12 on-screen lines.
+   - Hook path: `claudePermissionCleared` (when the scroll-scanner
+     also saw the prompt) PLUS `ClaudeIntegration::toolFinished`
+     (permission granted and tool completed) PLUS
+     `ClaudeIntegration::sessionStopped` (session ended). The extra
+     triggers are load-bearing: a `PermissionRequest` hook can fire
+     for prompts the scroll-scanner never observed (unmatched prompt
+     format, prompt scrolled past the lookback window, headless
+     Claude Code session). Relying on `claudePermissionCleared`
+     alone orphans the button — user-reported 0.6.30 symptom:
+     "Claude Code permission: Bash(...) —" visible on status bar
+     with no live prompt in any terminal.
 3. **Is self-cleaning on click.** If the user clicks the button and
    the allowlist dialog opens, the button removes itself
-   immediately (no wait for `outputReceived`).
+   immediately (no wait for the retraction signals).
 4. **Is tab-scoped.** A prompt in tab A must not produce a button
    visible to tab B — the `claudePermissionDetected` handler filters
-   by focused/current terminal before creating the button.
+   by focused/current terminal before creating the button. Tab-
+   switch cleanup in `onTabChanged` removes any lingering button
+   via `findChildren<QWidget*>("claudeAllowBtn")` — matches both
+   the scroll-scan path's `QPushButton` and the hook path's
+   `QWidget` container.
+
+### E. Dialog becomes visible on click
+
+Clicking "Add to allowlist" calls `openClaudeAllowlistDialog(rule)`.
+The dialog MUST become the active window, not just appear somewhere
+in the stacking order. On a frameless `QMainWindow` parent (the
+project uses `Qt::FramelessWindowHint` at mainwindow.cpp:74), KWin's
+stacking heuristics can place a child QDialog BEHIND the parent
+unless the caller invokes `raise()` + `activateWindow()` after
+`show()`. The sister Review Changes button has the same constraint
+(see `tests/features/review_changes_click/spec.md` invariant A) and
+went through the same regression (0.6.29). The same fix applies here:
+`openClaudeAllowlistDialog` must end with `show()` + `raise()` +
+`activateWindow()`. Without `activateWindow()`, the user-reported
+symptom is identical to the Review Changes bug: "Add to allowlist
+click does nothing — no dialog opens, no visible effect" — the
+dialog IS up, just obscured by the main window.
 
 ## Rationale
 
@@ -119,12 +152,26 @@ terminal emits `claudePermissionDetected`. The button:
 - Idempotency: `normalizeRule(normalizeRule(x)) == normalizeRule(x)`
   and `generalizeRule(generalizeRule(x)) == "" (or input)`.
 
+### In scope (widget lifecycle)
+- §D hook-path retraction wiring: the production code at
+  `mainwindow.cpp` inside the `permissionRequested` handler MUST
+  connect `toolFinished` and `sessionStopped` to the button's
+  deleteLater path. Source-grep assertion — catches reverts that
+  reintroduce the 0.6.30 orphaned-button bug.
+- §E production binding: `openClaudeAllowlistDialog` MUST call
+  `show()` + `raise()` + `activateWindow()` on `m_claudeDialog`.
+  Same pattern as `review_changes_click`'s Invariant A production
+  binding.
+- §E API-level: a `QDialog` shown on a frameless `QMainWindow`
+  parent becomes the active window ONLY after show+raise+activate.
+
 ### Out of scope (covered by integration or future tests)
-- The Qt widget lifecycle (needs QApplication + a MainWindow
-  harness). Contract documented in §C above; a future GUI-enabled
-  test can drive it.
 - Parsing the raw permission prompt text from the terminal scrollback
   (`terminalwidget.cpp::claudePermissionDetected` signal emission).
+- End-to-end click simulation with real MainWindow instantiation —
+  pulls in half the project's sources (TerminalWidget, PTY,
+  VtParser, ClaudeIntegration, etc.). The API-level + source-grep
+  pair captures both regression vectors with minimal friction.
 
 ## Regression history
 
@@ -143,3 +190,28 @@ terminal emits `claudePermissionDetected`. The button:
   split the narrow rule on shell splitters and require every segment
   to match the broad prefix before declaring subsumption. Matches the
   per-segment semantics `generalizeRule` has used since 0.6.22.
+- **0.6.31 (bug #1):** user-reported: clicking "Add to allowlist"
+  did nothing — no dialog, no visible effect. Root cause:
+  `openClaudeAllowlistDialog` called `show()` + `raise()` but not
+  `activateWindow()`. Identical to the 0.6.29 Review Changes bug
+  (see `tests/features/review_changes_click/spec.md`) — the
+  frameless QMainWindow + focusChanged refocus-redirect combo
+  means show+raise alone leaves the dialog obscured by the main
+  window. Fix: add `m_claudeDialog->activateWindow()` after raise.
+- **0.6.31 (bug #2):** user-reported: "Claude Code permission:
+  Bash(cd * && cmake * | tail *) —" visible on status bar long
+  after the underlying prompt had been resolved. Root cause: the
+  hook-path button (created by `ClaudeIntegration::permissionRequested`)
+  listened ONLY to `TerminalWidget::claudePermissionCleared` for
+  retraction. That signal is gated on
+  `m_lastDetectedRule` being non-empty in
+  `TerminalWidget::checkForClaudePermissionPrompt` — i.e. it only
+  fires if the terminal scroll-scanner had independently observed
+  the prompt. When the hook fires for a prompt the scanner never
+  saw (unmatched footer format, off-screen, or headless session),
+  the button lived forever. Fix: add `toolFinished` +
+  `sessionStopped` as retraction triggers on the hook path. Proxy
+  signals — Claude Code has no canonical `PermissionResolved` hook
+  — so we err toward closing too early rather than too late
+  (stranding the button is worse than the user briefly losing
+  access to a button they were about to click).

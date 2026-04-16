@@ -1,17 +1,25 @@
-// Feature test for the ColoredTabBar storage contract (spec.md §1-4).
+// Feature test for the ColoredTabBar storage contract (spec.md §1-5).
 // Exercises the round-trip behaviour of setTabColor / tabColor across
 // insert, move (drag-reorder), and remove — the three operations
 // where an index-keyed MainWindow-side map would go stale but the
-// QTabBar::tabData backing survives correctly.
+// QTabBar::tabData backing survives correctly. §5 covers cross-session
+// persistence (colour survives app restart) via Config's tab_groups
+// key, keyed by per-tab UUID.
 //
 // Needs QApplication because QTabBar internally instantiates widgets.
 // Runs under the "offscreen" QPA platform so no display server is
-// required on CI.
+// required on CI. Uses QStandardPaths::setTestModeEnabled so Config's
+// writes land in ~/.qttest/ rather than the real user config.
 
 #include "coloredtabbar.h"
+#include "config.h"
 
 #include <QApplication>
 #include <QColor>
+#include <QFile>
+#include <QJsonObject>
+#include <QStandardPaths>
+#include <QUuid>
 #include <QWidget>
 
 #include <cstdio>
@@ -120,20 +128,107 @@ int runRemoveCleansUp() {
     return failures;
 }
 
+// spec §5: colour persists across "app restart" via Config::tabGroups().
+//
+// The user-visible bug the round-trip guards: "I set a tab's colour,
+// closed ants-terminal, re-opened, and the colour was gone." Storage
+// was previously only in QTabBar::tabData (alive for the process
+// lifetime, zero-initialised on start). The fix keys a JSON map by the
+// tab's UUID (m_tabSessionIds) and persists it under the `tab_groups`
+// config key, which this test drives directly without needing a live
+// MainWindow.
+int runPersistenceRoundTrip() {
+    int failures = 0;
+
+    // A fresh UUID per run so we don't collide with any leftover state
+    // from previous test runs in the same ~/.qttest/ directory.
+    const QString tabIdA = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString tabIdB = QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+    // --- "Session 1": set colours, persist them via Config ---
+    {
+        Config cfg;
+        QJsonObject groups = cfg.tabGroups();
+        groups[tabIdA] = kRed.name(QColor::HexArgb);
+        groups[tabIdB] = kGreen.name(QColor::HexArgb);
+        cfg.setTabGroups(groups);
+    }
+
+    // --- "Session 2": brand-new Config instance reads from disk ---
+    {
+        Config cfg2;
+        const QJsonObject groups = cfg2.tabGroups();
+        CHECK(groups.contains(tabIdA),
+              "UUID A present after Config reload");
+        CHECK(groups.contains(tabIdB),
+              "UUID B present after Config reload");
+
+        const QColor restoredA(groups.value(tabIdA).toString());
+        const QColor restoredB(groups.value(tabIdB).toString());
+        CHECK(restoredA == kRed,   "tab A colour round-trips through Config");
+        CHECK(restoredB == kGreen, "tab B colour round-trips through Config");
+
+        // Drive the restore path: mirror what
+        // MainWindow::applyPersistedTabColor does — read hex, parse,
+        // apply to the bar. Proves the persistence format is directly
+        // consumable by the in-memory tab bar.
+        ColoredTabBar bar;
+        bar.addTab("A");
+        bar.addTab("B");
+        bar.setTabColor(0, QColor(groups.value(tabIdA).toString()));
+        bar.setTabColor(1, QColor(groups.value(tabIdB).toString()));
+        CHECK(bar.tabColor(0) == kRed,
+              "bar receives persisted A colour after reload");
+        CHECK(bar.tabColor(1) == kGreen,
+              "bar receives persisted B colour after reload");
+    }
+
+    // --- Clearing a colour removes the entry (no orphan accumulation) ---
+    {
+        Config cfg3;
+        QJsonObject groups = cfg3.tabGroups();
+        groups.remove(tabIdA);
+        cfg3.setTabGroups(groups);
+    }
+    {
+        Config cfg4;
+        const QJsonObject groups = cfg4.tabGroups();
+        CHECK(!groups.contains(tabIdA),
+              "cleared UUID A is absent, not empty-string");
+        CHECK(groups.contains(tabIdB),
+              "clearing A does not touch B");
+    }
+
+    // Cleanup so ~/.qttest state doesn't grow unbounded across runs.
+    {
+        Config cfg5;
+        QJsonObject groups = cfg5.tabGroups();
+        groups.remove(tabIdB);
+        cfg5.setTabGroups(groups);
+    }
+
+    return failures;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
     // Force offscreen QPA so the test runs on CI without a display.
     qputenv("QT_QPA_PLATFORM", "offscreen");
+    // Redirect Config's QStandardPaths reads/writes to ~/.qttest/ so
+    // the real user config is never touched. Must be called BEFORE any
+    // Config instance is constructed (Config's ctor calls load()).
+    QStandardPaths::setTestModeEnabled(true);
     QApplication app(argc, argv);
 
     int failures = 0;
     failures += runRoundTrip();
     failures += runReorderSurvives();
     failures += runRemoveCleansUp();
+    failures += runPersistenceRoundTrip();
 
     if (failures == 0) {
-        std::printf("tab_color: round-trip + reorder + remove pass\n");
+        std::printf("tab_color: round-trip + reorder + remove + persist pass\n");
         return 0;
     }
     std::fprintf(stderr, "tab_color: %d failure(s)\n", failures);
