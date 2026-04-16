@@ -1,3 +1,23 @@
+ants-terminal (0.6.30-1) unstable; urgency=medium
+
+  * Contributor-facing workflow infrastructure. No runtime or behavior
+    changes for end users — the binary is bit-identical to 0.6.29 modulo
+    the version string.
+  * New .claude/settings.json wires a PostToolUse hook on Edit|Write
+    that delegates to packaging/hook-on-cmakelists-edit.sh. Runs
+    check-version-drift.sh the moment an agent edits CMakeLists.txt
+    and surfaces drift via systemMessage — closes the honor-system
+    gap that allowed the 0.6.23 packaging slip to ship.
+  * New .claude/bump.json recipe consumed by a user-level /bump skill.
+    Lists the 6 version-bearing files with templated find/replace,
+    plus 4 todos for content the recipe can't synthesise.
+  * .gitignore narrowed .claude/ → .claude/* with explicit
+    !.claude/settings.json + !.claude/bump.json exceptions so the
+    team-shared workflow files commit while developer-local
+    settings.local.json and worktrees/ stay ignored.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 16 Apr 2026 19:00:00 +0000
+
 ants-terminal (0.6.29-1) unstable; urgency=medium
 
   * Status-bar reliability fixes: git branch chip no longer elides to

@@ -89,6 +89,17 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.30" date="2026-04-16">
+      <description>
+        <p>Contributor-facing workflow infrastructure release. No runtime or behavior changes for end users — the binary is bit-identical to 0.6.29 modulo the version string. New files are tooling for contributors who clone the repo and work on it through Claude Code.</p>
+        <ul>
+          <li>New <code>.claude/settings.json</code> wires a PostToolUse hook on Edit|Write that delegates to <code>packaging/hook-on-cmakelists-edit.sh</code>. The script runs <code>check-version-drift.sh</code> the moment an agent edits CMakeLists.txt and surfaces drift via systemMessage — closes the honor-system gap that allowed the 0.6.23 packaging slip.</li>
+          <li>New <code>.claude/bump.json</code> recipe consumed by a user-level <code>/bump</code> skill. Lists the 6 version-bearing files with templated find/replace, plus 4 todos for content the recipe can't synthesise.</li>
+          <li>New <code>packaging/hook-on-cmakelists-edit.sh</code>: small bash dispatcher; stdin is PostToolUse JSON, stdout is empty on clean state or a systemMessage on drift; always exits 0.</li>
+          <li><code>.gitignore</code> narrowed <code>.claude/</code> → <code>.claude/*</code> with explicit exceptions for <code>settings.json</code> and <code>bump.json</code> so the team-shared workflow files commit while developer-local <code>settings.local.json</code> and <code>worktrees/</code> stay ignored.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.29" date="2026-04-16">
       <description>
         <p>Status-bar reliability pass — nail down every user-reported symptom in one go: git branch chip "…" under tight layout, Review Changes button not appearing until a tab-switch, Add-to-Allowlist button silently no-op on save failure, Claude status label 2 s stale after tab-switch.</p>

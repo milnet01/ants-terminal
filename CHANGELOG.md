@@ -10,6 +10,47 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.6.30] — 2026-04-16
+
+**Theme:** Contributor-facing workflow infrastructure — project-level
+Claude Code hooks + recipe-driven version bumping. **No runtime or
+behavior changes for end users.** The `ants-terminal` binary is bit-
+identical to 0.6.29 modulo the `ANTS_VERSION` macro string. The new
+files are entirely tooling for contributors who clone the repo and
+work on it through Claude Code.
+
+### Added
+
+- **`.claude/settings.json`** wires a `PostToolUse` hook on
+  `Edit|Write` that delegates to
+  `packaging/hook-on-cmakelists-edit.sh`. The script short-circuits
+  unless the touched path ends in `CMakeLists.txt`, then runs
+  `packaging/check-version-drift.sh` and surfaces drift via a
+  `systemMessage`. Contributor benefit: the version-drift gap that
+  let 0.6.23 ship with stale packaging files can no longer survive
+  even an in-session edit — the agent learns about drift the moment
+  it edits CMakeLists, not at commit time.
+- **`.claude/bump.json`** — per-project recipe consumed by a
+  user-level `/bump` skill (lives in `~/.claude/skills/bump/`, not
+  in this repo). Lists the 6 version-bearing files with templated
+  `{OLD}` / `{NEW}` / `{TODAY}` find/replace patterns, plus 4 todos
+  for content the recipe can't synthesise (CHANGELOG body, AppStream
+  `<release>` HTML, debian changelog block, build/test verification).
+  `/bump 0.6.30` walks the recipe and runs `check-version-drift.sh`
+  as its post-check.
+- **`packaging/hook-on-cmakelists-edit.sh`** — small bash dispatcher
+  the project hook calls. Stdin is the `PostToolUse` JSON payload;
+  stdout is empty on a clean state or `{systemMessage:"…"}` on
+  drift. Always exits 0 — never blocks an edit, only informs.
+
+### Changed
+
+- **`.gitignore` narrowed** `.claude/` → `.claude/*` with explicit
+  `!.claude/settings.json` / `!.claude/bump.json` exceptions so the
+  team-shared workflow files commit while developer-local
+  `.claude/settings.local.json` and `.claude/worktrees/` stay
+  ignored. Same pattern adopted in the Vestige 3D Engine repo.
+
 ## [0.6.29] — 2026-04-16
 
 **Theme:** Status-bar reliability pass — nail down every user-reported
