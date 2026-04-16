@@ -54,7 +54,7 @@ public:
     // Process detection: check if Claude Code is running under given shell PID
     void setShellPid(pid_t pid);
     ClaudeState currentState() const { return m_state; }
-    QString currentTool() const { return m_currentTool; }
+    const QString &currentTool() const { return m_currentTool; }
     int contextPercent() const { return m_contextPercent; }
 
     // Session transcript

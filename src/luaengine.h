@@ -47,7 +47,7 @@ public:
     // set. Permissions are capability strings (see PLUGINS.md). An empty
     // permission list means "default surface" (the legacy API pre-v2).
     void setPluginName(const QString &name) { m_pluginName = name; }
-    QString pluginName() const { return m_pluginName; }
+    const QString &pluginName() const { return m_pluginName; }
     void setPermissions(const QStringList &perms) { m_permissions = perms; }
     bool hasPermission(const QString &perm) const { return m_permissions.contains(perm); }
 

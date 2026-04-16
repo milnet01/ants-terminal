@@ -1055,7 +1055,7 @@ void AuditDialog::populateChecks() {
         if (hasPy)  packs << "p/python";
         if (hasJs)  packs << "p/javascript" << "p/typescript";
         QString cfg;
-        for (const QString &p : packs) cfg += " --config=" + p;
+        for (const QString &p : std::as_const(packs)) cfg += " --config=" + p;
         m_checks.append({
             "semgrep", "Semgrep (structural patterns)",
             "AST-aware pattern matching (" + packs.join(", ") + ")",
@@ -1461,7 +1461,7 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
     if (r.findings.isEmpty()) return;
 
     QList<Finding> kept;
-    for (const Finding &f : r.findings) {
+    for (const Finding &f : std::as_const(r.findings)) {
         if (f.file.isEmpty() || f.line <= 0) { kept.append(f); continue; }
         // Resolve relative path against the project root.
         const QString abs = QFileInfo(f.file).isAbsolute()
@@ -2060,7 +2060,7 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
             }
         }
         const QString now = QDateTime::currentDateTime().toString(Qt::ISODate);
-        for (const QString &k : legacyKeys) {
+        for (const QString &k : std::as_const(legacyKeys)) {
             QJsonObject o;
             o["key"]       = k;
             o["rule"]      = "unknown";
@@ -2223,7 +2223,7 @@ void AuditDialog::loadBaseline() {
 void AuditDialog::saveBaseline() {
     QDir().mkpath(m_projectPath + "/.audit_cache");
     QJsonArray arr;
-    for (const CheckResult &r : m_completedResults) {
+    for (const CheckResult &r : std::as_const(m_completedResults)) {
         // Per-finding fingerprints — stable across unrelated code changes,
         // because dedupKey is (file:line:checkId:title-hash).
         for (const Finding &f : r.findings)
@@ -2278,10 +2278,10 @@ void AuditDialog::buildUI() {
     scrollLayout->setContentsMargins(0, 0, 8, 0);
 
     QStringList categories;
-    for (const auto &c : m_checks)
+    for (const auto &c : std::as_const(m_checks))
         if (!categories.contains(c.category)) categories << c.category;
 
-    for (const QString &cat : categories) {
+    for (const QString &cat : std::as_const(categories)) {
         auto *group = new QGroupBox(cat, scrollWidget);
         auto *gLayout = new QVBoxLayout(group);
         gLayout->setSpacing(4);
@@ -2637,7 +2637,7 @@ void AuditDialog::runAudit() {
     }
 
     m_totalSelected = 0;
-    for (const auto &c : m_checks)
+    for (const auto &c : std::as_const(m_checks))
         if (c.toggle && c.toggle->isChecked()) ++m_totalSelected;
 
     if (m_totalSelected == 0) {
@@ -2737,7 +2737,7 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
     QSet<QString> seenKeys;
     QList<Finding> parsed = parseFindings(filtered.body, check);
     QSet<QString> recent;
-    if (m_recentOnly) for (const QString &p : m_recentFiles) recent.insert(p);
+    if (m_recentOnly) for (const QString &p : std::as_const(m_recentFiles)) recent.insert(p);
     for (Finding &f : parsed) {
         if (m_suppressedKeys.contains(f.dedupKey)) continue;
         if (!applyPathRules(f)) continue;       // generated files + path rules
@@ -2747,7 +2747,7 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
             bool isRecent = recent.contains(f.file);
             QString matchedFile = f.file;
             if (!isRecent) {
-                for (const QString &rf : m_recentFiles) {
+                for (const QString &rf : std::as_const(m_recentFiles)) {
                     if (f.file.endsWith(rf) || rf.endsWith(f.file)) {
                         isRecent = true;
                         matchedFile = rf;
@@ -2852,7 +2852,7 @@ void AuditDialog::renderResults() {
         }
         for (auto it = byLoc.begin(); it != byLoc.end(); ++it) {
             if (it.value().sources.size() >= 2)
-                for (Finding *p : it.value().fs) p->highConfidence = true;
+                for (Finding *p : std::as_const(it.value().fs)) p->highConfidence = true;
         }
     }
 
@@ -2885,7 +2885,7 @@ void AuditDialog::renderResults() {
 
     // Populate key→finding lookup for the anchor click handler. Done after
     // correlation so the lookup reflects the highConfidence flag.
-    for (const auto &r : m_completedResults)
+    for (const auto &r : std::as_const(m_completedResults))
         for (const Finding &f : r.findings)
             m_findingsByKey.insert(f.dedupKey, f);
 
@@ -3170,9 +3170,10 @@ void AuditDialog::renderResults() {
                         numbered << QString(
                             "<span style='%1 font-family:monospace; "
                             "font-size:11px;'>%2 %3 %4</span>")
-                            .arg(bg)
-                            .arg(QString::number(ln).rightJustified(5))
-                            .arg(marker, lines[i].toHtmlEscaped());
+                            .arg(bg,
+                                 QString::number(ln).rightJustified(5),
+                                 marker,
+                                 lines[i].toHtmlEscaped());
                     }
                     body += "<div style='margin:4px 0 4px 24px; padding:6px; "
                             "background:#151515; border-left:2px solid #444;'>"

@@ -380,7 +380,7 @@ QString ClaudeAllowlistDialog::generalizeRule(const QString &rule) {
     // project-standard form handled separately below) means we refuse to
     // generalise. Over-broad rm/sudo rules are the kind of thing we
     // don't want the button offering with a single click.
-    for (const QString &seg : segments) {
+    for (const QString &seg : std::as_const(segments)) {
         const QString s = seg.trimmed();
         if (s == "rm" || s.startsWith("rm ")) return {};
         if (s == "sudo" || s.startsWith("sudo ")) return {};
