@@ -34,11 +34,13 @@
       "replace": "**Current version:** {NEW} ({TODAY})"
     }
   ],
-  "post_check": "bash packaging/check-version-drift.sh",
+  "$todos_run_before_post_check": "All entries below MUST be done BEFORE running `post_check`. The drift script flags packaging/linux/org.ants.Terminal.metainfo.xml and packaging/debian/changelog because their version-bearing lines live inside the per-release blocks the recipe can't auto-generate — so the bump skill must hand off these todos and only then re-run post_check to confirm clean.",
   "todos": [
-    "Add `## [{NEW}] — {TODAY}` section to CHANGELOG.md with the actual change body. Include Theme, then categorized bullets (Added/Changed/Fixed/Security as needed). Read 0.6.29 as a style reference.",
-    "Prepend `<release version=\"{NEW}\" date=\"{TODAY}\">…</release>` to packaging/linux/org.ants.Terminal.metainfo.xml. The body is HTML <p> + <ul><li>… ; mirror the CHANGELOG entry but in HTML.",
-    "Prepend a new `ants-terminal ({NEW}-1) unstable; urgency=medium` block to packaging/debian/changelog with body bullets and `-- Anthony Schemel <aant.schemel@gmail.com>  <RFC2822 date>` footer. Use `dch -v {NEW}-1` if you want it formatted automatically.",
+    "Add `## [{NEW}] — {TODAY}` section to CHANGELOG.md with the actual change body. Include Theme, then categorized bullets (Added/Changed/Fixed/Security as needed). Read 0.6.29/0.6.30 as style references. **Required for post_check to pass.**",
+    "Prepend `<release version=\"{NEW}\" date=\"{TODAY}\">…</release>` to packaging/linux/org.ants.Terminal.metainfo.xml. The body is HTML <p> + <ul><li>… mirroring the CHANGELOG entry. **Required for post_check to pass.** Consider invoking the `changelog-writer` subagent to translate the CHANGELOG markdown → metainfo HTML automatically.",
+    "Prepend a new `ants-terminal ({NEW}-1) unstable; urgency=medium` block to packaging/debian/changelog with body bullets and `-- Anthony Schemel <aant.schemel@gmail.com>  <RFC2822 date>` footer. **Required for post_check to pass.** Use `dch -v {NEW}-1` if you want the boilerplate (date, header line) formatted automatically.",
+    "After todos 1-3 are written, run post_check (`bash packaging/check-version-drift.sh`) and confirm exit 0 before proceeding to build/test/commit.",
     "Run `cd build && cmake --build . --parallel && ctest --output-on-failure` to verify nothing broke."
-  ]
+  ],
+  "post_check": "bash packaging/check-version-drift.sh"
 }
