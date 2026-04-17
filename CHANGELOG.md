@@ -10,6 +10,59 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [Unreleased]
+
+### Fixed — audit rule noise follow-up (triage of the Vestige 2026-04-16 run)
+
+Four `addFindCheck` rules produced 100/100 false positives when
+`ants-audit` scanned the Vestige engine on 2026-04-16. Each is a
+rule-shape bug rather than a find-site bug; all four are tightened
+so the next scan of the same tree drops straight to zero noise for
+these categories.
+
+- **`file_perms` — World-Writable Files.** Dropped the `-perm -020`
+  (group-writable) branch. Mode 664 is the default umask result on
+  most Linux distros, so the check was flagging every normal file
+  as a security finding. The rule now matches only true
+  world-writable (`-perm -002`, CWE-732).
+  `src/auditdialog.cpp:708-720`.
+- **`header_guards` — Missing Header Guards.** Scan window
+  widened from `head -5` to `head -30` (copyright blocks at the
+  top of a header commonly pushed `#pragma once` past line 5, so
+  valid guards were read as missing). The `_H`-suffix requirement
+  on traditional `#ifndef` guards was also dropped — naming
+  conventions vary (`FOO_HPP`, `FOO_GUARD`, `__FOO__`) and the
+  suffix was over-fitted to a single house style.
+  `src/auditdialog.cpp:1006-1026`.
+- **`binary_in_repo` — Binary Files in Source.** Prefer
+  `git ls-files` over `find .` when the project is a git checkout.
+  `find` was matching gitignored paths (`__pycache__/*.pyc`,
+  `.claude/worktrees/…`, `target/…`) because `kFindExcl` is a
+  static allowlist and can't keep up with every project's
+  `.gitignore`. The scan now falls through to the legacy `find`
+  command only when `git rev-parse` fails.
+  `src/auditdialog.cpp:582-597`.
+- **`dup_files` — Duplicate File Detection.** Same fix as
+  `binary_in_repo` — prefer `git ls-files`, fall back to `find`.
+  `md5sum` runs only on git-tracked files ≥100 bytes, sidestepping
+  the Claude-managed-worktree and build-artefact duplication that
+  made the report useless.
+  `src/auditdialog.cpp:561-579`.
+
+Measured against the same Vestige tree:
+
+| Rule              | Before | After |
+|-------------------|:------:|:-----:|
+| `file_perms`      | 30 FPs |   0   |
+| `header_guards`   | 20 FPs |   0   |
+| `binary_in_repo`  | 30 FPs |   0   |
+| `dup_files`       | 30 FPs |   0   |
+
+The `timeout`-as-tool-health and security-rule self-exclusion
+fixes cited in the same Vestige triage report landed earlier —
+see the 0.6.30 Fixed section (auditdialog.cpp:162-165 for
+timeouts, `kGrepFileExclSec` for self-exclusion).
+
 ## [0.6.30] — 2026-04-16
 
 **Theme:** Contributor-facing workflow infrastructure — project-level

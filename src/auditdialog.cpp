@@ -558,12 +558,26 @@ void AuditDialog::populateChecks() {
         CheckType::CodeSmell, Severity::Major, {}, true, true, nullptr
     });
 
-    addFindCheck("dup_files", "Duplicate File Detection",
-                 "Files with identical content", "General",
-                 "-type f -size +100c \\( -name '*.cpp' -o -name '*.h' -o -name '*.py'"
-                 " -o -name '*.js' -o -name '*.ts' \\) -exec md5sum {} +"
-                 " | sort | uniq -Dw32 | head -30",
-                 CheckType::CodeSmell, Severity::Minor, false);
+    // 2026-04-17: prefer `git ls-files` over `find` when the project is a
+    // git checkout. The raw `find` approach matched gitignored paths
+    // (__pycache__, .claude/worktrees/, ...) because kFindExcl is a static
+    // list and can't keep up with every project's .gitignore. Shell `||`
+    // falls through to the legacy `find` when not in a git repo.
+    m_checks.append({
+        "dup_files", "Duplicate File Detection",
+        "Files with identical content", "General",
+        QString("( git ls-files -z 2>/dev/null | tr '\\0' '\\n'"
+                " | grep -E '\\.(cpp|h|hpp|hxx|hh|c|py|js|jsx|ts|tsx)$'"
+                " || find ." + kFindExcl + " -type f \\( -name '*.cpp'"
+                " -o -name '*.h' -o -name '*.hpp' -o -name '*.py'"
+                " -o -name '*.js' -o -name '*.ts' \\) 2>/dev/null )"
+                " | while read f; do [ -s \"$f\" ] && [ $(wc -c < \"$f\") -gt 100 ]"
+                " && md5sum \"$f\"; done"
+                " | sort | uniq -Dw32 | head -30"),
+        CheckType::CodeSmell, Severity::Minor,
+        { {}, "", {}, 30 },
+        false, true, nullptr
+    });
 
     addFindCheck("dangling_symlinks", "Dangling Symlinks",
                  "Symlinks pointing to non-existent targets", "General",
@@ -579,13 +593,21 @@ void AuditDialog::populateChecks() {
                  "'^(<{7}|\\|{7}|={7}|>{7})(\\s|$)'",
                  CheckType::Bug, Severity::Blocker, true);
 
-    addFindCheck("binary_in_repo", "Binary Files in Source",
-                 "Non-text files tracked alongside source", "General",
-                 "-type f \\( -name '*.exe' -o -name '*.dll' -o -name '*.dylib'"
-                 " -o -name '*.bin' -o -name '*.dat' -o -name '*.db' -o -name '*.sqlite'"
-                 " -o -name '*.class' -o -name '*.pyc' -o -name '*.pyo' \\)"
-                 " | head -30",
-                 CheckType::CodeSmell, Severity::Minor, false);
+    // 2026-04-17: prefer `git ls-files` for the same reason as dup_files.
+    // The triage on Vestige showed 30/30 binary_in_repo hits were
+    // `.pyc` files under gitignored `__pycache__/` — `git ls-files` returns
+    // nothing for those paths, killing the false positives at source.
+    m_checks.append({
+        "binary_in_repo", "Binary Files in Source",
+        "Non-text files tracked alongside source", "General",
+        QString("( git ls-files 2>/dev/null"
+                " || find ." + kFindExcl + " -type f 2>/dev/null )"
+                " | grep -E '\\.(exe|dll|dylib|bin|dat|db|sqlite|class|pyc|pyo)$'"
+                " | head -30"),
+        CheckType::CodeSmell, Severity::Minor,
+        { {}, "", {}, 30 },
+        false, true, nullptr
+    });
 
     addFindCheck("encoding_check", "Source Encoding Check",
                  "Non-UTF-8 or BOM-prefixed source files", "General",
@@ -706,9 +728,14 @@ void AuditDialog::populateChecks() {
                   "--include='*.toml' --include='*.cfg' --include='*.ini'"});
 
     if (isPosixFilesystem()) {
+        // 2026-04-17: dropped `-perm -020` (group-writable). Mode 664 is
+        // the default umask result on most Linux distros — flagging every
+        // file as a security finding produced 30/30 false positives in the
+        // 2026-04-16 Vestige triage. Keep only true world-writable
+        // (`o+w`, mask &002), which is the actual security concern.
         addFindCheck("file_perms", "World-Writable Files",
-                     "World-writable or group-writable files", "Security",
-                     "-type f \\( -perm -002 -o -perm -020 \\) | head -30",
+                     "World-writable files (mode o+w, CWE-732)", "Security",
+                     "-type f -perm -002 | head -30",
                      CheckType::Vulnerability, Severity::Major, false);
     } else {
         // On non-POSIX filesystems every file appears world-writable because
@@ -1003,11 +1030,23 @@ void AuditDialog::populateChecks() {
             false, hasClangTidy && !tidyBuildDir.isEmpty(), nullptr
         });
 
+        // 2026-04-17: widened from `head -5` + `_H` suffix to `head -30` +
+        // any `#ifndef <token>`. The 2026-04-16 Vestige triage caught 20/20
+        // headers as "missing guard" when they all had `#pragma once` on
+        // line 1 — the project's CODING_STANDARDS.md mandates the pragma
+        // form, which the old regex recognised, but copyright/include blocks
+        // at the top of some headers pushed `#pragma once` past line 5. The
+        // 30-line window is generous and still cheap; the `_H` suffix
+        // requirement was also wrong (macro conventions vary — `FOO_HPP`,
+        // `FOO_GUARD`, `__FOO__` all count as a valid traditional guard).
         addFindCheck("header_guards", "Missing Header Guards",
                      "Headers without #pragma once or ifndef guard", "C/C++",
-                     "-name '*.h' -o -name '*.hpp' | while read f; do"
-                     " head -5 \"$f\" | grep -qE '(#pragma once|#ifndef .+_H)' || echo \"$f\";"
-                     " done | head -20",
+                     "\\( -name '*.h' -o -name '*.hpp' -o -name '*.hxx'"
+                     " -o -name '*.hh' \\) -type f | while read f; do"
+                     " head -30 \"$f\""
+                     " | grep -qE '(#pragma[[:space:]]+once"
+                     "|^[[:space:]]*#ifndef[[:space:]]+[A-Za-z_][A-Za-z0-9_]*)'"
+                     " || echo \"$f\"; done | head -20",
                      CheckType::Bug, Severity::Major, false);
 
         m_checks.append({
