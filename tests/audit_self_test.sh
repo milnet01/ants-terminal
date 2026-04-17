@@ -76,7 +76,7 @@ run_rule() {
 # ---------------------------------------------------------------------------
 
 run_rule "unsafe_c_funcs"   '\b(strcpy|strcat|sprintf|vsprintf|gets|mktemp|tmpnam|scanf)\s*\('
-run_rule "secrets_scan"     '(api[_-]?key|password|secret[_-]?key|auth[_-]?token|credentials)\s*[:=]'
+run_rule "secrets_scan"     '(api[_-]?key|password|secret[_-]?key|auth[_-]?token|credentials)[[:space:]]*[:=][[:space:]]*("[^"]{16,}"|[^[:space:]"#,]{16,})'
 run_rule "conflict_markers" '^(<{7}|\|{7}|={7}|>{7})(\s|$)'
 run_rule "insecure_http"    'http://[^l][^o][^c]'
 run_rule "cmd_injection"    '\b(system|popen|execlp|execvp|execl|execv|execle)\s*\('
@@ -84,7 +84,7 @@ run_rule "todo_scan"        '(TODO|FIXME|HACK|XXX)(\(|:|\s)'
 run_rule "format_string"    '\b[fs]?n?printf\s*\([^"]*\b\w+\s*\)'
 run_rule "hardcoded_ips"    '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
 run_rule "weak_crypto"      '\b(md5|sha1|des|rc4|ecb)\b'
-run_rule "memory_patterns"  '\b(new |malloc|calloc|realloc)\b'
+run_rule "memory_patterns"  '(\bnew [A-Za-z_][A-Za-z0-9_:]*[[:space:]]*\([[:space:]]*(nullptr|NULL)?[[:space:]]*\))|\b(malloc|calloc|realloc)\b'
 run_rule "qt_openurl_unchecked" 'QDesktopServices::openUrl'
 run_rule "silent_catch"     'catch\s*\([^)]*\)\s*\{\s*\}'
 run_rule "unbounded_callback_payloads" '\w*[Cc]allback\s*\(.*QString::fromUtf8\([^)]*\.c_str\(\)'

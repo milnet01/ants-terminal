@@ -406,7 +406,7 @@ QString ClaudeAllowlistDialog::generalizeRule(const QString &rule) {
     // entries (e.g. `Bash(cd * && git *)`, `Bash(cat * | *)`).
     static QRegularExpression segCmd(R"(^([A-Za-z_][\w./-]*)(\s+.+)?$)");
     QStringList genSegments;
-    for (const QString &seg : segments) {
+    for (const QString &seg : std::as_const(segments)) {
         const QString s = seg.trimmed();
         auto m = segCmd.match(s);
         if (!m.hasMatch()) {

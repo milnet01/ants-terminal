@@ -30,7 +30,7 @@ public:
         updateElided();
     }
 
-    QString fullText() const { return m_fullText; }
+    const QString &fullText() const { return m_fullText; }
 
     void setElideMode(Qt::TextElideMode mode) {
         if (m_elideMode == mode) return;

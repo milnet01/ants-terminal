@@ -29,7 +29,7 @@ public:
     explicit SshDialog(QWidget *parent = nullptr);
 
     void setBookmarks(const QList<SshBookmark> &bookmarks);
-    QList<SshBookmark> bookmarks() const { return m_bookmarks; }
+    const QList<SshBookmark> &bookmarks() const { return m_bookmarks; }
 
 signals:
     void connectRequested(const QString &sshCommand, bool newTab);

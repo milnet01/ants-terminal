@@ -8,6 +8,7 @@
 #include <QScrollArea>
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QFileInfo>
 #include <QDirIterator>
 #include <QFont>
@@ -42,18 +43,33 @@ namespace {
 // find(1) exclude expression (paths).
 // `external/` and `third_party/` hold vendored code we don't maintain;
 // findings there aren't actionable. Same rationale as `vendor/`.
+//
+// 2026-04-16: also exclude gitignored scratch areas that scans commonly
+// catch by accident — __pycache__/ (Python bytecode), .claude/worktrees/
+// (Claude-Code agent scratch worktrees), target/ (Rust/Maven), .venv/ /
+// venv/ (Python virtualenvs), .tox/ (pytest), .pytest_cache/. These are
+// all in typical .gitignore files but the audit isn't git-aware, so we
+// list them explicitly. A future refinement could shell out to
+// `git ls-files` instead, but that couples audit to git state; the
+// static-list approach works across non-git projects too.
 const QString kFindExcl =
     " -not -path './.git/*' -not -path './build/*' -not -path './build-*/*'"
     " -not -path './node_modules/*' -not -path './.cache/*'"
     " -not -path './dist/*' -not -path './vendor/*' -not -path './.audit_cache/*'"
-    " -not -path './external/*' -not -path './third_party/*'";
+    " -not -path './external/*' -not -path './third_party/*'"
+    " -not -path '*/__pycache__/*' -not -path './.claude/*'"
+    " -not -path './target/*' -not -path './.venv/*' -not -path './venv/*'"
+    " -not -path './.tox/*' -not -path './.pytest_cache/*' -not -path './.mypy_cache/*'";
 
 // grep(1) exclude-dir list (bare, no file-include filter).
 const QString kGrepExcl =
     " --exclude-dir=.git --exclude-dir=build --exclude-dir='build-*'"
     " --exclude-dir=node_modules --exclude-dir=.cache"
     " --exclude-dir=dist --exclude-dir=vendor --exclude-dir=.audit_cache"
-    " --exclude-dir=external --exclude-dir=third_party";
+    " --exclude-dir=external --exclude-dir=third_party"
+    " --exclude-dir=__pycache__ --exclude-dir=.claude"
+    " --exclude-dir=target --exclude-dir=.venv --exclude-dir=venv"
+    " --exclude-dir=.tox --exclude-dir=.pytest_cache --exclude-dir=.mypy_cache";
 
 // Security scans also skip auditdialog.cpp/.h — its check descriptions
 // contain the very patterns being searched for (unsafe function names,
@@ -135,9 +151,17 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
                 r.checkId = m_checks[m_currentCheck].id;
                 r.checkName = m_checks[m_currentCheck].name;
                 r.category = m_checks[m_currentCheck].category;
-                r.type = m_checks[m_currentCheck].type;
-                r.severity = m_checks[m_currentCheck].severity;
-                r.output = "Timed out (30s)";
+                // Tool health, NOT a finding — downgrade severity to Info
+                // and retype to Info, per 2026-04-16 triage. Previously
+                // the timeout inherited the check's own severity (Major
+                // or Critical), which polluted the severity-sorted list
+                // with "(warning) Timed out (30s)" entries indistinguishable
+                // from real findings. The `warning` flag already marks the
+                // entry; severity demotion keeps it from sorting to the
+                // top.
+                r.type = CheckType::Info;
+                r.severity = Severity::Info;
+                r.output = "Timed out (30s) — tool-health issue, not a finding";
                 r.warning = true;
                 m_completedResults.append(r);
             }
@@ -418,7 +442,10 @@ void AuditDialog::populateChecks() {
         "  printf '%s:1: recommended compiler flag missing: -Wnull-dereference\\n' \"$f\"; "
         "printf '%s' \"$code\" | grep -qE -- '-Wconversion\\b' || "
         "  printf '%s:1: recommended compiler flag missing: -Wconversion\\n' \"$f\"",
-        CheckType::CodeSmell, Severity::Minor, {}, true, true, nullptr
+        // Info tier (not Minor): this is a build-hygiene recommendation,
+        // not a bug. The 2026-04-16 triage flagged leaving it at Minor
+        // as "severity leak" because it shared the tier with real smells.
+        CheckType::Info, Severity::Info, {}, true, true, nullptr
     });
 
     // 0.6.22 FP-reduction heuristic — CMake find_package without a version
@@ -457,11 +484,24 @@ void AuditDialog::populateChecks() {
     // been sanitised (allowlist-validated, shell-escaped, etc). Severity Minor
     // signals "review needed, not auto-fix"; the grep-noise filter strips
     // test/example files.
+    // bash -c / sh -c with non-literal — 2026-04-16 triage saw the one
+    // finding (mainwindow.cpp:3065 on `actionValue` from `auto_profile_rules`)
+    // as a FP: Config is the project's declared trust boundary (STANDARDS.md
+    // §Security), and plugin manifests / auto_profile_rules are the same
+    // trust tier. Context-window filter suppresses when the non-literal
+    // originates from `m_config.` in ±5 lines.
     addGrepCheck("bash_c_non_literal", "bash -c / sh -c With Non-Literal Argument",
                  "Passing a non-literal to shell -c — review for command-injection risk",
                  "Security",
                  "'\\b(bash|sh)\\b[^=]*\"-c\"\\s*,\\s*[A-Za-z_][A-Za-z0-9_]*'",
-                 CheckType::CodeSmell, Severity::Minor, false);
+                 CheckType::CodeSmell, Severity::Minor, false,
+                 OutputFilter{
+                     /*dropIfContains*/ {},
+                     "", {}, 30,
+                     /*dropIfContextContains*/ {"m_config.", "m_cfg.",
+                                                "Config::instance",
+                                                "config()->"},
+                     /*contextWindow*/ 5 });
 
     // 0.6.22 — Cross-file version-drift detector. A release is "done" only
     // when every version-bearing file agrees with the authoritative source
@@ -555,6 +595,9 @@ void AuditDialog::populateChecks() {
                  " | grep -viE '(UTF-8|ASCII|empty)' | head -20",
                  CheckType::Bug, Severity::Minor, false);
 
+    // Overly Long Source Files — advisory, not a bug. Info tier so it
+    // doesn't share the Minor tier with actual code smells. (2026-04-16
+    // triage flagged this as a severity leak.)
     addFindCheck("long_files", "Overly Long Source Files",
                  "Source files exceeding 1000 lines", "General",
                  "-type f \\( -name '*.cpp' -o -name '*.h' -o -name '*.c'"
@@ -562,10 +605,15 @@ void AuditDialog::populateChecks() {
                  " -o -name '*.rs' -o -name '*.java' \\)"
                  " -exec awk 'END{if(NR>1000)print NR\" \"FILENAME}' {} \\;"
                  " | sort -rn | head -20",
-                 CheckType::CodeSmell, Severity::Minor, false);
+                 CheckType::Info, Severity::Info, false);
 
     // Debug leftovers: separate commands per language, joined with ';' in the shell.
     // Kept inline because the language-specific patterns can't collapse cleanly.
+    // Debug / temp code — 2026-04-16 triage saw `qDebug()` calls gated by
+    // `if (on)` flagged as FPs. Those are legitimate user-triggered debug-
+    // log toggles (Ctrl+Shift+D), not forgotten debug prints. Context-
+    // window suppression drops the finding when an obvious debug-gate
+    // conditional appears in the enclosing ±8 lines.
     m_checks.append({
         "debug_leftovers", "Debug / Temp Code",
         "console.log, print(), debug statements left in source", "General",
@@ -576,7 +624,15 @@ void AuditDialog::populateChecks() {
         " grep -rnI" + kGrepExcl + " --include='*.cpp' --include='*.c' --include='*.h'"
         " -E '\\b(qDebug|std::cerr|std::cout)\\s*(<{2}|\\()' . 2>/dev/null | head -20",
         CheckType::CodeSmell, Severity::Minor,
-        { /*dropIfContains*/ {"//", "/*", "error", "warn", "fatal"}, "", {}, 80 },
+        OutputFilter{
+            /*dropIfContains*/ {"//", "/*", "error", "warn", "fatal"},
+            "", {}, 80,
+            /*dropIfContextContains*/ {"if (m_debug", "if (debug",
+                                       "if (on)", "if (verbose",
+                                       "if (m_verbose", "if (log_",
+                                       "#ifdef DEBUG", "#ifdef NDEBUG",
+                                       "#if DEBUG_"},
+            /*contextWindow*/ 8 },
         false, true, nullptr
     });
 
@@ -618,16 +674,32 @@ void AuditDialog::populateChecks() {
         nullptr
     });
 
+    // Hardcoded secrets — the 2026-04-16 triage showed the old regex
+    // `(api_key|password|...)\s*[:=]` matched variable-name references
+    // like `m_aiApiKey = new QLineEdit(tab)` or `m_apiKey = apiKey;`.
+    // The fix: require the RHS to be a quoted string literal of at least
+    // 16 characters. Real secrets are long, opaque strings; variable
+    // assignments and pointer constructors never have that shape.
+    //
+    // The regex allows both "…" and '…' quotes, YAML-style unquoted
+    // (`api_key: ghp_...`) single tokens of 16+ non-space chars, and JSON
+    // `"api_key": "…"` form. Placeholder strings like `"changeme"` and
+    // `"YOUR_KEY_HERE"` remain on the dropIfContains list.
     addGrepCheck("secrets_scan", "Hardcoded Secrets Scan",
-                 "API keys, passwords, tokens in source", "Security",
-                 "'(api[_-]?key|password|secret[_-]?key|auth[_-]?token|credentials)\\s*[:=]'",
+                 "API keys / passwords / tokens as literal strings (≥16 chars)",
+                 "Security",
+                 "'(api[_-]?key|password|secret[_-]?key|auth[_-]?token|credentials)"
+                 "\\s*[:=]\\s*(\"[^\"]{16,}\"|'\\''[^'\\'']{16,}'\\''"
+                 "|[^[:space:]\"'\\''#,]{16,})'",
                  CheckType::Hotspot, Severity::Critical, true,
                  { /*dropIfContains*/ {"EchoMode", "setPlaceholder",
                                        "// example", "# example",
                                        "Config::set", "setAiApiKey",
                                        "keybinding", "Keybinding",
                                        "const char",  // string literal pattern names
-                                       "description", "Description"},
+                                       "description", "Description",
+                                       "changeme", "YOUR_", "xxxxxxxx",
+                                       "placeholder", "example.com"},
                    "", {}, 50 },
                  {"-i",
                   "--include='*.json' --include='*.yaml' --include='*.yml'",
@@ -676,13 +748,21 @@ void AuditDialog::populateChecks() {
     //   - menu.exec / app.exec / dialog.exec are Qt event-loop calls
     //   - execlp inside forkpty child is a terminal-emulator requirement
     //   - QProcess startDetached with an args list is safe
+    // Command injection — 2026-04-16 triage saw `execlp(shellCStr, argv0,
+    // nullptr)` in ptyhandler.cpp:117 (login-shell spawn) flagged as a FP.
+    // That canonical shape — `exec*(prog, ..., nullptr)` with a literal
+    // null terminator — is NOT a shell command string and so can't carry
+    // an injected shell metacharacter. Add `, nullptr)` and `, NULL)` as
+    // drop markers for the exec family. system()/popen() with dynamic
+    // args remain hot — those are the real injection vectors.
     addGrepCheck("cmd_injection", "Command Injection Patterns",
                  "system(), popen(), exec*() with dynamic arguments", "Security",
                  "'\\b(system|popen|execlp|execvp|execl|execv|execle)\\s*\\('",
                  CheckType::Hotspot, Severity::Critical, true,
                  { /*dropIfContains*/ {".exec(", "app.exec", "menu.exec",
                                        "dialog.exec", "QApplication",
-                                       "QProcess", "forkpty", "setArguments"},
+                                       "QProcess", "forkpty", "setArguments",
+                                       ", nullptr)", ", NULL)"},
                    "", {}, 30 });
 
     // Python/JS subprocess patterns — separate check
@@ -706,17 +786,27 @@ void AuditDialog::populateChecks() {
                                        "snprintf(", "QString::", "DBGLOG"},
                    "", {}, 30 });
 
+    // insecure_http — the 2026-04-16 triage showed the matched line in the
+    // one surviving finding was literally the scheme allowlist guard
+    // (`if (url.startsWith("http://") || ...)` — i.e. gating NEEDS to mention
+    // the string "http://" to be checking for it). Use dropIfContextContains
+    // to suppress when a startsWith scheme-gate appears in ±5 lines.
     addGrepCheck("insecure_http", "Insecure HTTP URLs",
                  "http:// in config / source (not schema / localhost)", "Security",
                  "'http://[^l][^o][^c]'",
                  CheckType::Hotspot, Severity::Minor, true,
-                 { /*dropIfContains*/ {"localhost", "127.0.0.1", "0.0.0.0",
+                 OutputFilter{
+                   /*dropIfContains*/ {"localhost", "127.0.0.1", "0.0.0.0",
                                        "example.com", "// comment", "placeholder",
                                        // Schema / namespace URLs
                                        "json-schema.org", "www.w3.org",
                                        "schemas.xmlsoap.org", "tempuri.org",
                                        "xmlns", "namespace", "XSD"},
-                   "", {}, 30 },
+                   "", {}, 30,
+                   /*dropIfContextContains*/ {"startsWith(\"http",
+                                              "startsWith(QStringLiteral(\"http",
+                                              "startsWith(QLatin1String(\"http"},
+                   /*contextWindow*/ 5 },
                  {"--include='*.json' --include='*.yaml' --include='*.yml'",
                   "--include='*.toml' --include='*.xml' --include='*.cfg'"});
 
@@ -833,7 +923,16 @@ void AuditDialog::populateChecks() {
             // surfaces a real code bug, only a tool-noise annoyance, so we
             // silence the category globally.
             " --suppress=invalidSuppression"
-            " -i build -i build-test -i build-release -i node_modules -i .audit_cache"
+            // Exclude every build-dir variant (build, build-asan, build-fix,
+            // build-release, …). The 2026-04-16 triage found cppcheck was
+            // parsing moc_*.cpp files in build-asan/ and tripping on their
+            // `#error "This file was generated using moc from 6.11.0"`
+            // banners, which surfaced as spurious Dead Code / Compiler
+            // Warning findings and likely drove the 30s timeout on the
+            // latter. cppcheck's -i takes a path prefix so build-* is
+            // spelled as separate flags for each known variant.
+            " -i build -i build-asan -i build-debug -i build-fix -i build-release -i build-test"
+            " -i node_modules -i .audit_cache"
             " -j$(nproc) . 2>&1 | head -100",
             CheckType::Bug, Severity::Major, { {}, "", {}, 100 },
             toolExists("cppcheck"), toolExists("cppcheck"), nullptr
@@ -846,20 +945,62 @@ void AuditDialog::populateChecks() {
             " --suppress=missingInclude --suppress=missingIncludeSystem"
             " --suppress=unmatchedSuppression --suppress=unknownMacro"
             " --suppress=invalidSuppression"
-            " -i build -i build-test -i build-release -i node_modules -i .audit_cache"
+            // Exclude every build-dir variant (build, build-asan, build-fix,
+            // build-release, …). The 2026-04-16 triage found cppcheck was
+            // parsing moc_*.cpp files in build-asan/ and tripping on their
+            // `#error "This file was generated using moc from 6.11.0"`
+            // banners, which surfaced as spurious Dead Code / Compiler
+            // Warning findings and likely drove the 30s timeout on the
+            // latter. cppcheck's -i takes a path prefix so build-* is
+            // spelled as separate flags for each known variant.
+            " -i build -i build-asan -i build-debug -i build-fix -i build-release -i build-test"
+            " -i node_modules -i .audit_cache"
             " . 2>&1 | head -50",
             CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 50 },
             false, toolExists("cppcheck"), nullptr
         });
 
+        // clang-tidy — needs a compile_commands.json to resolve Qt
+        // system headers. Without one it emits `'QString' file not found`
+        // (and 33 more identical lines per Qt header in the TU). The
+        // 2026-04-16 triage saw 34/34 findings in this category collapse
+        // to that single driver-level configuration error.
+        //
+        // Fixes applied:
+        //   1. Auto-select is gated on presence of compile_commands.json
+        //      (reuses the clazy build-dir probe).
+        //   2. The shell pipeline collapses `file not found` storms into
+        //      a single banner line — if headers still don't resolve for
+        //      some reason, the user sees one actionable diagnostic
+        //      ("regenerate compile_commands.json") rather than 34.
         const bool hasClangTidy = toolExists("clang-tidy");
+        QString tidyBuildDir;
+        for (const char *cand : {"build", "build-release", "build-debug", "build-test"}) {
+            if (QFile::exists(m_projectPath + "/" + cand + "/compile_commands.json")) {
+                tidyBuildDir = QString::fromLatin1(cand);
+                break;
+            }
+        }
+        const QString tidyCmd = tidyBuildDir.isEmpty()
+            ? QString("echo 'clang-tidy: no compile_commands.json found — "
+                      "build the project first (CMAKE_EXPORT_COMPILE_COMMANDS=ON)'")
+            : QString("find . -name '*.cpp'%1 | head -15"
+                      " | xargs -I{} clang-tidy -p %2 {} 2>&1"
+                      " | awk '/file not found/ {"
+                      "     if (!banner) { print \"clang-tidy: headers not resolved "
+                      "(regenerate compile_commands.json)\"; banner=1 } next }"
+                      "   { print }' | head -100")
+                      .arg(kFindExcl, tidyBuildDir);
+        const QString tidyDesc = !hasClangTidy
+            ? QString("(clang-tidy not installed)")
+            : (tidyBuildDir.isEmpty()
+                ? QString("(no compile_commands.json — build the project first)")
+                : QString("Modernize, readability, performance checks"));
         m_checks.append({
-            "clang_tidy", "clang-tidy Analysis",
-            "Modernize, readability, performance checks", "C/C++",
-            "find . -name '*.cpp'" + kFindExcl + " | head -15"
-            " | xargs -I{} clang-tidy {} -- -std=c++20 -I src 2>&1 | head -100",
+            "clang_tidy", "clang-tidy Analysis", tidyDesc, "C/C++",
+            tidyCmd,
             CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 100 },
-            false, hasClangTidy, nullptr
+            false, hasClangTidy && !tidyBuildDir.isEmpty(), nullptr
         });
 
         addFindCheck("header_guards", "Missing Header Guards",
@@ -882,28 +1023,35 @@ void AuditDialog::populateChecks() {
             false, true, nullptr
         });
 
-        // Memory pattern check — Qt-aware. Filters out Qt parent-child
-        // ownership (`new QSomething(this)` / `new X(parentArg)`) which
-        // the previous audit iterations kept re-flagging falsely.
+        // Memory pattern check — Qt-aware. The old approach matched any
+        // `new ` / `malloc` / `calloc` / `realloc` and relied on a long
+        // dropIfContains list to suppress Qt parent-child idioms — which
+        // only worked when the parent expression happened to be one of
+        // the handful of names on that list. An audit triage on 2026-04-16
+        // found 30/30 findings in this category were false positives
+        // (parent expressions like `dlg`, `tab`, `row`, `m_foo`, `&dialog`
+        // that the blacklist didn't know about).
+        //
+        // Tightened regex inverts the logic: only flag `new X()`,
+        // `new X(nullptr)`, `new X(NULL)` (empty-or-null parens = NOT
+        // parented, potentially leaky) plus malloc/calloc/realloc. Any
+        // identifier inside the parens is treated as a potential Qt
+        // parent and suppressed. Over-matches on templated constructors
+        // (`new QVector<int>(...)`) are acceptable — `<` breaks the class
+        // match, so the pattern simply won't fire on those, which is
+        // fine because they're rare and not the common FP source.
         if (isQt) {
             addGrepCheck("memory_patterns", "Memory Management (Qt-aware)",
-                         "new/malloc without smart pointers (excl. Qt parent-child)",
+                         "new X() / new X(nullptr) / malloc family (excl. Qt parent-child)",
                          "C/C++",
-                         "'\\b(new |malloc|calloc|realloc)\\b'",
+                         "'(\\bnew [A-Za-z_][A-Za-z0-9_:]*[[:space:]]*"
+                         "\\([[:space:]]*(nullptr|NULL)?[[:space:]]*\\))"
+                         "|\\b(malloc|calloc|realloc)\\b'",
                          CheckType::CodeSmell, Severity::Minor, false,
                          { /*dropIfContains*/ {
                                "unique_ptr", "shared_ptr", "make_unique", "make_shared",
-                               "delete", "free", "RAII", "nothrow", "placement",
-                               "Q_NEW", "qMalloc",
-                               // Qt parent-child — most common pattern
-                               "(this)", "(this,", "(parent)", "(parent,",
-                               "(group)", "(group,", "(scrollWidget)", "(scrollWidget,",
-                               "(group);", "(scroll);", "(menu);", "(layout);",
-                               "new QAction(", "new QMenu(", "new QLabel(",
-                               "new QPushButton(", "new QHBoxLayout(", "new QVBoxLayout(",
-                               "new QWidget(", "new QTimer(", "new QSplitter(",
-                               // containers — hold by value
-                               "new std::"
+                               "nothrow", "placement",
+                               "Q_NEW", "qMalloc"
                            }, "", {}, 30 });
         } else {
             addGrepCheck("memory_patterns", "Memory Management Patterns",
@@ -945,26 +1093,39 @@ void AuditDialog::populateChecks() {
         //   lambda-in-connect          — same family, different shape
         //   container-inside-loop      — QVector/QList COW detach in tight loops
         //   old-style-connect          — SIGNAL()/SLOT() macro connects
-        //   qt-keywords                — `signals` / `slots` as identifiers
         //   range-loop-detach          — `for (auto x : container)` on Qt containers
         //   qstring-arg                — QString::arg misuse
         //   qgetenv                    — prefer qEnvironmentVariable*
         //
+        // NOT in the list: qt-keywords. The 2026-04-16 triage found 48/55
+        // clazy findings were qt-keywords false positives — the project
+        // uses the bare-keyword style (`signals:` / `slots:` / `emit`)
+        // as a documented convention (see STANDARDS.md §Plugin System
+        // Standards). Disabling the check project-wide eliminates ~87 %
+        // of clazy noise without losing any real signal.
+        //
         // clazy-standalone output shape:
         //   path/file.cpp:LINE:COL: warning: message [-Wclazy-check-name]
         // Matches our file:line:col: regex in parseFindings() cleanly.
+        //
+        // Driver noise filter also strips clazy's own diagnostics (unknown
+        // -W options, "Processing file N/M" progress banners, bare `|`
+        // continuation lines from clang pretty-printer) which surface as
+        // findings otherwise.
         m_checks.append({
             "clazy", "clazy (Qt AST analysis)", clazyDesc, "Qt",
             QString("cd %1 && clazy-standalone -p . "
                     "--checks=connect-3arg-lambda,lambda-in-connect,"
-                    "container-inside-loop,old-style-connect,qt-keywords,"
+                    "container-inside-loop,old-style-connect,"
                     "range-loop-detach,qstring-arg,qgetenv "
                     "../src/*.cpp 2>&1 | head -100").arg(clazyBuildDir.isEmpty()
                                                          ? "build" : clazyBuildDir),
             CheckType::Bug, Severity::Major,
-            // Filter out clang driver noise; keep warning lines with check tags.
+            // Filter out clang/clazy driver noise; keep warning lines with check tags.
             { /*dropIfContains*/ {"In file included from", "error generated",
-                                  "warnings generated", "warning generated"},
+                                  "warnings generated", "warning generated",
+                                  "unknown warning option", "Processing file",
+                                  "[-Wclazy-qt-keywords]"},
               "", {}, 100 },
             hasClazy && !clazyBuildDir.isEmpty(),
             hasClazy && !clazyBuildDir.isEmpty(),
@@ -973,14 +1134,30 @@ void AuditDialog::populateChecks() {
 
         // OSC 8 / URL scheme allowlist — not covered by clazy; project-specific
         // invariant (we always front-load a scheme allowlist before openUrl).
+        //
+        // The 2026-04-16 triage saw 3/3 findings in this category as FPs —
+        // every openUrl call either had a startsWith scheme gate on the
+        // immediately-preceding line, or used a string-literal URL. The
+        // context-window filter suppresses both patterns when a scheme-
+        // check token appears within ±5 lines of the match.
         addGrepCheck("qt_openurl_unchecked", "Qt openUrl Without Scheme Check",
                      "QDesktopServices::openUrl called on unvalidated URIs", "Qt",
                      "'QDesktopServices::openUrl'",
                      CheckType::Vulnerability, Severity::Major, true,
-                     { /*dropIfContains*/ {"scheme() ==", "validScheme",
+                     OutputFilter{
+                       /*dropIfContains*/ {"scheme() ==", "validScheme",
                                            "allowScheme", "isLocal",
                                            "https://", "QUrl::TolerantMode"},
-                       "", {}, 20 });
+                       "", {}, 20,
+                       /*dropIfContextContains*/ {
+                           "startsWith(\"http", "startsWith(\"https",
+                           "startsWith(\"file", "startsWith(\"mailto",
+                           "startsWith(\"ftp", "// ants-audit: scheme-validated",
+                           // string-literal URL constructor on adjacent line
+                           "QUrl(\"http", "QUrl(\"https", "QUrl(\"file",
+                           "QUrl(\"mailto", "QUrl(\"ftp",
+                           "QUrl::fromUserInput"},
+                       /*contextWindow*/ 5 });
 
         // Unbounded callback payloads. Detects PTY / OSC / IPC byte buffers
         // forwarded straight into a user-supplied `*Callback(...)` without a
@@ -995,14 +1172,26 @@ void AuditDialog::populateChecks() {
         // `.truncate(`, `.mid(`, `.chopped(`, or `.chop(` — the canonical
         // bounding primitives. Multi-line callback invocations are out of
         // scope (would need `grep -Pzo`).
+        // The 2026-04-16 triage saw 1/1 finding here as an FP — the truncate()
+        // call was 3-8 lines above the callback invocation, not on the same
+        // line. Extended with a ±5-line context filter that also recognises
+        // explicit size-caps (`<= kMaxFoo`, `<= 128`, and generic
+        // `constexpr.*kMax…` declarations in the same function).
         addGrepCheck("unbounded_callback_payloads", "Unbounded Callback Payloads",
                      "Raw byte-buffer forwarded to a *Callback() without "
                      ".left()/.truncate() cap — DoS amplifier", "Qt",
                      "'\\w*[Cc]allback\\s*\\(.*QString::fromUtf8\\([^)]*\\.c_str\\(\\)'",
                      CheckType::Vulnerability, Severity::Major, true,
-                     { /*dropIfContains*/ {".left(", ".truncate(", ".mid(",
+                     OutputFilter{
+                       /*dropIfContains*/ {".left(", ".truncate(", ".mid(",
                                            ".chopped(", ".chop("},
-                       "", {}, 30 });
+                       "", {}, 30,
+                       /*dropIfContextContains*/ {".truncate(", ".left(",
+                                                  ".chopped(", ".chop(",
+                                                  "constexpr int kMax",
+                                                  "constexpr size_t kMax",
+                                                  ".size() <=", ".size() <"},
+                       /*contextWindow*/ 10 });
 
         // QNetworkReply 3-arg lambda lifetime trap. Matches the dangerous
         // shape from the pre-0.6.5 AiDialog incident: a 3-arg connect to a
@@ -1227,7 +1416,7 @@ void AuditDialog::populateChecks() {
 // ---------------------------------------------------------------------------
 
 AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
-                                                    const OutputFilter &f) {
+                                                    const OutputFilter &f) const {
     if (raw.isEmpty()) return { QString(), 0 };
 
     QRegularExpression dropRe;
@@ -1236,6 +1425,19 @@ AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
         dropRe.setPattern(f.dropIfMatches);
         dropRe.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
     }
+
+    // Context-window suppression bookkeeping. When enabled, we parse the
+    // `file:line:` prefix of each result line, read the source file once
+    // (cached in fileCache for the duration of this applyFilter call), and
+    // check whether any of f.dropIfContextContains appears in the ±window
+    // slice around the match. The 2026-04-16 triage motivated this: scheme-
+    // gate checks and bounded-callback truncation calls frequently live on
+    // adjacent lines to the flagged line but aren't textually on the match
+    // line itself, so a plain substring filter can't see them.
+    const bool hasContextFilter = !f.dropIfContextContains.isEmpty();
+    QHash<QString, QStringList> fileCache;
+    static const QRegularExpression fileLineRe(
+        QStringLiteral(R"(^\./([^:]+\.(?:cpp|cc|cxx|c|h|hpp|hxx|py|sh|js|ts|go|rs|lua|java)):(\d+):)"));
 
     QStringList out;
     const QStringList lines = raw.split('\n', Qt::KeepEmptyParts);
@@ -1260,6 +1462,47 @@ AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
                 if (!line.contains(needle, Qt::CaseInsensitive)) { allHit = false; break; }
             }
             if (!allHit) continue;
+        }
+
+        // dropIfContextContains — read ±window lines around the match and
+        // check for any suppression substring. Gracefully falls through on
+        // parse failure or I/O error (better to leave the finding than to
+        // silently drop it due to a filter-side bug).
+        if (hasContextFilter) {
+            const QRegularExpressionMatch m = fileLineRe.match(line);
+            if (m.hasMatch()) {
+                const QString relPath = m.captured(1);
+                const int lineNo = m.captured(2).toInt();
+                QStringList *fileLines = fileCache.contains(relPath)
+                    ? &fileCache[relPath]
+                    : nullptr;
+                if (!fileLines) {
+                    const QString abs = m_projectPath + "/" + relPath;
+                    QFile src(abs);
+                    QStringList &slot = fileCache[relPath];
+                    if (src.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                        slot = QString::fromUtf8(src.readAll())
+                                   .split('\n', Qt::KeepEmptyParts);
+                    }
+                    fileLines = &slot;
+                }
+                if (!fileLines->isEmpty() && lineNo > 0) {
+                    const int total = static_cast<int>(fileLines->size());
+                    const int lo = std::max(1, lineNo - f.contextWindow);
+                    const int hi = std::min(total, lineNo + f.contextWindow);
+                    bool ctxHit = false;
+                    for (int i = lo; i <= hi && !ctxHit; ++i) {
+                        const QString &ctxLine = fileLines->at(i - 1);
+                        for (const QString &needle : f.dropIfContextContains) {
+                            if (ctxLine.contains(needle, Qt::CaseInsensitive)) {
+                                ctxHit = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (ctxHit) continue;
+                }
+            }
         }
 
         out << line;
@@ -3070,6 +3313,9 @@ void AuditDialog::renderResults() {
         }
 
         QStringList rows;
+        // Hoisted out of the loop below per clazy container-inside-loop:
+        // reused across iterations via clear() to avoid per-finding alloc.
+        QStringList parts;
         for (const Finding *pf : sortedFindings) {
             const Finding &f = *pf;
             if (m_suppressedKeys.contains(f.dedupKey)) continue;
@@ -3112,7 +3358,7 @@ void AuditDialog::renderResults() {
             // Blame tag — "by <author> · <date> · <sha>"
             QString blameTag;
             if (!f.blameSha.isEmpty()) {
-                QStringList parts;
+                parts.clear();
                 if (!f.blameAuthor.isEmpty()) parts << f.blameAuthor;
                 if (!f.blameDate.isEmpty())   parts << f.blameDate;
                 parts << f.blameSha;

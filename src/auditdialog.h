@@ -48,6 +48,18 @@ struct OutputFilter {
     QStringList keepOnlyIfContains;
     // Cap output length after filtering. 0 = unlimited.
     int maxLines = 100;
+    // Context-window suppression. If the result line has a `file:line:` prefix
+    // and any of these substrings appears in the source file within ±contextWindow
+    // lines of the match, drop the finding. Added 2026-04-16 to suppress "calls
+    // openUrl" / "callback payload" false positives where a gate check appears
+    // in the surrounding code but not on the matched line itself. Empty = no
+    // context-window check; the file is never opened in that case.
+    //
+    // Placed AFTER maxLines to preserve aggregate-init compatibility for the
+    // many existing `{ {...}, "", {}, N }` call sites. New call sites that
+    // want context filtering use designated initializers.
+    QStringList dropIfContextContains{};
+    int contextWindow = 5;
 };
 
 struct AuditCheck {
@@ -150,7 +162,11 @@ private:
     // Apply OutputFilter to raw command output; returns a trimmed, capped body
     // plus a finding count (non-empty line count) for the summary.
     struct FilterResult { QString body; int count; };
-    static FilterResult applyFilter(const QString &raw, const OutputFilter &f);
+    // Non-static: context-window filtering (2026-04-16) needs m_projectPath
+    // to resolve `./relative/path.cpp` references from grep output to an
+    // absolute file path. Can't be made static without threading project
+    // path through the signature; the dialog is the only caller anyway.
+    FilterResult applyFilter(const QString &raw, const OutputFilter &f) const;
 
     // Parse command output lines into structured Findings. Understands:
     //   file:line:col: msg           (grep -n, cppcheck, clang-tidy, gcc)
