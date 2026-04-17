@@ -1385,8 +1385,15 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
         if (!gen.isEmpty()) rule = gen;
 
-        // Remove any existing allowlist button to prevent accumulation
-        auto existing = statusBar()->findChildren<QPushButton *>("claudeAllowBtn");
+        // Remove any existing allowlist button to prevent accumulation.
+        // Must use QWidget* not QPushButton* — the hook-path permissionRequested
+        // handler creates a QWidget container (line ~2537) with objectName
+        // "claudeAllowBtn"; a QPushButton-typed findChildren would miss it and
+        // leave both buttons stacked when a scroll-scan detection fires while
+        // a hook-path container is already visible. Mirrors the
+        // onTabChanged (line ~1716) and hook-path dedup (line ~2533) lookups
+        // which both already use QWidget*.
+        auto existing = statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"));
         for (auto *btn : existing) btn->deleteLater();
 
         showStatusMessage(
