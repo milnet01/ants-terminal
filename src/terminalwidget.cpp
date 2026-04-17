@@ -2881,6 +2881,9 @@ void TerminalWidget::openHyperlink(const UrlSpan &span, int globalLine) {
             if (box.exec() != QMessageBox::Open) return;
         }
     }
+    // ants-audit: scheme-validated — OSC 8 URLs filtered to
+    // http/https/ftp/file/mailto at ingestion (terminalgrid.cpp:616);
+    // file-path spans go through openFileAtPath, never here.
     QDesktopServices::openUrl(QUrl(span.url));
 }
 
