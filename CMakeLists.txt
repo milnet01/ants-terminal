@@ -58,6 +58,7 @@ add_executable(ants-terminal
     src/settingsdialog.cpp
     src/toggleswitch.cpp
     src/auditdialog.cpp
+    src/auditrulequality.cpp
     src/xcbpositiontracker.cpp
     src/claudeallowlist.cpp
     src/claudeintegration.cpp
@@ -596,6 +597,28 @@ if(ANTS_TESTS)
     add_test(NAME osc133_hmac_verification
              COMMAND test_osc133_hmac_verification)
     set_tests_properties(osc133_hmac_verification PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_rule_quality — locks the 0.6.31 self-learning data layer:
+    # per-rule fire/suppression aggregation, longest-common-substring
+    # tightening suggester, JSON persistence round-trip. Pure model code,
+    # no Qt GUI; same approach as osc133_hmac_verification.
+    # See tests/features/audit_rule_quality/spec.md.
+    add_executable(test_audit_rule_quality
+        tests/features/audit_rule_quality/test_audit_rule_quality.cpp
+        src/auditrulequality.cpp
+    )
+    target_link_libraries(test_audit_rule_quality PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_audit_rule_quality PRIVATE src)
+    target_compile_options(test_audit_rule_quality PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME audit_rule_quality
+             COMMAND test_audit_rule_quality)
+    set_tests_properties(audit_rule_quality PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 endif()

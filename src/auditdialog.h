@@ -1,6 +1,9 @@
 #pragma once
 
 #include "elidedlabel.h"
+#include "auditrulequality.h"
+
+#include <memory>
 
 #include <QDialog>
 #include <QTextBrowser>
@@ -256,6 +259,10 @@ private:
     // On next run, highlight new findings (not present in baseline).
     void loadBaseline();
     void saveBaseline();
+    // 0.6.31 self-learning — modal dialog showing the per-rule
+    // fire/suppression history sorted by 30-day FP rate. Includes the
+    // LCS-based tightening suggester output where available.
+    void showRuleQualityDialog();
     QString baselinePath() const;
 
     QString m_projectPath;
@@ -285,6 +292,16 @@ private:
     // <project>/.audit_suppress at load time, suppressed findings are hidden
     // from results.
     QSet<QString> m_suppressedKeys;
+
+    // 0.6.31 self-learning layer — tracks per-rule fire and suppression
+    // counts in <project>/audit_rule_quality.json. Surfaces noisy rules
+    // (≥50 % suppression rate over the last 30 days) in the Rule Quality
+    // dialog, and proposes one-line `dropIfContains` tightenings via
+    // longest-common-substring across recent suppressions for a rule.
+    // unique_ptr because RuleQualityTracker writes to disk on destruction
+    // (RAII finalisation) and we want it tied to dialog lifetime.
+    std::unique_ptr<RuleQualityTracker> m_qualityTracker;
+    QPushButton *m_qualityBtn = nullptr;
 
     // Lookup table populated at render time so the anchor click handler can
     // find a finding's context (file, message, rule) from just the dedup key.

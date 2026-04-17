@@ -12,6 +12,41 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added — audit-tool self-learning layer
+
+- **`RuleQualityTracker`** (`src/auditrulequality.{h,cpp}`) records every
+  per-rule fire and user-suppression event from the project Audit
+  dialog into `<project>/audit_rule_quality.json`. The JSON is bounded
+  to a 90-day rolling window, capped at 50 000 records per category.
+  Tracker writes back on dialog destruction (RAII finalisation), and
+  force-flushes immediately on each suppression so user actions are
+  durable even on a hard exit.
+- **Rule Quality dialog** — new "📊 Rule Quality" button in the audit
+  dialog opens a modal table of per-rule stats: 30-day fires,
+  30-day suppressions, FP rate (capped 0-100 %), all-time fires, and a
+  proposed `dropIfContains` tightening when the heuristic suggester
+  has enough samples. Sorted by FP rate desc so the noisiest rules
+  surface first; rows with FP ≥ 50 % are highlighted.
+- **LCS-based tightening suggester** — when the user suppresses a
+  finding, the tracker computes the longest common substring across
+  the last 5 suppressed line texts for that rule. If the LCS is at
+  least 6 chars AND contains a structural boundary character (space,
+  paren, brace, bracket, semicolon, quote, angle bracket), the
+  suggestion is surfaced inline in the status bar (`💡 <substring>
+  looks like a common FP shape — consider adding it to <rule>'s
+  dropIfContains in audit_rules.json`). Pure-identifier substrings
+  are rejected so the suggester proposes rule-shape filters, not
+  project-noun filters.
+- **Routine #3 in `docs/RECOMMENDED_ROUTINES.md`** is the cloud-side
+  weekly counterpart — heavier LLM-driven cross-rule analysis of the
+  same `audit_rule_quality.json`, opening tightening PRs against the
+  audit catalogue itself. The in-process tracker is the lightweight
+  always-on layer; the routine is the deeper periodic sweep.
+- **Test:** `tests/features/audit_rule_quality/` covers fire +
+  suppression aggregation, the LCS suggester's positive and negative
+  paths (too-few-samples, pure-identifier rejection), and JSON
+  persistence round-trip. Headless model-only test, no Qt GUI.
+
 ## [0.6.31] — 2026-04-17
 
 **Theme:** Security + audit signal-to-noise + two regressions. The

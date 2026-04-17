@@ -185,6 +185,12 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
 
     loadBaseline();
     loadSuppressions();
+    // 0.6.31 self-learning layer — load the per-rule fire/suppression
+    // history from <project>/audit_rule_quality.json. Tracker writes back
+    // on destruction (RAII) so save() is automatic at dialog close;
+    // recordSuppression() also force-flushes immediately because user
+    // actions deserve durability.
+    m_qualityTracker = std::make_unique<RuleQualityTracker>(m_projectPath);
     populateChecks();
     const int userRules = loadUserRules();
     if (userRules > 0)
@@ -2415,12 +2421,35 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
         QLineEdit::Normal, QString(), &ok);
     if (!ok) return;
 
-    saveSuppression(key, f.checkId.isEmpty() ? QStringLiteral("unknown") : f.checkId, reason);
+    const QString ruleId = f.checkId.isEmpty() ? QStringLiteral("unknown") : f.checkId;
+    saveSuppression(key, ruleId, reason);
+
+    // 0.6.31 self-learning — record the suppression in the rule-quality
+    // tracker AND check whether the LCS suggester now has enough samples
+    // to propose a `dropIfContains` tightening. Surface the suggestion
+    // inline (status bar) so the user can act on it without leaving the
+    // dialog. The proposal is informational; applying it requires the
+    // user to edit `audit_rules.json` (the cross-platform user-rule pack).
+    if (m_qualityTracker) {
+        m_qualityTracker->recordSuppression(ruleId, key, f.message, reason);
+        const QString suggestion = m_qualityTracker->suggestTightening(ruleId);
+        if (!suggestion.isEmpty() && m_statusLabel) {
+            m_statusLabel->setFullText(
+                QString("Suppressed %1 (%2). 💡 %3 looks like a common "
+                        "FP shape — consider adding it to %2's "
+                        "dropIfContains in audit_rules.json.")
+                    .arg(key.left(8), ruleId, suggestion));
+        } else if (m_statusLabel) {
+            m_statusLabel->setFullText(QString("Suppressed %1 (%2)")
+                                            .arg(key.left(8), ruleId));
+        }
+    } else if (m_statusLabel) {
+        m_statusLabel->setFullText(QString("Suppressed %1 (%2)")
+                                        .arg(key.left(8), ruleId));
+    }
 
     // Re-render results minus the suppressed finding.
     if (!m_completedResults.isEmpty()) renderResults();
-    if (m_statusLabel)
-        m_statusLabel->setFullText(QString("Suppressed %1 (%2)").arg(key.left(8), f.checkId));
 }
 
 // ---------------------------------------------------------------------------
@@ -2524,6 +2553,101 @@ void AuditDialog::saveBaseline() {
         if (m_newOnlyBtn) m_newOnlyBtn->setEnabled(true);
         m_statusLabel->setFullText(QString("Baseline saved — %1 fingerprints").arg(arr.size()));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Rule Quality dialog (0.6.31 self-learning surface)
+// ---------------------------------------------------------------------------
+void AuditDialog::showRuleQualityDialog() {
+    if (!m_qualityTracker) return;
+
+    auto *dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle("Rule Quality — last 30 days");
+    dlg->resize(820, 540);
+
+    auto *layout = new QVBoxLayout(dlg);
+    auto *header = new QLabel(
+        "Per-rule fire / suppression history from "
+        "<code>audit_rule_quality.json</code>. Rules with a high "
+        "suppression rate are noisy — consider tightening their "
+        "regex or <code>dropIfContains</code> filter in "
+        "<code>audit_rules.json</code>. The 💡 column proposes a "
+        "common-substring tightening when ≥ 2 suppressions share a "
+        "shape.", dlg);
+    header->setWordWrap(true);
+    header->setTextFormat(Qt::RichText);
+    layout->addWidget(header);
+
+    auto *view = new QTextBrowser(dlg);
+    view->setOpenExternalLinks(false);
+    layout->addWidget(view, 1);
+
+    const auto rows = m_qualityTracker->report();
+    QString html;
+    html += "<style>"
+            "table{border-collapse:collapse;width:100%;font-family:monospace;font-size:11px}"
+            "th,td{border:1px solid #555;padding:4px 8px;text-align:left}"
+            "th{background:#222}"
+            ".hi{background:#3a1f1f}.med{background:#3a311f}"
+            ".sug{font-style:italic;color:#7ec77a}"
+            "</style>";
+    if (rows.isEmpty()) {
+        html += "<p><em>No audit runs recorded yet — run the audit at "
+                "least once to populate the dashboard.</em></p>";
+    } else {
+        html += "<table><tr><th>Rule</th><th>Fires (30d)</th>"
+                "<th>Suppressed (30d)</th><th>FP&nbsp;rate</th>"
+                "<th>All-time fires</th><th>💡 Suggested tightening</th></tr>";
+        for (const auto &s : rows) {
+            QString rowClass;
+            if (s.fpRate30d >= 50) rowClass = " class=\"hi\"";
+            else if (s.fpRate30d >= 25) rowClass = " class=\"med\"";
+
+            QString rateText;
+            if (s.fpRate30d < 0) rateText = "—";
+            else                  rateText = QString::number(s.fpRate30d) + "%";
+
+            QString suggestion = m_qualityTracker->suggestTightening(s.ruleId);
+            QString suggestionCell;
+            if (suggestion.isEmpty()) {
+                suggestionCell = "—";
+            } else {
+                // Show the candidate substring in monospace so the user can
+                // see exact whitespace. Mark with the .sug class so it stands
+                // out without forcing the user to read the full row.
+                suggestionCell = QString("<code class=\"sug\">%1</code>")
+                                    .arg(suggestion.toHtmlEscaped());
+            }
+
+            html += QString("<tr%1>"
+                            "<td>%2</td><td>%3</td><td>%4</td><td>%5</td>"
+                            "<td>%6</td><td>%7</td></tr>")
+                       .arg(rowClass,
+                            s.ruleId.toHtmlEscaped(),
+                            QString::number(s.fires30d),
+                            QString::number(s.suppressions30d),
+                            rateText,
+                            QString::number(s.firesAllTime),
+                            suggestionCell);
+        }
+        html += "</table>";
+    }
+    view->setHtml(html);
+
+    auto *btnBox = new QHBoxLayout;
+    auto *closeBtn = new QPushButton("Close", dlg);
+    btnBox->addStretch();
+    btnBox->addWidget(closeBtn);
+    layout->addLayout(btnBox);
+    connect(closeBtn, &QPushButton::clicked, dlg, &QDialog::close);
+
+    // Frameless-parent-friendly raise: same trick used by showDiffViewer
+    // — a dialog spawned off a frameless QMainWindow can land behind on
+    // KWin without an explicit raise + activate.
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
 }
 
 // ---------------------------------------------------------------------------
@@ -2677,6 +2801,16 @@ void AuditDialog::buildUI() {
                               "Future runs will highlight only new findings.");
     connect(m_baselineBtn, &QPushButton::clicked, this, &AuditDialog::saveBaseline);
     btnRow->addWidget(m_baselineBtn);
+
+    // 0.6.31 self-learning — Rule Quality dialog. Always visible (not
+    // gated on a completed run) because the per-rule history persists
+    // across runs and is informative even on a fresh dialog open.
+    m_qualityBtn = new QPushButton("📊 Rule Quality", this);
+    m_qualityBtn->setFixedHeight(32);
+    m_qualityBtn->setToolTip("Show per-rule fire / suppression history "
+                             "to surface noisy rules and propose tightenings");
+    connect(m_qualityBtn, &QPushButton::clicked, this, &AuditDialog::showRuleQualityDialog);
+    btnRow->addWidget(m_qualityBtn);
 
     m_runBtn = new QPushButton("Run Audit", this);
     m_runBtn->setFixedHeight(32);
@@ -3069,6 +3203,15 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
     capFindings(r, kMaxFindingsPerCheck);
     r.findingCount = r.findings.size() + r.omittedCount;
     m_completedResults.append(r);
+
+    // 0.6.31 self-learning — record one fire per finding so the per-rule
+    // dashboard can compute fires-vs-suppressions over time. Skipped
+    // for the omittedCount tail since those findings never had their
+    // line text materialized; the LCS suggester needs the line.
+    if (m_qualityTracker) {
+        for (const Finding &f : r.findings)
+            m_qualityTracker->recordFire(check.id, f.message);
+    }
 
     ++m_checksRun;
     runNextCheck();
