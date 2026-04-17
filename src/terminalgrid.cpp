@@ -153,7 +153,7 @@ bool TerminalGrid::verifyOsc133Hmac(char marker,
     }
 
     QMessageAuthenticationCode mac(QCryptographicHash::Sha256, m_osc133Key);
-    mac.addData(QByteArrayView(msg.data(), static_cast<qsizetype>(msg.size())));
+    mac.addData(msg.data(), static_cast<qsizetype>(msg.size()));
     const QByteArray expectedHex = mac.result().toHex();
 
     // Constant-time compare on byte length first, then byte-by-byte. We
