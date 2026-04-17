@@ -486,4 +486,44 @@ if(ANTS_TESTS)
     set_tests_properties(combining_on_resize PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # shift_enter_bracketed_paste — locks the 0.6.30 fix for "tab freezes
+    # after Shift+Enter". The 0.6.26 regression used
+    #     QByteArray("\x1B[200~\n\x1B[201~", 8)
+    # — a 13-byte literal with a hand-coded length of 8, dropping the
+    # closing [201~ end-paste marker and wedging the shell in bracketed-
+    # paste mode. Fix switched to QByteArrayLiteral(...) so size is
+    # coupled to the literal.
+    #
+    # The test exercises two invariants: (A) the exact byte sequences
+    # for both the bracketed-paste and fallback paths, and (B) a
+    # source-level inspection of src/terminalwidget.cpp proving the
+    # Shift+Enter handler still uses the size-coupled literal form and
+    # gates on !(mods & ControlModifier). (B) is the direct regression
+    # guard for the specific bug class — no QByteArray(literal, <num>)
+    # forms may remain. Pure text + regex inspection; no TerminalWidget
+    # instantiation (that class is QOpenGLWidget + live PTY + GL
+    # renderer, far too heavy for a fast feature test).
+    # See tests/features/shift_enter_bracketed_paste/spec.md.
+    add_executable(test_shift_enter_bracketed_paste
+        tests/features/shift_enter_bracketed_paste/test_shift_enter.cpp
+    )
+    target_link_libraries(test_shift_enter_bracketed_paste PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_shift_enter_bracketed_paste PRIVATE src)
+    target_compile_options(test_shift_enter_bracketed_paste PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    # Bake the absolute source path in at compile time so the test can
+    # open src/terminalwidget.cpp from the build directory — matches
+    # the pattern used by allowlist_add and review_changes_click.
+    target_compile_definitions(test_shift_enter_bracketed_paste PRIVATE
+        SRC_TERMINALWIDGET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+    )
+    add_test(NAME shift_enter_bracketed_paste
+             COMMAND test_shift_enter_bracketed_paste)
+    set_tests_properties(shift_enter_bracketed_paste PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
 endif()

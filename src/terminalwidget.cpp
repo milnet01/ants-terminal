@@ -1434,9 +1434,15 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         && !(mods & Qt::ControlModifier)) {
         QByteArray seq;
         if (m_grid && m_grid->bracketedPaste()) {
-            seq = QByteArray("\x1B[200~\n\x1B[201~", 8);
+            // 13 bytes: ESC [ 2 0 0 ~ \n ESC [ 2 0 1 ~ — use QByteArrayLiteral
+            // so the size is derived from the string literal. A hand-coded
+            // length here (the 0.6.26 bug) truncated to 8 bytes, dropping
+            // the [201~ end-paste marker and leaving an orphan ESC that
+            // wedged the shell in bracketed-paste mode and ate the next
+            // keystroke — manifesting as "tab freezes after Shift+Enter".
+            seq = QByteArrayLiteral("\x1B[200~\n\x1B[201~");
         } else {
-            seq = QByteArray("\x16\n", 2);
+            seq = QByteArrayLiteral("\x16\n");
         }
         if (m_pty) m_pty->write(seq);
         if (m_broadcastCallback) m_broadcastCallback(this, seq);
