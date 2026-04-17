@@ -526,4 +526,33 @@ if(ANTS_TESTS)
     set_tests_properties(shift_enter_bracketed_paste PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # review_changes_clickable — locks the user-reported click-does-nothing
+    # regression where refreshReviewButton's clean-repo branch left the
+    # status-bar button in the visible-but-disabled state. Qt's
+    # QAbstractButton swallows clicks on disabled buttons (no clicked()
+    # signal, so the 0.6.29 silent-return-with-flash guards in
+    # showDiffViewer never fire), and the global QPushButton:hover rule
+    # is not :enabled-gated, so the button still highlighted on hover —
+    # advertising itself as actionable while doing nothing. Source-grep
+    # against src/mainwindow.cpp; no MainWindow instantiation needed.
+    # See tests/features/review_changes_clickable/spec.md.
+    add_executable(test_review_changes_clickable
+        tests/features/review_changes_clickable/test_review_changes_clickable.cpp
+    )
+    target_link_libraries(test_review_changes_clickable PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_review_changes_clickable PRIVATE src)
+    target_compile_options(test_review_changes_clickable PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_review_changes_clickable PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME review_changes_clickable
+             COMMAND test_review_changes_clickable)
+    set_tests_properties(review_changes_clickable PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
 endif()

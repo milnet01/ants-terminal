@@ -3235,8 +3235,18 @@ void MainWindow::refreshReviewButton() {
                 btn->setEnabled(true); // diff present
                 btn->show();
             } else if (exitCode == 0) {
-                btn->setEnabled(false);// clean repo
-                btn->show();           // show as disabled so user sees Claude edited something
+                // Clean repo — hide. Pre-fix this branch left the button
+                // visible-but-disabled "so user sees Claude edited
+                // something", but a disabled QPushButton silently swallows
+                // mouse clicks (no clicked() signal, so showDiffViewer's
+                // 0.6.29 silent-return-with-flash guards never fire). The
+                // global QPushButton:hover rule (mainwindow.cpp:~1852) is
+                // not :enabled-gated either, so the disabled button still
+                // highlighted on hover — looking actionable while doing
+                // nothing. Hide-on-clean is the honest signal: the button
+                // reappears via the next 2-second refresh / fileChanged
+                // tick when a real diff appears.
+                btn->hide();
             } else {
                 btn->hide();           // 128 / other — not a git repo
             }
