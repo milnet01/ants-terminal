@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.30 (2026-04-16). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.31 (2026-04-17). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -220,10 +220,19 @@ there before adding a multiplexer. Reference:
   (`path:line:col` argv shape), and JetBrains IDEs (`--line N
   --column M`). See
   [CHANGELOG.md §0.6.12](CHANGELOG.md#0612--2026-04-14).
-- 💭 **Shell-side HMAC verification** for OSC 133 markers — protects
-  the command-block UI from forged markers written by an inner TTY
-  process. Key passed via `ANTS_OSC133_KEY` env; shell hook computes
-  HMAC over `(prompt_id, command, exit_code)`.
+- ✅ **Shell-side HMAC verification** for OSC 133 markers. Shipped in
+  0.6.31. When `$ANTS_OSC133_KEY` is set in the terminal's environment,
+  every OSC 133 marker (`A`/`B`/`C`/`D`) must carry an `ahmac=` param
+  computed as HMAC-SHA256(key, `<marker>|<promptId>[|<exitCode>]`).
+  Markers without a valid HMAC are dropped and a forgery counter
+  increments, surfaced as a status-bar warning with a 5-second
+  cooldown. Bash + zsh hook scripts ship under
+  `packaging/shell-integration/`. Headless feature test
+  (`tests/features/osc133_hmac_verification/`) covers verifier OFF
+  back-compatibility, verifier ON accept of valid HMACs (including
+  uppercase-hex), and rejection of missing/wrong/promptId-mismatched/
+  exit-code-mismatched HMACs. See
+  [CHANGELOG.md §0.6.31](CHANGELOG.md#0631--2026-04-17).
 
 ### 🔌 Plugins — trigger system
 

@@ -260,6 +260,20 @@ public:
     using UserVarCallback = std::function<void(const QString &name, const QString &value)>;
     void setUserVarCallback(UserVarCallback cb) { m_userVarCallback = std::move(cb); }
 
+    // OSC 133 HMAC forgery callback (0.7.0 shell-integration HMAC item).
+    // Fires the first time per cooldown window that an OSC 133 marker arrives
+    // with a missing or invalid `ahmac=` param while the verifier is active
+    // (see m_osc133Key). Lets the UI surface a status-bar warning so the user
+    // notices a process running inside the terminal trying to forge prompt
+    // markers. `count` is the running total since process start (monotonic).
+    using Osc133ForgeryCallback = std::function<void(int count)>;
+    void setOsc133ForgeryCallback(Osc133ForgeryCallback cb) { m_osc133ForgeryCallback = std::move(cb); }
+    int osc133ForgeryCount() const { return m_osc133ForgeryCount; }
+    bool osc133HmacEnforced() const { return !m_osc133Key.isEmpty(); }
+    // Test-only entry point: override the key without re-reading the env.
+    // Production code never calls this — the env var is the only knob.
+    void setOsc133KeyForTest(const QByteArray &key) { m_osc133Key = key; }
+
     // OSC 8 hyperlinks (per screen line)
     const std::vector<HyperlinkSpan> &screenHyperlinks(int row) const;
     const std::vector<HyperlinkSpan> &scrollbackHyperlinks(int idx) const;
@@ -517,6 +531,31 @@ private:
     // Shell integration (OSC 133)
     std::vector<PromptRegion> m_promptRegions;
     int m_shellIntegState = 0; // 0=none, 'A'=prompt start, 'B'=command start, 'C'=output start
+
+    // OSC 133 HMAC verifier state (0.7.0 shell-integration HMAC item).
+    // m_osc133Key is read once from $ANTS_OSC133_KEY at construction. When
+    // empty, verification is disabled and OSC 133 markers are processed as
+    // before (backward-compatible behaviour for users without the shell
+    // hook installed). When non-empty, every OSC 133 marker must carry a
+    // matching `ahmac=` param computed as
+    //   HMAC-SHA256(key, "<marker>|<promptId>[|<exitCode>]")
+    // — markers without it (or with a mismatched HMAC) are dropped and
+    // m_osc133ForgeryCount increments. The forgery callback fires at most
+    // once per OSC133_FORGERY_COOLDOWN_MS so a tight forgery loop can't
+    // spam the status-bar.
+    QByteArray m_osc133Key;
+    int m_osc133ForgeryCount = 0;
+    qint64 m_osc133LastForgeryNotifyMs = 0;
+    Osc133ForgeryCallback m_osc133ForgeryCallback;
+    static constexpr qint64 OSC133_FORGERY_COOLDOWN_MS = 5000;
+    // Helper: returns true iff the OSC 133 payload is acceptable. When the
+    // verifier is disabled (no key) always returns true. Fed the marker
+    // letter, the parsed payload params, and the optional `extra` field
+    // (exit code for D markers, empty for A/B/C). Constant-time compare.
+    bool verifyOsc133Hmac(char marker,
+                          const std::string &promptId,
+                          const std::string &extra,
+                          const std::string &providedHmacHex) const;
 
     // Kitty graphics image cache (id -> QImage); FIFO eviction via m_kittyImageOrder
     std::unordered_map<uint32_t, QImage> m_kittyImages;

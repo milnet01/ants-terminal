@@ -89,6 +89,18 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.31" date="2026-04-17">
+      <description>
+        <p>Security + reliability release. The headline is <em>OSC 133 HMAC-signed shell integration</em>: when <code>$ANTS_OSC133_KEY</code> is set, every prompt / command / exit marker must carry a matching <code>HMAC-SHA256</code> tag, and forged markers from in-terminal processes are dropped (with a throttled status-bar warning). When the key is unset, behaviour is unchanged from 0.6.30 — no upgrade penalty for users who don't opt in.</p>
+        <ul>
+          <li><em>Security:</em> OSC 133 HMAC verification closes the spoofing surface where any process writing to stdout (a malicious TUI, <code>cat malicious.txt</code>) could otherwise mint shell-integration markers and pollute prompt regions, exit codes, and the <code>command_finished</code> plugin event. Shell hooks ship under <code>${datarootdir}/ants-terminal/shell-integration/</code> for bash and zsh.</li>
+          <li><em>Fixed:</em> Review Changes status-bar button no longer silently swallows clicks on a clean repo — the disabled-but-visible state was advertising itself as actionable via the global hover stylesheet while never emitting <code>clicked()</code>. The button is now hidden on clean repos and reappears the moment a real diff exists.</li>
+          <li><em>Fixed:</em> Shift+Enter no longer wedges the terminal tab in bracketed-paste mode (0.6.26 regression). A <code>QByteArray(literal, 8)</code> truncation dropped the closing <code>[201~</code> end-paste marker; switched to <code>QByteArrayLiteral</code> so the size is derived at compile time.</li>
+          <li><em>Fixed:</em> Status-bar Add-to-allowlist button no longer stacks duplicates when a scroll-scan detection fires while a hook-path container is already visible — dedup lookup now uses <code>QWidget*</code> for parity with the other lookup sites.</li>
+          <li><em>Fixed — audit signal-to-noise:</em> Two-pass triage of the Ants and Vestige audit runs cuts the false-positive rate from ~97% to under 10% with no loss of real coverage. Tightened <code>memory_patterns</code>, <code>secrets_scan</code>, <code>file_perms</code>, and <code>header_guards</code> rules; dropped clazy <code>qt-keywords</code>; collapsed clang-tidy driver-error storms; added context-window suppressions to six rules; demoted tool timeouts and advisory checks to Info severity.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.30" date="2026-04-16">
       <description>
         <p>Contributor-facing workflow infrastructure release. No runtime or behavior changes for end users — the binary is bit-identical to 0.6.29 modulo the version string. New files are tooling for contributors who clone the repo and work on it through Claude Code.</p>

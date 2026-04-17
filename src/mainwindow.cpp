@@ -1294,6 +1294,16 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
                                         name + QStringLiteral("=") + value);
         }
     });
+    // 0.7.0 — surface OSC 133 forgery attempts in the status bar so the
+    // user sees an in-terminal process trying to spoof prompt markers.
+    // Throttled grid-side (5 s) so a tight forgery loop can't spam the bar.
+    connect(terminal, &TerminalWidget::osc133ForgeryDetected, this,
+            [this](int count) {
+        showStatusMessage(
+            QStringLiteral("⚠ OSC 133 forgery detected (count: %1) — an in-terminal "
+                           "process tried to spoof a shell-integration marker").arg(count),
+            5000);
+    });
     // run_script trigger action: route the matched substring to plugins as a
     // PaletteAction event with the action id as payload. Plugins listening
     // for the matching id can dispatch their own logic.

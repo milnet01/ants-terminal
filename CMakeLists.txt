@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.30 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.31 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -187,6 +187,17 @@ install(FILES packaging/completions/_ants-terminal
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions)
 install(FILES packaging/completions/ants-terminal.fish
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/fish/vendor_completions.d)
+
+# OSC 133 shell-integration hook scripts (0.7.0). HMAC-signed shell hooks
+# the user sources from ~/.bashrc / ~/.zshrc to authenticate OSC 133
+# markers against the verifier in TerminalGrid. See
+# packaging/shell-integration/README.md for setup + threat model. Sourced
+# manually by the user (not auto-loaded) so they can opt in per shell
+# per machine — the verifier is silent unless $ANTS_OSC133_KEY is set.
+install(FILES packaging/shell-integration/ants-osc133.bash
+              packaging/shell-integration/ants-osc133.zsh
+              packaging/shell-integration/README.md
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ants-terminal/shell-integration)
 
 # ---------------------------------------------------------------------------
 # Tests — audit rule fixtures (ctest)
@@ -553,6 +564,38 @@ if(ANTS_TESTS)
     add_test(NAME review_changes_clickable
              COMMAND test_review_changes_clickable)
     set_tests_properties(review_changes_clickable PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # osc133_hmac_verification — locks the 0.7.0 OSC 133 HMAC verifier
+    # invariants. Untrusted in-terminal processes can otherwise emit OSC
+    # 133 markers and forge prompt regions / exit codes / the
+    # command_finished plugin event. With $ANTS_OSC133_KEY set, every
+    # marker must carry a matching ahmac= param computed as
+    # HMAC-SHA256(key, "<marker>|<promptId>[|<exitCode>]"). Test exercises
+    # verifier OFF (legacy permissive), verifier ON + valid HMAC,
+    # verifier ON + missing/wrong/promptId-mismatch/exit-mismatch HMAC,
+    # plus a source-grep guard on the env-var name.
+    # See tests/features/osc133_hmac_verification/spec.md.
+    add_executable(test_osc133_hmac_verification
+        tests/features/osc133_hmac_verification/test_osc133_hmac.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_osc133_hmac_verification PRIVATE
+        Qt6::Core
+        Qt6::Gui  # QColor / QImage transitively required by terminalgrid.h
+    )
+    target_include_directories(test_osc133_hmac_verification PRIVATE src)
+    target_compile_options(test_osc133_hmac_verification PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_osc133_hmac_verification PRIVATE
+        SRC_TERMINALGRID_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalgrid.cpp"
+    )
+    add_test(NAME osc133_hmac_verification
+             COMMAND test_osc133_hmac_verification)
+    set_tests_properties(osc133_hmac_verification PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 endif()

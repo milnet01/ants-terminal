@@ -247,6 +247,10 @@ signals:
     void commandFinished(int exitCode, qint64 durationMs);
     void userVarChanged(const QString &name, const QString &value);
     void triggerRunScript(const QString &actionId, const QString &matched);
+    // 0.7.0 — fired the first time per cooldown window the OSC 133 HMAC
+    // verifier rejects a marker. `count` is the running total since
+    // process start. Only fires when the verifier is active (env var set).
+    void osc133ForgeryDetected(int count);
 
 protected:
     bool event(QEvent *event) override;

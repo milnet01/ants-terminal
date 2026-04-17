@@ -12,6 +12,164 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.31] — 2026-04-17
+
+**Theme:** Security + audit signal-to-noise + two regressions. The
+headline is **OSC 133 HMAC-signed shell integration** (a 0.7.0 ROADMAP
+item shipped early): protects the command-block UI from forged shell-
+integration markers emitted by untrusted in-terminal processes. Also
+cuts the audit-tool false-positive rate from ~97 % to under 10 % via a
+two-pass triage of the Ants and Vestige audit runs, fixes the user-
+reported Review Changes click-does-nothing bug, and locks the 0.6.26
+Shift+Enter "tab freezes" regression with a feature test.
+
+### Added — Security
+
+- **OSC 133 HMAC-signed shell integration.** When `$ANTS_OSC133_KEY`
+  is set in the terminal's environment, every OSC 133 marker
+  (`A`/`B`/`C`/`D`) MUST carry a matching
+  `ahmac=<hex-sha256-hmac>` parameter computed as
+  `HMAC-SHA256(key, "<marker>|<promptId>[|<exitCode>]")`. Markers
+  without a valid HMAC are dropped (no UI side-effects) and a forgery
+  counter increments, surfaced in the status bar via a throttled
+  warning ("⚠ OSC 133 forgery detected") with a 5-second cooldown.
+  The verifier closes the spoofing surface where any process running
+  inside the terminal — a malicious TUI, `cat malicious.txt`, anything
+  that writes to stdout — could otherwise mint OSC 133 markers and
+  pollute prompt regions, exit codes, and the `command_finished`
+  plugin event.
+
+  When `$ANTS_OSC133_KEY` is not set, the verifier is silent and OSC
+  133 behaves as in 0.6.30 (legacy permissive). No upgrade penalty
+  for users who don't opt in.
+
+  Shell hooks ship under
+  `packaging/shell-integration/ants-osc133.{bash,zsh}` and install to
+  `${datarootdir}/ants-terminal/shell-integration/`. The README in
+  the same directory walks through key generation
+  (`openssl rand -hex 32`), `~/.bashrc`/`~/.zshrc` setup, threat
+  model, and verification steps.
+
+  Headless feature test
+  (`tests/features/osc133_hmac_verification/`) covers verifier OFF
+  back-compatibility, verifier ON accepting valid HMACs (including
+  uppercase-hex), and rejection of missing/wrong/promptId-mismatched/
+  exit-code-mismatched HMACs. Implements ROADMAP §0.7.0 → 🔒 Security
+  → "Shell-side HMAC verification for OSC 133 markers."
+
+### Fixed
+
+- **Review Changes button silently swallowed clicks on a clean repo.**
+  `refreshReviewButton`'s clean-repo branch left the button
+  `setEnabled(false); show()` "as a hint that Claude edited
+  something." `QAbstractButton::mousePressEvent` drops clicks on
+  disabled buttons, so `clicked()` was never emitted and the 0.6.29
+  silent-return-with-flash guards inside `showDiffViewer` never
+  fired. The global `QPushButton:hover` rule isn't `:enabled`-gated
+  either, so the disabled button still highlighted on hover —
+  advertising itself as actionable while doing nothing. Net symptom
+  (user report 2026-04-17): "*the Review Changes button is showing
+  and is active as it has an onmouseover event that highlights the
+  button. When I click the button though, nothing happens.*" Fix:
+  `hide()` on clean repo. The button reappears via the next
+  2-second refresh / fileChanged tick when a real diff appears.
+  New `tests/features/review_changes_clickable/` locks the regression
+  with a source-grep guard against re-introducing the
+  `setEnabled(false); ... show();` shape and a tripwire on the
+  global hover stylesheet remaining un-`:enabled`-gated.
+
+- **Shift+Enter wedged the terminal tab in bracketed-paste mode**
+  (0.6.26 regression). `QByteArray("\x1B[200~\n\x1B[201~", 8)`
+  truncated the 13-byte literal to 8 bytes, dropping the closing
+  `[201~` end-paste marker and leaving an orphan `ESC` that kept
+  the shell in bracketed-paste mode and ate the next keystroke.
+  Switched to `QByteArrayLiteral(...)` so the size is derived from
+  the literal at compile time — closes the entire class of
+  "length argument drifts away from literal" bugs. New
+  `tests/features/shift_enter_bracketed_paste/` locks the byte
+  sequence AND source-grep-guards against the
+  `QByteArray(literal, <num>)` shape recurring.
+
+- **Status-bar allowlist button dedup** missed the hook-path
+  container. The scroll-scan-path cleanup used
+  `findChildren<QPushButton*>("claudeAllowBtn")`, but the hook-path
+  permission handler creates the button as a `QWidget` container
+  (with child controls) that has the same `objectName`. A
+  `QPushButton`-typed `findChildren` skipped the container,
+  letting both buttons stack when a scroll-scan detection fired
+  while a hook-path container was already visible. Switched to
+  `QWidget*` for parity with the `onTabChanged` and hook-path
+  dedup lookups.
+
+### Fixed — audit signal-to-noise overhaul (~97 % → <10 % FP rate)
+
+Two-pass triage of the Ants audit (`docs/AUDIT_TRIAGE_2026-04-16.md`)
+followed by the Vestige 3D engine triage. 137 of 141 findings in the
+Ants run were FPs; 100 % of four `addFindCheck` rules in the Vestige
+run were FPs. Targeted rule tightenings:
+
+- **`memory_patterns`** regex inverted — only flags `new X()` /
+  `new X(nullptr)` / `new X(NULL)` (i.e. NOT parented). Any
+  identifier inside the parens is treated as a Qt parent and
+  suppressed. Kills 30 FPs from `new QWidget(parent)` /
+  `new QAction(this)` etc. that the previous substring blacklist
+  could only suppress when the parent expression matched a hardcoded
+  name.
+- **`clazy --checks=`** drops `qt-keywords`. The project documents
+  bare `signals:` / `slots:` / `emit` as house style; flagging
+  them was ~48 FPs per run.
+- **`clang-tidy`** auto-disables when no `compile_commands.json`
+  exists; collapses `'QString' file not found` storms into a single
+  banner line. Kills 34 near-identical driver-error FPs.
+- **`cppcheck`** excludes every `build-*` variant by name
+  (`build-asan`, `build-debug`, etc.). cppcheck was parsing
+  `moc_*.cpp` files in `build-asan/` and tripping on their
+  `#error "This file was generated using moc from 6.11.0"` banners
+  — likely the source of the 30-second timeout on Compiler Warnings.
+- **Context-window suppression** added to
+  `qt_openurl_unchecked` (±5 lines for `startsWith("http"` /
+  `QUrl("https"` / `// ants-audit: scheme-validated`),
+  `insecure_http` (±5 lines for `startsWith` scheme gates),
+  `unbounded_callback_payloads` (±10 lines for `.truncate(` /
+  `.left(` / `.size() <=` / `constexpr int kMax`),
+  `cmd_injection` (suppress on `, nullptr)` / `, NULL)`
+  exec-family terminators), `bash_c_non_literal` (±5 lines for
+  `m_config.` / `Config::instance` Config-trust-boundary references),
+  `debug_leftovers` (±8 lines for `if (m_debug` / `if (on)` /
+  `#ifdef DEBUG` debug-flag conditionals).
+- **`secrets_scan`** RHS literal constraint — requires the right-
+  hand side to be a `"…"` string of ≥16 chars (or `'…'`, or a
+  ≥16-char unquoted token). Rejects variable-name LHSes with
+  constructor / variable RHSes (`m_aiApiKey = new QLineEdit(tab)`,
+  `m_apiKey = apiKey`).
+- **Severity demotion**: tool timeouts → Info (was inheriting the
+  check's severity, polluting the Major / Critical tiers with
+  "(warning) Timed out (30s)"); `long_files` → Info; `missing_
+  compiler_flags` → Info. The 2026-04-16 triage flagged these as
+  "severity leak" — advisories that aren't bugs sharing a tier
+  with real bugs.
+- **Find/grep exclude lists** pick up `__pycache__/`, `.claude/`,
+  `target/`, `.venv/`, `venv/`, `.tox/`, `.pytest_cache/`,
+  `.mypy_cache/`. The previous static lists missed common
+  ecosystem scratch dirs.
+- **`// ants-audit: scheme-validated`** inline marker recognized
+  in the context-window for `qt_openurl_unchecked` — closes the
+  last MAJOR-tier FP from the Ants triage where the OSC 8
+  `openHyperlink` `openUrl` was 35 lines below the OSC 8 ingestion
+  scheme allowlist (different file; ±5 line context can't span).
+
+Four small real findings from the prior Ants triage:
+
+- `claudeallowlist.cpp:409` — `std::as_const(segments)` on the
+  value-captured QStringList (clazy `range-loop-detach`).
+- `auditdialog.cpp:3115` — hoisted `QStringList parts` out of the
+  finding-render loop (clazy `container-inside-loop`).
+- `elidedlabel.h:33`, `sshdialog.h:32` — getters return
+  `const &` not by value (cppcheck `performance:returnByReference`).
+
+Net measured effect on a clean re-scan: the same audit drops from
+~141 to ≲10 findings, with no loss of real coverage.
+
 ### Fixed — audit rule noise follow-up (triage of the Vestige 2026-04-16 run)
 
 Four `addFindCheck` rules produced 100/100 false positives when

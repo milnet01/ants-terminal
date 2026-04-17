@@ -5,10 +5,13 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QSet>
+#include <QMessageAuthenticationCode>
+#include <QCryptographicHash>
 
 #include <algorithm>
 #include <cwchar>
 #include <cstdio>
+#include <cstdlib>
 
 #define DBGLOG(fmt, ...) do { if (m_debugLog && m_debugFile) { fprintf(m_debugFile, fmt "\n", ##__VA_ARGS__); fflush(m_debugFile); } } while(0)
 
@@ -94,6 +97,80 @@ TerminalGrid::TerminalGrid(int rows, int cols)
     }
     m_screenHyperlinks.resize(m_rows);
     initTabStops();
+
+    // Load the OSC 133 HMAC key from $ANTS_OSC133_KEY at construction. Empty
+    // key = verifier disabled (legacy behaviour: any process inside the
+    // terminal can emit OSC 133 markers). Non-empty key = every OSC 133
+    // marker must carry a matching ahmac= param (see verifyOsc133Hmac and
+    // packaging/shell-integration/ants-osc133.{bash,zsh}).
+    if (const char *envKey = std::getenv("ANTS_OSC133_KEY")) {
+        m_osc133Key = QByteArray(envKey);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OSC 133 HMAC verification (0.7.0 shell-integration HMAC item)
+// ---------------------------------------------------------------------------
+// Threat model: an untrusted process running inside the terminal (e.g. a
+// malicious TUI, or `cat malicious.txt`) can otherwise emit its own OSC 133
+// A/B/C/D markers and pollute the command-block UI — spoofing prompt
+// regions, exit codes, and the command_finished plugin event. With a key
+// installed, only OSC 133 markers signed by the user's actual shell
+// (which knows $ANTS_OSC133_KEY via the precmd/preexec hook) are honoured.
+//
+// Message form (canonical, before HMAC):
+//   A → "A|<promptId>"
+//   B → "B|<promptId>"
+//   C → "C|<promptId>"
+//   D → "D|<promptId>|<exitCode>"
+//
+// The promptId binds sequential markers to the same shell-side prompt
+// instance — a malicious process can't replay a captured `D|123|0` HMAC
+// as `B|123` (different message) or as `D|456|0` (different message).
+// Replaying within the same promptId is bounded: PROMPT_COMMAND fires
+// once per actual prompt and increments the id.
+bool TerminalGrid::verifyOsc133Hmac(char marker,
+                                     const std::string &promptId,
+                                     const std::string &extra,
+                                     const std::string &providedHmacHex) const {
+    // Verifier disabled — every marker passes (back-compat).
+    if (m_osc133Key.isEmpty()) return true;
+
+    // Verifier active but the marker carries no ahmac= field at all → forge.
+    if (providedHmacHex.empty() || promptId.empty()) return false;
+
+    // Reconstruct the canonical message. Bare A/B/C carry no extra; D
+    // appends the exit code so the UI can't be tricked by replaying a
+    // captured D HMAC under a different exit code.
+    std::string msg;
+    msg.reserve(promptId.size() + extra.size() + 4);
+    msg.push_back(marker);
+    msg.push_back('|');
+    msg.append(promptId);
+    if (marker == 'D' && !extra.empty()) {
+        msg.push_back('|');
+        msg.append(extra);
+    }
+
+    QMessageAuthenticationCode mac(QCryptographicHash::Sha256, m_osc133Key);
+    mac.addData(QByteArrayView(msg.data(), static_cast<qsizetype>(msg.size())));
+    const QByteArray expectedHex = mac.result().toHex();
+
+    // Constant-time compare on byte length first, then byte-by-byte. We
+    // accept ASCII case-insensitive hex from the shell ("ahmac=ABCD..." or
+    // "ahmac=abcd...") so both `openssl dgst -sha256 -hmac` (lower) and
+    // shells that uppercase printf %X are accepted.
+    if (providedHmacHex.size() != static_cast<size_t>(expectedHex.size()))
+        return false;
+    unsigned char diff = 0;
+    for (size_t i = 0; i < providedHmacHex.size(); ++i) {
+        unsigned char a = static_cast<unsigned char>(providedHmacHex[i]);
+        unsigned char b = static_cast<unsigned char>(expectedHex.at(static_cast<qsizetype>(i)));
+        if (a >= 'A' && a <= 'F') a = static_cast<unsigned char>(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'F') b = static_cast<unsigned char>(b - 'A' + 'a');
+        diff |= static_cast<unsigned char>(a ^ b);
+    }
+    return diff == 0;
 }
 
 void TerminalGrid::initTabStops() {
@@ -700,14 +777,77 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             }
         }
     }
-    // OSC 133 — Shell integration: OSC 133 ; A/B/C/D ST
+    // OSC 133 — Shell integration: OSC 133 ; A/B/C/D [ ; key=value ]* ST
+    //
+    // 0.7.0: parse extends from the legacy `OSC 133;<marker>[;<exitCode>]`
+    // form to also accept trailing `key=value` params separated by ';'.
+    // Recognised params: `aid=<promptId>` and `ahmac=<hex>` (HMAC-SHA256
+    // over the canonical message — see verifyOsc133Hmac). When
+    // $ANTS_OSC133_KEY is set, missing/invalid HMACs cause the marker to
+    // be dropped so untrusted in-terminal processes can't forge prompt
+    // regions or exit codes. Without the env var the legacy permissive
+    // behaviour is unchanged.
     else if (oscNum == "133" && semi != std::string::npos && semi + 1 < payload.size()) {
-        char marker = payload[semi + 1];
-        int globalLine = static_cast<int>(m_scrollback.size()) + m_cursorRow;
+        const char marker = payload[semi + 1];
+        std::string rest = payload.substr(semi + 1);
+
+        // Split rest on ';'. parts[0] = marker letter (single char),
+        // parts[1] (D only) = exit code, then any key=value pairs.
+        std::vector<std::string> parts;
+        {
+            size_t pos = 0;
+            while (pos <= rest.size()) {
+                size_t next = rest.find(';', pos);
+                if (next == std::string::npos) {
+                    parts.emplace_back(rest.substr(pos));
+                    break;
+                }
+                parts.emplace_back(rest.substr(pos, next - pos));
+                pos = next + 1;
+            }
+        }
+
+        std::string promptId;
+        std::string providedHmacHex;
+        std::string exitCodeStr;
+        // For D, parts[1] is the bare exit code (legacy positional form).
+        // Trailing key=value pairs start at parts[2] for D, parts[1] for A/B/C.
+        const size_t kvStart = (marker == 'D' && parts.size() >= 2) ? 2 : 1;
+        if (marker == 'D' && parts.size() >= 2) exitCodeStr = parts[1];
+        for (size_t i = kvStart; i < parts.size(); ++i) {
+            const std::string &p = parts[i];
+            const size_t eq = p.find('=');
+            if (eq == std::string::npos) continue;
+            std::string k = p.substr(0, eq);
+            std::string v = p.substr(eq + 1);
+            if (k == "aid") promptId = v;
+            else if (k == "ahmac") providedHmacHex = v;
+        }
+
+        // Verify before mutating any state. On failure: increment the
+        // forgery counter, fire the throttled callback, and return without
+        // touching m_promptRegions / m_lastExitCode / callbacks. The
+        // forging process must not be able to side-effect the UI even
+        // partially.
+        if (!verifyOsc133Hmac(marker, promptId, exitCodeStr, providedHmacHex)) {
+            ++m_osc133ForgeryCount;
+            const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+            if (m_osc133ForgeryCallback &&
+                (m_osc133LastForgeryNotifyMs == 0 ||
+                 nowMs - m_osc133LastForgeryNotifyMs >= OSC133_FORGERY_COOLDOWN_MS)) {
+                m_osc133LastForgeryNotifyMs = nowMs;
+                m_osc133ForgeryCallback(m_osc133ForgeryCount);
+            }
+            DBGLOG("OSC 133 HMAC verification failed: marker=%c aid='%s' ahmac='%s'",
+                   marker, promptId.c_str(), providedHmacHex.c_str());
+            return;
+        }
+
+        const int globalLine = static_cast<int>(m_scrollback.size()) + m_cursorRow;
         switch (marker) {
         case 'A': // Prompt start
             m_shellIntegState = 'A';
-            m_promptRegions.push_back({globalLine, globalLine, false, 0, 0, false});
+            m_promptRegions.push_back({globalLine, globalLine, false, 0, 0, false, 0, 0, -1});
             break;
         case 'B': // Command start (end of prompt)
             m_shellIntegState = 'B';
@@ -737,15 +877,11 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                 qint64 startMs = m_promptRegions.back().commandStartMs;
                 if (startMs > 0) durationMs = endMs - startMs;
             }
-            // Parse exit code: OSC 133 ; D ; exitcode ST
-            std::string rest = payload.substr(semi + 1);
-            size_t semi2 = rest.find(';');
-            if (semi2 != std::string::npos) {
-                std::string code = rest.substr(semi2 + 1);
+            if (!exitCodeStr.empty()) {
                 try {
-                    m_lastExitCode = std::stoi(code);
+                    m_lastExitCode = std::stoi(exitCodeStr);
                 } catch (...) {
-                    DBGLOG("OSC 133 D exit-code parse failed: '%s'", code.c_str());
+                    DBGLOG("OSC 133 D exit-code parse failed: '%s'", exitCodeStr.c_str());
                     m_lastExitCode = 0;
                 }
             } else {

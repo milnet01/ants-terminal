@@ -169,6 +169,15 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
         emit userVarChanged(name, value);
     });
 
+    // 0.7.0 — OSC 133 HMAC verifier surfaces a forgery notification when an
+    // untrusted in-terminal process tries to spoof a prompt marker. Throttle
+    // is in the grid; we just fan the signal out for MainWindow to render a
+    // status-bar warning. Disabled when $ANTS_OSC133_KEY is unset (verifier
+    // off, callback never fires).
+    m_grid->setOsc133ForgeryCallback([this](int count) {
+        emit osc133ForgeryDetected(count);
+    });
+
     // 0.6.13 — grid-mutation trigger actions. Fires on every newLine() in
     // the grid; we look up the finalized row's text and run the subset of
     // trigger rules that mutate the grid (highlight_line / highlight_text /

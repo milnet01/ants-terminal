@@ -1,3 +1,33 @@
+ants-terminal (0.6.31-1) unstable; urgency=medium
+
+  * Security: OSC 133 HMAC-signed shell integration. When
+    $ANTS_OSC133_KEY is set, every OSC 133 marker (A/B/C/D) must carry
+    a matching HMAC-SHA256 tag; forged markers from in-terminal
+    processes are dropped and surface a throttled "OSC 133 forgery
+    detected" status-bar warning. When the key is unset, behaviour is
+    unchanged from 0.6.30. Shell hooks ship under
+    /usr/share/ants-terminal/shell-integration/{bash,zsh}.
+  * Review Changes status-bar button no longer silently swallows
+    clicks on a clean repo — the disabled-but-visible state was
+    advertising itself as actionable via the global hover stylesheet
+    while QAbstractButton dropped the press. Button is now hidden on
+    clean repos and reappears when a real diff exists.
+  * Shift+Enter no longer wedges the tab in bracketed-paste mode
+    (0.6.26 regression). QByteArray(literal, 8) truncated the 13-byte
+    paste sequence and dropped the [201~ end-paste marker; switched to
+    QByteArrayLiteral so the size is compile-time derived.
+  * Status-bar allowlist button dedup now uses QWidget* for parity
+    with the other dedup sites — fixes a stack-up when a scroll-scan
+    detection fires while a hook-path container is already visible.
+  * Audit signal-to-noise overhaul: two-pass triage of the Ants and
+    Vestige audit runs cuts the false-positive rate from ~97% to
+    under 10% with no loss of real coverage (memory_patterns,
+    secrets_scan, file_perms, header_guards rule tightenings; clazy
+    qt-keywords dropped; six rules gain context-window suppressions;
+    tool timeouts demoted to Info).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 17 Apr 2026 12:00:00 +0000
+
 ants-terminal (0.6.30-1) unstable; urgency=medium
 
   * Contributor-facing workflow infrastructure. No runtime or behavior
