@@ -12,6 +12,17 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.32] — 2026-04-18
+
+**Theme:** Audit self-learning layer + contributor-facing docs + a
+one-line CI hotfix for 0.6.31's OSC 133 verifier. The headline is a
+**per-rule fire/suppression tracker** with an inline LCS-based
+tightening suggester — the lightweight always-on counterpart to the
+heavier weekly cloud routine documented in `RECOMMENDED_ROUTINES.md`.
+Without instrumentation the 2026-04-16 one-shot FP-rate triage would
+silently re-accrue as the codebase evolves; now each suppression is
+recorded and the noisiest rules surface on demand in the audit dialog.
+
 ### Added — audit-tool self-learning layer
 
 - **`RuleQualityTracker`** (`src/auditrulequality.{h,cpp}`) records every
@@ -37,15 +48,33 @@ for security-relevant changes.
   dropIfContains in audit_rules.json`). Pure-identifier substrings
   are rejected so the suggester proposes rule-shape filters, not
   project-noun filters.
-- **Routine #3 in `docs/RECOMMENDED_ROUTINES.md`** is the cloud-side
-  weekly counterpart — heavier LLM-driven cross-rule analysis of the
-  same `audit_rule_quality.json`, opening tightening PRs against the
-  audit catalogue itself. The in-process tracker is the lightweight
-  always-on layer; the routine is the deeper periodic sweep.
 - **Test:** `tests/features/audit_rule_quality/` covers fire +
   suppression aggregation, the LCS suggester's positive and negative
   paths (too-few-samples, pure-identifier rejection), and JSON
   persistence round-trip. Headless model-only test, no Qt GUI.
+
+### Added — contributor docs
+
+- **`docs/RECOMMENDED_ROUTINES.md`** captures the four Claude Code
+  routines that earn a slot on the shared account quota for this repo:
+  nightly audit triage (diff-against-baseline, PR only NEW findings),
+  PR security review on `main`, weekly audit-rule self-triage
+  (cross-rule LLM analysis of `audit_rule_quality.json`, opens
+  tightening PRs — the deeper counterpart to the in-process tracker
+  above), and a monthly ROADMAP-item scoper. Each entry includes the
+  trigger config, environment setup, and the exact prompt text. Total
+  budget ~3-4 runs/day, leaving room for ad-hoc work and the Vestige
+  repo's own routines.
+
+### Fixed
+
+- **CI build on Ubuntu runner.** `QMessageAuthenticationCode::addData`
+  in older Qt 6.x does not accept `QByteArrayView`; the 0.6.31 OSC 133
+  verifier used the view-taking overload and broke the Ubuntu job.
+  Switched to the `(const char*, qsizetype)` overload present in every
+  Qt 6.x version. Behaviour unchanged; the HMAC feature test still
+  passes. Purely a build-compat fix — users on 0.6.31 are unaffected
+  if they're already building locally.
 
 ## [0.6.31] — 2026-04-17
 

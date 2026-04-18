@@ -89,6 +89,18 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.32" date="2026-04-18">
+      <description>
+        <p>Audit self-learning layer + contributor-facing docs + a one-line CI hotfix for 0.6.31's OSC 133 verifier. The headline is a per-rule fire/suppression tracker that records every audit finding and user suppression to <code>&lt;project&gt;/audit_rule_quality.json</code>, plus a new "📊 Rule Quality" button in the audit dialog that surfaces the noisiest rules first. A longest-common-substring suggester turns the last few suppressions for a noisy rule into a one-line <code>dropIfContains</code> proposal that's a copy-paste away from the user's <code>audit_rules.json</code> override pack.</p>
+        <ul>
+          <li><em>Added — audit self-learning:</em> <code>RuleQualityTracker</code> (<code>src/auditrulequality.{h,cpp}</code>) records per-rule fire and suppression events with a 90-day rolling window and 50 000-record-per-category cap. Saves on dialog destruction (RAII) and force-flushes on each suppression so user actions are durable.</li>
+          <li><em>Added — Rule Quality dialog:</em> new modal table view listing per-rule 30-day fires, 30-day suppressions, FP rate (capped 0-100 %), all-time fires, and a proposed <code>dropIfContains</code> tightening when the heuristic suggester has enough samples. Sorted by FP rate desc so the noisiest rules surface first.</li>
+          <li><em>Added — LCS tightening suggester:</em> longest common substring across the last 5 suppressed line texts per rule. Floor at 6 chars + at least one structural boundary character (space, paren, brace, bracket, semicolon, quote, angle bracket) so we propose rule-shape filters, not project-noun filters. Surfaces inline in the status bar on every suppression.</li>
+          <li><em>Added — docs:</em> <code>docs/RECOMMENDED_ROUTINES.md</code> captures the four Claude Code routines that earn a slot on the shared account quota for this repo — nightly audit triage, PR security review, weekly audit-rule self-triage (the deeper LLM-driven counterpart to the always-on tracker), and a monthly ROADMAP-item scoper.</li>
+          <li><em>Fixed — CI build:</em> 0.6.31's OSC 133 verifier used a <code>QByteArrayView</code> overload of <code>QMessageAuthenticationCode::addData</code> not available on the Ubuntu runner's Qt 6.x. Switched to the <code>(const char*, qsizetype)</code> overload present everywhere; behaviour unchanged.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.31" date="2026-04-17">
       <description>
         <p>Security + reliability release. The headline is <em>OSC 133 HMAC-signed shell integration</em>: when <code>$ANTS_OSC133_KEY</code> is set, every prompt / command / exit marker must carry a matching <code>HMAC-SHA256</code> tag, and forged markers from in-terminal processes are dropped (with a throttled status-bar warning). When the key is unset, behaviour is unchanged from 0.6.30 — no upgrade penalty for users who don't opt in.</p>

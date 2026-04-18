@@ -1,3 +1,32 @@
+ants-terminal (0.6.32-1) unstable; urgency=medium
+
+  * Audit self-learning layer: new RuleQualityTracker
+    (src/auditrulequality.{h,cpp}) records every per-rule fire and
+    user-suppression event from the project Audit dialog into
+    <project>/audit_rule_quality.json. 90-day rolling window, capped
+    at 50 000 records per category; saves on dialog destruction and
+    force-flushes on each suppression.
+  * New "📊 Rule Quality" button in the audit dialog opens a modal
+    per-rule stats table: 30-day fires, 30-day suppressions, FP rate
+    (capped 0-100%), all-time fires, and a proposed dropIfContains
+    tightening when the LCS suggester has enough samples. Sorted by
+    FP rate desc so the noisiest rules surface first.
+  * LCS-based tightening suggester: longest common substring across
+    the last 5 suppressed line texts per rule. Floor at 6 chars and
+    at least one structural boundary character (space, paren, brace,
+    bracket, semicolon, quote, angle bracket) so the suggester
+    proposes rule-shape filters, not project-noun filters.
+  * New docs/RECOMMENDED_ROUTINES.md captures the four Claude Code
+    routines that earn a slot on the shared account quota — nightly
+    audit triage, PR security review, weekly audit-rule self-triage,
+    monthly ROADMAP-item scoper.
+  * CI build hotfix for 0.6.31: QMessageAuthenticationCode::addData
+    on older Qt 6.x does not accept QByteArrayView; switched the
+    OSC 133 verifier to the (const char*, qsizetype) overload.
+    Behaviour unchanged.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 09:00:00 +0000
+
 ants-terminal (0.6.31-1) unstable; urgency=medium
 
   * Security: OSC 133 HMAC-signed shell integration. When
