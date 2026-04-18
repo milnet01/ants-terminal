@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.39 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.40 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -802,6 +802,35 @@ if(ANTS_TESTS)
     add_test(NAME global_shortcuts_portal
              COMMAND test_global_shortcuts_portal)
     set_tests_properties(global_shortcuts_portal PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # osc133_last_command — locks the 0.6.40 "copy last output / re-run
+    # last command" top-level actions. Source-grep style: verifies the
+    # two public API slots, the backwards-walk skip-in-progress-tail
+    # invariant, the deliberate outputTextAt choice over 100-line-capped
+    # lastCommandOutput, and the configurable keybindings with
+    # non-colliding defaults.
+    # See tests/features/osc133_last_command/spec.md.
+    add_executable(test_osc133_last_command
+        tests/features/osc133_last_command/test_osc133_last_command.cpp
+    )
+    target_link_libraries(test_osc133_last_command PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_osc133_last_command PRIVATE src)
+    target_compile_options(test_osc133_last_command PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_osc133_last_command PRIVATE
+        SRC_TERMINALWIDGET_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
+        SRC_TERMINALWIDGET_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    )
+    add_test(NAME osc133_last_command
+             COMMAND test_osc133_last_command)
+    set_tests_properties(osc133_last_command PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

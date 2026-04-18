@@ -222,6 +222,22 @@ public:
     void toggleFoldAt(int index);
     bool exportBlockAsCast(int index, const QString &path) const;
 
+    // "Last completed command" top-level actions (0.6.40). These walk
+    // promptRegions() backwards for the most recent region with
+    // commandEndMs > 0 (skipping the tail region if a command is still
+    // running), then delegate to outputTextAt / rerunCommandAt.
+    // Return value is the number of characters copied / the index re-run
+    // (>=0 on success), or -1 when no completed command exists. Callers
+    // use the return to decide whether to toast "copied N chars" or
+    // "no completed command" in the status bar.
+    //
+    // Why not reuse lastCommandOutput(): that helper caps at 100 lines
+    // (it feeds commandFailed triggers where huge stderr noise is bad).
+    // For a user-initiated "copy last output" action, capping silently
+    // would lose data — outputTextAt is unbounded.
+    int copyLastCommandOutput();
+    int rerunLastCommand();
+
 signals:
     void titleChanged(const QString &title);
     void shellExited(int code);

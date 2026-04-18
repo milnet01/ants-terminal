@@ -12,6 +12,72 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.40] — 2026-04-18
+
+**Theme:** OSC 133 shell-integration polish. Adds two keyboard-driven
+"last completed command" actions that complement the existing
+block-at-cursor right-click menu (Copy Command / Copy Output / Re-run
+Command / Fold / Share as .cast) with no-selection-needed top-level
+equivalents. The iTerm2 ⇧⌘O / WezTerm `CopyLastOutput` convention,
+surfaced through the View menu, the command palette, and configurable
+keybindings.
+
+### Added
+
+- **`TerminalWidget::copyLastCommandOutput()` slot.** Walks
+  `promptRegions()` backwards for the most recent region with
+  `commandEndMs > 0 && hasOutput`, delegates to `outputTextAt(idx)`
+  (unbounded), and places the result on the clipboard. Returns the
+  number of characters copied, or `-1` when no completed command exists.
+  The backwards walk is load-bearing: if the tail region is still
+  running (user typed a command but it hasn't emitted OSC 133 D yet),
+  the method skips it and uses the previous completed region — so
+  Ctrl+Alt+O during `sleep 30` copies the *previous* command's output,
+  never the partial in-progress one.
+- **`TerminalWidget::rerunLastCommand()` slot.** Same backwards-walk
+  skip-in-progress rule, then delegates to `rerunCommandAt(idx)` which
+  writes the command text + `\r` to the PTY. Returns the re-run region
+  index or `-1`. Bailing on in-progress tails prevents splicing text
+  into whatever the user is typing.
+- **View menu entries + configurable keybindings.** "Copy Last Command
+  Output" (default `Ctrl+Alt+O`, config key `copy_last_output`) and
+  "Re-run Last Command" (default `Ctrl+Alt+R`, config key
+  `rerun_last_command`) live under the View menu next to the existing
+  Previous/Next Prompt entries. Both surface in the command palette
+  automatically (it collects all menu actions). The `Ctrl+Alt+*`
+  modifier combo avoids the already-taken `Ctrl+Shift+O` (split pane)
+  and `Ctrl+Shift+R` (record session).
+- **Status-bar toasts for discoverability.** Success path shows
+  "Copied N chars of last command output" for 3 s; failure path shows
+  "No completed command to copy (enable shell integration)" — the
+  "(enable shell integration)" hint is load-bearing UX guidance when
+  the user doesn't know OSC 133 requires bash/zsh/fish hooks.
+
+### Why not reuse `lastCommandOutput()`
+
+The existing `lastCommandOutput()` helper caps output at 100 lines
+because it feeds `commandFailed` triggers where huge stderr noise is
+harmful. A user-initiated copy expects the full output or a clear
+"nothing to copy" signal, not a silently truncated string. The new
+action uses `outputTextAt(idx)` (unbounded) instead, and a feature
+test enforces this choice.
+
+### Invariants
+
+- Both slots must walk `promptRegions()` backwards and gate on
+  `commandEndMs > 0`.
+- `copyLastCommandOutput` must call `outputTextAt`, never
+  `lastCommandOutput` (100-line cap).
+- MainWindow wires both actions through `config.keybinding(...)` so
+  users can rebind them via `config.json`.
+- Defaults don't collide: `Ctrl+Alt+O` / `Ctrl+Alt+R` must appear
+  exactly once in `mainwindow.cpp`.
+- Both action handlers emit at least one `showStatusMessage(...)`
+  toast so the operation isn't silent.
+
+Locked by `tests/features/osc133_last_command` (CTest labels
+`features;fast`, part of the release gate).
+
 ## [0.6.39] — 2026-04-18
 
 **Theme:** Wayland-native Quake-mode, part 2 of 2. Completes the 0.7.0

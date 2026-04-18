@@ -4624,6 +4624,44 @@ void TerminalWidget::toggleFoldAt(int index) {
     update();
 }
 
+// "Last completed command" action: walk promptRegions backwards for the most
+// recent region with commandEndMs > 0 && hasOutput. The walk skips the tail
+// region when a command is still running so Ctrl+Alt+O never copies partial
+// output. Returns characters copied, or -1 when no completed command exists
+// (fresh terminal, no shell-integration markers, or a single in-progress
+// command). We intentionally don't fall back to lastCommandOutput() — that
+// helper caps at 100 lines for commandFailed trigger noise, and a user
+// asking to copy expects the full output or a clear "nothing to copy"
+// signal, not a silently truncated string.
+int TerminalWidget::copyLastCommandOutput() {
+    const auto &regions = m_grid->promptRegions();
+    for (int i = static_cast<int>(regions.size()) - 1; i >= 0; --i) {
+        const PromptRegion &pr = regions[i];
+        if (pr.commandEndMs > 0 && pr.hasOutput) {
+            QString text = outputTextAt(i);
+            if (text.isEmpty()) return -1;
+            QApplication::clipboard()->setText(text);
+            return text.size();
+        }
+    }
+    return -1;
+}
+
+// "Re-run last completed command" action: same tail-skip rule as
+// copyLastCommandOutput. Returns the re-run region index, or -1 if no
+// finished command exists. Bails when the shell is mid-command so we
+// don't splice text into whatever the user is typing.
+int TerminalWidget::rerunLastCommand() {
+    const auto &regions = m_grid->promptRegions();
+    for (int i = static_cast<int>(regions.size()) - 1; i >= 0; --i) {
+        if (regions[i].commandEndMs > 0) {
+            rerunCommandAt(i);
+            return i;
+        }
+    }
+    return -1;
+}
+
 bool TerminalWidget::exportBlockAsCast(int index, const QString &path) const {
     const auto &regions = m_grid->promptRegions();
     if (index < 0 || index >= static_cast<int>(regions.size())) return false;

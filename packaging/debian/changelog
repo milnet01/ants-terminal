@@ -1,3 +1,37 @@
+ants-terminal (0.6.40-1) unstable; urgency=medium
+
+  * OSC 133 shell-integration polish. Adds two keyboard-driven
+    "last completed command" actions — the iTerm2 CopyLastOutput /
+    WezTerm convention — that complement the existing block-at-
+    cursor right-click menu with no-selection-needed top-level
+    equivalents, surfaced through the View menu, the command
+    palette, and configurable keybindings.
+  * New TerminalWidget::copyLastCommandOutput() slot walks
+    promptRegions() backwards for the most recent region with
+    commandEndMs > 0 && hasOutput, then copies the full output via
+    outputTextAt(idx). Unlike lastCommandOutput() it is unbounded
+    (no 100-line cap) — a user-initiated copy expects the full
+    output, not a silently truncated string. The backwards walk
+    skips in-progress tails so Ctrl+Alt+O during `sleep 30` copies
+    the previous command, never the partial in-progress one.
+  * New TerminalWidget::rerunLastCommand() slot uses the same
+    backwards-walk / skip-in-progress rule, then writes the command
+    text plus \r to the PTY via rerunCommandAt(idx).
+  * View-menu entries "Copy Last Command Output" (default
+    Ctrl+Alt+O, config key copy_last_output) and "Re-run Last
+    Command" (default Ctrl+Alt+R, config key rerun_last_command).
+    Both surface automatically in the command palette. The
+    Ctrl+Alt+* modifier avoids the taken Ctrl+Shift+O (split pane)
+    and Ctrl+Shift+R (record session).
+  * Status-bar toasts for discoverability: "Copied N chars of last
+    command output" on success, "No completed command to copy
+    (enable shell integration)" on failure — a load-bearing hint
+    that OSC 133 requires bash/zsh/fish shell-integration hooks.
+  * Locked by tests/features/osc133_last_command (CTest labels
+    features;fast, part of the release gate).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 23:59:00 +0000
+
 ants-terminal (0.6.39-1) unstable; urgency=medium
 
   * Wayland-native Quake-mode, part 2 of 2 — completes the 0.7.0

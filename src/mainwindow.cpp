@@ -808,6 +808,30 @@ void MainWindow::setupMenus() {
         if (auto *t = focusedTerminal()) t->navigatePrompt(1);
     });
 
+    // 0.6.40 — "last completed command" top-level actions. These complement
+    // the right-click context menu entries (which operate on the block under
+    // the cursor) with keyboard-driven no-selection-needed equivalents, the
+    // iTerm2 ⇧⌘O / WezTerm CopyLastOutput convention. Ctrl+Alt+O/R avoid the
+    // already-taken Ctrl+Shift+O (split_vertical) / Ctrl+Shift+R (record).
+    QAction *copyLastOutputAction = viewMenu->addAction("Copy Last Command &Output");
+    copyLastOutputAction->setShortcut(QKeySequence(m_config.keybinding("copy_last_output", "Ctrl+Alt+O")));
+    connect(copyLastOutputAction, &QAction::triggered, this, [this]() {
+        auto *t = focusedTerminal();
+        if (!t) return;
+        int n = t->copyLastCommandOutput();
+        if (n >= 0) showStatusMessage(QString("Copied %1 chars of last command output").arg(n), 3000);
+        else        showStatusMessage("No completed command to copy (enable shell integration)", 3000);
+    });
+
+    QAction *rerunLastAction = viewMenu->addAction("Re-run Last Comman&d");
+    rerunLastAction->setShortcut(QKeySequence(m_config.keybinding("rerun_last_command", "Ctrl+Alt+R")));
+    connect(rerunLastAction, &QAction::triggered, this, [this]() {
+        auto *t = focusedTerminal();
+        if (!t) return;
+        int idx = t->rerunLastCommand();
+        if (idx < 0) showStatusMessage("No completed command to re-run (enable shell integration)", 3000);
+    });
+
     viewMenu->addSeparator();
 
     // Reload user themes

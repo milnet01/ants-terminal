@@ -89,6 +89,18 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.40" date="2026-04-18">
+      <description>
+        <p>OSC 133 shell-integration polish. Adds two keyboard-driven "last completed command" actions that complement the existing block-at-cursor right-click menu with no-selection-needed top-level equivalents — the iTerm2 ⇧⌘O / WezTerm <code>CopyLastOutput</code> convention, surfaced through the View menu, the command palette, and configurable keybindings.</p>
+        <ul>
+          <li><em>Added:</em> <code>TerminalWidget::copyLastCommandOutput()</code> slot — walks <code>promptRegions()</code> backwards for the most recent region with <code>commandEndMs &gt; 0 &amp;&amp; hasOutput</code> and copies the full output via <code>outputTextAt(idx)</code> (unbounded). Skips in-progress tails so <code>Ctrl+Alt+O</code> during <code>sleep 30</code> copies the previous command's output, never the partial in-progress one.</li>
+          <li><em>Added:</em> <code>TerminalWidget::rerunLastCommand()</code> slot — same backwards-walk / skip-in-progress rule, then writes the command text + <code>\r</code> to the PTY via <code>rerunCommandAt(idx)</code>.</li>
+          <li><em>Added:</em> View menu entries "Copy Last Command Output" (default <code>Ctrl+Alt+O</code>, config key <code>copy_last_output</code>) and "Re-run Last Command" (default <code>Ctrl+Alt+R</code>, config key <code>rerun_last_command</code>). Both surface automatically in the command palette; <code>Ctrl+Alt+*</code> avoids the already-taken <code>Ctrl+Shift+O</code> (split pane) and <code>Ctrl+Shift+R</code> (record session).</li>
+          <li><em>Added:</em> status-bar toasts for discoverability — success path shows "Copied N chars of last command output"; failure path shows "No completed command to copy (enable shell integration)", a load-bearing hint that OSC 133 needs bash/zsh/fish shell-integration hooks.</li>
+          <li><em>Invariant:</em> locked by <code>tests/features/osc133_last_command</code> (CTest labels <code>features;fast</code>, part of the release gate) — pins the backwards-walk, the <code>outputTextAt</code>-not-<code>lastCommandOutput</code> choice, the keybinding wiring, and the toast contract.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.39" date="2026-04-18">
       <description>
         <p>Wayland-native Quake-mode, part 2 of 2 — completes the 0.7.0 roadmap item. When the <code>xdg-desktop-portal</code> service is available on the session bus, Ants Terminal now registers its Quake toggle with the Freedesktop Portal <code>org.freedesktop.portal.GlobalShortcuts</code> API (KDE Plasma 6, <code>xdg-desktop-portal-hyprland</code>, <code>xdg-desktop-portal-wlr</code>). The hotkey fires whether or not Ants has focus. On GNOME Shell (portal service present but no GlobalShortcuts backend yet) and on minimal desktops without a portal, the in-app <code>QShortcut</code> fallback from 0.6.38 stays as the activation path — no regression.</p>
