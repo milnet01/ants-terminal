@@ -271,6 +271,31 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # scrollback_frozen_view — locks the 0.6.33 frozen-view invariant.
+    # When the user scrolls up, the viewport content is frozen — even
+    # screen rows the viewport overlaps stay pinned. Complements
+    # viewport_stable (deep-scroll) with the partial-overlap case.
+    # See tests/features/scrollback_frozen_view/spec.md.
+    add_executable(test_scrollback_frozen_view
+        tests/features/scrollback_frozen_view/test_frozen_view.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_scrollback_frozen_view PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_scrollback_frozen_view PRIVATE src)
+    target_compile_definitions(test_scrollback_frozen_view PRIVATE
+        SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp")
+    target_compile_options(test_scrollback_frozen_view PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME scrollback_frozen_view COMMAND test_scrollback_frozen_view)
+    set_tests_properties(scrollback_frozen_view PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # sgr_attribute_reset — asserts every SGR set/reset pair (bold, italic,
     # underline, inverse, strikethrough) + SGR 0 full-reset correctly clear
     # the cell attribute on subsequent writes. See

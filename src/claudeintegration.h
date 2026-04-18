@@ -101,6 +101,17 @@ signals:
     void fileChanged(const QString &filePath);
     void contextUpdated(int percent);
     void permissionRequested(const QString &tool, const QString &input);
+    // Plan mode is orthogonal to tool-use state — the user toggles it
+    // with Shift+Tab in the Claude Code TUI. Detected from transcript
+    // `permission-mode` metadata events (mode == "plan" / "plan_mode").
+    // Surfaced separately so the status bar can show "Claude: planning"
+    // even while Claude is running Read/Grep tools in plan mode.
+    void planModeChanged(bool active);
+    // Auditing: user invoked the /audit skill in the most recent user
+    // message. Detected via the same transcript-scan shape as /compact.
+    // Separate signal because auditing spans many tool-use turns and
+    // needs its own status-bar label.
+    void auditingChanged(bool active);
 
 private slots:
     void pollClaudeProcess();
@@ -117,6 +128,8 @@ private:
     QString m_currentTool;
     int m_contextPercent = 0;
     QStringList m_changedFiles;
+    bool m_planMode = false;
+    bool m_auditing = false;
 
     // Process polling
     QTimer m_pollTimer;

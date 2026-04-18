@@ -75,6 +75,11 @@ private:
     QLineEdit *m_editorCmd;
     QLineEdit *m_imagePasteDir;
     QComboBox *m_tabTitleFormat;
+    QSpinBox *m_notificationTimeout = nullptr;    // status-bar toast timeout
+    QPushButton *m_installClaudeHooksBtn = nullptr;
+    QLabel *m_claudeHooksStatus = nullptr;
+    void installClaudeHooks();
+    void refreshClaudeHooksStatus();
 
     // Appearance
     QFontComboBox *m_fontFamily;

@@ -116,15 +116,20 @@ private:
     bool m_broadcastMode = false;
     QAction *m_broadcastAction = nullptr;
 
-    // Status bar widgets. The three text slots are ElidedLabels so they
-    // truncate with "…" to a bounded width instead of growing unbounded
-    // and pushing siblings off-screen — e.g. a long foreground-process
-    // name (kernel TASK_COMM_LEN caps at 15 but kept defensive here) or
-    // a long transient message ("Claude permission: Bash(git log…)").
-    ElidedLabel *m_statusGitBranch = nullptr;
+    // Status bar widgets. Layout principle (from user feedback 2026-04-18):
+    // only the transient notification slot (m_statusMessage) is elastic and
+    // elides with "…"; every other widget on the bar is **fixed** — it
+    // reports its natural sizeHint with a horizontally-Fixed size policy
+    // and must never be squeezed to cater for the notification. That
+    // guarantees the git branch name, foreground-process name, Claude
+    // status, and both transient buttons always display in full. Past
+    // elide-to-"…" regressions on the branch label were all traced back
+    // to ElidedLabel under QBoxLayout pressure; using plain QLabel with
+    // Fixed horizontal policy makes the widget unsqueezable.
+    QLabel *m_statusGitBranch = nullptr;
     QFrame *m_statusGitSep = nullptr;     // vertical divider after branch chip
     ElidedLabel *m_statusMessage = nullptr;
-    ElidedLabel *m_statusProcess = nullptr;
+    QLabel *m_statusProcess = nullptr;
     QTimer *m_statusTimer = nullptr;
     QTimer *m_statusMessageTimer = nullptr;
     void updateStatusBar();
@@ -135,7 +140,15 @@ private:
     qint64 m_gitCacheMs = 0;
     // Route status messages to m_statusMessage instead of statusBar()->showMessage(),
     // which would hide the git branch and cwd labels while displayed.
-    void showStatusMessage(const QString &msg, int timeoutMs = 0);
+    // Timeout semantics:
+    //   timeoutMs  < 0 (default): use config.notificationTimeoutMs()
+    //                             (user-configurable, default 5000 ms).
+    //   timeoutMs == 0          : pin the message — never auto-clear.
+    //                             Used for the Claude permission prompt
+    //                             which must stay visible until the user
+    //                             approves/declines.
+    //   timeoutMs  > 0          : clear after that many milliseconds.
+    void showStatusMessage(const QString &msg, int timeoutMs = -1);
     void clearStatusMessage();
 
     // Quake mode
@@ -165,6 +178,17 @@ private:
     // user requested colours survive even with session restore disabled.
     void persistTabColor(QWidget *tabRoot, const QColor &color);
     void applyPersistedTabColor(QWidget *tabRoot);
+    // Persist the full current tab color list (by index) to
+    // config.tab_color_sequence. Called after any tab-color mutation
+    // and on app close. Independent of session persistence — the
+    // ordered list survives restart regardless.
+    void saveTabColorSequence();
+    // Apply the ordered color list from config.tab_color_sequence to
+    // tabs by index. Called after the initial tab set is created
+    // (either via restoreSessions or the single default newTab), as a
+    // fallback for when UUID-keyed persistTabColor couldn't match
+    // (session persistence off → UUIDs regenerated on restart).
+    void applyTabColorSequence();
 
     // Handle trigger signals from terminals
     void onTriggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
@@ -195,10 +219,13 @@ private:
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;
     ClaudeProjectsDialog *m_claudeProjects = nullptr;
     ClaudeTranscriptDialog *m_claudeTranscript = nullptr;
-    // m_claudeStatusLabel shows "Claude: <state-or-tool-name>" — ToolUse's
-    // detail can be an arbitrary tool name from the transcript, so cap it
-    // the same way the status-bar message slot is capped.
-    ElidedLabel *m_claudeStatusLabel = nullptr;
+    // m_claudeStatusLabel shows "Claude: <state>" where state maps to a
+    // curated short vocabulary (idle/thinking/bash/reading a file/
+    // planning/auditing/prompting/compacting). The label is fixed-width
+    // via its sizeHint (plain QLabel, QSizePolicy::Fixed horizontal) so
+    // it never elides; the state vocabulary is bounded so worst-case
+    // width is known at design time.
+    QLabel *m_claudeStatusLabel = nullptr;
     QProgressBar *m_claudeContextBar = nullptr;
     QPushButton *m_claudeReviewBtn = nullptr;
     QLabel *m_claudeErrorLabel = nullptr;
@@ -212,7 +239,26 @@ private:
     ClaudeState m_claudeLastState = ClaudeState::NotRunning;
     QString m_claudeLastDetail;
     bool m_claudePromptActive = false;
+    // Plan mode is a user-selected interaction mode (Shift+Tab in
+    // Claude Code) orthogonal to tool-use state; surfaced via
+    // ClaudeIntegration's plan-mode signal, which inspects transcript
+    // `permission-mode` metadata entries.
+    bool m_claudePlanMode = false;
+    // Auditing: user invoked the /audit skill in the most recent user
+    // message, detected via transcript scan (same shape as /compact
+    // detection). Lives beside ClaudeState because auditing spans
+    // multiple tool-use turns.
+    bool m_claudeAuditing = false;
     void applyClaudeStatusLabel();
+    // Single entry point that refreshes every per-tab status-bar widget
+    // (branch chip, notification, process label, Claude state, Review
+    // Changes button, Add-to-allowlist button) against the currently
+    // active tab's terminal. Called from onTabChanged plus after any
+    // async probe completes. Replaces the scatter of direct
+    // updateStatusBar / refreshReviewButton / applyClaudeStatusLabel
+    // calls that accumulated in onTabChanged and let per-tab state
+    // bleed from tab A to tab B.
+    void refreshStatusBarForActiveTab();
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
     void openClaudeProjectsDialog();
     void setupClaudeIntegration();

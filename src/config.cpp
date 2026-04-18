@@ -518,6 +518,16 @@ void Config::setTabGroups(const QJsonObject &groups) {
     save();
 }
 
+// Tab color sequence (ordered fallback path — see header comment).
+QJsonArray Config::tabColorSequence() const {
+    return m_data.value("tab_color_sequence").toArray();
+}
+
+void Config::setTabColorSequence(const QJsonArray &seq) {
+    m_data["tab_color_sequence"] = seq;
+    save();
+}
+
 int Config::terminalPadding() const {
     return m_data.value("terminal_padding").toInt(4);
 }
@@ -554,6 +564,16 @@ QString Config::badgeText() const {
 
 void Config::setBadgeText(const QString &text) {
     m_data["badge_text"] = text;
+    save();
+}
+
+// Status-bar notification timeout (default = 5 s, per user spec 2026-04-18).
+int Config::notificationTimeoutMs() const {
+    return m_data.value("notification_timeout_ms").toInt(5000);
+}
+
+void Config::setNotificationTimeoutMs(int ms) {
+    m_data["notification_timeout_ms"] = ms;
     save();
 }
 

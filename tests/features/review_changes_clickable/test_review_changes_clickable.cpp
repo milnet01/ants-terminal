@@ -1,28 +1,28 @@
-// Feature-conformance test for spec.md — locks the contract that the
-// Review Changes status-bar button is never in the visible-but-disabled
-// state, because Qt swallows clicks on disabled buttons (no clicked()
-// emission, so showDiffViewer's silent-return-with-flash guards never
-// fire) AND the global QPushButton:hover rule isn't :enabled-gated
-// (advertising the disabled button as actionable on hover).
+// Feature-conformance test for spec.md — locks the 0.6.33 tri-state
+// Review Changes policy:
 //
-// Regression vector: user report 2026-04-17 — "Review Changes is
-// showing and is active as it has an onmouseover event that highlights
-// the button. When I click the button though, nothing happens."
-// Root cause: refreshReviewButton's exitCode==0 (clean repo) branch
-// called setEnabled(false); show() instead of hide().
+//   Not a git repo                                → hidden
+//   Git repo, clean + in-sync                      → visible, disabled
+//   Git repo with dirty worktree or unpushed work  → visible, enabled
 //
-// Source-level inspection rather than instantiating MainWindow —
-// MainWindow drags in terminalwidget + claudeintegration + ~half the
-// project just to exercise the six-line policy block. The contract IS
-// the policy ("clean → hide, not show-disabled"); locking the source
-// at the policy site is the sharpest possible regression guard.
+// And the three load-bearing source-level invariants that make the
+// visible-but-disabled state user-friendly:
 //
-// Same approach as test_review_changes_click.cpp and
-// test_shift_enter.cpp.
+//   1. The global QPushButton:hover rule IS gated with :enabled so the
+//      disabled button doesn't light up on hover (which in the 0.6.29
+//      era made users think a disabled button was actionable).
+//   2. refreshReviewButton's exit-0 branch uses setEnabled(...) + show(),
+//      NOT hide() — the whole point of the tri-state policy.
+//   3. The git probe is `git status --porcelain=v1 -b`, which reports
+//      both dirty worktree AND ahead-of-upstream in one subprocess. The
+//      old `git diff --quiet HEAD` probe missed unpushed commits.
+//
+// Source-grep style (same as test_review_changes_click.cpp and
+// test_shift_enter.cpp) — avoids instantiating MainWindow for a
+// purely policy-level assertion.
 
 #include <QFile>
 #include <QString>
-#include <QStringList>
 #include <QRegularExpression>
 
 #include <cstdio>
@@ -40,18 +40,13 @@ int failures = 0;
 QString readSource(const QString &path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr,
-                     "FAIL: cannot open %s — test harness wiring broken\n",
-                     qUtf8Printable(path));
+        std::fprintf(stderr, "FAIL: cannot open %s\n", qUtf8Printable(path));
         ++failures;
         return QString();
     }
     return QString::fromUtf8(f.readAll());
 }
 
-// Extract the body of a function (signature → matching closing brace).
-// Same balanced-brace scan used by test_review_changes_click.cpp; no
-// string-literal escapes complicate the sites we care about.
 QString extractFunctionBody(const QString &src, const QString &signature) {
     const int start = src.indexOf(signature);
     if (start < 0) return QString();
@@ -68,11 +63,10 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
     return src.mid(braceStart, i - braceStart);
 }
 
-// Invariant 1 — refreshReviewButton's clean-repo branch hides the
-// button. We grep for `btn->hide()` after an `exitCode == 0` token
-// in the function body. The regression shape is `btn->setEnabled(false)`
-// followed by `btn->show()` in that same branch — also asserted absent.
-void testRefreshHidesOnCleanRepo() {
+// Invariant 1 — refreshReviewButton's successful-probe branch uses
+// setEnabled + show (tri-state), NOT hide. The forbidden shape is the
+// 0.6.29-era "hide on clean" which we've retired.
+void testRefreshShowsDisabledOnClean() {
     const QString src = readSource(QStringLiteral(SRC_MAINWINDOW_PATH));
     if (src.isEmpty()) return;
 
@@ -85,94 +79,93 @@ void testRefreshHidesOnCleanRepo() {
         return;
     }
 
-    // Locate the exitCode == 0 branch and lift out a slice of body
-    // around it for shape assertions. The branch is small (≤25 lines)
-    // so a trailing slice covers the whole policy block reliably.
-    const int cleanIdx = body.indexOf(QStringLiteral("exitCode == 0"));
-    CHECK(cleanIdx >= 0,
-          "refreshReviewButton has no `exitCode == 0` branch — git-quiet "
-          "exit-code policy was restructured; spec needs review");
-    if (cleanIdx < 0) return;
-
-    // Slice forward to the next sibling branch (`} else`) or 2000 chars,
-    // whichever is shorter. A long explanatory comment can push the
-    // actual `btn->hide()` past a fixed-size cap; bound by the next
-    // else clause keeps the slice tight to this branch and rejects
-    // matches from the unrelated error-fallback branch below.
-    const int sliceMax = 2000;
-    int sliceEnd = body.indexOf(QStringLiteral("} else"), cleanIdx + 1);
-    if (sliceEnd < 0 || sliceEnd > cleanIdx + sliceMax) sliceEnd = cleanIdx + sliceMax;
-    const QString slice = body.mid(cleanIdx, sliceEnd - cleanIdx);
-
-    CHECK(slice.contains(QStringLiteral("btn->hide()")),
-          "refreshReviewButton's clean-repo branch (exitCode == 0) does NOT "
-          "call btn->hide() — regression: visible-but-disabled state silently "
-          "swallows clicks (Qt drops mousePressEvent on disabled buttons), "
-          "so user sees the button highlight on hover but get NO feedback "
-          "on click. See review_changes_clickable/spec.md.");
-
-    // The forbidden shape: setEnabled(false) followed by show() inside
-    // the exit-0 slice. Tolerates whitespace + comments between.
-    static const QRegularExpression forbidden(
-        QStringLiteral(R"(setEnabled\s*\(\s*false\s*\)[^;]*;[^}]*?->show\s*\(\s*\))"));
-    CHECK(!forbidden.match(slice).hasMatch(),
-          "refreshReviewButton's clean-repo branch contains the forbidden "
-          "shape `setEnabled(false); ... show();` on the Review Changes "
-          "button — re-introduces the user-reported click-does-nothing bug.");
+    // The tri-state policy hinges on calling setEnabled(...) and then
+    // show() in the successful-probe branch. Check both are present.
+    CHECK(body.contains(QStringLiteral("setEnabled(")),
+          "refreshReviewButton no longer calls setEnabled() — tri-state "
+          "policy (hidden / visible-disabled / visible-enabled) requires it");
+    CHECK(body.contains(QStringLiteral("btn->show()")),
+          "refreshReviewButton no longer calls btn->show() in its "
+          "success branch — visible-disabled state cannot be reached");
 }
 
-// Invariant 2 — the global QPushButton stylesheet rule remains UN-gated
-// by :enabled. If a future refactor adds `:enabled` to the hover rule,
-// then the underlying assumption of this spec (visible-disabled = bad
-// because hover lies) shifts and the spec itself needs revisiting.
-//
-// This is a "tripwire" check: failure means the spec needs review,
-// not necessarily that there's a bug. The error message says so.
-void testHoverStylesheetUngated() {
+// Invariant 2 — the global QPushButton:hover rule MUST be gated with
+// :enabled. Without it, a visible-disabled button still lights up on
+// hover, which is the exact misleading-UX bug that the 0.6.29 spec was
+// written to prevent. The tri-state policy is only safe because this
+// gate exists.
+void testHoverStylesheetEnabledGated() {
     const QString src = readSource(QStringLiteral(SRC_MAINWINDOW_PATH));
     if (src.isEmpty()) return;
 
-    // Look for the global QPushButton stylesheet block. The 0.6.x
-    // codebase keeps it in setupUi or applyTheme; we search for the
-    // canonical token "QPushButton:hover" and check what comes next.
-    int pos = 0;
-    bool foundAny = false;
-    bool foundEnabledGate = false;
-    while (true) {
-        const int idx = src.indexOf(QStringLiteral("QPushButton:hover"), pos);
-        if (idx < 0) break;
-        foundAny = true;
-        // Look at the next 20 chars for ":enabled" — that's the gate
-        // form `QPushButton:hover:enabled` or `QPushButton:enabled:hover`.
-        const QString tail = src.mid(idx, 30);
-        if (tail.contains(QStringLiteral(":enabled"))) {
-            foundEnabledGate = true;
-            break;
-        }
-        pos = idx + 1;
-    }
-    CHECK(foundAny,
-          "no `QPushButton:hover` rule found in src/mainwindow.cpp — global "
-          "button stylesheet was restructured; spec assumption needs review");
-    CHECK(!foundEnabledGate,
-          "`QPushButton:hover:enabled` rule found — the global stylesheet now "
-          "gates hover on :enabled, which means a visible-but-disabled button "
-          "would no longer mislead the user via hover highlight. The spec for "
-          "review_changes_clickable can RELAX (visible-but-disabled becomes "
-          "tolerable). Update spec.md and this test, do NOT just delete the "
-          "assertion.");
+    // Accept either `QPushButton:hover:enabled` or
+    // `QPushButton:enabled:hover` (Qt stylesheet selector order is
+    // free). Reject a bare `QPushButton:hover {` not followed by
+    // `:enabled` within the selector.
+    static const QRegularExpression gated(
+        QStringLiteral(R"(QPushButton:(?:hover:enabled|enabled:hover))"));
+    static const QRegularExpression bareHover(
+        QStringLiteral(R"(QPushButton:hover\s*\{)"));
+
+    const bool hasGate   = gated.match(src).hasMatch();
+    const bool hasBare   = bareHover.match(src).hasMatch();
+
+    CHECK(hasGate,
+          "global QPushButton:hover rule is not gated with :enabled — the "
+          "visible-disabled Review Changes button will light up on hover, "
+          "advertising itself as actionable when it isn't. Update the "
+          "QSS rule in applyTheme() to `QPushButton:hover:enabled { ... }`");
+    CHECK(!hasBare,
+          "an un-gated `QPushButton:hover {` rule is present. If it's "
+          "intentional for a specific widget, anchor it with an object-"
+          "name selector. The un-scoped global form breaks the "
+          "visible-disabled contract from review_changes_clickable/spec.md");
+}
+
+// Invariant 3 — the probe covers BOTH dirty worktree AND
+// ahead-of-upstream. `git status --porcelain=v1 -b` is the canonical
+// combo; accept any `git status` invocation with `-b` as a viable
+// spelling. Reject a bare `git diff --quiet HEAD` — that was the
+// 0.6.29-era probe which missed unpushed commits.
+void testProbeCoversAheadOfUpstream() {
+    const QString src = readSource(QStringLiteral(SRC_MAINWINDOW_PATH));
+    if (src.isEmpty()) return;
+
+    const QString body = extractFunctionBody(
+        src, QStringLiteral("void MainWindow::refreshReviewButton()"));
+    if (body.isEmpty()) return;
+
+    const bool usesStatusBranch = body.contains(QStringLiteral("\"status\""))
+                                 && body.contains(QStringLiteral("\"-b\""));
+    CHECK(usesStatusBranch,
+          "refreshReviewButton's git probe does not use `git status -b` "
+          "— restore the combined dirty-and-ahead probe or document why "
+          "a different probe is equivalent. The 0.6.32-era "
+          "`git diff --quiet HEAD` missed unpushed commits.");
+
+    // Reject the specific retired probe. If a future refactor legitimately
+    // needs two separate probes, it can rename the function or split the
+    // logic out; the source-grep here is intentionally strict.
+    const bool usesRetiredProbe = body.contains(
+        QStringLiteral("\"--quiet\"")) && body.contains(
+        QStringLiteral("\"HEAD\""))
+        && body.contains(QStringLiteral("\"diff\""));
+    CHECK(!usesRetiredProbe,
+          "refreshReviewButton still references the retired "
+          "`git diff --quiet HEAD` probe — see spec.md regression history.");
 }
 
 }  // namespace
 
 int main() {
-    testRefreshHidesOnCleanRepo();
-    testHoverStylesheetUngated();
+    testRefreshShowsDisabledOnClean();
+    testHoverStylesheetEnabledGated();
+    testProbeCoversAheadOfUpstream();
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d assertion(s) failed.\n", failures);
         return 1;
     }
-    std::fprintf(stderr, "All Review Changes clickable invariants hold.\n");
+    std::fprintf(stderr, "All Review Changes tri-state invariants hold.\n");
     return 0;
 }

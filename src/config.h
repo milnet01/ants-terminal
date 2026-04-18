@@ -164,6 +164,17 @@ public:
     QJsonObject tabGroups() const;
     void setTabGroups(const QJsonObject &groups);
 
+    // Tab color sequence — an ordered list of "#rrggbb" strings (empty
+    // string for "no color") matching the tab order at save time. This
+    // is the fallback path used when session_persistence is disabled —
+    // the UUID-keyed tab_groups map relies on the same UUID being
+    // regenerated on restore, which only happens with session
+    // persistence on. The ordered sequence matches by index instead,
+    // so tab colors survive restart regardless of whether scrollback
+    // is persisted. User spec 2026-04-18.
+    QJsonArray tabColorSequence() const;
+    void setTabColorSequence(const QJsonArray &seq);
+
     // Command snippets
     QJsonArray snippets() const;
     void setSnippets(const QJsonArray &snippets);
@@ -175,6 +186,15 @@ public:
     // Badge text (displayed as watermark in terminal background)
     QString badgeText() const;
     void setBadgeText(const QString &text);
+
+    // Status-bar notification display duration for showStatusMessage()
+    // calls that omit an explicit timeout. Default 5000ms matches
+    // desktop-notification conventions. Callers that need a permanent
+    // pinned notification (e.g. "Claude waiting for permission") pass
+    // 0 explicitly; callers that need a custom timeout pass that value
+    // in milliseconds.
+    int notificationTimeoutMs() const;
+    void setNotificationTimeoutMs(int ms);
 
     // Dark/light mode auto-switching
     bool autoColorScheme() const;

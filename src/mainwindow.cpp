@@ -21,6 +21,7 @@
 #endif
 
 #include <algorithm>
+#include <QAbstractButton>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QShowEvent>
@@ -296,6 +297,15 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // Restore saved sessions from previous run
     restoreSessions();
 
+    // Apply ordered tab-color sequence from the previous run. Must run
+    // AFTER all tabs are in place. For session-persistence ON, the
+    // UUID-keyed path inside restoreSessions already colored matching
+    // tabs; this call leaves those alone (see applyTabColorSequence's
+    // "already colored" guard) and only paints the uncolored slots.
+    // For session-persistence OFF, this is the ONLY path that colors
+    // tabs on startup — UUIDs won't match so tab_groups looked empty.
+    applyTabColorSequence();
+
     // Status bar info widgets (git branch, status message, process).
     // Transient status messages go into m_statusMessage (not statusBar()->showMessage),
     // so the git branch label stays visible to the left of them.
@@ -312,20 +322,20 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // plus a small QStatusBar internal margin → 32px is comfortable.
     statusBar()->setMinimumHeight(32);
 
-    // Status-bar text slots use ElidedLabel so long strings (long branch
-    // names on feature branches, long transient messages like
-    // "Claude permission: Bash(git log -- path/…)", long /proc/PID/comm
-    // on non-Linux kernels) truncate with "…" instead of pushing other
-    // widgets off-screen. Each slot has a pragma max width — the branch
-    // chip and the process label are fixed (side widgets, must not grow),
-    // while the transient-message slot keeps stretch=1 and elides to
-    // whatever width the layout gave it.
-    {
-        auto *lbl = new ElidedLabel(this);
-        lbl->setElideMode(Qt::ElideRight);
-        lbl->setMaximumWidth(220);
-        m_statusGitBranch = lbl;
-    }
+    // Status-bar layout rule (user feedback 2026-04-18): the git branch,
+    // process name, Claude status, and transient buttons are FIXED-width —
+    // their sizeHint is their natural width, QSizePolicy::Fixed prevents
+    // QStatusBar's internal QBoxLayout from squeezing them. The ONLY
+    // elastic widget is m_statusMessage (stretch=1, ElideMiddle); when
+    // the bar runs out of space it is the notification that gets
+    // truncated with "…", never the informational chips. Past
+    // regressions where the branch label rendered as "…" were all
+    // traced to ElidedLabel + stylesheet padding miscalculation under
+    // layout pressure; plain QLabel + Fixed sizePolicy sidesteps the
+    // entire class of bug.
+    m_statusGitBranch = new QLabel(this);
+    m_statusGitBranch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_statusGitBranch->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addWidget(m_statusGitBranch);
 
     // 0.6.26 — the "chip" styling on the branch label (rounded bg + border)
@@ -352,15 +362,8 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     }
     statusBar()->addWidget(m_statusMessage, 1);
 
-    {
-        auto *lbl = new ElidedLabel(this);
-        lbl->setElideMode(Qt::ElideRight);
-        // Kernel caps /proc/PID/comm at 15 glyphs on Linux, but the
-        // rendered pixel width depends on the font — 160px covers the
-        // widest ASCII glyph stream at font_size=11–13 with room to spare.
-        lbl->setMaximumWidth(160);
-        m_statusProcess = lbl;
-    }
+    m_statusProcess = new QLabel(this);
+    m_statusProcess->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     statusBar()->addWidget(m_statusProcess);
 
     // Status update timer (every 2 seconds). updateStatusBar() walks the
@@ -411,6 +414,25 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *now) {
         if (!now) return;                         // app-wide focus loss (Alt-Tab)
         if (QApplication::activeModalWidget()) return;  // modal dialog owns focus
+
+        // Never hijack focus from a button that is still handling a
+        // click. QAbstractButton emits `clicked()` only if it retains
+        // focus between mousePress and mouseRelease. When this
+        // lambda queued a singleShot(0) to refocus the terminal on
+        // button-press, the singleShot could fire between press and
+        // release, ripping focus away and silently canceling the
+        // click. Symptom: user clicks "Review Changes" and nothing
+        // happens — no toast, no dialog — because showDiffViewer
+        // never ran. Detected 2026-04-18. Buttons own their own
+        // focus lifecycle; we accept the focus, and the next
+        // legitimate focusChanged (when the user clicks elsewhere)
+        // will run the redirect path.
+        if (qobject_cast<QAbstractButton *>(now)) return;
+        // Same reasoning for "mouse is currently down" — even for
+        // non-button clicks, deferring until the user releases the
+        // mouse avoids racing with any widget's press/release
+        // handling.
+        if (QApplication::mouseButtons() != Qt::NoButton) return;
 
         bool shouldRedirect = true;
         for (QWidget *w = now; w; w = w->parentWidget()) {
@@ -1410,11 +1432,23 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
             QString("Claude Code permission: %1 — ").arg(rule), 0);
         auto *addBtn = new QPushButton("Add to allowlist", statusBar());
         addBtn->setObjectName("claudeAllowBtn");
+        // Fixed horizontal sizePolicy — the button must never be
+        // squeezed when the notification slot is full of text. Same
+        // layout principle as the branch chip / Claude status label
+        // introduced on 2026-04-18.
+        addBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         statusBar()->addPermanentWidget(addBtn);
-        connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn]() {
+
+        auto clearPromptActive = [this]() {
+            m_claudePromptActive = false;
+            applyClaudeStatusLabel();
+        };
+
+        connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn, clearPromptActive]() {
             openClaudeAllowlistDialog(rule);
             addBtn->deleteLater();
             clearStatusMessage();
+            clearPromptActive();
         });
 
         // 0.6.27 — mark prompt active so the Claude status label switches
@@ -1423,19 +1457,45 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         m_claudePromptActive = true;
         applyClaudeStatusLabel();
 
-        // Remove button only when the prompt actually disappears from the
-        // screen. Anchoring to `outputReceived` (as an earlier version did)
-        // retracted the button on the next Claude Code repaint tick — which
-        // fires continuously during the prompt's own cursor/spinner animation
-        // and nuked the button while the user was still looking at it.
+        // Primary retraction: terminal scrollback scanner notices the
+        // footer is gone. Now debounced against transient TUI repaints
+        // (see terminalwidget.cpp:checkForClaudePermissionPrompt).
         auto conn = std::make_shared<QMetaObject::Connection>();
-        *conn = connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn, [this, addBtn, conn]() {
+        *conn = connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn, [addBtn, conn, clearPromptActive, this]() {
             QObject::disconnect(*conn);
             addBtn->deleteLater();
             clearStatusMessage();
-            m_claudePromptActive = false;
-            applyClaudeStatusLabel();
+            clearPromptActive();
         });
+
+        // 0.6.33 — belt-and-suspenders retraction parity with the hook
+        // path (see line ~2676). If the terminal scanner never notices
+        // the prompt clearing (unmatched footer format on a future
+        // Claude Code release; prompt scrolled off the 12-line lookback
+        // before the debounce settled), toolFinished / sessionStopped
+        // give us a resolve signal so the button doesn't linger. Same
+        // reasoning as the hook path: errs on the side of closing the
+        // button too early rather than leaving a stale "Add to
+        // allowlist" stranded on the bar after the user already
+        // approved.
+        if (m_claudeIntegration) {
+            auto finishedConn = std::make_shared<QMetaObject::Connection>();
+            *finishedConn = connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
+                                    addBtn, [addBtn, finishedConn, clearPromptActive, this](const QString &, bool) {
+                QObject::disconnect(*finishedConn);
+                addBtn->deleteLater();
+                clearStatusMessage();
+                clearPromptActive();
+            });
+            auto stoppedConn = std::make_shared<QMetaObject::Connection>();
+            *stoppedConn = connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
+                                   addBtn, [addBtn, stoppedConn, clearPromptActive, this](const QString &) {
+                QObject::disconnect(*stoppedConn);
+                addBtn->deleteLater();
+                clearStatusMessage();
+                clearPromptActive();
+            });
+        }
     });
 }
 
@@ -1701,62 +1761,18 @@ void MainWindow::closeCurrentTab() {
 }
 
 void MainWindow::onTabChanged(int index) {
-    // Status-bar event-driven contract: every widget on the status bar
-    // falls into one of three categories, each with its own lifecycle.
-    //
-    //   1. State / location widgets (git branch, foreground process,
-    //      Claude state, context %, Review Changes button) — always
-    //      visible, reflect the active tab. Refreshed below via
-    //      updateStatusBar() + setShellPid() + refreshReviewButton().
-    //
-    //   2. Transient notifications (m_statusMessage) — carry a timeout;
-    //      but a notification that originated on tab A has no meaning
-    //      after the user switches away. Clear on tab change rather
-    //      than let it bleed until its own timer expires.
-    //
-    //   3. Event-tied widgets (permission "Add to allowlist" button,
-    //      error label for a failed command) — visible ONLY while the
-    //      event is live on its originating tab. Tab switch ends the
-    //      user's engagement with that tab's event; the widget must
-    //      vanish or it misleadingly appears tied to the new tab's
-    //      state.
-    //
-    // See tests/features/claude_status_bar/spec.md §D.
-    clearStatusMessage();
-    if (m_claudeErrorLabel) m_claudeErrorLabel->hide();
-    // QWidget (not QPushButton) — the hook-server path creates a QWidget
-    // container holding Allow/Deny/Add-to-allowlist buttons and names the
-    // container "claudeAllowBtn"; the scroll-scan path creates a bare
-    // QPushButton with the same objectName. Finding by QWidget covers
-    // both.
-    const auto staleAllowBtns =
-        statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"));
-    for (QWidget *w : staleAllowBtns) w->deleteLater();
-    // The prompt-active flag drives the Claude status label. Both
-    // permission paths set it true when a prompt goes live; tab-switch
-    // ends the user's engagement with that prompt, so the flag must
-    // reset or the next tab reads "Claude: prompting" for a prompt that
-    // belongs to the previous tab.
-    if (m_claudePromptActive) {
-        m_claudePromptActive = false;
-        applyClaudeStatusLabel();
-    }
-
+    // All per-tab status-bar state — branch chip, process name,
+    // notification slot, Claude state, Review Changes button, Add-to-
+    // allowlist button — funnels through a single refresh point so
+    // nothing bleeds from the previous tab. See
+    // refreshStatusBarForActiveTab() for the lifecycle contract.
     auto *t = focusedTerminal();
     if (!t) t = currentTerminal();
     if (t) {
         t->setFocus();
         onTitleChanged(t->shellTitle());
-        // Update Claude integration with the focused terminal's shell
-        if (m_claudeIntegration)
-            m_claudeIntegration->setShellPid(t->shellPid());
     }
-    // Update status bar immediately so CWD/git/process reflect the new tab
-    updateStatusBar();
-    // 0.6.22 — Review Changes enabled state is tab-local (different tabs
-    // can be in different repos / states). Re-check against the new tab's
-    // cwd on every switch.
-    refreshReviewButton();
+    refreshStatusBarForActiveTab();
 
 #ifdef ANTS_LUA_PLUGINS
     // 0.6.9 — fire `pane_focused` so plugins can swap context (per-pane
@@ -1848,8 +1864,17 @@ void MainWindow::applyTheme(const QString &name) {
         "QLabel { color: %3; background: transparent; }"
         "QPushButton { background-color: %1; color: %3;"
         "  border: 1px solid %4; padding: 6px 14px; border-radius: 4px; min-width: 60px; }"
-        "QPushButton:hover { background-color: %5; color: %2; border-color: %5; }"
-        "QPushButton:pressed { background-color: %4; }"
+        // :hover must be gated by :enabled. Without the gate, a disabled
+        // button still gets the hover highlight, which advertises it as
+        // actionable even though Qt swallows clicks on disabled buttons
+        // (QAbstractButton::mousePressEvent early-returns). The Review
+        // Changes button on a clean repo is the canonical example: it's
+        // visible-but-disabled to tell the user "the repo is clean,"
+        // but without this gate the hover highlight lied and made the
+        // user think the button should work. See
+        // tests/features/review_changes_clickable/spec.md.
+        "QPushButton:hover:enabled { background-color: %5; color: %2; border-color: %5; }"
+        "QPushButton:pressed:enabled { background-color: %4; }"
         "QPushButton:default { border: 1px solid %5; }"
         "QPushButton:disabled { color: %6; border-color: %4; background-color: %2; }"
         "QLineEdit { background-color: %1; color: %3; border: 1px solid %4;"
@@ -1931,19 +1956,19 @@ void MainWindow::applyTheme(const QString &name) {
 
     // Status bar labels use theme colors (null-guarded for first call during construction)
     QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
-    // Git branch label gets a "chip" treatment — rounded background + border
-    // + tighter padding — so it reads as a distinct section and doesn't blend
-    // into adjacent transient status messages. User report (2026-04-15):
-    // when a status message appeared beside the branch label, the branch
-    // name visually merged with the message text. The chip gives a clean
-    // visual boundary without needing a Qt QFrame splitter (which would
-    // add vertical separators and look overwrought in a status bar).
+    // Git branch chip: rounded background + border + distinct color.
+    // Uses theme.ansi[6] (cyan) so the chip never collides with the Claude
+    // status label's green (idle), yellow (prompting/tool), blue (thinking),
+    // or magenta (compacting) vocabulary, and never collides with the
+    // transient notification's textPrimary foreground. User feedback
+    // 2026-04-18: "please change the colour of the git branch so as to
+    // not match any status bar notification."
     if (m_statusGitBranch)
         m_statusGitBranch->setStyleSheet(
             QStringLiteral("QLabel { color: %1; background: %2; border: 1px solid %3; "
                           "border-radius: 3px; padding: 1px 8px; margin: 2px 6px 2px 4px; "
                           "font-size: 11px; font-weight: 600; }")
-                .arg(theme.ansi[2].name(), theme.bgSecondary.name(), theme.border.name()));
+                .arg(theme.ansi[6].name(), theme.bgSecondary.name(), theme.border.name()));
     if (m_statusGitSep)
         // Hard divider between the branch chip and the transient-status slot.
         // textSecondary (not border) because border is often nearly invisible
@@ -2281,13 +2306,29 @@ void MainWindow::restoreSessions() {
     QTimer::singleShot(0, this, [this, restoredTabs, idx]() {
         m_tabWidget->setCurrentIndex(idx);
 
-        for (const auto &tab : restoredTabs) {
-            // Recalc grid size now that the widget has its real geometry
-            tab.terminal->forceRecalcSize();
+        // Drain the event queue so QTabWidget's layout (including
+        // QStackedWidget's propagation to all pages) and the main
+        // window's show-event sequence have completed before we
+        // trigger per-tab shell startup. Without this, inactive tab
+        // pages may still carry their default-constructed tiny
+        // geometry, and startShell → recalcGridSize would reflow
+        // their grids to ~3x10, pushing blank rows into scrollback.
+        //
+        // A second processEvents call catches any layout events
+        // that the first iteration queued (layout can take multiple
+        // passes when the main window also re-polishes its
+        // stylesheet). TerminalWidget::recalcGridSize additionally
+        // has a pre-layout guard (see src/terminalwidget.cpp
+        // recalcGridSize) so genuinely-unlaid-out widgets don't
+        // reflow, but draining here is cheap and catches the
+        // common path too.
+        QApplication::processEvents();
+        QApplication::processEvents();
 
+        for (const auto &tab : restoredTabs) {
+            tab.terminal->forceRecalcSize();
             if (!tab.terminal->startShell(tab.startDir))
                 continue;
-
             tab.terminal->update();
             SessionManager::removeSession(tab.tabId);
         }
@@ -2334,41 +2375,90 @@ void MainWindow::applyClaudeStatusLabel() {
     QString text;
     QColor color;
 
-    // Prompt-active overrides the base state — a waiting permission
-    // prompt is what the user needs to see, regardless of whether
-    // ClaudeIntegration last reported idle/thinking/tool-use (the TUI
-    // often sits on a prompt *during* a tool-use sequence, and the
-    // transcript-driven state lags the on-screen reality).
+    // Curated status vocabulary (user spec 2026-04-18):
+    //   idle / thinking / prompting / bash / reading a file / planning /
+    //   auditing / compacting.
+    // Color legend, each distinct from both the branch chip (cyan) and
+    // the transient notification (textPrimary):
+    //   idle      → green   (ansi[2])   "ready, waiting on you"
+    //   thinking  → blue    (ansi[4])   "internal reasoning"
+    //   prompting → yellow  (ansi[3])   "needs your decision"
+    //   tool use  → yellow  (ansi[3])   also "active work"
+    //   planning  → ansi[6] (cyan-ish)  "read-only scoping"
+    //   auditing  → ansi[5] (magenta)   "sweeping for issues"
+    //   compacting→ ansi[5] (magenta)   "rewriting history"
     if (m_claudePromptActive) {
+        // Prompt-active overrides the base state — a waiting permission
+        // prompt is what the user needs to see.
         text = QStringLiteral("Claude: prompting");
-        color = th.ansi[3];  // yellow — "attention needed"
+        color = th.ansi[3];
+    } else if (m_claudePlanMode) {
+        // Plan mode is a user-selected interaction mode (Shift+Tab),
+        // orthogonal to the transcript-derived state. While in plan mode
+        // the assistant can think/read but cannot edit or run commands —
+        // "planning" is the honest label.
+        text = QStringLiteral("Claude: planning");
+        color = th.ansi[6];
+    } else if (m_claudeAuditing) {
+        // Auditing is detected from a recent user message that invoked
+        // the /audit skill in the transcript. Lives beside state because
+        // the user can audit during tool use, thinking, or idle — the
+        // skill's lifecycle is not the same as any single tool.
+        text = QStringLiteral("Claude: auditing");
+        color = th.ansi[5];
     } else {
         switch (m_claudeLastState) {
         case ClaudeState::NotRunning:
             return;  // handled above
         case ClaudeState::Idle:
             text = QStringLiteral("Claude: idle");
-            color = th.ansi[2];  // green
+            color = th.ansi[2];
             break;
         case ClaudeState::Thinking:
-            text = QStringLiteral("Claude: thinking...");
-            color = th.ansi[4];  // blue
+            text = QStringLiteral("Claude: thinking");
+            color = th.ansi[4];
             break;
-        case ClaudeState::ToolUse:
-            text = QStringLiteral("Claude: %1").arg(m_claudeLastDetail);
-            color = th.ansi[3];  // yellow
+        case ClaudeState::ToolUse: {
+            // Map tool name → friendly vocabulary per user spec. Unknown
+            // tools fall through to the raw name so MCP / custom tools
+            // remain legible. Comparison is case-insensitive because
+            // transcript tool names and hook tool names have historically
+            // differed in casing across Claude Code releases.
+            const QString t = m_claudeLastDetail.trimmed();
+            const QString lower = t.toLower();
+            if (lower == QLatin1String("bash")) {
+                text = QStringLiteral("Claude: bash");
+            } else if (lower == QLatin1String("read")) {
+                text = QStringLiteral("Claude: reading a file");
+            } else if (lower == QLatin1String("edit") ||
+                       lower == QLatin1String("write") ||
+                       lower == QLatin1String("notebookedit")) {
+                text = QStringLiteral("Claude: editing");
+            } else if (lower == QLatin1String("grep") ||
+                       lower == QLatin1String("glob")) {
+                text = QStringLiteral("Claude: searching");
+            } else if (lower == QLatin1String("webfetch") ||
+                       lower == QLatin1String("websearch")) {
+                text = QStringLiteral("Claude: browsing");
+            } else if (lower == QLatin1String("task") ||
+                       lower == QLatin1String("agent")) {
+                text = QStringLiteral("Claude: delegating");
+            } else if (t.isEmpty()) {
+                text = QStringLiteral("Claude: thinking");
+            } else {
+                text = QStringLiteral("Claude: %1").arg(t);
+            }
+            color = th.ansi[3];
             break;
+        }
         case ClaudeState::Compacting:
-            // Magenta (ansi[5]) — distinct from idle (green), thinking
-            // (blue), and tool use (yellow) so a glance tells you
-            // "context is being rewritten, don't type yet".
-            text = QStringLiteral("Claude: compacting...");
-            color = th.ansi[5];  // magenta
+            text = QStringLiteral("Claude: compacting");
+            color = th.ansi[5];
             break;
         }
     }
 
-    m_claudeStatusLabel->setFullText(text);
+    m_claudeStatusLabel->setText(text);
     m_claudeStatusLabel->setStyleSheet(
         QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));
     m_claudeStatusLabel->show();
@@ -2439,14 +2529,15 @@ void MainWindow::updateClaudeThemeColors() {
 void MainWindow::setupClaudeIntegration() {
     m_claudeIntegration = new ClaudeIntegration(this);
 
-    // Status bar indicator for Claude Code state
-    m_claudeStatusLabel = new ElidedLabel(this);
-    m_claudeStatusLabel->setElideMode(Qt::ElideRight);
-    // "Claude: <tool-name>" for ToolUse — tool names come unvetted from
-    // the transcript (MCP names, custom tools) and can be long. Cap at
-    // 220px so the label never displaces the context-bar or Review
-    // Changes button. Width tracks m_statusGitBranch for visual parity.
-    m_claudeStatusLabel->setMaximumWidth(220);
+    // Status bar indicator for Claude Code state. Plain QLabel with Fixed
+    // horizontal sizePolicy — the vocabulary is a bounded set of short
+    // labels ("Claude: idle", "Claude: thinking...", "Claude: bash",
+    // "Claude: reading a file", "Claude: planning", "Claude: auditing",
+    // "Claude: prompting", "Claude: compacting..."), so the widget can
+    // grow to fit its natural width without ever needing to elide. The
+    // widget is hidden when the tab's shell has no Claude process.
+    m_claudeStatusLabel = new QLabel(this);
+    m_claudeStatusLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_claudeStatusLabel->setStyleSheet("color: gray; padding: 0 8px; font-size: 11px;");
     m_claudeStatusLabel->hide();
     statusBar()->addPermanentWidget(m_claudeStatusLabel);
@@ -2470,6 +2561,9 @@ void MainWindow::setupClaudeIntegration() {
     // palette force-set for contrast without adding compact-height
     // overrides that would re-introduce the size mismatch.
     m_claudeReviewBtn = new QPushButton("Review Changes", this);
+    // Fixed horizontal sizePolicy — never squeezed for the benefit of
+    // the notification slot. See layout contract at mainwindow.cpp:~320.
+    m_claudeReviewBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_claudeReviewBtn->hide();
     statusBar()->addPermanentWidget(m_claudeReviewBtn);
     connect(m_claudeReviewBtn, &QPushButton::clicked, this, &MainWindow::showDiffViewer);
@@ -2484,6 +2578,18 @@ void MainWindow::setupClaudeIntegration() {
             this, [this](ClaudeState state, const QString &detail) {
         m_claudeLastState = state;
         m_claudeLastDetail = detail;
+        applyClaudeStatusLabel();
+    });
+
+    connect(m_claudeIntegration, &ClaudeIntegration::planModeChanged,
+            this, [this](bool active) {
+        m_claudePlanMode = active;
+        applyClaudeStatusLabel();
+    });
+
+    connect(m_claudeIntegration, &ClaudeIntegration::auditingChanged,
+            this, [this](bool active) {
+        m_claudeAuditing = active;
         applyClaudeStatusLabel();
     });
 
@@ -2558,6 +2664,10 @@ void MainWindow::setupClaudeIntegration() {
         // objectName, so switching tabs mid-prompt left a stranded
         // button group visible on the wrong tab.
         btnWidget->setObjectName(QStringLiteral("claudeAllowBtn"));
+        // Fixed horizontal sizePolicy — must never be squeezed when
+        // the notification slot is wide. See layout principle at
+        // mainwindow.cpp:~320 (user spec 2026-04-18).
+        btnWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         auto *btnLayout = new QHBoxLayout(btnWidget);
         btnLayout->setContentsMargins(0, 0, 0, 0);
         btnLayout->setSpacing(4);
@@ -2859,6 +2969,10 @@ bool MainWindow::event(QEvent *event) {
 void MainWindow::closeEvent(QCloseEvent *event) {
     QPoint realPos = m_posTracker->currentPos();
     m_config.setWindowGeometry(realPos.x(), realPos.y(), width(), height());
+    // Persist tab color sequence unconditionally — independent of
+    // session persistence, so the fallback restore path can apply
+    // colors at next launch even when scrollback isn't saved.
+    saveTabColorSequence();
     saveAllSessions();
     event->accept();
 }
@@ -2871,6 +2985,10 @@ void MainWindow::showStatusMessage(const QString &msg, int timeoutMs) {
     if (!m_statusMessage) return;
     m_statusMessage->setFullText(msg);
     if (m_statusMessageTimer) m_statusMessageTimer->stop();
+    // Negative sentinel = use configured default (user spec 2026-04-18:
+    // "Should have a timeout that can be adjusted in the settings but
+    // with a default of 5 seconds").
+    if (timeoutMs < 0) timeoutMs = m_config.notificationTimeoutMs();
     if (timeoutMs > 0) {
         if (!m_statusMessageTimer) {
             m_statusMessageTimer = new QTimer(this);
@@ -2886,13 +3004,113 @@ void MainWindow::clearStatusMessage() {
     if (m_statusMessageTimer) m_statusMessageTimer->stop();
 }
 
+void MainWindow::refreshStatusBarForActiveTab() {
+    // Single per-tab refresh point. Every status-bar widget falls into
+    // exactly one of three lifecycle categories:
+    //
+    //   A. State widgets (branch chip, process, Claude status, Review
+    //      Changes button). Always re-computed from the new active
+    //      tab's terminal. If the info is absent for this tab, the
+    //      widget hides — it never carries data from the previous tab.
+    //
+    //   B. Transient notifications (m_statusMessage). The transient
+    //      message belongs to the tab it was fired on; switching tabs
+    //      cancels it. (Users explicitly requested this on 2026-04-18.)
+    //
+    //   C. Event-tied widgets (Add-to-allowlist button, transient
+    //      Claude error label). Visible only while the originating
+    //      event is live on its tab. Tab switch destroys them — the
+    //      next permission prompt will re-create a fresh instance
+    //      against whichever tab is then active.
+    //
+    // Called from: onTabChanged, plus any place that wants to force a
+    // full refresh (fileChanged, post-approve/-decline on allowlist,
+    // etc.). Cheap: just reads cached values and schedules the async
+    // git probe.
+    const bool haveStatus = (m_statusGitBranch && m_statusProcess);
+
+    auto *t = focusedTerminal();
+    if (!t) t = currentTerminal();
+
+    // Category B: always cancel transient notifications on tab switch.
+    clearStatusMessage();
+
+    // Category C: event-tied widgets die on tab switch.
+    if (m_claudeErrorLabel) m_claudeErrorLabel->hide();
+    // QWidget (not QPushButton) — the hook-server path uses a QWidget
+    // container named "claudeAllowBtn" holding Allow/Deny/Add-to-allowlist
+    // children; the scroll-scan path creates a bare QPushButton with the
+    // same objectName. Finding by QWidget covers both.
+    const auto staleAllowBtns =
+        statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"));
+    for (QWidget *w : staleAllowBtns) w->deleteLater();
+    if (m_claudePromptActive) {
+        m_claudePromptActive = false;  // applyClaudeStatusLabel called below
+    }
+
+    // No active terminal (last tab closed, mid-teardown) — clear every
+    // Category A widget so the bar doesn't show stale data.
+    if (!t) {
+        if (haveStatus) {
+            m_statusGitBranch->clear();
+            m_statusGitBranch->hide();
+            if (m_statusGitSep) m_statusGitSep->hide();
+            m_statusProcess->clear();
+            m_statusProcess->hide();
+        }
+        if (m_claudeIntegration)
+            m_claudeIntegration->setShellPid(0);
+        m_claudeLastState = ClaudeState::NotRunning;
+        m_claudeLastDetail.clear();
+        m_claudePlanMode = false;
+        m_claudeAuditing = false;
+        applyClaudeStatusLabel();
+        if (m_claudeReviewBtn) m_claudeReviewBtn->hide();
+        if (m_claudeContextBar) m_claudeContextBar->hide();
+        return;
+    }
+
+    // Category A: re-probe state widgets against the new tab.
+    //   - updateStatusBar() handles branch chip + process name
+    //     synchronously (both are cheap file reads).
+    //   - setShellPid() kicks Claude Integration to re-detect Claude
+    //     under this tab's shell; it emits stateChanged signals that
+    //     flow back into applyClaudeStatusLabel via the existing
+    //     connection. State is CLEARED inside setShellPid when the PID
+    //     changes, so the label never carries over from the previous
+    //     tab. See claudeintegration.cpp:58-71.
+    //   - refreshReviewButton() spawns an async `git status` probe;
+    //     the button is hidden immediately and revealed only when the
+    //     probe confirms the new tab's cwd is a git repo.
+    if (m_claudeIntegration)
+        m_claudeIntegration->setShellPid(t->shellPid());
+    // Plan / auditing flags are derived from the transcript and will
+    // be refreshed by the next ClaudeIntegration stateChanged signal,
+    // but clear them now so the wrong-tab's flags don't briefly show
+    // until that signal arrives.
+    m_claudePlanMode = false;
+    m_claudeAuditing = false;
+    applyClaudeStatusLabel();
+    updateStatusBar();
+    refreshReviewButton();
+}
+
 void MainWindow::updateStatusBar() {
     if (!m_statusGitBranch || !m_statusProcess)
         return;
 
     auto *t = focusedTerminal();
     if (!t) t = currentTerminal();
-    if (!t) return;
+    if (!t) {
+        // No active terminal — clear every per-tab widget so nothing
+        // bleeds from a previously-active tab after the last tab closes.
+        m_statusGitBranch->clear();
+        m_statusGitBranch->hide();
+        if (m_statusGitSep) m_statusGitSep->hide();
+        m_statusProcess->clear();
+        m_statusProcess->hide();
+        return;
+    }
 
     // Git branch (read .git/HEAD). Cached per-cwd for 5 seconds — the poll
     // timer runs every 2s, and walking the directory tree + reading HEAD
@@ -2925,10 +3143,11 @@ void MainWindow::updateStatusBar() {
         }
     }
     if (!gitBranch.isEmpty()) {
-        m_statusGitBranch->setFullText(" " + gitBranch);
+        m_statusGitBranch->setText(" " + gitBranch);
         m_statusGitBranch->show();
         if (m_statusGitSep) m_statusGitSep->show();
     } else {
+        m_statusGitBranch->clear();
         m_statusGitBranch->hide();
         if (m_statusGitSep) m_statusGitSep->hide();
     }
@@ -2936,9 +3155,10 @@ void MainWindow::updateStatusBar() {
     // Foreground process
     QString proc = t->foregroundProcess();
     if (!proc.isEmpty()) {
-        m_statusProcess->setFullText(proc);
+        m_statusProcess->setText(proc);
         m_statusProcess->show();
     } else {
+        m_statusProcess->clear();
         m_statusProcess->hide();
     }
 
@@ -3184,6 +3404,42 @@ void MainWindow::persistTabColor(QWidget *tabRoot, const QColor &color) {
         groups.remove(tabId);
     }
     m_config.setTabGroups(groups);
+
+    // Mirror the change into the ordered fallback list so colors
+    // survive restart even with session persistence disabled. The UUID
+    // map above still wins when UUIDs match (session persistence on,
+    // drag-reorder within a session); the ordered list is only
+    // consulted as a fallback at startup.
+    saveTabColorSequence();
+}
+
+void MainWindow::saveTabColorSequence() {
+    if (!m_coloredTabBar) return;
+    QJsonArray seq;
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        const QColor c = m_coloredTabBar->tabColor(i);
+        // Empty string = uncolored slot; preserve the index so later
+        // tabs' colors still land in the correct position on restore.
+        seq.append(c.isValid() ? c.name(QColor::HexArgb) : QString());
+    }
+    m_config.setTabColorSequence(seq);
+}
+
+void MainWindow::applyTabColorSequence() {
+    if (!m_coloredTabBar) return;
+    const QJsonArray seq = m_config.tabColorSequence();
+    const int limit = std::min<int>(seq.size(), m_tabWidget->count());
+    for (int i = 0; i < limit; ++i) {
+        const QString hex = seq.at(i).toString();
+        if (hex.isEmpty()) continue;
+        // Only apply if this tab doesn't already have a color (the
+        // UUID-keyed path may have beaten us to it when session
+        // persistence is on; don't clobber that).
+        if (m_coloredTabBar->tabColor(i).isValid()) continue;
+        const QColor c(hex);
+        if (c.isValid())
+            m_coloredTabBar->setTabColor(i, c);
+    }
 }
 
 void MainWindow::applyPersistedTabColor(QWidget *tabRoot) {
@@ -3220,52 +3476,68 @@ void MainWindow::refreshReviewButton() {
         return;
     }
 
-    // Async git state check. Default-hide while the check is in flight
-    // — hide() rather than disable() here, because non-git repos are
-    // the common case we're trying to stop cluttering the status bar.
-    // The finished handler promotes to visible+enabled only when a
-    // real diff is present.
+    // Policy (user spec 2026-04-18):
+    //   - Not a git repo                      → hide entirely
+    //   - Git repo, clean AND in-sync upstream → visible-but-DISABLED
+    //     (shows the user "this tab tracks a repo" without advertising
+    //     an action there isn't anything to review). The global
+    //     QPushButton:hover:enabled CSS gate at mainwindow.cpp:~1850
+    //     prevents the disabled button from misleadingly lighting up
+    //     on hover.
+    //   - Git repo with dirty worktree OR unpushed commits OR no
+    //     upstream-but-dirty → visible-AND-enabled, clickable.
+    //
+    // One-shot composite probe: `git status --porcelain=v1 -b`. Output
+    // shape:
+    //   ## <branch>...<remote>/<branch> [ahead N, behind M]
+    //   M  changed-file
+    //   ?? untracked-file
+    // The branch header always appears (even on clean repos). Dirty
+    // iff any non-header line is present. Ahead iff header carries
+    // `ahead`. Combines two probes into one subprocess — cheaper than
+    // the previous `git diff --quiet HEAD` which only caught worktree
+    // delta and missed unpushed commits.
     auto *proc = new QProcess(this);
     proc->setWorkingDirectory(cwd);
     proc->setProgram("git");
-    // Compare worktree + index against HEAD. Exit codes:
-    //   0   = clean repo (no diff)
-    //   1   = diff present
-    //   128 = not a git repo / bad ref / git internal error
-    proc->setArguments({"diff", "--quiet", "HEAD"});
+    proc->setArguments({"status", "--porcelain=v1", "-b"});
 
     QPointer<QPushButton> btn = m_claudeReviewBtn;
     QPointer<QProcess> guard = proc;
     connect(proc, &QProcess::finished, this,
             [btn, guard](int exitCode, QProcess::ExitStatus status) {
         if (btn) {
-            if (status != QProcess::NormalExit) {
-                btn->hide();           // git crashed — treat as no-repo
-            } else if (exitCode == 1) {
-                btn->setEnabled(true); // diff present
-                btn->show();
-            } else if (exitCode == 0) {
-                // Clean repo — hide. Pre-fix this branch left the button
-                // visible-but-disabled "so user sees Claude edited
-                // something", but a disabled QPushButton silently swallows
-                // mouse clicks (no clicked() signal, so showDiffViewer's
-                // 0.6.29 silent-return-with-flash guards never fire). The
-                // global QPushButton:hover rule (mainwindow.cpp:~1852) is
-                // not :enabled-gated either, so the disabled button still
-                // highlighted on hover — looking actionable while doing
-                // nothing. Hide-on-clean is the honest signal: the button
-                // reappears via the next 2-second refresh / fileChanged
-                // tick when a real diff appears.
+            if (status != QProcess::NormalExit || exitCode == 128) {
+                btn->hide();           // not a git repo / git crash
+            } else if (exitCode != 0) {
                 btn->hide();
             } else {
-                btn->hide();           // 128 / other — not a git repo
+                const QByteArray raw = guard ? guard->readAllStandardOutput()
+                                              : QByteArray();
+                const QList<QByteArray> lines = raw.split('\n');
+                bool dirty = false;
+                bool ahead = false;
+                for (const QByteArray &ln : lines) {
+                    if (ln.isEmpty()) continue;
+                    if (ln.startsWith("##")) {
+                        // Branch header. "ahead N" means local has
+                        // unpushed commits; "behind N" alone does not
+                        // indicate reviewable local work (nothing to
+                        // push), so we ignore it for the enabled state.
+                        if (ln.contains("[ahead ") || ln.contains(", ahead "))
+                            ahead = true;
+                    } else {
+                        dirty = true;
+                    }
+                }
+                btn->setEnabled(dirty || ahead);
+                btn->show();
             }
         }
         if (guard) guard->deleteLater();
     });
     connect(proc, &QProcess::errorOccurred, this,
             [btn, guard](QProcess::ProcessError) {
-        // git missing / perm denied / process never started.
         if (btn) btn->hide();
         if (guard) guard->deleteLater();
     });
@@ -3273,13 +3545,11 @@ void MainWindow::refreshReviewButton() {
 }
 
 void MainWindow::showDiffViewer() {
+    // Diagnostic — confirms the click handler fired.
+    showStatusMessage(QStringLiteral("Review Changes: opening…"), 1500);
+
     auto *t = focusedTerminal();
     if (!t) {
-        // Earliest silent-return site in the handler. Previously the
-        // Review Changes button would do nothing and give no feedback
-        // whenever the current tab was closed mid-click or the terminal
-        // widget couldn't be resolved — user-reported as "no window pops
-        // up." Now the user at least sees *why*.
         showStatusMessage("Review Changes: no active terminal", 4000);
         return;
     }
@@ -3290,79 +3560,44 @@ void MainWindow::showDiffViewer() {
         return;
     }
 
-    // Run git diff to get changes. Combine working-tree and staged diffs
-    // in a single pass (`git diff HEAD` = tracked-file delta between
-    // worktree AND index vs HEAD) so the viewer doesn't silently hide
-    // half the changes when the user has ONLY staged content (which the
-    // previous --stat --patch (worktree only) returned empty for, then
-    // fell through to --cached — losing the stat summary). `HEAD` covers
-    // both staged and unstaged in one command and matches what
-    // refreshReviewButton() already uses as its enablement probe.
-    QProcess git;
-    git.setWorkingDirectory(cwd);
-    git.setProgram("git");
-    git.setArguments({"diff", "--stat", "--patch", "HEAD"});
-    git.start();
-    if (!git.waitForFinished(5000)) {
-        showStatusMessage(
-            QString("Review Changes: git didn't finish within 5 s (cwd: %1)").arg(cwd),
-            4000);
-        return;
-    }
-    if (git.exitStatus() != QProcess::NormalExit || git.exitCode() > 1) {
-        // exit 128 = not a git repo / bad ref; shouldn't happen if button
-        // was enabled, but guard anyway so "nothing happens" never repeats.
-        QString err = QString::fromUtf8(git.readAllStandardError()).trimmed();
-        showStatusMessage(
-            QString("Review Changes: git failed (%1)")
-                .arg(err.isEmpty() ? QString("exit %1").arg(git.exitCode()) : err),
-            5000);
-        refreshReviewButton();
-        return;
-    }
-
-    QString diff = QString::fromUtf8(git.readAllStandardOutput()).trimmed();
-
-    if (diff.isEmpty()) {
-        showStatusMessage("No changes detected in git", 3000);
-        // 0.6.22 — re-check the button state so a second click doesn't
-        // repeat the same toast. refreshReviewButton will disable (or
-        // hide) as appropriate; future fileChanged events / tab switches
-        // re-run it and flip back to enabled when diffs exist.
-        refreshReviewButton();
-        return;
-    }
-
-    // Show in a dialog with syntax coloring
+    // Build the dialog BEFORE running any git command. Plain
+    // Qt::Dialog flags — no modality (ApplicationModal was causing
+    // flaky first-open on KWin when combined with the frameless
+    // parent + focus-redirect lambda; the async git probes were
+    // fine, but Qt's modal state transition doesn't compose well
+    // with our chrome-auto-refocus path). Instead of Qt-side
+    // modality, we DISABLE the Review Changes button until the
+    // dialog closes — simpler, no Qt modal state machine, and
+    // satisfies the user spec "preventing further clicks until
+    // the dialog is closed" at the binding site (the button).
     auto *dialog = new QDialog(this);
+    dialog->setObjectName(QStringLiteral("reviewChangesDialog"));
     dialog->setWindowTitle("Review Changes");
     dialog->resize(800, 600);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    // Block re-entry via the button. Re-enable when the dialog is
+    // destroyed (WA_DeleteOnClose → destroyed signal fires after
+    // the widget tears down). Using destroyed() rather than
+    // finished()/closeEvent lets us catch all close paths —
+    // window-manager X button, Escape, Alt-F4, Close button —
+    // without having to wire each one individually.
+    if (m_claudeReviewBtn) m_claudeReviewBtn->setEnabled(false);
+    QPointer<QPushButton> reviewBtnGuard(m_claudeReviewBtn);
+    connect(dialog, &QObject::destroyed, this, [this, reviewBtnGuard]() {
+        if (reviewBtnGuard) {
+            reviewBtnGuard->setEnabled(true);
+        }
+        // Re-run refreshReviewButton so the enabled state reflects
+        // the current git state (may have flipped during the time
+        // the dialog was open).
+        refreshReviewButton();
+    });
 
     auto *layout = new QVBoxLayout(dialog);
     auto *viewer = new QTextEdit(dialog);
     viewer->setReadOnly(true);
     viewer->setFont(QFont("Monospace", 10));
-
-    // Simple diff colorization using theme colors
-    const Theme &th = Themes::byName(m_currentTheme);
-    QString html = QStringLiteral("<pre style='color: %1; background: %2;'>")
-                       .arg(th.textPrimary.name(), th.bgPrimary.name());
-    for (const QString &line : diff.split('\n')) {
-        QString escaped = line.toHtmlEscaped();
-        if (line.startsWith('+') && !line.startsWith("+++"))
-            html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[2].name()) + escaped + "</span>\n";
-        else if (line.startsWith('-') && !line.startsWith("---"))
-            html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[1].name()) + escaped + "</span>\n";
-        else if (line.startsWith("@@"))
-            html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[4].name()) + escaped + "</span>\n";
-        else if (line.startsWith("diff ") || line.startsWith("index "))
-            html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[3].name()) + escaped + "</span>\n";
-        else
-            html += escaped + "\n";
-    }
-    html += "</pre>";
-    viewer->setHtml(html);
 
     auto *btnBox = new QHBoxLayout;
     auto *closeBtn = new QPushButton("Close", dialog);
@@ -3370,36 +3605,160 @@ void MainWindow::showDiffViewer() {
     btnBox->addStretch();
     btnBox->addWidget(copyBtn);
     btnBox->addWidget(closeBtn);
-
     connect(closeBtn, &QPushButton::clicked, dialog, &QDialog::close);
-    connect(copyBtn, &QPushButton::clicked, this, [diff]() {
-        QApplication::clipboard()->setText(diff);
-    });
 
     layout->addWidget(viewer);
     layout->addLayout(btnBox);
+
+    // Show NOW. No git has run yet; the viewer carries a loading
+    // placeholder so the dialog isn't empty on first paint. raise()
+    // + activateWindow() bring it above the frameless parent; the
+    // WindowStaysOnTopHint flag already set in the flags keeps it
+    // there regardless of KWin stacking heuristics.
+    const Theme &th = Themes::byName(m_currentTheme);
+    viewer->setHtml(QStringLiteral(
+        "<pre style='color: %1; background: %2;'>"
+        "<span style='color: %3;'>Loading git status, diff, and "
+        "unpushed commits for:</span>\n  %4\n\n"
+        "<span style='color: %3;'>(Running `git status`, `git diff "
+        "HEAD`, and `git log @{u}..HEAD` in the background…)</span>"
+        "</pre>")
+        .arg(th.textPrimary.name(), th.bgPrimary.name(),
+             th.textSecondary.name(), cwd.toHtmlEscaped()));
     dialog->show();
-    // raise() + activateWindow() are required here, not cosmetic. The
-    // Review Changes button lives on the status bar of a frameless
-    // QMainWindow (see line 74: Qt::FramelessWindowHint). When a QDialog
-    // is spawned directly from a status-bar button click, KWin's window
-    // stacking heuristics can place the new dialog BEHIND the frameless
-    // parent — the transient-for relationship that normally promotes
-    // child dialogs to the top of the stacking order is brittle without
-    // a proper WM-decorated parent. Compounded by the focusChanged
-    // lambda at ~line 411 which queued a `terminal->setFocus()` when
-    // the button took focus; that queued refocus fires AFTER show()
-    // returns and can pull focus (and on KWin, raise order) back to
-    // the main window. Symptom: user clicks "Review Changes", button
-    // highlights, but "no window comes up" — it is up, just obscured.
-    // raise() forces the dialog to the top of the stacking order;
-    // activateWindow() makes the dialog the input-focus target so the
-    // queued terminal-refocus becomes a no-op (the terminal isn't in
-    // the focus chain anymore because the dialog owns it). Sibling
-    // dialogs (AI at line ~776, Claude Transcript at ~830) already
-    // follow this pattern; showDiffViewer was the outlier.
     dialog->raise();
     dialog->activateWindow();
+
+    // Shared state for the three async probes. When all three
+    // finish (or error out), we rebuild the viewer HTML with the
+    // real data and re-install the copy handler. std::shared_ptr
+    // because lambdas outlive any single QProcess callback.
+    struct ProbeState {
+        QString cwd;
+        QString status;
+        QString diff;
+        QString unpushed;
+        int pending = 3;
+    };
+    auto state = std::make_shared<ProbeState>();
+    state->cwd = cwd;
+
+    QPointer<QDialog> dlgGuard(dialog);
+    QPointer<QTextEdit> viewerGuard(viewer);
+    QPointer<QPushButton> copyGuard(copyBtn);
+    const QString themeName = m_currentTheme;
+
+    // Finalizer: called once per probe. When pending hits 0, render
+    // the full HTML.
+    auto finalize = [state, dlgGuard, viewerGuard, copyGuard, themeName]() {
+        if (--state->pending > 0) return;
+        if (!dlgGuard || !viewerGuard) return;
+
+        const Theme &th = Themes::byName(themeName);
+        QString html = QStringLiteral("<pre style='color: %1; background: %2;'>")
+                           .arg(th.textPrimary.name(), th.bgPrimary.name());
+        auto section = [&html, &th](const QString &title) {
+            html += QStringLiteral("<span style='color: %1; font-weight:600;'>"
+                                  "━━ %2 ━━</span>\n")
+                        .arg(th.ansi[6].name(), title.toHtmlEscaped());
+        };
+        if (!state->status.isEmpty()) {
+            section(QStringLiteral("Status"));
+            for (const QString &line : state->status.split('\n')) {
+                QString esc = line.toHtmlEscaped();
+                if (line.startsWith("##"))
+                    html += QStringLiteral("<span style='color: %1;'>")
+                                .arg(th.ansi[4].name()) + esc + "</span>\n";
+                else
+                    html += esc + "\n";
+            }
+            html += "\n";
+        }
+        if (!state->unpushed.isEmpty()) {
+            section(QStringLiteral("Unpushed commits"));
+            for (const QString &line : state->unpushed.split('\n'))
+                html += QStringLiteral("<span style='color: %1;'>")
+                            .arg(th.ansi[3].name())
+                     + line.toHtmlEscaped() + "</span>\n";
+            html += "\n";
+        }
+        if (!state->diff.isEmpty()) {
+            section(QStringLiteral("Diff"));
+            for (const QString &line : state->diff.split('\n')) {
+                QString esc = line.toHtmlEscaped();
+                if (line.startsWith('+') && !line.startsWith("+++"))
+                    html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[2].name()) + esc + "</span>\n";
+                else if (line.startsWith('-') && !line.startsWith("---"))
+                    html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[1].name()) + esc + "</span>\n";
+                else if (line.startsWith("@@"))
+                    html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[4].name()) + esc + "</span>\n";
+                else if (line.startsWith("diff ") || line.startsWith("index "))
+                    html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[3].name()) + esc + "</span>\n";
+                else
+                    html += esc + "\n";
+            }
+        }
+        if (state->status.isEmpty() && state->diff.isEmpty() && state->unpushed.isEmpty()) {
+            html += QStringLiteral(
+                "<span style='color: %1;'>No status, diff, or unpushed commits "
+                "to report.</span>\n"
+                "<span style='color: %2;'>If you expected changes here, check "
+                "that `git status` works in this directory:\n  %3</span>\n")
+                .arg(th.ansi[3].name(), th.textSecondary.name(),
+                     state->cwd.toHtmlEscaped());
+        }
+        html += "</pre>";
+        viewerGuard->setHtml(html);
+
+        if (copyGuard) {
+            // Wire the Copy button now that the data is known. Disconnect
+            // first so we don't stack handlers if finalize were ever
+            // invoked twice (shouldn't happen, but cheap insurance).
+            copyGuard->disconnect();
+            QObject::connect(copyGuard, &QPushButton::clicked, copyGuard, [state]() {
+                QString combined;
+                if (!state->status.isEmpty())
+                    combined += "# Status\n" + state->status + "\n\n";
+                if (!state->unpushed.isEmpty())
+                    combined += "# Unpushed\n" + state->unpushed + "\n\n";
+                if (!state->diff.isEmpty())
+                    combined += "# Diff\n" + state->diff;
+                QApplication::clipboard()->setText(combined);
+            });
+        }
+    };
+
+    // Spawn one async QProcess per probe. Each one writes into its
+    // slot on the shared ProbeState when it finishes, then calls
+    // finalize(). No blocking on the UI thread.
+    auto runAsync = [this, cwd, finalize](const QStringList &args,
+                                           QString ProbeState::*slot,
+                                           ProbeState *st) {
+        auto *p = new QProcess(this);
+        p->setWorkingDirectory(cwd);
+        p->setProgram("git");
+        p->setArguments(args);
+        QPointer<QProcess> pg = p;
+        auto st_ptr = st;  // raw — lifetime is held by the shared_ptr
+                           // captured through `finalize`
+        QObject::connect(p,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [st_ptr, slot, pg, finalize](int /*code*/, QProcess::ExitStatus /*es*/) {
+                if (pg) st_ptr->*slot = QString::fromUtf8(pg->readAllStandardOutput()).trimmed();
+                if (pg) pg->deleteLater();
+                finalize();
+            });
+        QObject::connect(p, &QProcess::errorOccurred, this,
+            [pg, finalize](QProcess::ProcessError) {
+                if (pg) pg->deleteLater();
+                finalize();
+            });
+        p->start();
+    };
+
+    runAsync({"status", "-b", "--short"},                       &ProbeState::status,   state.get());
+    runAsync({"diff", "--stat", "--patch", "HEAD"},              &ProbeState::diff,     state.get());
+    runAsync({"log", "--oneline", "--decorate", "@{u}..HEAD"},   &ProbeState::unpushed, state.get());
 }
 
 // --- Hot-Reload Configuration ---

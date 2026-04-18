@@ -175,9 +175,33 @@ void ClaudeAllowlistDialog::prefillRule(const QString &rule) {
     m_ruleInput->setText(finalRule);
     m_ruleInput->selectAll();
 
-    // Auto-add to the Allow list if not already covered
-    if (!finalRule.isEmpty()) {
-        addRuleWithCompanion(m_allowList, finalRule);
+    if (finalRule.isEmpty()) return;
+
+    // Pre-check for duplicates / subsumption BEFORE auto-adding so the
+    // user always sees feedback when the rule is already present.
+    // Without the hint, prefill would silently drop the auto-add (Add
+    // button became a no-op) and the user couldn't tell whether the
+    // rule was saved or already existed. User spec 2026-04-18: "the
+    // pop-up window should check for duplicate commands first before
+    // adding any command."
+    const int preCount = m_allowList->count();
+    if (isDuplicate(m_allowList, finalRule)) {
+        showValidationHint(
+            QStringLiteral("Already in the Allow list: %1").arg(finalRule), false);
+        return;
+    }
+    QString subsumer = findSubsumingRule(m_allowList, finalRule);
+    if (!subsumer.isEmpty()) {
+        showValidationHint(
+            QStringLiteral("Already covered by existing rule: %1").arg(subsumer),
+            false);
+        return;
+    }
+    addRuleWithCompanion(m_allowList, finalRule);
+    if (m_allowList->count() > preCount) {
+        showValidationHint(
+            QStringLiteral("Added to Allow list. Click Save to persist."),
+            false);
     }
 }
 

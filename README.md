@@ -401,7 +401,14 @@ printf(userInput);
 
 Deep integration with [Claude Code](https://claude.ai/claude-code) for AI-assisted development workflows.
 
-**Live Status Monitoring** -- The status bar shows Claude's current state (idle, thinking, tool use) with context window usage. Process detection via `/proc` polling automatically tracks running Claude sessions.
+**Live Status Monitoring** -- The status bar shows Claude's current state (idle, thinking, bash, reading a file, editing, searching, planning, auditing, prompting, compacting) with context window usage. Process detection via `/proc` polling automatically tracks running Claude sessions; transcript state is derived from `~/.claude/projects/<encoded-cwd>/*.jsonl` via an inotify watcher with a 50 ms debounce.
+
+**Real-time status hooks (opt-in)** -- For sub-second state transitions, install the Claude Code hooks from **Settings > General > Claude Code > Install Claude Code status-bar hooks**. That one-click action writes:
+
+1. A helper script at `~/.config/ants-terminal/hooks/claude-forward.sh` that reads a hook-event JSON from stdin, walks up the process tree to find the parent `ants-terminal`, and forwards the event to that instance's Unix socket (`/tmp/ants-claude-hooks-<pid>`).
+2. Hook entries in `~/.claude/settings.json` under `"hooks"` for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `PreCompact`, each pointing at the helper script.
+
+Existing hooks you have configured (e.g. `UserPromptSubmit`) are preserved -- the installer only appends, and it's idempotent (re-running won't double-wire the same events). Without hooks installed, Ants Terminal falls back to the transcript-file watcher path and still delivers updates within ~100 ms of each event.
 
 **Project & Session Browser** (**Ctrl+Shift+J**) -- Browse all your Claude Code projects discovered from `~/.claude/projects/`. For each project, see every session with its first message summary, timestamp, file size, and active status. Resume any session, continue the latest, or fork a session -- all directly from the terminal.
 

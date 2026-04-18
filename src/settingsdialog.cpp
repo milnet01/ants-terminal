@@ -10,8 +10,14 @@
 #include <QHeaderView>
 #include <QColorDialog>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QScrollArea>
+#include <QDir>
+#include <QFile>
+#include <QSaveFile>
+#include <QStandardPaths>
+#include <QMessageBox>
 
 SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
     : QDialog(parent), m_config(config) {
@@ -117,6 +123,35 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     m_imagePasteDir = new QLineEdit(tab);
     m_imagePasteDir->setPlaceholderText("~/Pictures/ClaudePaste");
     layout->addRow("Image Paste Dir:", m_imagePasteDir);
+
+    // Status-bar notification display time. User spec 2026-04-18:
+    // "should have a timeout that can be adjusted in the settings with
+    // a default of 5 seconds." Applies only to the transient message
+    // slot (the ephemeral "Config loaded", "Theme: Dark" kind of toast).
+    // The git branch chip, Claude status, and permission prompt all
+    // have independent lifecycles and are not affected by this value.
+    m_notificationTimeout = new QSpinBox(tab);
+    m_notificationTimeout->setRange(1, 60);
+    m_notificationTimeout->setSuffix(" s");
+    m_notificationTimeout->setToolTip(
+        "How long transient status-bar toasts remain visible.\n"
+        "Pinned messages (Claude permission prompts) are unaffected.");
+    layout->addRow("Notification Timeout:", m_notificationTimeout);
+
+    // Claude Code hook installer (0.6.33, user-requested 2026-04-18).
+    // Writes ~/.config/ants-terminal/hooks/claude-forward.sh and merges
+    // hook entries into ~/.claude/settings.json so that tool-use /
+    // permission / session events reach the ants-terminal status bar in
+    // real time instead of via the ~50ms transcript-file debounce path.
+    // See README §"Claude Code integration" for the full scheme.
+    m_installClaudeHooksBtn = new QPushButton("Install Claude Code status-bar hooks", tab);
+    m_claudeHooksStatus = new QLabel(tab);
+    m_claudeHooksStatus->setWordWrap(true);
+    connect(m_installClaudeHooksBtn, &QPushButton::clicked,
+            this, &SettingsDialog::installClaudeHooks);
+    layout->addRow("Claude Code:", m_installClaudeHooksBtn);
+    layout->addRow(QString(), m_claudeHooksStatus);
+    refreshClaudeHooksStatus();
 }
 
 void SettingsDialog::setupAppearanceTab(QWidget *tab) {
@@ -614,6 +649,8 @@ void SettingsDialog::loadSettings() {
     m_confirmMultilinePaste->setChecked(m_config->confirmMultilinePaste());
     m_editorCmd->setText(m_config->editorCommand());
     m_imagePasteDir->setText(m_config->imagePasteDir());
+    if (m_notificationTimeout)
+        m_notificationTimeout->setValue(m_config->notificationTimeoutMs() / 1000);
 
     int fmtIdx = m_tabTitleFormat->findData(m_config->tabTitleFormat());
     if (fmtIdx >= 0) m_tabTitleFormat->setCurrentIndex(fmtIdx);
@@ -709,6 +746,8 @@ void SettingsDialog::applySettings() {
     m_config->setEditorCommand(m_editorCmd->text().trimmed());
     m_config->setImagePasteDir(m_imagePasteDir->text().trimmed());
     m_config->setTabTitleFormat(m_tabTitleFormat->currentData().toString());
+    if (m_notificationTimeout)
+        m_config->setNotificationTimeoutMs(m_notificationTimeout->value() * 1000);
 
     // Appearance
     m_config->setFontFamily(m_fontFamily->currentFont().family());
@@ -790,4 +829,188 @@ void SettingsDialog::applySettings() {
     }
 
     emit settingsChanged();
+}
+
+// --- Claude Code hook installer ---
+//
+// Two-file operation (idempotent — running it twice does no extra work):
+//
+//   1. Writes a tiny shell script at
+//      ~/.config/ants-terminal/hooks/claude-forward.sh
+//      The script reads a Claude-Code hook-event JSON from stdin, walks
+//      up the process tree to find the nearest `ants-terminal`, and
+//      forwards the JSON to that instance's Unix socket at
+//      /tmp/ants-claude-hooks-<pid>. If no ants-terminal is found (user
+//      ran `claude` outside ants), the script silently exits 0.
+//
+//   2. Merges five hook entries into the user's existing
+//      ~/.claude/settings.json under `"hooks"` — SessionStart,
+//      PreToolUse, PostToolUse, Stop, PreCompact — each pointing at the
+//      script. UserPromptSubmit and other hooks the user already has are
+//      preserved.
+//
+// The status-bar update path then becomes: Claude emits event → hook
+// fires → script forwards → QLocalServer in ants-terminal fires
+// processHookEvent → applyClaudeStatusLabel() re-renders within one
+// event loop iteration. Replaces the 50 ms-debounced transcript-file
+// watcher for users who opt in.
+static QString hookScriptPath() {
+    return QDir::homePath() + "/.config/ants-terminal/hooks/claude-forward.sh";
+}
+
+static QString claudeSettingsPath() {
+    return QDir::homePath() + "/.claude/settings.json";
+}
+
+void SettingsDialog::refreshClaudeHooksStatus() {
+    if (!m_claudeHooksStatus) return;
+    const bool scriptPresent = QFile::exists(hookScriptPath());
+    bool hooksWired = false;
+    QFile sf(claudeSettingsPath());
+    if (sf.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(sf.readAll());
+        sf.close();
+        QJsonObject hooks = doc.object().value("hooks").toObject();
+        hooksWired = hooks.contains(QStringLiteral("PreToolUse")) &&
+                     hooks.contains(QStringLiteral("PostToolUse")) &&
+                     hooks.contains(QStringLiteral("Stop"));
+    }
+    if (scriptPresent && hooksWired) {
+        m_claudeHooksStatus->setText(
+            QStringLiteral("✓ Hooks installed. Status updates in real time."));
+    } else if (scriptPresent) {
+        m_claudeHooksStatus->setText(
+            QStringLiteral("Helper script present but ~/.claude/settings.json "
+                          "is missing some hook entries."));
+    } else {
+        m_claudeHooksStatus->setText(
+            QStringLiteral("Not installed. Status updates fall back to the "
+                          "~50 ms transcript-file watcher."));
+    }
+}
+
+void SettingsDialog::installClaudeHooks() {
+    const QString scriptPath = hookScriptPath();
+    const QString scriptDir = QFileInfo(scriptPath).absolutePath();
+    if (!QDir().mkpath(scriptDir)) {
+        QMessageBox::warning(this, "Install hooks",
+            QString("Could not create %1").arg(scriptDir));
+        return;
+    }
+
+    // Helper script. Uses Python3 for the socket send because every
+    // Linux desktop that runs Claude Code also has Python3 in the base
+    // install; socat would work but isn't universally present. Timeouts
+    // prevent a long-running hook from blocking Claude Code's turn.
+    const QString script = QStringLiteral(
+        "#!/bin/bash\n"
+        "# Ants Terminal — Claude Code hook forwarder.\n"
+        "# Walks up the process tree to find the parent ants-terminal\n"
+        "# and forwards the hook event JSON on stdin to its Unix socket.\n"
+        "pid=$PPID\n"
+        "for _ in $(seq 1 20); do\n"
+        "    comm=$(cat /proc/$pid/comm 2>/dev/null) || break\n"
+        "    if [[ \"$comm\" == \"ants-terminal\" ]]; then\n"
+        "        sock=\"/tmp/ants-claude-hooks-$pid\"\n"
+        "        if [[ -S \"$sock\" ]]; then\n"
+        "            timeout 1 python3 -c \"\n"
+        "import socket, sys\n"
+        "s = socket.socket(socket.AF_UNIX)\n"
+        "s.settimeout(1.0)\n"
+        "s.connect('$sock')\n"
+        "s.sendall(sys.stdin.buffer.read())\n"
+        "s.shutdown(socket.SHUT_WR)\n"
+        "s.close()\n"
+        "\" 2>/dev/null\n"
+        "            exit 0\n"
+        "        fi\n"
+        "    fi\n"
+        "    ppid=$(awk '{print $4}' /proc/$pid/stat 2>/dev/null) || break\n"
+        "    [[ -z \"$ppid\" || \"$ppid\" -le 1 ]] && break\n"
+        "    pid=$ppid\n"
+        "done\n"
+        "exit 0\n");
+
+    QSaveFile sf(scriptPath);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QMessageBox::warning(this, "Install hooks",
+            QString("Could not write %1").arg(scriptPath));
+        return;
+    }
+    sf.write(script.toUtf8());
+    if (!sf.commit()) {
+        QMessageBox::warning(this, "Install hooks",
+            QString("Write failed for %1").arg(scriptPath));
+        return;
+    }
+    QFile::setPermissions(scriptPath,
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+        QFileDevice::ExeOwner | QFileDevice::ReadGroup |
+        QFileDevice::ReadOther | QFileDevice::ExeGroup |
+        QFileDevice::ExeOther);
+
+    // Merge hook entries into ~/.claude/settings.json, preserving any
+    // existing hooks the user has configured (UserPromptSubmit, per-
+    // project hooks, etc.). If the settings file is missing/malformed
+    // we start from an empty object rather than erroring out — Claude
+    // Code tolerates a missing file.
+    const QString settingsPath = claudeSettingsPath();
+    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
+    QJsonObject root;
+    QFile rf(settingsPath);
+    if (rf.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(rf.readAll());
+        rf.close();
+        if (doc.isObject()) root = doc.object();
+    }
+    QJsonObject hooks = root.value("hooks").toObject();
+    auto makeEntry = [&scriptPath]() {
+        QJsonObject hook;
+        hook["type"] = "command";
+        hook["command"] = scriptPath;
+        hook["timeout"] = 2;
+        QJsonArray hookArr; hookArr.append(hook);
+        QJsonObject wrapper; wrapper["hooks"] = hookArr;
+        QJsonArray outer; outer.append(wrapper);
+        return outer;
+    };
+    for (const QString &event : QStringList{"SessionStart", "PreToolUse",
+                                             "PostToolUse", "Stop",
+                                             "PreCompact"}) {
+        // Only overwrite if our script isn't already referenced — keeps
+        // user-added custom hooks on the same event intact.
+        QJsonArray existing = hooks.value(event).toArray();
+        bool ourHookPresent = false;
+        for (const QJsonValue &v : existing) {
+            QJsonArray inner = v.toObject().value("hooks").toArray();
+            for (const QJsonValue &h : inner) {
+                if (h.toObject().value("command").toString() == scriptPath) {
+                    ourHookPresent = true;
+                    break;
+                }
+            }
+            if (ourHookPresent) break;
+        }
+        if (ourHookPresent) continue;
+        existing.append(makeEntry().first().toObject());
+        hooks[event] = existing;
+    }
+    root["hooks"] = hooks;
+
+    QSaveFile settingsOut(settingsPath);
+    if (!settingsOut.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QMessageBox::warning(this, "Install hooks",
+            QString("Could not write %1").arg(settingsPath));
+        return;
+    }
+    settingsOut.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    settingsOut.commit();
+
+    refreshClaudeHooksStatus();
+    QMessageBox::information(this, "Install hooks",
+        QStringLiteral("Installed Ants Terminal status-bar hooks.\n\n"
+                      "Script: %1\n"
+                      "Settings: %2\n\n"
+                      "Real-time Claude status updates will take effect for new Claude Code sessions.")
+            .arg(scriptPath, settingsPath));
 }

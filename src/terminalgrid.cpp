@@ -1813,10 +1813,21 @@ void TerminalGrid::resize(int rows, int cols) {
             rewrap(logical, reflowed);
         }
 
-        // If we have more reflowed lines than fit on screen, push excess to scrollback
+        // If we have more reflowed lines than fit on screen, push excess to scrollback.
+        // Skip entirely-blank lines — pushing them just pollutes scrollback
+        // with empty rows the user sees as "scrollable blank lines above the
+        // prompt" after a restore where the saved screen was blank (e.g.
+        // cleared tabs from the previous session). User report 2026-04-18.
+        auto isBlankLine = [](const TermLine &tl) {
+            for (const Cell &c : tl.cells)
+                if (c.codepoint != ' ' && c.codepoint != 0) return false;
+            return tl.combining.empty();
+        };
         while (static_cast<int>(reflowed.size()) > rows) {
-            m_scrollback.push_back(std::move(reflowed.front()));
+            TermLine front = std::move(reflowed.front());
             reflowed.erase(reflowed.begin());
+            if (!isBlankLine(front))
+                m_scrollback.push_back(std::move(front));
         }
 
         // Build final screen

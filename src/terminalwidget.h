@@ -363,6 +363,23 @@ private:
     // Scrollback viewing
     int m_scrollOffset = 0;
 
+    // Frozen-view snapshot (0.6.33, user spec 2026-04-18). When the
+    // user scrolls up (m_scrollOffset transitions 0 → >0), the current
+    // screen rows are captured into m_frozenScreenRows + the
+    // combining-char side-map into m_frozenScreenCombining. While the
+    // snapshot is populated, cellAtGlobal / combiningAt read screen
+    // rows from the snapshot instead of the live grid — so incoming
+    // PTY output cannot change what the user sees. When
+    // m_scrollOffset returns to 0 (or resize / alt-screen / RIS
+    // events invalidate the snapshot), the snapshot is cleared and
+    // live reads resume. Shape mirrors TerminalGrid's screen-row
+    // storage so the intercept is a trivial index lookup.
+    std::vector<std::vector<Cell>> m_frozenScreenRows;
+    std::vector<std::unordered_map<int, std::vector<uint32_t>>>
+        m_frozenScreenCombining;
+    void captureScreenSnapshot();
+    void clearScreenSnapshot();
+
     // Theme cursor color
     QColor m_cursorColor{0x89, 0xB4, 0xFA};
 
@@ -459,6 +476,17 @@ private:
     // Claude Code permission detection
     QTimer m_claudeDetectTimer;
     QString m_lastDetectedRule;
+    // Debounce counter for the "footer went off screen" retraction path.
+    // Claude Code v2.1+ repaints its TUI several times per second while
+    // a prompt is live; individual repaints can transiently push the
+    // footer out of the 12-line lookback window, making one scan miss
+    // even though the prompt is still on screen. Requiring N
+    // consecutive misses before retracting the "Add to allowlist"
+    // button eliminates the flicker without adding noticeable latency
+    // to a real dismiss (N * 300 ms poll ≈ 900 ms — the button persists
+    // ~1s past the approve/decline, well below the user's frustration
+    // threshold). 0 means "footer visible last scan."
+    int m_claudePermissionMissedCount = 0;
     void checkForClaudePermissionPrompt();
 
     // Broadcast callback

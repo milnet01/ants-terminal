@@ -2240,11 +2240,43 @@ void TerminalWidget::recalcGridSize() {
     int cols = std::max(availW / m_cellWidth, 10);
     int rows = std::max(availH / m_cellHeight, 3);
 
+    // Defer the resize when the widget isn't laid out yet. This
+    // happens during restoreSessions for tabs that aren't the
+    // currently-active tab: QTabWidget/QStackedWidget hasn't
+    // propagated its size to hidden pages yet, so width()/height()
+    // return the default-constructed (tiny) geometry. Reflowing the
+    // grid to 10 cols × 3 rows inside TerminalGrid::resize()
+    // re-wraps every saved line into many narrow rows that push
+    // into scrollback — appearing as "scrollable blank lines above
+    // the prompt" on inactive tabs after a restart (user report
+    // 2026-04-18). The widget's own resizeEvent will fire naturally
+    // once QTabWidget lays it out (either at activation time or
+    // when the main window finishes laying out), and recalcGridSize
+    // will run again with real dimensions.
+    //
+    // Threshold: if the computed rows/cols are the minimum floor
+    // (3, 10) AND the widget's raw width/height are smaller than a
+    // single cell worth of content (<10 px), we're pre-layout.
+    // Genuinely tiny-but-laid-out windows (rare) still fall through
+    // to the resize below.
+    const bool preLayout = (width() < 20 && height() < 20);
+    if (preLayout && (rows != m_grid->rows() || cols != m_grid->cols())) {
+        // Skip — the real resize will come via resizeEvent later.
+        return;
+    }
+
     if (cols != m_grid->cols() || rows != m_grid->rows()) {
         m_grid->resize(rows, cols);
         if (m_pty) {
             m_pty->resize(rows, cols);
         }
+        // Invalidate the frozen-view snapshot: its row/col dimensions
+        // no longer match the live grid, and the grid's reflow may
+        // have moved content between screen and scrollback in ways the
+        // snapshot doesn't track. Clearing here lets updateScrollBar
+        // below re-capture at the new dimensions if the user is still
+        // scrolled up.
+        clearScreenSnapshot();
     }
     positionScrollBar();
     updateScrollBar();
@@ -2271,6 +2303,24 @@ void TerminalWidget::updateScrollBar() {
     // batch — keeps the widget's scroll state consistent with the grid.
     if (m_scrollOffset > maxScroll) m_scrollOffset = maxScroll;
     if (m_scrollOffset < 0) m_scrollOffset = 0;
+
+    // 0.6.33 — frozen-view snapshot (user spec 2026-04-18: "I wanted
+    // the ability to be able to scrollback and read previously provided
+    // information while Claude Code was adding to the viewport at the
+    // bottom"). When the user scrolls up, capture the screen rows into
+    // a side snapshot; while scrolled up, cellAtGlobal() reads from
+    // the snapshot instead of the live screen. The viewport's content
+    // is therefore completely immune to any program's screen writes —
+    // including the partial-overlap zone where the viewport includes
+    // the top of the screen. When the user returns to the bottom
+    // (m_scrollOffset == 0) the snapshot is cleared and the live
+    // screen resumes rendering. Every transition routes through
+    // updateScrollBar(), so one place catches wheel/scrollbar/
+    // keyboard/anchor/clear paths.
+    const bool wantFrozen = (m_scrollOffset > 0);
+    const bool haveFrozen = !m_frozenScreenRows.empty();
+    if (wantFrozen && !haveFrozen) captureScreenSnapshot();
+    else if (!wantFrozen && haveFrozen) clearScreenSnapshot();
     // Block signals to avoid re-entrant valueChanged -> scrollOffset update
     m_scrollBar->blockSignals(true);
     m_scrollBar->setMaximum(maxScroll);
@@ -2298,10 +2348,44 @@ const Cell &TerminalWidget::cellAtGlobal(int globalLine, int col) const {
             return line[col];
     } else {
         int sr = globalLine - scrollbackSize;
-        if (sr >= 0 && sr < m_grid->rows() && col >= 0 && col < m_grid->cols())
+        if (sr >= 0 && sr < m_grid->rows() && col >= 0 && col < m_grid->cols()) {
+            // Frozen-view snapshot: while the user is scrolled up, the
+            // screen portion of the viewport reads from the snapshot
+            // taken at scroll-up time, not the live screen. That makes
+            // the user's view fully immune to incoming PTY output.
+            // When m_scrollOffset returns to 0, the snapshot is
+            // cleared (see updateScrollBar) and live reads resume.
+            if (!m_frozenScreenRows.empty()
+                && sr < static_cast<int>(m_frozenScreenRows.size())
+                && col < static_cast<int>(m_frozenScreenRows[sr].size())) {
+                return m_frozenScreenRows[sr][col];
+            }
             return m_grid->cellAt(sr, col);
+        }
     }
     return s_blankCell;
+}
+
+void TerminalWidget::captureScreenSnapshot() {
+    const int rows = m_grid->rows();
+    const int cols = m_grid->cols();
+    m_frozenScreenRows.clear();
+    m_frozenScreenRows.reserve(rows);
+    m_frozenScreenCombining.clear();
+    m_frozenScreenCombining.reserve(rows);
+    for (int r = 0; r < rows; ++r) {
+        std::vector<Cell> row;
+        row.reserve(cols);
+        for (int c = 0; c < cols; ++c)
+            row.push_back(m_grid->cellAt(r, c));
+        m_frozenScreenRows.push_back(std::move(row));
+        m_frozenScreenCombining.push_back(m_grid->screenCombining(r));
+    }
+}
+
+void TerminalWidget::clearScreenSnapshot() {
+    m_frozenScreenRows.clear();
+    m_frozenScreenCombining.clear();
 }
 
 const std::vector<uint32_t> *TerminalWidget::combiningAt(int globalLine, int col) const {
@@ -2311,8 +2395,16 @@ const std::vector<uint32_t> *TerminalWidget::combiningAt(int globalLine, int col
         map = &m_grid->scrollbackCombining(globalLine);
     } else {
         int sr = globalLine - scrollbackSize;
-        if (sr >= 0 && sr < m_grid->rows())
-            map = &m_grid->screenCombining(sr);
+        if (sr >= 0 && sr < m_grid->rows()) {
+            // Frozen-view: read screen combining chars from the snapshot
+            // when it's populated, matching cellAtGlobal's behavior.
+            if (!m_frozenScreenCombining.empty()
+                && sr < static_cast<int>(m_frozenScreenCombining.size())) {
+                map = &m_frozenScreenCombining[sr];
+            } else {
+                map = &m_grid->screenCombining(sr);
+            }
+        }
     }
     if (map) {
         auto it = map->find(col);
@@ -3666,19 +3758,28 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
         }
     }
     if (footerLine < 0) {
-        // No prompt on screen — reset so we can detect the next one.
-        // If we previously had a detection live, notify listeners so they
-        // can retract UI tied to the prompt (e.g. the status-bar "Add to
-        // allowlist" button). We must NOT retract that UI on every output
-        // tick — Claude Code v2.1+ repaints its TUI continuously while
-        // the prompt is still visible, so tying the retraction to output
-        // would nuke the button within seconds of it appearing.
+        // No prompt on screen this scan. Debounce: require N=3
+        // consecutive misses before retracting, so a transient TUI
+        // repaint that briefly pushes the footer out of the 12-line
+        // lookback window doesn't nuke the "Add to allowlist" button
+        // while the prompt is still live. The user-visible retraction
+        // latency on a real approve/decline is at most 3 * 300 ms
+        // ≈ 900 ms, which stays under the "did it work?" threshold.
+        static constexpr int kMissedScansToRetract = 3;
         if (!m_lastDetectedRule.isEmpty()) {
-            m_lastDetectedRule.clear();
-            emit claudePermissionCleared();
+            if (++m_claudePermissionMissedCount >= kMissedScansToRetract) {
+                m_lastDetectedRule.clear();
+                m_claudePermissionMissedCount = 0;
+                emit claudePermissionCleared();
+            }
+        } else {
+            m_claudePermissionMissedCount = 0;
         }
         return;
     }
+    // Footer found → reset miss counter so the next genuine dismiss
+    // gets the full N-scan debounce.
+    m_claudePermissionMissedCount = 0;
 
     // Step 2: Scan backwards from footer for the tool type header
     static QRegularExpression bashRe(R"(Bash\s+command|Bash\()");

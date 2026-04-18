@@ -62,6 +62,8 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
         m_contextPercent = 0;
         m_claudePid = 0;            // force pollClaudeProcess to re-detect
         m_activeSessionId.clear();
+        if (m_planMode) { m_planMode = false; emit planModeChanged(false); }
+        if (m_auditing) { m_auditing = false; emit auditingChanged(false); }
         if (!m_transcriptPath.isEmpty()) {
             m_transcriptWatcher.removePath(m_transcriptPath);
             m_transcriptPath.clear();
@@ -422,23 +424,87 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     // window we already read; if an old /compact falls outside the window we
     // silently fall back to the generic state, which is acceptable.
     bool inCompact = false;
+    // Auditing: mirrors the /compact pattern. The /audit skill is
+    // invoked by the user as `<command-name>/audit</command-name>`. We
+    // treat it as "active for the rest of the conversation turn it was
+    // invoked in" — i.e. until the assistant's next `end_turn` stop
+    // reason. This matches the user's mental model ("Claude is auditing
+    // until the audit is reported") without needing to model the skill's
+    // internal state machine.
+    bool inAudit = false;
     for (int i = events.size() - 1; i >= 0; --i) {
         if (events[i].value("type").toString() != QLatin1String("user")) continue;
         // Found an already-completed compact first → nothing in flight.
         if (events[i].value("isCompactSummary").toBool()) break;
         QJsonValue content = events[i].value("message").toObject().value("content");
         if (!content.isString()) continue;  // tool_result arrays, skip
-        if (content.toString().contains(
+        const QString contentStr = content.toString();
+        if (contentStr.contains(
                 QStringLiteral("<command-name>/compact</command-name>"))) {
             inCompact = true;
         }
+        if (contentStr.contains(
+                QStringLiteral("<command-name>/audit</command-name>"))) {
+            inAudit = true;
+        }
         break;  // first genuine user message decides
+    }
+    // Audit latches off when the assistant hits end_turn after the /audit
+    // user message — walk forward from the /audit point and see if any
+    // assistant event after it has stop_reason == "end_turn". If so, the
+    // audit turn is complete.
+    if (inAudit) {
+        bool auditFinished = false;
+        bool pastAudit = false;
+        for (const QJsonObject &ev : events) {
+            if (!pastAudit) {
+                if (ev.value("type").toString() == QLatin1String("user")) {
+                    QJsonValue c = ev.value("message").toObject().value("content");
+                    if (c.isString() && c.toString().contains(
+                            QStringLiteral("<command-name>/audit</command-name>"))) {
+                        pastAudit = true;
+                    }
+                }
+                continue;
+            }
+            if (ev.value("type").toString() == QLatin1String("assistant")) {
+                QString sr = ev.value("message").toObject()
+                               .value("stop_reason").toString();
+                if (sr == QLatin1String("end_turn")) {
+                    auditFinished = true;
+                    break;
+                }
+            }
+        }
+        if (auditFinished) inAudit = false;
     }
     if (inCompact) {
         newState = ClaudeState::Compacting;
         detail = QStringLiteral("compacting");
     }
 
+    // Plan mode: most recent permission-mode event in the tail decides.
+    // Claude Code records `{"type":"permission-mode","mode":"plan"}` when
+    // the user toggles plan mode; switching out writes another with
+    // mode == "default" / "acceptEdits". Search backward through the
+    // events we already parsed (cheap — ~32KB tail).
+    bool newPlan = false;
+    for (int i = events.size() - 1; i >= 0; --i) {
+        if (events[i].value("type").toString() != QLatin1String("permission-mode"))
+            continue;
+        const QString mode = events[i].value("mode").toString().toLower();
+        newPlan = mode.contains(QLatin1String("plan"));
+        break;
+    }
+
+    if (newPlan != m_planMode) {
+        m_planMode = newPlan;
+        emit planModeChanged(m_planMode);
+    }
+    if (inAudit != m_auditing) {
+        m_auditing = inAudit;
+        emit auditingChanged(m_auditing);
+    }
     if (newState != m_state) {
         m_state = newState;
         emit stateChanged(m_state, detail);
