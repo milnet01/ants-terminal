@@ -12,6 +12,110 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.33] — 2026-04-18
+
+**Theme:** Nine long-standing user-reported bugs around the status bar,
+scrollback integrity, session restore, and the Review Changes dialog —
+fixed in one pass. The quiet centerpiece is the root-cause diagnosis of
+the long tail of "Review Changes button does nothing" reports: a
+0.6.26-era focus-redirect lambda was firing a `singleShot(0)` refocus
+*between* a button's mousePress and mouseRelease, ripping focus off the
+button mid-click and silently cancelling the `clicked()` signal that
+`QAbstractButton` only emits when focus is continuous through release.
+Also retires the `ElidedLabel + stylesheet chip padding` class of
+status-bar bug (branch chip truncating to "…") by converting every
+fixed-width status-bar chip to plain `QLabel` / `QPushButton` with
+`QSizePolicy::Fixed`.
+
+### Added
+
+- **One-click Claude Code hook installer** in Settings > General.
+  Writes `~/.config/ants-terminal/hooks/claude-forward.sh` and merges
+  PreToolUse / PostToolUse / Stop / PreCompact / SessionStart entries
+  into `~/.claude/settings.json`. Idempotent, preserves the user's
+  existing hooks, safe to re-run.
+- **Frozen-view scrollback snapshot.** When the user is scrolled up,
+  `cellAtGlobal` / `combiningAt` now read from a snapshot of the screen
+  taken at scroll-up time rather than the live grid. The viewport is
+  completely immune to live screen writes, not just to deep-scroll
+  rows. Locked by new `tests/features/scrollback_frozen_view/`.
+- **Claude status vocabulary.** Per-tab status now distinguishes
+  idle / thinking / bash / reading a file / editing / searching /
+  browsing / planning / auditing / prompting / compacting, each with
+  a distinct theme colour. Plan-mode and `/audit` are detected in the
+  transcript parser; new `ClaudeIntegration::planModeChanged` and
+  `auditingChanged` signals.
+- **`refreshStatusBarForActiveTab()`** — single per-tab refresh entry
+  point covering branch, notification, process, Claude status, Review
+  Changes, and Add-to-allowlist. Replaces the scatter of direct calls
+  in `onTabChanged` where one miss meant a stale chip for 2 s.
+- **`notification_timeout_ms` config key** (default 5000) with a
+  seconds spinner in Settings > General.
+- **`tab_color_sequence` config key** — ordered colour fallback
+  independent of session persistence. UUID-keyed `tab_groups` is
+  retained for within-session drag-reorder stability.
+
+### Changed
+
+- **Branch chip colour moved from green (ansi[2]) to cyan (ansi[6])**
+  so it is visually distinct from Claude-state chips and transient
+  notification text.
+- **Status-bar layout is now Fixed-sized.** Branch, process, Claude
+  status, and all transient buttons use `QSizePolicy::Fixed` with
+  plain `QLabel` / `QPushButton`. Only the transient notification
+  slot is elastic and elides with "…". The
+  `ElidedLabel + stylesheet chip padding` miscalculation class of bug
+  is retired.
+- **Review Changes button is now tri-state.** Hidden when not a git
+  repo, **disabled** when clean and in-sync, enabled otherwise. The
+  0.6.29 "hide on clean" contract was too aggressive — an unpushed
+  commit is reviewable work too. Probe switched to `git status
+  --porcelain=v1 -b` so ahead-of-upstream counts. The global
+  `QPushButton:hover` rule is now gated with `:enabled` so disabled
+  buttons no longer light up on hover. The dialog renders Status +
+  Unpushed + Diff sections; spec and feature test updated to match.
+- **Review Changes dialog is now fully async.** Opens instantly with
+  a loading placeholder; git output streams in. The status-bar button
+  disables while the dialog is open and re-enables on close.
+  `WindowModal` was tried and reverted — non-modal with button-disable
+  is the pattern that actually works.
+- **Add to Allowlist** gains a 3-scan debounce against TUI-repaint
+  flicker, a shared `toolFinished` / `sessionStopped` retraction path
+  across scroll-scan and hook detections, and duplicate-rule feedback
+  on prefill.
+
+### Fixed
+
+- **Focus-redirect race silently cancelled button clicks.** Root
+  cause of the long tail of "Review Changes does nothing" reports.
+  The 0.6.26 `focusChanged` lambda queued a `singleShot(0)` to refocus
+  the terminal the moment focus touched status-bar chrome. That
+  zero-delay timer could fire *between* `mousePress` and
+  `mouseRelease` on a `QPushButton`, ripping focus away mid-click;
+  `QAbstractButton` requires continuous focus through release to emit
+  `clicked()`, so the click was silently dropped. Fix: the lambda
+  now exempts `QAbstractButton` focus targets and defers while any
+  mouse button is held down.
+- **Branch label eliding to "…"** with ample room. `ElidedLabel`'s
+  `sizeHint` fudge could not account for the chip stylesheet's
+  padding + margin. Converted to a plain `QLabel` with Fixed
+  `sizePolicy`.
+- **Claude status label truncating and occasionally stale.** The
+  new vocabulary fits the fixed chip width, and the consolidated
+  `refreshStatusBarForActiveTab()` wiring ensures state never bleeds
+  from a previous tab on `onTabChanged`.
+- **Scrollback blank-line bloat on inactive tabs after session
+  restart.** Two root causes compounded: (a) `recalcGridSize` ran on
+  inactive tabs before their geometry was laid out, shrinking grids
+  to 3×10 — fixed with a pre-layout guard; (b) `TerminalGrid::resize`
+  pushed every reflowed row into scrollback indiscriminately — now
+  skips entirely-blank rows.
+- **Tab colours not persisting across restarts.** UUID-keyed
+  `tab_groups` only worked when session persistence was enabled,
+  because only the session-persist path re-used saved UUIDs. Added
+  an ordered `tab_color_sequence` fallback applied at startup once
+  tabs are constructed.
+
 ## [0.6.32] — 2026-04-18
 
 **Theme:** Audit self-learning layer + contributor-facing docs + a

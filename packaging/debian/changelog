@@ -1,3 +1,56 @@
+ants-terminal (0.6.33-1) unstable; urgency=medium
+
+  * Root-cause fix for the long tail of "Review Changes button does
+    nothing" reports: a 0.6.26 focusChanged lambda was queuing a
+    singleShot(0) refocus that could fire between a button's
+    mousePress and mouseRelease, ripping focus off the button
+    mid-click and silently cancelling clicked(). The lambda now
+    exempts QAbstractButton focus targets and defers while a mouse
+    button is held down.
+  * Status-bar chips converted to plain QLabel / QPushButton with
+    QSizePolicy::Fixed. Only the transient notification slot is
+    elastic and elides. Retires the ElidedLabel + stylesheet
+    chip-padding class of bug (branch chip truncating to "..." with
+    ample room). Branch chip colour moved from green to cyan so it
+    is visually distinct from Claude-state chips.
+  * Review Changes button is now tri-state: hidden outside git
+    repos, disabled when clean and in-sync, enabled otherwise.
+    Probe switched to `git status --porcelain=v1 -b` so unpushed
+    commits count as reviewable work. Global QPushButton:hover rule
+    now :enabled-gated. Dialog is fully async — opens with a
+    placeholder and streams git output in, renders Status + Unpushed
+    + Diff sections.
+  * Frozen-view scrollback snapshot: while scrolled up, cellAtGlobal
+    / combiningAt read from a snapshot of the screen at scroll-up
+    time, not the live grid. Locked by
+    tests/features/scrollback_frozen_view/.
+  * One-click "Install Claude Code status-bar hooks" action in
+    Settings > General writes ~/.config/ants-terminal/hooks/
+    claude-forward.sh and idempotently merges PreToolUse /
+    PostToolUse / Stop / PreCompact / SessionStart entries into
+    ~/.claude/settings.json.
+  * Richer Claude status vocabulary (idle / thinking / bash /
+    reading / editing / searching / browsing / planning / auditing
+    / prompting / compacting) with plan-mode and /audit detection
+    in the transcript parser; new planModeChanged and
+    auditingChanged signals; refreshStatusBarForActiveTab() as the
+    single per-tab refresh entry point.
+  * Fixed scrollback blank-line bloat on inactive tabs after
+    session restart — recalcGridSize ran on unlaid-out tabs and
+    shrank grids to 3x10 (pre-layout guard added), and
+    TerminalGrid::resize pushed every reflowed row to scrollback
+    (now skips entirely-blank rows).
+  * Fixed tab colours not persisting across restarts — UUID-keyed
+    tab_groups only worked with session persistence enabled; new
+    ordered tab_color_sequence fallback applied at startup.
+  * Add-to-Allowlist button gains a 3-scan debounce against
+    TUI-repaint flicker and a shared toolFinished / sessionStopped
+    retraction path across scroll-scan and hook detections.
+  * New config keys: notification_timeout_ms (default 5000) with a
+    seconds spinner in Settings > General, and tab_color_sequence.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 18:21:22 +0200
+
 ants-terminal (0.6.32-1) unstable; urgency=medium
 
   * Audit self-learning layer: new RuleQualityTracker
