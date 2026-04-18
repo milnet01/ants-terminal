@@ -1,3 +1,45 @@
+ants-terminal (0.6.34-1) unstable; urgency=medium
+
+  * Decouples PTY read and VT parsing from the Qt GUI thread. A new
+    VtStream worker QThread (src/vtstream.{h,cpp}) owns Pty and
+    VtParser; parsed VtAction batches ship back to GUI over
+    Qt::QueuedConnection and are applied to TerminalGrid there.
+    Heavy streams (find /, cat biglog) no longer block scroll and
+    repaint.
+  * Back-pressure: worker buffers up to 8 batches (~128 KB of
+    unprocessed PTY bytes) before disabling its read notifier so the
+    kernel applies flow control to the child; GUI re-enables reads
+    on drain. Replaces unbounded RAM growth with kernel-natural
+    flow control.
+  * Pty::setReadEnabled(bool) added for the back-pressure path.
+    Pty::write and Pty::resize moved into public slots: so they can
+    be invoked cross-thread via QMetaObject::invokeMethod.
+  * All PTY-write call sites in TerminalWidget route through a new
+    ptyWrite() helper that branches on worker-active vs. legacy
+    path. Keystrokes, bracketed paste, Kitty keyboard protocol,
+    response callbacks, snippets, scratchpad — correctness is
+    centralised in one place.
+  * Resize path uses Qt::BlockingQueuedConnection so the PTY
+    winsize is updated before resizeEvent returns. Next paint
+    always sees consistent ws_row/ws_col vs grid dims — no 1-frame
+    flicker at the new size with old PTY dims.
+  * Session logging and asciicast timestamps are now sampled on
+    the worker at batch-flush time rather than on GUI at
+    onPtyData time. Asciicast recordings are more accurate under
+    paint load; log-file writes are per-batch (coarser than
+    per-PTY-read, still monotonic).
+  * Three feature-conformance tests lock the threading invariants:
+    threaded_parse_equivalence (11 fixtures × 6 chunking
+    strategies, pins action-stream identity),
+    threaded_response_ordering (DA1/CPR/DA2/mode-996/DSR-OK across
+    3 feed strategies), and threaded_resize_synchronous
+    (source-level BlockingQueuedConnection contract).
+  * Kill switch: set ANTS_SINGLE_THREADED=1 in the environment to
+    force the legacy single-threaded path while the new code proves
+    itself. The escape hatch will be removed in a follow-up release.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 17:34:12 +0000
+
 ants-terminal (0.6.33-1) unstable; urgency=medium
 
   * Root-cause fix for the long tail of "Review Changes button does

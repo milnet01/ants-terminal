@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.33 (2026-04-18). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.34 (2026-04-18). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -273,9 +273,23 @@ there before adding a multiplexer. Reference:
   chunk feeds over a 38-case corpus covering every offset-mod-16
   alignment for the scan boundary. See
   [CHANGELOG.md §0.6.23](CHANGELOG.md#0623--2026-04-15).
-- 📋 **Decouple read/parse/render thread**. Today everything's on the
-  Qt GUI thread. Move PTY read + VT parse to a worker; push `VtAction`
-  diffs over a lock-free ring to the render path.
+- ✅ **Decouple read/parse/render thread**. Shipped in 0.6.34. PTY read
+  and VT parse now run on a dedicated worker QThread (`VtStream`);
+  parsed `VtAction` batches are shipped to the GUI over a
+  `Qt::QueuedConnection` and applied to `TerminalGrid` there, so paint
+  stays on the main thread. Back-pressure: at most 8 batches in flight
+  (≈128 KB of unprocessed PTY bytes) before the worker disables its
+  `QSocketNotifier` and lets the kernel apply flow control to the
+  child; GUI re-enables on drain. PTY writes (keystrokes, DA/CPR/OSC 52
+  responses) cross back to the worker via
+  `QMetaObject::invokeMethod(... Qt::QueuedConnection)`. Resize goes
+  through `Qt::BlockingQueuedConnection` so the PTY winsize is updated
+  before the next paint. `ANTS_SINGLE_THREADED=1` is available as an
+  escape hatch while the new path proves itself; it will be removed in
+  a follow-up release. Three feature tests lock the invariants: parse
+  equivalence across 11 fixtures × 6 chunking strategies, response
+  ordering, and the source-level resize-synchronicity contract. See
+  [CHANGELOG.md §0.6.34](CHANGELOG.md#0634--2026-04-18).
 - ✅ **Incremental reflow on resize**. Shipped in 0.6.15. The original
   research note called for tracking `wrap_col` per line; the actual
   implementation works on equivalent information already on the line

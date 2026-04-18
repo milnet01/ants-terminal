@@ -89,6 +89,21 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.34" date="2026-04-18">
+      <description>
+        <p>Decouples PTY read and VT parsing from the Qt GUI thread. Previously, every byte of terminal output traversed the GUI thread through <code>QSocketNotifier → Pty::dataReceived → VtParser::feed → TerminalGrid::processAction</code> and then on to paint — so heavy streams (<code>find /</code>, <code>cat biglog</code>) blocked scroll and repaint. As of 0.6.34 read + parse run on a dedicated worker <code>QThread</code> (<code>VtStream</code>); only batched <code>VtAction</code> streams cross back to GUI for grid application and paint. Ships the first 0.7.0 performance item early since the architectural change landed clean with three feature-conformance tests locking the invariants.</p>
+        <ul>
+          <li><em>Added:</em> <code>VtStream</code> worker wrapper (<code>src/vtstream.{h,cpp}</code>) — owns <code>Pty</code> and <code>VtParser</code> on a dedicated QThread, accumulates parser output into <code>VtBatch</code> and ships it to GUI over <code>Qt::QueuedConnection</code>. Grid and paint path stay on GUI so the refactor surface stays small.</li>
+          <li><em>Added:</em> back-pressure — worker buffers up to 8 batches (~128 KB of unprocessed PTY bytes) before disabling its read notifier so the kernel applies flow control to the child; GUI re-enables reads on drain. Replaces "let RAM grow unbounded while GUI catches up" with kernel-natural flow control.</li>
+          <li><em>Added:</em> <code>Pty::setReadEnabled(bool)</code> for the back-pressure path. <code>Pty::write</code> and <code>Pty::resize</code> are now slots so they can be invoked cross-thread via <code>QMetaObject::invokeMethod</code>.</li>
+          <li><em>Added:</em> three feature-conformance tests under <code>tests/features/</code> — <code>threaded_parse_equivalence</code> (11 fixtures × 6 chunking strategies, pins action-stream identity), <code>threaded_response_ordering</code> (DA1/CPR/DA2/mode-996/DSR-OK order across 3 feed strategies), and <code>threaded_resize_synchronous</code> (source-level contract that <code>invokeMethod</code> uses <code>Qt::BlockingQueuedConnection</code>).</li>
+          <li><em>Changed:</em> all PTY-write call sites in <code>TerminalWidget</code> route through a new <code>ptyWrite()</code> helper — keystrokes, bracketed paste, Kitty kbd protocol, response callbacks, snippets, scratchpad. The helper branches on worker-active vs. legacy path; correctness is centralised.</li>
+          <li><em>Changed:</em> resize path uses <code>Qt::BlockingQueuedConnection</code> so the PTY winsize is updated before <code>resizeEvent</code> returns — no 1-frame flicker at the new grid size with old PTY dims.</li>
+          <li><em>Changed:</em> session logging and asciicast timestamps are now sampled on the worker at batch-flush time rather than on GUI at onPtyData time; asciicast recordings are more accurate under paint load. Log write granularity is per-batch rather than per-PTY-read (coarser but still monotonic).</li>
+        </ul>
+        <p>Kill switch: set <code>ANTS_SINGLE_THREADED=1</code> in the environment to force the legacy single-threaded path while the new code proves itself. It will be removed in a follow-up release once no regressions surface.</p>
+      </description>
+    </release>
     <release version="0.6.33" date="2026-04-18">
       <description>
         <p>Nine long-standing user-reported bugs around the status bar, scrollback integrity, session restore, and the Review Changes dialog — fixed in one pass. The quiet centerpiece is the root-cause diagnosis of the long tail of "Review Changes button does nothing" reports: a 0.6.26-era <code>focusChanged</code> lambda was firing a <code>singleShot(0)</code> refocus <em>between</em> a button's mousePress and mouseRelease, ripping focus off the button mid-click and silently cancelling the <code>clicked()</code> signal. Also retires the <code>ElidedLabel</code> + stylesheet-chip-padding class of bug by converting every fixed-width status-bar chip to plain <code>QLabel</code> / <code>QPushButton</code> with <code>QSizePolicy::Fixed</code>.</p>

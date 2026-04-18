@@ -34,6 +34,7 @@
 #include <QJsonObject>
 #include <QSplitter>
 #include <QPlainTextEdit>
+#include <QThread>
 
 TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
@@ -64,7 +65,9 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
     // Initial grid
     m_grid = std::make_unique<TerminalGrid>(24, 80);
 
-    // Response callback: DA, CPR replies go back to PTY; OSC 52 sets clipboard
+    // Response callback: DA, CPR replies go back to PTY; OSC 52 sets clipboard.
+    // Under the threaded parse path (0.7.0), PTY writes from this callback cross
+    // the GUI → worker thread boundary via ptyWrite(); clipboard stays on GUI.
     m_grid->setResponseCallback([this](const std::string &response) {
         if (response.size() > 6 && response.compare(1, 6, "OSC52:") == 0) {
             // OSC 52 clipboard set (prefixed with \0OSC52:)
@@ -73,8 +76,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
             QApplication::clipboard()->setText(text);
             return;
         }
-        if (m_pty)
-            m_pty->write(QByteArray(response.data(), static_cast<int>(response.size())));
+        ptyWrite(QByteArray(response.data(), static_cast<int>(response.size())));
     });
 
     m_parser = std::make_unique<VtParser>([this](const VtAction &a) {
@@ -343,6 +345,17 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
 }
 
 TerminalWidget::~TerminalWidget() {
+    // Threaded parse path (0.7.0): stop the worker before GL teardown so
+    // no late batchReady signals arrive at a half-destructed widget.
+    // quit() posts an event to the worker's loop; wait() blocks until the
+    // loop exits. VtStream was deleteLater-scheduled on finished(), so
+    // its dtor runs on the worker thread as the loop exits — which in
+    // turn runs ~Pty with the SIGHUP/SIGTERM/SIGKILL child-reap ladder.
+    if (m_parseThread) {
+        m_parseThread->quit();
+        m_parseThread->wait(2000);
+    }
+
     // Clean up GL resources while context is still valid
     if (m_glRenderer && context() && context()->isValid()) {
         makeCurrent();
@@ -412,23 +425,77 @@ void TerminalWidget::setSessionLogging(bool enabled) {
 }
 
 void TerminalWidget::sendToPty(const QByteArray &data) {
-    if (m_pty)
-        m_pty->write(data);
+    ptyWrite(data);
+}
+
+void TerminalWidget::ptyWrite(const QByteArray &data) {
+    // Phase 1 branch: worker path goes through a queued invoke so the PTY
+    // master FD is only touched on the worker thread; legacy path forwards
+    // directly to the Pty object, as it always has.
+    if (m_vtStream) {
+        QMetaObject::invokeMethod(m_vtStream, "write", Qt::QueuedConnection,
+                                  Q_ARG(QByteArray, data));
+        return;
+    }
+    if (auto *p = m_pty) p->write(data);
 }
 
 bool TerminalWidget::startShell(const QString &workDir) {
+    recalcGridSize();
+    int rows = m_grid->rows();
+    int cols = m_grid->cols();
+
+    // Threaded parse path (0.7.0, ROADMAP ⚡). PTY read + VT parse run on
+    // a worker thread; parsed VtAction batches are shipped back via
+    // VtStream::batchReady over a Qt::QueuedConnection; grid and paint
+    // path stay on GUI so the refactor surface is minimal. This is the
+    // default as of 0.6.34. ANTS_SINGLE_THREADED=1 forces the legacy
+    // single-threaded path as an escape hatch while the new code is
+    // proving itself in the wild; the escape hatch goes away in phase 3.
+    const bool useWorker = qEnvironmentVariableIntValue("ANTS_SINGLE_THREADED") != 1;
+    if (useWorker) {
+        m_parseThread = new QThread(this);
+        m_parseThread->setObjectName("ants-vt-parse");
+        m_vtStream = new VtStream();  // no parent — moved to worker thread
+        m_vtStream->moveToThread(m_parseThread);
+        // deleteLater on finished ensures VtStream is destroyed on the
+        // worker thread (its Pty + QSocketNotifier must be torn down on
+        // the thread that created them).
+        connect(m_parseThread, &QThread::finished, m_vtStream, &QObject::deleteLater);
+        connect(m_vtStream, &VtStream::batchReady, this, &TerminalWidget::onVtBatch,
+                Qt::QueuedConnection);
+        connect(m_vtStream, &VtStream::finished, this, &TerminalWidget::onPtyFinished,
+                Qt::QueuedConnection);
+        m_parseThread->start();
+
+        bool ok = false;
+        // Blocking-queued so startShell returns only after the shell is
+        // actually forked — matches the legacy path's synchronous contract.
+        QMetaObject::invokeMethod(m_vtStream, "start", Qt::BlockingQueuedConnection,
+                                  Q_RETURN_ARG(bool, ok),
+                                  Q_ARG(QString, QString()),
+                                  Q_ARG(QString, workDir),
+                                  Q_ARG(int, rows),
+                                  Q_ARG(int, cols));
+        if (!ok) {
+            // Teardown on failure so the widget is in a clean state
+            // (the destructor will wait/quit the thread).
+            return false;
+        }
+        // Ensure PTY matches grid; resize is blocking-queued so the
+        // winsize is set before we return and the next paint fires.
+        QMetaObject::invokeMethod(m_vtStream, "resize", Qt::BlockingQueuedConnection,
+                                  Q_ARG(int, rows), Q_ARG(int, cols));
+        return true;
+    }
+
+    // Legacy single-threaded path (default).
     m_pty = new Pty(this);
     connect(m_pty, &Pty::dataReceived, this, &TerminalWidget::onPtyData);
     connect(m_pty, &Pty::finished, this, &TerminalWidget::onPtyFinished);
-
-    recalcGridSize();
-
-    int rows = m_grid->rows();
-    int cols = m_grid->cols();
     if (!m_pty->start(QString(), workDir, rows, cols)) {
         return false;
     }
-
     // Ensure PTY matches grid (no-op if forkpty already used correct size)
     m_pty->resize(rows, cols);
     return true;
@@ -501,7 +568,7 @@ bool TerminalWidget::event(QEvent *event) {
                     QString text = edit->toPlainText();
                     if (!text.isEmpty() && m_pty) {
                         pasteToTerminal(text.toUtf8());
-                        m_pty->write("\r");
+                        ptyWrite("\r");
                     }
                     edit->clear();
                     hideScratchpad();
@@ -1453,7 +1520,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         } else {
             seq = QByteArrayLiteral("\x16\n");
         }
-        if (m_pty) m_pty->write(seq);
+        if (m_pty) ptyWrite(seq);
         if (m_broadcastCallback) m_broadcastCallback(this, seq);
         return;
     }
@@ -1464,7 +1531,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         QByteArray kittyData = encodeKittyKey(event);
         if (!kittyData.isEmpty()) {
             if (m_hasSelection) clearSelection();
-            if (m_pty) m_pty->write(kittyData);
+            if (m_pty) ptyWrite(kittyData);
             if (m_broadcastCallback) m_broadcastCallback(this, kittyData);
             return;
         }
@@ -1473,10 +1540,10 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
 
     // Ctrl+arrow keys — word movement (xterm modifier encoding: CSI 1;5 X)
     if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
-        if (key == Qt::Key_Left)  { if (m_pty) m_pty->write("\x1B[1;5D"); return; }
-        if (key == Qt::Key_Right) { if (m_pty) m_pty->write("\x1B[1;5C"); return; }
-        if (key == Qt::Key_Up)    { if (m_pty) m_pty->write("\x1B[1;5A"); return; }
-        if (key == Qt::Key_Down)  { if (m_pty) m_pty->write("\x1B[1;5B"); return; }
+        if (key == Qt::Key_Left)  { if (m_pty) ptyWrite("\x1B[1;5D"); return; }
+        if (key == Qt::Key_Right) { if (m_pty) ptyWrite("\x1B[1;5C"); return; }
+        if (key == Qt::Key_Up)    { if (m_pty) ptyWrite("\x1B[1;5A"); return; }
+        if (key == Qt::Key_Down)  { if (m_pty) ptyWrite("\x1B[1;5B"); return; }
     }
 
     // Ctrl+key combinations
@@ -1484,12 +1551,12 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         if (key >= Qt::Key_A && key <= Qt::Key_Z) {
             char ch = static_cast<char>(key - Qt::Key_A + 1);
             data.append(ch);
-            if (m_pty) m_pty->write(data);
+            if (m_pty) ptyWrite(data);
             return;
         }
-        if (key == Qt::Key_BracketLeft) { data = "\x1B"; if (m_pty) m_pty->write(data); return; }
-        if (key == Qt::Key_Backslash)   { data = "\x1C"; if (m_pty) m_pty->write(data); return; }
-        if (key == Qt::Key_BracketRight){ data = "\x1D"; if (m_pty) m_pty->write(data); return; }
+        if (key == Qt::Key_BracketLeft) { data = "\x1B"; if (m_pty) ptyWrite(data); return; }
+        if (key == Qt::Key_Backslash)   { data = "\x1C"; if (m_pty) ptyWrite(data); return; }
+        if (key == Qt::Key_BracketRight){ data = "\x1D"; if (m_pty) ptyWrite(data); return; }
     }
 
     // Accept autocomplete suggestion with Right arrow (only when suggestion is showing)
@@ -1500,7 +1567,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         int cursorCol = m_grid->cursorCol();
         const Cell &nextCell = cellAtGlobal(cursorLine, cursorCol);
         if (nextCell.codepoint == ' ' || nextCell.codepoint == 0) {
-            m_pty->write(m_currentSuggestion.toUtf8());
+            ptyWrite(m_currentSuggestion.toUtf8());
             m_currentSuggestion.clear();
             update();
             return;
@@ -1613,7 +1680,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         // Clear selection when user types (selection is now stale)
         if (m_hasSelection)
             clearSelection();
-        m_pty->write(data);
+        ptyWrite(data);
         // Broadcast to other terminals if callback is set
         if (m_broadcastCallback)
             m_broadcastCallback(this, data);
@@ -1641,7 +1708,7 @@ void TerminalWidget::focusInEvent(QFocusEvent *) {
     m_cursorBlinkOn = true;
     m_cursorTimer.start();
     if (m_grid->focusReporting() && m_pty)
-        m_pty->write(QByteArray("\x1B[I"));
+        ptyWrite(QByteArray("\x1B[I"));
     update();
 }
 
@@ -1650,7 +1717,7 @@ void TerminalWidget::focusOutEvent(QFocusEvent *) {
     m_cursorBlinkOn = false;
     m_cursorTimer.stop();
     if (m_grid->focusReporting() && m_pty)
-        m_pty->write(QByteArray("\x1B[O"));
+        ptyWrite(QByteArray("\x1B[O"));
     update();
 }
 
@@ -1665,7 +1732,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
             int button = (delta > 0) ? 64 : 65; // 64=wheel up, 65=wheel down
             if (m_grid->mouseSgrMode()) {
                 QString seq = QString("\x1B[<%1;%2;%3M").arg(button).arg(col).arg(row);
-                m_pty->write(seq.toUtf8());
+                ptyWrite(seq.toUtf8());
             } else {
                 char cb = static_cast<char>(button + 32);
                 char cx = static_cast<char>(col + 32);
@@ -1675,7 +1742,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
                 seq.append(cb);
                 seq.append(cx);
                 seq.append(cy);
-                m_pty->write(seq);
+                ptyWrite(seq);
             }
             return;
         }
@@ -1697,7 +1764,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
 void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
     if (!event->commitString().isEmpty() && m_pty) {
         QByteArray data = event->commitString().toUtf8();
-        m_pty->write(data);
+        ptyWrite(data);
     }
     event->accept();
 }
@@ -1843,6 +1910,122 @@ void TerminalWidget::onPtyFinished(int exitCode) {
     emit shellExited(exitCode);
 }
 
+void TerminalWidget::onVtBatch(const VtBatch &batch) {
+    // Mirror of onPtyData, but the parse work is already done on the
+    // worker. We apply the pre-built VtAction stream to the grid and run
+    // the same GUI-side side-effects in the same order.
+    m_spanCacheDirty = true;
+
+    if (batch.clearSelectionHint) {
+        clearSelection();
+    }
+
+    // Pause scrollback insertion while user is scrolled up (see onPtyData
+    // for the full rationale). This knob must be set before processAction
+    // runs so any scrollUp() during the batch honours it.
+    m_grid->setScrollbackInsertPaused(m_scrollOffset > 0);
+
+    // Scroll anchoring: preserve the user's viewport as new content lands
+    // in scrollback. Diff against the monotonic scrollbackPushed() counter
+    // so the math is stable even when the scrollback is full.
+    uint64_t pushedBefore = m_grid->scrollbackPushed();
+
+    for (const auto &action : batch.actions) {
+        m_grid->processAction(action);
+    }
+
+    if (m_scrollOffset > 0) {
+        uint64_t added64 = m_grid->scrollbackPushed() - pushedBefore;
+        if (added64 > 0) {
+            int sbSize = m_grid->scrollbackSize();
+            int added = (added64 > static_cast<uint64_t>(sbSize))
+                          ? sbSize : static_cast<int>(added64);
+            m_scrollOffset = std::min(m_scrollOffset + added, sbSize);
+            if (m_newOutputMarkerLine < 0)
+                m_newOutputMarkerLine = sbSize + m_grid->rows() - 1;
+        }
+    } else {
+        m_newOutputMarkerLine = -1;
+    }
+
+    // Session logging + asciicast recording consume raw bytes from the
+    // worker rather than re-sampling them on GUI. Ordering between log
+    // and paint matches legacy behaviour at a slightly coarser granularity
+    // (one write per batch instead of one per PTY read).
+    if (m_loggingEnabled && m_logFile && m_logFile->isOpen()) {
+        m_logFile->write(batch.rawBytes);
+        m_logFile->flush();
+    }
+    if (m_recording && m_recordFile && m_recordFile->isOpen()) {
+        // Asciicast timestamp: sampled on the worker at flush time, which
+        // is more accurate than re-sampling here (paint latency would skew
+        // it). Elapsed seconds since worker start.
+        double elapsed = batch.wallClockMs / 1000.0;
+        QString raw = QString::fromUtf8(batch.rawBytes);
+        QString escaped;
+        escaped.reserve(raw.size() + raw.size() / 4);
+        for (QChar ch : raw) {
+            ushort u = ch.unicode();
+            if (u == '\\')      escaped += "\\\\";
+            else if (u == '"')  escaped += "\\\"";
+            else if (u == '\n') escaped += "\\n";
+            else if (u == '\r') escaped += "\\r";
+            else if (u == '\t') escaped += "\\t";
+            else if (u < 0x20)  escaped += QString("\\u%1").arg(u, 4, 16, QChar('0'));
+            else                escaped += ch;
+        }
+        QString line = QString("[%1, \"o\", \"%2\"]\n")
+            .arg(elapsed, 0, 'f', 6)
+            .arg(escaped);
+        m_recordFile->write(line.toUtf8());
+    }
+
+    // Idle-command tracking
+    m_lastOutputTime.restart();
+    if (!m_hadRecentOutput)
+        m_commandStartTime.restart();
+    m_hadRecentOutput = true;
+    m_notifiedIdle = false;
+
+    QString title = m_grid->windowTitle();
+    if (title != m_lastTitle) {
+        m_lastTitle = title;
+        emit titleChanged(title);
+    }
+
+    // Synchronized output (DEC 2026): same gating as legacy.
+    bool wasSync = m_syncOutputActive;
+    m_syncOutputActive = m_grid->synchronizedOutput();
+    if (!m_syncOutputActive) {
+        update();
+        m_syncTimer.stop();
+    } else if (!wasSync) {
+        m_syncTimer.start();
+    }
+
+    updateScrollBar();
+    m_claudeDetectTimer.start();
+
+    int exitCode = m_grid->lastExitCode();
+    if (exitCode != 0 && exitCode != m_lastTrackedExitCode) {
+        m_lastTrackedExitCode = exitCode;
+        emit commandFailed(exitCode, lastCommandOutput());
+    } else if (exitCode == 0) {
+        m_lastTrackedExitCode = 0;
+    }
+
+    // Trigger rules pattern-match raw bytes, same as legacy.
+    checkTriggers(batch.rawBytes);
+    updateSuggestion();
+
+    // Acknowledge the batch so the worker can refill the queue. Must
+    // happen after all GUI-side state is up-to-date so back-pressure
+    // reflects true throughput rather than sloppy early acks.
+    if (m_vtStream) {
+        QMetaObject::invokeMethod(m_vtStream, "drainAck", Qt::QueuedConnection);
+    }
+}
+
 void TerminalWidget::blinkCursor() {
     m_cursorBlinkOn = !m_cursorBlinkOn;
     int cx = m_padding + m_grid->cursorCol() * m_cellWidth;
@@ -1919,11 +2102,11 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data) {
         QByteArray sanitized = data;
         sanitized.replace("\x1B[200~", "");
         sanitized.replace("\x1B[201~", "");
-        m_pty->write(QByteArray("\x1B[200~"));
-        m_pty->write(sanitized);
-        m_pty->write(QByteArray("\x1B[201~"));
+        ptyWrite(QByteArray("\x1B[200~"));
+        ptyWrite(sanitized);
+        ptyWrite(QByteArray("\x1B[201~"));
     } else {
-        m_pty->write(data);
+        ptyWrite(data);
     }
 }
 
@@ -2184,7 +2367,7 @@ void TerminalWidget::clickToMoveCursor(int col, int row) {
     for (int i = 0; i < count && i < 200; ++i)
         arrows += arrow;
 
-    m_pty->write(arrows);
+    ptyWrite(arrows);
 }
 
 void TerminalWidget::navigatePrompt(int direction) {
@@ -2267,7 +2450,14 @@ void TerminalWidget::recalcGridSize() {
 
     if (cols != m_grid->cols() || rows != m_grid->rows()) {
         m_grid->resize(rows, cols);
-        if (m_pty) {
+        if (m_vtStream) {
+            // Blocking-queued so the PTY winsize is updated before the
+            // next paint. Worker is typically idle waiting on QSocketNotifier
+            // so the block is sub-ms; worst case it waits for one batch
+            // to finish parsing. Resize correctness > latency.
+            QMetaObject::invokeMethod(m_vtStream, "resize", Qt::BlockingQueuedConnection,
+                                      Q_ARG(int, rows), Q_ARG(int, cols));
+        } else if (m_pty) {
             m_pty->resize(rows, cols);
         }
         // Invalidate the frozen-view snapshot: its row/col dimensions
@@ -2459,7 +2649,7 @@ void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release
         int btn = button + mods;
         if (!press && !release) btn = button + 32 + mods; // motion
         QString seq = QString("\x1B[<%1;%2;%3%4").arg(btn).arg(col).arg(row).arg(suffix);
-        m_pty->write(seq.toUtf8());
+        ptyWrite(seq.toUtf8());
     } else {
         // X10/normal mode: CSI M Cb Cx Cy (all + 32)
         if (release) return; // X10 doesn't report release
@@ -2471,7 +2661,7 @@ void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release
         seq.append(cb);
         seq.append(cx);
         seq.append(cy);
-        m_pty->write(seq);
+        ptyWrite(seq);
     }
 }
 
@@ -3510,7 +3700,7 @@ void TerminalWidget::showScratchpad() {
         QString text = edit->toPlainText();
         if (!text.isEmpty() && m_pty) {
             pasteToTerminal(text.toUtf8());
-            m_pty->write("\r");
+            ptyWrite("\r");
         }
         edit->clear();
         hideScratchpad();
@@ -3866,8 +4056,8 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
 
 void TerminalWidget::writeCommand(const QString &cmd) {
     if (m_pty && !cmd.isEmpty()) {
-        m_pty->write(cmd.toUtf8());
-        m_pty->write(QByteArray("\n", 1));
+        ptyWrite(cmd.toUtf8());
+        ptyWrite(QByteArray("\n", 1));
     }
 }
 
@@ -3903,7 +4093,7 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
 
     QAction *clearAction = menu.addAction("Clear Scrollback");
     connect(clearAction, &QAction::triggered, this, [this]() {
-        if (m_pty) m_pty->write(QByteArray("\x1B[3J\x1B[H\x1B[2J", 11));
+        if (m_pty) ptyWrite(QByteArray("\x1B[3J\x1B[H\x1B[2J", 11));
     });
 
     menu.addSeparator();
@@ -4573,8 +4763,8 @@ void TerminalWidget::rerunCommandAt(int index) {
     // is not used here because we want the command executed, not pasted — and
     // the multi-line paste confirmation would be wrong for user-initiated
     // re-runs of their own history.
-    m_pty->write(cmd.toUtf8());
-    m_pty->write(QByteArray("\r"));
+    ptyWrite(cmd.toUtf8());
+    ptyWrite(QByteArray("\r"));
 }
 
 void TerminalWidget::toggleFoldAt(int index) {

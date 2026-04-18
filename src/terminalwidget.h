@@ -3,6 +3,7 @@
 #include "terminalgrid.h"
 #include "vtparser.h"
 #include "ptyhandler.h"
+#include "vtstream.h"
 
 #include <QOpenGLWidget>
 #include <QFont>
@@ -23,6 +24,7 @@ class QLabel;
 class QHBoxLayout;
 class QPushButton;
 class QPlainTextEdit;
+class QThread;
 
 class TerminalWidget : public QOpenGLWidget {
     Q_OBJECT
@@ -273,6 +275,11 @@ protected:
 private slots:
     void onPtyData(const QByteArray &data);
     void onPtyFinished(int exitCode);
+    // Threaded parse path (0.7.0). Handler for VtStream::batchReady;
+    // applies the pre-parsed action stream to m_grid, consumes the
+    // raw-byte side-data (selection-clear hint, logging, asciicast),
+    // then acknowledges the batch so the worker can refill the queue.
+    void onVtBatch(const VtBatch &batch);
     void blinkCursor();
     void checkIdleNotification();
 
@@ -342,9 +349,24 @@ private:
     BracketPair findMatchingBracket() const;
     uint32_t getCellCodepoint(int globalLine, int col) const;
 
-    Pty *m_pty = nullptr;  // Owned by Qt parent-child (this)
+    Pty *m_pty = nullptr;  // Legacy path — non-null only when m_vtStream is null
     std::unique_ptr<TerminalGrid> m_grid;
-    std::unique_ptr<VtParser> m_parser;
+    std::unique_ptr<VtParser> m_parser;  // Legacy path; null when worker is active
+
+    // Threaded parse path (0.7.0). Gated at startShell() time by
+    // $ANTS_PARSE_THREAD=1. When active, m_pty and m_parser stay null,
+    // and m_vtStream (living on m_parseThread) owns the Pty + parser.
+    // Falls back to the single-threaded path when the env var is unset so
+    // we can ship the worker behind a kill-switch for phase 1.
+    QThread *m_parseThread = nullptr;
+    VtStream *m_vtStream = nullptr;
+
+    // Unified PTY-write entry point. Branches on whether the worker is
+    // active: Qt::QueuedConnection cross-thread invoke when it is,
+    // direct m_pty->write() when it isn't. All ~30 keystroke / response-
+    // callback / paste call sites route through here so the diff to the
+    // existing code is one-line-per-site.
+    void ptyWrite(const QByteArray &data);
 
     QFont m_font;
     QFont m_fontBold;

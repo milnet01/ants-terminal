@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.33 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.34 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,6 +47,7 @@ add_executable(ants-terminal
     src/terminalgrid.cpp
     src/vtparser.cpp
     src/ptyhandler.cpp
+    src/vtstream.cpp
     src/themes.cpp
     src/config.cpp
     src/commandpalette.cpp
@@ -622,6 +623,73 @@ if(ANTS_TESTS)
     add_test(NAME osc133_hmac_verification
              COMMAND test_osc133_hmac_verification)
     set_tests_properties(osc133_hmac_verification PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # threaded_parse_equivalence — locks the 0.7.0 worker-thread invariant
+    # that moving PTY read + VT parse off the GUI thread preserves action-
+    # stream identity. 11 fixtures × 6 chunking strategies (whole, byte-by-
+    # byte, 16 KB worker-flush cadence, 7-byte, 3-byte, two pseudo-random
+    # seeds). See tests/features/threaded_parse_equivalence/spec.md.
+    add_executable(test_threaded_parse_equivalence
+        tests/features/threaded_parse_equivalence/test_threaded_parse_equivalence.cpp
+        src/vtparser.cpp
+    )
+    target_include_directories(test_threaded_parse_equivalence PRIVATE src)
+    target_compile_options(test_threaded_parse_equivalence PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME threaded_parse_equivalence
+             COMMAND test_threaded_parse_equivalence)
+    set_tests_properties(threaded_parse_equivalence PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # threaded_response_ordering — locks the contract that TerminalGrid's
+    # ResponseCallback fires in parse order across DA1/CPR/DA2/mode-996/
+    # DSR. End-to-end write order across the 0.7.0 worker boundary follows
+    # from this + Qt's QueuedConnection FIFO guarantee. See spec.md.
+    add_executable(test_threaded_response_ordering
+        tests/features/threaded_response_ordering/test_threaded_response_ordering.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_threaded_response_ordering PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_threaded_response_ordering PRIVATE src)
+    target_compile_options(test_threaded_response_ordering PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME threaded_response_ordering
+             COMMAND test_threaded_response_ordering)
+    set_tests_properties(threaded_response_ordering PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # threaded_resize_synchronous — locks the source-level invariant that
+    # every invokeMethod(m_vtStream, "resize", ...) uses
+    # Qt::BlockingQueuedConnection. A silent regression to QueuedConnection
+    # would introduce a 1-frame flicker that only shows under load. Pure
+    # source-grep test; same pattern as shift_enter_bracketed_paste.
+    add_executable(test_threaded_resize_synchronous
+        tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
+    )
+    target_link_libraries(test_threaded_resize_synchronous PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_threaded_resize_synchronous PRIVATE src)
+    target_compile_options(test_threaded_resize_synchronous PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_threaded_resize_synchronous PRIVATE
+        SRC_TERMINALWIDGET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_VTSTREAM_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/vtstream.h"
+    )
+    add_test(NAME threaded_resize_synchronous
+             COMMAND test_threaded_resize_synchronous)
+    set_tests_properties(threaded_resize_synchronous PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

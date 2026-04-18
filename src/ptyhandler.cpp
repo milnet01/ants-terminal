@@ -149,6 +149,12 @@ void Pty::write(const QByteArray &data) {
     }
 }
 
+void Pty::setReadEnabled(bool enabled) {
+    if (m_readNotifier) {
+        m_readNotifier->setEnabled(enabled);
+    }
+}
+
 void Pty::resize(int rows, int cols) {
     if (m_masterFd >= 0) {
         struct winsize ws = {};

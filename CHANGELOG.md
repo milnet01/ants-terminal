@@ -12,6 +12,81 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.34] — 2026-04-18
+
+**Theme:** Decouple PTY read + VT parse from the GUI thread. Ships the
+first planned 0.7.0 performance item early since the architectural
+change landed clean with three feature-conformance tests locking the
+invariants.
+
+Previously, every byte of PTY output — from a fast prompt echo to a
+`find /` firehose — traversed the Qt GUI thread through
+`QSocketNotifier → Pty::dataReceived → VtParser::feed →
+TerminalGrid::processAction` and then on to paint. Heavy streams
+blocked scroll and repaint. As of 0.6.34, read + parse run on a
+dedicated worker `QThread` (`VtStream`); only batched `VtAction`
+streams cross back to GUI for grid application and paint.
+
+### Added
+
+- **Threaded PTY read + VT parse (`VtStream`).** New worker-thread
+  wrapper around `Pty` + `VtParser` (`src/vtstream.{h,cpp}`). The
+  worker reads the PTY master via its own `QSocketNotifier`, feeds
+  bytes through `VtParser`, accumulates emitted `VtAction`s into a
+  `VtBatch`, and ships the batch to the GUI over
+  `Qt::QueuedConnection`. GUI applies the batch to `TerminalGrid` and
+  repaints — the grid and paint path do not move.
+- **Back-pressure.** Worker buffers up to 8 batches (≈128 KB of
+  unprocessed PTY bytes) before disabling its read notifier so the
+  kernel applies flow control to the child process. GUI re-enables
+  reads on drain via `VtStream::drainAck()`. Replaces "let RAM grow
+  unbounded while GUI catches up" with kernel-natural
+  back-pressure.
+- **`Pty::setReadEnabled(bool)`** — hook to pause/resume the read
+  notifier without tearing it down. Used by the back-pressure path.
+  `Pty::write` and `Pty::resize` moved into `public slots:` so they
+  can be invoked cross-thread via `QMetaObject::invokeMethod`.
+- **Three feature-conformance tests** under `tests/features/`:
+  - `threaded_parse_equivalence` — 11 input fixtures (plain ASCII,
+    mixed ANSI, DCS Sixel, APC Kitty, OSC 52 long payload, UTF-8
+    multibyte across chunk boundaries, DEC 2026 sync, OSC 133
+    markers, CSI with 32 params, UTF-8 bulk, 50 KB Print run) × 6
+    chunking strategies (whole, byte-by-byte, 16 KB worker flush,
+    7-byte, 3-byte, two pseudo-random seeds). Asserts action-stream
+    identity across strategies.
+  - `threaded_response_ordering` — DA1 / CPR / DA2 / mode-996 /
+    DSR-OK sequence asserted to fire in parse order across three
+    chunking strategies. End-to-end write order across the worker
+    boundary follows from this plus Qt's per-receiver FIFO.
+  - `threaded_resize_synchronous` — source-level contract that
+    every `invokeMethod(m_vtStream, "resize", ...)` uses
+    `Qt::BlockingQueuedConnection`, and that `VtStream::resize` /
+    `::write` are declared in a `public slots:` block.
+
+### Changed
+
+- **`TerminalWidget` PTY-write path unified through `ptyWrite()`**.
+  ~30 call sites (keystrokes, bracketed paste, Kitty kbd protocol,
+  response callback, snippets, scratchpad) now route through a single
+  helper that branches on `m_vtStream ? invokeMethod(QueuedConnection)
+  : m_pty->write()`. One-line diff per call site; correctness is
+  centralised.
+- **Resize path uses `Qt::BlockingQueuedConnection`.**
+  `TerminalWidget::recalcGridSize` waits for the worker to finish
+  `Pty::resize` before returning, so the next paint always sees
+  consistent `ws_row`/`ws_col` vs. `m_grid->rows()`/`m_grid->cols()`.
+  No 1-frame flicker at the new size with old PTY dims.
+- **Session logging and asciicast recording timestamps** are now
+  sampled on the worker at batch-flush time, which is more accurate
+  than resampling on GUI (GUI paint latency previously skewed the
+  recorded `elapsed` field). Log write granularity is now per-batch
+  (coarser than per-PTY-read); users grepping the file minutes later
+  see no difference.
+
+Kill switch: set `ANTS_SINGLE_THREADED=1` in the environment to force
+the legacy single-threaded path while the new code proves itself. It
+will be removed in a follow-up release once no regressions surface.
+
 ## [0.6.33] — 2026-04-18
 
 **Theme:** Nine long-standing user-reported bugs around the status bar,
