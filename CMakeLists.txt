@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.34 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.35 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -665,6 +665,30 @@ if(ANTS_TESTS)
     add_test(NAME threaded_response_ordering
              COMMAND test_threaded_response_ordering)
     set_tests_properties(threaded_response_ordering PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # threaded_ptywrite_gating — locks the 0.6.35 regression fix. Asserts
+    # no `if (m_pty)` / `&& m_pty)` gate on any ptyWrite() call site in
+    # TerminalWidget — m_pty is null on the worker path, so a bare-
+    # pointer gate silently drops every write, which is exactly how the
+    # keystroke-not-echoing bug shipped in 0.6.34.
+    add_executable(test_threaded_ptywrite_gating
+        tests/features/threaded_ptywrite_gating/test_threaded_ptywrite_gating.cpp
+    )
+    target_link_libraries(test_threaded_ptywrite_gating PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_threaded_ptywrite_gating PRIVATE src)
+    target_compile_options(test_threaded_ptywrite_gating PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_threaded_ptywrite_gating PRIVATE
+        SRC_TERMINALWIDGET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+    )
+    add_test(NAME threaded_ptywrite_gating
+             COMMAND test_threaded_ptywrite_gating)
+    set_tests_properties(threaded_ptywrite_gating PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

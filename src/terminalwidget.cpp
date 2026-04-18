@@ -428,6 +428,12 @@ void TerminalWidget::sendToPty(const QByteArray &data) {
     ptyWrite(data);
 }
 
+pid_t TerminalWidget::ptyChildPid() const {
+    if (m_vtStream) return m_vtStream->childPid();
+    if (m_pty)     return m_pty->childPid();
+    return -1;
+}
+
 void TerminalWidget::ptyWrite(const QByteArray &data) {
     // Phase 1 branch: worker path goes through a queued invoke so the PTY
     // master FD is only touched on the worker thread; legacy path forwards
@@ -566,7 +572,7 @@ bool TerminalWidget::event(QEvent *event) {
                 auto *edit = m_scratchpad->findChild<QPlainTextEdit *>();
                 if (edit) {
                     QString text = edit->toPlainText();
-                    if (!text.isEmpty() && m_pty) {
+                    if (!text.isEmpty() && hasPty()) {
                         pasteToTerminal(text.toUtf8());
                         ptyWrite("\r");
                     }
@@ -1387,7 +1393,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
                 return;
             }
         }
-        if (mime->hasText() && m_pty) {
+        if (mime->hasText() && hasPty()) {
             pasteToTerminal(clipboard->text().toUtf8());
         }
         return;
@@ -1520,7 +1526,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         } else {
             seq = QByteArrayLiteral("\x16\n");
         }
-        if (m_pty) ptyWrite(seq);
+        ptyWrite(seq);
         if (m_broadcastCallback) m_broadcastCallback(this, seq);
         return;
     }
@@ -1531,7 +1537,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         QByteArray kittyData = encodeKittyKey(event);
         if (!kittyData.isEmpty()) {
             if (m_hasSelection) clearSelection();
-            if (m_pty) ptyWrite(kittyData);
+            ptyWrite(kittyData);
             if (m_broadcastCallback) m_broadcastCallback(this, kittyData);
             return;
         }
@@ -1540,10 +1546,10 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
 
     // Ctrl+arrow keys — word movement (xterm modifier encoding: CSI 1;5 X)
     if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
-        if (key == Qt::Key_Left)  { if (m_pty) ptyWrite("\x1B[1;5D"); return; }
-        if (key == Qt::Key_Right) { if (m_pty) ptyWrite("\x1B[1;5C"); return; }
-        if (key == Qt::Key_Up)    { if (m_pty) ptyWrite("\x1B[1;5A"); return; }
-        if (key == Qt::Key_Down)  { if (m_pty) ptyWrite("\x1B[1;5B"); return; }
+        if (key == Qt::Key_Left)  { ptyWrite("\x1B[1;5D"); return; }
+        if (key == Qt::Key_Right) { ptyWrite("\x1B[1;5C"); return; }
+        if (key == Qt::Key_Up)    { ptyWrite("\x1B[1;5A"); return; }
+        if (key == Qt::Key_Down)  { ptyWrite("\x1B[1;5B"); return; }
     }
 
     // Ctrl+key combinations
@@ -1551,16 +1557,16 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         if (key >= Qt::Key_A && key <= Qt::Key_Z) {
             char ch = static_cast<char>(key - Qt::Key_A + 1);
             data.append(ch);
-            if (m_pty) ptyWrite(data);
+            ptyWrite(data);
             return;
         }
-        if (key == Qt::Key_BracketLeft) { data = "\x1B"; if (m_pty) ptyWrite(data); return; }
-        if (key == Qt::Key_Backslash)   { data = "\x1C"; if (m_pty) ptyWrite(data); return; }
-        if (key == Qt::Key_BracketRight){ data = "\x1D"; if (m_pty) ptyWrite(data); return; }
+        if (key == Qt::Key_BracketLeft) { data = "\x1B"; ptyWrite(data); return; }
+        if (key == Qt::Key_Backslash)   { data = "\x1C"; ptyWrite(data); return; }
+        if (key == Qt::Key_BracketRight){ data = "\x1D"; ptyWrite(data); return; }
     }
 
     // Accept autocomplete suggestion with Right arrow (only when suggestion is showing)
-    if (key == Qt::Key_Right && !m_currentSuggestion.isEmpty() && m_pty &&
+    if (key == Qt::Key_Right && !m_currentSuggestion.isEmpty() && hasPty() &&
         !(mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
         // Check if cursor is at the end of input (no printable char ahead)
         int cursorLine = m_grid->scrollbackSize() + m_grid->cursorRow();
@@ -1676,7 +1682,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         break;
     }
 
-    if (!data.isEmpty() && m_pty) {
+    if (!data.isEmpty() && hasPty()) {
         // Clear selection when user types (selection is now stale)
         if (m_hasSelection)
             clearSelection();
@@ -1707,7 +1713,7 @@ void TerminalWidget::focusInEvent(QFocusEvent *) {
     m_hasFocus = true;
     m_cursorBlinkOn = true;
     m_cursorTimer.start();
-    if (m_grid->focusReporting() && m_pty)
+    if (m_grid->focusReporting() && hasPty())
         ptyWrite(QByteArray("\x1B[I"));
     update();
 }
@@ -1716,7 +1722,7 @@ void TerminalWidget::focusOutEvent(QFocusEvent *) {
     m_hasFocus = false;
     m_cursorBlinkOn = false;
     m_cursorTimer.stop();
-    if (m_grid->focusReporting() && m_pty)
+    if (m_grid->focusReporting() && hasPty())
         ptyWrite(QByteArray("\x1B[O"));
     update();
 }
@@ -1762,7 +1768,7 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
 }
 
 void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
-    if (!event->commitString().isEmpty() && m_pty) {
+    if (!event->commitString().isEmpty() && hasPty()) {
         QByteArray data = event->commitString().toUtf8();
         ptyWrite(data);
     }
@@ -2089,7 +2095,7 @@ void TerminalWidget::checkIdleNotification() {
 }
 
 void TerminalWidget::pasteToTerminal(const QByteArray &data) {
-    if (!m_pty || data.isEmpty()) return;
+    if (!hasPty() || data.isEmpty()) return;
 
     // Defense-in-depth: paste-confirmation dialog is policy-independent of
     // bracketed paste. MS Terminal #13014 took flak for disabling the warning
@@ -2337,7 +2343,7 @@ void TerminalWidget::copySelectionRich() {
 }
 
 void TerminalWidget::clickToMoveCursor(int col, int row) {
-    if (!m_pty) return;
+    if (!hasPty()) return;
 
     // Only works when cursor is in a prompt region (OSC 133)
     int cursorGlobalLine = m_grid->scrollbackSize() + m_grid->cursorRow();
@@ -2621,7 +2627,7 @@ bool TerminalWidget::mouseReportingActive() const {
 }
 
 void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release) {
-    if (!m_pty) return;
+    if (!hasPty()) return;
     QPoint cell = pixelToCell(event->pos());
     int col = cell.y() + 1; // 1-based
     int row = cell.x() - m_grid->scrollbackSize() + m_scrollOffset + 1; // 1-based screen row
@@ -2766,7 +2772,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         m_selEnd = m_selStart;
         update();
     }
-    if (event->button() == Qt::MiddleButton && m_pty) {
+    if (event->button() == Qt::MiddleButton && hasPty()) {
         QString text = QApplication::clipboard()->text(QClipboard::Selection);
         if (!text.isEmpty())
             pasteToTerminal(text.toUtf8());
@@ -3198,8 +3204,8 @@ void TerminalWidget::openFileAtPath(const QString &path) {
     if (!fi.isAbsolute()) {
         QStringList tryPaths;
         // Get shell's CWD from /proc if possible
-        if (m_pty) {
-            int pid = m_pty->childPid();
+        {
+            pid_t pid = ptyChildPid();
             if (pid > 0) {
                 QString cwdLink = QString("/proc/%1/cwd").arg(pid);
                 QFileInfo cwdInfo(cwdLink);
@@ -3698,7 +3704,7 @@ void TerminalWidget::showScratchpad() {
 
     connect(sendBtn, &QPushButton::clicked, this, [this, edit]() {
         QString text = edit->toPlainText();
-        if (!text.isEmpty() && m_pty) {
+        if (!text.isEmpty() && hasPty()) {
             pasteToTerminal(text.toUtf8());
             ptyWrite("\r");
         }
@@ -3901,15 +3907,14 @@ QString TerminalWidget::recentOutput(int lines) const {
 // --- Shell CWD ---
 
 QString TerminalWidget::shellCwd() const {
-    if (!m_pty) return {};
-    int pid = m_pty->childPid();
+    pid_t pid = ptyChildPid();
     if (pid <= 0) return {};
     QFileInfo cwdInfo(QString("/proc/%1/cwd").arg(pid));
     return cwdInfo.exists() ? cwdInfo.symLinkTarget() : QString();
 }
 
 pid_t TerminalWidget::shellPid() const {
-    return m_pty ? m_pty->childPid() : -1;
+    return ptyChildPid();
 }
 
 // --- Claude Code permission detection ---
@@ -4055,7 +4060,7 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
 // --- Write command to PTY ---
 
 void TerminalWidget::writeCommand(const QString &cmd) {
-    if (m_pty && !cmd.isEmpty()) {
+    if (hasPty() && !cmd.isEmpty()) {
         ptyWrite(cmd.toUtf8());
         ptyWrite(QByteArray("\n", 1));
     }
@@ -4075,7 +4080,7 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     pasteAction->setShortcut(QKeySequence("Ctrl+Shift+V"));
     connect(pasteAction, &QAction::triggered, this, [this]() {
         QString text = QApplication::clipboard()->text();
-        if (!text.isEmpty() && m_pty)
+        if (!text.isEmpty() && hasPty())
             pasteToTerminal(text.toUtf8());
     });
 
@@ -4093,7 +4098,7 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
 
     QAction *clearAction = menu.addAction("Clear Scrollback");
     connect(clearAction, &QAction::triggered, this, [this]() {
-        if (m_pty) ptyWrite(QByteArray("\x1B[3J\x1B[H\x1B[2J", 11));
+        ptyWrite(QByteArray("\x1B[3J\x1B[H\x1B[2J", 11));
     });
 
     menu.addSeparator();
@@ -4297,8 +4302,7 @@ QString TerminalWidget::exportAsHtml() const {
 // --- Foreground process detection ---
 
 QString TerminalWidget::foregroundProcess() const {
-    if (!m_pty) return {};
-    int pid = m_pty->childPid();
+    pid_t pid = ptyChildPid();
     if (pid <= 0) return {};
 
     // Read /proc/PID/stat to get the foreground process group
@@ -4758,7 +4762,7 @@ QString TerminalWidget::outputTextAt(int index) const {
 
 void TerminalWidget::rerunCommandAt(int index) {
     QString cmd = commandTextAt(index);
-    if (cmd.isEmpty() || !m_pty) return;
+    if (cmd.isEmpty() || !hasPty()) return;
     // Write the command followed by carriage return (Enter). pasteToTerminal
     // is not used here because we want the command executed, not pasted — and
     // the multi-line paste confirmation would be wrong for user-initiated

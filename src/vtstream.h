@@ -46,6 +46,8 @@
 #include <memory>
 #include <vector>
 
+#include <sys/types.h>
+
 class Pty;
 
 // One quantum of parse output shipped from worker → GUI. Carries both
@@ -76,6 +78,14 @@ public:
     // Access to the owned Pty is intentionally not exposed. GUI code must
     // go through invokeMethod → write/resize slots so the FD is only
     // touched on the worker thread.
+
+    // Thread-safe child-PID accessor. The PID is written once by
+    // `forkpty()` inside `start()` — which GUI invokes via
+    // Qt::BlockingQueuedConnection, forming a synchronization point —
+    // and never changes afterwards. Safe to read from GUI without a
+    // mutex. Returns -1 if start() has not completed or the shell has
+    // exited.
+    pid_t childPid() const;
 
 signals:
     // Emitted from the worker thread whenever a parse batch is ready.

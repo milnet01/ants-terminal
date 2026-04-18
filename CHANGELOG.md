@@ -12,6 +12,48 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.35] — 2026-04-18
+
+**Theme:** Hotfix for the 0.6.34 threaded-parse refactor. Keystrokes
+typed into the terminal were silently dropped — the echo never
+appeared on screen. Shipped 0.6.34, caught in minutes of dogfood, fix
+is small and the regression test makes it impossible to come back
+quietly.
+
+### Fixed
+
+- **0.6.34 regression: keystrokes not echoing.** Twelve PTY-write
+  call sites in `TerminalWidget` (keystrokes, Ctrl modifiers, arrow
+  keys, clipboard paste, focus reporting, mouse middle-click paste,
+  input method commit, scratchpad, context-menu paste and clear,
+  `writeCommand`, `rerunCommandAt`) still carried pre-0.6.34
+  `if (m_pty) ptyWrite(...)` or `if (cond && m_pty) { ptyWrite(...) }`
+  guards. Under the threaded parse path `m_pty` is null (the Pty
+  lives on the worker thread inside `VtStream`), so the guard
+  silently swallowed every write. Replaced each guard with either
+  `hasPty()` (path-agnostic boolean — true for either the worker or
+  the legacy path) or an unconditional `ptyWrite(...)` (the helper
+  is already null-safe). The legacy path's `m_pty` lifecycle code
+  in `startShell` / `recalcGridSize` / `~TerminalWidget` is
+  unchanged.
+- **`shellPid()` / `shellCwd()` / `foregroundProcess()`** were also
+  gated on the bare `m_pty` pointer, returning empty on the worker
+  path. Replaced with a new `ptyChildPid()` helper that reads from
+  whichever path is active (`VtStream::childPid()` on the worker;
+  `Pty::childPid()` on the legacy path). The PID is written once by
+  `forkpty()` during `startShell`'s blocking-queued invocation, so
+  the cross-thread read is synchronised and mutex-free.
+
+### Added
+
+- **`tests/features/threaded_ptywrite_gating/`** regression test.
+  Source-grep inspection: no `if (m_pty)` / `&& m_pty)` / `!m_pty`
+  gate may appear outside the four allowlisted functions
+  (`ptyWrite`, `ptyChildPid`, `startShell`, `recalcGridSize`,
+  `~TerminalWidget`). Ground-truth verified — re-injecting the
+  regression makes the test fail at the offending line; restoring
+  the fix makes it pass.
+
 ## [0.6.34] — 2026-04-18
 
 **Theme:** Decouple PTY read + VT parse from the GUI thread. Ships the

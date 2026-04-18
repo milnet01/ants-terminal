@@ -89,6 +89,16 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.35" date="2026-04-18">
+      <description>
+        <p>Hotfix for the 0.6.34 threaded-parse refactor. Keystrokes typed into the terminal were silently dropped — the echo never appeared on screen. Twelve PTY-write call sites in <code>TerminalWidget</code> (keystrokes, arrow keys, paste, focus reporting, scratchpad, context menu, and more) still carried pre-0.6.34 <code>if (m_pty) ptyWrite(...)</code> guards. Under the threaded parse path <code>m_pty</code> is null (the <code>Pty</code> now lives on the worker thread inside <code>VtStream</code>), so the guard silently swallowed every write. Replaced each with either <code>hasPty()</code> (path-agnostic) or an unconditional <code>ptyWrite(...)</code> call (the helper is null-safe). A new <code>threaded_ptywrite_gating</code> feature test pins the invariant at the source level so the bug can't come back quietly.</p>
+        <ul>
+          <li><em>Fixed:</em> keystrokes and paste no longer silently drop on the threaded parse path.</li>
+          <li><em>Fixed:</em> <code>shellPid()</code> / <code>shellCwd()</code> / <code>foregroundProcess()</code> now work on the worker path via a new <code>ptyChildPid()</code> helper.</li>
+          <li><em>Added:</em> <code>threaded_ptywrite_gating</code> regression test — source-level guard against stale <code>m_pty</code> null-checks outside the allowlisted legacy-path functions.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.34" date="2026-04-18">
       <description>
         <p>Decouples PTY read and VT parsing from the Qt GUI thread. Previously, every byte of terminal output traversed the GUI thread through <code>QSocketNotifier → Pty::dataReceived → VtParser::feed → TerminalGrid::processAction</code> and then on to paint — so heavy streams (<code>find /</code>, <code>cat biglog</code>) blocked scroll and repaint. As of 0.6.34 read + parse run on a dedicated worker <code>QThread</code> (<code>VtStream</code>); only batched <code>VtAction</code> streams cross back to GUI for grid application and paint. Ships the first 0.7.0 performance item early since the architectural change landed clean with three feature-conformance tests locking the invariants.</p>

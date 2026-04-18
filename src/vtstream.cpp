@@ -38,6 +38,10 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
     return true;
 }
 
+pid_t VtStream::childPid() const {
+    return m_pty ? m_pty->childPid() : -1;
+}
+
 void VtStream::write(const QByteArray &data) {
     if (m_pty) m_pty->write(data);
 }
@@ -65,6 +69,7 @@ void VtStream::drainAck() {
 }
 
 void VtStream::onPtyData(const QByteArray &data) {
+
     // Selection-clear hint: single-pass byte scan, matching the pre-thread
     // logic in TerminalWidget::onPtyData. Delivered with the batch so GUI
     // can clear selection without re-scanning.

@@ -1,3 +1,27 @@
+ants-terminal (0.6.35-1) unstable; urgency=medium
+
+  * Hotfix for the 0.6.34 threaded-parse refactor: keystrokes typed
+    into the terminal were silently dropped — echo never appeared on
+    screen. Twelve PTY-write call sites in TerminalWidget still
+    carried pre-0.6.34 `if (m_pty) ptyWrite(...)` guards. Under the
+    threaded parse path m_pty is null (the Pty lives on the worker
+    thread inside VtStream), so the guard silently swallowed every
+    write. Replaced each with either hasPty() (path-agnostic) or an
+    unconditional ptyWrite(...) call (the helper is already
+    null-safe).
+  * shellPid() / shellCwd() / foregroundProcess() now work on the
+    worker path via a new ptyChildPid() helper that reads from
+    whichever path is active. The PID is written once by forkpty()
+    during startShell's blocking-queued invocation so the cross-
+    thread read is synchronised and mutex-free.
+  * New tests/features/threaded_ptywrite_gating/ regression test.
+    Source-grep inspection: no `if (m_pty)` / `&& m_pty)` / `!m_pty`
+    gate may appear outside the four allowlisted functions
+    (ptyWrite, ptyChildPid, startShell, recalcGridSize,
+    ~TerminalWidget). Ground-truth verified.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 19:30:00 +0000
+
 ants-terminal (0.6.34-1) unstable; urgency=medium
 
   * Decouples PTY read and VT parsing from the Qt GUI thread. A new

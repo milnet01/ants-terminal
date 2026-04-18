@@ -17,6 +17,7 @@
 #include <QScrollBar>
 #include <unordered_map>
 #include <memory>
+#include <sys/types.h>
 
 class GlRenderer;
 
@@ -367,6 +368,20 @@ private:
     // callback / paste call sites route through here so the diff to the
     // existing code is one-line-per-site.
     void ptyWrite(const QByteArray &data);
+
+    // "Is a PTY available to write to?" — true on either the worker or
+    // legacy path once startShell() has succeeded. Replaces the pre-0.6.34
+    // `m_pty` null-check that gated write call sites: on the worker path
+    // m_pty stays null (worker owns its own Pty), so those gates would
+    // silently swallow every keystroke. `hasPty()` is the path-agnostic
+    // guard.
+    bool hasPty() const { return m_vtStream != nullptr || m_pty != nullptr; }
+
+    // Path-agnostic child-PID accessor. The worker path's Pty lives on
+    // the worker thread; reading its childPid() is safe because the PID
+    // is written once during forkpty() (synchronised by startShell's
+    // BlockingQueuedConnection) and never changes afterwards.
+    pid_t ptyChildPid() const;
 
     QFont m_font;
     QFont m_fontBold;
