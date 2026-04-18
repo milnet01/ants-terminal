@@ -32,6 +32,7 @@ class ColoredTabWidget;
 class QSplitter;
 class QFrame;
 class XcbPositionTracker;
+class GlobalShortcutsPortal;
 #ifdef ANTS_LUA_PLUGINS
 class PluginManager;
 #endif
@@ -155,6 +156,16 @@ private:
     bool m_quakeMode = false;
     bool m_quakeVisible = false;
     QPropertyAnimation *m_quakeAnim = nullptr;
+    // 0.6.39: Freedesktop Portal GlobalShortcuts client (owned). Nullptr
+    // when the portal service isn't registered (no xdg-desktop-portal)
+    // OR when the bind request was rejected (e.g. GNOME Shell, which
+    // hasn't implemented the GlobalShortcuts portal yet). In both cases
+    // the in-app QShortcut from 0.6.38 stays as the activation path.
+    GlobalShortcutsPortal *m_gsPortal = nullptr;
+    // Monotonic-ms timestamp of the last Quake toggle, keyed by which
+    // path fired. Used to debounce the portal-vs-QShortcut double-fire
+    // when Ants is focused and both paths route the same key press.
+    qint64 m_lastQuakeToggleMs = 0;
     void setupQuakeMode();
     void toggleQuakeVisibility();
 

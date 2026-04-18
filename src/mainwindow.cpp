@@ -15,6 +15,14 @@
 #include "claudetranscript.h"
 #include "auditdialog.h"
 #include "elidedlabel.h"
+#include "globalshortcutsportal.h"
+
+namespace {
+// Forward declaration — definition lives next to setupQuakeMode() (its
+// only other caller) so the conversion table is one scroll away from
+// the portal binding.
+QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
+}
 
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
@@ -504,24 +512,58 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     if (quakeMode || m_config.quakeMode()) {
         setupQuakeMode();
 
-        // Wire the configured hotkey to toggleQuakeVisibility. This is an
-        // in-app QShortcut — it fires only when Ants has focus. A true
-        // out-of-focus global hotkey needs compositor-side registration
-        // (KGlobalAccel on KDE, GNOME settings-daemon on Wayland, or the
-        // freedesktop GlobalShortcuts portal) and is tracked as a
-        // follow-up item for 0.6.39. Wiring this in-app hotkey already
-        // makes the config key functional (pre-0.6.38 it was saved but
-        // never read); users running Ants maximised or pinned to a
-        // workspace will hit the toggle the way the docs claim.
+        // Two-path activation: an in-app QShortcut that fires when Ants
+        // has focus, plus a Freedesktop Portal GlobalShortcuts binding
+        // that fires whether or not Ants has focus (0.6.39). The in-app
+        // path from 0.6.38 stays as the always-on fallback because the
+        // portal is only implemented by some backends (KDE Plasma 6,
+        // xdg-desktop-portal-hyprland, -wlr) — GNOME Shell and the
+        // X11-on-legacy-portal cases fall back to the in-app binding.
+        //
+        // Double-fire debounce: on focused systems where both paths
+        // deliver the same key press, we'd hide-then-show (visible
+        // flicker). The in-app lambda and the portal lambda both stamp
+        // m_lastQuakeToggleMs and reject if the previous stamp is less
+        // than 500 ms old. QShortcut is in-process and fires first; the
+        // portal's D-Bus round-trip makes its event arrive second, so
+        // the debounce drops the portal's duplicate.
         QString hotkeyStr = m_config.quakeHotkey();
         if (!hotkeyStr.isEmpty()) {
             QKeySequence hotkey(hotkeyStr);
             if (!hotkey.isEmpty()) {
                 auto *sc = new QShortcut(hotkey, this);
                 sc->setContext(Qt::ApplicationShortcut);
-                connect(sc, &QShortcut::activated,
-                        this, &MainWindow::toggleQuakeVisibility);
+                connect(sc, &QShortcut::activated, this, [this]() {
+                    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                    if (now - m_lastQuakeToggleMs < 500) return;
+                    m_lastQuakeToggleMs = now;
+                    toggleQuakeVisibility();
+                });
             }
+        }
+
+        // Portal binding (only when xdg-desktop-portal is on the bus).
+        // Request the same hotkey the user configured — the portal's
+        // preferred_trigger is advisory, and on first bind KDE's
+        // backend shows a system-settings prompt that takes our
+        // suggestion as the default. Translation from Qt's
+        // "Ctrl+Shift+`" to the portal's "CTRL+SHIFT+grave" is
+        // best-effort; unrecognised keys pass through unchanged and
+        // the user adjusts in System Settings if needed.
+        if (!hotkeyStr.isEmpty() && GlobalShortcutsPortal::isAvailable()) {
+            m_gsPortal = new GlobalShortcutsPortal(this);
+            connect(m_gsPortal, &GlobalShortcutsPortal::activated, this,
+                    [this](const QString &id) {
+                        if (id != QStringLiteral("toggle-quake")) return;
+                        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                        if (now - m_lastQuakeToggleMs < 500) return;
+                        m_lastQuakeToggleMs = now;
+                        toggleQuakeVisibility();
+                    });
+            m_gsPortal->bindShortcut(
+                QStringLiteral("toggle-quake"),
+                tr("Toggle Ants Terminal drop-down"),
+                qtKeySequenceToPortalTrigger(hotkeyStr));
         }
     }
 
@@ -3235,6 +3277,48 @@ void MainWindow::updateTabTitles() {
 // Handled in connectTerminal via sendToPty forwarding
 
 // --- Quake mode ---
+
+namespace {
+// Translate Qt's QKeySequence string form ("Ctrl+Shift+F12", "F12",
+// "Ctrl+Alt+`") to the freedesktop shortcut syntax accepted by the
+// GlobalShortcuts portal ("CTRL+SHIFT+F12", "F12", "CTRL+ALT+grave").
+// Modifier names uppercase (with Meta→LOGO); keys pass through with a
+// handful of common punctuation → xkb-keysym translations. Unmapped
+// keys pass through unchanged — at worst the portal rejects the
+// preferred_trigger, in which case the binding still succeeds with no
+// default and the user adjusts in System Settings. Kept deliberately
+// minimal; full keysym coverage is xkbcommon's job, not ours.
+QString qtKeySequenceToPortalTrigger(const QString &qtHotkey) {
+    if (qtHotkey.isEmpty()) return {};
+    const QStringList parts = qtHotkey.split(QLatin1Char('+'), Qt::SkipEmptyParts);
+    QStringList out;
+    out.reserve(parts.size());
+    for (const QString &raw : parts) {
+        const QString upper = raw.toUpper();
+        if (upper == QLatin1String("CTRL") ||
+            upper == QLatin1String("ALT") ||
+            upper == QLatin1String("SHIFT")) {
+            out << upper;
+        } else if (upper == QLatin1String("META") ||
+                   upper == QLatin1String("WIN") ||
+                   upper == QLatin1String("SUPER")) {
+            out << QStringLiteral("LOGO");
+        } else if (raw == QLatin1String("`")) {
+            out << QStringLiteral("grave");
+        } else if (raw == QLatin1String("'")) {
+            out << QStringLiteral("apostrophe");
+        } else if (raw == QLatin1String(" ")) {
+            out << QStringLiteral("space");
+        } else {
+            // F-keys and letters pass through as-is. F1..F24, single
+            // letters A..Z, and digits 0..9 are accepted verbatim by
+            // every portal backend we've tested.
+            out << raw;
+        }
+    }
+    return out.join(QLatin1Char('+'));
+}
+}  // anonymous
 
 void MainWindow::setupQuakeMode() {
     m_quakeMode = true;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.38 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.39 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -75,6 +75,7 @@ add_executable(ants-terminal
     src/claudeintegration.cpp
     src/claudeprojects.cpp
     src/claudetranscript.cpp
+    src/globalshortcutsportal.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE
@@ -768,6 +769,39 @@ if(ANTS_TESTS)
     add_test(NAME wayland_quake_mode
              COMMAND test_wayland_quake_mode)
     set_tests_properties(wayland_quake_mode PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # global_shortcuts_portal — locks the 0.6.39 Freedesktop Portal
+    # GlobalShortcuts invariants. Source-grep test (same pattern as
+    # wayland_quake_mode) asserting: (1) MainWindow gates portal
+    # construction on isAvailable(); (2) canonical D-Bus service /
+    # path / interface / method literals appear verbatim in the impl;
+    # (3) MainWindow binds + matches the literal id "toggle-quake";
+    # (4) the 0.6.38 in-app QShortcut fallback stays wired; (5) both
+    # activation paths debounce via m_lastQuakeToggleMs; (6)
+    # CMakeLists.txt lists the source + keeps Qt6::DBus linked;
+    # (7) the header surfaces the expected public API.
+    # See tests/features/global_shortcuts_portal/spec.md.
+    add_executable(test_global_shortcuts_portal
+        tests/features/global_shortcuts_portal/test_global_shortcuts_portal.cpp
+    )
+    target_link_libraries(test_global_shortcuts_portal PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_global_shortcuts_portal PRIVATE src)
+    target_compile_options(test_global_shortcuts_portal PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_global_shortcuts_portal PRIVATE
+        SRC_PORTAL_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/globalshortcutsportal.h"
+        SRC_PORTAL_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/globalshortcutsportal.cpp"
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    )
+    add_test(NAME global_shortcuts_portal
+             COMMAND test_global_shortcuts_portal)
+    set_tests_properties(global_shortcuts_portal PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

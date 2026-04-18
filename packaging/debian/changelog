@@ -1,3 +1,33 @@
+ants-terminal (0.6.39-1) unstable; urgency=medium
+
+  * Wayland-native Quake-mode, part 2 of 2 — completes the 0.7.0
+    roadmap item. New GlobalShortcutsPortal client class wraps the
+    Freedesktop org.freedesktop.portal.GlobalShortcuts D-Bus
+    handshake (CreateSession → session handle → BindShortcuts →
+    Activated) behind a single Qt signal. MainWindow binds the
+    toggle-quake id with config.quake_hotkey as the preferred
+    trigger when the portal service is registered on the session
+    bus (KDE Plasma 6, xdg-desktop-portal-hyprland, -wlr).
+  * Keep the in-app QShortcut fallback from 0.6.38 wired even when
+    the portal is available — defence-in-depth for GNOME Shell
+    (portal service present but no GlobalShortcuts backend yet) and
+    for minimal desktops without a portal.
+  * Debounce focused double-fire: both activation paths stamp
+    m_lastQuakeToggleMs and reject any toggle within 500 ms of the
+    previous. Without this, a focused system would hide-then-show
+    the window in one frame on every key press.
+  * Add qtKeySequenceToPortalTrigger helper translating Qt's
+    "Ctrl+Shift+`" to freedesktop shortcut syntax
+    "CTRL+SHIFT+grave". Deliberately minimal; full keysym coverage
+    is xkbcommon's job.
+  * New tests/features/global_shortcuts_portal/ regression test —
+    source-grep pins the isAvailable() gate, canonical D-Bus
+    identifiers, bound id / match id parity, QShortcut fallback,
+    debounce on both paths, CMake source + DBus link, and the
+    public header surface.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 23:59:00 +0000
+
 ants-terminal (0.6.38-1) unstable; urgency=medium
 
   * Wayland-native Quake-mode, part 1 of 2. When layer-shell-qt6 is

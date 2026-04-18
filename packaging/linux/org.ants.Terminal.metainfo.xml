@@ -89,6 +89,18 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.39" date="2026-04-18">
+      <description>
+        <p>Wayland-native Quake-mode, part 2 of 2 — completes the 0.7.0 roadmap item. When the <code>xdg-desktop-portal</code> service is available on the session bus, Ants Terminal now registers its Quake toggle with the Freedesktop Portal <code>org.freedesktop.portal.GlobalShortcuts</code> API (KDE Plasma 6, <code>xdg-desktop-portal-hyprland</code>, <code>xdg-desktop-portal-wlr</code>). The hotkey fires whether or not Ants has focus. On GNOME Shell (portal service present but no GlobalShortcuts backend yet) and on minimal desktops without a portal, the in-app <code>QShortcut</code> fallback from 0.6.38 stays as the activation path — no regression.</p>
+        <ul>
+          <li><em>Added:</em> <code>GlobalShortcutsPortal</code> client class wrapping the three-step D-Bus handshake (<code>CreateSession</code> → session handle → <code>BindShortcuts</code> → <code>Activated</code>) behind a single Qt signal. Handles request-path prediction, custom meta-type registration for the <code>a(sa{sv})</code> shortcuts array, and session lifecycle.</li>
+          <li><em>Added:</em> portal-aware Quake setup in <code>MainWindow</code> — when the portal is available, binds the <code>toggle-quake</code> id with <code>config.quake_hotkey</code> as the preferred trigger.</li>
+          <li><em>Added:</em> focused double-fire debounce between the in-app <code>QShortcut</code> and the portal <code>Activated</code> paths (500 ms window) so a focused system doesn't hide-then-show the window in one frame.</li>
+          <li><em>Added:</em> <code>qtKeySequenceToPortalTrigger</code> helper that converts Qt's <code>"Ctrl+Shift+`"</code> into the freedesktop shortcut-syntax <code>"CTRL+SHIFT+grave"</code>. Deliberately minimal — modifiers plus a handful of common punctuation; unrecognised keys pass through.</li>
+          <li><em>Invariant:</em> new <code>tests/features/global_shortcuts_portal/</code> regression test pins (1) <code>isAvailable()</code> gate on portal construction; (2) canonical D-Bus service / path / interface / method literals; (3) bound id <code>"toggle-quake"</code> matches the Activated handler filter; (4) in-app <code>QShortcut</code> fallback stays wired; (5) both activation paths debounce via <code>m_lastQuakeToggleMs</code>; (6) CMakeLists.txt lists the source + keeps <code>Qt6::DBus</code> linked; (7) header surfaces the expected public API.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.38" date="2026-04-18">
       <description>
         <p>Wayland-native Quake-mode, part 1 of 2. When <code>layer-shell-qt6</code> is present at build time, Ants Terminal's drop-down Quake mode now promotes its window to a <code>zwlr_layer_surface_v1</code> at the top layer, anchored to the top edge of the active screen — the Wayland equivalent of the X11 <code>_NET_WM_STATE_ABOVE</code> + client-side <code>move()</code> the XCB path has used all along. Also fixes a long-standing dead-code bug: the <code>quake_hotkey</code> config key was saved from Settings but never wired to a shortcut; the QLineEdit value is now honoured in-app. True out-of-focus global hotkey registration (via the Freedesktop Portal GlobalShortcuts API) is the 0.6.39 follow-up.</p>

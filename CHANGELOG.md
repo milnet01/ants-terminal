@@ -12,6 +12,66 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.39] — 2026-04-18
+
+**Theme:** Wayland-native Quake-mode, part 2 of 2. Completes the 0.7.0
+ROADMAP item: out-of-focus global hotkey registration via the
+Freedesktop Portal `org.freedesktop.portal.GlobalShortcuts` D-Bus API.
+Replaces the originally-planned KGlobalAccel-on-KDE + GNOME-dbus
+branching with one compositor-agnostic portal API that upstream has
+converged on since 2023 (KDE Plasma 6, xdg-desktop-portal-hyprland,
+xdg-desktop-portal-wlr).
+
+### Added
+
+- **`GlobalShortcutsPortal` client class.** New
+  `src/globalshortcutsportal.{h,cpp}` wraps the three-step handshake
+  (CreateSession → Response with session_handle → BindShortcuts →
+  Activated) behind a simple `activated(QString)` Qt signal. The class
+  handles the portal's request-path prediction convention (subscribing
+  to the `Response` signal before dispatching the method call so the
+  portal's reply can't land in a window where no match rule is
+  installed), Qt D-Bus custom meta-type registration for the
+  `a(sa{sv})` shortcuts array, and session lifecycle.
+- **Portal-aware `MainWindow` Quake setup.** When
+  `GlobalShortcutsPortal::isAvailable()` returns true, `MainWindow`
+  instantiates the portal, binds `toggle-quake` with
+  `config.quake_hotkey` as the preferred trigger, and routes `Activated`
+  signals through `toggleQuakeVisibility()`. The in-app `QShortcut`
+  from 0.6.38 stays wired unconditionally as a defence-in-depth
+  fallback — for GNOME Shell (portal service present but no
+  GlobalShortcuts backend yet), for the window between CreateSession
+  and BindShortcuts response, and for any future revocation / re-bind
+  path.
+- **Focused double-fire debounce.** Both the in-app `QShortcut` lambda
+  and the portal `activated` lambda stamp `m_lastQuakeToggleMs` with
+  `QDateTime::currentMSecsSinceEpoch()` and reject any toggle if the
+  previous stamp is less than 500 ms old. Without the debounce, a
+  focused system where both paths deliver the same key press would
+  hide-then-show the window in one frame (visible flicker).
+- **Qt → portal trigger translation.** `qtKeySequenceToPortalTrigger()`
+  converts `"Ctrl+Shift+\`"` / `"Meta+F12"` into the freedesktop
+  shortcut-syntax equivalents (`"CTRL+SHIFT+grave"`,
+  `"LOGO+F12"`). Deliberately minimal — modifiers plus a handful of
+  common punctuation → xkb-keysyms; full keysym coverage is
+  xkbcommon's job. Unrecognised keys pass through unchanged, and
+  the user adjusts in System Settings if needed (the portal prompt
+  treats `preferred_trigger` as advisory anyway).
+
+### Invariants
+
+- New source-grep regression test
+  `tests/features/global_shortcuts_portal/` pins: (1)
+  `isAvailable()` gate on portal construction, (2) canonical
+  `org.freedesktop.portal.Desktop` / `/org/freedesktop/portal/desktop`
+  / `org.freedesktop.portal.GlobalShortcuts` / `.Request` literals in
+  the impl, (3) bound id `"toggle-quake"` matches the Activated
+  handler filter, (4) in-app `QShortcut` fallback stays wired, (5) both
+  paths debounce via `m_lastQuakeToggleMs` (regex match count ≥ 2), (6)
+  CMake lists the source + keeps `Qt6::DBus` linked, (7) header
+  surfaces the expected public API (`isAvailable`, `bindShortcut`,
+  `activated`).
+
 ## [0.6.38] — 2026-04-18
 
 **Theme:** Wayland-native Quake-mode, part 1 of 2. The 0.7.0 ROADMAP
