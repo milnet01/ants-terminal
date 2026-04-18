@@ -434,6 +434,19 @@ the next run.
 - ✅ **`CONTRIBUTING.md`.** Shipped in 0.6.7 — derived from `STANDARDS.md`,
   covers build modes, test layout, adding an audit rule, version-bump
   checklist. See [CHANGELOG.md §0.6.7](CHANGELOG.md#067--2026-04-14).
+- 📋 **Upgrade `actions/checkout` to v5 (Node.js 24).** GitHub
+  Actions deprecates Node.js 20 on 2026-06-02 (forced Node 24 by
+  default) and removes it entirely on 2026-09-16. Our
+  `.github/workflows/ci.yml` pins
+  `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2`
+  at two sites (lines 28 and 120), both of which still use Node 20.
+  Bump to the latest `v5.x` SHA (currently
+  `actions/checkout@v5`) before the June deadline so CI doesn't start
+  emitting deprecation warnings or, later, fail outright. Low-risk
+  bump — checkout's input surface is stable across v4→v5; the only
+  breaking change is the Node runtime. If we add other GitHub-
+  provided actions (setup-qt, cache, upload-artifact), audit each
+  for Node 20 at the same time.
 
 ---
 
