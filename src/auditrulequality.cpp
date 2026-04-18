@@ -247,12 +247,3 @@ void RuleQualityTracker::load() {
     }
 }
 
-void RuleQualityTracker::prune() {
-    const QDateTime cutoff = QDateTime::currentDateTime().addDays(-RETENTION_DAYS);
-    m_fires.erase(std::remove_if(m_fires.begin(), m_fires.end(),
-        [cutoff](const FireRecord &r) { return r.timestamp < cutoff; }),
-        m_fires.end());
-    m_suppressions.erase(std::remove_if(m_suppressions.begin(), m_suppressions.end(),
-        [cutoff](const SuppressRecord &r) { return r.timestamp < cutoff; }),
-        m_suppressions.end());
-}

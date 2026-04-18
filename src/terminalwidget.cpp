@@ -2122,8 +2122,10 @@ bool TerminalWidget::confirmDangerousPaste(const QByteArray &data) {
     // Classify: does this paste look risky?
     bool hasNewline = data.contains('\n') || data.contains('\r');
     bool hasSudo = data.contains("sudo ") || data.startsWith("sudo\t");
-    // "curl … | sh" / "wget … | sh" — classic supply-chain footgun
-    QRegularExpression pipeRun(
+    // "curl … | sh" / "wget … | sh" — classic supply-chain footgun.
+    // Static-init so the compiled regex is reused across every paste
+    // instead of being rebuilt on each call (clazy: use-static-qregularexpression).
+    static const QRegularExpression pipeRun(
         R"((?:curl|wget|fetch|bash\s+<)[^\n]*\|\s*(?:sh|bash|zsh|fish|python|python3|perl|ruby|nu))",
         QRegularExpression::CaseInsensitiveOption);
     bool hasPipeExec = pipeRun.match(QString::fromUtf8(data)).hasMatch();

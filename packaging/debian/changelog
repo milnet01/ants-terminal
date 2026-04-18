@@ -1,3 +1,23 @@
+ants-terminal (0.6.36-1) unstable; urgency=medium
+
+  * Tenth periodic audit. Two actionable findings across ~110 raw —
+    a 2% signal ratio consistent with the codebase's calibration
+    anchor. Both fixed in a single pass.
+  * Remove dead RuleQualityTracker::prune() function. Declared in
+    auditrulequality.h:133, defined in .cpp:250, never called. The
+    retention logic had already been inlined into save() (const-
+    method) when save needed to filter records without mutating.
+    Two copies of the same cutoff logic would drift; save() is now
+    the single source of truth. Flagged by cppcheck.
+  * Hoist pipeRun QRegularExpression to static const in
+    confirmDangerousPaste(). Previously rebuilt on every paste;
+    now compiled once per process. Safe because
+    QRegularExpression::match is reentrant and const-safe since
+    Qt 5.4. Flagged by clazy's use-static-qregularexpression
+    check.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 21:40:00 +0000
+
 ants-terminal (0.6.35-1) unstable; urgency=medium
 
   * Hotfix for the 0.6.34 threaded-parse refactor: keystrokes typed

@@ -130,5 +130,4 @@ private:
     static constexpr int RETENTION_DAYS = 90;
 
     void load();
-    void prune();
 };

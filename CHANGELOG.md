@@ -12,6 +12,34 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.36] — 2026-04-18
+
+**Theme:** Tenth periodic audit (10th in the series, post-0.6.35).
+Two actionable findings across ~110 raw — a 2% signal ratio consistent
+with the codebase's audit-calibration anchor. Both fixed in a single
+pass.
+
+### Fixed
+
+- **`RuleQualityTracker::prune()` dead code.** Declared in
+  `src/auditrulequality.h:133` and defined in `.cpp:250`; never
+  called. The retention-cutoff logic was inlined into `save()`
+  (const-method) when that method needed to filter records without
+  mutating. Two copies of the same logic would drift over time.
+  Removed the dead function — `save()` is the single source of
+  truth for the 90-day retention window. Flagged by cppcheck's
+  `unusedPrivateFunction` rule.
+- **`pipeRun` regex recompiled on every paste.**
+  `src/terminalwidget.cpp:2129`
+  constructed a fresh `QRegularExpression` with the
+  CaseInsensitiveOption on every call to `confirmDangerousPaste()`
+  — a hot path that fires on every user paste. Hoisted to a
+  function-local `static const` so the pattern compiles once per
+  process and is reused thereafter. Flagged by clazy's
+  `use-static-qregularexpression` check. Safe because
+  `QRegularExpression::match` is reentrant and const-safe since
+  Qt 5.4.
+
 ## [0.6.35] — 2026-04-18
 
 **Theme:** Hotfix for the 0.6.34 threaded-parse refactor. Keystrokes

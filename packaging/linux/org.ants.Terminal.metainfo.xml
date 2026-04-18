@@ -89,6 +89,15 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.36" date="2026-04-18">
+      <description>
+        <p>Tenth periodic audit. Two actionable findings across ~110 raw — a 2% signal ratio consistent with the codebase's audit-calibration anchor. Both fixed in a single pass.</p>
+        <ul>
+          <li><em>Fixed:</em> <code>RuleQualityTracker::prune()</code> was dead code — <code>save()</code> inlined the same retention logic. Removed the dead function; <code>save()</code> is now the single source of truth for the 90-day cutoff.</li>
+          <li><em>Fixed:</em> <code>pipeRun</code> regex in paste-confirmation was recompiled on every paste. Hoisted to <code>static const</code> so the pattern compiles once per process.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.35" date="2026-04-18">
       <description>
         <p>Hotfix for the 0.6.34 threaded-parse refactor. Keystrokes typed into the terminal were silently dropped — the echo never appeared on screen. Twelve PTY-write call sites in <code>TerminalWidget</code> (keystrokes, arrow keys, paste, focus reporting, scratchpad, context menu, and more) still carried pre-0.6.34 <code>if (m_pty) ptyWrite(...)</code> guards. Under the threaded parse path <code>m_pty</code> is null (the <code>Pty</code> now lives on the worker thread inside <code>VtStream</code>), so the guard silently swallowed every write. Replaced each with either <code>hasPty()</code> (path-agnostic) or an unconditional <code>ptyWrite(...)</code> call (the helper is null-safe). A new <code>threaded_ptywrite_gating</code> feature test pins the invariant at the source level so the bug can't come back quietly.</p>
