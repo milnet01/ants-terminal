@@ -1,3 +1,32 @@
+ants-terminal (0.6.38-1) unstable; urgency=medium
+
+  * Wayland-native Quake-mode, part 1 of 2. When layer-shell-qt6 is
+    present at build time, Ants's drop-down mode now promotes its
+    window to a zwlr_layer_surface_v1 at the top layer, anchored to
+    the top edge of the active screen — the Wayland equivalent of
+    the X11 _NET_WM_STATE_ABOVE + client-side move() the XCB path
+    has always used. CMake uses find_package(LayerShellQt CONFIG
+    QUIET); missing devel = Wayland Quake falls back to the Qt
+    toplevel path, X11 Quake is unaffected.
+  * Fix the long-standing dead-code bug where the quake_hotkey
+    config key (saved from Settings → Dropdown/Quake Mode) was
+    never consumed. Now wired to a QShortcut invoking
+    toggleQuakeVisibility() when Quake mode is active.
+  * Drop the slide-up/slide-down pos() animation on Wayland — the
+    compositor owns position there, so QPropertyAnimation on "pos"
+    would visibly snap at animation end. Wayland path uses a plain
+    show/hide toggle; XCB slide is unchanged.
+  * Add Build-Depends: liblayershellqt6-dev. Older Debian releases
+    packaged the headers under liblayershellqtinterface-dev; the
+    CMake QUIET flag lets the build proceed either way.
+  * New tests/features/wayland_quake_mode/ regression test —
+    source-grep pins the layer-shell include guard, runtime
+    platform dispatch, Wayland animation short-circuit,
+    quake_hotkey QShortcut wiring, and the CMake find_package
+    invocation form.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 23:30:00 +0000
+
 ants-terminal (0.6.37-1) unstable; urgency=medium
 
   * Phase 3 of the 0.7.0 threading refactor. Retire the

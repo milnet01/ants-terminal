@@ -26,7 +26,7 @@
 # both when releasing.
 
 Name:           ants-terminal
-Version:        0.6.37
+Version:        0.6.38
 Release:        0
 Summary:        Qt6 terminal emulator with Lua plugins and a project-audit dialog
 License:        MIT
@@ -45,6 +45,14 @@ BuildRequires:  cmake(Qt6OpenGL)
 BuildRequires:  cmake(Qt6OpenGLWidgets)
 BuildRequires:  cmake(Qt6Widgets)
 BuildRequires:  pkgconfig(lua5.4)
+# Optional: Wayland-native Quake-mode (0.6.38). When this devel package
+# is present, `find_package(LayerShellQt CONFIG QUIET)` in CMakeLists.txt
+# wires layer-shell anchoring into setupQuakeMode(). Absent = Wayland
+# Quake falls back to the Qt toplevel path; X11 Quake is unaffected.
+# Listed as a hard BuildRequires so distro users get the feature by
+# default — the package itself is ~25 KiB, runtime dep is the matching
+# layer-shell-qt6 library which KDE Plasma already pulls in.
+BuildRequires:  cmake(LayerShellQt) >= 6.0
 # Packaging artefact validators (H2/H3/H4): invoked nowhere in %check but
 # good hygiene to pull them in so `cmake --install` staging under `osc build`
 # surfaces any schema drift against the current appstream / desktop-file

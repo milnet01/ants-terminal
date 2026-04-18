@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.37 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.38 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,6 +38,16 @@ if(NOT LUA_FOUND)
         set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
     endif()
 endif()
+
+# LayerShellQt (optional — wlr-layer-shell-v1 anchoring for Quake-mode on
+# Wayland compositors). Without it, Quake-mode still works via the regular
+# Qt toplevel path on Wayland but positioning/always-on-top behaviour is at
+# the mercy of the compositor (no wl_shell equivalent of X11's
+# _NET_WM_STATE_ABOVE). With it, we anchor to the top edge via
+# zwlr_layer_shell_v1 so the dropdown behaves the way X11 users expect.
+# Used only in mainwindow.cpp's setupQuakeMode() — guarded behind the
+# ANTS_WAYLAND_LAYER_SHELL compile definition.
+find_package(LayerShellQt CONFIG QUIET)
 
 add_executable(ants-terminal
     src/main.cpp
@@ -137,6 +147,18 @@ if(LUA_FOUND)
     message(STATUS "Lua ${LUA_VERSION} found — plugin system enabled")
 else()
     message(STATUS "Lua 5.4 not found — plugin system disabled")
+endif()
+
+# LayerShellQt Wayland anchoring (optional). Added in 0.6.38 for the
+# Wayland-native Quake-mode roadmap item. Opt-in via the runtime platform
+# check in mainwindow.cpp — builds without it still ship a working Quake
+# mode on X11 (via _NET_WM_STATE_ABOVE) and a degraded one on Wayland.
+if(LayerShellQt_FOUND)
+    target_link_libraries(ants-terminal PRIVATE LayerShellQt::Interface)
+    target_compile_definitions(ants-terminal PRIVATE ANTS_WAYLAND_LAYER_SHELL=1)
+    message(STATUS "LayerShellQt found — Wayland-native Quake-mode enabled")
+else()
+    message(STATUS "LayerShellQt not found — Quake-mode on Wayland falls back to the Qt toplevel path")
 endif()
 
 include(GNUInstallDirs)
@@ -714,6 +736,38 @@ if(ANTS_TESTS)
     add_test(NAME threaded_resize_synchronous
              COMMAND test_threaded_resize_synchronous)
     set_tests_properties(threaded_resize_synchronous PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # wayland_quake_mode — locks the 0.6.38 Wayland-native Quake-mode
+    # invariants. Source-grep test (same pattern as
+    # threaded_resize_synchronous / shift_enter_bracketed_paste) asserting:
+    # (1) the <LayerShellQt/Window> include is guarded by
+    # ANTS_WAYLAND_LAYER_SHELL; (2) setupQuakeMode does a runtime
+    # platformName() dispatch and preserves the X11-path flags;
+    # (3) toggleQuakeVisibility skips the pos()-based animation on
+    # Wayland; (4) the constructor wires the quake_hotkey config key to a
+    # QShortcut invoking toggleQuakeVisibility (the config key was dead
+    # pre-0.6.38); (5) CMakeLists.txt uses find_package(LayerShellQt
+    # CONFIG QUIET) and links LayerShellQt::Interface when found.
+    # See tests/features/wayland_quake_mode/spec.md.
+    add_executable(test_wayland_quake_mode
+        tests/features/wayland_quake_mode/test_wayland_quake_mode.cpp
+    )
+    target_link_libraries(test_wayland_quake_mode PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_wayland_quake_mode PRIVATE src)
+    target_compile_options(test_wayland_quake_mode PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_wayland_quake_mode PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    )
+    add_test(NAME wayland_quake_mode
+             COMMAND test_wayland_quake_mode)
+    set_tests_properties(wayland_quake_mode PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

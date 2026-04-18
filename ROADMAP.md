@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.37 (2026-04-18) (2026-04-18). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.38 (2026-04-18). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -77,7 +77,7 @@ Gating items (blocks adoption **today**, not just for being default):
 1. **No distro packages anywhere** — H5 + H6 unblock this.
 2. ~~**No AppStream metadata** — H2 unblocks GNOME Software / KDE Discover discovery.~~ ✅ Shipped in 0.6.17.
 3. ~~**No SECURITY.md** — H1. Distro security teams need a disclosure contact before shipping.~~ ✅ Shipped in 0.6.16.
-4. **Linux-only + X11-only dropdown** — H8 (macOS) and §0.7.0 Wayland-native Quake widen the addressable audience.
+4. **Linux-only** + ~~**X11-only dropdown**~~ — H8 (macOS) widens the addressable audience; Wayland-native Quake positioning shipped in 0.6.38, global-hotkey follow-up in 0.6.39.
 
 ---
 
@@ -306,9 +306,22 @@ there before adding a multiplexer. Reference:
 
 ### 🖥 Platform
 
-- 📋 **Wayland-native Quake-mode**: implement a layer-shell-based
-  dropdown via `wlr-layer-shell-unstable-v1`; global hotkey via
-  KGlobalAccel on KDE, dbus on GNOME. XCB path stays for X11.
+- 🚧 **Wayland-native Quake-mode** — split into two ships.
+  Part 1 of 2 landed in 0.6.38: `find_package(LayerShellQt CONFIG
+  QUIET)` wires `LayerShellQt::Interface` when the
+  `layer-shell-qt6-devel` package is installed, and
+  `MainWindow::setupQuakeMode()` promotes the window to a
+  `zwlr_layer_surface_v1` at `LayerTop`, anchored top/left/right with
+  exclusive-zone 0. The dead `quake_hotkey` config key is wired
+  to a `QShortcut` with `Qt::ApplicationShortcut` context. XCB path
+  preserved for X11. Source-level invariants pinned in
+  `tests/features/wayland_quake_mode/`. Part 2 (0.6.39) will add true
+  out-of-focus global hotkey registration via the Freedesktop Portal
+  GlobalShortcuts API (`org.freedesktop.portal.GlobalShortcuts`) — the
+  compositor-agnostic API KDE Plasma 6 and GNOME Shell both expose,
+  replacing the originally-planned KGlobalAccel + separate GNOME
+  D-Bus paths. See
+  [CHANGELOG.md §0.6.38](CHANGELOG.md#0638--2026-04-18).
 
 ### 🔒 Security
 

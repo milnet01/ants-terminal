@@ -89,6 +89,18 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.38" date="2026-04-18">
+      <description>
+        <p>Wayland-native Quake-mode, part 1 of 2. When <code>layer-shell-qt6</code> is present at build time, Ants Terminal's drop-down Quake mode now promotes its window to a <code>zwlr_layer_surface_v1</code> at the top layer, anchored to the top edge of the active screen — the Wayland equivalent of the X11 <code>_NET_WM_STATE_ABOVE</code> + client-side <code>move()</code> the XCB path has used all along. Also fixes a long-standing dead-code bug: the <code>quake_hotkey</code> config key was saved from Settings but never wired to a shortcut; the QLineEdit value is now honoured in-app. True out-of-focus global hotkey registration (via the Freedesktop Portal GlobalShortcuts API) is the 0.6.39 follow-up.</p>
+        <ul>
+          <li><em>Added:</em> <code>LayerShellQt</code> integration — <code>CMakeLists.txt</code> does <code>find_package(LayerShellQt CONFIG QUIET)</code> and defines <code>ANTS_WAYLAND_LAYER_SHELL</code> when found. Missing = Wayland Quake falls back to the Qt toplevel path; X11 Quake is unaffected.</li>
+          <li><em>Fixed:</em> the <code>quake_hotkey</code> config key is now wired to a <code>QShortcut</code> invoking <code>toggleQuakeVisibility()</code>. Pre-0.6.38 the Settings dialog saved the user's chosen sequence but nothing consumed it.</li>
+          <li><em>Fixed:</em> the slide-up/slide-down animation no longer snaps on Wayland — <code>QPropertyAnimation</code> on <code>pos()</code> is a no-op there (the compositor owns position), so the Wayland path uses a plain show/hide toggle. XCB slide animation is unchanged.</li>
+          <li><em>Packaging:</em> openSUSE spec adds <code>BuildRequires: cmake(LayerShellQt)</code>; Arch <code>PKGBUILD</code> adds <code>layer-shell-qt</code> to <code>makedepends</code> + <code>optdepends</code>; Debian <code>control</code> adds <code>liblayershellqt6-dev</code> to <code>Build-Depends</code>.</li>
+          <li><em>Invariant:</em> new <code>tests/features/wayland_quake_mode/</code> regression test pins (1) the layer-shell include is guarded by <code>ANTS_WAYLAND_LAYER_SHELL</code>; (2) <code>setupQuakeMode()</code> dispatches X11 vs Wayland at runtime; (3) <code>toggleQuakeVisibility()</code> skips the <code>pos()</code> animation on Wayland; (4) the <code>quake_hotkey</code> → <code>QShortcut</code> wire exists; (5) CMake uses the <code>QUIET</code> flavour of <code>find_package</code>.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.37" date="2026-04-18">
       <description>
         <p>Phase 3 of the 0.7.0 threading refactor. The <code>ANTS_SINGLE_THREADED=1</code> kill-switch introduced in 0.6.34 is retired, and the legacy single-threaded read/parse code paths are deleted from <code>TerminalWidget</code>. The bake period (0.6.34 → 0.6.37) proved the worker path; the 0.6.35 hotfix proved the kill-switch worked. Every launch now goes through <code>VtStream</code> on the worker thread — one path, one set of invariants, four feature tests.</p>

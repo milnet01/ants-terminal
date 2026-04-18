@@ -12,6 +12,75 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.38] — 2026-04-18
+
+**Theme:** Wayland-native Quake-mode, part 1 of 2. The 0.7.0 ROADMAP
+item is split into (a) layer-shell anchoring + wiring the
+long-dead `quake_hotkey` config key — shipped here — and (b)
+Freedesktop Portal GlobalShortcuts for out-of-focus hotkey
+registration, shipping in 0.6.39. After this release, running
+Ants Terminal in Quake mode on Wayland no longer depends on the
+compositor's goodwill for positioning/stacking.
+
+### Added
+
+- **`LayerShellQt` integration for Wayland Quake-mode.** When the
+  `layer-shell-qt6-devel` package is available at build time,
+  `find_package(LayerShellQt CONFIG QUIET)` wires
+  `LayerShellQt::Interface` in and defines `ANTS_WAYLAND_LAYER_SHELL`.
+  At runtime on Wayland, `MainWindow::setupQuakeMode()` promotes the
+  QWindow to a `zwlr_layer_surface_v1` at `LayerTop`, anchored
+  top/left/right with exclusive-zone 0 and
+  `KeyboardInteractivityOnDemand`. This is the Wayland equivalent of
+  X11's `_NET_WM_STATE_ABOVE` + client-side `move()` — without it the
+  compositor could place the dropdown anywhere and stack it below
+  other surfaces.
+- **Build-time + runtime fallbacks.** When the devel package is
+  missing at build time, CMake logs `LayerShellQt not found — Quake-mode
+  on Wayland falls back to the Qt toplevel path` and the binary still
+  runs. When the binary is run on X11, the XCB path (pre-0.6.38
+  behaviour) is taken — no regression.
+
+### Fixed
+
+- **`quake_hotkey` config key was saved but never read.** The
+  `QLineEdit` in Settings → "Dropdown/Quake Mode" persisted the user's
+  chosen sequence to `config.json`, but nothing consumed it — the
+  value was inert. `MainWindow` now wires a `QShortcut` with
+  `Qt::ApplicationShortcut` context to `toggleQuakeVisibility()`
+  when Quake mode is active. The shortcut fires only while Ants has
+  focus; true out-of-focus global hotkey registration goes through
+  the Freedesktop Portal GlobalShortcuts API coming in 0.6.39.
+- **Slide animation snap on Wayland.** The
+  `QPropertyAnimation(this, "pos")` path in `toggleQuakeVisibility()`
+  is a no-op on Wayland (the compositor owns position) and the
+  animation's end-value `move()` would visibly snap. The Wayland
+  branch now takes a plain `show()`/`hide()` toggle; the XCB slide
+  animation is unchanged.
+
+### Packaging
+
+- **openSUSE spec:** added `BuildRequires: cmake(LayerShellQt) >= 6.0`.
+- **Arch PKGBUILD:** added `layer-shell-qt` to `makedepends` and
+  listed it under `optdepends` for runtime discoverability.
+- **Debian control:** added `liblayershellqt6-dev` to
+  `Build-Depends`. Older Debian releases packaged the devel headers
+  as `liblayershellqtinterface-dev`; the CMake `QUIET` flag lets the
+  build proceed either way.
+
+### Invariants
+
+- **`tests/features/wayland_quake_mode/`** — source-grep regression
+  test pinning the 0.6.38 contract: (1) the `<LayerShellQt/Window>`
+  include is guarded by `ANTS_WAYLAND_LAYER_SHELL`; (2)
+  `setupQuakeMode()` does a runtime `QGuiApplication::platformName()`
+  dispatch and preserves the X11 flags; (3) `toggleQuakeVisibility()`
+  returns before the `QPropertyAnimation` setup on Wayland; (4) the
+  constructor wires `quake_hotkey` to a `QShortcut` connected to
+  `toggleQuakeVisibility`; (5) `CMakeLists.txt` uses
+  `find_package(LayerShellQt CONFIG QUIET)` and links
+  `LayerShellQt::Interface` when found.
+
 ## [0.6.37] — 2026-04-18
 
 **Theme:** Phase 3 of the 0.7.0 threading refactor — retire the

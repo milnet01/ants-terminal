@@ -10,7 +10,14 @@ Build-Depends: debhelper-compat (= 13),
                qt6-base-dev-tools,
                libqt6opengl6-dev,
                libqt6openglwidgets6,
-               liblua5.4-dev
+               liblua5.4-dev,
+# LayerShellQt for Wayland-native Quake-mode (0.6.38). Debian's KF6
+# port names the devel package liblayershellqt6-dev at time of writing;
+# older bookworm-era variants used liblayershellqtinterface-dev. CMake
+# self-disables the feature if the package is missing, so package
+# maintainers can drop this line on older releases without breaking
+# the build — X11 Quake is unaffected.
+               liblayershellqt6-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/milnet01/ants-terminal
 Vcs-Git: https://github.com/milnet01/ants-terminal.git

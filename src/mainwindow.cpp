@@ -68,6 +68,11 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QSystemTrayIcon>
+#include <QWindow>
+
+#ifdef ANTS_WAYLAND_LAYER_SHELL
+#include <LayerShellQt/Window>
+#endif
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     m_uptimeTimer.start();
@@ -496,8 +501,29 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     m_broadcastMode = m_config.broadcastMode();
 
     // Quake mode (from config or constructor flag)
-    if (quakeMode || m_config.quakeMode())
+    if (quakeMode || m_config.quakeMode()) {
         setupQuakeMode();
+
+        // Wire the configured hotkey to toggleQuakeVisibility. This is an
+        // in-app QShortcut — it fires only when Ants has focus. A true
+        // out-of-focus global hotkey needs compositor-side registration
+        // (KGlobalAccel on KDE, GNOME settings-daemon on Wayland, or the
+        // freedesktop GlobalShortcuts portal) and is tracked as a
+        // follow-up item for 0.6.39. Wiring this in-app hotkey already
+        // makes the config key functional (pre-0.6.38 it was saved but
+        // never read); users running Ants maximised or pinned to a
+        // workspace will hit the toggle the way the docs claim.
+        QString hotkeyStr = m_config.quakeHotkey();
+        if (!hotkeyStr.isEmpty()) {
+            QKeySequence hotkey(hotkeyStr);
+            if (!hotkey.isEmpty()) {
+                auto *sc = new QShortcut(hotkey, this);
+                sc->setContext(Qt::ApplicationShortcut);
+                connect(sc, &QShortcut::activated,
+                        this, &MainWindow::toggleQuakeVisibility);
+            }
+        }
+    }
 
     // Hot-reload: watch config.json for external changes
     m_configWatcher = new QFileSystemWatcher(this);
@@ -3214,13 +3240,59 @@ void MainWindow::setupQuakeMode() {
     m_quakeMode = true;
     m_quakeVisible = true;
 
-    // Set window to top of screen, full width
-    setWindowFlags(windowFlags() | Qt::WindowStaysOnTopHint | Qt::Tool);
+    // Platform-dispatch:
+    //   X11:  Qt::WindowStaysOnTopHint + Qt::Tool + move() — standard
+    //         _NET_WM_STATE_ABOVE path; the compositor honours client-side
+    //         positioning.
+    //   Wayland: the compositor owns the stacking order and positioning for
+    //         regular toplevel surfaces — move() is ignored and there's no
+    //         equivalent of _NET_WM_STATE_ABOVE. With LayerShellQt available
+    //         at build time, we promote the window to a wlr-layer-shell-v1
+    //         top-layer surface anchored to the top edge of the active
+    //         screen. Without it, the Wayland path falls back to the Qt
+    //         toplevel and lives with whatever the compositor decides.
+    const bool isWayland = QGuiApplication::platformName().startsWith(
+        QStringLiteral("wayland"), Qt::CaseInsensitive);
+
+#ifdef ANTS_WAYLAND_LAYER_SHELL
+    if (isWayland) {
+        // Ensure the QWindow exists before configuring layer-shell properties,
+        // which must be set BEFORE show() so the xdg_surface role upgrade to
+        // zwlr_layer_surface_v1 happens at the right point in the Wayland
+        // handshake. winId() on a QWidget forces a native window backing.
+        create();
+        if (QWindow *qw = windowHandle()) {
+            auto *layer = LayerShellQt::Window::get(qw);
+            layer->setLayer(LayerShellQt::Window::LayerTop);
+            LayerShellQt::Window::Anchors anchors =
+                LayerShellQt::Window::AnchorTop;
+            anchors |= LayerShellQt::Window::AnchorLeft;
+            anchors |= LayerShellQt::Window::AnchorRight;
+            layer->setAnchors(anchors);
+            layer->setExclusiveZone(0);  // don't push neighbours; we overlay
+            layer->setKeyboardInteractivity(
+                LayerShellQt::Window::KeyboardInteractivityOnDemand);
+            layer->setScope(QStringLiteral("ants-terminal-quake"));
+            layer->setCloseOnDismissed(false);
+        }
+    }
+#endif
+
+    if (!isWayland) {
+        // X11 path — unchanged from pre-0.6.38 behaviour.
+        setWindowFlags(windowFlags() | Qt::WindowStaysOnTopHint | Qt::Tool);
+    }
+
     if (QScreen *screen = this->screen()) {
         QRect geo = screen->availableGeometry();
         int h = geo.height() / 3;
         resize(geo.width(), h);
-        move(geo.x(), geo.y());
+        if (!isWayland) {
+            // On Wayland the compositor + layer-shell anchors do the
+            // positioning; a move() there is silently ignored and muddies
+            // the trace logs.
+            move(geo.x(), geo.y());
+        }
     }
     show();
 }
@@ -3232,6 +3304,30 @@ void MainWindow::toggleQuakeVisibility() {
     if (!screen) return;
     QRect geo = screen->availableGeometry();
     int h = height();
+
+    // On Wayland, client-side move() is silently ignored by the compositor
+    // (true both with and without layer-shell — layer-shell anchors the
+    // surface to a screen edge; without layer-shell the compositor picks
+    // the position). The slide-up/down animation uses pos() as its Qt
+    // property which is a no-op under Wayland, so the XCB-only animation
+    // path degenerates to a plain show/hide toggle. Prefer the plain
+    // toggle there rather than ship a broken animation that visibly snaps.
+    const bool isWayland = QGuiApplication::platformName().startsWith(
+        QStringLiteral("wayland"), Qt::CaseInsensitive);
+
+    if (isWayland) {
+        if (m_quakeVisible) {
+            hide();
+            m_quakeVisible = false;
+        } else {
+            show();
+            raise();
+            activateWindow();
+            m_quakeVisible = true;
+            if (auto *t = focusedTerminal()) t->setFocus();
+        }
+        return;
+    }
 
     // m_quakeAnim is reused across hide/show toggles. Previously we
     // connected finished→hide() in the hide branch with UniqueConnection;
