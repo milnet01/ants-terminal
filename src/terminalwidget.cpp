@@ -1271,6 +1271,40 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         p.setFont(m_font);
     }
 
+    // Command-mark gutter (0.6.41). Narrow 4-px vertical strip just left
+    // of the scrollbar, one tick per OSC 133 PromptRegion, mapping the
+    // region's startLine to y via startLine / (scrollbackSize + rows).
+    // Color by exit status: green (exit 0), red (non-zero exit), gray
+    // (in-progress, no D marker yet). Lets users see command boundaries
+    // across the full scrollback at a glance — jump targets for
+    // Ctrl+Shift+Up/Down. No-op when no prompt regions exist, so users
+    // without shell integration see nothing change.
+    if (m_showCommandMarks) {
+        const auto &regions = m_grid->promptRegions();
+        if (!regions.empty()) {
+            constexpr int gutterW = 4;
+            constexpr int tickH = 2;
+            int gutterRight = width();
+            if (m_scrollBar && m_scrollBar->isVisible())
+                gutterRight -= m_scrollBar->width();
+            const int gutterX = gutterRight - gutterW;
+            const int total = std::max(1, scrollbackSize + rows);
+            for (const auto &pr : regions) {
+                double frac = static_cast<double>(pr.startLine) / total;
+                int y = static_cast<int>(frac * height());
+                if (y < 0 || y >= height()) continue;
+                QColor c;
+                if (pr.commandEndMs > 0)
+                    c = (pr.exitCode == 0) ? QColor(0x9F, 0xE0, 0x64)   // success green
+                                           : QColor(0xE0, 0x64, 0x64); // failure red
+                else
+                    c = QColor(0x80, 0x80, 0x80);                      // in-progress gray
+                c.setAlpha(180);
+                p.fillRect(gutterX, y, gutterW, tickH, c);
+            }
+        }
+    }
+
     // OSC 9;4 progress strip — thin bar along the bottom edge.
     // Matches Microsoft Terminal's visual convention: blue/red/yellow fill by
     // state, ~3px tall, drawn above anything except the search bar.

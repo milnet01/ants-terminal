@@ -1328,6 +1328,7 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setGpuRendering(m_config.gpuRendering());
     terminal->setVisualBell(m_config.visualBell());
     terminal->setPadding(m_config.terminalPadding());
+    terminal->setShowCommandMarks(m_config.showCommandMarks());
     QString family = m_config.fontFamily();
     if (!family.isEmpty()) terminal->setFontFamily(family);
     // Per-style fonts

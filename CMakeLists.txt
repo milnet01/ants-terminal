@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.40 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.41 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -831,6 +831,40 @@ if(ANTS_TESTS)
     add_test(NAME osc133_last_command
              COMMAND test_osc133_last_command)
     set_tests_properties(osc133_last_command PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # command_mark_gutter — locks the 0.6.41 gutter + portal-status UX.
+    # Source-grep: Config exposes show_command_marks (default true),
+    # TerminalWidget paints a scrollbar-adjacent gutter gated on the
+    # member + non-empty promptRegions(), three-state color branch
+    # (exit 0 / non-zero / in-progress), MainWindow propagates the
+    # toggle via applyConfigToTerminal, SettingsDialog surfaces both
+    # the checkbox and the portal-binding status label.
+    # See tests/features/command_mark_gutter/spec.md.
+    add_executable(test_command_mark_gutter
+        tests/features/command_mark_gutter/test_command_mark_gutter.cpp
+    )
+    target_link_libraries(test_command_mark_gutter PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_command_mark_gutter PRIVATE src)
+    target_compile_options(test_command_mark_gutter PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_command_mark_gutter PRIVATE
+        SRC_CONFIG_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.h"
+        SRC_CONFIG_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
+        SRC_TERMINALWIDGET_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
+        SRC_TERMINALWIDGET_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_SETTINGSDIALOG_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_SETTINGSDIALOG_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    )
+    add_test(NAME command_mark_gutter
+             COMMAND test_command_mark_gutter)
+    set_tests_properties(command_mark_gutter PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

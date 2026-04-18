@@ -170,6 +170,13 @@ public:
     void setRectSelection(bool enabled) { m_rectSelection = enabled; }
     bool rectSelection() const { return m_rectSelection; }
 
+    // Command-mark gutter (0.6.41): paint a narrow column of tick marks
+    // just left of the scrollbar, one per OSC 133 PromptRegion, colored
+    // by exit status (green/red/gray). No-op when no prompt regions
+    // exist (users without shell integration see no visual change).
+    void setShowCommandMarks(bool enabled) { m_showCommandMarks = enabled; update(); }
+    bool showCommandMarks() const { return m_showCommandMarks; }
+
     // Scratchpad (multi-line command editor)
     void showScratchpad();
     void hideScratchpad();
@@ -623,6 +630,9 @@ private:
 
     // Rectangular (column/block) selection
     bool m_rectSelection = false;
+
+    // Command-mark gutter (0.6.41). See the setter's docblock for rationale.
+    bool m_showCommandMarks = true;
 
     // Badge text (large watermark in background)
     QString m_badgeText;

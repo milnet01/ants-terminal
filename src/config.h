@@ -124,6 +124,14 @@ public:
     QString quakeHotkey() const;
     void setQuakeHotkey(const QString &key);
 
+    // Command-mark gutter (0.6.41): draw tick marks next to the
+    // scrollbar for OSC 133 A prompt boundaries. Default on so the
+    // feature is discoverable when shell integration is installed; the
+    // gutter is a no-op (width 0) when promptRegions() is empty, so
+    // users without shell integration see no change.
+    bool showCommandMarks() const;
+    void setShowCommandMarks(bool enabled);
+
     // Broadcast mode
     bool broadcastMode() const;
     void setBroadcastMode(bool enabled);

@@ -1,5 +1,6 @@
 #include "settingsdialog.h"
 #include "config.h"
+#include "globalshortcutsportal.h"
 #include "themes.h"
 
 #include <QFormLayout>
@@ -220,6 +221,13 @@ void SettingsDialog::setupTerminalTab(QWidget *tab) {
     m_scrollbackLines->setSingleStep(10000);
     layout->addRow("Scrollback Lines:", m_scrollbackLines);
 
+    m_showCommandMarks = new QCheckBox("Show command markers in scrollbar gutter", tab);
+    m_showCommandMarks->setToolTip(
+        "Draw a tick next to the scrollbar for each OSC 133 prompt region. "
+        "Color indicates last exit status: green (success), red (failure), "
+        "gray (in-progress). No-op when shell integration isn't installed.");
+    layout->addRow(m_showCommandMarks);
+
     auto *quakeGroup = new QGroupBox("Dropdown/Quake Mode", tab);
     auto *quakeLayout = new QFormLayout(quakeGroup);
     m_quakeMode = new QCheckBox("Enable dropdown mode", quakeGroup);
@@ -227,6 +235,29 @@ void SettingsDialog::setupTerminalTab(QWidget *tab) {
     m_quakeHotkey = new QLineEdit(quakeGroup);
     m_quakeHotkey->setPlaceholderText("F12");
     quakeLayout->addRow("Global Hotkey:", m_quakeHotkey);
+
+    // Portal-binding status hint (0.6.41). Reports whether the global
+    // hotkey can escape focus via the Freedesktop Portal GlobalShortcuts
+    // D-Bus API (KDE Plasma 6 / Hyprland / wlroots) or falls back to the
+    // in-app QShortcut (GNOME as of 2026-04, or any session where
+    // xdg-desktop-portal isn't registered). Static check at dialog
+    // construction — accurate because portal availability is a per-
+    // session property that doesn't change while the app is running.
+    auto *portalStatus = new QLabel(quakeGroup);
+    portalStatus->setWordWrap(true);
+    if (GlobalShortcutsPortal::isAvailable()) {
+        portalStatus->setText(QStringLiteral(
+            "<span style='color:#4aa84a;'>&#x2713; Portal binding active</span> "
+            "&mdash; hotkey works when Ants is unfocused."));
+    } else {
+        portalStatus->setText(QStringLiteral(
+            "<span style='color:#c77a1a;'>&#9888; Portal unavailable</span> "
+            "&mdash; hotkey works only while Ants is focused "
+            "(install <tt>xdg-desktop-portal-kde</tt> / "
+            "<tt>-hyprland</tt> / <tt>-wlr</tt> for out-of-focus support)."));
+    }
+    quakeLayout->addRow(portalStatus);
+
     layout->addRow(quakeGroup);
 }
 
@@ -671,6 +702,7 @@ void SettingsDialog::loadSettings() {
 
     // Terminal
     m_scrollbackLines->setValue(m_config->scrollbackLines());
+    m_showCommandMarks->setChecked(m_config->showCommandMarks());
     m_quakeMode->setChecked(m_config->quakeMode());
     m_quakeHotkey->setText(m_config->quakeHotkey());
 
@@ -764,6 +796,7 @@ void SettingsDialog::applySettings() {
 
     // Terminal
     m_config->setScrollbackLines(m_scrollbackLines->value());
+    m_config->setShowCommandMarks(m_showCommandMarks->isChecked());
     m_config->setQuakeMode(m_quakeMode->isChecked());
     m_config->setQuakeHotkey(m_quakeHotkey->text().trimmed());
 

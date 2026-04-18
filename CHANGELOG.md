@@ -12,6 +12,76 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.41] — 2026-04-19
+
+**Theme:** Quake-mode + OSC 133 UX polish. Surfaces the out-of-focus
+portal binding state so users can tell at a glance whether their hotkey
+escapes focus, and adds a scrollbar-adjacent tick-mark gutter that
+shows OSC 133 command boundaries across the full scrollback — jump
+targets for `Ctrl+Shift+Up/Down` that were previously invisible.
+
+### Added
+
+- **Command-mark gutter (`show_command_marks`, default on).** A 4-px
+  vertical strip just left of the scrollbar draws one tick per
+  `PromptRegion` in the current scrollback. Each tick is color-coded
+  by last exit status: green (success), red (non-zero exit), gray
+  (in-progress, OSC 133 D not yet emitted). Ticks map linearly from
+  `PromptRegion.startLine / (scrollbackSize + rows)` to y — so a
+  50,000-line scrollback compresses into the widget height with every
+  boundary still visible. No-op when `promptRegions().empty()`, so
+  users without shell integration see nothing change.
+- **Settings → Terminal toggle.** New "Show command markers in
+  scrollbar gutter" checkbox (default on) under Scrollback, with a
+  tooltip explaining the color states. Propagates to all live
+  terminals via `applyConfigToTerminal` on apply — no restart needed.
+- **Portal-binding status label in Settings → Quake groupbox.** A
+  one-line QLabel under the hotkey field reports whether out-of-focus
+  hotkeys are available on this session:
+  - ✓ **Portal binding active** (green) — hotkey works when Ants is
+    unfocused, via Freedesktop Portal GlobalShortcuts. KDE Plasma 6,
+    Hyprland, wlroots.
+  - ⚠ **Portal unavailable** (amber) — hotkey works only while Ants
+    is focused, with a hint pointing at the three
+    `xdg-desktop-portal-*` backends that provide the service.
+
+  Static check based on `GlobalShortcutsPortal::isAvailable()` — the
+  D-Bus service registration is a per-session property that doesn't
+  change while the app runs, so a snapshot at dialog construction is
+  accurate.
+
+### Fixed (test infrastructure)
+
+- **Feature-test regex stack overflow.** The first draft of
+  `tests/features/command_mark_gutter/` used a `[\s\S]*?^\}` pattern
+  with `std::regex::multiline` to extract `paintEvent`'s body. On a
+  4500-line `terminalwidget.cpp`, libstdc++'s backtracking executor
+  recursed 100,000+ frames into `_M_dfs` and segfaulted. Replaced
+  with a linear-time balanced-brace scanner
+  (`extractFunctionBody(src, signature)`) — same semantics, constant
+  stack. Left as a guiding pattern for future source-grep feature
+  tests against large files.
+
+### Invariants
+
+- `Config::showCommandMarks()` persists to `show_command_marks` with
+  default `true`.
+- `paintEvent` gates gutter drawing on `m_showCommandMarks` AND
+  non-empty `promptRegions()`.
+- Gutter positions itself via `m_scrollBar->width()` subtraction so
+  ticks never overlap the scrollbar thumb.
+- Three-state color branch must remain: success / failure /
+  in-progress.
+- `applyConfigToTerminal(t)` propagates the toggle so settings-apply
+  updates all live terminals.
+- Settings portal-status label branches on
+  `GlobalShortcutsPortal::isAvailable()` with the exact strings
+  "Portal binding active" and "Portal unavailable" so the test can
+  lock them.
+
+Locked by `tests/features/command_mark_gutter` (CTest labels
+`features;fast`, part of the release gate).
+
 ## [0.6.40] — 2026-04-18
 
 **Theme:** OSC 133 shell-integration polish. Adds two keyboard-driven

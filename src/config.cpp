@@ -420,6 +420,16 @@ void Config::setQuakeHotkey(const QString &key) {
     save();
 }
 
+// Command-mark gutter (0.6.41).
+bool Config::showCommandMarks() const {
+    return m_data.value("show_command_marks").toBool(true);
+}
+
+void Config::setShowCommandMarks(bool enabled) {
+    m_data["show_command_marks"] = enabled;
+    save();
+}
+
 // Broadcast mode
 bool Config::broadcastMode() const {
     return m_data.value("broadcast_mode").toBool(false);

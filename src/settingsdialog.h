@@ -97,6 +97,7 @@ private:
 
     // Terminal
     QSpinBox *m_scrollbackLines;
+    QCheckBox *m_showCommandMarks;
     QCheckBox *m_quakeMode;
     QLineEdit *m_quakeHotkey;
 

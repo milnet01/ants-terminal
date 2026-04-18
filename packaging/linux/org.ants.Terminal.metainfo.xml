@@ -89,6 +89,17 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.41" date="2026-04-19">
+      <description>
+        <p>Quake-mode + OSC 133 UX polish. Surfaces the out-of-focus portal binding state in Settings so users can tell at a glance whether their Quake hotkey escapes focus, and adds a scrollbar-adjacent tick-mark gutter that exposes OSC 133 command boundaries across the full scrollback — jump targets for <code>Ctrl+Shift+Up/Down</code> that were previously invisible.</p>
+        <ul>
+          <li><em>Added:</em> command-mark gutter (<code>show_command_marks</code>, default on) — a 4-px vertical strip just left of the scrollbar draws one tick per <code>PromptRegion</code>, color-coded by last exit status: green (success), red (non-zero exit), gray (in-progress, OSC 133 D not yet emitted). Positions compress linearly so a 50,000-line scrollback stays fully visible in the widget height.</li>
+          <li><em>Added:</em> Settings → Terminal → Scrollback toggle "Show command markers in scrollbar gutter" (default on) with a tooltip explaining the color states. Propagates to all live terminals via <code>applyConfigToTerminal</code> — no restart needed.</li>
+          <li><em>Added:</em> portal-binding status label in Settings → Quake. One line under the hotkey field reports either "Portal binding active" (green, hotkey works when Ants is unfocused — KDE Plasma 6, Hyprland, wlroots) or "Portal unavailable" (amber, hotkey works only while focused), based on <code>GlobalShortcutsPortal::isAvailable()</code> at dialog construction.</li>
+          <li><em>Invariant:</em> gutter drawing gates on <code>m_showCommandMarks</code> AND non-empty <code>promptRegions()</code>, so users without shell integration see nothing change; ticks never overlap the scrollbar thumb (offset by <code>m_scrollBar->width()</code>).</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.40" date="2026-04-18">
       <description>
         <p>OSC 133 shell-integration polish. Adds two keyboard-driven "last completed command" actions that complement the existing block-at-cursor right-click menu with no-selection-needed top-level equivalents — the iTerm2 ⇧⌘O / WezTerm <code>CopyLastOutput</code> convention, surfaced through the View menu, the command palette, and configurable keybindings.</p>
