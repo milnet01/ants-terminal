@@ -12,6 +12,37 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.37] — 2026-04-18
+
+**Theme:** Phase 3 of the 0.7.0 threading refactor — retire the
+`ANTS_SINGLE_THREADED=1` kill-switch and delete the legacy
+single-threaded read/parse code paths from `TerminalWidget`. Bake
+period (0.6.34 → 0.6.37) proved the worker path; the 0.6.35 hotfix
+proved the kill-switch worked. Shipping on the worker is now the only
+path.
+
+### Removed
+
+- **`ANTS_SINGLE_THREADED=1` kill-switch.** The env-var fork in
+  `TerminalWidget::startShell()` and the legacy branch it guarded
+  are gone. Every launch now goes through `VtStream` on
+  `m_parseThread`.
+- **Legacy `m_pty` / `m_parser` members and `onPtyData` slot.** The
+  widget no longer owns a `Pty` or a `VtParser` directly; both live
+  on the worker inside `VtStream`. `hasPty()` and `ptyChildPid()`
+  simplified to worker-only checks; no behaviour change at the
+  call sites.
+- **`#include "vtparser.h"` and `#include "ptyhandler.h"` from
+  `terminalwidget.h`.** Transitively pulled in via `vtstream.h` for
+  callers that still need `VtAction` / `Pty` types.
+
+### Changed
+
+- **ROADMAP.md §0.7.0 threading entry** updated to note the 0.6.37
+  kill-switch retirement and the four-test invariant set
+  (parse equivalence, response ordering, resize synchronicity,
+  ptyWrite gating).
+
 ## [0.6.36] — 2026-04-18
 
 **Theme:** Tenth periodic audit (10th in the series, post-0.6.35).

@@ -1,3 +1,22 @@
+ants-terminal (0.6.37-1) unstable; urgency=medium
+
+  * Phase 3 of the 0.7.0 threading refactor. Retire the
+    ANTS_SINGLE_THREADED=1 kill-switch introduced in 0.6.34 and
+    delete the legacy single-threaded read/parse code paths from
+    TerminalWidget. Bake period (0.6.34 → 0.6.37) proved the worker
+    path; the 0.6.35 hotfix proved the kill-switch worked. Every
+    launch now goes through VtStream on the worker thread.
+  * Remove legacy m_pty / m_parser members and the onPtyData slot.
+    The widget no longer owns a Pty or a VtParser directly; both
+    live inside VtStream on the worker thread. hasPty() and
+    ptyChildPid() simplified to worker-only checks; call-site
+    behaviour unchanged.
+  * Drop #include "vtparser.h" and #include "ptyhandler.h" from
+    terminalwidget.h. Transitively pulled in via vtstream.h for
+    callers that still need VtAction / Pty types.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 18 Apr 2026 22:15:00 +0000
+
 ants-terminal (0.6.36-1) unstable; urgency=medium
 
   * Tenth periodic audit. Two actionable findings across ~110 raw —

@@ -89,6 +89,16 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.37" date="2026-04-18">
+      <description>
+        <p>Phase 3 of the 0.7.0 threading refactor. The <code>ANTS_SINGLE_THREADED=1</code> kill-switch introduced in 0.6.34 is retired, and the legacy single-threaded read/parse code paths are deleted from <code>TerminalWidget</code>. The bake period (0.6.34 → 0.6.37) proved the worker path; the 0.6.35 hotfix proved the kill-switch worked. Every launch now goes through <code>VtStream</code> on the worker thread — one path, one set of invariants, four feature tests.</p>
+        <ul>
+          <li><em>Removed:</em> the <code>ANTS_SINGLE_THREADED=1</code> environment kill-switch and the legacy <code>TerminalWidget::startShell()</code> branch it guarded.</li>
+          <li><em>Removed:</em> legacy <code>m_pty</code> / <code>m_parser</code> members and the <code>onPtyData</code> slot — the widget no longer owns a <code>Pty</code> or <code>VtParser</code> directly; both live inside <code>VtStream</code> on the worker thread.</li>
+          <li><em>Changed:</em> <code>hasPty()</code> and <code>ptyChildPid()</code> simplified to worker-only checks; no behaviour change at the call sites.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.36" date="2026-04-18">
       <description>
         <p>Tenth periodic audit. Two actionable findings across ~110 raw — a 2% signal ratio consistent with the codebase's audit-calibration anchor. Both fixed in a single pass.</p>

@@ -79,10 +79,6 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
         ptyWrite(QByteArray(response.data(), static_cast<int>(response.size())));
     });
 
-    m_parser = std::make_unique<VtParser>([this](const VtAction &a) {
-        m_grid->processAction(a);
-    });
-
     // Font fallback for emoji/symbols
     QStringList fallbackFamilies = {"Noto Color Emoji", "Noto Emoji", "Symbola",
                                      "Noto Sans CJK SC", "Noto Sans CJK", "WenQuanYi Micro Hei"};
@@ -429,21 +425,15 @@ void TerminalWidget::sendToPty(const QByteArray &data) {
 }
 
 pid_t TerminalWidget::ptyChildPid() const {
-    if (m_vtStream) return m_vtStream->childPid();
-    if (m_pty)     return m_pty->childPid();
-    return -1;
+    return m_vtStream ? m_vtStream->childPid() : -1;
 }
 
 void TerminalWidget::ptyWrite(const QByteArray &data) {
-    // Phase 1 branch: worker path goes through a queued invoke so the PTY
-    // master FD is only touched on the worker thread; legacy path forwards
-    // directly to the Pty object, as it always has.
-    if (m_vtStream) {
-        QMetaObject::invokeMethod(m_vtStream, "write", Qt::QueuedConnection,
-                                  Q_ARG(QByteArray, data));
-        return;
-    }
-    if (auto *p = m_pty) p->write(data);
+    // Queued invoke so the PTY master FD is only touched on the worker
+    // thread.
+    if (!m_vtStream) return;
+    QMetaObject::invokeMethod(m_vtStream, "write", Qt::QueuedConnection,
+                              Q_ARG(QByteArray, data));
 }
 
 bool TerminalWidget::startShell(const QString &workDir) {
@@ -451,59 +441,41 @@ bool TerminalWidget::startShell(const QString &workDir) {
     int rows = m_grid->rows();
     int cols = m_grid->cols();
 
-    // Threaded parse path (0.7.0, ROADMAP ⚡). PTY read + VT parse run on
-    // a worker thread; parsed VtAction batches are shipped back via
-    // VtStream::batchReady over a Qt::QueuedConnection; grid and paint
-    // path stay on GUI so the refactor surface is minimal. This is the
-    // default as of 0.6.34. ANTS_SINGLE_THREADED=1 forces the legacy
-    // single-threaded path as an escape hatch while the new code is
-    // proving itself in the wild; the escape hatch goes away in phase 3.
-    const bool useWorker = qEnvironmentVariableIntValue("ANTS_SINGLE_THREADED") != 1;
-    if (useWorker) {
-        m_parseThread = new QThread(this);
-        m_parseThread->setObjectName("ants-vt-parse");
-        m_vtStream = new VtStream();  // no parent — moved to worker thread
-        m_vtStream->moveToThread(m_parseThread);
-        // deleteLater on finished ensures VtStream is destroyed on the
-        // worker thread (its Pty + QSocketNotifier must be torn down on
-        // the thread that created them).
-        connect(m_parseThread, &QThread::finished, m_vtStream, &QObject::deleteLater);
-        connect(m_vtStream, &VtStream::batchReady, this, &TerminalWidget::onVtBatch,
-                Qt::QueuedConnection);
-        connect(m_vtStream, &VtStream::finished, this, &TerminalWidget::onPtyFinished,
-                Qt::QueuedConnection);
-        m_parseThread->start();
+    // Threaded parse path: PTY read + VT parse run on a worker thread;
+    // parsed VtAction batches are shipped back via VtStream::batchReady
+    // over a Qt::QueuedConnection. Grid and paint stay on GUI.
+    m_parseThread = new QThread(this);
+    m_parseThread->setObjectName("ants-vt-parse");
+    m_vtStream = new VtStream();  // no parent — moved to worker thread
+    m_vtStream->moveToThread(m_parseThread);
+    // deleteLater on finished ensures VtStream is destroyed on the
+    // worker thread (its Pty + QSocketNotifier must be torn down on
+    // the thread that created them).
+    connect(m_parseThread, &QThread::finished, m_vtStream, &QObject::deleteLater);
+    connect(m_vtStream, &VtStream::batchReady, this, &TerminalWidget::onVtBatch,
+            Qt::QueuedConnection);
+    connect(m_vtStream, &VtStream::finished, this, &TerminalWidget::onPtyFinished,
+            Qt::QueuedConnection);
+    m_parseThread->start();
 
-        bool ok = false;
-        // Blocking-queued so startShell returns only after the shell is
-        // actually forked — matches the legacy path's synchronous contract.
-        QMetaObject::invokeMethod(m_vtStream, "start", Qt::BlockingQueuedConnection,
-                                  Q_RETURN_ARG(bool, ok),
-                                  Q_ARG(QString, QString()),
-                                  Q_ARG(QString, workDir),
-                                  Q_ARG(int, rows),
-                                  Q_ARG(int, cols));
-        if (!ok) {
-            // Teardown on failure so the widget is in a clean state
-            // (the destructor will wait/quit the thread).
-            return false;
-        }
-        // Ensure PTY matches grid; resize is blocking-queued so the
-        // winsize is set before we return and the next paint fires.
-        QMetaObject::invokeMethod(m_vtStream, "resize", Qt::BlockingQueuedConnection,
-                                  Q_ARG(int, rows), Q_ARG(int, cols));
-        return true;
-    }
-
-    // Legacy single-threaded path (default).
-    m_pty = new Pty(this);
-    connect(m_pty, &Pty::dataReceived, this, &TerminalWidget::onPtyData);
-    connect(m_pty, &Pty::finished, this, &TerminalWidget::onPtyFinished);
-    if (!m_pty->start(QString(), workDir, rows, cols)) {
+    bool ok = false;
+    // Blocking-queued so startShell returns only after the shell is
+    // actually forked — callers expect a synchronous contract.
+    QMetaObject::invokeMethod(m_vtStream, "start", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(bool, ok),
+                              Q_ARG(QString, QString()),
+                              Q_ARG(QString, workDir),
+                              Q_ARG(int, rows),
+                              Q_ARG(int, cols));
+    if (!ok) {
+        // Teardown on failure so the widget is in a clean state
+        // (the destructor will wait/quit the thread).
         return false;
     }
-    // Ensure PTY matches grid (no-op if forkpty already used correct size)
-    m_pty->resize(rows, cols);
+    // Ensure PTY matches grid; resize is blocking-queued so the
+    // winsize is set before we return and the next paint fires.
+    QMetaObject::invokeMethod(m_vtStream, "resize", Qt::BlockingQueuedConnection,
+                              Q_ARG(int, rows), Q_ARG(int, cols));
     return true;
 }
 
@@ -1784,134 +1756,6 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
     return QOpenGLWidget::inputMethodQuery(query);
 }
 
-void TerminalWidget::onPtyData(const QByteArray &data) {
-    m_spanCacheDirty = true;
-
-    // Clear selection when screen content changes (e.g., 'clear' command, ED, etc.)
-    // Check for clear-screen sequences: ESC[2J, ESC[3J, ESC[H ESC[2J, or form feed
-    if (data.contains("\x1B[2J") || data.contains("\x1B[3J") || data.contains("\x0C")) {
-        clearSelection();
-    }
-
-    // Pause scrollback insertion while the user is scrolled up in history.
-    // TUI programs that run on the main screen (Claude Code, long-lived
-    // progress bars, fish's autosuggest repaint, etc.) redraw their UI via
-    // cursor movement + overwrite. When the redraw grows past the bottom
-    // of the scroll region, scrollUp() would otherwise push the line at
-    // the top of the screen into scrollback — even though that line was
-    // about to be overwritten in-place. Without the pause, every redraw
-    // during a user's scrollback-read session interleaves intermediate
-    // frames into the scrollback the user is reading, producing the
-    // "duplicated output" effect. Pausing here skips that insertion; the
-    // screen still updates normally. Resume (flag clears automatically)
-    // when the user scrolls back to the bottom.
-    m_grid->setScrollbackInsertPaused(m_scrollOffset > 0);
-
-    // Scroll anchoring: if the user has scrolled up, keep their viewport stable
-    // as new lines push content into scrollback. We diff the monotonic push counter
-    // (not scrollbackSize()) because once the buffer is full, each push pops a stale
-    // line from the front and the size stays constant — using the size delta made
-    // the viewport drift by one content-line per push whenever scrollback was capped.
-    uint64_t pushedBefore = m_grid->scrollbackPushed();
-
-    m_parser->feed(data.constData(), data.size());
-
-    if (m_scrollOffset > 0) {
-        uint64_t added64 = m_grid->scrollbackPushed() - pushedBefore;
-        if (added64 > 0) {
-            // scrollbackSize() caps the useful range — anything larger saturates via
-            // the std::min below, so clipping here avoids any uint64→int overflow risk.
-            int sbSize = m_grid->scrollbackSize();
-            int added = (added64 > static_cast<uint64_t>(sbSize))
-                          ? sbSize : static_cast<int>(added64);
-            m_scrollOffset = std::min(m_scrollOffset + added, sbSize);
-            // Set new output marker when user is scrolled up and new content arrives
-            if (m_newOutputMarkerLine < 0)
-                m_newOutputMarkerLine = sbSize + m_grid->rows() - 1;
-        }
-    } else {
-        m_newOutputMarkerLine = -1;
-    }
-
-    // Session logging
-    if (m_loggingEnabled && m_logFile && m_logFile->isOpen()) {
-        m_logFile->write(data);
-        m_logFile->flush();
-    }
-
-    // Asciicast recording
-    if (m_recording && m_recordFile && m_recordFile->isOpen()) {
-        double elapsed = m_recordTimer.elapsed() / 1000.0;
-        // Escape the data for JSON in a single pass
-        QString raw = QString::fromUtf8(data);
-        QString escaped;
-        escaped.reserve(raw.size() + raw.size() / 4);
-        for (QChar ch : raw) {
-            ushort u = ch.unicode();
-            if (u == '\\')      escaped += "\\\\";
-            else if (u == '"')  escaped += "\\\"";
-            else if (u == '\n') escaped += "\\n";
-            else if (u == '\r') escaped += "\\r";
-            else if (u == '\t') escaped += "\\t";
-            else if (u < 0x20)  escaped += QString("\\u%1").arg(u, 4, 16, QChar('0'));
-            else                escaped += ch;
-        }
-        QString line = QString("[%1, \"o\", \"%2\"]\n")
-            .arg(elapsed, 0, 'f', 6)
-            .arg(escaped);
-        m_recordFile->write(line.toUtf8());
-    }
-
-    // Track output for idle notification
-    m_lastOutputTime.restart();
-    if (!m_hadRecentOutput)
-        m_commandStartTime.restart();
-    m_hadRecentOutput = true;
-    m_notifiedIdle = false;
-
-    QString title = m_grid->windowTitle();
-    if (title != m_lastTitle) {
-        m_lastTitle = title;
-        emit titleChanged(title);
-    }
-
-    // Synchronized output (DEC mode 2026): defer screen update until the
-    // application signals the frame is complete by disabling sync mode.
-    // Only repaint when sync is OFF at the end of this data chunk.  The old
-    // condition `!syncActive || !wasSync` incorrectly painted partial frames
-    // when a sync-on arrived without its matching sync-off in the same read.
-    bool wasSync = m_syncOutputActive;
-    m_syncOutputActive = m_grid->synchronizedOutput();
-    if (!m_syncOutputActive) {
-        update();
-        m_syncTimer.stop();
-    } else if (!wasSync) {
-        // Sync just started — arm a safety timeout so the screen still
-        // updates if the matching sync-off never arrives (truncated data).
-        m_syncTimer.start();
-    }
-
-    updateScrollBar();
-
-    // Restart Claude Code detection debounce timer
-    m_claudeDetectTimer.start();
-
-    // Check for failed command (OSC 133 exit code)
-    int exitCode = m_grid->lastExitCode();
-    if (exitCode != 0 && exitCode != m_lastTrackedExitCode) {
-        m_lastTrackedExitCode = exitCode;
-        emit commandFailed(exitCode, lastCommandOutput());
-    } else if (exitCode == 0) {
-        m_lastTrackedExitCode = 0;
-    }
-
-    // Check triggers
-    checkTriggers(data);
-
-    // Update autocomplete suggestion
-    updateSuggestion();
-}
-
 void TerminalWidget::onPtyFinished(int exitCode) {
     emit shellExited(exitCode);
 }
@@ -2465,8 +2309,6 @@ void TerminalWidget::recalcGridSize() {
             // to finish parsing. Resize correctness > latency.
             QMetaObject::invokeMethod(m_vtStream, "resize", Qt::BlockingQueuedConnection,
                                       Q_ARG(int, rows), Q_ARG(int, cols));
-        } else if (m_pty) {
-            m_pty->resize(rows, cols);
         }
         // Invalidate the frozen-view snapshot: its row/col dimensions
         // no longer match the live grid, and the grid's reflow may

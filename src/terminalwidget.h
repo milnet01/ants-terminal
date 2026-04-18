@@ -1,8 +1,6 @@
 #pragma once
 
 #include "terminalgrid.h"
-#include "vtparser.h"
-#include "ptyhandler.h"
 #include "vtstream.h"
 
 #include <QOpenGLWidget>
@@ -274,12 +272,11 @@ protected:
     QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 
 private slots:
-    void onPtyData(const QByteArray &data);
     void onPtyFinished(int exitCode);
-    // Threaded parse path (0.7.0). Handler for VtStream::batchReady;
-    // applies the pre-parsed action stream to m_grid, consumes the
-    // raw-byte side-data (selection-clear hint, logging, asciicast),
-    // then acknowledges the batch so the worker can refill the queue.
+    // Handler for VtStream::batchReady; applies the pre-parsed action
+    // stream to m_grid, consumes the raw-byte side-data (selection-clear
+    // hint, logging, asciicast), then acknowledges the batch so the
+    // worker can refill the queue.
     void onVtBatch(const VtBatch &batch);
     void blinkCursor();
     void checkIdleNotification();
@@ -350,37 +347,28 @@ private:
     BracketPair findMatchingBracket() const;
     uint32_t getCellCodepoint(int globalLine, int col) const;
 
-    Pty *m_pty = nullptr;  // Legacy path — non-null only when m_vtStream is null
     std::unique_ptr<TerminalGrid> m_grid;
-    std::unique_ptr<VtParser> m_parser;  // Legacy path; null when worker is active
 
-    // Threaded parse path (0.7.0). Gated at startShell() time by
-    // $ANTS_PARSE_THREAD=1. When active, m_pty and m_parser stay null,
-    // and m_vtStream (living on m_parseThread) owns the Pty + parser.
-    // Falls back to the single-threaded path when the env var is unset so
-    // we can ship the worker behind a kill-switch for phase 1.
+    // VtStream owns the Pty + VtParser on m_parseThread. GUI thread
+    // talks to it only via queued invokeMethod / batchReady signal.
     QThread *m_parseThread = nullptr;
     VtStream *m_vtStream = nullptr;
 
-    // Unified PTY-write entry point. Branches on whether the worker is
-    // active: Qt::QueuedConnection cross-thread invoke when it is,
-    // direct m_pty->write() when it isn't. All ~30 keystroke / response-
-    // callback / paste call sites route through here so the diff to the
-    // existing code is one-line-per-site.
+    // Cross-thread PTY-write entry point — Qt::QueuedConnection invoke
+    // so the PTY master FD is only touched on the worker thread. All
+    // keystroke / response-callback / paste call sites route through
+    // here.
     void ptyWrite(const QByteArray &data);
 
-    // "Is a PTY available to write to?" — true on either the worker or
-    // legacy path once startShell() has succeeded. Replaces the pre-0.6.34
-    // `m_pty` null-check that gated write call sites: on the worker path
-    // m_pty stays null (worker owns its own Pty), so those gates would
-    // silently swallow every keystroke. `hasPty()` is the path-agnostic
-    // guard.
-    bool hasPty() const { return m_vtStream != nullptr || m_pty != nullptr; }
+    // "Is a PTY available to write to?" — true once startShell() has
+    // succeeded. Call sites must guard on this rather than m_vtStream
+    // directly so future refactors don't silently break them.
+    bool hasPty() const { return m_vtStream != nullptr; }
 
-    // Path-agnostic child-PID accessor. The worker path's Pty lives on
-    // the worker thread; reading its childPid() is safe because the PID
-    // is written once during forkpty() (synchronised by startShell's
-    // BlockingQueuedConnection) and never changes afterwards.
+    // Child-PID accessor. The Pty lives on the worker thread; reading
+    // its childPid() is safe because the PID is written once during
+    // forkpty() (synchronised by startShell's BlockingQueuedConnection)
+    // and never changes afterwards.
     pid_t ptyChildPid() const;
 
     QFont m_font;

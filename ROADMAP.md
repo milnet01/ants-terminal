@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.6.36 (2026-04-18). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.6.37 (2026-04-18) (2026-04-18). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -284,12 +284,15 @@ there before adding a multiplexer. Reference:
   responses) cross back to the worker via
   `QMetaObject::invokeMethod(... Qt::QueuedConnection)`. Resize goes
   through `Qt::BlockingQueuedConnection` so the PTY winsize is updated
-  before the next paint. `ANTS_SINGLE_THREADED=1` is available as an
-  escape hatch while the new path proves itself; it will be removed in
-  a follow-up release. Three feature tests lock the invariants: parse
-  equivalence across 11 fixtures × 6 chunking strategies, response
-  ordering, and the source-level resize-synchronicity contract. See
-  [CHANGELOG.md §0.6.34](CHANGELOG.md#0634--2026-04-18).
+  before the next paint. The `ANTS_SINGLE_THREADED=1` kill-switch was
+  retired in 0.6.37 once the new path proved out in the wild (0.6.34
+  → 0.6.37 bake period) and the legacy single-threaded code paths were
+  deleted. Four feature tests lock the invariants: parse equivalence
+  across 11 fixtures × 6 chunking strategies, response ordering, the
+  source-level resize-synchronicity contract, and the ptyWrite-gating
+  regression pin. See
+  [CHANGELOG.md §0.6.34](CHANGELOG.md#0634--2026-04-18) and
+  [§0.6.37](CHANGELOG.md#0637--2026-04-18).
 - ✅ **Incremental reflow on resize**. Shipped in 0.6.15. The original
   research note called for tracking `wrap_col` per line; the actual
   implementation works on equivalent information already on the line
