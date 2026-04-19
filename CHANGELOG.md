@@ -12,6 +12,203 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-04-19
+
+**Theme:** shell integration + triggers. Consolidates the 0.6.1 →
+0.6.45 arc into the release the 0.7 ROADMAP plotted out: command
+blocks as first-class UI, `.cast` recording, semantic history,
+HMAC-verified OSC 133 markers, the full iTerm2-parity trigger set,
+SIMD VT parsing, a dedicated PTY read + VT parse worker thread,
+Wayland-native Quake mode (layer-shell + GlobalShortcuts portal),
+and the H1–H4 distribution slice (SECURITY.md, AppStream metainfo,
+man page, shell completions) that takes Ants from "side project" to
+"distro-ready." 0.7.0 is the minor-release rollup of 30 patch
+releases; the individual per-feature entries below 0.7.0 remain
+authoritative for the SHAs they shipped under.
+
+### Added
+
+#### 🎨 Shell integration
+
+- **Command blocks as first-class UI** (Warp parity,
+  [docs](https://docs.warp.dev/terminal/blocks)). OSC 133 prompt →
+  command → output grouping; Ctrl+Shift+Up / Ctrl+Shift+Down jump to
+  prev/next prompt; collapsible output with "… N lines hidden"
+  summary; duration + timestamp in the prompt gutter; 2px pass/fail
+  status stripe; per-block right-click menu (Copy Command, Copy
+  Output, Re-run, Fold/Unfold, Share as `.cast`). Shipped across
+  0.6.x; consolidated in §0.6.10.
+- **Asciinema `.cast` v2 recording**
+  ([spec](https://docs.asciinema.org/manual/asciicast/v2/)).
+  Full-session via Ctrl+Shift+R; per-block export via the
+  command-block context menu. §0.6.10.
+- **Semantic history.** Ctrl-click on a `path:line:col` capture in
+  scrollback opens the file at the cited position. CWD resolution
+  via `/proc/<pid>/cwd`, so relative paths Just Work without shell
+  cooperation. Editor support broadened beyond VS Code + Kate to
+  VS Code family (`code-insiders`, `codium`), vi-family (`nvim`,
+  `vim`), `nano`, Sublime / Helix / Micro, and JetBrains IDEs.
+  §0.6.12.
+- **Shell-side HMAC verification for OSC 133 markers.** When
+  `$ANTS_OSC133_KEY` is set, every OSC 133 marker must carry an
+  `ahmac=` param computed as `HMAC-SHA256(key, <marker>|<promptId>
+  [|<exitCode>])`. Forged markers are dropped and a status-bar
+  counter surfaces the count with a 5-second cooldown. Bash + zsh
+  integration scripts under `packaging/shell-integration/`. §0.6.31.
+
+#### 🔌 Triggers + plugin events
+
+- **Full iTerm2-parity trigger rule set** with `instant` flag:
+  `bell`, `inject`, `run_script`, `notify`, `sound`, `command`
+  shipped in §0.6.9; `highlight_line`, `highlight_text`, and
+  `make_hyperlink` shipped in §0.6.13 via a new `TerminalGrid`
+  line-completion callback so matches map to exact column ranges
+  on a real row before the row scrolls into scrollback.
+- **OSC 1337 SetUserVar + `user_var_changed` event.** §0.6.9.
+  Disambiguated from inline images by the byte after `1337;`.
+  NAME ≤ 128 chars; decoded value capped at 4 KiB.
+- **Command-palette plugin registration** via
+  `ants.palette.register({title, action, hotkey})`. Always-on (no
+  permission gate); optional global QShortcut. §0.6.9.
+- **New plugin events:** `command_finished` (exit + duration),
+  `pane_focused`, `theme_changed`, `window_config_reloaded`,
+  `user_var_changed`, `palette_action`. §0.6.9.
+
+#### ⚡ Performance
+
+- **SIMD VT-parser scan.** Ground-state hot path now scans 16 bytes
+  at a time via SSE2 (x86_64) / NEON (ARM64) for the next
+  non-printable-ASCII byte, then bulk-emits `Print` actions for the
+  safe run. A signed-compare trick (XOR 0x80 → two `cmpgt_epi8`
+  against pre-computed bounds) flags any interesting byte with a
+  single `movemask`. Regression guard:
+  `tests/features/vtparser_simd_scan/` asserts byte-identical
+  action streams across whole-buffer, byte-by-byte, and
+  pseudo-random-chunk feeds over a 38-case corpus. §0.6.23.
+- **Dedicated PTY read + VT parse worker thread.** PTY read and
+  parse run on a `VtStream` `QThread`; parsed `VtAction` batches
+  cross to the GUI over `Qt::QueuedConnection` and apply on the
+  main thread (paint stays where it was). Back-pressure: at most
+  8 batches (≈128 KB) in flight before the worker disables its
+  `QSocketNotifier` and kernel flow control takes over; GUI
+  re-enables on drain. Resize goes over
+  `Qt::BlockingQueuedConnection` so winsize is current before the
+  next paint. `ANTS_SINGLE_THREADED=1` kill-switch was retired
+  once the new path baked out. §0.6.34 / §0.6.37.
+- **Incremental reflow on resize.** Standalone lines that fit the
+  new width get an in-place `cells.resize()` with default-attr
+  padding or trailing-blank trim, skipping the allocation-heavy
+  `joinLogical` / `rewrap` round-trip. Multi-line soft-wrap
+  sequences still go through the full logic so correctness is
+  preserved. §0.6.15.
+
+#### 🖥 Platform — Wayland native
+
+- **Layer-shell Quake mode.** `find_package(LayerShellQt CONFIG
+  QUIET)` wires `LayerShellQt::Interface` when the
+  `layer-shell-qt6-devel` package is installed;
+  `MainWindow::setupQuakeMode()` promotes the window to a
+  `zwlr_layer_surface_v1` at `LayerTop`, anchored top/left/right
+  with exclusive-zone 0. XCB path preserved for X11. §0.6.38.
+- **Freedesktop GlobalShortcuts portal integration.**
+  `GlobalShortcutsPortal` client wraps the
+  `org.freedesktop.portal.GlobalShortcuts` handshake
+  (CreateSession → BindShortcuts → Activated) behind a single Qt
+  signal. Wires the `toggle-quake` id on KDE Plasma 6 and
+  xdg-desktop-portal-hyprland / -wlr; the in-app `QShortcut`
+  fallback stays active on GNOME Shell. 500 ms debounce prevents
+  focused double-fire. §0.6.39.
+
+#### 🔒 Security
+
+- **Plugin capability audit UI.** Settings → **Plugins** renders
+  every declared permission as a checkbox per plugin; revocations
+  persist to `config.plugin_grants[<name>]` and take effect at
+  next plugin reload. §0.6.11.
+- **Image-bomb defenses.** New `TerminalGrid::ImageBudget` tracks
+  total decoded image bytes across the inline-display vector +
+  the Kitty cache; cap is **256 MB per terminal**. Sixel rejects
+  up front from declared raster size; Kitty PNG / iTerm2 OSC 1337
+  reject post-decode. Inline red error text surfaces the
+  rejection. The per-image `MAX_IMAGE_DIM = 4096` dimension cap
+  remains in place. §0.6.11.
+
+#### 📦 Distribution readiness (H1–H4)
+
+- **H1 — `SECURITY.md` + `CODE_OF_CONDUCT.md`.**
+  Coordinated-disclosure policy with supported-versions table,
+  reporting channel (GitHub Security Advisory + encrypted email),
+  disclosure timeline, severity rubric, in/out of scope lists.
+  Contributor Covenant 2.1 verbatim with maintainer email + the
+  private GitHub Security Advisory listed as conduct reporting
+  channels. Clears the Debian / Fedora / Ubuntu security-team
+  review gate. §0.6.16.
+- **H2 — AppStream metainfo + polished desktop entry.**
+  `packaging/linux/org.ants.Terminal.metainfo.xml` (AppStream 1.0
+  with summary / description / releases / categories / keywords /
+  OARS content rating / supports / provides / launchable) and
+  `packaging/linux/org.ants.Terminal.desktop` (reverse-DNS id,
+  tightened Keywords, StartupWMClass, Desktop Actions for
+  NewWindow + QuakeMode). CMake install rules via
+  `GNUInstallDirs` cover desktop / metainfo / six hicolor icons;
+  CI runs `appstreamcli validate --explain` +
+  `desktop-file-validate` on every push. §0.6.17.
+- **H3 — Man page.** `packaging/linux/ants-terminal.1` in
+  `groff -man` covering synopsis, every CLI flag, environment
+  variables, files, exit status, bugs, authors, and see-also.
+  CMake installs to `${CMAKE_INSTALL_MANDIR}/man1/`; CI lints the
+  source with `groff -man -Tutf8 -wall`. §0.6.18.
+- **H4 — Shell completions (bash / zsh / fish).** Each shell
+  completion installed to the conventional vendor path
+  (`bash-completion/completions/`, `zsh/site-functions/`,
+  `fish/vendor_completions.d/`); all three are auto-discovered on
+  system-wide installs. CI lints each file with the matching
+  shell's parse-only flag. Closes the H1–H4 distribution slice;
+  remaining packaging work (H5 distro recipes landed in §0.6.20;
+  H6 Flatpak, H7 docs site, H13 distro outreach) lives in 0.8.0.
+  §0.6.19.
+
+#### 🧰 Dev experience — Project Audit polish
+
+- **Qt rule: unbounded callback payloads**
+  (`unbounded_callback_payloads`, §0.6.8).
+- **Qt rule: `QNetworkReply::connect` without context object**
+  (`qnetworkreply_no_abort`, §0.6.8).
+- **Observability rule: silent `catch(...)`** (`silent_catch`,
+  §0.6.7).
+- **Self-consistency: fixture-per-`addGrepCheck`**
+  (`audit_fixture_coverage`, §0.6.6), CI-enforced via
+  `tests/audit_self_test.sh`.
+- **Build-flag recommender** (`missing_build_flags`, §0.6.7).
+- **No-CI check** (`no_ci`, §0.6.7).
+- **build-asan CI lane** — ctest + binary smoke under ASan/UBSan
+  on every push. §0.6.7.
+- **`CONTRIBUTING.md`** — derived from `STANDARDS.md`; covers
+  build modes, test layout, adding an audit rule, version-bump
+  checklist. §0.6.7.
+- **`actions/checkout` v4.2.2 → v5.0.1.** Runs on Node 24,
+  pre-empting GitHub's 2026-06-02 Node 20 deprecation. Both CI
+  pin sites SHA-pinned with `# v5.0.1` humans-readable comment.
+
+### Changed
+
+- **ROADMAP 0.7.0 theme** — every 📋 item on the list moves to ✅.
+  Deferred items (EGL swap-with-damage on GL, Domain abstraction,
+  persistent workspaces, Kitty Unicode-placeholder graphics) are
+  explicitly re-scoped to 0.8.0+ so the 0.7 minor bump reflects
+  the work that actually shipped.
+
+### Notes
+
+- 0.7.0 carries no breaking API changes. Every plugin that loads
+  against 0.6.45 loads against 0.7.0. The minor bump reflects the
+  accumulated *theme* delta since 0.6.0 shipped five days ago —
+  not a manifest or `ants.*` schema break.
+- Because 0.7.0 is a rollup, this entry deliberately duplicates
+  individual 0.6.x bullets rather than linking through. The
+  0.6.x entries below remain authoritative for the SHAs +
+  commits they landed in.
+
 ## [0.6.45] — 2026-04-19
 
 **Theme:** Deferred VT-standards items from the 10th-audit research

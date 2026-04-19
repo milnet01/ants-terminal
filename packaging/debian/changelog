@@ -1,3 +1,83 @@
+ants-terminal (0.7.0-1) unstable; urgency=medium
+
+  * Shell integration + triggers minor release — rollup of the 0.6.1
+    to 0.6.45 patch-release arc into the theme the 0.7 ROADMAP plotted
+    out. No breaking API changes; every plugin that loaded against
+    0.6.45 loads against 0.7.0. The minor bump reflects the accumulated
+    theme delta since 0.6.0, not a manifest or ants.* schema break.
+  * Shell integration: command blocks as first-class UI with OSC 133
+    prompt/command/output grouping, Ctrl+Shift+Up / Down jumps,
+    collapsible output with "... N lines hidden" summaries, a 2px
+    pass/fail status stripe, and per-block context menu (Copy Command,
+    Copy Output, Re-run, Fold/Unfold, Share as .cast). Asciinema
+    .cast v2 recording — full-session via Ctrl+Shift+R and per-block
+    via the context menu.
+  * Semantic history: Ctrl-click on a path:line:col capture in
+    scrollback opens the file at the cited position. CWD resolution
+    via /proc/<pid>/cwd so relative paths Just Work without shell
+    cooperation. Editor support covers VS Code family (code, code-
+    insiders, codium), vi-family (nvim, vim), nano, Sublime, Helix,
+    Micro, and JetBrains IDEs.
+  * Shell-side HMAC verification for OSC 133 markers. When
+    $ANTS_OSC133_KEY is set, every OSC 133 marker must carry an
+    ahmac= param computed as HMAC-SHA256(key, <marker>|<promptId>
+    [|<exitCode>]). Forged markers are dropped and a status-bar
+    counter surfaces the count with a 5-second cooldown. Bash + zsh
+    integration scripts shipped under packaging/shell-integration/.
+  * Triggers + plugin events: full iTerm2-parity trigger rule set
+    with an instant flag — bell, inject, run_script, notify, sound,
+    command, highlight_line, highlight_text, make_hyperlink. OSC 1337
+    SetUserVar with a user_var_changed event. Command-palette plugin
+    registration via ants.palette.register(). New plugin events:
+    command_finished, pane_focused, theme_changed,
+    window_config_reloaded, user_var_changed, palette_action.
+  * Performance: SIMD VT-parser scan — ground-state hot path scans
+    16 bytes at a time via SSE2 (x86_64) / NEON (ARM64), emitting
+    bulk Print actions for safe runs. Dedicated PTY read + VT parse
+    worker thread with bounded back-pressure (<= 8 batches in flight).
+    Incremental reflow on resize skips the allocation-heavy rewrap
+    round-trip for standalone lines.
+  * Platform — Wayland native: layer-shell Quake mode promotes the
+    window to zwlr_layer_surface_v1 at LayerTop when layer-shell-
+    qt6-devel is installed; XCB path preserved for X11. Freedesktop
+    GlobalShortcuts portal wires the toggle-quake id on KDE Plasma 6
+    and xdg-desktop-portal-hyprland / -wlr with a 500ms debounce;
+    in-app QShortcut fallback stays active on GNOME Shell.
+  * Security: plugin capability audit UI renders every declared
+    permission as a revocable checkbox under Settings → Plugins,
+    persisted to config.plugin_grants[<name>] and applied on next
+    plugin reload. Image-bomb defenses cap total decoded image bytes
+    at 256 MB per terminal across Sixel / Kitty / iTerm2 OSC 1337;
+    per-image MAX_IMAGE_DIM = 4096 dimension cap remains in place.
+  * Distribution readiness (H1–H4): SECURITY.md (coordinated-
+    disclosure policy with supported-versions table, reporting
+    channel, timeline, severity rubric) + CODE_OF_CONDUCT.md
+    (Contributor Covenant 2.1) clear the Debian / Fedora / Ubuntu
+    security-team review gate. AppStream metainfo + polished desktop
+    entry with Desktop Actions for NewWindow + QuakeMode. groff -man
+    man page at packaging/linux/ants-terminal.1 covering every CLI
+    flag, environment variable, and exit status. Shell completions
+    (bash / zsh / fish) installed to conventional vendor paths,
+    auto-discovered on system-wide installs. CI runs appstreamcli
+    validate --explain, desktop-file-validate, and groff -man lint
+    on every push.
+  * Dev experience: Project Audit gains new rules
+    (unbounded_callback_payloads, qnetworkreply_no_abort,
+    silent_catch, missing_build_flags, no_ci), fixture-per-check
+    self-consistency enforcement (audit_fixture_coverage), and a
+    build-asan CI lane running ctest + binary smoke under ASan/UBSan
+    on every push. CONTRIBUTING.md covers build modes, test layout,
+    adding an audit rule, version-bump checklist. actions/checkout
+    bumped v4.2.2 → v5.0.1 to pre-empt the 2026-06-02 Node 20
+    deprecation on GitHub runners.
+  * Notes: 0.7.0 is a minor-release rollup of 30 patch releases; the
+    individual 0.6.x CHANGELOG entries remain authoritative for the
+    SHAs they shipped under. Deferred items (EGL swap-with-damage on
+    GL, Domain abstraction, persistent workspaces, Kitty Unicode-
+    placeholder graphics) are explicitly re-scoped to 0.8.0+.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 19 Apr 2026 14:00:00 +0000
+
 ants-terminal (0.6.45-1) unstable; urgency=medium
 
   * Deferred VT-standards items from the 10th-audit research report
