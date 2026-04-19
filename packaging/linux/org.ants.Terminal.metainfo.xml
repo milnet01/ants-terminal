@@ -89,6 +89,16 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.42" date="2026-04-19">
+      <description>
+        <p>Focus-redirect guard rails. Two user-visible regressions from the 0.6.26 auto-return-to-terminal behaviour — a flashing highlight as the mouse crossed the menubar, and the paste-confirmation dialog's "Paste" button silently swallowing mouse clicks — both traced back to the same <code>QApplication::focusChanged</code> handler firing through narrow windows it shouldn't. New guards short-circuit the redirect when a popup is open, when the cursor is over a menu or menubar, or when any top-level <code>QDialog</code> is visible — the last covers the <code>QMessageBox::exec()</code> modality-handshake tick during which <code>activeModalWidget()</code> can briefly be null.</p>
+        <ul>
+          <li><em>Fixed:</em> menubar File / Edit / View hover no longer flickers. The focus-redirect lambda now early-returns when <code>QApplication::activePopupWidget()</code> is non-null and when <code>QApplication::widgetAt(QCursor::pos())</code> has a <code>QMenu</code> or <code>QMenuBar</code> ancestor. Both guards are mirrored in the deferred <code>QTimer::singleShot(0,…)</code> fire-time block so a menu opened between queue and fire is still honoured.</li>
+          <li><em>Fixed:</em> the paste-confirmation <code>QMessageBox</code> no longer swallows clicks on the "Paste" button (pre-0.6.42 only the <code>&amp;Paste</code> mnemonic worked). The redirect now walks <code>QApplication::topLevelWidgets()</code> at queue time and early-returns on any visible <code>QDialog</code>, mirroring the fire-time check and covering the brief <code>show()</code> handshake window where <code>activeModalWidget()</code> returns null.</li>
+          <li><em>Tests:</em> new <code>tests/features/focus_redirect_menu_guard/</code> source-grep pins six invariants on the focusChanged lambda in <code>src/mainwindow.cpp</code> — the popup and menu-hover guards (queue + fire time), the visible-dialog walk, and the five pre-existing guards (<code>activeModalWidget</code>, <code>QAbstractButton</code>, <code>mouseButtons</code>, <code>QDialog</code> parent chain, <code>CommandPalette</code>) that must not regress. Uses the balanced-brace scanner from 0.6.41 to avoid <code>std::regex</code> stack blow-out on a 4000+ line file.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.41" date="2026-04-19">
       <description>
         <p>Quake-mode + OSC 133 UX polish. Surfaces the out-of-focus portal binding state in Settings so users can tell at a glance whether their Quake hotkey escapes focus, and adds a scrollbar-adjacent tick-mark gutter that exposes OSC 133 command boundaries across the full scrollback — jump targets for <code>Ctrl+Shift+Up/Down</code> that were previously invisible.</p>

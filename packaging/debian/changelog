@@ -1,3 +1,38 @@
+ants-terminal (0.6.42-1) unstable; urgency=medium
+
+  * Focus-redirect guard rails. The 0.6.26 auto-return-to-terminal
+    handler was firing through two narrow windows where it
+    shouldn't — hovering across the File / Edit / View menubar
+    produced a visibly flashing highlight, and the paste-
+    confirmation dialog's "Paste" button silently swallowed mouse
+    clicks (only the &Paste keyboard shortcut worked). Both traced
+    back to the same QApplication::focusChanged handler in
+    src/mainwindow.cpp.
+  * Fix menubar hover flash. The focus-redirect lambda now early-
+    returns when QApplication::activePopupWidget() is non-null
+    (covers QMenu / QComboBox dropdown / tooltip) and when the
+    widget under QCursor::pos() has a QMenu / QMenuBar ancestor
+    (covers the menubar itself, which is NOT a popup). Both guards
+    are mirrored at the deferred QTimer::singleShot(0, ...) fire
+    time so a menu that opens between queue and fire is still
+    honored.
+  * Fix paste-confirmation dialog click swallow. The redirect now
+    walks QApplication::topLevelWidgets() at queue time and early-
+    returns on any visible QDialog. Closes the QMessageBox::exec()
+    modality-handshake window during which activeModalWidget() can
+    briefly return null — which was the exact tick a focusChanged
+    event could fire mid-click and rip focus off the button,
+    cancelling clicked().
+  * New feature test tests/features/focus_redirect_menu_guard
+    (CTest labels features;fast) pins six invariants on the
+    focusChanged lambda: popup + menu-hover guards at queue and
+    fire time, the visible-dialog walk at queue time, and the five
+    existing guards (activeModalWidget, QAbstractButton,
+    mouseButtons, QDialog parent-chain, CommandPalette) that must
+    not regress.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 19 Apr 2026 12:00:00 +0000
+
 ants-terminal (0.6.41-1) unstable; urgency=medium
 
   * Quake-mode + OSC 133 UX polish. Surfaces the out-of-focus

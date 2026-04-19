@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.41 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.42 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -865,6 +865,31 @@ if(ANTS_TESTS)
     add_test(NAME command_mark_gutter
              COMMAND test_command_mark_gutter)
     set_tests_properties(command_mark_gutter PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # focus_redirect_menu_guard — locks the 2026-04-19 fix for the
+    # File/Edit/View menubar hover-flash. The focus-redirect lambda in
+    # mainwindow.cpp must early-return on popup-open AND when the cursor
+    # is over a QMenu/QMenuBar ancestor, at BOTH queue time and
+    # QTimer::singleShot fire time. Pure source grep.
+    # See tests/features/focus_redirect_menu_guard/spec.md.
+    add_executable(test_focus_redirect_menu_guard
+        tests/features/focus_redirect_menu_guard/test_focus_redirect_menu_guard.cpp
+    )
+    target_link_libraries(test_focus_redirect_menu_guard PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_focus_redirect_menu_guard PRIVATE src)
+    target_compile_options(test_focus_redirect_menu_guard PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_focus_redirect_menu_guard PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME focus_redirect_menu_guard
+             COMMAND test_focus_redirect_menu_guard)
+    set_tests_properties(focus_redirect_menu_guard PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

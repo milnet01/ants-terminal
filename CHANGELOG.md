@@ -12,6 +12,63 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.42] — 2026-04-19
+
+**Theme:** Focus-redirect guard rails. The 0.6.26 auto-return-to-terminal
+behavior was firing through two narrow windows where it shouldn't —
+hover-across-menubar produced a visibly flashing highlight, and the
+paste-confirmation dialog's "Paste" button silently swallowed mouse
+clicks (only the `&Paste` keyboard shortcut worked). Both user-visible
+regressions traced back to the same `QApplication::focusChanged`
+handler. New guards short-circuit the redirect when a popup is open,
+when the cursor is over a menu/menubar, or when any top-level
+`QDialog` is visible — the last one covers the `QMessageBox::exec()`
+modality-handshake window where `activeModalWidget()` can briefly be
+null.
+
+### Fixed
+
+- **Menubar File / Edit / View hover flash.** Moving the mouse across
+  the menubar caused the hover highlight to flicker on every motion
+  tick. Root cause: Qt synthesizes brief `focusChanged` cycles during
+  menubar hover; `now` could momentarily park on a chrome widget not
+  covered by the parent-chain exempt list, which triggered the
+  auto-return-to-terminal redirect and wiped the menubar highlight.
+  The focus-redirect lambda now early-returns when
+  `QApplication::activePopupWidget()` is non-null (covers QMenu /
+  QComboBox popup / tooltip) and when
+  `QApplication::widgetAt(QCursor::pos())` has a `QMenu` or
+  `QMenuBar` ancestor (covers the menubar, which is NOT a popup).
+  Both guards are mirrored in the deferred `QTimer::singleShot(0,…)`
+  fire-time block so a menu that opens between queue and fire is
+  still honored.
+- **Paste-confirmation dialog swallowed mouse clicks on "Paste".**
+  Multi-line paste (or paste containing `sudo`, `| sh`, control
+  characters) triggered the "Confirm paste" `QMessageBox`, but
+  clicking the Paste button did nothing — only pressing `P` (the
+  `&Paste` keyboard mnemonic) worked. Root cause:
+  `QMessageBox::exec()` enters modal state inside a brief `show()`
+  handshake during which `QApplication::activeModalWidget()` can
+  return null for a tick; if a focusChanged event fired in that
+  window, the redirect stole the button's focus mid-click and
+  cancelled `clicked()`. The redirect now walks
+  `QApplication::topLevelWidgets()` at queue time and early-returns
+  on any visible `QDialog`, mirroring the check that already existed
+  at fire time.
+
+### Tests
+
+- **`tests/features/focus_redirect_menu_guard/`** — new source-grep
+  feature test pinning six invariants on the focusChanged lambda in
+  `src/mainwindow.cpp`: the popup and menu-hover guards (queue +
+  fire time), the visible-dialog walk at queue time, and the five
+  existing guards that must not regress (`activeModalWidget`,
+  `QAbstractButton`, `mouseButtons`, `QDialog` parent-chain,
+  `CommandPalette`). Uses the balanced-brace scanner pattern
+  (linear-time, constant stack) introduced in 0.6.41's
+  `command_mark_gutter` test to avoid `std::regex` blowing the stack
+  on a 4000+ line `mainwindow.cpp`.
+
 ## [0.6.41] — 2026-04-19
 
 **Theme:** Quake-mode + OSC 133 UX polish. Surfaces the out-of-focus

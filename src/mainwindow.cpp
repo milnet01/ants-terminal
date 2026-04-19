@@ -428,6 +428,43 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
         if (!now) return;                         // app-wide focus loss (Alt-Tab)
         if (QApplication::activeModalWidget()) return;  // modal dialog owns focus
 
+        // Any visible top-level QDialog blocks the redirect, whether
+        // modal or not. Reason: QMessageBox::exec() / QDialog::exec()
+        // sets modality inside a brief handshake — activeModalWidget()
+        // can return null for a tick during show(). If a focusChanged
+        // event fires in that window (e.g. initial default-button focus,
+        // or a mid-click focus bounce), the redirect would steal the
+        // click from the dialog button. Symptom 2026-04-19: the paste-
+        // confirmation dialog's "Paste" button swallowed mouse clicks —
+        // only the &Paste keyboard shortcut worked. Walking the top-
+        // level widget list catches the dialog regardless of exec()'s
+        // modality state.
+        for (QWidget *w : QApplication::topLevelWidgets()) {
+            if (w == this) continue;
+            if (!w->isVisible()) continue;
+            if (w->inherits("QDialog")) return;
+        }
+
+        // A popup (QMenu, combobox dropdown, tooltip) is currently open.
+        // Users navigate popups by moving the mouse across items; Qt
+        // synthesizes focus churn as they do. If we redirect focus back
+        // to the terminal mid-navigation, the menubar highlight is wiped
+        // on every paint tick — visible as the File/Edit/View hover
+        // flashing the user reported 2026-04-19.
+        if (QApplication::activePopupWidget()) return;
+
+        // Same reasoning for the menubar itself (which is NOT a popup —
+        // it's a regular child widget, so activePopupWidget() misses it).
+        // Hovering across menubar actions can briefly park focus on a
+        // chrome widget between entering one action and the next. When
+        // the cursor is over a menu or menubar, the user is engaging with
+        // it; leave focus wherever it wants to go until they move off.
+        if (QWidget *under = QApplication::widgetAt(QCursor::pos())) {
+            for (QWidget *w = under; w; w = w->parentWidget()) {
+                if (w->inherits("QMenu") || w->inherits("QMenuBar")) return;
+            }
+        }
+
         // Never hijack focus from a button that is still handling a
         // click. QAbstractButton emits `clicked()` only if it retains
         // focus between mousePress and mouseRelease. When this
@@ -469,6 +506,18 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
             QPointer<TerminalWidget> guard(t);
             QTimer::singleShot(0, this, [guard]() {
                 if (!guard) return;
+                // Re-check popup + menu-hover at fire time: a menu may
+                // have opened between queue and fire (e.g. user clicked
+                // File right after focus bounced through chrome). Same
+                // reasoning as the queue-time guards — don't yank focus
+                // while the user is engaging with a menu.
+                if (QApplication::activePopupWidget()) return;
+                if (QWidget *under = QApplication::widgetAt(QCursor::pos())) {
+                    for (QWidget *w = under; w; w = w->parentWidget()) {
+                        if (w->inherits("QMenu") || w->inherits("QMenuBar")) return;
+                    }
+                }
+
                 // Re-check at firing time: if the status-bar button's
                 // handler (e.g. showDiffViewer, openClaudeAllowlistDialog)
                 // has since spawned a dialog, the user is now engaged
