@@ -47,7 +47,9 @@ release; this section is the rollup so nothing falls by the wayside.
 | **H3** | Man page `ants-terminal.1` + CMake install rule | ✅ | 0.6.18 |
 | **H4** | Bash / zsh / fish completions + CMake install rules | ✅ | 0.6.19 |
 | **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | ✅ | 0.6.20 |
-| **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + Flathub submission | ✅ manifest (0.7.2); 📋 Flathub submission | 0.8.0 |
+| **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + host-shell wiring | ✅ | 0.7.2 |
+| **H6.1** | Lua 5.4 module in Flatpak manifest so plugins work inside the sandbox | 📋 | 0.8.0 |
+| **H6.2** | Flathub submission — PR `org.ants.Terminal` against `flathub/flathub` | 📋 | 0.8.0 |
 | **H7** | Project website + docs site (GitHub Pages) with screenshots, getting-started, plugin authoring | 📋 | 0.8.0 |
 | **H8** | macOS port (Qt6 builds cleanly; need `posix_spawn`/`openpty` + NSWindow observer + notarized `.app`) | 📋 | 0.9.0 |
 | **H9** | AT-SPI / ATK accessibility — `QAccessibleInterface` for `TerminalWidget`, `text-changed` events batched on OSC 133 D | 📋 | 0.9.0 |
@@ -582,12 +584,47 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Lua plugins disabled in the initial manifest — `org.kde.Sdk`
   doesn't ship lua54 and tarball-sha256 refresh per release is a
   maintenance cost worth deferring; plugin support returns via a
-  `shared-modules` Lua entry in a follow-up. Flathub submission is
-  the final step — manifest is ready to re-point `sources[].type:
-  dir` → `git / url / tag` and PR against
-  [flathub/flathub](https://github.com/flathub/flathub). See
-  [CHANGELOG.md §0.7.2](CHANGELOG.md#072--2026-04-19) and
-  [packaging/flatpak/README.md](packaging/flatpak/README.md).
+  `shared-modules` Lua entry in a follow-up (H6.1 below). Flathub
+  submission is the final step — manifest is ready to re-point
+  `sources[].type: dir` → `git / url / tag` and PR against
+  [flathub/flathub](https://github.com/flathub/flathub) (H6.2
+  below). See [CHANGELOG.md §0.7.2](CHANGELOG.md#072--2026-04-19)
+  and [packaging/flatpak/README.md](packaging/flatpak/README.md).
+- 📋 **H6.1 — Lua plugins in Flatpak**. Add a Lua 5.4 `archive`
+  module to `packaging/flatpak/org.ants.Terminal.yml` so the
+  Flatpak build carries the same plugin surface as the native
+  packages. Blocker today is tarball-sha256 refresh cadence (the
+  Lua tarball hash must be pinned in the manifest and bumped each
+  Lua point-release). Two workable paths: (a) in-manifest archive
+  module with [flatpak-external-data-checker](https://github.com/flathub/flatpak-external-data-checker)
+  `x-checker-data` annotations so Flathub CI auto-refreshes the
+  hash on Lua bumps; (b) a `flathub/shared-modules` Lua entry if
+  Flathub accepts one (no such module exists today, but it's the
+  cleaner long-term home — Lua 5.4 is used by multiple Flatpaks,
+  a shared module would deduplicate the sha256 cost). Rough
+  manifest shape + the `flatpak-external-data-checker` invocation
+  are documented in `packaging/flatpak/README.md` already —
+  implementation is appending the module and validating with
+  `flatpak-builder --install --user`. Success criterion: `PluginManager::reload()`
+  inside the Flatpak finds and loads a scratch plugin, same as
+  the native-package path.
+- 📋 **H6.2 — Flathub submission**. PR a new repo against
+  [flathub/flathub](https://github.com/flathub/flathub) named
+  `org.ants.Terminal`. The repo's manifest body is
+  `packaging/flatpak/org.ants.Terminal.yml` verbatim with
+  `sources[].type: dir / path: ../..` replaced by
+  `type: git / url: https://github.com/milnet01/ants-terminal /
+  tag: v<version>`. Blocker today is (a) waiting for the v0.7.2
+  manifest to be exercised locally by a few users (first real-
+  user shakedown before claiming a Flathub repo name) and (b)
+  adding `<screenshots>` to `packaging/linux/org.ants.Terminal.metainfo.xml`
+  — Flathub's listing renders the screenshot block as the store
+  tile; without it the listing shows the raw icon. Once those
+  land, Flathub submission is a single PR and CI handles the
+  rest (rebuilds on each new `v<version>` tag). On landing,
+  flip the "gating item 1: no distro packages anywhere" entry
+  in the [Distribution-adoption overview](#distribution-adoption-overview)
+  from "H5 + H6 unblock this" to "unblocked".
 - 📋 **H7 — project website + docs site**. Static GitHub Pages site
   at `ants-terminal.github.io` (or equivalent) with: screenshots,
   installation instructions (once H5/H6 land), plugin authoring
