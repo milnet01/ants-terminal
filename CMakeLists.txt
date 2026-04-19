@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.1 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -943,6 +943,29 @@ if(ANTS_TESTS)
     add_test(NAME focus_redirect_menu_guard
              COMMAND test_focus_redirect_menu_guard)
     set_tests_properties(focus_redirect_menu_guard PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # flatpak_host_shell — pins the FLATPAK_ID / /.flatpak-info
+    # detection + flatpak-spawn --host branch in ptyhandler.cpp. The
+    # branch can't be exercised headlessly (no sandbox on CI runners)
+    # so a source-grep test locks the argv shape: --host, --env= for
+    # every TERM var, --directory= gated on workDir.isEmpty(), -- before
+    # the shell path, _exit(127) on execvp failure, direct-exec path
+    # intact after the branch. See
+    # tests/features/flatpak_host_shell/spec.md.
+    add_executable(test_flatpak_host_shell
+        tests/features/flatpak_host_shell/test_flatpak_host_shell.cpp
+    )
+    target_compile_options(test_flatpak_host_shell PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_flatpak_host_shell PRIVATE
+        SRC_PTYHANDLER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.cpp"
+    )
+    add_test(NAME flatpak_host_shell
+             COMMAND test_flatpak_host_shell)
+    set_tests_properties(flatpak_host_shell PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

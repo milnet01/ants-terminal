@@ -6,9 +6,11 @@
 #include <cstring>
 #include <fcntl.h>
 #include <pty.h>
+#include <string>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
 #include <pwd.h>
 
 Pty::Pty(QObject *parent) : QObject(parent) {}
@@ -113,6 +115,48 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         // cert-err33-c diagnostic without losing any real guarantee.
         char argv0[256];
         (void)::snprintf(argv0, sizeof(argv0), "-%s", shellName);
+
+        // Flatpak: execute the user's shell on the host via
+        // `flatpak-spawn --host` so the sandbox doesn't cut off $PATH,
+        // tools, and the real home directory. flatpak-spawn does NOT
+        // inherit the calling process's env or cwd, so TERM* and
+        // workDir cross the sandbox boundary explicitly via --env= and
+        // --directory=. Detection checks both FLATPAK_ID (set by the
+        // flatpak launcher) and /.flatpak-info (present in every
+        // sandbox regardless of how the app was launched). If
+        // flatpak-spawn is missing we _exit(127) the same way a
+        // missing shell would, matching the direct-exec fallback's
+        // failure shape. See packaging/flatpak/org.ants.Terminal.yml.
+        const bool inFlatpak =
+            ::getenv("FLATPAK_ID") != nullptr ||
+            ::access("/.flatpak-info", F_OK) == 0;
+        if (inFlatpak) {
+            const QByteArray workDirBytes = workDir.toLocal8Bit();
+            std::string verArg = "--env=TERM_PROGRAM_VERSION=";
+            verArg += ANTS_VERSION;
+            std::string dirArg;
+            if (!workDir.isEmpty()) {
+                dirArg = "--directory=";
+                dirArg.append(workDirBytes.constData(),
+                              static_cast<size_t>(workDirBytes.size()));
+            }
+            std::vector<const char *> argv;
+            argv.reserve(12);
+            argv.push_back("flatpak-spawn");
+            argv.push_back("--host");
+            argv.push_back("--env=TERM=xterm-256color");
+            argv.push_back("--env=COLORTERM=truecolor");
+            argv.push_back("--env=TERM_PROGRAM=AntsTerminal");
+            argv.push_back(verArg.c_str());
+            argv.push_back("--env=COLORFGBG=15;0");
+            if (!workDir.isEmpty()) argv.push_back(dirArg.c_str());
+            argv.push_back("--");
+            argv.push_back(shellCStr);
+            argv.push_back(nullptr);
+            ::execvp("flatpak-spawn",
+                     const_cast<char *const *>(argv.data()));
+            ::_exit(127);
+        }
 
         ::execlp(shellCStr, argv0, nullptr);
         ::_exit(127);

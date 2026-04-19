@@ -12,6 +12,71 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-04-19
+
+**Theme:** H6 of the 📦 distribution-adoption plan — Flatpak packaging.
+Ships the `org.ants.Terminal.yml` manifest and the PTY wiring Flatpak
+needs so a second tab's shell actually sees the host's `$PATH` and
+filesystem. One artifact that runs on every distro unblocks the
+"packaged everywhere" gating item without per-distro maintenance.
+
+### Added
+
+- **Flatpak manifest** (`packaging/flatpak/org.ants.Terminal.yml`).
+  Targets `org.kde.Platform//6.7` — the KDE SDK brings cmake, ninja,
+  and every Qt6 component the build needs (Core, Gui, Widgets,
+  Network, OpenGL, OpenGLWidgets, DBus) so the manifest's `modules`
+  block is a single `buildsystem: cmake-ninja` entry. `finish-args`
+  cover Wayland + fallback-X11 + DRI, `--share=network` (AI endpoint
+  + SSH outgoing), portal access (`org.freedesktop.portal.*` covers
+  global shortcuts + file dialogs), desktop notifications, and
+  `xdg-config/ants-terminal:create` + `xdg-data/ants-terminal:create`
+  so config and data land under standard XDG paths. The manifest is
+  ready to re-point from `type: dir / path: ../..` to
+  `type: git / url / tag` for Flathub submission — local `flatpak-
+  builder --install --user` builds end-to-end against the in-tree
+  source today. See [packaging/flatpak/README.md](packaging/flatpak/README.md).
+- **Flatpak host-shell wiring in `ptyhandler.cpp`.** The forked
+  child now probes `FLATPAK_ID` (set by the flatpak launcher) and
+  `/.flatpak-info` (present in every sandbox regardless of launch
+  path); either signal triggers a branch that exec's the user's
+  shell via `flatpak-spawn --host` instead of direct `execlp`. The
+  sandbox doesn't inherit env or cwd across the host boundary, so
+  `TERM`, `COLORTERM`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION` (pulled
+  from the `ANTS_VERSION` compile definition, not a literal), and
+  `COLORFGBG` are forwarded explicitly via `--env=KEY=VALUE`; the
+  requested working directory crosses via `--directory=<workDir>`
+  gated on `!workDir.isEmpty()`. `_exit(127)` after `execvp`
+  matches the direct-exec fallback's failure shape for a missing
+  shell. This is the same PTY model Ghostty's Flathub build uses —
+  the terminal emulator stays sandboxed (VT parser, renderer,
+  plugin VM all inside the confined runtime); only the child shell
+  escapes so the user's `$PATH`, `$HOME`, and tooling are
+  reachable. Outside Flatpak the existing `execlp(shellCStr, argv0,
+  nullptr)` path is hit byte-for-byte unchanged. Feature test
+  `tests/features/flatpak_host_shell/` locks the branch shape:
+  detection probes both signals in an OR, `--host` and `--`
+  separators appear in argv, every TERM var is present as
+  `--env=...`, workDir gating is correct, the direct-exec call site
+  is preserved, `_exit(127)` is the post-exec fall-through.
+- **`packaging/flatpak/README.md`.** Local build instructions
+  (`flatpak-builder --install --user`), host-shell rationale,
+  Flathub submission workflow (the tag-based manifest body differs
+  from the in-tree `type: dir` shape), and the documented Lua-
+  plugins-disabled limitation for the initial manifest — plugin
+  support returns via a shared-modules Lua entry once the tarball-
+  sha256 refresh cadence is wired up.
+- **`packaging/README.md` Flatpak section.** Layout tree adds
+  `flatpak/`; new "Flatpak — `org.ants.Terminal.yml`" section
+  mirrors the openSUSE / Arch / Debian sections; shared-concerns
+  header updated from "three recipes" to "four recipes".
+
+### Changed
+
+- `ROADMAP.md` H6 flipped from 📋 to ✅ (manifest shipped; Flathub
+  submission is the residual 📋); distribution-adoption table
+  entry updated to reflect the split shipped/remaining state.
+
 ## [0.7.1] — 2026-04-19
 
 **Theme:** first of the 0.8.0 🎨 multiplexing items — SSH ControlMaster

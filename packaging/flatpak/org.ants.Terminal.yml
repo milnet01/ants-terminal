@@ -1,0 +1,87 @@
+# Flatpak manifest for Ants Terminal.
+#
+# Build locally:
+#     flatpak-builder --install --user --force-clean \
+#         build-flatpak packaging/flatpak/org.ants.Terminal.yml
+# Run:
+#     flatpak run org.ants.Terminal
+# Lint:
+#     flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+#         manifest packaging/flatpak/org.ants.Terminal.yml
+#
+# Targets org.kde.Platform//6.7 — the KDE SDK brings cmake, ninja, and all
+# Qt6 components the build needs (Core, Gui, Widgets, Network, OpenGL,
+# OpenGLWidgets, DBus). Qt6.7 also clears the CMakeLists.txt 6.2 floor.
+#
+# Host shell. `src/ptyhandler.cpp` detects FLATPAK_ID / /.flatpak-info in
+# the forked child and exec's the user's shell via `flatpak-spawn --host`,
+# so bash/zsh/fish run OUTSIDE the sandbox with the user's real $PATH,
+# tools, and filesystem. That is the only workable PTY model inside a
+# Flatpak — the sandbox's minimal runtime doesn't have the user's shell,
+# and even if it did, running commands under the sandbox's namespaces
+# would cut the user off from the tools they expect. The wire-through
+# requires the --talk-name=org.freedesktop.Flatpak finish-arg below to
+# reach the host helper daemon.
+#
+# Lua plugins. Not wired up in this initial Flatpak — org.kde.Sdk does
+# not ship a lua54-devel, and the Lua 5.4 tarball's sha256 has to be
+# pinned for reproducible builds. Adding Lua is a follow-up (either via
+# a flathub/shared-modules entry or an in-manifest archive module with
+# a refreshed sha256 each bump). Without Lua, PluginManager falls back
+# to plugin-disabled compile mode; the rest of the terminal is
+# unaffected.
+
+id: org.ants.Terminal
+
+runtime: org.kde.Platform
+runtime-version: '6.7'
+sdk: org.kde.Sdk
+
+command: ants-terminal
+
+finish-args:
+  # ── Display ─────────────────────────────────────────────────────────
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # ── Host integration ────────────────────────────────────────────────
+  # `flatpak-spawn --host` (ptyhandler.cpp) for the user's shell.
+  - --talk-name=org.freedesktop.Flatpak
+  # Desktop portals: global shortcuts (Quake-mode binding), file
+  # dialogs, notifications. The * form is standard for portal access
+  # and matches other KDE-based Flatpaks (Konsole, Kate).
+  - --talk-name=org.freedesktop.portal.*
+  # OSC 9 / OSC 777 desktop notifications.
+  - --talk-name=org.freedesktop.Notifications
+  # ── Network ─────────────────────────────────────────────────────────
+  # AI endpoint (HTTPS), SSH bookmarks (outgoing), URL handling (OSC 8).
+  - --share=network
+  # ── Storage ─────────────────────────────────────────────────────────
+  # Config + data live under standard XDG paths. `:create` ensures the
+  # directories exist on first launch.
+  - --filesystem=xdg-config/ants-terminal:create
+  - --filesystem=xdg-data/ants-terminal:create
+  # Host $HOME: session restore needs to read the files the user
+  # opens/saves in the terminal, and `flatpak-spawn --host` inherits
+  # the host's cwd view. Required for a functional terminal.
+  - --filesystem=home
+
+modules:
+  - name: ants-terminal
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_PREFIX=/app
+      # Tests execute ctest-via-CMakeLists (shell fixture + feature
+      # binaries). Shell-harness tests assume a GNU sed / grep on PATH
+      # which the KDE SDK provides; the source-grep feature tests
+      # require no runtime services. Kept on so the Flatpak CI stage
+      # runs the same regression suite the other recipes do.
+      - -DANTS_TESTS=ON
+    sources:
+      - type: dir
+        # flatpak-builder invokes from this manifest's directory; the
+        # project root is two levels up (packaging/flatpak/ → ./).
+        path: ../..

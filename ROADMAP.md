@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.1 (2026-04-19). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.2 (2026-04-19). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -47,7 +47,7 @@ release; this section is the rollup so nothing falls by the wayside.
 | **H3** | Man page `ants-terminal.1` + CMake install rule | ✅ | 0.6.18 |
 | **H4** | Bash / zsh / fish completions + CMake install rules | ✅ | 0.6.19 |
 | **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | ✅ | 0.6.20 |
-| **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + Flathub submission | 📋 | 0.8.0 |
+| **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + Flathub submission | ✅ manifest (0.7.2); 📋 Flathub submission | 0.8.0 |
 | **H7** | Project website + docs site (GitHub Pages) with screenshots, getting-started, plugin authoring | 📋 | 0.8.0 |
 | **H8** | macOS port (Qt6 builds cleanly; need `posix_spawn`/`openpty` + NSWindow observer + notarized `.app`) | 📋 | 0.9.0 |
 | **H9** | AT-SPI / ATK accessibility — `QAccessibleInterface` for `TerminalWidget`, `text-changed` events batched on OSC 133 D | 📋 | 0.9.0 |
@@ -563,11 +563,31 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
     all three recipes.
 
   See [CHANGELOG.md §0.6.20](CHANGELOG.md#0620--2026-04-15).
-- 📋 **H6 — Flatpak packaging**. Ship `org.ants.Terminal.yml`
-  against `org.kde.Platform//6.7`. PTY inside Flatpak needs
-  `flatpak-spawn --host` — Ghostty precedent. Submit to Flathub
-  once stable. One artifact that runs on every distro unlocks
-  sandboxed adoption without per-distro packaging work.
+- ✅ **H6 — Flatpak packaging**. Shipped in 0.7.2.
+  `packaging/flatpak/org.ants.Terminal.yml` against
+  `org.kde.Platform//6.7` (KDE SDK brings cmake/ninja/Qt6). The PTY
+  path in `src/ptyhandler.cpp` detects `FLATPAK_ID` /
+  `/.flatpak-info` in the forked child and exec's the user's shell
+  via `flatpak-spawn --host` with explicit
+  `--env=TERM/COLORTERM/TERM_PROGRAM/TERM_PROGRAM_VERSION/COLORFGBG`
+  and `--directory=<workDir>` — the only workable PTY model inside a
+  sandbox (same pattern Ghostty's Flathub build uses). `finish-args`
+  cover Wayland/X11/DRI, network (AI endpoint + SSH), portals
+  (global shortcuts), desktop notifications, and XDG config/data
+  directories. Source-grep feature test
+  (`tests/features/flatpak_host_shell/`) pins the branch shape:
+  detection probes both signals in an OR, `--host` + `--`
+  separators, every TERM var passes through as `--env=`, workDir
+  gates on `isEmpty()`, direct-exec fallback is preserved verbatim.
+  Lua plugins disabled in the initial manifest — `org.kde.Sdk`
+  doesn't ship lua54 and tarball-sha256 refresh per release is a
+  maintenance cost worth deferring; plugin support returns via a
+  `shared-modules` Lua entry in a follow-up. Flathub submission is
+  the final step — manifest is ready to re-point `sources[].type:
+  dir` → `git / url / tag` and PR against
+  [flathub/flathub](https://github.com/flathub/flathub). See
+  [CHANGELOG.md §0.7.2](CHANGELOG.md#072--2026-04-19) and
+  [packaging/flatpak/README.md](packaging/flatpak/README.md).
 - 📋 **H7 — project website + docs site**. Static GitHub Pages site
   at `ants-terminal.github.io` (or equivalent) with: screenshots,
   installation instructions (once H5/H6 land), plugin authoring

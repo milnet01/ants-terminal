@@ -1,3 +1,46 @@
+ants-terminal (0.7.2-1) unstable; urgency=medium
+
+  * H6 of the distribution-adoption plan lands: Flatpak packaging. One
+    artifact that runs on every distro that ships flatpak, with a PTY
+    path wired for the sandbox so the user's shell reaches the host's
+    $PATH and filesystem. Unblocks the "packaged everywhere" roadmap
+    gate without per-distro maintenance.
+  * Added: Flatpak manifest packaging/flatpak/org.ants.Terminal.yml
+    against org.kde.Platform//6.7 (KDE SDK brings cmake, ninja, and
+    every Qt6 component the build needs). finish-args cover Wayland +
+    fallback-X11 + DRI, network (AI endpoint + SSH outgoing), portals
+    (org.freedesktop.portal.* for global shortcuts / file dialogs),
+    desktop notifications, and XDG config/data directories. Single
+    cmake-ninja module; Ants source enters via type: dir / path: ../..
+    for local builds and re-points to type: git / url / tag for
+    Flathub submission.
+  * Added: Flatpak host-shell wiring in src/ptyhandler.cpp. The forked
+    child probes FLATPAK_ID and /.flatpak-info (either signal triggers
+    the branch) and exec's the user's shell via
+    `flatpak-spawn --host` with --env= forwarding for TERM /
+    COLORTERM / TERM_PROGRAM / TERM_PROGRAM_VERSION (from the
+    ANTS_VERSION compile definition, not a literal) / COLORFGBG, plus
+    --directory=<workDir> gated on !workDir.isEmpty(). The terminal
+    emulator itself (VT parser, renderer, plugin VM) stays inside the
+    sandbox; only the child shell escapes so tools and $HOME are
+    reachable. Same PTY model as Ghostty's Flathub build. Outside
+    Flatpak the existing execlp path runs byte-for-byte unchanged.
+  * Added: packaging/flatpak/README.md with local build instructions,
+    host-shell rationale, Flathub submission workflow, and the
+    documented Lua-plugins-disabled limitation for the initial
+    manifest. packaging/README.md gains a Flatpak section mirroring
+    the openSUSE / Arch / Debian sections.
+  * Tests: new tests/features/flatpak_host_shell/ source-grep
+    regression pins the branch shape — detection probes both signals
+    in an OR, --host and -- separators present in argv, every TERM
+    var crosses via --env=, workDir gates on isEmpty(), direct-exec
+    fallback preserved verbatim, _exit(127) is the post-exec
+    fall-through on execvp failure.
+  * Changed: ROADMAP.md H6 flipped from planned to shipped manifest
+    (0.7.2) + planned Flathub submission residual.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 19 Apr 2026 19:00:00 +0000
+
 ants-terminal (0.7.1-1) unstable; urgency=medium
 
   * First of the 0.8.0 multiplexing roadmap items lands ahead of the

@@ -1,8 +1,9 @@
 # Distribution packaging recipes
 
 This directory holds ready-to-submit packaging recipes for the three
-mainstream non-Flatpak distros Ants Terminal targets first. Each recipe
-is **self-contained** — drop it into the build tool of your choice and
+mainstream source-package distros Ants Terminal targets, plus a
+Flatpak manifest for the cross-distro sandboxed track. Each recipe is
+**self-contained** — drop it into the build tool of your choice and
 it produces a binary package without patching upstream.
 
 > **Version alignment.** The recipes carry `0.6.20` (or newer) in lockstep
@@ -26,6 +27,9 @@ packaging/
 │   ├── changelog                  # Debian release history (dch -i to append)
 │   ├── copyright                  # DEP-5 copyright (MIT)
 │   └── source/format              # 3.0 (quilt)
+├── flatpak/
+│   ├── org.ants.Terminal.yml      # Flathub submission manifest
+│   └── README.md                  # Flatpak build + host-shell wiring notes
 ├── linux/                         # Shared freedesktop.org artefacts
 │   ├── org.ants.Terminal.desktop
 │   ├── org.ants.Terminal.metainfo.xml
@@ -181,7 +185,52 @@ Reference §5.1 for the full workflow.
 
 ---
 
-## Shared concerns across all three recipes
+## Flatpak — `org.ants.Terminal.yml`
+
+The Flatpak track is the **cross-distro sandboxed route** — one
+artifact runs on every distro that ships `flatpak`. The manifest
+targets `org.kde.Platform//6.7` (the KDE SDK brings cmake, ninja, and
+Qt6) and uses `flatpak-spawn --host` for the user's shell so PTY
+semantics line up with the host rather than the minimal sandbox
+runtime.
+
+### Local build
+
+```bash
+flatpak install --user flathub org.kde.Platform//6.7 org.kde.Sdk//6.7 \
+                               org.flatpak.Builder
+
+flatpak-builder --install --user --force-clean \
+    build-flatpak packaging/flatpak/org.ants.Terminal.yml
+
+flatpak run org.ants.Terminal
+```
+
+### Submitting to Flathub
+
+Flathub's submission flow is a PR against
+[flathub/flathub](https://github.com/flathub/flathub); once merged
+Flathub mints an
+[`org.ants.Terminal`](https://github.com/flathub/org.ants.Terminal)
+repo and CI rebuilds from each tagged release. See
+`flatpak/README.md` for the tag-source manifest body (differs from
+the in-tree `type: dir` by pinning
+`url: https://github.com/milnet01/ants-terminal` + `tag: v<version>`).
+
+### Limitations
+
+- **Lua plugins disabled.** Initial manifest skips Lua 5.4 because
+  `org.kde.Sdk` doesn't ship it and tarball-sha256 refresh each
+  release adds a maintenance burden. The terminal itself works
+  fully; plugin support returns once a `shared-modules` Lua entry
+  lands (tracked in `flatpak/README.md`).
+- **Host shell escapes the sandbox.** `flatpak-spawn --host` runs
+  bash/zsh/fish **outside** the confined runtime so the user's
+  `$PATH`, `$HOME`, and tooling are reachable. The terminal emulator
+  (VT parser, renderer, plugin VM) stays sandboxed; only the child
+  shell escapes. Ghostty's Flathub build makes the same trade.
+
+## Shared concerns across all four recipes
 
 - **CMake `GNUInstallDirs`** is the single source of truth for install
   paths (bindir, datadir, mandir); no recipe re-states them.

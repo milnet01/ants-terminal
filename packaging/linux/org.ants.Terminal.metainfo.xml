@@ -89,6 +89,19 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.7.2" date="2026-04-19">
+      <description>
+        <p>H6 of the 📦 distribution-adoption plan lands: Flatpak packaging. One artifact that runs on every distro that ships <code>flatpak</code>, with a PTY path wired for the sandbox so the user's shell reaches the host's <code>$PATH</code> and filesystem. Unblocks the "packaged everywhere" roadmap gate without per-distro maintenance.</p>
+        <ul>
+          <li><em>Added — Flatpak manifest</em> (<code>packaging/flatpak/org.ants.Terminal.yml</code>): targets <code>org.kde.Platform//6.7</code> so the KDE SDK brings cmake, ninja, and every Qt6 component the build needs. <code>finish-args</code> cover Wayland + fallback-X11 + DRI, network (AI endpoint + SSH), portals (<code>org.freedesktop.portal.*</code> for global shortcuts / file dialogs), desktop notifications, and XDG config/data directories. Single <code>cmake-ninja</code> module; Ants source enters via <code>type: dir / path: ../..</code> for local builds and re-points to <code>type: git / url / tag</code> for Flathub submission.</li>
+          <li><em>Added — Flatpak host-shell wiring in <code>ptyhandler.cpp</code>:</em> the forked child probes <code>FLATPAK_ID</code> and <code>/.flatpak-info</code> (either signal triggers the branch) and exec's the user's shell via <code>flatpak-spawn --host</code> with <code>--env=</code> forwarding for TERM / COLORTERM / TERM_PROGRAM / TERM_PROGRAM_VERSION (pulled from the <code>ANTS_VERSION</code> compile definition, not a literal) / COLORFGBG, plus <code>--directory=&lt;workDir&gt;</code> gated on <code>!workDir.isEmpty()</code>. The terminal emulator itself (VT parser, renderer, plugin VM) stays inside the sandbox; only the child shell escapes so tools and <code>$HOME</code> are reachable. Same PTY model as Ghostty's Flathub build. Outside Flatpak the existing <code>execlp</code> path runs byte-for-byte unchanged.</li>
+          <li><em>Added — <code>packaging/flatpak/README.md</code>:</em> local build (<code>flatpak-builder --install --user</code>), host-shell rationale, Flathub submission workflow, and the documented Lua-plugins-disabled limitation for the initial manifest (plugin support returns once a shared-modules Lua entry is wired up).</li>
+          <li><em>Added — <code>packaging/README.md</code> Flatpak section:</em> layout tree adds <code>flatpak/</code>; "Flatpak — <code>org.ants.Terminal.yml</code>" section mirrors the openSUSE / Arch / Debian sections; shared-concerns header updated from three recipes to four.</li>
+          <li><em>Added — feature test <code>tests/features/flatpak_host_shell/</code>:</em> source-grep regression test pinning the branch shape — detection probes both signals in an OR, <code>--host</code> and <code>--</code> separators appear in argv, every TERM var crosses via <code>--env=</code>, workDir gates on <code>isEmpty()</code>, direct-exec fallback is preserved verbatim, <code>_exit(127)</code> is the post-exec fall-through on <code>execvp</code> failure.</li>
+          <li><em>Changed — <code>ROADMAP.md</code> H6</em> flipped from 📋 to ✅ manifest (0.7.2) + 📋 Flathub submission residual.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.1" date="2026-04-19">
       <description>
         <p>First of the 0.8.0 🎨 multiplexing roadmap items lands ahead of the larger mux-server / remote-control work: SSH ControlMaster auto-multiplexing from the bookmark dialog. A second tab to the same host now reuses the first tab's session, skipping the full auth handshake — same precedent as kitty's <code>ssh</code> kitten, Warp's SSH blocks, and iTerm2's SSH profiles.</p>
