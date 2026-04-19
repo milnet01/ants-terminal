@@ -12,6 +12,65 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.43] — 2026-04-19
+
+**Theme:** Two user-reported regressions closed, plus a quality-of-life
+default flip. The 0.6.42 focus-redirect guards didn't cure the menubar
+hover flash — the real culprit was a stylesheet gap, not focus churn.
+And users coming back to the app expected their tabs to be waiting for
+them; session persistence now ships default-on, matching what every
+modern terminal (iTerm2, Kitty, WezTerm, Konsole) does.
+
+### Fixed
+
+- **Menubar hover still flashed after the 0.6.42 fix.** The 0.6.42 pass
+  narrowed focus-redirect firing but didn't address the real root
+  cause. The stylesheet defined `QMenuBar::item:selected` without a
+  matching base `QMenuBar::item` rule, so Qt fell back to the native
+  style for the non-selected state and composited native item drawing
+  under the `:selected` overlay. On hover transitions the native and
+  stylesheet layers raced — visible as the flash. Added an explicit
+  transparent-background `QMenuBar::item` base rule (with matching
+  padding and border-radius) plus a `:pressed` rule so every menubar
+  item state is owned entirely by the stylesheet. The 0.6.42 focus
+  guards remain as defense-in-depth.
+- **Tabs not remembered between sessions.**
+  `Config::sessionPersistence()` defaulted to `false`, so users who
+  never toggled Settings → General → "Save and restore sessions"
+  lost their tab set on every quit. Flipped the default to `true`;
+  users with `session_persistence: false` explicit in `config.json`
+  still get their opt-out honored (only the absent-key path reads the
+  fallback). Matches iTerm2 / Kitty / WezTerm / Konsole default
+  behavior. The 5-second uptime floor in `saveAllSessions()` still
+  protects against crash-on-launch wiping real state.
+
+### Changed
+
+- **`Config::sessionPersistence()` default changed from `false` to
+  `true`.** First-run users now get tab restore out of the box.
+  Only affects users with no `session_persistence` key in their
+  config; explicit values are respected unchanged.
+
+### Tests
+
+- `tests/features/session_persistence_default/` — three-invariant
+  feature test (spec.md + test_session_persistence_default.cpp) that
+  locks in the truth table: missing key → true; explicit true → true;
+  explicit false → false. Linked against `src/config.cpp` only (no
+  GUI dependency). Verified against the pre-fix default by temporary
+  revert — test fails red on `(default false)`, passes green on
+  `(default true)`. Brings the feature-test count to 25, and the
+  total ctest count to 26.
+
+### Internal
+
+- Cleaned up a `-Wshadow` warning at `mainwindow.cpp:3921` — the
+  Review-Changes finalizer lambda's `const Theme &th` shadowed the
+  outer scope's `th`. Renamed the lambda-local to `lth`, silencing
+  the build-time note without functional change.
+- Dropped an unused `<cstdlib>` include from the new session-
+  persistence test (clangd lint flagged it).
+
 ## [0.6.42] — 2026-04-19
 
 **Theme:** Focus-redirect guard rails. The 0.6.26 auto-return-to-terminal

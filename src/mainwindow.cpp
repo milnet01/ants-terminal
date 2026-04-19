@@ -1961,7 +1961,17 @@ void MainWindow::applyTheme(const QString &name) {
     QString ss = QString(
         "QMainWindow { background-color: %1; }"
         "QMenuBar { background-color: %2; color: %3; border-bottom: 1px solid %4; }"
-        "QMenuBar::item:selected { background-color: %5; border-radius: 4px; }"
+        // Explicit base ::item rule prevents Qt from falling back to the
+        // native style for the non-selected state. Without it, Qt composites
+        // native item drawing under the stylesheet's :selected overlay; on
+        // hover transitions the native and stylesheet layers race and the
+        // highlight appears to flash (user report 2026-04-19). Transparent
+        // background + matching padding makes the non-selected state a no-op
+        // so the :selected rule is the only visible state change.
+        "QMenuBar::item { background-color: transparent; padding: 4px 10px;"
+        "  margin: 0; border-radius: 4px; }"
+        "QMenuBar::item:selected { background-color: %5; }"
+        "QMenuBar::item:pressed { background-color: %5; }"
         "QMenu { background-color: %2; color: %3; border: 1px solid %4; padding: 4px; }"
         "QMenu::item { padding: 6px 24px 6px 12px; border-radius: 4px; }"
         "QMenu::item:selected { background-color: %5; color: %1; }"
@@ -3908,13 +3918,15 @@ void MainWindow::showDiffViewer() {
         if (--state->pending > 0) return;
         if (!dlgGuard || !viewerGuard) return;
 
-        const Theme &th = Themes::byName(themeName);
+        // Lambda-local alias `lth` (lambda theme) — avoids shadowing the
+        // outer `th` at the enclosing function scope.
+        const Theme &lth = Themes::byName(themeName);
         QString html = QStringLiteral("<pre style='color: %1; background: %2;'>")
-                           .arg(th.textPrimary.name(), th.bgPrimary.name());
-        auto section = [&html, &th](const QString &title) {
+                           .arg(lth.textPrimary.name(), lth.bgPrimary.name());
+        auto section = [&html, &lth](const QString &title) {
             html += QStringLiteral("<span style='color: %1; font-weight:600;'>"
                                   "━━ %2 ━━</span>\n")
-                        .arg(th.ansi[6].name(), title.toHtmlEscaped());
+                        .arg(lth.ansi[6].name(), title.toHtmlEscaped());
         };
         if (!state->status.isEmpty()) {
             section(QStringLiteral("Status"));
@@ -3922,7 +3934,7 @@ void MainWindow::showDiffViewer() {
                 QString esc = line.toHtmlEscaped();
                 if (line.startsWith("##"))
                     html += QStringLiteral("<span style='color: %1;'>")
-                                .arg(th.ansi[4].name()) + esc + "</span>\n";
+                                .arg(lth.ansi[4].name()) + esc + "</span>\n";
                 else
                     html += esc + "\n";
             }
@@ -3932,7 +3944,7 @@ void MainWindow::showDiffViewer() {
             section(QStringLiteral("Unpushed commits"));
             for (const QString &line : state->unpushed.split('\n'))
                 html += QStringLiteral("<span style='color: %1;'>")
-                            .arg(th.ansi[3].name())
+                            .arg(lth.ansi[3].name())
                      + line.toHtmlEscaped() + "</span>\n";
             html += "\n";
         }
@@ -3941,13 +3953,13 @@ void MainWindow::showDiffViewer() {
             for (const QString &line : state->diff.split('\n')) {
                 QString esc = line.toHtmlEscaped();
                 if (line.startsWith('+') && !line.startsWith("+++"))
-                    html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[2].name()) + esc + "</span>\n";
+                    html += QStringLiteral("<span style='color: %1;'>").arg(lth.ansi[2].name()) + esc + "</span>\n";
                 else if (line.startsWith('-') && !line.startsWith("---"))
-                    html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[1].name()) + esc + "</span>\n";
+                    html += QStringLiteral("<span style='color: %1;'>").arg(lth.ansi[1].name()) + esc + "</span>\n";
                 else if (line.startsWith("@@"))
-                    html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[4].name()) + esc + "</span>\n";
+                    html += QStringLiteral("<span style='color: %1;'>").arg(lth.ansi[4].name()) + esc + "</span>\n";
                 else if (line.startsWith("diff ") || line.startsWith("index "))
-                    html += QStringLiteral("<span style='color: %1;'>").arg(th.ansi[3].name()) + esc + "</span>\n";
+                    html += QStringLiteral("<span style='color: %1;'>").arg(lth.ansi[3].name()) + esc + "</span>\n";
                 else
                     html += esc + "\n";
             }
@@ -3958,7 +3970,7 @@ void MainWindow::showDiffViewer() {
                 "to report.</span>\n"
                 "<span style='color: %2;'>If you expected changes here, check "
                 "that `git status` works in this directory:\n  %3</span>\n")
-                .arg(th.ansi[3].name(), th.textSecondary.name(),
+                .arg(lth.ansi[3].name(), lth.textSecondary.name(),
                      state->cwd.toHtmlEscaped());
         }
         html += "</pre>";

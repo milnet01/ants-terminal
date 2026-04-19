@@ -214,9 +214,13 @@ void Config::setBackgroundAlpha(int alpha) {
     save();
 }
 
-// Session persistence
+// Session persistence — default ON. Modern terminals (iTerm2, WezTerm,
+// Kitty, Konsole) restore tabs out of the box; users expect the same here
+// without hunting through Settings. The only cost is ~a few KB of
+// scrollback per tab on disk, gated by a 5-second uptime floor in
+// saveAllSessions() so crash-test launches don't wipe real state.
 bool Config::sessionPersistence() const {
-    return m_data.value("session_persistence").toBool(false);
+    return m_data.value("session_persistence").toBool(true);
 }
 
 void Config::setSessionPersistence(bool enabled) {

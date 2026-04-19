@@ -89,6 +89,18 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.43" date="2026-04-19">
+      <description>
+        <p>Two user-reported regressions closed, plus a quality-of-life default flip. The 0.6.42 focus-redirect guards didn't cure the menubar hover flash — the real culprit was a stylesheet gap, not focus churn. And users coming back to the app expected their tabs to be waiting for them; session persistence now ships default-on, matching every modern terminal (iTerm2, Kitty, WezTerm, Konsole).</p>
+        <ul>
+          <li><em>Fixed:</em> menubar hover no longer flashes. The 0.6.42 pass narrowed focus-redirect firing but didn't address the root cause. The stylesheet defined <code>QMenuBar::item:selected</code> without a matching base <code>QMenuBar::item</code> rule, so Qt fell back to the native style for the non-selected state and composited native drawing under the <code>:selected</code> overlay. Added an explicit transparent-background <code>QMenuBar::item</code> base rule plus a <code>:pressed</code> rule so every menubar item state is owned entirely by the stylesheet; the 0.6.42 focus guards remain as defense-in-depth.</li>
+          <li><em>Fixed:</em> tabs are now remembered between sessions by default. <code>Config::sessionPersistence()</code> defaulted to <code>false</code>, so users who never toggled Settings → General → "Save and restore sessions" lost their tab set on every quit. Flipped the default to <code>true</code>; users with <code>session_persistence: false</code> explicit in <code>config.json</code> still get their opt-out honoured — only the absent-key path reads the new fallback. The 5-second uptime floor in <code>saveAllSessions()</code> still protects against crash-on-launch wiping real state.</li>
+          <li><em>Changed:</em> <code>Config::sessionPersistence()</code> default flipped from <code>false</code> to <code>true</code>. First-run users now get tab restore out of the box; explicit values in <code>config.json</code> are respected unchanged.</li>
+          <li><em>Tests:</em> new <code>tests/features/session_persistence_default/</code> three-invariant feature test pins the truth table — missing key → true, explicit true → true, explicit false → false. Linked against <code>src/config.cpp</code> only (no GUI dependency). Brings the feature-test count to 25 and the total ctest count to 26.</li>
+          <li><em>Internal:</em> cleaned up a <code>-Wshadow</code> warning at <code>mainwindow.cpp:3921</code> (Review-Changes finalizer lambda's <code>const Theme &amp;th</code> shadowed the outer <code>th</code>; renamed to <code>lth</code>) and dropped an unused <code>&lt;cstdlib&gt;</code> include from the new test.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.42" date="2026-04-19">
       <description>
         <p>Focus-redirect guard rails. Two user-visible regressions from the 0.6.26 auto-return-to-terminal behaviour — a flashing highlight as the mouse crossed the menubar, and the paste-confirmation dialog's "Paste" button silently swallowing mouse clicks — both traced back to the same <code>QApplication::focusChanged</code> handler firing through narrow windows it shouldn't. New guards short-circuit the redirect when a popup is open, when the cursor is over a menu or menubar, or when any top-level <code>QDialog</code> is visible — the last covers the <code>QMessageBox::exec()</code> modality-handshake tick during which <code>activeModalWidget()</code> can briefly be null.</p>

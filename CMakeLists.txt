@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.42 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.43 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -501,6 +501,30 @@ if(ANTS_TESTS)
     )
     add_test(NAME tab_color COMMAND test_tab_color)
     set_tests_properties(tab_color PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # session_persistence_default — locks in the 0.6.43 fix that flipped
+    # Config::sessionPersistence()'s default from false → true. Pre-fix,
+    # fresh users (no `session_persistence` key in config.json) silently
+    # had tabs discarded on exit. Exercises Config's public API directly
+    # against an isolated XDG_CONFIG_HOME, asserting the full truth table
+    # {missing, false, true} → {true, false, true}. See
+    # tests/features/session_persistence_default/spec.md.
+    add_executable(test_session_persistence_default
+        tests/features/session_persistence_default/test_session_persistence_default.cpp
+        src/config.cpp
+    )
+    target_link_libraries(test_session_persistence_default PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_session_persistence_default PRIVATE src)
+    target_compile_options(test_session_persistence_default PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME session_persistence_default
+             COMMAND test_session_persistence_default)
+    set_tests_properties(session_persistence_default PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

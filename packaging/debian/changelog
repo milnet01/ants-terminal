@@ -1,3 +1,35 @@
+ants-terminal (0.6.43-1) unstable; urgency=medium
+
+  * Fix menubar hover flash. The 0.6.42 focus-redirect guards
+    narrowed firing but didn't address the root cause — the
+    stylesheet defined QMenuBar::item:selected without a matching
+    base QMenuBar::item rule, so Qt fell back to the native style
+    for the non-selected state and composited native drawing under
+    the :selected overlay. Added an explicit transparent-background
+    QMenuBar::item base rule plus a :pressed rule so every menubar
+    item state is owned entirely by the stylesheet; the 0.6.42
+    focus guards remain as defense-in-depth.
+  * Session persistence now default-on. Config::sessionPersistence()
+    defaulted to false, so users who never toggled Settings →
+    General → "Save and restore sessions" lost their tab set on
+    every quit. Flipped the default to true to match iTerm2 /
+    Kitty / WezTerm / Konsole; users with session_persistence:
+    false explicit in config.json still get their opt-out honoured
+    (only the absent-key path reads the fallback). The 5-second
+    uptime floor in saveAllSessions() still protects against
+    crash-on-launch wiping real state.
+  * New feature test tests/features/session_persistence_default
+    (CTest labels features;fast) pins the three-row truth table:
+    missing key → true, explicit true → true, explicit false →
+    false. Linked against src/config.cpp only (no GUI dependency).
+    Brings feature-test count to 25, total ctest count to 26.
+  * Cleaned up a -Wshadow warning at mainwindow.cpp:3921 (the
+    Review-Changes finalizer lambda's `const Theme &th` shadowed
+    the outer `th`; renamed the lambda-local to `lth`) and dropped
+    an unused <cstdlib> include from the new test.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 19 Apr 2026 12:00:00 +0000
+
 ants-terminal (0.6.42-1) unstable; urgency=medium
 
   * Focus-redirect guard rails. The 0.6.26 auto-return-to-terminal
