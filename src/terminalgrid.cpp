@@ -656,6 +656,32 @@ void TerminalGrid::handleOsc(const std::string &payload) {
         }
         m_windowTitle = sanitized;
     }
+    // OSC 10/11/12 — default fg/bg/cursor color query (xterm convention).
+    // Apps (delta, neovim, bat, lazygit, fzf, jj, …) use the query form to
+    // auto-detect dark vs light theme without relying on COLORFGBG, which is
+    // unreliable across terminals. Only the query form ("?") is handled; we
+    // deliberately ignore the set form since the default fg/bg/cursor are
+    // theme-driven and writable by any in-terminal process would be a theme
+    // injection vector. Response: OSC <num> ; rgb:RRRR/GGGG/BBBB ST (16-bit
+    // per channel, xterm format).
+    else if ((oscNum == "10" || oscNum == "11" || oscNum == "12") &&
+             semi != std::string::npos &&
+             payload.compare(semi + 1, std::string::npos, "?") == 0) {
+        QColor c;
+        if (oscNum == "10")      c = m_defaultFg;
+        else if (oscNum == "11") c = m_defaultBg;
+        else                     c = m_defaultFg;  // OSC 12: fall back to fg (grid has no separate cursor color)
+        if (c.isValid() && m_responseCallback) {
+            char buf[64];
+            std::snprintf(buf, sizeof(buf),
+                          "\x1B]%s;rgb:%04x/%04x/%04x\x1B\\",
+                          oscNum.c_str(),
+                          c.red()   * 0x0101,
+                          c.green() * 0x0101,
+                          c.blue()  * 0x0101);
+            m_responseCallback(buf);
+        }
+    }
     // OSC 8 — Hyperlinks: OSC 8 ; params ; uri ST (open) or OSC 8 ; ; ST (close)
     else if (oscNum == "8" && semi != std::string::npos) {
         std::string rest = payload.substr(semi + 1);
@@ -1920,6 +1946,51 @@ void TerminalGrid::resize(int rows, int cols) {
 
 void TerminalGrid::handleDcs(const std::string &payload) {
     if (payload.empty()) return;
+
+    // DECRQSS — Request Status String: DCS $ q Pt ST
+    //
+    // Apps (neovim, tmux, kitty's kitten, libvterm-based TUIs) probe the
+    // terminal to discover its current SGR / scroll-region / cursor-shape
+    // so they can save-and-restore state around their own output. The reply
+    // is DCS 1 $ r <Pt> ST on success, DCS 0 $ r ST on invalid request.
+    //
+    // Covered requests: r (DECSTBM), m (SGR), " q (DECSCA — stubbed), SP q
+    // (DECSCUSR). Anything else replies "invalid" (0$r) rather than
+    // silently dropping — apps use the 0 reply to fall back to defaults.
+    if (payload.size() >= 2 && payload[0] == '$' && payload[1] == 'q') {
+        if (!m_responseCallback) return;
+        std::string req = payload.substr(2);  // Pt (the setting being queried)
+        std::string reply;  // contents of the Pt field in the reply
+
+        if (req == "r") {
+            // DECSTBM — top ; bottom margins (1-indexed)
+            reply = std::to_string(m_scrollTop + 1) + ";" +
+                    std::to_string(m_scrollBottom + 1) + "r";
+        } else if (req == "m") {
+            // SGR — rebuild from m_currentAttrs. Leading "0" resets; flags
+            // follow. Colours are omitted (apps querying SGR via DECRQSS
+            // generally only care about bold/italic/underline/inverse).
+            reply = "0";
+            if (m_currentAttrs.bold)          reply += ";1";
+            if (m_currentAttrs.dim)           reply += ";2";
+            if (m_currentAttrs.italic)        reply += ";3";
+            if (m_currentAttrs.underline)     reply += ";4";
+            if (m_currentAttrs.inverse)       reply += ";7";
+            if (m_currentAttrs.strikethrough) reply += ";9";
+            reply += "m";
+        } else if (req == " q") {
+            // DECSCUSR — cursor shape 0-6 + trailing " q" (space + q)
+            reply = std::to_string(static_cast<int>(m_cursorShape)) + " q";
+        } else {
+            // Unknown / unsupported setting — reply "invalid" per spec
+            m_responseCallback("\x1BP0$r\x1B\\");
+            return;
+        }
+
+        std::string out = "\x1BP1$r" + reply + "\x1B\\";
+        m_responseCallback(out);
+        return;
+    }
 
     // Find the 'q' that starts Sixel data
     size_t qpos = payload.find('q');

@@ -12,6 +12,58 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.45] — 2026-04-19
+
+**Theme:** Deferred VT-standards items from the 10th-audit research
+report, plus atomic-write hardening for long-lived audit state.
+11th audit (this release) returned 0/~103 actionable — baseline
+remains clean.
+
+### Added
+
+- **OSC 10 / 11 / 12 colour queries.** Apps (delta, neovim, bat,
+  lazygit, fzf, jj, and most `termenv`-based Go TUIs) probe the
+  terminal for default fg / bg / cursor colour with `\e]10;?\e\\` etc.
+  to auto-detect dark vs light themes without relying on the
+  unreliable `COLORFGBG` env var. Response is the xterm 16-bit-
+  per-channel form `\e]<n>;rgb:RRRR/GGGG/BBBB\e\\`. Only the query
+  form (`?` payload) is honoured — the set form is deliberately
+  silently dropped to keep default fg/bg theme-driven and prevent
+  in-terminal theme injection.
+- **DECRQSS (Request Status String).** DCS `$q` requests for
+  `DECSTBM` (scroll-region, `r`), `SGR` (current attributes, `m`),
+  and `DECSCUSR` (cursor shape, ` q`) now reply with `DCS 1 $ r …`
+  / `DCS 0 $ r …` per the xterm spec. tmux, neovim, and kitty's
+  kitten use these to save-and-restore state around their own
+  output. Unknown settings reply "invalid" rather than dropping
+  silently so callers fall back to defaults. Sixel DCS payloads
+  continue to route to the image handler — the DECRQSS branch
+  gates on the `$q` prefix before Sixel's `q` search.
+
+### Changed
+
+- **Atomic JSON writes via `QSaveFile`** for four long-lived files:
+    - `audit_rule_quality.json` — per-fire/per-suppression history
+      (written frequently; corruption loses every rule score).
+    - `.audit_cache/trend.json` — cumulative per-run severity totals.
+    - `.audit_cache/baseline.json` — baseline fingerprints anchoring
+      the "new findings only" filter.
+    - `.audit_suppress` v1 → v2 migration rewrite (the simple append
+      path stays non-atomic on purpose — one-line writes; loader
+      already skips malformed lines).
+  Torn writes from crash / `kill -9` now can't corrupt any of these.
+  `config.json` and session snapshots already had a tighter
+  fsync-then-rename pattern; those were left in place.
+
+### Tests
+
+- **`osc_color_query`** — locks OSC 10/11/12 response shape + the
+  query-only gate (set form MUST NOT produce a response, preventing
+  theme-injection via in-terminal programs).
+- **`decrqss`** — locks the DECSTBM / SGR / DECSCUSR replies plus
+  the invalid-reply bytes and a Sixel-routing regression guard so
+  the new DECRQSS branch can't eat image traffic.
+
 ## [0.6.44] — 2026-04-19
 
 **Theme:** Project Audit dialog — self-review improvements sourced from

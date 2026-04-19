@@ -1,3 +1,44 @@
+ants-terminal (0.6.45-1) unstable; urgency=medium
+
+  * Deferred VT-standards items from the 10th-audit research report
+    plus atomic-write hardening for long-lived audit state. The 11th
+    periodic audit returned 0 of ~103 actionable findings — baseline
+    remains clean.
+  * OSC 10 / 11 / 12 colour queries. Apps (delta, neovim, bat, lazygit,
+    fzf, jj, most termenv-based Go TUIs) probe the terminal for
+    default fg / bg / cursor colour with \e]10;?\e\\ etc. to auto-
+    detect dark vs light themes without relying on the unreliable
+    COLORFGBG env var. Response is the xterm 16-bit-per-channel form
+    \e]<n>;rgb:RRRR/GGGG/BBBB\e\\. Only the query form is honoured —
+    the set form is deliberately silently dropped so default fg/bg
+    stays theme-driven and in-terminal programs can't inject a theme.
+  * DECRQSS (Request Status String). DCS $q requests for DECSTBM
+    (scroll-region, r), SGR (current attributes, m), and DECSCUSR
+    (cursor shape,  q) now reply with DCS 1 $ r … per the xterm spec.
+    Unknown settings reply "invalid" (DCS 0 $ r …) rather than
+    dropping silently so callers fall back to defaults. The DECRQSS
+    branch gates on the $q prefix before Sixel's q search so Sixel
+    image DCS payloads still route to the image handler.
+  * Atomic JSON writes via QSaveFile for four long-lived files —
+    audit_rule_quality.json (per-fire / per-suppression history,
+    written frequently; corruption loses every rule score),
+    .audit_cache/trend.json (cumulative per-run severity totals),
+    .audit_cache/baseline.json (fingerprints anchoring the "new
+    findings only" filter), and the .audit_suppress v1 → v2 migration
+    rewrite. Torn writes from crash / kill -9 can no longer corrupt
+    any of these. The one-line .audit_suppress append path stays
+    non-atomic on purpose — the loader already skips malformed lines.
+    config.json and session snapshots already had a tighter fsync-
+    then-rename pattern; those were left in place.
+  * New feature tests: osc_color_query locks the OSC 10/11/12
+    response shape plus the query-only gate (set form MUST NOT
+    produce a response, preventing theme injection); decrqss locks
+    the DECSTBM / SGR / DECSCUSR replies, the invalid-reply bytes,
+    and a Sixel-routing regression guard so the new DECRQSS branch
+    can't eat image traffic.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 19 Apr 2026 14:00:00 +0000
+
 ants-terminal (0.6.44-1) unstable; urgency=medium
 
   * Project Audit dialog self-review pass sourced from the 10th

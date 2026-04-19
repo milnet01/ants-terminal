@@ -89,6 +89,17 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.45" date="2026-04-19">
+      <description>
+        <p>Deferred VT-standards items from the 10th-audit research report, plus atomic-write hardening for long-lived audit state. The 11th periodic audit returned 0 of ~103 actionable findings — the baseline stays clean. User-visible win: modern Go / Rust TUIs (delta, lazygit, fzf, jj, neovim, bat, most <code>termenv</code>-based tools) can now auto-detect Ants' dark-vs-light theme without the unreliable <code>COLORFGBG</code> env var, and tmux / neovim / kitty-kitten can save-and-restore terminal state around their own output.</p>
+        <ul>
+          <li><em>Added:</em> OSC 10 / 11 / 12 colour queries. Apps that probe <code>\e]10;?\e\\</code> etc. get the xterm 16-bit-per-channel reply <code>\e]&lt;n&gt;;rgb:RRRR/GGGG/BBBB\e\\</code>. Only the query form is honoured — the set form is deliberately silently dropped so default fg / bg / cursor colour stays theme-driven and in-terminal programs can't inject a theme.</li>
+          <li><em>Added:</em> DECRQSS (Request Status String). DCS <code>$q</code> requests for <code>DECSTBM</code> (scroll-region, <code>r</code>), <code>SGR</code> (current attributes, <code>m</code>), and <code>DECSCUSR</code> (cursor shape, <code> q</code>) reply with <code>DCS 1 $ r …</code> per the xterm spec. Unknown settings reply "invalid" (<code>DCS 0 $ r …</code>) rather than dropping silently so callers fall back to defaults. The DECRQSS branch gates on the <code>$q</code> prefix before Sixel's <code>q</code> search, so Sixel image traffic still routes to the image handler.</li>
+          <li><em>Changed:</em> atomic JSON writes via <code>QSaveFile</code> for four long-lived audit-state files — <code>audit_rule_quality.json</code> (frequent per-fire / per-suppression writes; corruption loses every rule score), <code>.audit_cache/trend.json</code> (cumulative severity totals), <code>.audit_cache/baseline.json</code> (fingerprints anchoring the "new findings only" filter), and the <code>.audit_suppress</code> v1 → v2 migration rewrite. Torn writes from crash or <code>kill -9</code> can no longer corrupt any of these. The one-line <code>.audit_suppress</code> append path stays non-atomic on purpose — the loader already skips malformed lines.</li>
+          <li><em>Tests:</em> new <code>osc_color_query</code> feature test locks the OSC 10/11/12 response shape plus the query-only gate (set form MUST NOT produce a response); new <code>decrqss</code> test locks the DECSTBM / SGR / DECSCUSR replies, the "invalid" reply bytes, and a Sixel-routing regression guard so the new DECRQSS branch can't eat image traffic.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.44" date="2026-04-19">
       <description>
         <p>Project Audit dialog self-review pass. The 10th periodic audit returned 0 of 55 actionable findings — the nature of the 55 pointed at three bits of friction the dialog was creating for itself: it was auditing its own output, every "is this noise?" verdict needed an individual click, and users had no summary-level readout for "how much of this run was signal?". All three are closed in this release.</p>

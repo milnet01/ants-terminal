@@ -8,6 +8,7 @@
 #include <QScrollArea>
 #include <QDir>
 #include <QFile>
+#include <QSaveFile>
 #include <QHash>
 #include <QFileInfo>
 #include <QDirIterator>
@@ -2385,14 +2386,20 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
             rebuilt << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
         }
         rebuilt << QString::fromUtf8(QJsonDocument(entry).toJson(QJsonDocument::Compact));
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-            f.write(rebuilt.join('\n').toUtf8());
-            f.write("\n");
-            f.close();
+        // Full rewrite — atomic via QSaveFile so an interrupted migration
+        // can't corrupt the v1 → v2 conversion mid-flight and leave the
+        // suppression list unparseable on next load.
+        QSaveFile sf(path);
+        if (sf.open(QIODevice::WriteOnly)) {
+            sf.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            sf.write(rebuilt.join('\n').toUtf8());
+            sf.write("\n");
+            sf.commit();
         }
     } else {
-        // Simple append.
+        // Simple append — stays non-atomic. Each append is one JSONL line;
+        // a torn write at EOF is a single bad line, and loadSuppressions()
+        // already skips non-parseable lines.
         if (f.open(QIODevice::WriteOnly | QIODevice::Append)) {
             if (f.size() == 0) {
                 f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
@@ -2531,10 +2538,13 @@ void AuditDialog::appendSnapshot(const TrendSnapshot &s) {
     arr.append(entry);
     // Evict oldest if we've hit the cap.
     while (arr.size() > kMaxTrendHistory) arr.removeFirst();
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
-        f.close();
+    // Atomic write — trend history is cumulative, a torn write would
+    // truncate the array and lose all prior runs.
+    QSaveFile sf(trendPath());
+    if (sf.open(QIODevice::WriteOnly)) {
+        sf.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        sf.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+        sf.commit();
     }
 }
 
@@ -2572,14 +2582,17 @@ void AuditDialog::saveBaseline() {
     root["generated"] = QDateTime::currentDateTime().toString(Qt::ISODate);
     root["version"] = 2;               // v2 = per-finding dedupKey
     root["fingerprints"] = arr;
-    QFile f(baselinePath());
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    // Atomic write — baseline is the anchor for "new findings only" views;
+    // a torn write leaves the filter off-by-many until re-saved.
+    QSaveFile f(baselinePath());
+    if (f.open(QIODevice::WriteOnly)) {
         f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-        f.close();
-        loadBaseline();
-        if (m_newOnlyBtn) m_newOnlyBtn->setEnabled(true);
-        m_statusLabel->setFullText(QString("Baseline saved — %1 fingerprints").arg(arr.size()));
+        if (f.commit()) {
+            loadBaseline();
+            if (m_newOnlyBtn) m_newOnlyBtn->setEnabled(true);
+            m_statusLabel->setFullText(QString("Baseline saved — %1 fingerprints").arg(arr.size()));
+        }
     }
 }
 

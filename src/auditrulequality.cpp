@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QSet>
 
 #include <algorithm>
@@ -205,10 +206,14 @@ void RuleQualityTracker::save() const {
     root["fires"]          = firesJson;
     root["suppressions"]   = suppJson;
 
-    QFile f(m_path);
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    // QSaveFile: write to a sibling temp file, rename atomically on commit().
+    // Prevents torn writes from corrupting the long-lived quality history on
+    // crash / kill -9 between recordFire calls.
+    QSaveFile f(m_path);
+    if (f.open(QIODevice::WriteOnly)) {
         f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+        f.commit();
     }
 }
 

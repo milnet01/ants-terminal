@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.6.44 LANGUAGES CXX)
+project(ants-terminal VERSION 0.6.45 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -936,6 +936,51 @@ if(ANTS_TESTS)
     add_test(NAME audit_rule_quality
              COMMAND test_audit_rule_quality)
     set_tests_properties(audit_rule_quality PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # osc_color_query — locks the OSC 10/11/12 query-form response shape
+    # (16-bit-per-channel `rgb:RRRR/GGGG/BBBB`, xterm convention) and the
+    # "set form is silently dropped" theme-injection guard. See
+    # tests/features/osc_color_query/spec.md. Added in 0.7.0.
+    add_executable(test_osc_color_query
+        tests/features/osc_color_query/test_osc_color_query.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_osc_color_query PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_osc_color_query PRIVATE src)
+    target_compile_options(test_osc_color_query PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME osc_color_query COMMAND test_osc_color_query)
+    set_tests_properties(osc_color_query PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # decrqss — locks DECRQSS (DCS $ q Pt ST) response shapes for the
+    # four supported request types (r, m, SP q, invalid) plus the
+    # regression guard that Sixel traffic still routes to the Sixel
+    # handler rather than being eaten by the DECRQSS branch. See
+    # tests/features/decrqss/spec.md. Added in 0.7.0.
+    add_executable(test_decrqss
+        tests/features/decrqss/test_decrqss.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_decrqss PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_decrqss PRIVATE src)
+    target_compile_options(test_decrqss PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME decrqss COMMAND test_decrqss)
+    set_tests_properties(decrqss PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 endif()
