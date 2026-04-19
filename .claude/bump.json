@@ -34,6 +34,8 @@
       "replace": "**Current version:** {NEW} ({TODAY})"
     }
   ],
+  "tag": "v{NEW}",
+  "$tag_note": "Annotated tag created + pushed by the /release skill (step 9) after the release commit lands on origin/main. Distro packagers resolve v{NEW} back to a tarball via GitHub's /archive/refs/tags/v{NEW}.tar.gz URL — the openSUSE spec and Arch PKGBUILD's Source0 line depends on the tag existing.",
   "$todos_run_before_post_check": "All entries below MUST be done BEFORE running `post_check`. The drift script flags packaging/linux/org.ants.Terminal.metainfo.xml and packaging/debian/changelog because their version-bearing lines live inside the per-release blocks the recipe can't auto-generate — so the bump skill must hand off these todos and only then re-run post_check to confirm clean.",
   "todos": [
     "Add `## [{NEW}] — {TODAY}` section to CHANGELOG.md with the actual change body. Include Theme, then categorized bullets (Added/Changed/Fixed/Security as needed). Read 0.6.29/0.6.30 as style references. **Required for post_check to pass.**",
