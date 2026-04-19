@@ -380,6 +380,29 @@ private:
     // next render. Requires Config::aiEnabled + ai_endpoint + ai_api_key.
     void requestAiTriage(const QString &dedupKey);
 
+    // Batch variant (0.6.44) — POSTs N findings (currently-visible,
+    // not-yet-triaged) in a single JSON request and unpacks an array of
+    // verdicts. Per-finding cost stays similar but the HTTP round-trip
+    // overhead is amortized, and the user gets one status-bar update
+    // for the whole batch instead of N. Hard cap of 20 per batch so a
+    // single 50-finding run doesn't pile context past the model window;
+    // the caller slices above that cap. Uses the same endpoint / model
+    // / auth as the single-finding path.
+    void requestAiTriageBatch(const QStringList &dedupKeys);
+
+    // Build the set of dedup keys currently visible under the filter bar
+    // (matches text filter + active severities, not suppressed, not
+    // hidden by showNewOnly). Used by the "Triage visible" button to
+    // know what to batch. Excludes findings that have ever been triaged
+    // in this session so a repeat click doesn't re-spend tokens.
+    QStringList visibleUntriagedKeys() const;
+    // Wired to the button's pressed signal; confirms with the user,
+    // slices into batches, dispatches each.
+    void onBatchTriageClicked();
+    // Refresh the button's label to "🧠 Triage visible (N)".
+    void refreshBatchTriageButton();
+    QPushButton *m_batchTriageBtn = nullptr;
+
     // SARIF v2.1.0 export — OASIS-standard JSON format consumed by GitHub
     // code-scanning, VSCode SARIF Viewer, SonarQube, etc.
     QString exportSarif() const;

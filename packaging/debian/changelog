@@ -1,3 +1,33 @@
+ants-terminal (0.6.44-1) unstable; urgency=medium
+
+  * Project Audit dialog self-review pass sourced from the 10th
+    periodic audit (2026-04-19), which returned 0 of 55 actionable
+    findings and surfaced three bits of friction the dialog was
+    creating for itself.
+  * Signal-ratio readout in the summary banner. renderResults() now
+    prints an "X% actionable" figure below the severity pills
+    (signal / (signal + noise), where noise = suppressions + AI
+    FALSE_POSITIVE) with colour coding (green >=60%, amber 20-59%,
+    red <20%), plus a 30-day rolling average from RuleQualityTracker
+    labelled "30d avg X% actionable, n=Y fires".
+  * Auto-skip of prior audit artifacts in isGeneratedFile(). Three
+    new built-in skip rules, no project configuration needed:
+    docs/AUTOMATED_AUDIT_REPORT_*.{json,md,html,txt} (dedup-key
+    false-positives from gitleaks), .audit_cache/ and
+    audit_rule_quality.json (the dialog's own baseline and self-
+    learning ledger), and tests/audit_fixtures/** (bad.* fixtures
+    intentionally embed strings third-party scanners misread).
+  * Batch AI triage button "Triage visible (N)" next to the
+    confidence-sort toggle. Sends every visible, not-yet-triaged
+    finding to the configured LLM in one JSON request (hard cap 20
+    per batch, above that slices and dispatches sequentially).
+    Responses are spliced back by dedup key so a reordering model
+    can't misalign results. Hidden entirely when AI isn't configured.
+  * No schema changes. audit_rule_quality.json and audit_rules.json
+    are read-compatible with prior versions.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 19 Apr 2026 12:30:00 +0000
+
 ants-terminal (0.6.43-1) unstable; urgency=medium
 
   * Fix menubar hover flash. The 0.6.42 focus-redirect guards

@@ -12,6 +12,66 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.6.44] — 2026-04-19
+
+**Theme:** Project Audit dialog — self-review improvements sourced from
+the 10th audit run (2026-04-19). That audit returned 0/55 actionable
+findings, and the nature of the 55 pointed at three bits of friction
+the dialog was creating for itself: the dialog was auditing its own
+output, every "is this noise?" verdict needed an individual click, and
+users had no summary-level readout for "how much of this run was
+signal?". All three are closed.
+
+### Changed
+
+- **Signal ratio surfaced in the summary banner.** `renderResults()`
+  now computes an "X% actionable" figure — signal / (signal + noise)
+  where noise = suppressions + AI-verdict FALSE_POSITIVE — and
+  prints it below the severity pills with colour-coded context
+  (green ≥60%, amber 20–59%, red <20%). A 30-day rolling average
+  pulled from `RuleQualityTracker` sits next to it as a peer
+  comparison point ("30d avg X% actionable, n=Y fires"). Makes the
+  "should I bother scrutinising this run?" question answerable at
+  a glance instead of requiring the user to count suppressions
+  against the severity rows.
+- **Auto-skip of prior audit artifacts in `isGeneratedFile()`.** Three
+  new built-in skip rules, no project configuration needed:
+    - `docs/AUTOMATED_AUDIT_REPORT_*.{json,md,html,txt}` — the
+      previous-run artifacts contain SHA-256 dedup keys that gitleaks
+      consistently flagged as high-entropy secrets (19 of 23 findings
+      in the last run).
+    - `.audit_cache/` and `audit_rule_quality.json` — the dialog's
+      own baseline + self-learning ledger; auditing them is circular.
+    - `tests/audit_fixtures/**` — scaffold data for the regex-rule
+      self-test; `bad.*` files intentionally embed strings that
+      third-party scanners misread as real findings (gitleaks picked
+      up 4 of these last run).
+
+### Added
+
+- **Batch AI triage.** A `🧠 Triage visible (N)` button sits next to
+  the confidence-sort toggle in the filter bar. Click it and every
+  visible, not-yet-triaged finding goes to the configured LLM in
+  one JSON request (hard cap 20 per batch; above that it slices
+  and dispatches sequentially). Each batch's response is an array
+  of `{key, verdict, confidence, reasoning}` — verdicts are spliced
+  back onto the right findings by dedup key so a reordering model
+  can't misalign results. Prompt-injection hardening inherited from
+  the single-finding path (4-backtick snippet fencing, literal
+  `` ```` `` scrub). Confirms the exact count before the POST;
+  hidden entirely when AI isn't configured. The button's label
+  re-calculates on every render so it always shows the current
+  visible-untriaged count.
+
+### Notes
+
+- No schema changes. `audit_rule_quality.json` and
+  `audit_rules.json` are read-compatible with prior versions.
+- The 30-day actionable% uses `fires` as the denominator rather
+  than run count, because run count isn't directly recorded —
+  fires are a good enough proxy and the label makes the
+  denominator explicit (`n=<count> fires`).
+
 ## [0.6.43] — 2026-04-19
 
 **Theme:** Two user-reported regressions closed, plus a quality-of-life

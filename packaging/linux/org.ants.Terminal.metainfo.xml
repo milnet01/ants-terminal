@@ -89,6 +89,17 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.6.44" date="2026-04-19">
+      <description>
+        <p>Project Audit dialog self-review pass. The 10th periodic audit returned 0 of 55 actionable findings — the nature of the 55 pointed at three bits of friction the dialog was creating for itself: it was auditing its own output, every "is this noise?" verdict needed an individual click, and users had no summary-level readout for "how much of this run was signal?". All three are closed in this release.</p>
+        <ul>
+          <li><em>Added:</em> signal-ratio readout in the summary banner. <code>renderResults()</code> now prints an "X% actionable" figure — signal / (signal + noise) where noise = suppressions + AI-verdict <code>FALSE_POSITIVE</code> — below the severity pills with colour coding (green ≥60%, amber 20–59%, red &lt;20%). A 30-day rolling average pulled from <code>RuleQualityTracker</code> sits next to it as a peer comparison ("30d avg X% actionable, n=Y fires").</li>
+          <li><em>Added:</em> batch AI triage. A <code>🧠 Triage visible (N)</code> button next to the confidence-sort toggle sends every visible, not-yet-triaged finding to the configured LLM in a single JSON request (hard cap 20 per batch; above that it slices and dispatches sequentially). Responses are spliced back by dedup key so a reordering model can't misalign results. Prompt-injection hardening inherited from the single-finding path. Hidden entirely when AI isn't configured.</li>
+          <li><em>Changed:</em> <code>isGeneratedFile()</code> now auto-skips prior audit artifacts — <code>docs/AUTOMATED_AUDIT_REPORT_*.{json,md,html,txt}</code> (SHA-256 dedup keys that gitleaks flagged as high-entropy secrets), <code>.audit_cache/</code> and <code>audit_rule_quality.json</code> (the dialog's own baseline + self-learning ledger; auditing them is circular), and <code>tests/audit_fixtures/**</code> (<code>bad.*</code> fixtures intentionally embed strings third-party scanners misread as real findings). No project configuration needed.</li>
+          <li><em>Notes:</em> no schema changes. <code>audit_rule_quality.json</code> and <code>audit_rules.json</code> are read-compatible with prior versions. The 30-day actionable% uses <code>fires</code> as the denominator rather than run count, because run count isn't directly recorded — the label makes the denominator explicit (<code>n=&lt;count&gt; fires</code>).</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.6.43" date="2026-04-19">
       <description>
         <p>Two user-reported regressions closed, plus a quality-of-life default flip. The 0.6.42 focus-redirect guards didn't cure the menubar hover flash — the real culprit was a stylesheet gap, not focus churn. And users coming back to the app expected their tabs to be waiting for them; session persistence now ships default-on, matching every modern terminal (iTerm2, Kitty, WezTerm, Konsole).</p>
