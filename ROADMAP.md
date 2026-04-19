@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.0 (2026-04-19). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.1 (2026-04-19). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -483,10 +483,17 @@ a modern terminal" release.
   over a Unix socket. Commands: `launch`, `send-text`, `set-title`,
   `select-window`, `get-text`, `ls`, `new-tab`. Auth via X25519 when
   a password is set. Unlocks scripting, IDE integration, CI.
-- 📋 **SSH ControlMaster** auto-integration from the SSH bookmark
-  dialog: `-o ControlMaster=auto -o ControlPath=~/.ssh/cm-%r@%h:%p
-  -o ControlPersist=10m`. Second tab to the same host opens in ms
-  instead of seconds.
+- ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
+  dialog. Shipped in 0.7.1. Connects opened from the SSH Manager
+  carry `-o ControlMaster=auto`,
+  `-o ControlPath=$HOME/.ssh/cm-%r@%h:%p`, and
+  `-o ControlPersist=10m` when the new `ssh_control_master` config
+  key is true (default). `$HOME` resolves in-process via
+  `QDir::homePath()` so the ControlPath works under dash / POSIX
+  `sh`; `%r@%h:%p` are OpenSSH tokens and survive shell quoting
+  intact. Second tab to the same host opens in ms instead of
+  seconds. See
+  [CHANGELOG.md §0.7.1](CHANGELOG.md#071--2026-04-19).
 - 💭 **Domain abstraction** à la WezTerm: `DockerDomain` lists
   `docker ps`, opens a tab via `docker exec -it`; `KubeDomain` lists
   pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.

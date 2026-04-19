@@ -87,6 +87,13 @@ public:
     QJsonArray sshBookmarksJson() const;
     void setSshBookmarksJson(const QJsonArray &arr);
 
+    // SSH ControlMaster auto-multiplexing. When true (default), ssh
+    // invocations from the bookmark dialog add -o ControlMaster=auto /
+    // -o ControlPath=~/.ssh/cm-%r@%h:%p / -o ControlPersist=10m so a
+    // second tab to the same host reuses the first connection's auth.
+    bool sshControlMaster() const;
+    void setSshControlMaster(bool enabled);
+
     // Plugin system
     QString pluginDir() const;
     void setPluginDir(const QString &dir);

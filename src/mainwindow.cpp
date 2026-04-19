@@ -743,6 +743,7 @@ void MainWindow::setupMenus() {
         for (const QJsonValue &v : arr)
             bookmarks.append(SshBookmark::fromJson(v.toObject()));
         m_sshDialog->setBookmarks(bookmarks);
+        m_sshDialog->setControlMaster(m_config.sshControlMaster());
         m_sshDialog->show();
         m_sshDialog->raise();
     });

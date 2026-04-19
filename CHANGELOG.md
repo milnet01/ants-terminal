@@ -12,6 +12,42 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-04-19
+
+**Theme:** first of the 0.8.0 🎨 multiplexing items — SSH ControlMaster
+auto-integration from the bookmark dialog. A second tab to the same
+host now piggybacks on the first tab's session, skipping the full
+auth handshake. Matches the precedent set by kitty's `ssh` kitten,
+Warp's SSH blocks, and iTerm2's SSH profiles.
+
+### Added
+
+- **SSH ControlMaster auto-multiplexing**. Connects opened from the
+  SSH Manager dialog now carry
+  `-o ControlMaster=auto`,
+  `-o ControlPath=$HOME/.ssh/cm-%r@%h:%p`, and
+  `-o ControlPersist=10m` when the new `ssh_control_master` config
+  key is true (default). Opt-out via
+  `~/.config/ants-terminal/config.json` for sites that forbid
+  lingering multiplex sockets by policy. `$HOME` is resolved in
+  C++ via `QDir::homePath()` so the ControlPath works under dash /
+  POSIX `sh` (neither does tilde expansion on command-arg
+  `foo=~/…`); `%r@%h:%p` are OpenSSH ControlPath substitution
+  tokens, not shell metacharacters, so the existing `shellQuote()`
+  helper leaves them intact. The three `-o` options precede the
+  `[user@]host` destination for parity with OpenSSH's own
+  documentation examples. Feature test
+  `tests/features/ssh_control_master/` pins six invariants:
+  default + explicit-false produce zero `Control*` tokens,
+  explicit-true emits all three, `$HOME` resolution replaces any
+  literal tilde, `%r@%h:%p` survives shell quoting, the flags
+  precede the destination arg, and they coexist with legacy
+  `-p`/`-i`/extraArgs without interference. See
+  [ROADMAP.md §0.8.0](ROADMAP.md#080--multiplexing--marketplace-target-2026-08)
+  — the item is carried forward from the 0.7.0 "SSH
+  ControlMaster" roadmap bullet and lands ahead of the larger
+  mux-server / remote-control work.
+
 ## [0.7.0] — 2026-04-19
 
 **Theme:** shell integration + triggers. Consolidates the 0.6.1 →

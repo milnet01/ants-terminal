@@ -284,6 +284,15 @@ void Config::setSshBookmarksJson(const QJsonArray &arr) {
     save();
 }
 
+bool Config::sshControlMaster() const {
+    return m_data.value("ssh_control_master").toBool(true);
+}
+
+void Config::setSshControlMaster(bool enabled) {
+    m_data["ssh_control_master"] = enabled;
+    save();
+}
+
 // Plugin system
 QString Config::pluginDir() const {
     return m_data.value("plugin_dir").toString("");

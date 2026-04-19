@@ -89,6 +89,14 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.7.1" date="2026-04-19">
+      <description>
+        <p>First of the 0.8.0 🎨 multiplexing roadmap items lands ahead of the larger mux-server / remote-control work: SSH ControlMaster auto-multiplexing from the bookmark dialog. A second tab to the same host now reuses the first tab's session, skipping the full auth handshake — same precedent as kitty's <code>ssh</code> kitten, Warp's SSH blocks, and iTerm2's SSH profiles.</p>
+        <ul>
+          <li><em>SSH ControlMaster auto-multiplexing:</em> connects opened from the SSH Manager carry <code>-o ControlMaster=auto</code>, <code>-o ControlPath=$HOME/.ssh/cm-%r@%h:%p</code>, and <code>-o ControlPersist=10m</code> when the new <code>ssh_control_master</code> config key is true (default). Opt-out available for sites that forbid lingering multiplex sockets by policy. <code>$HOME</code> resolves in-process via <code>QDir::homePath()</code> so the ControlPath works under dash / POSIX <code>sh</code>; <code>%r@%h:%p</code> are OpenSSH ControlPath substitution tokens and survive shell quoting intact. Feature test <code>ssh_control_master</code> pins six invariants covering token presence/absence, <code>$HOME</code> resolution, positional ordering, and coexistence with the legacy <code>-p</code> / <code>-i</code> / extraArgs flags.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-04-19">
       <description>
         <p>Shell integration + triggers — the 0.7.0 minor release rolls up the 0.6.1 → 0.6.45 patch-release arc into the theme the 0.7 ROADMAP plotted out. Command blocks become first-class UI, <code>.cast</code> recording ships, semantic history turns <code>path:line:col</code> into Ctrl-click jumps, OSC 133 markers gain HMAC verification, the full iTerm2-parity trigger set lands, the VT parser goes SIMD with a dedicated PTY/parse worker thread, Quake mode runs Wayland-native via layer-shell + GlobalShortcuts portal, and the H1–H4 distribution slice (SECURITY.md, AppStream metainfo, man page, shell completions) takes Ants from "side project" to "distro-ready." No breaking API changes — every plugin that loaded against 0.6.45 loads against 0.7.0.</p>

@@ -1,5 +1,6 @@
 #include "sshdialog.h"
 
+#include <QDir>
 #include <QFormLayout>
 #include <QRegularExpression>
 #include <QHBoxLayout>
@@ -44,13 +45,24 @@ static QString shellQuote(const QString &s) {
     return "'" + quoted + "'";
 }
 
-QString SshBookmark::toSshCommand() const {
+QString SshBookmark::toSshCommand(bool controlMaster) const {
     QStringList args;
     args << "ssh";
     if (port != 22)
         args << "-p" << QString::number(port);
     if (!identityFile.isEmpty())
         args << "-i" << shellQuote(identityFile);
+    if (controlMaster) {
+        // Resolve $HOME in C++ rather than relying on shell tilde
+        // expansion — bash expands `foo=~/…` in command args, dash
+        // doesn't, and OpenSSH never does its own tilde expansion.
+        // %r/%h/%p are SSH ControlPath tokens, NOT shell specials.
+        const QString ctlPath =
+            QDir::homePath() + QStringLiteral("/.ssh/cm-%r@%h:%p");
+        args << "-o" << "ControlMaster=auto"
+             << "-o" << shellQuote("ControlPath=" + ctlPath)
+             << "-o" << "ControlPersist=10m";
+    }
     if (!extraArgs.isEmpty()) {
         // Shell-quote each argument to prevent command injection
         for (const QString &arg : extraArgs.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts))
@@ -219,14 +231,14 @@ void SshDialog::onDelete() {
 void SshDialog::onConnectNewTab() {
     SshBookmark bm = currentFormData();
     if (bm.host.isEmpty()) return;
-    emit connectRequested(bm.toSshCommand(), true);
+    emit connectRequested(bm.toSshCommand(m_controlMaster), true);
     accept();
 }
 
 void SshDialog::onConnectCurrent() {
     SshBookmark bm = currentFormData();
     if (bm.host.isEmpty()) return;
-    emit connectRequested(bm.toSshCommand(), false);
+    emit connectRequested(bm.toSshCommand(m_controlMaster), false);
     accept();
 }
 
@@ -251,7 +263,7 @@ void SshDialog::onQuickConnect() {
     }
 
     if (!bm.host.isEmpty()) {
-        emit connectRequested(bm.toSshCommand(), true);
+        emit connectRequested(bm.toSshCommand(m_controlMaster), true);
         accept();
     }
 }

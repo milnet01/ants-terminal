@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.0 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -670,6 +670,35 @@ if(ANTS_TESTS)
     add_test(NAME osc133_hmac_verification
              COMMAND test_osc133_hmac_verification)
     set_tests_properties(osc133_hmac_verification PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # ssh_control_master — locks the SSH ControlMaster auto-multiplexing
+    # contract on SshBookmark::toSshCommand(bool). When controlMaster=true,
+    # the built command must carry -o ControlMaster=auto / -o ControlPath=
+    # <resolved $HOME>/.ssh/cm-%r@%h:%p / -o ControlPersist=10m, placed
+    # before the [user@]host destination. The default call
+    # (controlMaster=false) must be byte-identical to the pre-0.7.1
+    # legacy command so existing bookmarks keep working.
+    # See tests/features/ssh_control_master/spec.md.
+    add_executable(test_ssh_control_master
+        tests/features/ssh_control_master/test_ssh_control_master.cpp
+        src/sshdialog.cpp
+    )
+    target_link_libraries(test_ssh_control_master PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets  # sshdialog.h transitively includes QDialog
+    )
+    target_include_directories(test_ssh_control_master PRIVATE src)
+    target_compile_options(test_ssh_control_master PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    set_target_properties(test_ssh_control_master PROPERTIES
+        AUTOMOC ON)
+    add_test(NAME ssh_control_master
+             COMMAND test_ssh_control_master)
+    set_tests_properties(ssh_control_master PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

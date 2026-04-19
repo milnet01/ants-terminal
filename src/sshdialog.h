@@ -18,7 +18,9 @@ struct SshBookmark {
 
     QJsonObject toJson() const;
     static SshBookmark fromJson(const QJsonObject &obj);
-    QString toSshCommand() const;
+    // controlMaster=true appends -o ControlMaster=auto / ControlPath / ControlPersist,
+    // so repeat connections to the same host multiplex over the first session.
+    QString toSshCommand(bool controlMaster = false) const;
 };
 
 // SSH Manager dialog — manage bookmarks and connect
@@ -30,6 +32,11 @@ public:
 
     void setBookmarks(const QList<SshBookmark> &bookmarks);
     const QList<SshBookmark> &bookmarks() const { return m_bookmarks; }
+
+    // Tells connect-builders whether to splice -o ControlMaster=auto etc.
+    // onto each invocation. MainWindow mirrors Config::sshControlMaster()
+    // here before show()ing the dialog.
+    void setControlMaster(bool enabled) { m_controlMaster = enabled; }
 
 signals:
     void connectRequested(const QString &sshCommand, bool newTab);
@@ -58,4 +65,5 @@ private:
 
     QList<SshBookmark> m_bookmarks;
     int m_currentIndex = -1;
+    bool m_controlMaster = false;
 };

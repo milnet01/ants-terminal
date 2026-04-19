@@ -1,3 +1,30 @@
+ants-terminal (0.7.1-1) unstable; urgency=medium
+
+  * First of the 0.8.0 multiplexing roadmap items lands ahead of the
+    larger mux-server / remote-control work: SSH ControlMaster auto-
+    multiplexing from the bookmark dialog. A second tab to the same
+    host now reuses the first tab's session, skipping the full auth
+    handshake — same precedent as kitty's ssh kitten, Warp's SSH
+    blocks, and iTerm2's SSH profiles.
+  * Added: SSH ControlMaster auto-multiplexing. Connects opened from
+    the SSH Manager carry -o ControlMaster=auto, -o ControlPath=
+    $HOME/.ssh/cm-%r@%h:%p, and -o ControlPersist=10m when the new
+    ssh_control_master config key is true (default). Opt-out via
+    ~/.config/ants-terminal/config.json for sites that forbid
+    lingering multiplex sockets by policy. $HOME resolves in-process
+    via QDir::homePath() so the ControlPath works under dash / POSIX
+    sh; %r@%h:%p are OpenSSH ControlPath substitution tokens and
+    survive shell quoting intact. The three -o options precede the
+    [user@]host destination for parity with OpenSSH documentation.
+  * Tests: new ssh_control_master feature test pins six invariants
+    — default + explicit-false produce zero Control* tokens,
+    explicit-true emits all three, $HOME resolution replaces any
+    literal tilde, %r@%h:%p survives shell quoting, the flags
+    precede the destination arg, and they coexist with legacy -p /
+    -i / extraArgs without interference.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 19 Apr 2026 17:00:00 +0000
+
 ants-terminal (0.7.0-1) unstable; urgency=medium
 
   * Shell integration + triggers minor release — rollup of the 0.6.1
