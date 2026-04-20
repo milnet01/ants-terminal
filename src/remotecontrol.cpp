@@ -125,6 +125,9 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("ls")) {
         return cmdLs();
     }
+    if (cmd == QLatin1String("send-text")) {
+        return cmdSendText(req);
+    }
     QJsonObject e;
     e["ok"] = false;
     e["error"] = QStringLiteral("unknown command: %1").arg(cmd);
@@ -135,6 +138,51 @@ QJsonDocument RemoteControl::cmdLs() {
     QJsonObject out;
     out["ok"] = true;
     out["tabs"] = m_main->tabListForRemote();
+    return QJsonDocument(out);
+}
+
+QJsonDocument RemoteControl::cmdSendText(const QJsonObject &req) {
+    // Request shape: {"cmd":"send-text","tab":<int>,"text":"<string>"}
+    //   - `tab` optional (default: the active tab)
+    //   - `text` required; arbitrary UTF-8, written to the tab's PTY
+    //     as raw bytes. Callers include control chars / escape
+    //     sequences at their discretion — matching Kitty's shape.
+    QJsonObject out;
+    const QJsonValue textVal = req.value("text");
+    if (!textVal.isString()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "send-text: missing or non-string \"text\" field");
+        return QJsonDocument(out);
+    }
+    const QString text = textVal.toString();
+    // `tab` arrives as a JSON number. toInt() returns 0 for a missing
+    // or non-number value, which would silently target tab 0 — use
+    // the `isDouble()` check to distinguish "not specified" from
+    // "specified as 0" so `--remote-tab 0` stays meaningful.
+    const QJsonValue tabVal = req.value("tab");
+    TerminalWidget *target = nullptr;
+    if (tabVal.isDouble()) {
+        const int idx = tabVal.toInt();
+        target = m_main->terminalAtTab(idx);
+        if (!target) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "send-text: no tab at index %1").arg(idx);
+            return QJsonDocument(out);
+        }
+    } else {
+        target = m_main->currentTerminal();
+        if (!target) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "send-text: no active terminal");
+            return QJsonDocument(out);
+        }
+    }
+    target->sendToPty(text.toUtf8());
+    out["ok"] = true;
+    out["bytes"] = text.toUtf8().size();
     return QJsonDocument(out);
 }
 

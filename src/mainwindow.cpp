@@ -2134,6 +2134,11 @@ TerminalWidget *MainWindow::currentTerminal() const {
     return activeTerminalInTab(m_tabWidget->currentWidget());
 }
 
+TerminalWidget *MainWindow::terminalAtTab(int index) const {
+    if (index < 0 || index >= m_tabWidget->count()) return nullptr;
+    return activeTerminalInTab(m_tabWidget->widget(index));
+}
+
 QJsonArray MainWindow::tabListForRemote() const {
     // One JSON object per tab. `active: true` on exactly the tab that
     // `currentTerminal()` is inside, so a remote-control client can

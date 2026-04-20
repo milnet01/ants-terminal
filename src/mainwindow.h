@@ -76,17 +76,30 @@ private:
     void moveViaKWin(int targetX, int targetY);
     void changeFontSize(int delta);
     void applyFontSizeToAll(int size);
+public:
+    // Remote-control data accessors — public because RemoteControl is
+    // a sibling class (not a friend) and each contract below is a
+    // narrow, intentional seam for rc_protocol commands. Every new
+    // rc_protocol command adds one accessor here so the lookup /
+    // dispatch split stays clean.
+    //
+    // `currentTerminal()` — the active TerminalWidget (focused pane
+    // in split layouts, else the first pane). Used as the default
+    // target for commands that don't specify a tab.
     TerminalWidget *currentTerminal() const;
     TerminalWidget *focusedTerminal() const;
 
-public:
-    // Remote-control data accessor — returns one JSON object per
-    // tab with `index`, `title`, `cwd`, `active`. Owned by
-    // MainWindow so RemoteControl stays a thin wiring layer.
-    // Kept public because RemoteControl is a sibling class (not a
-    // friend) and the accessor's contract is a narrow, intentional
-    // seam for external callers (rc_protocol commands).
+    // `tabListForRemote()` returns one JSON object per tab with
+    // `index`, `title`, `cwd`, `active` (used by the `ls` command).
     QJsonArray tabListForRemote() const;
+
+    // `terminalAtTab(i)` returns the "active" terminal inside the
+    // tab at index `i` (for split layouts that's the focused pane,
+    // else the first). Returns nullptr on out-of-range index or
+    // when no terminal is attached. Used by the `send-text` command;
+    // subsequent commands (`get-text`, `select-window`, etc.) will
+    // share this accessor.
+    TerminalWidget *terminalAtTab(int index) const;
 
 private:
 

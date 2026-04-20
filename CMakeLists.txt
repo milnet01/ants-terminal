@@ -1193,6 +1193,30 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # remote_control_send_text — second rc_protocol command. Locks
+    # the "text is required + string" contract, the isDouble-based
+    # tab disambiguation (so `--remote-tab 0` stays meaningful), the
+    # sendToPty call target, the MainWindow::terminalAtTab public
+    # accessor, and the stdin-read client ergonomic. Negative guard
+    # against a future regression that auto-appends `\n` to `text`
+    # (diverges from Kitty semantics and breaks binary-stream
+    # callers). See tests/features/remote_control_send_text/spec.md.
+    add_executable(test_remote_control_send_text
+        tests/features/remote_control_send_text/test_remote_control_send_text.cpp
+    )
+    target_compile_options(test_remote_control_send_text PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_send_text PRIVATE
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    )
+    add_test(NAME remote_control_send_text COMMAND test_remote_control_send_text)
+    set_tests_properties(remote_control_send_text PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only

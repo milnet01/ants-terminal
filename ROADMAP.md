@@ -759,10 +759,16 @@ a modern terminal" release.
     separate client binary. Pinned by source-grep feature test
     `tests/features/remote_control_ls/` (8 invariants including
     field-name stability, env-var override, `--remote` ordering).
+  - ✅ **`send-text` command.** Writes a UTF-8 string byte-for-byte to
+    a tab's PTY master. `tab` field optional (active tab default),
+    `text` required; response carries `bytes` written. Client CLI:
+    `--remote-text <str>` or stdin pipe; `--remote-tab <i>` optional.
+    Does not auto-append a newline (matches Kitty; callers include
+    terminators explicitly). Pinned by
+    `tests/features/remote_control_send_text/`.
   - 📋 **Next commands** (one per commit, order TBD by user priority):
-    `send-text` (write bytes to a tab's PTY), `set-title`, `new-tab`,
-    `select-window`, `get-text` (read visible screen), `launch`
-    (spawn a command in a new tab).
+    `set-title`, `new-tab`, `select-window`, `get-text` (read visible
+    screen), `launch` (spawn a command in a new tab).
   - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
     is set. Shipped after the command surface is complete.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark

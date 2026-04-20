@@ -73,6 +73,7 @@ private slots:
 private:
     QJsonDocument dispatch(const QJsonObject &req);
     QJsonDocument cmdLs();
+    QJsonDocument cmdSendText(const QJsonObject &req);
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent

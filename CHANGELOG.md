@@ -14,6 +14,28 @@ for security-relevant changes.
 
 ### Added
 
+- **Remote-control — `send-text` command.** Second rc_protocol command
+  on top of the scaffold shipped in the previous Unreleased entry.
+  Writes a UTF-8 string byte-for-byte to a tab's PTY master — control
+  chars and escape sequences pass through unchanged, matching
+  [Kitty's rc_protocol `send-text`](https://sw.kovidgoyal.net/kitty/rc_protocol/#send-text).
+  Request shape: `{"cmd":"send-text","tab":<int optional>,"text":"<string>"}`;
+  `tab` omitted targets the active tab. Response on success:
+  `{"ok":true,"bytes":<int>}`. Client CLI adds `--remote-tab <i>` and
+  `--remote-text "<string>"`; when `--remote-text` is absent, the
+  client reads stdin until EOF — enables shell piping without
+  inline-arg quoting pain:
+
+      ants-terminal --remote send-text --remote-text 'echo hi\n'
+      ants-terminal --remote send-text --remote-tab 0 --remote-text ''
+      printf 'ls\n' | ants-terminal --remote send-text
+
+  Does *not* auto-append a newline (matches Kitty; auto-newline would
+  surprise binary-stream callers). `tab` is disambiguated via JSON
+  `isDouble()` rather than `toInt() == 0` so `--remote-tab 0` stays
+  meaningful. Locked by new source-grep test
+  `tests/features/remote_control_send_text/` (7 invariants including
+  the no-auto-newline negative guard and the stdin-read ergonomic).
 - **Remote-control protocol — first slice** (`src/remotecontrol.{h,cpp}`).
   Kitty-style JSON-over-Unix-socket RPC. A `QLocalServer` listens on
   `$ANTS_REMOTE_SOCKET` or, by default, `$XDG_RUNTIME_DIR/ants-terminal.sock`

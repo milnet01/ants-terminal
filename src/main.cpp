@@ -224,6 +224,22 @@ int main(int argc, char *argv[]) {
         "(else $ANTS_REMOTE_SOCKET or the XDG default).",
         "path");
     parser.addOption(remoteSocketOpt);
+    // Generic per-command options. Each rc_protocol command reads
+    // whichever of these apply; commands ignore options they don't
+    // care about. Kept to a handful rather than scaling one option
+    // per command to keep `--help` output readable.
+    QCommandLineOption remoteTabOpt("remote-tab",
+        "Target tab index (0-based). Used by tab-scoped commands "
+        "(`send-text`, `select-window`, `get-text`, ...); omit to target "
+        "the active tab.",
+        "index");
+    parser.addOption(remoteTabOpt);
+    QCommandLineOption remoteTextOpt("remote-text",
+        "Text payload for commands like `send-text`. When omitted, "
+        "`send-text` reads stdin until EOF instead — lets shell pipes "
+        "feed commands into the terminal.",
+        "string");
+    parser.addOption(remoteTextOpt);
     parser.process(app);
 
     if (parser.isSet(newPluginOpt)) {
@@ -233,8 +249,40 @@ int main(int argc, char *argv[]) {
         const QString socketPath = parser.isSet(remoteSocketOpt)
             ? parser.value(remoteSocketOpt)
             : RemoteControl::defaultSocketPath();
-        return RemoteControl::runClient(
-            parser.value(remoteOpt), QJsonObject{}, socketPath);
+        const QString cmd = parser.value(remoteOpt);
+        QJsonObject args;
+        if (parser.isSet(remoteTabOpt)) {
+            bool ok = false;
+            int idx = parser.value(remoteTabOpt).toInt(&ok);
+            if (!ok || idx < 0) {
+                std::fprintf(stderr,
+                    "ants-terminal --remote: invalid --remote-tab value: %s\n",
+                    qUtf8Printable(parser.value(remoteTabOpt)));
+                return 1;
+            }
+            args["tab"] = idx;
+        }
+        if (cmd == QLatin1String("send-text")) {
+            QString text;
+            if (parser.isSet(remoteTextOpt)) {
+                text = parser.value(remoteTextOpt);
+            } else {
+                // Read stdin until EOF. Lets callers do
+                //   echo -ne 'ls\n' | ants-terminal --remote send-text
+                // without worrying about shell-quoting escape
+                // sequences or newlines on the command line.
+                QFile in;
+                if (!in.open(stdin, QIODevice::ReadOnly)) {
+                    std::fprintf(stderr,
+                        "ants-terminal --remote send-text: "
+                        "cannot read stdin\n");
+                    return 1;
+                }
+                text = QString::fromUtf8(in.readAll());
+            }
+            args["text"] = text;
+        }
+        return RemoteControl::runClient(cmd, args, socketPath);
     }
     bool quakeMode = parser.isSet(quakeOpt);
 
