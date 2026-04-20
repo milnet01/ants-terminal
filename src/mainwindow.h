@@ -101,6 +101,13 @@ public:
     // share this accessor.
     TerminalWidget *terminalAtTab(int index) const;
 
+    // `selectTabForRemote(i)` switches the active tab to `i`. Returns
+    // false if the index is out of range — caller propagates as an
+    // error envelope to the rc_protocol client. Focuses the new tab's
+    // terminal after switching so subsequent `send-text` calls without
+    // an explicit `tab` field hit the expected pane.
+    bool selectTabForRemote(int index);
+
     // `newTabForRemote` opens a new tab and returns its index. Used
     // by the `new-tab` rc_protocol command.
     //

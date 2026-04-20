@@ -131,6 +131,9 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("new-tab")) {
         return cmdNewTab(req);
     }
+    if (cmd == QLatin1String("select-window")) {
+        return cmdSelectWindow(req);
+    }
     QJsonObject e;
     e["ok"] = false;
     e["error"] = QStringLiteral("unknown command: %1").arg(cmd);
@@ -186,6 +189,33 @@ QJsonDocument RemoteControl::cmdSendText(const QJsonObject &req) {
     target->sendToPty(text.toUtf8());
     out["ok"] = true;
     out["bytes"] = text.toUtf8().size();
+    return QJsonDocument(out);
+}
+
+QJsonDocument RemoteControl::cmdSelectWindow(const QJsonObject &req) {
+    // Request shape: {"cmd":"select-window","tab":<int>}
+    //   - `tab` required. Kitty's rc_protocol uses `--match id:N`;
+    //     we use 0-based tab index to stay consistent with the
+    //     other ants rc commands and with the `ls` response shape.
+    //   - No match → error envelope with out-of-range message; the
+    //     tab strip is unchanged.
+    QJsonObject out;
+    const QJsonValue tabVal = req.value("tab");
+    if (!tabVal.isDouble()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "select-window: missing or non-integer \"tab\" field");
+        return QJsonDocument(out);
+    }
+    const int idx = tabVal.toInt();
+    if (!m_main->selectTabForRemote(idx)) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "select-window: no tab at index %1").arg(idx);
+        return QJsonDocument(out);
+    }
+    out["ok"] = true;
+    out["index"] = idx;
     return QJsonDocument(out);
 }
 

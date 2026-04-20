@@ -2139,6 +2139,20 @@ TerminalWidget *MainWindow::terminalAtTab(int index) const {
     return activeTerminalInTab(m_tabWidget->widget(index));
 }
 
+bool MainWindow::selectTabForRemote(int index) {
+    if (index < 0 || index >= m_tabWidget->count()) return false;
+    m_tabWidget->setCurrentIndex(index);
+    // Refocus the new tab's terminal so follow-up send-text calls
+    // without an explicit tab field land on this pane. Without the
+    // explicit setFocus the keyboard focus can stay on whatever
+    // widget (menubar, search bar, dialog button) owned it at
+    // switch-time.
+    if (auto *term = activeTerminalInTab(m_tabWidget->widget(index))) {
+        term->setFocus();
+    }
+    return true;
+}
+
 int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
     // Mirror of the newTab() slot but with explicit cwd/command
     // plumbing so rc_protocol `new-tab` doesn't need to round-trip

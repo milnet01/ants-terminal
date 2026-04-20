@@ -14,6 +14,25 @@ for security-relevant changes.
 
 ### Added
 
+- **Remote-control — `select-window` command.** Fourth rc_protocol
+  command. Switches the active tab to a given 0-based index.
+
+      {"cmd":"select-window","tab":<int required>}
+      -> {"ok":true,"index":<int>}
+
+  `tab` is required — no implicit default-to-active, the caller
+  always spells out which tab they mean. Validated via
+  `QJsonValue::isDouble()` so a string-typed `tab` field doesn't
+  silently become tab 0. After the switch, focus is restored to the
+  new active terminal via `QWidget::setFocus()` so follow-up
+  `send-text` calls without an explicit `tab` field land on the
+  expected pane. Client CLI reuses the existing `--remote-tab` option:
+
+      ants-terminal --remote select-window --remote-tab 2
+
+  Pinned by `tests/features/remote_control_select_window/` — 6
+  invariants including the required-tab contract, the isDouble
+  check, and the setFocus-on-switch behaviour.
 - **Remote-control — `new-tab` command.** Third rc_protocol command.
   Opens a fresh tab and returns its 0-based index, so callers can chain
   into `send-text --remote-tab <i>` without guessing.

@@ -1241,6 +1241,30 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # remote_control_select_window — fourth rc_protocol command.
+    # Locks the required-tab contract (no implicit default),
+    # isDouble-based validation, the delegation to
+    # MainWindow::selectTabForRemote, and the setFocus on the new
+    # active terminal (without it, follow-up send-text calls hit
+    # stale focus owners). See
+    # tests/features/remote_control_select_window/spec.md.
+    add_executable(test_remote_control_select_window
+        tests/features/remote_control_select_window/test_remote_control_select_window.cpp
+    )
+    target_compile_options(test_remote_control_select_window PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_select_window PRIVATE
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME remote_control_select_window
+             COMMAND test_remote_control_select_window)
+    set_tests_properties(remote_control_select_window PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only

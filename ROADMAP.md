@@ -772,10 +772,15 @@ a modern terminal" release.
     settle). Response: `{"ok":true,"index":<int>}`. Client CLI:
     `--remote-cwd <path>`, `--remote-command <str>`. Pinned by
     `tests/features/remote_control_new_tab/`.
+  - ✅ **`select-window` command.** Switches the active tab to the
+    0-based index given in the `tab` field (required). Focuses the
+    new tab's terminal so follow-up `send-text` without an explicit
+    tab lands correctly. Pinned by
+    `tests/features/remote_control_select_window/`.
   - 📋 **Next commands** (one per commit, order TBD by user priority):
-    `set-title`, `select-window`, `get-text` (read visible screen),
-    `launch` (spawn a command in a new tab — convenience wrapper
-    over `new-tab` + `send-text`).
+    `set-title`, `get-text` (read visible screen), `launch` (spawn
+    a command in a new tab — convenience wrapper over `new-tab` +
+    `send-text`).
   - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
     is set. Shipped after the command surface is complete.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
