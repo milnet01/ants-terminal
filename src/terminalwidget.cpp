@@ -28,6 +28,7 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QSurfaceFormat>
+#include <QOpenGLContext>
 #include <QOpenGLFunctions>
 #include <QFileDialog>
 #include <QTextStream>
@@ -3695,8 +3696,24 @@ void TerminalWidget::initializeGL() {
     // Clear to transparent so per-pixel alpha works when WA_TranslucentBackground is set.
     // Without this, QOpenGLWidget clears its internal FBO to opaque black before
     // QPainter draws, making background transparency impossible.
-    if (auto *f = QOpenGLContext::currentContext()->functions())
-        f->glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    QOpenGLContext *ctx = QOpenGLContext::currentContext();
+    if (ctx) {
+        if (auto *f = ctx->functions())
+            f->glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+        // Free GL resources before the context dies. Without this, the atlas
+        // texture and VBOs become dangling on driver reset / context recreation
+        // (Qt destroys the old context and builds a new one); subsequent frames
+        // then touch freed handles and crash. Lambda captures `this` and is
+        // auto-disconnected when `this` is destroyed.
+        connect(ctx, &QOpenGLContext::aboutToBeDestroyed, this, [this]() {
+            if (!m_glRenderer) return;
+            makeCurrent();
+            m_glRenderer->cleanup();
+            m_glRenderer.reset();
+            doneCurrent();
+        });
+    }
 
     if (m_gpuRendering) {
         m_glRenderer = std::make_unique<GlRenderer>();

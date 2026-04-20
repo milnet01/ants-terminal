@@ -84,6 +84,10 @@ void GlRenderer::cleanup() {
     m_vao.destroy();
     m_quadVBO.destroy();
     m_glyphCache.clear();
+    m_ligatureCache.clear();
+    m_atlasX = 0;
+    m_atlasY = 0;
+    m_atlasRowHeight = 0;
     m_initialized = false;
 }
 

@@ -112,7 +112,19 @@ int main(int argc, char *argv[]) {
     QSurfaceFormat fmt;
     fmt.setAlphaBufferSize(8);
     fmt.setDepthBufferSize(24);
+    // Opt into GL_ARB_robustness: driver delivers GL_*_RESET_* errors instead
+    // of silently killing the process when the GPU context is lost (VT switch,
+    // driver update, GPU hang, suspend/resume). Without this, a context-loss
+    // event terminates Ants with no recovery path.
+    fmt.setOption(QSurfaceFormat::ResetNotification);
     QSurfaceFormat::setDefaultFormat(fmt);
+
+    // Escape hatch for broken GPU drivers: `ANTS_SOFTWARE_GL=1` forces Mesa's
+    // llvmpipe software rasterizer. Must be set before QApplication is
+    // constructed, otherwise the attribute is ignored.
+    if (qEnvironmentVariableIntValue("ANTS_SOFTWARE_GL") > 0) {
+        QApplication::setAttribute(Qt::AA_UseSoftwareOpenGL);
+    }
 
     QApplication app(argc, argv);
     app.setApplicationName("Ants Terminal");
