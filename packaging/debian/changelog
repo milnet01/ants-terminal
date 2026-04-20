@@ -1,3 +1,28 @@
+ants-terminal (0.7.5-1) unstable; urgency=medium
+
+  * Same-day follow-up to 0.7.4 that resolves the dropdown-menu
+    flicker the 0.7.4 Known Issue section called out. Root cause
+    finally pinpointed via the Debug Mode instrumentation that
+    shipped in 0.7.4: Fusion's QWidgetAnimator was creating a 60 Hz
+    QPropertyAnimation(target=QWidget, prop=geometry) cycle on the
+    idle window, each completion driving a full LayoutRequest →
+    UpdateRequest → Paint cascade. Neither setEffectEnabled(
+    UI_AnimateMenu, false) nor QMainWindow::setAnimated(false)
+    covers the style-hint-driven cycle — only the
+    QStyle::SH_Widget_Animation_Duration hint does.
+  * Fixed: dropdown-menu flicker (root cause). NoAnimStyle
+    QProxyStyle in src/main.cpp zeroes SH_Widget_Animation_Duration
+    and SH_Widget_Animate, wrapped around Fusion at startup. Idle-
+    log result: 0 QPropertyAnimation events (was ≈62 Hz in 0.7.4).
+    Total event volume dropped >99% (29 096 → 62 log lines in 4 s
+    idle). Pinned by the new no_anim_style feature test.
+  * Fixed: Debug Mode animation-creation hook — switched from
+    QEvent::ChildAdded (child vtable not ready) to ChildPolished
+    (fires post-construction), so QPropertyAnimation creation sites
+    now log correctly.
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Mon, 20 Apr 2026 16:10:00 +0000
+
 ants-terminal (0.7.4-1) unstable; urgency=medium
 
   * A session's worth of user-facing UI fixes plus a new Debug Mode

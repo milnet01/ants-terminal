@@ -3306,28 +3306,33 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
         else if (t == QEvent::DeferredDelete){ tname = "DeferredDelete"; cat = DebugLog::Events; }
         else if (t == QEvent::FocusIn)       { tname = "FocusIn";        cat = DebugLog::Events; }
         else if (t == QEvent::FocusOut)      { tname = "FocusOut";       cat = DebugLog::Events; }
-        else if (t == QEvent::ChildAdded && DebugLog::enabled(DebugLog::Events)) {
-            // Log when a QPropertyAnimation child is added to a widget
-            // — that's the creation point we want to track.
+        else if (t == QEvent::ChildPolished && DebugLog::enabled(DebugLog::Events)) {
+            // ChildPolished fires AFTER the derived ctor runs, so the
+            // metaObject vtable reports the true class — unlike
+            // ChildAdded which fires from QObject's ctor when vtable
+            // still points at QObject. This is the right hook for
+            // detecting QPropertyAnimation creation.
             auto *ce = static_cast<QChildEvent *>(event);
             QObject *child = ce->child();
-            if (child && std::string(child->metaObject()->className())
-                         == "QPropertyAnimation") {
-                auto *anim = qobject_cast<QPropertyAnimation *>(child);
-                QObject *tgt = anim ? anim->targetObject() : nullptr;
-                const char *tgtCls = tgt ? tgt->metaObject()->className() : "null";
-                QByteArray tgtName = tgt ? tgt->objectName().toUtf8() : QByteArray();
-                QObject *tgtParent = tgt ? tgt->parent() : nullptr;
-                const char *tgtParCls = tgtParent ? tgtParent->metaObject()->className() : "null";
-                QByteArray tgtParName = tgtParent ? tgtParent->objectName().toUtf8() : QByteArray();
-                const char *parCls = watched->metaObject()->className();
-                QByteArray parName = watched->objectName().toUtf8();
-                ANTS_LOG(DebugLog::Events,
-                    "QPropAnim CREATED in %s:%s  target=%s:%s (parent=%s:%s) prop=%s",
-                    parCls, parName.constData(),
-                    tgtCls, tgtName.constData(),
-                    tgtParCls, tgtParName.constData(),
-                    anim ? anim->propertyName().constData() : "?");
+            if (child) {
+                const char *cls = child->metaObject()->className();
+                if (std::string(cls).find("Animation") != std::string::npos) {
+                    auto *anim = qobject_cast<QPropertyAnimation *>(child);
+                    QObject *tgt = anim ? anim->targetObject() : nullptr;
+                    const char *tgtCls = tgt ? tgt->metaObject()->className() : "null";
+                    QByteArray tgtName = tgt ? tgt->objectName().toUtf8() : QByteArray();
+                    QObject *tgtParent = tgt ? tgt->parent() : nullptr;
+                    const char *tgtParCls = tgtParent ? tgtParent->metaObject()->className() : "null";
+                    QByteArray tgtParName = tgtParent ? tgtParent->objectName().toUtf8() : QByteArray();
+                    const char *parCls = watched->metaObject()->className();
+                    QByteArray parName = watched->objectName().toUtf8();
+                    ANTS_LOG(DebugLog::Events,
+                        "AnimCREATED cls=%s in %s:%s  target=%s:%s (tgtParent=%s:%s) prop=%s",
+                        cls, parCls, parName.constData(),
+                        tgtCls, tgtName.constData(),
+                        tgtParCls, tgtParName.constData(),
+                        anim ? anim->propertyName().constData() : "?");
+                }
             }
         }
         if (tname && DebugLog::enabled(cat)) {

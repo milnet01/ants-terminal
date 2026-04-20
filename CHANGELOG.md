@@ -12,6 +12,40 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.5] — 2026-04-20
+
+**Theme:** same-day follow-up to 0.7.4 that resolves the dropdown-menu
+flicker the 0.7.4 "Known Issue" section called out. Root cause finally
+identified via the Debug Mode instrumentation that shipped in 0.7.4:
+Fusion's `QWidgetAnimator` was creating a 60 Hz
+`QPropertyAnimation(target=QWidget, prop=geometry)` cycle on the idle
+window (1439 animation completions in a 23 s idle log). Each cycle
+drove a full `LayoutRequest → UpdateRequest → Paint` cascade across
+every widget, which the user saw as dropdown flicker on mouse hover.
+Neither `QApplication::setEffectEnabled(UI_AnimateMenu, false)` nor
+`QMainWindow::setAnimated(false)` covers the style-hint-driven cycle
+— only overriding `QStyle::SH_Widget_Animation_Duration` does.
+
+### Fixed
+
+- **Dropdown-menu flicker (root cause)** — introduced a `NoAnimStyle`
+  `QProxyStyle` in `src/main.cpp` that zeroes
+  `SH_Widget_Animation_Duration` and `SH_Widget_Animate`. Wrapped
+  around the Fusion style at application startup
+  (`app.setStyle(new NoAnimStyle(QStyleFactory::create("Fusion")))`).
+  Idle-log result: **QPropertyAnimation events per second:
+  0** (was ≈62 Hz in 0.7.4). Total event volume dropped >99 %
+  (29 096 → 62 log lines in 4 s idle). Pinned by the new
+  `no_anim_style` feature test (`tests/features/no_anim_style/`).
+- **Debug Mode — animation-creation hook** switched from
+  `QEvent::ChildAdded` to `QEvent::ChildPolished`. At `ChildAdded`
+  time the child's vtable still points at `QObject` (the derived
+  constructor hasn't run), so `child->metaObject()->className()`
+  returns `"QObject"` and the QPropertyAnimation filter never fires.
+  `ChildPolished` fires after full construction. The old hook was
+  silently useless on the 0.7.4 investigation — this one actually
+  logs creation sites.
+
 ## [0.7.4] — 2026-04-20
 
 **Theme:** a session's worth of user-facing UI fixes, the introduction

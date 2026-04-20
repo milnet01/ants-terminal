@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.4 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.5 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -986,6 +986,27 @@ if(ANTS_TESTS)
     add_test(NAME menubar_hover_stylesheet
              COMMAND test_menubar_hover_stylesheet)
     set_tests_properties(menubar_hover_stylesheet PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # no_anim_style — 0.7.5 fix. Locks the NoAnimStyle QProxyStyle that
+    # suppresses Fusion's style-driven QPropertyAnimation(geometry) cycle.
+    # Without this, `QApplication::setEffectEnabled(UI_AnimateMenu, false)`
+    # and `QMainWindow::setAnimated(false)` do NOT cover the 60 Hz
+    # QWidgetAnimator cycle that surfaced as dropdown-menu flicker on the
+    # 2026-04-20 user report. See tests/features/no_anim_style/spec.md.
+    add_executable(test_no_anim_style
+        tests/features/no_anim_style/test_no_anim_style.cpp
+    )
+    target_compile_options(test_no_anim_style PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_no_anim_style PRIVATE
+        SRC_MAIN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    )
+    add_test(NAME no_anim_style
+             COMMAND test_no_anim_style)
+    set_tests_properties(no_anim_style PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

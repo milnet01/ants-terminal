@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.5" date="2026-04-20">
+      <description>
+        <p>Same-day follow-up to 0.7.4 that resolves the dropdown-menu flicker the 0.7.4 "Known Issue" section called out. Root cause finally pinpointed via the Debug Mode instrumentation that shipped in 0.7.4: Fusion's QWidgetAnimator was creating a 60 Hz QPropertyAnimation(target=QWidget, prop=geometry) cycle on the idle window — 1439 animation completions in a 23 s idle log, each driving a full LayoutRequest → UpdateRequest → Paint cascade. Neither setEffectEnabled(UI_AnimateMenu, false) nor QMainWindow::setAnimated(false) covers the style-hint-driven cycle.</p>
+        <ul>
+          <li><em>Fixed — dropdown-menu flicker (root cause):</em> a NoAnimStyle QProxyStyle in src/main.cpp zeroes SH_Widget_Animation_Duration and SH_Widget_Animate, wrapped around Fusion at startup. Idle-log result: 0 QPropertyAnimation events (was ≈62 Hz in 0.7.4). Total event volume dropped &gt;99% (29 096 → 62 log lines in 4 s idle). Pinned by the new no_anim_style feature test.</li>
+          <li><em>Fixed — Debug Mode animation-creation hook:</em> switched from QEvent::ChildAdded to QEvent::ChildPolished. At ChildAdded time the child's vtable still points at QObject (derived ctor hasn't run) so the QPropertyAnimation filter never matched — silently useless on the 0.7.4 investigation. ChildPolished fires post-construction and now correctly logs animation creation sites.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.4" date="2026-04-20">
       <description>
         <p>A session's worth of user-facing UI fixes plus a new Debug Mode that made them possible. Tools → Debug Mode gives 14 independent category toggles (Paint, Events, Input, PTY, VT, Render, Plugins, Network, Config, Audit, Claude, Signals, Shell, Session) that write timestamped lines to ~/.local/share/ants-terminal/debug.log, enabled narrowly (one category) or broadly (all). The instrument pinpointed a ~54 Hz full-window repaint cascade that had been driving the menubar / dropdown / paste-dialog flicker across several releases.</p>

@@ -12,9 +12,39 @@
 #include <QDir>
 #include <QRegularExpression>
 #include <QTextStream>
+#include <QProxyStyle>
+#include <QStyle>
+#include <QStyleFactory>
 
 #include <csignal>
 #include <cstdio>
+
+namespace {
+// QProxyStyle that reports every style-hint animation duration as 0
+// and every `SH_Widget_Animate` as false. Installed globally on the
+// QApplication to neutralise Fusion's 60 Hz style-driven
+// QPropertyAnimation(target=QWidget, prop=geometry) cycle, which
+// cascades a full LayoutRequest → UpdateRequest → paint pass every
+// frame and surfaces as the dropdown-menu flicker the user reported
+// 2026-04-20.  `setEffectEnabled(UI_AnimateMenu, false)` only covers
+// menu show/hide; the per-style `SH_Widget_Animation_Duration` hint
+// is what drives the persistent QWidgetAnimator loop.
+class NoAnimStyle : public QProxyStyle {
+public:
+    explicit NoAnimStyle(QStyle *base) : QProxyStyle(base) {}
+    int styleHint(StyleHint hint, const QStyleOption *option = nullptr,
+                  const QWidget *widget = nullptr,
+                  QStyleHintReturn *returnData = nullptr) const override {
+        switch (hint) {
+        case SH_Widget_Animation_Duration:
+        case SH_Widget_Animate:
+            return 0;
+        default:
+            return QProxyStyle::styleHint(hint, option, widget, returnData);
+        }
+    }
+};
+}  // namespace
 
 namespace {
 
@@ -130,7 +160,10 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("Ants Terminal");
     app.setApplicationVersion(ANTS_VERSION);
-    app.setStyle("Fusion");
+    // Wrap Fusion in NoAnimStyle so SH_Widget_Animation_Duration reports 0.
+    // QProxyStyle takes ownership of the inner QStyle. See note on the
+    // NoAnimStyle class for rationale.
+    app.setStyle(new NoAnimStyle(QStyleFactory::create("Fusion")));
 
     // Disable Qt's built-in UI animations. These animate menu show/
     // hide, combobox dropdown, tooltip fade, and toolbox expand as
