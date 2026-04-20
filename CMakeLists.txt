@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.2 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -966,6 +966,29 @@ if(ANTS_TESTS)
     add_test(NAME flatpak_host_shell
              COMMAND test_flatpak_host_shell)
     set_tests_properties(flatpak_host_shell PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # flatpak_lua_module — pins the Lua 5.4 archive module in the
+    # Flatpak manifest: module order (must precede ants-terminal),
+    # pinned sha256, -fPIC in MYCFLAGS, install to /app, readline-free
+    # build target, and the x-checker-data stanza that lets Flathub CI
+    # auto-refresh the tarball sha256. A regression that strips any of
+    # these silently produces a Flatpak build without plugin support —
+    # the exact shipping hazard H6.1 exists to prevent. See
+    # tests/features/flatpak_lua_module/spec.md.
+    add_executable(test_flatpak_lua_module
+        tests/features/flatpak_lua_module/test_flatpak_lua_module.cpp
+    )
+    target_compile_options(test_flatpak_lua_module PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_flatpak_lua_module PRIVATE
+        FLATPAK_MANIFEST_PATH="${CMAKE_CURRENT_SOURCE_DIR}/packaging/flatpak/org.ants.Terminal.yml"
+    )
+    add_test(NAME flatpak_lua_module
+             COMMAND test_flatpak_lua_module)
+    set_tests_properties(flatpak_lua_module PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

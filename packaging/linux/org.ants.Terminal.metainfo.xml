@@ -89,6 +89,18 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.7.3" date="2026-04-20">
+      <description>
+        <p>H6.1 of the 📦 distribution-adoption plan lands: Lua plugins inside the Flatpak sandbox. The 0.7.2 manifest shipped with plugin support disabled because <code>org.kde.Sdk//6.7</code> does not carry <code>lua54-devel</code> and <code>flathub/shared-modules</code> has no Lua 5.4 entry today. 0.7.3 closes that gap with an in-manifest Lua archive module, so a Flatpak build loads plugins the same way the openSUSE, Arch, and Debian builds do.</p>
+        <ul>
+          <li><em>Added — Lua 5.4 archive module in <code>packaging/flatpak/org.ants.Terminal.yml</code>:</em> a dedicated <code>lua</code> module appears before <code>ants-terminal</code>, built from the upstream Lua 5.4.7 source tarball with a pinned <code>sha256</code> and the <code>linux-noreadline</code> target (Ants links <code>liblua.a</code> statically — pulling readline into the sandbox would be pure bloat). <code>MYCFLAGS="-fPIC"</code> keeps the archive PIE-safe for linking into the <code>ants-terminal</code> executable; installed to <code>/app</code> via <code>make install INSTALL_TOP=/app</code>, which is exactly where CMake's <code>FindLua</code> searches by default when <code>CMAKE_INSTALL_PREFIX=/app</code>.</li>
+          <li><em>Added — auto-refresh of the Lua tarball hash:</em> the <code>lua</code> module carries an <code>x-checker-data:</code> stanza pointing at the upstream Lua FTP listing with <code>version-pattern: lua-(5\.4\.\d+)\.tar\.gz</code> and a <code>url-template</code> that substitutes the matched version into the canonical tarball URL. Flathub CI opens a PR against the Flathub repo with a refreshed <code>url</code> + <code>sha256</code> on each Lua 5.4.x point release — no manual hash churn, and 5.5.x majors are excluded (they would break the in-source <code>find_package(Lua 5.4)</code> floor).</li>
+          <li><em>Added — feature test <code>tests/features/flatpak_lua_module/</code>:</em> source-grep regression pinning six invariants against the manifest YAML — Lua module precedes ants-terminal, <code>type: archive</code> with a pinned <code>sha256:</code>, <code>MYCFLAGS="-fPIC"</code> in the build commands, <code>make install INSTALL_TOP=/app</code>, the <code>linux-noreadline</code> target (guarding against the default <code>make linux</code> alias to <code>linux-readline</code>), and the <code>x-checker-data</code> stanza with the 5.4.x version-pattern.</li>
+          <li><em>Changed — <code>packaging/flatpak/README.md</code>:</em> the "Lua plugins — limitation" section is replaced with a "Lua plugins" section documenting the enabled path (archive-module build, <code>linux-noreadline</code> rationale, <code>x-checker-data</code> automation, success criterion of <code>PluginManager</code> loading a plugin inside the sandbox). Manifest header comment updated to describe the in-manifest module and the automated hash-refresh path.</li>
+          <li><em>Changed — <code>ROADMAP.md</code> H6.1</em> flipped from 📋 to ✅ (shipped in 0.7.3).</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.2" date="2026-04-19">
       <description>
         <p>H6 of the 📦 distribution-adoption plan lands: Flatpak packaging. One artifact that runs on every distro that ships <code>flatpak</code>, with a PTY path wired for the sandbox so the user's shell reaches the host's <code>$PATH</code> and filesystem. Unblocks the "packaged everywhere" roadmap gate without per-distro maintenance.</p>

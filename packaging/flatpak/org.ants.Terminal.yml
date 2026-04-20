@@ -23,13 +23,16 @@
 # requires the --talk-name=org.freedesktop.Flatpak finish-arg below to
 # reach the host helper daemon.
 #
-# Lua plugins. Not wired up in this initial Flatpak — org.kde.Sdk does
-# not ship a lua54-devel, and the Lua 5.4 tarball's sha256 has to be
-# pinned for reproducible builds. Adding Lua is a follow-up (either via
-# a flathub/shared-modules entry or an in-manifest archive module with
-# a refreshed sha256 each bump). Without Lua, PluginManager falls back
-# to plugin-disabled compile mode; the rest of the terminal is
-# unaffected.
+# Lua plugins. The Lua 5.4 interpreter is built in-manifest as a
+# dedicated `lua` module before `ants-terminal` (see below) so
+# PluginManager has the same plugin surface inside the sandbox as the
+# native packages. org.kde.Sdk does not ship `lua54-devel`, and
+# flathub/shared-modules does not carry a Lua 5.4 entry today, so an
+# in-manifest archive module is the pragmatic path. The
+# `x-checker-data` stanza on that module lets Flathub's
+# flatpak-external-data-checker refresh the tarball sha256
+# automatically on each Lua 5.4.x point release — no manual hash
+# churn per bump.
 
 id: org.ants.Terminal
 
@@ -68,6 +71,34 @@ finish-args:
   - --filesystem=home
 
 modules:
+  # Lua 5.4 — plugin system runtime. Built first so the ants-terminal
+  # CMake configure step finds headers under /app/include and the
+  # static library at /app/lib/liblua.a (CMake's FindLua module picks
+  # up both). Using `linux-noreadline` instead of the default `linux`
+  # target avoids pulling a readline dependency into the sandbox; the
+  # terminal only links liblua.a, it does not ship the Lua REPL
+  # binary. `-fPIC` is required because liblua.a is linked into the
+  # ants-terminal executable which itself is PIE.
+  - name: lua
+    buildsystem: simple
+    build-commands:
+      - make linux-noreadline MYCFLAGS="-fPIC" -j ${FLATPAK_BUILDER_N_JOBS:-1}
+      - make install INSTALL_TOP=/app
+    sources:
+      - type: archive
+        url: https://www.lua.org/ftp/lua-5.4.7.tar.gz
+        sha256: 9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30
+        # Flathub's flatpak-external-data-checker tracks upstream Lua
+        # releases at https://www.lua.org/ftp/ and refreshes the URL
+        # + sha256 fields above on 5.4.x point bumps. CI opens a PR
+        # against the Flathub repo; we review and merge. No manual
+        # hash churn per Lua release.
+        x-checker-data:
+          type: html
+          url: https://www.lua.org/ftp/
+          version-pattern: lua-(5\.4\.\d+)\.tar\.gz
+          url-template: https://www.lua.org/ftp/lua-$version.tar.gz
+
   - name: ants-terminal
     buildsystem: cmake-ninja
     builddir: true

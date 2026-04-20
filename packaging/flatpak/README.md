@@ -52,37 +52,33 @@ The wire-through requires `--talk-name=org.freedesktop.Flatpak` in
 finish-args (already set) so the sandbox can reach the host-side
 `org.freedesktop.Flatpak` helper daemon.
 
-## Lua plugins — limitation
+## Lua plugins
 
-The initial manifest does **not** build Lua 5.4. `org.kde.Sdk//6.7` does
-not include `lua54-devel`, and pinning a Lua tarball sha256 in the
-manifest requires refreshing the hash each release. Until that's wired
-up (either via a `flathub/shared-modules` entry or an in-manifest
-`archive` module), the Flatpak build falls back to CMakeLists'
-`LUA_FOUND=FALSE` branch — plugins are disabled but the rest of the
-terminal is unaffected.
+The manifest builds Lua 5.4 as an in-manifest `archive` module before
+`ants-terminal`. `org.kde.Sdk//6.7` does not carry `lua54-devel` and
+`flathub/shared-modules` has no Lua 5.4 entry today, so an in-manifest
+module is the pragmatic path.
 
-Adding Lua in a follow-up means appending a second module before
-`ants-terminal` — rough shape:
+Build invocation: `make linux-noreadline MYCFLAGS="-fPIC"` followed by
+`make install INSTALL_TOP=/app`. `linux-noreadline` avoids pulling a
+readline dependency into the sandbox; the terminal links `liblua.a`
+statically and does not ship the Lua REPL binary. CMake's `FindLua`
+module picks up `/app/include/lua.h` + `/app/lib/liblua.a` — no pkg
+config file is needed.
 
-```yaml
-modules:
-  - name: lua
-    buildsystem: simple
-    sources:
-      - type: archive
-        url: https://www.lua.org/ftp/lua-5.4.7.tar.gz
-        sha256: <refresh via `sha256sum lua-5.4.7.tar.gz`>
-    build-commands:
-      - make linux MYCFLAGS="-fPIC" -j $FLATPAK_BUILDER_N_JOBS
-      - make install INSTALL_TOP=/app
+Tarball-hash refresh is automated via
+[flatpak-external-data-checker](https://github.com/flathub/flatpak-external-data-checker).
+The `x-checker-data` stanza on the `lua` module tracks
+<https://www.lua.org/ftp/> for new 5.4.x releases; Flathub CI opens a
+PR against the Flathub repo with the new URL + sha256 on each point
+bump. No manual hash churn.
 
-  - name: ants-terminal
-    # … existing block
-```
-
-See [flatpak-external-data-checker](https://github.com/flathub/flatpak-external-data-checker)
-for automatic tarball-hash refresh on Flathub.
+**Success criterion:** a fresh `flatpak-builder --install --user`
+build loads a plugin under `~/.var/app/org.ants.Terminal/config/ants-terminal/plugins/`
+the same way the native-package build loads
+`~/.config/ants-terminal/plugins/`. CMake's configure log prints
+`Lua 5.4 found — plugin system enabled` instead of the
+`plugin system disabled` fallback.
 
 ## Submitting to Flathub
 

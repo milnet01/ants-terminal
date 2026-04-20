@@ -12,6 +12,67 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-04-20
+
+**Theme:** H6.1 of the 📦 distribution-adoption plan — Lua plugins
+inside Flatpak. The 0.7.2 manifest shipped with plugin support
+disabled because `org.kde.Sdk//6.7` does not carry `lua54-devel`
+and `flathub/shared-modules` has no Lua 5.4 entry today. 0.7.3
+closes that gap with an in-manifest Lua archive module so a
+Flatpak build loads plugins the same way the openSUSE, Arch, and
+Debian builds do.
+
+### Added
+
+- **Lua 5.4 archive module in the Flatpak manifest**
+  (`packaging/flatpak/org.ants.Terminal.yml`). A dedicated `lua`
+  module appears before `ants-terminal` so the CMake configure
+  step sees `/app/include/lua.h` + `/app/lib/liblua.a` and takes
+  the `LUA_FOUND=TRUE` branch. Built from
+  `https://www.lua.org/ftp/lua-5.4.7.tar.gz` with a pinned
+  `sha256` and the `linux-noreadline` target — the terminal only
+  statically links `liblua.a`, so pulling readline into the
+  sandbox would be pure bloat. `MYCFLAGS="-fPIC"` keeps the
+  static library PIE-safe for linking into the `ants-terminal`
+  executable. Installed to `/app` via
+  `make install INSTALL_TOP=/app`, which is exactly where
+  CMake's `FindLua` searches by default when
+  `CMAKE_INSTALL_PREFIX=/app`.
+- **Auto-refresh of the Lua tarball hash via
+  `flatpak-external-data-checker`.** The Lua module carries an
+  `x-checker-data:` stanza pointing at
+  <https://www.lua.org/ftp/> with
+  `version-pattern: lua-(5\.4\.\d+)\.tar\.gz` and
+  `url-template: https://www.lua.org/ftp/lua-$version.tar.gz`.
+  Flathub CI opens a PR against the Flathub repo with a
+  refreshed `url` + `sha256` on each Lua 5.4.x point release —
+  no manual hash churn per bump, and 5.5.x majors are correctly
+  excluded (they would break the in-source `find_package(Lua 5.4)`
+  floor).
+- **Feature test `tests/features/flatpak_lua_module/`.** Source-grep
+  regression against the manifest YAML pinning six invariants:
+  Lua module precedes ants-terminal (order matters —
+  flatpak-builder evaluates modules in sequence, and CMake's
+  `FindLua` runs during ants-terminal configure), `type: archive`
+  with a pinned `sha256:`, `MYCFLAGS="-fPIC"` in the build
+  commands, `make install INSTALL_TOP=/app`, the `linux-noreadline`
+  build target (guarding against the default `make linux` that
+  aliases to `linux-readline`), and the `x-checker-data` stanza
+  with the 5.4.x version-pattern. A regression that strips any
+  of these fails at ctest time.
+
+### Changed
+
+- `packaging/flatpak/README.md`: the "Lua plugins — limitation"
+  section is replaced with a "Lua plugins" section documenting the
+  enabled path (archive-module build, `linux-noreadline` rationale,
+  `x-checker-data` automation, success criterion of `PluginManager`
+  loading a plugin inside the sandbox).
+- Manifest header comment updated to describe the in-manifest
+  module and the automated hash-refresh path, superseding the
+  "not wired up" note that shipped in 0.7.2.
+- `ROADMAP.md` H6.1 flipped from 📋 to ✅ (shipped in 0.7.3).
+
 ## [0.7.2] — 2026-04-19
 
 **Theme:** H6 of the 📦 distribution-adoption plan — Flatpak packaging.

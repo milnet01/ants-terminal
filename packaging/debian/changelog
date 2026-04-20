@@ -1,3 +1,41 @@
+ants-terminal (0.7.3-1) unstable; urgency=medium
+
+  * H6.1 of the distribution-adoption plan lands: Lua plugins inside
+    the Flatpak sandbox. The 0.7.2 manifest shipped with plugin
+    support disabled because org.kde.Sdk//6.7 does not carry
+    lua54-devel and flathub/shared-modules has no Lua 5.4 entry
+    today. 0.7.3 closes that gap with an in-manifest Lua archive
+    module, so a Flatpak build loads plugins the same way the
+    openSUSE / Arch / Debian builds do.
+  * Added: Lua 5.4 archive module in packaging/flatpak/
+    org.ants.Terminal.yml — a dedicated `lua` module appears before
+    `ants-terminal`, built from https://www.lua.org/ftp/lua-5.4.7.
+    tar.gz with a pinned sha256 and the linux-noreadline target
+    (Ants only links liblua.a statically; readline would be
+    bloat). MYCFLAGS="-fPIC" keeps the library PIE-safe; installed
+    to /app via `make install INSTALL_TOP=/app`, where CMake's
+    FindLua searches by default when CMAKE_INSTALL_PREFIX=/app.
+  * Added: auto-refresh of the Lua tarball hash via
+    flatpak-external-data-checker — the `lua` module carries an
+    x-checker-data stanza pointing at https://www.lua.org/ftp/
+    with version-pattern lua-(5\.4\.\d+)\.tar\.gz. Flathub CI
+    opens a PR with refreshed url + sha256 on each Lua 5.4.x
+    point release; 5.5.x majors are excluded (would break the
+    find_package(Lua 5.4) floor).
+  * Tests: new tests/features/flatpak_lua_module/ source-grep
+    regression against the manifest YAML pinning six invariants —
+    Lua module precedes ants-terminal, type: archive with pinned
+    sha256, MYCFLAGS=-fPIC, INSTALL_TOP=/app, linux-noreadline
+    target (guarding against default `make linux` aliasing to
+    linux-readline), and the x-checker-data stanza.
+  * Changed: packaging/flatpak/README.md's "Lua plugins — limitation"
+    section replaced with an enabled-path "Lua plugins" section.
+    Manifest header comment updated to describe the in-manifest
+    module + automated hash-refresh path. ROADMAP.md H6.1 flipped
+    from planned to shipped in 0.7.3.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 20 Apr 2026 00:00:00 +0000
+
 ants-terminal (0.7.2-1) unstable; urgency=medium
 
   * H6 of the distribution-adoption plan lands: Flatpak packaging. One

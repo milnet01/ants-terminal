@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.2 (2026-04-19). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.3 (2026-04-20) (2026-04-19). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -48,7 +48,7 @@ release; this section is the rollup so nothing falls by the wayside.
 | **H4** | Bash / zsh / fish completions + CMake install rules | ✅ | 0.6.19 |
 | **H5** | openSUSE OBS `.spec`, Arch AUR `PKGBUILD`, Debian `debian/` tree — ready-to-submit packaging files committed to tree | ✅ | 0.6.20 |
 | **H6** | Flatpak manifest (`org.ants.Terminal.yml`) + host-shell wiring | ✅ | 0.7.2 |
-| **H6.1** | Lua 5.4 module in Flatpak manifest so plugins work inside the sandbox | 📋 | 0.8.0 |
+| **H6.1** | Lua 5.4 module in Flatpak manifest so plugins work inside the sandbox | ✅ | 0.7.3 |
 | **H6.2** | Flathub submission — PR `org.ants.Terminal` against `flathub/flathub` | 📋 | 0.8.0 |
 | **H7** | Project website + docs site (GitHub Pages) with screenshots, getting-started, plugin authoring | 📋 | 0.8.0 |
 | **H8** | macOS port (Qt6 builds cleanly; need `posix_spawn`/`openpty` + NSWindow observer + notarized `.app`) | 📋 | 0.9.0 |
@@ -590,24 +590,30 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   [flathub/flathub](https://github.com/flathub/flathub) (H6.2
   below). See [CHANGELOG.md §0.7.2](CHANGELOG.md#072--2026-04-19)
   and [packaging/flatpak/README.md](packaging/flatpak/README.md).
-- 📋 **H6.1 — Lua plugins in Flatpak**. Add a Lua 5.4 `archive`
-  module to `packaging/flatpak/org.ants.Terminal.yml` so the
-  Flatpak build carries the same plugin surface as the native
-  packages. Blocker today is tarball-sha256 refresh cadence (the
-  Lua tarball hash must be pinned in the manifest and bumped each
-  Lua point-release). Two workable paths: (a) in-manifest archive
-  module with [flatpak-external-data-checker](https://github.com/flathub/flatpak-external-data-checker)
-  `x-checker-data` annotations so Flathub CI auto-refreshes the
-  hash on Lua bumps; (b) a `flathub/shared-modules` Lua entry if
-  Flathub accepts one (no such module exists today, but it's the
-  cleaner long-term home — Lua 5.4 is used by multiple Flatpaks,
-  a shared module would deduplicate the sha256 cost). Rough
-  manifest shape + the `flatpak-external-data-checker` invocation
-  are documented in `packaging/flatpak/README.md` already —
-  implementation is appending the module and validating with
-  `flatpak-builder --install --user`. Success criterion: `PluginManager::reload()`
-  inside the Flatpak finds and loads a scratch plugin, same as
-  the native-package path.
+- ✅ **H6.1 — Lua plugins in Flatpak**. Shipped in 0.7.3. The
+  manifest now carries an in-manifest Lua 5.4 `archive` module
+  before `ants-terminal`, built from
+  `https://www.lua.org/ftp/lua-5.4.7.tar.gz` with a pinned
+  `sha256` and the `linux-noreadline` target (Ants only links
+  `liblua.a` statically; readline would be bloat in the sandbox).
+  `MYCFLAGS="-fPIC"` keeps the library PIE-safe for linking into
+  the `ants-terminal` executable; installed to `/app` via
+  `make install INSTALL_TOP=/app`, where CMake's `FindLua`
+  searches by default. The `x-checker-data` stanza on the module
+  is wired to
+  [flatpak-external-data-checker](https://github.com/flathub/flatpak-external-data-checker)
+  so Flathub CI auto-refreshes the `url` + `sha256` on each Lua
+  5.4.x point release — no manual hash churn, and 5.5.x majors
+  are excluded (they would break the in-source
+  `find_package(Lua 5.4)` floor). `tests/features/flatpak_lua_module/`
+  pins six invariants against the manifest YAML (module order,
+  pinned sha256, `-fPIC`, install prefix, readline-free target,
+  x-checker-data stanza). The `flathub/shared-modules` path
+  remains the cleaner long-term home if Flathub ever accepts a
+  Lua 5.4 entry — migration would replace the in-manifest module
+  with a shared-modules reference; `x-checker-data` would
+  continue to fire. See
+  [CHANGELOG.md §0.7.3](CHANGELOG.md#073--2026-04-20).
 - 📋 **H6.2 — Flathub submission**. PR a new repo against
   [flathub/flathub](https://github.com/flathub/flathub) named
   `org.ants.Terminal`. The repo's manifest body is
