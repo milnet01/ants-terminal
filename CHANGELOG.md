@@ -14,6 +14,37 @@ for security-relevant changes.
 
 ### Added
 
+- **Remote-control — `new-tab` command.** Third rc_protocol command.
+  Opens a fresh tab and returns its 0-based index, so callers can chain
+  into `send-text --remote-tab <i>` without guessing.
+
+      {"cmd":"new-tab","cwd":"<path optional>","command":"<string optional>"}
+      -> {"ok":true,"index":<int>}
+
+  `cwd` omitted = inherit from focused/current terminal (same default
+  as the menu-driven `newTab()` slot). `command` written to the new
+  shell after a 200 ms settle via `TerminalWidget::writeCommand`
+  (matches `onSshConnect` timing — shells drop keystrokes written
+  before their init settles). Caller owns the trailing newline,
+  matching `send-text` semantics for one consistent rule across every
+  rc_protocol write-path. Client CLI adds `--remote-cwd <path>` and
+  `--remote-command <str>`:
+
+      ants-terminal --remote new-tab
+      ants-terminal --remote new-tab --remote-cwd /tmp
+      ants-terminal --remote new-tab --remote-cwd /tmp --remote-command 'pwd'
+
+  Idiomatic chaining:
+
+      idx=$(ants-terminal --remote new-tab --remote-cwd /tmp | jq .index)
+      ants-terminal --remote send-text --remote-tab "$idx" \
+          --remote-text $'ls -la\n'
+
+  Pinned by `tests/features/remote_control_new_tab/` — 7 invariants
+  including the 200 ms settle, the `QPointer<TerminalWidget>` guard
+  on the deferred lambda (tab-close between enqueue and fire), and
+  the non-const `int newTabForRemote(...)` signature the dispatch
+  layer depends on.
 - **Remote-control — `send-text` command.** Second rc_protocol command
   on top of the scaffold shipped in the previous Unreleased entry.
   Writes a UTF-8 string byte-for-byte to a tab's PTY master — control

@@ -101,6 +101,21 @@ public:
     // share this accessor.
     TerminalWidget *terminalAtTab(int index) const;
 
+    // `newTabForRemote` opens a new tab and returns its index. Used
+    // by the `new-tab` rc_protocol command.
+    //
+    //   `cwd`     — empty string → inherit from the focused / current
+    //               terminal (same default as the menu-driven newTab()
+    //               slot). Non-empty → start the tab's shell in that
+    //               directory.
+    //   `command` — empty → no-op after shell start. Non-empty → write
+    //               the string as a command into the new shell after
+    //               a 200 ms settle (same pattern as onSshConnect
+    //               uses for shell wiring). Callers are responsible
+    //               for line terminators in `command`; the shell
+    //               won't execute until a newline lands.
+    int newTabForRemote(const QString &cwd, const QString &command);
+
 private:
 
     // Split helpers

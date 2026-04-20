@@ -240,6 +240,17 @@ int main(int argc, char *argv[]) {
         "feed commands into the terminal.",
         "string");
     parser.addOption(remoteTextOpt);
+    QCommandLineOption remoteCwdOpt("remote-cwd",
+        "Working directory for `new-tab` / `launch`. When omitted, "
+        "inherits from the currently focused terminal.",
+        "path");
+    parser.addOption(remoteCwdOpt);
+    QCommandLineOption remoteCommandOpt("remote-command",
+        "Command string for `new-tab` / `launch` to run in the new "
+        "shell after it starts. Caller is responsible for any "
+        "trailing newline — matches `send-text` semantics.",
+        "string");
+    parser.addOption(remoteCommandOpt);
     parser.process(app);
 
     if (parser.isSet(newPluginOpt)) {
@@ -281,6 +292,13 @@ int main(int argc, char *argv[]) {
                 text = QString::fromUtf8(in.readAll());
             }
             args["text"] = text;
+        } else if (cmd == QLatin1String("new-tab")) {
+            if (parser.isSet(remoteCwdOpt)) {
+                args["cwd"] = parser.value(remoteCwdOpt);
+            }
+            if (parser.isSet(remoteCommandOpt)) {
+                args["command"] = parser.value(remoteCommandOpt);
+            }
         }
         return RemoteControl::runClient(cmd, args, socketPath);
     }

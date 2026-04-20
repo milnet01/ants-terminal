@@ -2139,6 +2139,51 @@ TerminalWidget *MainWindow::terminalAtTab(int index) const {
     return activeTerminalInTab(m_tabWidget->widget(index));
 }
 
+int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
+    // Mirror of the newTab() slot but with explicit cwd/command
+    // plumbing so rc_protocol `new-tab` doesn't need to round-trip
+    // through signals. Returns the index of the created tab so the
+    // caller can target it in follow-up commands.
+    QString effectiveCwd = cwd;
+    if (effectiveCwd.isEmpty()) {
+        if (auto *prev = focusedTerminal())
+            effectiveCwd = prev->shellCwd();
+        else if (auto *fallback = currentTerminal())
+            effectiveCwd = fallback->shellCwd();
+    }
+
+    auto *terminal = createTerminal();
+    connectTerminal(terminal);
+
+    QString tabId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    int idx = m_tabWidget->addTab(terminal, "Shell");
+    m_tabWidget->setCurrentIndex(idx);
+    m_tabSessionIds[terminal] = tabId;
+
+    if (!terminal->startShell(effectiveCwd)) {
+        showStatusMessage("Failed to start shell!");
+    }
+    terminal->setFocus();
+
+    if (m_claudeIntegration)
+        m_claudeIntegration->setShellPid(terminal->shellPid());
+
+    // Hide tab bar when only one tab (same logic as newTab slot).
+    m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
+
+    if (!command.isEmpty()) {
+        // 200 ms settle before writing — same timing the SSH-manager
+        // wiring uses (onSshConnect) because the shell child needs a
+        // moment to finish its init before it can accept input reliably.
+        QPointer<TerminalWidget> guard(terminal);
+        QString cmd = command;
+        QTimer::singleShot(200, this, [guard, cmd]() {
+            if (guard) guard->writeCommand(cmd);
+        });
+    }
+    return idx;
+}
+
 QJsonArray MainWindow::tabListForRemote() const {
     // One JSON object per tab. `active: true` on exactly the tab that
     // `currentTerminal()` is inside, so a remote-control client can

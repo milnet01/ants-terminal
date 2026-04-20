@@ -128,6 +128,9 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("send-text")) {
         return cmdSendText(req);
     }
+    if (cmd == QLatin1String("new-tab")) {
+        return cmdNewTab(req);
+    }
     QJsonObject e;
     e["ok"] = false;
     e["error"] = QStringLiteral("unknown command: %1").arg(cmd);
@@ -183,6 +186,24 @@ QJsonDocument RemoteControl::cmdSendText(const QJsonObject &req) {
     target->sendToPty(text.toUtf8());
     out["ok"] = true;
     out["bytes"] = text.toUtf8().size();
+    return QJsonDocument(out);
+}
+
+QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
+    // Request shape: {"cmd":"new-tab","cwd":"<path>","command":"<string>"}
+    //   - `cwd` optional; empty/absent → inherit cwd from the focused
+    //     terminal (same default as the menu-driven newTab() slot)
+    //   - `command` optional; when present, written to the new tab's
+    //     shell after a 200 ms settle (matches onSshConnect's timing).
+    //     Caller is responsible for the trailing newline — matches
+    //     `send-text` semantics so the two commands behave
+    //     consistently with shell pipes.
+    QJsonObject out;
+    const QString cwd     = req.value("cwd").toString();
+    const QString command = req.value("command").toString();
+    const int idx = m_main->newTabForRemote(cwd, command);
+    out["ok"] = true;
+    out["index"] = idx;
     return QJsonDocument(out);
 }
 

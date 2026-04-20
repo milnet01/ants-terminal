@@ -1217,6 +1217,30 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # remote_control_new_tab — third rc_protocol command. Locks the
+    # cwd + command field forwarding, the 200 ms settle before the
+    # command write (matches onSshConnect — shells drop keystrokes
+    # if written before their init settles), the QPointer guard on
+    # the deferred lambda, and the non-const `int newTabForRemote(...)`
+    # signature that the dispatch layer depends on. See
+    # tests/features/remote_control_new_tab/spec.md.
+    add_executable(test_remote_control_new_tab
+        tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp
+    )
+    target_compile_options(test_remote_control_new_tab PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_new_tab PRIVATE
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    )
+    add_test(NAME remote_control_new_tab COMMAND test_remote_control_new_tab)
+    set_tests_properties(remote_control_new_tab PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only

@@ -766,9 +766,16 @@ a modern terminal" release.
     Does not auto-append a newline (matches Kitty; callers include
     terminators explicitly). Pinned by
     `tests/features/remote_control_send_text/`.
+  - ✅ **`new-tab` command.** Opens a fresh tab and returns its
+    0-based index. `cwd` optional (inherits focused-terminal cwd);
+    `command` optional (written via `writeCommand` after a 200 ms
+    settle). Response: `{"ok":true,"index":<int>}`. Client CLI:
+    `--remote-cwd <path>`, `--remote-command <str>`. Pinned by
+    `tests/features/remote_control_new_tab/`.
   - 📋 **Next commands** (one per commit, order TBD by user priority):
-    `set-title`, `new-tab`, `select-window`, `get-text` (read visible
-    screen), `launch` (spawn a command in a new tab).
+    `set-title`, `select-window`, `get-text` (read visible screen),
+    `launch` (spawn a command in a new tab — convenience wrapper
+    over `new-tab` + `send-text`).
   - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
     is set. Shipped after the command surface is complete.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
