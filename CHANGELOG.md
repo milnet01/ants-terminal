@@ -14,6 +14,20 @@ for security-relevant changes.
 
 ### Added
 
+- **Main-thread stall detector** (Debug Mode → Perf category). A 200 ms
+  heartbeat `QTimer` in `MainWindow` measures the gap between its own
+  firings; when the wall-clock gap exceeds the scheduled interval by
+  more than 100 ms the event loop was blocked and the log records
+  the drift, cumulative count, and worst-case observed so far. Gated
+  by `ANTS_DEBUG=perf` (or `all`) so the detector is only armed when
+  debugging — zero overhead when off, zero log output when no stalls
+  are happening. Addresses the 2026-04-20 follow-up user report —
+  "slow down experienced at various times, when tab has been clear
+  or with lots of text, not one specific scenario." Intermittent
+  slowdowns that span both empty and full tabs point at a periodic
+  background handler rather than the PTY hot path, and this detector
+  will fingerprint the exact blockage when the user next reproduces
+  the slowdown.
 - **VT throughput benchmark harness** at `tests/perf/bench_vt_throughput.cpp`.
   Drives four fixed corpora (`ascii_print`, `newline_stream`, `ansi_sgr`,
   `utf8_cjk`) through `VtParser` → `TerminalGrid::processAction` at `-O2`,

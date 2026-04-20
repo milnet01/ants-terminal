@@ -35,6 +35,7 @@ public:
         Signals    = 1u << 11, // Qt signal-slot firings of tracked signals
         Shell      = 1u << 12, // OSC 133 / shell integration / HMAC verification
         Session    = 1u << 13, // session persistence save/restore
+        Perf       = 1u << 14, // event-loop stalls, slow handlers, budget overruns
         All        = 0xFFFFFFFFu,
     };
 

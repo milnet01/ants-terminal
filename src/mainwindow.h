@@ -314,4 +314,15 @@ private:
 
     // Uptime — skip session save if app ran < 5s (test/crash scenario)
     QElapsedTimer m_uptimeTimer;
+
+    // Main-thread stall detector — a heartbeat QTimer that measures
+    // the gap between consecutive firings. When the event loop is
+    // blocked (expensive handler, synchronous I/O, Lua plugin
+    // hanging, etc.) the actual gap exceeds the scheduled interval
+    // by the blockage duration. Gated by ANTS_DEBUG=perf so the
+    // hot path is a single bit-test when disabled.
+    QTimer *m_stallTimer = nullptr;
+    QElapsedTimer m_stallLastFire;
+    qint64 m_stallWorstMs = 0;
+    quint64 m_stallCount = 0;
 };

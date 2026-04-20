@@ -481,6 +481,47 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshReviewButton);
     m_statusTimer->start();
 
+    // Main-thread stall detector (ROADMAP § 0.8.0 "Terminal throughput
+    // slowdowns" — user report 2026-04-20: "slow down experienced at
+    // various times; when tab has been clear or has had lots of text").
+    // A 200 ms heartbeat on the event loop. Each firing compares the
+    // wall-clock gap since the previous firing to the scheduled
+    // interval. Drift above `kStallThresholdMs` means the loop was
+    // blocked by some handler (paint, timer, signal slot, Lua
+    // callback, synchronous I/O) for that long — exactly the
+    // signature of the "intermittent slowdown" the user feels.
+    //
+    // Gated by the `perf` debug category so the timer is only armed
+    // when ANTS_DEBUG=perf (or "all") is set, and even then the log
+    // is only written on threshold breach — zero output under normal
+    // operation, concrete stall sites on reproduction.
+    if (DebugLog::enabled(DebugLog::Perf)) {
+        m_stallTimer = new QTimer(this);
+        m_stallTimer->setInterval(200);
+        m_stallLastFire.start();
+        connect(m_stallTimer, &QTimer::timeout, this, [this]() {
+            constexpr qint64 kInterval = 200;
+            constexpr qint64 kStallThresholdMs = 100;  // report drift > 100 ms
+            const qint64 gap = m_stallLastFire.restart();
+            const qint64 drift = gap - kInterval;
+            if (drift > kStallThresholdMs) {
+                ++m_stallCount;
+                if (drift > m_stallWorstMs) m_stallWorstMs = drift;
+                ANTS_LOG(DebugLog::Perf,
+                    "STALL: main-thread blocked for %lldms "
+                    "(gap=%lldms, interval=%lldms, count=%llu, worst=%lldms)",
+                    static_cast<long long>(drift),
+                    static_cast<long long>(gap),
+                    static_cast<long long>(kInterval),
+                    static_cast<unsigned long long>(m_stallCount),
+                    static_cast<long long>(m_stallWorstMs));
+            }
+        });
+        m_stallTimer->start();
+        ANTS_LOG(DebugLog::Perf,
+            "stall detector armed: interval=200ms threshold=100ms");
+    }
+
     // Populate the status bar immediately so the user sees correct state
     // on boot instead of waiting 2 s for the first timer tick. onTabChanged
     // fires during initial addTab() above but *before* the status widgets

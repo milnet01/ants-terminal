@@ -814,6 +814,20 @@ a modern terminal" release.
     `newline_stream` to confirm which `scrollUp` sub-step
     dominates (row allocation? per-line combining-char table
     copy? pushBack on the scrollback `std::deque`?).
+  - ✅ **Main-thread stall detector** (`DebugLog::Perf`, enabled
+    via `ANTS_DEBUG=perf`). 200 ms heartbeat `QTimer` that
+    records every drift > 100 ms as a main-thread stall. Added
+    after the follow-up user report 2026-04-20: "slow down
+    experienced at various times, when tab has been clear or
+    has had lots of text, not one specific scenario." The
+    intermittent-and-content-independent signature points away
+    from the PTY hot path and toward a periodic background
+    handler (2 s status-bar `updateStatusBar` reading
+    `.git/HEAD`, 2 s Claude-integration `/proc` walk, focus-
+    redirect lambda, plugin callback, session save, file-system
+    watcher fire). The detector fingerprints which one on the
+    next reproduction — log line shape is `STALL: main-thread
+    blocked for Nms (gap=..., interval=..., count=..., worst=...)`.
 - 📋 **Dynamic grid storage** (Alacritty
   [PR #1584](https://github.com/alacritty/alacritty/pull/1584/files)).
   Don't pre-allocate the full `Vec<Vec<Cell>>` scrollback; lazily
