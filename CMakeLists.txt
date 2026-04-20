@@ -1165,4 +1165,32 @@ if(ANTS_TESTS)
     set_tests_properties(decrqss PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # bench_vt_throughput — VT parse + grid-apply throughput harness.
+    # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
+    # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only
+    # terminalgrid.cpp + vtparser.cpp — no GUI, no PTY. Builds at -O2
+    # so numbers resemble release builds regardless of
+    # CMAKE_BUILD_TYPE. Registered under the `perf` label; excluded
+    # from the default `fast` suite so day-to-day ctest runs stay
+    # under two seconds. Run explicitly with
+    # `ctest -L perf --verbose` or the raw binary. Increase corpus
+    # size with `ANTS_PERF_MB=64 ./bench_vt_throughput`.
+    add_executable(bench_vt_throughput
+        tests/perf/bench_vt_throughput.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(bench_vt_throughput PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(bench_vt_throughput PRIVATE src)
+    target_compile_options(bench_vt_throughput PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME vt_throughput COMMAND bench_vt_throughput)
+    set_tests_properties(vt_throughput PROPERTIES
+        LABELS "perf"
+        TIMEOUT 60)
 endif()

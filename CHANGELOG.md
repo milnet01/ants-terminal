@@ -12,6 +12,35 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **VT throughput benchmark harness** at `tests/perf/bench_vt_throughput.cpp`.
+  Drives four fixed corpora (`ascii_print`, `newline_stream`, `ansi_sgr`,
+  `utf8_cjk`) through `VtParser` → `TerminalGrid::processAction` at `-O2`,
+  emits CSV per corpus (bytes, actions, wall-ms, MB/s, actions/s). First
+  step of the 0.8.0 "Terminal throughput slowdowns" perf investigation
+  (user report 2026-04-20). Registered under `ctest` label `perf` so it
+  runs only on explicit `ctest -L perf`; default `fast` suite stays under
+  two seconds. Baseline on dev laptop: `ascii_print` 23 MB/s,
+  `newline_stream` 5 MB/s (4× slower — scroll/scrollback is the hotspot
+  to profile next), `ansi_sgr` 17 MB/s, `utf8_cjk` 8 MB/s.
+
+### Changed
+
+- **Dropdown-flicker — extended intra-action suppression** to
+  `QEvent::HoverMove` / `HoverEnter` / `HoverLeave` in
+  `MainWindow::eventFilter`. The 0.7.5 `NoAnimStyle` fix only partially
+  reduced the user-reported flicker (mouse-movement-triggered);
+  Qt's style engine consults `WA_Hover` tracking — a separate channel
+  from `QMouseEvent` — to re-evaluate `:hover` on every cursor tick.
+  Without suppressing HoverMove the menubar was still repainting on
+  every pixel of intra-item mouse motion. Cross-item motion
+  (File → Edit) still passes through so menu switching works.
+  **Residual flicker is still visible** (confirmed by the user after
+  shipping this change) — pushed to the 0.8.0 roadmap's
+  "Carried over from 0.7.x" section for a different-angle fix.
+
+
 ## [0.7.5] — 2026-04-20
 
 **Theme:** same-day follow-up to 0.7.4 that resolves the dropdown-menu

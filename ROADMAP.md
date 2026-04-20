@@ -713,6 +713,27 @@ the next run.
 **Theme:** big new capabilities. This is the "features you'd expect from
 a modern terminal" release.
 
+### 🐛 Carried over from 0.7.x
+
+- 💭 **Menubar dropdown flicker on mouse movement.** Partially reduced
+  by 0.7.5 (`NoAnimStyle` killed Fusion's 60 Hz `QPropertyAnimation`
+  cycle) and the 0.7.5+1 follow-up commit `04f3409` (extended
+  intra-action suppression to `HoverMove`/`HoverEnter`/`HoverLeave`).
+  Residual flicker still visible to the user on mouse motion over an
+  open dropdown. Measured state on 2026-04-20: idle-log event volume
+  is clean, but a ~85 Hz `UpdateRequest` → paint cascade persists
+  even with `paintEvent()` forced to no-op (`ANTS_SKIP_PAINT=1`) and
+  `WA_TranslucentBackground` disabled (`ANTS_OPAQUE_WINDOW=1`),
+  which points at KWin's compositor sync handshake driving the
+  cycle rather than anything in our widget tree. Likely next-angle
+  fixes: (a) request KWin skip the blur-behind effect for our popup
+  QMenus (empty `_KDE_NET_WM_BLUR_BEHIND_REGION` property);
+  (b) disable `Qt::WA_Hover` on `QMenuBar` while a dropdown is open
+  so the style engine stops re-evaluating `:hover` on every cursor
+  tick; (c) test under GNOME/Mutter and i3 to confirm KWin is the
+  amplifier. Not a blocker (user-reported as "not the biggest issue")
+  but tracked so the 0.7.x fix attempts don't get re-invented.
+
 ### 🎨 Features — multiplexing
 
 - 📋 **Headless mux server with codec RPC**. WezTerm's architecture
@@ -756,7 +777,7 @@ a modern terminal" release.
 
 ### ⚡ Performance
 
-- 📋 **Terminal throughput slowdowns** (user report 2026-04-20).
+- 🚧 **Terminal throughput slowdowns** (user report 2026-04-20).
   Intermittent stalls observed during normal use. Investigation items:
   (a) profile `onVtBatch()` under heavy-output workloads — `yes`,
   `dd`, `find /`, build logs — and identify hotspots;
@@ -767,9 +788,32 @@ a modern terminal" release.
   steady flow; (d) measure paint time at 2000+ line scrollback with
   ligatures on vs off; (e) check the focus-redirect lambda and other
   `QApplication::focusChanged` handlers for expensive work per event.
-  Benchmark harness: `tests/perf/` with a fixed corpus, measure
-  bytes-per-second and paint-latency percentiles so regressions are
-  detectable in CI.
+  - ✅ **Benchmark harness.** `tests/perf/bench_vt_throughput.cpp`
+    drives four fixed corpora — `ascii_print`, `newline_stream`,
+    `ansi_sgr`, `utf8_cjk` — through `VtParser` →
+    `TerminalGrid::processAction` at release-level `-O2`, no GUI.
+    Emits a CSV line per corpus with bytes, actions, wall-ms,
+    MB/s, actions/s. Registered under `ctest` label `perf`
+    (excluded from the default `fast` suite). Run with
+    `ctest -L perf --verbose` or directly; `ANTS_PERF_MB=64
+    ./bench_vt_throughput` for a heavier sweep. **Baseline
+    2026-04-20 on the dev laptop (4 MB per corpus):**
+
+    | Corpus | MB/s | Actions/s | Note |
+    |--------|-----:|----------:|------|
+    | `ascii_print` | 23.3 | 24.4 M | Print-only; UTF-8 fast path |
+    | `newline_stream` | 5.3 | 5.6 M | **4× slower — scroll/scrollback hotspot** |
+    | `ansi_sgr` | 16.9 | 13.0 M | SGR dispatch |
+    | `utf8_cjk` | 7.9 | 3.1 M | 3-byte UTF-8 + double-width |
+
+    Top signal from the baseline: `newline_stream` is 4× slower
+    than pure Print, pointing at `lineFeed()` →
+    `TerminalGrid::scrollUp()` → scrollback deque insertion as
+    the dominant cost. Matches sub-item (b) on the list above —
+    next action is a `perf record`/`callgrind` run over
+    `newline_stream` to confirm which `scrollUp` sub-step
+    dominates (row allocation? per-line combining-char table
+    copy? pushBack on the scrollback `std::deque`?).
 - 📋 **Dynamic grid storage** (Alacritty
   [PR #1584](https://github.com/alacritty/alacritty/pull/1584/files)).
   Don't pre-allocate the full `Vec<Vec<Cell>>` scrollback; lazily
