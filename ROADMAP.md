@@ -742,11 +742,29 @@ a modern terminal" release.
   over a Unix socket; `ants-terminal --attach <socket>` reconnects.
   Panes survive window close. Sparse scrollback fetched on demand via
   `GetLines` RPC.
-- 📋 **Remote-control protocol** (Kitty-style,
+- 🚧 **Remote-control protocol** (Kitty-style,
   [docs](https://sw.kovidgoyal.net/kitty/rc_protocol/)): JSON envelopes
   over a Unix socket. Commands: `launch`, `send-text`, `set-title`,
   `select-window`, `get-text`, `ls`, `new-tab`. Auth via X25519 when
   a password is set. Unlocks scripting, IDE integration, CI.
+  - ✅ **First slice: socket + envelope + `ls`.** `src/remotecontrol.{h,cpp}`
+    brings up a `QLocalServer` on `$ANTS_REMOTE_SOCKET` (or the XDG
+    runtime default `$XDG_RUNTIME_DIR/ants-terminal.sock`). Each
+    connection is one-shot: read a single JSON line, dispatch, write
+    the JSON response line, close. `ls` returns
+    `{"ok": true, "tabs": [{"index", "title", "cwd", "active"}, ...]}`.
+    Unknown commands return `{"ok": false, "error": "unknown command: ..."}`
+    with exit code 2. The same binary handles client mode via
+    `--remote <cmd>` (optionally `--remote-socket <path>`) — no
+    separate client binary. Pinned by source-grep feature test
+    `tests/features/remote_control_ls/` (8 invariants including
+    field-name stability, env-var override, `--remote` ordering).
+  - 📋 **Next commands** (one per commit, order TBD by user priority):
+    `send-text` (write bytes to a tab's PTY), `set-title`, `new-tab`,
+    `select-window`, `get-text` (read visible screen), `launch`
+    (spawn a command in a new tab).
+  - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
+    is set. Shipped after the command surface is complete.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
   dialog. Shipped in 0.7.1. Connects opened from the SSH Manager
   carry `-o ControlMaster=auto`,

@@ -77,6 +77,7 @@ add_executable(ants-terminal
     src/claudetranscript.cpp
     src/globalshortcutsportal.cpp
     src/debuglog.cpp
+    src/remotecontrol.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE
@@ -1163,6 +1164,32 @@ if(ANTS_TESTS)
     )
     add_test(NAME decrqss COMMAND test_decrqss)
     set_tests_properties(decrqss PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # remote_control_ls — first slice of the 0.8.0 Kitty-style
+    # rc_protocol item. Pins the Unix-socket + JSON-envelope shape
+    # and the stable field names (`ok`, `tabs`, `index`, `title`,
+    # `cwd`, `active`) that rc_protocol clients will depend on.
+    # Source-grep test — no GUI, no socket — catches drift at
+    # source-edit time rather than waiting for an integration run.
+    # See tests/features/remote_control_ls/spec.md.
+    add_executable(test_remote_control_ls
+        tests/features/remote_control_ls/test_remote_control_ls.cpp
+    )
+    target_compile_options(test_remote_control_ls PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_ls PRIVATE
+        SRC_RC_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.h"
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+        SRC_CMAKELISTS="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    )
+    add_test(NAME remote_control_ls COMMAND test_remote_control_ls)
+    set_tests_properties(remote_control_ls PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

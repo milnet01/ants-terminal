@@ -15,6 +15,7 @@
 #include <QPropertyAnimation>
 #include <QFileSystemWatcher>
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <QShortcut>
 
 class TitleBar;
@@ -33,6 +34,7 @@ class QSplitter;
 class QFrame;
 class XcbPositionTracker;
 class GlobalShortcutsPortal;
+class RemoteControl;
 #ifdef ANTS_LUA_PLUGINS
 class PluginManager;
 #endif
@@ -76,6 +78,17 @@ private:
     void applyFontSizeToAll(int size);
     TerminalWidget *currentTerminal() const;
     TerminalWidget *focusedTerminal() const;
+
+public:
+    // Remote-control data accessor — returns one JSON object per
+    // tab with `index`, `title`, `cwd`, `active`. Owned by
+    // MainWindow so RemoteControl stays a thin wiring layer.
+    // Kept public because RemoteControl is a sibling class (not a
+    // friend) and the accessor's contract is a narrow, intentional
+    // seam for external callers (rc_protocol commands).
+    QJsonArray tabListForRemote() const;
+
+private:
 
     // Split helpers
     TerminalWidget *createTerminal();
@@ -325,4 +338,8 @@ private:
     QElapsedTimer m_stallLastFire;
     qint64 m_stallWorstMs = 0;
     quint64 m_stallCount = 0;
+
+    // Remote-control JSON-over-Unix-socket server. Non-owning
+    // pointer — MainWindow owns it via QObject parent/child tree.
+    RemoteControl *m_remoteControl = nullptr;
 };

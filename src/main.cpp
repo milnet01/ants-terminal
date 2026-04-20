@@ -1,6 +1,8 @@
 #include "mainwindow.h"
+#include "remotecontrol.h"
 
 #include <QApplication>
+#include <QJsonObject>
 #include "debuglog.h"
 #include <QCommandLineParser>
 #include <QFont>
@@ -206,10 +208,33 @@ int main(int argc, char *argv[]) {
         "Create a new plugin skeleton in the user's plugin dir and exit.",
         "name");
     parser.addOption(newPluginOpt);
+    // Remote-control client mode (0.8.0 Kitty-style rc_protocol). When
+    // set, the binary connects to the running instance's Unix socket,
+    // dispatches a single command, prints the JSON response to stdout,
+    // and exits — no GUI init, no MainWindow construction. Single
+    // command per invocation; scriptable via shell.
+    QCommandLineOption remoteOpt("remote",
+        "Send a remote-control command to the running Ants Terminal and "
+        "exit. Currently supported: `ls`. Socket path: $ANTS_REMOTE_SOCKET "
+        "or $XDG_RUNTIME_DIR/ants-terminal.sock.",
+        "cmd");
+    parser.addOption(remoteOpt);
+    QCommandLineOption remoteSocketOpt("remote-socket",
+        "Override the remote-control socket path "
+        "(else $ANTS_REMOTE_SOCKET or the XDG default).",
+        "path");
+    parser.addOption(remoteSocketOpt);
     parser.process(app);
 
     if (parser.isSet(newPluginOpt)) {
         return scaffoldPlugin(parser.value(newPluginOpt));
+    }
+    if (parser.isSet(remoteOpt)) {
+        const QString socketPath = parser.isSet(remoteSocketOpt)
+            ? parser.value(remoteSocketOpt)
+            : RemoteControl::defaultSocketPath();
+        return RemoteControl::runClient(
+            parser.value(remoteOpt), QJsonObject{}, socketPath);
     }
     bool quakeMode = parser.isSet(quakeOpt);
 

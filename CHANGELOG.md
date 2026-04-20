@@ -14,6 +14,22 @@ for security-relevant changes.
 
 ### Added
 
+- **Remote-control protocol — first slice** (`src/remotecontrol.{h,cpp}`).
+  Kitty-style JSON-over-Unix-socket RPC. A `QLocalServer` listens on
+  `$ANTS_REMOTE_SOCKET` or, by default, `$XDG_RUNTIME_DIR/ants-terminal.sock`
+  (falling back to `/tmp/ants-terminal-<uid>.sock` when XDG runtime is
+  unset). Each connection handles one request / one response, LF-terminated.
+  The only command in this slice is `ls`, which returns
+  `{"ok": true, "tabs": [{"index", "title", "cwd", "active"}, ...]}`.
+  Unknown commands return `{"ok": false, "error": ...}` with client exit
+  code 2. The same binary doubles as the client via
+  `--remote <cmd>` (`--remote-socket <path>` overrides the socket).
+  Clean-foundation release — the remaining commands (`send-text`,
+  `set-title`, `new-tab`, `select-window`, `get-text`, `launch`) and the
+  X25519 auth layer land in follow-up commits against this scaffold.
+  Locked against future drift by `tests/features/remote_control_ls/`
+  (8 source-grep invariants including field-name stability and the
+  `--remote`-before-`MainWindow`-construction ordering).
 - **Main-thread stall detector** (Debug Mode → Perf category). A 200 ms
   heartbeat `QTimer` in `MainWindow` measures the gap between its own
   firings; when the wall-clock gap exceeds the scheduled interval by

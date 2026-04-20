@@ -8,6 +8,7 @@
 #include "sshdialog.h"
 #include "settingsdialog.h"
 #include "sessionmanager.h"
+#include "remotecontrol.h"
 #include "xcbpositiontracker.h"
 #include "claudeallowlist.h"
 #include "claudeintegration.h"
@@ -773,6 +774,17 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
         SessionManager::cleanupOldSessions(30);
     });
     sessionCleanupTimer->start();
+
+    // Remote-control server (first slice of the 0.8.0 Kitty-style
+    // rc_protocol item). Listens on
+    // `$ANTS_REMOTE_SOCKET` / `$XDG_RUNTIME_DIR/ants-terminal.sock`
+    // and currently handles only `{"cmd":"ls"}`; the socket +
+    // envelope infrastructure is in place for the next commands to
+    // land one-by-one. Failure to bind (another Ants instance
+    // already owns the socket) is non-fatal: the log notes it and
+    // the main window boots normally.
+    m_remoteControl = new RemoteControl(this, this);
+    m_remoteControl->start();
 }
 
 void MainWindow::setupMenus() {
@@ -2120,6 +2132,31 @@ TerminalWidget *MainWindow::currentTerminal() const {
     // Prefer the focused pane so split layouts dispatch commands correctly;
     // falls back to the first pane in the tab subtree.
     return activeTerminalInTab(m_tabWidget->currentWidget());
+}
+
+QJsonArray MainWindow::tabListForRemote() const {
+    // One JSON object per tab. `active: true` on exactly the tab that
+    // `currentTerminal()` is inside, so a remote-control client can
+    // tell which pane receives input by default. `cwd` reads the
+    // focused terminal's shell cwd (via OSC 7 or /proc fallback); may
+    // be empty when the shell hasn't sent OSC 7 yet and /proc is
+    // unavailable (e.g. stale PID after fork).
+    QJsonArray tabs;
+    const int n = m_tabWidget->count();
+    const int current = m_tabWidget->currentIndex();
+    for (int i = 0; i < n; ++i) {
+        QJsonObject t;
+        t["index"] = i;
+        t["title"] = m_tabWidget->tabText(i);
+        t["active"] = (i == current);
+        QString cwd;
+        if (auto *term = activeTerminalInTab(m_tabWidget->widget(i))) {
+            cwd = term->shellCwd();
+        }
+        t["cwd"] = cwd;
+        tabs.append(t);
+    }
+    return tabs;
 }
 
 void MainWindow::applyTheme(const QString &name) {
