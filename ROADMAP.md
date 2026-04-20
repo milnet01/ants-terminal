@@ -616,20 +616,26 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   [CHANGELOG.md §0.7.3](CHANGELOG.md#073--2026-04-20).
 - 📋 **H6.2 — Flathub submission**. PR a new repo against
   [flathub/flathub](https://github.com/flathub/flathub) named
-  `org.ants.Terminal`. The repo's manifest body is
-  `packaging/flatpak/org.ants.Terminal.yml` verbatim with
-  `sources[].type: dir / path: ../..` replaced by
-  `type: git / url: https://github.com/milnet01/ants-terminal /
-  tag: v<version>`. Blocker today is (a) waiting for the v0.7.2
-  manifest to be exercised locally by a few users (first real-
-  user shakedown before claiming a Flathub repo name) and (b)
-  adding `<screenshots>` to `packaging/linux/org.ants.Terminal.metainfo.xml`
-  — Flathub's listing renders the screenshot block as the store
-  tile; without it the listing shows the raw icon. Once those
-  land, Flathub submission is a single PR and CI handles the
-  rest (rebuilds on each new `v<version>` tag). On landing,
-  flip the "gating item 1: no distro packages anywhere" entry
-  in the [Distribution-adoption overview](#distribution-adoption-overview)
+  `org.ants.Terminal`. In-tree prep is complete: the
+  `<screenshots>` block in
+  `packaging/linux/org.ants.Terminal.metainfo.xml` now points at three
+  captures under `docs/screenshots/` so Flathub's store tile renders
+  with real UI (main terminal + Review Changes dialog + Project Audit
+  panel), and `packaging/flatpak/make-flathub-manifest.sh` + a feature
+  test pin the transformation from the dev manifest
+  (`type: dir / path: ../..`) to the Flathub manifest
+  (`type: git / url: https://github.com/milnet01/ants-terminal /
+  tag: v<version>`) so there is one source of truth for the manifest.
+  Submission playbook lives at
+  [packaging/flatpak/FLATHUB.md](packaging/flatpak/FLATHUB.md).
+  Remaining blocker is real-user shakedown of the v0.7.3 Flatpak —
+  wait for a small cohort to exercise the host-shell + plugin build
+  before claiming the Flathub repo name. Once the PR merges, Flathub
+  CI rebuilds on each new `v<version>` tag — no manual work per
+  release, only per-bump regeneration of the tag-pinned manifest
+  (one script invocation). On landing, flip the "gating item 1: no
+  distro packages anywhere" entry in the
+  [Distribution-adoption overview](#distribution-adoption-overview)
   from "H5 + H6 unblock this" to "unblocked".
 - 📋 **H7 — project website + docs site**. Static GitHub Pages site
   at `ants-terminal.github.io` (or equivalent) with: screenshots,

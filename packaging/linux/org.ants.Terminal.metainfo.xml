@@ -15,10 +15,9 @@
   <releases/> list (newest first) with version/date and a short summary
   of user-visible changes — distros surface this in the update-details UI.
 
-  TODO(screenshots): add a <screenshots/> block once we commit real UI
-  captures under docs/screenshots/. Current omission produces a validator
-  warning (informational), not an error; GNOME Software falls back to the
-  app icon for the store tile until screenshots land.
+  Screenshots live under docs/screenshots/ and are referenced below via
+  raw.githubusercontent.com/milnet01/ants-terminal/main/docs/screenshots/.
+  Rename there + here in the same commit — URLs are literal.
 -->
 <component type="desktop-application">
   <id>org.ants.Terminal</id>
@@ -87,6 +86,21 @@
   </supports>
 
   <content_rating type="oars-1.1" />
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main terminal — custom title bar, tab gradient, status bar</caption>
+      <image type="source" width="2103" height="1137">https://raw.githubusercontent.com/milnet01/ants-terminal/main/docs/screenshots/01-main-terminal.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Review Changes dialog — per-file diff and apply flow</caption>
+      <image type="source" width="2110" height="1140">https://raw.githubusercontent.com/milnet01/ants-terminal/main/docs/screenshots/02-review-changes.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Project Audit panel — clazy, cppcheck, and grep findings with SARIF export</caption>
+      <image type="source" width="2103" height="1137">https://raw.githubusercontent.com/milnet01/ants-terminal/main/docs/screenshots/03-project-audit.png</image>
+    </screenshot>
+  </screenshots>
 
   <releases>
     <release version="0.7.3" date="2026-04-20">

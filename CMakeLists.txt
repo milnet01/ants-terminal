@@ -992,6 +992,29 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # flathub_manifest_transform — exercises make-flathub-manifest.sh
+    # and pins the shape of its output: the dev manifest's `type: dir /
+    # path: ../..` is replaced with `type: git / url / tag: vX.Y.Z`,
+    # the Lua module survives byte-identical (including sha256 and
+    # x-checker-data), the generator auto-detects VERSION from
+    # CMakeLists.txt, and it rejects invalid VERSION arguments. A
+    # regression here silently ships a broken Flathub manifest on PR.
+    # See tests/features/flathub_manifest_transform/spec.md.
+    add_executable(test_flathub_manifest_transform
+        tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
+    )
+    target_compile_options(test_flathub_manifest_transform PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_flathub_manifest_transform PRIVATE
+        TRANSFORMER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh"
+    )
+    add_test(NAME flathub_manifest_transform
+             COMMAND test_flathub_manifest_transform)
+    set_tests_properties(flathub_manifest_transform PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # audit_rule_quality — locks the 0.6.31 self-learning data layer:
     # per-rule fire/suppression aggregation, longest-common-substring
     # tightening suggester, JSON persistence round-trip. Pure model code,
