@@ -16,6 +16,7 @@
 #include "auditdialog.h"
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
+#include "debuglog.h"
 
 namespace {
 // Forward declaration — definition lives next to setupQuakeMode() (its
@@ -32,8 +33,12 @@ QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
 #include <QAbstractButton>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QShowEvent>
 #include <QMoveEvent>
+#include <QMouseEvent>
 #include <QMenuBar>
 #include <QFrame>
 #include <QLineEdit>
@@ -83,6 +88,18 @@ QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
 #endif
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
+    // Disable QMainWindow's built-in QWidgetAnimator. It exists to
+    // animate dock-widget resizes and rearrangements — we have no
+    // dock widgets, and the animator drives a 60 Hz
+    // QPropertyAnimation(target=QWidget, prop=geometry) cycle
+    // continuously on an idle window (1129 DeferredDelete entries
+    // for that animation in an 8 s debug log), which cascades a
+    // LayoutRequest → UpdateRequest → full-widget-tree paint every
+    // frame and surfaces as visible dropdown flicker when any menu
+    // is open. Root cause of the flicker the user reported 2026-04-20
+    // and we chased through eight failed fixes before instrumenting
+    // the event loop.
+    setAnimated(false);
     m_uptimeTimer.start();
     setWindowTitle("Ants Terminal");
     setWindowFlag(Qt::FramelessWindowHint);
@@ -97,7 +114,18 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // ARGB) is determined at creation time and cannot be changed after show().
     // Without this, per-pixel alpha (background transparency, window opacity)
     // has no effect when toggled at runtime.
-    setAttribute(Qt::WA_TranslucentBackground, true);
+    //
+    // Diagnostic escape hatch: ANTS_OPAQUE_WINDOW=1 skips the
+    // WA_TranslucentBackground call. Used to isolate whether residual
+    // popup / menubar / dropdown flicker on KWin + Wayland is a
+    // translucent-parent interaction or something else. Trade-off:
+    // per-pixel window transparency (config keys `opacity` and
+    // `background_alpha`) has no effect with this env var set, since
+    // the toplevel window is now opaque at the compositor level.
+    const bool forceOpaque = qEnvironmentVariableIntValue("ANTS_OPAQUE_WINDOW") != 0;
+    if (!forceOpaque) {
+        setAttribute(Qt::WA_TranslucentBackground, true);
+    }
     // WA_TranslucentBackground disables auto-fill for the entire widget tree.
     // WA_StyledBackground ensures the QMainWindow's stylesheet background-color
     // still paints, keeping the UI chrome opaque.
@@ -117,8 +145,28 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
         m_config.setWindowGeometry(pos.x(), pos.y(), width(), height());
     });
 
-    // Standalone menu bar
+    // Standalone menu bar. Two attributes matter when the parent window
+    // has Qt::WA_TranslucentBackground (set on MainWindow above):
+    //
+    //   * WA_StyledBackground = true — the QMenuBar stylesheet's
+    //     background-color rule is honored on every paint. Without it,
+    //     translucent-background inheritance can leave the menubar
+    //     rendering over a cleared-to-transparent region for one frame
+    //     during hover repaints, which is the residual flicker the
+    //     0.6.43 `::item` base rule didn't cover (user report 2026-04-20).
+    //   * autoFillBackground = true — backstops a single opaque fill
+    //     from the palette BEFORE the stylesheet paints, so even a
+    //     one-frame lag between QSS polish and paint can't show
+    //     through.
+    //
+    // setNativeMenuBar(false) is explicit here so DE integrations that
+    // try to export the menubar to a global-menu channel (Unity, KDE
+    // appmenu dbusmenu) get told "no" — the menubar must render in
+    // our frameless window or the File/Edit/View entries disappear.
     m_menuBar = new QMenuBar(this);
+    m_menuBar->setNativeMenuBar(false);
+    m_menuBar->setAutoFillBackground(true);
+    m_menuBar->setAttribute(Qt::WA_StyledBackground, true);
 
     // Tab widget with custom ColoredTabBar so per-tab colour groups
     // render independently of the QTabBar::tab { color: … } stylesheet
@@ -150,6 +198,42 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     setCentralWidget(central);
 
     setupMenus();
+
+    // Install the app-wide event filter once — it's cheap when the
+    // DebugLog bit-test at the top of eventFilter() is false. Menu-
+    // scoped install for the intra-action mouse-move suppression
+    // happens later.
+    qApp->installEventFilter(this);
+
+    // Dropdown-flicker kill-switch: when any QMenu owned by the
+    // menubar is about to show, install a global event filter on
+    // QApplication; remove it on hide. The filter swallows MouseMove
+    // events whose global position lands over the menubar action
+    // that OWNS the currently-open popup (intra-action motion).
+    // Cross-item motion (File → Edit switch) is passed through so
+    // QMenuBar can still switch menus.
+    //
+    // Why app-level: when a QMenu opens via popup() it grabs the
+    // mouse globally. Every subsequent MouseMove event is delivered
+    // to the QMenu first (not to QMenuBar), so a filter installed
+    // on m_menuBar alone never sees them. A filter on qApp runs
+    // before QMenu::event() and can drop the event before QMenu's
+    // internal hover tracking schedules a repaint — which is the
+    // actual source of the flicker the user sees over the dropdown
+    // (2026-04-20 report; survived stylesheet, menubar-attribute,
+    // and per-menu-attribute fixes).
+    // The previous iteration here set WA_NoSystemBackground,
+    // WA_OpaquePaintEvent, and autoFillBackground on each dropdown
+    // QMenu, plus an event-filter install / menubar setUpdatesEnabled
+    // dance on aboutToShow/aboutToHide. That was chasing a symptom:
+    // each attribute changed the menubar's background appearance
+    // (theme drift the user flagged) without actually fixing the
+    // dropdown flicker. Root cause was upstream — QOpenGLWidget's
+    // default NoPartialUpdate mode forcing full-window repaints on
+    // every terminal paint. Fixed in terminalwidget.cpp by switching
+    // to QOpenGLWidget::PartialUpdate. With that fix, the per-menu
+    // attribute hacks aren't needed and would only interfere with
+    // theme propagation, so they're gone.
 
     // Command palette (Ctrl+Shift+P)
     m_commandPalette = new CommandPalette(central);
@@ -1094,6 +1178,66 @@ void MainWindow::setupMenus() {
         if (auto *t = focusedTerminal()) t->toggleFoldAtCursor();
     });
 
+    toolsMenu->addSeparator();
+
+    // Tools → Debug Mode submenu. Each category is a checkable
+    // action; ticking one starts writing that category's events to
+    // `~/.local/share/ants-terminal/debug.log`. Bottom of submenu
+    // has All / None / Open Log File / Clear Log.
+    QMenu *debugMenu = toolsMenu->addMenu("&Debug Mode");
+    debugMenu->setToolTipsVisible(true);
+    QList<QPair<DebugLog::Category, QString>> catList = {
+        {DebugLog::Paint,    "&Paint events (Paint / UpdateRequest / LayoutRequest)"},
+        {DebugLog::Events,   "&Events (focus / resize / timer / deferred-delete)"},
+        {DebugLog::Input,    "&Input (key / mouse routed to terminal)"},
+        {DebugLog::Pty,      "P&TY (reads / writes / resize)"},
+        {DebugLog::Vt,       "&VT parser actions"},
+        {DebugLog::Render,   "&Render (paint latency, glyph cache)"},
+        {DebugLog::Plugins,  "Pl&ugins (Lua event dispatch)"},
+        {DebugLog::Network,  "&Network (AI / SSH / git subprocess)"},
+        {DebugLog::Config,   "&Config (load / save / change)"},
+        {DebugLog::Audit,    "&Audit (tool invocations + findings)"},
+        {DebugLog::Claude,   "C&laude Code integration"},
+        {DebugLog::Signals,  "&Signal firings"},
+        {DebugLog::Shell,    "S&hell integration (OSC 133 / HMAC)"},
+        {DebugLog::Session,  "Sessi&on persistence"},
+    };
+    for (const auto &entry : catList) {
+        QAction *a = debugMenu->addAction(entry.second);
+        a->setCheckable(true);
+        a->setChecked((DebugLog::active() & entry.first) != 0);
+        const quint32 bit = entry.first;
+        connect(a, &QAction::toggled, this, [bit](bool on) {
+            quint32 cur = DebugLog::active();
+            if (on) cur |= bit; else cur &= ~bit;
+            DebugLog::setActive(cur);
+        });
+    }
+    debugMenu->addSeparator();
+    QAction *debugAllAction = debugMenu->addAction("Enable &All Categories");
+    connect(debugAllAction, &QAction::triggered, this, [debugMenu]() {
+        DebugLog::setActive(DebugLog::All);
+        for (QAction *a : debugMenu->actions())
+            if (a->isCheckable()) a->setChecked(true);
+    });
+    QAction *debugNoneAction = debugMenu->addAction("Disable All (&Off)");
+    connect(debugNoneAction, &QAction::triggered, this, [debugMenu]() {
+        DebugLog::setActive(DebugLog::None);
+        for (QAction *a : debugMenu->actions())
+            if (a->isCheckable()) a->setChecked(false);
+    });
+    debugMenu->addSeparator();
+    QAction *debugOpenAction = debugMenu->addAction("Open &Log File");
+    connect(debugOpenAction, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(DebugLog::logFilePath()));
+    });
+    QAction *debugClearAction = debugMenu->addAction("&Clear Log File");
+    connect(debugClearAction, &QAction::triggered, this, [this]() {
+        DebugLog::clear();
+        showStatusMessage(QStringLiteral("Debug log cleared: %1")
+                            .arg(DebugLog::logFilePath()), 4000);
+    });
+
     // Settings menu
     QMenu *settingsMenu = m_menuBar->addMenu("S&ettings");
 
@@ -1971,10 +2115,35 @@ void MainWindow::applyTheme(const QString &name) {
         // so the :selected rule is the only visible state change.
         "QMenuBar::item { background-color: transparent; padding: 4px 10px;"
         "  margin: 0; border-radius: 4px; }"
+        // :hover and :selected both map to the same highlight. Qt's
+        // QStyleSheetStyle treats them as distinct pseudo-states on
+        // QMenuBar::item — Breeze / Fusion hover-flash for one frame
+        // before :selected engages, and on that frame only :hover
+        // styling applies. Mirroring :selected into :hover removes
+        // the one-frame gap (closed-menu hover flash, original
+        // 2026-04-20 report). The dropdown-flicker-when-both-apply
+        // regression that briefly came up mid-0.7.4 is fixed
+        // structurally by Qt::WA_OpaquePaintEvent on the menubar
+        // widget (see construction site) — not by dropping this
+        // rule.
+        "QMenuBar::item:hover { background-color: %5; }"
         "QMenuBar::item:selected { background-color: %5; }"
         "QMenuBar::item:pressed { background-color: %5; }"
         "QMenu { background-color: %2; color: %3; border: 1px solid %4; padding: 4px; }"
-        "QMenu::item { padding: 6px 24px 6px 12px; border-radius: 4px; }"
+        // The item's :selected background is a rectangle filling the
+        // full item rect (no border-radius). Prior to 0.7.4 the base
+        // rule had `border-radius: 4px` on the item — rounded
+        // corners force Qt to paint the :selected fill with a clip
+        // shape, and the rows outside that clip shape (inside the
+        // item's bounding rect but outside the rounded pill) get
+        // painted with the menu's background. That compositing path
+        // shows a visible flash as the "current item" shifts rows
+        // on mouse move — reported 2026-04-20 after the paste-
+        // dialog fix exposed the leftover flicker. Dropping the
+        // radius means the :selected fill is the whole rect and
+        // deselect just repaints the same rect to the menu's
+        // background color. No compositing, no flash.
+        "QMenu::item { padding: 6px 24px 6px 12px; }"
         "QMenu::item:selected { background-color: %5; color: %1; }"
         "QMenu::separator { height: 1px; background: %4; margin: 4px 8px; }"
         "QStatusBar { background-color: %2; color: %6; border-top: 1px solid %4; }"
@@ -3117,6 +3286,101 @@ bool MainWindow::event(QEvent *event) {
         m_titleBar->finishSystemDrag();
     }
     return QMainWindow::event(event);
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
+    // Route event-filter-observable events into DebugLog when the
+    // relevant categories are active. The `enabled()` check is a
+    // single bit-test on the hot path.
+    if (DebugLog::enabled(DebugLog::Paint) ||
+        DebugLog::enabled(DebugLog::Events)) {
+        auto t = event->type();
+        const char *tname = nullptr;
+        DebugLog::Category cat = DebugLog::None;
+        if (t == QEvent::Paint)              { tname = "Paint";          cat = DebugLog::Paint; }
+        else if (t == QEvent::UpdateRequest) { tname = "UpdateRequest";  cat = DebugLog::Paint; }
+        else if (t == QEvent::UpdateLater)   { tname = "UpdateLater";    cat = DebugLog::Paint; }
+        else if (t == QEvent::LayoutRequest) { tname = "LayoutRequest";  cat = DebugLog::Paint; }
+        else if (t == QEvent::Resize)        { tname = "Resize";         cat = DebugLog::Events; }
+        else if (t == QEvent::Timer)         { tname = "Timer";          cat = DebugLog::Events; }
+        else if (t == QEvent::DeferredDelete){ tname = "DeferredDelete"; cat = DebugLog::Events; }
+        else if (t == QEvent::FocusIn)       { tname = "FocusIn";        cat = DebugLog::Events; }
+        else if (t == QEvent::FocusOut)      { tname = "FocusOut";       cat = DebugLog::Events; }
+        else if (t == QEvent::ChildAdded && DebugLog::enabled(DebugLog::Events)) {
+            // Log when a QPropertyAnimation child is added to a widget
+            // — that's the creation point we want to track.
+            auto *ce = static_cast<QChildEvent *>(event);
+            QObject *child = ce->child();
+            if (child && std::string(child->metaObject()->className())
+                         == "QPropertyAnimation") {
+                auto *anim = qobject_cast<QPropertyAnimation *>(child);
+                QObject *tgt = anim ? anim->targetObject() : nullptr;
+                const char *tgtCls = tgt ? tgt->metaObject()->className() : "null";
+                QByteArray tgtName = tgt ? tgt->objectName().toUtf8() : QByteArray();
+                QObject *tgtParent = tgt ? tgt->parent() : nullptr;
+                const char *tgtParCls = tgtParent ? tgtParent->metaObject()->className() : "null";
+                QByteArray tgtParName = tgtParent ? tgtParent->objectName().toUtf8() : QByteArray();
+                const char *parCls = watched->metaObject()->className();
+                QByteArray parName = watched->objectName().toUtf8();
+                ANTS_LOG(DebugLog::Events,
+                    "QPropAnim CREATED in %s:%s  target=%s:%s (parent=%s:%s) prop=%s",
+                    parCls, parName.constData(),
+                    tgtCls, tgtName.constData(),
+                    tgtParCls, tgtParName.constData(),
+                    anim ? anim->propertyName().constData() : "?");
+            }
+        }
+        if (tname && DebugLog::enabled(cat)) {
+            QWidget *w = qobject_cast<QWidget *>(watched);
+            const char *cls = watched->metaObject()->className();
+            const char *spont = event->spontaneous() ? "spont" : "synth";
+            QByteArray objName = watched->objectName().toUtf8();
+            QObject *par = watched->parent();
+            const char *parCls = par ? par->metaObject()->className() : "null";
+            QByteArray parName = par ? par->objectName().toUtf8() : QByteArray();
+            QByteArray extra;
+            if (std::string(cls) == "QPropertyAnimation") {
+                auto *anim = qobject_cast<QPropertyAnimation *>(watched);
+                if (anim) {
+                    QObject *tgt = anim->targetObject();
+                    const char *tgtCls = tgt ? tgt->metaObject()->className() : "null";
+                    QByteArray tgtName = tgt ? tgt->objectName().toUtf8() : QByteArray();
+                    extra = QByteArray(" target=") + tgtCls + ":" + tgtName
+                          + " prop=" + anim->propertyName();
+                }
+            }
+            if (w) {
+                ANTS_LOG(cat, "%s [%s] cls=%s name=%s parent=%s:%s rect=%dx%d%s",
+                    tname, spont, cls, objName.constData(),
+                    parCls, parName.constData(),
+                    w->width(), w->height(), extra.constData());
+            } else {
+                ANTS_LOG(cat, "%s [%s] cls=%s name=%s parent=%s:%s%s",
+                    tname, spont, cls, objName.constData(),
+                    parCls, parName.constData(), extra.constData());
+            }
+        }
+    }
+    // Dropdown-flicker kill-switch (app-level). See the construction-
+    // site comment above `installEventFilter(this)` for rationale.
+    // We only reach this branch while a menubar-owned QMenu is open,
+    // because the install/remove is scoped to aboutToShow/aboutToHide.
+    if (event->type() == QEvent::MouseMove) {
+        QWidget *popup = QApplication::activePopupWidget();
+        if (popup && popup->inherits("QMenu")) {
+            auto *me = static_cast<QMouseEvent *>(event);
+            QPoint barLocal = m_menuBar->mapFromGlobal(
+                me->globalPosition().toPoint());
+            if (m_menuBar->rect().contains(barLocal)) {
+                QAction *under  = m_menuBar->actionAt(barLocal);
+                QAction *active = m_menuBar->activeAction();
+                if (under && under == active) {
+                    return true;  // intra-action motion, no-op
+                }
+            }
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

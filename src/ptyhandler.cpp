@@ -1,4 +1,5 @@
 #include "ptyhandler.h"
+#include "debuglog.h"
 
 #include <cerrno>
 #include <csignal>
@@ -178,6 +179,8 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
 
 void Pty::write(const QByteArray &data) {
     if (m_masterFd < 0) return;
+    ANTS_LOG(DebugLog::Pty, "write %lld bytes: %s", (long long)data.size(),
+             data.left(60).toPercentEncoding().constData());
     const char *buf = data.constData();
     qsizetype remaining = data.size();
     while (remaining > 0) {
@@ -205,6 +208,7 @@ void Pty::resize(int rows, int cols) {
         ws.ws_row = static_cast<unsigned short>(rows);
         ws.ws_col = static_cast<unsigned short>(cols);
         ::ioctl(m_masterFd, TIOCSWINSZ, &ws);
+        ANTS_LOG(DebugLog::Pty, "resize rows=%d cols=%d", rows, cols);
     }
 }
 
@@ -213,6 +217,7 @@ void Pty::onReadReady() {
     while (true) {
         ssize_t n = ::read(m_masterFd, buf, sizeof(buf));
         if (n > 0) {
+            ANTS_LOG(DebugLog::Pty, "read %zd bytes", n);
             emit dataReceived(QByteArray(buf, static_cast<int>(n)));
         } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
             // n == 0 → EOF (child closed the PTY).

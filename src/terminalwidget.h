@@ -3,7 +3,7 @@
 #include "terminalgrid.h"
 #include "vtstream.h"
 
-#include <QOpenGLWidget>
+#include <QWidget>
 #include <QFont>
 #include <QTimer>
 #include <QImage>
@@ -25,7 +25,7 @@ class QPushButton;
 class QPlainTextEdit;
 class QThread;
 
-class TerminalWidget : public QOpenGLWidget {
+class TerminalWidget : public QWidget {
     Q_OBJECT
 
 public:
@@ -279,8 +279,6 @@ signals:
 protected:
     bool event(QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
-    void initializeGL() override;
-    void resizeGL(int w, int h) override;
     void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void focusInEvent(QFocusEvent *event) override;
@@ -347,10 +345,19 @@ private:
     bool isCellSearchMatch(int globalLine, int col) const;
     bool isCellCurrentMatch(int globalLine, int col) const;
 
-    // Bracketed paste helper — sanitizes text and wraps with mode markers
+    // Bracketed paste helper — sanitizes text and wraps with mode markers.
+    // If the payload is "risky" (multi-line, sudo, pipe-to-shell, control
+    // chars) and the confirm-multiline-paste setting is on, this shows a
+    // non-modal QDialog and defers the actual paste to its Accept callback.
+    // Otherwise pastes immediately.
     void pasteToTerminal(const QByteArray &data);
-    // Returns true if the paste should proceed (user confirmed or no prompt needed)
-    bool confirmDangerousPaste(const QByteArray &data);
+private:
+    // Unconditional paste — pasteToTerminal() funnels into this after the
+    // (possibly-async) confirmation step.
+    void performPaste(const QByteArray &data);
+    // Classify a payload as risky and, if so, return a reason list for the
+    // confirmation dialog headline. Empty list = safe to paste without prompt.
+    QStringList pasteRiskReasons(const QByteArray &data) const;
 
     // Enable/disable multi-line paste confirmation (bound from config)
     bool m_confirmMultilinePaste = true;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.3 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.4 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -76,6 +76,7 @@ add_executable(ants-terminal
     src/claudeprojects.cpp
     src/claudetranscript.cpp
     src/globalshortcutsportal.cpp
+    src/debuglog.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE
@@ -943,6 +944,68 @@ if(ANTS_TESTS)
     add_test(NAME focus_redirect_menu_guard
              COMMAND test_focus_redirect_menu_guard)
     set_tests_properties(focus_redirect_menu_guard PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # terminal_partial_update_mode — 0.7.4 follow-up. The dropdown-
+    # flicker root cause was QOpenGLWidget's default NoPartialUpdate
+    # mode cascading every terminal repaint into a full top-level
+    # repaint. Fix is a single setUpdateBehavior(PartialUpdate) call
+    # in the TerminalWidget constructor. See
+    # tests/features/terminal_partial_update_mode/spec.md.
+    add_executable(test_terminal_partial_update_mode
+        tests/features/terminal_partial_update_mode/test_terminal_partial_update_mode.cpp
+    )
+    target_compile_options(test_terminal_partial_update_mode PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_terminal_partial_update_mode PRIVATE
+        SRC_TERMINALWIDGET_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
+        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+    )
+    add_test(NAME terminal_partial_update_mode
+             COMMAND test_terminal_partial_update_mode)
+    set_tests_properties(terminal_partial_update_mode PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # menubar_hover_stylesheet — 0.7.4 follow-up to 0.6.43. Pins that the
+    # QMenuBar has an opaque background under a translucent-parent window
+    # and that every hover pseudo-state is styled, so the hover flash
+    # cannot re-emerge from QSS drift. See
+    # tests/features/menubar_hover_stylesheet/spec.md.
+    add_executable(test_menubar_hover_stylesheet
+        tests/features/menubar_hover_stylesheet/test_menubar_hover_stylesheet.cpp
+    )
+    target_compile_options(test_menubar_hover_stylesheet PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_menubar_hover_stylesheet PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME menubar_hover_stylesheet
+             COMMAND test_menubar_hover_stylesheet)
+    set_tests_properties(menubar_hover_stylesheet PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # paste_dialog_custom — 0.7.4 fix. Locks that confirmDangerousPaste
+    # uses a plain QDialog (not QMessageBox), completes the Wayland
+    # activation handshake synchronously via show()+raise()+activateWindow()
+    # before exec(), and keeps Cancel as the default button. See
+    # tests/features/paste_dialog_custom/spec.md.
+    add_executable(test_paste_dialog_custom
+        tests/features/paste_dialog_custom/test_paste_dialog_custom.cpp
+    )
+    target_compile_options(test_paste_dialog_custom PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_paste_dialog_custom PRIVATE
+        SRC_TERMINALWIDGET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+    )
+    add_test(NAME paste_dialog_custom
+             COMMAND test_paste_dialog_custom)
+    set_tests_properties(paste_dialog_custom PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

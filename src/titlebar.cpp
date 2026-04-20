@@ -40,10 +40,20 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     layout->addWidget(m_titleLabel);
     layout->addStretch();
 
+    // NOTE: tooltips removed from titlebar buttons (2026-04-20).
+    // A Qt / KWin / Wayland quirk fired the QTipLabel show/hide cycle
+    // on every frame while the cursor was anywhere near a titlebar
+    // button, animating the tooltip's geometry at ~60 Hz. That
+    // animation cascaded a LayoutRequest through the whole widget
+    // tree each frame, and the cascade is what the user saw as the
+    // open-dropdown flicker. Diagnosed via the debug-log system — see
+    // `~/.local/share/ants-terminal/debug.log` with `paint,events`
+    // enabled. The button glyphs (✥ / ✕ / ⬜ / ⟩) + the hover-colour
+    // feedback give enough affordance without tooltip text.
+
     // Center window button
     m_centerBtn = new QToolButton(this);
     m_centerBtn->setText("\u2725");  // ✥ crosshair
-    m_centerBtn->setToolTip("Center window on screen (Ctrl+Shift+M)");
     m_centerBtn->setAutoRaise(true);
     m_centerBtn->setFixedSize(32, 28);
     layout->addWidget(m_centerBtn);
@@ -51,7 +61,6 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     // Minimize button
     m_minimizeBtn = new QToolButton(this);
     m_minimizeBtn->setText("\u2013");  // – en dash
-    m_minimizeBtn->setToolTip("Minimize");
     m_minimizeBtn->setAutoRaise(true);
     m_minimizeBtn->setFixedSize(32, 28);
     connect(m_minimizeBtn, &QToolButton::clicked, this, &TitleBar::minimizeRequested);
@@ -60,7 +69,6 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     // Maximize/restore button
     m_maximizeBtn = new QToolButton(this);
     m_maximizeBtn->setText("\u25A1");  // □ white square
-    m_maximizeBtn->setToolTip("Maximize");
     m_maximizeBtn->setAutoRaise(true);
     m_maximizeBtn->setFixedSize(32, 28);
     connect(m_maximizeBtn, &QToolButton::clicked, this, &TitleBar::maximizeRequested);
@@ -69,7 +77,6 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     // Close button
     m_closeBtn = new QToolButton(this);
     m_closeBtn->setText("\u2715");  // ✕
-    m_closeBtn->setToolTip("Close");
     m_closeBtn->setAutoRaise(true);
     m_closeBtn->setFixedSize(32, 28);
     m_closeBtn->setObjectName("closeBtn");

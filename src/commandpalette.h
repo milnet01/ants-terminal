@@ -36,4 +36,5 @@ private:
 
     void positionAndResize();
     void populateList(const QString &filter);
+    void ensureListReady();
 };

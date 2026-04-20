@@ -48,6 +48,7 @@ protected:
     void showEvent(QShowEvent *event) override;
     void moveEvent(QMoveEvent *event) override;
     bool event(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void onTitleChanged(const QString &title);

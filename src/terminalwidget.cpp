@@ -1,5 +1,10 @@
 #include "terminalwidget.h"
+// glrenderer.h is kept included because std::unique_ptr<GlRenderer>
+// in the header needs GlRenderer complete at destructor instantiation.
+// The renderer itself is dormant in 0.7.4 — see setGpuRendering() for
+// the disabled entry point and the future-work note.
 #include "glrenderer.h"
+#include "debuglog.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -19,6 +24,9 @@
 #include <QPushButton>
 #include <QShortcut>
 #include <QMessageBox>
+#include <QDialog>
+#include <QPointer>
+#include <QVBoxLayout>
 #include <QMenu>
 #include <QDesktopServices>
 #include <QUrl>
@@ -28,8 +36,6 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QSurfaceFormat>
-#include <QOpenGLContext>
-#include <QOpenGLFunctions>
 #include <QFileDialog>
 #include <QTextStream>
 #include <QJsonObject>
@@ -37,17 +43,36 @@
 #include <QPlainTextEdit>
 #include <QThread>
 
-TerminalWidget::TerminalWidget(QWidget *parent) : QOpenGLWidget(parent) {
+TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_InputMethodEnabled, true);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    // Request alpha buffer for per-pixel transparency
-    // Only request Core Profile if GPU rendering is needed (QPainter works
-    // best without it — Core Profile causes font scaling bugs on mismatched DPI)
-    QSurfaceFormat fmt = format();
-    fmt.setAlphaBufferSize(8);
-    setFormat(fmt);
+    // 0.7.4 refactor: TerminalWidget was a QOpenGLWidget from 0.1.0
+    // through 0.7.3. That produced ~54 Hz continuous UpdateRequest
+    // events on the top-level MainWindow (measured via paint-log
+    // instrumentation on both Wayland and X11), which cascaded full
+    // widget-tree repaints into every child — including the menubar
+    // behind any open dropdown popup — producing the dropdown-
+    // flicker symptom reported 2026-04-20. PartialUpdate,
+    // WA_OpaquePaintEvent, swapInterval=0, alpha-buffer opt-out, and
+    // attribute-stack experiments all failed to break the cascade;
+    // QOpenGLWidget composites its FBO through the parent's backing
+    // store and the composition path always invalidates the top-
+    // level.
+    //
+    // Switching the base class to plain QWidget eliminates the GL
+    // composition path entirely. QPainter works against the widget's
+    // standard backing store, partial-rect updates work as expected,
+    // and the menubar never repaints as a side-effect of terminal
+    // output. Tradeoff: the optional GL-glyph-atlas renderer
+    // (GlRenderer, gated by gpu_rendering config) is disabled until a
+    // future refactor re-introduces it as an embedded QOpenGLWindow
+    // via createWindowContainer. The default QPainter path —
+    // already ligature-aware via QTextLayout / HarfBuzz — is
+    // unaffected and remains the rendering path used by > 99% of
+    // users.
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
 
 
     // Pick a good monospace font
@@ -353,12 +378,13 @@ TerminalWidget::~TerminalWidget() {
         m_parseThread->wait(2000);
     }
 
-    // Clean up GL resources while context is still valid
-    if (m_glRenderer && context() && context()->isValid()) {
-        makeCurrent();
-        m_glRenderer->cleanup();
-        doneCurrent();
-    }
+    // Optional GL-atlas renderer was disabled in the 0.7.4 refactor
+    // (see class-top comment). The pointer is always null now; the
+    // block is kept commented out as a landmark for the re-enable
+    // refactor via embedded QOpenGLWindow.
+    // if (m_glRenderer && context() && context()->isValid()) {
+    //     makeCurrent(); m_glRenderer->cleanup(); doneCurrent();
+    // }
     if (m_logFile)
         m_logFile->close();
 }
@@ -556,7 +582,7 @@ bool TerminalWidget::event(QEvent *event) {
             }
         }
     }
-    return QOpenGLWidget::event(event);
+    return QWidget::event(event);
 }
 
 void TerminalWidget::paintEvent(QPaintEvent *) {
@@ -1338,6 +1364,9 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 }
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
+    ANTS_LOG(DebugLog::Input, "key press: key=0x%x mods=0x%x text=%s",
+             event->key(), int(event->modifiers()),
+             event->text().toUtf8().toPercentEncoding().constData());
     // URL quick-select mode input handling
     if (m_urlQuickSelectActive) {
         if (event->key() == Qt::Key_Escape) {
@@ -1703,7 +1732,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
 void TerminalWidget::resizeEvent(QResizeEvent *event) {
     // QOpenGLWidget::resizeEvent recreates the internal FBO at the new size.
     // Without this call, the FBO stays at its initial size and gets stretched.
-    QOpenGLWidget::resizeEvent(event);
+    QWidget::resizeEvent(event);
     m_spanCacheDirty = true;
     recalcGridSize();
     // Reposition the floating scroll-to-bottom button relative to the new
@@ -1788,7 +1817,7 @@ QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
         int y = m_padding + m_grid->cursorRow() * m_cellHeight;
         return QRect(x, y, m_cellWidth, m_cellHeight);
     }
-    return QOpenGLWidget::inputMethodQuery(query);
+    return QWidget::inputMethodQuery(query);
 }
 
 void TerminalWidget::onPtyFinished(int exitCode) {
@@ -1875,8 +1904,15 @@ void TerminalWidget::onVtBatch(const VtBatch &batch) {
     QString title = m_grid->windowTitle();
     if (title != m_lastTitle) {
         m_lastTitle = title;
+        ANTS_LOG(DebugLog::Signals, "titleChanged: %s",
+                 title.toUtf8().constData());
+        ANTS_LOG(DebugLog::Vt, "window title changed to: %s",
+                 title.toUtf8().constData());
         emit titleChanged(title);
     }
+    ANTS_LOG(DebugLog::Vt, "onVtBatch actions=%zu rawBytes=%lld",
+             batch.actions.size(),
+             static_cast<long long>(batch.rawBytes.size()));
 
     // Synchronized output (DEC 2026): same gating as legacy.
     bool wasSync = m_syncOutputActive;
@@ -1979,26 +2015,103 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data) {
     // Defense-in-depth: paste-confirmation dialog is policy-independent of
     // bracketed paste. MS Terminal #13014 took flak for disabling the warning
     // when bracketed paste was active; we do NOT follow that pattern.
-    if (!confirmDangerousPaste(data)) return;
-
-    if (m_grid->bracketedPaste()) {
-        // Strip embedded bracket paste markers that could inject escape sequences
-        // (CVE-2021-28848 class: \e[201~ ends paste; \e[200~ starts a nested paste)
-        QByteArray sanitized = data;
-        sanitized.replace("\x1B[200~", "");
-        sanitized.replace("\x1B[201~", "");
-        ptyWrite(QByteArray("\x1B[200~"));
-        ptyWrite(sanitized);
-        ptyWrite(QByteArray("\x1B[201~"));
-    } else {
-        ptyWrite(data);
+    QStringList reasons = pasteRiskReasons(data);
+    if (reasons.isEmpty()) {
+        performPaste(data);
+        return;
     }
+
+    // Fully async confirmation dialog, matching
+    // mainwindow.cpp::showDiffViewer's pattern exactly: heap-allocated
+    // QDialog + WA_DeleteOnClose + show()/raise()/activateWindow(),
+    // caller returns immediately, the actual paste happens in the
+    // accepted() callback. Two prior 0.7.4 attempts (QDialog::exec(),
+    // then show() + local QEventLoop) both re-opened the same
+    // ApplicationModal-vs-frameless-parent regression that bit
+    // showDiffViewer at 0.6.29 — any time we drive the dialog from
+    // a blocking nested loop on the same call stack as the paste
+    // gesture, every button-click reaching the dialog is swallowed.
+    // The Review-Changes pattern is the only shape that works under
+    // our frameless + translucent main window on KWin.
+    QString previewText = QString::fromUtf8(data);
+    QStringList lines = previewText.split('\n');
+    const int maxLines = 20;
+    bool truncated = false;
+    if (lines.size() > maxLines) {
+        lines = lines.mid(0, maxLines);
+        truncated = true;
+    }
+    for (QString &ln : lines) {
+        if (ln.size() > 120) ln = ln.left(117) + "...";
+    }
+    if (truncated) {
+        lines << QString("… (%1 more lines)")
+                     .arg(previewText.count('\n') + 1 - maxLines);
+    }
+
+    auto *dlg = new QDialog(this);
+    dlg->setObjectName(QStringLiteral("confirmPasteDialog"));
+    dlg->setWindowTitle("Confirm paste");
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+
+    auto *layout = new QVBoxLayout(dlg);
+    layout->setContentsMargins(16, 16, 16, 12);
+    layout->setSpacing(10);
+
+    auto *headline = new QLabel(
+        QString("<b>Paste looks risky: %1.</b><br>Review before confirming.")
+            .arg(reasons.join(", ")), dlg);
+    headline->setTextFormat(Qt::RichText);
+    headline->setWordWrap(true);
+    layout->addWidget(headline);
+
+    auto *previewLabel = new QLabel(lines.join('\n'), dlg);
+    previewLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    previewLabel->setStyleSheet(
+        "QLabel { font-family: monospace; padding: 6px 8px;"
+        "         border: 1px solid palette(mid);"
+        "         background: palette(alternate-base); }");
+    previewLabel->setWordWrap(false);
+    layout->addWidget(previewLabel);
+
+    auto *btnRow = new QHBoxLayout;
+    auto *cancelBtn = new QPushButton("Cancel", dlg);
+    auto *pasteBtn  = new QPushButton("&Paste", dlg);
+    cancelBtn->setDefault(true);
+    cancelBtn->setAutoDefault(true);
+    pasteBtn->setDefault(false);
+    pasteBtn->setAutoDefault(false);
+    btnRow->addStretch();
+    btnRow->addWidget(cancelBtn);
+    btnRow->addWidget(pasteBtn);
+    layout->addLayout(btnRow);
+
+    // Same activation dance as showDiffViewer — raise() fixes stacking
+    // above the frameless main window, activateWindow() makes the
+    // dialog the input-focus target so the focusChanged redirect's
+    // visible-dialog check sees it and bails.
+    connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
+    // Capture `data` by value into the lambda — the heap-allocated
+    // dialog outlives the pasteToTerminal() call, and `data` is
+    // consumed when the user accepts (not before).
+    QByteArray payload = data;
+    QPointer<TerminalWidget> self(this);
+    connect(pasteBtn, &QPushButton::clicked, dlg,
+            [self, dlg, payload]() {
+        if (self) self->performPaste(payload);
+        dlg->close();
+    });
+
+    dlg->adjustSize();
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
+    cancelBtn->setFocus(Qt::PopupFocusReason);
 }
 
-bool TerminalWidget::confirmDangerousPaste(const QByteArray &data) {
-    if (!m_confirmMultilinePaste) return true;
+QStringList TerminalWidget::pasteRiskReasons(const QByteArray &data) const {
+    if (!m_confirmMultilinePaste) return {};
 
-    // Classify: does this paste look risky?
     bool hasNewline = data.contains('\n') || data.contains('\r');
     bool hasSudo = data.contains("sudo ") || data.startsWith("sudo\t");
     // "curl … | sh" / "wget … | sh" — classic supply-chain footgun.
@@ -2018,38 +2131,29 @@ bool TerminalWidget::confirmDangerousPaste(const QByteArray &data) {
         }
     }
 
-    if (!hasNewline && !hasSudo && !hasPipeExec && !hasControl) return true;
-
     QStringList reasons;
     if (hasNewline)   reasons << "contains newline(s)";
     if (hasSudo)      reasons << "contains `sudo`";
     if (hasPipeExec)  reasons << "pipes to shell (`| sh` / `| bash`)";
     if (hasControl)   reasons << "contains control characters";
+    return reasons;
+}
 
-    // Build a preview — show up to 20 lines, truncating long lines.
-    QString preview = QString::fromUtf8(data);
-    QStringList lines = preview.split('\n');
-    const int maxLines = 20;
-    bool truncated = false;
-    if (lines.size() > maxLines) {
-        lines = lines.mid(0, maxLines);
-        truncated = true;
-    }
-    for (QString &ln : lines) {
-        if (ln.size() > 120) ln = ln.left(117) + "...";
-    }
-    if (truncated) lines << QString("… (%1 more lines)").arg(preview.count('\n') + 1 - maxLines);
+void TerminalWidget::performPaste(const QByteArray &data) {
+    if (!hasPty() || data.isEmpty()) return;
 
-    QMessageBox box(this);
-    box.setWindowTitle("Confirm paste");
-    box.setIcon(QMessageBox::Warning);
-    box.setText(QString("Paste looks risky: %1.\nReview before confirming.")
-                .arg(reasons.join(", ")));
-    box.setInformativeText(lines.join('\n'));
-    box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
-    if (auto *okBtn = box.button(QMessageBox::Ok)) okBtn->setText("&Paste");
-    box.setDefaultButton(QMessageBox::Cancel);
-    return box.exec() == QMessageBox::Ok;
+    if (m_grid->bracketedPaste()) {
+        // Strip embedded bracket paste markers that could inject escape sequences
+        // (CVE-2021-28848 class: \e[201~ ends paste; \e[200~ starts a nested paste)
+        QByteArray sanitized = data;
+        sanitized.replace("\x1B[200~", "");
+        sanitized.replace("\x1B[201~", "");
+        ptyWrite(QByteArray("\x1B[200~"));
+        ptyWrite(sanitized);
+        ptyWrite(QByteArray("\x1B[201~"));
+    } else {
+        ptyWrite(data);
+    }
 }
 
 QByteArray TerminalWidget::encodeKittyKey(QKeyEvent *event) const {
@@ -3690,68 +3794,19 @@ void TerminalWidget::prevBookmark() {
     update();
 }
 
-// --- OpenGL ---
-
-void TerminalWidget::initializeGL() {
-    // Clear to transparent so per-pixel alpha works when WA_TranslucentBackground is set.
-    // Without this, QOpenGLWidget clears its internal FBO to opaque black before
-    // QPainter draws, making background transparency impossible.
-    QOpenGLContext *ctx = QOpenGLContext::currentContext();
-    if (ctx) {
-        if (auto *f = ctx->functions())
-            f->glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-        // Free GL resources before the context dies. Without this, the atlas
-        // texture and VBOs become dangling on driver reset / context recreation
-        // (Qt destroys the old context and builds a new one); subsequent frames
-        // then touch freed handles and crash. Lambda captures `this` and is
-        // auto-disconnected when `this` is destroyed.
-        connect(ctx, &QOpenGLContext::aboutToBeDestroyed, this, [this]() {
-            if (!m_glRenderer) return;
-            makeCurrent();
-            m_glRenderer->cleanup();
-            m_glRenderer.reset();
-            doneCurrent();
-        });
-    }
-
-    if (m_gpuRendering) {
-        m_glRenderer = std::make_unique<GlRenderer>();
-        if (!m_glRenderer->initialize()) {
-            m_gpuRendering = false;
-            m_glRenderer.reset();
-        } else {
-            m_glRenderer->setFont(m_font, m_fontBold, m_fontItalic, m_fontBoldItalic);
-            m_glRenderer->setCellSize(m_cellWidth, m_cellHeight, m_fontAscent);
-        }
-    }
-}
-
-void TerminalWidget::resizeGL(int w, int h) {
-    if (m_glRenderer) {
-        m_glRenderer->setViewportSize(w, h);
-    }
-    recalcGridSize();
-}
+// --- OpenGL path (disabled in 0.7.4 — see class-top comment) ---
+//
+// The optional GPU-accelerated glyph-atlas renderer (GlRenderer) was
+// wired through QOpenGLWidget's initializeGL/resizeGL/paintGL
+// callbacks. Now that TerminalWidget is a plain QWidget, there's no
+// GL context to drive. setGpuRendering() is kept as a stub so the
+// config plumbing still compiles; flipping the bool has no effect
+// in 0.7.4. Future work: re-introduce the GL path as an embedded
+// QOpenGLWindow via createWindowContainer, sharing the grid data.
 
 void TerminalWidget::setGpuRendering(bool enabled) {
     m_gpuRendering = enabled;
-    if (enabled && !m_glRenderer && isValid()) {
-        // GPU path needs Core Profile for GLSL 3.3 shaders
-        QSurfaceFormat fmt = format();
-        fmt.setVersion(3, 3);
-        fmt.setProfile(QSurfaceFormat::CoreProfile);
-        setFormat(fmt);
-        // Initialize GL renderer now (context must be valid)
-        makeCurrent();
-        initializeGL();
-        doneCurrent();
-    } else if (!enabled && m_glRenderer) {
-        makeCurrent();
-        m_glRenderer->cleanup();
-        doneCurrent();
-        m_glRenderer.reset();
-    }
+    // No-op in 0.7.4 (see comment above).
     update();
 }
 

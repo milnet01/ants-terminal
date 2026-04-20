@@ -1,3 +1,47 @@
+ants-terminal (0.7.4-1) unstable; urgency=medium
+
+  * A session's worth of user-facing UI fixes plus a new Debug Mode
+    that made them possible. The instrument pinpointed a ~54 Hz
+    full-window repaint cascade that had been driving the menubar /
+    dropdown / paste-dialog flicker across several releases.
+  * Added: Debug Mode (src/debuglog.{h,cpp}). 14 independent
+    category toggles (Paint, Events, Input, PTY, VT, Render,
+    Plugins, Network, Config, Audit, Claude, Signals, Shell,
+    Session) via ANTS_DEBUG env var or Tools → Debug Mode menu.
+    Log at ~/.local/share/ants-terminal/debug.log.
+  * Added: OSC 133 prompt-on-new-line guard — terminal-side
+    equivalent of zsh's PROMPT_SP, works for any shell that emits
+    OSC 133 A at prompt start.
+  * Fixed: menubar File / Edit / View hover flash. QMenuBar now
+    sets autoFillBackground(true) + Qt::WA_StyledBackground, a
+    :hover rule mirrors :selected, setNativeMenuBar(false) is
+    explicit.
+  * Fixed: paste-confirmation dialog rewrote to the async Review-
+    Changes pattern (heap QDialog + WA_DeleteOnClose + show()/
+    raise()/activateWindow(), no exec(), no QEventLoop).
+  * Fixed: Command Palette idle timer churn — QListWidget is now
+    lazy-created in show() instead of at MainWindow construction,
+    so QAbstractItemView timers don't fire at idle.
+  * Fixed: QMainWindow::setAnimated(false) — we have no dock
+    widgets; the animator ran continuously at idle.
+  * Fixed: Qt UI effect animations disabled globally
+    (UI_AnimateMenu, UI_FadeMenu, UI_AnimateCombo, UI_AnimateTooltip,
+    UI_FadeTooltip, UI_AnimateToolBox) via
+    QApplication::setEffectEnabled.
+  * Fixed: titlebar button tooltips removed — a Qt / KWin quirk
+    re-fired the QTipLabel show/hide cycle on every frame,
+    animating its geometry and cascading through the whole widget
+    tree.
+  * Changed: TerminalWidget base class QOpenGLWidget → plain
+    QWidget. The GL widget composited through the parent's backing
+    store and always invalidated the top-level. QPainter path is
+    unaffected. GL glyph-atlas renderer dormant in 0.7.4.
+  * Tests: 3 new feature tests covering the menubar hover
+    stylesheet, the async paste dialog, and the QWidget base-class
+    refactor. 35/35 pass.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 20 Apr 2026 15:00:00 +0000
+
 ants-terminal (0.7.3-1) unstable; urgency=medium
 
   * H6.1 of the distribution-adoption plan lands: Lua plugins inside

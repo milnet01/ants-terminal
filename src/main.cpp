@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <QApplication>
+#include "debuglog.h"
 #include <QCommandLineParser>
 #include <QFont>
 #include <QSurfaceFormat>
@@ -130,6 +131,36 @@ int main(int argc, char *argv[]) {
     app.setApplicationName("Ants Terminal");
     app.setApplicationVersion(ANTS_VERSION);
     app.setStyle("Fusion");
+
+    // Disable Qt's built-in UI animations. These animate menu show/
+    // hide, combobox dropdown, tooltip fade, and toolbox expand as
+    // QPropertyAnimation(target=QWidget, prop=geometry) at ~60 Hz,
+    // and each animation frame drives a LayoutRequest cascade that
+    // repaints every widget in the main window. On Ants that
+    // surfaces as visible dropdown flicker any time a menu is open
+    // (root cause of the 2026-04-20 user report). We have zero use
+    // cases for animated menus — the terminal is a precision tool,
+    // not a presentation app.
+    QApplication::setEffectEnabled(Qt::UI_AnimateMenu, false);
+    QApplication::setEffectEnabled(Qt::UI_FadeMenu, false);
+    QApplication::setEffectEnabled(Qt::UI_AnimateCombo, false);
+    QApplication::setEffectEnabled(Qt::UI_AnimateTooltip, false);
+    QApplication::setEffectEnabled(Qt::UI_FadeTooltip, false);
+    QApplication::setEffectEnabled(Qt::UI_AnimateToolBox, false);
+
+    // Debug-mode bootstrap — see src/debuglog.h. When ANTS_DEBUG is
+    // set, we start logging immediately to ~/.local/share/ants-terminal/
+    // debug.log and also mirror to stderr so `2>` redirects still
+    // capture. Runtime toggles via Tools → Debug Mode only write to
+    // the file.
+    //   ANTS_DEBUG=all
+    //   ANTS_DEBUG=paint,events,vt
+    //   ANTS_DEBUG=1          # legacy: == paint
+    const QByteArray debugSpec = qgetenv("ANTS_DEBUG");
+    if (!debugSpec.isEmpty()) {
+        DebugLog::setActive(DebugLog::parseCategories(
+            QString::fromLocal8Bit(debugSpec)));
+    }
 
     // CLI parsing — handles --help / --version / --new-plugin before GUI init.
     QCommandLineParser parser;

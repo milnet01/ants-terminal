@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.3 (2026-04-20) (2026-04-19). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.4 (2026-04-20). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -80,6 +80,247 @@ Gating items (blocks adoption **today**, not just for being default):
 2. ~~**No AppStream metadata** — H2 unblocks GNOME Software / KDE Discover discovery.~~ ✅ Shipped in 0.6.17.
 3. ~~**No SECURITY.md** — H1. Distro security teams need a disclosure contact before shipping.~~ ✅ Shipped in 0.6.16.
 4. **Linux-only** + ~~**X11-only dropdown**~~ — H8 (macOS) widens the addressable audience; Wayland-native Quake positioning + global-hotkey registration both shipped (0.6.38 + 0.6.39).
+
+---
+
+## Per-store publication playbook
+
+The H-bundle table above tracks **preparation** work (the files that
+need to exist in-tree). This section tracks **submission** work —
+getting the prepared package actually **live** in each store's
+listing. Each store has its own review cadence, ingestion format,
+and maintainer expectations, so they're broken out as discrete items
+with step-by-step playbooks.
+
+Stores are ordered by **ease of publish × reach**: Flathub + AUR
+first (high reach, low friction), official distro archives last
+(highest friction, longest lead time). A store is considered
+"shipped" when `ants-terminal` installs from the stock package
+manager without extra repository configuration.
+
+| Store | Format | Prep status | Publish status | Target release |
+|-------|--------|-------------|----------------|----------------|
+| **P1 — Flathub** | Flatpak | ✅ manifest + Lua module (H6, H6.1) | 📋 submit `org.ants.Terminal` to `flathub/flathub` (H6.2) | 0.8.0 |
+| **P2 — AUR (Arch User Repository)** | PKGBUILD | ✅ recipe (H5) | 📋 push to `aur.archlinux.org/packages/ants-terminal.git` + `-git` variant | 0.8.0 |
+| **P3 — openSUSE OBS (home:ants-terminal)** | RPM spec | ✅ spec (H5) | 📋 upload to Open Build Service `home:` project, then target Tumbleweed / Leap repos | 0.8.0 |
+| **P4 — Fedora COPR** | RPM spec | ✅ spec (H5) | 📋 create `ants-terminal` COPR; later submit package review for `fedora-extras` | 0.8.0 |
+| **P5 — Debian / Ubuntu PPA** | deb source | ✅ debian/ tree (H5) | 📋 upload signed source package to Launchpad PPA | 0.8.0 |
+| **P6 — Snap Store (snapcraft.io)** | snapcraft.yaml | 📋 write `snap/snapcraft.yaml`, host-shell model like Flatpak | 📋 register `ants-terminal` snap name + publish via `snapcraft upload` | 0.9.0 |
+| **P7 — AppImage** | AppImage | 📋 write `ants-terminal.AppImage.yml` (linuxdeploy / appimage-builder) | 📋 publish nightly + release artifacts on GitHub Releases | 0.9.0 |
+| **P8 — Nixpkgs (NixOS)** | nix expression | 📋 write `pkgs/applications/terminal-emulators/ants-terminal/default.nix` | 📋 open PR against `NixOS/nixpkgs` master | 0.9.0 |
+| **P9 — Debian (main archive)** | deb, official | 📋 RFP → ITP → sponsored upload → new-queue review | 📋 file ITP bug, find DM sponsor | 1.0.0+ |
+| **P10 — Ubuntu (universe, via Debian)** | deb | Auto-sync from Debian unstable | 📋 rides on P9 | 1.0.0+ |
+| **P11 — Fedora (official, via Bodhi)** | RPM | 📋 package review bug → sponsor → Bodhi updates | 📋 rides on P4 quality signals | 1.0.0+ |
+| **P12 — Arch extra** | PKGBUILD, trusted | Would need TU sponsorship and high AUR install count | 💭 not a goal until reach justifies it | 1.0.0+ |
+
+### P1 — Flathub submission
+
+**Prerequisites:** H6 ✅, H6.1 ✅, H6.2 in-tree prep ✅ (screenshots,
+`make-flathub-manifest.sh`, FLATHUB.md playbook).
+**Blocker:** real-user shakedown of the 0.7.3 Flatpak before claiming
+the Flathub repo name.
+
+1. **Tag the release.** `git tag -s v<version>; git push --tags`.
+2. **Regenerate the tag-pinned manifest:**
+   `packaging/flatpak/make-flathub-manifest.sh v<version> >
+   /tmp/org.ants.Terminal.yml`.
+3. **Fork [flathub/flathub](https://github.com/flathub/flathub).**
+   In the fork, create a **new repo**
+   `flathub/org.ants.Terminal` per the Flathub "Submit via a new
+   repo" flow
+   (https://docs.flathub.org/docs/for-app-authors/submission/).
+4. **Populate the repo** with the generated manifest, a copy of
+   `org.ants.Terminal.metainfo.xml` (from `packaging/linux/`), and
+   a copy of `org.ants.Terminal.desktop`. Pin `branch: stable` in the
+   manifest so Flathub CI builds against our stable branch.
+5. **Open a PR** from `flathub/org.ants.Terminal` against
+   `flathub/flathub` with the repo URL in the PR body. Flathub CI
+   rebuilds on each push.
+6. **Respond to review comments** (typical first-review: shrink
+   `finish-args` surface, confirm the `flatpak-external-data-checker`
+   stanza updates without manual intervention).
+7. **On merge,** Flathub publishes automatically. `flatpak install
+   flathub org.ants.Terminal` is the smoke test.
+8. **Post-merge maintenance:** each new `v<version>` tag requires a
+   manifest PR against `flathub/org.ants.Terminal` pointing to the
+   new tag (single script invocation — `make-flathub-manifest.sh
+   v<new>` → commit → PR). Flathub CI handles the Lua-tarball hash
+   refresh on its own via `x-checker-data`.
+9. **Flip the gating-item entry:** "No distro packages anywhere" →
+   "unblocked via Flathub."
+
+### P2 — AUR publish
+
+**Prerequisites:** H5 ✅ (`packaging/archlinux/PKGBUILD` in tree).
+**Blocker:** need an `aur.archlinux.org` maintainer account and an
+SSH key registered there.
+
+1. **Create the `ants-terminal` AUR page** via `git clone
+   ssh://aur@aur.archlinux.org/ants-terminal.git` (empty repo created
+   on first push).
+2. **Copy `packaging/archlinux/PKGBUILD`** into the checkout, along
+   with a generated `.SRCINFO` (`makepkg --printsrcinfo > .SRCINFO`).
+3. **Refresh the tarball hash:** `updpkgsums` resolves the
+   `sha256sums=('SKIP')` placeholder against the GitHub tag.
+4. **Push** — the AUR git hook publishes immediately. No review
+   queue.
+5. **Repeat for the `-git` rolling variant:** second repo
+   `ants-terminal-git` with the three-line diff documented in
+   `packaging/README.md` (`pkgname`, `source`, `pkgver()`).
+6. **Maintenance per release:** `updpkgsums && makepkg --printsrcinfo
+   > .SRCINFO && git commit && git push`. Script candidate:
+   `scripts/publish-aur.sh`.
+
+### P3 — openSUSE Build Service (OBS)
+
+**Prerequisites:** H5 ✅ (`packaging/opensuse/ants-terminal.spec`).
+**Blocker:** `openSUSE Build Service` account
+(`build.opensuse.org`).
+
+1. **Log in to OBS** and create a `home:<username>:ants-terminal`
+   project.
+2. **`osc mkpac ants-terminal`** inside the project; drop in
+   `ants-terminal.spec`, the source tarball reference, and a
+   `.changes` file mirroring CHANGELOG.md in OBS's expected format.
+3. **`osc build`** locally against Tumbleweed to catch build
+   errors before upload. Then `osc commit`.
+4. **OBS auto-builds** against Tumbleweed, Leap 15.x, and any other
+   repos added to the project. Results visible at
+   `build.opensuse.org/package/show/home:<username>:ants-terminal/ants-terminal`.
+5. **Publish to stable repositories:** after green builds, submit a
+   `submitrequest` to `devel:languages:misc` (or a dedicated devel
+   project). Once accepted, package enters the distro review queue
+   for inclusion in the next Tumbleweed / Leap repos.
+6. **One-click-install URL:** OBS auto-generates
+   `software.opensuse.org/package/ants-terminal` pages for discovery.
+
+### P4 — Fedora COPR
+
+**Prerequisites:** H5 ✅ (spec is Fedora-compatible — uses `%cmake`
+macros that work on both Fedora and openSUSE).
+**Blocker:** Fedora Account System (FAS) account.
+
+1. **Create a COPR project** at `copr.fedorainfracloud.org/coprs/`
+   with Fedora 40/41/42/rawhide chroots enabled.
+2. **Upload the spec** via `copr-cli build <project>
+   /path/to/ants-terminal.spec` (or sync the GitHub repo with COPR's
+   `custom build` webhook for auto-rebuild on tag push).
+3. **Smoke-test:** `sudo dnf copr enable <username>/ants-terminal &&
+   sudo dnf install ants-terminal`.
+4. **Later — submit a package review** against the `Package Reviews`
+   Bugzilla product for inclusion in `fedora-extras`. This is the
+   start of the Fedora official-archive path (P11).
+
+### P5 — Debian / Ubuntu PPA (Launchpad)
+
+**Prerequisites:** H5 ✅ (`packaging/debian/` tree).
+**Blocker:** Launchpad account + a PGP signing key registered there.
+
+1. **Create a PPA** at `launchpad.net/~<user>/+archive/ubuntu/ants-terminal`.
+2. **Build a signed source package locally:** `debuild -S -sa` from
+   the project root (the debian/ tree is at `packaging/debian/`, so
+   symlink or copy it to `./debian/` first).
+3. **Upload:** `dput ppa:<user>/ants-terminal
+   ../ants-terminal_<version>-1_source.changes`. Launchpad rebuilds
+   for each supported Ubuntu series (jammy / noble / oracular).
+4. **Smoke-test:** `sudo add-apt-repository ppa:<user>/ants-terminal
+   && sudo apt update && sudo apt install ants-terminal`.
+5. **Backports note:** Debian users can install the same `.deb`
+   directly — Ubuntu PPAs work as a generic Debian-family archive
+   when users add the sources.list line manually.
+
+### P6 — Snap Store
+
+**Prerequisites:** write `snap/snapcraft.yaml`, which does NOT
+exist yet. Host-shell model similar to our Flatpak approach.
+
+1. **Write `snap/snapcraft.yaml`** targeting `core24`, `confinement:
+   strict`, with `plugs:` for `home`, `network`, `wayland`,
+   `desktop`, `desktop-legacy`, `opengl`, `pulseaudio`,
+   `gsettings`. PTY path mirrors the Flatpak host-shell wiring
+   (see `ptyhandler.cpp`'s `FLATPAK_ID` branch — needs a parallel
+   `SNAP` branch).
+2. **Test locally:** `snapcraft pack` + `sudo snap install
+   --dangerous ants-terminal_<version>_amd64.snap`.
+3. **Register the name:** `snapcraft register ants-terminal`.
+4. **Upload:** `snapcraft upload ants-terminal_<version>_amd64.snap
+   --release=stable`. Review by Snap Store is typically hours to
+   days on first submission (manual review for `strict`
+   confinement + `home` plug), then auto-approved for revisions.
+5. **Ongoing:** `snapcraft.io` GitHub builder hooks auto-rebuild
+   on tag push — no per-release manual work after the initial
+   submission.
+
+### P7 — AppImage
+
+**Prerequisites:** write an AppImage recipe. Not yet started.
+
+1. **Choose tool:** `linuxdeploy` with its Qt plugin is the standard
+   for Qt-based AppImages (handles Qt6, QML plugins, platform
+   integrations).
+2. **Add a CI lane** (`.github/workflows/appimage.yml`) that runs on
+   tag push: `make` the project, `linuxdeploy --appdir AppDir
+   --plugin qt --output appimage`, attach the resulting
+   `Ants_Terminal-<version>-x86_64.AppImage` to the GitHub Release.
+3. **(Optional) publish to AppImageHub** (`appimage.github.io`)
+   by opening a PR with a YAML metadata stub. AppImageHub is a
+   listing directory, not a store — it points at our GitHub
+   Release artifact.
+
+### P8 — Nixpkgs
+
+**Prerequisites:** write the nix expression. Not yet started.
+
+1. **Fork `NixOS/nixpkgs`.**
+2. **Add `pkgs/applications/terminal-emulators/ants-terminal/default.nix`**
+   with `mkDerivation` using `cmake`, `qt6.qtbase`,
+   `qt6.qtwayland`, `qt6.qtopengl`, `lua5_4`, etc. Pin
+   `src = fetchFromGitHub { … rev = "v<version>"; hash = "sha256-…"; }`.
+3. **Wire it in `pkgs/top-level/all-packages.nix`.**
+4. **Smoke-test:** `nix-build -A ants-terminal` in the fork.
+5. **Open PR** against `NixOS/nixpkgs`. First-submission reviews
+   are thorough (style, dependency minimization, `meta` fields);
+   budget 1–4 weeks of review cycles.
+6. **On merge,** `nix profile install nixpkgs#ants-terminal` works
+   for every NixOS + non-NixOS Nix user.
+
+### P9 — Debian (official archive)
+
+**Prerequisites:** P5 working, plus a Debian Developer (DD) sponsor.
+Longest lead time of any store.
+
+1. **File an RFP** (Request For Packaging) bug against
+   `wnpp` pseudo-package in Debian BTS.
+2. **Work with a sponsor** (DD or DM) to iteratively polish the
+   packaging (lintian clean, copyright audit, build on buildd
+   network). Our `packaging/debian/` tree is a starting point —
+   expect several rounds of refinement.
+3. **ITP** (Intent To Package): once polished, the sponsor files
+   an ITP bug and uploads the source package via their credentials.
+4. **New-queue review:** ftpmaster manually reviews the initial
+   upload for license + standards compliance. First-time uploads
+   can sit in new-queue for weeks.
+5. **After acceptance:** subsequent versions go through normal
+   sponsor-upload flow (still requires DD involvement) until I apply
+   for DM status (2-year typical timeline).
+
+### P10 — Ubuntu (via Debian)
+
+Rides on P9. Debian unstable auto-syncs to the next Ubuntu dev
+release; Ubuntu-specific patches generally aren't needed for a
+terminal emulator.
+
+### P11 — Fedora (official archive)
+
+Rides on P4 track record. Submit package review against
+`fedora-extras`; once approved, package lands in Fedora rawhide and
+follows normal Bodhi update flow into stable releases.
+
+### P12 — Arch extra
+
+Requires Arch Trusted User (TU) sponsorship. Not a near-term goal;
+AUR (P2) is the standard Arch path and serves the Arch community
+adequately.
 
 ---
 
@@ -515,6 +756,20 @@ a modern terminal" release.
 
 ### ⚡ Performance
 
+- 📋 **Terminal throughput slowdowns** (user report 2026-04-20).
+  Intermittent stalls observed during normal use. Investigation items:
+  (a) profile `onVtBatch()` under heavy-output workloads — `yes`,
+  `dd`, `find /`, build logs — and identify hotspots;
+  (b) audit `TerminalGrid::processAction` for O(n) allocations on
+  each Print (the hot path);
+  (c) check whether the async batch drain ack (`drainAck`) under
+  back-pressure is creating producer-consumer sawtooth rather than
+  steady flow; (d) measure paint time at 2000+ line scrollback with
+  ligatures on vs off; (e) check the focus-redirect lambda and other
+  `QApplication::focusChanged` handlers for expensive work per event.
+  Benchmark harness: `tests/perf/` with a fixed corpus, measure
+  bytes-per-second and paint-latency percentiles so regressions are
+  detectable in CI.
 - 📋 **Dynamic grid storage** (Alacritty
   [PR #1584](https://github.com/alacritty/alacritty/pull/1584/files)).
   Don't pre-allocate the full `Vec<Vec<Cell>>` scrollback; lazily

@@ -19,16 +19,39 @@ CommandPalette::CommandPalette(QWidget *parent) : QWidget(parent) {
     m_input->installEventFilter(this);
     m_layout->addWidget(m_input);
 
+    // IMPORTANT: do NOT construct the QListWidget here.
+    //
+    // QListWidget inherits QAbstractItemView, which schedules
+    // continuous internal timers (layout scheduler, selection
+    // animation driver, view-update timer, hover tracker) the moment
+    // it's attached to the widget tree — even if the parent is
+    // hidden. When the palette was built at MainWindow init, those
+    // timers drove a ~54 Hz LayoutRequest → UpdateRequest →
+    // full-widget-tree paint cascade against the main window at
+    // idle, and the cascade showed up as visible dropdown flicker
+    // whenever a menu was open (diagnosed 2026-04-20 via
+    // ANTS_PAINT_LOG=2 — the Timer events were all attributed to
+    // `cls=QListWidget name=commandPaletteList parent=CommandPalette`).
+    // setUpdatesEnabled(false) + WA_DontShowOnScreen didn't stop the
+    // timers because those attributes only affect painting, not the
+    // view's internal timer machinery.
+    //
+    // Lazy-create the list in ensureListReady() on first show(). No
+    // QListWidget means no QAbstractItemView timers, period.
+    connect(m_input, &QLineEdit::textChanged, this, &CommandPalette::filterActions);
+
+    hide();
+}
+
+void CommandPalette::ensureListReady() {
+    if (m_list) return;
     m_list = new QListWidget(this);
     m_list->setObjectName("commandPaletteList");
     m_list->setFocusPolicy(Qt::NoFocus);
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_layout->addWidget(m_list);
-
-    connect(m_input, &QLineEdit::textChanged, this, &CommandPalette::filterActions);
-    connect(m_list, &QListWidget::itemActivated, this, &CommandPalette::executeSelected);
-
-    hide();
+    connect(m_list, &QListWidget::itemActivated, this,
+            &CommandPalette::executeSelected);
 }
 
 void CommandPalette::setActions(const QList<QAction *> &actions) {
@@ -39,6 +62,12 @@ void CommandPalette::setActions(const QList<QAction *> &actions) {
 }
 
 void CommandPalette::show() {
+    // First-show: build the QListWidget. After this point the view
+    // exists for the lifetime of the palette — its internal timers
+    // fire only when we interact, which is fine (a visible palette
+    // with a live list is what users expect).
+    ensureListReady();
+
     m_input->blockSignals(true);
     m_input->clear();
     m_input->blockSignals(false);

@@ -12,6 +12,164 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.4] — 2026-04-20
+
+**Theme:** a session's worth of user-facing UI fixes, the introduction
+of a comprehensive debug-logging system, and the debt-cleanup that
+came out of both. The centerpiece is the new **Debug Mode** (Tools
+→ Debug Mode), which was what let us pin a ~54 Hz full-window
+repaint cascade that had been driving the menubar / dropdown /
+paint-dialog flicker everyone had been chasing for multiple
+releases. Fixes to the Command Palette, Paste dialog, TitleBar,
+QMainWindow animator, Qt UI effects, `QMenuBar`'s hover rule, and
+several smaller items all landed here.
+
+### Added
+
+- **Debug Mode** (`src/debuglog.{h,cpp}` — ~200 lines). A single
+  `ANTS_LOG(category, ...)` macro plus 14 independent category
+  toggles (Paint, Events, Input, PTY, VT, Render, Plugins, Network,
+  Config, Audit, Claude, Signals, Shell, Session). Categories can
+  be enabled narrowly (one) or broadly (all) via either
+  `ANTS_DEBUG=<list>` at launch (comma-separated names, or `all`,
+  or `1` for legacy paint-only) or **Tools → Debug Mode →
+  [checkable submenu]** at runtime. Output is timestamped and
+  written to `~/.local/share/ants-terminal/debug.log` (append mode,
+  one header per process start with PID + active category mask);
+  stderr mirror only when the env var was used, so `2>file.log`
+  redirection still works. Menu also offers **Open Log File** (xdg-
+  opens the log in the system viewer) and **Clear Log File**.
+  Hot-path cost when disabled is a single bit-test on a static
+  `quint32`. Replaces the ad-hoc `ANTS_PAINT_LOG` diagnostic hack
+  that was briefly landed mid-session.
+- **OSC 133 prompt-on-new-line guard** in
+  `TerminalGrid::processAction`'s OSC 133 `A` handler. When a shell
+  emits `ESC ] 133;A ST` at the start of a new prompt, the terminal
+  now nudges the cursor to column 0 of the next line first if the
+  previous output didn't end with a newline (e.g.
+  `cat file.json` whose last byte is `}`). Fixes the long-standing
+  "prompt glued onto the end of the previous command's output"
+  UX papercut. Equivalent to zsh's `PROMPT_SP` shell-side option,
+  but works for bash / fish / any shell that emits OSC 133 A.
+  Requires the shell-integration scripts at
+  `packaging/shell-integration/ants-osc133.{bash,zsh}` to be
+  sourced; without OSC 133, the terminal has no way to know a
+  prompt is starting.
+
+### Fixed
+
+- **Menubar File / Edit / View hover still flashed** on mouseover
+  despite the 0.6.42 focus-redirect guards and the 0.6.43
+  `QMenuBar::item` base stylesheet rule. Two remaining leaks:
+  (a) the QMenuBar inherits `Qt::WA_TranslucentBackground` from the
+  MainWindow, which disables auto-fill for the widget tree, so each
+  hover repaint briefly rendered over cleared-to-transparent pixels;
+  (b) Qt's QStyleSheetStyle treats `QMenuBar::item:hover` as a
+  distinct pseudo-state from `:selected`, and the Breeze / Fusion
+  paths can hover-flash for one frame before selection engages —
+  on that frame, only `:hover` styling applied, and `:hover` was
+  never defined. Fix sets `autoFillBackground(true)` +
+  `Qt::WA_StyledBackground` on the QMenuBar so the stylesheet
+  background-color paints reliably, mirrors the `:selected`
+  highlight into `:hover`, and makes `setNativeMenuBar(false)`
+  explicit so DE global-menu integrations never hide the menubar
+  in our frameless window.
+- **Paste-confirmation dialog: Paste button swallowed mouse clicks**
+  when focus wasn't already on it — only the `&Paste` Alt-mnemonic
+  path worked. Root cause under a frameless + translucent main
+  window on KWin: any dialog that goes through `QDialog::exec()`
+  inherits Qt's `Qt::ApplicationModal` transition, which doesn't
+  compose well with our `QApplication::focusChanged` redirect on
+  the frameless parent — same incompatibility the Review-Changes
+  dialog hit at 0.6.29. Rewrote `pasteToTerminal()` to use the
+  Review-Changes shape exactly: heap-allocated `QDialog` with
+  `Qt::WA_DeleteOnClose`, own `QHBoxLayout` of `QPushButton`s
+  (Cancel default, Paste `setAutoDefault(false)`), `clicked`
+  lambda calls `performPaste()` and closes. No blocking; caller
+  returns immediately. Previous attempts via `QMessageBox::exec()`,
+  custom `QDialog::exec()`, and `show() + QEventLoop` all hit the
+  same modal-vs-frameless regression.
+- **Command Palette QListWidget continuous-timer churn.** The
+  hidden `QListWidget` inside `CommandPalette` was running its
+  internal `QAbstractItemView` machinery (layout scheduler,
+  selection animation, view-update timer) from MainWindow
+  construction onward, even though the palette itself was hidden.
+  Debug-log measurement showed the timer firing at ~50 Hz,
+  cascading LayoutRequest → UpdateRequest → full widget-tree
+  paint. Fix: lazy-create the list in `CommandPalette::show()`
+  so the view doesn't exist until the user first presses
+  Ctrl+Shift+P. Zero `QAbstractItemView` timers at idle.
+- **QMainWindow's built-in `QWidgetAnimator`** was enabled by
+  default (`setAnimated(true)`). It exists to animate dock-widget
+  rearrangements; Ants has no dock widgets, but the animator
+  still ran at idle. `setAnimated(false)` kills the continuous
+  `QPropertyAnimation(target=QWidget, prop=geometry)` cycle that
+  was cascading a LayoutRequest through the whole widget tree on
+  every frame.
+- **Qt UI effect animations** (`Qt::UI_AnimateMenu` /
+  `UI_FadeMenu` / `UI_AnimateCombo` / `UI_AnimateTooltip` /
+  `UI_FadeTooltip` / `UI_AnimateToolBox`) disabled globally at
+  startup via `QApplication::setEffectEnabled(…, false)`. Menu
+  show/hide, combobox dropdown, tooltip fade, and toolbox expand
+  all went through `QPropertyAnimation(geometry)` at 60 Hz — each
+  animation frame triggered a LayoutRequest cascade. We're a
+  precision terminal, not a presentation app; these animations
+  were pure cost with no user benefit.
+- **TitleBar button tooltips** (Center / Minimize / Maximize /
+  Close) removed. A Qt / KWin / Wayland quirk re-fired the
+  `QTipLabel` show/hide cycle on every frame while the cursor was
+  near a titlebar button, animating the tooltip's geometry at
+  ~60 Hz, cascading LayoutRequest through the whole widget tree.
+  Diagnosed via `ANTS_DEBUG=paint,events` — the log pinpointed
+  `cls=QTipLabel name=qtooltip_label parent=QToolButton:closeBtn`
+  as the repaint source. The button glyphs (✥ / ✕ / ⬜ / ⟩) + the
+  hover-colour feedback give enough affordance without tooltip
+  text.
+- **`TerminalWidget` switched from `QOpenGLWidget` to plain
+  `QWidget`.** The GL widget composites its FBO through the
+  parent's backing store and the composition path always
+  invalidates the top-level window — we chased this at length via
+  `PartialUpdate`, `WA_OpaquePaintEvent`, `swapInterval(0)`,
+  `setAlphaBufferSize` opt-out, etc. None fixed it. Switching the
+  base class eliminates the GL composition path entirely. The
+  default QPainter path — already ligature-aware via QTextLayout
+  / HarfBuzz — is unaffected. The optional GL glyph-atlas
+  renderer (`gpu_rendering` config) is dormant in 0.7.4 and
+  returns in a future refactor as an embedded `QOpenGLWindow` via
+  `createWindowContainer` (the only shape that cleanly decouples
+  GL composition from the parent's backing store).
+
+### Tests
+
+- `tests/features/menubar_hover_stylesheet/` — pins the
+  `QMenuBar::item:hover` rule, `autoFillBackground(true)`,
+  `Qt::WA_StyledBackground`, the `QMenuBar::item` base rule, and
+  `setNativeMenuBar(false)` for the menubar hover no-flash contract.
+- `tests/features/paste_dialog_custom/` — pins the async
+  `pasteToTerminal()` pattern: `new QDialog(this)` on the heap,
+  `Qt::WA_DeleteOnClose`, `QDialogButtonBox::Ok+Cancel`, Cancel
+  `setDefault(true)`, Paste `setAutoDefault(false)`, the
+  `show() + raise() + activateWindow()` activation dance, explicit
+  `setFocus` on a button, `QPointer<TerminalWidget>` tab-close
+  guard, `performPaste()` helper, no `QEventLoop`, no
+  `QDialog::exec()`. Forbids the old synchronous
+  `bool confirmDangerousPaste(...)` API from reappearing.
+- `tests/features/terminal_partial_update_mode/` — pins
+  `TerminalWidget : public QWidget` (not QOpenGLWidget) and the
+  absence of `QOpenGLWidget::*` / `makeCurrent` calls in the `.cpp`.
+
+### Known issue
+
+A residual dropdown-flicker cycle driven by a
+`QPropertyAnimation(target=QWidget, prop=geometry)` still runs in
+some idle states on KWin + Qt 6. The per-iteration fixes listed
+above resolved identifiable sources (CommandPalette QListWidget,
+TitleBar tooltip, QMainWindow animator, Qt UI effects); what
+remains is a Qt-internal animation we have not yet pinpointed. The
+new Debug Mode (Tools → Debug Mode) is the instrument to hunt it
+with — enable `paint` + `events` and grep the log for
+`QPropertyAnimation CREATED` lines.
+
 ## [0.7.3] — 2026-04-20
 
 **Theme:** H6.1 of the 📦 distribution-adoption plan — Lua plugins

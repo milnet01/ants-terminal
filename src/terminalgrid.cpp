@@ -869,6 +869,21 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             return;
         }
 
+        // zsh PROMPT_SP-style guard: if the previous command's last
+        // output didn't end with a newline, the prompt would render
+        // partway through the last output line (e.g. `cat file.json`
+        // whose tail is `}` with no trailing newline — the next
+        // `$ ` prompt appears right after the `}`). Nudge the cursor
+        // to column 0 of the next line before recording the prompt
+        // region so the prompt always starts on its own line. User
+        // report 2026-04-20. zsh does this shell-side via its
+        // PROMPT_SP option; bash / fish don't, but they all emit
+        // OSC 133 A at prompt-start when shell integration is
+        // installed, so the terminal can do it instead.
+        if (marker == 'A' && m_cursorCol > 0) {
+            carriageReturn();
+            newLine();
+        }
         const int globalLine = static_cast<int>(m_scrollback.size()) + m_cursorRow;
         switch (marker) {
         case 'A': // Prompt start
