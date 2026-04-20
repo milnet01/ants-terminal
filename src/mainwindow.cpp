@@ -39,6 +39,7 @@ QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
 #include <QShowEvent>
 #include <QMoveEvent>
 #include <QMouseEvent>
+#include <QHoverEvent>
 #include <QMenuBar>
 #include <QFrame>
 #include <QLineEdit>
@@ -3368,14 +3369,38 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
     }
     // Dropdown-flicker kill-switch (app-level). See the construction-
     // site comment above `installEventFilter(this)` for rationale.
-    // We only reach this branch while a menubar-owned QMenu is open,
-    // because the install/remove is scoped to aboutToShow/aboutToHide.
-    if (event->type() == QEvent::MouseMove) {
+    // Extended 0.7.6 to also swallow HoverMove / HoverEnter /
+    // HoverLeave in the same intra-action zone. Qt's style engine
+    // consults WA_Hover tracking (a separate channel from
+    // QMouseEvent) to update :hover pseudo-state on every cursor
+    // position tick; without suppressing HoverMove here, each mouse
+    // pixel over the active menubar item re-evaluated the stylesheet
+    // for QMenuBar::item:hover → repainted the menubar → KWin
+    // re-composited the translucent window → visible flicker on the
+    // open dropdown that sits on top. User reported 2026-04-20 that
+    // the 0.7.5 NoAnimStyle fix only partially addressed it (slight
+    // reduction but still visible); this is the missing half.
+    if (event->type() == QEvent::MouseMove
+        || event->type() == QEvent::HoverMove
+        || event->type() == QEvent::HoverEnter
+        || event->type() == QEvent::HoverLeave) {
         QWidget *popup = QApplication::activePopupWidget();
         if (popup && popup->inherits("QMenu")) {
-            auto *me = static_cast<QMouseEvent *>(event);
-            QPoint barLocal = m_menuBar->mapFromGlobal(
-                me->globalPosition().toPoint());
+            QPoint gpos;
+            if (auto *me = dynamic_cast<QMouseEvent *>(event)) {
+                gpos = me->globalPosition().toPoint();
+            } else if (auto *he = dynamic_cast<QHoverEvent *>(event)) {
+                // QHoverEvent carries widget-local position; convert
+                // via the hovered widget.
+                if (auto *w = qobject_cast<QWidget *>(watched)) {
+                    gpos = w->mapToGlobal(he->position().toPoint());
+                } else {
+                    gpos = QCursor::pos();  // fallback
+                }
+            } else {
+                gpos = QCursor::pos();
+            }
+            QPoint barLocal = m_menuBar->mapFromGlobal(gpos);
             if (m_menuBar->rect().contains(barLocal)) {
                 QAction *under  = m_menuBar->actionAt(barLocal);
                 QAction *active = m_menuBar->activeAction();
