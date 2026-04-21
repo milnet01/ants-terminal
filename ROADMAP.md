@@ -789,10 +789,13 @@ a modern terminal" release.
     `TerminalWidget::recentOutput()` — same accessor the AI dialog
     uses for context capture, so format stays consistent. Pinned
     by `tests/features/remote_control_get_text/`.
-  - 📋 **Last command** in the initial set: `launch` (spawn a
-    command in a new tab — convenience wrapper over `new-tab` +
+  - ✅ **`launch` command.** Convenience wrapper for `new-tab` +
     `send-text`, sugar for `idx=$(... new-tab) && ... send-text
-    --remote-tab $idx ...`).
+    --remote-tab $idx ...`. `command` is required (rejects empty
+    with a "use new-tab" hint); auto-appends `\n` so the command
+    actually runs. Pinned by `tests/features/remote_control_launch/`.
+    **Initial command surface complete** — 7/7. Remaining work in
+    this item is the X25519 auth layer (currently 💭).
   - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
     is set. Shipped after the command surface is complete.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark

@@ -141,6 +141,9 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("get-text")) {
         return cmdGetText(req);
     }
+    if (cmd == QLatin1String("launch")) {
+        return cmdLaunch(req);
+    }
     QJsonObject e;
     e["ok"] = false;
     e["error"] = QStringLiteral("unknown command: %1").arg(cmd);
@@ -312,6 +315,37 @@ QJsonDocument RemoteControl::cmdSetTitle(const QJsonObject &req) {
             "set-title: no tab at index %1").arg(idx);
         return QJsonDocument(out);
     }
+    out["ok"] = true;
+    out["index"] = idx;
+    return QJsonDocument(out);
+}
+
+QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
+    // Request shape: {"cmd":"launch","cwd":"<path optional>","command":"<string required>"}
+    //
+    // `launch` differs from `new-tab` in two ways:
+    //   1. `command` is REQUIRED — the whole point of launch is to
+    //      spawn something, so we reject the no-command call up front
+    //      rather than silently behaving like new-tab.
+    //   2. We auto-append `\n` if the command doesn't already end in
+    //      one — matches user intent ("launch this command" implies
+    //      "and run it"). new-tab leaves command untouched because
+    //      it's the lower-level building block; launch is the sugar
+    //      that "just works" for the common case.
+    QJsonObject out;
+    const QJsonValue commandVal = req.value("command");
+    if (!commandVal.isString() || commandVal.toString().isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "launch: missing or empty \"command\" field "
+            "(use new-tab if you want a bare shell)");
+        return QJsonDocument(out);
+    }
+    QString command = commandVal.toString();
+    if (!command.endsWith('\n')) command += '\n';
+
+    const QString cwd = req.value("cwd").toString();
+    const int idx = m_main->newTabForRemote(cwd, command);
     out["ok"] = true;
     out["index"] = idx;
     return QJsonDocument(out);

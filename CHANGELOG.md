@@ -14,6 +14,25 @@ for security-relevant changes.
 
 ### Added
 
+- **Remote-control — `launch` command.** Seventh and final command in
+  the initial rc_protocol surface. Convenience wrapper that spawns a
+  command in a new tab — sugar for the `idx=$(... new-tab) && ...
+  send-text --remote-tab $idx --remote-text $cmd$'\n'` pattern,
+  collapsed into one round-trip.
+
+      {"cmd":"launch","cwd":"<path optional>","command":"<string required>"}
+      -> {"ok":true,"index":<int>}
+
+  `command` is required (empty / missing yields a documented error
+  pointing at `new-tab` for the bare-shell case). Auto-appends `\n`
+  to the command if not already present — the convenience
+  differentiator from `new-tab`, which stays byte-faithful for
+  scripts that compose multi-line input or send control sequences.
+
+      ants-terminal --remote launch --remote-command 'htop'
+      ants-terminal --remote launch --remote-cwd /tmp --remote-command 'tail -f log'
+
+  Pinned by `tests/features/remote_control_launch/`.
 - **Remote-control — `get-text` command.** Sixth rc_protocol command.
   Returns the trailing N lines of (scrollback + screen) joined with
   `\n` — so scripts can capture output, dispatch on visible state,
@@ -194,6 +213,20 @@ for security-relevant changes.
   **Residual flicker is still visible** (confirmed by the user after
   shipping this change) — pushed to the 0.8.0 roadmap's
   "Carried over from 0.7.x" section for a different-angle fix.
+
+### Fixed
+
+- **`new-tab` honours its documented "caller owns newline" contract.**
+  The first ship of `new-tab` used `TerminalWidget::writeCommand` for
+  the deferred command write, which always auto-appends `\n` —
+  contradicting the documented send-text-style "caller owns the
+  trailing newline" semantics. `MainWindow::newTabForRemote` now
+  uses `sendToPty` (raw bytes) instead. The convenience case lives
+  in the new `launch` command (which auto-appends explicitly), so
+  callers who wanted "open + run" can switch with no behaviour
+  change. Pinned by an `INV-5 (neg)` rule in
+  `tests/features/remote_control_launch/` against any future
+  re-introduction of `writeCommand` in `newTabForRemote`.
 
 
 ## [0.7.5] — 2026-04-20

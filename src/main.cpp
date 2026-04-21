@@ -302,7 +302,12 @@ int main(int argc, char *argv[]) {
                 text = QString::fromUtf8(in.readAll());
             }
             args["text"] = text;
-        } else if (cmd == QLatin1String("new-tab")) {
+        } else if (cmd == QLatin1String("new-tab")
+                || cmd == QLatin1String("launch")) {
+            // launch shares the cwd + command argument shape with
+            // new-tab — it's the convenience wrapper that requires
+            // command and auto-appends `\n`. Server-side cmdLaunch
+            // enforces the requirement; the client just forwards.
             if (parser.isSet(remoteCwdOpt)) {
                 args["cwd"] = parser.value(remoteCwdOpt);
             }

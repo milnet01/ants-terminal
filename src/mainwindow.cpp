@@ -2237,10 +2237,16 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
         // 200 ms settle before writing — same timing the SSH-manager
         // wiring uses (onSshConnect) because the shell child needs a
         // moment to finish its init before it can accept input reliably.
+        // Use sendToPty (raw bytes) rather than writeCommand: the
+        // caller owns the trailing newline, matching send-text
+        // semantics. `launch` is the rc command that auto-appends
+        // newlines for the convenience case; `new-tab` stays
+        // byte-faithful so a script can write partial lines or
+        // include control sequences.
         QPointer<TerminalWidget> guard(terminal);
-        QString cmd = command;
-        QTimer::singleShot(200, this, [guard, cmd]() {
-            if (guard) guard->writeCommand(cmd);
+        QByteArray cmdBytes = command.toUtf8();
+        QTimer::singleShot(200, this, [guard, cmdBytes]() {
+            if (guard) guard->sendToPty(cmdBytes);
         });
     }
     return idx;

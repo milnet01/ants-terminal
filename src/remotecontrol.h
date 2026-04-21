@@ -78,6 +78,7 @@ private:
     QJsonDocument cmdSelectWindow(const QJsonObject &req);
     QJsonDocument cmdSetTitle(const QJsonObject &req);
     QJsonDocument cmdGetText(const QJsonObject &req);
+    QJsonDocument cmdLaunch(const QJsonObject &req);
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent

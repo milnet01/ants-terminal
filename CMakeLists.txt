@@ -1308,6 +1308,30 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # remote_control_launch — seventh + final command in the initial
+    # rc_protocol surface. Locks the require-command contract, the
+    # auto-newline behaviour (the convenience differentiator from
+    # new-tab), the delegation into newTabForRemote (no parallel
+    # tab-creation logic), the sendToPty-not-writeCommand fix in
+    # newTabForRemote (so new-tab stays byte-faithful), and the
+    # shared client-CLI branch with new-tab. See
+    # tests/features/remote_control_launch/spec.md.
+    add_executable(test_remote_control_launch
+        tests/features/remote_control_launch/test_remote_control_launch.cpp
+    )
+    target_compile_options(test_remote_control_launch PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_launch PRIVATE
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    )
+    add_test(NAME remote_control_launch COMMAND test_remote_control_launch)
+    set_tests_properties(remote_control_launch PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only
