@@ -256,6 +256,11 @@ int main(int argc, char *argv[]) {
         "the auto-title path take over again.",
         "string");
     parser.addOption(remoteTitleOpt);
+    QCommandLineOption remoteLinesOpt("remote-lines",
+        "Number of trailing lines for `get-text` (scrollback + screen). "
+        "Default 100, capped at 10 000 server-side.",
+        "n");
+    parser.addOption(remoteLinesOpt);
     parser.process(app);
 
     if (parser.isSet(newPluginOpt)) {
@@ -309,6 +314,19 @@ int main(int argc, char *argv[]) {
             // pin), so isSet() is the right gate, not !value().isEmpty().
             if (parser.isSet(remoteTitleOpt)) {
                 args["title"] = parser.value(remoteTitleOpt);
+            }
+        } else if (cmd == QLatin1String("get-text")) {
+            if (parser.isSet(remoteLinesOpt)) {
+                bool ok = false;
+                int n = parser.value(remoteLinesOpt).toInt(&ok);
+                if (!ok || n < 0) {
+                    std::fprintf(stderr,
+                        "ants-terminal --remote get-text: invalid "
+                        "--remote-lines value: %s\n",
+                        qUtf8Printable(parser.value(remoteLinesOpt)));
+                    return 1;
+                }
+                args["lines"] = n;
             }
         }
         return RemoteControl::runClient(cmd, args, socketPath);

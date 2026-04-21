@@ -1287,6 +1287,27 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # remote_control_get_text — sixth rc_protocol command. Locks the
+    # reuse of TerminalWidget::recentOutput (so the AI dialog and
+    # rc_protocol can't drift apart), the 10 000-line response cap,
+    # the response field set (text + lines + bytes), and the
+    # client-side --remote-lines validation. See
+    # tests/features/remote_control_get_text/spec.md.
+    add_executable(test_remote_control_get_text
+        tests/features/remote_control_get_text/test_remote_control_get_text.cpp
+    )
+    target_compile_options(test_remote_control_get_text PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_get_text PRIVATE
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    )
+    add_test(NAME remote_control_get_text COMMAND test_remote_control_get_text)
+    set_tests_properties(remote_control_get_text PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only

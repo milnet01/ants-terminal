@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <algorithm>
 #include <QJsonArray>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -137,6 +138,9 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("set-title")) {
         return cmdSetTitle(req);
     }
+    if (cmd == QLatin1String("get-text")) {
+        return cmdGetText(req);
+    }
     QJsonObject e;
     e["ok"] = false;
     e["error"] = QStringLiteral("unknown command: %1").arg(cmd);
@@ -219,6 +223,55 @@ QJsonDocument RemoteControl::cmdSelectWindow(const QJsonObject &req) {
     }
     out["ok"] = true;
     out["index"] = idx;
+    return QJsonDocument(out);
+}
+
+QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
+    // Request shape: {"cmd":"get-text","tab":<int optional>,"lines":<int optional>}
+    //   - `tab`   optional; default = active tab. isDouble() guard
+    //     (consistent with send-text / set-title).
+    //   - `lines` optional; default 100. Number of trailing lines from
+    //     scrollback + screen, joined with `\n`. Negative or zero
+    //     falls back to the default (matches the existing
+    //     TerminalWidget::recentOutput contract). Capped at 10 000
+    //     here so a script that writes `--remote-lines 1000000`
+    //     against a million-line scrollback doesn't return a 100 MB
+    //     JSON envelope. Beyond 10 000 lines the caller probably
+    //     wants the file directly (Ctrl+Shift+P → Export Scrollback)
+    //     rather than over the wire.
+    QJsonObject out;
+    TerminalWidget *target = nullptr;
+    const QJsonValue tabVal = req.value("tab");
+    if (tabVal.isDouble()) {
+        const int idx = tabVal.toInt();
+        target = m_main->terminalAtTab(idx);
+        if (!target) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "get-text: no tab at index %1").arg(idx);
+            return QJsonDocument(out);
+        }
+    } else {
+        target = m_main->currentTerminal();
+        if (!target) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral("get-text: no active terminal");
+            return QJsonDocument(out);
+        }
+    }
+
+    int lines = 100;
+    const QJsonValue linesVal = req.value("lines");
+    if (linesVal.isDouble()) {
+        const int requested = linesVal.toInt();
+        if (requested > 0) lines = std::min(requested, 10000);
+    }
+
+    const QString text = target->recentOutput(lines);
+    out["ok"] = true;
+    out["text"] = text;
+    out["lines"] = text.count('\n') + (text.isEmpty() ? 0 : 1);
+    out["bytes"] = text.toUtf8().size();
     return QJsonDocument(out);
 }
 

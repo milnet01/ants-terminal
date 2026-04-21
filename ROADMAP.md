@@ -783,9 +783,16 @@ a modern terminal" release.
     restores from `shellTitle()` (under `tabTitleFormat == "title"`)
     or rebuilds via the format-driven path. Pin freed at tab-close.
     Pinned by `tests/features/remote_control_set_title/`.
-  - 📋 **Next commands** (one per commit, order TBD by user priority):
-    `get-text` (read visible screen), `launch` (spawn a command in
-    a new tab — convenience wrapper over `new-tab` + `send-text`).
+  - ✅ **`get-text` command.** Returns trailing N lines of
+    (scrollback + screen) joined with `\n`. Default 100, capped
+    server-side at 10 000 to bound the JSON envelope. Reuses
+    `TerminalWidget::recentOutput()` — same accessor the AI dialog
+    uses for context capture, so format stays consistent. Pinned
+    by `tests/features/remote_control_get_text/`.
+  - 📋 **Last command** in the initial set: `launch` (spawn a
+    command in a new tab — convenience wrapper over `new-tab` +
+    `send-text`, sugar for `idx=$(... new-tab) && ... send-text
+    --remote-tab $idx ...`).
   - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
     is set. Shipped after the command surface is complete.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark

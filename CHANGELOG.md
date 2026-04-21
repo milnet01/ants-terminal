@@ -14,6 +14,31 @@ for security-relevant changes.
 
 ### Added
 
+- **Remote-control — `get-text` command.** Sixth rc_protocol command.
+  Returns the trailing N lines of (scrollback + screen) joined with
+  `\n` — so scripts can capture output, dispatch on visible state,
+  or grab the last command's result.
+
+      {"cmd":"get-text","tab":<int optional>,"lines":<int optional>}
+      -> {"ok":true,"text":"<string>","lines":<int>,"bytes":<int>}
+
+  Default 100 lines; capped server-side at 10 000 so a runaway
+  `--remote-lines 1000000` against a million-line scrollback can't
+  blow up the JSON envelope. Reuses
+  `TerminalWidget::recentOutput(int)` — already the AI dialog's
+  context-capture accessor, so format stays consistent across both
+  consumers. Client CLI adds `--remote-lines <n>` (validated via
+  `toInt(&ok)`; non-numeric or negative values reject before the
+  socket call).
+
+      ants-terminal --remote get-text                                   # default 100
+      ants-terminal --remote get-text --remote-lines 24                 # screen-ish
+      ants-terminal --remote get-text --remote-tab 0 --remote-lines 500 # specific tab
+
+  Pinned by `tests/features/remote_control_get_text/` — 6 invariants
+  including the 10 000-line cap, the response field set
+  (`text`/`lines`/`bytes`), and the client-side `--remote-lines`
+  validation.
 - **Remote-control — `set-title` command.** Fifth rc_protocol command.
   Pins a tab label that survives both the per-shell `titleChanged`
   signal (OSC 0/2 from the inferior) and the 2 s `updateTabTitles`
