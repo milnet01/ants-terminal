@@ -1265,6 +1265,28 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # remote_control_set_title — fifth rc_protocol command. Locks the
+    # title-pin mechanism: the per-shell titleChanged signal handler
+    # AND updateTabTitles both consult m_tabTitlePins, the tab-close
+    # path frees the pin entry, and clearing the pin via empty-title
+    # restores from shellTitle() when tabTitleFormat == "title".
+    # See tests/features/remote_control_set_title/spec.md.
+    add_executable(test_remote_control_set_title
+        tests/features/remote_control_set_title/test_remote_control_set_title.cpp
+    )
+    target_compile_options(test_remote_control_set_title PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_set_title PRIVATE
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME remote_control_set_title COMMAND test_remote_control_set_title)
+    set_tests_properties(remote_control_set_title PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only

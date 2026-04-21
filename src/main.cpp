@@ -251,6 +251,11 @@ int main(int argc, char *argv[]) {
         "trailing newline — matches `send-text` semantics.",
         "string");
     parser.addOption(remoteCommandOpt);
+    QCommandLineOption remoteTitleOpt("remote-title",
+        "Title for `set-title`. Empty string clears the pin and lets "
+        "the auto-title path take over again.",
+        "string");
+    parser.addOption(remoteTitleOpt);
     parser.process(app);
 
     if (parser.isSet(newPluginOpt)) {
@@ -298,6 +303,12 @@ int main(int argc, char *argv[]) {
             }
             if (parser.isSet(remoteCommandOpt)) {
                 args["command"] = parser.value(remoteCommandOpt);
+            }
+        } else if (cmd == QLatin1String("set-title")) {
+            // `--remote-title` may legitimately be empty (clears the
+            // pin), so isSet() is the right gate, not !value().isEmpty().
+            if (parser.isSet(remoteTitleOpt)) {
+                args["title"] = parser.value(remoteTitleOpt);
             }
         }
         return RemoteControl::runClient(cmd, args, socketPath);

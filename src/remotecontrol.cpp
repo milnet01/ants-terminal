@@ -134,6 +134,9 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("select-window")) {
         return cmdSelectWindow(req);
     }
+    if (cmd == QLatin1String("set-title")) {
+        return cmdSetTitle(req);
+    }
     QJsonObject e;
     e["ok"] = false;
     e["error"] = QStringLiteral("unknown command: %1").arg(cmd);
@@ -212,6 +215,48 @@ QJsonDocument RemoteControl::cmdSelectWindow(const QJsonObject &req) {
         out["ok"] = false;
         out["error"] = QStringLiteral(
             "select-window: no tab at index %1").arg(idx);
+        return QJsonDocument(out);
+    }
+    out["ok"] = true;
+    out["index"] = idx;
+    return QJsonDocument(out);
+}
+
+QJsonDocument RemoteControl::cmdSetTitle(const QJsonObject &req) {
+    // Request shape: {"cmd":"set-title","tab":<int optional>,"title":"<string>"}
+    //   - `tab` optional; default = active tab. `isDouble()` guard to
+    //     keep `--remote-tab 0` distinct from "tab omitted" — same
+    //     pattern as send-text.
+    //   - `title` required (must be a string). Empty string clears the
+    //     pin and lets the auto-title path resume — useful for
+    //     scripts that want to "reset to default" without restarting
+    //     the tab.
+    QJsonObject out;
+    const QJsonValue titleVal = req.value("title");
+    if (!titleVal.isString()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "set-title: missing or non-string \"title\" field");
+        return QJsonDocument(out);
+    }
+    const QString title = titleVal.toString();
+
+    int idx;
+    const QJsonValue tabVal = req.value("tab");
+    if (tabVal.isDouble()) {
+        idx = tabVal.toInt();
+    } else {
+        // No explicit tab → resolve the active one. We need an index
+        // (not just a TerminalWidget*) because `setTabTitleForRemote`
+        // operates by index. Look up via currentIndex() rather than
+        // walking all tabs.
+        idx = m_main->currentTabIndexForRemote();
+    }
+
+    if (!m_main->setTabTitleForRemote(idx, title)) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "set-title: no tab at index %1").arg(idx);
         return QJsonDocument(out);
     }
     out["ok"] = true;

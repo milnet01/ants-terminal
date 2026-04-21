@@ -14,6 +14,34 @@ for security-relevant changes.
 
 ### Added
 
+- **Remote-control — `set-title` command.** Fifth rc_protocol command.
+  Pins a tab label that survives both the per-shell `titleChanged`
+  signal (OSC 0/2 from the inferior) and the 2 s `updateTabTitles`
+  refresh — exactly the behaviour you want for "label this tab `prod`
+  while I work on it" workflows.
+
+      {"cmd":"set-title","tab":<int optional>,"title":"<string>"}
+      -> {"ok":true,"index":<int>}
+
+  Empty `title` clears the pin and the auto-title path resumes:
+  under `tabTitleFormat == "title"` (default) the most recent
+  shell-provided title is restored from `TerminalWidget::shellTitle()`
+  immediately rather than waiting for the next OSC 0/2; under
+  cwd / process formats `updateTabTitles()` rebuilds from current
+  state. Pin storage is keyed by the tab's `QWidget*` and freed
+  alongside `m_tabSessionIds` at tab-close time so the
+  `QHash<QWidget*, QString>` doesn't accumulate dangling keys.
+
+  Client CLI adds `--remote-title <str>` (`isSet()`-gated, so an
+  empty string legitimately clears the pin):
+
+      ants-terminal --remote set-title --remote-title '★ prod'
+      ants-terminal --remote set-title --remote-tab 2 --remote-title 'logs'
+      ants-terminal --remote set-title --remote-title ''   # clears pin
+
+  Pinned by `tests/features/remote_control_set_title/` — 8 invariants
+  including the dual signal + timer guards, the tab-close cleanup,
+  and the empty-title-restores-via-shellTitle behaviour.
 - **Remote-control — `select-window` command.** Fourth rc_protocol
   command. Switches the active tab to a given 0-based index.
 

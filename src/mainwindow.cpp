@@ -1598,7 +1598,12 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     connect(terminal, &TerminalWidget::titleChanged, this, [this, terminal](const QString &title) {
         // Find which tab this terminal is in
         for (int i = 0; i < m_tabWidget->count(); ++i) {
-            if (m_tabWidget->widget(i)->isAncestorOf(terminal) || m_tabWidget->widget(i) == terminal) {
+            QWidget *tabRoot = m_tabWidget->widget(i);
+            if (tabRoot->isAncestorOf(terminal) || tabRoot == terminal) {
+                // Skip if rc_protocol set-title pinned this tab —
+                // the user/script chose a label and the shell's OSC
+                // 0/2 must not stomp it.
+                if (m_tabTitlePins.contains(tabRoot)) break;
                 QString tabTitle = title.isEmpty() ? "Shell" : title;
                 if (tabTitle.length() > 30)
                     tabTitle = tabTitle.left(27) + "...";
@@ -2087,6 +2092,7 @@ void MainWindow::closeTab(int index) {
     }
 
     m_tabSessionIds.remove(w);
+    m_tabTitlePins.remove(w);  // free pin alongside session id
     m_tabWidget->removeTab(index);
     w->deleteLater();
 
@@ -2137,6 +2143,48 @@ TerminalWidget *MainWindow::currentTerminal() const {
 TerminalWidget *MainWindow::terminalAtTab(int index) const {
     if (index < 0 || index >= m_tabWidget->count()) return nullptr;
     return activeTerminalInTab(m_tabWidget->widget(index));
+}
+
+int MainWindow::currentTabIndexForRemote() const {
+    return m_tabWidget->currentIndex();
+}
+
+bool MainWindow::setTabTitleForRemote(int index, const QString &title) {
+    if (index < 0 || index >= m_tabWidget->count()) return false;
+    QWidget *w = m_tabWidget->widget(index);
+    if (title.isEmpty()) {
+        // Clear the pin and refresh immediately. Two cases:
+        //   - tabTitleFormat != "title" → updateTabTitles() does the
+        //     work for us based on cwd / process.
+        //   - tabTitleFormat == "title" → updateTabTitles bails;
+        //     we have to restore the most recent shell-provided title
+        //     manually, otherwise the pinned label sits there until
+        //     the *next* OSC 0/2 fires (which may be never on a
+        //     quiet prompt). Pull it from the active terminal's
+        //     `shellTitle()` cache (the same value the titleChanged
+        //     signal would have set).
+        m_tabTitlePins.remove(w);
+        updateTabTitles();
+        if (m_config.tabTitleFormat() == "title") {
+            if (auto *term = activeTerminalInTab(w)) {
+                QString shellTitle = term->shellTitle();
+                if (shellTitle.isEmpty()) shellTitle = "Shell";
+                if (shellTitle.length() > 30)
+                    shellTitle = shellTitle.left(27) + "...";
+                m_tabWidget->setTabText(index, shellTitle);
+            }
+        }
+    } else {
+        // Pin the label. The titleChanged handler and updateTabTitles
+        // both check the pin map before calling setTabText, so the
+        // value sticks across both the per-shell signal and the 2 s
+        // refresh tick. Truncated to the same 30-char ceiling the
+        // signal handler uses to avoid the tab strip ballooning.
+        m_tabTitlePins[w] = title;
+        QString display = title.length() > 30 ? title.left(27) + "..." : title;
+        m_tabWidget->setTabText(index, display);
+    }
+    return true;
 }
 
 bool MainWindow::selectTabForRemote(int index) {
@@ -3763,6 +3811,9 @@ void MainWindow::updateTabTitles() {
 
     for (int i = 0; i < m_tabWidget->count(); ++i) {
         QWidget *w = m_tabWidget->widget(i);
+        // rc_protocol set-title pin wins over the format-driven label.
+        // Same guard as the titleChanged signal handler.
+        if (m_tabTitlePins.contains(w)) continue;
         auto *t = activeTerminalInTab(w);
         if (!t) continue;
 

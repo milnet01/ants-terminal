@@ -108,6 +108,19 @@ public:
     // an explicit `tab` field hit the expected pane.
     bool selectTabForRemote(int index);
 
+    // `currentTabIndexForRemote()` returns the active tab's 0-based
+    // index, or -1 when there are no tabs (theoretical — MainWindow
+    // always keeps ≥ 1). Used by rc_protocol commands that take an
+    // optional `tab` field and need to resolve "active" to an index.
+    int currentTabIndexForRemote() const;
+
+    // `setTabTitleForRemote(i, title)` sets the tab label and pins it
+    // — the pin survives both the per-shell `titleChanged` signal
+    // (OSC 0/2 from the inferior) and the 2 s `updateTabTitles`
+    // refresh. Empty `title` removes the pin and lets the auto-title
+    // mechanism take over again. Returns false on out-of-range index.
+    bool setTabTitleForRemote(int index, const QString &title);
+
     // `newTabForRemote` opens a new tab and returns its index. Used
     // by the `new-tab` rc_protocol command.
     //
@@ -339,6 +352,14 @@ private:
 
     // Tab UUIDs for session persistence
     QHash<QWidget *, QString> m_tabSessionIds;
+
+    // Per-tab manual title pins (set by rc_protocol `set-title`).
+    // When a tab's QWidget* is in this map, the per-shell
+    // `titleChanged` handler and the 2 s `updateTabTitles` refresh
+    // both leave that tab's label alone — the pinned value sticks
+    // until rc_protocol clears it (empty `title` → remove from map).
+    // Cleaned up alongside `m_tabSessionIds` at tab destruction.
+    QHash<QWidget *, QString> m_tabTitlePins;
 
     // First-show flag (per-instance, not static)
     bool m_firstShow = true;

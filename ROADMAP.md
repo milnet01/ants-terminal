@@ -777,10 +777,15 @@ a modern terminal" release.
     new tab's terminal so follow-up `send-text` without an explicit
     tab lands correctly. Pinned by
     `tests/features/remote_control_select_window/`.
+  - ✅ **`set-title` command.** Pins a tab label that survives both
+    the per-shell `titleChanged` signal (OSC 0/2) and the 2 s
+    `updateTabTitles` refresh. Empty title clears the pin and
+    restores from `shellTitle()` (under `tabTitleFormat == "title"`)
+    or rebuilds via the format-driven path. Pin freed at tab-close.
+    Pinned by `tests/features/remote_control_set_title/`.
   - 📋 **Next commands** (one per commit, order TBD by user priority):
-    `set-title`, `get-text` (read visible screen), `launch` (spawn
-    a command in a new tab — convenience wrapper over `new-tab` +
-    `send-text`).
+    `get-text` (read visible screen), `launch` (spawn a command in
+    a new tab — convenience wrapper over `new-tab` + `send-text`).
   - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
     is set. Shipped after the command surface is complete.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
