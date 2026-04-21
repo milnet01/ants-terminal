@@ -146,6 +146,46 @@ private:
     void onCheckFinished(int exitCode, QProcess::ExitStatus status);
     bool toolExists(const QString &tool);
 
+    // External-tool calibration helpers. Each reads a project-local config
+    // file and returns the flag string to splice into the tool's command so
+    // the tool doesn't re-flag findings the project has already accepted.
+    //
+    //   semgrepExcludeFlags() — parse `.semgrep.yml` header block
+    //     `# Excluded upstream rules` and emit `--exclude-rule <id>` per entry.
+    //   banditSkipFlags()     — parse `pyproject.toml [tool.ruff.lint.ignore]`
+    //     for `S<nnn>` codes, map to `B<nnn>`, emit `--skip B101,B104,...`.
+    //
+    // Both return an empty string if the config file is missing or has no
+    // relevant entries (caller uses the raw tool invocation unchanged).
+    // Instance methods read the project-local file and delegate to the pure
+    // parsers in audithygiene.cpp (exposed as free functions so the feature
+    // test can drive them without linking QtWidgets / the full dialog).
+    QString semgrepExcludeFlags() const;
+    QString banditSkipFlags() const;
+
+    // Project-local grep-rule allowlist (`.audit_allowlist.json`). Post-
+    // filters custom grep-rule findings: if a finding's (rule, file, line-body)
+    // matches any allowlist entry, it is dropped. Schema:
+    //   { "version": 1,
+    //     "allowlist": [ { "rule": "id", "path_glob": "glob",
+    //                      "line_regex": "regex", "reason": "..." } ] }
+    // All four fields are required per entry except `reason` (informational).
+    struct AllowlistEntry {
+        QString rule;                         // audit check id
+        QRegularExpression pathRegex;         // compiled from glob
+        QRegularExpression lineRegex;         // compiled from line_regex
+        QString reason;
+    };
+    QList<AllowlistEntry> m_allowlist;
+    void loadAllowlist();
+    bool allowlisted(const Finding &f) const;
+
+    // Mypy "Library stubs not installed" consolidation. When ≥2 findings from
+    // a single mypy run are missing-stub hints, fold them into one Info-level
+    // finding listing the stub packages to install. Called from
+    // renderResults() before path-rule application.
+    void consolidateMypyStubHints(CheckResult &r) const;
+
     // Check-definition helpers (collapse repeated boilerplate)
     void addGrepCheck(const QString &id, const QString &name,
                       const QString &desc, const QString &category,

@@ -69,6 +69,7 @@ add_executable(ants-terminal
     src/settingsdialog.cpp
     src/toggleswitch.cpp
     src/auditdialog.cpp
+    src/audithygiene.cpp
     src/auditrulequality.cpp
     src/xcbpositiontracker.cpp
     src/claudeallowlist.cpp
@@ -1119,6 +1120,28 @@ if(ANTS_TESTS)
     add_test(NAME audit_rule_quality
              COMMAND test_audit_rule_quality)
     set_tests_properties(audit_rule_quality PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_hygiene — locks the 0.7.x external-tool calibration parsers
+    # (.semgrep.yml header → --exclude-rule, pyproject.toml S-codes →
+    # --skip B-codes). Origin: RetroDB audit-hygiene report 2026-04-21.
+    # Pure regex-on-text, so no QtGui / QApplication dependency.
+    # See tests/features/audit_hygiene/spec.md.
+    add_executable(test_audit_hygiene
+        tests/features/audit_hygiene/test_audit_hygiene.cpp
+        src/audithygiene.cpp
+    )
+    target_link_libraries(test_audit_hygiene PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_audit_hygiene PRIVATE src)
+    target_compile_options(test_audit_hygiene PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME audit_hygiene
+             COMMAND test_audit_hygiene)
+    set_tests_properties(audit_hygiene PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

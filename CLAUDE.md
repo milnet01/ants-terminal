@@ -92,7 +92,14 @@ Reverse flow: **TerminalGrid -> ResponseCallback -> PTY** (for DA, CPR, DSR)
   glob-based severity shifts / skips. Inline suppressions honor both ants-
   native `// ants-audit: disable[=rule]` and foreign markers (`NOLINT`,
   `cppcheck-suppress`, `noqa`, `nosec`, `nosemgrep`, `#gitleaks:allow`,
-  `eslint-disable-*`, `pylint: disable`). Per-finding "🧠 Triage with AI"
+  `eslint-disable-*`, `pylint: disable`). External-tool calibration chain
+  (`audithygiene.cpp`) splices project-local suppression lists into the
+  scanner invocations: `.semgrep.yml` header block `# Excluded upstream
+  rules` → `--exclude-rule` flags; `pyproject.toml [tool.ruff.lint.ignore]`
+  S-codes → `--skip B<nnn>` for bandit; mypy "Library stubs not installed"
+  repeats collapse into one Info hint. Custom grep-rule findings can be
+  post-filtered by `<project>/.audit_allowlist.json` entries
+  `{rule, path_glob, line_regex, reason}`. Per-finding "🧠 Triage with AI"
   POSTs rule + snippet + blame to the configured OpenAI-compatible endpoint
   and displays `{verdict, confidence, reasoning}` inline. Multi-tool
   correlation tags cross-validated findings (★ in UI); confidence score
@@ -117,6 +124,23 @@ cmake .. && make -j$(nproc)
   Semgrep structural-pattern lane alongside clazy. Uses `p/security-audit` +
   language packs (`p/c`, `p/cpp`, `p/python`, `p/javascript`). Auto-includes
   a project-local `.semgrep.yml` if present. Missing = silent no-op.
+- **osv-scanner** (`go install github.com/google/osv-scanner/cmd/osv-scanner@latest`):
+  multi-ecosystem CVE lane — replaces npm-audit / cargo-audit / pip-audit
+  with one binary reading OSV.dev. Apache-2.0. Self-disables if missing.
+- **trufflehog** (`go install github.com/trufflesecurity/trufflehog/v3@latest`):
+  verified secret scanning — hits the API to confirm live credentials
+  (default lane only reports verified hits, avoiding gitleaks's regex
+  noise). AGPL-3.0, shell-out only so no license reach. Default OFF
+  (needs user opt-in since verification makes network calls).
+- **hadolint** (`zypper in hadolint` on Tumbleweed or static binary):
+  Dockerfile linter with embedded shellcheck. Auto-detected on any
+  `Dockerfile*` in the tree. GPL-3.0, shell-out only.
+- **checkov** (`pip install checkov`): Infrastructure-as-Code scanner —
+  Terraform, Kubernetes, GitHub Actions, Dockerfile. Auto-detected when
+  any `*.tf`, `.github/workflows/`, or `k8s/` tree is present. Apache-2.0.
+- **ast-grep** (`cargo install ast-grep` or `npm i -g @ast-grep/cli`):
+  polyglot Tree-sitter structural search. Rule-pack-driven — gated on a
+  `sgconfig.yml` at project root. MIT-licensed.
 - **cppcheck / clang-tidy / shellcheck / pylint / bandit / ruff / …**: each
   audit check probes with `which <tool>` and self-disables if missing.
 
@@ -207,6 +231,16 @@ cppcheck --enable=all --std=c++20 --library=qt \
   and retires several regex-based Qt checks that were FP-prone
 - `.audit_suppress` is JSONL v2 (`{key, rule, reason, timestamp}` per line);
   v1 plain-key lines still load, first write converts in place
+- Audit external-tool calibration reads project-local config that *already
+  exists* for each scanner, rather than introducing a new suppression file
+  per tool. `.semgrep.yml` header → `--exclude-rule`; `pyproject.toml`
+  `[tool.ruff.lint.ignore]` S-codes → bandit `--skip B<nnn>` (ruff already
+  mirrors bandit 1:1 on the S family). The project-local
+  `.audit_allowlist.json` only exists for custom grep-rule findings that
+  have no upstream config to read. Rationale: RetroDB 2026-04-21 audit-
+  hygiene report showed 1.3% signal rate where all noise was already
+  documented in existing files — the fix was teaching the runner to read
+  them, not adding a new calibration file
 - Audit test harness is shell-based against fixture dirs (`bad.*`/`good.*` with
   `// @expect` markers) — no C++ unit framework, no link-time coupling to
   auditdialog internals

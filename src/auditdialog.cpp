@@ -1,4 +1,5 @@
 #include "auditdialog.h"
+#include "audithygiene.h"
 #include "toggleswitch.h"
 #include "config.h"
 
@@ -186,6 +187,7 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
 
     loadBaseline();
     loadSuppressions();
+    loadAllowlist();
     // 0.6.31 self-learning layer — load the per-rule fire/suppression
     // history from <project>/audit_rule_quality.json. Tracker writes back
     // on destruction (RAII) so save() is automatic at dialog close;
@@ -283,6 +285,39 @@ void AuditDialog::detectProject() {
         }
     }
     if (isQt) m_detectedTypes << "Qt";
+
+    // IaC / container / CI detection — used by populateChecks() to decide
+    // whether hadolint / checkov lanes should auto-enable. Kept cheap: a
+    // shallow QDirIterator that stops at the first match per kind.
+    auto hasAnyFile = [&](const QStringList &patterns, int maxDepth = 3) {
+        QDirIterator it(m_projectPath, patterns, QDir::Files,
+                        QDirIterator::Subdirectories);
+        int iter = 0;
+        while (it.hasNext() && iter < 500) {
+            it.next();
+            ++iter;
+            // Depth cap — count separators in the relative path.
+            const QString rel = m_projectPath.isEmpty()
+                ? it.filePath()
+                : QDir(m_projectPath).relativeFilePath(it.filePath());
+            if (rel.count('/') <= maxDepth) return true;
+        }
+        return false;
+    };
+
+    if (hasAnyFile({"Dockerfile", "Dockerfile.*", "*.Dockerfile"}))
+        m_detectedTypes << "Docker";
+    if (hasAnyFile({"*.tf", "*.tfvars"}))
+        m_detectedTypes << "Terraform";
+    if (QDir(m_projectPath + "/.github/workflows").exists())
+        m_detectedTypes << "GitHub Actions";
+    // Kubernetes / K8s manifests — conservative: require both a telltale
+    // directory name AND at least one YAML file under it. A blanket
+    // *-deployment.yaml glob would false-positive on unrelated YAML.
+    if (QDir(m_projectPath + "/k8s").exists()
+        || QDir(m_projectPath + "/kubernetes").exists()
+        || QDir(m_projectPath + "/manifests").exists())
+        m_detectedTypes << "Kubernetes";
 }
 
 // ---------------------------------------------------------------------------
@@ -1291,12 +1326,15 @@ void AuditDialog::populateChecks() {
         if (hasJs)  packs << "p/javascript" << "p/typescript";
         QString cfg;
         for (const QString &p : std::as_const(packs)) cfg += " --config=" + p;
+        // Respect project-local `.semgrep.yml` "Excluded upstream rules"
+        // header block — see semgrepExcludeFlags() for the contract.
+        const QString excludeFlags = semgrepExcludeFlags();
         m_checks.append({
             "semgrep", "Semgrep (structural patterns)",
             "AST-aware pattern matching (" + packs.join(", ") + ")",
             "Security",
             "semgrep --timeout 30 --quiet --error --disable-version-check"
-            + cfg +
+            + cfg + excludeFlags +
             " --exclude build --exclude 'build-*' --exclude node_modules"
             " --exclude .audit_cache --exclude vendor"
             " . 2>&1 | head -120",
@@ -1305,6 +1343,118 @@ void AuditDialog::populateChecks() {
                                   "Scan complete", "files scanned"},
               "", {}, 120 },
             false, true, nullptr
+        });
+    }
+
+    // ========== ast-grep — polyglot structural search (opt-in) ==========
+    //
+    // Complements semgrep with Tree-sitter-based AST patterns for languages
+    // semgrep covers weakly (Rust, Kotlin, Swift) and for user-authored
+    // rules. Rule-pack-driven — without a `sgconfig.yml` at project root
+    // there's nothing to run, so we gate on that file.
+    // Only probe the canonical `ast-grep` binary, not the `sg` shortcut —
+    // on Linux `/usr/bin/sg` is `newgrp` (setgroups), which would yield a
+    // false positive here.
+    const bool hasAstGrep = toolExists("ast-grep");
+    const bool hasAstGrepCfg =
+        QFile::exists(m_projectPath + "/sgconfig.yml") ||
+        QFile::exists(m_projectPath + "/sgconfig.yaml");
+    if (hasAstGrep && hasAstGrepCfg) {
+        m_checks.append({
+            "ast_grep", "ast-grep (structural search)",
+            "Tree-sitter AST patterns (sgconfig.yml)", "Security",
+            "ast-grep scan 2>&1 | head -100",
+            CheckType::Bug, Severity::Major, { {}, "", {}, 100 },
+            true, true, nullptr
+        });
+    }
+
+    // ========== osv-scanner — multi-ecosystem CVE lookup ==========
+    //
+    // Single binary replaces the per-ecosystem SCA lanes (npm audit,
+    // cargo-audit, pip-audit) by reading every supported manifest and
+    // cross-referencing the OSV.dev advisory DB. Complementary to trivy,
+    // which is container/image-focused. SARIF-native output; we ask for
+    // the table format since our parseFindings reads `file:line: msg`.
+    const bool hasOsv = toolExists("osv-scanner");
+    if (hasOsv) {
+        m_checks.append({
+            "osv_scanner", "OSV Scanner (multi-ecosystem CVE)",
+            "Cross-ref npm/cargo/pip/go/maven manifests against OSV.dev",
+            "Security",
+            "osv-scanner scan source --recursive . 2>&1 | tail -80",
+            CheckType::Vulnerability, Severity::Critical,
+            { /*dropIfContains*/ {"Scanning dir", "Scanned ", "No issues",
+                                  "Loaded ", "--- Ended "},
+              "", {}, 80 },
+            true, true, nullptr
+        });
+    }
+
+    // ========== trufflehog — verified secret scanning ==========
+    //
+    // Off by default because `--only-verified` makes live API calls to
+    // confirm the discovered credential is active. Users opt in via the
+    // toggle; the no-verification mode is equivalent to gitleaks noise
+    // level and adds little, so we skip it.
+    const bool hasTrufflehog = toolExists("trufflehog");
+    if (hasTrufflehog) {
+        m_checks.append({
+            "trufflehog", "TruffleHog (verified secrets)",
+            "Scan filesystem and verify found credentials against the live API",
+            "Security",
+            "trufflehog filesystem --only-verified --no-update "
+            "--exclude-paths=<(printf '%s\\n' build .git node_modules .audit_cache vendor) "
+            ". 2>&1 | tail -60",
+            CheckType::Vulnerability, Severity::Blocker,
+            { /*dropIfContains*/ {"🐷", "TruffleHog", "no credentials", "chunks"},
+              "", {}, 60 },
+            false, true, nullptr
+        });
+    }
+
+    // ========== hadolint — Dockerfile linter ==========
+    if (m_detectedTypes.contains("Docker")) {
+        const bool hasHadolint = toolExists("hadolint");
+        // Glob-based Dockerfile discovery; hadolint accepts multiple files.
+        m_checks.append({
+            "hadolint", "Hadolint (Dockerfile)",
+            hasHadolint ? "Dockerfile best-practice + embedded shellcheck"
+                        : "(hadolint not installed)",
+            "Security",
+            "find . -type f \\( -name 'Dockerfile' -o -name 'Dockerfile.*' "
+            "-o -name '*.Dockerfile' \\)" + kFindExcl +
+            " -print0 2>/dev/null | xargs -0 -r hadolint --no-color 2>&1 | head -80",
+            CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 80 },
+            hasHadolint, hasHadolint, nullptr
+        });
+    }
+
+    // ========== checkov — IaC scanner (Terraform / K8s / Dockerfile / GH Actions) ==========
+    //
+    // Checkov can produce hundreds of findings on a large Terraform tree
+    // at default severity; we filter to HIGH + CRITICAL and cap output.
+    // The `--compact` flag gives one-line-per-finding output that
+    // parseFindings can consume directly.
+    const bool hasCheckov = toolExists("checkov");
+    const bool hasIaC = m_detectedTypes.contains("Terraform")
+                      || m_detectedTypes.contains("Kubernetes")
+                      || m_detectedTypes.contains("GitHub Actions")
+                      || m_detectedTypes.contains("Docker");
+    if (hasCheckov && hasIaC) {
+        m_checks.append({
+            "checkov", "Checkov (IaC)",
+            "Terraform / K8s / Dockerfile / GH Actions policy checks",
+            "Security",
+            "checkov -d . --compact --quiet --output=cli "
+            "--soft-fail --skip-path build --skip-path node_modules "
+            "--skip-path .audit_cache --skip-path vendor 2>&1 | tail -120",
+            CheckType::Hotspot, Severity::Major,
+            { /*dropIfContains*/ {"_     _", " By bridgecrew.io", "version: ",
+                                  "Update available", "Passed checks:",
+                                  "Skipped checks:"},
+              "", {}, 120 },
+            true, true, nullptr
         });
     }
 
@@ -1320,10 +1470,15 @@ void AuditDialog::populateChecks() {
             hasPylint, hasPylint, nullptr
         });
         const bool hasBandit = toolExists("bandit");
+        // Respect project-local pyproject.toml [tool.ruff.lint.ignore] S-codes
+        // as a bandit skip list — see banditSkipFlags() for the contract.
+        const QString banditSkip = banditSkipFlags();
         m_checks.append({
             "bandit", "Bandit Security Scan",
             hasBandit ? "Python security issue detection" : "(bandit not installed)", "Python",
-            "bandit -r . -q --exclude=./build,./build-test,./node_modules,./.audit_cache 2>&1 | head -100",
+            "bandit -r . -q --exclude=./build,./build-test,./node_modules,./.audit_cache"
+            + banditSkip +
+            " 2>&1 | head -100",
             CheckType::Vulnerability, Severity::Critical, { {}, "", {}, 100 },
             hasBandit, hasBandit, nullptr
         });
@@ -1590,6 +1745,11 @@ static QString sourceForCheck(const QString &checkId) {
     if (checkId == "golangci_lint")      return "golangci-lint";
     if (checkId == "eslint")             return "eslint";
     if (checkId == "npm_audit")          return "npm audit";
+    if (checkId == "osv_scanner")        return "osv-scanner";
+    if (checkId == "trufflehog")         return "trufflehog";
+    if (checkId == "hadolint")           return "hadolint";
+    if (checkId == "checkov")            return "checkov";
+    if (checkId == "ast_grep")           return "ast-grep";
     if (checkId.startsWith("git_"))      return "git";
     if (checkId == "compiler_warnings")  return "gcc";
     // find-based checks
@@ -2161,6 +2321,7 @@ int AuditDialog::computeConfidence(const Finding &f) {
         "pylint", "bandit", "ruff", "mypy", "shellcheck", "luacheck",
         "cargo-clippy", "cargo-audit", "go vet", "govulncheck",
         "golangci-lint", "eslint", "npm audit", "gcc",
+        "osv-scanner", "trufflehog", "hadolint", "checkov", "ast-grep",
     };
     if (kExternalTools.contains(f.source)) score += 10;
 
@@ -2297,6 +2458,161 @@ int AuditDialog::loadUserRules() {
         ++loaded;
     }
     return loaded;
+}
+
+// ---------------------------------------------------------------------------
+// External-tool calibration — wire project-local suppression configs into
+// the tool invocations so each scanner doesn't re-flag findings the project
+// has already accepted. Origin: RetroDB audit-hygiene report 2026-04-21.
+// ---------------------------------------------------------------------------
+
+// Parse `.semgrep.yml`'s header block:
+//
+//     # Excluded upstream rules
+//     # -----------------------
+//     #   rule.id.one
+//     #     Anchor: ...
+//     #   rule.id.two
+//     ...
+//     # RetroDB-specific custom rules
+//
+// Rule IDs are the comment lines inside that block that begin with `#   `
+// followed by a dotted identifier (two or more dot-separated segments). The
+// heuristic matches the literal shell awk-based extractor RetroDB's own
+// `.semgrep.yml` header documents.
+QString AuditDialog::semgrepExcludeFlags() const {
+    QFile f(m_projectPath + "/.semgrep.yml");
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const QString text = QString::fromUtf8(f.readAll());
+    f.close();
+
+    const QStringList rules = AuditHygiene::parseSemgrepExcludeRules(text);
+    if (rules.isEmpty()) return {};
+    QString flags;
+    for (const QString &r : std::as_const(rules))
+        flags += " --exclude-rule " + r;
+    return flags;
+}
+
+// Parse `pyproject.toml`'s `[tool.ruff.lint.ignore]` array for `S<nnn>`
+// codes and emit `--skip B<nnn>,B<mmm>,...` for bandit. Ruff's `S` family
+// mirrors bandit's `B` family 1:1, so the mapping is lexical.
+//
+// Deliberately a lightweight text scan rather than a full TOML parse:
+// (1) Qt has no built-in TOML reader and we'd otherwise pull in a dep;
+// (2) the shape we care about is a flat list of string literals; (3) if the
+// user's pyproject.toml is non-standard enough to defeat this, they can
+// fall back to path rules or the allowlist.
+QString AuditDialog::banditSkipFlags() const {
+    QFile f(m_projectPath + "/pyproject.toml");
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const QString text = QString::fromUtf8(f.readAll());
+    f.close();
+    const QStringList bCodes = AuditHygiene::parseBanditSkipCodes(text);
+    if (bCodes.isEmpty()) return {};
+    return " --skip " + bCodes.join(",");
+}
+
+// ---------------------------------------------------------------------------
+// Project-local grep-rule allowlist (.audit_allowlist.json)
+// ---------------------------------------------------------------------------
+
+void AuditDialog::loadAllowlist() {
+    m_allowlist.clear();
+    QFile f(m_projectPath + "/.audit_allowlist.json");
+    if (!f.open(QIODevice::ReadOnly)) return;
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    f.close();
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        qWarning(".audit_allowlist.json: %s", qPrintable(err.errorString()));
+        return;
+    }
+    const QJsonArray entries = doc.object().value("allowlist").toArray();
+    for (const QJsonValue &v : entries) {
+        if (!v.isObject()) continue;
+        const QJsonObject o = v.toObject();
+        const QString rule = o.value("rule").toString();
+        const QString glob = o.value("path_glob").toString();
+        const QString line = o.value("line_regex").toString();
+        if (rule.isEmpty() || glob.isEmpty() || line.isEmpty()) continue;
+        AllowlistEntry e;
+        e.rule      = rule;
+        e.pathRegex = globToRegex(glob);
+        e.lineRegex = QRegularExpression(line);
+        if (!e.lineRegex.isValid()) {
+            qWarning(".audit_allowlist.json: bad line_regex '%s': %s",
+                     qPrintable(line),
+                     qPrintable(e.lineRegex.errorString()));
+            continue;
+        }
+        e.reason    = o.value("reason").toString();
+        m_allowlist.append(e);
+    }
+}
+
+bool AuditDialog::allowlisted(const Finding &f) const {
+    if (m_allowlist.isEmpty()) return false;
+    for (const AllowlistEntry &e : m_allowlist) {
+        if (e.rule != f.checkId) continue;
+        if (!f.file.isEmpty() && !e.pathRegex.match(f.file).hasMatch()) continue;
+        if (!e.lineRegex.match(f.message).hasMatch()) continue;
+        return true;
+    }
+    return false;
+}
+
+// Collapse mypy "Library stubs not installed" findings into a single Info
+// entry listing the packages to install. Bulk-installing is deterministic
+// and the stub-install nag doesn't need to consume 20 finding slots.
+void AuditDialog::consolidateMypyStubHints(CheckResult &r) const {
+    if (r.checkId != "mypy") return;
+    if (r.findings.size() < 2) return;
+
+    // Raw string uses `re` delimiter because the pattern itself contains `)"`.
+    static const QRegularExpression stubRe(
+        R"re(Library stubs not installed for "([A-Za-z0-9_.\-]+)")re");
+    QStringList packages;
+    QList<Finding> kept;
+    kept.reserve(r.findings.size());
+    for (const Finding &f : std::as_const(r.findings)) {
+        const QRegularExpressionMatch m = stubRe.match(f.message);
+        if (m.hasMatch()) {
+            const QString pkg = m.captured(1);
+            if (!packages.contains(pkg)) packages << pkg;
+        } else {
+            kept.append(f);
+        }
+    }
+    if (packages.size() < 2) return;  // nothing to fold
+
+    Finding hint;
+    hint.checkId   = r.checkId;
+    hint.checkName = r.checkName;
+    hint.category  = r.category;
+    hint.type      = CheckType::Info;
+    hint.severity  = Severity::Info;
+    hint.source    = "mypy";
+    // Build the pip-install hint. `types-*` package names follow mypy's
+    // stubgen convention for common libraries; for everything else we emit
+    // the import name with a `types-` prefix and let the user adjust.
+    QStringList pipTypes;
+    for (const QString &p : std::as_const(packages))
+        pipTypes << "types-" + QString(p).replace('.', '-');
+    hint.message = QString("%1 missing stub package(s): pip install %2")
+                       .arg(packages.size())
+                       .arg(pipTypes.join(' '));
+    // Stable dedup key so this hint is idempotent across runs.
+    hint.dedupKey = QCryptographicHash::hash(
+        ("mypy-stub-hint:" + packages.join(',')).toUtf8(),
+        QCryptographicHash::Sha256).toHex().left(16);
+    kept.prepend(hint);
+
+    // Decrement findingCount for the collapsed entries.
+    const int collapsed = r.findings.size() - kept.size() + 1;  // +1 for hint we added
+    r.findings = kept;
+    r.findingCount = kept.size() + r.omittedCount;
+    Q_UNUSED(collapsed);
 }
 
 void AuditDialog::loadSuppressions() {
@@ -3203,10 +3519,11 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
     // Parse body into structured findings. Apply in order:
     //   1. Suppress any finding whose dedup hash is in .audit_suppress
     //   2. Drop generated / path-rule-skipped findings
-    //   3. Drop findings suppressed by inline directive in the file
-    //   4. In "recent-only" mode: drop findings whose file isn't in the
+    //   3. Drop findings matched by .audit_allowlist.json
+    //   4. Drop findings suppressed by inline directive in the file
+    //   5. In "recent-only" mode: drop findings whose file isn't in the
     //      recent-commits set (unfiled findings always pass)
-    //   5. Dedup within this single check (exact-duplicate message lines)
+    //   6. Dedup within this single check (exact-duplicate message lines)
     QSet<QString> seenKeys;
     QList<Finding> parsed = parseFindings(filtered.body, check);
     QSet<QString> recent;
@@ -3214,6 +3531,7 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
     for (Finding &f : parsed) {
         if (m_suppressedKeys.contains(f.dedupKey)) continue;
         if (!applyPathRules(f)) continue;       // generated files + path rules
+        if (allowlisted(f)) continue;           // project-local allowlist
         if (inlineSuppressed(f)) continue;      // inline // ants-audit: disable ...
         if (m_recentOnly && !f.file.isEmpty()) {
             // Match by either exact path or project-relative path suffix.
@@ -3256,6 +3574,10 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
     };
     if (kSourceScannedChecks.contains(check.id))
         dropFindingsInCommentsOrStrings(r);
+
+    // Fold mypy "Library stubs not installed" repeats into one Info hint so
+    // a missing-types nag doesn't eat 20 finding slots.
+    consolidateMypyStubHints(r);
 
     capFindings(r, kMaxFindingsPerCheck);
     r.findingCount = r.findings.size() + r.omittedCount;
