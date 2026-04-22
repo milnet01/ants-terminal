@@ -43,6 +43,8 @@
 #include <QPlainTextEdit>
 #include <QThread>
 
+#include <algorithm>
+
 TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_InputMethodEnabled, true);
@@ -394,6 +396,8 @@ void TerminalWidget::updateFontMetrics() {
     m_cellWidth = fm.horizontalAdvance('M');
     m_cellHeight = fm.height();
     m_fontAscent = fm.ascent();
+    m_fontUnderlinePos = fm.underlinePos();
+    m_fontLineWidth = std::max(1, fm.lineWidth());
 
     // Create bold/italic variants (inherit kerning=off from base font)
     m_fontBold = m_font;
@@ -635,6 +639,37 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     if (m_spanCacheDirty)
         invalidateSpanCaches();
 
+    // Pre-normalize selection bounds once per frame. isCellSelected previously
+    // ran std::swap + std::min/std::max per cell, producing identical output
+    // for every call in the frame — hoisting moves the O(rows·cols) overhead
+    // down to O(1).
+    const bool hasSel = m_hasSelection;
+    const bool rectSel = m_rectSelection;
+    int selLineStart = 0, selColStart = 0, selLineEnd = 0, selColEnd = 0;
+    int selRectColMin = 0, selRectColMax = 0;
+    if (hasSel) {
+        QPoint s = m_selStart, e = m_selEnd;
+        if (s.x() > e.x() || (s.x() == e.x() && s.y() > e.y()))
+            std::swap(s, e);
+        selLineStart = s.x(); selColStart = s.y();
+        selLineEnd   = e.x(); selColEnd   = e.y();
+        selRectColMin = std::min(m_selStart.y(), m_selEnd.y());
+        selRectColMax = std::max(m_selStart.y(), m_selEnd.y());
+    }
+    auto cellInSelection = [&](int gl, int col) -> bool {
+        if (!hasSel) return false;
+        if (rectSel) {
+            return gl >= selLineStart && gl <= selLineEnd
+                && col >= selRectColMin && col <= selRectColMax;
+        }
+        if (gl < selLineStart || gl > selLineEnd) return false;
+        if (selLineStart == selLineEnd)
+            return col >= selColStart && col <= selColEnd;
+        if (gl == selLineStart) return col >= selColStart;
+        if (gl == selLineEnd)   return col <= selColEnd;
+        return true;
+    };
+
     for (int vr = 0; vr < rows; ++vr) {
         int globalLine = viewStart + vr;
         int px_y = m_padding + vr * m_cellHeight;
@@ -717,7 +752,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 }
             }
 
-            bool selected = isCellSelected(globalLine, col);
+            bool selected = cellInSelection(globalLine, col);
             if (selected) {
                 fg = m_selectionFg;
                 bg = m_selectionBg;
@@ -821,10 +856,9 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 // Position underline at the font's underline position (under baseline)
                 // This matches Konsole behavior and makes decorative underlines (used by
                 // TUI apps like Claude Code on every cell) blend with character glyphs
-                QFontMetrics fm(m_font);
-                int ulY = px_y + m_fontAscent + fm.underlinePos();
+                int ulY = px_y + m_fontAscent + m_fontUnderlinePos;
                 int ulW = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
-                int lineW = std::max(1, fm.lineWidth());
+                int lineW = m_fontLineWidth;
                 UnderlineStyle style = isHoveredUrl ? UnderlineStyle::Single
                                      : c.attrs.underlineStyle;
                 if (style == UnderlineStyle::None) style = UnderlineStyle::Single;
@@ -3448,12 +3482,16 @@ void TerminalWidget::searchPrev() {
 }
 
 bool TerminalWidget::isCellSearchMatch(int globalLine, int col) const {
-    // Binary search to find matches on this line (matches are sorted by globalLine)
-    for (size_t i = 0; i < m_searchMatches.size(); ++i) {
-        const auto &m = m_searchMatches[i];
-        if (m.globalLine < globalLine) continue;
-        if (m.globalLine > globalLine) break;
-        if (col >= m.col && col < m.col + m.length)
+    // m_searchMatches is populated in ascending globalLine order (see
+    // updateSearchMatches), so lower_bound on globalLine finds the first
+    // match at or after this line. Previous impl scanned from index 0 on
+    // every call — O(cells × matches) per frame; binary search makes it
+    // O(cells × log matches) which is the measurable hot path when the
+    // search has matches in deep scrollback.
+    auto it = std::lower_bound(m_searchMatches.begin(), m_searchMatches.end(), globalLine,
+        [](const SearchMatch &m, int gl) { return m.globalLine < gl; });
+    for (; it != m_searchMatches.end() && it->globalLine == globalLine; ++it) {
+        if (col >= it->col && col < it->col + it->length)
             return true;
     }
     return false;

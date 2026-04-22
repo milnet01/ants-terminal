@@ -1,6 +1,7 @@
 #include "auditdialog.h"
 #include "audithygiene.h"
 #include "featurecoverage.h"
+#include "secureio.h"
 #include "toggleswitch.h"
 #include "config.h"
 
@@ -2787,7 +2788,7 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
         // suppression list unparseable on next load.
         QSaveFile sf(path);
         if (sf.open(QIODevice::WriteOnly)) {
-            sf.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+            setOwnerOnlyPerms(sf);
             sf.write(rebuilt.join('\n').toUtf8());
             sf.write("\n");
             sf.commit();
@@ -2798,7 +2799,7 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
         // already skips non-parseable lines.
         if (f.open(QIODevice::WriteOnly | QIODevice::Append)) {
             if (f.size() == 0) {
-                f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+                setOwnerOnlyPerms(f);
                 f.write("# ants-audit suppressions (JSONL). Entries hide the matching "
                         "finding by dedup key.\n");
             }
@@ -2938,7 +2939,7 @@ void AuditDialog::appendSnapshot(const TrendSnapshot &s) {
     // truncate the array and lose all prior runs.
     QSaveFile sf(trendPath());
     if (sf.open(QIODevice::WriteOnly)) {
-        sf.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        setOwnerOnlyPerms(sf);
         sf.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
         sf.commit();
     }
@@ -2982,7 +2983,7 @@ void AuditDialog::saveBaseline() {
     // a torn write leaves the filter off-by-many until re-saved.
     QSaveFile f(baselinePath());
     if (f.open(QIODevice::WriteOnly)) {
-        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        setOwnerOnlyPerms(f);
         f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
         if (f.commit()) {
             loadBaseline();

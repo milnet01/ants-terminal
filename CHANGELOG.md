@@ -13,6 +13,59 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.7] — 2026-04-22
+
+**Theme:** the 0.7.7 planned-work pass from the hardening four-dimensional
+review — every item marked 📋 in ROADMAP.md's 0.7.7 section is now shipped.
+Two de-duplication refactors, three perf hoists, four regression
+feature-tests locking the 0.7.6 → 0.7.7 fixes.
+
+### Added
+
+- **Regression coverage for the four 0.7.7 hardening fixes** —
+  `tests/features/osc8_insert_delete_lines/` (CSI L / CSI M sync
+  invariant), `tests/features/hyperlink_resize_clamp/` (shrink-resize
+  clamp on the active OSC 8 start coordinates),
+  `tests/features/ssh_dash_host_rejected/` (the `--` argv terminator
+  against CVE-2017-1000117 class hosts), and
+  `tests/features/image_bomb_png_header_peek/` (static source-inspection
+  guard ensuring every `loadFromData` is peeked first). Each test is
+  designed to fail on pre-fix code and pass now. 49 feature/fast tests
+  total.
+
+### Changed
+
+- **`setOwnerOnlyPerms` helper** (`src/secureio.h`) replaces the 11
+  copies of `file.setPermissions(QFileDevice::ReadOwner |
+  QFileDevice::WriteOwner)` that were scattered across `config.cpp`,
+  `sessionmanager.cpp` (×2), `claudeallowlist.cpp`, `auditdialog.cpp`
+  (×4), `claudeintegration.cpp` (×2), `remotecontrol.cpp`, and
+  `auditrulequality.cpp`. One typo (`ReadOther`, `ReadGroup`) away
+  from silently widening access to files that may hold an API key.
+  Two overloads: one for open `QFileDevice&` handles, one for existing
+  path strings. The single 0755 case in `settingsdialog.cpp` (hooks
+  shell script — needs executable bit) stays literal by design.
+- **`shellQuote` helper** (`src/shellutils.h`) replaces the previous
+  static function in `sshdialog.cpp` and the *re-defined lambda* in
+  `mainwindow.cpp::openClaudeProjectsDialog`. The two earlier impls
+  differed on empty-string and no-special-chars handling; both call
+  sites now share one inline implementation.
+- **Paint-path hoists** — `QFontMetrics` is no longer constructed per
+  underlined cell; `updateFontMetrics()` caches `underlinePos` and
+  `lineWidth` into members refreshed on font change. Selection bounds
+  are now normalised once per `paintEvent` into local scalars with an
+  inline `cellInSelection` lambda, rather than running `std::swap` +
+  `std::min`/`std::max` per cell. Measurable on search-highlighted +
+  selection-active frames.
+- **`isCellSearchMatch` — `std::lower_bound` instead of linear scan.**
+  `m_searchMatches` is sorted by `globalLine`; the binary search jumps
+  to the first match at or after the target line and iterates only the
+  matches on that line. The previous implementation self-described as
+  "binary search" but walked the whole vector from index 0 on every
+  cell. Expected win: 5–20% of paint time on search-highlighted
+  content in deep scrollback.
+
+
 ## [0.7.6] — 2026-04-22
 
 **Theme:** close the 0.7.x remote-control arc and close the audit-signal

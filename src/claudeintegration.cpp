@@ -1,5 +1,7 @@
 #include "claudeintegration.h"
 
+#include "secureio.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -547,7 +549,7 @@ bool ClaudeIntegration::startHookServer() {
         return false;
     }
     // Restrict socket permissions to owner only
-    QFile::setPermissions(socketPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    setOwnerOnlyPerms(socketPath);
 
     connect(m_hookServer, &QLocalServer::newConnection,
             this, &ClaudeIntegration::onHookConnection);
@@ -637,7 +639,7 @@ bool ClaudeIntegration::startMcpServer(const QString &socketPath) {
         return false;
     }
     // Restrict socket permissions to owner only
-    QFile::setPermissions(socketPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    setOwnerOnlyPerms(socketPath);
 
     connect(m_mcpServer, &QLocalServer::newConnection,
             this, &ClaudeIntegration::onMcpConnection);

@@ -2,6 +2,7 @@
 #include "mainwindow.h"
 #include "terminalwidget.h"
 #include "debuglog.h"
+#include "secureio.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -66,8 +67,7 @@ bool RemoteControl::start() {
             return false;
         }
     }
-    QFile::setPermissions(path,
-        QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    setOwnerOnlyPerms(path);
 
     connect(m_server, &QLocalServer::newConnection,
             this, &RemoteControl::onNewConnection);

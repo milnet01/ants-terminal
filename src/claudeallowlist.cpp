@@ -1,5 +1,7 @@
 #include "claudeallowlist.h"
 
+#include "secureio.h"
+
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -270,7 +272,7 @@ bool ClaudeAllowlistDialog::saveSettings() {
     // Atomic write with 0600 permissions
     QSaveFile file(m_settingsPath);
     if (!file.open(QIODevice::WriteOnly)) return false;
-    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    setOwnerOnlyPerms(file);
     const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Indented);
     if (file.write(payload) != payload.size()) {
         file.cancelWriting();

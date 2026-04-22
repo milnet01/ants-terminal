@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.6 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.7 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -573,6 +573,102 @@ if(ANTS_TESTS)
     )
     add_test(NAME combining_on_resize COMMAND test_combining_on_resize)
     set_tests_properties(combining_on_resize PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # osc8_insert_delete_lines — regression guard for the 0.7.7 fix that
+    # runs the same erase/insert pattern against m_screenHyperlinks during
+    # CSI L / CSI M as the main cell vector, so OSC 8 spans stay anchored
+    # to the cells that contain the clickable text. Pre-fix, a single
+    # Insert Line shifted the underline visually but left the clickable
+    # rectangle on the old row.
+    add_executable(test_osc8_insert_delete_lines
+        tests/features/osc8_insert_delete_lines/test_osc8_linerange.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_osc8_insert_delete_lines PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_osc8_insert_delete_lines PRIVATE src)
+    target_compile_options(test_osc8_insert_delete_lines PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME osc8_insert_delete_lines COMMAND test_osc8_insert_delete_lines)
+    set_tests_properties(osc8_insert_delete_lines PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # hyperlink_resize_clamp — regression guard for the 0.7.7 clamp added
+    # to m_hyperlinkStartRow / m_hyperlinkStartCol in TerminalGrid::resize.
+    # Pre-fix, a shrink resize that left the open hyperlink's start row
+    # out-of-range caused the subsequent OSC 8 close to silently drop the
+    # span (the existing upper-bound guard at handleOsc swallowed it).
+    # Post-fix, the start coordinates clamp at resize time so the span
+    # commits on the clamped row.
+    add_executable(test_hyperlink_resize_clamp
+        tests/features/hyperlink_resize_clamp/test_hyperlink_resize_clamp.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_hyperlink_resize_clamp PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_hyperlink_resize_clamp PRIVATE src)
+    target_compile_options(test_hyperlink_resize_clamp PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME hyperlink_resize_clamp COMMAND test_hyperlink_resize_clamp)
+    set_tests_properties(hyperlink_resize_clamp PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # ssh_dash_host_rejected — regression guard for the 0.7.7 CVE-2017-
+    # 1000117-class fix. SshBookmark::toSshCommand must emit `--` before
+    # the host argument, so OpenSSH will never parse a host value that
+    # begins with `-` as an option (e.g. -oProxyCommand=bash -c 'evil').
+    # Shell-quoting alone does not defend against this — the shell passes
+    # the value correctly but ssh itself re-parses the leading dash.
+    add_executable(test_ssh_dash_host_rejected
+        tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
+        src/sshdialog.cpp
+    )
+    target_link_libraries(test_ssh_dash_host_rejected PRIVATE
+        Qt6::Core
+        Qt6::Widgets
+    )
+    target_include_directories(test_ssh_dash_host_rejected PRIVATE src)
+    target_compile_options(test_ssh_dash_host_rejected PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME ssh_dash_host_rejected COMMAND test_ssh_dash_host_rejected)
+    set_tests_properties(ssh_dash_host_rejected PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # image_bomb_png_header_peek — regression guard for the 0.7.7 fix that
+    # added QImageReader-based dimension peeks before QImage::loadFromData
+    # on inline-image byte streams (OSC 1337 iTerm2 + Kitty APC PNG path).
+    # Without the peek, a 1 KB compressed PNG declaring 100 000 × 100 000
+    # forces a multi-GB decode allocation before the post-decode
+    # MAX_IMAGE_DIM guard fires. Static source inspection — a runtime
+    # image-bomb test would either succeed (no signal) or hang the test
+    # process (no signal either), neither useful in CI.
+    add_executable(test_image_bomb_png_header_peek
+        tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
+    )
+    target_compile_definitions(test_image_bomb_png_header_peek PRIVATE
+        SRC_TERMINALGRID_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalgrid.cpp"
+        SRC_TERMINALGRID_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalgrid.h"
+    )
+    target_compile_options(test_image_bomb_png_header_peek PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME image_bomb_png_header_peek
+             COMMAND test_image_bomb_png_header_peek)
+    set_tests_properties(image_bomb_png_header_peek PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

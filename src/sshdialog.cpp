@@ -1,5 +1,7 @@
 #include "sshdialog.h"
 
+#include "shellutils.h"
+
 #include <QDir>
 #include <QFormLayout>
 #include <QRegularExpression>
@@ -31,18 +33,6 @@ SshBookmark SshBookmark::fromJson(const QJsonObject &obj) {
     bm.identityFile = obj["identity_file"].toString();
     bm.extraArgs = obj["extra_args"].toString();
     return bm;
-}
-
-// Shell-quote a string for safe inclusion in a shell command
-static QString shellQuote(const QString &s) {
-    if (s.isEmpty()) return QStringLiteral("''");
-    // If it contains no special characters, return as-is
-    if (!s.contains(QRegularExpression("[\\s'\"\\\\$`!#&|;(){}]")))
-        return s;
-    // Single-quote with escaping of embedded single quotes
-    QString quoted = s;
-    quoted.replace("'", "'\\''");
-    return "'" + quoted + "'";
 }
 
 QString SshBookmark::toSshCommand(bool controlMaster) const {

@@ -1,4 +1,5 @@
 #include "sessionmanager.h"
+#include "secureio.h"
 #include "terminalgrid.h"
 
 #include <QDataStream>
@@ -265,7 +266,7 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly)) {
-        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        setOwnerOnlyPerms(file);
         if (file.write(data) == data.size()) {
             // fsync before rename — see Config::save for rationale.
             // Scrollback blobs are worth durability; losing a session
@@ -314,7 +315,7 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        setOwnerOnlyPerms(file);
         // First line: active tab index
         file.write(QStringLiteral("active:%1\n").arg(activeIndex).toUtf8());
         for (const QString &id : tabIds) {

@@ -1,3 +1,47 @@
+ants-terminal (0.7.7-1) unstable; urgency=medium
+
+  * The 0.7.7 planned-work pass from the hardening four-dimensional
+    review — every item marked as planned in ROADMAP.md's 0.7.7 section
+    is now shipped. Two de-duplication refactors, three paint-path perf
+    hoists, four regression feature-tests locking the 0.7.6 hardening
+    fixes.
+  * Added: regression coverage for the four 0.7.7 hardening fixes —
+    tests/features/osc8_insert_delete_lines/ (CSI L / CSI M hyperlink
+    sync invariant), tests/features/hyperlink_resize_clamp/ (shrink-
+    resize clamp on the active OSC 8 start coordinates),
+    tests/features/ssh_dash_host_rejected/ (the `--` argv terminator
+    against CVE-2017-1000117 class hosts, 5 scenarios), and
+    tests/features/image_bomb_png_header_peek/ (static source-
+    inspection guard ensuring every loadFromData is peeked first).
+    Each test is designed to fail on pre-fix code and pass now.
+    49 feature/fast tests total.
+  * Changed: setOwnerOnlyPerms helper (src/secureio.h) replaces the
+    11 copies of file.setPermissions(QFileDevice::ReadOwner |
+    QFileDevice::WriteOwner) scattered across config.cpp,
+    sessionmanager.cpp (x2), claudeallowlist.cpp, auditdialog.cpp
+    (x4), claudeintegration.cpp (x2), remotecontrol.cpp, and
+    auditrulequality.cpp. Two overloads: one for open QFileDevice&
+    handles, one for existing path strings. The one 0755 case
+    (settingsdialog.cpp hooks script) stays literal by design.
+  * Changed: shellQuote helper (src/shellutils.h) replaces the
+    previous static function in sshdialog.cpp and the re-defined
+    lambda in mainwindow.cpp::openClaudeProjectsDialog. Both call
+    sites now share one inline implementation.
+  * Changed: paint-path hoists — QFontMetrics is no longer
+    constructed per underlined cell; updateFontMetrics caches
+    underlinePos and lineWidth into members refreshed on font
+    change. Selection bounds are now normalised once per paintEvent
+    into local scalars with an inline cellInSelection lambda,
+    rather than running std::swap + std::min/std::max per cell.
+  * Changed: isCellSearchMatch now uses std::lower_bound instead
+    of linear scan. m_searchMatches is sorted by globalLine; the
+    binary search jumps to the first match at or after the target
+    line and iterates only the matches on that line. The previous
+    implementation self-described as "binary search" but walked
+    the whole vector from index 0 on every cell.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 22 Apr 2026 12:32:03 +0000
+
 ants-terminal (0.7.6-1) unstable; urgency=medium
 
   * Closes the 0.7.x remote-control arc and the audit-signal gap opened

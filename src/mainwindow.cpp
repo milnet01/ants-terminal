@@ -15,6 +15,7 @@
 #include "claudeprojects.h"
 #include "claudetranscript.h"
 #include "auditdialog.h"
+#include "shellutils.h"
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
 #include "debuglog.h"
@@ -3423,16 +3424,9 @@ void MainWindow::openClaudeProjectsDialog() {
     if (!m_claudeProjects) {
         m_claudeProjects = new ClaudeProjectsDialog(m_claudeIntegration, &m_config, this);
 
-        // Shell-quote a path (wrap in single quotes, escape existing quotes)
-        auto shellQuote = [](const QString &path) -> QString {
-            QString escaped = path;
-            escaped.replace("'", "'\\''");
-            return "'" + escaped + "'";
-        };
-
         // Resume a specific session
         connect(m_claudeProjects, &ClaudeProjectsDialog::resumeSession,
-                this, [this, shellQuote](const QString &projectPath, const QString &sessionId, bool fork) {
+                this, [this](const QString &projectPath, const QString &sessionId, bool fork) {
             auto *t = focusedTerminal();
             if (!t) return;
             QString cmd = QString("cd %1 && claude --resume %2")
@@ -3443,7 +3437,7 @@ void MainWindow::openClaudeProjectsDialog() {
 
         // Continue the latest session in a project
         connect(m_claudeProjects, &ClaudeProjectsDialog::continueProject,
-                this, [this, shellQuote](const QString &projectPath) {
+                this, [this](const QString &projectPath) {
             auto *t = focusedTerminal();
             if (!t) return;
             t->writeCommand(QString("cd %1 && claude --continue").arg(shellQuote(projectPath)));
@@ -3451,7 +3445,7 @@ void MainWindow::openClaudeProjectsDialog() {
 
         // Start a new session in a project
         connect(m_claudeProjects, &ClaudeProjectsDialog::newSession,
-                this, [this, shellQuote](const QString &projectPath) {
+                this, [this](const QString &projectPath) {
             auto *t = focusedTerminal();
             if (!t) return;
             t->writeCommand(QString("cd %1 && claude").arg(shellQuote(projectPath)));

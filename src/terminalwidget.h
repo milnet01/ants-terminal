@@ -408,6 +408,12 @@ private:
     int m_cellWidth = 0;
     int m_cellHeight = 0;
     int m_fontAscent = 0;
+    // Cached on font change so the per-cell underline path in paintEvent
+    // doesn't rebuild QFontMetrics for every drawn cell — the 0.7.7 perf
+    // pass measured this as a hot allocator on TUI apps that underline
+    // every cell (Claude Code's SGR 4 pattern).
+    int m_fontUnderlinePos = 1;
+    int m_fontLineWidth = 1;
     int m_padding = 4;
 
     // Cursor blink

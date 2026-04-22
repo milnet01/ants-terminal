@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.6 (2026-04-22). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.7 (2026-04-22) (2026-04-22). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -762,40 +762,68 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   swap-deallocates when capacity exceeds 64 KB. Normal-traffic buffers
   stay cheap; adversarial ones don't linger.
 
-### 📋 0.7.7 planned — smallish, self-contained
+### 🐛 / ⚡ / 🧹 — Shipped in the 0.7.7 planned-work pass
 
-- 📋 **🐛 Audit-pipeline regression coverage for the fixes above.**
-  Add `tests/features/osc8_insert_delete_lines/` (CSI L / CSI M sync
-  invariant), `tests/features/hyperlink_resize_clamp/`,
-  `tests/features/ssh_dash_host_rejected/` and
-  `tests/features/image_bomb_png_header_peek/` so the 0.7.6 → 0.7.7
-  fixes have the same "fails on pre-fix code" guarantee the rest of
-  `tests/features/` carries.
-- 📋 **⚡ `isCellSearchMatch` — linear scan → `std::lower_bound`.**
-  `terminalwidget.cpp`. `m_searchMatches` is already sorted by
-  `globalLine`; the paint path walks the whole vector per cell.
-  Binary-search to the first match at or after the current global
-  line, then iterate only matches whose `globalLine` equals it.
-  Expected win: 5–20% of paint time on search-highlighted content.
-- 📋 **⚡ `QFontMetrics` hoisted out of the per-cell underline loop.**
-  Construct once per `paintEvent`; cache `underlinePos` and
-  `lineWidth` as member fields refreshed on font change.
-- 📋 **⚡ Selection-bounds normalisation lifted out of `isCellSelected`.**
-  `std::swap` + min/max happen per-cell even though the result is
-  identical for every cell in the frame. Normalise at the top of
-  `paintEvent`; use pre-normalised `sLine, sCol, eLine, eCol` in the
-  inner loop.
-- 📋 **🧹 `writeSecureFile(path, data)` helper.** 12 copies of
-  `file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)`
-  across `config.cpp`, `sessionmanager.cpp` (×2), `claudeallowlist.cpp`,
-  `auditdialog.cpp` (×4), `claudeintegration.cpp` (×2),
-  `remotecontrol.cpp`, `auditrulequality.cpp`. One typo away from
-  leaking an API key. Single inline helper in a new
-  `src/secureio.h`, call sites rewritten.
-- 📋 **🧹 Shared `shellQuote` helper.** Defined in `sshdialog.cpp` and
-  *re-defined as a lambda* in `mainwindow.cpp` — two implementations
-  of the same regex-based single-quote-escaping logic, one of which
-  drifts if the other is fixed. Extract to `src/shellutils.h`.
+- ✅ **🐛 Audit-pipeline regression coverage for the 0.7.7 hardening fixes.**
+  Four new `tests/features/` subtrees lock the 0.7.6 → 0.7.7 fixes with
+  the same "fails on pre-fix code" guarantee the rest of the feature
+  suite carries:
+  - `osc8_insert_delete_lines/` — feeds OSC 8 at row 5, issues CSI 2 L
+    from cursor row 2, asserts the span now lives at row 7. Pre-fix,
+    the span stayed on row 5 because `m_screenHyperlinks` was never
+    shifted.
+  - `hyperlink_resize_clamp/` — opens an OSC 8 at (20, 50), shrinks to
+    (5, 10), closes with OSC 8 close, asserts the span lands on a row
+    in `[0, 4]`. Pre-fix, the close site's upper-bound guard silently
+    dropped the span because `m_hyperlinkStartRow` still held 20.
+  - `ssh_dash_host_rejected/` — constructs `SshBookmark` in five
+    scenarios (plain, user@host, identity+port, extraArgs, malicious
+    `-oProxyCommand=evil`) and asserts every command contains ` -- `
+    before the host token. Catches any future refactor that drops the
+    argv terminator.
+  - `image_bomb_png_header_peek/` — static source inspection of
+    `src/terminalgrid.cpp`: every `loadFromData(...)` call must be
+    preceded by a `QImageReader` peek in the 10 lines above or carry a
+    `// image-peek-ok` marker. Runtime fuzz would either succeed
+    (no signal) or hang CI (no signal either).
+- ✅ **⚡ `isCellSearchMatch` — linear scan → `std::lower_bound`.**
+  `m_searchMatches` is sorted by `globalLine`; the binary search jumps
+  to the first match ≥ current line, then iterates only matches whose
+  `globalLine` equals it. The previous impl self-described as "binary
+  search" but walked the whole vector from index 0. Expected win: 5–20%
+  of paint time on search-highlighted content.
+- ✅ **⚡ `QFontMetrics` hoisted out of the per-cell underline loop.**
+  `updateFontMetrics()` now caches `underlinePos` + `lineWidth` into
+  `m_fontUnderlinePos` / `m_fontLineWidth` members; the underline
+  drawing path reads the members directly. Relevant on TUI apps that
+  underline every cell (Claude Code's SGR 4 pattern).
+- ✅ **⚡ Selection-bounds normalisation lifted out of `isCellSelected`.**
+  `paintEvent` now normalises the selection once per frame into local
+  `selLineStart` / `selColStart` / `selLineEnd` / `selColEnd` /
+  `selRectColMin` / `selRectColMax`, and uses an inline `cellInSelection`
+  lambda that consumes the pre-normalised values. The `isCellSelected`
+  method is kept for the other callers (`selectedText` etc.) but the
+  hot-path caller no longer re-runs `std::swap` + `std::min`/`std::max`
+  for every cell in the frame.
+- ✅ **🧹 `setOwnerOnlyPerms` helper (`src/secureio.h`).** The bitmask
+  `QFileDevice::ReadOwner | QFileDevice::WriteOwner` was previously
+  repeated at 11 call sites across `config.cpp`, `sessionmanager.cpp`
+  (×2), `claudeallowlist.cpp`, `auditdialog.cpp` (×4),
+  `claudeintegration.cpp` (×2), `remotecontrol.cpp`, and
+  `auditrulequality.cpp`. One typo (`ReadOther`, `ReadGroup`) away
+  from widening access to a file that may hold an API key. Two-overload
+  helper: `setOwnerOnlyPerms(QFileDevice&)` for open handles (QFile /
+  QSaveFile) and `setOwnerOnlyPerms(const QString&)` for existing
+  paths (socket perms, post-close repairs). Every call site is now
+  routed through one of the two. The one surviving 0755 case in
+  `settingsdialog.cpp` (hooks shell script — needs executable bit for
+  every user role) stays literal by design.
+- ✅ **🧹 Shared `shellQuote` helper (`src/shellutils.h`).** Previously
+  a static function in `sshdialog.cpp` and *re-defined as a local
+  lambda* in `mainwindow.cpp::openClaudeProjectsDialog` — two implem-
+  entations of regex-based single-quote-escaping, one that handled
+  empty strings / pass-throughs and one that didn't. Consolidated into
+  one inline header; both call sites rewritten to use it.
 
 ### 💭 0.8+ deferred — larger scope
 

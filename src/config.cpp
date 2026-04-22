@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include "secureio.h"
+
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -38,7 +40,7 @@ void Config::save() {
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly)) {
-        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        setOwnerOnlyPerms(file);
         QByteArray json = QJsonDocument(m_data).toJson();
         if (file.write(json) == json.size()) {
             // 0.6.28 — fsync before rename. QFile::close flushes userspace

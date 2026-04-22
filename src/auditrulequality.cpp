@@ -1,5 +1,7 @@
 #include "auditrulequality.h"
 
+#include "secureio.h"
+
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -211,7 +213,7 @@ void RuleQualityTracker::save() const {
     // crash / kill -9 between recordFire calls.
     QSaveFile f(m_path);
     if (f.open(QIODevice::WriteOnly)) {
-        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        setOwnerOnlyPerms(f);
         f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
         f.commit();
     }
