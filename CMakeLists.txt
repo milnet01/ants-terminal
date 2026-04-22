@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.5 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.6 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -70,6 +70,7 @@ add_executable(ants-terminal
     src/toggleswitch.cpp
     src/auditdialog.cpp
     src/audithygiene.cpp
+    src/featurecoverage.cpp
     src/auditrulequality.cpp
     src/xcbpositiontracker.cpp
     src/claudeallowlist.cpp
@@ -1142,6 +1143,30 @@ if(ANTS_TESTS)
     add_test(NAME audit_hygiene
              COMMAND test_audit_hygiene)
     set_tests_properties(audit_hygiene PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # feature_coverage — locks the 0.7.x spec↔code drift + CHANGELOG↔test
+    # coverage lane parsers (identifier extraction + fuzzy title matching).
+    # Follow-on to the RetroDB 2026-04-21 audit-hygiene work — once scanner
+    # calibration was tightened, the next signal-loss frontier was specs
+    # referencing renamed code and CHANGELOG bullets without tests.
+    # Headless: pure text → list, no QtGui.
+    # See tests/features/feature_coverage/spec.md.
+    add_executable(test_feature_coverage
+        tests/features/feature_coverage/test_feature_coverage.cpp
+        src/featurecoverage.cpp
+    )
+    target_link_libraries(test_feature_coverage PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_feature_coverage PRIVATE src)
+    target_compile_options(test_feature_coverage PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME feature_coverage
+             COMMAND test_feature_coverage)
+    set_tests_properties(feature_coverage PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

@@ -33,6 +33,12 @@ A real terminal emulator built from scratch in C++ with Qt6.
 │   ├── auditdialog.h/.cpp    # Project audit: clazy + cppcheck + grep checks,
 │   │                         # SARIF v2.1.0 + HTML export, JSONL suppressions,
 │   │                         # baseline/trend, user rules (audit_rules.json)
+│   ├── audithygiene.h/.cpp   # Project-local scanner calibration parsers
+│   │                         # (.semgrep.yml header → --exclude-rule,
+│   │                         #  pyproject.toml S-codes → bandit --skip)
+│   ├── featurecoverage.h/.cpp # Feature-coverage audit lanes: spec↔code drift
+│   │                         # + CHANGELOG↔feature-test coverage (in-process
+│   │                         # runners, exercised by tests/features/feature_coverage)
 │   ├── xcbpositiontracker.h/.cpp # KWin window position tracker
 │   ├── claudeintegration.h/.cpp  # Claude Code process detection + hooks
 │   ├── claudeallowlist.h/.cpp    # Claude Code permission rule editor
@@ -103,7 +109,21 @@ Reverse flow: **TerminalGrid -> ResponseCallback -> PTY** (for DA, CPR, DSR)
   POSTs rule + snippet + blame to the configured OpenAI-compatible endpoint
   and displays `{verdict, confidence, reasoning}` inline. Multi-tool
   correlation tags cross-validated findings (★ in UI); confidence score
-  (0-100) replaces the binary flag for sort and filter
+  (0-100) replaces the binary flag for sort and filter. Feature-coverage
+  lanes (`featurecoverage.cpp`) run in-process — `inProcessRunner` on
+  `AuditCheck` sidesteps QProcess so C++ logic plugs into the same
+  `parseFindings → suppress → render` pipeline. Three lanes:
+  `spec_code_drift` flags tests/features/*/spec.md backtick-fenced
+  identifier tokens that no longer appear anywhere in the project tree
+  (minus build/.git/vendor); it normalises scoped names by falling back
+  to the tail component (`Class::method` → `method`) and skips Qt API /
+  lint-code / placeholder pseudo-tokens. `changelog_test_coverage`
+  fuzz-matches the top `##` version section's Added/Fixed bullets against
+  feature-spec titles (backtick-token match wins; ≥2 significant-word
+  overlap falls back). `test_health` greps tests/ subtrees for skipped /
+  disabled / xfail / `.only` markers across GTEST_SKIP / QSKIP /
+  pytest.mark.{skip,xfail} / unittest.skip / @Disabled / @Ignore / Jest
+  `it.only` etc.
 
 ## Building
 

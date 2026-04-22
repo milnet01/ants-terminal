@@ -1,5 +1,6 @@
 #include "auditdialog.h"
 #include "audithygiene.h"
+#include "featurecoverage.h"
 #include "toggleswitch.h"
 #include "config.h"
 
@@ -444,6 +445,83 @@ void AuditDialog::populateChecks() {
         "(tests/audit_fixtures/%s/)\\n' \"$f\" \"$lineno\" \"$id\" \"$id\"; "
         "  done",
         CheckType::CodeSmell, Severity::Minor, {}, true, true, nullptr
+    });
+
+    // ========== Feature-coverage lanes ==========
+    //
+    // Each of the three lanes below addresses a distinct "feature-e2e
+    // quality" gap that unit tests and static analysis won't catch:
+    //   1. Spec referencing code that was renamed/removed (drift)
+    //   2. CHANGELOG advertising features that shipped without a test
+    //   3. Tests that are skipped/disabled/xfailed — silently green
+    // Self-disable cleanly on projects that don't use the convention.
+    //
+    // Lane 1 — spec ↔ code drift. For each tests/features/*/spec.md,
+    // extract backtick-fenced identifier tokens and verify each still
+    // exists somewhere under src/. A rename or deletion that didn't
+    // update the spec shows up here at commit time.
+    {
+        AuditCheck c;
+        c.id          = "spec_code_drift";
+        c.name        = "Spec ↔ Code Drift";
+        c.description = "Identifiers referenced in tests/features/*/spec.md that no longer appear in src/";
+        c.category    = "General";
+        c.type        = CheckType::CodeSmell;
+        c.severity    = Severity::Minor;
+        c.autoSelect  = true;
+        c.available   = true;
+        c.inProcessRunner = &AuditDialog::runSpecDriftCheck;
+        m_checks.append(std::move(c));
+    }
+
+    // Lane 2 — CHANGELOG bullet ↔ feature-test coverage. Scans the top
+    // `## [x.y.z]` section of CHANGELOG.md for Added/Fixed bullets that
+    // don't plausibly match any tests/features/*/spec.md title. Info-
+    // severity because the match is fuzzy — surfaces release-note claims
+    // without a locking test, without hard-gating.
+    {
+        AuditCheck c;
+        c.id          = "changelog_test_coverage";
+        c.name        = "CHANGELOG ↔ Feature Tests";
+        c.description = "Top-section Added/Fixed bullets without a matching tests/features/*/spec.md";
+        c.category    = "General";
+        c.type        = CheckType::Info;
+        c.severity    = Severity::Info;
+        c.autoSelect  = true;
+        c.available   = true;
+        c.inProcessRunner = &AuditDialog::runChangelogCoverageCheck;
+        m_checks.append(std::move(c));
+    }
+
+    // Lane 3 — test-health. Surfaces skipped / disabled / xfail / only-
+    // blocks inside tests/ subtrees. An "all green" suite with one of
+    // these sprinkled in is silently lying about coverage. Runs through
+    // a plain grep so the rule pattern is inspectable and fixture-
+    // testable via tests/audit_fixtures/test_health/ later.
+    //
+    // Covers the canonical markers across C++ (GTEST_SKIP, QSKIP),
+    // Python (pytest.mark.skip/xfail, unittest.skip/skipIf),
+    // Java/Kotlin (@Disabled, @Ignore), Jest/Mocha (it.skip, it.only,
+    // describe.skip, xdescribe, fdescribe, xit, fit). The regex is
+    // deliberately anchored — bare `skip` in prose won't trip it.
+    m_checks.append({
+        "test_health", "Test-Health (skipped / disabled / only)",
+        "Markers that silently reduce coverage: skipped, disabled, xfail, .only blocks",
+        "General",
+        "for d in tests test spec __tests__ Tests; do "
+        "  [ -d \"$d\" ] || continue; "
+        "  grep -rnIE"
+        " --include='*.cpp' --include='*.h' --include='*.c' --include='*.hpp'"
+        " --include='*.py' --include='*.js' --include='*.ts' --include='*.tsx'"
+        " --include='*.go' --include='*.rs' --include='*.java' --include='*.kt'"
+        " --include='*.scala' --include='*.rb'"
+        " --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=build"
+        " --exclude-dir='build-*' --exclude-dir=.venv --exclude-dir=venv"
+        " --exclude-dir=__pycache__ --exclude-dir=.pytest_cache"
+        " '(GTEST_SKIP|QSKIP|@Disabled|@Ignore|pytest\\.mark\\.(skip|xfail)|unittest\\.skip|skipIf\\(|skipUnless\\(|[[:space:]\\.]it\\.(skip|only)[[:space:]\\(]|[[:space:]\\.]describe\\.(skip|only)[[:space:]\\(]|\\bxdescribe\\(|\\bfdescribe\\(|\\bxit\\(|\\bfit\\(|\\btodo\\.only)'"
+        " \"$d\" 2>/dev/null; "
+        "done",
+        CheckType::CodeSmell, Severity::Minor, OutputFilter{}, true, true, nullptr
     });
 
     // Observability: `catch (...) { }` with no logging / rethrow silently
@@ -1750,6 +1828,8 @@ static QString sourceForCheck(const QString &checkId) {
     if (checkId == "hadolint")           return "hadolint";
     if (checkId == "checkov")            return "checkov";
     if (checkId == "ast_grep")           return "ast-grep";
+    if (checkId == "spec_code_drift" ||
+        checkId == "changelog_test_coverage") return "feature-coverage";
     if (checkId.startsWith("git_"))      return "git";
     if (checkId == "compiler_warnings")  return "gcc";
     // find-based checks
@@ -3175,6 +3255,19 @@ void AuditDialog::buildUI() {
     connect(m_runBtn, &QPushButton::clicked, this, &AuditDialog::runAudit);
     btnRow->addWidget(m_runBtn);
 
+    // Cancel — appears only during a run. Placed immediately next to the
+    // Run button so the user's eye is already there when they realize a
+    // check is hanging (clazy can chew on compile_commands.json for
+    // tens of seconds on a big project).
+    m_cancelBtn = new QPushButton("Cancel", this);
+    m_cancelBtn->setFixedHeight(32);
+    m_cancelBtn->setMinimumWidth(100);
+    m_cancelBtn->setVisible(false);
+    m_cancelBtn->setToolTip("Stop the audit, kill the current tool, "
+                             "and render whatever checks completed so far");
+    connect(m_cancelBtn, &QPushButton::clicked, this, &AuditDialog::cancelAudit);
+    btnRow->addWidget(m_cancelBtn);
+
     // SARIF export (industry-standard JSON, consumed by GitHub Code Scanning,
     // VSCode SARIF Viewer, SonarQube, CodeQL, etc.). Appears after a run.
     m_sarifBtn = new QPushButton("Export SARIF", this);
@@ -3365,6 +3458,11 @@ void AuditDialog::runAudit() {
     m_progress->setVisible(true);
     m_statusLabel->setVisible(true);
     m_completedResults.clear();
+    m_cancelled = false;
+    // Cancel becomes the primary action while a run is in-flight; Run
+    // button stays visible but disabled so the button-row geometry
+    // doesn't jump.
+    if (m_cancelBtn) m_cancelBtn->setVisible(true);
 
     // Compute the "recent files" list if the user opted into scoped audit.
     m_recentFiles.clear();
@@ -3447,7 +3545,67 @@ void AuditDialog::runAudit() {
     runNextCheck();
 }
 
+void AuditDialog::cancelAudit() {
+    // Idempotent — double-click on Cancel (or a race between the button
+    // click and the check finishing) is harmless.
+    if (m_cancelled) return;
+    m_cancelled = true;
+
+    // Watchdog timer and QProcess both have to be quieted BEFORE we
+    // render, otherwise their queued signals would re-enter the pipeline.
+    m_timeout->stop();
+    if (m_process && m_process->state() != QProcess::NotRunning) {
+        // Same disconnect-then-kill dance the timeout path uses: prevent
+        // finished() from firing with the partial output we're about to
+        // discard.
+        disconnect(m_process, nullptr, this, nullptr);
+        m_process->kill();
+        m_process->waitForFinished(1000);
+        // Reconnect so a follow-up Run Audit works normally.
+        connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, &AuditDialog::onCheckFinished);
+    }
+
+    // Record a sentinel row so the report makes the truncation obvious —
+    // without this, cancelling between checks produces an empty report
+    // indistinguishable from "all checks passed", which is the opposite
+    // of what happened.
+    if (m_currentCheck >= 0 && m_currentCheck < m_checks.size()) {
+        const auto &check = m_checks[m_currentCheck];
+        CheckResult r;
+        r.checkId   = check.id;
+        r.checkName = check.name;
+        r.category  = check.category;
+        r.type      = CheckType::Info;
+        r.severity  = Severity::Info;
+        r.source    = "audit";
+        r.output    = "Cancelled by user — partial results only";
+        r.warning   = true;
+        m_completedResults.append(r);
+    }
+
+    // Render whatever completed + restore the UI to the idle state.
+    renderResults();
+    m_runBtn->setEnabled(true);
+    if (m_cancelBtn) m_cancelBtn->setVisible(false);
+    m_reviewBtn->setVisible(true);
+    m_baselineBtn->setVisible(true);
+    if (m_sarifBtn)  m_sarifBtn->setVisible(true);
+    if (m_htmlBtn)   m_htmlBtn->setVisible(true);
+    if (m_filterBar) m_filterBar->setVisible(true);
+    for (auto &c : m_checks)
+        if (c.toggle) c.toggle->setEnabled(c.available);
+    m_statusLabel->setFullText(
+        QString("Audit cancelled after %1/%2 check(s).")
+            .arg(m_checksRun).arg(m_totalSelected));
+}
+
 void AuditDialog::runNextCheck() {
+    // Cancellation short-circuit — user clicked Cancel while a check was
+    // running. `cancelAudit()` already killed the process and rendered
+    // whatever completed, so we just bail out of the chain.
+    if (m_cancelled) return;
+
     while (++m_currentCheck < m_checks.size()) {
         if (m_checks[m_currentCheck].toggle &&
             m_checks[m_currentCheck].toggle->isChecked())
@@ -3458,6 +3616,7 @@ void AuditDialog::runNextCheck() {
         m_progress->setValue(m_totalSelected);
         renderResults();
         m_runBtn->setEnabled(true);
+        if (m_cancelBtn)   m_cancelBtn->setVisible(false);
         m_reviewBtn->setVisible(true);
         m_baselineBtn->setVisible(true);
         if (m_sarifBtn)    m_sarifBtn->setVisible(true);
@@ -3471,6 +3630,33 @@ void AuditDialog::runNextCheck() {
     const auto &check = m_checks[m_currentCheck];
     m_statusLabel->setFullText("Running: " + check.name + "…");
     m_progress->setValue(m_checksRun);
+
+    // In-process runner path — sidesteps QProcess entirely. Used by the
+    // feature-coverage lanes whose logic is awkward to express in a
+    // bash/grep/awk pipeline. Output is piped through the same
+    // handleCheckOutput() post-processing the QProcess path uses, so
+    // suppressions / path rules / dedup behave identically.
+    //
+    // Deferred via QTimer::singleShot(0, …) so the status-label update
+    // paints before the (potentially slow) runner blocks, matching the
+    // UX of the async QProcess path.
+    if (check.inProcessRunner) {
+        const QString projectPath = m_projectPath;
+        const auto runner = check.inProcessRunner;
+        QTimer::singleShot(0, this, [this, projectPath, runner]() {
+            // Cancellation may have arrived between scheduling and
+            // firing; skip the runner entirely in that case so we
+            // don't spend the CPU cycles or append a post-cancel
+            // CheckResult. (The `this, …` capture means the Qt-
+            // supplied context guard prevents dangling-pointer
+            // deref if the dialog itself was closed.)
+            if (m_cancelled) return;
+            const QString output = runner(projectPath);
+            if (m_cancelled) return;
+            handleCheckOutput(output);
+        });
+        return;
+    }
 
     m_timeout->start(30000);
     m_process->start("/bin/bash", {"-c", check.command});
@@ -3492,9 +3678,13 @@ void AuditDialog::runNextCheck() {
 
 void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*status*/) {
     m_timeout->stop();
+    // Signal may arrive after `cancelAudit()` killed the process — the
+    // finished() slot is queued, so we can race here. Bail silently
+    // rather than appending a half-baked CheckResult from partial
+    // output.
+    if (m_cancelled) return;
     if (m_currentCheck < 0 || m_currentCheck >= m_checks.size()) return;
 
-    const auto &check = m_checks[m_currentCheck];
     QString output = QString::fromUtf8(m_process->readAllStandardOutput()).trimmed();
     const QString errOutput = QString::fromUtf8(m_process->readAllStandardError()).trimmed();
 
@@ -3502,6 +3692,17 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
         output = errOutput;
     else if (!errOutput.isEmpty())
         output += "\n" + errOutput;
+
+    handleCheckOutput(output);
+}
+
+void AuditDialog::handleCheckOutput(const QString &output) {
+    // Drop racy callbacks arriving after the user cancelled — otherwise
+    // a late-firing in-process runner could append a CheckResult behind
+    // the "cancelled" sentinel.
+    if (m_cancelled) return;
+    if (m_currentCheck < 0 || m_currentCheck >= m_checks.size()) return;
+    const auto &check = m_checks[m_currentCheck];
 
     // Apply declarative post-filter (noise excludes, head caps, etc).
     const FilterResult filtered = applyFilter(output, check.filter);
@@ -5150,3 +5351,21 @@ QString AuditDialog::plainTextResults() const {
 
     return header + body;
 }
+
+// ---------------------------------------------------------------------------
+// Feature-coverage lane runners
+// ---------------------------------------------------------------------------
+//
+// Thin shims over featurecoverage.cpp so the inProcessRunner callable
+// has the expected signature. The actual logic (file walk, token
+// extraction, fuzzy match) lives in featurecoverage.cpp where it can
+// be exercised by the feature test without linking QtWidgets.
+
+QString AuditDialog::runSpecDriftCheck(const QString &projectPath) {
+    return FeatureCoverage::runSpecDriftCheck(projectPath);
+}
+
+QString AuditDialog::runChangelogCoverageCheck(const QString &projectPath) {
+    return FeatureCoverage::runChangelogCoverageCheck(projectPath);
+}
+

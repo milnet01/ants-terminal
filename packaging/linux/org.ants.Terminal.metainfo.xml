@@ -103,6 +103,25 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.6" date="2026-04-22">
+      <description>
+        <p>Closes the 0.7.x remote-control arc and the audit-signal gap opened by the 0.7.5 hygiene work. Seven rc_protocol commands now cover the "drive the terminal from a script" story end-to-end (ls, send-text, new-tab, select-window, set-title, get-text, launch), and the Project Audit panel gains two feature-coverage lanes that catch shipped features without locking tests and spec prose that drifted past a rename.</p>
+        <ul>
+          <li><em>Added — Audit feature-coverage lanes:</em> two in-process checks in <code>src/featurecoverage.{cpp,h}</code>. Lane 1 (spec↔code drift) extracts backtick-fenced identifier tokens from <code>tests/features/*/spec.md</code> and reports ones that no longer appear under <code>src/</code>. Lane 2 (CHANGELOG↔feature-test coverage) fuzz-matches Added/Fixed bullets in the top CHANGELOG section against feature-spec titles. Both lanes plug into the existing parseFindings → suppress → render pipeline via <code>AuditCheck::inProcessRunner</code>. Pinned by 17 invariants in <code>tests/features/feature_coverage/</code>.</li>
+          <li><em>Added — remote-control <code>launch</code>:</em> seventh and final rc_protocol command. Spawns a command in a new tab in one round-trip, auto-appending a trailing newline — the convenience differentiator from <code>new-tab</code>, which stays byte-faithful.</li>
+          <li><em>Added — remote-control <code>get-text</code>:</em> returns the trailing N lines of (scrollback + screen), default 100, capped server-side at 10 000. Reuses the AI dialog's context-capture accessor so format stays consistent.</li>
+          <li><em>Added — remote-control <code>set-title</code>:</em> pins a tab label against both OSC 0/2 shell updates and the 2 s refresh timer. Empty title clears the pin; pin storage cleaned up on tab close.</li>
+          <li><em>Added — remote-control <code>select-window</code>:</em> switches the active tab by 0-based index; focus follows so chained <code>send-text</code> lands on the new pane.</li>
+          <li><em>Added — remote-control <code>new-tab</code>:</em> opens a fresh tab and returns its index; optional cwd and command. 200 ms settle before writing the initial command; QPointer-guarded against tab-close-before-fire races.</li>
+          <li><em>Added — remote-control <code>send-text</code>:</em> writes UTF-8 bytes byte-for-byte to a tab's PTY. Control chars and escapes pass through unchanged, matching Kitty's rc_protocol <code>send-text</code> semantics. Reads stdin until EOF when <code>--remote-text</code> is absent.</li>
+          <li><em>Added — remote-control protocol scaffold:</em> Kitty-style JSON-over-Unix-socket RPC. QLocalServer on <code>$ANTS_REMOTE_SOCKET</code> or <code>$XDG_RUNTIME_DIR/ants-terminal.sock</code>; LF-terminated one-request/one-response. The same binary doubles as the client via <code>--remote &lt;cmd&gt;</code>.</li>
+          <li><em>Added — main-thread stall detector:</em> 200 ms heartbeat QTimer in MainWindow measures gap between its own firings; logs drift + cumulative count + worst-case when the event loop was blocked. Gated by <code>ANTS_DEBUG=perf</code>, zero cost when off.</li>
+          <li><em>Added — VT throughput benchmark harness:</em> drives four fixed corpora (ascii_print, newline_stream, ansi_sgr, utf8_cjk) through VtParser → TerminalGrid at <code>-O2</code>, emits CSV. Registered under ctest label <code>perf</code>; first step of the 0.8.0 throughput investigation.</li>
+          <li><em>Changed — dropdown-flicker suppression extended</em> to <code>QEvent::HoverMove</code> / <code>HoverEnter</code> / <code>HoverLeave</code> in <code>MainWindow::eventFilter</code>. The 0.7.5 NoAnimStyle fix only partially reduced the mouse-movement-triggered flicker; Qt's style engine consults WA_Hover independently of QMouseEvent. Residual flicker still visible — pushed to the 0.8.0 roadmap for a different-angle fix.</li>
+          <li><em>Fixed — <code>new-tab</code> caller-owns-newline contract:</em> first ship used <code>writeCommand</code> (auto-appends <code>\n</code>), contradicting the documented send-text-style semantics. <code>newTabForRemote</code> now uses <code>sendToPty</code> (raw bytes). Convenience "open + run" moved to the new <code>launch</code> command.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.5" date="2026-04-20">
       <description>
         <p>Same-day follow-up to 0.7.4 that resolves the dropdown-menu flicker the 0.7.4 "Known Issue" section called out. Root cause finally pinpointed via the Debug Mode instrumentation that shipped in 0.7.4: Fusion's QWidgetAnimator was creating a 60 Hz QPropertyAnimation(target=QWidget, prop=geometry) cycle on the idle window — 1439 animation completions in a 23 s idle log, each driving a full LayoutRequest → UpdateRequest → Paint cascade. Neither setEffectEnabled(UI_AnimateMenu, false) nor QMainWindow::setAnimated(false) covers the style-hint-driven cycle.</p>

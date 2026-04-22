@@ -12,8 +12,47 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+
+## [0.7.6] — 2026-04-22
+
+**Theme:** close the 0.7.x remote-control arc and close the audit-signal
+gap the 0.7.5 hygiene work opened. Seven rc_protocol commands now cover
+the "drive the terminal from a script" story end-to-end (`ls`, `send-text`,
+`new-tab`, `select-window`, `set-title`, `get-text`, `launch`), and the
+audit gains two feature-coverage lanes that catch shipped features
+without locking tests and spec prose that drifted past a rename.
+
 ### Added
 
+- **Audit — feature-coverage lanes** (`src/featurecoverage.{cpp,h}`). Two
+  new in-process audit checks that close the signal-loss frontier left
+  by the 2026-04-21 RetroDB audit-hygiene work: scanner calibration was
+  tightened, so the remaining noise was *upstream* of the scanners —
+  features shipping without any locking test, spec prose referring to
+  symbols that had since been renamed. The lanes are Info/Minor severity;
+  the value is raising awareness, not gating releases.
+
+  Lane 1 — **spec↔code drift.** For each `tests/features/*/spec.md`,
+  extracts backtick-fenced identifier-shaped tokens (CamelCase,
+  snake_case, kebab-case, scoped::names, dotted.ids) and reports the
+  ones that no longer appear anywhere under `src/`. Scoped names fall
+  back to their tail component (`Class::method` → `method`) so rename
+  refactors that keep the leaf don't false-positive; a curated stopword
+  list drops ubiquitous Qt / language keywords that always exist.
+
+  Lane 2 — **CHANGELOG↔feature-test coverage.** Parses the top
+  `## [x.y.z]` section of `CHANGELOG.md`, walks the Added/Fixed bullets,
+  and fuzz-matches each against the set of feature-spec titles.
+  Backtick-token match wins; ≥2 significant-word overlap falls back
+  (stopword-filtered, ≥4 chars). Bullets with neither surface as
+  coverage gaps — release-note claims that never got a locking test.
+
+  Both lanes use the `AuditCheck::inProcessRunner` hook so the pure
+  parsers plug into the same `parseFindings → suppress → render`
+  pipeline as the shelled-out scanners, sidestepping QProcess. Pinned
+  by `tests/features/feature_coverage/` (17 invariants across token
+  extraction shapes, stopword filtering, top-section isolation,
+  bullet-section tagging, and both fuzzy-match paths).
 - **Remote-control — `launch` command.** Seventh and final command in
   the initial rc_protocol surface. Convenience wrapper that spawns a
   command in a new tab — sugar for the `idx=$(... new-tab) && ...

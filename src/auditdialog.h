@@ -17,6 +17,8 @@
 #include <QSet>
 #include <QHash>
 
+#include <functional>
+
 class ToggleSwitch;
 
 // SonarQube-style taxonomy (informational tag for the UI + summary). A single
@@ -77,6 +79,19 @@ struct AuditCheck {
     bool autoSelect = false;
     bool available = true;
     ToggleSwitch *toggle = nullptr;
+    // Optional in-process runner. When set, the check is executed by
+    // calling this function with the project path and feeding the
+    // returned text through the same post-processing pipeline that
+    // would normally run on QProcess stdout. `command` is ignored
+    // when this is populated. Used by checks whose logic is easier
+    // to express in C++ than in a bash/grep/awk pipeline — notably
+    // the feature-coverage lanes (spec↔code drift, CHANGELOG↔tests).
+    //
+    // Default-initialized so positional aggregate-init call sites
+    // (`{id, name, desc, category, cmd, type, sev, filter, auto, true, nullptr}`)
+    // that don't name this trailing field don't trip
+    // -Wmissing-field-initializers.
+    std::function<QString(const QString & /*projectPath*/)> inProcessRunner{};
 };
 
 // Individual finding parsed from a check's output. One per issue, not one
@@ -142,9 +157,28 @@ private:
     void populateChecks();
     void buildUI();
     void runAudit();
+    // User-triggered abort of the in-progress audit. Kills any running
+    // QProcess, stops the watchdog timer, sets the cancellation flag so
+    // a pending in-process-runner lambda and any racy onCheckFinished
+    // callback bail out instead of appending more CheckResult entries,
+    // and renders whatever has completed so far as a partial result.
+    void cancelAudit();
     void runNextCheck();
     void onCheckFinished(int exitCode, QProcess::ExitStatus status);
+    // Downstream half of onCheckFinished — parses `output` through the
+    // filter → findings → suppress → cap pipeline, advances to the next
+    // check. Shared between the QProcess path (onCheckFinished) and the
+    // in-process-runner path (runNextCheck calls this directly after
+    // invoking AuditCheck::inProcessRunner).
+    void handleCheckOutput(const QString &output);
     bool toolExists(const QString &tool);
+
+    // Feature-coverage lane runners. Each is a pure C++ callable attached
+    // to an AuditCheck via `inProcessRunner`. Returns `file:line: message`
+    // stdout the same way a shell-based check would. Defined out-of-line
+    // so populateChecks() stays focused on registration.
+    static QString runSpecDriftCheck(const QString &projectPath);
+    static QString runChangelogCoverageCheck(const QString &projectPath);
 
     // External-tool calibration helpers. Each reads a project-local config
     // file and returns the flag string to splice into the tool's command so
@@ -455,6 +489,14 @@ private:
     QLabel *m_pathLabel = nullptr;
     QLabel *m_typesLabel = nullptr;
     QPushButton *m_runBtn = nullptr;
+    // Visible only while an audit is in-progress; clicking it aborts the
+    // remaining checks and renders partial results.
+    QPushButton *m_cancelBtn = nullptr;
+    // Set true while `cancelAudit()` is unwinding. Queued lambdas
+    // (QTimer::singleShot for in-process runners) and already-sent
+    // QProcess::finished signals check this before appending more
+    // CheckResults — prevents post-cancel race noise.
+    bool m_cancelled = false;
     QPushButton *m_baselineBtn = nullptr;
     QPushButton *m_newOnlyBtn = nullptr;
     QProgressBar *m_progress = nullptr;

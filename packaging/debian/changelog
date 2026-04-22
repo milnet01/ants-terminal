@@ -1,3 +1,55 @@
+ants-terminal (0.7.6-1) unstable; urgency=medium
+
+  * Closes the 0.7.x remote-control arc and the audit-signal gap opened
+    by the 0.7.5 hygiene work. Seven rc_protocol commands now cover the
+    "drive the terminal from a script" story end-to-end (ls, send-text,
+    new-tab, select-window, set-title, get-text, launch). The Project
+    Audit panel gains two feature-coverage lanes that catch shipped
+    features without locking tests and spec prose that drifted past a
+    rename.
+  * Added: Audit feature-coverage lanes (src/featurecoverage.{cpp,h}).
+    Lane 1 (spec↔code drift) extracts backtick-fenced identifier tokens
+    from tests/features/*/spec.md and reports ones that no longer
+    appear under src/. Lane 2 (CHANGELOG↔feature-test coverage) fuzz-
+    matches Added/Fixed bullets against feature-spec titles. Both plug
+    into the existing parseFindings → suppress → render pipeline via
+    AuditCheck::inProcessRunner. Pinned by 17 invariants in
+    tests/features/feature_coverage/.
+  * Added: remote-control `launch` — seventh and final rc_protocol
+    command. Spawns a command in a new tab in one round-trip, auto-
+    appending a trailing newline.
+  * Added: remote-control `get-text` — returns the trailing N lines of
+    (scrollback + screen), default 100, capped server-side at 10 000.
+  * Added: remote-control `set-title` — pins a tab label against both
+    OSC 0/2 shell updates and the 2 s refresh timer; empty clears.
+  * Added: remote-control `select-window` — switches the active tab
+    by 0-based index; focus follows.
+  * Added: remote-control `new-tab` — opens a fresh tab and returns
+    its index; optional cwd and initial command (200 ms settle,
+    QPointer-guarded against tab-close-before-fire races).
+  * Added: remote-control `send-text` — writes UTF-8 bytes byte-for-
+    byte to a tab's PTY. Control chars and escapes pass through
+    unchanged, matching Kitty's rc_protocol semantics. Reads stdin
+    when --remote-text is absent.
+  * Added: remote-control protocol scaffold — Kitty-style JSON-over-
+    Unix-socket RPC via QLocalServer on $ANTS_REMOTE_SOCKET (default
+    $XDG_RUNTIME_DIR/ants-terminal.sock). The same binary doubles as
+    the client via --remote <cmd>.
+  * Added: main-thread stall detector — 200 ms heartbeat QTimer that
+    logs drift + cumulative count + worst-case when the event loop
+    was blocked. Gated by ANTS_DEBUG=perf.
+  * Added: VT throughput benchmark harness — drives four fixed corpora
+    through VtParser → TerminalGrid at -O2. Registered under ctest
+    label `perf`.
+  * Changed: dropdown-flicker suppression extended to QEvent::HoverMove
+    / HoverEnter / HoverLeave in MainWindow::eventFilter. Residual
+    flicker still visible — pushed to the 0.8.0 roadmap.
+  * Fixed: `new-tab` caller-owns-newline contract — newTabForRemote now
+    uses sendToPty (raw bytes) instead of writeCommand. Convenience
+    "open + run" moved to the new `launch` command.
+
+ -- Ants Terminal Contributors <ants-terminal@users.noreply.github.com>  Wed, 22 Apr 2026 10:14:34 +0000
+
 ants-terminal (0.7.5-1) unstable; urgency=medium
 
   * Same-day follow-up to 0.7.4 that resolves the dropdown-menu
