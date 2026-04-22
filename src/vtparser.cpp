@@ -163,6 +163,21 @@ void VtParser::flushCodepoint(uint32_t cp) {
     processChar(cp);
 }
 
+// After a large OSC/DCS/APC sequence dispatches, std::string::clear() keeps
+// the underlying capacity. An attacker who streamed a ~10 MB inline image
+// would otherwise leave three 10 MB buffers resident for the lifetime of
+// the parser (30 MB permanent overhead per terminal). Swap against an empty
+// string to actually release memory when the buffer grew past the
+// "one legitimate notification fits in this much" threshold.
+static void releaseIfLarge(std::string &s) {
+    constexpr size_t kShrinkThreshold = 64 * 1024;   // 64 KB
+    if (s.capacity() > kShrinkThreshold) {
+        std::string().swap(s);
+    } else {
+        s.clear();
+    }
+}
+
 void VtParser::appendUtf8(std::string &out, uint32_t ch, size_t maxBytes) {
     // Compute encoded length first so we can reject atomically without a
     // partial write that would overshoot maxBytes by up to 3 bytes.
@@ -375,8 +390,9 @@ void VtParser::processChar(uint32_t ch) {
             // BEL or ST terminates OSC
             VtAction a;
             a.type = VtAction::OscEnd;
-            a.oscString = m_oscString;
+            a.oscString = std::move(m_oscString);
             m_callback(a);
+            releaseIfLarge(m_oscString);
             transition(Ground);
         } else if (ch == 0x1B) {
             // Might be ESC \ (ST)
@@ -384,8 +400,9 @@ void VtParser::processChar(uint32_t ch) {
             // For simplicity, end the OSC here
             VtAction a;
             a.type = VtAction::OscEnd;
-            a.oscString = m_oscString;
+            a.oscString = std::move(m_oscString);
             m_callback(a);
+            releaseIfLarge(m_oscString);
             transition(Escape);
         } else {
             appendUtf8(m_oscString, ch, 10 * 1024 * 1024); // 10MB cap for inline images
@@ -396,14 +413,16 @@ void VtParser::processChar(uint32_t ch) {
         if (ch == 0x9C || ch == 0x07) {
             VtAction a;
             a.type = VtAction::DcsEnd;
-            a.oscString = m_dcsString; // Reuse oscString field for payload
+            a.oscString = std::move(m_dcsString); // Reuse oscString field for payload
             m_callback(a);
+            releaseIfLarge(m_dcsString);
             transition(Ground);
         } else if (ch == 0x1B) {
             VtAction a;
             a.type = VtAction::DcsEnd;
-            a.oscString = m_dcsString;
+            a.oscString = std::move(m_dcsString);
             m_callback(a);
+            releaseIfLarge(m_dcsString);
             transition(Escape);
         } else {
             appendUtf8(m_dcsString, ch, 10 * 1024 * 1024); // 10MB cap
@@ -414,14 +433,16 @@ void VtParser::processChar(uint32_t ch) {
         if (ch == 0x9C || ch == 0x07) {
             VtAction a;
             a.type = VtAction::ApcEnd;
-            a.oscString = m_apcString; // Reuse oscString field for payload
+            a.oscString = std::move(m_apcString); // Reuse oscString field for payload
             m_callback(a);
+            releaseIfLarge(m_apcString);
             transition(Ground);
         } else if (ch == 0x1B) {
             VtAction a;
             a.type = VtAction::ApcEnd;
-            a.oscString = m_apcString;
+            a.oscString = std::move(m_apcString);
             m_callback(a);
+            releaseIfLarge(m_apcString);
             transition(Escape);
         } else {
             appendUtf8(m_apcString, ch, 10 * 1024 * 1024); // 10MB cap

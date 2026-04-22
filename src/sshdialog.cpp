@@ -68,6 +68,13 @@ QString SshBookmark::toSshCommand(bool controlMaster) const {
         for (const QString &arg : extraArgs.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts))
             args << shellQuote(arg);
     }
+    // `--` before the host stops OpenSSH from parsing a bookmark whose host
+    // begins with `-` as an option (CVE-2017-1000117 class — `-oProxyCommand=`
+    // injects arbitrary command execution). Shell-quoting alone does NOT
+    // defend against this: the shell passes the value correctly, but ssh
+    // itself then interprets the leading dash. `--` is the portable POSIX
+    // argv-terminator and has been supported by OpenSSH since forever.
+    args << "--";
     if (!user.isEmpty())
         args << shellQuote(user + "@" + host);
     else

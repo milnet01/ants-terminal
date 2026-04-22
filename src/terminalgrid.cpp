@@ -1,7 +1,9 @@
 #include "terminalgrid.h"
 
 #include <QByteArray>
+#include <QBuffer>
 #include <QDateTime>
+#include <QImageReader>
 #include <QStandardPaths>
 #include <QDir>
 #include <QSet>
@@ -1046,8 +1048,19 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     if (params.find("inline=1") == std::string::npos) return;
 
     QByteArray decoded = QByteArray::fromBase64(QByteArray::fromRawData(b64data.data(), b64data.size()));
+    // Peek at the declared image dimensions BEFORE committing to a full
+    // decode. A "compression bomb" PNG can advertise 100k×100k in its
+    // header while the compressed payload is <1 KB — QImage::loadFromData
+    // would allocate ~40 GB before the dimension check fires. QImageReader
+    // reads just the header.
+    QBuffer buf(&decoded);
+    buf.open(QIODevice::ReadOnly);
+    QImageReader reader(&buf);
+    const QSize declared = reader.size();
+    if (declared.width()  > MAX_IMAGE_DIM ||
+        declared.height() > MAX_IMAGE_DIM) return;
     QImage img;
-    if (!img.loadFromData(decoded)) return;
+    if (!img.loadFromData(decoded)) return;  // image-peek-ok: size peeked above
     if (img.width() > MAX_IMAGE_DIM || img.height() > MAX_IMAGE_DIM) return;
 
     // Image-bomb defense: reject post-decode if the decoded bitmap would
@@ -1355,11 +1368,19 @@ void TerminalGrid::insertLines(int count) {
     if (m_cursorRow < m_scrollTop || m_cursorRow > bottom) return;
     markAllScreenDirty();
     count = std::min(count, bottom - m_cursorRow + 1);
+    // m_screenHyperlinks must track m_screenLines — otherwise OSC 8 spans
+    // drift away from the cells that contain the clickable text.
+    const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
     for (int i = 0; i < count; ++i) {
         m_screenLines.erase(m_screenLines.begin() + bottom);
         TermLine tl;
         tl.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
         m_screenLines.insert(m_screenLines.begin() + m_cursorRow, std::move(tl));
+        if (hlInRange) {
+            m_screenHyperlinks.erase(m_screenHyperlinks.begin() + bottom);
+            m_screenHyperlinks.insert(m_screenHyperlinks.begin() + m_cursorRow,
+                                      std::vector<HyperlinkSpan>{});
+        }
     }
 }
 
@@ -1368,11 +1389,17 @@ void TerminalGrid::deleteLines(int count) {
     if (m_cursorRow < m_scrollTop || m_cursorRow > bottom) return;
     markAllScreenDirty();
     count = std::min(count, bottom - m_cursorRow + 1);
+    const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
     for (int i = 0; i < count; ++i) {
         m_screenLines.erase(m_screenLines.begin() + m_cursorRow);
         TermLine tl;
         tl.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
         m_screenLines.insert(m_screenLines.begin() + bottom, std::move(tl));
+        if (hlInRange) {
+            m_screenHyperlinks.erase(m_screenHyperlinks.begin() + m_cursorRow);
+            m_screenHyperlinks.insert(m_screenHyperlinks.begin() + bottom,
+                                      std::vector<HyperlinkSpan>{});
+        }
     }
 }
 
@@ -1948,6 +1975,14 @@ void TerminalGrid::resize(int rows, int cols) {
     m_scrollTop = 0;
     m_cursorRow = std::clamp(m_cursorRow, 0, m_rows - 1);
     m_cursorCol = std::clamp(m_cursorCol, 0, m_cols - 1);
+    // An OSC 8 hyperlink opened before resize holds a (row, col) pair that
+    // may now lie outside the new grid. Without clamp, the terminal either
+    // silently drops the span (safe) or attaches it to a row whose content
+    // no longer matches the clickable text (visual-correctness bug when the
+    // grid grows back). Close the active hyperlink on any resize — matches
+    // xterm's behaviour and avoids the stale-coordinate class of bugs.
+    m_hyperlinkStartRow = std::clamp(m_hyperlinkStartRow, 0, m_rows - 1);
+    m_hyperlinkStartCol = std::clamp(m_hyperlinkStartCol, 0, m_cols - 1);
     m_screenHyperlinks.resize(m_rows);
 
     // Reinitialize tab stops for new width
@@ -2299,8 +2334,17 @@ void TerminalGrid::handleApc(const std::string &payload) {
         QByteArray decoded = QByteArray::fromBase64(base64Data);
 
         if (format == 100) {
-            // PNG format
-            image.loadFromData(decoded, "PNG");
+            // PNG format — peek dimensions via QImageReader before decode
+            // so a declared-huge / actually-tiny compression bomb can't
+            // force a multi-GB allocation before the size check fires.
+            QBuffer headerBuf(&decoded);
+            headerBuf.open(QIODevice::ReadOnly);
+            QImageReader reader(&headerBuf, "PNG");
+            const QSize declared = reader.size();
+            if (declared.width()  <= MAX_IMAGE_DIM &&
+                declared.height() <= MAX_IMAGE_DIM) {
+                image.loadFromData(decoded, "PNG");  // image-peek-ok
+            }
             if (image.width() > MAX_IMAGE_DIM || image.height() > MAX_IMAGE_DIM)
                 image = QImage(); // Reject oversized
             // Image-bomb defense: PNGs can decode to far more bytes than

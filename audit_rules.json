@@ -1,0 +1,149 @@
+{
+  "_about": [
+    "Project-local rule pack consumed by src/auditdialog.cpp (loadUserRules).",
+    "User-defined rules run AFTER populateChecks() so the hardcoded catalogue",
+    "stays the baseline; entries here add new checks or override by id.",
+    "",
+    "Origin: the 2026-04-22 four-dimensional review (perf / security / bugs /",
+    "refactor) produced findings that are expressible as repo-wide grep",
+    "patterns. Encoding them here turns the review into a persistent",
+    "regression guard instead of a one-off sweep.",
+    "",
+    "Schema reference: see AuditDialog::loadUserRules in auditdialog.cpp.",
+    "Fields: id, name, description, category, command (required), type,",
+    "severity, auto_select, drop_if_contains[], keep_only_if_contains[],",
+    "drop_if_matches, max_lines."
+  ],
+  "rules": [
+    {
+      "id": "perf_qfontmetrics_construction",
+      "name": "QFontMetrics Construction (hoist-candidate)",
+      "description": "QFontMetrics construction. If inside a per-cell / per-frame loop, hoist it — QFontMetrics is non-trivial to build (font-shaping data) and the per-cell cost compounds across a viewport.",
+      "category": "Performance",
+      "command": "grep -rnE 'QFontMetrics[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\\(' src/ --include='*.cpp' --include='*.h' || true",
+      "type": "hotspot",
+      "severity": "minor",
+      "auto_select": false,
+      "drop_if_contains": ["/build/", "moc_", "// perf-hoist-ok"],
+      "max_lines": 40
+    },
+    {
+      "id": "perf_regex_non_static_in_function",
+      "name": "QRegularExpression Not Marked Static",
+      "description": "QRegularExpression construction without the `static` qualifier on the declaration line. Static keeps the compiled pattern alive for subsequent calls; non-static re-compiles on every invocation. Flag for review — some construction sites (one-shot parse) legitimately don't need static.",
+      "category": "Performance",
+      "command": "grep -rnE '(^|[[:space:]])QRegularExpression[[:space:]]+[A-Za-z_]' src/ --include='*.cpp' --include='*.h' | grep -v 'static' || true",
+      "type": "hotspot",
+      "severity": "info",
+      "auto_select": false,
+      "drop_if_contains": ["moc_", "// perf-compile-ok"],
+      "max_lines": 40
+    },
+    {
+      "id": "perf_vector_insert_erase_in_loop",
+      "name": "Vector insert/erase At begin()+N (rotate-candidate)",
+      "description": "`.erase(container.begin() + idx)` or `.insert(container.begin() + idx, …)` is O(n) per call. When the operation is inside a `for` loop over `count`, the loop is O(n·count). `std::rotate` does the same transformation in one linear pass. See ROADMAP 0.7.7+ §Perf — scrollUp/scrollDown rewrite.",
+      "category": "Performance",
+      "command": "grep -rnE '\\.(erase|insert)\\([^)]*\\.begin\\(\\)[[:space:]]*\\+' src/ --include='*.cpp' || true",
+      "type": "hotspot",
+      "severity": "minor",
+      "auto_select": false,
+      "drop_if_contains": ["// perf-rotate-ok"],
+      "max_lines": 40
+    },
+    {
+      "id": "perf_tostdstring_hot_path",
+      "name": "QString::toStdString in Hot Path",
+      "description": "Allocates a `std::string` copy of the QString's UTF-8 bytes. In the VT parse / render / PTY hot paths, every conversion compounds. Prefer QByteArray where possible, or pass QString across the API boundary.",
+      "category": "Performance",
+      "command": "grep -nE '\\.toStdString\\(\\)' src/terminalgrid.cpp src/terminalwidget.cpp src/vtparser.cpp src/ptyhandler.cpp src/glrenderer.cpp 2>/dev/null || true",
+      "type": "hotspot",
+      "severity": "info",
+      "auto_select": false,
+      "drop_if_contains": ["// perf-utf8-ok"],
+      "max_lines": 40
+    },
+    {
+      "id": "perf_debuglog_in_vt_hot_path",
+      "name": "DBGLOG in VT Parse / Render Hot Path",
+      "description": "DBGLOG expands to a variadic macro that formats a string even when the log channel is disabled (fast path short-circuits at the first argument evaluation, but the call-site argument work — QString concatenation, .arg() — still runs). In the VT hot path this adds cost per byte parsed. Route through a channel check or drop the log.",
+      "category": "Performance",
+      "command": "grep -nE 'DBGLOG[[:space:]]*\\(' src/terminalgrid.cpp src/vtparser.cpp 2>/dev/null || true",
+      "type": "hotspot",
+      "severity": "info",
+      "auto_select": false,
+      "drop_if_contains": ["// perf-log-ok"],
+      "max_lines": 40
+    },
+    {
+      "id": "sec_ssh_argv_dash_host",
+      "name": "SSH Argv Construction Without -- Separator",
+      "description": "OpenSSH parses a host argument beginning with `-` as an option (CVE-2017-1000117 class — `-oProxyCommand=...` → RCE). Shell-quoting alone does not defend: the shell passes the argv correctly, ssh then re-interprets the leading dash. Insert a literal `--` before the host in any argv array that passes ssh a user-controlled host string.",
+      "category": "Security",
+      "command": "grep -rnE 'args[[:space:]]*<<[[:space:]]*(shellQuote\\()?\\\"?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(\\+[[:space:]]*\\\"@\\\"[[:space:]]*\\+[[:space:]]*)?host\\)?' src/ --include='*.cpp' | grep -v 'args << \"--\"' || true",
+      "type": "vuln",
+      "severity": "major",
+      "auto_select": false,
+      "drop_if_contains": ["// ssh-dash-ok"],
+      "max_lines": 40
+    },
+    {
+      "id": "sec_qimage_load_without_peek",
+      "name": "QImage::loadFromData Without QImageReader Size Peek",
+      "description": "Calling QImage::loadFromData on untrusted data commits to a full decode before any dimension check runs. A compression-bomb PNG (tiny compressed payload, huge declared dimensions) can force a multi-GB allocation. Use QImageReader::size() on a QBuffer wrapping the same data FIRST; reject if declared size exceeds MAX_IMAGE_DIM; only then decode.",
+      "category": "Security",
+      "command": "grep -rnE '\\.loadFromData\\(' src/ --include='*.cpp' | grep -v 'QImageReader' || true",
+      "type": "vuln",
+      "severity": "major",
+      "auto_select": false,
+      "drop_if_contains": ["// image-peek-ok"],
+      "max_lines": 40
+    },
+    {
+      "id": "refactor_set_permissions_pair",
+      "name": "Raw setPermissions(ReadOwner|WriteOwner) — Use writeSecureFile",
+      "description": "12 copies of `file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)` across config/sessionmanager/claudeallowlist/auditdialog/claudeintegration/remotecontrol/auditrulequality. One typo away from leaking an API key. After the `writeSecureFile(path, data)` helper lands (ROADMAP 0.7.7+), flip call sites.",
+      "category": "Refactoring",
+      "command": "grep -rnE 'setPermissions\\(QFileDevice::ReadOwner[[:space:]]*\\|[[:space:]]*QFileDevice::WriteOwner\\)' src/ --include='*.cpp' || true",
+      "type": "smell",
+      "severity": "info",
+      "auto_select": false,
+      "drop_if_contains": ["// secure-io-helper"],
+      "max_lines": 40
+    },
+    {
+      "id": "refactor_shell_quote_duplicate",
+      "name": "Shell-Quote Logic Duplicated Outside sshdialog.cpp",
+      "description": "`shellQuote` is implemented in sshdialog.cpp and re-implemented as a lambda in mainwindow.cpp. Two sources of truth drift apart. Consolidate into src/shellutils.h so a fix to one automatically benefits the other.",
+      "category": "Refactoring",
+      "command": "grep -rnE 'shellQuote|shell.quote' src/ --include='*.cpp' --include='*.h' | grep -v 'src/shellutils\\|src/sshdialog\\.cpp:' || true",
+      "type": "smell",
+      "severity": "info",
+      "auto_select": false,
+      "drop_if_contains": ["// shellquote-ok"],
+      "max_lines": 40
+    },
+    {
+      "id": "bug_hyperlink_sync_on_line_edits",
+      "name": "Line Insert/Delete Without m_screenHyperlinks Sync",
+      "description": "`m_screenLines.insert/erase` inside terminalgrid.cpp must be paired with the same operation on `m_screenHyperlinks` — otherwise OSC 8 spans drift away from the cells containing the clickable text. Fixed in 0.7.7 for insertLines/deleteLines; guard rails to catch new copies of the pattern.",
+      "category": "Bugs",
+      "command": "grep -nE 'm_screenLines\\.(insert|erase)\\(' src/terminalgrid.cpp || true",
+      "type": "bug",
+      "severity": "minor",
+      "auto_select": false,
+      "drop_if_contains": ["// hl-sync-not-needed"],
+      "max_lines": 40
+    }
+  ],
+  "path_rules": [
+    {
+      "glob": "tests/audit_fixtures/**",
+      "skip": true
+    },
+    {
+      "glob": "src/auditdialog.cpp",
+      "skip_rules": ["perf_regex_non_static_in_function"]
+    }
+  ]
+}
