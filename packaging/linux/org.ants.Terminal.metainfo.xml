@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.9" date="2026-04-22">
+      <description>
+        <p>Planned-work pass — three ROADMAP items from the 0.7.7 "deferred to 0.8+" queue investigated and shipped or rejected with findings on record. The investigations that didn't ship still left value behind (a feature-test that locks scroll-region semantics for any future refactor), and the one that did ship consolidates 13 path strings through one header and halves the per-frame <code>QString::fromUcs4</code> call count in both render paths.</p>
+        <ul>
+          <li><em>Added — <code>scroll_region_rotate</code> feature-test.</em> Locks the observable behavior of <code>TerminalGrid::scrollUp</code> / <code>scrollDown</code>: row motion inside <code>[scrollTop, scrollBottom]</code>, outside-region invariance, main-screen scrollback push, alt-screen no push, hyperlink tracking, and <code>count &gt; regionHeight</code> clamp. Six scenarios, eight invariants. Pins the contract so the 0.8 ring-buffer-screen work can refactor safely.</li>
+          <li><em>Added — <code>src/configpaths.h</code>.</em> Inline namespace consolidating <code>~/.claude/projects</code>, <code>~/.claude/sessions</code>, <code>~/.claude/settings.json</code>, <code>~/.claude/projects/&lt;enc&gt;/memory/MEMORY.md</code>, and <code>~/.config/ants-terminal/hooks/claude-forward.sh</code>. 13 duplicated path-concat sites across <code>claudeintegration.cpp</code> / <code>settingsdialog.cpp</code> collapsed to one call each. Future XDG-respect pass now has a single update surface.</li>
+          <li><em>Changed — render path per-run <code>QString::fromUcs4</code>.</em> Both the QPainter (<code>terminalwidget.cpp</code>) and GL (<code>glrenderer.cpp</code>) paths now accumulate codepoints into a <code>std::vector&lt;char32_t&gt;</code> per run and build the <code>QString</code> once at flush/draw time, replacing the previous <code>runText += QString::fromUcs4(&amp;cp, 1)</code> pattern that allocated a small <code>QString</code> per non-space cell and reallocated the run string on every append. Ligature shaping via <code>QTextLayout</code> still receives the run text at the same point; behaviour identical.</li>
+          <li><em>Investigated, not shipped — <code>std::rotate</code> scroll refactor.</em> Measured 12–15% regression on <code>bench_vt_throughput newline_stream</code> (5.2 → 4.6 MB/s) because the common <code>count == 1</code> case has rotate paying for a save/restore cycle that <code>vector::erase + push_back</code> avoids. Real bottleneck is the per-scroll row allocation, not container shuffle. Reverted; test stays. ROADMAP updated with scrollback-push cell-reuse as the real 0.8 candidate.</li>
+          <li><em>Investigated, not shipped — DialogBase / ManagedProcess.</em> ROADMAP over-sold both: only 2 dialogs use the Ok/Apply/Cancel pattern (not 6), and <code>auditdialog.cpp</code> uses one shared <code>QProcess</code> member (not 6 copies). Both deferred until more justification.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.8" date="2026-04-22">
       <description>
         <p>Audit fold-in — every regression guard the 0.7.6 / 0.7.7 hardening pass left behind is now a repo-wide detector. Three new rules in the Project Audit dialog turn the one-off sweeps into persistent guards, so the next contributor who re-introduces the pattern gets caught at audit-time.</p>

@@ -1,5 +1,6 @@
 #include "claudeintegration.h"
 
+#include "configpaths.h"
 #include "secureio.h"
 
 #include <QDir>
@@ -194,8 +195,7 @@ void ClaudeIntegration::pollClaudeProcess() {
         m_claudePid = foundPid;
 
         // Find the most recently modified transcript across ALL projects
-        QString home = QDir::homePath();
-        QDir claudeDir(home + "/.claude/projects");
+        QDir claudeDir(ConfigPaths::claudeProjectsDir());
         if (claudeDir.exists()) {
             QFileInfo newest;
             for (const QString &projDir : claudeDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
@@ -242,8 +242,7 @@ void ClaudeIntegration::pollClaudeProcess() {
 // --- Session Transcripts ---
 
 QString ClaudeIntegration::activeSessionPath() const {
-    QString home = QDir::homePath();
-    QDir claudeDir(home + "/.claude/projects");
+    QDir claudeDir(ConfigPaths::claudeProjectsDir());
     if (!claudeDir.exists()) return {};
 
     QFileInfo newest;
@@ -276,8 +275,7 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
 
 QStringList ClaudeIntegration::recentSessions() const {
     QStringList sessions;
-    QString home = QDir::homePath();
-    QDir claudeDir(home + "/.claude/projects");
+    QDir claudeDir(ConfigPaths::claudeProjectsDir());
     if (!claudeDir.exists()) return sessions;
 
     for (const QString &projDir : claudeDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
@@ -880,8 +878,7 @@ static QString extractCwdFromTranscript(const QString &transcriptPath) {
 
 QList<ClaudeProject> ClaudeIntegration::discoverProjects() const {
     QList<ClaudeProject> projects;
-    QString home = QDir::homePath();
-    QDir projectsDir(home + "/.claude/projects");
+    QDir projectsDir(ConfigPaths::claudeProjectsDir());
     if (!projectsDir.exists()) return projects;
 
     // Load active session metadata to mark active sessions
@@ -889,7 +886,7 @@ QList<ClaudeProject> ClaudeIntegration::discoverProjects() const {
     QSet<QString> activeSessionIds;
     QHash<QString, QString> sessionNames;   // sessionId -> name
     QHash<QString, QString> sessionCwds;    // sessionId -> cwd
-    QDir sessionsDir(home + "/.claude/sessions");
+    QDir sessionsDir(ConfigPaths::claudeSessionsDir());
     if (sessionsDir.exists()) {
         for (const QFileInfo &fi : sessionsDir.entryInfoList({"*.json"}, QDir::Files)) {
             QFile f(fi.absoluteFilePath());
@@ -1016,9 +1013,7 @@ QString ClaudeIntegration::sessionSummary(const QString &transcriptPath) const {
 }
 
 QString ClaudeIntegration::projectMemory(const QString &projectEncoded) const {
-    QString memPath = QDir::homePath() + "/.claude/projects/"
-                      + projectEncoded + "/memory/MEMORY.md";
-    QFile file(memPath);
+    QFile file(ConfigPaths::claudeProjectMemory(projectEncoded));
     if (!file.open(QIODevice::ReadOnly)) return {};
 
     QString content = QString::fromUtf8(file.readAll());

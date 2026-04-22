@@ -704,10 +704,15 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
         // --- Ligature-aware text rendering ---
         // We accumulate runs of same-attribute cells and draw them together
-        // to let Qt apply font ligatures (JetBrains Mono, Fira Code, etc.)
+        // to let Qt apply font ligatures (JetBrains Mono, Fira Code, etc.).
+        // 0.7.9 — codepoints are accumulated into std::vector<char32_t> and
+        // converted to QString once per run at draw time, instead of calling
+        // QString::fromUcs4() per cell and reallocating a per-run QString on
+        // each append. Saves N per-frame small-QString constructions in the
+        // common case of ASCII-only TUI output.
         struct TextRun {
             int startCol;
-            QString text;
+            std::vector<char32_t> codepoints;
             QColor fg;
             QColor bg;
             bool bold;
@@ -791,22 +796,12 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 isUrl == current.isUrl;
 
             if (c.codepoint != ' ' && c.codepoint != 0) {
-                uint32_t baseCp = c.codepoint;
-                QString ch = QString::fromUcs4(reinterpret_cast<const char32_t *>(&baseCp), 1);
-                // Append combining characters
-                if (auto *comb = combiningAt(globalLine, col)) {
-                    for (uint32_t combCp : *comb)
-                        ch += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
-                }
-                if (sameAttrs) {
-                    current.text += ch;
-                } else {
-                    if (currentValid && !current.text.isEmpty()) {
-                        runs.push_back(current);
+                if (!sameAttrs) {
+                    if (currentValid && !current.codepoints.empty()) {
+                        runs.push_back(std::move(current));
                     }
                     current = TextRun{};
                     current.startCol = col;
-                    current.text = ch;
                     current.fg = fg;
                     current.bg = bg;
                     current.bold = c.attrs.bold;
@@ -816,10 +811,15 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                     current.isUrl = isUrl;
                     currentValid = true;
                 }
+                current.codepoints.push_back(static_cast<char32_t>(c.codepoint));
+                if (auto *comb = combiningAt(globalLine, col)) {
+                    for (uint32_t combCp : *comb)
+                        current.codepoints.push_back(static_cast<char32_t>(combCp));
+                }
             } else {
                 // Space or null breaks the run
-                if (currentValid && !current.text.isEmpty()) {
-                    runs.push_back(current);
+                if (currentValid && !current.codepoints.empty()) {
+                    runs.push_back(std::move(current));
                     currentValid = false;
                 }
             }
@@ -917,11 +917,12 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         }
 
         // Flush last run
-        if (currentValid && !current.text.isEmpty()) {
-            runs.push_back(current);
+        if (currentValid && !current.codepoints.empty()) {
+            runs.push_back(std::move(current));
         }
 
-        // Draw all text runs using QTextLayout for proper ligature shaping
+        // Draw all text runs using QTextLayout for proper ligature shaping.
+        // Build the QString from accumulated codepoints once per run.
         for (const auto &run : runs) {
             const QFont *drawFont = &m_font;
             if (run.bold && run.italic) drawFont = &m_fontBoldItalic;
@@ -931,12 +932,14 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             p.setPen(run.fg);
             int px_x = m_padding + run.startCol * m_cellWidth;
 
+            QString runText = QString::fromUcs4(run.codepoints.data(),
+                                                static_cast<int>(run.codepoints.size()));
             // Use QTextLayout for HarfBuzz-powered ligature shaping
-            QTextLayout layout(run.text, *drawFont);
+            QTextLayout layout(runText, *drawFont);
             layout.beginLayout();
             QTextLine tline = layout.createLine();
             if (tline.isValid()) {
-                tline.setLineWidth(run.text.length() * m_cellWidth * 2); // generous width
+                tline.setLineWidth(runText.length() * m_cellWidth * 2); // generous width
                 tline.setPosition(QPointF(0, 0));
             }
             layout.endLayout();

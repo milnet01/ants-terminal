@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.8 (2026-04-22). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.9 (2026-04-22). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -827,16 +827,34 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
 
 ### 💭 0.8+ deferred — larger scope
 
-- 💭 **⚡ `scrollUp` / `scrollDown` — erase/insert loop → `std::rotate`.**
-  Hot path during every newline in a full-window scroll. Current impl
-  erases `m_screenLines[scrollTop]` and re-inserts at `scrollBottom`
-  inside a `for(i<count)` loop; each erase/insert is O(rows).
-  A single `std::rotate(scrollTop, scrollTop+count, scrollBottom+1)`
-  does the same work in one linear pass. Same transformation applies
-  to the parallel `m_screenHyperlinks` shift. Touches the
-  `newline_stream` corpus in `bench_vt_throughput` — currently 4× slower
-  than pure Print per the 2026-04-20 baseline — so this is the item
-  that will actually move the bench needle.
+- ⚖️ **⚡ `scrollUp` / `scrollDown` — erase/insert loop → `std::rotate`
+  (investigated 0.7.9, not shipped).** Hot path during every newline
+  in a full-window scroll. The theoretical win was "one O(rows) rotate
+  instead of a count-length O(rows) loop," but the newline-stream case
+  is always `count == 1`, which reduces the old `erase(begin) +
+  insert(end)` to one shift + push_back — practically identical to
+  `std::rotate(first, first+1, last)`'s save/shift/restore cycle, with
+  rotate's save-and-restore costing ~2 extra moves per call. Measured
+  on `bench_vt_throughput newline_stream` the rotate path was 12–15%
+  **slower** (5.2 → 4.6 MB/s) because rotate paid for the save/restore
+  while the blank-overwrite still had to allocate the bottom row.
+  The real bottleneck is the per-scroll `makeRow(m_cols, ...)` +
+  `vector<Cell>` allocation, plus the heap handoff to scrollback —
+  not the container shuffle. A future perf pass should replace the
+  scrollback push with a cell-vector swap (keeping the capacity in
+  the screen row, transferring only the populated-cell snapshot to
+  scrollback) or move to a ring-buffered screen grid. The 0.7.9
+  investigation did ship the guard: `tests/features/scroll_region_rotate`
+  pins the observable semantics so the next attempt can refactor
+  safely.
+- 💭 **⚡ Scrollback push cell reuse (ring-buffer candidate).**
+  Supersedes the rejected `std::rotate` approach above. Instead of
+  `std::move`-ing the whole `TermLine` into `m_scrollback` and
+  allocating a fresh one for the new bottom row, keep the screen row's
+  allocated `vector<Cell>` storage and copy/snapshot only the visible
+  content to scrollback. For `newline_stream` this eliminates the
+  per-scroll `makeRow(m_cols, ...)` allocation — the dominant cost
+  per the 0.7.9 measurement.
 - 💭 **⚡ Per-frame `QString` construction in the text-run accumulator.**
   `QString::fromUcs4()` is called per non-space cell. Accumulate
   codepoints into a `std::vector<uint32_t>` and construct the run
@@ -845,18 +863,22 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   `deleteChars` / `insertBlanks`.** Current impl reallocates the
   `unordered_map` per call. Rewrite to iterate + reassign keys without
   rebuilding.
-- 💭 **🧹 Dialog base class.** `QDialogButtonBox` + accept/reject wiring
-  + window-title/size setup is duplicated across
-  `settingsdialog.cpp`, `aidialog.cpp`, `sshdialog.cpp`,
-  `claudeallowlist.cpp`, `claudeprojects.cpp`, `auditdialog.cpp`.
-  Extract a `DialogBase` with `setupStandardButtons(layout, onApply)`.
-- 💭 **🧹 `ConfigPaths` namespace.**
-  `QDir::homePath() + "/.config/..."` / `"/.claude/..."` patterns
-  appear 12+ times. Centralise so a future XDG-respect pass has one
-  call site to update.
-- 💭 **🧹 `ManagedProcess` (QProcess + timeout + finished-signal
-  boilerplate).** Six copies across `auditdialog.cpp`. One class that
-  owns the timer-and-cleanup dance.
+- ⚖️ **🧹 Dialog base class (investigated 0.7.9, rejected).** Only
+  `settingsdialog.cpp` and `claudeallowlist.cpp` actually use
+  `QDialogButtonBox` with Ok/Apply/Cancel; the other four dialogs
+  (`aidialog`, `sshdialog`, `claudeprojects`, `auditdialog`) have
+  bespoke button layouts without the triplet pattern. Extracting a
+  `DialogBase` with `setupStandardButtons` would save ~10 lines across
+  2 call sites — premature abstraction with real regression surface
+  (each call site has subtle per-dialog validation / error-hint
+  wiring). Deferred unless/until a third dialog needs the pattern.
+- ⚖️ **🧹 `ManagedProcess` (investigated 0.7.9, rejected).**
+  `auditdialog.cpp` uses a single shared `QProcess` member that runs
+  checks serially, not "six copies." The timeout-and-cleanup dance is
+  already at one call site. Other files that launch processes
+  (`claudeintegration.cpp` for `claude` binary, `ssh` via `Pty`) have
+  one-off patterns with no shared structure to extract. Re-file if a
+  second generalised process-runner emerges.
 - 💭 **🔒 IPC-socket `/tmp` fallback path.** `remotecontrol.cpp`
   defaults to `XDG_RUNTIME_DIR` (correct, 0700 perms) but falls back
   to `/tmp/ants-terminal-<uid>.sock` when that's empty. The fallback's

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.8 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.9 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -321,6 +321,30 @@ if(ANTS_TESTS)
     )
     add_test(NAME scrollback_frozen_view COMMAND test_scrollback_frozen_view)
     set_tests_properties(scrollback_frozen_view PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # scroll_region_rotate — locks the observable behavior of scrollUp /
+    # scrollDown (row motion inside [scrollTop, scrollBottom], outside-
+    # region invariance, main-screen scrollback push, alt-screen no push,
+    # hyperlink tracking, count>regionHeight clamp). Guards the 0.7.9
+    # erase/insert -> std::rotate refactor against silent regression.
+    # See tests/features/scroll_region_rotate/spec.md.
+    add_executable(test_scroll_region_rotate
+        tests/features/scroll_region_rotate/test_scroll_region_rotate.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_scroll_region_rotate PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_scroll_region_rotate PRIVATE src)
+    target_compile_options(test_scroll_region_rotate PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME scroll_region_rotate COMMAND test_scroll_region_rotate)
+    set_tests_properties(scroll_region_rotate PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

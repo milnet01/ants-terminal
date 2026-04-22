@@ -207,20 +207,26 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
     bgQuads.reserve(rows * cols / 4); // Estimate: 25% non-default bg
     glyphQuads.reserve(rows * cols / 2); // Estimate: 50% non-space
 
+    // 0.7.9 — accumulate codepoints into a reusable per-row buffer and
+    // build the QString once per run at flushRun time, instead of
+    // QString::fromUcs4(&cp, 1) + QString::operator+= per non-space cell.
+    std::vector<char32_t> runCps;
+    runCps.reserve(cols);
+
     for (int vr = 0; vr < rows; ++vr) {
         // Accumulate text runs for ligature shaping
-        QString runText;
         int runStartCol = 0;
         bool runBold = false, runItalic = false;
         QColor runFg;
 
         auto flushRun = [&]() {
-            if (runText.isEmpty()) return;
+            if (runCps.empty()) return;
             float px_x = padding + runStartCol * m_cellWidth;
             float px_y = padding + vr * m_cellHeight;
 
-            if (runText.length() >= 2) {
-                // Use ligature shaping for multi-char runs
+            if (runCps.size() >= 2) {
+                QString runText = QString::fromUcs4(runCps.data(),
+                                                    static_cast<int>(runCps.size()));
                 const LigatureEntry &lig = getLigature(runText, runBold, runItalic);
                 if (lig.valid) {
                     float gx = px_x + lig.bearingX;
@@ -233,8 +239,9 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
                                           (float)runFg.blueF(), 1.0f});
                 }
             } else {
-                // Single char — use individual glyph cache
-                uint32_t cp = runText.at(0).unicode();
+                // Single char — use individual glyph cache directly (no QString
+                // round-trip needed).
+                uint32_t cp = static_cast<uint32_t>(runCps.front());
                 const GlyphEntry &glyph = getGlyph(cp, runBold, runItalic);
                 if (glyph.valid) {
                     float gx = px_x + glyph.bearingX;
@@ -247,7 +254,7 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
                                           (float)runFg.blueF(), 1.0f});
                 }
             }
-            runText.clear();
+            runCps.clear();
         };
 
         for (int col = 0; col < cols; ++col) {
@@ -273,7 +280,7 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
 
             // Accumulate text runs with same attributes
             if (c.codepoint != ' ' && c.codepoint != 0) {
-                bool sameAttrs = !runText.isEmpty() &&
+                bool sameAttrs = !runCps.empty() &&
                     c.attrs.bold == runBold && c.attrs.italic == runItalic && fg == runFg;
                 if (!sameAttrs) {
                     flushRun();
@@ -282,7 +289,7 @@ void GlRenderer::render(const TerminalGrid *grid, int scrollOffset, int padding,
                     runItalic = c.attrs.italic;
                     runFg = fg;
                 }
-                runText += QString::fromUcs4(reinterpret_cast<const char32_t *>(&c.codepoint), 1);
+                runCps.push_back(static_cast<char32_t>(c.codepoint));
             } else {
                 flushRun();
             }

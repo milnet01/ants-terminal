@@ -1,3 +1,41 @@
+ants-terminal (0.7.9-1) unstable; urgency=medium
+
+  * Planned-work pass — three ROADMAP items from the 0.7.7 "deferred to
+    0.8+" queue investigated and shipped or rejected with findings on
+    record. The investigations that didn't ship still left value behind
+    (a feature-test that locks scroll-region semantics for any future
+    refactor), and the one that did ship consolidates 13 path strings
+    through one header and halves the per-frame QString::fromUcs4 call
+    count in both render paths.
+  * Added: scroll_region_rotate feature-test. Locks observable behavior
+    of TerminalGrid::scrollUp / scrollDown — row motion inside
+    [scrollTop, scrollBottom], outside-region invariance, main-screen
+    scrollback push, alt-screen no push, hyperlink tracking,
+    count > regionHeight clamp. Six scenarios, eight invariants.
+  * Added: src/configpaths.h — inline namespace consolidating
+    ~/.claude/projects, ~/.claude/sessions, ~/.claude/settings.json,
+    ~/.claude/projects/<enc>/memory/MEMORY.md, and
+    ~/.config/ants-terminal/hooks/claude-forward.sh. 13 duplicated
+    path-concat sites across claudeintegration.cpp / settingsdialog.cpp
+    collapsed to one call each.
+  * Changed: render path — per-run QString::fromUcs4. Both QPainter
+    (terminalwidget.cpp) and GL (glrenderer.cpp) paths now accumulate
+    codepoints into a std::vector<char32_t> per run and build the
+    QString once at flush/draw time, replacing the previous
+    `runText += QString::fromUcs4(&cp, 1)` pattern. Ligature shaping
+    via QTextLayout still receives run text at the same point;
+    behaviour identical.
+  * Investigated, not shipped: std::rotate scroll refactor —
+    benchmark showed 12-15% regression on newline_stream hot path
+    (count=1 case) because rotate pays for a save/restore cycle that
+    erase+push_back avoids. Real bottleneck is per-scroll row
+    allocation, not container shuffle. Reverted; feature-test stays.
+  * Investigated, not shipped: DialogBase / ManagedProcess —
+    ROADMAP over-sold both; only 2 dialogs use Ok/Apply/Cancel and
+    auditdialog uses 1 shared QProcess. Both deferred.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 22 Apr 2026 16:19:50 +0200
+
 ants-terminal (0.7.8-1) unstable; urgency=medium
 
   * Audit fold-in — every regression guard the 0.7.6 / 0.7.7 hardening

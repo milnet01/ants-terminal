@@ -1,5 +1,6 @@
 #include "settingsdialog.h"
 #include "config.h"
+#include "configpaths.h"
 #include "globalshortcutsportal.h"
 #include "themes.h"
 
@@ -888,11 +889,11 @@ void SettingsDialog::applySettings() {
 // event loop iteration. Replaces the 50 ms-debounced transcript-file
 // watcher for users who opt in.
 static QString hookScriptPath() {
-    return QDir::homePath() + "/.config/ants-terminal/hooks/claude-forward.sh";
+    return ConfigPaths::antsClaudeForwardScript();
 }
 
 static QString claudeSettingsPath() {
-    return QDir::homePath() + "/.claude/settings.json";
+    return ConfigPaths::claudeSettingsJson();
 }
 
 void SettingsDialog::refreshClaudeHooksStatus() {
