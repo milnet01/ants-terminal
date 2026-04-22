@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.8" date="2026-04-22">
+      <description>
+        <p>Audit fold-in — every regression guard the 0.7.6 / 0.7.7 hardening pass left behind is now a repo-wide detector. Three new rules in the Project Audit dialog turn the one-off sweeps into persistent guards, so the next contributor who re-introduces the pattern gets caught at audit-time.</p>
+        <ul>
+          <li><em>Added — <code>ssh_argv_dash_host</code> audit rule (Security, Major).</em> Flags any <code>&lt;&lt; shellQuote(…host…)</code> argv construction without a preceding <code>args &lt;&lt; "--"</code> argv terminator — the CVE-2017-1000117 class. Runtime filter drops findings when the guard appears within ±5 lines (spans the <code>if (!user.isEmpty()) / else</code> split in <code>sshdialog.cpp:67-71</code>).</li>
+          <li><em>Added — <code>qimage_load_without_peek</code> audit rule (Qt, Minor).</em> Flags <code>.loadFromData(</code> calls that aren't tagged <code>// image-peek-ok</code> or preceded by a <code>QImageReader</code> size-peek within ±5 lines — the image-bomb DoS vector that the 0.7.6 hardening sweep fixed. Both shipped sites in <code>terminalgrid.cpp</code> (OSC 1337 PNG + Kitty graphics) carry the reviewer sign-off tag and drop cleanly.</li>
+          <li><em>Added — <code>setPermissions_pair_no_helper</code> audit rule (Qt, Info).</em> Hygiene nudge toward <code>setOwnerOnlyPerms()</code> from <code>src/secureio.h</code> when a raw <code>setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)</code> bitmask appears. Pattern excludes the 0755 hook-script case (extra <code>|</code> flags after <code>WriteOwner</code>) so <code>settingsdialog.cpp</code>'s one literal bitmask doesn't false-fire.</li>
+          <li><em>Changed — audit self-test coverage:</em> three new <code>run_rule</code> lines in <code>tests/audit_self_test.sh</code>, coverage cross-check sees the new rule ids automatically. 55/55 pass (up from 52/52).</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.7" date="2026-04-22">
       <description>
         <p>The 0.7.7 planned-work pass from the hardening four-dimensional review — every item marked as planned in ROADMAP.md's 0.7.7 section is now shipped. Two de-duplication refactors, three paint-path perf hoists, four regression feature-tests locking the 0.7.6 hardening fixes.</p>

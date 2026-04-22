@@ -1013,6 +1013,30 @@ void AuditDialog::populateChecks() {
                                        "md5sum"},
                    "", {}, 30 });
 
+    // ssh_argv_dash_host — CVE-2017-1000117 class: when ssh argv is constructed
+    // by shellQuoting a user-controlled host token, a host that begins with "-"
+    // is parsed by ssh(1) as an option (e.g. "-oProxyCommand=evil"). The fix
+    // is a literal `args << "--"` before the host, which makes ssh stop option
+    // parsing. The 0.7.6 hardening pass shipped this guard in sshdialog.cpp;
+    // this rule catches the next caller that forgets.
+    //
+    // Pattern matches the ssh-bookmark shellQuote-of-host shape. Runtime
+    // filter drops the finding when `<< "--"` appears in the ±5-line window
+    // (the canonical guard). Window is 5 so that a host shellQuote in the
+    // `else` branch of an if/else user-prefix split still sees the guard in
+    // the preceding enclosing block — e.g. sshdialog.cpp:67-71.
+    addGrepCheck("ssh_argv_dash_host", "SSH argv — host without -- terminator",
+                 "ssh(1) argv construction that shellQuotes a host token "
+                 "without a preceding `--` argv terminator (CVE-2017-1000117 class)",
+                 "Security",
+                 "'<<\\s*shellQuote\\s*\\([^)]*\\bhost\\b'",
+                 CheckType::Vulnerability, Severity::Major, true,
+                 OutputFilter{
+                   /*dropIfContains*/ {},
+                   "", {}, 30,
+                   /*dropIfContextContains*/ {"<< \"--\"", "<< QStringLiteral(\"--\")"},
+                   /*contextWindow*/ 5 });
+
     // ========== Git (if applicable) ==========
     if (m_detectedTypes.contains("Git")) {
         m_checks.append({
@@ -1376,6 +1400,49 @@ void AuditDialog::populateChecks() {
                      "4-arg form with `this` as context)", "Qt",
                      "'connect\\s*\\([^,]*,\\s*&QNetworkReply::(readyRead|finished|errorOccurred|sslErrors)\\s*,\\s*\\['",
                      CheckType::Vulnerability, Severity::Major, true);
+
+        // qimage_load_without_peek — image-bomb class CVE vector. A malicious
+        // PNG can encode 65535×65535 in the IHDR while the compressed payload
+        // is <1 KB; plain QImage::loadFromData then allocates ~17 GB before
+        // the dimension sanity check fires. The 0.7.6 fix peeked dimensions
+        // via QImageReader before calling loadFromData, gated by a
+        // `MAX_IMAGE_DIM = 4096` cap. This rule catches the next loadFromData
+        // call that skips the peek.
+        //
+        // Filter drops any line tagged `// image-peek-ok` (explicit reviewer
+        // sign-off) or any call preceded by `QImageReader` within ±5 lines
+        // (the canonical peek pattern).
+        addGrepCheck("qimage_load_without_peek", "QImage::loadFromData without QImageReader peek",
+                     "QImage / QPixmap loadFromData() call not preceded by a "
+                     "QImageReader size-peek — image-bomb DoS vector", "Qt",
+                     "'\\.loadFromData\\s*\\('",
+                     CheckType::Vulnerability, Severity::Minor, true,
+                     OutputFilter{
+                       /*dropIfContains*/ {"image-peek-ok"},
+                       "", {}, 30,
+                       /*dropIfContextContains*/ {"QImageReader"},
+                       /*contextWindow*/ 5 });
+
+        // setPermissions_pair_no_helper — hygiene rule. The 0.7.7 audit pass
+        // consolidated 11 copies of `setPermissions(ReadOwner | WriteOwner)`
+        // behind `setOwnerOnlyPerms()` in src/secureio.h. Routing every 0600
+        // permission set through one helper makes the owner-only intent the
+        // only way to call it — a typo that adds ReadGroup / ReadOther would
+        // otherwise silently widen access to files holding API keys. This
+        // rule nudges the next contributor toward the helper instead of
+        // hand-typing the bitmask pair.
+        //
+        // Pattern is deliberately strict: the bitmask must terminate with `)`
+        // immediately after WriteOwner so permissions with additional flags
+        // (0755 hook-script perms in settingsdialog.cpp) don't false-fire.
+        // The helper definition itself in secureio.h is suppressed via
+        // `// ants-audit: disable=setPermissions_pair_no_helper`.
+        addGrepCheck("setPermissions_pair_no_helper",
+                     "setPermissions(ReadOwner|WriteOwner) without helper",
+                     "Raw 0600 bitmask — prefer setOwnerOnlyPerms() from "
+                     "src/secureio.h to prevent accidental access widening", "Qt",
+                     "'setPermissions\\s*\\([^)]*QFileDevice::ReadOwner\\s*\\|\\s*QFileDevice::WriteOwner\\s*\\)'",
+                     CheckType::CodeSmell, Severity::Info, false);
     }
 
     // ========== Semgrep (structural pattern matching) ==========

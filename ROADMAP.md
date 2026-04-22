@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.7 (2026-04-22) (2026-04-22). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.8 (2026-04-22). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -864,29 +864,33 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   symlink races in modern Qt, but defence-in-depth: `stat(path)` and
   refuse to unlink if the target isn't a socket.
 
-### 🔁 Fold-in to the project audit tool
+### ✅ Shipped in 0.7.8 — Fold-in to the project audit tool
 
 Every finding that is expressible as a repo-wide grep / AST pattern
-becomes a persistent audit rule in `audit_rules.json` — that's how a
-review turns into a regression guard instead of a one-off sweep. This
-release adds three new rules so the hardening sweep leaves behind
-automation, not just diffs:
+becomes a persistent audit rule — that's how a review turns into a
+regression guard instead of a one-off sweep. The 0.7.8 release adds
+three new rules so the 0.7.6 / 0.7.7 hardening sweep leaves behind
+automation, not just diffs. All three fire cleanly on the current
+tree: the shipped fix sites are suppressed by the intended runtime
+filter (`<< "--"` guard, `image-peek-ok` tag, `disable-file` on the
+helper itself):
 
-- `ssh_argv_dash_host` (high) — any ssh(1) argv construction that
-  concatenates a user-controlled host *without* a preceding `--`.
-  Pattern: `args << .*shellQuote.*host` not preceded by `args << "--"`
-  in a window of 3 lines.
-- `qimage_load_without_peek` (medium) — `QImage::loadFromData(...)`
-  calls that aren't preceded by a `QImageReader::size()` peek within
-  3 lines. Catches the next image-bomb entry point.
-- `setPermissions_pair_no_helper` (low / hygiene) — raw
-  `setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)`
-  calls, prompting the author to use `writeSecureFile()` once that
-  helper lands. Low-severity reminder, not blocking.
+- ✅ `ssh_argv_dash_host` (Security, Major) — matches
+  `<< shellQuote(...host...)` and drops findings when `<< "--"`
+  appears within ±5 lines. Context window is 5 (not 3 as originally
+  specced) to span the `if (!user.isEmpty()) / else` split in
+  `sshdialog.cpp:67-71`.
+- ✅ `qimage_load_without_peek` (Qt, Minor) — matches
+  `.loadFromData(` and drops findings tagged `// image-peek-ok` or
+  preceded by `QImageReader` within ±5 lines. Two shipped sites in
+  `terminalgrid.cpp` carry the reviewer sign-off tag.
+- ✅ `setPermissions_pair_no_helper` (Qt, Info) — matches
+  `setPermissions(... QFileDevice::ReadOwner | WriteOwner)` and
+  nudges toward `setOwnerOnlyPerms()` from `src/secureio.h`. Pattern
+  excludes the 0755 hook-script case (extra `|` flags). The helper
+  itself is suppressed via `// ants-audit: disable-file`.
 
-These ship in the same release as the `writeSecureFile` helper so
-existing call sites flip from "finding" to "good citizen" in one
-commit. See the [feature-coverage audit lane](CHANGELOG.md#076--2026-04-22)
+See the [feature-coverage audit lane](CHANGELOG.md#076--2026-04-22)
 work in 0.7.6 for the precedent of "each review leaves a detector
 behind."
 

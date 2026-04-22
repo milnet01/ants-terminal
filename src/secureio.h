@@ -11,6 +11,10 @@
 // silently widening access to a file that may hold an API key. Routing every
 // permission set through these named helpers makes the 0600 intent the only
 // way to call it.
+// ants-audit: disable-file=setPermissions_pair_no_helper
+// ^ this header is the helper: the raw 0600 bitmask is the definition, not
+//   a call site. The rule nudges all *other* call sites toward these helpers.
+
 inline bool setOwnerOnlyPerms(QFileDevice &f) {
     return f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 }

@@ -91,6 +91,9 @@ run_rule "unbounded_callback_payloads" '\w*[Cc]allback\s*\(.*QString::fromUtf8\(
 run_rule "qnetworkreply_no_abort" 'connect\s*\([^,]*,\s*&QNetworkReply::(readyRead|finished|errorOccurred|sslErrors)\s*,\s*\['
 run_rule "cmake_no_version_floor" 'find_package\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s+REQUIRED'
 run_rule "bash_c_non_literal" '\b(bash|sh)\b[^=]*"-c"\s*,\s*[A-Za-z_][A-Za-z0-9_]*'
+run_rule "ssh_argv_dash_host" '<<\s*shellQuote\s*\([^)]*\bhost\b'
+run_rule "qimage_load_without_peek" '\.loadFromData\s*\('
+run_rule "setPermissions_pair_no_helper" 'setPermissions\s*\([^)]*QFileDevice::ReadOwner\s*\|\s*QFileDevice::WriteOwner\s*\)'
 
 # ---------------------------------------------------------------------------
 # Inline suppression token recognition — the regex in commentSuppresses()

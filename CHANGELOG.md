@@ -13,6 +13,43 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.8] — 2026-04-22
+
+**Theme:** audit fold-in — every regression guard the 0.7.6 / 0.7.7 hardening
+pass left behind is now a repo-wide detector. Three new rules in the Project
+Audit dialog turn the one-off sweeps into persistent guards, so the next
+contributor that re-introduces the pattern gets caught at audit-time.
+
+### Added
+
+- **`ssh_argv_dash_host` audit rule (Security, Major).** Flags any
+  `<< shellQuote(...host...)` argv construction without a preceding
+  `args << "--"` argv terminator — the CVE-2017-1000117 class. Runtime
+  filter drops findings when the guard appears within ±5 lines
+  (spans the `if (!user.isEmpty()) / else` split in `sshdialog.cpp:67-71`).
+  `tests/audit_fixtures/ssh_argv_dash_host/` provides the bad/good pair.
+- **`qimage_load_without_peek` audit rule (Qt, Minor).** Flags
+  `.loadFromData(` calls that aren't either tagged `// image-peek-ok`
+  or preceded by a `QImageReader` size-peek within ±5 lines — the
+  image-bomb DoS vector that the 0.7.6 hardening sweep fixed. Both
+  shipped sites in `terminalgrid.cpp` (OSC 1337 PNG + Kitty graphics)
+  carry the explicit reviewer-sign-off tag and drop cleanly.
+- **`setPermissions_pair_no_helper` audit rule (Qt, Info).** Hygiene
+  nudge toward `setOwnerOnlyPerms()` from `src/secureio.h` when a raw
+  `setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)`
+  bitmask appears. Pattern deliberately excludes the 0755 hook-script
+  case (extra `|` flags after `WriteOwner`) so the one legitimate
+  literal-bitmask site in `settingsdialog.cpp` doesn't false-fire. The
+  helper itself is suppressed via `// ants-audit: disable-file` in
+  `secureio.h` — it is the definition, not a call site.
+
+### Changed
+
+- **`tests/audit_self_test.sh`** — three new `run_rule` lines, coverage
+  cross-check now sees the new rule ids automatically. 55/55 pass
+  (up from 52/52).
+
+
 ## [0.7.7] — 2026-04-22
 
 **Theme:** the 0.7.7 planned-work pass from the hardening four-dimensional
