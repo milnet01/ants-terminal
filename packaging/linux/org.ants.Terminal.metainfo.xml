@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.14" date="2026-04-23">
+      <description>
+        <p>Three Claude Code integration robustness fixes from the 0.7.12+1 re-review checkpoint. All three failed silently — no errors, no degraded-mode logs — so the symptoms were a transcript-driven UI state that simply stopped updating, or a project that appeared under the wrong name in the picker. All three now have targeted fixture-based regression tests.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Transcript tail window grows past large trailing events.</em> <code>parseTranscriptForState</code> previously read the final 32 KB of the JSONL transcript and skipped the first line after the seek as likely-truncated; when the final event was a user <code>tool_result</code> carrying inline file contents, the window landed inside that one event and the parser returned zero events, freezing UI state. Replaced with a doubling-grow window (32 KB → 4 MiB cap) that only trims a potentially-partial prefix line when the buffer contains at least two newlines.</li>
+          <li><em>Transcript dialog renders <code>thinking</code> content blocks.</em> <code>ClaudeTranscriptDialog::formatEntry</code> only handled <code>text</code>, <code>tool_use</code>, and <code>tool_result</code>; <code>thinking</code> fell into an implicit else and was discarded. Now rendered as italicized, dimmed <code>Thinking:</code> paragraphs, distinguishing chain-of-thought from the visible reply.</li>
+          <li><em><code>decodeProjectPath</code> preserves hyphens in project names.</em> Claude Code encodes absolute paths by replacing every <code>/</code> with <code>-</code> — lossy, since <code>my-project</code> (leaf) and <code>my/project</code> (two segments) produce the same string. The old decoder replaced every <code>-</code> with <code>/</code> unconditionally. Rewrote as a greedy left-to-right filesystem-probing walker: at each hyphen, prefer the <code>/</code> form if that directory exists, fall back to <code>-</code> otherwise. <code>extractCwdFromTranscript</code> remains the preferred source of truth; the probe-based decoder is the last-resort fallback.</li>
+        </ul>
+        <p>Tests: new <code>claude_transcript_robustness</code> feature lane with six invariants covering tail-window growth past a 40 KB trailing event, the 4 MiB growth cap, leaf- and intermediate-segment hyphen preservation, legacy all-slashes fallback when filesystem hints are absent, and canonical repo-style decoding. Verified to fail against pre-fix code on the regression invariants.</p>
+      </description>
+    </release>
     <release version="0.7.13" date="2026-04-23">
       <description>
         <p>Scope-tightening pass on the audit rule-pack trust boundary shipped in 0.7.12. The global <code>audit_trust_command_rules</code> bool over-granted after one opt-in — trusting Ants's own repo implicitly trusted every cloned repo the user later opened. 0.7.13 replaces the global flag with a per-project hash-bound trust store so trust is both narrow and self-invalidating.</p>

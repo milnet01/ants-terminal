@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.13 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.14 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1205,17 +1205,22 @@ grep rules or individual tickets as they become actionable.
 - 📋 **`debug.log` 0600 perms.** `debuglog.cpp:72` opens append with
   default umask; log can contain keystrokes, API responses, HMAC
   material.
-- 📋 **Claude transcript: 32 KB tail window → scan-for-first-newline +
-  grow.** `claudeintegration.cpp:291-319` drops events longer than 32 KB
-  (common for tool_results with embedded file contents).
-- 📋 **Claude transcript: handle `thinking` content blocks.**
-  `claudetranscript.cpp:116-135` silently drops them; real assistant
-  events lead with `thinking`.
-- 📋 **`decodeProjectPath` preserves hyphens.**
-  `claudeintegration.cpp:843-850` replaces all `-` with `/`; paths like
-  `~/my-project/sub-dir` decode wrong. Use the cwd field from the
-  transcript as the source of truth; treat the directory-name
-  encoding as fallback only.
+- ✅ **Claude transcript: 32 KB tail window → scan-for-first-newline +
+  grow.** Shipped 0.7.14. Replaced the fixed 32 KB window +
+  firstLine-skip with a doubling-grow loop (32 KB → 4 MiB cap) that
+  trims the potentially-partial prefix line only when the buffer
+  contains ≥ 2 newlines, guaranteeing real content remains for the
+  parser.
+- ✅ **Claude transcript: handle `thinking` content blocks.** Shipped
+  0.7.14. `ClaudeTranscriptDialog::formatEntry` now renders `thinking`
+  blocks as italicized, dimmed paragraphs so readers can tell them
+  apart from the visible reply.
+- ✅ **`decodeProjectPath` preserves hyphens.** Shipped 0.7.14.
+  Rewrote as a greedy filesystem-probing walker: at each hyphen,
+  prefer `/` if that directory exists, fall back to `-` if that
+  exists instead, default to `/` otherwise. Preferred source of
+  truth is still `extractCwdFromTranscript`; the new decoder is the
+  last-resort fallback.
 
 ### 🔁 Follow-ups from the re-review checkpoint (2026-04-23)
 

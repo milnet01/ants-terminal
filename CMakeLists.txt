@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.13 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.14 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -419,6 +419,33 @@ if(ANTS_TESTS)
     )
     add_test(NAME claude_plan_mode_detection COMMAND test_claude_plan_mode)
     set_tests_properties(claude_plan_mode_detection PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # claude_transcript_robustness — asserts that (INV-1/2) the JSONL
+    # tail-window reader grows past events larger than 32 KB without
+    # dropping state and returns within the 4 MiB cap on pathological
+    # inputs, and that (INV-3..6) decodeProjectPath filesystem-probes to
+    # preserve hyphens in leaf and intermediate path segments while
+    # keeping legacy hyphen-free paths unchanged. See
+    # tests/features/claude_transcript_robustness/spec.md.
+    add_executable(test_claude_transcript_robustness
+        tests/features/claude_transcript_robustness/test_claude_transcript_robustness.cpp
+        src/claudeintegration.cpp
+    )
+    target_link_libraries(test_claude_transcript_robustness PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Network
+        Qt6::Test
+    )
+    target_include_directories(test_claude_transcript_robustness PRIVATE src)
+    target_compile_options(test_claude_transcript_robustness PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME claude_transcript_robustness
+             COMMAND test_claude_transcript_robustness)
+    set_tests_properties(claude_transcript_robustness PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

@@ -1,3 +1,46 @@
+ants-terminal (0.7.14-1) unstable; urgency=medium
+
+  * Three Claude Code integration robustness fixes from the 0.7.12+1
+    re-review checkpoint. All three failed silently — no errors, no
+    degraded-mode logs — so symptoms were a transcript-driven UI
+    state that stopped updating, or a project appearing under the
+    wrong name in the picker. All three now have targeted
+    fixture-based regression tests.
+  * Fixed: Claude transcript tail window drops events larger than
+    32 KB. parseTranscriptForState read the final 32 KB of the JSONL
+    transcript and skipped the first line after the seek as
+    likely-truncated; when the final event was a user tool_result
+    carrying inline file contents, the window landed inside that
+    one event and the parser returned zero events, freezing state.
+    Replaced with a doubling-grow window (32 KB → 4 MiB cap) that
+    only trims a potentially-partial prefix line when the buffer
+    contains at least two newlines.
+  * Fixed: Claude transcript dialog silently drops thinking content
+    blocks. ClaudeTranscriptDialog::formatEntry only rendered text,
+    tool_use, and tool_result; thinking fell into an implicit else
+    that discarded the block. Now rendered as italicized, dimmed
+    "Thinking:" paragraphs, distinguishing chain-of-thought from
+    the visible reply.
+  * Fixed: decodeProjectPath mangles project names with embedded
+    hyphens. Claude Code encodes absolute paths by replacing every
+    "/" with "-" — lossy, since leaf-hyphens and segment-separators
+    encode identically. Rewrote as a greedy left-to-right
+    filesystem-probing walker: at each hyphen, prefer the "/" form
+    if that directory exists, fall back to "-" (folded into the
+    segment name) otherwise. extractCwdFromTranscript remains the
+    preferred source of truth; the probe-based decoder is the
+    last-resort fallback.
+  * Tests: new tests/features/claude_transcript_robustness lane —
+    six-invariant regression test (tail-window growth past 40 KB
+    trailing events, 4 MiB growth cap, leaf-name hyphen
+    preservation, intermediate-segment hyphen preservation,
+    missing-filesystem-hint fallback to legacy behavior, canonical
+    repo-style decoding). Verified to fail against pre-fix code on
+    the regression invariants.
+  * Changed: no API or config changes. Pure bugfix release.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 23 Apr 2026 18:30:00 +0000
+
 ants-terminal (0.7.13-1) unstable; urgency=medium
 
   * Scope-tightening pass on the audit rule-pack trust boundary shipped

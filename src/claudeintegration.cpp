@@ -296,25 +296,46 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return;
 
-    // Read the last 32KB of the transcript. Claude Code writes several
-    // metadata-only events at the end of each turn (`system/turn_duration`,
-    // `last-prompt`, `permission-mode`, `file-history-snapshot`, `summary`),
-    // so we need enough buffer to walk back past them to the real
-    // state-determining event (`assistant`/`user`/`attachment`).
-    qint64 size = file.size();
-    constexpr qint64 kWindow = 32768;
-    if (size > kWindow) file.seek(size - kWindow);
+    // Read a tail window large enough to span the last few turns. Claude Code
+    // writes several metadata-only events at the end of each turn
+    // (`system/turn_duration`, `last-prompt`, `permission-mode`,
+    // `file-history-snapshot`, `summary`), so we need enough buffer to walk
+    // back past them to the real state-determining event
+    // (`assistant`/`user`/`attachment`).
+    //
+    // A single tool_result event carrying inline file contents routinely
+    // exceeds 32 KB. If the starting window lands inside one such event, the
+    // old code treated the whole buffer as "first line (likely truncated)"
+    // and discarded everything — losing the very events that drive state.
+    //
+    // Grow the window (doubling, capped) until either (a) we've read the
+    // whole file, or (b) the buffer contains at least two newlines so that
+    // trimming up to and including the first newline (which marks the end
+    // of a potentially-truncated prefix line) still leaves real content
+    // behind for the parser.
+    const qint64 size = file.size();
+    qint64 window = 32768;
+    constexpr qint64 kMaxWindow = 4 * 1024 * 1024; // 4 MiB safety cap
+    QByteArray tail;
+    while (true) {
+        const qint64 start = std::max(qint64(0), size - window);
+        if (!file.seek(start)) return;
+        tail = file.read(size - start);
+        if (start == 0) break;
+        if (tail.count('\n') >= 2) {
+            const int firstNl = tail.indexOf('\n');
+            tail.remove(0, firstNl + 1);
+            break;
+        }
+        if (window >= kMaxWindow) return;
+        window = std::min(window * 2, kMaxWindow);
+    }
 
     QList<QJsonObject> events;
-    bool firstLine = (size > kWindow); // first line after seek is likely truncated
-    while (!file.atEnd()) {
-        QByteArray line = file.readLine().trimmed();
+    for (const QByteArray &raw : tail.split('\n')) {
+        const QByteArray line = raw.trimmed();
         if (line.isEmpty()) continue;
-        if (firstLine) {
-            firstLine = false;
-            continue;
-        }
-        QJsonDocument doc = QJsonDocument::fromJson(line);
+        const QJsonDocument doc = QJsonDocument::fromJson(line);
         if (doc.isObject()) events.append(doc.object());
     }
 
@@ -849,13 +870,30 @@ void ClaudeIntegration::onMcpConnection() {
 // --- Project / Session Discovery ---
 
 QString ClaudeIntegration::decodeProjectPath(const QString &encoded) {
-    // Claude Code encodes paths by replacing /, _, and spaces with dashes.
-    // Decoding is ambiguous, so this is a best-effort fallback.
-    // The real path should be extracted from transcript cwd fields instead.
-    QString path = encoded;
-    if (path.startsWith('-'))
-        path = '/' + path.mid(1);
-    path.replace('-', '/');
+    // Claude Code encodes absolute project paths by replacing `/` with `-`.
+    // The encoding is lossy: a leaf named `my-project` collides with the
+    // two-segment path `my/project`. The preferred source of truth is the
+    // `cwd` field inside the JSONL transcript (extractCwdFromTranscript) —
+    // this function is the last-resort fallback for when no transcript is
+    // available.
+    //
+    // Strategy: greedy left-to-right walk that probes the filesystem.
+    // At each hyphen we check which form (`/` vs embedded `-`) points at
+    // something that exists on disk and prefer that. When neither candidate
+    // exists we default to `/` (matches the legacy behavior for paths
+    // without embedded hyphens, so well-formed cases don't regress).
+    if (!encoded.startsWith('-')) return encoded;
+    const QStringList tokens = encoded.mid(1).split('-');
+    if (tokens.isEmpty() || tokens.first().isEmpty()) return QStringLiteral("/");
+
+    QString path = QLatin1Char('/') + tokens.first();
+    for (int i = 1; i < tokens.size(); ++i) {
+        const QString withSep = path + QLatin1Char('/') + tokens[i];
+        const QString withHyphen = path + QLatin1Char('-') + tokens[i];
+        if (QFileInfo::exists(withSep))      path = withSep;
+        else if (QFileInfo::exists(withHyphen)) path = withHyphen;
+        else                                 path = withSep;
+    }
     return path;
 }
 

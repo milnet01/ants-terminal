@@ -119,6 +119,17 @@ QString ClaudeTranscriptDialog::formatEntry(const QJsonObject &entry) const {
                 QString text = block.value("text").toString();
                 html += QString("<p><b style='color:#A6E3A1;'>Claude:</b> %1</p>")
                         .arg(text.toHtmlEscaped().replace("\n", "<br>"));
+            } else if (blockType == "thinking") {
+                // Extended-thinking blocks — real assistant events routinely
+                // lead with one. Rendered italic / dimmed so readers can tell
+                // them apart from the final visible response.
+                QString text = block.value("thinking").toString();
+                if (text.isEmpty())
+                    text = block.value("text").toString();
+                if (text.isEmpty()) continue;
+                html += QString("<p style='color:#7F849C;font-style:italic;'>"
+                               "<b>Thinking:</b> %1</p>")
+                        .arg(text.toHtmlEscaped().replace("\n", "<br>"));
             } else if (blockType == "tool_use") {
                 QString tool = block.value("name").toString();
                 QJsonObject input = block.value("input").toObject();

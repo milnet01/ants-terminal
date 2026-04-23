@@ -13,6 +13,67 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.14] — 2026-04-23
+
+**Theme:** three Claude Code integration robustness fixes from the
+0.7.12+1 re-review checkpoint. All three failed silently — no
+errors, no degraded-mode logs — so the symptoms were "a transcript-
+driven UI state that just stopped updating" or "a project that
+appeared under the wrong name in the picker". All three now have
+targeted fixture-based regression tests.
+
+### Fixed
+
+- **Claude transcript tail window drops events larger than 32 KB.**
+  `parseTranscriptForState` read the final 32 KB of the JSONL
+  transcript and skipped the first line after the seek as "likely
+  truncated". When the final event was a user `tool_result` carrying
+  inline file contents (routine for Read/Grep tool results on large
+  files), the 32 KB window landed inside that one event, the
+  firstLine-skip ate it, and the parser returned with zero events —
+  state frozen at whatever it was before the turn. Replaced with a
+  doubling-grow window (32 KB → 4 MiB cap) that only trims a
+  potentially-partial prefix line when the buffer contains at least
+  two newlines, guaranteeing real content remains for the parser.
+- **Claude transcript dialog silently drops `thinking` content
+  blocks.** Real assistant events on extended-thinking-enabled
+  models lead with one or more `thinking` blocks followed by the
+  final text response. `ClaudeTranscriptDialog::formatEntry` only
+  rendered `text`, `tool_use`, and `tool_result` block types;
+  `thinking` fell into an implicit else that discarded the block.
+  Now rendered as italicized, dimmed `Thinking:` paragraphs so
+  readers can distinguish chain-of-thought from the visible reply.
+- **`decodeProjectPath` mangles project names with embedded
+  hyphens.** Claude Code encodes absolute paths by replacing every
+  `/` with `-` — lossy, since `my-project` (leaf name) and
+  `my/project` (two segments) produce the same encoded string. The
+  decoder replaced every `-` with `/` unconditionally, turning
+  `~/my-project/sub-dir` into `~/my/project/sub/dir`. Rewrote as a
+  greedy left-to-right filesystem-probing walker: at each hyphen,
+  prefer the `/` form if that directory exists, fall back to `-`
+  (folded into the segment name) if that exists instead, default
+  to `/` otherwise. Legacy hyphen-free paths remain unchanged.
+  Preferred source of truth is still `extractCwdFromTranscript`
+  (used by `discoverProjects`); the probe-based decoder is the
+  last-resort fallback.
+
+### Tests
+
+- **`claude_transcript_robustness`** (6 invariants) — tail window
+  grows past a 40 KB trailing event (INV-1), tail-growth is bounded
+  at the 4 MiB cap on pathological inputs (INV-2), leaf-name hyphens
+  are preserved when the directory exists (INV-3), intermediate-
+  segment hyphens are preserved when the full path exists (INV-4),
+  missing filesystem hints fall back to the legacy all-slashes
+  behavior (INV-5), and the canonical repo-style path still decodes
+  correctly (INV-6). Verified to fail against the pre-fix code on
+  INV-1/3/4, pass on INV-2/5/6 (which test the safety-cap and legacy
+  paths).
+
+### Changed
+
+- No API or config changes. Pure bugfix release.
+
 ## [0.7.13] — 2026-04-23
 
 **Theme:** scope-tightening pass on the audit rule-pack trust boundary
