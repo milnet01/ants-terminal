@@ -3,8 +3,10 @@
 #include "debuglog.h"
 #include "secureio.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QStandardPaths>
@@ -323,12 +325,43 @@ void Config::setRemoteControlEnabled(bool enabled) {
     save();
 }
 
-bool Config::auditTrustCommandRules() const {
-    return m_data.value("audit_trust_command_rules").toBool(false);
+// Per-project audit rule-pack trust store. Key:
+//   audit_rule_pack_trust = { <canonical projectPath> : <sha256Hex> }
+// A project is trusted iff its canonicalized path appears and the stored
+// hash matches the current bytes. Any rule-pack edit invalidates trust.
+namespace {
+QString canonicalizeProject(const QString &projectPath) {
+    const QString c = QFileInfo(projectPath).canonicalFilePath();
+    return c.isEmpty() ? projectPath : c;
+}
+QString rulePackSha256Hex(const QByteArray &rulesBytes) {
+    return QString::fromLatin1(
+        QCryptographicHash::hash(rulesBytes, QCryptographicHash::Sha256).toHex());
+}
 }
 
-void Config::setAuditTrustCommandRules(bool enabled) {
-    m_data["audit_trust_command_rules"] = enabled;
+bool Config::isAuditRulePackTrusted(const QString &projectPath,
+                                    const QByteArray &rulesBytes) const {
+    const QJsonObject store = m_data.value("audit_rule_pack_trust").toObject();
+    const QString stored = store.value(canonicalizeProject(projectPath)).toString();
+    if (stored.isEmpty()) return false;
+    return stored == rulePackSha256Hex(rulesBytes);
+}
+
+void Config::trustAuditRulePack(const QString &projectPath,
+                                const QByteArray &rulesBytes) {
+    QJsonObject store = m_data.value("audit_rule_pack_trust").toObject();
+    store[canonicalizeProject(projectPath)] = rulePackSha256Hex(rulesBytes);
+    m_data["audit_rule_pack_trust"] = store;
+    save();
+}
+
+void Config::untrustAuditRulePack(const QString &projectPath) {
+    QJsonObject store = m_data.value("audit_rule_pack_trust").toObject();
+    const QString key = canonicalizeProject(projectPath);
+    if (!store.contains(key)) return;
+    store.remove(key);
+    m_data["audit_rule_pack_trust"] = store;
     save();
 }
 

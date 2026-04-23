@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.12 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.13 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1509,6 +1509,32 @@ if(ANTS_TESTS)
     )
     add_test(NAME config_parse_failure_guard COMMAND test_config_parse_failure)
     set_tests_properties(config_parse_failure_guard PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_command_rule_trust — locks the per-project trust store for
+    # audit_rules.json rule packs carrying `command` fields. Before
+    # 0.7.13 trust was a single global bool, which over-granted after
+    # one opt-in. Now trust is keyed on (canonical projectPath, sha256
+    # of rule-pack bytes); any edit to the rule pack invalidates trust.
+    # A broken gate is silent RCE re-introduction, so this lives on the
+    # fast lane. See tests/features/audit_command_rule_trust/spec.md.
+    add_executable(test_audit_command_rule_trust
+        tests/features/audit_command_rule_trust/test_audit_command_rule_trust.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_audit_command_rule_trust PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_audit_command_rule_trust PRIVATE src)
+    target_compile_options(test_audit_command_rule_trust PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME audit_command_rule_trust
+             COMMAND test_audit_command_rule_trust)
+    set_tests_properties(audit_command_rule_trust PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

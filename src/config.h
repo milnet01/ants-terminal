@@ -79,15 +79,19 @@ public:
     bool remoteControlEnabled() const;
     void setRemoteControlEnabled(bool enabled);
 
-    // Trust `command` fields in <project>/audit_rules.json. Defaults to
-    // FALSE: a user-project rule pack carrying a `command` field is
-    // bash-exec'd verbatim when the user opens the Audit dialog, which
-    // makes a cloned-untrusted-repo scenario a local RCE chain. Setting
-    // this true opts into the prior behavior. Per-project trust via a
-    // hash-based trust-store is deferred; today's knob is a single
-    // global toggle. 0.7.12 /indie-review finding.
-    bool auditTrustCommandRules() const;
-    void setAuditTrustCommandRules(bool enabled);
+    // Per-project trust store for <project>/audit_rules.json rule packs
+    // that carry `command` fields. `command` strings are bash-exec'd
+    // verbatim when the Audit dialog runs, so an untrusted cloned repo
+    // with a hostile rule pack is a local-RCE chain. Trust is scoped to
+    // (canonical projectPath → sha256 of the rule-pack bytes), so a user
+    // who trusts project A does not implicitly trust project B, and any
+    // edit to the rule pack invalidates trust (re-prompt on next open).
+    // 0.7.13: replaces the global audit_trust_command_rules bool.
+    bool isAuditRulePackTrusted(const QString &projectPath,
+                                const QByteArray &rulesBytes) const;
+    void trustAuditRulePack(const QString &projectPath,
+                            const QByteArray &rulesBytes);
+    void untrustAuditRulePack(const QString &projectPath);
 
     // AI assistant
     QString aiEndpoint() const;

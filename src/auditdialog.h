@@ -273,6 +273,11 @@ private:
     // finding — see applyPathRules().
     int  loadUserRules();
     QString userRulesPath() const;
+    // Count of rules with `command` fields that were skipped because the
+    // project's rule pack isn't trusted (see Config::isAuditRulePackTrusted).
+    // Surfaced on the detected-types badge with a tooltip pointing at the
+    // opt-in.
+    int  m_skippedUntrustedRules = 0;
 
     // Per-project path rule — loaded from audit_rules.json. Three effects:
     //   skip=true          — drop the finding entirely

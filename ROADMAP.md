@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.12 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.13 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1247,19 +1247,21 @@ remainder, captured so they don't drop on the floor.
   C0 is stripped (C1 bytes are UTF-8 continuation bytes and
   structurally cannot be stripped at the byte level). Drop "C1" from
   the comment.
-- 📋 **Audit rule-pack trust: project-scoped store.**
-  `audit_trust_command_rules` is a global boolean. Once flipped for
-  Ants's own project, every cloned repo inherits trust. Needed: a
-  `{project_path → sha256(audit_rules.json)}` trust store. Re-prompt
-  when the hash changes.
-- 📋 **Audit rule-pack trust: in-dialog UI surface.** `qWarning` to
-  stderr is invisible to GUI users. Surface the skipped-rule count
-  as a badge in the dialog (next to the existing "User rules: N"
-  badge) with a tooltip pointing at the config flag.
-- 📋 **Audit rule-pack trust: regression test.** No test covers the
-  gate today — a future refactor could bypass it silently. Write
-  `tests/features/audit_command_rule_trust/` asserting rules with
-  `command` fields are rejected unless the flag is set.
+- ✅ **Audit rule-pack trust: project-scoped store.** Shipped 0.7.13.
+  Replaced the global `audit_trust_command_rules` bool with a
+  `{canonical project_path → sha256(audit_rules.json)}` store
+  (`Config::isAuditRulePackTrusted` / `trustAuditRulePack` /
+  `untrustAuditRulePack`). Trusting one project no longer extends to
+  siblings; any rule-pack edit invalidates trust.
+- ✅ **Audit rule-pack trust: in-dialog UI surface.** Shipped 0.7.13.
+  Skipped-rule count appears on the Detected-types row as an
+  "Untrusted rules: N" badge with a tooltip explaining the opt-in
+  path. Stderr `qWarning` retained for headless / CI invocations.
+- ✅ **Audit rule-pack trust: regression test.** Shipped 0.7.13.
+  `tests/features/audit_command_rule_trust/` locks seven invariants:
+  default-untrusted, round-trip, hash-invalidation, project-scoping,
+  symlink+trailing-slash canonicalization, idempotent untrust, and
+  cross-instance persistence.
 - 📋 **`/tmp/kwin_*.js` orphan cleanup.** Crash / dbus-hang leaves
   files in `/tmp`. Add a startup sweep in `MainWindow` ctor that
   removes `kwin_{pos,move,center}_ants_*.js` older than 1 hour (or
@@ -1293,6 +1295,27 @@ remainder, captured so they don't drop on the floor.
   assertion to `runToggleFreeTailPreservesState` confirming exactly
   one emission across both parse phases — guards against a future
   regression that re-emits the same state.
+
+### 🎨 Claude Code UX — per-tab status indicator (user request 2026-04-23)
+
+- 📋 **Per-tab Claude-Code activity indicator.** For each tab where a
+  Claude Code process is running, render a small glyph on the tab
+  chrome reflecting the current Claude state — at a glance the user
+  can see which tab is busy, which is waiting at a permission prompt,
+  and which is idle, and act on the right one without cycling tabs.
+  Minimum states (mirroring Claude Code's own status bar):
+  `planning` / `bash` / `thinking` / `tool_use` / `awaiting_input` /
+  `idle`. Implementation sketch: `claudeintegration.cpp` already
+  monitors the JSONL transcript per project; extend it to emit a
+  `claudeStatusChanged(tabIndex, state)` signal, wire into
+  `MainWindow`'s tab bar to draw a 12px glyph (or colored dot) next
+  to the label. `awaiting_input` should be visually loud (pulsing /
+  high-contrast) since that's the state the user most needs to
+  act on; `idle` can be muted or absent. Config toggle
+  `claude_tab_status_indicator` (default on for tabs where the
+  integration already detects Claude). See also `claude_status_bar`
+  feature test for the existing bottom-status-bar precedent —
+  per-tab version is the natural next step.
 
 ### ⚡ / 🏗 Tier 3 — structural
 

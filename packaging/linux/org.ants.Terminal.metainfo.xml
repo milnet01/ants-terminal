@@ -103,6 +103,21 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.13" date="2026-04-23">
+      <description>
+        <p>Scope-tightening pass on the audit rule-pack trust boundary shipped in 0.7.12. The global <code>audit_trust_command_rules</code> bool over-granted after one opt-in — trusting Ants's own repo implicitly trusted every cloned repo the user later opened. 0.7.13 replaces the global flag with a per-project hash-bound trust store so trust is both narrow and self-invalidating.</p>
+        <p>Security:</p>
+        <ul>
+          <li><em>Per-project audit rule-pack trust store.</em> Global <code>audit_trust_command_rules</code> bool is retired. Trust is keyed on <code>(canonical projectPath, sha256(audit_rules.json bytes))</code> via three new <code>Config</code> methods: <code>isAuditRulePackTrusted</code>, <code>trustAuditRulePack</code>, <code>untrustAuditRulePack</code>. Trusting one project no longer extends to siblings; any edit to the rule pack invalidates trust (re-prompt on next open — silent post-trust modification is detected); <code>projectPath</code> is canonicalized via <code>QFileInfo::canonicalFilePath</code> so symlinks and trailing slashes resolve to a single record; <code>ANTS_AUDIT_TRUST_UNSAFE=1</code> remains an escape hatch for CI. Users with the legacy bool set to <code>true</code> are re-prompted per project on upgrade.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li><em>Audit dialog: "Untrusted rules: N" badge.</em> The skipped-rule count now appears on the Detected-types row alongside "User rules: N" and "Path rules: N", with a tooltip explaining the trust boundary and opt-in path. Stderr <code>qWarning</code> copy retained for headless / CI cases.</li>
+          <li><em><code>CLAUDE.md</code> streamlined.</em> Compressed from 325 to 147 lines (~67% reduction) by dropping the full project-structure tree, collapsing the verbose audit pipeline prose, retiring the per-dep install-command list, and dropping the Config-keys table. Retained: non-obvious gotchas, rationale for design decisions, and the release-file triad rule.</li>
+        </ul>
+        <p>Tests: new <code>tests/features/audit_command_rule_trust/</code> lane — seven-invariant regression test against the new trust API (default-untrusted, round-trip, hash-bound invalidation, cross-project isolation with byte-identical packs, path canonicalization through symlinks + trailing slashes, idempotent untrust, cross-<code>Config</code>-instance persistence through <code>config.json</code>). Spec-first: contract written before the code.</p>
+      </description>
+    </release>
     <release version="0.7.12" date="2026-04-23">
       <description>
         <p>Independent-review sweep. A multi-agent <code>/indie-review</code> run across 14 subsystems surfaced 60 HIGH findings; the ship-this-week tier landed in this tag, followed by a re-review of the shipped batch that caught three more HIGH findings of the same shape, plus a polish pass handling the six mechanical follow-ups. Every fix carries a regression test anchored to an external signal — published spec, CVE, real on-disk data — not to the author's own reasoning. Closes the self-graded-homework loop.</p>

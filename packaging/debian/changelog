@@ -1,3 +1,41 @@
+ants-terminal (0.7.13-1) unstable; urgency=medium
+
+  * Scope-tightening pass on the audit rule-pack trust boundary shipped
+    in 0.7.12. The global audit_trust_command_rules bool over-granted
+    after one opt-in — trusting Ants's own repo implicitly trusted every
+    cloned repo the user later opened. 0.7.13 replaces the global flag
+    with a per-project hash-bound trust store so trust is both narrow
+    and self-invalidating.
+  * Security: per-project audit rule-pack trust store. Global
+    audit_trust_command_rules bool retired. Trust is keyed on
+    (canonical projectPath, sha256(audit_rules.json bytes)) via three
+    new Config methods: isAuditRulePackTrusted, trustAuditRulePack,
+    untrustAuditRulePack. Trusting one project no longer extends to
+    siblings; any edit to the rule pack invalidates trust (re-prompt
+    on next open); projectPath is canonicalized via
+    QFileInfo::canonicalFilePath so symlinks / trailing slashes
+    resolve to a single record; ANTS_AUDIT_TRUST_UNSAFE=1 remains an
+    escape hatch for CI. Legacy-bool users are re-prompted per
+    project on upgrade.
+  * Changed: audit dialog gains an "Untrusted rules: N" badge on the
+    Detected-types row with a tooltip explaining the trust boundary
+    and opt-in path; stderr qWarning copy retained for headless / CI.
+  * Changed: CLAUDE.md streamlined from 325 to 147 lines (~67%
+    reduction) by dropping the full project-structure tree,
+    collapsing verbose audit pipeline prose, retiring the per-dep
+    install-command list, and dropping the Config-keys table.
+    Retained: non-obvious gotchas, design rationale, release-file
+    triad rule.
+  * Tests: new tests/features/audit_command_rule_trust/ lane —
+    seven-invariant regression test against the new trust API
+    (default-untrusted, round-trip, hash-bound invalidation,
+    cross-project isolation with byte-identical packs, path
+    canonicalization through symlinks + trailing slashes, idempotent
+    untrust, cross-Config-instance persistence through config.json).
+    Spec-first: contract written before the code.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 23 Apr 2026 12:00:00 +0000
+
 ants-terminal (0.7.12-1) unstable; urgency=medium
 
   * Independent-review sweep — a multi-agent /indie-review run across

@@ -13,6 +13,61 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.13] — 2026-04-23
+
+**Theme:** scope-tightening pass on the audit rule-pack trust boundary
+shipped in 0.7.12. The global `audit_trust_command_rules` bool
+over-granted after one opt-in — trusting Ants's own repo implicitly
+trusted every cloned repo the user later opened. 0.7.13 replaces the
+global flag with a per-project hash-bound trust store so trust is both
+narrow and self-invalidating.
+
+### Security
+
+- **Per-project audit rule-pack trust store.** Global
+  `audit_trust_command_rules` bool is retired. Trust is now keyed on
+  `(canonical projectPath, sha256(audit_rules.json bytes))` via three
+  new `Config` methods: `isAuditRulePackTrusted`, `trustAuditRulePack`,
+  `untrustAuditRulePack`. Consequences:
+  1. Trusting one project no longer extends to siblings.
+  2. Any edit to the rule pack invalidates trust (re-prompt on next
+     open) — a silent post-trust modification is detected.
+  3. `projectPath` is canonicalized via `QFileInfo::canonicalFilePath`,
+     so symlinks / trailing slashes resolve to a single record.
+  4. `ANTS_AUDIT_TRUST_UNSAFE=1` remains an escape hatch for CI that
+     can't round-trip through the persisted store.
+  Upgrade behavior: users who had the legacy bool set to `true` are
+  re-prompted (fresh trust decisions per project). This is the safe
+  default for a security feature.
+
+### Changed
+
+- **Audit dialog: "Untrusted rules: N" badge.** The skipped-rule count
+  now appears on the Detected-types row alongside "User rules: N" and
+  "Path rules: N", with a tooltip explaining the trust boundary and
+  opt-in path. GUI users previously only saw the stderr `qWarning`,
+  which was invisible outside a terminal-launched invocation. Stderr
+  copy retained for headless / CI cases.
+- **`CLAUDE.md` streamlined.** Compressed from 325 → 147 lines
+  (19.5 KB → 6.5 KB, ~67% reduction) by dropping the full project-
+  structure tree (derivable from `ls src/`), collapsing the verbose
+  audit pipeline prose, retiring the per-dep install-command list
+  (each probes `which <tool>` and self-disables), and dropping the
+  Config-keys table (derivable from `config.cpp`). Retained: non-
+  obvious gotchas, rationale for design decisions, and the release-
+  file triad rule.
+
+### Tests
+
+- **`tests/features/audit_command_rule_trust/`**. Seven-invariant
+  regression test against the new trust API: default-untrusted,
+  round-trip, hash-bound invalidation, cross-project isolation (with
+  byte-identical packs to rule out hash coincidence), path
+  canonicalization through symlinks + trailing slashes, idempotent
+  untrust, and cross-`Config`-instance persistence through
+  `config.json`. Spec-first: contract written before the code, every
+  invariant mapped to an assertion with a diagnostic label.
+
 ## [0.7.12] — 2026-04-23
 
 **Theme:** independent-review sweep. Multi-agent `/indie-review` run

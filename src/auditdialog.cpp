@@ -202,6 +202,14 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
         m_detectedTypes << QString("User rules: %1").arg(userRules);
     if (!m_pathRules.isEmpty())
         m_detectedTypes << QString("Path rules: %1").arg(m_pathRules.size());
+    if (m_skippedUntrustedRules > 0) {
+        // Surface the gated-rule count so GUI users who didn't open a
+        // terminal see the same signal the qWarning puts on stderr.
+        // The tooltip explanation is wired onto the types label where
+        // the list is rendered (see buildUI → m_typesLabel).
+        m_detectedTypes << QString("Untrusted rules: %1")
+                               .arg(m_skippedUntrustedRules);
+    }
     buildUI();
 }
 
@@ -2518,11 +2526,13 @@ QString AuditDialog::userRulesPath() const {
 }
 
 int AuditDialog::loadUserRules() {
+    m_skippedUntrustedRules = 0;
     QFile f(userRulesPath());
     if (!f.open(QIODevice::ReadOnly)) return 0;
-    QJsonParseError err;
-    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    const QByteArray rulesBytes = f.readAll();
     f.close();
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(rulesBytes, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
         qWarning("audit_rules.json: %s", qPrintable(err.errorString()));
         return 0;
@@ -2565,19 +2575,18 @@ int AuditDialog::loadUserRules() {
         m_pathRules.append(pr);
     }
 
-    // 0.7.12 /indie-review RCE mitigation: rule packs carrying a
-    // `command` field bash-exec that string verbatim. A cloned-but-
-    // untrusted repo can plant a hostile audit_rules.json and run
-    // arbitrary code the moment the user opens the Audit dialog.
-    // Gate command-bearing rules on an explicit user trust toggle
-    // (Config::auditTrustCommandRules, default false). Env-var escape
-    // hatch `ANTS_AUDIT_TRUST_UNSAFE=1` is honored too for scripted
-    // users / CI who don't want to toggle the persisted config.
+    // Rule packs carrying a `command` field bash-exec that string verbatim.
+    // A cloned-but-untrusted repo can plant a hostile audit_rules.json and
+    // run arbitrary code the moment the user opens the Audit dialog. 0.7.13
+    // scopes trust per-project-and-per-hash (see Config::isAuditRulePackTrusted):
+    // trusting one project doesn't extend to others, and any rule-pack edit
+    // invalidates trust so a silent post-trust modification is re-prompted.
+    // Env-var `ANTS_AUDIT_TRUST_UNSAFE=1` remains an escape hatch for CI
+    // that can't round-trip through the persisted store.
     Config cfg;
     const bool commandRulesTrusted =
-        cfg.auditTrustCommandRules()
-        || (qEnvironmentVariable("ANTS_AUDIT_TRUST_UNSAFE") == "1");
-    int skippedUntrusted = 0;
+        (qEnvironmentVariable("ANTS_AUDIT_TRUST_UNSAFE") == "1")
+        || cfg.isAuditRulePackTrusted(m_projectPath, rulesBytes);
 
     int loaded = 0;
     for (const QJsonValue &v : rules) {
@@ -2595,10 +2604,10 @@ int AuditDialog::loadUserRules() {
         if (c.command.isEmpty()) continue;   // command is required
 
         // If the rule carries a `command` field and the user hasn't
-        // trusted command-rules for this project, skip it rather than
+        // trusted this rule-pack for this project, skip it rather than
         // execute an untrusted shell string. Counts get surfaced below.
         if (!commandRulesTrusted) {
-            ++skippedUntrusted;
+            ++m_skippedUntrustedRules;
             continue;
         }
         c.type        = parseType(o.value("type").toString("info"));
@@ -2628,16 +2637,16 @@ int AuditDialog::loadUserRules() {
         ++loaded;
     }
 
-    if (skippedUntrusted > 0) {
-        // User-visible-ish: goes to stderr since DebugLog category
-        // isn't imported here, and the count is a security-relevant
-        // signal the user should see even with quiet logging.
+    if (m_skippedUntrustedRules > 0) {
+        // Mirrored on the dialog's types badge (see AuditDialog ctor);
+        // the stderr copy exists for headless / CI invocations where
+        // the GUI badge isn't visible.
         qWarning("audit_rules.json: skipped %d rule(s) with `command` "
-                 "fields — set audit_trust_command_rules=true in "
-                 "config.json (or export ANTS_AUDIT_TRUST_UNSAFE=1) to "
-                 "opt in. This is a trust boundary: `command` fields "
-                 "run via /bin/bash -c verbatim.",
-                 skippedUntrusted);
+                 "fields — this project's rule pack is not trusted. "
+                 "Export ANTS_AUDIT_TRUST_UNSAFE=1 or call "
+                 "Config::trustAuditRulePack() to opt in; editing the "
+                 "rule pack re-invalidates trust.",
+                 m_skippedUntrustedRules);
     }
 
     return loaded;
@@ -3211,6 +3220,20 @@ void AuditDialog::buildUI() {
     if (m_hasBaseline) typesText += "  ·  <i>Baseline loaded</i>";
     m_typesLabel->setText(typesText);
     m_typesLabel->setTextFormat(Qt::RichText);
+    if (m_skippedUntrustedRules > 0) {
+        // Tooltip explains *why* the "Untrusted rules" badge appears and
+        // how to opt in. Mouse-hover reveals it; the qWarning on stderr
+        // carries the same message for headless invocations.
+        m_typesLabel->setToolTip(
+            QString("This project's audit_rules.json contains %1 rule(s) with "
+                    "a `command` field. Those fields are bash-exec'd verbatim "
+                    "at audit time, so Ants requires explicit trust per "
+                    "(project path, rule-pack hash). Editing the rule pack "
+                    "invalidates trust. To opt in: export "
+                    "ANTS_AUDIT_TRUST_UNSAFE=1, or call "
+                    "Config::trustAuditRulePack() from a prior session.")
+                .arg(m_skippedUntrustedRules));
+    }
     root->addWidget(m_typesLabel);
     root->addSpacing(4);
 
