@@ -23,6 +23,26 @@ public:
 signals:
     void insertCommand(const QString &cmd); // Insert AI-suggested command into PTY
 
+public:
+    // Extract a candidate command from an AI response (fenced ``` block
+    // preferred, else last non-empty line), strip dangerous control
+    // chars (C0 except HT/LF/CR + DEL — same set remotecontrol.cpp
+    // filters), and cap at 4 KiB. Defense against OWASP LLM02 —
+    // an LLM coaxed into emitting ESC sequences or NUL bytes can
+    // otherwise reprogram the terminal the moment the user clicks
+    // Insert. Exposed as a static helper so feature tests can verify
+    // the sanitization without a full dialog round-trip.
+    //
+    // Returns the sanitized command (possibly empty if no candidate
+    // was found). If `out_stripped` is non-null, receives the number
+    // of control bytes removed + the number of bytes truncated by the
+    // 4 KiB cap (same counter, the UX just tells the user "X bytes
+    // were filtered").
+    static QString extractAndSanitizeCommand(const QString &response,
+                                             int *out_stripped = nullptr);
+
+    static constexpr int kInsertCommandMaxBytes = 4096;
+
 private slots:
     void onSend();
     void onReplyFinished();

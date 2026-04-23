@@ -194,11 +194,19 @@ QJsonDocument RemoteControl::cmdLs() {
 }
 
 QJsonDocument RemoteControl::cmdSendText(const QJsonObject &req) {
-    // Request shape: {"cmd":"send-text","tab":<int>,"text":"<string>"}
+    // Request shape: {"cmd":"send-text","tab":<int>,"text":"<string>",
+    //                 "raw":<bool optional>}
     //   - `tab` optional (default: the active tab)
-    //   - `text` required; arbitrary UTF-8, written to the tab's PTY
-    //     as raw bytes. Callers include control chars / escape
-    //     sequences at their discretion — matching Kitty's shape.
+    //   - `text` required; UTF-8 written to the tab's PTY. By default
+    //     dangerous C0 control bytes (0x00-0x08, 0x0B-0x1F, 0x7F) are
+    //     stripped to prevent local-UID processes from injecting ESC
+    //     sequences / bracketed-paste toggles / OSC 52 clipboard
+    //     overwrites through the rc socket. See
+    //     tests/features/remote_control_opt_in/spec.md.
+    //   - `raw`  optional; when `true`, the filter is skipped and
+    //     bytes pass through verbatim. Preserves Kitty-compat for
+    //     callers that genuinely need raw byte access (terminal test
+    //     harnesses, escape-sequence driven plugins).
     QJsonObject out;
     const QJsonValue textVal = req.value("text");
     if (!textVal.isString()) {
@@ -232,11 +240,23 @@ QJsonDocument RemoteControl::cmdSendText(const QJsonObject &req) {
             return QJsonDocument(out);
         }
     }
-    target->sendToPty(text.toUtf8());
+    const bool rawBypass = req.value("raw").toBool(false);
+    const QByteArray rawBytes = text.toUtf8();
+    int stripped = 0;
+    const QByteArray payload = rawBypass
+        ? rawBytes
+        : RemoteControl::filterControlChars(rawBytes, &stripped);
+    target->sendToPty(payload);
     out["ok"] = true;
-    out["bytes"] = text.toUtf8().size();
+    out["bytes"] = payload.size();
+    if (!rawBypass && stripped > 0) {
+        out["stripped"] = stripped;
+    }
     return QJsonDocument(out);
 }
+
+// filterControlChars is defined inline in remotecontrol.h so feature
+// tests can exercise it without pulling the full MainWindow dep chain.
 
 QJsonDocument RemoteControl::cmdSelectWindow(const QJsonObject &req) {
     // Request shape: {"cmd":"select-window","tab":<int>}

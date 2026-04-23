@@ -51,7 +51,10 @@ int main() {
     if (cstPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdSendText definition missing");
     } else {
-        std::string body = rc.substr(cstPos, 2000);
+        // Window widened from 2000 → 4000 in 0.7.12 when the opt-in
+        // filter (remote_control_opt_in spec) expanded cmdSendText's
+        // body with the raw-bypass + filterControlChars delegation.
+        std::string body = rc.substr(cstPos, 4000);
         if (body.find("isString()") == std::string::npos) {
             fail("INV-2b: cmdSendText must validate the `text` field via isString() — "
                  "matches Kitty's \"text is required and must be a string\" contract");

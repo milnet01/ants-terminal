@@ -484,16 +484,26 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     }
 
     // Plan mode: most recent permission-mode event in the tail decides.
-    // Claude Code records `{"type":"permission-mode","mode":"plan"}` when
-    // the user toggles plan mode; switching out writes another with
-    // mode == "default" / "acceptEdits". Search backward through the
-    // events we already parsed (cheap — ~32KB tail).
-    bool newPlan = false;
+    // Claude Code records `{"type":"permission-mode","permissionMode":"plan",
+    // "sessionId":"…"}` when the user toggles plan mode; switching out
+    // writes another with permissionMode == "default" / "acceptEdits" /
+    // "bypassPermissions". Field name is permissionMode (verified against
+    // live JSONL on disk as of Claude Code v2.1.87); the pre-0.7.12 code
+    // read "mode" which never matched the real schema — see
+    // tests/features/claude_plan_mode_detection/spec.md.
+    //
+    // Important: the tail window we parse is ~32 KB, so a toggle that
+    // happened many turns ago can scroll off. We must NOT silently reset
+    // plan mode to false in that case — the user's last explicit toggle
+    // still stands until they toggle again. Initialize from the current
+    // latched state, only override when we actually observe a
+    // permission-mode event.
+    bool newPlan = m_planMode;
     for (int i = events.size() - 1; i >= 0; --i) {
         if (events[i].value("type").toString() != QLatin1String("permission-mode"))
             continue;
-        const QString mode = events[i].value("mode").toString().toLower();
-        newPlan = mode.contains(QLatin1String("plan"));
+        const QString mode = events[i].value("permissionMode").toString();
+        newPlan = (mode == QLatin1String("plan"));
         break;
     }
 

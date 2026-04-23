@@ -21,6 +21,25 @@ struct SshBookmark {
     // controlMaster=true appends -o ControlMaster=auto / ControlPath / ControlPersist,
     // so repeat connections to the same host multiplex over the first session.
     QString toSshCommand(bool controlMaster = false) const;
+
+    // Take a whitespace-separated extraArgs string and return the
+    // tokens safe to forward to ssh. Rejects tokens that enable arbitrary
+    // command execution via ssh's option system:
+    //   -oProxyCommand=…, -o ProxyCommand=…
+    //   -oLocalCommand=…, -o LocalCommand=…
+    //   -oPermitLocalCommand=yes (plus the surrounding -o form)
+    // These options let the bookmark owner (potentially: a contributed
+    // plugin, a config-syncing tool, a synced dotfile repo) run
+    // arbitrary shell commands when the user connects — the classic
+    // CVE-2017-1000117-adjacent attack via bookmark data rather than
+    // hostnames. The `--` separator already guards against dash-host
+    // injection; this list guards against the `-o` surface.
+    //
+    // Returns the filtered tokens; `out_rejected`, if non-null, gets a
+    // list of the rejected raw tokens so callers can surface them in a
+    // debug log or UI warning.
+    static QStringList sanitizeExtraArgs(const QString &extraArgs,
+                                         QStringList *out_rejected = nullptr);
 };
 
 // SSH Manager dialog — manage bookmarks and connect

@@ -1,13 +1,17 @@
 #include "config.h"
 
+#include "debuglog.h"
 #include "secureio.h"
 
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonParseError>
 #include <QStandardPaths>
 
+#include <cerrno>      // errno — report rename() failure causes
 #include <cstdio>      // std::rename — atomic POSIX rename (overwrites dest)
+#include <cstring>     // std::strerror — rename() failure diagnostics
 #include <sys/stat.h>
 #include <unistd.h>    // fsync — durability guarantee before atomic rename
 
@@ -23,16 +27,80 @@ QString Config::configPath() {
 }
 
 void Config::load() {
-    QFile file(configPath());
-    if (file.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-        if (doc.isObject()) {
-            m_data = doc.object();
-        }
+    const QString path = configPath();
+    QFile file(path);
+    if (!file.exists()) return;  // first run — fall through to defaults
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        // File exists but we can't read it — treat as a load failure
+        // so we don't clobber it with defaults on next save(). Same
+        // policy as the parse-failure path below.
+        m_loadFailed = true;
+        ANTS_LOG(DebugLog::Config,
+                 "config.json exists but could not be opened for reading "
+                 "— save() suppressed");
+        return;
+    }
+
+    const QByteArray raw = file.readAll();
+    file.close();
+
+    QJsonParseError parseErr{};
+    QJsonDocument doc = QJsonDocument::fromJson(raw, &parseErr);
+    if (doc.isObject()) {
+        m_data = doc.object();
+        return;
+    }
+
+    // Parse failed — don't silently fall through to empty defaults and
+    // have the next save() overwrite the user's (corrupt but possibly
+    // hand-fixable) config. Instead: rotate the broken file aside,
+    // latch a "load failed" flag, and refuse to save for this session
+    // until the user intervenes. See
+    // tests/features/config_parse_failure_guard/spec.md.
+    m_loadFailed = true;
+
+    // Rotate the broken bytes aside via the shared helper (see
+    // secureio.h — millisecond timestamp + retry-on-collision).
+    m_loadFailureBackupPath = rotateCorruptFileAside(path);
+
+    if (!m_loadFailureBackupPath.isEmpty()) {
+        ANTS_LOG(DebugLog::Config,
+                 "config.json failed to parse at offset %d: %s — rotated to "
+                 "%s, save() suppressed until next successful load",
+                 parseErr.offset,
+                 qUtf8Printable(parseErr.errorString()),
+                 qUtf8Printable(m_loadFailureBackupPath));
+    } else {
+        // Backup copy failed entirely (disk full, perms, 10 collisions
+        // in one ms — pathological). The live config.json is still
+        // untouched thanks to the save() suppression, but the user has
+        // no separate recovery file. Log the failure distinctly so
+        // debugging doesn't mistake this for the success path.
+        ANTS_LOG(DebugLog::Config,
+                 "config.json failed to parse at offset %d: %s — backup copy "
+                 "FAILED (no .corrupt-* written); save() still suppressed, "
+                 "live file left in place for the user to inspect",
+                 parseErr.offset,
+                 qUtf8Printable(parseErr.errorString()));
     }
 }
 
 void Config::save() {
+    // Refuse to save when load() latched a parse failure — otherwise a
+    // setter-triggered save would overwrite the user's (corrupt but
+    // possibly hand-fixable) config.json with whatever empty/default
+    // state m_data has now. The corrupt file was already rotated aside
+    // by load(); this is the write-side guard. See
+    // tests/features/config_parse_failure_guard/spec.md.
+    if (m_loadFailed) {
+        ANTS_LOG(DebugLog::Config,
+                 "save() skipped — earlier load failure latched "
+                 "(backup at %s)",
+                 qUtf8Printable(m_loadFailureBackupPath));
+        return;
+    }
+
     QString path = configPath();
     QString tmpPath = path + QStringLiteral(".tmp");
 
@@ -61,8 +129,24 @@ void Config::save() {
             // config.json.tmp accumulates on disk. That path broke every save
             // after the first — theme / font / tab_groups changes all
             // evaporated on restart. POSIX rename(2) atomically replaces.
-            std::rename(tmpPath.toLocal8Bit().constData(),
-                        path.toLocal8Bit().constData());
+            //
+            // 0.7.12: check the return value. ENOSPC, EACCES on the dest
+            // dir, or EXDEV (cross-device, shouldn't happen here but
+            // defensive) leave the tmp file orphaned and the user's prior
+            // config silently unchanged. Log + remove the tmp on failure
+            // so the user sees the error in debug.log and the tmp doesn't
+            // accumulate across session lifetimes.
+            const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
+                                       path.toLocal8Bit().constData());
+            if (rc != 0) {
+                ANTS_LOG(DebugLog::Config,
+                         "rename(%s -> %s) failed: errno=%d (%s) — "
+                         "prior config.json unchanged, tmp removed",
+                         qUtf8Printable(tmpPath),
+                         qUtf8Printable(path),
+                         errno, std::strerror(errno));
+                QFile::remove(tmpPath);
+            }
         } else {
             file.close();
             QFile::remove(tmpPath);
@@ -227,6 +311,24 @@ bool Config::sessionPersistence() const {
 
 void Config::setSessionPersistence(bool enabled) {
     m_data["session_persistence"] = enabled;
+    save();
+}
+
+bool Config::remoteControlEnabled() const {
+    return m_data.value("remote_control_enabled").toBool(false);
+}
+
+void Config::setRemoteControlEnabled(bool enabled) {
+    m_data["remote_control_enabled"] = enabled;
+    save();
+}
+
+bool Config::auditTrustCommandRules() const {
+    return m_data.value("audit_trust_command_rules").toBool(false);
+}
+
+void Config::setAuditTrustCommandRules(bool enabled) {
+    m_data["audit_trust_command_rules"] = enabled;
     save();
 }
 

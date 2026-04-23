@@ -71,6 +71,24 @@ public:
     bool sessionPersistence() const;
     void setSessionPersistence(bool enabled);
 
+    // Remote-control listener (Kitty-style rc_protocol socket).
+    // Defaults to FALSE — any process under the user's UID can otherwise
+    // drive the terminal via the socket, including injecting arbitrary
+    // keystrokes via send-text. Opt-in per the 0.7.12 /indie-review
+    // finding. X25519 auth deferred to 0.8.0.
+    bool remoteControlEnabled() const;
+    void setRemoteControlEnabled(bool enabled);
+
+    // Trust `command` fields in <project>/audit_rules.json. Defaults to
+    // FALSE: a user-project rule pack carrying a `command` field is
+    // bash-exec'd verbatim when the user opens the Audit dialog, which
+    // makes a cloned-untrusted-repo scenario a local RCE chain. Setting
+    // this true opts into the prior behavior. Per-project trust via a
+    // hash-based trust-store is deferred; today's knob is a single
+    // global toggle. 0.7.12 /indie-review finding.
+    bool auditTrustCommandRules() const;
+    void setAuditTrustCommandRules(bool enabled);
+
     // AI assistant
     QString aiEndpoint() const;
     void setAiEndpoint(const QString &url);
@@ -225,9 +243,21 @@ public:
 
     void save();
 
+    // True when the on-disk config.json existed at construction time but
+    // failed to parse as a JSON object. In that mode save() becomes a
+    // no-op so the next setter doesn't overwrite the user's (corrupt
+    // but possibly recoverable) data with fresh defaults. The broken
+    // file is rotated to `config.json.corrupt-<timestamp>` on load so
+    // the user can hand-fix or copy-back. UI can surface this via a
+    // one-time nag; the getter is the hook.
+    bool loadFailed() const { return m_loadFailed; }
+    QString loadFailureBackupPath() const { return m_loadFailureBackupPath; }
+
 private:
     void load();
     static QString configPath();
 
     QJsonObject m_data;
+    bool m_loadFailed = false;
+    QString m_loadFailureBackupPath;
 };

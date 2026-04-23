@@ -1,5 +1,6 @@
 #include "claudeallowlist.h"
 
+#include "debuglog.h"
 #include "secureio.h"
 
 #include <QVBoxLayout>
@@ -9,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonParseError>
 #include <QDir>
 #include <QFile>
 #include <QSaveFile>
@@ -237,14 +239,47 @@ void ClaudeAllowlistDialog::loadSettings() {
 bool ClaudeAllowlistDialog::saveSettings() {
     if (m_settingsPath.isEmpty()) return false;
 
-    // Read existing file to preserve non-permission keys
+    // Read existing file to preserve non-permission keys (model, editor
+    // prefs, custom hooks, ...). If the file EXISTS but fails to parse,
+    // refuse to save — otherwise the write below would produce a file
+    // containing only {"permissions": {...}} and silently destroy every
+    // other key the user had. Rotate the corrupt file aside first so
+    // the user can hand-recover. 0.7.12 /indie-review fix — the same
+    // silent-data-loss pattern Config::load had.
     QJsonObject root;
     {
         QFile file(m_settingsPath);
-        if (file.open(QIODevice::ReadOnly)) {
-            QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-            if (doc.isObject()) root = doc.object();
+        if (file.exists()) {
+            if (!file.open(QIODevice::ReadOnly)) {
+                ANTS_LOG(DebugLog::Claude,
+                         "allowlist saveSettings: %s exists but cannot be "
+                         "read — refusing to save (would risk clobbering "
+                         "non-permission keys)",
+                         qUtf8Printable(m_settingsPath));
+                return false;
+            }
+            const QByteArray raw = file.readAll();
+            file.close();
+            QJsonParseError err{};
+            QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
+            if (doc.isObject()) {
+                root = doc.object();
+            } else {
+                const QString backup = rotateCorruptFileAside(m_settingsPath);
+                ANTS_LOG(DebugLog::Claude,
+                         "allowlist saveSettings: %s failed to parse at "
+                         "offset %d: %s — rotated to %s, refusing to save",
+                         qUtf8Printable(m_settingsPath),
+                         err.offset,
+                         qUtf8Printable(err.errorString()),
+                         qUtf8Printable(backup.isEmpty()
+                                        ? QStringLiteral("(backup FAILED)")
+                                        : backup));
+                return false;
+            }
         }
+        // else: fresh install, no settings file yet — root stays empty
+        // object, save proceeds and writes the file for the first time.
     }
 
     // Build permissions object (skip empty arrays to keep file clean)

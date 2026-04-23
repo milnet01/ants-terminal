@@ -55,6 +55,7 @@ QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
 #include <QDateTime>
 #include <QProcess>
 #include <QFile>
+#include <QTemporaryFile>
 #include <QVBoxLayout>
 #include <QTabBar>
 #include <QSplitter>
@@ -785,7 +786,20 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // already owns the socket) is non-fatal: the log notes it and
     // the main window boots normally.
     m_remoteControl = new RemoteControl(this, this);
-    m_remoteControl->start();
+    // Gated by config: any process under the user's UID can otherwise
+    // drive the terminal via the rc socket (including send-text
+    // keystroke injection). Opt-in per 0.7.12 /indie-review finding.
+    //
+    // NOTE: runtime enable/disable is NOT wired yet — enabling the
+    // config key requires a restart to take effect. The RemoteControl
+    // object has a start() but no corresponding stop(); adding live
+    // toggle (and a Settings dialog surface) is a 0.7.13 follow-up
+    // tracked in ROADMAP.md. The /indie-review checkpoint 2026-04-23
+    // flagged the prior "settings toggling can enable without restart"
+    // comment as a lie; corrected here.
+    if (m_config.remoteControlEnabled()) {
+        m_remoteControl->start();
+    }
 }
 
 void MainWindow::setupMenus() {
@@ -2555,12 +2569,15 @@ void MainWindow::moveViaKWin(int targetX, int targetY) {
         "}\n"
     ).arg(pid).arg(targetX).arg(targetY);
 
-    QString scriptPath = QDir::tempPath() + "/kwin_move_ants.js";
+    // Unpredictable tempfile via QTemporaryFile — 0.7.12 TOCTOU fix.
+    // See xcbpositiontracker.cpp for rationale.
+    QString scriptPath;
     {
-        QFile f(scriptPath);
-        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            return;
+        QTemporaryFile f(QDir::tempPath() + "/kwin_move_ants_XXXXXX.js");
+        f.setAutoRemove(false);
+        if (!f.open()) return;
         f.write(kwinJs.toUtf8());
+        scriptPath = f.fileName();
     }
 
     auto *proc = new QProcess(this);
@@ -2617,12 +2634,14 @@ void MainWindow::centerWindow() {
         "}\n"
     ).arg(pid);
 
-    QString scriptPath = QDir::tempPath() + "/kwin_center_ants.js";
+    // Unpredictable tempfile via QTemporaryFile — 0.7.12 TOCTOU fix.
+    QString scriptPath;
     {
-        QFile f(scriptPath);
-        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            return;
+        QTemporaryFile f(QDir::tempPath() + "/kwin_center_ants_XXXXXX.js");
+        f.setAutoRemove(false);
+        if (!f.open()) return;
         f.write(kwinJs.toUtf8());
+        scriptPath = f.fileName();
     }
 
     // Run KWin script asynchronously to avoid blocking the event loop

@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QFile>
+#include <QTemporaryFile>
 
 XcbPositionTracker::XcbPositionTracker(QWidget *trackedWindow)
     : m_window(trackedWindow) {
@@ -31,12 +32,20 @@ void XcbPositionTracker::setPosition(int x, int y) {
         "}\n"
     ).arg(pid).arg(x).arg(y);
 
-    QString scriptPath = QDir::tempPath() + "/kwin_pos_ants.js";
+    // Unpredictable tempfile name via QTemporaryFile so two Ants
+    // instances can't stomp each other's KWin-script load and a
+    // same-UID attacker can't pre-create a symlink at the predictable
+    // path. `setAutoRemove(false)` because the async dbus-send chain
+    // reads the file after this function returns; manual remove is
+    // chained into the `finished` lambda below. 0.7.12 /indie-review
+    // TOCTOU fix.
+    QString scriptPath;
     {
-        QFile f(scriptPath);
-        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            return;
+        QTemporaryFile f(QDir::tempPath() + "/kwin_pos_ants_XXXXXX.js");
+        f.setAutoRemove(false);
+        if (!f.open()) return;
         f.write(kwinJs.toUtf8());
+        scriptPath = f.fileName();
     }
 
     auto *proc = new QProcess(m_window);

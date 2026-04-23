@@ -54,8 +54,10 @@ QString SshBookmark::toSshCommand(bool controlMaster) const {
              << "-o" << "ControlPersist=10m";
     }
     if (!extraArgs.isEmpty()) {
-        // Shell-quote each argument to prevent command injection
-        for (const QString &arg : extraArgs.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts))
+        // Reject -o ProxyCommand / -o LocalCommand etc. (arbitrary
+        // shell execution via ssh option surface) before shell-
+        // quoting. See sanitizeExtraArgs. 0.7.12 /indie-review fix.
+        for (const QString &arg : sanitizeExtraArgs(extraArgs))
             args << shellQuote(arg);
     }
     // `--` before the host stops OpenSSH from parsing a bookmark whose host
@@ -70,6 +72,74 @@ QString SshBookmark::toSshCommand(bool controlMaster) const {
     else
         args << shellQuote(host);
     return args.join(' ');
+}
+
+QStringList SshBookmark::sanitizeExtraArgs(const QString &extraArgs,
+                                           QStringList *out_rejected) {
+    // Options whose value is a shell command string — any of these
+    // effectively hands the caller arbitrary RCE on the local machine
+    // via ssh's invocation of /bin/sh -c. The attack surface is
+    // bookmark content (which may arrive via contributed plugins,
+    // synced dotfile repos, or an attacker with transient config
+    // write access) rather than user-typed commands.
+    //
+    // Accepts both forms: `-oProxyCommand=...` (single token) and
+    // `-o ProxyCommand=...` (two tokens after whitespace split).
+    //
+    // Case-insensitive comparison because ssh's option parser itself
+    // is case-insensitive on key names (upstream ssh accepts
+    // ProxyCommand, proxycommand, PROXYCOMMAND identically).
+    static const QStringList kDangerous = {
+        QStringLiteral("ProxyCommand"),
+        QStringLiteral("LocalCommand"),
+        QStringLiteral("PermitLocalCommand"),  // value=yes enables LocalCommand
+    };
+
+    auto optionKey = [](const QString &s) -> QString {
+        // Extract "X" from "X=value"
+        int eq = s.indexOf('=');
+        return (eq < 0) ? s : s.left(eq);
+    };
+
+    auto isDangerousKey = [&](const QString &key) {
+        for (const QString &d : kDangerous)
+            if (QString::compare(key, d, Qt::CaseInsensitive) == 0) return true;
+        return false;
+    };
+
+    const QStringList tokens =
+        extraArgs.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+
+    QStringList safe;
+    int i = 0;
+    while (i < tokens.size()) {
+        const QString &t = tokens[i];
+
+        // Single-token form: -oKEY=VAL
+        if (t.startsWith(QStringLiteral("-o")) && t.size() > 2) {
+            const QString payload = t.mid(2);  // "KEY=VAL"
+            if (isDangerousKey(optionKey(payload))) {
+                if (out_rejected) out_rejected->append(t);
+                ++i;
+                continue;
+            }
+        }
+        // Two-token form: -o KEY=VAL
+        else if (t == QStringLiteral("-o") && i + 1 < tokens.size()) {
+            if (isDangerousKey(optionKey(tokens[i + 1]))) {
+                if (out_rejected) {
+                    out_rejected->append(t);
+                    out_rejected->append(tokens[i + 1]);
+                }
+                i += 2;
+                continue;
+            }
+        }
+
+        safe << t;
+        ++i;
+    }
+    return safe;
 }
 
 // SshDialog implementation

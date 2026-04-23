@@ -67,6 +67,41 @@ public:
                          const QJsonObject &args,
                          const QString &socketPath);
 
+    // Strip C0 / C1 control bytes from a `send-text` payload to block
+    // local-UID keystroke-injection attacks (ESC-based bracketed-paste
+    // toggles, OSC 52 clipboard overwrites, cursor reprogramming).
+    // Preserves HT (0x09), LF (0x0A), CR (0x0D) — those are regular
+    // keystrokes in a PTY stream.
+    //
+    // Returns the filtered payload. `out_stripped`, if non-null, is
+    // set to the number of bytes removed — callers surface this in
+    // the `stripped` response field.
+    //
+    // The `send-text` request JSON may carry `"raw": true` to bypass
+    // this filter; see tests/features/remote_control_opt_in/spec.md.
+    //
+    // Defined inline so feature tests can exercise it without pulling
+    // in the full MainWindow dep chain.
+    static inline QByteArray filterControlChars(const QByteArray &in,
+                                                int *out_stripped = nullptr) {
+        QByteArray out;
+        out.reserve(in.size());
+        int removed = 0;
+        for (char c : in) {
+            const unsigned char b = static_cast<unsigned char>(c);
+            const bool isAllowedWhitespace = (b == 0x09 || b == 0x0A || b == 0x0D);
+            const bool isC0Bad = (b < 0x20) && !isAllowedWhitespace;
+            const bool isDel = (b == 0x7F);
+            if (isC0Bad || isDel) {
+                ++removed;
+                continue;
+            }
+            out.append(c);
+        }
+        if (out_stripped) *out_stripped = removed;
+        return out;
+    }
+
 private slots:
     void onNewConnection();
 

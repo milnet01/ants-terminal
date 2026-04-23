@@ -3,6 +3,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QMessageBox>
 #include <QNetworkRequest>
 #include <QScrollBar>
 #include <QUrl>
@@ -54,27 +55,40 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
     m_insertBtn->setToolTip("Insert the last suggested command into the terminal");
     m_insertBtn->setEnabled(false);
     connect(m_insertBtn, &QPushButton::clicked, this, [this]() {
-        if (!m_lastResponse.isEmpty()) {
-            // Extract code blocks or the last line that looks like a command
-            QString cmd;
-            // Find the last complete ```...``` code block
-            int end = m_lastResponse.lastIndexOf("```");
-            if (end > 0) {
-                int start = m_lastResponse.lastIndexOf("```", end - 1);
-                if (start >= 0 && start < end) {
-                    cmd = m_lastResponse.mid(start + 3, end - start - 3).trimmed();
-                    // Remove language identifier (e.g., "bash\n")
-                    int nl = cmd.indexOf('\n');
-                    if (nl >= 0 && nl < 10) cmd = cmd.mid(nl + 1).trimmed();
-                }
-            }
-            if (cmd.isEmpty()) {
-                // Use the last non-empty line
-                QStringList lines = m_lastResponse.split('\n', Qt::SkipEmptyParts);
-                if (!lines.isEmpty()) cmd = lines.last().trimmed();
-            }
-            if (!cmd.isEmpty())
-                emit insertCommand(cmd);
+        if (m_lastResponse.isEmpty()) return;
+
+        int stripped = 0;
+        const QString cmd =
+            AiDialog::extractAndSanitizeCommand(m_lastResponse, &stripped);
+        if (cmd.isEmpty()) return;
+
+        // User-facing confirmation — the literal bytes are shown so a
+        // prompt-injected LLM response can't silently land an unexpected
+        // command in the shell. OWASP LLM01 mitigation.
+        //
+        // The preview is in a <pre> block so whitespace + control-stripped
+        // artifacts are visible verbatim. If the sanitizer stripped any
+        // bytes, the user sees "(N bytes were filtered from this command)"
+        // — same mechanism as terminalwidget's paste-confirmation.
+        QString preview = cmd.toHtmlEscaped();
+        if (preview.size() > 500)
+            preview = preview.left(500) + QStringLiteral("…");
+        QString msg = QStringLiteral(
+            "The AI suggested this command. It will be typed into the "
+            "active terminal if you confirm.<br><br>"
+            "<pre style='background:#2b2b2b;color:#eee;padding:8px;"
+            "border-radius:4px;white-space:pre-wrap;word-break:break-all;'>"
+            "%1</pre>").arg(preview);
+        if (stripped > 0) {
+            msg += QStringLiteral(
+                "<br><i>%1 byte(s) were filtered from this command "
+                "(control characters / length cap).</i>").arg(stripped);
+        }
+        auto reply = QMessageBox::question(
+            this, tr("Insert AI-suggested command"), msg,
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (reply == QMessageBox::Yes) {
+            emit insertCommand(cmd);
         }
     });
     inputLayout->addWidget(m_insertBtn);
@@ -285,4 +299,59 @@ void AiDialog::onReplyFinished() {
     m_currentReply->deleteLater();
     m_currentReply = nullptr;
     m_sendBtn->setEnabled(true);
+}
+
+QString AiDialog::extractAndSanitizeCommand(const QString &response,
+                                            int *out_stripped) {
+    // 1) Extraction — same logic the pre-0.7.12 click handler used.
+    QString cmd;
+    const int end = response.lastIndexOf(QStringLiteral("```"));
+    if (end > 0) {
+        const int start = response.lastIndexOf(QStringLiteral("```"), end - 1);
+        if (start >= 0 && start < end) {
+            cmd = response.mid(start + 3, end - start - 3).trimmed();
+            // Strip optional language identifier e.g. "bash\n"
+            const int nl = cmd.indexOf('\n');
+            if (nl >= 0 && nl < 10) cmd = cmd.mid(nl + 1).trimmed();
+        }
+    }
+    if (cmd.isEmpty()) {
+        const QStringList lines = response.split('\n', Qt::SkipEmptyParts);
+        if (!lines.isEmpty()) cmd = lines.last().trimmed();
+    }
+    if (cmd.isEmpty()) {
+        if (out_stripped) *out_stripped = 0;
+        return QString();
+    }
+
+    // 2) Length cap — trim to 4 KiB. Excess bytes count as stripped for
+    //    the user-facing counter.
+    int stripped = 0;
+    if (cmd.size() > kInsertCommandMaxBytes) {
+        stripped += cmd.size() - kInsertCommandMaxBytes;
+        cmd.truncate(kInsertCommandMaxBytes);
+    }
+
+    // 3) Filter dangerous C0 controls — same set remotecontrol.cpp
+    //    filters (ESC is the headline vector). Keep HT/LF/CR.
+    //    C1 bytes (0x80+) are UTF-8 continuation bytes and must NOT be
+    //    stripped at the char level without decoding; we operate on
+    //    QChar::unicode() and only touch values < 0x20 and 0x7F so
+    //    multi-byte UTF-8 codepoints are untouched.
+    QString clean;
+    clean.reserve(cmd.size());
+    for (QChar c : cmd) {
+        const ushort u = c.unicode();
+        const bool isAllowedWs = (u == 0x09 || u == 0x0A || u == 0x0D);
+        const bool isC0Bad = (u < 0x20) && !isAllowedWs;
+        const bool isDel = (u == 0x7F);
+        if (isC0Bad || isDel) {
+            ++stripped;
+            continue;
+        }
+        clean.append(c);
+    }
+
+    if (out_stripped) *out_stripped = stripped;
+    return clean;
 }

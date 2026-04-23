@@ -2565,6 +2565,20 @@ int AuditDialog::loadUserRules() {
         m_pathRules.append(pr);
     }
 
+    // 0.7.12 /indie-review RCE mitigation: rule packs carrying a
+    // `command` field bash-exec that string verbatim. A cloned-but-
+    // untrusted repo can plant a hostile audit_rules.json and run
+    // arbitrary code the moment the user opens the Audit dialog.
+    // Gate command-bearing rules on an explicit user trust toggle
+    // (Config::auditTrustCommandRules, default false). Env-var escape
+    // hatch `ANTS_AUDIT_TRUST_UNSAFE=1` is honored too for scripted
+    // users / CI who don't want to toggle the persisted config.
+    Config cfg;
+    const bool commandRulesTrusted =
+        cfg.auditTrustCommandRules()
+        || (qEnvironmentVariable("ANTS_AUDIT_TRUST_UNSAFE") == "1");
+    int skippedUntrusted = 0;
+
     int loaded = 0;
     for (const QJsonValue &v : rules) {
         if (!v.isObject()) continue;
@@ -2579,6 +2593,14 @@ int AuditDialog::loadUserRules() {
         c.category    = o.value("category").toString("User");
         c.command     = o.value("command").toString();
         if (c.command.isEmpty()) continue;   // command is required
+
+        // If the rule carries a `command` field and the user hasn't
+        // trusted command-rules for this project, skip it rather than
+        // execute an untrusted shell string. Counts get surfaced below.
+        if (!commandRulesTrusted) {
+            ++skippedUntrusted;
+            continue;
+        }
         c.type        = parseType(o.value("type").toString("info"));
         c.severity    = parseSeverity(o.value("severity").toString("minor"));
         c.autoSelect  = o.value("auto_select").toBool(false);
@@ -2605,6 +2627,19 @@ int AuditDialog::loadUserRules() {
         if (!replaced) m_checks.append(c);
         ++loaded;
     }
+
+    if (skippedUntrusted > 0) {
+        // User-visible-ish: goes to stderr since DebugLog category
+        // isn't imported here, and the count is a security-relevant
+        // signal the user should see even with quiet logging.
+        qWarning("audit_rules.json: skipped %d rule(s) with `command` "
+                 "fields — set audit_trust_command_rules=true in "
+                 "config.json (or export ANTS_AUDIT_TRUST_UNSAFE=1) to "
+                 "opt in. This is a trust boundary: `command` fields "
+                 "run via /bin/bash -c verbatim.",
+                 skippedUntrusted);
+    }
+
     return loaded;
 }
 

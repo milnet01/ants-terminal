@@ -56,6 +56,7 @@ public:
     ClaudeState currentState() const { return m_state; }
     const QString &currentTool() const { return m_currentTool; }
     int contextPercent() const { return m_contextPercent; }
+    bool planMode() const { return m_planMode; }
 
     // Session transcript
     QString activeSessionPath() const;
