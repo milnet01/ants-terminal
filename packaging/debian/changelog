@@ -1,3 +1,54 @@
+ants-terminal (0.7.12-1) unstable; urgency=medium
+
+  * Independent-review sweep — a multi-agent /indie-review run across
+    14 subsystems surfaced 60 HIGH findings; the ship-this-week tier
+    landed in this tag, followed by a re-review of the shipped batch
+    that caught three more HIGH findings of the same shape, plus a
+    polish pass handling the six mechanical follow-ups. Every fix
+    carries a regression test anchored to an external signal.
+  * Security: remote-control (Kitty rc_protocol) opt-in default. New
+    remote_control_enabled config key (default false, matches
+    Kitty's allow_remote_control=no). send-text payloads pass
+    through a C0 control-char filter stripping {0x00..0x08,
+    0x0B..0x1F, 0x7F} while preserving HT/LF/CR and UTF-8 multi-byte,
+    unless the request carries "raw": true. Gate snapshots once per
+    process so a second window reading the config after a runtime
+    toggle matches the "requires restart" documentation.
+  * Security: silent-data-loss guard at three sites (Config,
+    Allowlist, Install-Claude-hooks). All three rotate the corrupt
+    file aside via a shared rotateCorruptFileAside() helper
+    (ms-precision timestamp + collision-retry, keep-newest-5
+    retention cap), log the backup path, and refuse to write further
+    until the user intervenes. std::rename return value checked in
+    Config::save with errno logging and tmp-file cleanup.
+  * Security: SSH bookmark extraArgs sanitizer rejects
+    -oProxyCommand=, -oLocalCommand=, -oPermitLocalCommand=yes,
+    -oMatch=exec, and -oKnownHostsCommand= in both single-token and
+    space-separated forms. Closes the CVE-2017-1000117-adjacent
+    RCE-via-bookmark-field surface.
+  * Security: AI Insert Cmd sanitize + confirm. Strips C0 / DEL /
+    C1 (incl. NEL) / line separators / bidi overrides (Trojan
+    Source, CVE-2021-42574) / zero-width codepoints. 4 KiB cap.
+    Click handler requires explicit QMessageBox confirmation with
+    literal preview + truncation warning when the 500-char preview
+    doesn't cover the full command. OWASP LLM01 + LLM02 mitigation.
+    Language-hint heuristic now requires the first line be a single
+    unbroken token.
+  * Security: audit rule-pack command fields gated on
+    Config::auditTrustCommandRules() (default false) or
+    ANTS_AUDIT_TRUST_UNSAFE=1. /tmp/kwin_*.js migrated to
+    QTemporaryFile at three callsites (closes symlink-swap TOCTOU
+    and two-instance collision).
+  * Fixed: Claude plan-mode detection reads permissionMode (real
+    JSONL field per Claude Code v2.1.87) instead of dead
+    value("mode"). Toggle-free tail scan preserves the latched state.
+  * Fixed: plugin manifest + user theme loaders now emit qWarning
+    with the JSON parse-error byte offset on malformed files.
+  * Tests: five new feature-test lanes in tests/features/ anchored
+    to external signals (published specs, CVEs, real on-disk bytes).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 23 Apr 2026 12:00:00 +0000
+
 ants-terminal (0.7.11-1) unstable; urgency=medium
 
   * Housekeeping pass — two long-deferred 0.8+ queue items and a

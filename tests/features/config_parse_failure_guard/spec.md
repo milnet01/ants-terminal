@@ -48,7 +48,7 @@ On construction, `Config::load()` must recognise:
 ### Invariant 2 — on parse failure, the corrupt file is rotated aside
 
 When load() enters the "exists but failed to parse" path, the
-corrupt file MUST be copied to `config.json.corrupt-<unix_secs>`
+corrupt file MUST be copied to `config.json.corrupt-<ms_timestamp>`
 in the same directory before any write path can run. This preserves
 the user's prior bytes so they can hand-fix or copy back.
 `loadFailureBackupPath()` returns the path of the rotated backup.

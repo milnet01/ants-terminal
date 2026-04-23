@@ -1,5 +1,6 @@
 #include "pluginmanager.h"
 
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -7,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
 #include <QTimer>
 
 #include <cstdlib>
@@ -136,9 +138,14 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
         if (QFile::exists(manifestPath)) {
             QFile f(manifestPath);
             if (f.open(QIODevice::ReadOnly)) {
-                QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+                QJsonParseError err{};
+                QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
                 if (doc.isObject()) {
                     parseManifestInto(info, doc.object());
+                } else {
+                    qWarning("Ants: plugin manifest %s failed to parse: %s (byte offset %d)",
+                             qUtf8Printable(manifestPath),
+                             qUtf8Printable(err.errorString()), err.offset);
                 }
             }
         }

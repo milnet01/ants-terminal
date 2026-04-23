@@ -57,6 +57,36 @@ void testExtraction() {
         QString cmd = AiDialog::extractAndSanitizeCommand("");
         expect(cmd.isEmpty(), "extract: empty input → empty output");
     }
+
+    // Language-hint heuristic must not eat a short command whose first
+    // line contains whitespace. Language IDs are unbroken tokens
+    // (`bash`, `python`, `cpp`); `foo bar` is a command, not a hint.
+    // Pre-0.7.13 the gate was nl<10 regardless of whitespace, which
+    // ate `foo bar` from inputs like ```\nfoo bar\nls\n```. See
+    // ROADMAP.md — /indie-review follow-ups 2026-04-23.
+    {
+        QString cmd = AiDialog::extractAndSanitizeCommand(
+            "```\nfoo bar\nls\n```");
+        expect(cmd.startsWith("foo bar"),
+               "extract: short first line with space is NOT a lang hint",
+               QString("got: '%1'").arg(cmd));
+    }
+    {
+        QString cmd = AiDialog::extractAndSanitizeCommand(
+            "```\ncol1\tcol2\nline2\n```");
+        expect(cmd.startsWith("col1\tcol2"),
+               "extract: short first line with tab is NOT a lang hint",
+               QString("got: '%1'").arg(cmd));
+    }
+    // Single-token language ID on first line DOES get stripped
+    // (regression guard that the fix didn't go too far).
+    {
+        QString cmd = AiDialog::extractAndSanitizeCommand(
+            "```python\nprint('hi')\n```");
+        expect(cmd == "print('hi')",
+               "extract: single-token lang hint still stripped",
+               QString("got: '%1'").arg(cmd));
+    }
 }
 
 void testSanitization() {

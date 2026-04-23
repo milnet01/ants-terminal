@@ -1,4 +1,5 @@
 #include "themes.h"
+#include <QDebug>
 #include <QStringList>
 #include <QStandardPaths>
 #include <QDir>
@@ -6,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonParseError>
 
 static std::vector<Theme> buildThemes() {
     std::vector<Theme> t;
@@ -297,10 +299,17 @@ std::vector<Theme> Themes::loadUserThemes() {
 
     QStringList files = themeDir.entryList({"*.json"}, QDir::Files);
     for (const QString &file : files) {
-        QFile f(themeDir.filePath(file));
+        const QString filePath = themeDir.filePath(file);
+        QFile f(filePath);
         if (!f.open(QIODevice::ReadOnly)) continue;
-        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
-        if (!doc.isObject()) continue;
+        QJsonParseError err{};
+        QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+        if (!doc.isObject()) {
+            qWarning("Ants: user theme %s failed to parse: %s (byte offset %d)",
+                     qUtf8Printable(filePath),
+                     qUtf8Printable(err.errorString()), err.offset);
+            continue;
+        }
         QJsonObject obj = doc.object();
 
         Theme th;

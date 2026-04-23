@@ -67,11 +67,16 @@ public:
                          const QJsonObject &args,
                          const QString &socketPath);
 
-    // Strip C0 / C1 control bytes from a `send-text` payload to block
+    // Strip C0 control bytes from a `send-text` payload to block
     // local-UID keystroke-injection attacks (ESC-based bracketed-paste
     // toggles, OSC 52 clipboard overwrites, cursor reprogramming).
     // Preserves HT (0x09), LF (0x0A), CR (0x0D) — those are regular
-    // keystrokes in a PTY stream.
+    // keystrokes in a PTY stream. C1 control codepoints (U+0080..U+009F)
+    // are not stripped here: at the UTF-8 byte level they manifest as
+    // continuation bytes (0x80..0xBF) inside multi-byte sequences for
+    // ordinary characters, so a byte-oriented strip would mangle them.
+    // Stripping C1 is the AI-dialog layer's job (`aidialog.cpp`), which
+    // operates on QChar codepoints, not raw bytes.
     //
     // Returns the filtered payload. `out_stripped`, if non-null, is
     // set to the number of bytes removed — callers surface this in

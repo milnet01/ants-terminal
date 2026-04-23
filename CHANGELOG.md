@@ -13,6 +13,146 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.12] — 2026-04-23
+
+**Theme:** independent-review sweep. Multi-agent `/indie-review` run
+(14 subsystems, 60 HIGH findings), followed by a re-review of the
+shipped Tier 1 batch that surfaced three more HIGH findings of the
+same shape. Every fix carries a regression test anchored to an
+external signal (published spec, CVE, real on-disk data) rather
+than author reasoning — closes the self-graded-homework loop.
+Final polish pass (this tag) handles the six mechanical follow-ups
+from the re-review.
+
+### Security
+
+- **Remote-control (Kitty rc_protocol) opt-in default.** New config
+  key `remote_control_enabled` (default `false`, matches Kitty's
+  `allow_remote_control=no`). `send-text` payloads pass through a C0
+  control-char filter stripping `{0x00..0x08, 0x0B..0x1F, 0x7F}`
+  while preserving HT/LF/CR and UTF-8 multi-byte, unless the request
+  carries `"raw": true`. Closes the UID-scope keystroke-injection
+  chain — a same-UID attacker can no longer inject
+  bracketed-paste-disable + newline payloads. Gate now snapshots
+  once per process (static bool) so a second `MainWindow` reading
+  the config after a runtime toggle doesn't try to bind a socket
+  the first window isn't listening on — matches the "requires
+  restart" documentation.
+- **Config / Allowlist / Install-hooks silent-data-loss guard.**
+  The same load-without-else pattern (read → parse → on failure
+  `root` stays empty → next `save()` writes defaults over the
+  user's bytes) affected `src/config.cpp`, `src/claudeallowlist.cpp`,
+  and `src/settingsdialog.cpp` (Install Claude hooks path, which
+  shares the `settings.json` file with the Allowlist dialog). All
+  three now rotate the corrupt file aside via the shared
+  `rotateCorruptFileAside()` helper in `src/secureio.h`
+  (ms-precision timestamp + collision-retry up to 10 suffixes),
+  log the backup path, and refuse to write further until the user
+  intervenes. Settings dialog shows the backup path in a
+  `QMessageBox` so the user has an actionable recovery.
+  `rotateCorruptFileAside()` now also prunes older
+  `<path>.corrupt-*` siblings beyond the newest five — keeps
+  recovery material available without letting repeated launches
+  against a broken file accumulate unbounded.
+- **`std::rename` return checked in `Config::save`.** Failure logs
+  `errno` via `DebugLog::Config` and removes the orphan tmp file
+  instead of silently stranding it on disk.
+- **SSH bookmark `extraArgs` sanitizer.** `SshBookmark::sanitizeExtraArgs`
+  now rejects `-oProxyCommand=`, `-oLocalCommand=`,
+  `-oPermitLocalCommand=yes`, `-oMatch=exec` (OpenSSH
+  `Match exec` runs `/bin/sh -c` on CLI-supplied commands), and
+  `-oKnownHostsCommand=` (OpenSSH 8.5+, same RCE surface), in both
+  single-token and space-separated forms, case-insensitive per
+  OpenSSH's own option parser. Closes the CVE-2017-1000117-adjacent
+  RCE-via-bookmark-field surface.
+- **AI `Insert Cmd` sanitize + confirm.** New
+  `AiDialog::extractAndSanitizeCommand` extracts the fenced code
+  block and strips C0 controls (minus HT/LF/CR), DEL, C1 controls
+  (`0x80..0x9F` incl. NEL `U+0085`), line/paragraph separators
+  (`U+2028`, `U+2029`), bidi overrides (`U+202A..E`, `U+2066..9` —
+  Trojan Source, CVE-2021-42574), and zero-width codepoints
+  (`U+200B..D`, `U+FEFF`). Capped at 4 KiB. The click handler now
+  requires explicit confirmation via `QMessageBox::question` showing
+  the literal bytes plus a "N bytes filtered" footer when non-zero;
+  when the 500-char preview doesn't cover the full command, the
+  dialog surfaces a truncation warning so an attacker can't hide a
+  payload past the preview window. OWASP LLM01 + LLM02 mitigation.
+  Language-hint heuristic now also requires the first line be a
+  single unbroken token (no space / tab) before treating it as a
+  language identifier — `foo bar\nls` no longer has its first line
+  eaten.
+- **Audit rule-pack `command` fields gated.** `audit_rules.json`
+  entries that carry a `command:` field are now skipped unless
+  `Config::auditTrustCommandRules()` is `true` (default `false`)
+  or `ANTS_AUDIT_TRUST_UNSAFE=1` is set. A cloned-but-untrusted
+  repo can no longer run arbitrary shell via the Audit dialog.
+  Skipped count surfaces via `qWarning`.
+- **`/tmp/kwin_*.js` migrated to `QTemporaryFile`.** The three
+  callsites in `xcbpositiontracker.cpp` (window-position poll) and
+  `mainwindow.cpp` (Quake-mode move + centre) used predictable
+  filenames in `/tmp`, enabling a same-name symlink-swap TOCTOU and
+  a collision when two Ants instances ran concurrently. All three
+  now use `QTemporaryFile` with a `XXXXXX` template and
+  `setAutoRemove(false)` so the async KWin `finished` callback can
+  still read the script.
+
+### Fixed
+
+- **Claude plan-mode detection.** `claudeintegration.cpp` was reading
+  `value("mode")` — a field that never appears in Claude Code v2.1.87
+  JSONL transcripts. Real field is `permissionMode`. Fixed, and the
+  toggle-free tail scan now preserves the latched plan-mode state
+  instead of resetting to `false` (otherwise a 32 KB window that
+  scrolls past the last explicit toggle silently loses the flag).
+- **Combining-char sidetable reflow on resize.** Carried through in
+  the cross-subsystem cleanup.
+- **Plugin manifest + user theme parse warnings.** Both loaders now
+  emit a `qWarning` with the `QJsonParseError` offset when a file
+  is malformed, so users can find their own typos instead of
+  silently dropping the plugin or theme from the list.
+
+### Changed
+
+- **`rotateCorruptFileAside` helper shared across three subsystems.**
+  Before the re-review, each site had its own ~30-line backup-rotation
+  block; the three reviewers independently flagged the duplication.
+  Now a single inline helper in `src/secureio.h` with retention cap
+  and ms-collision retry.
+- **Remote-control startup gate snapshots once per process.** Caches
+  `Config::remoteControlEnabled()` into a static local at first
+  `MainWindow` construction and reuses across subsequent windows, so
+  a runtime toggle of the config key during a session can't partially
+  enable rc on a second window.
+- **`filterControlChars` header comment corrected.** Previously said
+  "C0 / C1 control bytes"; only C0 is stripped at this layer —
+  C1 codepoints are UTF-8 continuation bytes and can't be
+  byte-filtered without mangling multi-byte characters. Comment now
+  names `aidialog.cpp` as the layer that does strip C1 (operating
+  on `QChar`, not raw bytes).
+
+### Tests
+
+- Five new feature-test lanes in `tests/features/`:
+  - `claude_plan_mode_detection/` — 8 scenarios against the JSONL
+    transcript schema; each asserts behaviour against live on-disk
+    bytes rather than a mock.
+  - `remote_control_opt_in/` — 17 assertions covering the gate,
+    `filterControlChars` strip set, `"raw": true` bypass, and the
+    `stripped` response field.
+  - `config_parse_failure_guard/` — 12 assertions covering the
+    three load states (missing / valid / corrupt), backup rotation,
+    save suppression, and `std::rename` failure path.
+  - `ssh_extra_args_sanitize/` — 22 assertions covering all five
+    dangerous `ssh_config` directives in both `-oKey=val` and
+    `-o Key=val` forms plus the `toSshCommand()` end-to-end
+    invariant.
+  - `ai_insert_command_sanitize/` — 21 assertions covering the full
+    strip set (C0 / DEL / C1 / NEL / line separator / bidi overrides
+    / zero-width), UTF-8 preservation, 4 KiB length cap, and the
+    language-hint heuristic regression (whitespace on first line
+    is not a lang ID).
+
+
 ## [0.7.11] — 2026-04-23
 
 **Theme:** housekeeping pass — two long-deferred 💭 items from the 0.8+ queue

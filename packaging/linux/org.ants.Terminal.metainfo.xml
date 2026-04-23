@@ -103,6 +103,27 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.12" date="2026-04-23">
+      <description>
+        <p>Independent-review sweep. A multi-agent <code>/indie-review</code> run across 14 subsystems surfaced 60 HIGH findings; the ship-this-week tier landed in this tag, followed by a re-review of the shipped batch that caught three more HIGH findings of the same shape, plus a polish pass handling the six mechanical follow-ups. Every fix carries a regression test anchored to an external signal — published spec, CVE, real on-disk data — not to the author's own reasoning. Closes the self-graded-homework loop.</p>
+        <p>Security:</p>
+        <ul>
+          <li><em>Remote-control opt-in by default.</em> New <code>remote_control_enabled</code> config key (default <code>false</code>, matches Kitty's <code>allow_remote_control=no</code>). <code>send-text</code> payloads pass through a C0 control-char filter stripping <code>{0x00..0x08, 0x0B..0x1F, 0x7F}</code> while preserving HT/LF/CR and UTF-8 multi-byte, unless the request carries <code>"raw": true</code>. Closes the UID-scope keystroke-injection chain. The gate snapshots once per process (static bool) so a second window reading the config after a runtime toggle matches the "requires restart" documentation.</li>
+          <li><em>Silent-data-loss guard at three sites</em> (<code>src/config.cpp</code>, <code>src/claudeallowlist.cpp</code>, <code>src/settingsdialog.cpp</code> — Install Claude hooks). All three now rotate the corrupt file aside via the shared <code>rotateCorruptFileAside()</code> helper (ms-precision timestamp + collision-retry up to 10 suffixes, keep-newest-5 retention cap), log the backup path, and refuse to write further until the user intervenes. Settings dialog shows the backup path in a <code>QMessageBox</code>.</li>
+          <li><em><code>std::rename</code> return checked in <code>Config::save</code>.</em> Failure logs <code>errno</code> and removes the orphan tmp file instead of silently stranding it on disk.</li>
+          <li><em>SSH bookmark <code>extraArgs</code> sanitizer.</em> Rejects <code>-oProxyCommand=</code>, <code>-oLocalCommand=</code>, <code>-oPermitLocalCommand=yes</code>, <code>-oMatch=exec</code>, and <code>-oKnownHostsCommand=</code> in both single-token and space-separated forms, case-insensitive. Closes the CVE-2017-1000117-adjacent RCE-via-bookmark-field surface.</li>
+          <li><em>AI <code>Insert Cmd</code> sanitize + confirm.</em> New <code>AiDialog::extractAndSanitizeCommand</code> strips C0 controls (minus HT/LF/CR), DEL, C1 controls (incl. NEL U+0085), line/paragraph separators, bidi overrides (Trojan Source, CVE-2021-42574), and zero-width codepoints. Capped at 4 KiB. Click handler requires explicit <code>QMessageBox::question</code> confirmation showing the literal bytes + "N bytes filtered" footer; truncation warning fires when the 500-char preview doesn't cover the full command. OWASP LLM01 + LLM02 mitigation. Language-hint heuristic now requires the first line be a single unbroken token before stripping it.</li>
+          <li><em>Audit rule-pack <code>command</code> fields gated</em> on <code>Config::auditTrustCommandRules()</code> (default <code>false</code>) or <code>ANTS_AUDIT_TRUST_UNSAFE=1</code>. A cloned-but-untrusted repo can no longer run arbitrary shell via <code>audit_rules.json</code>.</li>
+          <li><em><code>/tmp/kwin_*.js</code> migrated to <code>QTemporaryFile</code></em> at three callsites. Closes the same-name symlink-swap TOCTOU and the two-instance collision.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Claude plan-mode detection.</em> Was reading <code>value("mode")</code> — a field that never appears in Claude Code v2.1.87 JSONL. Fixed to <code>permissionMode</code>; toggle-free tail scan now preserves the latched state.</li>
+          <li><em>Plugin manifest + user theme parse warnings.</em> Both loaders now emit <code>qWarning</code> with the parse-error byte offset so users can find their own typos.</li>
+        </ul>
+        <p>Tests: five new feature-test lanes in <code>tests/features/</code> (<code>claude_plan_mode_detection</code>, <code>remote_control_opt_in</code>, <code>config_parse_failure_guard</code>, <code>ssh_extra_args_sanitize</code>, <code>ai_insert_command_sanitize</code>), each anchored to a published spec, CVE, or live on-disk bytes.</p>
+      </description>
+    </release>
     <release version="0.7.11" date="2026-04-23">
       <description>
         <p>Housekeeping pass — two long-deferred items from the 0.8+ queue land early, plus a ROADMAP correction. The perf item rewrites the combining-char map shift in <code>deleteChars</code> / <code>insertBlanks</code> to use node-handle <code>extract()</code> + key mutate + <code>insert()</code> instead of rebuilding the map. The security item is a defence-in-depth stat-guard around the remote-control socket's <code>/tmp</code> fallback cleanup.</p>

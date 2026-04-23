@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QFileDevice>
+#include <QFileInfo>
 #include <QString>
 
 // Apply owner-only (0600) permissions to a file or local socket. The literal
@@ -38,12 +40,17 @@ inline bool setOwnerOnlyPerms(const QString &path) {
 //     `-1`, `-2`, ... up to 10 suffixes. Races beyond that are
 //     pathological (same-millisecond multi-launch) and fall through
 //     to the failure path.
+//   - On success, prunes older siblings: any `<basename>.corrupt-*`
+//     files beyond the newest 5 are removed. Keeps recovery material
+//     available while preventing unbounded growth when a user keeps
+//     launching Ants with a broken config.
 //   - Returns the chosen backup path on success, empty QString on
 //     failure (disk full, perms, 10 ms collisions).
 //
 // Callers log success/failure using their own DebugLog category.
 inline QString rotateCorruptFileAside(const QString &path) {
     const qint64 stamp = QDateTime::currentMSecsSinceEpoch();
+    QString chosen;
     for (int attempt = 0; attempt < 10; ++attempt) {
         QString candidate = path + QStringLiteral(".corrupt-")
                           + QString::number(stamp);
@@ -51,8 +58,24 @@ inline QString rotateCorruptFileAside(const QString &path) {
             candidate += QStringLiteral("-") + QString::number(attempt);
         }
         if (QFile::copy(path, candidate)) {
-            return candidate;
+            chosen = candidate;
+            break;
         }
     }
-    return QString();
+    if (chosen.isEmpty()) return QString();
+
+    // Prune older siblings beyond the newest 5. Siblings live in the
+    // same directory and share the `<basename>.corrupt-*` prefix.
+    const QFileInfo info(path);
+    QDir dir = info.absoluteDir();
+    const QString prefix = info.fileName() + QStringLiteral(".corrupt-");
+    QFileInfoList sibs = dir.entryInfoList(
+        {prefix + QStringLiteral("*")},
+        QDir::Files | QDir::NoSymLinks,
+        QDir::Time);  // newest first
+    constexpr int kKeep = 5;
+    for (int i = kKeep; i < sibs.size(); ++i) {
+        QFile::remove(sibs.at(i).absoluteFilePath());
+    }
+    return chosen;
 }

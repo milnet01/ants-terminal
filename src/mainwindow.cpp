@@ -790,14 +790,14 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // drive the terminal via the rc socket (including send-text
     // keystroke injection). Opt-in per 0.7.12 /indie-review finding.
     //
-    // NOTE: runtime enable/disable is NOT wired yet — enabling the
-    // config key requires a restart to take effect. The RemoteControl
-    // object has a start() but no corresponding stop(); adding live
-    // toggle (and a Settings dialog surface) is a 0.7.13 follow-up
-    // tracked in ROADMAP.md. The /indie-review checkpoint 2026-04-23
-    // flagged the prior "settings toggling can enable without restart"
-    // comment as a lie; corrected here.
-    if (m_config.remoteControlEnabled()) {
+    // The gate snapshots once per process. A second MainWindow (File →
+    // New Window) that reads the config after the user toggles the key
+    // would otherwise try to bind the same socket and fail — the stale
+    // first-window listener (or its absence) is what actually governs
+    // accessibility. Cache the first-seen value so the "requires
+    // restart" comment is honest for multi-window sessions too.
+    static const bool remoteControlGate = m_config.remoteControlEnabled();
+    if (remoteControlGate) {
         m_remoteControl->start();
     }
 }
