@@ -79,6 +79,16 @@ public:
     bool remoteControlEnabled() const;
     void setRemoteControlEnabled(bool enabled);
 
+    // Per-tab Claude Code activity indicator. When true (default), each
+    // tab whose shell has a Claude Code child process draws a small
+    // state-dependent dot on the tab chrome — idle, thinking, tool-use,
+    // planning, compacting, or awaiting-input. When false, no per-tab
+    // tracking runs and no glyph renders (the bottom status bar still
+    // shows the active tab's state). See
+    // tests/features/claude_tab_status_indicator/spec.md.
+    bool claudeTabStatusIndicator() const;
+    void setClaudeTabStatusIndicator(bool enabled);
+
     // Per-project trust store for <project>/audit_rules.json rule packs
     // that carry `command` fields. `command` strings are bash-exec'd
     // verbatim when the Audit dialog runs, so an untrusted cloned repo

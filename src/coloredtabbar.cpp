@@ -77,4 +77,78 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         g.setColorAt(1.0, botStop);
         painter.fillRect(gradRect, g);
     }
+
+    // Second pass: Claude Code per-tab state glyph. Drawn on top of the
+    // gradient, ~8 px dot at the leading edge of each tab. Provider
+    // returns Glyph::None for tabs with no Claude process — those tabs
+    // pay nothing here beyond the callback roundtrip.
+    if (!m_indicatorProvider) return;
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    for (int i = 0; i < count(); ++i) {
+        const ClaudeTabIndicator ind = m_indicatorProvider(i);
+        if (ind.glyph == ClaudeTabIndicator::Glyph::None) continue;
+
+        const QRect r = tabRect(i);
+        if (!event->region().intersects(r)) continue;
+
+        // Palette chosen against the ANSI-style gradient backdrop:
+        // - Idle / Thinking: muted greys so the glyph is visible but
+        //   doesn't fight for attention on a quiescent tab.
+        // - ToolUse: blue — "Claude is doing something".
+        // - Planning: cyan-teal — distinguishes from ToolUse without
+        //   reading as an error.
+        // - Compacting: violet — temporary, rare, informative.
+        // - AwaitingInput: loud orange/red with a white outline so it
+        //   catches peripheral vision even with the tab backgrounded.
+        QColor fill;
+        QColor outline;
+        int radius = 4;
+        switch (ind.glyph) {
+            case ClaudeTabIndicator::Glyph::None:
+                continue;
+            case ClaudeTabIndicator::Glyph::Idle:
+                fill = QColor(120, 120, 120);  // muted grey
+                outline = QColor(0, 0, 0, 0);
+                break;
+            case ClaudeTabIndicator::Glyph::Thinking:
+                fill = QColor(180, 180, 180);  // light grey
+                outline = QColor(0, 0, 0, 0);
+                break;
+            case ClaudeTabIndicator::Glyph::ToolUse:
+                fill = QColor(80, 160, 230);   // blue
+                outline = QColor(0, 0, 0, 0);
+                break;
+            case ClaudeTabIndicator::Glyph::Bash:
+                fill = QColor(120, 200, 80);   // green — "shell is executing"
+                outline = QColor(0, 0, 0, 0);
+                break;
+            case ClaudeTabIndicator::Glyph::Planning:
+                fill = QColor(70, 200, 200);   // cyan
+                outline = QColor(0, 0, 0, 0);
+                break;
+            case ClaudeTabIndicator::Glyph::Compacting:
+                fill = QColor(170, 120, 220);  // violet
+                outline = QColor(0, 0, 0, 0);
+                break;
+            case ClaudeTabIndicator::Glyph::AwaitingInput:
+                fill = QColor(255, 120, 60);   // bright orange
+                outline = QColor(255, 255, 255, 220);
+                radius = 5;                    // slightly larger
+                break;
+        }
+
+        // Tab padding is 16 px on the left (see the app stylesheet's
+        // `QTabBar::tab { padding: 6px 16px; }`). Center the dot in that
+        // gutter so it sits at ~8 px from the edge and clears the first
+        // character of the tab text by ~6 px.
+        const int cx = r.left() + 8;
+        const int cy = r.center().y();
+        if (outline.alpha() > 0) {
+            painter.setPen(QPen(outline, 1.5));
+        } else {
+            painter.setPen(Qt::NoPen);
+        }
+        painter.setBrush(fill);
+        painter.drawEllipse(QPoint(cx, cy), radius, radius);
+    }
 }

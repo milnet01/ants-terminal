@@ -12,6 +12,7 @@
 #include "xcbpositiontracker.h"
 #include "claudeallowlist.h"
 #include "claudeintegration.h"
+#include "claudetabtracker.h"
 #include "claudeprojects.h"
 #include "claudetranscript.h"
 #include "auditdialog.h"
@@ -1838,9 +1839,21 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         addBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         statusBar()->addPermanentWidget(addBtn);
 
-        auto clearPromptActive = [this]() {
+        // Scroll-scan permission detection always belongs to the terminal
+        // whose scrollback was scanned — `terminal` here is a direct
+        // pointer, so we capture its shell PID and flag that tab's
+        // tracker entry as awaiting input. No session_id routing needed
+        // (unlike the hook path); the terminal pointer IS the route.
+        pid_t scrollScanAwaitingPid =
+            (terminal && m_claudeTabTracker) ? terminal->shellPid() : pid_t(0);
+        if (scrollScanAwaitingPid > 0)
+            m_claudeTabTracker->markShellAwaitingInput(scrollScanAwaitingPid, true);
+
+        auto clearPromptActive = [this, scrollScanAwaitingPid]() {
             m_claudePromptActive = false;
             applyClaudeStatusLabel();
+            if (m_claudeTabTracker && scrollScanAwaitingPid > 0)
+                m_claudeTabTracker->markShellAwaitingInput(scrollScanAwaitingPid, false);
         };
 
         connect(addBtn, &QPushButton::clicked, this, [this, rule, addBtn, clearPromptActive]() {
@@ -1923,6 +1936,8 @@ void MainWindow::newTab() {
     // Track shell process for Claude Code integration
     if (m_claudeIntegration)
         m_claudeIntegration->setShellPid(terminal->shellPid());
+    if (m_claudeTabTracker && terminal->shellPid() > 0)
+        m_claudeTabTracker->trackShell(terminal->shellPid());
 
     // Hide tab bar when only one tab
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
@@ -2144,6 +2159,11 @@ void MainWindow::closeTab(int index) {
         }
     }
 
+    // Release the per-tab Claude tracker entry BEFORE removeTab — once
+    // the widget is detached we can't recover its shell PID.
+    if (m_claudeTabTracker && term && term->shellPid() > 0)
+        m_claudeTabTracker->untrackShell(term->shellPid());
+
     m_tabSessionIds.remove(w);
     m_tabTitlePins.remove(w);  // free pin alongside session id
     m_tabWidget->removeTab(index);
@@ -2282,6 +2302,8 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
 
     if (m_claudeIntegration)
         m_claudeIntegration->setShellPid(terminal->shellPid());
+    if (m_claudeTabTracker && terminal->shellPid() > 0)
+        m_claudeTabTracker->trackShell(terminal->shellPid());
 
     // Hide tab bar when only one tab (same logic as newTab slot).
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
@@ -3106,6 +3128,96 @@ void MainWindow::updateClaudeThemeColors() {
 void MainWindow::setupClaudeIntegration() {
     m_claudeIntegration = new ClaudeIntegration(this);
 
+    // Per-tab activity tracker. Always constructed (its polling cost is
+    // trivial: one /proc read per tracked shell every 2 s, zero when
+    // no shell has Claude). The user-facing toggle
+    // claude_tab_status_indicator gates the glyph rendering at the
+    // provider level — flipping it off doesn't destroy the tracker, it
+    // just makes the provider return Glyph::None until the toggle
+    // flips back on. That way live config reloads take effect on the
+    // next paint without any construct/destruct dance.
+    m_claudeTabTracker = new ClaudeTabTracker(this);
+    {
+        // Provider: look up the tab's active terminal, read its shell
+        // PID, and translate the tracker's per-shell state into a
+        // Glyph. The `awaitingInput` flag short-circuits whatever the
+        // transcript parser said because a pending prompt is what the
+        // user most needs to notice.
+        m_coloredTabBar->setClaudeIndicatorProvider([this](int tabIndex) {
+            ClaudeTabIndicator ind;
+            if (!m_claudeTabTracker) return ind;
+            if (!m_config.claudeTabStatusIndicator()) return ind;  // toggle off
+            auto *term = terminalAtTab(tabIndex);
+            if (!term) return ind;
+            const pid_t pid = term->shellPid();
+            if (pid <= 0) return ind;
+            const ClaudeTabTracker::ShellState s = m_claudeTabTracker->shellState(pid);
+            if (s.awaitingInput) {
+                ind.glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
+                return ind;
+            }
+            if (s.planMode && s.state != ClaudeState::NotRunning) {
+                ind.glyph = ClaudeTabIndicator::Glyph::Planning;
+                return ind;
+            }
+            switch (s.state) {
+                case ClaudeState::NotRunning:
+                    ind.glyph = ClaudeTabIndicator::Glyph::None; break;
+                case ClaudeState::Idle:
+                    ind.glyph = ClaudeTabIndicator::Glyph::Idle; break;
+                case ClaudeState::Thinking:
+                    ind.glyph = ClaudeTabIndicator::Glyph::Thinking; break;
+                case ClaudeState::ToolUse:
+                    // Bash is the tool with the most user-relevant runtime
+                    // (long-running commands, compilations, greps over
+                    // large repos) — split it out so the glyph carries
+                    // that signal at a glance.
+                    ind.glyph = (s.tool == QLatin1String("Bash"))
+                        ? ClaudeTabIndicator::Glyph::Bash
+                        : ClaudeTabIndicator::Glyph::ToolUse;
+                    break;
+                case ClaudeState::Compacting:
+                    ind.glyph = ClaudeTabIndicator::Glyph::Compacting; break;
+            }
+            return ind;
+        });
+        // Repaint the tab bar whenever any shell's state transitions.
+        // Cheap — QWidget::update() coalesces to one paint per event
+        // loop iteration, and paintEvent only queries the tracker once
+        // per tab. Also refresh the hover tooltip for the owning tab so
+        // the user can hover-to-disambiguate ("Claude: Bash" vs
+        // "Claude: reading a file") without opening the tab.
+        connect(m_claudeTabTracker, &ClaudeTabTracker::shellStateChanged,
+                this, [this](pid_t shellPid) {
+            if (m_coloredTabBar) m_coloredTabBar->update();
+            if (!m_tabWidget) return;
+            const int n = m_tabWidget->count();
+            for (int i = 0; i < n; ++i) {
+                auto *term = terminalAtTab(i);
+                if (!term || term->shellPid() != shellPid) continue;
+                const auto st = m_claudeTabTracker->shellState(shellPid);
+                QString tip;
+                if (st.awaitingInput) {
+                    tip = tr("Claude: awaiting input");
+                } else if (st.planMode && st.state != ClaudeState::NotRunning) {
+                    tip = tr("Claude: planning");
+                } else switch (st.state) {
+                    case ClaudeState::NotRunning: tip.clear(); break;
+                    case ClaudeState::Idle:       tip = tr("Claude: idle"); break;
+                    case ClaudeState::Thinking:   tip = tr("Claude: thinking…"); break;
+                    case ClaudeState::Compacting: tip = tr("Claude: compacting…"); break;
+                    case ClaudeState::ToolUse:
+                        tip = st.tool.isEmpty()
+                            ? tr("Claude: tool use")
+                            : tr("Claude: %1").arg(st.tool);
+                        break;
+                }
+                m_tabWidget->setTabToolTip(i, tip);
+                break;
+            }
+        });
+    }
+
     // Status bar indicator for Claude Code state. Plain QLabel with Fixed
     // horizontal sizePolicy — the vocabulary is a bounded set of short
     // labels ("Claude: idle", "Claude: thinking...", "Claude: bash",
@@ -3272,9 +3384,32 @@ void MainWindow::setupClaudeIntegration() {
         m_claudePromptActive = true;
         applyClaudeStatusLabel();
 
-        auto clearPromptActive = [this]() {
+        // Tab-glyph feedback: flag the owning tab's shell as awaiting
+        // input so its tab-bar dot turns loud/orange. The hook server
+        // is a single UDS shared across every Claude in every tab, so
+        // we must route by session_id (captured by ClaudeIntegration
+        // before this slot runs) to find the right shell. Fallback
+        // to the active tab when the session isn't tracked (e.g. the
+        // first prompt before the tracker's poll has noticed the new
+        // Claude child) — the bottom-status-bar already shows
+        // "Claude: prompting" for the active tab, so the glyph
+        // matches that contract when routing fails.
+        pid_t awaitingPid = 0;
+        if (m_claudeTabTracker) {
+            const QString sid = m_claudeIntegration->lastHookSessionId();
+            awaitingPid = m_claudeTabTracker->shellForSessionId(sid);
+            if (awaitingPid == 0) {
+                if (auto *term = currentTerminal()) awaitingPid = term->shellPid();
+            }
+            if (awaitingPid > 0)
+                m_claudeTabTracker->markShellAwaitingInput(awaitingPid, true);
+        }
+
+        auto clearPromptActive = [this, awaitingPid]() {
             m_claudePromptActive = false;
             applyClaudeStatusLabel();
+            if (m_claudeTabTracker && awaitingPid > 0)
+                m_claudeTabTracker->markShellAwaitingInput(awaitingPid, false);
         };
 
         connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
@@ -4603,6 +4738,16 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     m_broadcastMode = m_config.broadcastMode();
     if (m_broadcastAction)
         m_broadcastAction->setChecked(m_broadcastMode);
+
+    // Per-tab Claude glyph toggle lives in the paint-provider closure —
+    // repaint so the toggle change takes effect on the next frame.
+    // Also clear every tab tooltip so a stale "Claude: thinking…"
+    // doesn't linger on a tab after the user turned the feature off.
+    if (m_coloredTabBar) m_coloredTabBar->update();
+    if (m_tabWidget && !m_config.claudeTabStatusIndicator()) {
+        for (int i = 0; i < m_tabWidget->count(); ++i)
+            m_tabWidget->setTabToolTip(i, QString());
+    }
 
     showStatusMessage("Config reloaded from disk", 3000);
     m_configWatcher->blockSignals(false);

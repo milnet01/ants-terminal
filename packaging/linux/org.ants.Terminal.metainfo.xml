@@ -103,6 +103,22 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.16" date="2026-04-23">
+      <description>
+        <p>Per-tab Claude Code activity indicator — a small state-dependent dot at the leading edge of each tab whose shell has a Claude Code child process, so users running Claude across several tabs can see at a glance which one is waiting on them without cycling focus. Permission prompts route by the hook event's <code>session_id</code> (matched against the <code>&lt;session-uuid&gt;.jsonl</code> transcript filename) rather than the active-tab heuristic, so a prompt emitted in tab 3 lights up tab 3 specifically.</p>
+        <p>Added:</p>
+        <ul>
+          <li><em>Per-tab Claude activity dot.</em> Colour encodes state: muted grey for Idle / Thinking, blue for generic ToolUse, green for Bash (split out as the highest-signal tool), cyan for Planning, violet for Compacting, and a bright orange dot with a white outline for AwaitingInput. Hover tooltip on each tab spells out the state ("Claude: thinking…", "Claude: Bash", etc.) so colours can be disambiguated without switching tabs.</li>
+          <li><em>Settings → General: "Show per-tab Claude activity dot" checkbox.</em> Flips <code>claude_tab_status_indicator</code> (default on); change takes effect on the next paint via the live config reload path, no restart needed.</li>
+          <li><em>New <code>src/claudetabtracker.{h,cpp}</code>.</em> Keys state by shell PID so tab reorder / close doesn't shift entries, and reuses the existing transcript parser through a shared static helper — no duplicated parsing logic. Contract and 11-invariant regression test at <code>tests/features/claude_tab_status_indicator/</code>.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li><em><code>ClaudeIntegration::parseTranscriptForState</code> refactored to a thin wrapper around a new static <code>parseTranscriptTail</code> helper.</em> Pure function, no side effects — safe to call from per-shell trackers. Behavior unchanged; <code>claude_status_bar</code> and <code>claude_plan_mode_detection</code> regression tests still green against the same transcripts.</li>
+          <li><em>Hook events stash <code>session_id</code> in <code>ClaudeIntegration::lastHookSessionId()</code>.</em> Handlers of signals emitted by <code>processHookEvent</code> (e.g. <code>permissionRequested</code>) can now read the id to route the event per-session rather than treating every hook as "belongs to the active tab" — required for the per-tab indicator to flag the correct tab on PermissionRequest.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.15" date="2026-04-23">
       <description>
         <p>Fold-in of the 2026-04-23 re-review follow-up list. Six of nine items had already shipped in 0.7.12 but were never crossed off the ROADMAP; the remaining three are real new work — a <code>/tmp/kwin_*.js</code> orphan sweep, a behavioral replacement for a fragile source-grep gate test, and a signal-count assertion on the plan-mode tail-preservation path. Two new regression tests lock existing invariants.</p>

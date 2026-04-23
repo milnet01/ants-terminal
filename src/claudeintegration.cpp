@@ -288,13 +288,13 @@ QStringList ClaudeIntegration::recentSessions() const {
     return sessions;
 }
 
-void ClaudeIntegration::parseTranscriptForState(const QString &path) {
-    // Re-add the watch — QFileSystemWatcher can drop it after atomic saves
-    if (!m_transcriptWatcher.files().contains(path))
-        m_transcriptWatcher.addPath(path);
+ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
+        const QString &path, bool latchedPlanMode) {
+    ClaudeTranscriptSnapshot snap;
+    snap.planMode = latchedPlanMode;
 
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return;
+    if (!file.open(QIODevice::ReadOnly)) return snap;
 
     // Read a tail window large enough to span the last few turns. Claude Code
     // writes several metadata-only events at the end of each turn
@@ -319,7 +319,7 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     QByteArray tail;
     while (true) {
         const qint64 start = std::max(qint64(0), size - window);
-        if (!file.seek(start)) return;
+        if (!file.seek(start)) return snap;
         tail = file.read(size - start);
         if (start == 0) break;
         if (tail.count('\n') >= 2) {
@@ -327,7 +327,7 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
             tail.remove(0, firstNl + 1);
             break;
         }
-        if (window >= kMaxWindow) return;
+        if (window >= kMaxWindow) return snap;
         window = std::min(window * 2, kMaxWindow);
     }
 
@@ -339,7 +339,8 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
         if (doc.isObject()) events.append(doc.object());
     }
 
-    if (events.isEmpty()) return;
+    if (events.isEmpty()) return snap;
+    snap.hasEvents = true;
 
     // Metadata event types that don't affect run state. They can appear after
     // `assistant/end_turn`, so naively looking at only the last event would
@@ -361,8 +362,7 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
         int inputTokens = usage.value("input_tokens").toInt();
         if (inputTokens > 0) {
             // Rough estimate: 200K context window
-            m_contextPercent = std::min(100, inputTokens * 100 / 200000);
-            emit contextUpdated(m_contextPercent);
+            snap.contextPercent = std::min(100, inputTokens * 100 / 200000);
             break;
         }
     }
@@ -376,64 +376,68 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
             break;
         }
     }
-    if (stateEvent.isEmpty()) return;
+    if (!stateEvent.isEmpty()) {
+        const QString type = stateEvent.value("type").toString();
 
-    QString type = stateEvent.value("type").toString();
-    ClaudeState newState = m_state;
-    QString detail;
+        if (type == "assistant") {
+            QJsonObject msg = stateEvent.value("message").toObject();
+            QString stopReason = msg.value("stop_reason").toString();
+            QJsonArray content = msg.value("content").toArray();
 
-    if (type == "assistant") {
-        QJsonObject msg = stateEvent.value("message").toObject();
-        QString stopReason = msg.value("stop_reason").toString();
-        QJsonArray content = msg.value("content").toArray();
-
-        // Detect tool_use in content blocks (more reliable than stop_reason alone)
-        QString toolName;
-        bool hasToolUse = false;
-        for (const QJsonValue &c : content) {
-            QJsonObject block = c.toObject();
-            if (block.value("type").toString() == "tool_use") {
-                hasToolUse = true;
-                toolName = block.value("name").toString();
-                updateChangedFiles(block);
-                break;
-            }
-        }
-
-        if (hasToolUse || stopReason == "tool_use") {
-            newState = ClaudeState::ToolUse;
-            m_currentTool = toolName;
-            detail = toolName.isEmpty() ? QStringLiteral("tool use") : toolName;
-        } else if (stopReason.isEmpty() || stopReason == "null") {
-            // Still streaming — stop_reason not yet finalized
-            newState = ClaudeState::Thinking;
-            detail = "thinking";
-        } else {
-            // end_turn, max_tokens, stop_sequence, refusal → waiting for user
-            newState = ClaudeState::Idle;
-            detail = "idle";
-        }
-    } else if (type == "user" || type == "human") {
-        // `user` wraps both real user messages and tool_result entries. Either
-        // way Claude is processing — state is Thinking.
-        QJsonValue content = stateEvent.value("message").toObject().value("content");
-        bool isToolResult = false;
-        if (content.isArray()) {
-            for (const QJsonValue &c : content.toArray()) {
-                if (c.toObject().value("type").toString() == "tool_result") {
-                    isToolResult = true;
+            // Detect tool_use in content blocks (more reliable than stop_reason alone)
+            QString toolName;
+            QJsonObject toolUseBlock;
+            bool hasToolUse = false;
+            for (const QJsonValue &c : content) {
+                QJsonObject block = c.toObject();
+                if (block.value("type").toString() == "tool_use") {
+                    hasToolUse = true;
+                    toolName = block.value("name").toString();
+                    toolUseBlock = block;
                     break;
                 }
             }
+
+            if (hasToolUse || stopReason == "tool_use") {
+                snap.state = ClaudeState::ToolUse;
+                snap.tool = toolName;
+                snap.toolUseBlock = toolUseBlock;
+                snap.detail = toolName.isEmpty() ? QStringLiteral("tool use") : toolName;
+            } else if (stopReason.isEmpty() || stopReason == "null") {
+                // Still streaming — stop_reason not yet finalized
+                snap.state = ClaudeState::Thinking;
+                snap.detail = "thinking";
+            } else {
+                // end_turn, max_tokens, stop_sequence, refusal → waiting for user
+                snap.state = ClaudeState::Idle;
+                snap.detail = "idle";
+            }
+            snap.stateDetermined = true;
+        } else if (type == "user" || type == "human") {
+            // `user` wraps both real user messages and tool_result entries.
+            // Either way Claude is processing — state is Thinking.
+            QJsonValue content = stateEvent.value("message").toObject().value("content");
+            bool isToolResult = false;
+            if (content.isArray()) {
+                for (const QJsonValue &c : content.toArray()) {
+                    if (c.toObject().value("type").toString() == "tool_result") {
+                        isToolResult = true;
+                        break;
+                    }
+                }
+            }
+            snap.state = ClaudeState::Thinking;
+            snap.detail = isToolResult ? QStringLiteral("processing result")
+                                       : QStringLiteral("thinking");
+            snap.stateDetermined = true;
+        } else if (type == "attachment") {
+            snap.state = ClaudeState::Thinking;
+            snap.detail = "thinking";
+            snap.stateDetermined = true;
         }
-        newState = ClaudeState::Thinking;
-        detail = isToolResult ? QStringLiteral("processing result")
-                              : QStringLiteral("thinking");
-    } else if (type == "attachment") {
-        newState = ClaudeState::Thinking;
-        detail = "thinking";
+        // Any other state-determining type we don't recognize: leave
+        // snap.stateDetermined == false so the caller retains its prior state.
     }
-    // Any other state-determining type we don't recognize: leave state unchanged.
 
     // /compact override. The command is recorded in the transcript as a user
     // event with string content "<command-name>/compact</command-name>...".
@@ -449,9 +453,7 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     // invoked by the user as `<command-name>/audit</command-name>`. We
     // treat it as "active for the rest of the conversation turn it was
     // invoked in" — i.e. until the assistant's next `end_turn` stop
-    // reason. This matches the user's mental model ("Claude is auditing
-    // until the audit is reported") without needing to model the skill's
-    // internal state machine.
+    // reason.
     bool inAudit = false;
     for (int i = events.size() - 1; i >= 0; --i) {
         if (events[i].value("type").toString() != QLatin1String("user")) continue;
@@ -500,9 +502,11 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
         if (auditFinished) inAudit = false;
     }
     if (inCompact) {
-        newState = ClaudeState::Compacting;
-        detail = QStringLiteral("compacting");
+        snap.state = ClaudeState::Compacting;
+        snap.detail = QStringLiteral("compacting");
+        snap.stateDetermined = true;
     }
+    snap.auditing = inAudit;
 
     // Plan mode: most recent permission-mode event in the tail decides.
     // Claude Code records `{"type":"permission-mode","permissionMode":"plan",
@@ -516,29 +520,54 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     // Important: the tail window we parse is ~32 KB, so a toggle that
     // happened many turns ago can scroll off. We must NOT silently reset
     // plan mode to false in that case — the user's last explicit toggle
-    // still stands until they toggle again. Initialize from the current
-    // latched state, only override when we actually observe a
-    // permission-mode event.
-    bool newPlan = m_planMode;
+    // still stands until they toggle again. Caller passes the latched
+    // value; we override only when we actually observe a permission-mode
+    // event in the window.
     for (int i = events.size() - 1; i >= 0; --i) {
         if (events[i].value("type").toString() != QLatin1String("permission-mode"))
             continue;
         const QString mode = events[i].value("permissionMode").toString();
-        newPlan = (mode == QLatin1String("plan"));
+        snap.planMode = (mode == QLatin1String("plan"));
         break;
     }
 
-    if (newPlan != m_planMode) {
-        m_planMode = newPlan;
+    return snap;
+}
+
+void ClaudeIntegration::parseTranscriptForState(const QString &path) {
+    // Re-add the watch — QFileSystemWatcher can drop it after atomic saves
+    if (!m_transcriptWatcher.files().contains(path))
+        m_transcriptWatcher.addPath(path);
+
+    const ClaudeTranscriptSnapshot snap = parseTranscriptTail(path, m_planMode);
+    if (!snap.hasEvents) return;
+
+    if (snap.contextPercent >= 0) {
+        m_contextPercent = snap.contextPercent;
+        emit contextUpdated(m_contextPercent);
+    }
+
+    if (!snap.toolUseBlock.isEmpty()) {
+        updateChangedFiles(snap.toolUseBlock);
+    }
+
+    if (snap.planMode != m_planMode) {
+        m_planMode = snap.planMode;
         emit planModeChanged(m_planMode);
     }
-    if (inAudit != m_auditing) {
-        m_auditing = inAudit;
+    if (snap.auditing != m_auditing) {
+        m_auditing = snap.auditing;
         emit auditingChanged(m_auditing);
     }
-    if (newState != m_state) {
-        m_state = newState;
-        emit stateChanged(m_state, detail);
+
+    // Only apply state if the tail actually determined one — otherwise
+    // retain m_state (an unrecognized trailing event must not clobber
+    // a live state). Matches pre-refactor behavior of the newState=m_state
+    // initialization.
+    if (snap.stateDetermined && snap.state != m_state) {
+        m_state = snap.state;
+        m_currentTool = snap.tool;
+        emit stateChanged(m_state, snap.detail);
     }
 }
 
@@ -619,6 +648,12 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     QString hookName = event.value("hook_event_name").toString();
     QString toolName = event.value("tool_name").toString();
     QJsonObject toolInput = event.value("tool_input").toObject();
+    // Stash session_id before dispatch so downstream handlers (e.g. the
+    // permissionRequested slot in MainWindow) can route the event to
+    // the correct per-shell tracker entry by session. The hook server
+    // is a single UDS shared across every Claude under any tab, so
+    // without this routing the UI would always flag the active tab.
+    m_lastHookSessionId = event.value("session_id").toString();
 
     if (hookName == "SessionStart") {
         m_activeSessionId = event.value("session_id").toString();

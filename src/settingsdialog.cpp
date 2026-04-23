@@ -155,6 +155,22 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     layout->addRow("Claude Code:", m_installClaudeHooksBtn);
     layout->addRow(QString(), m_claudeHooksStatus);
     refreshClaudeHooksStatus();
+
+    // Per-tab Claude activity glyph. When enabled, each tab whose shell
+    // has a Claude Code child process draws a small state-dependent dot
+    // on the tab chrome — muted grey for idle/thinking, blue for most
+    // tool-use, green for Bash, cyan for plan mode, violet for
+    // compacting, and bright orange (with a white outline) for pending
+    // permission prompts. Off → the tracker isn't constructed and the
+    // paint pass is skipped entirely. See
+    // tests/features/claude_tab_status_indicator/spec.md.
+    m_claudeTabStatusIndicator = new QCheckBox(
+        "Show per-tab Claude activity dot (idle/tool/bash/awaiting-input/…)", tab);
+    m_claudeTabStatusIndicator->setToolTip(
+        "Renders a small coloured dot on each tab whose shell is running "
+        "Claude Code. Orange with a white outline means Claude is waiting "
+        "on you to answer a permission prompt in that tab.");
+    layout->addRow(m_claudeTabStatusIndicator);
 }
 
 void SettingsDialog::setupAppearanceTab(QWidget *tab) {
@@ -684,6 +700,8 @@ void SettingsDialog::loadSettings() {
     m_imagePasteDir->setText(m_config->imagePasteDir());
     if (m_notificationTimeout)
         m_notificationTimeout->setValue(m_config->notificationTimeoutMs() / 1000);
+    if (m_claudeTabStatusIndicator)
+        m_claudeTabStatusIndicator->setChecked(m_config->claudeTabStatusIndicator());
 
     int fmtIdx = m_tabTitleFormat->findData(m_config->tabTitleFormat());
     if (fmtIdx >= 0) m_tabTitleFormat->setCurrentIndex(fmtIdx);
@@ -782,6 +800,8 @@ void SettingsDialog::applySettings() {
     m_config->setTabTitleFormat(m_tabTitleFormat->currentData().toString());
     if (m_notificationTimeout)
         m_config->setNotificationTimeoutMs(m_notificationTimeout->value() * 1000);
+    if (m_claudeTabStatusIndicator)
+        m_config->setClaudeTabStatusIndicator(m_claudeTabStatusIndicator->isChecked());
 
     // Appearance
     m_config->setFontFamily(m_fontFamily->currentFont().family());

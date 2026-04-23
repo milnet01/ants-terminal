@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.15 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.16 (2026-04-23) (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1303,24 +1303,32 @@ remainder, captured so they don't drop on the floor.
 
 ### 🎨 Claude Code UX — per-tab status indicator (user request 2026-04-23)
 
-- 📋 **Per-tab Claude-Code activity indicator.** For each tab where a
-  Claude Code process is running, render a small glyph on the tab
-  chrome reflecting the current Claude state — at a glance the user
-  can see which tab is busy, which is waiting at a permission prompt,
-  and which is idle, and act on the right one without cycling tabs.
-  Minimum states (mirroring Claude Code's own status bar):
-  `planning` / `bash` / `thinking` / `tool_use` / `awaiting_input` /
-  `idle`. Implementation sketch: `claudeintegration.cpp` already
-  monitors the JSONL transcript per project; extend it to emit a
-  `claudeStatusChanged(tabIndex, state)` signal, wire into
-  `MainWindow`'s tab bar to draw a 12px glyph (or colored dot) next
-  to the label. `awaiting_input` should be visually loud (pulsing /
-  high-contrast) since that's the state the user most needs to
-  act on; `idle` can be muted or absent. Config toggle
-  `claude_tab_status_indicator` (default on for tabs where the
-  integration already detects Claude). See also `claude_status_bar`
-  feature test for the existing bottom-status-bar precedent —
-  per-tab version is the natural next step.
+- ✅ **Per-tab Claude-Code activity indicator.** Shipped in
+  [Unreleased]. New `ClaudeTabTracker` class (`src/claudetabtracker.
+  {h,cpp}`) keys per-shell state by PID (not tab index — stable under
+  reorder), shares the transcript-tail parser with the singleton
+  `ClaudeIntegration` via a new static `parseTranscriptTail` helper
+  (no code duplication). `ColoredTabBar::paintEvent` gained a second
+  pass that calls an `IndicatorProvider` callback to render an 8 px
+  dot at the leading edge of each tab — muted grey for Idle /
+  Thinking, blue for ToolUse, green for Bash (distinct from generic
+  ToolUse because it's the longest-running, highest-signal tool),
+  cyan for Planning, violet for Compacting, bright orange with a
+  white outline for AwaitingInput. Permission prompts route by the
+  hook event's `session_id` (matched against the transcript
+  filename's UUID basename) so a prompt emitted by Claude in tab 3
+  lights up **tab 3's** glyph, not the currently-focused tab;
+  scroll-scan detection carries the owning terminal pointer directly
+  so it routes without session-id. Permission-prompt resolution
+  (Allow / Deny / Add-to-allowlist), terminal scanner retraction,
+  toolFinished, and sessionStopped all clear the flag. Tab hover
+  tooltip shows "Claude: thinking…" / "Claude: Bash" / etc. so the
+  user can disambiguate glyphs without switching tabs. Settings
+  dialog (General tab) checkbox flips `claude_tab_status_indicator`
+  (default on); change takes effect on next paint via the live
+  config reload path without app restart. Contract locked by
+  `tests/features/claude_tab_status_indicator/spec.md` + 11-invariant
+  feature test. Stage 1 scope complete.
 
 ### ⚡ / 🏗 Tier 3 — structural
 

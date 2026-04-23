@@ -28,6 +28,7 @@ class ClaudeAllowlistDialog;
 class ClaudeProjectsDialog;
 class ClaudeTranscriptDialog;
 class ClaudeIntegration;
+class ClaudeTabTracker;
 class ColoredTabBar;
 class ColoredTabWidget;
 class QSplitter;
@@ -289,6 +290,13 @@ private:
 
     // Claude Code integration
     ClaudeIntegration *m_claudeIntegration = nullptr;
+    // Per-tab state tracker for the tab-bar activity glyph. Separate
+    // from m_claudeIntegration (which tracks one active tab at a time
+    // for the bottom status bar) — this maintains state for every tab
+    // with a Claude child simultaneously. Null when the config toggle
+    // claude_tab_status_indicator is off. See
+    // tests/features/claude_tab_status_indicator/spec.md.
+    ClaudeTabTracker *m_claudeTabTracker = nullptr;
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;
     ClaudeProjectsDialog *m_claudeProjects = nullptr;
     ClaudeTranscriptDialog *m_claudeTranscript = nullptr;

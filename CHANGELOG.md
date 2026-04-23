@@ -13,6 +13,64 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.16] — 2026-04-23
+
+**Theme:** per-tab Claude Code activity indicator — flagship response to
+the 2026-04-23 user request for at-a-glance multi-tab Claude visibility.
+Users running Claude Code in several tabs now see per-tab state glyphs
+(idle / thinking / tool-use / **Bash** / planning / compacting /
+**awaiting-input**) so they can tell which tab is blocked on them
+without cycling through tabs. Permission prompts route by `session_id`
+(not active-tab) so a prompt from any tab lights up that specific tab.
+Supporting refactor: `ClaudeIntegration::parseTranscriptForState` is now
+a thin wrapper over a new static `parseTranscriptTail` helper so the
+new per-tab tracker can share the exact parsing logic with zero drift.
+
+### Added
+
+- **Per-tab Claude Code activity indicator.** Each tab whose shell has a
+  Claude Code child process now draws a small state-dependent dot at
+  the leading edge of the tab chrome: muted grey for Idle / Thinking,
+  blue for generic ToolUse, **green for Bash** (split out because it's
+  the highest-signal, longest-running tool), cyan for Planning, violet
+  for Compacting, and a bright orange dot with a white outline for
+  AwaitingInput (permission prompt pending). Users running Claude
+  across several tabs can see at a glance which one is waiting on
+  them — and permission prompts route by the hook event's `session_id`
+  (matched against the `<session-uuid>.jsonl` transcript filename) so
+  a prompt emitted by Claude in tab 3 lights up **tab 3's** glyph, not
+  the currently-focused tab. Hover tooltip on each tab shows
+  "Claude: thinking…" / "Claude: Bash" / etc. so glyph colours can be
+  disambiguated without switching tabs. Settings dialog → General
+  adds a checkbox ("Show per-tab Claude activity dot …") that flips
+  `claude_tab_status_indicator` (default on); the change takes effect
+  on the next paint via the live config reload path, no restart
+  needed. New `src/claudetabtracker.{h,cpp}` keys state by shell PID
+  so tab reorder / close doesn't shift entries, and reuses the
+  existing transcript parser via a new static
+  `ClaudeIntegration::parseTranscriptTail` helper — no duplicated
+  parsing logic. Contract + 11-invariant regression test at
+  `tests/features/claude_tab_status_indicator/`. Roadmap item:
+  2026-04-23 user request.
+
+### Changed
+
+- **`ClaudeIntegration::parseTranscriptForState` refactored to a thin
+  wrapper around the new static `parseTranscriptTail` helper.** Pure
+  function, no side effects — safe to call from per-shell trackers.
+  Behavior unchanged; `claude_status_bar` and
+  `claude_plan_mode_detection` regression tests still green against
+  the same transcripts.
+
+- **Hook events stash `session_id` in
+  `ClaudeIntegration::lastHookSessionId()`.** Handlers of signals
+  emitted by `processHookEvent` (e.g. `permissionRequested`) can now
+  read the id to route the event per-session rather than treating
+  every hook as "belongs to the active tab". Required for the
+  per-tab activity indicator to flag the correct tab on
+  PermissionRequest.
+
+
 ## [0.7.15] — 2026-04-23
 
 **Theme:** fold-in of the 2026-04-23 re-review follow-up list. Six of

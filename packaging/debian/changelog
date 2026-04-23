@@ -1,3 +1,49 @@
+ants-terminal (0.7.16-1) unstable; urgency=medium
+
+  * Per-tab Claude Code activity indicator — flagship response to the
+    2026-04-23 user request for at-a-glance multi-tab Claude
+    visibility. Each tab whose shell has a Claude Code child process
+    now draws a small state-dependent dot at the leading edge of the
+    tab chrome: muted grey for idle/thinking, blue for generic tool
+    use, green for Bash (split out because it's the highest-signal,
+    longest-running tool), cyan for plan mode, violet for compacting,
+    and a bright orange dot with a white outline for awaiting-input
+    (permission prompt pending).
+  * Permission prompts route by the hook event's session_id (matched
+    against the <session-uuid>.jsonl transcript filename) so a prompt
+    emitted by Claude in tab 3 lights up tab 3's glyph, not the
+    currently-focused tab. Scroll-scan permission detection carries
+    the owning terminal pointer directly so it routes without needing
+    session_id.
+  * Hover tooltip on each tab shows "Claude: thinking…" / "Claude:
+    Bash" / etc. so glyph colours can be disambiguated without
+    switching tabs.
+  * Settings dialog → General gains a checkbox ("Show per-tab Claude
+    activity dot …") that flips claude_tab_status_indicator (default
+    on); the change takes effect on the next paint via the live
+    config reload path — no restart needed.
+  * New src/claudetabtracker.{h,cpp} keys state by shell PID so tab
+    reorder / close doesn't shift entries, and reuses the existing
+    transcript parser via a new static
+    ClaudeIntegration::parseTranscriptTail helper — no duplicated
+    parsing logic. Contract + 11-invariant regression test at
+    tests/features/claude_tab_status_indicator/.
+  * Changed: ClaudeIntegration::parseTranscriptForState refactored to
+    a thin wrapper around the new static parseTranscriptTail helper.
+    Pure function, no side effects — safe to call from per-shell
+    trackers. Behavior unchanged; claude_status_bar and
+    claude_plan_mode_detection regression tests still green against
+    the same transcripts.
+  * Changed: hook events stash session_id in
+    ClaudeIntegration::lastHookSessionId(). Handlers of signals
+    emitted by processHookEvent (e.g. permissionRequested) can now
+    read the id to route the event per-session rather than treating
+    every hook as "belongs to the active tab". Required for the
+    per-tab activity indicator to flag the correct tab on
+    PermissionRequest.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 23 Apr 2026 15:30:57 +0200
+
 ants-terminal (0.7.15-1) unstable; urgency=medium
 
   * Fold-in of the 2026-04-23 re-review follow-up list. Six of nine

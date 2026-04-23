@@ -81,7 +81,7 @@ int main() {
     if (ntImpl == std::string::npos) {
         fail("INV-5a: MainWindow::newTabForRemote definition missing from mainwindow.cpp");
     } else {
-        std::string body = mwc.substr(ntImpl, 2000);
+        std::string body = mwc.substr(ntImpl, 3000);
         std::regex singleShot200(R"(QTimer::singleShot\s*\(\s*200\s*,)");
         if (!std::regex_search(body, singleShot200)) {
             fail("INV-5b: newTabForRemote must use QTimer::singleShot(200, ...) "

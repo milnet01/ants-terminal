@@ -43,6 +43,23 @@ enum class ClaudeState {
     Compacting,   // /compact in flight — detected from transcript or PreCompact hook
 };
 
+// Result of parsing a transcript tail. Populated by
+// ClaudeIntegration::parseTranscriptTail — a pure helper shared by the
+// active-tab ClaudeIntegration (which emits stateChanged etc.) and the
+// per-tab ClaudeTabTracker (which stores one of these per tab without
+// any emit).
+struct ClaudeTranscriptSnapshot {
+    bool hasEvents = false;        // true iff tail parsed at least one event
+    bool stateDetermined = false;  // true iff last non-metadata event was recognized
+    ClaudeState state = ClaudeState::NotRunning;
+    QString tool;                  // non-empty iff state == ToolUse
+    QString detail;                // short human-readable label ("thinking", "Bash", …)
+    int contextPercent = -1;       // -1 if no usage.input_tokens observed in window
+    bool planMode = false;         // result of the latch + most-recent permission-mode
+    bool auditing = false;         // /audit turn in flight
+    QJsonObject toolUseBlock;      // raw tool_use block for updateChangedFiles; empty if N/A
+};
+
 // Comprehensive Claude Code integration for Ants Terminal
 class ClaudeIntegration : public QObject {
     Q_OBJECT
@@ -57,6 +74,13 @@ public:
     const QString &currentTool() const { return m_currentTool; }
     int contextPercent() const { return m_contextPercent; }
     bool planMode() const { return m_planMode; }
+
+    // session_id from the most recent hook event. Updated before any
+    // signal is emitted by processHookEvent, so handlers of those
+    // signals (e.g. permissionRequested) can read it to route the event
+    // to the correct per-shell tracker entry in multi-Claude layouts.
+    // Empty if no hook has fired yet.
+    const QString &lastHookSessionId() const { return m_lastHookSessionId; }
 
     // Session transcript
     QString activeSessionPath() const;
@@ -92,6 +116,15 @@ public:
     // spawning a real Claude Code process. Safe to call from production
     // code too (the file-watcher path uses it directly).
     void parseTranscriptForState(const QString &path);
+
+    // Pure tail parser. Reads a ~32 KB (growing up to 4 MiB) suffix of the
+    // transcript file and derives the Claude Code state the tail implies.
+    // latchedPlanMode is the caller's current plan-mode state: plan mode
+    // persists across many turns, so if the tail window doesn't contain
+    // any permission-mode event we retain the latch rather than reset.
+    // Stateless — safe to call concurrently from multiple trackers.
+    static ClaudeTranscriptSnapshot parseTranscriptTail(
+        const QString &path, bool latchedPlanMode);
 
 signals:
     void stateChanged(ClaudeState state, const QString &detail);
@@ -131,6 +164,9 @@ private:
     QStringList m_changedFiles;
     bool m_planMode = false;
     bool m_auditing = false;
+    // session_id from the most recent hook event. Read by handlers via
+    // lastHookSessionId() — see that accessor's comment.
+    QString m_lastHookSessionId;
 
     // Process polling
     QTimer m_pollTimer;

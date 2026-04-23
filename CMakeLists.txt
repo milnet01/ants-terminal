@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.15 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.16 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -75,6 +75,7 @@ add_executable(ants-terminal
     src/xcbpositiontracker.cpp
     src/claudeallowlist.cpp
     src/claudeintegration.cpp
+    src/claudetabtracker.cpp
     src/claudeprojects.cpp
     src/claudetranscript.cpp
     src/globalshortcutsportal.cpp
@@ -419,6 +420,32 @@ if(ANTS_TESTS)
     )
     add_test(NAME claude_plan_mode_detection COMMAND test_claude_plan_mode)
     set_tests_properties(claude_plan_mode_detection PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # claude_tab_status_indicator — asserts that the per-tab Claude
+    # activity tracker keeps independent state for N shells, that
+    # awaitingInput flags override the transcript-derived state without
+    # clobbering it, and that plan-mode latching works on the real
+    # tracker (not just the shared parser helper). See
+    # tests/features/claude_tab_status_indicator/spec.md.
+    add_executable(test_claude_tab_tracker
+        tests/features/claude_tab_status_indicator/test_claude_tab_tracker.cpp
+        src/claudeintegration.cpp
+        src/claudetabtracker.cpp
+    )
+    target_link_libraries(test_claude_tab_tracker PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Network
+        Qt6::Test
+    )
+    target_include_directories(test_claude_tab_tracker PRIVATE src)
+    target_compile_options(test_claude_tab_tracker PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME claude_tab_status_indicator COMMAND test_claude_tab_tracker)
+    set_tests_properties(claude_tab_status_indicator PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

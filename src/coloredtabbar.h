@@ -3,7 +3,34 @@
 #include <QTabBar>
 #include <QTabWidget>
 
+#include <functional>
+
 class QPaintEvent;
+
+// Per-tab Claude Code state overlay. Read by ColoredTabBar::paintEvent
+// via a caller-supplied provider callback — the bar itself stores
+// nothing, so tab reorder / close don't need to update any tab-bar
+// side-table (the provider just returns the current value for the
+// tab's underlying session identity, whatever the caller uses).
+struct ClaudeTabIndicator {
+    // Which dot to draw. NotRunning means "no glyph" — paint skipped.
+    // Bash is split out from generic ToolUse because the roadmap calls
+    // it out as a distinct state (it's the tool most likely to be
+    // running long-lived commands), and because the bottom status bar
+    // already distinguishes "Claude: bash" from "Claude: reading a
+    // file" / "Claude: editing a file" / etc.
+    enum class Glyph {
+        None,            // no Claude process under this tab's shell
+        Idle,            // muted dot
+        Thinking,        // plain dot
+        ToolUse,         // solid dot (neutral hue) — Read/Write/Edit/Grep/Glob/…
+        Bash,            // Bash tool specifically — separate hue
+        Planning,        // plan-mode active (distinct hue)
+        Compacting,      // /compact in flight
+        AwaitingInput,   // PermissionRequest pending — LOUD
+    };
+    Glyph glyph = Glyph::None;
+};
 
 // QTabBar subclass that renders an optional per-tab colour strip along
 // the bottom edge of each tab. Used for visually tagging tabs into
@@ -35,11 +62,22 @@ public:
     // if none is set or `index` is out of range.
     QColor tabColor(int index) const;
 
+    // Supply a provider callback invoked during paintEvent for every
+    // tab. Returning a Glyph other than `None` renders a small dot at
+    // the tab's leading edge. The bar stores no state — invalidate via
+    // QWidget::update() when the underlying state changes.
+    using IndicatorProvider = std::function<ClaudeTabIndicator(int)>;
+    void setClaudeIndicatorProvider(IndicatorProvider provider) {
+        m_indicatorProvider = std::move(provider);
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
     static constexpr int kTabDataColorRole = 0x100;  // QTabBar reserves low ints
+
+    IndicatorProvider m_indicatorProvider;
 };
 
 // Trivial QTabWidget subclass whose sole purpose is to install a

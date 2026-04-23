@@ -325,6 +325,17 @@ void Config::setRemoteControlEnabled(bool enabled) {
     save();
 }
 
+bool Config::claudeTabStatusIndicator() const {
+    // Default on: the feature is unobtrusive (a small dot on tabs with
+    // Claude running) and its cost is negligible when no tab has Claude.
+    return m_data.value("claude_tab_status_indicator").toBool(true);
+}
+
+void Config::setClaudeTabStatusIndicator(bool enabled) {
+    m_data["claude_tab_status_indicator"] = enabled;
+    save();
+}
+
 // Per-project audit rule-pack trust store. Key:
 //   audit_rule_pack_trust = { <canonical projectPath> : <sha256Hex> }
 // A project is trusted iff its canonicalized path appears and the stored
