@@ -1,3 +1,31 @@
+ants-terminal (0.7.10-1) unstable; urgency=medium
+
+  * Follow-through on the 0.7.9 null-result. The std::rotate scroll
+    refactor was rejected because it paid for save/restore overhead
+    without touching the real bottleneck — the per-scroll
+    vector<Cell>(m_cols) heap allocation for the new bottom row. This
+    release addresses that bottleneck directly with a small free-list
+    of m_cols-sized cell buffers fed by any path that discards a row
+    (scrollback eviction, scrollDown, insertLines, deleteLines) and
+    drained by paths that need a fresh blank row. Steady-state scroll
+    work on a full scrollback runs allocator-free.
+  * Changed: TerminalGrid cell-buffer free-list. New m_freeCellBuffers
+    pool (cap 4 entries) + takeBlankedCellsRow() / returnCellsRow()
+    helpers. scrollUp, scrollDown, insertLines, deleteLines now recycle
+    cell buffers instead of calling makeRow(m_cols, …) on every scroll.
+    Scrollback pop_front salvages the evicted line's cells into the
+    pool; the next scroll's new bottom row pulls from it, skipping the
+    allocator entirely. resize() clears the pool. All 49 feature tests
+    pass; scroll_region_rotate (shipped 0.7.9) verifies invariants held.
+  * Performance: bench_vt_throughput newline_stream 5.26 → 6.09 MB/s
+    (+15.8 %, median of ten-run pairs). Other corpora flat to mildly
+    improved: ascii_print ~23, ansi_sgr ~16.5, utf8_cjk 8.9 (+12 %).
+    First perf result validating the 0.7.9 thesis that the container
+    shuffle was a red herring and the allocator was the actual hot
+    spot.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 23 Apr 2026 08:20:57 +0200
+
 ants-terminal (0.7.9-1) unstable; urgency=medium
 
   * Planned-work pass — three ROADMAP items from the 0.7.7 "deferred to

@@ -374,6 +374,20 @@ private:
     // Monotonic — total lines ever pushed (for scroll-anchor drift correction when capped)
     uint64_t m_scrollbackPushed = 0;
 
+    // Free-list of m_cols-sized cell buffers salvaged from discarded rows
+    // (scrollback eviction, insertLines/deleteLines erase, scrollDown erase).
+    // Recycled into new bottom/top rows on scrollUp/scrollDown/insert/delete,
+    // avoiding the per-scroll vector<Cell>(m_cols) heap allocation that
+    // dominates the newline_stream hot path. Capped to kFreePoolCap entries
+    // so memory stays bounded when scrolls outpace consumption.
+    std::vector<std::vector<Cell>> m_freeCellBuffers;
+    static constexpr int kFreePoolCap = 4;
+    // Pulls a blanked m_cols-wide cells row from the pool, or allocates fresh.
+    std::vector<Cell> takeBlankedCellsRow();
+    // Returns a cells buffer to the pool if it's the right size and the pool
+    // isn't full. Otherwise discards (letting the vector destruct naturally).
+    void returnCellsRow(std::vector<Cell> &&cells);
+
     QColor m_defaultFg{0xCD, 0xD6, 0xF4};  // Light text
     QColor m_defaultBg{0x1E, 0x1E, 0x2E};  // Dark bg
 

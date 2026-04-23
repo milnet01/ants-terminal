@@ -86,6 +86,28 @@ static std::vector<Cell> makeRow(int cols, const QColor &fg, const QColor &bg) {
     return row;
 }
 
+std::vector<Cell> TerminalGrid::takeBlankedCellsRow() {
+    while (!m_freeCellBuffers.empty()) {
+        std::vector<Cell> buf = std::move(m_freeCellBuffers.back());
+        m_freeCellBuffers.pop_back();
+        if (static_cast<int>(buf.size()) == m_cols) {
+            Cell blank;
+            blank.attrs.fg = m_defaultFg;
+            blank.attrs.bg = m_defaultBg;
+            std::fill(buf.begin(), buf.end(), blank);
+            return buf;
+        }
+    }
+    return makeRow(m_cols, m_defaultFg, m_defaultBg);
+}
+
+void TerminalGrid::returnCellsRow(std::vector<Cell> &&cells) {
+    if (static_cast<int>(cells.size()) == m_cols &&
+        static_cast<int>(m_freeCellBuffers.size()) < kFreePoolCap) {
+        m_freeCellBuffers.push_back(std::move(cells));
+    }
+}
+
 TerminalGrid::TerminalGrid(int rows, int cols)
     : m_rows(rows), m_cols(cols)
 {
@@ -1372,9 +1394,10 @@ void TerminalGrid::insertLines(int count) {
     // drift away from the cells that contain the clickable text.
     const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
     for (int i = 0; i < count; ++i) {
+        returnCellsRow(std::move(m_screenLines[bottom].cells));
         m_screenLines.erase(m_screenLines.begin() + bottom);
         TermLine tl;
-        tl.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
+        tl.cells = takeBlankedCellsRow();
         m_screenLines.insert(m_screenLines.begin() + m_cursorRow, std::move(tl));
         if (hlInRange) {
             m_screenHyperlinks.erase(m_screenHyperlinks.begin() + bottom);
@@ -1391,9 +1414,10 @@ void TerminalGrid::deleteLines(int count) {
     count = std::min(count, bottom - m_cursorRow + 1);
     const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
     for (int i = 0; i < count; ++i) {
+        returnCellsRow(std::move(m_screenLines[m_cursorRow].cells));
         m_screenLines.erase(m_screenLines.begin() + m_cursorRow);
         TermLine tl;
-        tl.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
+        tl.cells = takeBlankedCellsRow();
         m_screenLines.insert(m_screenLines.begin() + bottom, std::move(tl));
         if (hlInRange) {
             m_screenHyperlinks.erase(m_screenHyperlinks.begin() + m_cursorRow);
@@ -1496,18 +1520,24 @@ void TerminalGrid::scrollUp(int count) {
             !suppressForDoublingGuard) {
             m_scrollback.push_back(std::move(m_screenLines[m_scrollTop]));
             ++m_scrollbackPushed;
-            if (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
+            if (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
+                returnCellsRow(std::move(m_scrollback.front().cells));
                 m_scrollback.pop_front();
+            }
             // Move hyperlinks to scrollback
             if (m_scrollTop < static_cast<int>(m_screenHyperlinks.size())) {
                 m_scrollbackHyperlinks.push_back(std::move(m_screenHyperlinks[m_scrollTop]));
                 while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
                     m_scrollbackHyperlinks.pop_front();
             }
+        } else {
+            // No scrollback push: the top row's cells are about to be erased —
+            // salvage into the pool so they can feed the new bottom row below.
+            returnCellsRow(std::move(m_screenLines[m_scrollTop].cells));
         }
         m_screenLines.erase(m_screenLines.begin() + m_scrollTop);
         TermLine tl;
-        tl.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
+        tl.cells = takeBlankedCellsRow();
         m_screenLines.insert(m_screenLines.begin() + m_scrollBottom, std::move(tl));
         // Shift hyperlink rows
         if (m_scrollTop < static_cast<int>(m_screenHyperlinks.size()) &&
@@ -1523,9 +1553,10 @@ void TerminalGrid::scrollUp(int count) {
 void TerminalGrid::scrollDown(int count) {
     markAllScreenDirty();
     for (int i = 0; i < count; ++i) {
+        returnCellsRow(std::move(m_screenLines[m_scrollBottom].cells));
         m_screenLines.erase(m_screenLines.begin() + m_scrollBottom);
         TermLine tl;
-        tl.cells = makeRow(m_cols, m_defaultFg, m_defaultBg);
+        tl.cells = takeBlankedCellsRow();
         m_screenLines.insert(m_screenLines.begin() + m_scrollTop, std::move(tl));
     }
 }
@@ -1973,6 +2004,8 @@ void TerminalGrid::resize(int rows, int cols) {
     m_cols = cols;
     m_scrollBottom = m_rows - 1;
     m_scrollTop = 0;
+    // Pool entries are sized to the old m_cols; invalidate after resize.
+    m_freeCellBuffers.clear();
     m_cursorRow = std::clamp(m_cursorRow, 0, m_rows - 1);
     m_cursorCol = std::clamp(m_cursorCol, 0, m_cols - 1);
     // An OSC 8 hyperlink opened before resize holds a (row, col) pair that

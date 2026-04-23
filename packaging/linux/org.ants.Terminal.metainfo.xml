@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.10" date="2026-04-23">
+      <description>
+        <p>Follow-through on the 0.7.9 null-result. The <code>std::rotate</code> scroll refactor was rejected because it paid for save/restore overhead without touching the real bottleneck — the per-scroll <code>vector&lt;Cell&gt;(m_cols)</code> heap allocation for the new bottom row. This release addresses that bottleneck directly with a small free-list of <code>m_cols</code>-sized cell buffers fed by any path that discards a row (scrollback eviction, <code>scrollDown</code>, <code>insertLines</code>, <code>deleteLines</code>) and drained by paths that need a fresh blank row. Steady-state scroll work on a full scrollback runs allocator-free.</p>
+        <ul>
+          <li><em>Changed — <code>TerminalGrid</code> cell-buffer free-list.</em> New <code>m_freeCellBuffers</code> pool (cap 4 entries) + <code>takeBlankedCellsRow()</code> / <code>returnCellsRow()</code> helpers. <code>scrollUp</code>, <code>scrollDown</code>, <code>insertLines</code>, <code>deleteLines</code> now recycle cell buffers instead of calling <code>makeRow(m_cols, …)</code> on every scroll. When scrollback hits <code>m_maxScrollback</code> and a <code>pop_front</code> evicts the oldest line, its cells vector is salvaged into the pool; the next scroll's new bottom row pulls from it (blanked in place), skipping the allocator. <code>resize()</code> clears the pool. Pool stays at 0–2 entries in normal use. All 49 feature tests pass; <code>scroll_region_rotate</code> (shipped 0.7.9 to lock the contract) verifies the invariants held across the refactor.</li>
+          <li><em>Performance — <code>newline_stream</code> 5.26 → 6.09 MB/s (+15.8 %).</em> Median of ten-run pairs. Other corpora are flat to mildly improved: <code>ascii_print</code> ~23 MB/s, <code>ansi_sgr</code> ~16.5 MB/s, <code>utf8_cjk</code> 8.9 MB/s (+12 % — CJK payload also hits <code>scrollUp</code>). First perf result to validate the 0.7.9 thesis that the container shuffle was a red herring and the allocator was the actual hot spot.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.9" date="2026-04-22">
       <description>
         <p>Planned-work pass — three ROADMAP items from the 0.7.7 "deferred to 0.8+" queue investigated and shipped or rejected with findings on record. The investigations that didn't ship still left value behind (a feature-test that locks scroll-region semantics for any future refactor), and the one that did ship consolidates 13 path strings through one header and halves the per-frame <code>QString::fromUcs4</code> call count in both render paths.</p>

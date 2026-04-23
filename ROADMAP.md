@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.9 (2026-04-22). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.10 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -847,14 +847,18 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   investigation did ship the guard: `tests/features/scroll_region_rotate`
   pins the observable semantics so the next attempt can refactor
   safely.
-- 💭 **⚡ Scrollback push cell reuse (ring-buffer candidate).**
-  Supersedes the rejected `std::rotate` approach above. Instead of
-  `std::move`-ing the whole `TermLine` into `m_scrollback` and
-  allocating a fresh one for the new bottom row, keep the screen row's
-  allocated `vector<Cell>` storage and copy/snapshot only the visible
-  content to scrollback. For `newline_stream` this eliminates the
-  per-scroll `makeRow(m_cols, ...)` allocation — the dominant cost
-  per the 0.7.9 measurement.
+- ✅ **⚡ Cell-buffer free-list for scroll paths (shipped 0.7.10).**
+  Small `m_freeCellBuffers` pool (cap 4 entries) + `takeBlankedCellsRow()`
+  / `returnCellsRow()` helpers. `scrollUp`, `scrollDown`, `insertLines`,
+  `deleteLines` recycle cell buffers instead of calling `makeRow(m_cols, …)`
+  on every scroll. When `m_scrollback` hits capacity and evicts a line,
+  its cells vector is salvaged into the pool; the next scroll's new
+  bottom row pulls from it, skipping the allocator. Measured
+  **+15.8 %** on `bench_vt_throughput newline_stream` (5.26 → 6.09
+  MB/s, median of ten-run pairs). Other corpora flat to mildly
+  improved; `utf8_cjk` also gained +12 %. First perf result to
+  validate the 0.7.9 thesis that the container shuffle was a red
+  herring and the allocator was the actual hot spot.
 - 💭 **⚡ Per-frame `QString` construction in the text-run accumulator.**
   `QString::fromUcs4()` is called per non-space cell. Accumulate
   codepoints into a `std::vector<uint32_t>` and construct the run

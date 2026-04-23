@@ -13,6 +13,44 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.10] — 2026-04-23
+
+**Theme:** follow-through on the 0.7.9 null-result. The `std::rotate` scroll
+refactor was rejected because it paid for save/restore overhead without
+touching the real bottleneck — the per-scroll `vector<Cell>(m_cols)` heap
+allocation for the new bottom row. This release addresses that bottleneck
+directly with a small free-list of `m_cols`-sized cell buffers fed by any
+path that discards a row (scrollback eviction, `scrollDown`, `insertLines`,
+`deleteLines`) and drained by paths that need a fresh blank row. Steady-state
+scroll work on a full scrollback runs allocator-free.
+
+### Changed
+
+- **`TerminalGrid` — cell-buffer free-list for scroll paths.** New
+  `m_freeCellBuffers` pool (cap 4 entries) + `takeBlankedCellsRow()` /
+  `returnCellsRow()` helpers in `src/terminalgrid.{h,cpp}`. `scrollUp`,
+  `scrollDown`, `insertLines`, `deleteLines` now recycle cell buffers
+  instead of calling `makeRow(m_cols, …)` on every scroll. When
+  scrollback hits `m_maxScrollback` and a `pop_front` evicts the oldest
+  line, its cells vector is salvaged into the pool rather than freed;
+  the next scroll's new bottom row pulls from the pool (blanked in
+  place), skipping the allocator entirely. `resize()` clears the pool
+  (stale-size entries would be wrong-width). Pool stays at 0–2 entries
+  in normal use — memory footprint is bounded and negligible. All 49
+  feature tests still pass; `scroll_region_rotate` (shipped 0.7.9 to
+  lock the contract) verified the invariants held across the refactor.
+
+### Performance
+
+- **`bench_vt_throughput newline_stream`: 5.26 → 6.09 MB/s (+15.8 %).**
+  Median of ten-run pairs before / after. Other corpora are flat to
+  mildly improved — `ascii_print` ~23 MB/s (baseline 23), `ansi_sgr`
+  ~16.5 MB/s (baseline 16.5), `utf8_cjk` 8.9 MB/s (baseline 7.9,
+  +12 %; the CJK payload hits `scrollUp` too). This is the first perf
+  result to validate the 0.7.9 investigation's thesis that the
+  container shuffle was a red herring and the allocator was the actual
+  hot spot.
+
 ## [0.7.9] — 2026-04-22
 
 **Theme:** planned-work pass — three ROADMAP items from the 0.7.7 "deferred
