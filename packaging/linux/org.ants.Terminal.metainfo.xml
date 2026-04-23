@@ -103,6 +103,26 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.15" date="2026-04-23">
+      <description>
+        <p>Fold-in of the 2026-04-23 re-review follow-up list. Six of nine items had already shipped in 0.7.12 but were never crossed off the ROADMAP; the remaining three are real new work — a <code>/tmp/kwin_*.js</code> orphan sweep, a behavioral replacement for a fragile source-grep gate test, and a signal-count assertion on the plan-mode tail-preservation path. Two new regression tests lock existing invariants.</p>
+        <p>Added:</p>
+        <ul>
+          <li><em>Startup sweep for orphan <code>/tmp/kwin_*_ants_*.js</code> script files.</em> KWin helper scripts are written via <code>QTemporaryFile(autoRemove=false)</code> and removed by a chained dbus callback after KWin unloads them; a crash, SIGKILL, or dbus hang between write and unload orphans the file. <code>MainWindow</code> ctor now runs a once-per-process sweep of <code>kwin_{pos,move,center}_ants_*.js</code> older than one hour, avoiding a race with any in-flight script another Ants instance just wrote.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li><em>Remote-control opt-in gate test is now behavioral, not source-grep.</em> The 0.7.12 test grepped for <code>remoteControlEnabled()</code> within 400 chars of <code>m_remoteControl-&gt;start()</code> — a getter rename or helper-hoist would have silently defeated the gate while still passing. Replaced with a <code>Config</code> API round-trip (default false, setter persists across instances, value readable post-reload); a getter rename now fails at compile-time. The structural "<code>start()</code> must live inside a conditional" check is retained as a plain-substring lookback to catch outright gate removal — without the catastrophic-backtracking risk that killed the initial regex attempt.</li>
+          <li><em>Plan-mode regression test asserts emission count, not just final value.</em> <code>runToggleFreeTailPreservesState</code> now confirms <code>planModeChanged</code> fires exactly once across both parse phases (seed toggles NotSet → plan = one emission; tail sees zero permission-mode events and must not re-fire). Guards against a regression that re-emits on every parse.</li>
+        </ul>
+        <p>Tests:</p>
+        <ul>
+          <li><em><code>config_parse_failure_guard</code> adds retention-cap invariant (INV-5).</em> Plants 8 stale <code>.corrupt-*</code> siblings with decreasing mtimes, trips a fresh parse-failure, asserts only the newest 5 (fresh + 4 old) remain. Verified to fail against a neutered prune loop (got 9, expected 5). Sets mtimes via <code>QFile::setFileTime</code> since <code>QDir::Time</code> ranks on mtime, not on the filename-embedded timestamp.</li>
+          <li><em><code>remote_control_opt_in</code> adds behavioral Config round-trip section.</em> Sandboxed via <code>XDG_CONFIG_HOME</code> (not <code>setTestModeEnabled</code> — that routes to a Qt-test-specific path which has collided with real user configs in practice). Four invariants: fresh-default false, in-memory round-trip, cross-instance persistence, setter-back-to-false round-trip.</li>
+        </ul>
+        <p>Internal: ROADMAP re-review follow-up list reconciled with shipped code — config backup retention cap, remote-control gate cache, kwin TOCTOU fix header-comment accuracy, <code>spec.md</code> timestamp format, and plugin/theme parse warnings were all landed by 0.7.12 but still listed as outstanding. Flipped with "Shipped 0.7.12" notes; no code changes for these items, just book-keeping reconciliation.</p>
+      </description>
+    </release>
     <release version="0.7.14" date="2026-04-23">
       <description>
         <p>Three Claude Code integration robustness fixes from the 0.7.12+1 re-review checkpoint. All three failed silently — no errors, no degraded-mode logs — so the symptoms were a transcript-driven UI state that simply stopped updating, or a project that appeared under the wrong name in the picker. All three now have targeted fixture-based regression tests.</p>

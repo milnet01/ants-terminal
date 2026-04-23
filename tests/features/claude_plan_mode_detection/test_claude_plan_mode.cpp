@@ -172,6 +172,7 @@ int runToggleFreeTailPreservesState() {
     if (!tmp.isValid()) return 1;
 
     ClaudeIntegration ci;
+    QSignalSpy spy(&ci, &ClaudeIntegration::planModeChanged);
 
     // Phase 1 — seed plan-mode true.
     const QString seedPath = tmp.path() + "/seed.jsonl";
@@ -212,7 +213,18 @@ int runToggleFreeTailPreservesState() {
         "planMode=%d (want 1)  %s\n",
         preserved, preserved ? "PASS" : "FAIL");
 
-    return preserved ? 0 : 1;
+    // Phase 1 flipped NotSet → plan = one emission. Phase 2 observed
+    // no permission-mode events, so planMode() stays true without
+    // re-emitting. Guards against a regression that would re-fire the
+    // same state every parse.
+    const long long emissions = static_cast<long long>(spy.count());
+    const bool emissionsOk = (emissions == 1);
+    std::fprintf(stderr,
+        "[invariant4-preserve-toggle-free]  emission count: "
+        "planModeChanged fired %lld times (want 1)  %s\n",
+        emissions, emissionsOk ? "PASS" : "FAIL");
+
+    return (preserved && emissionsOk) ? 0 : 1;
 }
 
 int main(int argc, char **argv) {

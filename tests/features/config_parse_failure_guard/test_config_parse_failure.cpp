@@ -13,8 +13,10 @@
 #include "config.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileDevice>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
@@ -162,6 +164,60 @@ void testNonObjectJson() {
     expect(cfg.loadFailed(), "nonObject: JSON array → loadFailed == true");
 }
 
+// Invariant 6 — `.corrupt-<ms>` backups are capped at the newest 5.
+// Repeatedly opening Ants with a broken config would otherwise
+// accumulate one backup per launch forever. Plant 8 stale backups
+// from an earlier-timestamp run, then trip one more parse-failure —
+// afterwards only the 5 newest (4 old + 1 fresh) may remain. Implemented
+// inside secureio.h::rotateCorruptFileAside so Config + ClaudeAllowlist +
+// SettingsDialog all benefit from the same cap.
+void testRetentionCap() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) { expect(false, "retentionCap: sandbox setup"); return; }
+    QString antsDir = setupSandbox(tmp, "{bad");
+    const QString cfgPath = antsDir + "/config.json";
+
+    // Plant 8 synthetic `.corrupt-*` siblings with decreasing (older)
+    // mtimes. The retention logic uses QDir::Time (mtime) to rank them,
+    // so we MUST set the file mtime explicitly (QFile::open alone would
+    // give all 8 a near-identical "now" mtime and the "newest 5"
+    // selection would be effectively random).
+    const QDateTime now = QDateTime::currentDateTime();
+    for (int i = 0; i < 8; ++i) {
+        const qint64 stampMs = now.toMSecsSinceEpoch() - (i + 1) * 60000;
+        const QString old = cfgPath + QStringLiteral(".corrupt-")
+                          + QString::number(stampMs);
+        QFile f(old);
+        if (!f.open(QIODevice::WriteOnly)) continue;
+        f.write("stale");
+        f.setFileTime(QDateTime::fromMSecsSinceEpoch(stampMs),
+                      QFileDevice::FileModificationTime);
+        f.close();
+    }
+
+    auto countCorrupt = [&]() {
+        QDir d(antsDir);
+        return d.entryList({QStringLiteral("config.json.corrupt-*")},
+                           QDir::Files).size();
+    };
+
+    expect(countCorrupt() == 8,
+           "retentionCap: planted 8 stale .corrupt-* siblings");
+
+    // Trigger a fresh rotateCorruptFileAside via Config::load(). The
+    // prune loop should remove everything past the newest 5.
+    Config cfg;
+    expect(cfg.loadFailed(), "retentionCap: fresh parse failure latched");
+    expect(!cfg.loadFailureBackupPath().isEmpty(),
+           "retentionCap: fresh .corrupt-<ms> backup written");
+
+    // Expected after prune: newest 5 = {fresh backup, 4 newest stale}.
+    const auto remaining = countCorrupt();
+    expect(remaining == 5,
+           "retentionCap: pruned to newest 5",
+           QString("got %1").arg(remaining).toUtf8().constData());
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -172,6 +228,7 @@ int main(int argc, char **argv) {
     testCorruptConfig();
     testEmptyStringParsesAsNull();
     testNonObjectJson();
+    testRetentionCap();
 
     if (g_failures > 0) {
         std::fprintf(stderr, "\n%d assertion(s) failed.\n", g_failures);

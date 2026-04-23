@@ -72,6 +72,16 @@ MUST have its return value checked. On failure:
 - `config.json` MUST be left untouched (which atomic-rename
   guarantees on success, and is what we want on failure too).
 
+### Invariant 5 — `.corrupt-<ms>` backup retention is capped
+
+`rotateCorruptFileAside` (shared helper in `secureio.h`) MUST cap
+the number of retained `.corrupt-*` siblings at the newest 5.
+A user who repeatedly opens Ants with a broken config would
+otherwise accumulate one backup per launch forever; the cap keeps
+five recovery snapshots while bounding the footprint. Older
+siblings are ranked by mtime (not filename timestamp) so files with
+skewed clocks still prune deterministically.
+
 ## How this test anchors to reality
 
 The test constructs a `Config` against an isolated `XDG_CONFIG_HOME`,

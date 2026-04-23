@@ -13,6 +13,75 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.15] — 2026-04-23
+
+**Theme:** fold-in of the 2026-04-23 re-review follow-up list. Six of
+nine items had already shipped in 0.7.12 but were never crossed off the
+ROADMAP (code was present, bullet was not flipped); the remaining three
+are real new work — a `/tmp/kwin_*.js` orphan sweep, a behavioral
+replacement for the fragile source-grep gate test, and a signal-count
+assertion on the plan-mode tail-preservation path. Two new regression
+tests lock existing invariants.
+
+### Added
+
+- **Startup sweep for orphan `/tmp/kwin_*_ants_*.js` script files.**
+  The position-tracker + move/center helpers write KWin scripts via
+  `QTemporaryFile(autoRemove=false)` and rely on a chained dbus-send
+  callback to remove them after KWin unloads. A crash, SIGKILL, or
+  dbus hang between write and unload orphans the file — no functional
+  harm (KWin already loaded its copy), but the files accumulate in
+  `/tmp`. `MainWindow` ctor now runs a once-per-process sweep of
+  `kwin_{pos,move,center}_ants_*.js` older than one hour. The
+  one-hour floor avoids racing an in-flight script another Ants
+  instance just wrote.
+
+### Changed
+
+- **Remote-control opt-in gate test is now behavioral, not source-grep.**
+  The 0.7.12 test grepped for `remoteControlEnabled()` within 400 chars
+  of `m_remoteControl->start()`. A refactor that renamed the getter or
+  hoisted the check into a helper would have silently defeated the
+  gate while still passing (or failing) the grep. Replaced with a
+  Config API round-trip assertion: default is false, setter persists
+  across instances, value is readable post-reload. A getter rename
+  now fails at compile-time in the test. The structural "start() must
+  live inside a conditional" check is retained as a plain-substring
+  lookback to catch a refactor that removes the gate entirely —
+  without the catastrophic-backtracking risk that killed the initial
+  regex attempt.
+- **Plan-mode regression test now asserts emission count, not just
+  final value.** `runToggleFreeTailPreservesState` confirms
+  `planModeChanged` fires exactly once across both parse phases
+  (seed toggles NotSet → plan = one emission; tail sees zero
+  permission-mode events and must not re-fire the same state).
+  Guards against a regression that re-emits on every parse.
+
+### Tests
+
+- **`config_parse_failure_guard` adds retention-cap invariant (INV-5).**
+  Plants 8 stale `.corrupt-*` siblings with decreasing mtimes, trips a
+  fresh parse-failure, asserts only the newest 5 (fresh + 4 old)
+  remain. Verified to fail against a neutered prune loop (got 9,
+  expected 5). Sets mtimes explicitly via `QFile::setFileTime` since
+  `QDir::Time` ranks on mtime, not on the filename-embedded timestamp.
+- **`remote_control_opt_in` adds behavioral Config round-trip section.**
+  Sandboxed via `XDG_CONFIG_HOME` (not `setTestModeEnabled` — that
+  routes to a Qt-test-specific path that has collided with real user
+  configs in practice). Four invariants: fresh-default false, in-
+  memory round-trip, cross-instance persistence, setter-back-to-
+  false round-trip.
+
+### Internal
+
+- **ROADMAP re-review follow-up list reconciled with shipped code.**
+  Config backup retention cap, remote-control gate cache, kwin
+  TOCTOU fix header comment accuracy, spec.md timestamp format, and
+  plugin/theme parse warnings were all landed by 0.7.12 but still
+  listed as 📋 on the roadmap. Flipped to ✅ with "Shipped 0.7.12"
+  notes. No code changes for these items — just a book-keeping
+  reconciliation so the next review doesn't re-flag them.
+
 ## [0.7.14] — 2026-04-23
 
 **Theme:** three Claude Code integration robustness fixes from the

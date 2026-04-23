@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.14 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.15 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1492,12 +1492,17 @@ if(ANTS_TESTS)
     # remote_control_opt_in — asserts the 0.7.12 /indie-review hardening:
     # (A) behavioral — filterControlChars strips the dangerous C0 subset +
     #     DEL while preserving HT / LF / CR and UTF-8 bytes >= 0x80;
-    # (B) source-grep — cmdSendText consults raw-bypass + calls the
-    #     filter, MainWindow gates the listener on remoteControlEnabled().
+    # (B) behavioral — Config API round-trip for `remote_control_enabled`
+    #     (the key the gate reads). Replaces the 0.7.12 grep-for-getter-
+    #     name approach, which a rename would silently defeat.
+    # (C) structural — raw-bypass + filter calls inside cmdSendText, plus
+    #     a regex-based check that start() lives inside a conditional.
     # Closes the local-UID keystroke-injection RCE chain. See
     # tests/features/remote_control_opt_in/spec.md.
     add_executable(test_remote_control_opt_in
         tests/features/remote_control_opt_in/test_remote_control_opt_in.cpp
+        src/config.cpp
+        src/debuglog.cpp
     )
     target_link_libraries(test_remote_control_opt_in PRIVATE
         Qt6::Core

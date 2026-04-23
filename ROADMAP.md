@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.14 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.15 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1230,28 +1230,25 @@ dialog site, SSH `Match exec` / `KnownHostsCommand`, AI bidi /
 C1 / NEL / LS-PS stripping + preview-length parity). These are the
 remainder, captured so they don't drop on the floor.
 
-- 📋 **Config backup retention cap.** `.corrupt-<ms>` files
-  accumulate indefinitely when a user repeatedly opens Ants with a
-  broken config. Add a "keep newest 5" sweep inside
-  `rotateCorruptFileAside` or at app startup.
-- 📋 **Remote-control: cache gate decision at process start.** A
-  second MainWindow (File → New Window) currently re-reads
-  `remoteControlEnabled()` and starts the listener if the config
-  was flipped at runtime. Qt's `QLocalServer` second-bind will fail,
-  but the "requires restart" comment is technically false. Read the
-  flag into a static bool at first construction and reuse.
-- 📋 **Remote-control: replace source-grep gate test with
-  behavioral.** The 0.7.12 test greps for `remoteControlEnabled()`
-  within 400 chars of `m_remoteControl->start()`. A refactor that
-  renames the getter or hoists the check to a helper would silently
-  defeat the gate while still matching (or failing) the grep.
-  Better: construct a `Config` with the key false, assert no socket
-  exists at `defaultSocketPath()`.
-- 📋 **Remote-control: amend `filterControlChars` header comment.**
-  `remotecontrol.h` docstring says "C0 / C1 control bytes" — only
-  C0 is stripped (C1 bytes are UTF-8 continuation bytes and
-  structurally cannot be stripped at the byte level). Drop "C1" from
-  the comment.
+- ✅ **Config backup retention cap.** Shipped 0.7.12 (code) +
+  0.7.15 (regression test). `rotateCorruptFileAside` prunes siblings
+  beyond the newest 5; ranks on mtime, not filename timestamp.
+  `config_parse_failure_guard` INV-5 plants 8 stale backups and
+  confirms post-prune count.
+- ✅ **Remote-control: cache gate decision at process start.** Shipped
+  0.7.12. `mainwindow.cpp:799` uses `static const bool
+  remoteControlGate = m_config.remoteControlEnabled()` so a second
+  MainWindow doesn't re-read the flag.
+- ✅ **Remote-control: behavioral gate test.** Shipped 0.7.15. Config
+  round-trip assertion replaces the 0.7.12 grep-for-getter-name
+  approach (a rename would have silently defeated the grep).
+  Structural "start() lives inside a conditional" check retained
+  as plain-substring lookback.
+- ✅ **Remote-control: `filterControlChars` header comment.** Already
+  accurate in `remotecontrol.h:70-79` — "Strip C0 control bytes"
+  with explicit rationale for why C1 is the AI-dialog layer's job
+  (C1 bytes are UTF-8 continuation, structurally can't be stripped
+  at byte level).
 - ✅ **Audit rule-pack trust: project-scoped store.** Shipped 0.7.13.
   Replaced the global `audit_trust_command_rules` bool with a
   `{canonical project_path → sha256(audit_rules.json)}` store
@@ -1267,14 +1264,15 @@ remainder, captured so they don't drop on the floor.
   default-untrusted, round-trip, hash-invalidation, project-scoping,
   symlink+trailing-slash canonicalization, idempotent untrust, and
   cross-instance persistence.
-- 📋 **`/tmp/kwin_*.js` orphan cleanup.** Crash / dbus-hang leaves
-  files in `/tmp`. Add a startup sweep in `MainWindow` ctor that
-  removes `kwin_{pos,move,center}_ants_*.js` older than 1 hour (or
-  keep the `QTemporaryFile` alive in a member until the async
-  `finished` lambda fires).
-- 📋 **Plugin-manager `manifest.json` + themes `*.json` parse warnings.**
-  Both loaders silently skip malformed files. Add a `qWarning` with
-  the parse-error offset so users find their own typos.
+- ✅ **`/tmp/kwin_*.js` orphan cleanup.** Shipped 0.7.15.
+  `MainWindow` ctor runs `sweepKwinScriptOrphansOnce()` — a
+  once-per-process scan of `kwin_{pos,move,center}_ants_*.js` with
+  an mtime older than 1 hour. Guarded by a `static bool` so a
+  second MainWindow (File → New Window) doesn't re-sweep.
+- ✅ **Plugin-manager `manifest.json` + themes `*.json` parse warnings.**
+  Already implemented. `pluginmanager.cpp:146` + `themes.cpp:308`
+  both emit `qWarning` with error string + byte offset when
+  `QJsonDocument::fromJson` fails.
 - 📋 **AI `sendRequest` context redaction (OWASP LLM06).** Terminal
   scrollback is shipped to the LLM verbatim — may contain API keys
   (AKIA…, ghp_…, sk-…, Bearer, PRIVATE KEY blocks), `export` lines
@@ -1290,16 +1288,18 @@ remainder, captured so they don't drop on the floor.
   parse-failure guard now lives at three sites (Config,
   ClaudeAllowlist saveSettings, SettingsDialog Install-hooks) but
   only Config has a behavioral test. Mirror for the other two.
-- 📋 **Spec.md timestamp format drift.**
-  `config_parse_failure_guard/spec.md:53` says `<unix_secs>`; code
-  uses `<ms_timestamp>`. Update spec.
+- ✅ **Spec.md timestamp format drift.** Spec already uses
+  `<ms_timestamp>` (line 51), matching the code. Roadmap bullet
+  was stale.
 - 📋 **`secureio.h` split.** Growing to straddle two concerns
   (perms + backup rotation). Before a third helper lands, split into
   `secureio.h` (perms + future zeroize) + `configbackup.h` (rotation).
-- 📋 **Plan-mode regression-test tightening.** Add a `QSignalSpy`
-  assertion to `runToggleFreeTailPreservesState` confirming exactly
-  one emission across both parse phases — guards against a future
-  regression that re-emits the same state.
+- ✅ **Plan-mode regression-test tightening.** Shipped 0.7.15.
+  `runToggleFreeTailPreservesState` now attaches a
+  `QSignalSpy(&ci, &ClaudeIntegration::planModeChanged)` and asserts
+  exactly one emission across both parse phases (seed triggers
+  NotSet → plan; tail phase has zero permission-mode events and
+  must not re-fire).
 
 ### 🎨 Claude Code UX — per-tab status indicator (user request 2026-04-23)
 

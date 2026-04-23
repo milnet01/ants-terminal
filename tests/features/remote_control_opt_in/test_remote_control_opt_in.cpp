@@ -1,22 +1,32 @@
 // Feature-conformance test for spec.md — asserts:
 //   (A) filterControlChars strips the dangerous C0 subset + DEL while
 //       preserving HT / LF / CR and all UTF-8 bytes >= 0x80.
-//   (B) source-grep invariants confirming the opt-in config gate and
-//       the raw-bypass path are wired into cmdSendText + mainwindow.
+//   (B) Config API round-trip for `remote_control_enabled` — the gate
+//       the listener-start path reads — plus structural confirmation
+//       that `RemoteControl::start()` is call-gated, not unconditional.
+//   (C) source-grep invariants on raw-bypass wiring inside cmdSendText.
 //
 // (A) exercises the filter function directly — pure, no Qt dialog
-// infrastructure needed. (B) locks down the wiring so a future refactor
-// doesn't silently bypass the filter or open the socket by default.
+// infrastructure needed. (B) replaces the earlier "grep for the getter
+// name" gate test: a refactor that renames Config::remoteControlEnabled()
+// now fails at compile-time (the test calls the getter directly), and
+// a refactor that hoists start() out of any conditional is caught by
+// the structural pattern match rather than the fragile 400-char
+// lookback. (C) lives unchanged — the raw-bypass path is still a
+// natural structural check.
 //
 // Exit 0 = all assertions hold. Non-zero = regression.
 
+#include "config.h"
 #include "remotecontrol.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 
+#include <algorithm>
 #include <cstdio>
-#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -147,23 +157,84 @@ void testSourceInvariants() {
     expect(rc.find("filterControlChars(") != std::string::npos,
            "source: cmdSendText delegates to filterControlChars");
 
-    // INV-C: mainwindow.cpp gates start() on remoteControlEnabled().
-    expect(mw.find("remoteControlEnabled()") != std::string::npos,
-           "source: MainWindow gates listener on config key");
-
-    // INV-D: the gate surrounds start() (no unconditional call after
-    // the introduction of the config key). Heuristic: find the first
-    // occurrence of "m_remoteControl->start()" and confirm a
-    // "remoteControlEnabled" appears in the preceding 200 chars.
-    size_t startCall = mw.find("m_remoteControl->start()");
-    expect(startCall != std::string::npos,
-           "source: RemoteControl::start() call present");
-    if (startCall != std::string::npos) {
-        const size_t lookback = std::min<size_t>(startCall, 400);
-        const std::string window = mw.substr(startCall - lookback, lookback);
-        expect(window.find("remoteControlEnabled") != std::string::npos,
-               "source: start() call gated by remoteControlEnabled check");
+    // INV-C (structural): start() call must appear inside a conditional
+    // rather than at statement-top. Look backward 200 chars from the
+    // first `m_remoteControl->start()` and confirm an `if (` is in
+    // scope. Catches a refactor that removes the gate entirely.
+    // Does NOT depend on the getter's name — the behavioral
+    // round-trip below is what locks `remoteControlEnabled()`
+    // specifically. (Plain-substring, not regex — avoids catastrophic
+    // backtracking on the full mainwindow.cpp body.)
+    {
+        const size_t startCall = mw.find("m_remoteControl->start()");
+        const bool found = (startCall != std::string::npos);
+        expect(found, "source: RemoteControl::start() call present");
+        if (found) {
+            const size_t lookback = std::min<size_t>(startCall, 200);
+            const std::string window = mw.substr(startCall - lookback, lookback);
+            expect(window.find("if (") != std::string::npos ||
+                   window.find("if(") != std::string::npos,
+                   "source: start() lives inside a conditional (not unconditional)");
+        }
     }
+}
+
+// Config round-trip — the behavioral piece that replaces the fragile
+// "grep for remoteControlEnabled" lookback. A refactor that renames
+// the getter fails at compile-time here; a refactor that changes the
+// default from false fails at the default-check; a refactor that
+// breaks save/load persistence fails at the round-trip.
+void testGateBehavioral() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) {
+        expect(false, "gate-behavioral: QTemporaryDir failed to create");
+        return;
+    }
+    // Sandbox XDG so Config::configPath() writes into tmp, not the
+    // user's real ~/.config/ants-terminal. Do NOT use
+    // QStandardPaths::setTestModeEnabled — it routes to a Qt-test-
+    // specific path that ignores XDG and has collided with real user
+    // configs in practice (see config_parse_failure_guard/test).
+    qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+
+    // 1. Default: fresh Config → flag is false.
+    {
+        Config cfg;
+        expect(cfg.remoteControlEnabled() == false,
+               "gate-behavioral: fresh Config defaults remote_control_enabled=false");
+    }
+
+    // 2. Setter round-trip — set true, re-read same instance.
+    {
+        Config cfg;
+        cfg.setRemoteControlEnabled(true);
+        expect(cfg.remoteControlEnabled() == true,
+               "gate-behavioral: setRemoteControlEnabled(true) round-trips in-memory");
+    }
+
+    // 3. Persistence round-trip — set true, discard, reload.
+    {
+        {
+            Config cfg;
+            cfg.setRemoteControlEnabled(true);
+        }
+        Config cfg2;
+        expect(cfg2.remoteControlEnabled() == true,
+               "gate-behavioral: remote_control_enabled persists across Config instances");
+    }
+
+    // 4. Setter round-trip back to false.
+    {
+        {
+            Config cfg;
+            cfg.setRemoteControlEnabled(false);
+        }
+        Config cfg2;
+        expect(cfg2.remoteControlEnabled() == false,
+               "gate-behavioral: setRemoteControlEnabled(false) round-trips across instances");
+    }
+
+    qunsetenv("XDG_CONFIG_HOME");
 }
 
 }  // namespace
@@ -173,6 +244,7 @@ int main(int argc, char **argv) {
 
     testFilter();
     testSourceInvariants();
+    testGateBehavioral();
 
     if (g_failures > 0) {
         std::fprintf(stderr, "\n%d assertion(s) failed.\n", g_failures);

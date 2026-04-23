@@ -25,6 +25,10 @@ namespace {
 // only other caller) so the conversion table is one scroll away from
 // the portal binding.
 QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
+
+// Defined below, after the Qt includes — sweeps stale
+// `/tmp/kwin_*_ants_*.js` orphans on startup.
+void sweepKwinScriptOrphansOnce();
 }
 
 #ifdef ANTS_LUA_PLUGINS
@@ -91,7 +95,41 @@ QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
 #include <LayerShellQt/Window>
 #endif
 
+namespace {
+// Sweep stale `/tmp/kwin_{pos,move,center}_ants_*.js` files. These are
+// written by xcbpositiontracker and the mainwindow move/center helpers
+// as `QTemporaryFile(autoRemove=false)` + chained-dbus removal on
+// script-unload. A crash, SIGKILL, or dbus-send hang between write and
+// unload orphans the file. No functional harm — KWin has already loaded
+// its copy — but the files accumulate in /tmp. Sweep anything older
+// than one hour on startup; that comfortably clears genuine orphans
+// without racing an in-flight script that another instance just wrote.
+// Runs once per process; a second MainWindow (File → New Window) does
+// not re-sweep.
+void sweepKwinScriptOrphansOnce() {
+    static bool swept = false;
+    if (swept) return;
+    swept = true;
+    QDir tmp(QDir::tempPath());
+    const QStringList patterns = {
+        QStringLiteral("kwin_pos_ants_*.js"),
+        QStringLiteral("kwin_move_ants_*.js"),
+        QStringLiteral("kwin_center_ants_*.js"),
+    };
+    const QDateTime cutoff = QDateTime::currentDateTime().addSecs(-3600);
+    const QFileInfoList stale = tmp.entryInfoList(
+        patterns, QDir::Files | QDir::NoSymLinks);
+    for (const QFileInfo &fi : stale) {
+        if (fi.lastModified() < cutoff) {
+            QFile::remove(fi.absoluteFilePath());
+        }
+    }
+}
+}  // namespace
+
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
+    sweepKwinScriptOrphansOnce();
+
     // Disable QMainWindow's built-in QWidgetAnimator. It exists to
     // animate dock-widget resizes and rearrangements — we have no
     // dock widgets, and the animator drives a 60 Hz
