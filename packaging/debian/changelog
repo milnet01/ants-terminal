@@ -1,3 +1,43 @@
+ants-terminal (0.7.11-1) unstable; urgency=medium
+
+  * Housekeeping pass — two long-deferred 0.8+ queue items and a
+    ROADMAP correction. The perf item rewrites the combining-char map
+    shift in deleteChars / insertBlanks to use node-handle extract() +
+    key mutate + insert() instead of rebuilding the map. The security
+    item is a defence-in-depth stat-guard around the remote-control
+    socket's /tmp fallback cleanup. The correction promotes the
+    0.7.9-era text-run QString accumulator work from deferred to
+    shipped (it was, the ROADMAP entry just missed the update).
+  * Changed: combining-char map shift without rebuild. deleteChars /
+    insertBlanks used to build a fresh unordered_map<int, vector
+    <uint32_t>>, move each surviving entry into it (re-hashing every
+    key), then move-assign it back. Rewrote to collect affected keys
+    in two small local vectors (toErase / toShift), erase the deleted
+    ones, then for each shift extract the node handle, mutate its
+    integer key, and reinsert — zero bucket reallocation, zero
+    re-hashing of the value vectors. deleteChars processes shifts in
+    ascending order; insertBlanks in descending order. Empty-map
+    fast-path skips the block entirely. Tests combining_on_resize and
+    osc8_insert_delete_lines still pass.
+  * Security: IPC-socket /tmp fallback stat-guard. RemoteControl::
+    start() used to call QLocalServer::removeServer(path)
+    unconditionally when listen() failed on a stale socket. The
+    XDG_RUNTIME_DIR path is 0700-safe, but the /tmp/ants-terminal-
+    <uid>.sock fallback lives in shared-world-writable space where a
+    symlink or foreign file could trick us into unlinking something
+    unrelated. Added a safeToUnlinkLocalSocket() helper that lstat()s
+    the path and refuses removal unless it's an actual S_ISSOCK owned
+    by getuid(). ENOENT passes through. On refusal the remote-control
+    layer disables itself with a clear log message.
+  * Fixed: ROADMAP accuracy — the deferred entry for per-frame QString
+    construction in the text-run accumulator was actually shipped in
+    0.7.9 (both TerminalWidget::paintEvent and GlRenderer::render
+    accumulate codepoints into a reusable vector<char32_t> on the Run
+    struct and call QString::fromUcs4(data, size) once at run-push
+    time). Promoted to shipped with a retrospective write-up.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 23 Apr 2026 08:35:31 +0200
+
 ants-terminal (0.7.10-1) unstable; urgency=medium
 
   * Follow-through on the 0.7.9 null-result. The std::rotate scroll

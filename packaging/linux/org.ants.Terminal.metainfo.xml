@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.11" date="2026-04-23">
+      <description>
+        <p>Housekeeping pass — two long-deferred items from the 0.8+ queue land early, plus a ROADMAP correction. The perf item rewrites the combining-char map shift in <code>deleteChars</code> / <code>insertBlanks</code> to use node-handle <code>extract()</code> + key mutate + <code>insert()</code> instead of rebuilding the map. The security item is a defence-in-depth stat-guard around the remote-control socket's <code>/tmp</code> fallback cleanup.</p>
+        <p>Changes:</p>
+        <ul>
+          <li><em>Changed — combining-char map shift without rebuild</em> (<code>src/terminalgrid.cpp</code>, <code>deleteChars</code> / <code>insertBlanks</code>). Old impl built a fresh <code>std::unordered_map</code>, moved each surviving entry into it (re-hashing every key), then move-assigned it back. Rewrote to collect affected keys in two small local vectors, erase the deleted ones, then for each shift extract the node handle, mutate its integer key, and reinsert — zero bucket reallocation, zero re-hashing of the value vectors. <code>deleteChars</code> processes shifts ascending; <code>insertBlanks</code> descending. Empty-map fast-path skips the block entirely, so steady-state rows pay nothing. Tests <code>combining_on_resize</code> and <code>osc8_insert_delete_lines</code> still pass.</li>
+          <li><em>Security — IPC-socket <code>/tmp</code> fallback stat-guard</em> (<code>src/remotecontrol.cpp</code>). <code>RemoteControl::start()</code> used to call <code>QLocalServer::removeServer(path)</code> unconditionally on stale-socket recovery. The <code>XDG_RUNTIME_DIR</code> path is 0700-owned and safe, but the <code>/tmp/ants-terminal-&lt;uid&gt;.sock</code> fallback lives in shared-world-writable space where a symlink or foreign file could trick us into unlinking something unrelated. Added <code>safeToUnlinkLocalSocket()</code> that <code>lstat()</code>s the path and refuses removal unless it's an actual <code>S_ISSOCK</code> owned by <code>getuid()</code>. <code>ENOENT</code> passes through. On refusal the remote-control layer disables itself with a clear log message — no silent unlink of unknown files.</li>
+          <li><em>Fixed — ROADMAP accuracy.</em> The 💭 entry for "Per-frame <code>QString</code> construction in the text-run accumulator" was actually shipped in 0.7.9 (both <code>TerminalWidget::paintEvent</code> and <code>GlRenderer::render</code> accumulate codepoints into a reusable <code>std::vector&lt;char32_t&gt;</code> on the <code>Run</code> struct and call <code>QString::fromUcs4(data, size)</code> once at run-push time). Promoted to ✅ with a retrospective write-up matching the free-list entry.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.10" date="2026-04-23">
       <description>
         <p>Follow-through on the 0.7.9 null-result. The <code>std::rotate</code> scroll refactor was rejected because it paid for save/restore overhead without touching the real bottleneck — the per-scroll <code>vector&lt;Cell&gt;(m_cols)</code> heap allocation for the new bottom row. This release addresses that bottleneck directly with a small free-list of <code>m_cols</code>-sized cell buffers fed by any path that discards a row (scrollback eviction, <code>scrollDown</code>, <code>insertLines</code>, <code>deleteLines</code>) and drained by paths that need a fresh blank row. Steady-state scroll work on a full scrollback runs allocator-free.</p>

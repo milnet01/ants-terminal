@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.10 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.11 (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -859,14 +859,26 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   improved; `utf8_cjk` also gained +12 %. First perf result to
   validate the 0.7.9 thesis that the container shuffle was a red
   herring and the allocator was the actual hot spot.
-- 💭 **⚡ Per-frame `QString` construction in the text-run accumulator.**
-  `QString::fromUcs4()` is called per non-space cell. Accumulate
-  codepoints into a `std::vector<uint32_t>` and construct the run
-  string once at push time.
-- 💭 **⚡ Combining-char map in-place key remap on
-  `deleteChars` / `insertBlanks`.** Current impl reallocates the
-  `unordered_map` per call. Rewrite to iterate + reassign keys without
-  rebuilding.
+- ✅ **⚡ Per-frame `QString` construction in the text-run accumulator
+  (shipped 0.7.9).** `QString::fromUcs4()` used to be called per
+  non-space cell in both `TerminalWidget::paintEvent` and
+  `GlRenderer::render`; the run was then built via repeated
+  `QString::operator+=`. Reworked to accumulate codepoints into a
+  reusable `std::vector<char32_t>` on the `Run` struct and call
+  `QString::fromUcs4(data, size)` exactly once at run-push time. The
+  vector is reused across runs within a frame (cleared on push), so
+  steady-state allocation is amortised.
+- ✅ **⚡ Combining-char map in-place key remap on `deleteChars` /
+  `insertBlanks` (shipped 0.7.11).** Old impl built a new
+  `unordered_map` then move-assigned it, re-hashing every surviving
+  entry and reallocating buckets. Rewrote to use node-handle
+  `extract()` + key-mutate + `insert()`: the map's nodes are detached,
+  their integer key field is set to the shifted column, and the nodes
+  are reinserted — no bucket reallocation, no re-hashing of the value
+  vector. Empty-map fast-path short-circuits the whole block.
+  deleteChars sorts shifted keys ascending (leftward shift can't
+  collide in ascending order); insertBlanks sorts descending (rightward
+  shift can't collide in descending order).
 - ⚖️ **🧹 Dialog base class (investigated 0.7.9, rejected).** Only
   `settingsdialog.cpp` and `claudeallowlist.cpp` actually use
   `QDialogButtonBox` with Ok/Apply/Cancel; the other four dialogs
@@ -883,12 +895,14 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   (`claudeintegration.cpp` for `claude` binary, `ssh` via `Pty`) have
   one-off patterns with no shared structure to extract. Re-file if a
   second generalised process-runner emerges.
-- 💭 **🔒 IPC-socket `/tmp` fallback path.** `remotecontrol.cpp`
-  defaults to `XDG_RUNTIME_DIR` (correct, 0700 perms) but falls back
-  to `/tmp/ants-terminal-<uid>.sock` when that's empty. The fallback's
-  `removeServer(path)` → `listen(path)` sequence is robust against
-  symlink races in modern Qt, but defence-in-depth: `stat(path)` and
-  refuse to unlink if the target isn't a socket.
+- ✅ **🔒 IPC-socket `/tmp` fallback stat-guard (shipped 0.7.11).**
+  `remotecontrol.cpp` still defaults to `XDG_RUNTIME_DIR` (correct,
+  0700 perms) but now gates every `QLocalServer::removeServer(path)`
+  call behind a `lstat()` check. Uses `lstat` (not `stat`) so a
+  symlink reports as a symlink and is refused. Requires `S_ISSOCK(mode)`
+  AND `st_uid == getuid()`; `ENOENT` passes through (nothing to remove).
+  On refusal the remote-control layer disables itself with a clear
+  log message instead of unlinking an unknown file.
 
 ### ✅ Shipped in 0.7.8 — Fold-in to the project audit tool
 

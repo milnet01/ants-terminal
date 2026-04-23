@@ -13,6 +13,58 @@ for security-relevant changes.
 ## [Unreleased]
 
 
+## [0.7.11] — 2026-04-23
+
+**Theme:** housekeeping pass — two long-deferred 💭 items from the 0.8+ queue
+and a ROADMAP correction. The perf item rewrites the combining-char map
+shift in `deleteChars` / `insertBlanks` to use node-handle `extract()` +
+key mutate + `insert()` instead of rebuilding the map. The security item
+is a defence-in-depth stat-guard around the remote-control socket's
+`/tmp` fallback cleanup. The correction promotes the 0.7.9-era text-run
+`QString` accumulator work from 💭 to ✅ (it was shipped, the ROADMAP
+entry just missed the update).
+
+### Changed
+
+- **Combining-char map shift without rebuild** (`src/terminalgrid.cpp`,
+  `deleteChars` / `insertBlanks`). Old impl built a fresh
+  `std::unordered_map<int, std::vector<uint32_t>>`, moved each surviving
+  entry into it (re-hashing every key), then move-assigned it back.
+  Rewrote to collect affected keys in two small local vectors
+  (`toErase` / `toShift`), erase the deleted ones, then for each shift
+  extract the node handle, mutate its integer key, and reinsert —
+  zero bucket reallocation, zero re-hashing of the value vectors.
+  `deleteChars` processes shifts in ascending order (leftward shift
+  can't collide); `insertBlanks` in descending order (rightward shift
+  can't collide). Empty-map fast-path skips the block entirely, so
+  steady-state rows with no combining content (the vast majority) pay
+  nothing. Tests `combining_on_resize` and `osc8_insert_delete_lines`
+  still pass.
+
+### Security
+
+- **IPC-socket `/tmp` fallback stat-guard** (`src/remotecontrol.cpp`).
+  `RemoteControl::start()` used to call `QLocalServer::removeServer(path)`
+  unconditionally when `listen()` failed on a stale socket. The
+  `XDG_RUNTIME_DIR` path (0700-owned) is safe, but the `/tmp/ants-terminal
+  -<uid>.sock` fallback lives in shared-world-writable space where a
+  symlink or a foreign file of the same name could trick us into
+  unlinking something unrelated. Added a `safeToUnlinkLocalSocket()`
+  helper that `lstat()`s the path and refuses removal unless it's an
+  actual `S_ISSOCK` owned by `getuid()`. `ENOENT` passes through (nothing
+  to remove anyway). On refusal the remote-control layer disables itself
+  with a clear log message — no silent unlink of unknown files.
+
+### Fixed
+
+- **ROADMAP accuracy** — the 💭 entry for "Per-frame `QString` construction
+  in the text-run accumulator" was actually shipped in 0.7.9 (both
+  `TerminalWidget::paintEvent` and `GlRenderer::render` accumulate
+  codepoints into a reusable `std::vector<char32_t>` on the `Run` struct
+  and call `QString::fromUcs4(data, size)` once at run-push time). The
+  stale entry is now promoted to ✅ with the same-style retrospective
+  write-up the free-list entry got.
+
 ## [0.7.10] — 2026-04-23
 
 **Theme:** follow-through on the 0.7.9 null-result. The `std::rotate` scroll

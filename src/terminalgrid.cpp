@@ -1439,16 +1439,31 @@ void TerminalGrid::deleteChars(int count) {
         c.attrs.bg = m_currentAttrs.bg;
         row.push_back(c);
     }
-    // Shift combining chars
+    // Shift combining chars in place via node-handle extract/insert —
+    // avoids rebuilding the map (and re-hashing surviving entries) when
+    // combining is populated (emoji / IM input rows). Empty map → no-op.
     auto &comb = m_screenLines[m_cursorRow].combining;
-    std::unordered_map<int, std::vector<uint32_t>> newComb;
-    for (auto &[col, chars] : comb) {
-        if (col < m_cursorCol)
-            newComb[col] = std::move(chars);
-        else if (col >= m_cursorCol + count)
-            newComb[col - count] = std::move(chars);
+    if (!comb.empty()) {
+        std::vector<int> toErase;
+        std::vector<int> toShift;
+        for (auto &kv : comb) {
+            if (kv.first >= m_cursorCol && kv.first < m_cursorCol + count)
+                toErase.push_back(kv.first);
+            else if (kv.first >= m_cursorCol + count)
+                toShift.push_back(kv.first);
+        }
+        for (int k : toErase) comb.erase(k);
+        // Ascending order: new keys (old - count) don't collide with
+        // yet-to-be-processed old keys since shift is strictly leftward.
+        std::sort(toShift.begin(), toShift.end());
+        for (int oldKey : toShift) {
+            auto nh = comb.extract(oldKey);
+            if (!nh.empty()) {
+                nh.key() = oldKey - count;
+                comb.insert(std::move(nh));
+            }
+        }
     }
-    comb = std::move(newComb);
 }
 
 void TerminalGrid::insertBlanks(int count) {
@@ -1461,16 +1476,29 @@ void TerminalGrid::insertBlanks(int count) {
     blank.attrs.bg = m_currentAttrs.bg;
     row.insert(row.begin() + m_cursorCol, count, blank);
     row.resize(m_cols);
-    // Shift combining chars
+    // Shift combining chars — see deleteChars() for rationale.
     auto &comb = m_screenLines[m_cursorRow].combining;
-    std::unordered_map<int, std::vector<uint32_t>> newComb;
-    for (auto &[col, chars] : comb) {
-        if (col < m_cursorCol)
-            newComb[col] = std::move(chars);
-        else if (col + count < m_cols)
-            newComb[col + count] = std::move(chars);
+    if (!comb.empty()) {
+        std::vector<int> toErase;
+        std::vector<int> toShift;
+        for (auto &kv : comb) {
+            if (kv.first >= m_cursorCol && kv.first + count >= m_cols)
+                toErase.push_back(kv.first);
+            else if (kv.first >= m_cursorCol)
+                toShift.push_back(kv.first);
+        }
+        for (int k : toErase) comb.erase(k);
+        // Descending order: new keys (old + count) don't collide with
+        // yet-to-be-processed old keys since shift is strictly rightward.
+        std::sort(toShift.begin(), toShift.end(), std::greater<int>());
+        for (int oldKey : toShift) {
+            auto nh = comb.extract(oldKey);
+            if (!nh.empty()) {
+                nh.key() = oldKey + count;
+                comb.insert(std::move(nh));
+            }
+        }
     }
-    comb = std::move(newComb);
 }
 
 void TerminalGrid::scrollUp(int count) {

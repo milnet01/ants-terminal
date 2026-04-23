@@ -14,6 +14,31 @@
 #include <QStandardPaths>
 #include <QTabWidget>
 
+#include <sys/stat.h>
+#include <unistd.h>
+
+namespace {
+// Defence-in-depth before unlinking the /tmp fallback socket path: refuse
+// to remove anything that isn't a lstat()'d socket owned by the running
+// user. XDG_RUNTIME_DIR is 0700 and already safe; the fallback path lives
+// in shared /tmp where a prior-session symlink (or a same-uid confusion
+// between two apps sharing the UID-suffixed name) could otherwise cause
+// us to unlink an unrelated file. lstat (not stat) so a symlink is
+// reported as a symlink and gets refused.
+bool safeToUnlinkLocalSocket(const QString &path) {
+    const QByteArray bytes = path.toLocal8Bit();
+    struct stat st;
+    if (::lstat(bytes.constData(), &st) != 0) {
+        // ENOENT is the common case — nothing to remove, nothing to guard.
+        return true;
+    }
+    if (!S_ISSOCK(st.st_mode)) return false;
+    if (st.st_uid != ::getuid()) return false;
+    return true;
+}
+}
+
+
 RemoteControl::RemoteControl(MainWindow *main, QObject *parent)
     : QObject(parent), m_main(main) {}
 
@@ -56,7 +81,18 @@ bool RemoteControl::start() {
     // If another live instance holds the lock, listen() fails and
     // we skip the takeover (see outer `if` below).
     if (!m_server->listen(path)) {
-        QLocalServer::removeServer(path);
+        if (safeToUnlinkLocalSocket(path)) {
+            QLocalServer::removeServer(path);
+        } else {
+            ANTS_LOG(DebugLog::Network,
+                "remote-control: refusing to unlink %s — not a socket "
+                "owned by this user (possible symlink or foreign file); "
+                "remote-control disabled for this process",
+                qUtf8Printable(path));
+            delete m_server;
+            m_server = nullptr;
+            return false;
+        }
         if (!m_server->listen(path)) {
             ANTS_LOG(DebugLog::Network,
                 "remote-control: listen(%s) failed — another instance "
