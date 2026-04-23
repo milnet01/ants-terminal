@@ -1217,6 +1217,83 @@ grep rules or individual tickets as they become actionable.
   transcript as the source of truth; treat the directory-name
   encoding as fallback only.
 
+### 🔁 Follow-ups from the re-review checkpoint (2026-04-23)
+
+The 8-agent re-review of the Tier 1 batch surfaced a second wave of
+findings. The HIGH ones landed in the same commit (missed settings-
+dialog site, SSH `Match exec` / `KnownHostsCommand`, AI bidi /
+C1 / NEL / LS-PS stripping + preview-length parity). These are the
+remainder, captured so they don't drop on the floor.
+
+- 📋 **Config backup retention cap.** `.corrupt-<ms>` files
+  accumulate indefinitely when a user repeatedly opens Ants with a
+  broken config. Add a "keep newest 5" sweep inside
+  `rotateCorruptFileAside` or at app startup.
+- 📋 **Remote-control: cache gate decision at process start.** A
+  second MainWindow (File → New Window) currently re-reads
+  `remoteControlEnabled()` and starts the listener if the config
+  was flipped at runtime. Qt's `QLocalServer` second-bind will fail,
+  but the "requires restart" comment is technically false. Read the
+  flag into a static bool at first construction and reuse.
+- 📋 **Remote-control: replace source-grep gate test with
+  behavioral.** The 0.7.12 test greps for `remoteControlEnabled()`
+  within 400 chars of `m_remoteControl->start()`. A refactor that
+  renames the getter or hoists the check to a helper would silently
+  defeat the gate while still matching (or failing) the grep.
+  Better: construct a `Config` with the key false, assert no socket
+  exists at `defaultSocketPath()`.
+- 📋 **Remote-control: amend `filterControlChars` header comment.**
+  `remotecontrol.h` docstring says "C0 / C1 control bytes" — only
+  C0 is stripped (C1 bytes are UTF-8 continuation bytes and
+  structurally cannot be stripped at the byte level). Drop "C1" from
+  the comment.
+- 📋 **Audit rule-pack trust: project-scoped store.**
+  `audit_trust_command_rules` is a global boolean. Once flipped for
+  Ants's own project, every cloned repo inherits trust. Needed: a
+  `{project_path → sha256(audit_rules.json)}` trust store. Re-prompt
+  when the hash changes.
+- 📋 **Audit rule-pack trust: in-dialog UI surface.** `qWarning` to
+  stderr is invisible to GUI users. Surface the skipped-rule count
+  as a badge in the dialog (next to the existing "User rules: N"
+  badge) with a tooltip pointing at the config flag.
+- 📋 **Audit rule-pack trust: regression test.** No test covers the
+  gate today — a future refactor could bypass it silently. Write
+  `tests/features/audit_command_rule_trust/` asserting rules with
+  `command` fields are rejected unless the flag is set.
+- 📋 **`/tmp/kwin_*.js` orphan cleanup.** Crash / dbus-hang leaves
+  files in `/tmp`. Add a startup sweep in `MainWindow` ctor that
+  removes `kwin_{pos,move,center}_ants_*.js` older than 1 hour (or
+  keep the `QTemporaryFile` alive in a member until the async
+  `finished` lambda fires).
+- 📋 **Plugin-manager `manifest.json` + themes `*.json` parse warnings.**
+  Both loaders silently skip malformed files. Add a `qWarning` with
+  the parse-error offset so users find their own typos.
+- 📋 **AI `sendRequest` context redaction (OWASP LLM06).** Terminal
+  scrollback is shipped to the LLM verbatim — may contain API keys
+  (AKIA…, ghp_…, sk-…, Bearer, PRIVATE KEY blocks), `export` lines
+  with secrets, `.env` contents. Regex-redact known secret shapes
+  before send. Distinct from LLM01/LLM02 (which the 0.7.12 fix
+  addressed).
+- 📋 **AI `extractAndSanitizeCommand` language-hint heuristic.** The
+  "strip first line if < 10 chars" heuristic eats any command whose
+  first line is short (e.g. `foo\tbar`). Gate on
+  `nl < 10 && !line.contains(' ') && !line.contains('\t')` — language
+  IDs are single unbroken tokens.
+- 📋 **Allowlist + settings-dialog feature-test analogs.** The
+  parse-failure guard now lives at three sites (Config,
+  ClaudeAllowlist saveSettings, SettingsDialog Install-hooks) but
+  only Config has a behavioral test. Mirror for the other two.
+- 📋 **Spec.md timestamp format drift.**
+  `config_parse_failure_guard/spec.md:53` says `<unix_secs>`; code
+  uses `<ms_timestamp>`. Update spec.
+- 📋 **`secureio.h` split.** Growing to straddle two concerns
+  (perms + backup rotation). Before a third helper lands, split into
+  `secureio.h` (perms + future zeroize) + `configbackup.h` (rotation).
+- 📋 **Plan-mode regression-test tightening.** Add a `QSignalSpy`
+  assertion to `runToggleFreeTailPreservesState` confirming exactly
+  one emission across both parse phases — guards against a future
+  regression that re-emits the same state.
+
 ### ⚡ / 🏗 Tier 3 — structural
 
 - 📋 **VtParser `Print`-run coalescing.** `vtparser.cpp:107-113`
@@ -1471,6 +1548,51 @@ a modern terminal" release.
   pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.
 - 💭 **Persistent workspaces**: save/restore entire tab+split layout +
   scrollback to disk; one-click "resume yesterday's dev session."
+
+### 🎨 Features — inline ghost-text completion
+
+Claude Code's "as-you-type" completion pattern — you begin typing a
+command (e.g. `/ind`), the rest of the best match (`ie-review`) is
+shown inline in a dim/greyed color, and TAB commits it. This is
+separate from a popup/dropdown picker — it's inline with the cursor,
+zero-click, purely suggestive. Proposed in two scopes:
+
+- 📋 **Command Palette ghost-completion (near-term, small scope).**
+  The Command Palette (Ctrl+Shift+P) already has fuzzy-match wiring.
+  As the user types, render the top match's unmatched suffix in a
+  dimmed color inline with their input (roughly `palette[fg] * 0.45
+  alpha`). TAB commits. Esc / any non-matching keystroke
+  reshapes-or-cancels. Implementation lives entirely in
+  `commandpalette.cpp`; probably ~100 LoC. This is the scope that
+  matches the user-facing mental model of "like Claude Code's
+  /slash-command autocomplete."
+- 💭 **In-terminal shell ghost-suggestion (fish-shell style, bigger
+  scope).** As the user types at the shell prompt, ghost-suggest
+  from shell history — fish's killer UX feature. Requires two
+  pieces: (a) prompt detection (OSC 133 already provides this —
+  `A`/`B`/`C` markers bracket the command line), (b) a history
+  source. Two options:
+    - *Zero-shell-integration*: scrape `$HISTFILE` via inotify on
+      `~/.bash_history` / `~/.zsh_history` / `~/.local/share/fish/fish_history`.
+      Cross-shell, no user setup, but lags (history flushes on shell
+      exit for bash/zsh).
+    - *OSC-bridged*: introduce a new OSC payload
+      (`OSC 133 ; D ; <command> ST` or similar) emitted by a shell
+      plugin (shipped alongside Ants for bash/zsh/fish). Near-realtime,
+      but requires shell-side setup.
+  Render the ghost suggestion inline (rightward from the cursor) by
+  injecting it into the terminal's own cursor-row painting — gated
+  on OSC 133 A (we know we're on a prompt line), cleared on A again
+  or on PTY output (user's shell re-printing over it).
+  Non-trivial — touches `terminalgrid.cpp` paint path, `vtparser.cpp`
+  (new OSC dispatch if shell plugin ships), new config keys
+  (`ghost_completion_enabled`, `ghost_completion_source`). Defer to
+  beyond 1.0 unless users ask.
+- 💭 **Frequency-ranked completion source.** Either form benefits
+  from "show the most-used match first, not just the alphabetically-
+  first match." The Command Palette could track selection counts;
+  the terminal form can lean on shell history ordering. Worth a
+  mention but not a blocker for the initial implementation.
 
 ### 📦 Distribution readiness (H5–H7, H13)
 

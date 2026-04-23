@@ -2,6 +2,7 @@
 #include "config.h"
 #include "configpaths.h"
 #include "globalshortcutsportal.h"
+#include "secureio.h"
 #include "themes.h"
 
 #include <QFormLayout>
@@ -985,17 +986,44 @@ void SettingsDialog::installClaudeHooks() {
 
     // Merge hook entries into ~/.claude/settings.json, preserving any
     // existing hooks the user has configured (UserPromptSubmit, per-
-    // project hooks, etc.). If the settings file is missing/malformed
-    // we start from an empty object rather than erroring out — Claude
-    // Code tolerates a missing file.
+    // project hooks, etc.). If the settings file is missing, we start
+    // from an empty object. If it EXISTS but fails to parse, REFUSE to
+    // proceed — otherwise we'd write back a file containing only
+    // `{"hooks": {...}}`, silently destroying every non-hooks key
+    // (model, env, permissions from ClaudeAllowlistDialog, etc.).
+    // 0.7.12 /indie-review cross-cutting fix — same silent-data-loss
+    // shape Config and ClaudeAllowlist were hardened against; same
+    // file as ClaudeAllowlist too.
     const QString settingsPath = claudeSettingsPath();
     QDir().mkpath(QFileInfo(settingsPath).absolutePath());
     QJsonObject root;
     QFile rf(settingsPath);
-    if (rf.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(rf.readAll());
+    if (rf.exists()) {
+        if (!rf.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, "Install hooks",
+                QString("Could not read %1 — refusing to overwrite. "
+                        "Check file permissions and retry.")
+                    .arg(settingsPath));
+            return;
+        }
+        const QByteArray raw = rf.readAll();
         rf.close();
-        if (doc.isObject()) root = doc.object();
+        QJsonParseError err{};
+        QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
+        if (doc.isObject()) {
+            root = doc.object();
+        } else {
+            const QString backup = rotateCorruptFileAside(settingsPath);
+            QMessageBox::warning(this, "Install hooks",
+                QString("%1 failed to parse (%2). Refusing to overwrite "
+                        "and risk clobbering non-hook keys.\n\n"
+                        "A backup of the broken file was written to:\n%3\n\n"
+                        "Hand-fix the file and retry.")
+                    .arg(settingsPath)
+                    .arg(err.errorString())
+                    .arg(backup.isEmpty() ? "(backup copy FAILED)" : backup));
+            return;
+        }
     }
     QJsonObject hooks = root.value("hooks").toObject();
     auto makeEntry = [&scriptPath]() {

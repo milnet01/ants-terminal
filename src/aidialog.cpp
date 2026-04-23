@@ -70,15 +70,27 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
         // artifacts are visible verbatim. If the sanitizer stripped any
         // bytes, the user sees "(N bytes were filtered from this command)"
         // — same mechanism as terminalwidget's paste-confirmation.
+        // Preview-vs-cmd length parity: if the preview truncates, the
+        // user's confirmation doesn't cover the tail — attacker could
+        // put benign text first and payload after. Warn explicitly.
         QString preview = cmd.toHtmlEscaped();
-        if (preview.size() > 500)
-            preview = preview.left(500) + QStringLiteral("…");
+        const int kPreviewMax = 500;
+        const bool truncatedPreview = (preview.size() > kPreviewMax);
+        if (truncatedPreview) {
+            preview = preview.left(kPreviewMax) + QStringLiteral("…");
+        }
         QString msg = QStringLiteral(
             "The AI suggested this command. It will be typed into the "
             "active terminal if you confirm.<br><br>"
             "<pre style='background:#2b2b2b;color:#eee;padding:8px;"
             "border-radius:4px;white-space:pre-wrap;word-break:break-all;'>"
             "%1</pre>").arg(preview);
+        if (truncatedPreview) {
+            msg += QStringLiteral(
+                "<br><b>⚠ Preview truncated — %1 additional byte(s) "
+                "will be executed but are not shown above.</b>"
+                ).arg(cmd.size() - kPreviewMax);
+        }
         if (stripped > 0) {
             msg += QStringLiteral(
                 "<br><i>%1 byte(s) were filtered from this command "
@@ -332,20 +344,39 @@ QString AiDialog::extractAndSanitizeCommand(const QString &response,
         cmd.truncate(kInsertCommandMaxBytes);
     }
 
-    // 3) Filter dangerous C0 controls — same set remotecontrol.cpp
-    //    filters (ESC is the headline vector). Keep HT/LF/CR.
-    //    C1 bytes (0x80+) are UTF-8 continuation bytes and must NOT be
-    //    stripped at the char level without decoding; we operate on
-    //    QChar::unicode() and only touch values < 0x20 and 0x7F so
-    //    multi-byte UTF-8 codepoints are untouched.
+    // 3) Filter dangerous controls — broader set than remotecontrol.cpp
+    //    because we also operate on QChar (UTF-16 codepoints), not raw
+    //    bytes, so we can strip C1 controls and Unicode attack
+    //    codepoints without mangling UTF-8. Strip set:
+    //      - C0 minus HT/LF/CR (0x00..0x08, 0x0B..0x1F)
+    //      - DEL (0x7F)
+    //      - C1 controls (0x80..0x9F) — NEL U+0085 et al, line-terminate
+    //        in some shells
+    //      - Line/paragraph separators U+2028, U+2029 — ditto
+    //      - Bidi overrides U+202A..U+202E and U+2066..U+2069 —
+    //        "Trojan Source" class (CVE-2021-42574) — these can make
+    //        the confirmation-dialog preview display different text
+    //        from what actually executes
+    //      - Zero-width codepoints U+200B..U+200D, U+FEFF — can hide
+    //        tokens in the preview (e.g. `rm<ZWSP>` reads as `rm`)
+    //    0.7.12 /indie-review re-review expansion.
+    auto isDangerous = [](ushort u) -> bool {
+        const bool isAllowedWs = (u == 0x09 || u == 0x0A || u == 0x0D);
+        if (u < 0x20 && !isAllowedWs) return true;   // C0
+        if (u == 0x7F) return true;                  // DEL
+        if (u >= 0x80 && u <= 0x9F) return true;     // C1 incl. NEL
+        if (u == 0x2028 || u == 0x2029) return true; // LS / PS
+        if (u >= 0x202A && u <= 0x202E) return true; // bidi overrides (old)
+        if (u >= 0x2066 && u <= 0x2069) return true; // bidi isolates (new)
+        if (u >= 0x200B && u <= 0x200D) return true; // ZWSP / ZWNJ / ZWJ
+        if (u == 0xFEFF) return true;                // ZWNBSP / BOM-as-ZWSP
+        return false;
+    };
+
     QString clean;
     clean.reserve(cmd.size());
     for (QChar c : cmd) {
-        const ushort u = c.unicode();
-        const bool isAllowedWs = (u == 0x09 || u == 0x0A || u == 0x0D);
-        const bool isC0Bad = (u < 0x20) && !isAllowedWs;
-        const bool isDel = (u == 0x7F);
-        if (isC0Bad || isDel) {
+        if (isDangerous(c.unicode())) {
             ++stripped;
             continue;
         }

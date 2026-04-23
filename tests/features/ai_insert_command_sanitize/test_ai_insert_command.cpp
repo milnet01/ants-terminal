@@ -114,6 +114,60 @@ void testSanitization() {
         expect(cmd.contains(QStringLiteral("café")),
                "sanitize: UTF-8 multi-byte preserved");
     }
+
+    // Expanded strip set (0.7.12 re-review): C1 controls, line/para
+    // separators, bidi overrides, zero-width codepoints.
+    // "Trojan Source" (CVE-2021-42574): bidi overrides can make the
+    // confirmation preview display text different from what executes.
+    // All of these must be stripped so the preview is truthful.
+    {
+        QString resp = QStringLiteral("```bash\ncmd");
+        resp += QChar(0x0085);  // NEL
+        resp += QStringLiteral("next\n```");
+        QString cmd = AiDialog::extractAndSanitizeCommand(resp);
+        expect(!cmd.contains(QChar(0x0085)),
+               "sanitize: NEL (U+0085) stripped");
+    }
+    {
+        QString resp = QStringLiteral("```bash\nrm");
+        resp += QChar(0x2028);  // LINE SEPARATOR
+        resp += QStringLiteral("rf ~\n```");
+        QString cmd = AiDialog::extractAndSanitizeCommand(resp);
+        expect(!cmd.contains(QChar(0x2028)),
+               "sanitize: LINE SEPARATOR (U+2028) stripped");
+    }
+    {
+        QString resp = QStringLiteral("```bash\nsafe");
+        resp += QChar(0x202E);  // RIGHT-TO-LEFT OVERRIDE
+        resp += QStringLiteral("evil\n```");
+        QString cmd = AiDialog::extractAndSanitizeCommand(resp);
+        expect(!cmd.contains(QChar(0x202E)),
+               "sanitize: RTL OVERRIDE (U+202E) stripped (Trojan Source)");
+    }
+    {
+        QString resp = QStringLiteral("```bash\nrm");
+        resp += QChar(0x200B);  // ZERO WIDTH SPACE
+        resp += QStringLiteral("alias-kill\n```");
+        QString cmd = AiDialog::extractAndSanitizeCommand(resp);
+        expect(!cmd.contains(QChar(0x200B)),
+               "sanitize: ZERO WIDTH SPACE (U+200B) stripped");
+    }
+    {
+        QString resp = QStringLiteral("```bash\ncafe");
+        resp += QChar(0xFEFF);  // ZWNBSP / BOM-as-ZWSP
+        resp += QStringLiteral("\n```");
+        QString cmd = AiDialog::extractAndSanitizeCommand(resp);
+        expect(!cmd.contains(QChar(0xFEFF)),
+               "sanitize: ZWNBSP (U+FEFF) stripped");
+    }
+    // Sanity: a legitimate accented character near the strip range is
+    // preserved. U+00E9 (é) is > 0x9F so not in the C1 range.
+    {
+        QString resp = QStringLiteral("```bash\necho \"passé\"\n```");
+        QString cmd = AiDialog::extractAndSanitizeCommand(resp);
+        expect(cmd.contains(QChar(0x00E9)),
+               "sanitize: regular Latin-1 accent (é, U+00E9) preserved");
+    }
 }
 
 void testLengthCap() {

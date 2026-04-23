@@ -93,6 +93,8 @@ QStringList SshBookmark::sanitizeExtraArgs(const QString &extraArgs,
         QStringLiteral("ProxyCommand"),
         QStringLiteral("LocalCommand"),
         QStringLiteral("PermitLocalCommand"),  // value=yes enables LocalCommand
+        QStringLiteral("KnownHostsCommand"),   // OpenSSH 8.5+, runs via /bin/sh -c
+        QStringLiteral("Match"),               // `Match exec "<cmd>"` shells out
     };
 
     auto optionKey = [](const QString &s) -> QString {

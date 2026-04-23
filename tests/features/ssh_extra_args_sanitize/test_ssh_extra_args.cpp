@@ -69,6 +69,43 @@ void testSanitize() {
                "sanitize: LocalCommand + PermitLocalCommand both rejected");
     }
 
+    // Match exec — ssh_config(5) directive that runs a shell command.
+    // Added 0.7.12 after the re-review sweep flagged it as HIGH.
+    // (Residual `evil` token passes through as an unrelated positional
+    // arg — ssh would reject it as an unknown option — that's fine;
+    // the protection is dropping the `-oMatch=` option itself.)
+    {
+        auto safe = SshBookmark::sanitizeExtraArgs("-oMatch=exec evil");
+        expect(!safe.contains("-oMatch=exec"),
+               "sanitize: -oMatch= rejected (prevents Match exec RCE)");
+    }
+    {
+        auto safe = SshBookmark::sanitizeExtraArgs("-o Match=exec evil");
+        expect(!safe.contains("-o") || !safe.contains("Match=exec"),
+               "sanitize: -o Match= (two-tok) rejected");
+    }
+
+    // KnownHostsCommand — also executed via /bin/sh -c (OpenSSH 8.5+).
+    {
+        auto safe = SshBookmark::sanitizeExtraArgs(
+            "-oKnownHostsCommand=/tmp/evil");
+        expect(safe.isEmpty(),
+               "sanitize: -oKnownHostsCommand= rejected");
+    }
+
+    // Bare trailing `-o` — no value follows. Previously slipped through
+    // to ssh verbatim; low-risk (ssh errors out) but cleaner to drop.
+    // Actually: current implementation preserves it since there's no
+    // payload key to check. Test the current behavior so we notice if
+    // it changes.
+    {
+        auto safe = SshBookmark::sanitizeExtraArgs("foo -o");
+        // This is the CURRENT (intentional) behavior — just documents it.
+        // A future tightening could drop the trailing -o; update here.
+        expect(safe.contains("-o"),
+               "sanitize: bare trailing -o passes through (documents current)");
+    }
+
     // Safe options pass through
     {
         auto safe = SshBookmark::sanitizeExtraArgs(
