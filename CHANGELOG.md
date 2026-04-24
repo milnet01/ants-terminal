@@ -10,6 +10,76 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.20] — 2026-04-24
+
+**Theme:** Tier 2 hardening sweep — three open 📋 items from the
+0.7.12 /indie-review landed as one release. Each has a behavioral
+regression test, source-grep on the fix's load-bearing tokens, and
+was verified to fail against pre-fix source via `git stash` before
+locking.
+
+### Security
+
+- **`debug.log` lands 0600 regardless of umask.**
+  `~/.local/share/ants-terminal/debug.log` was being created with
+  the process umask (typically 0644 under 0022). The log can
+  include PTY keystrokes (via the `input` / `pty` categories), AI
+  endpoint request+response bodies (`network`), OSC 133 HMAC digest
+  material (`shell`), and Claude transcript parse state (`claude`) —
+  every one of those is material that must not be world-readable.
+  `DebugLog::setActive` now calls `setOwnerOnlyPerms` twice after
+  the file opens: once on the `QFileDevice` to cover the just-opened
+  fd, and once on the path string to narrow any pre-existing 0644
+  file that append reused from a prior (pre-fix) run. Fix uses the
+  project-standard `secureio.h` helper, not a raw `QFile::setPermissions`
+  bitmask. Regression test: `tests/features/debuglog_perms/spec.md`
+  (4 invariants: fresh-open perms, clear-then-reopen, pre-existing
+  0644 narrowed to 0600, source uses the helper).
+- **Audit path-traversal guard on findings' `file` field.** User-
+  supplied audit rules, `audit_rules.json` in a cloned project, and
+  external scanner regex outputs can all produce findings whose
+  `file` field is e.g. `../../etc/passwd`. Pre-fix, six call sites
+  across `AuditDialog` naively concatenated `m_projectPath + "/" +
+  f.file` and passed the result to `readSnippet` / `lineIsCode` /
+  comment scans / AI-triage POST bodies — a textbook CWE-22 +
+  OWASP LLM06 (sensitive-information disclosure via LLM) chain, since
+  the AI-triage surface exfiltrates snippet contents to the configured
+  /v1/chat/completions endpoint. New `AuditDialog::resolveProjectPath`
+  helper canonicalizes the candidate path (resolves `..` and
+  dereferences symlinks in a single `QFileInfo::canonicalFilePath`
+  call), requires the result to be anchored under the canonical
+  project root (with a trailing-slash sentinel so `/proj-foo` can't
+  escape from `/proj`), and returns `QString()` on any rejection.
+  All six call sites migrated: `dropFindingsInCommentsOrStrings`,
+  `inlineSuppressed`, the enrichment pass, single-finding AI-triage
+  snippet fallback, batch AI-triage snippet fallback, and the
+  `dropIfContextContains` regex-captured-relPath read. Regression
+  test: `tests/features/audit_path_traversal/spec.md` — 5 invariants
+  behavioral (via a byte-faithful reference reimpl — production
+  helper is private on the heavy QDialog subclass) plus source-grep
+  on the production code to confirm migration + helper structure
+  (canonicalFilePath + anchored startsWith).
+
+### Fixed
+
+- **Settings dialog discarded on external config.json reload.**
+  `MainWindow` caches the `SettingsDialog` across Preferences...
+  opens; the dialog was constructed with `&m_config` and populated
+  its widgets from the then-current values at construction. When
+  `QFileSystemWatcher` fired `onConfigFileChanged` on an external
+  edit, `m_config = Config()` reloaded from disk but the cached
+  dialog still held pre-reload widget state. Next Preferences...
+  open would show stale values, and clicking OK would replay them
+  over the fresh Config — silently undoing the external edit.
+  `onConfigFileChanged` now closes the dialog if visible, calls
+  `deleteLater()`, and nulls the pointer, so the next open rebuilds
+  from the freshly reloaded Config. Regression test:
+  `tests/features/settings_dialog_config_reload/spec.md` —
+  4 source-grep invariants (cache nulled, visible-close gate,
+  deleteLater-not-delete, invalidation scoped to
+  `onConfigFileChanged`).
+
+
 ## [0.7.19] — 2026-04-24
 
 **Theme:** CI un-break + tab-rename persistence. CI had been red since

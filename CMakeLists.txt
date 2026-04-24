@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.19 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.20 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1951,6 +1951,76 @@ if(ANTS_TESTS)
     )
     add_test(NAME remote_control_launch COMMAND test_remote_control_launch)
     set_tests_properties(remote_control_launch PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # debuglog_perms — asserts ~/.local/share/ants-terminal/debug.log
+    # lands 0600 after the first DebugLog::setActive() call, even when
+    # the process umask is 0022. Covers fresh-open, clear+reopen, and
+    # narrowing of a pre-existing 0644 file left by a pre-fix build.
+    # See tests/features/debuglog_perms/spec.md.
+    add_executable(test_debuglog_perms
+        tests/features/debuglog_perms/test_debuglog_perms.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_debuglog_perms PRIVATE Qt6::Core)
+    target_include_directories(test_debuglog_perms PRIVATE src)
+    target_compile_options(test_debuglog_perms PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_debuglog_perms PRIVATE
+        SRC_DEBUGLOG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/debuglog.cpp"
+    )
+    add_test(NAME debuglog_perms COMMAND test_debuglog_perms)
+    set_tests_properties(debuglog_perms PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_path_traversal — asserts AuditDialog enrichment sites
+    # (snippet preview, comment classifier, inline-suppress scan,
+    # AI-triage snippet fallbacks, dropIfContextContains) reject
+    # `f.file` values that escape the project root via ../ or
+    # symlinks. Behavioral test on a canonicalize+anchor reference
+    # reimpl (AuditDialog::resolveProjectPath is private on a heavy
+    # QDialog subclass) plus source-greps on auditdialog.cpp to
+    # confirm all call sites migrated. See
+    # tests/features/audit_path_traversal/spec.md.
+    add_executable(test_audit_path_traversal
+        tests/features/audit_path_traversal/test_audit_path_traversal.cpp
+    )
+    target_link_libraries(test_audit_path_traversal PRIVATE Qt6::Core)
+    target_compile_options(test_audit_path_traversal PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_audit_path_traversal PRIVATE
+        SRC_AUDITDIALOG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
+    )
+    add_test(NAME audit_path_traversal COMMAND test_audit_path_traversal)
+    set_tests_properties(audit_path_traversal PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # settings_dialog_config_reload — asserts MainWindow::onConfigFileChanged
+    # invalidates the cached m_settingsDialog (close-if-visible +
+    # deleteLater + null) so a subsequent Preferences... open rebuilds
+    # from the freshly reloaded Config, instead of showing stale
+    # pre-edit widget values that would silently overwrite the external
+    # edit on Save. Source-grep only — MainWindow is too heavy to
+    # instantiate under a feature test. See
+    # tests/features/settings_dialog_config_reload/spec.md.
+    add_executable(test_settings_dialog_config_reload
+        tests/features/settings_dialog_config_reload/test_settings_dialog_config_reload.cpp
+    )
+    target_link_libraries(test_settings_dialog_config_reload PRIVATE Qt6::Core)
+    target_compile_options(test_settings_dialog_config_reload PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_settings_dialog_config_reload PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME settings_dialog_config_reload
+             COMMAND test_settings_dialog_config_reload)
+    set_tests_properties(settings_dialog_config_reload PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

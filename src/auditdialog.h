@@ -415,6 +415,21 @@ private:
     // unknown file), false if it's confined to comments/strings.
     static bool lineIsCode(const QString &absPath, int line);
 
+    // Resolve a possibly-relative path reported in a Finding (or captured
+    // from scanner output) against the current project root, and reject
+    // any result that escapes the project via symlink traversal or
+    // `../` components. Returns the canonical absolute path on success,
+    // empty QString on failure (non-existent file, resolution error,
+    // or escape). Callers treat the empty return as "skip this path" —
+    // both lineIsCode() and readSnippet() are already empty-safe.
+    //
+    // Closes the Tier 1 /indie-review finding: user-supplied audit
+    // rules can produce findings whose `file` field is e.g.
+    // `../../etc/passwd`; unguarded concatenation with m_projectPath
+    // would then let the snippet preview / blame / comment-scan machinery
+    // open files outside the project.
+    QString resolveProjectPath(const QString &maybeRelative) const;
+
     // Inline suppression directive scan. Recognises both ants-native tokens
     // and passthrough markers from other tools (clang-tidy NOLINT, cppcheck
     // suppress-comments, flake8 noqa, bandit nosec, semgrep nosemgrep,

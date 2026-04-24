@@ -1,5 +1,7 @@
 #include "debuglog.h"
 
+#include "secureio.h"
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -73,6 +75,15 @@ void DebugLog::setActive(quint32 mask) {
             fprintf(stderr, "DebugLog: could not open %s\n", qPrintable(path));
         }
         if (s_file.isOpen()) {
+            // Owner-only. The log can contain PTY output (keystrokes),
+            // network responses (API bodies), and HMAC material from
+            // OSC 133 forgery detection. Apply both via the open fd
+            // and via path — the fd-level call covers the just-opened
+            // descriptor; the path-level call covers the on-disk inode
+            // in case append reused a pre-existing file that a prior
+            // (pre-fix) run left at the process umask.
+            setOwnerOnlyPerms(s_file);
+            setOwnerOnlyPerms(path);
             const QString header = QStringLiteral(
                 "\n=== debug log opened at %1 (pid %2, categories=0x%3) ===\n")
                 .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs))

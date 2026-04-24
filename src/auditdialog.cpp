@@ -1832,12 +1832,14 @@ AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
                     ? &fileCache[relPath]
                     : nullptr;
                 if (!fileLines) {
-                    const QString abs = m_projectPath + "/" + relPath;
-                    QFile src(abs);
                     QStringList &slot = fileCache[relPath];
-                    if (src.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                        slot = QString::fromUtf8(src.readAll())
-                                   .split('\n', Qt::KeepEmptyParts);
+                    const QString abs = resolveProjectPath(relPath);
+                    if (!abs.isEmpty()) {
+                        QFile src(abs);
+                        if (src.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                            slot = QString::fromUtf8(src.readAll())
+                                       .split('\n', Qt::KeepEmptyParts);
+                        }
                     }
                     fileLines = &slot;
                 }
@@ -1991,6 +1993,28 @@ void AuditDialog::capFindings(CheckResult &r, int cap) {
 // contents are actually code (vs. // comment, /* comment */, or "string").
 // ---------------------------------------------------------------------------
 
+QString AuditDialog::resolveProjectPath(const QString &maybeRelative) const {
+    if (maybeRelative.isEmpty() || m_projectPath.isEmpty()) return {};
+    // Build the candidate absolute path without yet canonicalizing the
+    // relative join — QFileInfo::canonicalFilePath follows symlinks and
+    // resolves `..`, so we get a single-pass check of both traversal vectors.
+    const QString candidate = QFileInfo(maybeRelative).isAbsolute()
+        ? maybeRelative
+        : (m_projectPath + QStringLiteral("/") + maybeRelative);
+    const QString canonCandidate = QFileInfo(candidate).canonicalFilePath();
+    if (canonCandidate.isEmpty()) return {};  // file doesn't exist
+    const QString canonProject = QFileInfo(m_projectPath).canonicalFilePath();
+    if (canonProject.isEmpty()) return {};
+    // Require a path-segment boundary after the project root so that
+    // sibling dirs sharing a prefix (e.g. /proj-foo vs /proj) don't escape.
+    const QString anchored = canonProject.endsWith('/')
+        ? canonProject
+        : (canonProject + QStringLiteral("/"));
+    if (!canonCandidate.startsWith(anchored) && canonCandidate != canonProject)
+        return {};
+    return canonCandidate;
+}
+
 bool AuditDialog::lineIsCode(const QString &absPath, int line) {
     if (line <= 0 || absPath.isEmpty()) return true;
     QFile f(absPath);
@@ -2068,10 +2092,12 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
     QList<Finding> kept;
     for (const Finding &f : std::as_const(r.findings)) {
         if (f.file.isEmpty() || f.line <= 0) { kept.append(f); continue; }
-        // Resolve relative path against the project root.
-        const QString abs = QFileInfo(f.file).isAbsolute()
-                          ? f.file
-                          : (m_projectPath + "/" + f.file);
+        // Resolve relative path against the project root. Reject
+        // paths that escape the project via `..` or symlink — a
+        // user-authored rule could otherwise have us open /etc/passwd
+        // here to run the comment/string classifier against it.
+        const QString abs = resolveProjectPath(f.file);
+        if (abs.isEmpty()) continue;  // traversal or non-existent: drop
         if (lineIsCode(abs, f.line)) kept.append(f);
     }
     r.findings = kept;
@@ -2226,9 +2252,11 @@ bool AuditDialog::commentSuppresses(const QString &commentText, const QString &r
 
 bool AuditDialog::inlineSuppressed(const Finding &f) const {
     if (f.file.isEmpty() || f.line <= 0) return false;
-    const QString abs = QFileInfo(f.file).isAbsolute()
-                      ? f.file
-                      : (m_projectPath + "/" + f.file);
+    // Path-traversal guard: a finding whose `file` is `../../etc/hosts`
+    // must not cause us to read /etc/hosts looking for suppression
+    // markers.
+    const QString abs = resolveProjectPath(f.file);
+    if (abs.isEmpty()) return false;
     const QStringList lines = readFileLines(abs, m_fileLineCache);
     if (lines.isEmpty()) return false;
 
@@ -4001,9 +4029,8 @@ void AuditDialog::renderResults() {
         for (Finding &f : r.findings) {
             if (f.file.isEmpty() || f.line <= 0) continue;
             if (enriched >= kSnippetBudget) break;
-            const QString abs = QFileInfo(f.file).isAbsolute()
-                              ? f.file
-                              : (m_projectPath + "/" + f.file);
+            const QString abs = resolveProjectPath(f.file);
+            if (abs.isEmpty()) continue;  // traversal: skip enrichment entirely
             if (f.snippet.isEmpty())
                 f.snippet = readSnippet(abs, f.line, 3, &f.snippetStart);
             if (f.blameSha.isEmpty()) enrichWithBlame(f);
@@ -4452,10 +4479,9 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
 
     // Prefer a previously-computed snippet; fall back to a fresh read.
     if (f.snippet.isEmpty() && !f.file.isEmpty() && f.line > 0) {
-        const QString abs = QFileInfo(f.file).isAbsolute()
-                          ? f.file
-                          : (m_projectPath + "/" + f.file);
-        f.snippet = readSnippet(abs, f.line, 5, &f.snippetStart);
+        const QString abs = resolveProjectPath(f.file);
+        if (!abs.isEmpty())
+            f.snippet = readSnippet(abs, f.line, 5, &f.snippetStart);
     }
 
     Config cfg;
@@ -4707,10 +4733,9 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
         if (!f.aiVerdict.isEmpty()) continue;
         // Ensure each has a snippet if one is available.
         if (f.snippet.isEmpty() && !f.file.isEmpty() && f.line > 0) {
-            const QString abs = QFileInfo(f.file).isAbsolute()
-                              ? f.file
-                              : (m_projectPath + "/" + f.file);
-            f.snippet = readSnippet(abs, f.line, 5, &f.snippetStart);
+            const QString abs = resolveProjectPath(f.file);
+            if (!abs.isEmpty())
+                f.snippet = readSnippet(abs, f.line, 5, &f.snippetStart);
         }
         batch.append(f);
     }

@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.19 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.20 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1079,10 +1079,25 @@ grep rules or individual tickets as they become actionable.
   Regression test: `tests/features/ai_insert_command_sanitize/`
   (18 assertions, behavioral + source-grep on the confirm-before-
   emit invariant).
-- 📋 **Audit user-glob path canonicalization.** `auditdialog.cpp:2323`
-  (`globToRegex`), `auditdialog.cpp:2221-2223, 2064-2066`
-  (`readSnippet` / `lineIsCode`). Enforce `startsWith(m_projectPath)`
-  after canonicalization — reject `../` traversal in user rules.
+- ✅ **Audit user-glob path canonicalization.** Shipped 0.7.20.
+  New `AuditDialog::resolveProjectPath` helper runs
+  `QFileInfo::canonicalFilePath` (resolves both `..` components and
+  symlinks) and requires the canonical result to sit under the
+  canonical project root with an anchored-slash prefix so sibling
+  directories sharing a name prefix can't escape. Six call sites
+  migrated from raw `m_projectPath + "/" + f.file` concat:
+  `dropFindingsInCommentsOrStrings`, `inlineSuppressed`, the
+  enrichment pass (snippet preview + blame), single- and batch-
+  AI-triage snippet fallbacks, and the `dropIfContextContains`
+  regex-capture file read. Closes the OWASP-LLM06 exfiltration
+  surface where a malicious user rule could POST `/etc/passwd` (or
+  any UID-readable file) to the configured /v1/chat/completions
+  endpoint wrapped in a "review this snippet" prompt. Regression
+  test: `tests/features/audit_path_traversal/` — 5 invariants
+  behavioral (literal `../`, symlink escape, in-project accept,
+  non-existent, empty-input) plus source-grep on auditdialog.cpp
+  confirming call-site migration + helper structure
+  (canonicalFilePath + anchored startsWith).
 - ✅ **Allowlist `QSaveFile` perms belt-and-suspenders.** Shipped in
   [Unreleased]. `ClaudeAllowlistDialog::saveSettings()` now calls
   `setOwnerOnlyPerms(m_settingsPath)` after `file.commit()` succeeds,
@@ -1182,11 +1197,20 @@ grep rules or individual tickets as they become actionable.
 - 📋 **Portal session close.** `GlobalShortcutsPortal` has no destructor
   / `Session::Close` call — session handle leaks for the process
   lifetime of the D-Bus client.
-- 📋 **Cached dialog + dangling `&m_config`.** `mainwindow.cpp:1479`
-  constructs `SettingsDialog(&m_config, this)` once; `onConfigFileChanged`
-  reassigns `m_config = Config()`. Reopening Settings after an external
-  edit of `config.json` dereferences a dangling reference. Fix: destroy
-  cached dialog on config reload.
+- ✅ **Cached dialog + stale-widget-state on external config reload.**
+  Shipped 0.7.20. `MainWindow::onConfigFileChanged` now closes the
+  cached `m_settingsDialog` (if visible), schedules it via
+  `deleteLater()`, and nulls the pointer before re-applying settings,
+  so the next Preferences... open rebuilds the dialog from the
+  freshly reloaded `m_config`. Pre-fix the address of `m_config` was
+  stable (value member) so the Config pointer wasn't strictly
+  dangling, but the dialog's widgets were populated at construction
+  time and held pre-reload values — a subsequent Save would silently
+  overwrite the external edit. Regression test:
+  `tests/features/settings_dialog_config_reload/` — 4 source-grep
+  invariants scoped to the function body (cache nulled,
+  visible-then-close gate, deleteLater not raw delete, invalidation
+  exclusive to `onConfigFileChanged`).
 - ✅ **`WA_OpaquePaintEvent` on `m_menuBar`.** Shipped in [Unreleased].
   `MainWindow` ctor now calls
   `m_menuBar->setAttribute(Qt::WA_OpaquePaintEvent, true)` — stops Qt
@@ -1224,9 +1248,17 @@ grep rules or individual tickets as they become actionable.
 - 📋 **Concurrent-writer guard on `config.json` + `settings.local.json`.**
   No `flock` / lockfile today — two ants processes or ants + running
   Claude Code race on every save. Last write wins.
-- 📋 **`debug.log` 0600 perms.** `debuglog.cpp:72` opens append with
-  default umask; log can contain keystrokes, API responses, HMAC
-  material.
+- ✅ **`debug.log` 0600 perms.** Shipped 0.7.20. `DebugLog::setActive`
+  now calls `setOwnerOnlyPerms` on both the opened `QFileDevice` and
+  the path string immediately after open, before the session header
+  is written. The fd-level call covers the just-opened descriptor;
+  the path-level call narrows any pre-existing 0644 file that append
+  reused from a prior (pre-fix) run. Fix uses the project-standard
+  `secureio.h` helper, matching every other persistence site in the
+  project. Regression test: `tests/features/debuglog_perms/` —
+  4 invariants (fresh open under umask 0022 → 0600, clear+reopen
+  preserves 0600, pre-existing 0644 narrowed, source uses the
+  helper).
 - ✅ **Claude transcript: 32 KB tail window → scan-for-first-newline +
   grow.** Shipped 0.7.14. Replaced the fixed 32 KB window +
   firstLine-skip with a doubling-grow loop (32 KB → 4 MiB cap) that

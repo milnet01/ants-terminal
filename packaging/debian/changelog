@@ -1,3 +1,42 @@
+ants-terminal (0.7.20-1) unstable; urgency=medium
+
+  * Tier 2 hardening sweep — three open items from the 0.7.12
+    /indie-review landed as one release. Each fix has a behavioral
+    regression test and was verified to fail against pre-fix source
+    via git-stash before locking. All 71 fast tests green.
+  * Security: debug.log lands 0600 regardless of umask. The log can
+    include PTY keystrokes, AI endpoint bodies, OSC 133 HMAC
+    material, and Claude transcript parse state — none of which may
+    be world-readable. DebugLog::setActive now calls
+    setOwnerOnlyPerms on both the opened QFileDevice and the path
+    string immediately after open, narrowing any pre-existing 0644
+    file that append reused from a prior build. Uses the
+    secureio.h helper, not a raw setPermissions bitmask. Locked by
+    tests/features/debuglog_perms (4 invariants).
+  * Security: audit path-traversal guard on finding file fields.
+    User-supplied audit rules can produce Finding::file values
+    like ../../etc/passwd; pre-fix, six AuditDialog call sites
+    concatenated m_projectPath with the raw field and passed the
+    result to snippet preview, comment classifier, inline-suppress
+    scan, and the AI-triage POST body — a CWE-22 + OWASP-LLM06
+    exfiltration chain via the configured chat-completions
+    endpoint. New AuditDialog::resolveProjectPath helper
+    canonicalizes (resolves .. and dereferences symlinks) and
+    anchors the result under the canonical project root. All six
+    call sites migrated. Locked by tests/features/audit_path_traversal
+    (5 behavioral + source-grep invariants).
+  * Fixed: Settings dialog discarded on external config reload.
+    MainWindow caches the Settings dialog across opens; pre-fix,
+    an external config.json edit would reload m_config but leave
+    the cached dialog holding pre-reload widget state, so the next
+    Save would silently overwrite the external edit.
+    onConfigFileChanged now closes (if visible), deleteLater()s,
+    and nulls the cached pointer so the next Preferences… open
+    rebuilds from the freshly reloaded Config. Locked by
+    tests/features/settings_dialog_config_reload (4 invariants).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 24 Apr 2026 15:00:00 +0200
+
 ants-terminal (0.7.19-1) unstable; urgency=medium
 
   * CI un-break + tab-rename persistence. CI had been red since 0.7.17

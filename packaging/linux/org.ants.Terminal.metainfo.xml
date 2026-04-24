@@ -103,6 +103,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.20" date="2026-04-24">
+      <description>
+        <p>Tier 2 hardening sweep — three open items from the 0.7.12 /indie-review landed as one release. Each fix has a behavioral regression test, source-grep on the load-bearing tokens, and was verified to fail against pre-fix source via <code>git stash</code> before locking. All 71 fast tests green.</p>
+        <p>Security:</p>
+        <ul>
+          <li><em><code>debug.log</code> lands 0600 regardless of umask.</em> The debug log was being created with the process umask (typically 0644 under 0022). The log can include PTY keystrokes, AI endpoint request + response bodies, OSC 133 HMAC digest material, and Claude transcript parse state. <code>DebugLog::setActive</code> now calls <code>setOwnerOnlyPerms</code> on both the opened <code>QFileDevice</code> and the path string immediately after open — the fd-level call covers the just-opened descriptor; the path-level call narrows any pre-existing 0644 file that append reused from a prior (pre-fix) run.</li>
+          <li><em>Audit path-traversal guard on finding <code>file</code> fields.</em> User-supplied audit rules, <code>audit_rules.json</code> in a cloned project, and external scanner regex outputs can all produce findings whose <code>file</code> field is a traversal payload (<code>../../etc/passwd</code> style). Pre-fix, six call sites across <code>AuditDialog</code> concatenated <code>m_projectPath + "/" + f.file</code> and passed the result to snippet preview, comment classifier, inline-suppress scan, and the AI-triage POST body — a CWE-22 + OWASP-LLM06 exfiltration chain because the AI-triage surface forwards snippet contents to the configured chat-completions endpoint. New <code>AuditDialog::resolveProjectPath</code> helper canonicalizes the candidate path (resolves <code>..</code> + dereferences symlinks in a single <code>QFileInfo::canonicalFilePath</code> call), requires the result to sit under the canonical project root with an anchored-slash prefix, and returns empty on rejection. All six call sites migrated.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Settings dialog discarded on external config reload.</em> <code>MainWindow</code> caches the Settings dialog across Preferences… opens; the dialog was constructed with the Config pointer and populated its widgets at construction. When <code>QFileSystemWatcher</code> fired on an external edit, the Config pointer's target was reassigned fresh from disk but the cached dialog still held pre-reload widget state. Next Preferences… open would show stale values, and clicking OK would replay them over the fresh Config — silently undoing the external edit. <code>onConfigFileChanged</code> now closes the dialog if visible, schedules it via <code>deleteLater()</code>, and nulls the pointer so the next open rebuilds from the freshly reloaded Config.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.19" date="2026-04-24">
       <description>
         <p>CI un-break + tab-rename persistence. CI had been red since 0.7.17 on the AppStream metainfo validation step because the 0.7.17 release description embedded a plaintext <code>https://</code> URL as an example of what the new secret-redactor scrubs, which the validator correctly rejects. Rewrote the example to use a non-URL inline form. Separately, user asked whether manual tab renames survive Ants restart — they didn't, because the pin map lived only in MainWindow memory. Fixed by bumping the session-file schema to V3 with a trailing <code>pinnedTitle</code> field.</p>

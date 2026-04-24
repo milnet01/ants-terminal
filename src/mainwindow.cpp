@@ -4765,6 +4765,22 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     // Reload config from disk
     m_config = Config();
 
+    // The cached Settings dialog was constructed with `&m_config` and
+    // populated its widgets from the then-current values. `m_config`'s
+    // address is stable (value member), but its *contents* just got
+    // replaced wholesale — the dialog's widget state is now stale, and
+    // some tabs cache pre-edit values on sub-widgets that don't re-read
+    // the Config pointer on every paint. Dropping the cached instance
+    // forces a fresh construction on the next Preferences... open, which
+    // re-reads every field from the live m_config. If the dialog is
+    // currently visible, close it first so the user sees the transition
+    // instead of a silent swap on next show.
+    if (m_settingsDialog) {
+        if (m_settingsDialog->isVisible()) m_settingsDialog->close();
+        m_settingsDialog->deleteLater();
+        m_settingsDialog = nullptr;
+    }
+
     // Re-apply all settings
     applyTheme(m_config.theme());
     applyFontSizeToAll(m_config.fontSize());
