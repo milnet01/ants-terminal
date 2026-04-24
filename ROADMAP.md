@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.22 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.23 (2026-04-24) (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1144,9 +1144,14 @@ grep rules or individual tickets as they become actionable.
 - 📋 **OSC 8 URI cap + Kitty APC `m_kittyChunkBuffer` cap.**
   Currently unbounded; hostile apps can consume scrollback memory per
   covered line or grow a single buffer without limit.
-- 📋 **`clearRow` uses current SGR bg (BCE).**
-  `terminalgrid.cpp:1758-1778` uses `CellAttrs{}` — app-painted
-  backgrounds disappear on every `CSI 2J` / `CSI J`.
+- ✅ **BCE on scroll + erase paths.** Shipped 0.7.23. `clearRow`
+  already had the `m_currentAttrs.bg.isValid()` fallback, but
+  `takeBlankedCellsRow()` hardcoded `m_defaultBg` (used by IL/DL/SU/SD
+  and the LF-past-scroll-bottom auto-scroll) and `deleteChars` /
+  `insertBlanks` used bare `m_currentAttrs.bg` with no valid guard.
+  Consolidated into a single `eraseBg()` helper on TerminalGrid.
+  Regression test `tests/features/bce_scroll_erase` locks 10
+  behavioral subcases. Pre-fix source fails 5; post-fix all 10 pass.
 - 📋 **Wide-char overwrite zeroes the mate.**
   `terminalgrid.cpp:327-347` leaves dangling `isWideCont` when a narrow
   char overwrites a wide char's first half (or vice versa).

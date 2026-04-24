@@ -10,6 +10,32 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.23] — 2026-04-24
+
+**Theme:** xterm-compatible Background Color Erase (BCE) across every
+scroll and erase path. 0.7.12 Tier 2 hardening item.
+
+### Fixed
+
+- **BCE on scroll and insert/delete paths (`TerminalGrid`).** Apps
+  that paint with a non-default SGR background (`\e[44m` etc.) and
+  then scroll, insert lines, delete lines, delete chars, or insert
+  blanks expect the newly-exposed cells to inherit the current bg —
+  this is the xterm convention vim/less/tmux/mc/htop rely on for
+  full-screen painted backgrounds. Previously `takeBlankedCellsRow()`
+  hardcoded `m_defaultBg`, so `CSI L` / `CSI M` / `CSI S` / `CSI T`
+  / LF-past-scroll-bottom all produced default-bg gaps through any
+  painted region. `deleteChars` / `insertBlanks` used raw
+  `m_currentAttrs.bg` without the `.isValid()` fallback that
+  `clearRow` already had. Consolidated the policy into one
+  `TerminalGrid::eraseBg()` helper; every erase/scroll callsite
+  now reads from it. Regression test:
+  `tests/features/bce_scroll_erase/spec.md` — 10 behavioral
+  subcases (IL, DL, SU, SD, DCH, ICH, ED2, EL0, LF-scroll,
+  SGR-reset-before-erase). Pre-fix source fails 5 subcases
+  (IL/DL/SU/SD/LF-scroll); post-fix all 10 pass.
+
+
 ## [0.7.22] — 2026-04-24
 
 **Theme:** user-visible About menu (user ask 2026-04-24 — "How do I

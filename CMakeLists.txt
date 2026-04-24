@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.22 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.23 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1443,6 +1443,30 @@ if(ANTS_TESTS)
     )
     add_test(NAME ris_preserves_callbacks COMMAND test_ris_preserves_callbacks)
     set_tests_properties(ris_preserves_callbacks PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # bce_scroll_erase — 0.7.23 fix. Locks xterm-compatible Background
+    # Color Erase across every scroll/erase path: clearRow, insertLines,
+    # deleteLines, scrollUp/Down, deleteChars, insertBlanks, and the
+    # LF-past-scroll-bottom auto-scroll. Previously takeBlankedCellsRow()
+    # hardcoded m_defaultBg, so `\e[44mCSI L` (vim/less/tmux paint path)
+    # left default-bg gaps instead of blue. See spec.md.
+    add_executable(test_bce_scroll_erase
+        tests/features/bce_scroll_erase/test_bce_scroll_erase.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_bce_scroll_erase PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_bce_scroll_erase PRIVATE src)
+    target_compile_options(test_bce_scroll_erase PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME bce_scroll_erase COMMAND test_bce_scroll_erase)
+    set_tests_properties(bce_scroll_erase PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

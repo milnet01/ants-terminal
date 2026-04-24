@@ -394,6 +394,14 @@ private:
     // Returns a cells buffer to the pool if it's the right size and the pool
     // isn't full. Otherwise discards (letting the vector destruct naturally).
     void returnCellsRow(std::vector<Cell> &&cells);
+    // Background-Color Erase (BCE): the colour newly-exposed/cleared cells
+    // pick up. xterm-compatible — current SGR bg if set, default otherwise.
+    // Used by clearRow / insertLines / deleteLines / scrollUp / scrollDown /
+    // deleteChars / insertBlanks so `\e[44mCSI L` leaves a blue gap, not
+    // default-bg (vim/less/tmux depend on this).
+    QColor eraseBg() const {
+        return m_currentAttrs.bg.isValid() ? m_currentAttrs.bg : m_defaultBg;
+    }
 
     QColor m_defaultFg{0xCD, 0xD6, 0xF4};  // Light text
     QColor m_defaultBg{0x1E, 0x1E, 0x2E};  // Dark bg

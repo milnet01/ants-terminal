@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.23" date="2026-04-24">
+      <description>
+        <p>xterm-compatible Background Color Erase (BCE) across every scroll and erase path. 0.7.12 Tier 2 hardening item. Locked by a 10-subcase behavioral regression test that flips 5 subcases red against pre-fix source.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>BCE on scroll and insert/delete paths.</em> Apps that paint with a non-default SGR background (<code>\e[44m</code> etc.) and then scroll, insert lines, delete lines, delete chars, or insert blanks expect the newly-exposed cells to inherit the current background — the xterm convention vim, less, tmux, mc, and htop rely on for full-screen painted backgrounds. Pre-fix, <code>takeBlankedCellsRow()</code> hardcoded the default bg, so <code>CSI L</code> / <code>CSI M</code> / <code>CSI S</code> / <code>CSI T</code> and the LF-past-scroll-bottom auto-scroll all produced default-bg gaps through painted regions. <code>deleteChars</code> and <code>insertBlanks</code> used raw current-attrs bg without the validity fallback that <code>clearRow</code> already had. Consolidated the policy into one <code>TerminalGrid::eraseBg()</code> helper; every erase/scroll callsite now reads from it.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.22" date="2026-04-24">
       <description>
         <p>User ask 2026-04-24 — "How do I see what version of Ants Terminal I am running? Can you please add a GUI version?"</p>

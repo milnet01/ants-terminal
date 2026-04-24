@@ -87,18 +87,19 @@ static std::vector<Cell> makeRow(int cols, const QColor &fg, const QColor &bg) {
 }
 
 std::vector<Cell> TerminalGrid::takeBlankedCellsRow() {
+    const QColor bg = eraseBg();
     while (!m_freeCellBuffers.empty()) {
         std::vector<Cell> buf = std::move(m_freeCellBuffers.back());
         m_freeCellBuffers.pop_back();
         if (static_cast<int>(buf.size()) == m_cols) {
             Cell blank;
             blank.attrs.fg = m_defaultFg;
-            blank.attrs.bg = m_defaultBg;
+            blank.attrs.bg = bg;
             std::fill(buf.begin(), buf.end(), blank);
             return buf;
         }
     }
-    return makeRow(m_cols, m_defaultFg, m_defaultBg);
+    return makeRow(m_cols, m_defaultFg, bg);
 }
 
 void TerminalGrid::returnCellsRow(std::vector<Cell> &&cells) {
@@ -1522,7 +1523,7 @@ void TerminalGrid::deleteChars(int count) {
         Cell c;
         c.codepoint = ' ';
         c.attrs.fg = m_defaultFg;
-        c.attrs.bg = m_currentAttrs.bg;
+        c.attrs.bg = eraseBg();
         row.push_back(c);
     }
     // Shift combining chars in place via node-handle extract/insert —
@@ -1559,7 +1560,7 @@ void TerminalGrid::insertBlanks(int count) {
     Cell blank;
     blank.codepoint = ' ';
     blank.attrs.fg = m_defaultFg;
-    blank.attrs.bg = m_currentAttrs.bg;
+    blank.attrs.bg = eraseBg();
     row.insert(row.begin() + m_cursorCol, count, blank);
     row.resize(m_cols);
     // Shift combining chars — see deleteChars() for rationale.
@@ -1844,11 +1845,12 @@ const Cell &TerminalGrid::cellAt(int row, int col) const {
 void TerminalGrid::clearRow(int row, int startCol, int endCol) {
     if (endCol < 0) endCol = m_cols;
     auto &cells = screenRow(row);
+    const QColor bg = eraseBg();
     for (int c = startCol; c < endCol && c < m_cols; ++c) {
         cells[c].codepoint = ' ';
         cells[c].attrs = CellAttrs{};
         cells[c].attrs.fg = m_defaultFg;
-        cells[c].attrs.bg = m_currentAttrs.bg.isValid() ? m_currentAttrs.bg : m_defaultBg;
+        cells[c].attrs.bg = bg;
         cells[c].isWideChar = false;
         cells[c].isWideCont = false;
     }
