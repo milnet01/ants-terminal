@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.16 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.17 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -508,6 +508,37 @@ if(ANTS_TESTS)
     )
     add_test(NAME allowlist_add COMMAND test_allowlist_add)
     set_tests_properties(allowlist_add PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # allowlist_perms_postcommit — asserts Claude allowlist settings file
+    # lands 0600 after saveSettings(), covering the QSaveFile-rename edge
+    # case on filesystems that don't preserve fd perms across rename
+    # (FAT/exFAT, some SMB/NFS servers, Qt copy+unlink fallback).
+    # Locks the belt-and-suspenders post-commit setOwnerOnlyPerms call
+    # on m_settingsPath in saveSettings(). See
+    # tests/features/allowlist_perms_postcommit/spec.md.
+    add_executable(test_allowlist_perms_postcommit
+        tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
+        src/claudeallowlist.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_allowlist_perms_postcommit PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_allowlist_perms_postcommit PRIVATE src)
+    target_compile_options(test_allowlist_perms_postcommit PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_allowlist_perms_postcommit PRIVATE
+        SRC_CLAUDEALLOWLIST_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeallowlist.cpp"
+    )
+    add_test(NAME allowlist_perms_postcommit
+             COMMAND test_allowlist_perms_postcommit)
+    set_tests_properties(allowlist_perms_postcommit PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

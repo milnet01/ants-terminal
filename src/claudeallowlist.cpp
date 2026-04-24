@@ -304,7 +304,17 @@ bool ClaudeAllowlistDialog::saveSettings() {
     if (!QDir().mkpath(QFileInfo(m_settingsPath).absolutePath()))
         return false;
 
-    // Atomic write with 0600 permissions
+    // Atomic write with 0600 permissions.
+    //
+    // Belt-and-suspenders perms: setOwnerOnlyPerms(file) sets 0600 on
+    // the QSaveFile temp fd, and setOwnerOnlyPerms(m_settingsPath) sets
+    // it again on the final path after commit. Most local filesystems
+    // carry fd permissions across rename, but FAT/exFAT on removable
+    // media, some SMB/NFS mounts, and edge cases where Qt falls back to
+    // copy+unlink instead of rename do not. This file can hold API keys
+    // (Claude Code bearer tokens in ~/.claude/settings.json); a
+    // world-readable final file on those filesystems would leak them
+    // to any UID on the host. Post-commit chmod closes the gap.
     QSaveFile file(m_settingsPath);
     if (!file.open(QIODevice::WriteOnly)) return false;
     setOwnerOnlyPerms(file);
@@ -313,7 +323,9 @@ bool ClaudeAllowlistDialog::saveSettings() {
         file.cancelWriting();
         return false;
     }
-    return file.commit();
+    if (!file.commit()) return false;
+    setOwnerOnlyPerms(m_settingsPath);
+    return true;
 }
 
 QListWidget *ClaudeAllowlistDialog::currentList() const {

@@ -1,3 +1,72 @@
+ants-terminal (0.7.17-1) unstable; urgency=medium
+
+  * Hot-path parser optimization plus two /indie-review security
+    follow-ups. VtParser printable-ASCII runs now coalesce into a
+    single VtAction carrying a pointer+length slice of the feed
+    buffer; TerminalGrid::handleAsciiPrintRun batches per-row cell
+    writes so markScreenDirty, the combining-char erase, and the
+    cell() clamp all fire once per row instead of once per byte.
+    Rebench on 8 MiB corpora: ascii_print 24.4 -> 30.7 MB/s (+26%),
+    ansi_sgr 27.5 -> 31.4 MB/s (+14%).
+  * Claude Code UserPromptSubmit git-context hook (user ask
+    2026-04-24). New Settings-dialog button installs
+    ~/.config/ants-terminal/hooks/claude-git-context.sh and merges a
+    hooks.UserPromptSubmit entry into ~/.claude/settings.json. The
+    script emits a compact <git-context> block (branch, upstream,
+    ahead/behind counts, staged/unstaged/untracked file counts) on
+    every user prompt so Claude Code sees repo state without spending
+    tokens on a Bash(git status) round-trip. Global scope — installed
+    at user level so every project inherits. No-op outside git
+    repos / when git isn't on PATH.
+  * src/secretredact.h — OWASP LLM06 defense layer. Header-only
+    module exposing SecretRedact::scrub. Regex-scrubs 14 well-known
+    secret shapes: AWS AKIA/ASIA, GitHub PATs, Anthropic, OpenAI
+    project + legacy, Slack, Stripe, JWT, Bearer tokens, generic
+    api_key/token/password/secret assignments, and PEM private-key
+    blocks. Replacements are [REDACTED:<kind>]. Priority-ordered so
+    sk-ant- is labelled anthropic, not mislabelled as legacy openai.
+  * AiDialog::sendRequest scrubs both outbound strings (terminal
+    scrollback context and user question) before they reach the
+    JSON body. The AI dialog previously shipped scrollback verbatim
+    to whichever endpoint was configured — a single cat .env,
+    aws configure show, or git clone with an embedded ghp_ token
+    exfiltrated credentials on the next request. Complements the
+    0.7.12 LLM01/LLM02 fix — that handled AI -> PTY; this handles
+    PTY -> AI.
+  * Security: Claude allowlist settings.local.json perms survive
+    rename fallback. ClaudeAllowlistDialog::saveSettings previously
+    set 0600 only on the QSaveFile temp fd. Most local filesystems
+    preserve fd perms across rename(2), but FAT/exFAT don't carry
+    POSIX perm bits, some SMB/NFS servers apply umask to the rename
+    destination, and Qt's QSaveFile::commit falls back to copy+unlink
+    on cross-device renames — in all three cases the final file
+    landed at the process umask. Since the file can hold Claude Code
+    bearer tokens, widened perms were a credential-leak surface.
+    Fix: re-apply setOwnerOnlyPerms on the final path after commit
+    succeeds; the pre-commit fd-level chmod is retained (neither
+    call subsumes the other). Flagged by /indie-review 2026-04-23.
+  * Fixed: right-click "Rename Tab…" pins the label. User report
+    2026-04-24: Claude Code's per-prompt OSC 0/2 title writes wiped
+    manual tab names within seconds. Rename now routes through
+    setTabTitleForRemote so non-empty names pin and empty names
+    clear the pin — giving the user an in-UI "un-rename" path.
+  * Fixed: RIS (ESC c) preserves all 8 TerminalGrid integration
+    callbacks + m_osc133Key. Previously notifyCallback,
+    progressCallback, lineCompletionCallback, commandFinishedCallback,
+    userVarCallback, and osc133ForgeryCallback silently became empty
+    functions after any tput reset. Security impact for the forgery
+    alarm: a well-timed reset silenced it permanently, enabling
+    OSC 133 forgery to proceed unseen.
+  * Regression tests: ai_context_redaction (16 positive + 6 negative
+    + source-grep), tab_rename_pin (4 invariants), sigpipe_ignore
+    (source-grep that SIGPIPE is ignored before QApplication ctor),
+    ris_preserves_callbacks (all 8 callbacks + HMAC key survive),
+    vtparser_print_run_coalesce (8 grid-equivalence invariants vs.
+    scalar feed), allowlist_perms_postcommit (runtime stat under
+    umask 0022 + source-grep on both chmod calls + gating).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 24 Apr 2026 10:04:53 +0200
+
 ants-terminal (0.7.16-1) unstable; urgency=medium
 
   * Per-tab Claude Code activity indicator — flagship response to the

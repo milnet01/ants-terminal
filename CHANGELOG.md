@@ -10,7 +10,7 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
-## [Unreleased]
+## [0.7.17] — 2026-04-24
 
 **Theme:** hot-path parser optimization + stale-TODO sweep. VtParser
 printable-ASCII runs now coalesce into a single `VtAction` carrying a
@@ -136,6 +136,29 @@ now preserves all 8 plus the HMAC key.
 
 ### Security
 
+- **Claude allowlist `settings.local.json` perms survive rename
+  fallback (belt-and-suspenders).** `ClaudeAllowlistDialog::saveSettings`
+  previously set 0600 only on the `QSaveFile` temp fd, relying on
+  rename to carry the perms across to the final path. Most local
+  filesystems (ext4/xfs/btrfs) preserve fd perms across `rename(2)`,
+  but FAT/exFAT on removable media don't carry POSIX perm bits at
+  all, some SMB/NFS servers apply umask to the rename destination,
+  and Qt's `QSaveFile::commit` falls back to copy+unlink on
+  cross-device renames — in all three cases the final file lands
+  at the process umask (typically 0644), leaving it readable to
+  every other UID on the host. Since `settings.local.json` can
+  hold Claude Code bearer tokens in merged `env`/`model`/custom-hook
+  keys, the widened perms are a credential-leak surface. Fix: after
+  `file.commit()` returns true, call `setOwnerOnlyPerms(m_settingsPath)`
+  on the final path too. The pre-commit fd-level chmod is retained
+  (covers the open-to-commit window on filesystems that *do*
+  preserve fd perms — neither call subsumes the other). Flagged by
+  the 2026-04-23 `/indie-review` sweep. Locked by
+  `tests/features/allowlist_perms_postcommit/spec.md` — runtime
+  stat check under umask 0022 (the POSIX default) plus source-grep
+  that both chmod calls remain and the post-commit call is
+  sequenced after the `if (!file.commit()) return false;` gate so
+  a failed commit can't chmod a path that may not exist.
 - **AI context + user-message secret redaction (OWASP LLM06).** The
   AI dialog previously shipped recent scrollback verbatim to whichever
   endpoint the user had configured — OpenAI, Anthropic, an in-house
