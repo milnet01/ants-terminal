@@ -28,6 +28,45 @@ now preserves all 8 plus the HMAC key.
 
 ### Added
 
+- **`src/secretredact.h` — OWASP LLM06 defense layer.** Header-only
+  module exposing `SecretRedact::scrub(QString) → {text, redactedCount}`.
+  Regex-scrubs 14 well-known secret shapes out of any string before it
+  leaves the process: AWS access keys (AKIA/ASIA), GitHub classic /
+  OAuth / app / fine-grained PATs, Anthropic `sk-ant-`, OpenAI
+  `sk-proj-` + legacy `sk-`, Slack `xox[abpros]-`, Stripe `sk_live_` /
+  `rk_live_`, JWTs, `Bearer <token>` headers, generic
+  `api_key=`/`token=`/`password=`/`secret=` assignments, and
+  multi-line PEM `-----BEGIN … PRIVATE KEY-----` blocks. Replacements
+  are `[REDACTED:<kind>]` so the LLM still sees the surrounding
+  command/variable shape. Priority-ordered rule set guarantees
+  `sk-ant-…` is labelled `anthropic`, not mislabelled as legacy
+  `openai`; overlap resolution drops lower-priority matches in the
+  same range. Pure function, thread-safe, static-initialised once per
+  process.
+- **`AiDialog::sendRequest` now scrubs both outbound strings.** The
+  terminal scrollback context (`m_terminalContext`) and the user's
+  own question (`userMessage`) both pass through `SecretRedact::scrub`
+  before either is interpolated into the system prompt or the user
+  message body. Pre-fix, a single `cat .env`, `aws configure show`,
+  or `git clone https://ghp_…@…` line in recent scrollback exfiltrated
+  the credential on the next AI request. When the combined
+  `redactedCount > 0`, the dialog appends a `System` chat-history
+  note — "Note: N secret(s) redacted from outbound request (OWASP
+  LLM06)" — so the user knows the payload differs from what they
+  saw/typed. The chat history's "You:" display intentionally shows
+  pre-redaction text (redaction is a network-boundary concern, not a
+  UX one).
+- **Feature test:** `ai_context_redaction` — 16 positive cases (one
+  per secret shape) + 6 negative controls (UUID, commit SHA, plain
+  URLs, prose mentioning "api token" without a value, empty string,
+  `ls -la`). Asserts no raw secret substring survives, the expected
+  `[REDACTED:<kind>]` label appears, surrounding text is preserved,
+  cumulative `redactedCount` is accurate across multiple secrets,
+  precedence orders `sk-ant-` above legacy `sk-`, and (source-grep)
+  `AiDialog::sendRequest` wires `SecretRedact::scrub` to both
+  inbound strings and gates the user-notice on `totalRedacted > 0`.
+  Verified to fail against pre-fix source (5 grep invariants) before
+  locking.
 - **Feature test:** `tab_rename_pin` — source-grep regression guard
   that pairs the right-click rename handler with the pin-map
   consumer side. Asserts the rename lambda calls
@@ -69,6 +108,24 @@ now preserves all 8 plus the HMAC key.
   canonicalize runs before comparing.** Both tests establish action-
   stream equivalence across feed strategies; the expand-runs-to-per-
   byte canonicalization preserves the contract after coalescing.
+
+### Security
+
+- **AI context + user-message secret redaction (OWASP LLM06).** The
+  AI dialog previously shipped recent scrollback verbatim to whichever
+  endpoint the user had configured — OpenAI, Anthropic, an in-house
+  gateway, a self-hosted Ollama, any third party. Anything on the
+  user's screen at dialog-open time exfiltrated: a single
+  `cat .env`, `env | grep`, `aws configure show`,
+  `git clone https://ghp_…@github.com/…`, or freshly-pasted SSH key
+  landed in the provider's request logs or training-data pipeline.
+  The user's own pasted questions were equally exposed. Fix: both
+  outbound strings now pass through a 14-shape regex scrubber before
+  reaching the JSON body. Complements the 0.7.12 LLM01/LLM02 fix
+  (`ai_insert_command_sanitize`) — that handled untrusted input from
+  the AI to the PTY; this handles untrusted output from the PTY to
+  the AI. Contract pinned by
+  `tests/features/ai_context_redaction/spec.md` (9 invariants).
 
 ### Fixed
 

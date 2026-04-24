@@ -1279,12 +1279,23 @@ remainder, captured so they don't drop on the floor.
   Already implemented. `pluginmanager.cpp:146` + `themes.cpp:308`
   both emit `qWarning` with error string + byte offset when
   `QJsonDocument::fromJson` fails.
-- 📋 **AI `sendRequest` context redaction (OWASP LLM06).** Terminal
-  scrollback is shipped to the LLM verbatim — may contain API keys
-  (AKIA…, ghp_…, sk-…, Bearer, PRIVATE KEY blocks), `export` lines
-  with secrets, `.env` contents. Regex-redact known secret shapes
-  before send. Distinct from LLM01/LLM02 (which the 0.7.12 fix
-  addressed).
+- ✅ **AI `sendRequest` context redaction (OWASP LLM06).** Shipped in
+  [Unreleased]. New header-only module `src/secretredact.h` exposes
+  `SecretRedact::scrub(QString) → {text, redactedCount}` with a
+  14-shape priority-ordered regex set (AWS AKIA/ASIA; GitHub classic
+  / OAuth / app / fine-grained PATs; Anthropic, OpenAI project + legacy;
+  Slack, Stripe, JWT; `Bearer <token>`; generic
+  `api_key=`/`token=`/`password=`/`secret=` assignments; multi-line
+  PEM private-key blocks). `AiDialog::sendRequest` now scrubs both
+  `m_terminalContext` and `userMessage` before either reaches the
+  JSON body; the chat history's "You:" display keeps the
+  pre-redaction text (redaction is a network-boundary concern, not a
+  UX one). When `redactedCount > 0` the dialog appends a System note
+  so the user knows the payload differs from what they saw/typed.
+  Contract pinned by `tests/features/ai_context_redaction/spec.md`
+  + 16-positive + 6-negative + source-grep feature test. Verified to
+  fail against pre-fix source (5 grep invariants fail as expected)
+  before locking.
 - 📋 **AI `extractAndSanitizeCommand` language-hint heuristic.** The
   "strip first line if < 10 chars" heuristic eats any command whose
   first line is short (e.g. `foo\tbar`). Gate on

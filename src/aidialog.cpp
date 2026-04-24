@@ -1,4 +1,5 @@
 #include "aidialog.h"
+#include "secretredact.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -173,17 +174,43 @@ void AiDialog::sendRequest(const QString &userMessage) {
     m_sseLineBuffer.clear();
     m_streamTruncated = false;
 
+    // OWASP LLM06: scrub well-known secret shapes out of both the
+    // scrollback context and the user's own message before either
+    // leaves the process. Terminal output may contain `cat .env`,
+    // `aws configure show`, a `git clone https://ghp_…@…` URL, or a
+    // freshly-pasted SSH private key. The user's question may also
+    // contain pasted secrets. Both strings are scrubbed; the chat
+    // history display (appendMessage("You", …) in onSend) still shows
+    // the pre-redaction text — redaction is a network-boundary
+    // concern, not a UX one. Contract:
+    // tests/features/ai_context_redaction/spec.md.
+    const auto scrubbedContext = SecretRedact::scrub(m_terminalContext);
+    const auto scrubbedUser    = SecretRedact::scrub(userMessage);
+
     QJsonObject systemMsg;
     systemMsg["role"] = "system";
     systemMsg["content"] = QString(
         "You are a helpful terminal assistant. The user is working in a terminal emulator. "
         "Here is the recent terminal output for context:\n\n```\n%1\n```\n\n"
         "Provide concise, actionable answers. When suggesting commands, put them in code blocks."
-    ).arg(m_terminalContext);
+    ).arg(scrubbedContext.text);
 
     QJsonObject userMsg;
     userMsg["role"] = "user";
-    userMsg["content"] = userMessage;
+    userMsg["content"] = scrubbedUser.text;
+
+    const int totalRedacted = scrubbedContext.redactedCount + scrubbedUser.redactedCount;
+    if (totalRedacted > 0) {
+        // Tell the user the payload differs from what they saw/typed so
+        // they don't wonder why the AI's answer doesn't match their
+        // terminal state. Singular/plural kept simple — this surface is
+        // log-like, not copy-polished.
+        appendMessage(QStringLiteral("System"),
+                      QString("Note: %1 secret%2 redacted from outbound request "
+                              "(OWASP LLM06 — see tests/features/ai_context_redaction/spec.md).")
+                          .arg(totalRedacted)
+                          .arg(totalRedacted == 1 ? "" : "s"));
+    }
 
     QJsonArray messages;
     messages.append(systemMsg);

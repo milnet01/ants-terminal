@@ -828,6 +828,31 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # ai_context_redaction — OWASP LLM06 defense. Asserts the 14 secret
+    # shapes in src/secretredact.h redact with the correct [REDACTED:<kind>]
+    # label, negative controls (UUID, commit SHA, plain URLs, prose) pass
+    # through verbatim, priority ordering puts sk-ant-… before legacy
+    # sk-…, and AiDialog::sendRequest wires scrub() to both the terminal
+    # context and the user message before either reaches the JSON body.
+    # See tests/features/ai_context_redaction/spec.md.
+    add_executable(test_ai_context_redaction
+        tests/features/ai_context_redaction/test_ai_context_redaction.cpp
+    )
+    target_link_libraries(test_ai_context_redaction PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_ai_context_redaction PRIVATE src)
+    target_compile_options(test_ai_context_redaction PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_ai_context_redaction PRIVATE
+        SRC_AIDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/aidialog.cpp"
+    )
+    add_test(NAME ai_context_redaction COMMAND test_ai_context_redaction)
+    set_tests_properties(ai_context_redaction PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # image_bomb_png_header_peek — regression guard for the 0.7.7 fix that
     # added QImageReader-based dimension peeks before QImage::loadFromData
     # on inline-image byte streams (OSC 1337 iTerm2 + Kitty APC PNG path).
