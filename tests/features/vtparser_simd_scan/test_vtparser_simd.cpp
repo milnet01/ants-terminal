@@ -18,9 +18,28 @@ namespace {
 
 // Collect every VtAction the parser emits into a flat vector so two feeds
 // can be compared byte-for-byte.
+//
+// Since 0.7.17, the parser's SIMD fast path emits printable-ASCII runs as a
+// single `Print` action carrying `printRun` + `printRunLen`. The byte-by-
+// byte feed strategy (one-byte feeds) goes through the scalar path and
+// emits one `Print` per byte with `codepoint` set. To keep the equivalence
+// contract intact across both strategies we canonicalize runs back into
+// per-byte `Print` actions at sink time — the *semantic* action stream is
+// unchanged, only the encoding differs.
 struct Sink {
     std::vector<VtAction> actions;
-    void operator()(const VtAction &a) { actions.push_back(a); }
+    void operator()(const VtAction &a) {
+        if (a.type == VtAction::Print && a.printRun != nullptr) {
+            for (int i = 0; i < a.printRunLen; ++i) {
+                VtAction b;
+                b.type = VtAction::Print;
+                b.codepoint = static_cast<uint8_t>(a.printRun[i]);
+                actions.push_back(b);
+            }
+            return;
+        }
+        actions.push_back(a);
+    }
 };
 
 // Deep equality. VtAction's default operator== doesn't exist, so we spell

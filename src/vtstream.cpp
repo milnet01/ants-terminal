@@ -25,6 +25,26 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
     // on another thread triggers a Qt warning on first activation.
     m_pty = new Pty(this);
     m_parser = std::make_unique<VtParser>([this](const VtAction &a) {
+        // Coalesced Print runs (printRun pointing into the feed buffer)
+        // do NOT outlive this callback — `data` in onPtyData is freed
+        // when that frame returns, so any pointer into it is dangling
+        // by the time `flushBatch` ships the batch to the GUI thread.
+        // Expand runs into per-byte Print actions here; the cost is
+        // one VtAction per byte on the worker thread but that's the
+        // same shape as the pre-0.7.17 parser and keeps the GUI-side
+        // batch consumer dangling-pointer-free. The direct (non-
+        // threaded) path in processAction still benefits from
+        // coalescing because there the VtAction lives on the stack
+        // during the callback only.
+        if (a.type == VtAction::Print && a.printRun != nullptr) {
+            for (int i = 0; i < a.printRunLen; ++i) {
+                VtAction b;
+                b.type = VtAction::Print;
+                b.codepoint = static_cast<uint8_t>(a.printRun[i]);
+                m_pending.push_back(std::move(b));
+            }
+            return;
+        }
         m_pending.push_back(a);
     });
     connect(m_pty, &Pty::dataReceived, this, &VtStream::onPtyData);

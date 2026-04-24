@@ -1113,20 +1113,26 @@ grep rules or individual tickets as they become actionable.
   `fd=3; fd<1024`. Use `closefrom(3)` on glibc ≥2.34 or iterate
   `/proc/self/fd`. CWE-403 recurrence on systemd/container default
   RLIMIT_NOFILE.
-- 📋 **Process-wide `signal(SIGPIPE, SIG_IGN)` in `main.cpp`.** `write()`
-  to a just-closed PTY currently crashes the GUI.
+- ✅ **Process-wide `signal(SIGPIPE, SIG_IGN)` in `main.cpp`.** Shipped
+  0.6.28 (bc97485) but never regression-tested. Locked 0.7.17 via
+  `tests/features/sigpipe_ignore` (source-grep invariants: the call
+  exists, appears before `QApplication` construction, `<csignal>` is
+  included).
 - 📋 **PTY write EAGAIN queue.** `ptyhandler.cpp:180-197` currently drops
   data on partial write. Install a `QSocketNotifier(QSocketNotifier::Write)`
   and queue the remainder.
 - 📋 **PTY dtor off-main-thread.** 500 ms `usleep` on GUI at
   `ptyhandler.cpp:37-40` × N splits = N×500 ms freeze on window close.
   Move escalation to a QThread.
-- 📋 **RIS (`ESC c`) must preserve all callbacks.**
-  `terminalgrid.cpp:653-659` currently wipes `m_notifyCallback`,
-  `m_progressCallback`, `m_lineCompletionCallback`,
-  `m_commandFinishedCallback`, `m_userVarCallback`,
-  `m_osc133ForgeryCallback`, `m_osc133Key`. After any `reset` command,
-  shell integration + plugin hooks silently die.
+- ✅ **RIS (`ESC c`) preserves all integration callbacks.** Shipped
+  0.7.17. The reset handler now stashes + restores 8 callbacks
+  (`response`, `bell`, `notify`, `lineCompletion`, `progress`,
+  `commandFinished`, `userVar`, `osc133Forgery`) plus `m_osc133Key`.
+  Security-relevant: previously a well-timed `tput reset` silenced
+  the OSC 133 forgery alarm permanently. Locked by
+  `tests/features/ris_preserves_callbacks` (all 8 callbacks fire
+  pre-RIS, fire again post-RIS; key survives; grid state actually
+  reset).
 - 📋 **Origin-mode translate on CUP / DECSC save origin.**
   `terminalgrid.cpp:397-400, 1592-1595, 1611-1621`. Breaks
   tmux/screen save-restore round-trip.
@@ -1332,15 +1338,24 @@ remainder, captured so they don't drop on the floor.
 
 ### ⚡ / 🏗 Tier 3 — structural
 
-- 📋 **VtParser `Print`-run coalescing.** `vtparser.cpp:107-113`
-  emits one `VtAction` per byte inside the SIMD fast-path; a 10 KB
-  ASCII run pays 10 000 heap-allocated
-  `{vector<int>, vector<bool>, string, string}` each. This is likely
-  the real root cause of the `newline_stream` hotspot we've been
-  profiling — the "SIMD fast-path" is paid for but not delivered.
-  Coalesce printable runs into a single `Print` action carrying a UTF-8
-  slice. Expected: 5–10× on the `ascii_print`/`newline_stream`
-  benchmarks.
+- ✅ **VtParser `Print`-run coalescing.** Shipped 0.7.17. The SIMD
+  fast-path now emits one `VtAction::Print` per safe-ASCII run
+  carrying a `{printRun, printRunLen}` slice into the caller buffer.
+  `TerminalGrid::handleAsciiPrintRun` batches per-row cell writes so
+  `markScreenDirty`, combining-char erase, and the `cell()` clamp
+  fire once per row instead of once per byte. Measured deltas on
+  8 MiB bench corpora (lower is better): `ascii_print` 327 → 260 ms
+  (−20% wall, +26% MB/s), `ansi_sgr` 291 → 255 ms (−12% wall, +14%
+  MB/s). The ROADMAP-target 5–10× never materialized because the
+  remaining per-byte cost is in the cell-write path
+  (`memmove`-style row updates, scrollback, attribute assignment),
+  not in VtAction construction. `newline_stream` and `utf8_cjk`
+  unchanged — no safe-ASCII runs or no coalesce-applicable path.
+  Lifetime invariant enforced: `VtStream::onPtyData` expands runs
+  into per-byte Prints before queuing (batch outlives feed buffer);
+  the direct-callback path keeps the coalesced form. Locked by
+  `tests/features/vtparser_print_run_coalesce` (8 invariants over
+  grid-state equivalence vs. the scalar byte-by-byte feed).
 - 📋 **Scroll region perf: `std::rotate` for `scrollUp`/`scrollDown`.**
   `scroll_region_rotate/spec.md` exists; `terminalgrid.cpp:1504-1590`
   still uses `erase`/`insert` per-iteration. `CSI 100 S` on an 80-row

@@ -8,7 +8,9 @@
 // A single action the parser emits for the grid to execute
 struct VtAction {
     enum Type {
-        Print,          // Regular character to display
+        Print,          // Regular character to display. Either single `codepoint`
+                        // (UTF-8 decoded, may be wide / combining) or a run of
+                        // printable-ASCII bytes pointed to by `printRun`.
         Execute,        // C0 control char (BEL, BS, HT, LF, CR, etc.)
         CsiDispatch,    // CSI sequence complete (cursor move, erase, SGR, etc.)
         EscDispatch,    // ESC sequence complete
@@ -18,7 +20,22 @@ struct VtAction {
     };
 
     Type type;
-    uint32_t codepoint = 0;       // For Print
+    uint32_t codepoint = 0;       // For Print (scalar path: single decoded codepoint)
+    // For Print coalesced runs: pointer into the caller's feed() buffer +
+    // length. Only valid for the duration of the ActionCallback invocation;
+    // consumers must copy bytes out before returning if they need them later.
+    // When `printRun != nullptr`, `codepoint` is zero and the consumer must
+    // treat this as a run of printable-ASCII bytes (each in [0x20..0x7E]).
+    //
+    // LIFETIME WARNING: consumers that store VtActions past the callback
+    // (e.g. VtStream::m_pending, which outlives onPtyData) MUST expand the
+    // run into per-byte Print actions — the feed-buffer memory is gone by
+    // the time the stored action is dispatched. The direct-callback path
+    // (bench, tests, synchronous TerminalGrid::processAction) is safe
+    // because the action is consumed on the stack before the callback
+    // returns.
+    const char *printRun = nullptr;
+    int printRunLen = 0;
     char controlChar = 0;         // For Execute
     char finalChar = 0;           // For CSI/ESC dispatch
     std::vector<int> params;      // CSI parameters

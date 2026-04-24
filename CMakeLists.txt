@@ -657,6 +657,31 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # vtparser_print_run_coalesce — asserts that the 0.7.17 Print-run
+    # coalescing (SIMD scan emits one VtAction::Print per safe-ASCII run
+    # + TerminalGrid::handleAsciiPrintRun batches per-row writes)
+    # produces grid state byte-identical to feeding the same bytes
+    # one at a time through the scalar handlePrint path. Locks the
+    # fast-path semantic equivalence that vtparser_simd_scan cannot
+    # observe (that test is action-stream level, this one is grid
+    # state). See tests/features/vtparser_print_run_coalesce/spec.md.
+    add_executable(test_vtparser_print_run_coalesce
+        tests/features/vtparser_print_run_coalesce/test_print_run_coalesce.cpp
+        src/vtparser.cpp
+        src/terminalgrid.cpp
+    )
+    target_include_directories(test_vtparser_print_run_coalesce PRIVATE src)
+    target_link_libraries(test_vtparser_print_run_coalesce PRIVATE
+        Qt6::Core Qt6::Gui
+    )
+    target_compile_options(test_vtparser_print_run_coalesce PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME vtparser_print_run_coalesce COMMAND test_vtparser_print_run_coalesce)
+    set_tests_properties(vtparser_print_run_coalesce PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # combining_on_resize — asserts that TerminalGrid::resize preserves the
     # per-line combining-char side table on both main screen and alt
     # screen, and cleanly evicts combining entries whose column falls
@@ -1240,6 +1265,52 @@ if(ANTS_TESTS)
     add_test(NAME menubar_hover_stylesheet
              COMMAND test_menubar_hover_stylesheet)
     set_tests_properties(menubar_hover_stylesheet PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # ris_preserves_callbacks — 0.7.17 fix. Locks the RIS (ESC c) handler
+    # in TerminalGrid::handleEsc, which previously preserved only
+    # responseCallback + bellCallback on reset — silently wiping
+    # notifyCallback, progressCallback, lineCompletionCallback,
+    # commandFinishedCallback, userVarCallback, and osc133ForgeryCallback
+    # (plus the osc133Key HMAC enforcement config). Any `tput reset` /
+    # `reset(1)` from the running shell killed shell-integration,
+    # plugin, and security hooks. See spec.md.
+    add_executable(test_ris_preserves_callbacks
+        tests/features/ris_preserves_callbacks/test_ris_preserves_callbacks.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_ris_preserves_callbacks PRIVATE
+        Qt6::Core
+        Qt6::Gui  # QColor / QImage transitively required by terminalgrid.h
+    )
+    target_include_directories(test_ris_preserves_callbacks PRIVATE src)
+    target_compile_options(test_ris_preserves_callbacks PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME ris_preserves_callbacks COMMAND test_ris_preserves_callbacks)
+    set_tests_properties(ris_preserves_callbacks PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # sigpipe_ignore — 0.6.28 fix (bc97485). Locks the
+    # std::signal(SIGPIPE, SIG_IGN) call in main() that prevents a
+    # full-window crash when writing to a just-closed PTY. Source-grep
+    # test: re-read src/main.cpp and verify the call exists inside
+    # main() before the QApplication constructor, with <csignal>
+    # included. See tests/features/sigpipe_ignore/spec.md.
+    add_executable(test_sigpipe_ignore
+        tests/features/sigpipe_ignore/test_sigpipe_ignore.cpp
+    )
+    target_compile_options(test_sigpipe_ignore PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_sigpipe_ignore PRIVATE
+        SRC_MAIN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
+    )
+    add_test(NAME sigpipe_ignore COMMAND test_sigpipe_ignore)
+    set_tests_properties(sigpipe_ignore PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

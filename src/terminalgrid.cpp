@@ -255,7 +255,11 @@ void TerminalGrid::setDefaultBg(const QColor &c) {
 void TerminalGrid::processAction(const VtAction &action) {
     switch (action.type) {
     case VtAction::Print:
-        handlePrint(action.codepoint);
+        if (action.printRun != nullptr) {
+            handleAsciiPrintRun(action.printRun, action.printRunLen);
+        } else {
+            handlePrint(action.codepoint);
+        }
         break;
     case VtAction::Execute:
         handleExecute(action.controlChar);
@@ -275,6 +279,64 @@ void TerminalGrid::processAction(const VtAction &action) {
     case VtAction::ApcEnd:
         handleApc(action.oscString);
         break;
+    }
+}
+
+void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
+    // Precondition: every byte in [data, data+len) is in [0x20..0x7E].
+    // The parser's SIMD scanSafeAsciiRun establishes this. The fast
+    // path therefore skips per-byte wcwidth(), combining-char checks,
+    // wide-char handling, and cell() clamping.
+    //
+    // Logic mirrors handlePrint() but batches per-row spans so row
+    // lookup, markScreenDirty, and the combining.erase scan happen
+    // once per row instead of once per byte. Delayed-wrap semantics
+    // (m_wrapNext after writing the last column) are preserved
+    // byte-for-byte identical with the scalar handlePrint() path.
+    int i = 0;
+    while (i < len) {
+        if (m_wrapNext && m_autoWrap) {
+            m_screenLines[m_cursorRow].softWrapped = true;
+            m_cursorCol = 0;
+            newLine();
+            m_wrapNext = false;
+        }
+        if (m_cursorCol >= m_cols) m_cursorCol = m_cols - 1;
+
+        const int row = std::clamp(m_cursorRow, 0, m_rows - 1);
+        const int startCol = m_cursorCol;
+        auto &line = m_screenLines[row];
+        const int available = m_cols - startCol;
+        const int remaining = len - i;
+        // How many bytes land on this row before we hit the right edge?
+        // Write at least 1 (the left wrap above guarantees cursorCol < cols).
+        int span = remaining < available ? remaining : available;
+        if (span <= 0) break;  // defensive
+
+        auto &cells = line.cells;
+        const CellAttrs attrs = m_currentAttrs;
+        bool rowHasCombining = !line.combining.empty();
+        for (int k = 0; k < span; ++k) {
+            Cell &c = cells[startCol + k];
+            c.codepoint = static_cast<uint8_t>(data[i + k]);
+            c.attrs = attrs;
+            c.isWideChar = false;
+            c.isWideCont = false;
+            if (rowHasCombining) {
+                line.combining.erase(startCol + k);
+            }
+        }
+        markScreenDirty(row);
+        i += span;
+
+        // Advance cursor, matching handlePrint's delayed-wrap semantics:
+        // the last column write leaves cursor pinned at cols-1 with
+        // m_wrapNext=true; the next iteration above triggers the wrap.
+        m_cursorCol = startCol + span;
+        if (m_cursorCol >= m_cols) {
+            m_cursorCol = m_cols - 1;
+            m_wrapNext = true;
+        }
     }
 }
 
@@ -651,11 +713,35 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             m_applicationKeypad = false;
             break;
         case 'c': {
-            auto cb = std::move(m_responseCallback);
-            auto bellCb = std::move(m_bellCallback);
+            // RIS — Reset to Initial State (ESC c). Wipes grid, cursor,
+            // attrs, modes, scrollback. Integration callbacks (installed
+            // by TerminalWidget, shell-integration, plugins, audit) MUST
+            // survive the reset — otherwise a timed `tput reset` /
+            // `reset(1)` from the running shell silently kills desktop
+            // notifications, progress bars, command-finished hooks,
+            // line-completion triggers, user-var reporting, and the
+            // OSC 133 forgery alarm. `m_osc133Key` is a security
+            // configuration read from the environment and also survives.
+            // Documented ROADMAP § Tier 2 (2026-04-23 re-review).
+            auto responseCb        = std::move(m_responseCallback);
+            auto bellCb            = std::move(m_bellCallback);
+            auto notifyCb          = std::move(m_notifyCallback);
+            auto lineCompletionCb  = std::move(m_lineCompletionCallback);
+            auto progressCb        = std::move(m_progressCallback);
+            auto commandFinishedCb = std::move(m_commandFinishedCallback);
+            auto userVarCb         = std::move(m_userVarCallback);
+            auto osc133ForgeryCb   = std::move(m_osc133ForgeryCallback);
+            QByteArray osc133Key   = m_osc133Key;
             *this = TerminalGrid(m_rows, m_cols);
-            m_responseCallback = std::move(cb);
-            m_bellCallback = std::move(bellCb);
+            m_responseCallback        = std::move(responseCb);
+            m_bellCallback            = std::move(bellCb);
+            m_notifyCallback          = std::move(notifyCb);
+            m_lineCompletionCallback  = std::move(lineCompletionCb);
+            m_progressCallback        = std::move(progressCb);
+            m_commandFinishedCallback = std::move(commandFinishedCb);
+            m_userVarCallback         = std::move(userVarCb);
+            m_osc133ForgeryCallback   = std::move(osc133ForgeryCb);
+            m_osc133Key               = std::move(osc133Key);
             break;
         }
         }

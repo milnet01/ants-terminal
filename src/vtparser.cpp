@@ -104,14 +104,20 @@ void VtParser::feed(const char *data, int length) {
             std::size_t run = scanSafeAsciiRun(
                 reinterpret_cast<const std::uint8_t *>(data + i),
                 static_cast<std::size_t>(length - i));
-            for (std::size_t k = 0; k < run; ++k) {
+            if (run > 0) {
+                // Emit the whole safe-ASCII run as a single Print action
+                // carrying a pointer+length into the caller's buffer. Saves
+                // `run - 1` VtAction constructions (and the attendant
+                // vector<int> / vector<bool> / string zero-init per action)
+                // plus `run - 1` std::function dispatches.
                 VtAction a;
                 a.type = VtAction::Print;
-                a.codepoint = static_cast<std::uint8_t>(data[i + static_cast<int>(k)]);
+                a.printRun = data + i;
+                a.printRunLen = static_cast<int>(run);
                 m_callback(a);
+                i += static_cast<int>(run);
+                if (i >= length) break;
             }
-            i += static_cast<int>(run);
-            if (i >= length) break;
         }
         feedByte(static_cast<std::uint8_t>(data[i]));
         ++i;

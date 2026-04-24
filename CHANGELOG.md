@@ -12,6 +12,85 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+**Theme:** hot-path parser optimization + stale-TODO sweep. VtParser
+printable-ASCII runs now coalesce into a single `VtAction` carrying a
+pointer+length slice of the feed buffer; `TerminalGrid` grows a
+`handleAsciiPrintRun` fast path that batches per-row cell writes so
+`markScreenDirty`, the combining-char erase, and the `cell()` clamp
+all fire once per row instead of once per byte. Rebench on 8 MiB
+corpora: `ascii_print` 24.4 → 30.7 MB/s (+26%), `ansi_sgr`
+27.5 → 31.4 MB/s (+14%). Two Tier 2 TODOs also closed: `SIGPIPE`
+was already shipped in 0.6.28 (bc97485) but never had a regression
+test — now grep-locked; RIS (ESC c) preserved only 2 of 8 integration
+callbacks, silently breaking notifications, progress, command-finished,
+user-vars, and the OSC 133 HMAC forgery alarm after any `tput reset` —
+now preserves all 8 plus the HMAC key.
+
+### Added
+
+- **Feature test:** `vtparser_print_run_coalesce` — locks grid-state
+  equivalence between the bulk-feed (SIMD + coalesce) path and the
+  byte-by-byte scalar path across 8 invariants (ASCII, CSI at every
+  lane boundary, wrap at right edge, cursor mid-row, mixed UTF-8,
+  empty input, combining-mark clearing).
+- **Feature test:** `sigpipe_ignore` — source-grep regression test that
+  pins `std::signal(SIGPIPE, SIG_IGN)` in `main.cpp` before the
+  `QApplication` constructor. Installing it after QApplication leaves
+  any write path triggered by Qt resource loading exposed to
+  termination.
+- **Feature test:** `ris_preserves_callbacks` — exercises all 8
+  `TerminalGrid` integration callbacks plus the `m_osc133Key` HMAC
+  config before and after an `ESC c` reset and asserts every one
+  survives. Pre-0.7.17 only `responseCallback` + `bellCallback` were
+  preserved; the other 6 silently wiped.
+
+### Changed
+
+- **`VtAction` carries an optional coalesced Print run.** Two new
+  fields: `const char *printRun` + `int printRunLen`. When set, they
+  point into the caller's feed buffer (valid for the duration of the
+  `ActionCallback` call only). `TerminalWidget`'s direct-callback path
+  uses this to skip `wcwidth`, the combining-char check, the wide-char
+  branch, and `std::clamp` inside `cell()` on every printable byte.
+- **`VtStream::onPtyData` callback expands runs into per-byte Prints.**
+  Its batch outlives the feed buffer, so it MUST materialize the run
+  into per-byte `Print` actions before queuing for the GUI thread.
+  Lifetime invariant documented in `vtparser.h` alongside the field.
+- **`tests/features/vtparser_simd_scan` + `threaded_parse_equivalence`
+  canonicalize runs before comparing.** Both tests establish action-
+  stream equivalence across feed strategies; the expand-runs-to-per-
+  byte canonicalization preserves the contract after coalescing.
+
+### Fixed
+
+- **RIS (`ESC c`) now preserves all 8 integration callbacks +
+  `m_osc133Key`.** Previously `notifyCallback`, `progressCallback`,
+  `lineCompletionCallback`, `commandFinishedCallback`, `userVarCallback`,
+  and `osc133ForgeryCallback` silently became empty functions after any
+  `tput reset` / `reset(1)` / `stty sane`. Desktop notifications,
+  progress bars, `command_finished` plugin events, user-var theming
+  hooks (jj, starship), and the OSC 133 HMAC forgery alarm all died
+  after a single RIS. Security impact for the forgery alarm: a
+  well-timed `tput reset` silenced it permanently, enabling OSC 133
+  forgery to proceed without user notification. `m_osc133Key` (read
+  from `$ANTS_OSC133_KEY` at process start) also now survives RIS.
+
+### Performance
+
+- **VtParser printable-ASCII run coalescing.** The SIMD fast path
+  (`scanSafeAsciiRun` on SSE2/NEON) now emits one `VtAction::Print`
+  per run instead of one per byte. For a 10 KB TUI-repaint PTY read,
+  the allocation count drops from ~10 000 to 1 and the dispatch count
+  drops by the same factor. Bench deltas on 8 MiB corpora:
+  `ascii_print` 327 → 260 ms (−20%), `ansi_sgr` 291 → 255 ms (−12%).
+  The `newline_stream` and `utf8_cjk` corpora are bound by
+  `newLine`/scroll and UTF-8 multibyte decoding respectively — no
+  safe-ASCII runs to coalesce — so their numbers are flat.
+- **`TerminalGrid::handleAsciiPrintRun` batches per-row writes.**
+  Skips the per-byte `wcwidth`, combining-char branch, wide-char
+  branch, and `std::clamp` inside `cell()`. Fires `markScreenDirty`
+  once per row instead of once per byte.
+
 
 ## [0.7.16] — 2026-04-23
 

@@ -26,7 +26,26 @@ struct Fixture {
 static std::vector<VtAction> parseAll(const std::string &data,
                                        const std::vector<size_t> &chunks) {
     std::vector<VtAction> out;
-    VtParser parser([&out](const VtAction &a) { out.push_back(a); });
+    // Since 0.7.17, VtParser's SIMD fast path emits printable-ASCII runs
+    // as a single Print action carrying `printRun` + `printRunLen` (a
+    // pointer into the feed buffer). The byte-by-byte feed strategy
+    // still emits one Print per byte via the scalar path. To keep
+    // action-stream equivalence contract intact across chunk strategies,
+    // canonicalize runs back to per-byte Print actions at sink time. We
+    // also MUST copy run bytes here — `printRun` points into the feed
+    // buffer and is only valid during the callback.
+    VtParser parser([&out](const VtAction &a) {
+        if (a.type == VtAction::Print && a.printRun != nullptr) {
+            for (int i = 0; i < a.printRunLen; ++i) {
+                VtAction b;
+                b.type = VtAction::Print;
+                b.codepoint = static_cast<uint8_t>(a.printRun[i]);
+                out.push_back(b);
+            }
+            return;
+        }
+        out.push_back(a);
+    });
     size_t offset = 0;
     for (size_t n : chunks) {
         if (n == 0) continue;

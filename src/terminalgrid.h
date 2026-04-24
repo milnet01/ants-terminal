@@ -321,6 +321,13 @@ public:
 
 private:
     void handlePrint(uint32_t cp);
+    // Fast path for the VtParser SIMD coalesced Print run. Every byte in
+    // [data, data+len) is in [0x20..0x7E] (the parser's scanSafeAsciiRun
+    // contract), so width=1, no combining, no UTF-8 decode. Avoids the
+    // wcwidth() call and cell() clamping overhead per byte; splits the
+    // run into per-row spans so markScreenDirty / combining.erase fire
+    // once per row instead of once per byte.
+    void handleAsciiPrintRun(const char *data, int len);
     void handleExecute(char ch);
     void handleCsi(const VtAction &a);
     void handleEsc(const VtAction &a);
