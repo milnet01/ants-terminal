@@ -10,6 +10,38 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.22] — 2026-04-24
+
+**Theme:** user-visible About menu (user ask 2026-04-24 — "How do I
+see what version of Ants Terminal I am running? Can you please add a
+GUI version?").
+
+### Added
+
+- **Help → About Ants Terminal… menu.** New rightmost menu on the
+  menubar (matching Linux desktop HIG: Help is always last). Two
+  actions:
+  - **About Ants Terminal…** — shows a rich-text dialog with the
+    running `ANTS_VERSION` (read directly from CMake's
+    project-wide single source of truth, no hardcoded literal),
+    the Qt runtime version (via `qVersion()`), the Lua engine
+    version (when compiled with `ANTS_LUA_PLUGINS`), a one-line
+    summary, and a clickable GitHub homepage link
+    (`TextBrowserInteraction` enabled so URLs in the dialog open
+    in the user's browser).
+  - **About Qt…** — the stock `QMessageBox::aboutQt` dialog.
+    Inherits future Qt-version bumps automatically.
+
+  Pre-fix, `ants-terminal --version` on the command line was the
+  only path to read the running version. Regression test:
+  `tests/features/help_about_menu/spec.md` — 6 invariants
+  (Help-menu-last, About-action present, `ANTS_VERSION`
+  referenced not hardcoded, `Qt::RichText` +
+  `Qt::TextBrowserInteraction` set, About-Qt action routed to
+  `QMessageBox::aboutQt`, no `"0.7."` literal inside the
+  handler body).
+
+
 ## [0.7.21] — 2026-04-24
 
 **Theme:** Lua sandbox hardening trio from the 0.7.12 /indie-review.

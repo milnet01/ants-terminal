@@ -48,6 +48,7 @@ void sweepKwinScriptOrphansOnce();
 #include <QMouseEvent>
 #include <QHoverEvent>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QFrame>
 #include <QLineEdit>
 #include <QPlainTextEdit>
@@ -1612,6 +1613,48 @@ void MainWindow::setupMenus() {
             QString("Loaded %1 plugins").arg(m_pluginManager->pluginCount()), 3000);
     });
 #endif
+
+    // --- Help menu ---
+    // Standard last-position menu carrying About (user-requested 2026-04-24
+    // — there was no GUI-surfaced way to check the running version before;
+    // `ants-terminal --version` on the CLI was the only path). About Qt
+    // uses Qt's stock dialog so we inherit future Qt-version bumps
+    // automatically. Our About shows the app version (ANTS_VERSION, single
+    // source of truth in CMakeLists.txt), the Qt runtime version, the Lua
+    // engine version when compiled in, and the homepage URL.
+    QMenu *helpMenu = m_menuBar->addMenu("&Help");
+
+    QAction *aboutAction = helpMenu->addAction("&About Ants Terminal...");
+    connect(aboutAction, &QAction::triggered, this, [this]() {
+        const QString qtVer = QString::fromLatin1(qVersion());
+        QString luaLine;
+#ifdef ANTS_LUA_PLUGINS
+        // lua.h is not included here (Lua is a plugin-layer detail).
+        // Ship the engine version as a short literal kept in sync with
+        // the CMake probe (`Lua ${LUA_VERSION}` line in the configure
+        // output). Matches what PluginManager advertises.
+        luaLine = QStringLiteral("<br/><b>Lua:</b> 5.4");
+#endif
+        const QString body = QStringLiteral(
+            "<h3>Ants Terminal</h3>"
+            "<p><b>Version:</b> %1<br/>"
+            "<b>Qt runtime:</b> %2%3</p>"
+            "<p>A modern, themeable terminal emulator with GPU "
+            "rendering and Lua plugins. MIT-licensed.</p>"
+            "<p><a href=\"https://github.com/milnet01/ants-terminal\">"
+            "https://github.com/milnet01/ants-terminal</a></p>")
+            .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine);
+        QMessageBox mb(QMessageBox::NoIcon, "About Ants Terminal",
+                       body, QMessageBox::Ok, this);
+        mb.setTextFormat(Qt::RichText);
+        mb.setTextInteractionFlags(Qt::TextBrowserInteraction);
+        mb.exec();
+    });
+
+    QAction *aboutQtAction = helpMenu->addAction("About &Qt...");
+    connect(aboutQtAction, &QAction::triggered, this, [this]() {
+        QMessageBox::aboutQt(this, QStringLiteral("About Qt"));
+    });
 }
 
 TerminalWidget *MainWindow::createTerminal() {

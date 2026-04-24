@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.21 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.22 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2021,6 +2021,27 @@ if(ANTS_TESTS)
     add_test(NAME settings_dialog_config_reload
              COMMAND test_settings_dialog_config_reload)
     set_tests_properties(settings_dialog_config_reload PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # help_about_menu — asserts MainWindow's Help menu carries an
+    # "About Ants Terminal..." action whose handler reads ANTS_VERSION
+    # (not a hardcoded literal) and renders as rich text with clickable
+    # links, plus an "About Qt..." action routing to QMessageBox::aboutQt.
+    # Source-grep only — MainWindow is too heavy for a widget harness.
+    # See tests/features/help_about_menu/spec.md.
+    add_executable(test_help_about_menu
+        tests/features/help_about_menu/test_help_about_menu.cpp
+    )
+    target_link_libraries(test_help_about_menu PRIVATE Qt6::Core)
+    target_compile_options(test_help_about_menu PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_help_about_menu PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME help_about_menu COMMAND test_help_about_menu)
+    set_tests_properties(help_about_menu PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

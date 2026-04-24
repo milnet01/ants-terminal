@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.22" date="2026-04-24">
+      <description>
+        <p>User ask 2026-04-24 — "How do I see what version of Ants Terminal I am running? Can you please add a GUI version?"</p>
+        <p>Added:</p>
+        <ul>
+          <li><em>Help → About Ants Terminal…</em> — new rightmost menu carrying a rich-text About dialog that shows the running <code>ANTS_VERSION</code>, the Qt runtime version, the Lua engine version (when compiled with <code>ANTS_LUA_PLUGINS</code>), and a clickable GitHub homepage link. Plus a second action <em>About Qt…</em> routing to Qt's stock aboutQt dialog. Version is read directly from the CMake-defined <code>ANTS_VERSION</code> macro — no hardcoded literal that could drift on bumps.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.21" date="2026-04-24">
       <description>
         <p>Lua sandbox hardening trio from the 0.7.12 /indie-review. Three small defense-in-depth fixes in <code>LuaEngine</code>, all locked by a behavioral + source-grep regression test that flips 5 of 9 invariants red against pre-fix source.</p>

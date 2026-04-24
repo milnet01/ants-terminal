@@ -1,3 +1,22 @@
+ants-terminal (0.7.22-1) unstable; urgency=medium
+
+  * User ask 2026-04-24: "How do I see what version of Ants
+    Terminal I am running? Can you please add a GUI version?"
+  * Added: Help → About Ants Terminal… menu. New rightmost
+    menu on the menubar (Help last, matching Linux desktop HIG).
+    About dialog shows the running ANTS_VERSION read directly
+    from CMake's single source of truth, the Qt runtime version,
+    the Lua engine version when compiled in, a one-line summary,
+    and a clickable GitHub homepage link. Plus an About Qt…
+    action routing to QMessageBox::aboutQt.
+  * Locked by tests/features/help_about_menu — 6 source-grep
+    invariants ensuring the handler reads ANTS_VERSION rather
+    than a hardcoded literal, rich-text + browser-interaction
+    flags are set so URLs open on click, and the Help menu is
+    the last-added top-level menu.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 24 Apr 2026 17:00:00 +0200
+
 ants-terminal (0.7.21-1) unstable; urgency=medium
 
   * Lua sandbox hardening trio from the 0.7.12 /indie-review.
