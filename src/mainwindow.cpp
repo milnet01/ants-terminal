@@ -162,9 +162,9 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // WA_TranslucentBackground call. Used to isolate whether residual
     // popup / menubar / dropdown flicker on KWin + Wayland is a
     // translucent-parent interaction or something else. Trade-off:
-    // per-pixel window transparency (config keys `opacity` and
-    // `background_alpha`) has no effect with this env var set, since
-    // the toplevel window is now opaque at the compositor level.
+    // per-pixel terminal-area transparency (the `opacity` config key)
+    // has no effect with this env var set, since the toplevel window
+    // is now opaque at the compositor level.
     const bool forceOpaque = qEnvironmentVariableIntValue("ANTS_OPAQUE_WINDOW") != 0;
     if (!forceOpaque) {
         setAttribute(Qt::WA_TranslucentBackground, true);
@@ -2375,8 +2375,10 @@ void MainWindow::applyTheme(const QString &name) {
     const Theme &theme = Themes::byName(name);
 
     // UI chrome (title bar, menus, tabs, status bar) always uses opaque backgrounds.
-    // Opacity and background alpha only affect the terminal content area — this is
-    // handled in TerminalWidget::paintEvent via m_windowOpacity / m_backgroundAlpha.
+    // The `opacity` config key only affects the terminal content area — this is
+    // handled in TerminalWidget::paintEvent via m_windowOpacity (the variable
+    // name is historical; it drives per-pixel terminal-area fillRect alpha,
+    // not Qt's whole-window setWindowOpacity).
     //
     // Qt stylesheet cascade: a stylesheet set on QMainWindow applies to its
     // QObject descendants, which includes child QDialogs — so the dialog

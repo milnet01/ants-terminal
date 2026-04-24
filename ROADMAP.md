@@ -977,21 +977,23 @@ grep rules or individual tickets as they become actionable.
   (perms before write), `claudeallowlist.cpp:273-281` (pre-commit on a
   temp fd — rename may drop perms), `debuglog.cpp:72` (no perms at all
   on a log that holds PTY + HMAC + network material).
-- 📋 **"Documented feature, dead code" drift** — 5 distinct cases caught
-  by 4 different reviewers:
-  - `gpu_rendering` config key live but `glrenderer.cpp` unreachable
-    since 0.7.4 base-class refactor (widget no longer `QOpenGLWidget`).
-    `tests/features/terminal_partial_update_mode/spec.md` INV-1 is a
-    dead invariant.
-  - `background_alpha` persisted to config but `terminalwidget.cpp:604-609`
-    uses `m_windowOpacity`, never `m_backgroundAlpha`.
-  - Claude plan-mode detection at `claudeintegration.cpp:495` reads
-    `value("mode")` — real JSONL uses `permissionMode`. `planModeChanged(true)`
-    has never fired in production.
-  - `session_persistence` default: `CLAUDE.md` says `false`, `config.cpp:225`
-    says `true` (the code default is correct per spec, docs drift).
-  - `font_size` range: `CLAUDE.md` says 8–32, `config.cpp:84` and
-    `settingsdialog.cpp:167` both 4–48 (three-way drift).
+- ✅ **"Documented feature, dead code" drift** — 5 distinct cases caught
+  by 4 different reviewers, now all resolved:
+  - `gpu_rendering` / partial-update spec: spec.md rewritten in
+    [Unreleased] to match the live QWidget-base test; directory name
+    kept for CMake stability. `gpu_rendering` config key retained
+    because `glrenderer` is reachable via the optional container path
+    (ROADMAP Tier 3 revive-or-delete decision is separate tracking).
+  - `background_alpha` config key + getter/setter + member **removed**
+    in [Unreleased] — redundant with `opacity`, which is what the user
+    actually sets. Paint path at `terminalwidget.cpp:605` remains
+    unchanged (uses `m_windowOpacity`, driven by `opacity` config).
+  - Claude plan-mode `value("mode")` → `permissionMode` fix shipped
+    in 0.7.12.
+  - `session_persistence` default doc drift corrected in README
+    ([Unreleased]); code default was right.
+  - `font_size` range doc drift corrected in README ([Unreleased]);
+    code range (4–48) was right.
 - 📋 **No-auth local IPC is a UID-scope RCE chain.** Remote control
   listens by default (`mainwindow.cpp:788`), accepts unauthenticated
   commands (`remotecontrol.cpp:66-113`), and `send-text` writes raw
@@ -1133,9 +1135,18 @@ grep rules or individual tickets as they become actionable.
 - 📋 **Wide-char overwrite zeroes the mate.**
   `terminalgrid.cpp:327-347` leaves dangling `isWideCont` when a narrow
   char overwrites a wide char's first half (or vice versa).
-- 📋 **`background_alpha` wiring — or remove from docs.**
-  `terminalwidget.cpp:3874-3876` writes to a dead field. Decide: revive
-  at paint site, or drop config key + doc entry.
+- ✅ **`background_alpha` — dropped as redundant.** Shipped in
+  [Unreleased]. User confirmed (2026-04-24) they use `opacity`
+  ~0.9-0.95 to make the terminal area translucent while chrome
+  stays solid — exactly what the `opacity` config key already
+  does (paint site at `terminalwidget.cpp:605` applies per-pixel
+  alpha via `m_windowOpacity`). Since `background_alpha` had no
+  UI widget, no paint-site consumer, and overlapped intent with
+  `opacity`, removed the config getter/setter, the
+  `TerminalWidget::setBackgroundAlpha` method, and the
+  `m_backgroundAlpha` member entirely. Stale key in existing
+  `config.json` files is harmlessly ignored on load. README
+  example + defaults table pruned in the same commit.
 - ✅ **`terminal_partial_update_mode` spec rewrite.** Shipped in
   [Unreleased]. The `.cpp` test already enforced the correct
   post-0.7.4 invariant (TerminalWidget is a plain `QWidget`,
@@ -1440,8 +1451,6 @@ remainder, captured so they don't drop on the floor.
 - 📋 **Settings dialog: Cancel rollback for Profiles tab.**
   `settingsdialog.cpp:432-482` — profile Save/Delete/Load mutate
   `m_config` immediately; Cancel doesn't roll them back.
-- 📋 **Settings dialog: `background_alpha` widget** (dep on the Tier 2
-  wiring decision).
 - 📋 **Settings dialog: Restore Defaults per-tab.**
 - 📋 **Accessibility pass on chrome.** `mainwindow.cpp` chrome and
   `CommandPalette` / `TitleBar` buttons have no

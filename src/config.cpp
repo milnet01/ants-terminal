@@ -292,16 +292,6 @@ void Config::setGpuRendering(bool enabled) {
     save();
 }
 
-// Per-pixel background alpha
-int Config::backgroundAlpha() const {
-    return qBound(0, m_data.value("background_alpha").toInt(255), 255);
-}
-
-void Config::setBackgroundAlpha(int alpha) {
-    m_data["background_alpha"] = qBound(0, alpha, 255);
-    save();
-}
-
 // Session persistence — default ON. Modern terminals (iTerm2, WezTerm,
 // Kitty, Konsole) restore tabs out of the box; users expect the same here
 // without hunting through Settings. The only cost is ~a few KB of

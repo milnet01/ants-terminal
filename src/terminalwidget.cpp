@@ -3871,11 +3871,6 @@ void TerminalWidget::updateScrollToBottomButton() {
     }
 }
 
-void TerminalWidget::setBackgroundAlpha(int alpha) {
-    m_backgroundAlpha = qBound(0, alpha, 255);
-    update();
-}
-
 void TerminalWidget::setWindowOpacityLevel(double opacity) {
     m_windowOpacity = qBound(0.0, opacity, 1.0);
     update();

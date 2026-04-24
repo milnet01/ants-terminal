@@ -94,11 +94,12 @@ public:
     void setGpuRendering(bool enabled);
     bool gpuRendering() const { return m_gpuRendering; }
 
-    // Per-pixel background alpha (0-255)
-    void setBackgroundAlpha(int alpha);
-    int backgroundAlpha() const { return m_backgroundAlpha; }
-
-    // Window-level opacity (0.0-1.0), applied to background via per-pixel alpha
+    // Opacity (0.0-1.0), driven by `opacity` config key. Despite the
+    // method name and the m_windowOpacity member, this is per-pixel
+    // alpha for the terminal-area fillRect only — the window chrome
+    // (menubar, tabs, status bar, title bar) is painted by the parent
+    // widget tree and stays fully opaque. Users at 0.9-0.95 get a
+    // slightly translucent terminal area with solid chrome.
     void setWindowOpacityLevel(double opacity);
     double windowOpacityLevel() const { return m_windowOpacity; }
 
@@ -538,8 +539,11 @@ private:
     bool m_gpuRendering = false;
     std::unique_ptr<GlRenderer> m_glRenderer;
 
-    // Per-pixel background alpha (0=transparent, 255=opaque)
-    int m_backgroundAlpha = 255;
+    // Opacity factor for the terminal-area fillRect paint (0.0-1.0).
+    // Driven by the `opacity` config key through setWindowOpacityLevel.
+    // Name is historical — the value affects only the terminal's own
+    // fillRect, not Qt's whole-window setWindowOpacity (the window
+    // chrome stays solid).
     double m_windowOpacity = 1.0;
 
     // Claude Code permission detection

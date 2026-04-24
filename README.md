@@ -803,7 +803,6 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
     "theme": "Dark",
     "font_size": 11,
     "opacity": 1.0,
-    "background_alpha": 255,
     "scrollback_lines": 50000,
     "auto_copy_on_select": true,
     "session_logging": false,
@@ -835,8 +834,7 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 |-----|------|---------|-------------|
 | `theme` | string | `"Dark"` | Active theme name |
 | `font_size` | int | `11` | Font size in points (4-48) |
-| `opacity` | double | `1.0` | Window opacity (0.1-1.0) |
-| `background_alpha` | int | `255` | Per-pixel background alpha (0-255) |
+| `opacity` | double | `1.0` | Terminal-area opacity (0.1-1.0); chrome stays opaque |
 | `scrollback_lines` | int | `50000` | Max scrollback lines (1000-1000000) |
 | `auto_copy_on_select` | bool | `true` | Copy to clipboard on text selection |
 | `session_logging` | bool | `false` | Log raw session to file |

@@ -19,10 +19,34 @@ number across the tree. The `shell_command` config key turned out to
 be the only actual functional bug: Settings → General's Shell picker
 persisted the user's choice to `config.json` but no code path ever
 read it — every tab opened `$SHELL` regardless of what the user picked.
-One other deferred-but-flagged item from the 0.7.12 Tier 3 list also
-landed: `Qt::WA_OpaquePaintEvent` on the menubar, which closes the
+Two other deferred-but-flagged items from the 0.7.12 ROADMAP also
+landed: `Qt::WA_OpaquePaintEvent` on the menubar (closes the
 mouse-move-over-menubar dropdown flicker on KWin that the 0.7.4
-QOpenGLWidget→QWidget refactor didn't fully eliminate.
+QOpenGLWidget→QWidget refactor didn't fully eliminate), and
+`background_alpha` config key removed as redundant after user
+confirmed the `opacity` knob already does what they want.
+
+### Removed
+
+- **`background_alpha` config key + `Config::backgroundAlpha()` +
+  `Config::setBackgroundAlpha()` + `TerminalWidget::setBackgroundAlpha()`
+  + `TerminalWidget::backgroundAlpha()` + `m_backgroundAlpha` member.**
+  The key had no paint-site consumer (the `fillRect` at
+  `terminalwidget.cpp:605` always used `m_windowOpacity`, which is
+  driven by the `opacity` config key) and no UI widget. User
+  confirmed (2026-04-24) they use `opacity` ~0.9-0.95 to make the
+  terminal area translucent while the chrome stays solid — which is
+  exactly what the existing paint path does. Removing the key
+  collapses two overlapping knobs into the one that works.
+  Backwards-compat note: stale `"background_alpha"` entries in
+  existing `config.json` files are harmlessly ignored on load (Qt's
+  JSON parser tolerates unknown keys). README config-defaults table
+  and example JSON both pruned; CLAUDE.md "Per-pixel bg alpha is
+  independent of window opacity" bullet rewritten to describe the
+  actual single-knob behaviour. `m_windowOpacity` member kept (name
+  is historical — it drives per-pixel terminal-area fillRect alpha,
+  not Qt's whole-window `setWindowOpacity`); header + paint-site
+  comments clarify the misnomer.
 
 ### Fixed
 

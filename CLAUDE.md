@@ -126,7 +126,11 @@ commit when `luaengine` / `pluginmanager` change the `ants.*` surface.
 - Image paste auto-saves and inserts filepath (Claude Code workflow).
 - Lua sandbox strips dangerous globals + instruction-count timeout.
 - Session persistence via `QDataStream` + `qCompress`.
-- Per-pixel bg alpha is independent of window opacity.
+- `opacity` config key drives per-pixel terminal-area fillRect alpha
+  only; chrome (title bar, menus, tabs, status bar) always paints
+  opaque via `WA_StyledBackground`. There is no separate whole-window
+  `setWindowOpacity()` path — prior `background_alpha` config key was
+  removed as redundant in 0.7.18.
 - Audit rule pack is JSON not YAML (`QJsonDocument` built-in; flat schema).
   Hardcoded checks stay in C++; `audit_rules.json` only appends/overrides.
 - Audit uses `clazy-standalone` (Qt-aware AST) not embedded libclang.

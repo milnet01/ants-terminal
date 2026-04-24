@@ -63,10 +63,6 @@ public:
     bool gpuRendering() const;
     void setGpuRendering(bool enabled);
 
-    // Per-pixel background alpha (0-255, separate from window opacity)
-    int backgroundAlpha() const;
-    void setBackgroundAlpha(int alpha);
-
     // Session persistence
     bool sessionPersistence() const;
     void setSessionPersistence(bool enabled);
