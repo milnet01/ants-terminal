@@ -28,6 +28,15 @@ now preserves all 8 plus the HMAC key.
 
 ### Added
 
+- **Feature test:** `tab_rename_pin` — source-grep regression guard
+  that pairs the right-click rename handler with the pin-map
+  consumer side. Asserts the rename lambda calls
+  `setTabTitleForRemote(…)`, never calls `m_tabWidget->setTabText`
+  directly, does not guard the call behind `!newName.isEmpty()`
+  (empty-string clear is deliberate UX), and that the consumer-
+  side `m_tabTitlePins.contains(...)` guards on both the
+  `titleChanged` handler and `updateTabTitles` still exist — if
+  either is deleted "to clean up," the fix silently regresses.
 - **Feature test:** `vtparser_print_run_coalesce` — locks grid-state
   equivalence between the bulk-feed (SIMD + coalesce) path and the
   byte-by-byte scalar path across 8 invariants (ASCII, CSI at every
@@ -63,6 +72,22 @@ now preserves all 8 plus the HMAC key.
 
 ### Fixed
 
+- **Right-click "Rename Tab…" pins the label.** User report
+  2026-04-24: "I renamed a few tabs I had open (some with Claude
+  Code running) and then Claude Code just renamed them again. Is
+  this intentional?" It was not. The rename handler at
+  `mainwindow.cpp:4284` wrote directly to `m_tabWidget->setTabText`
+  without populating `m_tabTitlePins`; the per-shell
+  `titleChanged` signal handler and the 2 s `updateTabTitles` tick
+  both consult the pin map to decide whether to relabel, so any
+  tab whose shell writes OSC 0/2 (Claude Code writes one every
+  prompt iteration, ~3–5 s) had its manual name wiped within
+  seconds. Rename now routes through the existing
+  `setTabTitleForRemote` (the rc_protocol `set-title` path) so
+  non-empty names pin, and empty names clear the pin and restore
+  the format-driven / shell-driven label — gives the user an
+  in-UI "un-rename" path that didn't exist before. Locked by
+  `tests/features/tab_rename_pin` (4 invariants).
 - **RIS (`ESC c`) now preserves all 8 integration callbacks +
   `m_osc133Key`.** Previously `notifyCallback`, `progressCallback`,
   `lineCompletionCallback`, `commandFinishedCallback`, `userVarCallback`,

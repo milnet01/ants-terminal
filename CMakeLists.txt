@@ -1738,6 +1738,25 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # tab_rename_pin — right-click "Rename Tab…" must route through
+    # setTabTitleForRemote so the manual name populates m_tabTitlePins
+    # and survives the shell's OSC 0/2 writes. Before this fix, Claude
+    # Code's per-prompt title updates silently clobbered manual renames
+    # within seconds. See tests/features/tab_rename_pin/spec.md.
+    add_executable(test_tab_rename_pin
+        tests/features/tab_rename_pin/test_tab_rename_pin.cpp
+    )
+    target_compile_options(test_tab_rename_pin PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_tab_rename_pin PRIVATE
+        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME tab_rename_pin COMMAND test_tab_rename_pin)
+    set_tests_properties(tab_rename_pin PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # remote_control_get_text — sixth rc_protocol command. Locks the
     # reuse of TerminalWidget::recentOutput (so the AI dialog and
     # rc_protocol can't drift apart), the 10 000-line response cap,

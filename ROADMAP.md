@@ -1336,6 +1336,25 @@ remainder, captured so they don't drop on the floor.
   `tests/features/claude_tab_status_indicator/spec.md` + 11-invariant
   feature test. Stage 1 scope complete.
 
+### 🎨 Claude Code UX — manual tab rename stomped (user request 2026-04-24)
+
+- ✅ **Right-click "Rename Tab…" pins the label.** Shipped in
+  [Unreleased]. The rename handler at `mainwindow.cpp:4284` wrote
+  directly to `m_tabWidget->setTabText` without populating
+  `m_tabTitlePins`; the `titleChanged` signal handler and the 2 s
+  `updateTabTitles` tick both consult the pin map, so Claude Code's
+  per-prompt OSC 0/2 title writes wiped the manual name within
+  seconds. Rename now routes through `setTabTitleForRemote` (the
+  rc_protocol `set-title` path) — non-empty names pin, empty names
+  clear the pin and restore the format-driven / shell-driven label,
+  giving the user an in-UI "un-rename" path that didn't exist
+  before. Low-risk one-handler change; confirmed it fails cleanly
+  against pre-fix source before locking. Locked by
+  `tests/features/tab_rename_pin` (4 invariants: lambda calls
+  `setTabTitleForRemote(…)`, no direct `setTabText`, empty-name
+  path not guarded out, consumer-side `m_tabTitlePins.contains(…)`
+  guards still present on both consumers).
+
 ### ⚡ / 🏗 Tier 3 — structural
 
 - ✅ **VtParser `Print`-run coalescing.** Shipped 0.7.17. The SIMD

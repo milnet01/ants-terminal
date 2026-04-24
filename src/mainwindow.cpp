@@ -4284,8 +4284,15 @@ void MainWindow::showTabColorMenu(int tabIndex) {
         connect(editor, &QLineEdit::editingFinished, this, [this, editor, tabWidget]() {
             int curIdx = m_tabWidget->indexOf(tabWidget);
             QString newName = editor->text().trimmed();
-            if (curIdx >= 0 && !newName.isEmpty())
-                m_tabWidget->setTabText(curIdx, newName);
+            if (curIdx >= 0) {
+                // Route through the pin map so the shell's next OSC 0/2
+                // (Claude Code writes one every few seconds) and the 2 s
+                // updateTabTitles tick don't stomp the manual name.
+                // Empty string clears the pin and restores the
+                // format-driven / shell-driven label — gives the user an
+                // in-UI "un-rename" path, matching rc_protocol semantics.
+                setTabTitleForRemote(curIdx, newName);
+            }
             editor->deleteLater();
         });
     });
