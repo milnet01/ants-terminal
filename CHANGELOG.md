@@ -10,7 +10,7 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
-## [Unreleased]
+## [0.7.18] — 2026-04-24
 
 **Theme:** post-release documentation + tech-debt sweep. Three parallel
 audit agents (doc drift, source debt, spec-vs-code drift) inventoried

@@ -1,3 +1,62 @@
+ants-terminal (0.7.18-1) unstable; urgency=medium
+
+  * Post-0.7.17 documentation + tech-debt sweep. Three parallel audit
+    agents (doc drift, source debt, spec-vs-code drift) inventoried
+    every doc-vs-code mismatch, stale TODO, dead config key, and
+    spec line-number drift across the tree.
+  * Fixed: Config::shellCommand() actually launches the user's shell.
+    Settings → General's Shell picker (Default / bash / zsh / fish /
+    Custom…) has persisted the user's choice to shell_command in
+    config.json since the original implementation, and the Settings
+    dialog loaded/re-displayed it correctly. But TerminalWidget::
+    startShell took only a working directory and invoked
+    VtStream::start with a hardcoded empty shell arg — Pty::start's
+    empty-shell fallback ($SHELL → pw_shell → /bin/bash) always
+    fired, silently dropping the user's choice on every tab open.
+    Fix: add shell param to startShell, forward via
+    Q_ARG(QString, shell), wire m_config.shellCommand() at all
+    four MainWindow production call sites (newTab, newTabForRemote,
+    splitCurrentPane, session-restore loop). Locked by new
+    tests/features/shell_command_wiring (7 invariants).
+  * Fixed: dropdown flicker on mouse-move over open menubar item
+    (KWin). The menubar's autoFillBackground + stylesheet fully
+    cover every pixel on every paint; marking it opaque-on-paint
+    stops Qt from invalidating the translucent parent's compositor
+    region under it. MainWindow ctor now sets Qt::WA_OpaquePaintEvent
+    on m_menuBar. The QSS comment always promised this was set at
+    the construction site; the call was missing. Flagged in 0.7.12
+    Tier 3 ("Missing per menubar_hover_stylesheet INV-3b"). INV-3b
+    reinstated in test_menubar_hover_stylesheet.cpp.
+  * Changed: README.md config-defaults table corrected.
+    session_persistence default shown as false (actual true);
+    font_size range shown as 8-32 (actual 4-48).
+  * Changed: PLUGINS.md Lua resource-limits docs rewritten. Previously
+    claimed limits are "per plugin per event invocation"; reality is
+    that lua_sethook is set once at init with a 10 M instruction count
+    and the counter accumulates across all handlers in the same VM.
+  * Changed: tests/features/terminal_partial_update_mode/spec.md
+    rewritten to match the live test (post-0.7.4 QWidget-not-
+    QOpenGLWidget invariants) instead of the stale
+    setUpdateBehavior(PartialUpdate) fix that didn't work. Directory
+    name kept for CMake stability.
+  * Changed: spec line-number drift corrected in
+    osc133_hmac_verification (1297 → 1722),
+    session_persistence_default (218 → 310),
+    review_changes_click (74 → 148, 411 → 595),
+    ai_context_redaction (114-136 → 115-137).
+  * Removed: background_alpha config key + Config::backgroundAlpha()
+    + setBackgroundAlpha() + TerminalWidget::setBackgroundAlpha()
+    + backgroundAlpha() + m_backgroundAlpha member. User confirmed
+    they use `opacity` ~0.9-0.95 to make the terminal area
+    translucent while chrome stays solid — exactly what the
+    `opacity` config key already does (paint site applies per-pixel
+    alpha via m_windowOpacity). Since background_alpha had no UI
+    widget, no paint-site consumer, and overlapped intent with
+    `opacity`, removed entirely. Stale key in existing config.json
+    files is harmlessly ignored on load.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 24 Apr 2026 11:00:00 +0200
+
 ants-terminal (0.7.17-1) unstable; urgency=medium
 
   * Hot-path parser optimization plus two /indie-review security
