@@ -809,7 +809,7 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
     "session_logging": false,
     "background_blur": false,
     "gpu_rendering": false,
-    "session_persistence": false,
+    "session_persistence": true,
     "image_paste_dir": "",
     "editor_command": "",
     "ai_endpoint": "",
@@ -834,7 +834,7 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `theme` | string | `"Dark"` | Active theme name |
-| `font_size` | int | `11` | Font size in points (8-32) |
+| `font_size` | int | `11` | Font size in points (4-48) |
 | `opacity` | double | `1.0` | Window opacity (0.1-1.0) |
 | `background_alpha` | int | `255` | Per-pixel background alpha (0-255) |
 | `scrollback_lines` | int | `50000` | Max scrollback lines (1000-1000000) |
@@ -842,7 +842,7 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 | `session_logging` | bool | `false` | Log raw session to file |
 | `background_blur` | bool | `false` | Enable KWin background blur |
 | `gpu_rendering` | bool | `false` | Use OpenGL glyph atlas renderer |
-| `session_persistence` | bool | `false` | Save/restore scrollback across restarts |
+| `session_persistence` | bool | `true` | Save/restore scrollback across restarts |
 | `image_paste_dir` | string | `""` | Image paste save directory |
 | `editor_command` | string | `""` | Editor for file path clicking |
 | `ai_endpoint` | string | `""` | OpenAI-compatible API URL |

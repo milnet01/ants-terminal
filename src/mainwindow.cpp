@@ -210,6 +210,15 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     m_menuBar->setNativeMenuBar(false);
     m_menuBar->setAutoFillBackground(true);
     m_menuBar->setAttribute(Qt::WA_StyledBackground, true);
+    // WA_OpaquePaintEvent: the menubar's autoFillBackground + QSS fully
+    // cover every pixel on every paint, so marking it opaque-on-paint
+    // stops Qt from invalidating the translucent parent's compositor
+    // region under it. Without this, each mouse-move over the menubar
+    // item owning an open dropdown damages the popup above the
+    // menubar on KWin (menubar_hover_stylesheet/spec.md INV-3b; the
+    // QSS comment at the :hover rule promises this attribute is set
+    // at the construction site).
+    m_menuBar->setAttribute(Qt::WA_OpaquePaintEvent, true);
 
     // Tab widget with custom ColoredTabBar so per-tab colour groups
     // render independently of the QTabBar::tab { color: … } stylesheet
@@ -1927,7 +1936,7 @@ void MainWindow::newTab() {
     m_tabWidget->setCurrentIndex(idx);
     m_tabSessionIds[terminal] = tabId;
 
-    if (!terminal->startShell(inheritCwd)) {
+    if (!terminal->startShell(inheritCwd, m_config.shellCommand())) {
         showStatusMessage("Failed to start shell!");
     }
 
@@ -2006,7 +2015,7 @@ void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
         m_tabWidget->setCurrentIndex(tabIdx);
     }
 
-    if (!newTerm->startShell()) {
+    if (!newTerm->startShell(QString(), m_config.shellCommand())) {
         showStatusMessage("Failed to start shell!");
     }
     newTerm->setFocus();
@@ -2295,7 +2304,7 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
     m_tabWidget->setCurrentIndex(idx);
     m_tabSessionIds[terminal] = tabId;
 
-    if (!terminal->startShell(effectiveCwd)) {
+    if (!terminal->startShell(effectiveCwd, m_config.shellCommand())) {
         showStatusMessage("Failed to start shell!");
     }
     terminal->setFocus();
@@ -2926,7 +2935,7 @@ void MainWindow::restoreSessions() {
 
         for (const auto &tab : restoredTabs) {
             tab.terminal->forceRecalcSize();
-            if (!tab.terminal->startShell(tab.startDir))
+            if (!tab.terminal->startShell(tab.startDir, m_config.shellCommand()))
                 continue;
             tab.terminal->update();
             SessionManager::removeSession(tab.tabId);

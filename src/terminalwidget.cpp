@@ -467,7 +467,7 @@ void TerminalWidget::ptyWrite(const QByteArray &data) {
                               Q_ARG(QByteArray, data));
 }
 
-bool TerminalWidget::startShell(const QString &workDir) {
+bool TerminalWidget::startShell(const QString &workDir, const QString &shell) {
     recalcGridSize();
     int rows = m_grid->rows();
     int cols = m_grid->cols();
@@ -494,7 +494,7 @@ bool TerminalWidget::startShell(const QString &workDir) {
     // actually forked — callers expect a synchronous contract.
     QMetaObject::invokeMethod(m_vtStream, "start", Qt::BlockingQueuedConnection,
                               Q_RETURN_ARG(bool, ok),
-                              Q_ARG(QString, QString()),
+                              Q_ARG(QString, shell),
                               Q_ARG(QString, workDir),
                               Q_ARG(int, rows),
                               Q_ARG(int, cols));

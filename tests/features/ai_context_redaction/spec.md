@@ -61,7 +61,7 @@ and `userMessage`.
 - AI response handling (LLM01/LLM02 — already covered by
   `ai_insert_command_sanitize`).
 - The config-stored endpoint / API key (already sanitized on display
-  per 0.6.22 — see `setConfig` at `aidialog.cpp:114-136`).
+  per 0.6.22 — see `setConfig` at `aidialog.cpp:115-137`).
 - Claude Code integration (`claudeintegration.cpp`) — that path talks
   to the local `claude` CLI, not a remote endpoint, and has its own
   allowlist/permission model.

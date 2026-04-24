@@ -18,7 +18,7 @@ the git working tree differs from HEAD, a dialog showing the diff MUST:
    That queue was populated when the Review button took focus on mouse
    press. If the queued refocus fires *after* the dialog opens, it
    would steal focus from the dialog and — on KWin with a frameless
-   parent (Qt::FramelessWindowHint, see mainwindow.cpp:74) — re-raise
+   parent (Qt::FramelessWindowHint, see mainwindow.cpp:148) — re-raise
    the main window over the dialog. The fire-time re-evaluation guard
    MUST skip the refocus if a QDialog other than the main window is
    the active window.
@@ -36,7 +36,7 @@ actions (AI, Claude Transcript) already called `raise()`; the Review
 Changes button was the outlier. On a frameless QMainWindow parent,
 KWin's window-stacking heuristics do not guarantee a newly-shown
 transient dialog lands on top. Compounded by the focus-redirect
-lambda at mainwindow.cpp:~411 which queued `terminal->setFocus()` at
+lambda at mainwindow.cpp:~595 which queued `terminal->setFocus()` at
 mouse-press time; when that fired after dialog show, it pulled focus
 from the dialog and re-activated the main window, obscuring the
 dialog entirely.

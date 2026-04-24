@@ -56,15 +56,23 @@ int main() {
              "by WA_OpaquePaintEvent on the menubar, not by dropping this rule.");
     }
 
-    // INV-3b moved to feature test `terminal_partial_update_mode` —
-    // the dropdown-flicker fix is in terminalwidget.cpp
-    // (setUpdateBehavior(QOpenGLWidget::PartialUpdate)), not via a
-    // menubar attribute. Diagnostic paint-logging revealed ~60 Hz
-    // full-window UpdateRequests on MainWindow driven by QOpenGLWidget
-    // cascading into child repaints every time the terminal painted
-    // (Claude Code spinner / cursor blink / any animated shell
-    // output). Menubar attributes couldn't fix an upstream-of-menubar
-    // cause.
+    // INV-3b: WA_OpaquePaintEvent set on m_menuBar at construction.
+    // The menubar's autoFillBackground + QSS fully cover every pixel on
+    // every paint, so marking it opaque-on-paint stops Qt from
+    // invalidating the translucent parent's compositor region under it.
+    // Without this, each mouse-move over the menubar item owning an
+    // open dropdown damages the popup above the menubar on KWin. The
+    // terminal_partial_update_mode test covers a related but separate
+    // dropdown-flicker cause (the TerminalWidget QOpenGLWidget base
+    // class that drove ~60 Hz full-window UpdateRequests on MainWindow);
+    // that fix is orthogonal, so we assert the menubar attribute here.
+    if (mw.find("m_menuBar->setAttribute(Qt::WA_OpaquePaintEvent, true)")
+            == std::string::npos) {
+        fail("INV-3b: m_menuBar->setAttribute(Qt::WA_OpaquePaintEvent, true) "
+             "missing from construction site — reopens the "
+             "mouse-move-over-menubar compositor damage that flickers the "
+             "open dropdown popup on KWin");
+    }
 
     // INV-4: QMenuBar::item base rule (0.6.43) still present.
     std::regex baseItemRule(

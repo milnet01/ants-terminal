@@ -74,7 +74,7 @@ do not, so they cannot mint a valid HMAC.
   / preexec config).
 - The status-bar message rendering (covered by inspection — connecting
   the forgeryDetected signal to showStatusMessage at
-  `src/mainwindow.cpp:1297`).
+  `src/mainwindow.cpp:1722`).
 
 ## Test strategy
 

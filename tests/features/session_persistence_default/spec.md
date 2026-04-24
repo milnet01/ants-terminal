@@ -67,6 +67,6 @@ accessor: {key missing, key=false, key=true} → {true, false, true}.
   never got session restore. User report: "The terminal is no longer
   remembering tabs between sessions."
 - **0.6.34:** default flipped to `true` at
-  `src/config.cpp:218` (function body now
+  `src/config.cpp:310` (function body now
   `return m_data.value("session_persistence").toBool(true);`). This
   test locks the new default in place.

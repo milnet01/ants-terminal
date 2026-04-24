@@ -32,7 +32,15 @@ public:
     explicit TerminalWidget(QWidget *parent = nullptr);
     ~TerminalWidget() override;
 
-    bool startShell(const QString &workDir = QString());
+    // Start the PTY-backed shell.
+    //   workDir: cwd for the child (empty → $HOME fallback path).
+    //   shell:   user-chosen shell override (empty → $SHELL → pw_shell →
+    //            /bin/bash in that order, see ptyhandler.cpp::Pty::start).
+    //            Populated by MainWindow from Config::shellCommand() so
+    //            the Settings → General shell picker actually takes
+    //            effect instead of being silently dropped on the floor.
+    bool startShell(const QString &workDir = QString(),
+                    const QString &shell = QString());
     void applyThemeColors(const QColor &fg, const QColor &bg,
                           const QColor &cursorColor,
                           const QColor &accent = QColor(),

@@ -10,6 +10,96 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [Unreleased]
+
+**Theme:** post-release documentation + tech-debt sweep. Three parallel
+audit agents (doc drift, source debt, spec-vs-code drift) inventoried
+every doc-vs-code mismatch, stale TODO, dead config key, and spec line
+number across the tree. The `shell_command` config key turned out to
+be the only actual functional bug: Settings → General's Shell picker
+persisted the user's choice to `config.json` but no code path ever
+read it — every tab opened `$SHELL` regardless of what the user picked.
+One other deferred-but-flagged item from the 0.7.12 Tier 3 list also
+landed: `Qt::WA_OpaquePaintEvent` on the menubar, which closes the
+mouse-move-over-menubar dropdown flicker on KWin that the 0.7.4
+QOpenGLWidget→QWidget refactor didn't fully eliminate.
+
+### Fixed
+
+- **`Config::shellCommand()` actually launches the user's shell.**
+  Settings → General's Shell picker (Default / bash / zsh / fish /
+  Custom…) has persisted the user's choice to `shell_command` in
+  `config.json` since the original implementation, and the Settings
+  dialog loads/re-displays it correctly. But `TerminalWidget::startShell`
+  took only a working directory and invoked `VtStream::start` with a
+  hardcoded empty shell arg — `Pty::start`'s empty-shell fallback
+  always fired (`$SHELL` → `pw_shell` → `/bin/bash`), silently
+  dropping the user's choice. Fix: `startShell` gains a `shell`
+  parameter, the `QMetaObject::invokeMethod` call forwards it
+  instead of `QString()`, and every production call site in
+  `MainWindow` (`newTab`, `newTabForRemote`, `splitCurrentPane`,
+  the `restoredTabs` loop in session restore) passes
+  `m_config.shellCommand()`. Contract pinned by
+  `tests/features/shell_command_wiring/spec.md` — 7 invariants
+  covering the signature, the `Q_ARG` forward, the four wired call
+  sites, a zero-orphan guard, and a Config round-trip. Verified to
+  fail against pre-fix source (5 invariants fire on missing
+  signature + hardcoded `QString()` + four orphan call sites)
+  before locking.
+- **Dropdown flicker on mouse-move-over-menubar fix
+  (`Qt::WA_OpaquePaintEvent` on `m_menuBar`).** The menubar's
+  `autoFillBackground` + stylesheet fully cover every pixel on every
+  paint, so marking it opaque-on-paint stops Qt from invalidating
+  the translucent parent's compositor region under it when it
+  repaints. Without this, each mouse-move over the menubar item
+  owning an open dropdown damages the popup above the menubar on
+  KWin. `MainWindow` ctor now calls
+  `m_menuBar->setAttribute(Qt::WA_OpaquePaintEvent, true)`; the
+  QSS comment at the `:hover` rule always promised this was set at
+  the construction site, but the call was missing. Flagged in 0.7.12
+  Tier 3 hardening sweep as "Missing per
+  `tests/features/menubar_hover_stylesheet/spec.md` INV-3b". Locked
+  by the reinstated INV-3b assertion in
+  `test_menubar_hover_stylesheet.cpp` (was previously punted to
+  `terminal_partial_update_mode`, but that test covers an orthogonal
+  fix — both now assert their own attribute).
+
+### Changed
+
+- **`README.md` config-defaults table corrected.** `session_persistence`
+  default shown as `false` in both the example JSON block and the
+  key-description table; actual default in `config.cpp:311` is `true`.
+  `font_size` range shown as 8–32; actual range in `config.cpp:170`
+  and `settingsdialog.cpp:206` is 4–48. Both corrected — the
+  authoritative code defaults win.
+- **`PLUGINS.md` Lua resource-limit docs.** Previously claimed limits
+  are enforced "per plugin per event invocation" and that each event
+  gets a fresh 10 M-instruction budget. The implementation sets
+  `lua_sethook(LUA_MASKCOUNT, 10000000)` once at engine init; the
+  counter accumulates across all handlers in the same VM until the
+  hook fires, at which point it resets. Doc rewritten to describe
+  the real contract: "≥10 M instructions anywhere in the VM aborts
+  the current pcall; plugin is not unloaded, next event starts from
+  wherever the hook last fired."
+- **`tests/features/terminal_partial_update_mode/spec.md` rewritten
+  to match the live test.** The `.cpp` test was updated in 0.7.4 to
+  enforce the post-refactor invariant (TerminalWidget is a plain
+  `QWidget`, no `QOpenGLWidget::` calls, no `makeCurrent()`), but
+  the adjacent `spec.md` still documented the pre-0.7.4
+  `setUpdateBehavior(PartialUpdate)` fix that didn't work. Spec now
+  describes the real fix (base-class change), lists the 4
+  invariants the test actually enforces, and preserves the
+  PartialUpdate detour in a History section for archaeology.
+  Directory name kept for CMake stability — rename would touch
+  `add_executable` / `add_test` / label wiring.
+- **Spec line-number drift corrected.** `osc133_hmac_verification`
+  (1297 → 1722), `session_persistence_default` (config.cpp:218 → 310),
+  `review_changes_click` (mainwindow.cpp:74 → 148, ~411 → ~595),
+  `ai_context_redaction` (aidialog.cpp:114-136 → 115-137). Line-
+  number drift is inherent to spec.md files; this sweep resets the
+  ground state, no workflow change.
+
+
 ## [0.7.17] — 2026-04-24
 
 **Theme:** hot-path parser optimization + stale-TODO sweep. VtParser

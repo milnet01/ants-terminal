@@ -543,6 +543,36 @@ if(ANTS_TESTS)
         TIMEOUT 10
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # shell_command_wiring — asserts the Settings → General shell picker
+    # actually takes effect: TerminalWidget::startShell carries a shell
+    # param, forwards it to VtStream::start (instead of hardcoded
+    # QString()), and every MainWindow production call site passes
+    # m_config.shellCommand(). Plus a Config round-trip for the
+    # serialization leg. Pure source-grep + Config round-trip; no PTY
+    # fork, no widget harness. See
+    # tests/features/shell_command_wiring/spec.md.
+    add_executable(test_shell_command_wiring
+        tests/features/shell_command_wiring/test_shell_command_wiring.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_shell_command_wiring PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_shell_command_wiring PRIVATE src)
+    target_compile_options(test_shell_command_wiring PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_shell_command_wiring PRIVATE
+        SRC_TERMINALWIDGET_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
+        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME shell_command_wiring COMMAND test_shell_command_wiring)
+    set_tests_properties(shell_command_wiring PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # status_bar_elision — asserts ElidedLabel's elision policy:
     # short text never elides, over-cap text does, and minimumSizeHint
     # returns at least the full-text width (capped at maximumWidth) so

@@ -382,25 +382,33 @@ abuse):
 
 ## Resource Limits
 
-The runtime enforces two hard limits per plugin per event invocation:
+The runtime enforces two hard limits per plugin VM:
 
-- **Instruction budget:** 10,000,000 VM instructions per event handler.
-  Enforced via `lua_sethook(LUA_MASKCOUNT, …)`. On exceed, the runtime
-  calls `luaL_error` with a "Plugin timed out" message; the remaining
-  handlers in the chain for that event run normally. Your plugin is not
-  unloaded — but the **specific invocation** is aborted.
+- **Instruction budget:** the count-mode hook fires every 10,000,000
+  VM instructions, enforced via `lua_sethook(LUA_MASKCOUNT, …)` at
+  engine init. The counter accumulates across **all** event handlers
+  in the same VM — when the hook fires, it calls `luaL_error` with a
+  "Script execution timeout exceeded" message and unwinds the current
+  pcall. Practical consequence: a single long-running handler that
+  exceeds 10 M instructions aborts; a chain of handlers that together
+  accumulate past 10 M aborts whichever one the hook happens to land
+  inside. Your plugin is not unloaded — the next event starts
+  counting from wherever the hook last fired. Don't rely on "each
+  handler gets a fresh 10 M budget"; the real contract is
+  "≥10 M instructions anywhere in the VM aborts the current pcall".
 - **Heap budget:** 10 MB total Lua heap, enforced by a custom allocator.
   On exceed, allocations return `NULL`; Lua treats this as out-of-memory
-  and typically propagates the error up the call stack. Again, the
-  plugin is not unloaded, but the allocation fails.
+  and typically propagates the error up the call stack. The plugin is
+  not unloaded, but the allocation fails.
 
 **Author implications:**
 
 - Don't accumulate unbounded state (e.g. appending every output line to
   a table). Use ring buffers or bounded caches.
 - Don't loop over `ants.get_output(very_large_N)` — each call copies.
-- Recursive patterns that hit the instruction budget are unrecoverable
-  for that one invocation; the next event fires a fresh budget.
+- Recursive patterns that hit the instruction budget unwind the current
+  pcall; a subsequent event fires afterwards but the accumulated
+  counter is shared, so a tight-loop plugin can starve sibling handlers.
 
 ## Versioning & Compatibility
 

@@ -1136,8 +1136,17 @@ grep rules or individual tickets as they become actionable.
 - 📋 **`background_alpha` wiring — or remove from docs.**
   `terminalwidget.cpp:3874-3876` writes to a dead field. Decide: revive
   at paint site, or drop config key + doc entry.
-- 📋 **`terminal_partial_update_mode` spec rewrite or delete.**
-  Invariant assumes `QOpenGLWidget` base class that no longer exists.
+- ✅ **`terminal_partial_update_mode` spec rewrite.** Shipped in
+  [Unreleased]. The `.cpp` test already enforced the correct
+  post-0.7.4 invariant (TerminalWidget is a plain `QWidget`,
+  `QOpenGLWidget::` call-shape absent, `makeCurrent()` calls absent);
+  only the adjacent `spec.md` still documented the pre-0.7.4
+  PartialUpdate fix. Spec rewritten to match the test: problem
+  description preserved, "Fix" section now explains the full base-
+  class switch (not setUpdateBehavior), Invariants list mirrors the
+  4 INVs the test actually enforces, History section covers the
+  PartialUpdate detour that didn't fix it. Directory name kept for
+  CMake stability.
 - 📋 **Lua: strip `string.dump`, pass `"t"` mode to `luaL_loadfilex`.**
   `luaengine.cpp:76, 206-213`. Defense-in-depth on bytecode rejection.
 - 📋 **Lua: cap manifest size + canonical plugin path.**
@@ -1167,8 +1176,16 @@ grep rules or individual tickets as they become actionable.
   reassigns `m_config = Config()`. Reopening Settings after an external
   edit of `config.json` dereferences a dangling reference. Fix: destroy
   cached dialog on config reload.
-- 📋 **`WA_OpaquePaintEvent` on `m_menuBar`.** Missing per
-  `tests/features/menubar_hover_stylesheet/spec.md` INV-3b.
+- ✅ **`WA_OpaquePaintEvent` on `m_menuBar`.** Shipped in [Unreleased].
+  `MainWindow` ctor now calls
+  `m_menuBar->setAttribute(Qt::WA_OpaquePaintEvent, true)` — stops Qt
+  from invalidating the translucent parent's compositor region under
+  the menubar when it repaints. Closes the mouse-move-over-menubar
+  dropdown flicker on KWin that the 0.7.4 QOpenGLWidget→QWidget
+  refactor didn't fully eliminate. `menubar_hover_stylesheet` test
+  INV-3b reinstated (was previously marked "moved to terminal_partial_update_mode"
+  but that test covers an orthogonal fix; both now assert their own
+  attribute).
 - 📋 **SARIF emit suppressed findings with `suppressions[]` array.**
   `auditdialog.cpp:4823-4952` currently drops suppressed findings
   pre-export; SARIF v2.1.0 §3.35 expects them present with
