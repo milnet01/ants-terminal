@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.20 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.21 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1173,17 +1173,33 @@ grep rules or individual tickets as they become actionable.
   4 INVs the test actually enforces, History section covers the
   PartialUpdate detour that didn't fix it. Directory name kept for
   CMake stability.
-- 📋 **Lua: strip `string.dump`, pass `"t"` mode to `luaL_loadfilex`.**
-  `luaengine.cpp:76, 206-213`. Defense-in-depth on bytecode rejection.
+- ✅ **Lua: strip `string.dump`, pass `"t"` mode to `luaL_loadfilex`.**
+  Shipped 0.7.21. `sandboxEnvironment()` now removes `string.dump`
+  via `lua_setfield(m_state, -2, "dump")` scoped to the already-
+  loaded string table (the `dangerous[]` global-nil loop misses
+  table members by construction). `loadScript` replaces
+  `luaL_dofile` with `luaL_loadfilex(..., "t") + lua_pcall`,
+  adding a second rejection gate at the Lua loader level for
+  bytecode chunks (the first gate is the 0x1b-first-byte peek,
+  already in place). Locked by `lua_sandbox_hardening` I1 + I4.
 - 📋 **Lua: cap manifest size + canonical plugin path.**
   `pluginmanager.cpp:138-143` reads entire `manifest.json` (OOM
   surface); `scanAndLoad` uses `QDir::entryList(QDir::Dirs)` without
   `NoSymLinks` or `canonicalFilePath()` anchor.
-- 📋 **Lua: clear hook before `lua_close` in `shutdown()`.** Prevents
-  UAF when finalizers run during destruction.
-- 📋 **Lua: reconcile resource-limit docs.** `PLUGINS.md:385-395` claims
-  "per event invocation"; implementation is per-VM cumulative. Either
-  implement per-handler reset or update the doc.
+- ✅ **Lua: clear hook before `lua_close` in `shutdown()`.** Shipped
+  0.7.21. `LuaEngine::shutdown` calls `lua_sethook(m_state,
+  nullptr, 0, 0)` before `lua_close(m_state)` — closes the UAF
+  window where `__gc` metamethods running during destruction
+  could observe a partially-finalized engine via the count hook's
+  registry lookup of `__ants_engine`. Locked by
+  `lua_sandbox_hardening` I5.
+- ✅ **Lua: reconcile resource-limit docs.** Shipped 0.7.18
+  (PLUGINS.md rewrite). Previously documented as "per plugin per
+  event invocation" with each event getting a fresh 10M-instruction
+  budget; the implementation sets `lua_sethook(LUA_MASKCOUNT,
+  10000000)` once at engine init and the counter accumulates across
+  all handlers in the same VM until the hook fires. PLUGINS.md now
+  describes the real per-VM-cumulative contract.
 - 📋 **Session file: SHA-256 payload checksum.** `sessionmanager.cpp`
   currently has no payload integrity; an attacker with write access to
   `$XDG_DATA_HOME/ants-terminal/sessions/` can plant a crafted session

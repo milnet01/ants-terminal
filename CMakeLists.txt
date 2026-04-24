@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.20 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.21 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2023,6 +2023,40 @@ if(ANTS_TESTS)
     set_tests_properties(settings_dialog_config_reload PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # lua_sandbox_hardening — asserts the Lua sandbox rejects bytecode
+    # via two independent gates (0x1b first-byte peek AND luaL_loadfilex
+    # "t" mode), that string.dump is stripped at sandbox-init time, and
+    # that LuaEngine::shutdown clears the instruction-count hook before
+    # lua_close to close the UAF window where __gc metamethods could
+    # observe a partially-finalized engine. Gated on LUA_FOUND because
+    # the test links against luaengine.cpp + the Lua C API. See
+    # tests/features/lua_sandbox_hardening/spec.md.
+    if(LUA_FOUND)
+        add_executable(test_lua_sandbox_hardening
+            tests/features/lua_sandbox_hardening/test_lua_sandbox_hardening.cpp
+            src/luaengine.cpp
+        )
+        target_link_libraries(test_lua_sandbox_hardening PRIVATE
+            Qt6::Core
+            ${LUA_LIBRARIES}
+        )
+        target_include_directories(test_lua_sandbox_hardening PRIVATE
+            src
+            ${LUA_INCLUDE_DIRS}
+        )
+        target_compile_options(test_lua_sandbox_hardening PRIVATE
+            -Wall -Wextra -Wpedantic
+        )
+        target_compile_definitions(test_lua_sandbox_hardening PRIVATE
+            ANTS_LUA_PLUGINS=1
+            SRC_LUAENGINE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/luaengine.cpp"
+        )
+        add_test(NAME lua_sandbox_hardening COMMAND test_lua_sandbox_hardening)
+        set_tests_properties(lua_sandbox_hardening PROPERTIES
+            LABELS "features;fast"
+            TIMEOUT 10)
+    endif()
 
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation

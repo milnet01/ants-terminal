@@ -10,6 +10,55 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.21] — 2026-04-24
+
+**Theme:** Lua sandbox hardening trio from the 0.7.12 /indie-review.
+Three small defense-in-depth fixes in `LuaEngine`, behavioral +
+source-grep regression test locked to all three.
+
+### Security
+
+- **`string.dump` removed from the plugin sandbox.**
+  `string.dump(f)` returns the bytecode serialization of a Lua
+  function. Lua 5.4 has no bytecode verifier — the loader parses
+  any byte sequence beginning with `\x1b` as a binary chunk, and
+  crafted bytecode can corrupt Lua's internal state and escape
+  the sandbox. `load`/`loadstring`/`loadfile` are already nilled
+  at init, so there is no supported round-trip from
+  `string.dump` back to executing bytecode, but a future C API
+  added to `ants.*` that wraps `luaL_loadbuffer` with plugin-
+  supplied data would reopen the attack surface. Closing the
+  primitive at the sandbox layer — `lua_setfield(m_state, -2,
+  "dump")` scoped to the string table, not a blanket
+  `lua_setglobal` — is cheaper than auditing every future C API
+  for the same rule.
+- **`LuaEngine::loadScript` forces `"t"` (text-only) load mode.**
+  The pre-fix path `luaL_dofile` → `luaL_loadfile` →
+  `luaL_loadfilex(L, path, nullptr)` accepted both text and
+  binary chunks at the loader level. The 0x1b-first-byte peek in
+  `loadScript` was the first gate; the loader call is now the
+  second gate. A future refactor that drops the peek still gets
+  rejection at the Lua level.
+- **Instruction-count hook cleared before `lua_close` in
+  `shutdown`.** `lua_close` runs every pending `__gc` metamethod
+  in dependency order. Metamethods can execute arbitrary Lua
+  code which the count hook observes. If the hook fires mid-
+  close and walks back into registry data or the dying engine
+  pointer via `__ants_engine`, we get a UAF window. Clearing
+  the hook first with `lua_sethook(m_state, nullptr, 0, 0)`
+  removes that window; the C-side cleanup proceeds without any
+  Lua-level observer.
+
+Regression test: `tests/features/lua_sandbox_hardening/spec.md` —
+6 invariants, behavioral (string.dump is nil, valid-text loads,
+0x1b-first-byte rejected) plus source-grep on the three fix
+tokens (`luaL_loadfilex(..., "t")`, `lua_sethook(m_state, nullptr,
+0, 0)` before `lua_close`, `lua_setfield(m_state, -2, "dump")`
+scoped to the string table). Verified to fail against pre-fix
+source via `git stash` — 5 of 9 invariants flip red on the
+regression, all green after the fix lands.
+
+
 ## [0.7.20] — 2026-04-24
 
 **Theme:** Tier 2 hardening sweep — three open 📋 items from the

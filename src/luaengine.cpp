@@ -195,6 +195,22 @@ void LuaEngine::sandboxEnvironment() {
         lua_pushnil(m_state);
         lua_setglobal(m_state, dangerous[i]);
     }
+
+    // Strip string.dump. It returns the bytecode for a Lua function;
+    // Lua 5.4 has no bytecode verifier, so crafted bytecode can corrupt
+    // memory and escape the sandbox. `load`/`loadstring`/`loadfile` are
+    // already nil'd above, so there's no supported path back from
+    // bytecode to an executing function — but any future C API added
+    // to `ants.*` that calls luaL_loadbuffer on plugin-supplied data
+    // would reopen the attack surface. Defense-in-depth: close the
+    // primitive at the sandbox layer where the rule is checked, not
+    // at the API call site where the rule is easy to forget.
+    lua_getglobal(m_state, "string");
+    if (lua_istable(m_state, -1)) {
+        lua_pushnil(m_state);
+        lua_setfield(m_state, -2, "dump");
+    }
+    lua_pop(m_state, 1);
 }
 
 bool LuaEngine::loadScript(const QString &path) {
@@ -212,7 +228,16 @@ bool LuaEngine::loadScript(const QString &path) {
         check.close();
     }
 
-    int result = luaL_dofile(m_state, path.toUtf8().constData());
+    // luaL_dofile is luaL_loadfile + lua_pcall; luaL_loadfile forwards to
+    // luaL_loadfilex with mode nullptr, which accepts BOTH text and binary
+    // bytecode. The 0x1b peek above is our first gate, but duplicate the
+    // check at the Lua-loader level by forcing mode "t" (text-only). A
+    // future refactor that drops the peek still gets a rejection here.
+    const QByteArray pathUtf8 = path.toUtf8();
+    int result = luaL_loadfilex(m_state, pathUtf8.constData(), "t");
+    if (result == LUA_OK) {
+        result = lua_pcall(m_state, 0, LUA_MULTRET, 0);
+    }
     if (result != LUA_OK) {
         const char *err = lua_tostring(m_state, -1);
         emit logMessage(QString("Lua error in %1: %2").arg(path, err ? err : "unknown"));
@@ -225,6 +250,15 @@ bool LuaEngine::loadScript(const QString &path) {
 void LuaEngine::shutdown() {
     if (m_state) {
         m_handlers.clear();
+        // Clear the instruction-count hook before lua_close runs.
+        // lua_close executes every __gc metamethod in dependency order;
+        // metamethods can run arbitrary Lua code, which the count hook
+        // observes. If the hook fires mid-close and walks back into
+        // registry data that has already been finalized (or into the
+        // LuaEngine pointer whose Qt signal connections are tearing
+        // down), we get a UAF window. Clearing the hook first makes
+        // lua_close purely C-side cleanup from the Ants perspective.
+        lua_sethook(m_state, nullptr, 0, 0);
         lua_close(m_state);
         m_state = nullptr;
         m_luaMemUsage = 0;

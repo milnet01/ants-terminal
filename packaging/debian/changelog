@@ -1,3 +1,26 @@
+ants-terminal (0.7.21-1) unstable; urgency=medium
+
+  * Lua sandbox hardening trio from the 0.7.12 /indie-review.
+    Three small defense-in-depth fixes in LuaEngine, all locked
+    by a behavioral + source-grep regression test
+    (tests/features/lua_sandbox_hardening).
+  * Security: string.dump removed from the plugin sandbox.
+    Lua 5.4 has no bytecode verifier — string.dump(f) returns
+    bytecode that a crafted loader call could execute. Closed
+    at the sandbox layer via lua_setfield on the string table,
+    independent of the already-nilled load/loadstring/loadfile.
+  * Security: LuaEngine::loadScript forces "t" (text-only) load
+    mode. Replaced luaL_dofile (which forwards with mode=nullptr,
+    accepting both text and binary chunks) with luaL_loadfilex(...,
+    "t") + lua_pcall. Adds a second rejection gate at the Lua
+    loader level alongside the existing 0x1b first-byte peek.
+  * Security: instruction-count hook cleared before lua_close in
+    shutdown. Closes the UAF window where __gc metamethods
+    running during close could observe a partially-finalized
+    engine via the hook's __ants_engine registry lookup.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 24 Apr 2026 16:15:00 +0200
+
 ants-terminal (0.7.20-1) unstable; urgency=medium
 
   * Tier 2 hardening sweep — three open items from the 0.7.12

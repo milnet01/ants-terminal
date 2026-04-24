@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.21" date="2026-04-24">
+      <description>
+        <p>Lua sandbox hardening trio from the 0.7.12 /indie-review. Three small defense-in-depth fixes in <code>LuaEngine</code>, all locked by a behavioral + source-grep regression test that flips 5 of 9 invariants red against pre-fix source.</p>
+        <p>Security:</p>
+        <ul>
+          <li><em><code>string.dump</code> removed from the plugin sandbox.</em> Lua 5.4 has no bytecode verifier — <code>string.dump(f)</code> returns bytecode that a crafted loader call could execute, corrupting state and escaping the sandbox. <code>load</code>/<code>loadstring</code>/<code>loadfile</code> are already nilled at init, but any future C API wrapping <code>luaL_loadbuffer</code> with plugin-supplied data would reopen the surface. Closed at the sandbox layer via <code>lua_setfield</code> on the already-loaded string table.</li>
+          <li><em><code>LuaEngine::loadScript</code> forces <code>"t"</code> (text-only) load mode.</em> Pre-fix, <code>luaL_dofile</code> forwarded to <code>luaL_loadfilex</code> with <code>mode=nullptr</code>, accepting both text and binary chunks. The 0x1b-first-byte peek was the first rejection gate; the loader call is now the second gate, so a future refactor that drops the peek still gets a rejection.</li>
+          <li><em>Instruction-count hook cleared before <code>lua_close</code> in <code>shutdown</code>.</em> <code>lua_close</code> runs pending <code>__gc</code> metamethods which can execute arbitrary Lua code. If the hook fires mid-close and walks back into registry data via <code>__ants_engine</code>, that's a UAF window. <code>lua_sethook(m_state, nullptr, 0, 0)</code> before the close removes that window; C-side cleanup proceeds without any Lua-level observer.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.20" date="2026-04-24">
       <description>
         <p>Tier 2 hardening sweep — three open items from the 0.7.12 /indie-review landed as one release. Each fix has a behavioral regression test, source-grep on the load-bearing tokens, and was verified to fail against pre-fix source via <code>git stash</code> before locking. All 71 fast tests green.</p>
