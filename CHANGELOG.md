@@ -28,6 +28,31 @@ now preserves all 8 plus the HMAC key.
 
 ### Added
 
+- **Claude Code `UserPromptSubmit` git-context hook (user ask
+  2026-04-24).** New Settings-dialog button "Install git-context
+  hook" writes `~/.config/ants-terminal/hooks/claude-git-context.sh`
+  and merges one entry into `~/.claude/settings.json` under
+  `hooks.UserPromptSubmit`. The script prints a compact
+  `<git-context>` block — branch, upstream, ahead/behind counts,
+  staged/unstaged/untracked file counts — on every user prompt, so
+  Claude Code sees repo state *up front* without spending tokens on
+  a `Bash(git status)` round-trip. Global scope (the user's explicit
+  ask "can this be available to all projects?"): installed in
+  `~/.claude/settings.json` so it fires on every Claude Code session
+  regardless of which project. No-op outside a git repo, no-op when
+  `git` isn't on PATH, no-op when `CLAUDE_PROJECT_DIR` is unset and
+  `$PWD` isn't a repo — silent exit-0 so non-repo sessions see zero
+  behaviour change. Independent of the existing status-bar hook
+  installer (different direction of data flow: this one is
+  Claude→git, the status-bar one is Ants→Claude); users can opt
+  into one and not the other. Installer is idempotent and preserves
+  pre-existing user-added `UserPromptSubmit` entries (ripgrep
+  cheatsheet injectors, TODO listers, etc.) via the same
+  "append-only-if-not-already-present" loop used by the status-bar
+  installer. Parse-error-refuse on a corrupt settings file matches
+  the 0.7.12 /indie-review cross-cutting fix shape. Contract pinned
+  by `tests/features/claude_git_context_hook/spec.md` + 10-invariant
+  installer source-grep test + 5-scenario behavioral script test.
 - **`src/secretredact.h` — OWASP LLM06 defense layer.** Header-only
   module exposing `SecretRedact::scrub(QString) → {text, redactedCount}`.
   Regex-scrubs 14 well-known secret shapes out of any string before it

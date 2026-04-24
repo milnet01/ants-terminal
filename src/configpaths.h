@@ -62,4 +62,12 @@ inline QString antsClaudeForwardScript() {
     return antsHooksDir() + QStringLiteral("/claude-forward.sh");
 }
 
+// ~/.config/ants-terminal/hooks/claude-git-context.sh — UserPromptSubmit
+// hook script that prints a <git-context> block so Claude Code doesn't
+// need to run `git status` via the Bash tool. See
+// tests/features/claude_git_context_hook/spec.md.
+inline QString antsClaudeGitContextScript() {
+    return antsHooksDir() + QStringLiteral("/claude-git-context.sh");
+}
+
 }  // namespace ConfigPaths

@@ -78,10 +78,14 @@ private:
     QSpinBox *m_notificationTimeout = nullptr;    // status-bar toast timeout
     QPushButton *m_installClaudeHooksBtn = nullptr;
     QLabel *m_claudeHooksStatus = nullptr;
+    QPushButton *m_installClaudeGitContextBtn = nullptr;
+    QLabel *m_claudeGitContextStatus = nullptr;
     // Per-tab Claude activity glyph gate. See Config::claudeTabStatusIndicator.
     QCheckBox *m_claudeTabStatusIndicator = nullptr;
     void installClaudeHooks();
     void refreshClaudeHooksStatus();
+    void installClaudeGitContextHook();
+    void refreshClaudeGitContextStatus();
 
     // Appearance
     QFontComboBox *m_fontFamily;

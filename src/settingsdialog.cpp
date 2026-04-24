@@ -156,6 +156,28 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     layout->addRow(QString(), m_claudeHooksStatus);
     refreshClaudeHooksStatus();
 
+    // Claude Code `UserPromptSubmit` git-context hook (user ask 2026-04-24).
+    // Independent of the status-bar hooks above — this one runs in the
+    // opposite direction: Claude pulls git state from the script on every
+    // user prompt, so the model gets `git status` context without spending
+    // tokens on a Bash tool call. Global across every project because the
+    // hook lives in ~/.claude/settings.json (user-scope). Installed
+    // separately so users can opt into one and not the other.
+    // See tests/features/claude_git_context_hook/spec.md.
+    m_installClaudeGitContextBtn = new QPushButton("Install git-context hook", tab);
+    m_installClaudeGitContextBtn->setToolTip(
+        "Adds a UserPromptSubmit hook to ~/.claude/settings.json that "
+        "injects a <git-context> block into every Claude Code prompt. "
+        "Claude sees the current branch, staged/unstaged/untracked counts, "
+        "and upstream sync state without spending tokens on `git status`.");
+    m_claudeGitContextStatus = new QLabel(tab);
+    m_claudeGitContextStatus->setWordWrap(true);
+    connect(m_installClaudeGitContextBtn, &QPushButton::clicked,
+            this, &SettingsDialog::installClaudeGitContextHook);
+    layout->addRow(QString(), m_installClaudeGitContextBtn);
+    layout->addRow(QString(), m_claudeGitContextStatus);
+    refreshClaudeGitContextStatus();
+
     // Per-tab Claude activity glyph. When enabled, each tab whose shell
     // has a Claude Code child process draws a small state-dependent dot
     // on the tab chrome — muted grey for idle/thinking, blue for most
@@ -1094,5 +1116,223 @@ void SettingsDialog::installClaudeHooks() {
                       "Script: %1\n"
                       "Settings: %2\n\n"
                       "Real-time Claude status updates will take effect for new Claude Code sessions.")
+            .arg(scriptPath, settingsPath));
+}
+
+// --- Claude Code UserPromptSubmit git-context hook ---
+//
+// Writes a small shell script that prints a <git-context> block on
+// stdout, and merges one entry into ~/.claude/settings.json's
+// hooks.UserPromptSubmit array. The script runs in the session's cwd
+// (CLAUDE_PROJECT_DIR if set, else $PWD) and no-ops silently outside
+// a git work tree. See tests/features/claude_git_context_hook/spec.md
+// for the contract.
+
+static QString gitContextScriptPath() {
+    return ConfigPaths::antsClaudeGitContextScript();
+}
+
+void SettingsDialog::refreshClaudeGitContextStatus() {
+    if (!m_claudeGitContextStatus) return;
+    const bool scriptPresent = QFile::exists(gitContextScriptPath());
+    bool hookWired = false;
+    QFile sf(claudeSettingsPath());
+    if (sf.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(sf.readAll());
+        sf.close();
+        const QJsonArray entries = doc.object().value("hooks").toObject()
+                                      .value("UserPromptSubmit").toArray();
+        const QString needle = gitContextScriptPath();
+        for (const QJsonValue &v : entries) {
+            const QJsonArray inner = v.toObject().value("hooks").toArray();
+            for (const QJsonValue &h : inner) {
+                if (h.toObject().value("command").toString() == needle) {
+                    hookWired = true;
+                    break;
+                }
+            }
+            if (hookWired) break;
+        }
+    }
+    if (scriptPresent && hookWired) {
+        m_claudeGitContextStatus->setText(
+            QStringLiteral("✓ Installed globally. Every Claude Code prompt "
+                          "carries a <git-context> block."));
+    } else if (scriptPresent) {
+        m_claudeGitContextStatus->setText(
+            QStringLiteral("Helper script present but the UserPromptSubmit "
+                          "entry is missing from ~/.claude/settings.json."));
+    } else {
+        m_claudeGitContextStatus->setText(
+            QStringLiteral("Not installed. Claude Code will run `git status` "
+                          "via Bash when it needs repo state (~500 tokens "
+                          "per turn)."));
+    }
+}
+
+void SettingsDialog::installClaudeGitContextHook() {
+    const QString scriptPath = gitContextScriptPath();
+    const QString scriptDir = QFileInfo(scriptPath).absolutePath();
+    if (!QDir().mkpath(scriptDir)) {
+        QMessageBox::warning(this, "Install git-context hook",
+            QString("Could not create %1").arg(scriptDir));
+        return;
+    }
+
+    // The script runs on every Claude Code UserPromptSubmit. Must be
+    // fast (<100 ms typical) and silent-no-op outside a git repo so we
+    // don't pollute every prompt in non-repo projects with chatter.
+    //
+    // Contract: tests/features/claude_git_context_hook/spec.md §3.
+    const QString script = QStringLiteral(
+        "#!/bin/bash\n"
+        "# Ants Terminal — Claude Code UserPromptSubmit git-context hook.\n"
+        "# Prints a <git-context> block so Claude sees repo state without\n"
+        "# spending tokens on `git status`. Silent no-op outside a repo.\n"
+        "set -u\n"
+        "cwd=\"${CLAUDE_PROJECT_DIR:-$PWD}\"\n"
+        "cd \"$cwd\" 2>/dev/null || exit 0\n"
+        "command -v git >/dev/null 2>&1 || exit 0\n"
+        "git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0\n"
+        "\n"
+        "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\n"
+        "if [[ \"$branch\" == \"HEAD\" ]]; then\n"
+        "    branch=$(git rev-parse --short=7 HEAD 2>/dev/null)\n"
+        "fi\n"
+        "[[ -z \"$branch\" ]] && exit 0\n"
+        "\n"
+        "upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)\n"
+        "ahead_behind=\"\"\n"
+        "if [[ -n \"$upstream\" ]]; then\n"
+        "    counts=$(git rev-list --left-right --count \"@{u}...HEAD\" 2>/dev/null || true)\n"
+        "    if [[ -n \"$counts\" ]]; then\n"
+        "        behind=$(awk '{print $1}' <<< \"$counts\")\n"
+        "        ahead=$(awk '{print $2}' <<< \"$counts\")\n"
+        "        ahead_behind=\" (ahead $ahead, behind $behind)\"\n"
+        "    fi\n"
+        "fi\n"
+        "\n"
+        "porcelain=$(git status --porcelain 2>/dev/null || true)\n"
+        "staged=0; unstaged=0; untracked=0\n"
+        "if [[ -n \"$porcelain\" ]]; then\n"
+        "    while IFS= read -r line; do\n"
+        "        x=\"${line:0:1}\"\n"
+        "        y=\"${line:1:1}\"\n"
+        "        if [[ \"$x\" == \"?\" && \"$y\" == \"?\" ]]; then\n"
+        "            untracked=$((untracked + 1))\n"
+        "            continue\n"
+        "        fi\n"
+        "        case \"$x\" in [MADRC]) staged=$((staged + 1));; esac\n"
+        "        case \"$y\" in [MDARC]) unstaged=$((unstaged + 1));; esac\n"
+        "    done <<< \"$porcelain\"\n"
+        "fi\n"
+        "\n"
+        "printf '<git-context>\\n'\n"
+        "printf 'Branch: %s%s\\n' \"$branch\" \"$ahead_behind\"\n"
+        "printf 'Upstream: %s\\n' \"${upstream:-(none)}\"\n"
+        "printf 'Staged: %s file(s)\\n' \"$staged\"\n"
+        "printf 'Unstaged: %s file(s)\\n' \"$unstaged\"\n"
+        "printf 'Untracked: %s file(s)\\n' \"$untracked\"\n"
+        "printf '</git-context>\\n'\n");
+
+    QSaveFile sf(scriptPath);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QMessageBox::warning(this, "Install git-context hook",
+            QString("Could not write %1").arg(scriptPath));
+        return;
+    }
+    sf.write(script.toUtf8());
+    if (!sf.commit()) {
+        QMessageBox::warning(this, "Install git-context hook",
+            QString("Write failed for %1").arg(scriptPath));
+        return;
+    }
+    QFile::setPermissions(scriptPath,
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+        QFileDevice::ExeOwner | QFileDevice::ReadGroup |
+        QFileDevice::ReadOther | QFileDevice::ExeGroup |
+        QFileDevice::ExeOther);
+
+    // Merge the UserPromptSubmit entry into ~/.claude/settings.json.
+    // Same parse-error-refuse pattern as installClaudeHooks() — we
+    // never clobber a corrupt settings file.
+    const QString settingsPath = claudeSettingsPath();
+    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
+    QJsonObject root;
+    QFile rf(settingsPath);
+    if (rf.exists()) {
+        if (!rf.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, "Install git-context hook",
+                QString("Could not read %1 — refusing to overwrite. "
+                        "Check file permissions and retry.")
+                    .arg(settingsPath));
+            return;
+        }
+        const QByteArray raw = rf.readAll();
+        rf.close();
+        QJsonParseError err{};
+        const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
+        if (doc.isObject()) {
+            root = doc.object();
+        } else {
+            const QString backup = rotateCorruptFileAside(settingsPath);
+            QMessageBox::warning(this, "Install git-context hook",
+                QString("%1 failed to parse (%2). Refusing to overwrite "
+                        "and risk clobbering non-hook keys.\n\n"
+                        "A backup of the broken file was written to:\n%3\n\n"
+                        "Hand-fix the file and retry.")
+                    .arg(settingsPath)
+                    .arg(err.errorString())
+                    .arg(backup.isEmpty() ? "(backup copy FAILED)" : backup));
+            return;
+        }
+    }
+    QJsonObject hooks = root.value("hooks").toObject();
+    QJsonArray existing = hooks.value("UserPromptSubmit").toArray();
+
+    // Only append if our script isn't already referenced — keeps
+    // user-added custom UserPromptSubmit hooks (ripgrep cheat-sheet,
+    // TODO injector, team-policy reminder, etc.) intact alongside ours.
+    bool ourHookPresent = false;
+    for (const QJsonValue &v : existing) {
+        const QJsonArray inner = v.toObject().value("hooks").toArray();
+        for (const QJsonValue &h : inner) {
+            if (h.toObject().value("command").toString() == scriptPath) {
+                ourHookPresent = true;
+                break;
+            }
+        }
+        if (ourHookPresent) break;
+    }
+    if (!ourHookPresent) {
+        QJsonObject hook;
+        hook["type"] = "command";
+        hook["command"] = scriptPath;
+        hook["timeout"] = 2;
+        QJsonArray hookArr; hookArr.append(hook);
+        QJsonObject wrapper;
+        wrapper["matcher"] = "";
+        wrapper["hooks"] = hookArr;
+        existing.append(wrapper);
+        hooks["UserPromptSubmit"] = existing;
+        root["hooks"] = hooks;
+
+        QSaveFile settingsOut(settingsPath);
+        if (!settingsOut.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QMessageBox::warning(this, "Install git-context hook",
+                QString("Could not write %1").arg(settingsPath));
+            return;
+        }
+        settingsOut.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+        settingsOut.commit();
+    }
+
+    refreshClaudeGitContextStatus();
+    QMessageBox::information(this, "Install git-context hook",
+        QStringLiteral("Installed globally (applies to every project).\n\n"
+                      "Script: %1\n"
+                      "Settings: %2\n\n"
+                      "Effective for new Claude Code sessions. Claude Code "
+                      "will see a <git-context> block on every user prompt.")
             .arg(scriptPath, settingsPath));
 }

@@ -828,6 +828,41 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # claude_git_context_hook — installer source-grep test for the
+    # UserPromptSubmit git-context hook. Asserts SettingsDialog's new
+    # installClaudeGitContextHook writes the canonical script, targets
+    # UserPromptSubmit in ~/.claude/settings.json, preserves existing
+    # entries, refuses to clobber a corrupt settings file, and wires a
+    # dedicated UI button. See tests/features/claude_git_context_hook/spec.md.
+    add_executable(test_claude_git_context_installer
+        tests/features/claude_git_context_hook/test_installer_grep.cpp
+    )
+    target_compile_options(test_claude_git_context_installer PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_claude_git_context_installer PRIVATE
+        SRC_SETTINGSDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_SETTINGSDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_CONFIGPATHS_H="${CMAKE_CURRENT_SOURCE_DIR}/src/configpaths.h"
+    )
+    add_test(NAME claude_git_context_installer
+             COMMAND test_claude_git_context_installer)
+    set_tests_properties(claude_git_context_installer PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # claude_git_context_script — behavioral test of the bash script the
+    # installer writes. Extracts the script body from settingsdialog.cpp
+    # (single source of truth) and exercises it across five scenarios:
+    # not-a-repo, git-missing, clean repo, dirty repo (1/1/1 counts),
+    # CLAUDE_PROJECT_DIR override.
+    add_test(NAME claude_git_context_script
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/claude_git_context_hook/test_script.sh")
+    set_tests_properties(claude_git_context_script PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 30
+        ENVIRONMENT "SRC_SETTINGSDIALOG_CPP=${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp")
+
     # ai_context_redaction — OWASP LLM06 defense. Asserts the 14 secret
     # shapes in src/secretredact.h redact with the correct [REDACTED:<kind>]
     # label, negative controls (UUID, commit SHA, plain URLs, prose) pass

@@ -1347,6 +1347,29 @@ remainder, captured so they don't drop on the floor.
   `tests/features/claude_tab_status_indicator/spec.md` + 11-invariant
   feature test. Stage 1 scope complete.
 
+### 🎨 Claude Code UX — token-saving git-context hook (user request 2026-04-24)
+
+- ✅ **UserPromptSubmit git-context hook.** Shipped in [Unreleased].
+  New Settings button "Install git-context hook" writes
+  `~/.config/ants-terminal/hooks/claude-git-context.sh` + merges a
+  `hooks.UserPromptSubmit` entry into `~/.claude/settings.json` so
+  every Claude Code prompt carries a compact `<git-context>` block
+  (branch, upstream, ahead/behind, staged/unstaged/untracked
+  counts). Claude sees repo state without running `git status` via
+  Bash — saves ~400–600 tokens per turn where the model would have
+  otherwise queried. Global (user's explicit ask: "Can this hook be
+  available to all projects?") because `~/.claude/settings.json` is
+  user-scope; hook no-ops outside git repos / when `git` isn't on
+  PATH, so non-repo sessions see no behaviour change. Independent
+  of the existing status-bar hook installer (different data flow:
+  Claude→git vs Ants→Claude). Pinned by
+  `tests/features/claude_git_context_hook/spec.md` — 10 installer
+  source-grep invariants (idempotency, UserPromptSubmit targeting,
+  parse-error-refuse, user-hook preservation, global-scope only,
+  dedicated button wiring) + 5 behavioral script invariants
+  (not-a-repo no-op, git-missing no-op, clean repo, dirty repo
+  counts, `CLAUDE_PROJECT_DIR` override).
+
 ### 🎨 Claude Code UX — manual tab rename stomped (user request 2026-04-24)
 
 - ✅ **Right-click "Rename Tab…" pins the label.** Shipped in
