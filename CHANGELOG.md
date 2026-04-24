@@ -10,6 +10,74 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.19] — 2026-04-24
+
+**Theme:** CI un-break + tab-rename persistence. CI had been red since
+0.7.17 on the AppStream metainfo validation step — the 0.7.17 release
+description embedded `git clone https://ghp_…@github.com/…` as an
+example of what the new secret-redactor scrubs, and `appstreamcli`
+correctly rejects plaintext URLs in `<description>` bodies. Rewrote
+the example to use an inline non-URL form; local
+`appstreamcli validate --explain` now exits 0. Separately, user asked
+whether manual tab renames (right-click → "Rename Tab…") survive
+Ants restart. They didn't — the pin map lived only in `MainWindow`
+memory and `SessionManager` didn't serialize it. Fixed by bumping
+the session-file schema to V3 with a trailing `pinnedTitle` field;
+V2 files still load with the out-param defaulting to empty.
+
+### Added
+
+- **Manual tab renames persist across Ants Terminal sessions.** User
+  ask 2026-04-24. The right-click "Rename Tab…" pin (`m_tabTitlePins`)
+  is now written to and read from each per-tab session file, so a
+  tab renamed to "Deploy" or "Prod DB" or "Claude #3" keeps that
+  label after the app exits and relaunches. `SessionManager`
+  schema bumped to V3: a trailing `QString pinnedTitle` field is
+  appended after the V2 `cwd`. V2 files continue to load via the
+  existing `in.atEnd()` gate — Ants 0.7.18 and earlier can't read
+  V3 files, but since session files are a per-user cache (not an
+  interchange format) that's by design. `MainWindow::saveAllSessions`
+  threads `m_tabTitlePins.value(w)` (keyed by the outer tab widget,
+  which may be a `QSplitter` for split tabs) into the save;
+  `restoreSessions` pulls the pin back, populates the in-memory
+  `m_tabTitlePins` map, and sets the tab label directly (pin takes
+  precedence over the shell-derived window title from the saved
+  grid's windowTitle()). Contract locked by
+  `tests/features/tab_rename_persist/spec.md` — 20 invariants
+  covering the V3 round-trip (three pin lengths including empty),
+  V2 backward compat (hand-crafted V2 stream → restore leaves
+  `pinnedTitle` out-param empty), and MainWindow source-grep that
+  both save-side and restore-side wiring remain threaded. Verified
+  to fail against pre-fix source before locking.
+
+### Fixed
+
+- **AppStream metainfo validation passes.** `appstreamcli
+  validate --explain` failed on the 0.7.17 / 0.7.18 release
+  descriptions because the 0.7.17 block contained
+  `git clone https://ghp_…@github.com/…` as a scrubber example,
+  and AppStream's `description-has-plaintext-url` rule rejects
+  raw URLs in description bodies. CI's "Validate AppStream
+  metainfo" step exited 3 on every push since 0.7.17. Rewrote the
+  example as `<code>git clone</code> with an embedded
+  <code>ghp_</code> token in the URL`. CI build-test step should
+  be green again on this release.
+
+### Changed
+
+- **`SessionManager::restore` initializes optional out-params
+  before reading.** Previously, callers that passed a
+  pre-populated `QString *cwd` or `QString *pinnedTitle` would
+  see their sentinel survive an older-format load (V2 files
+  leaving `pinnedTitle` untouched, V1 files leaving `cwd`
+  untouched). Fixed by clearing both out-params at function
+  entry regardless of the stream's version. The version-gated
+  read blocks still populate them only when the on-disk format
+  actually has the field; the clear-first guarantees they read
+  as empty rather than as whatever the caller happened to
+  pre-fill. Locked by `tab_rename_persist` I3.
+
+
 ## [0.7.18] — 2026-04-24
 
 **Theme:** post-release documentation + tech-debt sweep. Three parallel

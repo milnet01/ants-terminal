@@ -103,6 +103,23 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.19" date="2026-04-24">
+      <description>
+        <p>CI un-break + tab-rename persistence. CI had been red since 0.7.17 on the AppStream metainfo validation step because the 0.7.17 release description embedded a plaintext <code>https://</code> URL as an example of what the new secret-redactor scrubs, which the validator correctly rejects. Rewrote the example to use a non-URL inline form. Separately, user asked whether manual tab renames survive Ants restart — they didn't, because the pin map lived only in MainWindow memory. Fixed by bumping the session-file schema to V3 with a trailing <code>pinnedTitle</code> field.</p>
+        <p>Added:</p>
+        <ul>
+          <li><em>Manual tab renames persist across Ants Terminal sessions.</em> The right-click "Rename Tab…" pin (<code>m_tabTitlePins</code>) is now written to and read from each per-tab session file. A tab renamed to "Deploy" or "Prod DB" or "Claude #3" keeps that label after the app exits and relaunches. <code>SessionManager</code> schema bumped to V3: a trailing <code>QString pinnedTitle</code> field appended after the V2 <code>cwd</code>. V2 files continue to load with the pin out-param defaulting to empty.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>AppStream metainfo validation passes again.</em> The 0.7.17 and 0.7.18 release descriptions failed <code>appstreamcli validate --explain</code> with <code>description-has-plaintext-url</code>. Example rewritten to non-URL form; CI build-test step now green.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li><em><code>SessionManager::restore</code> initializes optional out-params before reading.</em> Callers that pre-populated <code>QString *cwd</code> or <code>QString *pinnedTitle</code> would previously see their sentinel survive an older-format load. Fixed by clearing both at function entry; the version-gated read blocks still only populate them when the on-disk format actually has the field.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.18" date="2026-04-24">
       <description>
         <p>Post-0.7.17 documentation + tech-debt sweep. Three parallel audit agents (doc drift, source debt, spec-vs-code drift) inventoried every doc-vs-code mismatch, stale TODO, dead config key, and spec line-number drift across the tree. Two real bugs landed: the Settings → General Shell picker now actually launches the user's chosen shell (previously persisted to config.json but silently dropped by the PTY launch path), and <code>Qt::WA_OpaquePaintEvent</code> on the menubar closes the remaining mouse-move-over-menubar dropdown flicker on KWin. The <code>background_alpha</code> config key was removed as redundant — user confirmed the <code>opacity</code> knob already does what they want (translucent terminal area, solid chrome).</p>
@@ -140,7 +157,7 @@
         <p>Security:</p>
         <ul>
           <li><em>Claude allowlist <code>settings.local.json</code> perms survive rename fallback.</em> <code>ClaudeAllowlistDialog::saveSettings</code> previously set 0600 only on the <code>QSaveFile</code> temp fd. Most local filesystems preserve fd perms across <code>rename(2)</code>, but FAT/exFAT on removable media don't carry POSIX perm bits, some SMB/NFS servers apply umask to the rename destination, and Qt's <code>QSaveFile::commit</code> falls back to copy+unlink on cross-device renames — in all three cases the final file landed at the process umask (typically 0644). Since the file can hold Claude Code bearer tokens, the widened perms were a credential-leak surface. Fix: after <code>commit()</code> returns true, re-apply <code>setOwnerOnlyPerms</code> on the final path (the pre-commit fd-level chmod is retained — neither call subsumes the other). Flagged by the 2026-04-23 <code>/indie-review</code>.</li>
-          <li><em>AI context + user-message secret redaction (OWASP LLM06).</em> The AI dialog previously shipped recent scrollback verbatim to whichever endpoint the user had configured — a single <code>cat .env</code>, <code>aws configure show</code>, or <code>git clone https://ghp_…@github.com/…</code> in scrollback exfiltrated credentials. Complements the 0.7.12 LLM01/LLM02 fix (<code>ai_insert_command_sanitize</code>) — that handled AI → PTY; this handles PTY → AI.</li>
+          <li><em>AI context + user-message secret redaction (OWASP LLM06).</em> The AI dialog previously shipped recent scrollback verbatim to whichever endpoint the user had configured — a single <code>cat .env</code>, <code>aws configure show</code>, or <code>git clone</code> with an embedded <code>ghp_</code> token in the URL in scrollback exfiltrated credentials. Complements the 0.7.12 LLM01/LLM02 fix (<code>ai_insert_command_sanitize</code>) — that handled AI → PTY; this handles PTY → AI.</li>
         </ul>
         <p>Fixed:</p>
         <ul>

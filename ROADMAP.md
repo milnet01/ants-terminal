@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.18 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.19 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 

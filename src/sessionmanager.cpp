@@ -28,7 +28,9 @@ QString SessionManager::sessionPath(const QString &tabId) {
     return sessionDir() + "/session_" + tabId + ".dat";
 }
 
-QByteArray SessionManager::serialize(const TerminalGrid *grid, const QString &cwd) {
+QByteArray SessionManager::serialize(const TerminalGrid *grid,
+                                     const QString &cwd,
+                                     const QString &pinnedTitle) {
     QByteArray raw;
     QDataStream out(&raw, QIODevice::WriteOnly);
     out.setVersion(QDataStream::Qt_6_0);
@@ -115,11 +117,22 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid, const QString &cw
     // V2: Working directory
     out << cwd;
 
+    // V3: Manual tab rename pin (empty string when user hasn't renamed
+    // the tab). Trailing field — V2 readers simply stop here.
+    out << pinnedTitle;
+
     // Compress
     return qCompress(raw, 6);
 }
 
-bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed, QString *cwd) {
+bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
+                             QString *cwd, QString *pinnedTitle) {
+    // Clear optional out-params up front so callers reading them after
+    // a V1/V2 file don't see stale bytes. The version-gated read blocks
+    // below populate them only when the on-disk format has the field.
+    if (cwd) *cwd = QString();
+    if (pinnedTitle) *pinnedTitle = QString();
+
     // Reject excessively large compressed data (100MB limit)
     if (compressed.size() > 100 * 1024 * 1024) return false;
 
@@ -255,11 +268,23 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed, Q
             *cwd = savedCwd;
     }
 
+    // V3: Read pinned tab title if present. Older V2 files end after
+    // cwd; atEnd() gates so the stream-status check below doesn't flip
+    // to ReadPastEnd and fail the restore for pre-V3 files.
+    if (version >= 3 && !in.atEnd()) {
+        QString savedPinned;
+        in >> savedPinned;
+        if (pinnedTitle)
+            *pinnedTitle = savedPinned;
+    }
+
     return in.status() == QDataStream::Ok;
 }
 
-void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid, const QString &cwd) {
-    QByteArray data = serialize(grid, cwd);
+void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
+                                 const QString &cwd,
+                                 const QString &pinnedTitle) {
+    QByteArray data = serialize(grid, cwd, pinnedTitle);
     QString path = sessionPath(tabId);
     if (path.isEmpty()) return;
     QString tmpPath = path + QStringLiteral(".tmp");
@@ -283,14 +308,15 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
     ::umask(oldMask);
 }
 
-bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid, QString *cwd) {
+bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid,
+                                 QString *cwd, QString *pinnedTitle) {
     QString path = sessionPath(tabId);
     if (path.isEmpty()) return false;
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return false;
     if (file.size() > 100 * 1024 * 1024) return false; // 100MB limit before reading
     QByteArray data = file.readAll();
-    return restore(grid, data, cwd);
+    return restore(grid, data, cwd, pinnedTitle);
 }
 
 void SessionManager::removeSession(const QString &tabId) {

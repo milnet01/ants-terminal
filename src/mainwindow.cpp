@@ -2837,7 +2837,12 @@ void MainWindow::saveAllSessions() {
             activeIndex = tabOrder.size();
 
         tabOrder.append(tabId);
-        SessionManager::saveSession(tabId, t->grid(), t->shellCwd());
+        // Thread the manual rename pin (if any) so the user's
+        // right-click "Rename Tab…" label survives restart. Key is
+        // the outer tab widget (may be a QSplitter for split tabs —
+        // the pin is stored at tab-widget granularity, not per-pane).
+        const QString pinnedTitle = m_tabTitlePins.value(w);
+        SessionManager::saveSession(tabId, t->grid(), t->shellCwd(), pinnedTitle);
     }
     SessionManager::saveTabOrder(tabOrder, activeIndex);
 }
@@ -2874,16 +2879,37 @@ void MainWindow::restoreSessions() {
         // populated (so applyPersistedTabColor can resolve the UUID).
         applyPersistedTabColor(terminal);
 
-        // Restore scrollback, screen, and working directory
+        // Restore scrollback, screen, working directory, and pinned
+        // tab title (V3 session files). Pin takes precedence over the
+        // shell-derived window title — the whole point of the manual
+        // rename is that it sticks until the user un-renames.
         QString savedCwd;
-        SessionManager::loadSession(tabId, terminal->grid(), &savedCwd);
+        QString savedPinnedTitle;
+        SessionManager::loadSession(tabId, terminal->grid(), &savedCwd,
+                                    &savedPinnedTitle);
 
-        // Restore tab title from saved window title
-        QString savedTitle = terminal->grid()->windowTitle();
-        if (!savedTitle.isEmpty()) {
-            if (savedTitle.length() > 30)
-                savedTitle = savedTitle.left(27) + "...";
-            m_tabWidget->setTabText(m_tabWidget->count() - 1, savedTitle);
+        const int newTabIdx = m_tabWidget->count() - 1;
+        if (!savedPinnedTitle.isEmpty()) {
+            // Re-pin via m_tabTitlePins[terminal] so the titleChanged
+            // signal handler and the 2 s updateTabTitles tick both
+            // honor it. Can't call setTabTitleForRemote here because
+            // it resolves the tab by index against the *outer* widget
+            // identity, which is still `terminal` at restore time
+            // (splits are never persisted), so writing the pin map
+            // directly is equivalent and avoids one lookup.
+            m_tabTitlePins[terminal] = savedPinnedTitle;
+            QString display = savedPinnedTitle.length() > 30
+                ? savedPinnedTitle.left(27) + "..."
+                : savedPinnedTitle;
+            m_tabWidget->setTabText(newTabIdx, display);
+        } else {
+            // No pin → fall back to the shell-derived window title.
+            QString savedTitle = terminal->grid()->windowTitle();
+            if (!savedTitle.isEmpty()) {
+                if (savedTitle.length() > 30)
+                    savedTitle = savedTitle.left(27) + "...";
+                m_tabWidget->setTabText(newTabIdx, savedTitle);
+            }
         }
 
         // Clear screen buffer so new shell starts with a clean display

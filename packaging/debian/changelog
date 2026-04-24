@@ -1,3 +1,32 @@
+ants-terminal (0.7.19-1) unstable; urgency=medium
+
+  * CI un-break + tab-rename persistence. CI had been red since 0.7.17
+    on the AppStream metainfo validation step because the 0.7.17
+    release description embedded a plaintext https:// URL as an
+    example of what the new secret-redactor scrubs; appstreamcli's
+    description-has-plaintext-url rule correctly rejected it. Example
+    rewritten to a non-URL inline form. User also asked whether
+    manual tab renames survive Ants restart — they didn't, because
+    the pin map lived only in MainWindow memory. Fixed by bumping
+    the session-file schema to V3 with a trailing pinnedTitle field.
+  * Added: manual tab renames persist across Ants Terminal sessions
+    (user ask 2026-04-24). The right-click "Rename Tab…" pin
+    (m_tabTitlePins) is now written to and read from each per-tab
+    session file. A tab renamed to "Deploy" or "Prod DB" or
+    "Claude #3" keeps that label after the app exits and relaunches.
+    SessionManager schema bumped to V3: a trailing QString
+    pinnedTitle field appended after the V2 cwd. V2 files continue
+    to load with the pin out-param defaulting to empty. Locked by
+    tests/features/tab_rename_persist (20 invariants).
+  * Fixed: AppStream metainfo validation passes. CI build-test step
+    now green (was red since 0.7.17).
+  * Changed: SessionManager::restore initializes optional out-params
+    before reading, so callers that passed a pre-populated QString*
+    no longer see their sentinel survive an older-format load.
+    Locked by tab_rename_persist I3.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 24 Apr 2026 11:15:00 +0200
+
 ants-terminal (0.7.18-1) unstable; urgency=medium
 
   * Post-0.7.17 documentation + tech-debt sweep. Three parallel audit

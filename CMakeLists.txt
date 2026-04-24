@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.18 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.19 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -570,6 +570,37 @@ if(ANTS_TESTS)
     )
     add_test(NAME shell_command_wiring COMMAND test_shell_command_wiring)
     set_tests_properties(shell_command_wiring PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # tab_rename_persist — asserts the right-click "Rename Tab…" pin
+    # survives app restart. V3 session-file schema: pinnedTitle is
+    # appended after cwd; V2 files continue to load with the out-param
+    # left empty. MainWindow saveAllSessions threads the pin into
+    # saveSession; restoreSessions pulls it back and populates
+    # m_tabTitlePins so the titleChanged handler and updateTabTitles
+    # tick both honor it after restart. See
+    # tests/features/tab_rename_persist/spec.md.
+    add_executable(test_tab_rename_persist
+        tests/features/tab_rename_persist/test_tab_rename_persist.cpp
+        src/sessionmanager.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_tab_rename_persist PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_tab_rename_persist PRIVATE src)
+    target_compile_options(test_tab_rename_persist PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_tab_rename_persist PRIVATE
+        SRC_SESSIONMANAGER_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.h"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME tab_rename_persist COMMAND test_tab_rename_persist)
+    set_tests_properties(tab_rename_persist PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
