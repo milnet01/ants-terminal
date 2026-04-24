@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.23 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.24 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1467,6 +1467,30 @@ if(ANTS_TESTS)
     )
     add_test(NAME bce_scroll_erase COMMAND test_bce_scroll_erase)
     set_tests_properties(bce_scroll_erase PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # wide_char_overwrite_mate — 0.7.24 fix. Locks the invariant that
+    # overwriting part of a wide-char pair (CJK / wide emoji) cleans up
+    # the stranded mate on the opposite side. Previously handlePrint and
+    # handleAsciiPrintRun left dangling isWideChar / isWideCont flags when
+    # a narrow write landed on one half of a pair, corrupting render and
+    # selection. See spec.md.
+    add_executable(test_wide_char_overwrite
+        tests/features/wide_char_overwrite_mate/test_wide_char_overwrite.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_wide_char_overwrite PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_wide_char_overwrite PRIVATE src)
+    target_compile_options(test_wide_char_overwrite PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME wide_char_overwrite_mate COMMAND test_wide_char_overwrite)
+    set_tests_properties(wide_char_overwrite_mate PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

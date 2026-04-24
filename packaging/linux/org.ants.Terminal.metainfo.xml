@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.24" date="2026-04-24">
+      <description>
+        <p>Wide-char (CJK / wide emoji) overwrite no longer strands its mate. 0.7.12 Tier 2 hardening item. Locked by a 5-subcase behavioral regression test that flips 4 subcases red against pre-fix source.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Wide-char overwrite now zeroes the stranded mate (<code>TerminalGrid</code>).</em> A wide character occupies two adjacent cells — a first half (<code>isWideChar=true</code>, codepoint=CP) and a continuation (<code>isWideCont=true</code>, codepoint=0). Before this release, three write paths left half-pairs in an inconsistent state when a new write landed on only one half: narrow writes over a continuation left the mate at <code>col-1</code> still claiming <code>isWideChar=true</code> with no neighbor (rendered with a gap); narrow writes over a first half left the old continuation at <code>col+1</code> claiming <code>isWideCont=true</code> with no mate (blocked selection / copy); a wide write shifted by one from an existing wide pair orphaned the old continuation at <code>col+2</code>; and the SIMD-coalesced fast path <code>handleAsciiPrintRun</code> had the same left/right edge issues on its write span. Consolidated into a single <code>breakWidePairsAround(row, startCol, endCol)</code> helper that runs before every write site.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.23" date="2026-04-24">
       <description>
         <p>xterm-compatible Background Color Erase (BCE) across every scroll and erase path. 0.7.12 Tier 2 hardening item. Locked by a 10-subcase behavioral regression test that flips 5 subcases red against pre-fix source.</p>

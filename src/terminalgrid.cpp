@@ -283,6 +283,33 @@ void TerminalGrid::processAction(const VtAction &action) {
     }
 }
 
+void TerminalGrid::breakWidePairsAround(int row, int startCol, int endCol) {
+    if (row < 0 || row >= m_rows) return;
+    auto &line = m_screenLines[row];
+    auto &cells = line.cells;
+    // Left edge: the cell at startCol is inside the write region. If it is
+    // currently a wide continuation, its mate at startCol-1 sits OUTSIDE
+    // the write and would strand with isWideChar=true but no neighbor.
+    if (startCol > 0 && startCol < m_cols && cells[startCol].isWideCont) {
+        auto &mate = cells[startCol - 1];
+        mate.codepoint = ' ';
+        mate.isWideChar = false;
+        mate.isWideCont = false;
+        line.combining.erase(startCol - 1);
+    }
+    // Right edge: the cell at endCol is OUTSIDE the write region. If it is
+    // currently a wide continuation, its mate at endCol-1 is inside the
+    // write and about to be overwritten — the continuation at endCol will
+    // be orphaned with isWideCont=true but no first-half to its left.
+    if (endCol > 0 && endCol < m_cols && cells[endCol].isWideCont) {
+        auto &orphan = cells[endCol];
+        orphan.codepoint = ' ';
+        orphan.isWideChar = false;
+        orphan.isWideCont = false;
+        line.combining.erase(endCol);
+    }
+}
+
 void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
     // Precondition: every byte in [data, data+len) is in [0x20..0x7E].
     // The parser's SIMD scanSafeAsciiRun establishes this. The fast
@@ -314,6 +341,9 @@ void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
         int span = remaining < available ? remaining : available;
         if (span <= 0) break;  // defensive
 
+        // Sanitize any wide-char pair at either edge of this write span
+        // BEFORE writing — see breakWidePairsAround for the contract.
+        breakWidePairsAround(row, startCol, startCol + span);
         auto &cells = line.cells;
         const CellAttrs attrs = m_currentAttrs;
         bool rowHasCombining = !line.combining.empty();
@@ -386,6 +416,11 @@ void TerminalGrid::handlePrint(uint32_t cp) {
             return; // Can't fit, ignore
         }
     }
+
+    // Sanitize any wide-char pair at either edge of this write BEFORE we
+    // clobber the cell(s). Write region is [cursorCol, cursorCol+charWidth).
+    // See breakWidePairsAround + tests/features/wide_char_overwrite_mate.
+    breakWidePairsAround(m_cursorRow, m_cursorCol, m_cursorCol + charWidth);
 
     auto &c = cell(m_cursorRow, m_cursorCol);
     c.codepoint = cp;

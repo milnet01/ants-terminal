@@ -328,6 +328,11 @@ private:
     // run into per-row spans so markScreenDirty / combining.erase fire
     // once per row instead of once per byte.
     void handleAsciiPrintRun(const char *data, int len);
+    // Zero the stranded mate when a write at [startCol, endCol) splits a
+    // wide-char pair at either edge. Must be called BEFORE the write so we
+    // can still tell the neighbor's pre-write state. See
+    // tests/features/wide_char_overwrite_mate for the contract.
+    void breakWidePairsAround(int row, int startCol, int endCol);
     void handleExecute(char ch);
     void handleCsi(const VtAction &a);
     void handleEsc(const VtAction &a);

@@ -1,3 +1,30 @@
+ants-terminal (0.7.24-1) unstable; urgency=medium
+
+  * Wide-char (CJK / wide emoji) overwrite now zeroes the stranded
+    mate. 0.7.12 Tier 2 hardening item.
+  * Fixed: a wide character occupies two adjacent cells — a first
+    half (isWideChar=true, codepoint=CP) and a continuation
+    (isWideCont=true, codepoint=0). Pre-fix, three write paths
+    left half-pairs in an inconsistent state when a new write
+    landed on only one half. (a) handlePrint narrow write over a
+    continuation left the mate at col-1 still claiming
+    isWideChar=true (rendered with a gap). (b) handlePrint narrow
+    write over a first half left the old continuation at col+1
+    claiming isWideCont=true with no mate (blocked selection). (c)
+    handlePrint wide write shifted by one from an existing wide
+    pair orphaned the old continuation at col+2. (d) the
+    SIMD-coalesced fast path handleAsciiPrintRun had the same
+    left/right edge issues on its write span.
+  * Fix consolidates the policy into a single
+    breakWidePairsAround(row, startCol, endCol) helper that runs
+    before every write site: blanks the stranded first half on the
+    left edge and clears the stranded continuation on the right
+    edge. Regression test tests/features/wide_char_overwrite_mate
+    locks five subcases — pre-fix source fails four of them (INV-1,
+    INV-2, INV-3, INV-4), post-fix all five pass.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 24 Apr 2026 13:53:28 +0200
+
 ants-terminal (0.7.23-1) unstable; urgency=medium
 
   * xterm-compatible Background Color Erase (BCE) across every

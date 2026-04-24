@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.23 (2026-04-24) (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.24 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1152,9 +1152,18 @@ grep rules or individual tickets as they become actionable.
   Consolidated into a single `eraseBg()` helper on TerminalGrid.
   Regression test `tests/features/bce_scroll_erase` locks 10
   behavioral subcases. Pre-fix source fails 5; post-fix all 10 pass.
-- 📋 **Wide-char overwrite zeroes the mate.**
-  `terminalgrid.cpp:327-347` leaves dangling `isWideCont` when a narrow
-  char overwrites a wide char's first half (or vice versa).
+- ✅ **Wide-char overwrite zeroes the mate.** Shipped 0.7.24. Both
+  `handlePrint` (narrow + wide branches) and the SIMD fast path
+  `handleAsciiPrintRun` now route their writes through a single
+  `breakWidePairsAround(row, startCol, endCol)` helper that runs
+  BEFORE the write: it blanks a stranded `isWideChar` mate on the
+  left edge (when the write lands on an `isWideCont`) and clears a
+  stranded `isWideCont` on the right edge (when the write clobbers
+  the first half whose continuation lives one past the region).
+  Regression test `tests/features/wide_char_overwrite_mate` locks 5
+  subcases (narrow-over-right, narrow-over-left, wide-over-wide-
+  shifted, ASCII-fast-path, non-overlap-preservation). Pre-fix
+  source fails 4 subcases; post-fix all 5 pass.
 - ✅ **`background_alpha` — dropped as redundant.** Shipped in
   [Unreleased]. User confirmed (2026-04-24) they use `opacity`
   ~0.9-0.95 to make the terminal area translucent while chrome

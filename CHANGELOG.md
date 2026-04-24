@@ -10,6 +10,35 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.24] — 2026-04-24
+
+**Theme:** wide-char (CJK / wide emoji) overwrite no longer strands its
+mate. 0.7.12 Tier 2 hardening item.
+
+### Fixed
+
+- **Wide-char overwrite now zeroes the stranded mate
+  (`TerminalGrid`).** A wide character occupies two adjacent cells —
+  a first half (`isWideChar=true`, codepoint=CP) and a continuation
+  (`isWideCont=true`, codepoint=0). Before this release, three write
+  paths in `src/terminalgrid.cpp` left half-pairs in an inconsistent
+  state when a new write landed on only one half: (a) `handlePrint`
+  narrow write over a continuation left the mate at `col-1` still
+  claiming `isWideChar=true` with no neighbor (rendered with a gap);
+  (b) `handlePrint` narrow write over a first half left the old
+  continuation at `col+1` claiming `isWideCont=true` with no mate
+  (blocked selection / copy); (c) `handlePrint` wide write shifted
+  by one cell from an existing wide pair left the old continuation
+  at `col+2` orphaned; (d) the SIMD-coalesced fast path
+  `handleAsciiPrintRun` had the same left/right edge issues on its
+  write span. Consolidated the policy into a single
+  `breakWidePairsAround(row, startCol, endCol)` helper that runs
+  before every write site: it blanks the stranded first half on the
+  left edge and clears the stranded continuation on the right edge.
+  Regression test `tests/features/wide_char_overwrite_mate` locks
+  five subcases — pre-fix source fails four of them (INV-1, INV-2,
+  INV-3, INV-4), post-fix all five pass.
+
 ## [0.7.23] — 2026-04-24
 
 **Theme:** xterm-compatible Background Color Erase (BCE) across every
