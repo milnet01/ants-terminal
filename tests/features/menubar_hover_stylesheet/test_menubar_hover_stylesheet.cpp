@@ -103,6 +103,27 @@ int main() {
              "redraw flicker reported 2026-04-20");
     }
 
+    // INV-7 (0.7.25): applyTheme must install an opaque palette fill
+    // AND a widget-local stylesheet on the menubar. The top-level QSS
+    // cascade alone races with the compositor damage rect under
+    // WA_TranslucentBackground — user report 2026-04-25 ("the
+    // background of the menubar is transparent"). Matches the belt-
+    // and-suspenders pattern on titleBar / statusBar.
+    std::regex menubarPalette(
+        R"(m_menuBar->setPalette\b)");
+    if (!std::regex_search(mw, menubarPalette)) {
+        fail("INV-7: m_menuBar->setPalette(...) missing from applyTheme — "
+             "palette-level opaque fill is what makes autoFillBackground "
+             "paint the right color under a translucent parent");
+    }
+    std::regex menubarStyleSheet(
+        R"(m_menuBar->setStyleSheet\s*\()");
+    if (!std::regex_search(mw, menubarStyleSheet)) {
+        fail("INV-7: m_menuBar->setStyleSheet(...) missing from applyTheme — "
+             "widget-local QSS is the belt-and-suspenders against the "
+             "top-level cascade racing with compositor damage");
+    }
+
     if (failures > 0) {
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md for context\n", failures);
         return 1;

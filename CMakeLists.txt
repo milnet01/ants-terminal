@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.24 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.25 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1493,6 +1493,31 @@ if(ANTS_TESTS)
     set_tests_properties(wide_char_overwrite_mate PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # osc8_apc_memory_caps — 0.7.25 hardening. Locks the bounded-growth
+    # caps on OSC 8 URIs (MAX_OSC8_URI_BYTES = 2 KiB) and the Kitty APC
+    # chunk-accumulation buffer (MAX_KITTY_CHUNK_BYTES = 32 MiB).
+    # Previously both accumulators were capped only by the VT parser's
+    # per-envelope 10 MB ceiling, letting hostile output wedge tens of
+    # GB into per-row hyperlink spans or the staging buffer before any
+    # downstream guard ran. See spec.md.
+    add_executable(test_osc8_apc_memory_caps
+        tests/features/osc8_apc_memory_caps/test_osc8_apc_memory_caps.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_osc8_apc_memory_caps PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_osc8_apc_memory_caps PRIVATE src)
+    target_compile_options(test_osc8_apc_memory_caps PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME osc8_apc_memory_caps COMMAND test_osc8_apc_memory_caps)
+    set_tests_properties(osc8_apc_memory_caps PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 20)
 
     # sigpipe_ignore — 0.6.28 fix (bc97485). Locks the
     # std::signal(SIGPIPE, SIG_IGN) call in main() that prevents a

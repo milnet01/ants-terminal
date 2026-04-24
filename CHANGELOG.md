@@ -10,6 +10,54 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.25] — 2026-04-24
+
+**Theme:** memory-DoS hardening on OSC 8 hyperlinks and Kitty APC
+graphics chunks, plus a menubar-opacity fix reported mid-session.
+
+### Security
+
+- **OSC 8 URI cap + Kitty APC chunk-buffer cap
+  (`TerminalGrid`).** Two attacker-controlled accumulators used to be
+  bounded only by the VT parser's per-envelope 10 MB ceiling, with no
+  downstream ceiling of their own. A hostile program could emit one
+  `\x1b]8;;<10MB-URI>\x07` sequence per scrollback line and wedge
+  tens of GB of URI bytes into per-row `HyperlinkSpan` copies +
+  scrollback; or keep sending `\x1b_G...,m=1,...\x07` frames without
+  ever closing with `m=0`, growing `m_kittyChunkBuffer` without
+  bound. `src/terminalgrid.h` now declares
+  `MAX_OSC8_URI_BYTES = 2048` (real URLs are < 2 KiB; abuse is not)
+  and `MAX_KITTY_CHUNK_BYTES = 32 MiB` (larger than any realistic
+  chunked image upload — Kitty itself transmits in ~4 KiB frames).
+  The OSC 8 open branch rejects oversized URIs down the same drop
+  path as the existing invalid-scheme rejection — following text
+  prints unlinked. The APC chunk path clears and `shrink_to_fit`s
+  the staging buffer on cap breach, so a subsequent `m=0` sees an
+  empty buffer rather than attacker-prepended garbage. Regression
+  test `tests/features/osc8_apc_memory_caps` locks five invariants —
+  OSC 8 happy path, oversized-drop, at-cap-accepted, APC single
+  frame, APC overflow-dropped. Pre-fix source fails INV-OSC8-B and
+  INV-APC-B; post-fix all five pass.
+
+### Fixed
+
+- **Menubar renders opaque under `WA_TranslucentBackground`
+  (`MainWindow::applyTheme`).** User report 2026-04-24: "the
+  background of the menubar is transparent." Root cause: the QSS
+  cascade from the `QMainWindow`-level stylesheet can race with the
+  compositor damage rect under `WA_TranslucentBackground` — on frames
+  where the compositor invalidates the chrome region before QSS polish
+  has produced a paint, the menubar shows through to whatever is
+  behind the window. `applyTheme` now installs a belt-and-suspenders
+  opaque fill on `m_menuBar`: `QPalette::Window = theme.bgSecondary`
+  (so `autoFillBackground` lays down an opaque fill *before* QSS
+  paints) plus a widget-local `setStyleSheet(QMenuBar ...)` block (so
+  the menubar's own style engine polishes the QSS independently of
+  the top-level cascade). Mirrors the same pattern already used on
+  the custom title bar and status bar. `tests/features/menubar_hover_stylesheet`
+  extended with INV-7 locking both the palette and widget-local-QSS
+  calls.
+
 ## [0.7.24] — 2026-04-24
 
 **Theme:** wide-char (CJK / wide emoji) overwrite no longer strands its

@@ -2602,6 +2602,37 @@ void MainWindow::applyTheme(const QString &name) {
     m_titleBar->setThemeColors(theme.bgSecondary, theme.textPrimary,
                                 theme.accent, theme.border, theme.ansi[1]);
 
+    // Menubar: explicit palette fill + direct stylesheet. The QSS set on
+    // QMainWindow above cascades to children, but under
+    // WA_TranslucentBackground the QMenuBar can still repaint over a
+    // cleared-to-transparent region — most visibly when the compositor
+    // damages the chrome area (KWin, Mutter, picom) and QSS polish has
+    // not yet produced a frame for that rect. Setting QPalette::Window
+    // to the theme's secondary bg forces autoFillBackground to lay
+    // down an opaque fill *before* the QSS paint, closing the window.
+    // Mirrors the belt-and-suspenders approach used on titleBar +
+    // statusBar (explicit palette + stylesheet both).
+    if (m_menuBar) {
+        QPalette p = m_menuBar->palette();
+        p.setColor(QPalette::Window, theme.bgSecondary);
+        p.setColor(QPalette::Base, theme.bgSecondary);
+        p.setColor(QPalette::WindowText, theme.textPrimary);
+        m_menuBar->setPalette(p);
+        m_menuBar->setStyleSheet(QStringLiteral(
+            "QMenuBar { background-color: %1; color: %2; "
+            "  border-bottom: 1px solid %3; }"
+            "QMenuBar::item { background-color: transparent; "
+            "  padding: 4px 10px; margin: 0; border-radius: 4px; }"
+            "QMenuBar::item:hover { background-color: %4; }"
+            "QMenuBar::item:selected { background-color: %4; }"
+            "QMenuBar::item:pressed { background-color: %4; }"
+        ).arg(theme.bgSecondary.name(),
+              theme.textPrimary.name(),
+              theme.border.name(),
+              theme.accent.name()));
+        m_menuBar->update();
+    }
+
     // Status bar labels use theme colors (null-guarded for first call during construction)
     QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
     // Git branch chip: rounded background + border + distinct color.

@@ -103,6 +103,19 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.25" date="2026-04-24">
+      <description>
+        <p>Memory-DoS hardening on OSC 8 hyperlinks and Kitty APC graphics chunks, plus a menubar-opacity fix reported mid-session. Locked by a 5-invariant regression test that flips red against pre-fix source.</p>
+        <p>Security:</p>
+        <ul>
+          <li><em>OSC 8 URI cap and Kitty APC chunk-buffer cap (<code>TerminalGrid</code>).</em> Two attacker-controlled accumulators used to be bounded only by the VT parser's per-envelope 10 MB ceiling. A hostile program could emit one <code>\x1b]8;;&lt;10MB-URI&gt;\x07</code> per scrollback line and wedge tens of GB into per-row <code>HyperlinkSpan</code> copies, or keep sending <code>\x1b_G...,m=1,...\x07</code> frames without ever closing with <code>m=0</code>, growing <code>m_kittyChunkBuffer</code> unbounded. <code>src/terminalgrid.h</code> now declares <code>MAX_OSC8_URI_BYTES = 2048</code> and <code>MAX_KITTY_CHUNK_BYTES = 32 MiB</code>. Oversized OSC 8 URIs take the invalid-scheme drop path so following text prints unlinked; the APC chunk path clears and <code>shrink_to_fit</code>s the staging buffer on cap breach so a subsequent <code>m=0</code> sees an empty buffer rather than attacker-prepended garbage.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Menubar renders opaque under <code>WA_TranslucentBackground</code> (<code>MainWindow::applyTheme</code>).</em> User report 2026-04-25: "the background of the menubar is transparent." The top-level QSS cascade could race with the compositor damage rect, letting whatever sat behind the window bleed through before polish. <code>applyTheme</code> now installs a belt-and-suspenders opaque fill on <code>m_menuBar</code> — <code>QPalette::Window = theme.bgSecondary</code> so <code>autoFillBackground</code> lays down an opaque fill before QSS paints, plus a widget-local <code>setStyleSheet(QMenuBar ...)</code> block so the menubar's own style engine polishes independently of the top-level cascade. Mirrors the pattern already used on the custom title bar and status bar.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.24" date="2026-04-24">
       <description>
         <p>Wide-char (CJK / wide emoji) overwrite no longer strands its mate. 0.7.12 Tier 2 hardening item. Locked by a 5-subcase behavioral regression test that flips 4 subcases red against pre-fix source.</p>

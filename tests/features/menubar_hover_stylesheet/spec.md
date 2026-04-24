@@ -59,3 +59,13 @@ full WM + compositor + translucency stack, which CI doesn't have.
   (tried mid-0.7.4 session, reverted same day). Keep it pinned so a
   future refactor doesn't re-introduce the regression out of
   "symmetry with QMenuBar".
+- **INV-7 (0.7.25):** `MainWindow::applyTheme` sets the menubar's
+  `QPalette::Window` to the theme's secondary bg AND applies a
+  widget-local `setStyleSheet(QMenuBar ...)` block. Reported
+  2026-04-24: under WA_TranslucentBackground the cascade-from-
+  QMainWindow QSS can race with the compositor's damage rect,
+  producing a frame where the menubar paints over the
+  cleared-to-transparent surface. Palette fill + widget-local QSS
+  is the belt-and-suspenders that titleBar / statusBar already do,
+  and the menubar was the lone chrome element still relying on the
+  top-level cascade alone.

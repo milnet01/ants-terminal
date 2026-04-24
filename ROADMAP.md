@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.24 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.25 (2026-04-24). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1141,9 +1141,21 @@ grep rules or individual tickets as they become actionable.
 - 📋 **Origin-mode translate on CUP / DECSC save origin.**
   `terminalgrid.cpp:397-400, 1592-1595, 1611-1621`. Breaks
   tmux/screen save-restore round-trip.
-- 📋 **OSC 8 URI cap + Kitty APC `m_kittyChunkBuffer` cap.**
-  Currently unbounded; hostile apps can consume scrollback memory per
-  covered line or grow a single buffer without limit.
+- ✅ **OSC 8 URI cap + Kitty APC `m_kittyChunkBuffer` cap.** Shipped
+  0.7.25. `TerminalGrid::MAX_OSC8_URI_BYTES = 2048` rejects the open
+  of any OSC 8 hyperlink whose URI exceeds 2 KiB (following text
+  prints unlinked — same drop path as the invalid-scheme branch).
+  `MAX_KITTY_CHUNK_BYTES = 32 MiB` caps the APC chunk-accumulation
+  buffer used across `m=1` frames; past the cap the staged bytes are
+  dropped + `shrink_to_fit`'d and subsequent `m=0` closes see an empty
+  buffer. Previously both accumulators were bounded only by the VT
+  parser's per-envelope 10 MB ceiling, so hostile terminal output
+  could wedge tens of GB into per-row hyperlink spans / scrollback
+  or into the staging buffer before any downstream guard ran.
+  Regression test: `tests/features/osc8_apc_memory_caps/` (5
+  invariants — happy path, oversized-drop, at-cap-accepted, APC
+  single-frame, APC overflow-dropped). Pre-fix source fails
+  INV-OSC8-B and INV-APC-B; post-fix all 5 pass.
 - ✅ **BCE on scroll + erase paths.** Shipped 0.7.23. `clearRow`
   already had the `m_currentAttrs.bg.isValid()` fallback, but
   `takeBlankedCellsRow()` hardcoded `m_defaultBg` (used by IL/DL/SU/SD

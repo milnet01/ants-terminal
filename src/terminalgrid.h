@@ -278,6 +278,29 @@ public:
     const std::vector<HyperlinkSpan> &screenHyperlinks(int row) const;
     const std::vector<HyperlinkSpan> &scrollbackHyperlinks(int idx) const;
 
+    // Test-only: current size of the Kitty APC chunk-accumulation buffer.
+    // Locked by tests/features/osc8_apc_memory_caps to confirm
+    // MAX_KITTY_CHUNK_BYTES drops stale frames on cap breach.
+    size_t kittyChunkBufferSizeForTest() const { return m_kittyChunkBuffer.size(); }
+
+    // OSC 8 URI: real URLs are <2 KiB (browsers/servers cap similarly).
+    // A hostile program could otherwise emit a ~10 MB URI (bounded only
+    // by the VT parser's per-OSC cap) per open-close pair, then copy it
+    // into every row-span and into scrollback — N rows × ~10 MB = tens
+    // of GB. Reject the open entirely when the URI exceeds this cap;
+    // following text prints unlinked. Aligns with the scheme-allowlist
+    // drop path.
+    static constexpr size_t MAX_OSC8_URI_BYTES = 2048;
+    // Kitty APC chunked-transmission buffer: a single image chunked
+    // across frames with `m=1` accumulates into m_kittyChunkBuffer until
+    // `m=0`. Without a cap an attacker can keep sending `m=1` chunks
+    // forever and exhaust RAM before the image budget (which runs after
+    // the final chunk) gets a say. 32 MiB fits any legitimate chunked
+    // upload (Kitty transmits in ~4 KiB frames; a 24 MiB decoded image
+    // = ~32 MiB base64-encoded). Past the cap we drop the buffer and
+    // reset chunk state so a subsequent `m=0` is ignored.
+    static constexpr size_t MAX_KITTY_CHUNK_BYTES = 32ULL * 1024ULL * 1024ULL;
+
     // Shell integration (OSC 133)
     const std::vector<PromptRegion> &promptRegions() const { return m_promptRegions; }
     std::vector<PromptRegion> &promptRegions() { return m_promptRegions; }

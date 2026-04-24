@@ -850,6 +850,13 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                     m_hyperlinkUri.clear();
                     m_hyperlinkId.clear();
                 }
+            } else if (uri.size() > MAX_OSC8_URI_BYTES) {
+                // Oversized URI — same drop-path as an invalid scheme.
+                // Prevents hostile output from wedging tens of GB of URI
+                // bytes into per-row hyperlink spans + scrollback.
+                m_hyperlinkActive = false;
+                m_hyperlinkUri.clear();
+                m_hyperlinkId.clear();
             } else {
                 // Validate URI scheme — STANDARDS.md §Security and RULES.md
                 // rule 7 mandate only http/https/ftp/file/mailto. A hostile
@@ -2464,11 +2471,33 @@ void TerminalGrid::handleApc(const std::string &payload) {
     // Handle chunked transmission
     if (more == 1) {
         if (m_kittyChunkBuffer.empty()) m_kittyChunkId = imageId;
+        // Reject if the accumulated buffer would exceed the cap. The image
+        // budget cannot defend here — it only runs after the final `m=0`
+        // chunk, so without this guard an attacker can keep sending `m=1`
+        // frames and grow the staging buffer without bound.
+        if (m_kittyChunkBuffer.size() + data_str.size() > MAX_KITTY_CHUNK_BYTES) {
+            // Drop everything staged so far and reset chunk state. A
+            // follow-up `m=0` will see an empty buffer and fall through
+            // the normal rejection paths (format/size) as if no prior
+            // chunks existed.
+            m_kittyChunkBuffer.clear();
+            m_kittyChunkBuffer.shrink_to_fit();
+            m_kittyChunkId = 0;
+            return;
+        }
         m_kittyChunkBuffer += data_str;
         return; // Wait for more chunks
     }
 
-    // Final chunk (or single transmission)
+    // Final chunk (or single transmission). Same cap applies here — a
+    // well-formed multi-chunk upload where the final frame pushes the
+    // buffer over the cap must also be rejected.
+    if (m_kittyChunkBuffer.size() + data_str.size() > MAX_KITTY_CHUNK_BYTES) {
+        m_kittyChunkBuffer.clear();
+        m_kittyChunkBuffer.shrink_to_fit();
+        m_kittyChunkId = 0;
+        return;
+    }
     std::string fullData = m_kittyChunkBuffer + data_str;
     m_kittyChunkBuffer.clear();
     if (imageId == 0 && m_kittyChunkId != 0) imageId = m_kittyChunkId;
