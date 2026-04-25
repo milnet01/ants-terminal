@@ -1,3 +1,32 @@
+ants-terminal (0.7.35-1) unstable; urgency=medium
+
+  * UX bug fix. Single user-reported regression in the Help →
+    About Ants Terminal dialog (the GUI version indicator added
+    in 0.7.22).
+  * Fixed: About Ants Terminal dialog OK button silently no-op'd.
+    Pre-fix, Help → About Ants Terminal opened correctly but
+    clicking OK did nothing — the dialog could only be dismissed
+    via the window-manager close button. The 0.7.22 implementation
+    used QMessageBox::Ok with Qt::TextBrowserInteraction (which
+    pulls in Qt::TextSelectableByMouse); under our frameless
+    MainWindow, WA_TranslucentBackground, KDE Plasma + KWin, and
+    Qt 6.11 the OK click was silently dropped. Now: the About
+    handler builds a custom QDialog with QDialogButtonBox(Ok)
+    whose accepted signal is explicitly connected to
+    QDialog::accept — standard, testable, independent of
+    QMessageBox's internal standard-button dispatch.
+  * Fixed: About dialog GitHub link was a visual-only no-op.
+    Pre-fix the link was rendered clickable (cursor changed on
+    hover) because Qt::TextBrowserInteraction enables
+    Qt::LinksAccessibleByMouse, but setOpenExternalLinks(true)
+    was never called on the label — clicking emitted
+    linkActivated() into the void. Now: setOpenExternalLinks(true)
+    is set on the body QLabel.
+  * Locked by an updated tests/features/help_about_menu/ spec +
+    test (8 invariants — pre-fix source fails 6 of them).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 19:14:56 +0200
+
 ants-terminal (0.7.34-1) unstable; urgency=medium
 
   * Terminal correctness. One ROADMAP item retiring the last

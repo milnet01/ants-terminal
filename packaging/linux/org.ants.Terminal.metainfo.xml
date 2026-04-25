@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.35" date="2026-04-25">
+      <description>
+        <p>UX bug fix. Single user-reported regression in the Help → About Ants Terminal dialog (the GUI version indicator added in 0.7.22).</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>About Ants Terminal dialog OK button silently no-op'd.</em> Was: <code>Help → About Ants Terminal…</code> opened correctly, but clicking <code>OK</code> did nothing — the dialog could only be dismissed via the window-manager close button. The 0.7.22 implementation used <code>QMessageBox::Ok</code> with <code>Qt::TextBrowserInteraction</code> (which pulls in <code>Qt::TextSelectableByMouse</code>); under the combination of our frameless <code>MainWindow</code>, <code>Qt::WA_TranslucentBackground</code>, KDE Plasma + KWin, and Qt 6.11 this caused the OK click to be silently dropped. Now: the About handler builds a custom <code>QDialog</code> with a <code>QDialogButtonBox(QDialogButtonBox::Ok)</code> whose <code>accepted</code> signal is explicitly connected to <code>QDialog::accept</code> — standard, testable, independent of QMessageBox's internal standard-button dispatch.</li>
+          <li><em>About dialog GitHub link was a visual-only no-op.</em> Was: the link was rendered as clickable (cursor changed on hover) because <code>Qt::TextBrowserInteraction</code> enables <code>Qt::LinksAccessibleByMouse</code>, but <code>setOpenExternalLinks(true)</code> was never called on the label — clicking emitted <code>linkActivated()</code> into the void. Now: the body <code>QLabel</code> has <code>setOpenExternalLinks(true)</code>, so clicking the GitHub URL opens it in the user's browser.</li>
+        </ul>
+        <p>Locked by an updated <code>tests/features/help_about_menu/</code> spec + test (8 invariants — pre-fix source fails 6 of them).</p>
+      </description>
+    </release>
     <release version="0.7.34" date="2026-04-25">
       <description>
         <p>Terminal correctness. One ROADMAP item retiring the last known DECOM (origin mode) bug — tmux/screen save-restore round-trips were silently dropping the origin-mode flag and ignoring scroll-region-relative coordinates on absolute cursor moves.</p>

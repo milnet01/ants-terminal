@@ -61,10 +61,26 @@ a hardcoded `0.7.21` literal that would drift on every bump).
 
 ### Invariant 4 — About dialog is rich-text with clickable links
 
-The handler sets `textFormat(Qt::RichText)` and
-`textInteractionFlags(Qt::TextBrowserInteraction)` so the GitHub
-URL in the body is clickable. Users shouldn't need to copy-paste
-a text URL from an About dialog in 2026.
+The handler builds a `QDialog` containing a `QLabel` whose
+`textFormat` is `Qt::RichText`, whose `textInteractionFlags`
+include `Qt::LinksAccessibleByMouse`, and which has
+`setOpenExternalLinks(true)` so the GitHub URL in the body
+opens in the user's browser when clicked.
+
+The dialog uses `QDialogButtonBox(QDialogButtonBox::Ok)` with
+the `accepted` signal explicitly connected to `QDialog::accept`,
+not `QMessageBox::Ok`. The QMessageBox path was changed to a
+custom QDialog in 0.7.35 because the QMessageBox + RichText +
+TextBrowserInteraction combination silently dropped clicks on
+the OK button under our frameless + WA_TranslucentBackground
+MainWindow on KDE/KWin + Qt 6.11 — the user could only dismiss
+the dialog via the window-manager close button (regression
+report 2026-04-25).
+
+`Qt::TextSelectableByMouse` is intentionally NOT set on the
+label — there's nothing in the About body the user needs to
+select, and including it (which is what `Qt::TextBrowserInteraction`
+implies) was part of the click-stealing surface above.
 
 ### Invariant 5 — About Qt action is present and uses Qt's stock dialog
 
@@ -91,7 +107,10 @@ source-grep on `src/mainwindow.cpp`:
    `addAction("About &Qt...")`.
 3. The About handler's body contains `ANTS_VERSION` and the
    GitHub URL.
-4. The About handler sets `Qt::RichText` + `Qt::TextBrowserInteraction`.
+4. The About handler sets `Qt::RichText` on a `QLabel`, sets
+   `Qt::LinksAccessibleByMouse` on its `textInteractionFlags`,
+   calls `setOpenExternalLinks(true)`, and wires
+   `QDialogButtonBox::accepted` to `QDialog::accept`.
 5. No hardcoded `"0.7."` prefix appears inside the About handler
    body.
 
@@ -104,7 +123,21 @@ hardcoded version literal, this test fires.
 - **Introduced:** absent from day one — Ants Terminal shipped
   without a GUI-visible version indicator.
 - **Flagged:** 2026-04-24 user ask.
-- **Fixed:** 0.7.21 — Help menu added with About Ants Terminal
+- **Fixed:** 0.7.22 — Help menu added with About Ants Terminal
   and About Qt actions; About dialog reads `ANTS_VERSION`
   directly, shows Qt runtime version via `qVersion()`, shows
   Lua engine version when compiled with `ANTS_LUA_PLUGINS`.
+- **Re-fixed:** 0.7.35 — original About used `QMessageBox::Ok`
+  with `Qt::TextBrowserInteraction`. User reported 2026-04-25
+  that the OK button silently did nothing under our frameless +
+  WA_TranslucentBackground MainWindow on KDE/KWin + Qt 6.11
+  (only the window-manager X dismissed the dialog). Replaced
+  with a custom `QDialog` + `QDialogButtonBox::Ok` whose
+  `accepted` signal is explicitly connected to `QDialog::accept`,
+  and a `QLabel` whose `textInteractionFlags` are narrowed to
+  `LinksAccessibleByMouse | LinksAccessibleByKeyboard` (no
+  `TextSelectableByMouse`). `setOpenExternalLinks(true)` was
+  also added — the previous QMessageBox path made the link
+  visually clickable but never wired the URL handler, so the
+  GitHub link click was a no-op too. Locked by the I4
+  invariant changes above.

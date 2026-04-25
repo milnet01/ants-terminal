@@ -1658,11 +1658,41 @@ void MainWindow::setupMenus() {
             "<p><a href=\"https://github.com/milnet01/ants-terminal\">"
             "https://github.com/milnet01/ants-terminal</a></p>")
             .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine);
-        QMessageBox mb(QMessageBox::NoIcon, "About Ants Terminal",
-                       body, QMessageBox::Ok, this);
-        mb.setTextFormat(Qt::RichText);
-        mb.setTextInteractionFlags(Qt::TextBrowserInteraction);
-        mb.exec();
+
+        // Custom QDialog rather than QMessageBox. The previous
+        // QMessageBox::Ok variant with Qt::TextBrowserInteraction had a
+        // user-reported bug (2026-04-25) where the OK button silently
+        // did nothing under our frameless + WA_TranslucentBackground
+        // MainWindow on KDE/KWin + Qt 6.11 — the dialog had to be
+        // dismissed via the window-manager close button. Switching to
+        // QDialog + QDialogButtonBox::Ok with an explicit accepted →
+        // accept connection gives us a click path that's standard,
+        // testable, and doesn't depend on QMessageBox's internal
+        // standard-button dispatch. As a bonus, setOpenExternalLinks
+        // on the body label makes the GitHub link actually open in
+        // the user's browser (the previous QMessageBox path enabled
+        // link-clicking via TextBrowserInteraction but never wired
+        // setOpenExternalLinks, so the link click was a no-op too).
+        QDialog dlg(this);
+        dlg.setWindowTitle(QStringLiteral("About Ants Terminal"));
+        dlg.setObjectName(QStringLiteral("aboutAntsDialog"));
+        auto *layout = new QVBoxLayout(&dlg);
+        auto *label = new QLabel(body, &dlg);
+        label->setObjectName(QStringLiteral("aboutAntsBody"));
+        label->setTextFormat(Qt::RichText);
+        // LinksAccessibleByMouse + LinksAccessibleByKeyboard only — no
+        // TextSelectableByMouse, so the label doesn't grab focus or
+        // intercept mouse events meant for the dialog frame / button.
+        label->setTextInteractionFlags(Qt::LinksAccessibleByMouse
+                                       | Qt::LinksAccessibleByKeyboard);
+        label->setOpenExternalLinks(true);
+        label->setWordWrap(true);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, &dlg);
+        buttons->setObjectName(QStringLiteral("aboutAntsButtons"));
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        layout->addWidget(label);
+        layout->addWidget(buttons);
+        dlg.exec();
     });
 
     QAction *aboutQtAction = helpMenu->addAction("About &Qt...");

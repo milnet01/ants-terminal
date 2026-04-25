@@ -10,6 +10,47 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.35] — 2026-04-25
+
+**Theme:** UX bug fix. Single user-reported regression in the Help →
+About Ants Terminal dialog (the GUI version indicator added in 0.7.22).
+
+### Fixed
+
+- **About Ants Terminal dialog OK button silently no-op'd
+  (`mainwindow.cpp`).** Was: `Help → About Ants Terminal…` opened
+  the version dialog correctly, but clicking its `OK` button did
+  nothing — the dialog could only be dismissed via the
+  window-manager close (`X`) button. The 0.7.22 implementation
+  used `QMessageBox::Ok` with `Qt::TextBrowserInteraction` (which
+  pulls in `Qt::TextSelectableByMouse`); under the combination of
+  our frameless `MainWindow`, `Qt::WA_TranslucentBackground`, KDE
+  Plasma + KWin, and Qt 6.11 this caused the OK click to be
+  silently dropped. Now: the About handler builds a custom
+  `QDialog` with a `QDialogButtonBox(QDialogButtonBox::Ok)` whose
+  `accepted` signal is explicitly connected to `QDialog::accept`,
+  giving us a click path that's standard, testable, and
+  independent of `QMessageBox`'s internal standard-button dispatch.
+
+- **About dialog GitHub link was a visual-only no-op
+  (`mainwindow.cpp`).** Was: the link in the About body was
+  rendered as clickable (cursor changed on hover) because
+  `Qt::TextBrowserInteraction` enables `Qt::LinksAccessibleByMouse`,
+  but `setOpenExternalLinks(true)` was never called on the label
+  — so clicking the link emitted `linkActivated()` into the void.
+  Now: the body `QLabel` has `setOpenExternalLinks(true)`, so
+  clicking the GitHub URL opens it in the user's browser.
+
+### Changed
+
+- **`tests/features/help_about_menu/spec.md` + test (8
+  invariants).** Spec rewritten to lock the QDialog +
+  QDialogButtonBox shape, document the 2026-04-25 regression in
+  the History section, and assert via source-grep that the
+  `QMessageBox::Ok` + `Qt::TextBrowserInteraction` pattern
+  cannot reappear without the test failing. Pre-fix source
+  fails 6 of the 8 new I4 invariants; post-fix all 8 pass.
+
 ## [0.7.34] — 2026-04-25
 
 **Theme:** Terminal correctness. One ROADMAP item retiring the last

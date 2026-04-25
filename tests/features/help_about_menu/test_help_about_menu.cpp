@@ -3,14 +3,22 @@
 // Invariant 1 — Help menu exists and is last on the menubar.
 // Invariant 2 — Help menu contains "About Ants Terminal..." action.
 // Invariant 3 — About handler body references ANTS_VERSION.
-// Invariant 4 — About dialog is rich-text + TextBrowserInteraction.
+// Invariant 4 — About dialog is a custom QDialog with QDialogButtonBox
+//               whose accepted signal connects to QDialog::accept; the
+//               body QLabel uses Qt::RichText + LinksAccessibleByMouse +
+//               setOpenExternalLinks(true), and does NOT enable
+//               TextSelectableByMouse / TextBrowserInteraction (the
+//               regression shape that silently dropped the OK click on
+//               KDE/KWin + Qt 6.11 — see spec.md Regression history
+//               2026-04-25).
 // Invariant 5 — "About Qt..." action routes to QMessageBox::aboutQt.
 // Invariant 6 — no hardcoded "0.7." literal inside the About handler.
 //
 // Source-grep only. MainWindow is too heavy to instantiate in a
 // feature test; the wiring of a menu item is structurally obvious
-// from the source, and the grep catches the three regression shapes
-// (menu dropped, version literal hardcoded, rich-text disabled).
+// from the source, and the grep catches the regression shapes
+// (menu dropped, version literal hardcoded, rich-text disabled,
+// QMessageBox + TextBrowserInteraction reintroduced).
 
 #include <QCoreApplication>
 #include <QFile>
@@ -114,14 +122,57 @@ int main(int argc, char **argv) {
                           "ANTS_VERSION so the dialog stays accurate "
                           "across releases"));
 
-    // Invariant 4 — rich-text + browser interaction.
+    // Invariant 4 — rich-text + clickable links via the custom QDialog
+    // path (see spec.md, regression 2026-04-25).
     expect(aboutBlock.contains(QStringLiteral("setTextFormat(Qt::RichText)")),
            "I4a/rich-text-enabled");
-    expect(aboutBlock.contains(
+    expect(aboutBlock.contains(QStringLiteral("Qt::LinksAccessibleByMouse")),
+           "I4b/links-clickable",
+           QStringLiteral("Body QLabel must enable Qt::LinksAccessibleByMouse "
+                          "so the GitHub URL is clickable."));
+    expect(aboutBlock.contains(QStringLiteral("setOpenExternalLinks(true)")),
+           "I4c/open-external-links",
+           QStringLiteral("Body QLabel must call setOpenExternalLinks(true); "
+                          "without it, link clicks silently no-op even when "
+                          "LinksAccessibleByMouse is set."));
+    // Negative: the QMessageBox + TextBrowserInteraction shape that caused
+    // the 2026-04-25 OK-button regression must stay out of this handler.
+    // TextSelectableByMouse on the label is part of the regression — we
+    // only need links clickable, not selection.
+    // Match the call shape, not the bare token, so prose comments
+    // explaining the regression don't false-positive on the grep.
+    expect(!aboutBlock.contains(
                QStringLiteral("setTextInteractionFlags(Qt::TextBrowserInteraction)")),
-           "I4b/browser-interaction-enabled",
-           QStringLiteral("URLs in the About dialog must be clickable; "
-                          "that requires TextBrowserInteraction"));
+           "I4d/no-textbrowserinteraction-regression",
+           QStringLiteral("setTextInteractionFlags(Qt::TextBrowserInteraction) "
+                          "is the regression shape that silently dropped the "
+                          "OK click under our frameless + WA_TranslucentBackground "
+                          "MainWindow on KDE/KWin + Qt 6.11. Use "
+                          "Qt::LinksAccessibleByMouse + setOpenExternalLinks(true) "
+                          "instead — same user-visible behaviour, no click steal."));
+    expect(!aboutBlock.contains(
+               QStringLiteral("setTextInteractionFlags(Qt::TextSelectableByMouse")),
+           "I4e/no-text-selection-on-body",
+           QStringLiteral("TextSelectableByMouse on the About body is part of "
+                          "the regression shape — there's nothing in the body "
+                          "the user needs to select."));
+    expect(!aboutBlock.contains(QStringLiteral("QMessageBox mb(")),
+           "I4f/no-qmessagebox-construction",
+           QStringLiteral("The About handler must use QDialog + "
+                          "QDialogButtonBox(Ok) so we control the OK wiring "
+                          "explicitly. QMessageBox::Ok is what regressed."));
+    expect(aboutBlock.contains(QStringLiteral("QDialogButtonBox::Ok")),
+           "I4g/uses-qdialogbuttonbox-ok");
+    // The OK button must be wired to dlg.accept() — the missing wire is
+    // exactly what makes a button "do nothing." Match against the
+    // QDialogButtonBox::accepted signal connect call shape.
+    expect(aboutBlock.contains(
+               QStringLiteral("&QDialogButtonBox::accepted")) &&
+           aboutBlock.contains(QStringLiteral("&QDialog::accept")),
+           "I4h/ok-connected-to-accept",
+           QStringLiteral("QDialogButtonBox::accepted must be explicitly "
+                          "connected to QDialog::accept so clicking OK closes "
+                          "the dialog."));
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
