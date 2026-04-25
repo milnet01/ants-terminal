@@ -12,6 +12,7 @@
 #include <QKeySequenceEdit>
 #include <QPushButton>
 #include <QLabel>
+#include <QJsonObject>
 #include <QList>
 #include <QMap>
 
@@ -129,6 +130,12 @@ private:
     QPushButton *m_profileSave;
     QPushButton *m_profileDelete;
     QPushButton *m_profileLoad;
+    // Pending (uncommitted) profile state — Save/Delete buttons stage
+    // edits here so Cancel can roll back. Initialized from m_config in
+    // loadSettings(); committed back via applySettings(). Without
+    // staging, Save/Delete bypassed the OK/Cancel pattern entirely.
+    QJsonObject m_pendingProfiles;
+    QString     m_pendingActiveProfile;
 
     // Plugins — manifest v2 capability audit UI (0.6.11)
     // m_pluginsContainer holds the scrollable vertical list of plugin

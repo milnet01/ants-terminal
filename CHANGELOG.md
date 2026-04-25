@@ -10,6 +10,152 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.32] — 2026-04-25
+
+**Theme:** Dialog UX. Three bundle items from the Settings dialog
+ROADMAP list (dependency-UI gating, Cancel rollback for Profiles,
+Restore Defaults per-tab) plus one user feedback item from
+2026-04-25 — the Review Changes dialog only surfaced current-
+branch state and missed work living on other branches.
+
+### Added
+
+- **Restore Defaults button per primary Settings tab
+  (`SettingsDialog::setupGeneralTab`, `setupAppearanceTab`,
+  `setupTerminalTab`, `setupAiTab`).** Was: only Keybindings had
+  a defaults-reset button. A user who tweaked the dialog and
+  wanted to start over had to either remember every default or
+  delete `~/.config/ants-terminal/config.json` (which lost
+  unrelated settings: highlight rules, profiles, plugin grants).
+  Now: each substantive tab has its own button with stable
+  `objectName` (`restoreDefaultsGeneral`, `restoreDefaultsAppearance`,
+  `restoreDefaultsTerminal`, `restoreDefaultsAi`). Reset slots
+  mutate widget state only — applySettings still commits, Cancel
+  still rolls back. Schema defaults match the second argument of
+  each `Config::xxx()` getter so the dialog and config layer can't
+  drift. Locked by `tests/features/settings_restore_defaults/`
+  — 22 invariants on objectNames, reset-value coverage per tab,
+  and the "no `m_config->` writes from within reset slots" rule.
+
+- **Review Changes dialog: live updates via QFileSystemWatcher +
+  manual Refresh button (`MainWindow::showDiffViewer`).** User
+  feedback 2026-04-25: dialog should show live or near-live
+  updates. Was: probes ran once on dialog open and never again —
+  the user had to close and re-open to see changes from a commit
+  / fetch / branch operation done in the terminal underneath. Now:
+  a `QFileSystemWatcher` watches `cwd`, `.git`, `.git/HEAD`,
+  `.git/index`, `.git/refs/heads`, `.git/refs/remotes`,
+  `.git/logs/HEAD`. `fileChanged` and `directoryChanged` signals
+  feed a 300 ms single-shot `QTimer` (debounce — `git pull` /
+  `git fetch` fire fileChanged O(refs) times in milliseconds; the
+  debounce coalesces them into one re-probe). The probe-spawning
+  logic was refactored into a `runProbes` lambda that constructs a
+  fresh `ProbeState` per call, so an in-flight probe whose finalize
+  outlives the next refresh can't decrement the new pending counter
+  and render a half-populated mix. Atomic-rename safe: the
+  fs-event handler re-adds paths that exist but are no longer
+  watched (Qt loses the watch on `rename(2)`, which git uses for
+  HEAD/index/logs/HEAD updates). A live-status label
+  (`reviewLiveStatus` objectName) shows "● refreshing…" /
+  "● live — auto-refresh on git changes" so the user can confirm
+  the watcher is wired. A manual Refresh button
+  (`reviewRefreshBtn` objectName) bypasses the debounce for cases
+  where state changed outside the watched paths (a build script
+  in another shell, a different terminal). Locked by
+  `tests/features/review_changes_branches/` (extended) — now 33
+  invariants total covering ProbeState fields, runAsync targets,
+  finalizer rendering, copy-handler payload, empty-state guard,
+  runProbes lambda, watcher armament, debounce timing, atomic-
+  rename re-watch, refresh-button bypass, and live-status label
+  states.
+
+- **Review Changes dialog: per-branch summary + cross-branch
+  unpushed commits (`MainWindow::showDiffViewer`,
+  `MainWindow::ProbeState`).** Was: three async git probes
+  (`status`, `diff HEAD`, `log @{u}..HEAD`) all scoped to the
+  current branch's working tree and HEAD lineage. A user with
+  five feature branches each holding unpushed work saw "no
+  unpushed" if they happened to be on a clean branch. Branches
+  without upstreams or with diverged ahead/behind state were
+  invisible. User feedback 2026-04-25: "the Review Changes
+  dialog doesn't consider changes in other branches of the
+  project." Now: two additional probes drop in alongside the
+  existing three —
+  `git for-each-ref refs/heads --format='%(refname:short)
+   \t%(upstream:short)\t%(upstream:track)\t%(subject)'` for the
+  per-branch summary (with ahead/behind/gone/no-upstream colour
+  cues), and `git log --branches --not --remotes --oneline
+   --decorate` for the cross-branch unpushed log (every commit
+  reachable from any local branch but not from any remote-
+  tracking branch). Both are O(refs) and finish in milliseconds.
+  Copy Diff includes both new sections. Locked by
+  `tests/features/review_changes_branches/` — 15 invariants on
+  ProbeState fields, runAsync targets, finalizer rendering,
+  copy-handler payload, and empty-state guards.
+
+### Changed
+
+- **Tab close button (×) is always visible, not hover-only
+  (`MainWindow::applyTheme` stylesheet —
+  `QTabBar::close-button`).** User feedback 2026-04-25: "the
+  tabs still don't have a visible marker per tab that shows
+  where to click to close the tab. The mouseover works but we
+  need to also see it when onmouseout." The 0.6.27 fix removed
+  `image: none` to let Qt fall back to the platform's standard
+  close icon — that worked on Breeze/Adwaita but failed on
+  Fusion / qt6ct / certain Plasma colour schemes where the
+  platform style still rendered the × hover-only. Now: explicit
+  data-URI SVG `image: url("data:image/svg+xml;...")` rules in
+  both the default and `:hover` `QTabBar::close-button` variants.
+  Glyph re-tints with the active theme via `textSecondary`
+  (default) / `textPrimary` (hover); hover keeps the ansi-red
+  `background-color` will-click cue. URL-encoded `%23` is
+  spliced into the arg list via `QStringLiteral("%23") +
+  theme.<color>.name().mid(1)` rather than the format string —
+  prevents Qt's CSS parser from truncating the data URI at the
+  fragment delimiter and also avoids the QString::arg()
+  placeholder-numbering collision. Locked by
+  `tests/features/tab_close_button_visible/` — 11 invariants on
+  data-URI presence, two-line × shape, arg-side splice, and
+  image-rule presence in BOTH state variants.
+
+- **Dependency-UI enable gating (`SettingsDialog::setupAppearanceTab`,
+  `setupTerminalTab`, `setupAiTab`).** Was: master checkboxes
+  (`m_aiEnabled`, `m_autoColorScheme`, `m_quakeMode`) gated logic
+  but not UI — typing an API key into a feature-disabled AI tab,
+  or selecting "Solarized" as the light-mode theme while
+  auto-switch was off, both produced silent no-ops. Now:
+  `QCheckBox::toggled` is wired to `setEnabled` on every
+  dependent sibling, with a one-shot sync call at construction
+  so the initial state matches the loaded config without
+  relying on `setChecked()` always emitting `toggled` (it only
+  emits when state actually changes). Disabled controls keep
+  their current values, so toggling the master back on restores
+  the user's prior selection rather than zeroing it out. Locked
+  by `tests/features/settings_dependency_gating/` — 16
+  invariants on the three sync lambdas, dependent setEnabled
+  calls, toggled-connect wiring, and initial-sync call sites.
+
+- **Profiles tab honors Cancel/OK semantics
+  (`SettingsDialog::setupProfilesTab`, `loadSettings`,
+  `applySettings`, `m_pendingProfiles`, `m_pendingActiveProfile`).**
+  Was: profile Save/Delete/Load buttons mutated `m_config`
+  immediately via `setProfiles()` / `setActiveProfile()`. Cancel
+  could not roll those edits back — they had already been
+  persisted to config.json before the user's intent was known.
+  Every other Settings tab follows the standard "stage in
+  widgets, commit on applySettings, discard on reject" pattern;
+  Profiles broke that contract. Now: the three buttons mutate a
+  pending-state pair (`m_pendingProfiles` + `m_pendingActiveProfile`),
+  loadSettings re-initializes the pair from `m_config`, and
+  applySettings is the single commit point that calls
+  `setProfiles` / `setActiveProfile`. Cancel skips applySettings,
+  so dialog close leaves m_config unchanged. Locked by
+  `tests/features/settings_profile_cancel_rollback/` — 11
+  invariants including a global "exactly one m_config->setProfiles
+  call site" check that catches a regression where a button
+  callback starts writing to m_config directly again.
+
 ## [0.7.31] — 2026-04-25
 
 **Theme:** Persistence integrity (cross-file). Four items from the

@@ -103,6 +103,23 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.32" date="2026-04-25">
+      <description>
+        <p>Dialog UX. Three Settings dialog ROADMAP items (dependency-UI gating, Cancel rollback for Profiles, Restore Defaults per-tab) plus a user feedback fix for the Review Changes dialog (2026-04-25): pre-fix it only surfaced current-branch state and missed work living on other branches.</p>
+        <p>Added:</p>
+        <ul>
+          <li><em>Restore Defaults per primary Settings tab.</em> General, Appearance, Terminal, AI tabs now each have a dedicated "Restore Defaults" button that resets only that tab's controls to the schema defaults (matching <code>Config::xxx()</code> getter defaults). Reset slots mutate widget state only — applySettings still commits, Cancel still rolls back. Locked by <code>tests/features/settings_restore_defaults/</code> with 22 invariants.</li>
+          <li><em>Review Changes dialog: per-branch summary + cross-branch unpushed.</em> Was: three async git probes (status, diff HEAD, log @{u}..HEAD) all scoped to the current branch — a user with feature branches sitting on a clean branch saw "no unpushed". Now: two additional probes (<code>git for-each-ref refs/heads</code> + <code>git log --branches --not --remotes</code>) surface every local branch with its ahead/behind/gone state and every commit reachable from any local branch but not from any remote-tracking branch. Copy Diff includes both new sections.</li>
+          <li><em>Review Changes dialog: live updates.</em> User feedback 2026-04-25: dialog should refresh as the user works. Was: probes ran once on dialog open and never again. Now: QFileSystemWatcher watches the working directory plus <code>.git/HEAD</code>, <code>.git/index</code>, <code>.git/refs/heads</code>, <code>.git/refs/remotes</code>, <code>.git/logs/HEAD</code>. A 300 ms single-shot QTimer debounces the burst of fileChanged events that <code>git pull</code> fires. A manual Refresh button bypasses the debounce. A live-status label confirms the watcher is wired. Probe spawning is now a re-callable <code>runProbes</code> lambda that constructs a fresh ProbeState per call so concurrent in-flight probes from a previous render can't poison the new one. Locked by <code>tests/features/review_changes_branches/</code> — 33 invariants total covering both branch-awareness and live-update wiring.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li><em>Tab close button (×) always visible, not hover-only.</em> User feedback 2026-04-25. The 0.6.27 platform-style fallback still rendered hover-only on Fusion / qt6ct / some Plasma colour schemes. Now: explicit data-URI SVG <code>image: url(...)</code> rules in both default and :hover <code>QTabBar::close-button</code> variants. Glyph re-tints with the active theme; hover keeps the ansi-red will-click background. Locked by <code>tests/features/tab_close_button_visible/</code> with 11 invariants.</li>
+          <li><em>Dependency-UI enable gating in Settings.</em> Was: master checkboxes <code>m_aiEnabled</code>, <code>m_autoColorScheme</code>, <code>m_quakeMode</code> gated logic but not UI — typing an API key into a feature-disabled AI tab produced silent no-ops. Now: <code>QCheckBox::toggled</code> is wired to <code>setEnabled</code> on every dependent sibling, with a one-shot sync call at construction so the initial state matches the loaded config. Disabled controls keep their values so toggling the master back on restores the prior selection. Locked by <code>tests/features/settings_dependency_gating/</code> with 16 invariants.</li>
+          <li><em>Profiles tab honors Cancel/OK semantics.</em> Was: profile Save/Delete/Load buttons mutated <code>m_config</code> immediately, bypassing the OK/Cancel pattern every other tab follows. Now: buttons mutate a pending-state pair (<code>m_pendingProfiles</code> + <code>m_pendingActiveProfile</code>); applySettings is the single commit point. Cancel discards staged edits cleanly. Locked by <code>tests/features/settings_profile_cancel_rollback/</code> with 11 invariants including a global "exactly one m_config-&gt;setProfiles call site" check.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.31" date="2026-04-25">
       <description>
         <p>Persistence integrity (cross-file). Four items addressing the silent-data-loss / permission-drift / concurrent-writer surfaces that span Config, ClaudeAllowlist, SessionManager, and SettingsDialog. Splits the growing <code>secureio.h</code> into <code>secureio.h</code> (perms) + <code>configbackup.h</code> (rotation + cooperative write lock) before a third helper landed.</p>

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.31 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.32 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1843,6 +1843,111 @@ if(ANTS_TESTS)
     add_test(NAME secureio_configbackup_split
         COMMAND test_secureio_configbackup_split)
     set_tests_properties(secureio_configbackup_split PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # settings_dependency_gating — 0.7.32 fix. Locks the toggled→
+    # setEnabled wiring on the three master checkboxes (m_aiEnabled,
+    # m_autoColorScheme, m_quakeMode) plus the one-shot sync call so
+    # the initial widget state matches the loaded config without
+    # waiting for the user to toggle. See
+    # tests/features/settings_dependency_gating/spec.md.
+    add_executable(test_settings_dependency_gating
+        tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
+    )
+    target_compile_options(test_settings_dependency_gating PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_settings_dependency_gating PRIVATE
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+    )
+    add_test(NAME settings_dependency_gating
+        COMMAND test_settings_dependency_gating)
+    set_tests_properties(settings_dependency_gating PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # settings_profile_cancel_rollback — 0.7.32 fix. Locks the
+    # pending-state pair (m_pendingProfiles + m_pendingActiveProfile)
+    # and that Save/Delete/Load mutate ONLY pending state, never
+    # m_config directly. applySettings is the single commit point.
+    # See tests/features/settings_profile_cancel_rollback/spec.md.
+    add_executable(test_settings_profile_cancel_rollback
+        tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
+    )
+    target_compile_options(test_settings_profile_cancel_rollback PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_settings_profile_cancel_rollback PRIVATE
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_SETTINGSDIALOG_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.h"
+    )
+    add_test(NAME settings_profile_cancel_rollback
+        COMMAND test_settings_profile_cancel_rollback)
+    set_tests_properties(settings_profile_cancel_rollback PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # settings_restore_defaults — 0.7.32 fix. Locks the
+    # "Restore Defaults (<TabName> tab)" buttons across General,
+    # Appearance, Terminal, AI tabs, and that the reset slots
+    # mutate widget state only (no direct m_config-> writes). See
+    # tests/features/settings_restore_defaults/spec.md.
+    add_executable(test_settings_restore_defaults
+        tests/features/settings_restore_defaults/test_settings_restore_defaults.cpp
+    )
+    target_compile_options(test_settings_restore_defaults PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_settings_restore_defaults PRIVATE
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+    )
+    add_test(NAME settings_restore_defaults
+        COMMAND test_settings_restore_defaults)
+    set_tests_properties(settings_restore_defaults PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # tab_close_button_visible — 0.7.32 user-feedback fix
+    # 2026-04-25: the tab × glyph was hover-only on Fusion / qt6ct /
+    # some Plasma colour schemes after the 0.6.27 platform-style
+    # fallback. Locks the explicit data-URI SVG `image: url(...)`
+    # rule and the URL-encoded `%23` arg-side splice that prevents
+    # Qt's CSS parser from truncating the data URI at the colour's
+    # `#`. See tests/features/tab_close_button_visible/spec.md.
+    add_executable(test_tab_close_button_visible
+        tests/features/tab_close_button_visible/test_tab_close_button_visible.cpp
+    )
+    target_compile_options(test_tab_close_button_visible PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_tab_close_button_visible PRIVATE
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME tab_close_button_visible
+        COMMAND test_tab_close_button_visible)
+    set_tests_properties(tab_close_button_visible PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # review_changes_branches — 0.7.32 fix. User feedback 2026-04-25:
+    # the Review Changes dialog only showed current-branch state.
+    # Locks the two new probes (for-each-ref + --branches --not
+    # --remotes), the matching ProbeState fields, the rendered
+    # sections, and the empty-state guard. See
+    # tests/features/review_changes_branches/spec.md.
+    add_executable(test_review_changes_branches
+        tests/features/review_changes_branches/test_review_changes_branches.cpp
+    )
+    target_compile_options(test_review_changes_branches PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_review_changes_branches PRIVATE
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME review_changes_branches
+        COMMAND test_review_changes_branches)
+    set_tests_properties(review_changes_branches PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

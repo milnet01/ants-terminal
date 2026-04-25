@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.31 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.32 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -978,7 +978,7 @@ gets one CHANGELOG section and one drift cycle.
 | **0.7.29** | Audit pipeline II — output quality | SARIF `suppressions[]` array emission · regex-DoS watchdog on user `drop_if_matches` · widen `computeDedup` to 96 bits | `auditdialog.cpp` |
 | **0.7.30** | Session-file integrity | SHA-256 payload checksum · pre-validate compressed length prefix before `qUncompress` · `QDataStream::status()` checks inside cell loop | `sessionmanager.cpp` |
 | **0.7.31** ✅ | Persistence integrity (cross-file) | silent-data-loss on parse failure (settings-dialog mirror) · `setOwnerOnlyPerms` ordering bugs · concurrent-writer guard on `config.json` + `settings.local.json` · `secureio.h` split | `config.cpp`, `sessionmanager.cpp`, `claudeallowlist.cpp`, `debuglog.cpp`, `settingsdialog.cpp`, `secureio.h` |
-| **0.7.32** | Settings dialog UX | dependency-UI enable gating · Cancel rollback for Profiles tab · Restore Defaults per-tab | `settingsdialog.cpp` |
+| **0.7.32** ✅ | UX bundle (Settings + Review Changes + Tab UX) | dependency-UI enable gating · Cancel rollback for Profiles tab · Restore Defaults per-tab · Review Changes branch awareness · Review Changes live updates (QFileSystemWatcher + Refresh) · always-visible tab × glyph (user feedback) | `settingsdialog.cpp`, `mainwindow.cpp` |
 | **0.7.33** | Lifecycle / cleanup | PTY dtor off-main-thread (last PTY Tier 2 item) · Portal session close · Lua manifest size cap + canonical plugin path | `ptyhandler.cpp`, `globalshortcutsportal.cpp`, `pluginmanager.cpp` |
 | **0.7.34** | Terminal correctness | origin-mode translate on CUP / DECSC save origin (real tmux/screen breakage) | `terminalgrid.cpp` |
 
@@ -1644,6 +1644,44 @@ remainder, captured so they don't drop on the floor.
   path not guarded out, consumer-side `m_tabTitlePins.contains(…)`
   guards still present on both consumers).
 
+### 🎨 Claude Code UX — background-tasks status-bar surface (user request 2026-04-25)
+
+- 📋 **Claude Code background-tasks button.** User ask: "a button
+  on the status bar when there are background tasks being run.
+  We then click the button to view what Claude Code shows for the
+  background tasks. The button opens a dialog showing the live
+  update info on the background tasks." Wire-up sketch: when
+  Claude Code's transcript-tail or hook stream reports an active
+  background `Task`/`Agent`/long-running tool, surface a status-
+  bar button (shape parallels the existing Review Changes button
+  — show/hide on state). Click → modal-less dialog listing each
+  task with state + last output line + a live tail (mirror the
+  Review Changes dialog's QFileSystemWatcher pattern, but on the
+  Claude transcript JSONL or the status-bar hook socket so
+  updates arrive event-driven without polling). Cross-tab
+  scope — Claude can be active in any tab; the button reflects
+  union-state across all tabs whose `ClaudeTabTracker` reports
+  background activity. Build on the existing `claudeintegration`
+  + `claudetabtracker` infrastructure rather than a parallel
+  monitor. Defer to 0.7.34+ (terminal-correctness bundle ships
+  next).
+
+### 🐜 Tab UX
+
+- ✅ **Tab close button (×) always visible, not hover-only.**
+  Shipped 0.7.32. Replaced the platform-style fallback (0.6.27)
+  with explicit data-URI SVG `image: url(...)` rules in both the
+  default and `:hover` `QTabBar::close-button` stylesheet
+  variants. Glyph re-tints with the active theme via
+  `theme.textSecondary` (default) / `theme.textPrimary` (hover);
+  hover keeps the ansi-red `background-color` will-click cue.
+  Locked by `tests/features/tab_close_button_visible/` — 11
+  invariants on data-URI presence, two-line × shape, the
+  `QStringLiteral("%23") + name().mid(1)` arg-side splice (which
+  prevents Qt's CSS parser from truncating the URI at the
+  fragment delimiter), and image presence in BOTH state rules.
+  User feedback 2026-04-25.
+
 ### ⚡ / 🏗 Tier 3 — structural
 
 - ✅ **VtParser `Print`-run coalescing.** Shipped 0.7.17. The SIMD
@@ -1678,14 +1716,30 @@ remainder, captured so they don't drop on the floor.
   delta naming collision), add `glGetError` checks, restore GL state
   on render exit, add HiDPI / `devicePixelRatio` handling, add
   premultiplied-alpha pipeline.
-- 📋 **Settings dialog: dependency-UI enable gating.**
-  `settingsdialog.cpp:268-286` (AI tab when `ai_enabled=false`),
-  `:204` (auto-theme combos when auto off), `:234-238` (Quake hotkey
-  when Quake off). Wire `toggled` → `setEnabled` on siblings.
-- 📋 **Settings dialog: Cancel rollback for Profiles tab.**
-  `settingsdialog.cpp:432-482` — profile Save/Delete/Load mutate
-  `m_config` immediately; Cancel doesn't roll them back.
-- 📋 **Settings dialog: Restore Defaults per-tab.**
+- ✅ **Settings dialog: dependency-UI enable gating.** Shipped
+  0.7.32. AI tab fields (endpoint/key/model/context-lines)
+  disabled when `m_aiEnabled` is unchecked; dark/light theme
+  combos disabled when `m_autoColorScheme` is unchecked; Quake
+  hotkey + portal-status label disabled when `m_quakeMode` is
+  unchecked. Locked by `tests/features/settings_dependency_gating/`
+  — 16 invariants on toggled-wiring + one-shot sync calls.
+- ✅ **Settings dialog: Cancel rollback for Profiles tab.**
+  Shipped 0.7.32. Profile Save/Delete/Load now stage edits in
+  `m_pendingProfiles` + `m_pendingActiveProfile`; `applySettings`
+  is the single commit point. Cancel discards staged edits the
+  same way every other tab does. Locked by
+  `tests/features/settings_profile_cancel_rollback/` — 11
+  invariants including the global "single setProfiles call site"
+  check that catches a regression where a Save/Delete callback
+  starts writing to m_config directly again.
+- ✅ **Settings dialog: Restore Defaults per-tab.** Shipped
+  0.7.32. Each primary tab (General, Appearance, Terminal, AI)
+  has a "Restore Defaults (<TabName> tab)" button with stable
+  objectName. Reset slots mutate widgets only — Cancel rolls
+  back the reset along with any other in-dialog edits. Locked
+  by `tests/features/settings_restore_defaults/` — 22
+  invariants on objectNames + reset-value coverage + no-direct-
+  config-write.
 - 📋 **Accessibility pass on chrome.** `mainwindow.cpp` chrome and
   `CommandPalette` / `TitleBar` buttons have no
   `setAccessibleName` / `setAccessibleDescription`. Screen readers

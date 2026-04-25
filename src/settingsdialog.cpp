@@ -194,6 +194,27 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "Claude Code. Orange with a white outline means Claude is waiting "
         "on you to answer a permission prompt in that tab.");
     layout->addRow(m_claudeTabStatusIndicator);
+
+    // Restore Defaults — resets ONLY the General-tab controls to
+    // their schema defaults. Doesn't touch m_config until the user
+    // clicks Apply or OK; Cancel rolls everything back as usual.
+    auto *generalDefaultsBtn = new QPushButton("Restore Defaults (General tab)", tab);
+    generalDefaultsBtn->setObjectName(QStringLiteral("restoreDefaultsGeneral"));
+    connect(generalDefaultsBtn, &QPushButton::clicked, this, [this]() {
+        m_shellCombo->setCurrentIndex(0);  // Default (login shell)
+        m_shellCustom->clear();
+        m_tabTitleFormat->setCurrentIndex(
+            m_tabTitleFormat->findData(QStringLiteral("title")));
+        m_sessionPersistence->setChecked(true);
+        m_sessionLogging->setChecked(false);
+        m_autoCopy->setChecked(true);
+        m_confirmMultilinePaste->setChecked(true);
+        m_editorCmd->clear();
+        m_imagePasteDir->clear();
+        m_notificationTimeout->setValue(5);
+        m_claudeTabStatusIndicator->setChecked(true);
+    });
+    layout->addRow(QString(), generalDefaultsBtn);
 }
 
 void SettingsDialog::setupAppearanceTab(QWidget *tab) {
@@ -252,6 +273,36 @@ void SettingsDialog::setupAppearanceTab(QWidget *tab) {
     }
     layout->addRow("Dark Theme:", m_darkThemeCombo);
     layout->addRow("Light Theme:", m_lightThemeCombo);
+
+    // Dependency-UI gating: dark/light combos only matter when
+    // auto-switching is on. Disabled controls are visibly greyed but
+    // keep their current value, so toggling auto-switch back on
+    // restores the user's prior selection rather than resetting it.
+    auto syncAutoColor = [this]() {
+        const bool on = m_autoColorScheme->isChecked();
+        m_darkThemeCombo->setEnabled(on);
+        m_lightThemeCombo->setEnabled(on);
+    };
+    connect(m_autoColorScheme, &QCheckBox::toggled, this, syncAutoColor);
+    syncAutoColor();
+
+    auto *appearanceDefaultsBtn = new QPushButton(
+        "Restore Defaults (Appearance tab)", tab);
+    appearanceDefaultsBtn->setObjectName(QStringLiteral("restoreDefaultsAppearance"));
+    connect(appearanceDefaultsBtn, &QPushButton::clicked, this, [this]() {
+        m_fontFamily->setCurrentFont(QFont());
+        m_fontSize->setValue(11);
+        m_themeCombo->setCurrentText(QStringLiteral("Dark"));
+        m_opacitySlider->setValue(100);
+        m_backgroundBlur->setChecked(false);
+        m_gpuRendering->setChecked(false);
+        m_paddingSpinner->setValue(4);
+        m_badgeEdit->clear();
+        m_autoColorScheme->setChecked(false);
+        m_darkThemeCombo->setCurrentText(QStringLiteral("Dark"));
+        m_lightThemeCombo->setCurrentText(QStringLiteral("Light"));
+    });
+    layout->addRow(QString(), appearanceDefaultsBtn);
 }
 
 void SettingsDialog::setupTerminalTab(QWidget *tab) {
@@ -300,6 +351,29 @@ void SettingsDialog::setupTerminalTab(QWidget *tab) {
     quakeLayout->addRow(portalStatus);
 
     layout->addRow(quakeGroup);
+
+    // Dependency-UI gating: hotkey field is meaningless when Quake
+    // mode is off. Portal-status label stays visible — its
+    // diagnostic value (binding ok / portal absent) is independent
+    // of whether the user has enabled Quake yet.
+    auto syncQuake = [this, portalStatus]() {
+        const bool on = m_quakeMode->isChecked();
+        m_quakeHotkey->setEnabled(on);
+        portalStatus->setEnabled(on);
+    };
+    connect(m_quakeMode, &QCheckBox::toggled, this, syncQuake);
+    syncQuake();
+
+    auto *terminalDefaultsBtn = new QPushButton(
+        "Restore Defaults (Terminal tab)", tab);
+    terminalDefaultsBtn->setObjectName(QStringLiteral("restoreDefaultsTerminal"));
+    connect(terminalDefaultsBtn, &QPushButton::clicked, this, [this]() {
+        m_scrollbackLines->setValue(50000);
+        m_showCommandMarks->setChecked(true);
+        m_quakeMode->setChecked(false);
+        m_quakeHotkey->setText(QStringLiteral("F12"));
+    });
+    layout->addRow(QString(), terminalDefaultsBtn);
 }
 
 void SettingsDialog::setupAiTab(QWidget *tab) {
@@ -324,6 +398,32 @@ void SettingsDialog::setupAiTab(QWidget *tab) {
     m_aiContextLines = new QSpinBox(tab);
     m_aiContextLines->setRange(10, 500);
     layout->addRow("Context Lines:", m_aiContextLines);
+
+    // Dependency-UI gating: every AI field below the master
+    // checkbox is unreachable when AI is off. Disabling them
+    // surfaces that intent visually instead of letting the user
+    // type an endpoint or paste a key into a feature-disabled
+    // dialog.
+    auto syncAi = [this]() {
+        const bool on = m_aiEnabled->isChecked();
+        m_aiEndpoint->setEnabled(on);
+        m_aiApiKey->setEnabled(on);
+        m_aiModel->setEnabled(on);
+        m_aiContextLines->setEnabled(on);
+    };
+    connect(m_aiEnabled, &QCheckBox::toggled, this, syncAi);
+    syncAi();
+
+    auto *aiDefaultsBtn = new QPushButton("Restore Defaults (AI tab)", tab);
+    aiDefaultsBtn->setObjectName(QStringLiteral("restoreDefaultsAi"));
+    connect(aiDefaultsBtn, &QPushButton::clicked, this, [this]() {
+        m_aiEnabled->setChecked(false);
+        m_aiEndpoint->clear();
+        m_aiApiKey->clear();
+        m_aiModel->setText(QStringLiteral("llama3"));
+        m_aiContextLines->setValue(50);
+    });
+    layout->addRow(QString(), aiDefaultsBtn);
 }
 
 void SettingsDialog::setupHighlightsTab(QWidget *tab) {
@@ -469,11 +569,14 @@ void SettingsDialog::setupProfilesTab(QWidget *tab) {
 
     layout->addStretch();
 
+    // Save/Delete/Load mutate the pending state, never m_config
+    // directly. applySettings() commits the pending state on OK /
+    // Apply; reject() leaves m_config untouched so Cancel rolls
+    // back the user's profile edits cleanly.
     connect(m_profileSave, &QPushButton::clicked, this, [this]() {
         QString name = m_profileName->text().trimmed();
         if (name.isEmpty()) return;
 
-        QJsonObject profiles = m_config->profiles();
         QJsonObject p;
         p["theme"] = m_themeCombo->currentText();
         p["font_family"] = m_fontFamily->currentFont().family();
@@ -481,10 +584,8 @@ void SettingsDialog::setupProfilesTab(QWidget *tab) {
         p["opacity"] = m_opacitySlider->value() / 100.0;
         p["scrollback_lines"] = m_scrollbackLines->value();
         p["gpu_rendering"] = m_gpuRendering->isChecked();
-        profiles[name] = p;
-        m_config->setProfiles(profiles);
+        m_pendingProfiles[name] = p;
 
-        // Update combo
         if (m_profileCombo->findText(name) < 0)
             m_profileCombo->addItem(name);
     });
@@ -492,17 +593,16 @@ void SettingsDialog::setupProfilesTab(QWidget *tab) {
     connect(m_profileDelete, &QPushButton::clicked, this, [this]() {
         QString name = m_profileCombo->currentText();
         if (name.isEmpty()) return;
-        QJsonObject profiles = m_config->profiles();
-        profiles.remove(name);
-        m_config->setProfiles(profiles);
+        m_pendingProfiles.remove(name);
+        if (m_pendingActiveProfile == name)
+            m_pendingActiveProfile.clear();
         m_profileCombo->removeItem(m_profileCombo->currentIndex());
     });
 
     connect(m_profileLoad, &QPushButton::clicked, this, [this]() {
         QString name = m_profileCombo->currentText();
         if (name.isEmpty()) return;
-        QJsonObject profiles = m_config->profiles();
-        QJsonObject p = profiles.value(name).toObject();
+        QJsonObject p = m_pendingProfiles.value(name).toObject();
         if (p.isEmpty()) return;
 
         if (p.contains("theme"))
@@ -518,7 +618,7 @@ void SettingsDialog::setupProfilesTab(QWidget *tab) {
         if (p.contains("gpu_rendering"))
             m_gpuRendering->setChecked(p["gpu_rendering"].toBool());
 
-        m_config->setActiveProfile(name);
+        m_pendingActiveProfile = name;
     });
 }
 
@@ -797,10 +897,21 @@ void SettingsDialog::loadSettings() {
         m_keybindingTable->setCellWidget(row, 1, keyEdit);
     }
 
-    // Profiles
-    QJsonObject profiles = m_config->profiles();
-    for (auto it = profiles.begin(); it != profiles.end(); ++it)
+    // Profiles — load into pending state. Save/Delete/Load buttons
+    // mutate m_pendingProfiles; applySettings() commits, reject()
+    // discards. m_profileCombo is a derived view of m_pendingProfiles
+    // (not m_config->profiles()) so an in-dialog "Save" + "Cancel"
+    // sequence visibly removes the never-committed profile from the
+    // list rather than silently leaving it in m_config.
+    m_pendingProfiles = m_config->profiles();
+    m_pendingActiveProfile = m_config->activeProfile();
+    m_profileCombo->clear();
+    for (auto it = m_pendingProfiles.begin(); it != m_pendingProfiles.end(); ++it)
         m_profileCombo->addItem(it.key());
+    if (!m_pendingActiveProfile.isEmpty()) {
+        const int idx = m_profileCombo->findText(m_pendingActiveProfile);
+        if (idx >= 0) m_profileCombo->setCurrentIndex(idx);
+    }
 }
 
 void SettingsDialog::applySettings() {
@@ -892,6 +1003,14 @@ void SettingsDialog::applySettings() {
             m_config->setKeybinding(actionItem->text(), keyEdit->keySequence().toString());
         }
     }
+
+    // Profiles — commit the pending state. Save/Delete/Load slots
+    // mutated m_pendingProfiles + m_pendingActiveProfile only; this
+    // is the single point where they reach m_config. Cancel skips
+    // applySettings entirely so the pending edits are discarded with
+    // the dialog.
+    m_config->setProfiles(m_pendingProfiles);
+    m_config->setActiveProfile(m_pendingActiveProfile);
 
     // Plugins — collect checked permissions per plugin and persist. We write
     // for every plugin we know about (including ones with zero checked boxes

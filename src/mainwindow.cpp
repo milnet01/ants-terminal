@@ -2493,18 +2493,31 @@ void MainWindow::applyTheme(const QString &name) {
         "  border: none; border-bottom: 2px solid transparent; }"
         "QTabBar::tab:selected { color: %3; border-bottom: 2px solid %5; }"
         "QTabBar::tab:hover { background-color: %1; color: %3; }"
-        // 0.6.27 — was `image: none`, which hid the × glyph entirely and
-        // left only an invisible hover hit-target. Users didn't discover
-        // the close affordance unless they happened to mouse over it.
-        // Removing the `image` rule lets Qt fall back to the platform
-        // close icon (QStyle::SP_TitleBarCloseButton / SP_DockWidgetCloseButton)
-        // which adapts to the active QPalette. The 14×14 box + margins
-        // give the × breathing room; hover still applies an ansi-red
-        // background (%7) for "will-click" feedback.
+        // 0.7.32 (user feedback 2026-04-25) — the platform-style fallback
+        // (0.6.27) still rendered the × hover-only on Fusion / qt6ct /
+        // some Plasma color schemes — users couldn't see where to click
+        // without first mousing onto the tab. Force-render the glyph via
+        // a data-URI SVG that's always visible regardless of platform
+        // style. Hover variant uses textPrimary instead of textSecondary
+        // for "lifting" feedback and keeps the ansi-red background (%7)
+        // for the will-click cue.
         "QTabBar::close-button {"
+        "  image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'"
+        " width='10' height='10' viewBox='0 0 10 10'>"
+        "<line x1='2' y1='2' x2='8' y2='8' stroke='%6'"
+        " stroke-width='1.5' stroke-linecap='round'/>"
+        "<line x1='8' y1='2' x2='2' y2='8' stroke='%6'"
+        " stroke-width='1.5' stroke-linecap='round'/></svg>\");"
         "  subcontrol-position: right; margin: 2px; padding: 1px;"
         "  width: 14px; height: 14px; border-radius: 3px; }"
-        "QTabBar::close-button:hover { background-color: %7; border-radius: 3px; }"
+        "QTabBar::close-button:hover {"
+        "  image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'"
+        " width='10' height='10' viewBox='0 0 10 10'>"
+        "<line x1='2' y1='2' x2='8' y2='8' stroke='%3'"
+        " stroke-width='1.5' stroke-linecap='round'/>"
+        "<line x1='8' y1='2' x2='2' y2='8' stroke='%3'"
+        " stroke-width='1.5' stroke-linecap='round'/></svg>\");"
+        "  background-color: %7; border-radius: 3px; }"
         "QSplitter::handle { background-color: %4; }"
         "QSplitter::handle:horizontal { width: 2px; }"
         "QSplitter::handle:vertical { height: 2px; }"
@@ -2594,10 +2607,19 @@ void MainWindow::applyTheme(const QString &name) {
         "QDialogButtonBox QPushButton { min-width: 80px; }"
     ).arg(theme.bgPrimary.name(),
           theme.bgSecondary.name(),
-          theme.textPrimary.name(),
+          // %3 — textPrimary; appears verbatim in most rules but ALSO
+          // as a stroke color in the data-URI SVG for the tab-close
+          // glyph hover variant. Pre-encode the leading `#` as %23 so
+          // Qt's CSS parser doesn't truncate the URI at the fragment
+          // delimiter; the `%23` literal would also collide with
+          // QString::arg() placeholder numbering, so we splice it
+          // here rather than embed it in the format string.
+          QStringLiteral("%23") + theme.textPrimary.name().mid(1),
           theme.border.name(),
           theme.accent.name(),
-          theme.textSecondary.name(),
+          // %6 — textSecondary; same SVG-stroke pre-encoding as %3
+          // above, used by the default (non-hover) tab close button.
+          QStringLiteral("%23") + theme.textSecondary.name().mid(1),
           theme.ansi[1].name());  // ANSI red for close/danger
 
     setStyleSheet(ss);
@@ -4681,9 +4703,16 @@ void MainWindow::showDiffViewer() {
     viewer->setFont(QFont("Monospace", 10));
 
     auto *btnBox = new QHBoxLayout;
+    auto *liveStatus = new QLabel(dialog);
+    liveStatus->setObjectName(QStringLiteral("reviewLiveStatus"));
+    liveStatus->setStyleSheet("color: gray; font-size: 11px;");
+    auto *refreshBtn = new QPushButton("Refresh", dialog);
+    refreshBtn->setObjectName(QStringLiteral("reviewRefreshBtn"));
     auto *closeBtn = new QPushButton("Close", dialog);
     auto *copyBtn = new QPushButton("Copy Diff", dialog);
+    btnBox->addWidget(liveStatus);
     btnBox->addStretch();
+    btnBox->addWidget(refreshBtn);
     btnBox->addWidget(copyBtn);
     btnBox->addWidget(closeBtn);
     connect(closeBtn, &QPushButton::clicked, dialog, &QDialog::close);
@@ -4710,30 +4739,69 @@ void MainWindow::showDiffViewer() {
     dialog->raise();
     dialog->activateWindow();
 
-    // Shared state for the three async probes. When all three
-    // finish (or error out), we rebuild the viewer HTML with the
-    // real data and re-install the copy handler. std::shared_ptr
-    // because lambdas outlive any single QProcess callback.
+    // Shared state for the async probes. When all finish (or error
+    // out), we rebuild the viewer HTML with the real data and
+    // re-install the copy handler. std::shared_ptr because lambdas
+    // outlive any single QProcess callback.
+    //
+    // 0.7.32 — branches + crossUnpushed added so the dialog surfaces
+    // work that lives on branches OTHER than HEAD. Pre-fix, the only
+    // commit-level signal was `@{u}..HEAD` which is HEAD-only — a
+    // user with five feature branches each holding unpushed commits
+    // would see "no unpushed" if they happened to be on a clean
+    // branch. User feedback 2026-04-25.
+    //
+    // 0.7.32 (live updates) — every refresh constructs a fresh
+    // ProbeState so an in-flight refresh whose probes outlive the
+    // next refresh can't decrement the new pending counter and
+    // render half-populated HTML. The current state is held by
+    // QPointer-style ownership inside the runProbes lambda.
     struct ProbeState {
         QString cwd;
         QString status;
         QString diff;
         QString unpushed;
-        int pending = 3;
+        QString branches;        // git for-each-ref refs/heads
+        QString crossUnpushed;   // git log --branches --not --remotes
+        int pending = 5;
     };
-    auto state = std::make_shared<ProbeState>();
-    state->cwd = cwd;
 
     QPointer<QDialog> dlgGuard(dialog);
     QPointer<QTextEdit> viewerGuard(viewer);
     QPointer<QPushButton> copyGuard(copyBtn);
+    QPointer<QLabel> liveStatusGuard(liveStatus);
     const QString themeName = m_currentTheme;
+
+    // 0.7.32 (live updates) — runProbes spawns the five async git
+    // probes and fires-and-forgets. Called once on dialog open, then
+    // again every time the QFileSystemWatcher debounce timer fires
+    // OR the user clicks Refresh. Each call constructs a fresh
+    // ProbeState so concurrent in-flight probes from a previous
+    // refresh can't poison the new render.
+    auto runProbes = [this, cwd, dlgGuard, viewerGuard, copyGuard,
+                      liveStatusGuard, themeName]() {
+        if (!dlgGuard) return;
+        if (liveStatusGuard) {
+            liveStatusGuard->setText(QStringLiteral("● refreshing…"));
+            liveStatusGuard->setStyleSheet(
+                "color: #e0a020; font-size: 11px;");
+        }
+
+        auto state = std::make_shared<ProbeState>();
+        state->cwd = cwd;
 
     // Finalizer: called once per probe. When pending hits 0, render
     // the full HTML.
-    auto finalize = [state, dlgGuard, viewerGuard, copyGuard, themeName]() {
+    auto finalize = [state, dlgGuard, viewerGuard, copyGuard,
+                     liveStatusGuard, themeName]() {
         if (--state->pending > 0) return;
         if (!dlgGuard || !viewerGuard) return;
+        if (liveStatusGuard) {
+            liveStatusGuard->setText(QStringLiteral(
+                "● live — auto-refresh on git changes"));
+            liveStatusGuard->setStyleSheet(
+                "color: #4aa84a; font-size: 11px;");
+        }
 
         // Lambda-local alias `lth` (lambda theme) — avoids shadowing the
         // outer `th` at the enclosing function scope.
@@ -4758,8 +4826,49 @@ void MainWindow::showDiffViewer() {
             html += "\n";
         }
         if (!state->unpushed.isEmpty()) {
-            section(QStringLiteral("Unpushed commits"));
+            section(QStringLiteral("Unpushed commits (current branch)"));
             for (const QString &line : state->unpushed.split('\n'))
+                html += QStringLiteral("<span style='color: %1;'>")
+                            .arg(lth.ansi[3].name())
+                     + line.toHtmlEscaped() + "</span>\n";
+            html += "\n";
+        }
+        if (!state->branches.isEmpty()) {
+            section(QStringLiteral("Branches"));
+            // Each line: "<branch>\t<upstream>\t<track>\t<subject>".
+            // <track> is "[ahead 2, behind 1]" / "[gone]" / empty.
+            // Render as a simple monospaced summary so the user can
+            // scan ahead/behind across every local branch.
+            for (const QString &line : state->branches.split('\n')) {
+                if (line.trimmed().isEmpty()) continue;
+                const QStringList parts = line.split('\t');
+                const QString branch   = parts.value(0);
+                const QString upstream = parts.value(1);
+                const QString track    = parts.value(2);
+                const QString subject  = parts.value(3);
+                QString trackHtml;
+                if (track.contains("ahead") || track.contains("behind")) {
+                    trackHtml = QStringLiteral(" <span style='color: %1;'>%2</span>")
+                                    .arg(lth.ansi[3].name(), track.toHtmlEscaped());
+                } else if (track.contains("gone")) {
+                    trackHtml = QStringLiteral(" <span style='color: %1;'>%2</span>")
+                                    .arg(lth.ansi[1].name(), track.toHtmlEscaped());
+                } else if (upstream.isEmpty()) {
+                    trackHtml = QStringLiteral(" <span style='color: %1;'>"
+                                              "[no upstream]</span>")
+                                    .arg(lth.ansi[1].name());
+                }
+                html += QStringLiteral("<span style='color: %1;'>%2</span>%3 "
+                                      "<span style='color: %4;'>%5</span>\n")
+                            .arg(lth.ansi[4].name(), branch.toHtmlEscaped(),
+                                 trackHtml,
+                                 lth.textSecondary.name(), subject.toHtmlEscaped());
+            }
+            html += "\n";
+        }
+        if (!state->crossUnpushed.isEmpty()) {
+            section(QStringLiteral("Unpushed across all branches"));
+            for (const QString &line : state->crossUnpushed.split('\n'))
                 html += QStringLiteral("<span style='color: %1;'>")
                             .arg(lth.ansi[3].name())
                      + line.toHtmlEscaped() + "</span>\n";
@@ -4781,7 +4890,9 @@ void MainWindow::showDiffViewer() {
                     html += esc + "\n";
             }
         }
-        if (state->status.isEmpty() && state->diff.isEmpty() && state->unpushed.isEmpty()) {
+        if (state->status.isEmpty() && state->diff.isEmpty() &&
+            state->unpushed.isEmpty() && state->branches.isEmpty() &&
+            state->crossUnpushed.isEmpty()) {
             html += QStringLiteral(
                 "<span style='color: %1;'>No status, diff, or unpushed commits "
                 "to report.</span>\n"
@@ -4803,7 +4914,12 @@ void MainWindow::showDiffViewer() {
                 if (!state->status.isEmpty())
                     combined += "# Status\n" + state->status + "\n\n";
                 if (!state->unpushed.isEmpty())
-                    combined += "# Unpushed\n" + state->unpushed + "\n\n";
+                    combined += "# Unpushed (current branch)\n" + state->unpushed + "\n\n";
+                if (!state->branches.isEmpty())
+                    combined += "# Branches\n" + state->branches + "\n\n";
+                if (!state->crossUnpushed.isEmpty())
+                    combined += "# Unpushed across all branches\n"
+                              + state->crossUnpushed + "\n\n";
                 if (!state->diff.isEmpty())
                     combined += "# Diff\n" + state->diff;
                 QApplication::clipboard()->setText(combined);
@@ -4842,6 +4958,76 @@ void MainWindow::showDiffViewer() {
     runAsync({"status", "-b", "--short"},                       &ProbeState::status,   state.get());
     runAsync({"diff", "--stat", "--patch", "HEAD"},              &ProbeState::diff,     state.get());
     runAsync({"log", "--oneline", "--decorate", "@{u}..HEAD"},   &ProbeState::unpushed, state.get());
+
+    // 0.7.32 — branch-aware sections. for-each-ref reports every
+    // local branch with its upstream + ahead/behind. The
+    // --branches --not --remotes log lists every commit reachable
+    // from any local branch but NOT reachable from any remote-
+    // tracking branch — i.e. unpushed work across every branch,
+    // not just HEAD's lineage. Both probes are O(refs) and finish
+    // in milliseconds even on large repos.
+    runAsync({"for-each-ref", "refs/heads",
+              "--format=%(refname:short)\t%(upstream:short)\t"
+              "%(upstream:track)\t%(subject)"},
+             &ProbeState::branches, state.get());
+    runAsync({"log", "--branches", "--not", "--remotes",
+              "--oneline", "--decorate"},
+             &ProbeState::crossUnpushed, state.get());
+    };  // close runProbes lambda
+
+    // Initial probe spawn — populates the dialog right after show().
+    runProbes();
+
+    // 0.7.32 (live updates) — QFileSystemWatcher on the relevant
+    // .git/* paths plus the working directory. Git operations
+    // (commit, checkout, fetch, pull, branch -d, add, etc.) all
+    // touch one or more of these paths; a debounce timer collapses
+    // the burst into a single re-probe. Refresh button forces an
+    // immediate re-probe regardless of the watcher.
+    auto *watcher = new QFileSystemWatcher(dialog);
+    auto *debounce = new QTimer(dialog);
+    debounce->setSingleShot(true);
+    debounce->setInterval(300);  // 300 ms — fast enough to feel live,
+                                 // slow enough to coalesce a `git pull`
+                                 // burst (which fires fileChanged
+                                 // O(refs) times in milliseconds).
+    connect(debounce, &QTimer::timeout, dialog, [runProbes]() {
+        runProbes();
+    });
+
+    auto addPathSafe = [watcher](const QString &path) {
+        if (QFileInfo::exists(path)) watcher->addPath(path);
+    };
+    addPathSafe(cwd);
+    const QString gitDir = cwd + QStringLiteral("/.git");
+    addPathSafe(gitDir);
+    addPathSafe(gitDir + QStringLiteral("/HEAD"));
+    addPathSafe(gitDir + QStringLiteral("/index"));
+    addPathSafe(gitDir + QStringLiteral("/refs/heads"));
+    addPathSafe(gitDir + QStringLiteral("/refs/remotes"));
+    addPathSafe(gitDir + QStringLiteral("/logs/HEAD"));
+
+    // QFileSystemWatcher loses its watch on a file when the file is
+    // atomically replaced via rename(2) — git uses this pattern for
+    // HEAD/index/logs/HEAD updates. Re-add the path on each
+    // fileChanged so subsequent updates also fire.
+    auto onFsEvent = [watcher, debounce, addPathSafe](const QString &path) {
+        if (QFileInfo::exists(path) && !watcher->files().contains(path) &&
+            !watcher->directories().contains(path)) {
+            addPathSafe(path);
+        }
+        debounce->start();
+    };
+    connect(watcher, &QFileSystemWatcher::fileChanged, dialog, onFsEvent);
+    connect(watcher, &QFileSystemWatcher::directoryChanged, dialog, onFsEvent);
+
+    // Manual Refresh — bypasses debounce so the user gets an
+    // immediate response when they click. Useful when an external
+    // tool (a build script, a different terminal) has changed state
+    // outside the watched paths.
+    connect(refreshBtn, &QPushButton::clicked, dialog, [runProbes]() {
+        runProbes();
+    });
 }
 
 // --- Hot-Reload Configuration ---

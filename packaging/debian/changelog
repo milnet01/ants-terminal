@@ -1,3 +1,68 @@
+ants-terminal (0.7.32-1) unstable; urgency=medium
+
+  * Dialog UX. Three Settings dialog ROADMAP items
+    (dependency-UI gating, Cancel rollback for Profiles,
+    Restore Defaults per-tab) plus a user feedback fix for the
+    Review Changes dialog (2026-04-25): pre-fix it only
+    surfaced current-branch state and missed work living on
+    other branches.
+  * Added: Restore Defaults per primary Settings tab. General,
+    Appearance, Terminal, AI tabs each have a dedicated button
+    that resets only that tab's controls to schema defaults.
+    Reset slots mutate widgets only — applySettings still
+    commits, Cancel still rolls back. Locked by
+    tests/features/settings_restore_defaults (22 invariants).
+  * Added: Review Changes dialog surfaces per-branch state.
+    Was: three async git probes (status, diff HEAD,
+    log @{u}..HEAD) all scoped to the current branch — a user
+    with feature branches sitting on a clean branch saw
+    "no unpushed". Now: two additional probes
+    (git for-each-ref refs/heads + git log --branches --not
+    --remotes) surface every local branch with ahead/behind
+    state and every commit reachable from any local branch
+    but not from any remote-tracking branch. Copy Diff
+    includes both new sections.
+  * Added: Review Changes dialog live updates. User feedback
+    2026-04-25: dialog should refresh as the user works. Was:
+    probes ran once on open and never again. Now:
+    QFileSystemWatcher watches the working directory plus
+    .git/HEAD, .git/index, .git/refs/heads, .git/refs/remotes,
+    .git/logs/HEAD. A 300 ms single-shot QTimer debounces the
+    burst of fileChanged events that `git pull` fires. A manual
+    Refresh button bypasses the debounce. A live-status label
+    confirms the watcher is wired. Probe spawning is now a
+    re-callable runProbes lambda that constructs a fresh
+    ProbeState per call so concurrent in-flight probes from a
+    previous render can't poison the new one. Locked by
+    tests/features/review_changes_branches (33 invariants total).
+  * Changed: Tab close button (×) always visible, not hover-
+    only. User feedback 2026-04-25. The 0.6.27 platform-style
+    fallback still rendered hover-only on Fusion / qt6ct / some
+    Plasma colour schemes. Now: explicit data-URI SVG
+    image: url(...) rules in both default and :hover
+    QTabBar::close-button variants. Glyph re-tints with the
+    active theme; hover keeps the ansi-red will-click bg.
+    Locked by tests/features/tab_close_button_visible
+    (11 invariants).
+  * Changed: Dependency-UI enable gating in Settings.
+    QCheckBox::toggled wired to setEnabled on every dependent
+    sibling for m_aiEnabled, m_autoColorScheme, m_quakeMode.
+    One-shot sync call at construction so the initial state
+    matches the loaded config. Disabled controls keep values
+    so toggling the master back on restores the prior
+    selection. Locked by
+    tests/features/settings_dependency_gating (16 invariants).
+  * Changed: Profiles tab honors Cancel/OK semantics. Was:
+    profile Save/Delete/Load buttons mutated m_config
+    immediately. Now: buttons mutate a pending-state pair
+    (m_pendingProfiles + m_pendingActiveProfile);
+    applySettings is the single commit point. Cancel discards
+    staged edits cleanly. Locked by
+    tests/features/settings_profile_cancel_rollback
+    (11 invariants).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 17:53:28 +0200
+
 ants-terminal (0.7.31-1) unstable; urgency=medium
 
   * Persistence integrity (cross-file). Four items addressing the
