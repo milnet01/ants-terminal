@@ -55,6 +55,7 @@ void sweepKwinScriptOrphansOnce();
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPointer>
+#include <QScrollBar>
 #include <QStatusBar>
 #include <QToolButton>
 #include <QScreen>
@@ -4855,6 +4856,17 @@ void MainWindow::showDiffViewer() {
     QPointer<QLabel> liveStatusGuard(liveStatus);
     const QString themeName = m_currentTheme;
 
+    // 0.7.37 — last rendered HTML, shared across runProbes invocations.
+    // Used by finalize() to (a) skip setHtml when the new render is
+    // byte-identical to the last one (the common case during idle
+    // live-update tics — preserves selection, cursor, AND scroll
+    // byte-perfectly), and (b) detect "first render" on dialog open
+    // (empty string sentinel — first render restores no scroll
+    // position). User report 2026-04-25: "the constant resetting of
+    // the text means that if I scroll, it resets to the beginning
+    // every refresh."
+    auto lastHtml = std::make_shared<QString>();
+
     // 0.7.32 (live updates) — runProbes spawns the five async git
     // probes and fires-and-forgets. Called once on dialog open, then
     // again every time the QFileSystemWatcher debounce timer fires
@@ -4862,7 +4874,7 @@ void MainWindow::showDiffViewer() {
     // ProbeState so concurrent in-flight probes from a previous
     // refresh can't poison the new render.
     auto runProbes = [this, cwd, dlgGuard, viewerGuard, copyGuard,
-                      liveStatusGuard, themeName]() {
+                      liveStatusGuard, themeName, lastHtml]() {
         if (!dlgGuard) return;
         if (liveStatusGuard) {
             liveStatusGuard->setText(QStringLiteral("● refreshing…"));
@@ -4876,7 +4888,7 @@ void MainWindow::showDiffViewer() {
     // Finalizer: called once per probe. When pending hits 0, render
     // the full HTML.
     auto finalize = [state, dlgGuard, viewerGuard, copyGuard,
-                     liveStatusGuard, themeName]() {
+                     liveStatusGuard, themeName, lastHtml]() {
         if (--state->pending > 0) return;
         if (!dlgGuard || !viewerGuard) return;
         if (liveStatusGuard) {
@@ -4985,7 +4997,43 @@ void MainWindow::showDiffViewer() {
                      state->cwd.toHtmlEscaped());
         }
         html += "</pre>";
+
+        // 0.7.37 — preserve scroll position across live refreshes. The
+        // 0.7.32 live-update path called setHtml unconditionally on every
+        // probe completion (every git change, every 300ms debounce
+        // window), which resets the QTextEdit document and snaps the
+        // scroll bar back to the top. On a long diff with active live
+        // updates the dialog became unscrollable — every flick of the
+        // wheel races with the next refresh. User report 2026-04-25:
+        // "the constant resetting of the text means that if I scroll, it
+        // resets to the beginning every refresh."
+        //
+        // Two-layer fix:
+        //   (1) Skip setHtml entirely when the rendered HTML is byte-
+        //       identical to the last render (the common case — branch
+        //       metadata refreshes that don't change anything visible).
+        //       Preserves selection, cursor, AND scroll byte-perfectly.
+        //   (2) When content does change, capture vertical/horizontal
+        //       scroll positions before setHtml and restore them
+        //       (clamped to the new max so a shorter render after a
+        //       commit doesn't over-scroll). Selection is lost in this
+        //       branch — Qt re-parses HTML into a fresh QTextDocument —
+        //       but the dialog still feels stable.
+        if (*lastHtml == html) {
+            return;
+        }
+        const bool isFirstRender = lastHtml->isEmpty();
+        *lastHtml = html;
+
+        QScrollBar *vbar = viewerGuard->verticalScrollBar();
+        QScrollBar *hbar = viewerGuard->horizontalScrollBar();
+        const int vPos = (vbar && !isFirstRender) ? vbar->value() : 0;
+        const int hPos = (hbar && !isFirstRender) ? hbar->value() : 0;
+
         viewerGuard->setHtml(html);
+
+        if (vbar && !isFirstRender) vbar->setValue(std::min(vPos, vbar->maximum()));
+        if (hbar && !isFirstRender) hbar->setValue(std::min(hPos, hbar->maximum()));
 
         if (copyGuard) {
             // Wire the Copy button now that the data is known. Disconnect

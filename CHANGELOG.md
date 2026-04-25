@@ -10,6 +10,49 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.37] — 2026-04-25
+
+**Theme:** UX bug fix. Live-update regression in the Review Changes
+dialog (the QFileSystemWatcher + 300ms debounce wiring added in
+0.7.32). User report 2026-04-25:
+> "When using the Review Changes dialog, the constant resetting of
+> the text means that if I scroll, it resets to the beginning every
+> refresh. That means I can't scroll basically."
+
+The 0.7.32 finalize lambda called `viewerGuard->setHtml(html)`
+unconditionally on every probe completion — every git change, every
+debounce tic, every Refresh click. `QTextEdit::setHtml` re-parses
+the document and snaps the vertical scroll bar back to the top, also
+discarding selection and cursor position. On a long diff with active
+live updates the dialog became unscrollable.
+
+### Fixed
+
+- **Review Changes dialog: scroll position preserved across live
+  refreshes (`mainwindow.cpp`).** Two-layer guard around the
+  `setHtml` call inside `MainWindow::showDiffViewer`'s `finalize`
+  lambda. (1) An `auto lastHtml = std::make_shared<QString>()` cache
+  threaded through `runProbes` and `finalize` lets `finalize` early-
+  return when the new render is byte-identical to the previous one
+  — the common case during idle live-update tics, where branch
+  metadata refreshes don't change anything visible. Selection,
+  cursor, and scroll are byte-perfectly preserved. (2) When content
+  does change, vertical and horizontal scroll-bar values are
+  captured before `setHtml` and restored after, clamped to
+  `bar->maximum()` so a shorter render after a commit doesn't over-
+  scroll. First-render carve-out (`isFirstRender =
+  lastHtml->isEmpty()`) keeps the initial paint at the top.
+
+### Changed
+
+- **`tests/features/review_changes_scroll_preserve/spec.md` + test
+  (6 invariants).** New regression test pinning the `lastHtml`
+  cache, the skip-identical guard, the
+  capture-scroll-before-setHtml + restore-after pattern, and the
+  first-render carve-out. Source-grep harness scoped to the
+  `MainWindow::showDiffViewer` body so other QScrollBar / setHtml
+  call-sites in `mainwindow.cpp` don't cause false positives.
+
 ## [0.7.36] — 2026-04-25
 
 **Theme:** UX bug fix. Same translucent-parent failure mode that bit

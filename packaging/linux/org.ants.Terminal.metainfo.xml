@@ -103,6 +103,16 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.37" date="2026-04-25">
+      <description>
+        <p>UX bug fix. Live-update regression in the Review Changes dialog (the QFileSystemWatcher + 300ms debounce wiring added in 0.7.32). User report 2026-04-25: "When using the Review Changes dialog, the constant resetting of the text means that if I scroll, it resets to the beginning every refresh. That means I can't scroll basically." The 0.7.32 finalize lambda called <code>setHtml</code> unconditionally on every probe completion, snapping the QTextEdit scroll bar back to the top — on a long diff with active live updates the dialog became unscrollable.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Review Changes dialog: scroll position preserved across live refreshes.</em> Two-layer guard around the <code>setHtml</code> call inside <code>MainWindow::showDiffViewer</code>'s <code>finalize</code> lambda. (1) An <code>auto lastHtml = std::make_shared&lt;QString&gt;()</code> cache threaded through <code>runProbes</code> and <code>finalize</code> lets <code>finalize</code> early-return when the new render is byte-identical to the previous one — the common case during idle live-update tics. Selection, cursor, and scroll are byte-perfectly preserved. (2) When content does change, vertical and horizontal scroll-bar values are captured before <code>setHtml</code> and restored after, clamped to <code>bar->maximum()</code> so a shorter render after a commit doesn't over-scroll. First-render carve-out (<code>isFirstRender = lastHtml->isEmpty()</code>) keeps the initial paint at the top.</li>
+        </ul>
+        <p>Locked by a new <code>tests/features/review_changes_scroll_preserve/</code> spec + test (6 invariants — source-grep harness scoped to the <code>showDiffViewer</code> body).</p>
+      </description>
+    </release>
     <release version="0.7.36" date="2026-04-25">
       <description>
         <p>UX bug fix. Same translucent-parent failure mode that bit the menubar in 0.7.25/0.7.26 caught in two more places (user report, post-0.7.32): "The tabs themselves are fine but the rest of the tab bar across the window is transparent as well as the background for the status bar." The 0.7.32 close-button SVG drew the user's eye to the empty-area fill that had been mis-painted all along; the bug was not introduced by 0.7.32 but became visible because the new tab look re-balanced what the user noticed.</p>

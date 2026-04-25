@@ -1,3 +1,30 @@
+ants-terminal (0.7.37-1) unstable; urgency=medium
+
+  * UX bug fix. Live-update regression in the Review Changes dialog
+    (the QFileSystemWatcher + 300ms debounce wiring added in 0.7.32).
+    User report 2026-04-25: "When using the Review Changes dialog,
+    the constant resetting of the text means that if I scroll, it
+    resets to the beginning every refresh." The 0.7.32 finalize
+    lambda called setHtml unconditionally on every probe completion,
+    snapping the QTextEdit scroll bar back to the top — on a long
+    diff with active live updates the dialog became unscrollable.
+  * Fixed: Review Changes dialog scroll position preserved across
+    live refreshes. Two-layer guard around setHtml inside the
+    showDiffViewer finalize lambda. (1) An lastHtml shared_ptr<QString>
+    cache threaded through runProbes and finalize lets finalize
+    early-return when the new render is byte-identical to the
+    previous one — the common case during idle tics. Selection,
+    cursor, and scroll are byte-perfectly preserved. (2) When
+    content does change, vertical/horizontal scroll-bar values are
+    captured before setHtml and restored after, clamped to
+    bar->maximum() so a shorter render after a commit doesn't over-
+    scroll. First-render carve-out keeps the initial paint at the top.
+  * Locked by a new tests/features/review_changes_scroll_preserve/
+    spec + test (6 invariants — source-grep harness scoped to the
+    showDiffViewer body).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 19:46:26 +0200
+
 ants-terminal (0.7.36-1) unstable; urgency=medium
 
   * UX bug fix. Same translucent-parent failure mode that bit the

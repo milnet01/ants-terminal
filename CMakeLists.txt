@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.36 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.37 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2032,6 +2032,29 @@ if(ANTS_TESTS)
     add_test(NAME review_changes_branches
         COMMAND test_review_changes_branches)
     set_tests_properties(review_changes_branches PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # review_changes_scroll_preserve — 0.7.37 fix. The 0.7.32 live-
+    # update path called setHtml unconditionally on every probe
+    # completion, snapping the QTextEdit scroll bar back to the top
+    # — on a long diff with active live updates the dialog became
+    # unscrollable. User report 2026-04-25. Locks the lastHtml cache,
+    # the skip-identical-render guard, and the
+    # capture-scroll-before-setHtml + restore-after pattern. See
+    # tests/features/review_changes_scroll_preserve/spec.md.
+    add_executable(test_review_changes_scroll_preserve
+        tests/features/review_changes_scroll_preserve/test_review_changes_scroll_preserve.cpp
+    )
+    target_compile_options(test_review_changes_scroll_preserve PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_review_changes_scroll_preserve PRIVATE
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME review_changes_scroll_preserve
+        COMMAND test_review_changes_scroll_preserve)
+    set_tests_properties(review_changes_scroll_preserve PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
