@@ -974,9 +974,9 @@ gets one CHANGELOG section and one drift cycle.
 
 | Bundle | Theme | Items | File affinity |
 |--------|-------|-------|---------------|
-| **0.7.28** | Audit pipeline I — process-side robustness | per-tool timeout override · incremental QProcess output drain · distinguish segfault from "no findings" | `auditdialog.cpp` |
-| **0.7.29** | Audit pipeline II — output quality | SARIF `suppressions[]` array emission · regex-DoS watchdog on user `drop_if_matches` · widen `computeDedup` to 96 bits | `auditdialog.cpp` |
-| **0.7.30** | Session-file integrity | SHA-256 payload checksum · pre-validate compressed length prefix before `qUncompress` · `QDataStream::status()` checks inside cell loop | `sessionmanager.cpp` |
+| **0.7.28** ✅ | Audit pipeline I — process-side robustness | per-tool timeout override · incremental QProcess output drain · distinguish segfault from "no findings" | `auditdialog.cpp` |
+| **0.7.29** ✅ | Audit pipeline II — output quality | SARIF `suppressions[]` array emission · regex-DoS watchdog on user `drop_if_matches` · widen `computeDedup` to 96 bits | `auditdialog.cpp` |
+| **0.7.30** ✅ | Session-file integrity | SHA-256 payload checksum · pre-validate compressed length prefix before `qUncompress` · `QDataStream::status()` checks inside cell loop | `sessionmanager.cpp` |
 | **0.7.31** ✅ | Persistence integrity (cross-file) | silent-data-loss on parse failure (settings-dialog mirror) · `setOwnerOnlyPerms` ordering bugs · concurrent-writer guard on `config.json` + `settings.local.json` · `secureio.h` split | `config.cpp`, `sessionmanager.cpp`, `claudeallowlist.cpp`, `debuglog.cpp`, `settingsdialog.cpp`, `secureio.h` |
 | **0.7.32** ✅ | UX bundle (Settings + Review Changes + Tab UX) | dependency-UI enable gating · Cancel rollback for Profiles tab · Restore Defaults per-tab · Review Changes branch awareness · Review Changes live updates (QFileSystemWatcher + Refresh) · always-visible tab × glyph (user feedback) | `settingsdialog.cpp`, `mainwindow.cpp` |
 | **0.7.33** ✅ | Lifecycle / cleanup | PTY dtor off-main-thread (last PTY Tier 2 item) · Portal session close · Lua manifest size cap + canonical plugin path | `ptyhandler.cpp`, `globalshortcutsportal.cpp`, `pluginmanager.cpp` |
@@ -1226,9 +1226,18 @@ bundle's theme, fold it in rather than spinning up a new release.
   `tests/features/ris_preserves_callbacks` (all 8 callbacks fire
   pre-RIS, fire again post-RIS; key survives; grid state actually
   reset).
-- 📋 **Origin-mode translate on CUP / DECSC save origin.**
-  `terminalgrid.cpp:397-400, 1592-1595, 1611-1621`. Breaks
-  tmux/screen save-restore round-trip.
+- ✅ **Origin-mode translate on CUP / DECSC save origin.** Shipped
+  0.7.34. `TerminalGrid::handleCsi` (`terminalgrid.cpp`) now
+  translates the row argument of CUP, HVP, and VPA through the
+  active DECSTBM scroll region when DECOM is set (previously CUP
+  jumped to absolute rows under origin mode). DECSTBM home rebases
+  on the region top with the same translation. DECSC additionally
+  saves DECOM + DECAWM into the cursor-save record so DECRC
+  restores the full mode set — pre-fix tmux/screen save-restore
+  round-trips silently dropped the flags. Locked by
+  `tests/features/origin_mode_correctness/` (7 invariants over
+  CUP/HVP/VPA translation, DECSTBM home, and DECSC/DECRC
+  round-trip).
 - ✅ **OSC 8 URI cap + Kitty APC `m_kittyChunkBuffer` cap.** Shipped
   0.7.25. `TerminalGrid::MAX_OSC8_URI_BYTES = 2048` rejects the open
   of any OSC 8 hyperlink whose URI exceeds 2 KiB (following text
@@ -1468,9 +1477,19 @@ bundle's theme, fold it in rather than spinning up a new release.
   single `makeToolHealthWarning()` helper that centralises the row
   shape. Locked by `tests/features/audit_tool_crash_distinct`
   (4 invariants).
-- 📋 **Concurrent-writer guard on `config.json` + `settings.local.json`.**
-  No `flock` / lockfile today — two ants processes or ants + running
-  Claude Code race on every save. Last write wins.
+- ✅ **Concurrent-writer guard on `config.json` + `settings.local.json`.**
+  Shipped 0.7.31. Both writers now go through the
+  `WithFileLock` RAII helper (`secureio.h`), which acquires an
+  advisory `flock(LOCK_EX)` on a sibling `.lock` file before the
+  atomic write+rename and releases on scope exit. Two ants
+  processes (or ants + a side-channel writer) serialise instead of
+  racing — last-writer-wins is replaced by last-acquired-lock-wins,
+  with the loser blocking ~1 ms and seeing the winner's bytes. Same
+  pattern reused in `claudeallowlist.cpp` and `debuglog.cpp` for
+  consistency. Locked by `tests/features/concurrent_writer_lock/`
+  (4 invariants over the lock-file path, the
+  `setOwnerOnlyPerms` post-rename re-chmod, the lock RAII, and the
+  fcntl LOCK_EX / LOCK_UN ordering).
 - ✅ **`debug.log` 0600 perms.** Shipped 0.7.20. `DebugLog::setActive`
   now calls `setOwnerOnlyPerms` on both the opened `QFileDevice` and
   the path string immediately after open, before the session header
@@ -1677,25 +1696,32 @@ remainder, captured so they don't drop on the floor.
 
 ### 🎨 Claude Code UX — background-tasks status-bar surface (user request 2026-04-25)
 
-- 📋 **Claude Code background-tasks button.** User ask: "a button
-  on the status bar when there are background tasks being run.
-  We then click the button to view what Claude Code shows for the
-  background tasks. The button opens a dialog showing the live
-  update info on the background tasks." Wire-up sketch: when
-  Claude Code's transcript-tail or hook stream reports an active
-  background `Task`/`Agent`/long-running tool, surface a status-
-  bar button (shape parallels the existing Review Changes button
-  — show/hide on state). Click → modal-less dialog listing each
-  task with state + last output line + a live tail (mirror the
-  Review Changes dialog's QFileSystemWatcher pattern, but on the
-  Claude transcript JSONL or the status-bar hook socket so
-  updates arrive event-driven without polling). Cross-tab
-  scope — Claude can be active in any tab; the button reflects
-  union-state across all tabs whose `ClaudeTabTracker` reports
-  background activity. Build on the existing `claudeintegration`
-  + `claudetabtracker` infrastructure rather than a parallel
-  monitor. Defer to 0.7.34+ (terminal-correctness bundle ships
-  next).
+- ✅ **Claude Code background-tasks button.** Shipped 0.7.38. User
+  ask: "a button on the status bar when there are background tasks
+  being run. We then click the button to view what Claude Code
+  shows for the background tasks. The button opens a dialog showing
+  the live update info on the background tasks." New
+  `ClaudeBgTaskTracker` (`claudebgtasks.{h,cpp}`) parses the active
+  session's transcript JSONL for `tool_use` blocks whose
+  `input.run_in_background == true` and correlates them with
+  `tool_result` blocks carrying `toolUseResult.backgroundTaskId`
+  (which embeds the on-disk
+  `/tmp/claude-$UID/.../<id>.output` path). Completion / kill state
+  is derived from subsequent `BashOutput` results carrying
+  `status: "completed" | "killed" | "failed"` and from `KillShell`
+  tool calls. `MainWindow` adds a sibling-of-Review-Changes
+  `m_claudeBgTasksBtn`, hidden when `runningCount() == 0`,
+  re-targeted on tab switch via `refreshStatusBarForActiveTab` so
+  each tab's session drives its own count independently.
+  `ClaudeBgTasksDialog` (`claudebgtasksdialog.{h,cpp}`) is the
+  live-tail dialog, mirroring the 0.7.37 Review Changes update
+  model — `QFileSystemWatcher` on each task's `.output` plus the
+  transcript, 200 ms debounce, skip-identical-HTML guard,
+  capture-vbar-before-`setHtml` + restore-after with `qMin(...,
+  maximum())` clamp, and a "was-at-bottom" pin so live appends
+  stay visible. Locked by
+  `tests/features/claude_bg_tasks_button/` (10 invariants —
+  source-grep harness, no Qt link).
 
 ### 🐜 Tab UX
 
