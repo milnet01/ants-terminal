@@ -1,3 +1,38 @@
+ants-terminal (0.7.34-1) unstable; urgency=medium
+
+  * Terminal correctness. One ROADMAP item retiring the last
+    known DECOM (origin mode) bug — tmux/screen save-restore
+    round-trips were silently dropping the origin-mode flag and
+    ignoring scroll-region-relative coordinates on absolute
+    cursor moves.
+  * Fixed: CUP / HVP / VPA translate to scroll-region origin
+    under DECOM. Pre-fix, with origin mode (CSI ?6h) active and
+    a scroll region set via DECSTBM, CSI 1;1H jumped to absolute
+    (0, 0) and CSI 99;1H clamped to the bottom of the entire
+    screen instead of the bottom of the scroll region. Programs
+    relying on origin-mode-relative positioning (vim split
+    cursor restoration, screen caption line, tmux status redraws)
+    wrote to the wrong row. Now: the 'H', 'f', and 'd' cases add
+    m_scrollTop to the requested row when m_originMode is set,
+    then clamp to [m_scrollTop, m_scrollBottom]. Behaviour
+    matches xterm.
+  * Fixed: DECSC saves DECOM + DECAWM, DECRC restores them.
+    Pre-fix saveCursor() stored only (row, col, attrs) — a TUI
+    that flipped origin mode or auto-wrap, DECSC'd, mutated the
+    flag, then DECRC'd, inherited whatever the inner code left.
+    Now: m_savedOriginMode and m_savedAutoWrap members capture
+    the flags on save and restore them on restore, matching the
+    VT420 spec.
+  * Fixed: DECSTBM home position respects DECOM. Pre-fix
+    setScrollRegion() always homed the cursor to absolute (0, 0).
+    Now: when m_originMode is on at the time DECSTBM lands, the
+    cursor moves to (scrollTop, 0) — the top-left of the
+    origin-mode coordinate space — as xterm does.
+  * Locked by tests/features/origin_mode_correctness/ — 12
+    behavioural invariants plus 4 source-grep checks.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 18:45:39 +0200
+
 ants-terminal (0.7.33-1) unstable; urgency=medium
 
   * Lifecycle / cleanup. Three ROADMAP items addressing GUI-

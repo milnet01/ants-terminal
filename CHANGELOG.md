@@ -10,6 +10,56 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.34] — 2026-04-25
+
+**Theme:** Terminal correctness. One ROADMAP item retiring the last
+known DECOM (origin mode) bug — `tmux`/`screen` save-restore
+round-trips were silently dropping the origin-mode flag and
+ignoring scroll-region-relative coordinates on absolute cursor
+moves.
+
+### Fixed
+
+- **CUP / HVP / VPA translate to scroll-region origin under DECOM
+  (`terminalgrid.cpp`).** Was: with origin mode (DECOM, `CSI ?6h`)
+  active and a scroll region set via DECSTBM (`CSI top;bottom r`),
+  `CSI 1;1H` jumped to absolute (0, 0) and `CSI 99;1H` clamped to
+  the bottom of the entire screen instead of the bottom of the
+  scroll region. Programs that depend on origin-mode-relative
+  positioning (vim split-window cursor restoration, `screen`'s
+  caption line, `tmux` status redraws) ended up writing to the
+  wrong row. Now: the `'H'`, `'f'`, and `'d'` cases inside
+  `processCSI` add `m_scrollTop` to the requested row when
+  `m_originMode` is set, then clamp to `[m_scrollTop, m_scrollBottom]`.
+  Behaviour matches xterm.
+
+- **DECSC saves DECOM + DECAWM, DECRC restores them
+  (`terminalgrid.cpp`, `terminalgrid.h`).** Was: `saveCursor()`
+  stored only `(row, col, attrs)`, so a TUI that flipped origin
+  mode or auto-wrap, did `CSI s` / `ESC 7`, ran code that
+  re-toggled the flag, then `CSI u` / `ESC 8`'d ended up with the
+  flag in whatever state the inner code left it in — silent
+  coordinate-space corruption. Now: `m_savedOriginMode` and
+  `m_savedAutoWrap` members capture the flags on save and restore
+  them on restore, matching the VT420 spec for DECSC / DECRC.
+
+- **DECSTBM home position respects DECOM (`terminalgrid.cpp`).**
+  Was: `setScrollRegion()` always homed the cursor to absolute
+  (0, 0) after setting the region. Now: when `m_originMode` is
+  on at the time DECSTBM lands, the cursor moves to
+  `(m_scrollTop, 0)` — the top-left of the *origin-mode*
+  coordinate space — as xterm does.
+
+Locked by `tests/features/origin_mode_correctness/` — 12
+behavioural invariants (CUP/HVP/VPA translation, scroll-region
+clamping, DECSTBM home, DECSC/DECRC save-restore in both `CSI s/u`
+and `ESC 7/8` forms, DECAWM round-trip via the wrap-or-not at
+last-column probe) plus 4 source-grep checks anchoring the fix's
+shape (`std::clamp(row, m_scrollTop, m_scrollBottom)` near `case
+'H'`, `m_savedOriginMode = m_originMode` in `saveCursor`, the
+mirror line in `restoreCursor`, and the `m_originMode ? m_scrollTop
+: 0` ternary in `setScrollRegion`).
+
 ## [0.7.33] — 2026-04-25
 
 **Theme:** Lifecycle / cleanup. Three ROADMAP items addressing

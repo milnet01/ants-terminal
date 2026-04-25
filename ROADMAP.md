@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.33 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.34 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -980,7 +980,7 @@ gets one CHANGELOG section and one drift cycle.
 | **0.7.31** ✅ | Persistence integrity (cross-file) | silent-data-loss on parse failure (settings-dialog mirror) · `setOwnerOnlyPerms` ordering bugs · concurrent-writer guard on `config.json` + `settings.local.json` · `secureio.h` split | `config.cpp`, `sessionmanager.cpp`, `claudeallowlist.cpp`, `debuglog.cpp`, `settingsdialog.cpp`, `secureio.h` |
 | **0.7.32** ✅ | UX bundle (Settings + Review Changes + Tab UX) | dependency-UI enable gating · Cancel rollback for Profiles tab · Restore Defaults per-tab · Review Changes branch awareness · Review Changes live updates (QFileSystemWatcher + Refresh) · always-visible tab × glyph (user feedback) | `settingsdialog.cpp`, `mainwindow.cpp` |
 | **0.7.33** ✅ | Lifecycle / cleanup | PTY dtor off-main-thread (last PTY Tier 2 item) · Portal session close · Lua manifest size cap + canonical plugin path | `ptyhandler.cpp`, `globalshortcutsportal.cpp`, `pluginmanager.cpp` |
-| **0.7.34** | Terminal correctness | origin-mode translate on CUP / DECSC save origin (real tmux/screen breakage) | `terminalgrid.cpp` |
+| **0.7.34** ✅ | Terminal correctness | origin-mode translate on CUP/HVP/VPA · DECSTBM origin-aware home · DECSC saves DECOM + DECAWM (real tmux/screen breakage) | `terminalgrid.cpp` |
 
 **Standalone items (don't bundle):**
 - `VtBatch` zero-copy across thread hop (`vtstream.h`) — perf; pair

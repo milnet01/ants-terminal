@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.33 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.34 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2006,6 +2006,33 @@ if(ANTS_TESTS)
     add_test(NAME review_changes_branches
         COMMAND test_review_changes_branches)
     set_tests_properties(review_changes_branches PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # origin_mode_correctness — 0.7.34 fix. Locks DECOM (origin mode)
+    # CUP/HVP/VPA row translation, DECSTBM origin-aware home, and
+    # DECSC saving DECOM + DECAWM (with DECRC restoring them). Prior
+    # to 0.7.34 every CUP under origin mode jumped to absolute rows
+    # and DECSC silently lost the flags — tmux/screen save-restore
+    # round-trips broke. See spec.md.
+    add_executable(test_origin_mode
+        tests/features/origin_mode_correctness/test_origin_mode.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_origin_mode PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_origin_mode PRIVATE src)
+    target_compile_options(test_origin_mode PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_origin_mode PRIVATE
+        SRC_TERMINALGRID_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalgrid.cpp"
+    )
+    add_test(NAME origin_mode_correctness COMMAND test_origin_mode)
+    set_tests_properties(origin_mode_correctness PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

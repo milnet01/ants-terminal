@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.34" date="2026-04-25">
+      <description>
+        <p>Terminal correctness. One ROADMAP item retiring the last known DECOM (origin mode) bug — tmux/screen save-restore round-trips were silently dropping the origin-mode flag and ignoring scroll-region-relative coordinates on absolute cursor moves.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>CUP / HVP / VPA translate to scroll-region origin under DECOM.</em> Was: with origin mode (<code>CSI ?6h</code>) active and a scroll region set via DECSTBM, <code>CSI 1;1H</code> jumped to absolute (0, 0) and <code>CSI 99;1H</code> clamped to the bottom of the entire screen instead of the bottom of the scroll region. Programs that depend on origin-mode-relative positioning (vim split-window cursor restoration, screen's caption line, tmux status redraws) wrote to the wrong row. Now: the <code>'H'</code>, <code>'f'</code>, and <code>'d'</code> cases add <code>m_scrollTop</code> to the requested row when <code>m_originMode</code> is set, then clamp to <code>[m_scrollTop, m_scrollBottom]</code>. Behaviour matches xterm.</li>
+          <li><em>DECSC saves DECOM + DECAWM, DECRC restores them.</em> Was: <code>saveCursor()</code> stored only (row, col, attrs), so a TUI that flipped origin mode or auto-wrap, did <code>CSI s</code>/<code>ESC 7</code>, ran code that re-toggled the flag, then <code>CSI u</code>/<code>ESC 8</code>'d, ended up with the flag in whatever state the inner code left it — silent coordinate-space corruption. Now: new <code>m_savedOriginMode</code> and <code>m_savedAutoWrap</code> members capture the flags on save and restore them on restore, matching the VT420 spec.</li>
+          <li><em>DECSTBM home position respects DECOM.</em> Was: <code>setScrollRegion()</code> always homed the cursor to absolute (0, 0). Now: when <code>m_originMode</code> is on at the time DECSTBM lands, the cursor moves to (m_scrollTop, 0) — the top-left of the origin-mode coordinate space — as xterm does.</li>
+        </ul>
+        <p>Locked by <code>tests/features/origin_mode_correctness/</code> — 12 behavioural invariants plus 4 source-grep checks.</p>
+      </description>
+    </release>
     <release version="0.7.33" date="2026-04-25">
       <description>
         <p>Lifecycle / cleanup. Three ROADMAP items addressing GUI-thread blocking on shutdown, an xdg-desktop-portal session leak, and two latent issues (OOM surface + symlink escape) in the Lua plugin loader.</p>

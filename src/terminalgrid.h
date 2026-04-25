@@ -438,9 +438,16 @@ private:
     int m_scrollTop = 0;
     int m_scrollBottom = 0; // 0 means "use m_rows - 1"
 
-    // Saved cursor
+    // Saved cursor (DECSC / CSI s). Per VT420 spec, DECSC saves not just
+    // the cursor position + SGR but also origin mode (DECOM) and auto-wrap
+    // (DECAWM); DECRC restores all of them. Required for nested
+    // save/restore patterns used by tmux/screen — without it, a program
+    // that flips DECOM, scrolls, and DECRCs ends up with the wrong
+    // coordinate space active. See tests/features/origin_mode_correctness.
     int m_savedRow = 0, m_savedCol = 0;
     CellAttrs m_savedAttrs;
+    bool m_savedOriginMode = false;
+    bool m_savedAutoWrap = true;
 
     // Modes
     bool m_originMode = false;

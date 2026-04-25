@@ -493,9 +493,21 @@ void TerminalGrid::handleCsi(const VtAction &a) {
     case 'F': m_cursorCol = 0; moveCursor(-param(0), 0); break;
     case 'G': m_cursorCol = std::clamp(param(0, 1) - 1, 0, m_cols - 1); break;
     case 'H':
-    case 'f':
-        setCursorPos(param(0, 1) - 1, p.size() > 1 ? param(1, 1) - 1 : 0);
+    case 'f': {
+        // CUP / HVP. When DECOM (origin mode, ?6) is set, row+col are
+        // relative to the scroll region origin and the cursor cannot
+        // leave the scroll region. Without this translation, vim/tmux/
+        // screen jump to the wrong row after entering origin mode and
+        // sending an absolute-looking CUP.
+        int row = param(0, 1) - 1;
+        int col = p.size() > 1 ? param(1, 1) - 1 : 0;
+        if (m_originMode) {
+            row += m_scrollTop;
+            row = std::clamp(row, m_scrollTop, m_scrollBottom);
+        }
+        setCursorPos(row, col);
         break;
+    }
     case 'J': eraseInDisplay(p.empty() ? 0 : p[0]); break;
     case 'K': eraseInLine(p.empty() ? 0 : p[0]); break;
     case 'L': insertLines(param(0)); break;
@@ -504,7 +516,19 @@ void TerminalGrid::handleCsi(const VtAction &a) {
     case '@': insertBlanks(param(0)); break;
     case 'S': scrollUp(param(0)); break;
     case 'T': scrollDown(param(0)); break;
-    case 'd': m_cursorRow = std::clamp(param(0, 1) - 1, 0, m_rows - 1); break;
+    case 'd': {
+        // VPA (vertical position absolute). Origin-mode aware, mirroring
+        // CUP — see the 'H'/'f' case above.
+        int row = param(0, 1) - 1;
+        if (m_originMode) {
+            row += m_scrollTop;
+            row = std::clamp(row, m_scrollTop, m_scrollBottom);
+        } else {
+            row = std::clamp(row, 0, m_rows - 1);
+        }
+        m_cursorRow = row;
+        break;
+    }
     case 'm': handleSGR(p, a.colonSep); break;
     case 'r':
         setScrollRegion(param(0, 1) - 1, p.size() > 1 ? param(1, m_rows) - 1 : m_rows - 1);
@@ -1734,19 +1758,26 @@ void TerminalGrid::setScrollRegion(int top, int bottom) {
         m_scrollTop = top;
         m_scrollBottom = bottom;
     }
-    setCursorPos(0, 0);
+    // DECSTBM moves the cursor to home. When DECOM is active, "home" is
+    // (scrollTop, 0) — the top-left of the scroll region — not absolute
+    // origin. Matches xterm.
+    setCursorPos(m_originMode ? m_scrollTop : 0, 0);
 }
 
 void TerminalGrid::saveCursor() {
     m_savedRow = m_cursorRow;
     m_savedCol = m_cursorCol;
     m_savedAttrs = m_currentAttrs;
+    m_savedOriginMode = m_originMode;
+    m_savedAutoWrap = m_autoWrap;
 }
 
 void TerminalGrid::restoreCursor() {
     m_cursorRow = std::clamp(m_savedRow, 0, m_rows - 1);
     m_cursorCol = std::clamp(m_savedCol, 0, m_cols - 1);
     m_currentAttrs = m_savedAttrs;
+    m_originMode = m_savedOriginMode;
+    m_autoWrap = m_savedAutoWrap;
 }
 
 void TerminalGrid::newLine() {
