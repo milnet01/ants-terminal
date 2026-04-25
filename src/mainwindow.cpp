@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include "coloredtabbar.h"
+#include "opaquemenubar.h"
 #include "terminalwidget.h"
 #include "titlebar.h"
 #include "commandpalette.h"
@@ -189,36 +190,49 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
         m_config.setWindowGeometry(pos.x(), pos.y(), width(), height());
     });
 
-    // Standalone menu bar. Two attributes matter when the parent window
-    // has Qt::WA_TranslucentBackground (set on MainWindow above):
+    // Standalone menu bar — uses OpaqueMenuBar (a QMenuBar subclass
+    // whose paintEvent unconditionally fillRects the widget rect with
+    // the theme's secondary bg color before delegating to QMenuBar's
+    // own paint). Why a subclass and not a stack of attributes:
     //
-    //   * WA_StyledBackground = true — the QMenuBar stylesheet's
-    //     background-color rule is honored on every paint. Without it,
-    //     translucent-background inheritance can leave the menubar
-    //     rendering over a cleared-to-transparent region for one frame
-    //     during hover repaints, which is the residual flicker the
-    //     0.6.43 `::item` base rule didn't cover (user report 2026-04-20).
-    //   * autoFillBackground = true — backstops a single opaque fill
-    //     from the palette BEFORE the stylesheet paints, so even a
-    //     one-frame lag between QSS polish and paint can't show
-    //     through.
+    // The parent window has Qt::WA_TranslucentBackground (per-pixel
+    // alpha for the terminal-area opacity feature). Under translucent
+    // parents, none of these "make this widget paint opaquely"
+    // attributes is reliable on every WM/style stack:
+    //   * autoFillBackground is suppressed when WA_OpaquePaintEvent is
+    //     set on the same widget.
+    //   * QSS `QMenuBar { background-color: … }` is supposed to draw
+    //     via QStyleSheetStyle::drawControl(CE_MenuBarEmptyArea), but
+    //     on KWin + Breeze + Qt 6 this draw is skipped when
+    //     WA_OpaquePaintEvent is set (the QSS engine assumes the
+    //     widget owns those pixels).
+    //   * QPalette::Window only feeds autoFillBackground, so it
+    //     inherits the same suppression.
+    //
+    // Result before this fix (user report 2026-04-25): the menubar
+    // strip rendered the desktop wallpaper through, with every QSS /
+    // palette / autoFill safeguard already in place. The paintEvent
+    // override in OpaqueMenuBar is the only path that actually keeps
+    // the WA_OpaquePaintEvent contract honest under WA_TranslucentBackground.
+    //
+    // We still set WA_StyledBackground (so QSS sub-rules like
+    // ::item:hover are polished on this widget) and WA_OpaquePaintEvent
+    // (a hint to Qt's region tracking that suppresses the open-
+    // dropdown compositor-damage flicker on KWin —
+    // menubar_hover_stylesheet INV-3b). autoFillBackground is left in
+    // place for paranoia: if a future Qt version ever stops respecting
+    // WA_OpaquePaintEvent's auto-fill suppression, we'll get a second
+    // opaque layer for free; if it keeps respecting it (today's
+    // behavior), the call is a no-op.
     //
     // setNativeMenuBar(false) is explicit here so DE integrations that
     // try to export the menubar to a global-menu channel (Unity, KDE
     // appmenu dbusmenu) get told "no" — the menubar must render in
     // our frameless window or the File/Edit/View entries disappear.
-    m_menuBar = new QMenuBar(this);
+    m_menuBar = new OpaqueMenuBar(this);
     m_menuBar->setNativeMenuBar(false);
     m_menuBar->setAutoFillBackground(true);
     m_menuBar->setAttribute(Qt::WA_StyledBackground, true);
-    // WA_OpaquePaintEvent: the menubar's autoFillBackground + QSS fully
-    // cover every pixel on every paint, so marking it opaque-on-paint
-    // stops Qt from invalidating the translucent parent's compositor
-    // region under it. Without this, each mouse-move over the menubar
-    // item owning an open dropdown damages the popup above the
-    // menubar on KWin (menubar_hover_stylesheet/spec.md INV-3b; the
-    // QSS comment at the :hover rule promises this attribute is set
-    // at the construction site).
     m_menuBar->setAttribute(Qt::WA_OpaquePaintEvent, true);
 
     // Tab widget with custom ColoredTabBar so per-tab colour groups
@@ -2602,17 +2616,22 @@ void MainWindow::applyTheme(const QString &name) {
     m_titleBar->setThemeColors(theme.bgSecondary, theme.textPrimary,
                                 theme.accent, theme.border, theme.ansi[1]);
 
-    // Menubar: explicit palette fill + direct stylesheet. The QSS set on
-    // QMainWindow above cascades to children, but under
-    // WA_TranslucentBackground the QMenuBar can still repaint over a
-    // cleared-to-transparent region — most visibly when the compositor
-    // damages the chrome area (KWin, Mutter, picom) and QSS polish has
-    // not yet produced a frame for that rect. Setting QPalette::Window
-    // to the theme's secondary bg forces autoFillBackground to lay
-    // down an opaque fill *before* the QSS paint, closing the window.
-    // Mirrors the belt-and-suspenders approach used on titleBar +
-    // statusBar (explicit palette + stylesheet both).
+    // Menubar: the OpaqueMenuBar subclass guarantees an opaque fill in
+    // its paintEvent (the only thing Qt actually honors under
+    // WA_TranslucentBackground + WA_OpaquePaintEvent on KWin / Breeze /
+    // Qt 6 — see opaquemenubar.h for why every other path silently
+    // dropped the background paint, surfacing as the desktop showing
+    // through the menubar strip in the user report 2026-04-25).
+    //
+    // Palette + widget-local QSS are kept as belt-and-suspenders so
+    // child widgets the menubar polishes (QToolButton, dropdown
+    // arrows on style stacks that use them) inherit the right colors,
+    // and so the QMenuBar::item :hover / :selected / :pressed rules
+    // are scoped on the menubar itself rather than relying on the
+    // top-level cascade reaching it. The fillRect in OpaqueMenuBar
+    // is what actually paints the strip.
     if (m_menuBar) {
+        m_menuBar->setBackgroundFill(theme.bgSecondary);
         QPalette p = m_menuBar->palette();
         p.setColor(QPalette::Window, theme.bgSecondary);
         p.setColor(QPalette::Base, theme.bgSecondary);

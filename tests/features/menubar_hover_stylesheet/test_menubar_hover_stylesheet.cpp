@@ -1,5 +1,5 @@
-// Menubar hover stylesheet — no-flicker source-grep regression test.
-// See spec.md for the full contract.
+// Menubar opacity & hover-flicker source-grep regression test.
+// See spec.md for the full contract (INV-1 through INV-8).
 
 #include <cstdio>
 #include <fstream>
@@ -9,6 +9,10 @@
 
 #ifndef SRC_MAINWINDOW_PATH
 #error "SRC_MAINWINDOW_PATH compile definition required"
+#endif
+
+#ifndef SRC_OPAQUEMENUBAR_PATH
+#error "SRC_OPAQUEMENUBAR_PATH compile definition required"
 #endif
 
 static std::string slurp(const char *path) {
@@ -103,25 +107,64 @@ int main() {
              "redraw flicker reported 2026-04-20");
     }
 
-    // INV-7 (0.7.25): applyTheme must install an opaque palette fill
-    // AND a widget-local stylesheet on the menubar. The top-level QSS
-    // cascade alone races with the compositor damage rect under
-    // WA_TranslucentBackground — user report 2026-04-25 ("the
-    // background of the menubar is transparent"). Matches the belt-
-    // and-suspenders pattern on titleBar / statusBar.
+    // INV-7 (0.7.25): applyTheme must install a palette fill AND a
+    // widget-local stylesheet on the menubar. NOT load-bearing for
+    // the strip's opacity any more (that's INV-8) — kept for
+    // child-widget theme propagation and to scope the ::item rules
+    // on the menubar itself rather than relying on the top-level
+    // cascade reaching it.
     std::regex menubarPalette(
         R"(m_menuBar->setPalette\b)");
     if (!std::regex_search(mw, menubarPalette)) {
         fail("INV-7: m_menuBar->setPalette(...) missing from applyTheme — "
-             "palette-level opaque fill is what makes autoFillBackground "
-             "paint the right color under a translucent parent");
+             "palette propagates colors to child widgets the menubar "
+             "polishes (dropdown arrows, etc.)");
     }
     std::regex menubarStyleSheet(
         R"(m_menuBar->setStyleSheet\s*\()");
     if (!std::regex_search(mw, menubarStyleSheet)) {
         fail("INV-7: m_menuBar->setStyleSheet(...) missing from applyTheme — "
-             "widget-local QSS is the belt-and-suspenders against the "
-             "top-level cascade racing with compositor damage");
+             "widget-local QSS scopes the ::item :hover/:selected/:pressed "
+             "rules on the menubar itself rather than relying on the top-"
+             "level cascade");
+    }
+
+    // INV-8 (0.7.26): m_menuBar must be an OpaqueMenuBar instance,
+    // and applyTheme must call setBackgroundFill(theme.bgSecondary)
+    // on it. OpaqueMenuBar's paintEvent fillRect is the ONLY path
+    // that produces an opaque background on KWin + Breeze + Qt 6
+    // under WA_TranslucentBackground + WA_OpaquePaintEvent. Reverting
+    // to a bare `new QMenuBar(...)` re-opens the 2026-04-25 user
+    // report ("I can clearly see my desktop background behind it")
+    // even with every prior INV in place.
+    std::regex opaqueCtor(
+        R"(m_menuBar\s*=\s*new\s+OpaqueMenuBar\s*\()");
+    if (!std::regex_search(mw, opaqueCtor)) {
+        fail("INV-8: m_menuBar must be constructed as `new OpaqueMenuBar(...)` "
+             "— a bare QMenuBar paints transparent under "
+             "WA_TranslucentBackground + WA_OpaquePaintEvent on KWin/Breeze, "
+             "showing the desktop wallpaper through the menubar strip");
+    }
+    std::regex backgroundFillCall(
+        R"(m_menuBar->setBackgroundFill\s*\()");
+    if (!std::regex_search(mw, backgroundFillCall)) {
+        fail("INV-8: applyTheme must call m_menuBar->setBackgroundFill(...) "
+             "with the theme's bgSecondary — without it the OpaqueMenuBar "
+             "paintEvent has no color to fill with and falls back to "
+             "transparent (the bug this fix addresses)");
+    }
+
+    // Closing-the-loop check: confirm src/opaquemenubar.h actually
+    // overrides paintEvent and calls fillRect. Without these, INV-8's
+    // construction-site checks above would pass on a no-op subclass
+    // and the bug would re-emerge silently.
+    const std::string omb = slurp(SRC_OPAQUEMENUBAR_PATH);
+    if (omb.find("paintEvent") == std::string::npos ||
+        omb.find("fillRect") == std::string::npos) {
+        fail("INV-8: src/opaquemenubar.h must override paintEvent and call "
+             "fillRect — that's the actual opaque-paint mechanism. A no-op "
+             "subclass would pass the construction-site checks but still "
+             "show the desktop through the menubar.");
     }
 
     if (failures > 0) {

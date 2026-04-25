@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.26" date="2026-04-25">
+      <description>
+        <p>Menubar opacity — the actual root-cause fix. 0.7.25's palette + widget-local-QSS belt-and-suspenders did not in fact suspend any belt: the user reported the desktop wallpaper still showing through the menubar strip on KWin + Breeze + Qt 6.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Menubar background now actually paints opaquely under <code>WA_TranslucentBackground</code> (<code>OpaqueMenuBar</code>, <code>MainWindow::applyTheme</code>).</em> User report 2026-04-25: "I can clearly see my desktop background behind it." Root cause: under <code>WA_TranslucentBackground</code> parent + <code>WA_OpaquePaintEvent</code> on the menubar, none of the conventional opaque-paint paths runs reliably on every WM/style stack. <code>autoFillBackground</code> is suppressed by <code>WA_OpaquePaintEvent</code> (the contract is "the widget paints all pixels"), <code>QPalette::Window</code> is only consulted by <code>autoFillBackground</code> and inherits the suppression, and QSS <code>QMenuBar { background-color: … }</code> — which is supposed to draw via <code>QStyleSheetStyle::drawControl(CE_MenuBarEmptyArea)</code> — is silently skipped on KWin + Breeze + Qt 6 when <code>WA_OpaquePaintEvent</code> is set, because the QSS engine assumes the widget owns those pixels. Net effect: every safeguard 0.7.25 added was correctly installed and not painting anything; the menubar surface stayed cleared-to-transparent and the compositor showed the wallpaper through. New file <code>src/opaquemenubar.h</code> defines <code>OpaqueMenuBar</code>, a <code>QMenuBar</code> subclass whose <code>paintEvent</code> runs <code>QPainter::fillRect(rect(), m_bg)</code> with <code>CompositionMode_Source</code> before delegating to <code>QMenuBar::paintEvent</code>. <code>m_menuBar</code> is now an <code>OpaqueMenuBar</code> and <code>applyTheme</code> sets the fill colour via <code>setBackgroundFill(theme.bgSecondary)</code>. Regression test <code>tests/features/menubar_hover_stylesheet</code> extended with INV-8 — three new assertions pinning the construction site, the <code>setBackgroundFill</code> call, and the presence of <code>paintEvent</code> + <code>fillRect</code> inside <code>opaquemenubar.h</code>.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.25" date="2026-04-24">
       <description>
         <p>Memory-DoS hardening on OSC 8 hyperlinks and Kitty APC graphics chunks, plus a menubar-opacity fix reported mid-session. Locked by a 5-invariant regression test that flips red against pre-fix source.</p>

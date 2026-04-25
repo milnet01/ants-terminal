@@ -10,6 +10,51 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.26] — 2026-04-25
+
+**Theme:** menubar opacity — the actual root-cause fix. 0.7.25's
+palette + widget-local-QSS belt-and-suspenders did not in fact
+suspend any belt: the user reported the desktop wallpaper still
+showing through the menubar strip on KWin + Breeze + Qt 6.
+
+### Fixed
+
+- **Menubar background now actually paints opaquely under
+  `WA_TranslucentBackground` (`OpaqueMenuBar`, `MainWindow::applyTheme`).**
+  User report 2026-04-25: "I can clearly see my desktop background
+  behind it." Root cause: under `WA_TranslucentBackground` parent +
+  `WA_OpaquePaintEvent` on the menubar, **none** of the conventional
+  opaque-paint paths runs reliably on every WM/style stack. Specifically:
+  `autoFillBackground` is suppressed by `WA_OpaquePaintEvent` (the
+  contract is "the widget paints all pixels"), `QPalette::Window` is
+  only consulted by `autoFillBackground` and inherits the suppression,
+  and QSS `QMenuBar { background-color: … }` — which is supposed to
+  draw via `QStyleSheetStyle::drawControl(CE_MenuBarEmptyArea)` —
+  is silently skipped on KWin + Breeze + Qt 6 when
+  `WA_OpaquePaintEvent` is set, because the QSS engine assumes the
+  widget owns those pixels. Net effect: every safeguard 0.7.25 added
+  was correctly installed and not painting anything; the menubar
+  surface stayed cleared-to-transparent and the compositor showed the
+  wallpaper through. New file `src/opaquemenubar.h` defines
+  `OpaqueMenuBar`, a `QMenuBar` subclass whose `paintEvent` runs
+  `QPainter::fillRect(rect(), m_bg)` with `CompositionMode_Source`
+  *before* delegating to `QMenuBar::paintEvent`. That is the only
+  path that actually keeps the `WA_OpaquePaintEvent` contract honest
+  under translucent parents. `m_menuBar` is now an `OpaqueMenuBar` and
+  `applyTheme` sets the fill colour via `setBackgroundFill(theme.bgSecondary)`.
+  The 0.7.25 palette + widget-local QSS calls are kept, no longer load-
+  bearing for the strip's opacity but useful for child-widget theme
+  propagation and for scoping the `::item :hover/:selected/:pressed`
+  rules on the menubar itself rather than relying on the top-level
+  cascade. Regression test `tests/features/menubar_hover_stylesheet`
+  extended with INV-8 — three new assertions that pin the
+  `OpaqueMenuBar` construction site, the `setBackgroundFill` call in
+  `applyTheme`, and the presence of `paintEvent` + `fillRect` inside
+  `src/opaquemenubar.h`. The full spec is rewritten with the
+  per-iteration history (0.6.42 → 0.7.26) and an explicit "manual
+  verification" recipe (bright wallpaper + dark `bgSecondary` +
+  ~0.85 opacity on KWin) so any future drift is reproducible by hand.
+
 ## [0.7.25] — 2026-04-24
 
 **Theme:** memory-DoS hardening on OSC 8 hyperlinks and Kitty APC

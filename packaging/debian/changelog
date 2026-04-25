@@ -1,3 +1,46 @@
+ants-terminal (0.7.26-1) unstable; urgency=medium
+
+  * Menubar opacity — the actual root-cause fix. 0.7.25's palette +
+    widget-local-QSS belt-and-suspenders did not in fact suspend any
+    belt: the user reported the desktop wallpaper still showing
+    through the menubar strip on KWin + Breeze + Qt 6.
+  * Fixed: menubar background now actually paints opaquely under
+    WA_TranslucentBackground (OpaqueMenuBar, MainWindow::applyTheme).
+    User report 2026-04-25: "I can clearly see my desktop background
+    behind it." Root cause: under WA_TranslucentBackground parent +
+    WA_OpaquePaintEvent on the menubar, none of the conventional
+    opaque-paint paths runs reliably on every WM/style stack.
+    autoFillBackground is suppressed by WA_OpaquePaintEvent (the
+    contract is "the widget paints all pixels"); QPalette::Window
+    only feeds autoFillBackground and inherits the suppression; and
+    QSS QMenuBar { background-color: ... }, which is supposed to
+    draw via QStyleSheetStyle::drawControl(CE_MenuBarEmptyArea), is
+    silently skipped on KWin + Breeze + Qt 6 when
+    WA_OpaquePaintEvent is set, because the QSS engine assumes the
+    widget owns those pixels. Net effect: every safeguard 0.7.25
+    added was correctly installed and not painting anything.
+  * New file src/opaquemenubar.h defines OpaqueMenuBar, a QMenuBar
+    subclass whose paintEvent runs QPainter::fillRect(rect(), m_bg)
+    with CompositionMode_Source before delegating to
+    QMenuBar::paintEvent — the only path that keeps the
+    WA_OpaquePaintEvent contract honest under translucent parents.
+    m_menuBar is now an OpaqueMenuBar; applyTheme sets the fill
+    colour via setBackgroundFill(theme.bgSecondary). The 0.7.25
+    palette + widget-local QSS calls are kept (no longer load-
+    bearing for the strip's opacity but useful for child-widget
+    theme propagation and for scoping the ::item :hover/:selected/
+    :pressed rules on the menubar itself).
+  * Regression test tests/features/menubar_hover_stylesheet extended
+    with INV-8 — three new assertions pinning the OpaqueMenuBar
+    construction site, the setBackgroundFill call in applyTheme,
+    and the presence of paintEvent + fillRect inside opaquemenubar.h.
+    Spec.md rewritten with per-iteration history (0.6.42 → 0.7.26)
+    and a manual-verification recipe (bright wallpaper + dark
+    bgSecondary + ~0.85 opacity on KWin) so any future drift is
+    reproducible by hand.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 07:49:11 +0200
+
 ants-terminal (0.7.25-1) unstable; urgency=medium
 
   * Memory-DoS hardening on OSC 8 hyperlinks and Kitty APC graphics

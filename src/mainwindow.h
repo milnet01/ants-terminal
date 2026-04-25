@@ -19,6 +19,7 @@
 #include <QShortcut>
 
 class TitleBar;
+class OpaqueMenuBar;
 class TerminalWidget;
 class CommandPalette;
 class AiDialog;
@@ -154,7 +155,7 @@ private:
     void restoreSessions();
 
     TitleBar *m_titleBar = nullptr;
-    QMenuBar *m_menuBar = nullptr;
+    OpaqueMenuBar *m_menuBar = nullptr;
     ColoredTabWidget *m_tabWidget = nullptr;
     ColoredTabBar *m_coloredTabBar = nullptr;  // = m_tabWidget->coloredTabBar()
     Config m_config;

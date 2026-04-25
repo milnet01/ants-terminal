@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.25 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.26 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1400,10 +1400,14 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # menubar_hover_stylesheet — 0.7.4 follow-up to 0.6.43. Pins that the
-    # QMenuBar has an opaque background under a translucent-parent window
-    # and that every hover pseudo-state is styled, so the hover flash
-    # cannot re-emerge from QSS drift. See
+    # menubar_hover_stylesheet — 0.7.4 / 0.7.25 / 0.7.26 fixes pinned.
+    # Pins that the menubar has an opaque background under a translucent-
+    # parent window AND that every hover pseudo-state is styled, so
+    # neither the hover flash nor the desktop-showing-through-menubar bug
+    # can re-emerge from drift. INV-8 (0.7.26) requires the m_menuBar to
+    # be an OpaqueMenuBar with a paintEvent fillRect — that's the only
+    # path Qt actually honors on KWin + Breeze + Qt 6 under
+    # WA_TranslucentBackground + WA_OpaquePaintEvent. See
     # tests/features/menubar_hover_stylesheet/spec.md.
     add_executable(test_menubar_hover_stylesheet
         tests/features/menubar_hover_stylesheet/test_menubar_hover_stylesheet.cpp
@@ -1413,6 +1417,7 @@ if(ANTS_TESTS)
     )
     target_compile_definitions(test_menubar_hover_stylesheet PRIVATE
         SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_OPAQUEMENUBAR_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/opaquemenubar.h"
     )
     add_test(NAME menubar_hover_stylesheet
              COMMAND test_menubar_hover_stylesheet)
