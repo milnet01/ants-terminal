@@ -1,3 +1,45 @@
+ants-terminal (0.7.28-1) unstable; urgency=medium
+
+  * Audit pipeline I — process-side robustness. Three ROADMAP §
+    0.7.12 Tier 2 items shipped together as bundle 0.7.28:
+    per-tool timeout overrides, incremental QProcess output drain
+    with a 64 MiB cap, and a distinct tool-crash warning that no
+    longer hides as "0 findings."
+  * Changed: AuditCheck::timeoutMs — per-check QProcess timeout.
+    Was: m_timeout->start(30000) hard-coded for every check. Slow
+    tools (cppcheck on a 500k-line tree, semgrep, osv-scanner,
+    trufflehog, clang-tidy, clazy) routinely exceeded the 30 s
+    cap. Now: int timeoutMs = 30000 trailing field on AuditCheck,
+    m_timeout->start(check.timeoutMs) at the use site, and a
+    calibration loop at the end of populateChecks bumps known-slow
+    tools to 60 s / 90 s / 120 s. Locked by
+    tests/features/audit_per_tool_timeout (4 invariants).
+  * Changed: incremental QProcess output drain with 64 MiB cap.
+    Was: readAllStandardOutput() called once inside
+    onCheckFinished. QProcess buffered without bound — a runaway
+    semgrep could buffer hundreds of MB before the timeout fired.
+    Now: ctor wires readyReadStandardOutput /
+    readyReadStandardError to new drain slots that append to
+    m_currentOutput / m_currentError incrementally; on overflow
+    the process is killed and m_outputOverflowed flagged.
+    onCheckFinished reads from the buffers instead of the live
+    process. New connectProcessSignals helper centralises the
+    three connections. Locked by
+    tests/features/audit_incremental_output_drain (6 invariants).
+  * Fixed: tool-crash distinct from "no findings"
+    (AuditDialog::onCheckFinished). Was: signature discarded both
+    parameters via /*…*/ comments. A tool that segfaulted with
+    empty stdout was indistinguishable from a clean run; same for
+    non-zero-exit-with-stderr-only patterns (clang-tidy missing
+    compile_commands.json). Now: parameters named, function
+    branches on QProcess::CrashExit, both warnings demoted to
+    Severity::Info. The four exit modes (timeout / overflow /
+    crash / non-zero-with-stderr-only) funnel through a single
+    makeToolHealthWarning helper. Locked by
+    tests/features/audit_tool_crash_distinct (4 invariants).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 12:39:23 +0200
+
 ants-terminal (0.7.27-1) unstable; urgency=medium
 
   * PTY-handler hardening sweep. Two ROADMAP Tier 2 items shipped

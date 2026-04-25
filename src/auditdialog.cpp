@@ -137,20 +137,21 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
 
     m_process = new QProcess(this);
     m_process->setWorkingDirectory(m_projectPath);
-    connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, &AuditDialog::onCheckFinished);
+    connectProcessSignals();
 
     m_timeout = new QTimer(this);
     m_timeout->setSingleShot(true);
     connect(m_timeout, &QTimer::timeout, this, [this]() {
         if (m_process->state() != QProcess::NotRunning) {
-            // Disconnect finished signal to prevent double-advance after kill
+            // Disconnect all m_process→this signals to prevent double-
+            // advance after kill, then re-establish the full set
+            // (finished + drain slots) before the next check.
             disconnect(m_process, nullptr, this, nullptr);
             m_process->kill();
             m_process->waitForFinished(1000);
-            connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                    this, &AuditDialog::onCheckFinished);
+            connectProcessSignals();
             if (m_currentCheck >= 0 && m_currentCheck < m_checks.size()) {
+                const int capMs = m_checks[m_currentCheck].timeoutMs;
                 CheckResult r;
                 r.checkId = m_checks[m_currentCheck].id;
                 r.checkName = m_checks[m_currentCheck].name;
@@ -159,13 +160,15 @@ AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
                 // and retype to Info, per 2026-04-16 triage. Previously
                 // the timeout inherited the check's own severity (Major
                 // or Critical), which polluted the severity-sorted list
-                // with "(warning) Timed out (30s)" entries indistinguishable
-                // from real findings. The `warning` flag already marks the
-                // entry; severity demotion keeps it from sorting to the
-                // top.
+                // with "(warning) Timed out" entries indistinguishable
+                // from real findings. The `warning` flag already marks
+                // the entry; severity demotion keeps it from sorting to
+                // the top.
                 r.type = CheckType::Info;
                 r.severity = Severity::Info;
-                r.output = "Timed out (30s) — tool-health issue, not a finding";
+                r.output = QString("Timed out (%1s) — tool-health issue, "
+                                   "not a finding")
+                               .arg(capMs / 1000);
                 r.warning = true;
                 m_completedResults.append(r);
             }
@@ -1763,6 +1766,29 @@ void AuditDialog::populateChecks() {
             CheckType::Bug, Severity::Major, { {}, "", {}, 80 },
             false, hasSpotbugs, nullptr
         });
+    }
+
+    // Per-tool timeout overrides — global default is 30 s but a few
+    // tools genuinely need longer on real-world projects:
+    //   - cppcheck full-tree: AST per TU, parallel but per-TU latency dominates
+    //   - cppcheck_unused: --enable=unusedFunction is single-threaded whole-program
+    //   - clang_tidy: re-parses every TU; worse on Qt-heavy code
+    //   - clazy: clang-based AST walk over the same TU set
+    //   - semgrep: rule-pack compile + AST traversal across language tree
+    //   - osv_scanner: network-bound by OSV.dev rate limits
+    //   - trufflehog: full git-history scan with regex eval per blob
+    // Without these, the slow tools false-positive on the 30 second
+    // default and pollute the report with tool-health warnings instead
+    // of findings.
+    for (auto &c : m_checks) {
+        if (c.id == "cppcheck" || c.id == "cppcheck_unused" ||
+            c.id == "clang_tidy" || c.id == "clazy") {
+            c.timeoutMs = 60000;
+        } else if (c.id == "semgrep") {
+            c.timeoutMs = 90000;
+        } else if (c.id == "osv_scanner" || c.id == "trufflehog") {
+            c.timeoutMs = 120000;
+        }
     }
 }
 
@@ -3699,6 +3725,15 @@ void AuditDialog::runAudit() {
     runNextCheck();
 }
 
+void AuditDialog::connectProcessSignals() {
+    connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &AuditDialog::onCheckFinished);
+    connect(m_process, &QProcess::readyReadStandardOutput,
+            this, &AuditDialog::onCheckOutputReady);
+    connect(m_process, &QProcess::readyReadStandardError,
+            this, &AuditDialog::onCheckErrorReady);
+}
+
 void AuditDialog::cancelAudit() {
     // Idempotent — double-click on Cancel (or a race between the button
     // click and the check finishing) is harmless.
@@ -3715,9 +3750,9 @@ void AuditDialog::cancelAudit() {
         disconnect(m_process, nullptr, this, nullptr);
         m_process->kill();
         m_process->waitForFinished(1000);
-        // Reconnect so a follow-up Run Audit works normally.
-        connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                this, &AuditDialog::onCheckFinished);
+        // Reconnect so a follow-up Run Audit works normally — full set
+        // (finished + drain slots), not just finished.
+        connectProcessSignals();
     }
 
     // Record a sentinel row so the report makes the truncation obvious —
@@ -3812,7 +3847,14 @@ void AuditDialog::runNextCheck() {
         return;
     }
 
-    m_timeout->start(30000);
+    // Reset per-check accumulators before launching. The drain slots
+    // append to these as the tool runs; onCheckFinished reads from
+    // them instead of asking the live process for everything at once.
+    m_currentOutput.clear();
+    m_currentError.clear();
+    m_outputOverflowed = false;
+
+    m_timeout->start(check.timeoutMs);
     m_process->start("/bin/bash", {"-c", check.command});
     if (!m_process->waitForStarted(5000)) {
         m_timeout->stop();
@@ -3830,7 +3872,44 @@ void AuditDialog::runNextCheck() {
     }
 }
 
-void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*status*/) {
+void AuditDialog::onCheckOutputReady() {
+    if (m_outputOverflowed || !m_process) return;
+    m_currentOutput.append(m_process->readAllStandardOutput());
+    if (m_currentOutput.size() + m_currentError.size() > MAX_TOOL_OUTPUT_BYTES) {
+        m_outputOverflowed = true;
+        if (m_process->state() != QProcess::NotRunning)
+            m_process->kill();
+    }
+}
+
+void AuditDialog::onCheckErrorReady() {
+    if (m_outputOverflowed || !m_process) return;
+    m_currentError.append(m_process->readAllStandardError());
+    if (m_currentOutput.size() + m_currentError.size() > MAX_TOOL_OUTPUT_BYTES) {
+        m_outputOverflowed = true;
+        if (m_process->state() != QProcess::NotRunning)
+            m_process->kill();
+    }
+}
+
+// Helper: build the standard tool-health warning shape (Info severity,
+// warning flag, distinct prefix). Centralizes the four exit modes
+// (timeout, overflow, crash, non-zero-with-stderr-only) so the
+// renderer styles them identically.
+static CheckResult makeToolHealthWarning(const AuditCheck &check,
+                                         const QString &message) {
+    CheckResult r;
+    r.checkId   = check.id;
+    r.checkName = check.name;
+    r.category  = check.category;
+    r.type      = CheckType::Info;
+    r.severity  = Severity::Info;
+    r.output    = message;
+    r.warning   = true;
+    return r;
+}
+
+void AuditDialog::onCheckFinished(int exitCode, QProcess::ExitStatus exitStatus) {
     m_timeout->stop();
     // Signal may arrive after `cancelAudit()` killed the process — the
     // finished() slot is queued, so we can race here. Bail silently
@@ -3839,9 +3918,65 @@ void AuditDialog::onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*statu
     if (m_cancelled) return;
     if (m_currentCheck < 0 || m_currentCheck >= m_checks.size()) return;
 
-    QString output = QString::fromUtf8(m_process->readAllStandardOutput()).trimmed();
-    const QString errOutput = QString::fromUtf8(m_process->readAllStandardError()).trimmed();
+    // Drain any tail data the readyRead slots haven't picked up yet.
+    // Qt's docs allow data to remain readable on the process even
+    // after finished() fires; without these calls we'd lose the last
+    // few hundred bytes from fast-exiting tools.
+    if (!m_outputOverflowed) {
+        m_currentOutput.append(m_process->readAllStandardOutput());
+        m_currentError.append(m_process->readAllStandardError());
+    }
 
+    const auto &check = m_checks[m_currentCheck];
+
+    // Tool-health branch 1: output-cap breached. Tool was killed by the
+    // drain slot when its accumulated bytes exceeded MAX_TOOL_OUTPUT_BYTES.
+    if (m_outputOverflowed) {
+        const qsizetype capMiB = MAX_TOOL_OUTPUT_BYTES / (1024 * 1024);
+        m_completedResults.append(makeToolHealthWarning(check,
+            QString("Output exceeded %1 MiB cap — tool-health issue, "
+                    "not a finding").arg(capMiB)));
+        ++m_checksRun;
+        runNextCheck();
+        return;
+    }
+
+    // Tool-health branch 2: signal exit (segfault, SIGABRT, OOM-killed).
+    // Distinguishes a tool bug from "tool ran cleanly with no findings."
+    if (exitStatus == QProcess::CrashExit) {
+        const QString errOut = QString::fromUtf8(m_currentError).trimmed();
+        QString msg = "Tool crashed (signal exit) — tool-health issue, "
+                      "not a finding";
+        if (!errOut.isEmpty())
+            msg += "\n" + errOut;
+        m_completedResults.append(makeToolHealthWarning(check, msg));
+        ++m_checksRun;
+        runNextCheck();
+        return;
+    }
+
+    QString output = QString::fromUtf8(m_currentOutput).trimmed();
+    const QString errOutput = QString::fromUtf8(m_currentError).trimmed();
+
+    // Tool-health branch 3: non-zero exit, empty stdout, stderr text.
+    // The tool errored out before producing findings (clang-tidy
+    // missing compile_commands.json, semgrep failed to parse a rule,
+    // etc.). Distinct from the "stderr is just diagnostic noise"
+    // success case below.
+    if (exitCode != 0 && output.isEmpty() && !errOutput.isEmpty()) {
+        m_completedResults.append(makeToolHealthWarning(check,
+            QString("Tool exited %1 with no findings on stdout — "
+                    "tool-health issue, not a finding\n%2")
+                .arg(exitCode).arg(errOutput)));
+        ++m_checksRun;
+        runNextCheck();
+        return;
+    }
+
+    // Success path: stdout is the findings stream; stderr is folded
+    // in only when stdout is empty (some tools emit findings on
+    // stderr) or appended when stdout has content (warnings the user
+    // should still see).
     if (!errOutput.isEmpty() && output.isEmpty())
         output = errOutput;
     else if (!errOutput.isEmpty())

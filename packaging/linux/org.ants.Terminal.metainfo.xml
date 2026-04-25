@@ -103,6 +103,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.28" date="2026-04-25">
+      <description>
+        <p>Audit pipeline I — process-side robustness. Three ROADMAP § 0.7.12 Tier 2 items shipped together as bundle 0.7.28: per-tool timeout overrides, incremental QProcess output drain with a 64 MiB cap, and a distinct tool-crash warning that no longer hides as "0 findings."</p>
+        <p>Changed:</p>
+        <ul>
+          <li><em>AuditCheck::timeoutMs — per-check QProcess timeout.</em> Was: <code>m_timeout->start(30000)</code> hard-coded for every check, with the timeout-handler lambda printing a literal "Timed out (30s)" warning. Slow tools (cppcheck on a 500k-line tree, semgrep, osv-scanner, trufflehog, clang-tidy, clazy on Qt-heavy code) routinely exceeded the 30 s cap and got demoted to tool-health warnings instead of producing findings. Now: <code>int timeoutMs = 30000;</code> trailing field on AuditCheck (default preserves the pre-fix global), <code>m_timeout->start(check.timeoutMs)</code> at the use site, and a calibration loop at the end of populateChecks bumps known-slow tools to 60 s / 90 s / 120 s. Locked by a four-invariant regression test (<code>tests/features/audit_per_tool_timeout</code>) that flips red against pre-fix source.</li>
+          <li><em>Incremental QProcess output drain with 64 MiB cap.</em> Was: <code>readAllStandardOutput()</code> called once inside onCheckFinished. QProcess buffered without bound — a runaway semgrep against generated code could buffer hundreds of MB before the timeout fired. Now: ctor wires readyReadStandardOutput / readyReadStandardError to new drain slots that append to <code>m_currentOutput</code> / <code>m_currentError</code> incrementally; on overflow the process is killed and <code>m_outputOverflowed</code> is flagged. onCheckFinished reads from the buffers instead of the live process and surfaces a distinct "Output exceeded N MiB cap" warning when overflow occurred. A new connectProcessSignals helper centralises the three connections so the kill / reconnect cycles never lose a drain slot. Locked by a six-invariant regression test (<code>tests/features/audit_incremental_output_drain</code>).</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Tool-crash distinct from "no findings" (AuditDialog::onCheckFinished).</em> Was: <code>void onCheckFinished(int /*exitCode*/, QProcess::ExitStatus /*status*/)</code> — both parameters discarded. A tool that segfaulted with empty stdout was indistinguishable from a clean run; same went for clang-tidy missing compile_commands.json (non-zero exit, stderr-only). Now: parameters named, function branches on QProcess::CrashExit to emit a "Tool crashed" warning; on non-zero-exit-with-stderr-only to emit a "Tool exited N" warning. Both demoted to Severity::Info so they don't sort to the top of the report. The four exit modes (timeout / overflow / crash / non-zero-with-stderr-only) funnel through a single makeToolHealthWarning helper that centralises the row shape. Locked by a four-invariant regression test (<code>tests/features/audit_tool_crash_distinct</code>).</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.27" date="2026-04-25">
       <description>
         <p>PTY-handler hardening sweep. Two 0.7.12 ROADMAP Tier 2 items shipped together — child-side FD closure no longer relies on a hard-coded <code>fd&lt;1024</code> cap, and master-side writes no longer drop data on EAGAIN.</p>

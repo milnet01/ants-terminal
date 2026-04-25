@@ -92,6 +92,13 @@ struct AuditCheck {
     // that don't name this trailing field don't trip
     // -Wmissing-field-initializers.
     std::function<QString(const QString & /*projectPath*/)> inProcessRunner{};
+    // Per-check timeout for the QProcess runner. Default matches the
+    // pre-0.7.28 global cap so existing positional aggregate-init
+    // sites stay correct without repeating the value at every entry.
+    // Slow tools (cppcheck/clang-tidy/clazy/semgrep/osv-scanner/
+    // trufflehog) bump this in populateChecks; see
+    // tests/features/audit_per_tool_timeout/spec.md.
+    int timeoutMs = 30000;
 };
 
 // Individual finding parsed from a check's output. One per issue, not one
@@ -164,7 +171,17 @@ private:
     // and renders whatever has completed so far as a partial result.
     void cancelAudit();
     void runNextCheck();
-    void onCheckFinished(int exitCode, QProcess::ExitStatus status);
+    void onCheckFinished(int exitCode, QProcess::ExitStatus exitStatus);
+    // Drain slots — fire on each readyReadStandardOutput /
+    // readyReadStandardError. Append to the buffers, kill the process
+    // and flag m_outputOverflowed if MAX_TOOL_OUTPUT_BYTES is breached.
+    void onCheckOutputReady();
+    void onCheckErrorReady();
+    // Re-establishes the full m_process → this signal set (finished +
+    // both drains). Called from the ctor and after every disconnect /
+    // kill / reconnect cycle so a subsequent check still receives all
+    // three signals.
+    void connectProcessSignals();
     // Downstream half of onCheckFinished — parses `output` through the
     // filter → findings → suppress → cap pipeline, advances to the next
     // check. Shared between the QProcess path (onCheckFinished) and the
@@ -527,6 +544,16 @@ private:
     ElidedLabel *m_statusLabel = nullptr;
     QProcess *m_process = nullptr;
     QTimer *m_timeout = nullptr;
+    // Incremental drain buffers — accumulated by readyReadStandardOutput /
+    // readyReadStandardError as the tool runs, capped at MAX_TOOL_OUTPUT_BYTES.
+    // onCheckFinished reads from these instead of the live process. Reset
+    // before each check; overflow kills the process and surfaces a tool-
+    // health warning. See
+    // tests/features/audit_incremental_output_drain/spec.md.
+    QByteArray m_currentOutput;
+    QByteArray m_currentError;
+    bool m_outputOverflowed = false;
+    static constexpr qsizetype MAX_TOOL_OUTPUT_BYTES = 64 * 1024 * 1024;
 
     QPushButton *m_reviewBtn = nullptr;
     QPushButton *m_sarifBtn = nullptr;

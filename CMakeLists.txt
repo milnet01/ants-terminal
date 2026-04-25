@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.27 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.28 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1580,6 +1580,69 @@ if(ANTS_TESTS)
     )
     add_test(NAME pty_write_eagain_queue COMMAND test_pty_write_eagain_queue)
     set_tests_properties(pty_write_eagain_queue PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_per_tool_timeout — 0.7.28 fix. Locks `int timeoutMs` field
+    # on AuditCheck, the per-check m_timeout->start() use site, the
+    # parameterised "Timed out (Ns)" warning, and at least one
+    # calibration override > 30 s for the slow-tool IDs (cppcheck,
+    # semgrep, osv_scanner, trufflehog, clang_tidy, clazy). See
+    # tests/features/audit_per_tool_timeout/spec.md.
+    add_executable(test_audit_per_tool_timeout
+        tests/features/audit_per_tool_timeout/test_audit_per_tool_timeout.cpp
+    )
+    target_compile_options(test_audit_per_tool_timeout PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_audit_per_tool_timeout PRIVATE
+        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
+        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+    )
+    add_test(NAME audit_per_tool_timeout COMMAND test_audit_per_tool_timeout)
+    set_tests_properties(audit_per_tool_timeout PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_incremental_output_drain — 0.7.28 fix. Locks the
+    # readyReadStandardOutput / readyReadStandardError drain wiring,
+    # the m_currentOutput / m_currentError buffers, the
+    # MAX_TOOL_OUTPUT_BYTES cap, the per-check buffer reset, and the
+    # kill-on-overflow path. See
+    # tests/features/audit_incremental_output_drain/spec.md.
+    add_executable(test_audit_incremental_output_drain
+        tests/features/audit_incremental_output_drain/test_audit_incremental_output_drain.cpp
+    )
+    target_compile_options(test_audit_incremental_output_drain PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_audit_incremental_output_drain PRIVATE
+        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
+        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+    )
+    add_test(NAME audit_incremental_output_drain
+        COMMAND test_audit_incremental_output_drain)
+    set_tests_properties(audit_incremental_output_drain PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_tool_crash_distinct — 0.7.28 fix. Locks the named
+    # exitCode / exitStatus parameters on onCheckFinished, the
+    # QProcess::CrashExit branch, the warning emission with a
+    # crash/exit message, and the Severity::Info demotion. See
+    # tests/features/audit_tool_crash_distinct/spec.md.
+    add_executable(test_audit_tool_crash_distinct
+        tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp
+    )
+    target_compile_options(test_audit_tool_crash_distinct PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_audit_tool_crash_distinct PRIVATE
+        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
+    )
+    add_test(NAME audit_tool_crash_distinct
+        COMMAND test_audit_tool_crash_distinct)
+    set_tests_properties(audit_tool_crash_distinct PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

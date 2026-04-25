@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.27 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.28 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -962,6 +962,50 @@ flagged by multiple independent reviewers. Medium/Low findings are
 captured in the review transcripts (commit `<tbd>`) and triaged into
 grep rules or individual tickets as they become actionable.
 
+### 📦 Outstanding-item bundle plan (post-0.7.27)
+
+Bump overhead is fixed (CHANGELOG, metainfo XML, debian changelog,
+drift check, build, test, commit, tag) — paid once whether the
+release contains one fix or four. The remaining 📋 items below are
+grouped by **theme + file affinity** so each future bump retires
+2-4 related items at once instead of one. Each item still gets its
+own `tests/features/<name>/` spec + regression test; the bundle
+gets one CHANGELOG section and one drift cycle.
+
+| Bundle | Theme | Items | File affinity |
+|--------|-------|-------|---------------|
+| **0.7.28** | Audit pipeline I — process-side robustness | per-tool timeout override · incremental QProcess output drain · distinguish segfault from "no findings" | `auditdialog.cpp` |
+| **0.7.29** | Audit pipeline II — output quality | SARIF `suppressions[]` array emission · regex-DoS watchdog on user `drop_if_matches` · widen `computeDedup` to 96 bits | `auditdialog.cpp` |
+| **0.7.30** | Session-file integrity | SHA-256 payload checksum · pre-validate compressed length prefix before `qUncompress` · `QDataStream::status()` checks inside cell loop | `sessionmanager.cpp` |
+| **0.7.31** | Persistence integrity (cross-file) | silent-data-loss on parse failure (settings-dialog mirror) · `setOwnerOnlyPerms` ordering bugs · concurrent-writer guard on `config.json` + `settings.local.json` · `secureio.h` split | `config.cpp`, `sessionmanager.cpp`, `claudeallowlist.cpp`, `debuglog.cpp`, `settingsdialog.cpp`, `secureio.h` |
+| **0.7.32** | Settings dialog UX | dependency-UI enable gating · Cancel rollback for Profiles tab · Restore Defaults per-tab | `settingsdialog.cpp` |
+| **0.7.33** | Lifecycle / cleanup | PTY dtor off-main-thread (last PTY Tier 2 item) · Portal session close · Lua manifest size cap + canonical plugin path | `ptyhandler.cpp`, `globalshortcutsportal.cpp`, `pluginmanager.cpp` |
+| **0.7.34** | Terminal correctness | origin-mode translate on CUP / DECSC save origin (real tmux/screen breakage) | `terminalgrid.cpp` |
+
+**Standalone items (don't bundle):**
+- `VtBatch` zero-copy across thread hop (`vtstream.h`) — perf; pair
+  with the 0.8.x perf work in § 0.8.0 ⚡ Performance instead.
+- Renderer subsystem decision: revive `glrenderer.cpp` via
+  `createWindowContainer` *or* delete it — needs its own decision
+  cycle, not a bundle slot.
+
+**0.8.x external-signal CI lanes (separate phase):**
+- vttest as CI lane · differential screen-dump harness vs xterm/kitty
+  · libFuzzer target against `VtParser` · real-TUI smoke lane.
+  These are CI-infrastructure work, not in-tree fixes; track as a
+  cluster under § 0.8.x dev experience.
+
+The Settings dialog Tier 3 items (dependency-UI gating, Cancel
+rollback, Restore Defaults) are mirrored at L1544-1551 below; that
+list stays as the canonical location and 0.7.32 pulls from it. The
+bundle table above is an index, not a duplication.
+
+Picking the **next** bundle is mechanical: take the lowest-numbered
+release whose items are all still 📋 in the source-of-truth list
+below. If a referenced item turns ✅ between bumps, the bundle
+shrinks; if a new item appears mid-stream that fits an existing
+bundle's theme, fold it in rather than spinning up a new release.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 **Silent-data-loss on parse failure.** `config.cpp:26-33`,
@@ -1291,14 +1335,30 @@ grep rules or individual tickets as they become actionable.
   pre-export; SARIF v2.1.0 §3.35 expects them present with
   `kind: "external"` + `justification: reason`. Required for GitHub
   code-scanning / SonarQube reconciliation.
-- 📋 **Audit: per-tool timeout override.** `auditdialog.cpp:3729` global
-  30 s timeout; `cppcheck --enable=all` on a 500k-line codebase or
-  `osv-scanner` rate-limited by OSV.dev both blow this. Add
-  `timeoutMs` to `AuditCheck`.
-- 📋 **Audit: incremental QProcess output drain.** `onCheckFinished`
-  at `auditdialog.cpp:3747-3765` reads `readAllStandardOutput()` once;
-  a runaway semgrep on generated code can buffer hundreds of MB before
-  the timeout. Stream to a temp file with a size cap.
+- ✅ **Audit: per-tool timeout override.** Shipped 0.7.28. New
+  `int timeoutMs = 30000;` trailing field on the `AuditCheck`
+  aggregate; `runNextCheck` reads `check.timeoutMs` instead of the
+  hard-coded global. Calibration loop at the end of `populateChecks`
+  bumps known-slow tool IDs to 60 s (`cppcheck`, `cppcheck_unused`,
+  `clang_tidy`, `clazy`), 90 s (`semgrep`), or 120 s
+  (`osv_scanner`, `trufflehog`). Timeout-handler warning string is
+  now formatted from the actual cap. Locked by
+  `tests/features/audit_per_tool_timeout` (4 invariants).
+- ✅ **Audit: incremental QProcess output drain.** Shipped 0.7.28.
+  Constructor connects `readyReadStandardOutput` /
+  `readyReadStandardError` to new `onCheckOutputReady` /
+  `onCheckErrorReady` slots that append to `m_currentOutput` /
+  `m_currentError` incrementally. On overflow
+  (`MAX_TOOL_OUTPUT_BYTES = 64 * 1024 * 1024`), the process is killed
+  and `m_outputOverflowed` is flagged so `onCheckFinished` surfaces
+  a distinct "Output exceeded N MiB cap" warning. Buffers reset
+  before each check via `runNextCheck`. New `connectProcessSignals`
+  helper centralises the finished + drain connections so the
+  kill / reconnect cycles never lose a slot. Pragmatically chose
+  in-memory bounded buffer over the temp-file approach — temp
+  files complicate cleanup and overflow itself indicates a broken
+  tool worth surfacing rather than hiding. Locked by
+  `tests/features/audit_incremental_output_drain` (6 invariants).
 - 📋 **Audit: regex-DoS watchdog on user `drop_if_matches` /
   `.audit_allowlist.json`.** Qt PCRE has no native timeout; move
   user-supplied regex evaluation to `QtConcurrent` with a 2 s
@@ -1307,9 +1367,18 @@ grep rules or individual tickets as they become actionable.
   `auditdialog.cpp:1914-1919`. Current 64-bit truncation exports to
   SARIF `primaryLocationLineHash`; a collision = wrong finding
   silently suppressed across scans.
-- 📋 **Audit: distinguish "tool exited non-zero with empty stdout"
-  from "tool reported no findings".** `auditdialog.cpp:3747` currently
-  treats segfaults (stderr "Segmentation fault") as findings.
+- ✅ **Audit: distinguish "tool exited non-zero with empty stdout"
+  from "tool reported no findings".** Shipped 0.7.28.
+  `onCheckFinished`'s parameters are now named (`exitCode`,
+  `exitStatus`) and the function branches on `QProcess::CrashExit`
+  to emit a "Tool crashed (signal exit)" warning, on
+  `exitCode != 0 && stdout empty && stderr non-empty` to emit a
+  "Tool exited N with no findings on stdout" warning. Both warnings
+  demoted to `Severity::Info`. The four exit modes (timeout,
+  overflow, crash, non-zero-with-stderr-only) funnel through a
+  single `makeToolHealthWarning()` helper that centralises the row
+  shape. Locked by `tests/features/audit_tool_crash_distinct`
+  (4 invariants).
 - 📋 **Concurrent-writer guard on `config.json` + `settings.local.json`.**
   No `flock` / lockfile today — two ants processes or ants + running
   Claude Code race on every save. Last write wins.
