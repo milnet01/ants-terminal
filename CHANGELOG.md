@@ -10,6 +10,56 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.36] — 2026-04-25
+
+**Theme:** UX bug fix. Same translucent-parent failure mode that bit
+the menubar in 0.7.25/0.7.26 caught in two more places (user report,
+post-0.7.32):
+> "The tabs themselves are fine but the rest of the tab bar across
+> the window is transparent as well as the background for the status
+> bar."
+
+The 0.7.32 close-button SVG drew the user's eye to the empty-area
+fill that had been mis-painted all along; the bug was not introduced
+by 0.7.32 but became visible because the new tab look re-balanced
+what the user noticed.
+
+### Fixed
+
+- **Tab bar empty area paints opaque under
+  `WA_TranslucentBackground` (`coloredtabbar.{h,cpp}`).** Was: the
+  strip to the right of the last tab rendered the desktop wallpaper
+  through, with the QSS `QTabBar { background-color: ... }` rule
+  silently dropped by Qt's stylesheet engine on KWin + Breeze + Qt 6
+  once `WA_OpaquePaintEvent` was set on the widget. Same root cause
+  documented in `opaquemenubar.h`. Now: `ColoredTabBar` exposes
+  `setBackgroundFill(QColor)` and prepends a
+  `CompositionMode_Source` `fillRect` to its existing `paintEvent`,
+  before the base class draws tabs and before the colour-group
+  gradient overlay. `applyTheme()` pushes `theme.bgSecondary` into
+  the override.
+
+- **Status bar background paints opaque under
+  `WA_TranslucentBackground` (new `opaquestatusbar.h`,
+  `mainwindow.{h,cpp}`).** Was: the entire status bar strip rendered
+  the desktop wallpaper through — same root cause as the tab bar
+  above. Now: a header-only `OpaqueStatusBar` mirrors
+  `OpaqueMenuBar` (paintEvent fillRect → delegate). `MainWindow`
+  constructs an `OpaqueStatusBar`, installs it via `setStatusBar(...)`
+  *before* the first `statusBar()` call (Qt's lazy-creation would
+  otherwise install a plain `QStatusBar` that paints transparent),
+  and pushes `theme.bgSecondary` via `setBackgroundFill` from
+  `applyTheme()`.
+
+### Changed
+
+- **`tests/features/tabbar_statusbar_opaque/spec.md` + test (5
+  invariants).** New regression test pinning the `setBackgroundFill`
+  + `fillRect` mechanism on both bars, the `setStatusBar` install
+  order, the `WA_OpaquePaintEvent` attribute on the tab bar, and the
+  paint order inside `ColoredTabBar::paintEvent` (fill before the
+  base class draws tabs). Source-grep harness, no display required.
+
 ## [0.7.35] — 2026-04-25
 
 **Theme:** UX bug fix. Single user-reported regression in the Help →

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.35 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.36 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1422,6 +1422,32 @@ if(ANTS_TESTS)
     add_test(NAME menubar_hover_stylesheet
              COMMAND test_menubar_hover_stylesheet)
     set_tests_properties(menubar_hover_stylesheet PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # tabbar_statusbar_opaque — 0.7.36 fix. Same translucent-parent
+    # failure mode as menubar_hover_stylesheet INV-8 caught in two
+    # different bars: the tab bar's empty area (right of the last
+    # tab) and the entire status bar background were painting
+    # transparent under WA_TranslucentBackground. ColoredTabBar gained
+    # a setBackgroundFill + paintEvent fillRect, and a new header-only
+    # OpaqueStatusBar mirrors OpaqueMenuBar. See
+    # tests/features/tabbar_statusbar_opaque/spec.md.
+    add_executable(test_tabbar_statusbar_opaque
+        tests/features/tabbar_statusbar_opaque/test_tabbar_statusbar_opaque.cpp
+    )
+    target_compile_options(test_tabbar_statusbar_opaque PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_tabbar_statusbar_opaque PRIVATE
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_COLOREDTABBAR_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.cpp"
+        SRC_COLOREDTABBAR_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.h"
+        SRC_OPAQUESTATUSBAR_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/opaquestatusbar.h"
+    )
+    add_test(NAME tabbar_statusbar_opaque
+             COMMAND test_tabbar_statusbar_opaque)
+    set_tests_properties(tabbar_statusbar_opaque PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

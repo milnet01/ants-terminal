@@ -1,3 +1,36 @@
+ants-terminal (0.7.36-1) unstable; urgency=medium
+
+  * UX bug fix. Same translucent-parent failure mode that bit the
+    menubar in 0.7.25/0.7.26 caught in two more places (user report,
+    post-0.7.32): "The tabs themselves are fine but the rest of the
+    tab bar across the window is transparent as well as the background
+    for the status bar." The 0.7.32 close-button SVG drew the user's
+    eye to the empty-area fill that had been mis-painted all along.
+  * Fixed: Tab bar empty area paints opaque under
+    WA_TranslucentBackground. Pre-fix, the strip to the right of the
+    last tab rendered the desktop wallpaper through — Qt's stylesheet
+    engine silently drops the QSS QTabBar background-color rule on
+    KWin + Breeze + Qt 6 once WA_OpaquePaintEvent is set on the
+    widget. Same root cause documented in opaquemenubar.h. Now:
+    ColoredTabBar exposes setBackgroundFill(QColor) and prepends a
+    CompositionMode_Source fillRect to its paintEvent, before the
+    base class draws tabs and before the colour-group gradient
+    overlay. applyTheme() pushes theme.bgSecondary into the override.
+  * Fixed: Status bar background paints opaque under
+    WA_TranslucentBackground. Pre-fix, the entire status bar strip
+    rendered the desktop wallpaper through — same root cause as the
+    tab bar above. Now: a header-only OpaqueStatusBar mirrors
+    OpaqueMenuBar (paintEvent fillRect → delegate). MainWindow
+    constructs an OpaqueStatusBar, installs it via setStatusBar(...)
+    BEFORE the first statusBar() call (Qt's lazy-creation would
+    otherwise install a plain QStatusBar that paints transparent),
+    and pushes theme.bgSecondary via setBackgroundFill from
+    applyTheme().
+  * Locked by a new tests/features/tabbar_statusbar_opaque/ spec +
+    test (5 invariants — source-grep harness, no display required).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 19:36:31 +0200
+
 ants-terminal (0.7.35-1) unstable; urgency=medium
 
   * UX bug fix. Single user-reported regression in the Help →

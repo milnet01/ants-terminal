@@ -58,6 +58,18 @@ public:
     // tab at `index`. Safe to call with an out-of-range index (no-op).
     void setTabColor(int index, const QColor &color);
 
+    // Opaque background fill painted at the start of paintEvent, before
+    // the base class draws tabs and before the colour-group gradient
+    // overlay. Matches the OpaqueMenuBar pattern — under a translucent
+    // parent (WA_TranslucentBackground on the top-level), the QSS
+    // `QTabBar { background-color: ... }` rule is unreliable: KWin +
+    // Breeze + Qt 6 silently drops the empty-area fill once
+    // WA_OpaquePaintEvent is set on the widget, leaving the desktop
+    // showing through the bar strip to the right of the last tab. The
+    // explicit fillRect here is the only path Qt actually honors. See
+    // opaquemenubar.h for the long-form rationale.
+    void setBackgroundFill(const QColor &c);
+
     // Current stored colour for the tab at `index`, or an invalid QColor
     // if none is set or `index` is out of range.
     QColor tabColor(int index) const;
@@ -78,6 +90,7 @@ private:
     static constexpr int kTabDataColorRole = 0x100;  // QTabBar reserves low ints
 
     IndicatorProvider m_indicatorProvider;
+    QColor m_bg;  // opaque fill, see setBackgroundFill comment
 };
 
 // Trivial QTabWidget subclass whose sole purpose is to install a

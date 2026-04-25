@@ -2,6 +2,7 @@
 
 #include "coloredtabbar.h"
 #include "opaquemenubar.h"
+#include "opaquestatusbar.h"
 #include "terminalwidget.h"
 #include "titlebar.h"
 #include "commandpalette.h"
@@ -263,6 +264,36 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     vbox->addWidget(m_menuBar);
     vbox->addWidget(m_tabWidget, 1);
     setCentralWidget(central);
+
+    // Tab-bar opaque background: same translucent-parent failure mode
+    // as the menubar (see opaquemenubar.h). The fillRect override in
+    // ColoredTabBar::paintEvent does the actual painting; setting
+    // WA_OpaquePaintEvent + WA_StyledBackground here keeps the QSS
+    // sub-rules (::tab, ::tab:selected, ::close-button) polished and
+    // hints to Qt's region tracking that the widget owns its pixels,
+    // which suppresses dropdown compositor-damage flicker on KWin
+    // (mirrors the menubar setup at the m_menuBar construction site).
+    // applyTheme() supplies the actual fill colour via setBackgroundFill.
+    if (m_coloredTabBar) {
+        m_coloredTabBar->setAutoFillBackground(true);
+        m_coloredTabBar->setAttribute(Qt::WA_StyledBackground, true);
+        m_coloredTabBar->setAttribute(Qt::WA_OpaquePaintEvent, true);
+    }
+
+    // Install OpaqueStatusBar before the first statusBar() call. Qt's
+    // QMainWindow::statusBar() lazy-creates a plain QStatusBar on first
+    // access — once that happens, setStatusBar() replaces it but we'd
+    // already have a window of frames during construction painting the
+    // wrong (translucent) bar. Installing first guarantees every paint
+    // goes through the opaque subclass. Same WA_OpaquePaintEvent /
+    // WA_StyledBackground / autoFillBackground belt-and-suspenders as
+    // the menubar — the fillRect in OpaqueStatusBar::paintEvent is what
+    // actually keeps the bar opaque under WA_TranslucentBackground.
+    m_statusBar = new OpaqueStatusBar(this);
+    m_statusBar->setAutoFillBackground(true);
+    m_statusBar->setAttribute(Qt::WA_StyledBackground, true);
+    m_statusBar->setAttribute(Qt::WA_OpaquePaintEvent, true);
+    setStatusBar(m_statusBar);
 
     setupMenus();
 
@@ -2702,6 +2733,28 @@ void MainWindow::applyTheme(const QString &name) {
               theme.border.name(),
               theme.accent.name()));
         m_menuBar->update();
+    }
+
+    // Tab bar + status bar: same translucent-parent class of bug as the
+    // menubar above. The top-level QSS cascade still publishes the
+    // QTabBar / QStatusBar background-color rules (so palette-derived
+    // sub-elements that DO honor QSS — tabs, embedded labels — pick up
+    // the right colour), but the actual bar-strip fill comes from each
+    // widget's paintEvent override. setBackgroundFill is what the
+    // override reads; without these calls the strip paints transparent
+    // and the desktop wallpaper shows through to the right of the last
+    // tab and across the entire status bar. User report 2026-04-25.
+    if (m_coloredTabBar) {
+        m_coloredTabBar->setBackgroundFill(theme.bgSecondary);
+        m_coloredTabBar->update();
+    }
+    if (m_statusBar) {
+        m_statusBar->setBackgroundFill(theme.bgSecondary);
+        QPalette sp = m_statusBar->palette();
+        sp.setColor(QPalette::Window, theme.bgSecondary);
+        sp.setColor(QPalette::WindowText, theme.textSecondary);
+        m_statusBar->setPalette(sp);
+        m_statusBar->update();
     }
 
     // Status bar labels use theme colors (null-guarded for first call during construction)

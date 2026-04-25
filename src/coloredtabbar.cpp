@@ -10,6 +10,13 @@ ColoredTabWidget::ColoredTabWidget(QWidget *parent)
     setTabBar(m_bar);
 }
 
+void ColoredTabBar::setBackgroundFill(const QColor &c) {
+    if (m_bg != c) {
+        m_bg = c;
+        update();
+    }
+}
+
 void ColoredTabBar::setTabColor(int index, const QColor &color) {
     if (index < 0 || index >= count()) return;
     // An invalid QColor is Qt's idiom for "no colour" — store it so
@@ -28,9 +35,24 @@ QColor ColoredTabBar::tabColor(int index) const {
 }
 
 void ColoredTabBar::paintEvent(QPaintEvent *event) {
-    // Let the base class draw the themed tabs first — shape, text,
-    // selection state, hover highlight all come from the current style
-    // + the app's stylesheet. We only contribute the gradient overlay.
+    // Opaque background fill — must run BEFORE the base class so the
+    // tabs paint over the fill, not under it. CompositionMode_Source
+    // overwrites whatever the compositor left in those pixels (the
+    // desktop wallpaper, under WA_TranslucentBackground), guaranteeing
+    // the bar strip to the right of the last tab is opaque even when
+    // the QSS `QTabBar { background-color: ... }` rule is dropped by
+    // Qt's stylesheet engine on translucent-parent stacks. See
+    // setBackgroundFill comment in the header for why QSS alone is
+    // not enough here.
+    if (m_bg.isValid()) {
+        QPainter bgPainter(this);
+        bgPainter.setCompositionMode(QPainter::CompositionMode_Source);
+        bgPainter.fillRect(rect(), m_bg);
+    }
+
+    // Let the base class draw the themed tabs — shape, text, selection
+    // state, hover highlight all come from the current style + the
+    // app's stylesheet. We only contribute the gradient overlay.
     QTabBar::paintEvent(event);
 
     QPainter painter(this);

@@ -20,6 +20,7 @@
 
 class TitleBar;
 class OpaqueMenuBar;
+class OpaqueStatusBar;
 class TerminalWidget;
 class CommandPalette;
 class AiDialog;
@@ -156,6 +157,7 @@ private:
 
     TitleBar *m_titleBar = nullptr;
     OpaqueMenuBar *m_menuBar = nullptr;
+    OpaqueStatusBar *m_statusBar = nullptr;
     ColoredTabWidget *m_tabWidget = nullptr;
     ColoredTabBar *m_coloredTabBar = nullptr;  // = m_tabWidget->coloredTabBar()
     Config m_config;

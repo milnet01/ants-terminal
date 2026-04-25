@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.36" date="2026-04-25">
+      <description>
+        <p>UX bug fix. Same translucent-parent failure mode that bit the menubar in 0.7.25/0.7.26 caught in two more places (user report, post-0.7.32): "The tabs themselves are fine but the rest of the tab bar across the window is transparent as well as the background for the status bar." The 0.7.32 close-button SVG drew the user's eye to the empty-area fill that had been mis-painted all along; the bug was not introduced by 0.7.32 but became visible because the new tab look re-balanced what the user noticed.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Tab bar empty area paints opaque under <code>WA_TranslucentBackground</code>.</em> Was: the strip to the right of the last tab rendered the desktop wallpaper through, with the QSS <code>QTabBar { background-color: ... }</code> rule silently dropped by Qt's stylesheet engine on KWin + Breeze + Qt 6 once <code>WA_OpaquePaintEvent</code> was set on the widget — same root cause documented in <code>opaquemenubar.h</code>. Now: <code>ColoredTabBar</code> exposes <code>setBackgroundFill(QColor)</code> and prepends a <code>CompositionMode_Source</code> <code>fillRect</code> to its existing <code>paintEvent</code>, before the base class draws tabs and before the colour-group gradient overlay. <code>applyTheme()</code> pushes <code>theme.bgSecondary</code> into the override.</li>
+          <li><em>Status bar background paints opaque under <code>WA_TranslucentBackground</code>.</em> Was: the entire status bar strip rendered the desktop wallpaper through — same root cause as the tab bar above. Now: a header-only <code>OpaqueStatusBar</code> mirrors <code>OpaqueMenuBar</code> (<code>paintEvent</code> <code>fillRect</code> → delegate). <code>MainWindow</code> constructs an <code>OpaqueStatusBar</code>, installs it via <code>setStatusBar(...)</code> <em>before</em> the first <code>statusBar()</code> call (Qt's lazy-creation would otherwise install a plain <code>QStatusBar</code> that paints transparent), and pushes <code>theme.bgSecondary</code> via <code>setBackgroundFill</code> from <code>applyTheme()</code>.</li>
+        </ul>
+        <p>Locked by a new <code>tests/features/tabbar_statusbar_opaque/</code> spec + test (5 invariants — source-grep harness, no display required).</p>
+      </description>
+    </release>
     <release version="0.7.35" date="2026-04-25">
       <description>
         <p>UX bug fix. Single user-reported regression in the Help → About Ants Terminal dialog (the GUI version indicator added in 0.7.22).</p>
