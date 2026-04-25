@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.38" date="2026-04-25">
+      <description>
+        <p>Feature. Background-tasks status-bar surface for Claude Code. User request 2026-04-25: "a button on the status bar when there are background tasks being run. We then click the button to view what Claude Code shows for the background tasks. The button opens a dialog showing the live update info on the background tasks." Claude Code can spawn long-running tasks via <code>Bash</code> or <code>Task</code> with <code>run_in_background: true</code>. The TUI shows a sidebar listing them with their tail output; users dropping into a different tab to keep working had no way to see those tasks from Ants Terminal — they had to flip back to the TUI and parse the sidebar by hand.</p>
+        <p>Added:</p>
+        <ul>
+          <li><em>Background-tasks tracker.</em> A pure parser walks the active session's transcript JSONL, recognizing <code>tool_use</code> blocks whose <code>input.run_in_background == true</code> (start) and <code>tool_result</code> blocks whose <code>toolUseResult.backgroundTaskId</code> is set (confirmation, with the on-disk output path extracted from the result body). Completion / kill state is derived from subsequent <code>BashOutput</code> results carrying <code>status: "completed" | "killed" | "failed"</code> and from <code>KillShell</code> tool calls. Static <code>parseTranscript(path)</code> is testable without a watcher.</li>
+          <li><em>Status-bar button.</em> Sibling to the Review Changes button; same fixed sizePolicy contract. Hidden by default; visible only while the running count is greater than zero for the active tab's session. Label re-renders as "Background Tasks (N)"; tooltip discloses running + total. Re-targeted on tab switch via the unified <code>refreshStatusBarForActiveTab</code> path, so each tab's session drives its own count independently.</li>
+          <li><em>Live-tail dialog.</em> Mirrors the Review Changes live-update model that 0.7.37 stabilized. <code>QFileSystemWatcher</code> covers each task's <code>.output</code> file plus the transcript path; a 200 ms debounce timer collapses bursts of <code>fileChanged</code> signals into one render. Skip-identical-HTML guard plus capture-vbar-before-<code>setHtml</code> + restore-after with <code>qMin(..., maximum())</code> clamp keeps absolute scroll position when content changes. Bonus "was at bottom" detection: when the user is tailing the bottom, pin them to the bottom across appends so live output stays visible without manual scrolling.</li>
+        </ul>
+        <p>Locked by a new <code>tests/features/claude_bg_tasks_button/</code> spec + test (10 invariants — source-grep harness, no Qt link).</p>
+      </description>
+    </release>
     <release version="0.7.37" date="2026-04-25">
       <description>
         <p>UX bug fix. Live-update regression in the Review Changes dialog (the QFileSystemWatcher + 300ms debounce wiring added in 0.7.32). User report 2026-04-25: "When using the Review Changes dialog, the constant resetting of the text means that if I scroll, it resets to the beginning every refresh. That means I can't scroll basically." The 0.7.32 finalize lambda called <code>setHtml</code> unconditionally on every probe completion, snapping the QTextEdit scroll bar back to the top — on a long diff with active live updates the dialog became unscrollable.</p>

@@ -1,3 +1,41 @@
+ants-terminal (0.7.38-1) unstable; urgency=medium
+
+  * Feature. Background-tasks status-bar surface for Claude Code.
+    User request 2026-04-25: "a button on the status bar when there
+    are background tasks being run. We then click the button to view
+    what Claude Code shows for the background tasks. The button opens
+    a dialog showing the live update info on the background tasks."
+    Claude Code can spawn long-running tasks via Bash or Task with
+    run_in_background:true. The TUI shows a sidebar listing them with
+    their tail output; users dropping into a different tab to keep
+    working had no way to see those tasks from Ants Terminal.
+  * Added: Background-tasks tracker (claudebgtasks.{h,cpp}). A pure
+    parser walks the active session's transcript JSONL, recognizing
+    tool_use blocks whose input.run_in_background == true (start) and
+    tool_result blocks whose toolUseResult.backgroundTaskId is set
+    (confirmation, with the on-disk output path extracted from the
+    result body). Completion / kill state is derived from subsequent
+    BashOutput results carrying status: "completed" | "killed" |
+    "failed" and from KillShell tool calls. Static parseTranscript()
+    is testable without a watcher.
+  * Added: Status-bar button (mainwindow.{h,cpp}). Sibling to Review
+    Changes; same fixed sizePolicy contract. Hidden by default; shown
+    only while runningCount() > 0 for the active tab's session. Label
+    is "Background Tasks (N)"; tooltip discloses running + total.
+    Re-targeted on tab switch via refreshStatusBarForActiveTab.
+  * Added: Live-tail dialog (claudebgtasksdialog.{h,cpp}). Mirrors the
+    0.7.37 Review Changes live-update model. QFileSystemWatcher covers
+    each task's .output file plus the transcript path; 200 ms debounce
+    timer collapses bursts of fileChanged signals into one render.
+    Skip-identical-HTML guard plus capture-vbar-before-setHtml +
+    restore-after with qMin(..., maximum()) clamp preserves scroll on
+    real content changes. "Was at bottom" detection pins users to the
+    bottom across appends when they are tailing.
+  * Locked by a new tests/features/claude_bg_tasks_button/ spec + test
+    (10 invariants — source-grep harness, no Qt link).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 20:12:44 +0200
+
 ants-terminal (0.7.37-1) unstable; urgency=medium
 
   * UX bug fix. Live-update regression in the Review Changes dialog

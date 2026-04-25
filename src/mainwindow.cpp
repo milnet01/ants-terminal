@@ -13,6 +13,8 @@
 #include "remotecontrol.h"
 #include "xcbpositiontracker.h"
 #include "claudeallowlist.h"
+#include "claudebgtasks.h"
+#include "claudebgtasksdialog.h"
 #include "claudeintegration.h"
 #include "claudetabtracker.h"
 #include "claudeprojects.h"
@@ -3493,6 +3495,20 @@ void MainWindow::setupClaudeIntegration() {
     statusBar()->addPermanentWidget(m_claudeReviewBtn);
     connect(m_claudeReviewBtn, &QPushButton::clicked, this, &MainWindow::showDiffViewer);
 
+    // 0.7.38 — Background tasks button. Sibling to Review Changes; same
+    // size/policy contract. Hidden by default; shown only when the
+    // per-session tracker reports ≥1 background task in the active
+    // Claude Code transcript.
+    m_claudeBgTasks = new ClaudeBgTaskTracker(this);
+    m_claudeBgTasksBtn = new QPushButton(tr("Background Tasks"), this);
+    m_claudeBgTasksBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_claudeBgTasksBtn->hide();
+    statusBar()->addPermanentWidget(m_claudeBgTasksBtn);
+    connect(m_claudeBgTasksBtn, &QPushButton::clicked,
+            this, &MainWindow::showBgTasksDialog);
+    connect(m_claudeBgTasks, &ClaudeBgTaskTracker::tasksChanged,
+            this, &MainWindow::refreshBgTasksButton);
+
     // Error indicator label
     m_claudeErrorLabel = new QLabel(this);
     // Styled dynamically by updateClaudeThemeColors()
@@ -4132,6 +4148,8 @@ void MainWindow::refreshStatusBarForActiveTab() {
         applyClaudeStatusLabel();
         if (m_claudeReviewBtn) m_claudeReviewBtn->hide();
         if (m_claudeContextBar) m_claudeContextBar->hide();
+        if (m_claudeBgTasks) m_claudeBgTasks->setTranscriptPath(QString());
+        if (m_claudeBgTasksBtn) m_claudeBgTasksBtn->hide();
         return;
     }
 
@@ -4158,6 +4176,7 @@ void MainWindow::refreshStatusBarForActiveTab() {
     applyClaudeStatusLabel();
     updateStatusBar();
     refreshReviewButton();
+    refreshBgTasksButton();
 }
 
 void MainWindow::updateStatusBar() {
@@ -4729,6 +4748,41 @@ void MainWindow::refreshReviewButton() {
         if (guard) guard->deleteLater();
     });
     proc->start();
+}
+
+void MainWindow::refreshBgTasksButton() {
+    if (!m_claudeBgTasks || !m_claudeBgTasksBtn) return;
+    // Use the same transcript path the Claude integration just resolved
+    // for the active tab. activeSessionPath() walks ~/.claude/projects
+    // and returns the most-recently-modified .jsonl, which matches the
+    // session the user is currently driving from this tab's shell.
+    QString path;
+    if (m_claudeIntegration) path = m_claudeIntegration->activeSessionPath();
+    m_claudeBgTasks->setTranscriptPath(path);
+
+    const int running = m_claudeBgTasks->runningCount();
+    const int total = m_claudeBgTasks->tasks().size();
+    if (running <= 0) {
+        // No active background work — keep the chrome quiet.
+        m_claudeBgTasksBtn->hide();
+        return;
+    }
+    m_claudeBgTasksBtn->setText(tr("Background Tasks (%1)").arg(running));
+    m_claudeBgTasksBtn->setToolTip(
+        tr("%1 running · %2 total in this session").arg(running).arg(total));
+    m_claudeBgTasksBtn->show();
+}
+
+void MainWindow::showBgTasksDialog() {
+    if (!m_claudeBgTasks) return;
+    showStatusMessage(QStringLiteral("Background Tasks: opening…"), 1500);
+    // Re-target the tracker before opening so the dialog reflects the
+    // active tab's session, not whatever the tracker last saw.
+    refreshBgTasksButton();
+    auto *dlg = new ClaudeBgTasksDialog(m_claudeBgTasks, m_currentTheme, this);
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
 }
 
 void MainWindow::showDiffViewer() {

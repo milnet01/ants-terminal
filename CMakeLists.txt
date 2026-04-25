@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.37 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.38 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -74,6 +74,8 @@ add_executable(ants-terminal
     src/auditrulequality.cpp
     src/xcbpositiontracker.cpp
     src/claudeallowlist.cpp
+    src/claudebgtasks.cpp
+    src/claudebgtasksdialog.cpp
     src/claudeintegration.cpp
     src/claudetabtracker.cpp
     src/claudeprojects.cpp
@@ -2055,6 +2057,34 @@ if(ANTS_TESTS)
     add_test(NAME review_changes_scroll_preserve
         COMMAND test_review_changes_scroll_preserve)
     set_tests_properties(review_changes_scroll_preserve PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # claude_bg_tasks_button — 0.7.38 feature. Background-tasks
+    # status-bar button + live-tail dialog for Claude Code's
+    # `run_in_background:true` Bash/Task launches. User request
+    # 2026-04-25. Locks the parser shape (run_in_background +
+    # backgroundTaskId), the tracker's QFileSystemWatcher + signal,
+    # the button's hide-when-empty contract, the wire-up to the
+    # showBgTasksDialog click handler, and the dialog's reuse of the
+    # 0.7.37 scroll-preservation pattern. See spec.md.
+    add_executable(test_claude_bg_tasks_button
+        tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp
+    )
+    target_compile_options(test_claude_bg_tasks_button PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_claude_bg_tasks_button PRIVATE
+        SRC_BGTASKS_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudebgtasks.cpp"
+        SRC_BGTASKS_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudebgtasks.h"
+        SRC_BGDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
+        SRC_BGDIALOG_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudebgtasksdialog.h"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    )
+    add_test(NAME claude_bg_tasks_button
+        COMMAND test_claude_bg_tasks_button)
+    set_tests_properties(claude_bg_tasks_button PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

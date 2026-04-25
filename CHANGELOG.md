@@ -10,6 +10,76 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.38] — 2026-04-25
+
+**Theme:** Feature. Background-tasks status-bar surface for Claude
+Code. User request 2026-04-25:
+> "a button on the status bar when there are background tasks being
+> run. We then click the button to view what Claude Code shows for
+> the background tasks. The button opens a dialog showing the live
+> update info on the background tasks."
+
+Claude Code can spawn long-running tasks via `Bash` or `Task` with
+`run_in_background: true`. The TUI shows a sidebar listing them with
+their tail output; users dropping into a different tab to keep
+working had no way to see those tasks from Ants Terminal — they had
+to flip back to the TUI and parse the sidebar by hand. The new
+status-bar button surfaces the live count and the dialog mirrors the
+0.7.37 Review Changes update model (debounced live tail with
+scroll-preservation).
+
+### Added
+
+- **Background-tasks tracker (new `claudebgtasks.{h,cpp}`).** A pure
+  parser walks the active session's transcript JSONL, recognizing
+  `tool_use` blocks whose `input.run_in_background == true` (start)
+  and `tool_result` blocks whose `toolUseResult.backgroundTaskId` is
+  set (confirmation, with the on-disk output path extracted from
+  the result body). Completion / kill state is derived from
+  subsequent `BashOutput` results carrying `status: "completed" |
+  "killed" | "failed"` and from `KillShell` tool calls. The
+  `ClaudeBgTaskTracker` class wraps the parser with a
+  `QFileSystemWatcher` on the transcript and emits `tasksChanged()`
+  when the running-count or shape changes. Static
+  `parseTranscript(path)` is testable without a watcher.
+
+- **Status-bar button (`mainwindow.{h,cpp}`).** Sibling to the
+  Review Changes button; same fixed sizePolicy contract. Hidden by
+  default; visible only while `runningCount() > 0` for the active
+  tab's session. Label re-renders as "Background Tasks (N)";
+  tooltip discloses running + total. Re-targeted on tab switch via
+  `refreshBgTasksButton()` (called from
+  `refreshStatusBarForActiveTab`), so each tab's session drives its
+  own count independently.
+
+- **Live-tail dialog (new `claudebgtasksdialog.{h,cpp}`).** Mirrors
+  the Review Changes live-update model that 0.7.37 stabilized.
+  `QFileSystemWatcher` covers each task's `.output` file plus the
+  transcript path, so new starts and completions appear without
+  manual refresh. A 200 ms debounce timer collapses bursts of
+  fileChanged signals (common when the backgrounded process is
+  noisy) into one render. Skip-identical-HTML guard via a per-
+  dialog `m_lastHtml` (`std::shared_ptr<QString>`) preserves
+  selection and scroll position when the render is unchanged.
+  Capture-vbar/hbar before `setHtml`, restore after with `qMin(...,
+  maximum())` clamp keeps absolute scroll position when content
+  changes — same shape as the 0.7.37 Review Changes fix. Bonus
+  "was at bottom" detection: when the user is tailing the bottom,
+  pin them to the bottom across appends so live output stays
+  visible without manual scrolling.
+
+### Changed
+
+- **`tests/features/claude_bg_tasks_button/spec.md` + test
+  (10 invariants).** New regression test pinning the parser shape
+  (`run_in_background` and `backgroundTaskId` keys), the tracker's
+  `QFileSystemWatcher` + `tasksChanged()` signal, the button's
+  hide-when-empty contract, the connect to `showBgTasksDialog`,
+  the dialog's reuse of the 0.7.37 scroll-preservation pattern,
+  the `outputPath` watch enumeration in `rewatch()`, the debounce
+  timer interval (≤ 500 ms, single-shot), and the CMake source
+  list. Source-grep harness, no Qt link.
+
 ## [0.7.37] — 2026-04-25
 
 **Theme:** UX bug fix. Live-update regression in the Review Changes

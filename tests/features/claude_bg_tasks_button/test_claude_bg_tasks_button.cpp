@@ -1,0 +1,243 @@
+// Claude Code background-tasks button invariants. Source-grep harness.
+// See spec.md for the contract (INV-1 through INV-10).
+
+#include <cstdio>
+#include <fstream>
+#include <regex>
+#include <sstream>
+#include <string>
+
+#ifndef SRC_BGTASKS_CPP_PATH
+#error "SRC_BGTASKS_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_BGTASKS_H_PATH
+#error "SRC_BGTASKS_H_PATH compile definition required"
+#endif
+#ifndef SRC_BGDIALOG_CPP_PATH
+#error "SRC_BGDIALOG_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_BGDIALOG_H_PATH
+#error "SRC_BGDIALOG_H_PATH compile definition required"
+#endif
+#ifndef SRC_MAINWINDOW_CPP_PATH
+#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_CMAKELISTS_PATH
+#error "SRC_CMAKELISTS_PATH compile definition required"
+#endif
+
+static std::string slurp(const char *path) {
+    std::ifstream f(path);
+    if (!f) {
+        std::fprintf(stderr, "cannot open %s\n", path);
+        std::exit(2);
+    }
+    std::stringstream ss; ss << f.rdbuf();
+    return ss.str();
+}
+
+// Extract a function body from a translation unit by signature prefix.
+// Returns substring from the first matching signature to the next
+// `\nvoid ` (heuristic — good enough for our top-level free / member
+// functions in the project; the body never contains a top-level void).
+static std::string functionBody(const std::string &src, const std::string &sig) {
+    const auto start = src.find(sig);
+    if (start == std::string::npos) return {};
+    const auto next = src.find("\nvoid ", start + sig.size());
+    return src.substr(start, next == std::string::npos ? std::string::npos
+                                                       : next - start);
+}
+
+int main() {
+    const std::string bgcpp = slurp(SRC_BGTASKS_CPP_PATH);
+    const std::string bgh   = slurp(SRC_BGTASKS_H_PATH);
+    const std::string dlgcpp = slurp(SRC_BGDIALOG_CPP_PATH);
+    const std::string dlgh   = slurp(SRC_BGDIALOG_H_PATH);
+    const std::string mw     = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cml    = slurp(SRC_CMAKELISTS_PATH);
+
+    int failures = 0;
+    auto fail = [&](const char *msg) {
+        std::fprintf(stderr, "FAIL: %s\n", msg);
+        ++failures;
+    };
+
+    // INV-1: parser references run_in_background.
+    if (bgcpp.find("run_in_background") == std::string::npos) {
+        fail("INV-1: claudebgtasks.cpp must reference the "
+             "`run_in_background` JSON key — that's the signal that "
+             "marks a tool_use as a background task. Without it the "
+             "parser never sees any starts and the tracker is empty");
+    }
+
+    // INV-2: parser references backgroundTaskId.
+    if (bgcpp.find("backgroundTaskId") == std::string::npos) {
+        fail("INV-2: claudebgtasks.cpp must reference the "
+             "`backgroundTaskId` field — without it the parser cannot "
+             "map a launch to its output path or completion event");
+    }
+
+    // INV-3: tracker declares + emits tasksChanged.
+    if (bgh.find("void tasksChanged()") == std::string::npos) {
+        fail("INV-3: ClaudeBgTaskTracker must declare a "
+             "`void tasksChanged()` signal — the button and dialog "
+             "depend on it to live-update");
+    }
+    if (bgcpp.find("emit tasksChanged()") == std::string::npos) {
+        fail("INV-3: ClaudeBgTaskTracker::rescan must "
+             "`emit tasksChanged()` when the task-list shape changes");
+    }
+
+    // INV-4: tracker uses QFileSystemWatcher.
+    if (bgh.find("QFileSystemWatcher") == std::string::npos) {
+        fail("INV-4: ClaudeBgTaskTracker header must include a "
+             "QFileSystemWatcher member — pure polling drops live tail "
+             "events for in-flight transcript writes");
+    }
+    if (bgcpp.find("addPath") == std::string::npos) {
+        fail("INV-4: ClaudeBgTaskTracker must call `addPath` on its "
+             "watcher when the transcript path is set");
+    }
+
+    // INV-5: status-bar button hidden when no tasks running.
+    const std::string body = functionBody(mw,
+        "void MainWindow::refreshBgTasksButton()");
+    if (body.empty()) {
+        fail("INV-5: cannot locate MainWindow::refreshBgTasksButton");
+    } else {
+        std::regex hideGuard(
+            R"(if\s*\(\s*running\s*<=\s*0\s*\)[^}]*?->hide\s*\(\s*\))");
+        if (!std::regex_search(body, hideGuard)) {
+            fail("INV-5: refreshBgTasksButton must hide the button "
+                 "when runningCount() <= 0 — otherwise the button stays "
+                 "visible after every task finishes");
+        }
+    }
+
+    // INV-6: button connected to showBgTasksDialog, which shows the
+    // ClaudeBgTasksDialog.
+    if (mw.find("showBgTasksDialog") == std::string::npos) {
+        fail("INV-6: mainwindow.cpp must define a `showBgTasksDialog` "
+             "slot wired to the bg-tasks button click");
+    }
+    const std::string showBody = functionBody(mw,
+        "void MainWindow::showBgTasksDialog()");
+    if (showBody.empty()) {
+        fail("INV-6: cannot locate MainWindow::showBgTasksDialog");
+    } else {
+        if (showBody.find("new ClaudeBgTasksDialog") == std::string::npos) {
+            fail("INV-6: showBgTasksDialog must construct a "
+                 "`new ClaudeBgTasksDialog(...)` — without this the "
+                 "button click is a no-op");
+        }
+        if (showBody.find("->show()") == std::string::npos) {
+            fail("INV-6: showBgTasksDialog must call `dlg->show()`");
+        }
+    }
+    // The signal-connect path:
+    //   connect(m_claudeBgTasksBtn, &QPushButton::clicked,
+    //           this, &MainWindow::showBgTasksDialog);
+    std::regex btnConnect(
+        R"(connect\s*\(\s*m_claudeBgTasksBtn[^;]*showBgTasksDialog\s*\))");
+    if (!std::regex_search(mw, btnConnect)) {
+        fail("INV-6: m_claudeBgTasksBtn must be `connect`-ed to "
+             "MainWindow::showBgTasksDialog");
+    }
+
+    // INV-7: dialog rebuild reuses scroll-preservation pattern.
+    const std::string rebuildBody = functionBody(dlgcpp,
+        "void ClaudeBgTasksDialog::rebuild()");
+    if (rebuildBody.empty()) {
+        fail("INV-7: cannot locate ClaudeBgTasksDialog::rebuild");
+    } else {
+        std::regex skipGuard(
+            R"(if\s*\(\s*\*m_lastHtml\s*==\s*html\s*\))");
+        if (!std::regex_search(rebuildBody, skipGuard)) {
+            fail("INV-7: rebuild must guard with "
+                 "`if (*m_lastHtml == html)` early-return — without it "
+                 "every refresh re-runs setHtml and the scroll bar "
+                 "snaps back to the top");
+        }
+        // Capture before setHtml.
+        const auto capPos = rebuildBody.find("vbar->value()");
+        const auto setPos = rebuildBody.find("m_viewer->setHtml(");
+        if (capPos == std::string::npos) {
+            fail("INV-7: rebuild must capture vertical scroll-bar "
+                 "value via `vbar->value()` BEFORE setHtml");
+        } else if (setPos == std::string::npos) {
+            fail("INV-7: cannot locate `m_viewer->setHtml(`");
+        } else if (capPos >= setPos) {
+            fail("INV-7: scroll-bar `value()` capture must come "
+                 "BEFORE `m_viewer->setHtml(` — capturing after reads "
+                 "the post-reset value (always 0)");
+        }
+        // Restore with qMin clamp.
+        std::regex restoreClamp(
+            R"(vbar->setValue\s*\(\s*qMin\s*\(\s*vPos\s*,\s*vbar->maximum\s*\(\s*\)\s*\)\s*\))");
+        if (!std::regex_search(rebuildBody, restoreClamp)) {
+            fail("INV-7: rebuild must restore vbar via "
+                 "`vbar->setValue(qMin(vPos, vbar->maximum()))` — "
+                 "without the clamp a longer-then-shorter content "
+                 "sequence over-scrolls past the new document end");
+        }
+    }
+
+    // INV-8: dialog watches output files.
+    const std::string rewatchBody = functionBody(dlgcpp,
+        "void ClaudeBgTasksDialog::rewatch()");
+    if (rewatchBody.empty()) {
+        fail("INV-8: cannot locate ClaudeBgTasksDialog::rewatch");
+    } else {
+        if (rewatchBody.find("outputPath") == std::string::npos) {
+            fail("INV-8: rewatch must enumerate `outputPath` of each "
+                 "tracked task — without this the live-tail pane shows "
+                 "a stale snapshot");
+        }
+        if (rewatchBody.find("addPaths") == std::string::npos
+                && rewatchBody.find("addPath") == std::string::npos) {
+            fail("INV-8: rewatch must add task output paths to the "
+                 "dialog's QFileSystemWatcher");
+        }
+    }
+
+    // INV-9: dialog debounces (interval ≤ 500 ms, single-shot).
+    if (dlgh.find("QTimer m_debounce") == std::string::npos
+            && dlgcpp.find("m_debounce") == std::string::npos) {
+        fail("INV-9: dialog must hold a QTimer named `m_debounce`");
+    }
+    std::regex debounceInterval(
+        R"(m_debounce\.setInterval\s*\(\s*([0-9]+)\s*\))");
+    std::smatch m;
+    if (!std::regex_search(dlgcpp, m, debounceInterval)) {
+        fail("INV-9: dialog must call `m_debounce.setInterval(...)`");
+    } else {
+        const int ms = std::stoi(m[1].str());
+        if (ms <= 0 || ms > 500) {
+            fail("INV-9: m_debounce interval must be in (0, 500] ms — "
+                 "longer makes live-tail feel laggy, smaller defeats "
+                 "the coalescing purpose");
+        }
+    }
+    if (dlgcpp.find("m_debounce.setSingleShot(true)") == std::string::npos) {
+        fail("INV-9: m_debounce must be single-shot — repeating fires "
+             "every interval whether or not new events arrived");
+    }
+
+    // INV-10: CMakeLists adds both source files.
+    if (cml.find("src/claudebgtasks.cpp") == std::string::npos) {
+        fail("INV-10: CMakeLists.txt must include "
+             "src/claudebgtasks.cpp in the ants-terminal target");
+    }
+    if (cml.find("src/claudebgtasksdialog.cpp") == std::string::npos) {
+        fail("INV-10: CMakeLists.txt must include "
+             "src/claudebgtasksdialog.cpp in the ants-terminal target");
+    }
+
+    if (failures > 0) {
+        std::fprintf(stderr,
+            "\n%d invariant(s) failed — see spec.md for context\n", failures);
+        return 1;
+    }
+    std::printf("OK: claude background-tasks button invariants present\n");
+    return 0;
+}

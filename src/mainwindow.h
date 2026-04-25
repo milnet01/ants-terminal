@@ -31,6 +31,7 @@ class ClaudeProjectsDialog;
 class ClaudeTranscriptDialog;
 class ClaudeIntegration;
 class ClaudeTabTracker;
+class ClaudeBgTaskTracker;
 class ColoredTabBar;
 class ColoredTabWidget;
 class QSplitter;
@@ -313,6 +314,11 @@ private:
     QProgressBar *m_claudeContextBar = nullptr;
     QPushButton *m_claudeReviewBtn = nullptr;
     QLabel *m_claudeErrorLabel = nullptr;
+    // 0.7.38 — Claude Code background-tasks button. Visible only when
+    // the per-session tracker reports ≥1 task in the active transcript.
+    // Click → ClaudeBgTasksDialog (live tail, scroll-preserving).
+    QPushButton *m_claudeBgTasksBtn = nullptr;
+    ClaudeBgTaskTracker *m_claudeBgTasks = nullptr;
     // 0.6.27 — cached last state/detail so the Claude status label can be
     // re-rendered when the permission-prompt overlay toggles without having
     // to wait for the next ClaudeIntegration::stateChanged tick. When
@@ -354,6 +360,11 @@ private:
     // the diff viewer finds no changes (to avoid clicking a button
     // that then shows "no changes" again).
     void refreshReviewButton();
+    void showBgTasksDialog();
+    // Refresh the bg-tasks tracker against the active terminal's
+    // session, then update button visibility + label. Called on tab
+    // switch, on tracker tasksChanged, and on session swap.
+    void refreshBgTasksButton();
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS
