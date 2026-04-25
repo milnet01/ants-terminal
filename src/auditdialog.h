@@ -116,6 +116,9 @@ struct Finding {
     QString message;       // the full raw output line (trimmed)
     QString dedupKey;      // SHA-256(file:line:checkId:title) hex, truncated
     bool    highConfidence = false; // true when ≥2 distinct tools flag the same line
+    bool    suppressed = false;     // dedupKey matched ~/.audit_suppress at parse time —
+                                    // hidden from UI/HTML, surfaced in SARIF
+                                    // result.suppressions[] per v2.1.0 §3.34
 
     // Context-aware enrichment — populated during renderResults() so all
     // exports (UI, HTML, SARIF, plain-text) see the same data.
@@ -230,6 +233,19 @@ private:
     QList<AllowlistEntry> m_allowlist;
     void loadAllowlist();
     bool allowlisted(const Finding &f) const;
+
+    // Regex-DoS watchdog. User patterns reach two sinks: `dropIfMatches`
+    // on OutputFilter (audit_rules.json) and `lineRegex` on AllowlistEntry
+    // (.audit_allowlist.json). Both run in the GUI thread against scanner
+    // output that may be adversarial. Defenses:
+    //   isCatastrophicRegex(p) — coarse shape check; rejects nested
+    //     quantifiers (`(.+)+`, `(\w*)*`, etc.) at compile time.
+    //   hardenUserRegex(p)     — wraps with PCRE2's `(*LIMIT_MATCH=N)`
+    //     so even a pattern that slips past the shape check has a
+    //     bounded match-step budget. PCRE2 returns "no match" on
+    //     overrun — fail-safe.
+    static bool isCatastrophicRegex(const QString &pattern);
+    static QString hardenUserRegex(const QString &pattern);
 
     // Mypy "Library stubs not installed" consolidation. When ≥2 findings from
     // a single mypy run are missing-stub hints, fold them into one Info-level
@@ -388,6 +404,19 @@ private:
     // <project>/.audit_suppress at load time, suppressed findings are hidden
     // from results.
     QSet<QString> m_suppressedKeys;
+
+    // Parallel map: dedupKey → user-supplied "reason" text, populated by
+    // loadSuppressions / saveSuppression. SARIF v2.1.0 §3.34 requires a
+    // justification on each result.suppressions[] entry; surfacing that
+    // justification needs the reason in memory rather than re-scanning the
+    // JSONL file at export time.
+    QHash<QString, QString> m_suppressionReasons;
+
+    // Backward-compatibility lookup. Pre-0.7.29 dedup keys were 16 hex
+    // chars (64-bit SHA-256 prefix); new keys are 24 hex chars (96 bits).
+    // Match either: full key (post-0.7.29 saves) OR leading-16 prefix
+    // (legacy saves still in the user's ~/.audit_suppress file).
+    bool isSuppressed(const QString &dedupKey) const;
 
     // 0.6.31 self-learning layer — tracks per-rule fire and suppression
     // counts in <project>/audit_rule_quality.json. Surfaces noisy rules

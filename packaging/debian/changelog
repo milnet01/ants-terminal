@@ -1,3 +1,46 @@
+ants-terminal (0.7.29-1) unstable; urgency=medium
+
+  * Audit pipeline II — output quality. Three ROADMAP § 0.7.12
+    items shipped together as bundle 0.7.29, all in
+    auditdialog.cpp: SARIF v2.1.0 result.suppressions[] array, a
+    regex-DoS watchdog on user-supplied patterns, and a widened
+    96-bit dedup key.
+  * Added: SARIF v2.1.0 result.suppressions[] array
+    (AuditDialog::exportSarif, loadSuppressions, saveSuppression,
+    m_suppressionReasons map, Finding::suppressed). Was: SARIF
+    export silently dropped suppressed findings, defeating the
+    suppression-trend telemetry already computed for the in-app
+    dashboard. Now: a parallel QHash<QString,QString>
+    m_suppressionReasons map carries the user's reason from the
+    JSONL file; the parse pipeline marks suppressed findings
+    instead of dropping them; the SARIF export iterates ALL
+    findings and attaches a suppressions[] block (kind: external,
+    state: accepted, justification) per SARIF v2.1.0 §3.34. Locked
+    by tests/features/audit_sarif_suppressions (5 invariants).
+  * Added: regex-DoS watchdog on user-supplied audit patterns
+    (isCatastrophicRegex, hardenUserRegex, applyFilter,
+    loadAllowlist). Was: user patterns from audit_rules.json
+    (dropIfMatches) and .audit_allowlist.json (lineRegex) flowed
+    straight into QRegularExpression with no shape check and no
+    match-time bound — a pathological pattern could pin the GUI
+    thread for seconds with classic catastrophic backtracking.
+    Now: nested-quantifier shapes rejected at compile time with a
+    qWarning; surviving patterns wrapped in PCRE2's
+    (*LIMIT_MATCH=100000) inline option for fail-safe step-budget
+    capping. Locked by tests/features/audit_regex_dos_watchdog
+    (4 invariants).
+  * Changed: widen computeDedup from 64 to 96 bits (computeDedup,
+    AuditDialog::isSuppressed, Finding::dedupKey). Was: SHA-256
+    truncated to 16 hex chars (64 bits). Now: .left(24) (96 bits)
+    raises the birthday threshold to ~2^48. New isSuppressed
+    helper encapsulates a backward-compat lookup that matches
+    either the full 24-char key OR the leading 16-char prefix, so
+    existing pre-0.7.29 user ~/.audit_suppress entries continue to
+    suppress new findings without forcing a migration. Locked by
+    tests/features/audit_dedup_96bit (4 invariants).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 11:30:41 +0000
+
 ants-terminal (0.7.28-1) unstable; urgency=medium
 
   * Audit pipeline I — process-side robustness. Three ROADMAP §

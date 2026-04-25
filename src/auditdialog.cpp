@@ -1801,10 +1801,21 @@ AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
     if (raw.isEmpty()) return { QString(), 0 };
 
     QRegularExpression dropRe;
-    const bool hasDropRe = !f.dropIfMatches.isEmpty();
+    bool hasDropRe = !f.dropIfMatches.isEmpty();
     if (hasDropRe) {
-        dropRe.setPattern(f.dropIfMatches);
-        dropRe.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
+        if (isCatastrophicRegex(f.dropIfMatches)) {
+            qWarning("audit: dropIfMatches pattern rejected for shape-DoS risk: %s",
+                     qPrintable(f.dropIfMatches));
+            hasDropRe = false;
+        } else {
+            dropRe.setPattern(hardenUserRegex(f.dropIfMatches));
+            dropRe.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
+            if (!dropRe.isValid()) {
+                qWarning("audit: dropIfMatches invalid after hardening: %s",
+                         qPrintable(dropRe.errorString()));
+                hasDropRe = false;
+            }
+        }
     }
 
     // Context-window suppression bookkeeping. When enabled, we parse the
@@ -1950,9 +1961,14 @@ static QString sourceForCheck(const QString &checkId) {
 static QString computeDedup(const QString &file, int line,
                             const QString &checkId, const QString &title) {
     const QString raw = QString("%1:%2:%3:%4").arg(file).arg(line).arg(checkId, title);
+    // 24 hex chars = 96 bits. Pre-0.7.29 used 16 (64 bits); the same key
+    // is the SARIF partialFingerprint, the suppression-JSONL key, the
+    // rule-quality bucket, and the "Suppress" anchor URL fragment — so
+    // the collision cost is high. 96 bits raises the birthday threshold
+    // from ~2^32 to ~2^48 for 8 extra bytes per stored key.
     return QString::fromLatin1(
         QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Sha256)
-            .toHex().left(16));
+            .toHex().left(24));
 }
 
 QList<Finding> AuditDialog::parseFindings(const QString &body, const AuditCheck &check) {
@@ -2782,10 +2798,15 @@ void AuditDialog::loadAllowlist() {
         const QString glob = o.value("path_glob").toString();
         const QString line = o.value("line_regex").toString();
         if (rule.isEmpty() || glob.isEmpty() || line.isEmpty()) continue;
+        if (isCatastrophicRegex(line)) {
+            qWarning(".audit_allowlist.json: line_regex rejected for "
+                     "shape-DoS risk: %s", qPrintable(line));
+            continue;
+        }
         AllowlistEntry e;
         e.rule      = rule;
         e.pathRegex = globToRegex(glob);
-        e.lineRegex = QRegularExpression(line);
+        e.lineRegex = QRegularExpression(hardenUserRegex(line));
         if (!e.lineRegex.isValid()) {
             qWarning(".audit_allowlist.json: bad line_regex '%s': %s",
                      qPrintable(line),
@@ -2863,6 +2884,7 @@ void AuditDialog::consolidateMypyStubHints(CheckResult &r) const {
 
 void AuditDialog::loadSuppressions() {
     m_suppressedKeys.clear();
+    m_suppressionReasons.clear();
     QFile f(suppressionPath());
     if (!f.open(QIODevice::ReadOnly)) return;
     const QStringList lines = QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts);
@@ -2875,8 +2897,14 @@ void AuditDialog::loadSuppressions() {
         if (line.startsWith('{')) {
             const QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8());
             if (doc.isObject()) {
-                const QString key = doc.object().value("key").toString();
-                if (!key.isEmpty()) m_suppressedKeys.insert(key);
+                const QJsonObject o = doc.object();
+                const QString key = o.value("key").toString();
+                if (!key.isEmpty()) {
+                    m_suppressedKeys.insert(key);
+                    const QString reason = o.value("reason").toString();
+                    if (!reason.isEmpty())
+                        m_suppressionReasons.insert(key, reason);
+                }
                 continue;
             }
             // Malformed JSON — fall through to legacy parse as a last resort.
@@ -2885,6 +2913,43 @@ void AuditDialog::loadSuppressions() {
         // v1 legacy: first whitespace-delimited token is the key.
         m_suppressedKeys.insert(line.section(QRegularExpression(R"(\s+)"), 0, 0));
     }
+}
+
+bool AuditDialog::isSuppressed(const QString &dedupKey) const {
+    if (dedupKey.isEmpty()) return false;
+    if (m_suppressedKeys.contains(dedupKey)) return true;
+    // Legacy 0.7.28-and-earlier keys are 16 hex chars; new keys are 24.
+    // Match the legacy prefix so existing user suppressions keep working
+    // after the dedup-width upgrade.
+    if (dedupKey.size() >= 16 && m_suppressedKeys.contains(dedupKey.left(16)))
+        return true;
+    return false;
+}
+
+bool AuditDialog::isCatastrophicRegex(const QString &pattern) {
+    if (pattern.isEmpty()) return false;
+    // Coarse heuristic for catastrophic backtracking shapes: a quantified
+    // group whose body itself contains a quantifier — e.g. `(.+)+`,
+    // `(\w*)*`, `(a+|b+)*`. False positives are possible (a user could
+    // legitimately write `([a-z]+\s+)+` for whitespace-trim splitting),
+    // but on grep-tool output the safer default is to drop with a warning
+    // rather than risk pinning the GUI thread on adversarial input. The
+    // PCRE2 step-limit (hardenUserRegex) is the precise second line of
+    // defense for patterns that don't trip the shape check.
+    static const QRegularExpression nested(
+        R"(\([^()]*[+*][^()]*\)[?*+])");
+    return nested.match(pattern).hasMatch();
+}
+
+QString AuditDialog::hardenUserRegex(const QString &pattern) {
+    if (pattern.isEmpty()) return {};
+    // PCRE2 inline option: cap the match-step budget. Qt6's
+    // QRegularExpression backend honors this; on overrun the matcher
+    // returns "no match" rather than running unbounded. 100,000 steps
+    // accommodates every sane pattern (typical match completes in
+    // < 1,000) and aborts adversarial patterns within milliseconds.
+    if (pattern.startsWith(QStringLiteral("(*LIMIT_"))) return pattern;
+    return QStringLiteral("(*LIMIT_MATCH=100000)") + pattern;
 }
 
 void AuditDialog::saveSuppression(const QString &dedupKey,
@@ -2975,6 +3040,8 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
     }
 
     m_suppressedKeys.insert(dedupKey);
+    if (!reason.isEmpty())
+        m_suppressionReasons.insert(dedupKey, reason);
 }
 
 void AuditDialog::onResultAnchorClicked(const QUrl &url) {
@@ -4019,7 +4086,11 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     QSet<QString> recent;
     if (m_recentOnly) for (const QString &p : std::as_const(m_recentFiles)) recent.insert(p);
     for (Finding &f : parsed) {
-        if (m_suppressedKeys.contains(f.dedupKey)) continue;
+        // Mark suppressed instead of dropping so the SARIF export can
+        // surface them via result.suppressions[] (SARIF §3.34). All
+        // user-facing render paths (results pane, HTML export, summary)
+        // continue to filter on isSuppressed and never display them.
+        f.suppressed = isSuppressed(f.dedupKey);
         if (!applyPathRules(f)) continue;       // generated files + path rules
         if (allowlisted(f)) continue;           // project-local allowlist
         if (inlineSuppressed(f)) continue;      // inline // ants-audit: disable ...
@@ -4078,8 +4149,10 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     // for the omittedCount tail since those findings never had their
     // line text materialized; the LCS suggester needs the line.
     if (m_qualityTracker) {
-        for (const Finding &f : r.findings)
+        for (const Finding &f : r.findings) {
+            if (f.suppressed) continue;
             m_qualityTracker->recordFire(check.id, f.message);
+        }
     }
 
     ++m_checksRun;
@@ -4210,7 +4283,7 @@ void AuditDialog::renderResults() {
     for (const auto &r : sorted) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (m_suppressedKeys.contains(f.dedupKey)) continue;
+            if (isSuppressed(f.dedupKey)) continue;
             if (m_showNewOnly && !findingIsNew(f)) continue;
             ++bySev[static_cast<int>(f.severity)];
             ++totalFindings;
@@ -4277,7 +4350,7 @@ void AuditDialog::renderResults() {
     for (const auto &r : sorted) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (m_suppressedKeys.contains(f.dedupKey)) continue;
+            if (isSuppressed(f.dedupKey)) continue;
             if (f.aiVerdict == "FALSE_POSITIVE") ++aiFalsePositiveCount;
         }
     }
@@ -4441,7 +4514,7 @@ void AuditDialog::renderResults() {
         QStringList parts;
         for (const Finding *pf : sortedFindings) {
             const Finding &f = *pf;
-            if (m_suppressedKeys.contains(f.dedupKey)) continue;
+            if (isSuppressed(f.dedupKey)) continue;
             if (m_showNewOnly && !findingIsNew(f)) continue;
             if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
             if (!m_textFilter.isEmpty()) {
@@ -4785,7 +4858,7 @@ QStringList AuditDialog::visibleUntriagedKeys() const {
     for (const auto &r : m_completedResults) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (m_suppressedKeys.contains(f.dedupKey)) continue;
+            if (isSuppressed(f.dedupKey)) continue;
             if (m_showNewOnly && !findingIsNew(f)) continue;
             if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
             if (!m_textFilter.isEmpty()) {
@@ -5136,6 +5209,25 @@ QString AuditDialog::exportSarif() const {
                 };
             }
             res["properties"] = props;
+
+            // SARIF v2.1.0 §3.34 — result.suppressions[] surfaces user
+            // suppressions to external consumers (GitHub Code Scanning,
+            // SonarQube, VSCode SARIF Viewer). kind "external" reflects
+            // that the suppression is recorded in ~/.audit_suppress
+            // outside the source artifact; state "accepted" mirrors the
+            // dialog's no-review-workflow semantics. Justification is
+            // the user's free-text reason from the JSONL entry.
+            if (f.suppressed) {
+                QJsonObject sup;
+                sup["kind"]  = "external";
+                sup["state"] = "accepted";
+                const QString reason =
+                    m_suppressionReasons.value(f.dedupKey,
+                        m_suppressionReasons.value(f.dedupKey.left(16)));
+                if (!reason.isEmpty()) sup["justification"] = reason;
+                QJsonArray suppArr; suppArr.append(sup);
+                res["suppressions"] = suppArr;
+            }
             results.append(res);
         }
     }
@@ -5182,7 +5274,7 @@ QString AuditDialog::exportHtml() const {
     for (const CheckResult &cr : m_completedResults) {
         if (cr.warning) continue;
         for (const Finding &f : cr.findings) {
-            if (m_suppressedKeys.contains(f.dedupKey)) continue;
+            if (isSuppressed(f.dedupKey)) continue;
             QJsonObject o;
             o["checkId"]   = f.checkId;
             o["checkName"] = f.checkName;

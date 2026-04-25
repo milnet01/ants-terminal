@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.28 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.29 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1330,11 +1330,16 @@ bundle's theme, fold it in rather than spinning up a new release.
   INV-3b reinstated (was previously marked "moved to terminal_partial_update_mode"
   but that test covers an orthogonal fix; both now assert their own
   attribute).
-- 📋 **SARIF emit suppressed findings with `suppressions[]` array.**
-  `auditdialog.cpp:4823-4952` currently drops suppressed findings
-  pre-export; SARIF v2.1.0 §3.35 expects them present with
-  `kind: "external"` + `justification: reason`. Required for GitHub
-  code-scanning / SonarQube reconciliation.
+- ✅ **SARIF emit suppressed findings with `suppressions[]` array.**
+  Shipped 0.7.29. Parse pipeline marks suppressed findings via
+  `Finding::suppressed = true` instead of dropping them; render paths
+  (UI, HTML, plain-text) keep filtering via `isSuppressed`; SARIF
+  export iterates ALL findings and attaches a `suppressions[]` block
+  (`kind: "external"`, `state: "accepted"`, `justification`: user's
+  reason from `~/.audit_suppress` JSONL). Reasons surfaced via a new
+  `m_suppressionReasons: QHash<QString,QString>` map populated by
+  `loadSuppressions` and mirrored by `saveSuppression`. Locked by
+  `tests/features/audit_sarif_suppressions` (5 invariants).
 - ✅ **Audit: per-tool timeout override.** Shipped 0.7.28. New
   `int timeoutMs = 30000;` trailing field on the `AuditCheck`
   aggregate; `runNextCheck` reads `check.timeoutMs` instead of the
@@ -1359,14 +1364,33 @@ bundle's theme, fold it in rather than spinning up a new release.
   files complicate cleanup and overflow itself indicates a broken
   tool worth surfacing rather than hiding. Locked by
   `tests/features/audit_incremental_output_drain` (6 invariants).
-- 📋 **Audit: regex-DoS watchdog on user `drop_if_matches` /
-  `.audit_allowlist.json`.** Qt PCRE has no native timeout; move
-  user-supplied regex evaluation to `QtConcurrent` with a 2 s
-  per-match watchdog.
-- 📋 **Audit: widen `computeDedup` to 96 bits (24 hex chars).**
-  `auditdialog.cpp:1914-1919`. Current 64-bit truncation exports to
-  SARIF `primaryLocationLineHash`; a collision = wrong finding
-  silently suppressed across scans.
+- ✅ **Audit: regex-DoS watchdog on user `drop_if_matches` /
+  `.audit_allowlist.json`.** Shipped 0.7.29. Two-layer defense:
+  static `isCatastrophicRegex` heuristic rejects nested-quantifier
+  shapes (`(.+)+`, `(\w*)*`, `(.*)+`) at compile time with a qWarning
+  naming the offending pattern; surviving patterns are wrapped in
+  PCRE2's `(*LIMIT_MATCH=100000)` inline option via `hardenUserRegex`
+  so even shapes that slip past the heuristic have a bounded
+  match-step budget — PCRE2 returns "no match" on overrun
+  (fail-safe). 100k steps handles every sane pattern (typical match
+  completes in < 1k) and aborts adversarial patterns within
+  milliseconds. Skipped the QtConcurrent + thread-watchdog approach
+  in favour of PCRE2's built-in step counter; cheaper and
+  deterministic. Locked by `tests/features/audit_regex_dos_watchdog`
+  (4 invariants).
+- ✅ **Audit: widen `computeDedup` to 96 bits (24 hex chars).**
+  Shipped 0.7.29. `.left(16)` → `.left(24)` raises the birthday
+  collision threshold from ~2^32 to ~2^48 for 8 extra bytes per
+  stored key — well past any plausible project's lifetime
+  collection. New `bool AuditDialog::isSuppressed(const QString
+  &dedupKey) const` helper encapsulates a backward-compat lookup:
+  match either the full 24-char key OR the leading 16-char prefix,
+  so existing pre-0.7.29 user `~/.audit_suppress` entries continue
+  to suppress new 24-char findings without forcing a migration. Six
+  render-pipeline call sites that previously read
+  `m_suppressedKeys.contains(f.dedupKey)` now route through the
+  helper. Locked by `tests/features/audit_dedup_96bit`
+  (4 invariants).
 - ✅ **Audit: distinguish "tool exited non-zero with empty stdout"
   from "tool reported no findings".** Shipped 0.7.28.
   `onCheckFinished`'s parameters are now named (`exitCode`,

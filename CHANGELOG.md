@@ -10,6 +10,103 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.29] — 2026-04-25
+
+**Theme:** Audit pipeline II — output quality. Three ROADMAP § 0.7.12
+items shipped together from the post-0.7.27 grouping plan, all in
+`auditdialog.cpp`: SARIF v2.1.0 `result.suppressions[]` array, a
+regex-DoS watchdog on user-supplied patterns, and a widened 96-bit
+dedup key.
+
+### Added
+
+- **SARIF v2.1.0 `result.suppressions[]` array
+  (`AuditDialog::exportSarif`, `AuditDialog::loadSuppressions`,
+  `AuditDialog::saveSuppression`, `m_suppressionReasons` map,
+  `Finding::suppressed`).** Was: SARIF export silently dropped
+  suppressed findings (those whose dedup key matched
+  `~/.audit_suppress`), producing a falsely-clean report that
+  defeated the suppression-trend telemetry already computed for
+  the in-app dashboard. Now: a parallel
+  `QHash<QString, QString> m_suppressionReasons` map populated
+  alongside `m_suppressedKeys` carries the user's free-text
+  reason from the JSONL file into memory; the parse pipeline
+  marks suppressed findings with `Finding::suppressed = true`
+  instead of dropping them; render paths (UI, HTML, plain-text)
+  continue to filter via `isSuppressed`; the SARIF export iterates
+  ALL findings and attaches a `suppressions[]` block (kind:
+  `external`, state: `accepted`, justification: the user's reason)
+  per SARIF v2.1.0 §3.34. GitHub Code Scanning / SonarQube /
+  VSCode SARIF Viewer now see the full audit picture and can
+  compute fires-vs-suppressions ratios across export boundaries.
+  Regression test `tests/features/audit_sarif_suppressions` locks
+  five invariants — map declaration (INV-1), `loadSuppressions`
+  populates + clears (INV-2), `saveSuppression` mirrors (INV-3),
+  exportSarif emits the suppressions JSON property with
+  `external`/`accepted` fields (INV-4), exportSarif no longer
+  drops on `isSuppressed` (INV-5). Pre-fix source fails seven
+  invariant assertions; post-fix all five pass. ROADMAP § 0.7.12
+  Tier 2 entry retired.
+
+- **Regex-DoS watchdog on user-supplied audit patterns
+  (`AuditDialog::isCatastrophicRegex`,
+  `AuditDialog::hardenUserRegex`, `applyFilter`,
+  `loadAllowlist`).** Was: user patterns from
+  `audit_rules.json` (`OutputFilter::dropIfMatches`) and
+  `.audit_allowlist.json` (`AllowlistEntry::lineRegex`) flowed
+  straight into `QRegularExpression` with no shape check and no
+  match-time bound. A pathological pattern committed in either
+  file could pin the GUI thread for seconds with classic
+  catastrophic backtracking on adversarial scanner output —
+  `(.+)+`, `(\w*)*`, `(.*)+` against long lines. Now: a static
+  `isCatastrophicRegex` heuristic rejects nested-quantifier
+  shapes (a quantified group whose body itself contains a
+  quantifier) at compile time with a `qWarning` naming the
+  offending pattern; the rule continues to run without the
+  filter rather than refusing to load. Patterns that pass the
+  shape check are wrapped in PCRE2's `(*LIMIT_MATCH=100000)`
+  inline option via `hardenUserRegex` so even catastrophic
+  shapes that slip past the heuristic have a bounded match-step
+  budget — PCRE2 returns "no match" on overrun (fail-safe). 100
+  k steps handles every sane pattern (typical match completes
+  in < 1 k) and aborts adversarial patterns within
+  milliseconds. Regression test
+  `tests/features/audit_regex_dos_watchdog` locks four invariants
+  — the helper exists and is invoked at both user-pattern entry
+  points (INV-1), it recognizes nested-quantifier shapes
+  (INV-2), the `LIMIT_MATCH=N` cap is in the [1k, 1M] sane
+  range (INV-3), `loadAllowlist` emits a qWarning on rejection
+  (INV-4). Pre-fix source fails four invariants; post-fix all
+  four pass. ROADMAP § 0.7.12 Tier 2 entry retired.
+
+### Changed
+
+- **Widen `computeDedup` from 64 to 96 bits
+  (`computeDedup`, `AuditDialog::isSuppressed`,
+  `Finding::dedupKey`).** Was: SHA-256 truncated to 16 hex chars
+  (64 bits) — same key serves as the SARIF `partialFingerprint`,
+  the suppression-JSONL key, the rule-quality bucket, and the
+  in-app "Suppress" anchor URL. The 64-bit collision threshold
+  (~2³² entries at 50 % collision probability) was comfortable
+  but tight given the multi-role usage; a single false-collision
+  cost a wrong-finding suppression. Now: `.left(24)` (96 bits)
+  raises the birthday threshold to ~2⁴⁸ for 8 extra bytes per
+  stored key — well past any plausible project's lifetime
+  collection. A new `bool AuditDialog::isSuppressed(const QString
+  &dedupKey) const` helper encapsulates a backward-compat lookup:
+  match either the full 24-char key OR the leading 16-char prefix,
+  so existing pre-0.7.29 user `~/.audit_suppress` entries
+  continue to suppress new 24-char findings without forcing a
+  migration. Six render-pipeline call sites that previously read
+  `m_suppressedKeys.contains(f.dedupKey)` now route through the
+  helper. Regression test `tests/features/audit_dedup_96bit`
+  locks four invariants — width ≥ 24 hex chars (INV-1),
+  isSuppressed exists with `.left(16)` legacy path (INV-2),
+  zero raw `m_suppressedKeys.contains(f.dedupKey)` sites
+  remain (INV-3), `saveSuppression` mirrors into
+  `m_suppressionReasons` (INV-4). Pre-fix source fails five
+  invariant assertions; post-fix all four pass.
+
 ## [0.7.28] — 2026-04-25
 
 **Theme:** Audit pipeline I — process-side robustness. Three ROADMAP

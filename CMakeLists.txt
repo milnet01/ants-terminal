@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.28 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.29 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1643,6 +1643,71 @@ if(ANTS_TESTS)
     add_test(NAME audit_tool_crash_distinct
         COMMAND test_audit_tool_crash_distinct)
     set_tests_properties(audit_tool_crash_distinct PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_dedup_96bit — 0.7.29 fix. Locks computeDedup's widened
+    # 24-hex-char prefix (96 bits up from 64), the isSuppressed
+    # backward-compat helper that matches legacy 16-char keys, the
+    # render-pipeline use of the helper, and the
+    # m_suppressionReasons mirror update in saveSuppression. See
+    # tests/features/audit_dedup_96bit/spec.md.
+    add_executable(test_audit_dedup_96bit
+        tests/features/audit_dedup_96bit/test_audit_dedup_96bit.cpp
+    )
+    target_compile_options(test_audit_dedup_96bit PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_audit_dedup_96bit PRIVATE
+        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
+        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+    )
+    add_test(NAME audit_dedup_96bit COMMAND test_audit_dedup_96bit)
+    set_tests_properties(audit_dedup_96bit PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_regex_dos_watchdog — 0.7.29 fix. Locks the
+    # isCatastrophicRegex shape-rejection helper, its invocation at
+    # the dropIfMatches / loadAllowlist user-pattern entry points,
+    # the PCRE2 `(*LIMIT_MATCH=N)` step-budget cap, and the
+    # qWarning rejection path. See
+    # tests/features/audit_regex_dos_watchdog/spec.md.
+    add_executable(test_audit_regex_dos_watchdog
+        tests/features/audit_regex_dos_watchdog/test_audit_regex_dos_watchdog.cpp
+    )
+    target_compile_options(test_audit_regex_dos_watchdog PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_audit_regex_dos_watchdog PRIVATE
+        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
+        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+    )
+    add_test(NAME audit_regex_dos_watchdog
+        COMMAND test_audit_regex_dos_watchdog)
+    set_tests_properties(audit_regex_dos_watchdog PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_sarif_suppressions — 0.7.29 fix. Locks the
+    # m_suppressionReasons map declaration, its load/save
+    # population, the SARIF v2.1.0 §3.34 result.suppressions[]
+    # array emission, and removal of the suppress-and-skip
+    # filter from exportSarif. See
+    # tests/features/audit_sarif_suppressions/spec.md.
+    add_executable(test_audit_sarif_suppressions
+        tests/features/audit_sarif_suppressions/test_audit_sarif_suppressions.cpp
+    )
+    target_compile_options(test_audit_sarif_suppressions PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_audit_sarif_suppressions PRIVATE
+        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
+        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+    )
+    add_test(NAME audit_sarif_suppressions
+        COMMAND test_audit_sarif_suppressions)
+    set_tests_properties(audit_sarif_suppressions PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
