@@ -2,6 +2,7 @@
 #include "secureio.h"
 #include "terminalgrid.h"
 
+#include <QCryptographicHash>
 #include <QDataStream>
 #include <QDateTime>
 #include <QDir>
@@ -122,10 +123,29 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid,
     out << pinnedTitle;
 
     // Compress
-    return qCompress(raw, 6);
+    QByteArray compressed = qCompress(raw, 6);
+
+    // V4 envelope: SHEC magic + envelope version + SHA-256(compressed)
+    // + payload length + compressed payload. Tampering with the payload
+    // (or the envelope's length field) flips the hash. Legacy V1-V3
+    // files lacked any payload integrity — anyone with write access to
+    // the sessions dir could plant arbitrary codepoints/colors/flags
+    // into the next restore.
+    QByteArray sha = QCryptographicHash::hash(compressed,
+                                              QCryptographicHash::Sha256);
+
+    QByteArray envelope;
+    envelope.reserve(ENVELOPE_HEADER_SIZE + compressed.size());
+    QDataStream env(&envelope, QIODevice::WriteOnly);
+    env.setVersion(QDataStream::Qt_6_0);
+    env << ENVELOPE_MAGIC << ENVELOPE_VERSION;
+    env.writeRawData(sha.constData(), sha.size());
+    env << static_cast<uint32_t>(compressed.size());
+    env.writeRawData(compressed.constData(), compressed.size());
+    return envelope;
 }
 
-bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
+bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
                              QString *cwd, QString *pinnedTitle) {
     // Clear optional out-params up front so callers reading them after
     // a V1/V2 file don't see stale bytes. The version-gated read blocks
@@ -133,12 +153,71 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
     if (cwd) *cwd = QString();
     if (pinnedTitle) *pinnedTitle = QString();
 
-    // Reject excessively large compressed data (100MB limit)
-    if (compressed.size() > 100 * 1024 * 1024) return false;
+    // Reject excessively large input (100MB limit)
+    if (input.size() > 100 * 1024 * 1024) return false;
+
+    // Detect V4 envelope: peek the first uint32. qCompress's first 4
+    // bytes are the big-endian uncompressed length, which for any real
+    // session is well below ENVELOPE_MAGIC (0x53484543 ≈ 1.4 GB), so
+    // any byte sequence that starts with our magic is unambiguously a
+    // V4 envelope. Legacy V1-V3 files fall through with `compressed`
+    // pointing at the raw qCompress output.
+    QByteArray compressed;
+    if (input.size() >= ENVELOPE_HEADER_SIZE) {
+        QDataStream env(input);
+        env.setVersion(QDataStream::Qt_6_0);
+        uint32_t envMagic = 0, envVersion = 0;
+        env >> envMagic >> envVersion;
+        if (envMagic == ENVELOPE_MAGIC) {
+            if (envVersion != ENVELOPE_VERSION) return false;
+            QByteArray sha(32, Qt::Uninitialized);
+            if (env.readRawData(sha.data(), 32) != 32) return false;
+            uint32_t payloadLen = 0;
+            env >> payloadLen;
+            if (env.status() != QDataStream::Ok) return false;
+            // Bound payload length to the same 100MB ceiling we apply
+            // to legacy files, and require the envelope to declare a
+            // length that exactly matches the trailing bytes — refuses
+            // truncated or padded files before we hash anything.
+            if (payloadLen > 100u * 1024u * 1024u) return false;
+            const qsizetype expectedSize = qsizetype(ENVELOPE_HEADER_SIZE)
+                                         + qsizetype(payloadLen);
+            if (input.size() != expectedSize) return false;
+            compressed = input.mid(ENVELOPE_HEADER_SIZE,
+                                   qsizetype(payloadLen));
+            // Verify SHA-256. Mismatch ⇒ payload was tampered with or
+            // truncated mid-write; refuse to restore rather than feed
+            // attacker-controlled bytes into the grid.
+            const QByteArray actual = QCryptographicHash::hash(
+                compressed, QCryptographicHash::Sha256);
+            if (actual != sha) return false;
+        }
+    }
+    if (compressed.isEmpty()) {
+        // Legacy V1-V3 file (raw qCompress output, no envelope, no checksum).
+        compressed = input;
+    }
+
+    // Pre-validate qCompress's 4-byte big-endian uncompressed-length
+    // prefix BEFORE qUncompress allocates. A crafted file claiming
+    // 500 MB used to trigger a 500 MB allocation that the post-hoc
+    // 500 MB cap could only catch after the damage was done; by
+    // rejecting the claim up front we never touch the allocator.
+    if (compressed.size() < 4) return false;
+    const auto *lenBytes = reinterpret_cast<const uint8_t *>(
+        compressed.constData());
+    const uint32_t claimedUncompressed =
+        (uint32_t(lenBytes[0]) << 24) |
+        (uint32_t(lenBytes[1]) << 16) |
+        (uint32_t(lenBytes[2]) <<  8) |
+         uint32_t(lenBytes[3]);
+    if (claimedUncompressed > MAX_UNCOMPRESSED) return false;
 
     QByteArray raw = qUncompress(compressed);
     if (raw.isEmpty()) return false;
-    // Guard against decompression bombs (zlib can expand ~1000:1)
+    // Guard against decompression bombs (zlib can expand ~1000:1).
+    // The pre-flight above bounds `claimedUncompressed`, but a payload
+    // can still under-claim and over-deliver; keep this defensive cap.
     if (raw.size() > 500 * 1024 * 1024) return false;
 
     QDataStream in(&raw, QIODevice::ReadOnly);
@@ -158,11 +237,15 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
     // Resize grid to match saved dimensions
     grid->resize(rows, cols);
 
-    // Helper to read a cell from stream
-    auto readCell = [&in](Cell &c) {
+    // Read a cell from the stream. Returns false if the stream went bad
+    // mid-cell — refusing to commit half-decoded codepoints/colors/flags
+    // to the grid. Pre-fix, a truncated stream silently wrote
+    // uninitialized fg/bg/flags into Cell.
+    auto readCell = [&in](Cell &c) -> bool {
         QRgb fg, bg;
         uint8_t flags;
         in >> c.codepoint >> fg >> bg >> flags;
+        if (in.status() != QDataStream::Ok) return false;
         c.attrs.fg = QColor::fromRgba(fg);
         c.attrs.bg = QColor::fromRgba(bg);
         c.attrs.bold = flags & 0x01;
@@ -173,6 +256,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
         c.attrs.strikethrough = flags & 0x20;
         c.isWideChar = flags & 0x40;
         c.isWideCont = flags & 0x80;
+        return true;
     };
 
     // Helper to read combining characters
@@ -189,6 +273,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
             for (int k = 0; k < cpCount; ++k) {
                 uint32_t cp;
                 in >> cp;
+                if (in.status() != QDataStream::Ok) return false;
                 cps.push_back(cp);
             }
             if (!cps.empty())
@@ -211,8 +296,9 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
         TermLine line;
         line.softWrapped = wrapped;
         line.cells.resize(cellCount);
-        for (int j = 0; j < cellCount; ++j)
-            readCell(line.cells[j]);
+        for (int j = 0; j < cellCount; ++j) {
+            if (!readCell(line.cells[j])) return false;
+        }
         if (!readCombining(line.combining)) return false;
 
         grid->pushScrollbackLine(std::move(line));
@@ -229,12 +315,13 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
         if (in.status() != QDataStream::Ok || colCount < 0 || colCount > 10000) return false;
 
         TermLine &screenLine = grid->screenLine(row);
-        for (int col = 0; col < colCount && col < cols; ++col)
-            readCell(screenLine.cells[col]);
+        for (int col = 0; col < colCount && col < cols; ++col) {
+            if (!readCell(screenLine.cells[col])) return false;
+        }
         // Skip extra columns if saved grid was wider
         for (int col = cols; col < colCount; ++col) {
             Cell skip;
-            readCell(skip);
+            if (!readCell(skip)) return false;
         }
         if (!readCombining(screenLine.combining)) return false;
     }
@@ -245,7 +332,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &compressed,
         if (in.status() != QDataStream::Ok || colCount < 0 || colCount > 10000) return false;
         for (int col = 0; col < colCount; ++col) {
             Cell skip;
-            readCell(skip);
+            if (!readCell(skip)) return false;
         }
         std::unordered_map<int, std::vector<uint32_t>> skipComb;
         if (!readCombining(skipComb)) return false;

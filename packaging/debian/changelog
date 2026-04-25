@@ -1,3 +1,61 @@
+ants-terminal (0.7.30-1) unstable; urgency=medium
+
+  * Session-file integrity. Three ROADMAP § 0.7.12 Tier 2 items
+    shipped together as bundle 0.7.30, all in
+    sessionmanager.cpp: a SHA-256 envelope around the qCompress
+    payload, a pre-flight on qCompress's 4-byte uncompressed-
+    length prefix, and per-cell QDataStream::status() checks
+    inside the decode loops.
+  * Added: V4 SHA-256 envelope around session-file payload
+    (SessionManager::serialize, restore, ENVELOPE_MAGIC,
+    ENVELOPE_VERSION). Was: session files at
+    $XDG_DATA_HOME/ants-terminal/sessions/session_<tabId>.dat were
+    raw qCompress output with no payload integrity. Anyone with
+    write access to that directory (the user's own UID, a
+    compromised local process, an npm dependency, a runaway
+    pip install post-exec) could plant a crafted session that fed
+    arbitrary codepoints, fg/bg colors, and attribute flags into
+    the grid on next restore. Now: serialize wraps the qCompress
+    output in a V4 envelope [SHEC magic 0x53484543][envelope
+    version=1][SHA-256 of payload (32 bytes)][payload length
+    (uint32)][compressed payload]; restore peeks the magic,
+    verifies the hash, and refuses to restore on mismatch. Inner
+    QDataStream format unchanged (still V3) — the integrity layer
+    is framing-only. Legacy V1-V3 files continue to load via the
+    magic-peek fall-through; their next save writes them out as
+    V4 organically. Locked by tests/features/session_sha256_checksum
+    (4 invariants).
+  * Added: qUncompress length-prefix pre-flight
+    (SessionManager::restore, MAX_UNCOMPRESSED). Was: a crafted
+    file claiming 500 MB uncompressed in qCompress's 4-byte big-
+    endian prefix triggered a 500 MB allocation that the post-hoc
+    raw.size() > 500MB cap could only catch after the damage was
+    done. Now: restore reads the first 4 bytes, reconstructs the
+    big-endian uint32, and rejects any claim above
+    MAX_UNCOMPRESSED (500 MB) BEFORE qUncompress runs — constant-
+    time, no allocator pressure. Short-payload guard
+    (compressed.size() < 4) keeps the same path safe against
+    truncated inputs. Locked by
+    tests/features/session_qcompress_length_guard (4 invariants).
+  * Changed: QDataStream::status() checks inside cell-decode
+    loops (SessionManager::restore readCell / readCombining).
+    Was: the readCell lambda was void; a stream truncated mid-
+    cell still flowed default-constructed QRgb and uint8_t values
+    through QColor::fromRgba etc. into the cell, silently writing
+    uninitialized fg/bg/flags into the grid. Now: readCell
+    returns bool and short-circuits on
+    in.status() != QDataStream::Ok; every call site (scrollback
+    cells, screen cells in range, screen cells skipped on width
+    or height shrink) is guarded by
+    `if (!readCell(...)) return false`. The combining-character
+    helper checks status after each codepoint read. Pre-fix, a
+    partial save (kernel crash, disk-full mid-write, hostile
+    truncation) could materialize as garbage cells in the next
+    restore. Locked by tests/features/session_cell_loop_stream_status
+    (3 invariants).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 14:02:41 +0200
+
 ants-terminal (0.7.29-1) unstable; urgency=medium
 
   * Audit pipeline II — output quality. Three ROADMAP § 0.7.12

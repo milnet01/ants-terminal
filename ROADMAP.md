@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.29 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.30 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1293,16 +1293,40 @@ bundle's theme, fold it in rather than spinning up a new release.
   10000000)` once at engine init and the counter accumulates across
   all handlers in the same VM until the hook fires. PLUGINS.md now
   describes the real per-VM-cumulative contract.
-- 📋 **Session file: SHA-256 payload checksum.** `sessionmanager.cpp`
-  currently has no payload integrity; an attacker with write access to
-  `$XDG_DATA_HOME/ants-terminal/sessions/` can plant a crafted session
-  that feeds arbitrary codepoints/fg/bg/flags into the grid.
-- 📋 **Session file: pre-validate compressed length prefix before
-  `qUncompress`.** A 500 MB claim in the header triggers a 500 MB
-  allocation before the 100 MB cap fires.
-- 📋 **Session file: `QDataStream::status()` checks inside cell loop.**
-  `sessionmanager.cpp:149-163, 176-179` — truncated streams write
-  uninitialized attrs into the grid.
+- ✅ **Session file: SHA-256 payload checksum.** Shipped 0.7.30.
+  `SessionManager::serialize` now wraps the qCompress output in a V4
+  envelope `[SHEC magic 0x53484543][envelope version=1][SHA-256 of
+  payload (32 bytes)][payload length (uint32)][compressed payload]`;
+  `restore` peeks the magic, verifies the hash, and refuses to restore
+  on version mismatch, length disagreement, or hash mismatch. Inner
+  `QDataStream` format unchanged (still V3) — the integrity layer is
+  framing-only. Legacy V1-V3 files continue to load via the magic-peek
+  fall-through; their next save writes them out as V4 organically.
+  Bundled with the qUncompress pre-flight + cell-loop status checks
+  below as the 0.7.30 "Session-file integrity" release. Regression
+  test `tests/features/session_sha256_checksum` (4 invariants).
+- ✅ **Session file: pre-validate compressed length prefix before
+  `qUncompress`.** Shipped 0.7.30. `restore` reads the first 4 bytes
+  of the compressed payload, reconstructs the big-endian uint32, and
+  rejects any claim above `MAX_UNCOMPRESSED` (500 MB) BEFORE
+  `qUncompress` runs — constant-time, no allocator pressure. Short-
+  payload guard (`compressed.size() < 4`) keeps the same path safe
+  against truncated inputs that can't carry a length prefix. The
+  post-decompression cap remains as a defense-in-depth backstop.
+  Regression test `tests/features/session_qcompress_length_guard`
+  (4 invariants).
+- ✅ **Session file: `QDataStream::status()` checks inside cell loop.**
+  Shipped 0.7.30. `readCell` now returns `bool` and short-circuits on
+  `in.status() != QDataStream::Ok`; every call site (scrollback cells,
+  screen cells in range, screen cells skipped on width or height
+  shrink) is guarded by `if (!readCell(...)) return false`. The
+  combining-character helper checks status after each codepoint read,
+  so a stream truncated mid-codepoint can't push default-constructed
+  `0` into the combining map either. Pre-fix, a partial save (kernel
+  crash mid-fsync, disk-full mid-write, hostile sender truncating the
+  envelope payload) could materialize as garbage cells in the next
+  restore — not a crash, but a corrupted scrollback. Regression test
+  `tests/features/session_cell_loop_stream_status` (3 invariants).
 - 📋 **Portal session close.** `GlobalShortcutsPortal` has no destructor
   / `Session::Close` call — session handle leaks for the process
   lifetime of the D-Bus client.

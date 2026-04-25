@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.29 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.30 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1708,6 +1708,70 @@ if(ANTS_TESTS)
     add_test(NAME audit_sarif_suppressions
         COMMAND test_audit_sarif_suppressions)
     set_tests_properties(audit_sarif_suppressions PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # session_sha256_checksum — 0.7.30 fix. Locks the V4 envelope that
+    # wraps qCompress output with [SHEC magic][version][SHA-256][len].
+    # The hash must be computed at serialize time, recomputed at restore
+    # time, and a mismatch must short-circuit the restore. See
+    # tests/features/session_sha256_checksum/spec.md.
+    add_executable(test_session_sha256_checksum
+        tests/features/session_sha256_checksum/test_session_sha256_checksum.cpp
+    )
+    target_compile_options(test_session_sha256_checksum PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_session_sha256_checksum PRIVATE
+        SRC_SESSION_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.cpp"
+        SRC_SESSION_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.h"
+    )
+    add_test(NAME session_sha256_checksum
+        COMMAND test_session_sha256_checksum)
+    set_tests_properties(session_sha256_checksum PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # session_qcompress_length_guard — 0.7.30 fix. Locks the
+    # 4-byte big-endian uncompressed-length pre-flight that runs
+    # BEFORE qUncompress, so a crafted file claiming 500 MB doesn't
+    # trigger a 500 MB allocation that the post-hoc cap could only
+    # catch after the damage was done. See
+    # tests/features/session_qcompress_length_guard/spec.md.
+    add_executable(test_session_qcompress_length_guard
+        tests/features/session_qcompress_length_guard/test_session_qcompress_length_guard.cpp
+    )
+    target_compile_options(test_session_qcompress_length_guard PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_session_qcompress_length_guard PRIVATE
+        SRC_SESSION_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.cpp"
+        SRC_SESSION_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.h"
+    )
+    add_test(NAME session_qcompress_length_guard
+        COMMAND test_session_qcompress_length_guard)
+    set_tests_properties(session_qcompress_length_guard PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # session_cell_loop_stream_status — 0.7.30 fix. Locks the
+    # readCell `-> bool` return + `if (!readCell(...))` short-circuit
+    # at every call site, plus the per-codepoint status check inside
+    # readCombining's inner loop. Pre-fix, a truncated stream
+    # silently wrote uninitialized fg/bg/flags into the grid. See
+    # tests/features/session_cell_loop_stream_status/spec.md.
+    add_executable(test_session_cell_loop_stream_status
+        tests/features/session_cell_loop_stream_status/test_session_cell_loop_stream_status.cpp
+    )
+    target_compile_options(test_session_cell_loop_stream_status PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_session_cell_loop_stream_status PRIVATE
+        SRC_SESSION_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.cpp"
+    )
+    add_test(NAME session_cell_loop_stream_status
+        COMMAND test_session_cell_loop_stream_status)
+    set_tests_properties(session_cell_loop_stream_status PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

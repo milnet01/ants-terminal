@@ -10,6 +10,95 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.30] — 2026-04-25
+
+**Theme:** Session-file integrity. Three ROADMAP § 0.7.12 Tier 2 items
+shipped together from the post-0.7.27 grouping plan, all in
+`sessionmanager.cpp`: a SHA-256 envelope around the qCompress payload,
+a pre-flight on qCompress's 4-byte uncompressed-length prefix, and
+per-cell `QDataStream::status()` checks inside the decode loops.
+
+### Added
+
+- **V4 SHA-256 envelope around session-file payload
+  (`SessionManager::serialize`, `SessionManager::restore`,
+  `SessionManager::ENVELOPE_MAGIC`,
+  `SessionManager::ENVELOPE_VERSION`).** Was: session files at
+  `$XDG_DATA_HOME/ants-terminal/sessions/session_<tabId>.dat` were
+  raw `qCompress` output with no payload integrity. Anyone with
+  write access to that directory (the user's own UID, a compromised
+  local process, a runaway `pip install` post-exec, an npm
+  dependency) could plant a crafted session that fed arbitrary
+  codepoints, fg/bg colors, and attribute flags into the grid on
+  next restore — a render surface, not a sandbox. Now: serialize
+  wraps the qCompress output in a V4 envelope
+  `[SHEC magic (0x53484543)][envelope version=1][SHA-256 of payload
+  (32 bytes)][payload length (uint32)][compressed payload]`; restore
+  peeks the magic, verifies the hash, and refuses to restore on
+  version mismatch, length disagreement, or hash mismatch. Inner
+  `QDataStream` format unchanged (still V3) — the integrity layer is
+  framing-only. Legacy V1-V3 files (no envelope) continue to load
+  via the magic-peek fall-through; their next save writes them out
+  as V4 organically. Regression test
+  `tests/features/session_sha256_checksum` locks four invariants —
+  serialize emits the envelope (INV-1), restore peeks the magic and
+  verifies the hash with a return-false on mismatch (INV-2),
+  ENVELOPE_MAGIC/ENVELOPE_VERSION declared on `SessionManager` with
+  the agreed-upon magic value (INV-3), envelope version remains 1
+  at this milestone (INV-4). Pre-fix source fails eight invariant
+  assertions; post-fix all four pass. ROADMAP § 0.7.12 Tier 2 entry
+  retired.
+
+- **`qUncompress` length-prefix pre-flight
+  (`SessionManager::restore`, `SessionManager::MAX_UNCOMPRESSED`).**
+  Was: a crafted file claiming 500 MB uncompressed in qCompress's
+  4-byte big-endian prefix triggered a 500 MB allocation that the
+  post-hoc `raw.size() > 500MB` cap could only catch *after* the
+  damage was done — and the on-disk payload could be tiny, so the
+  allocation pressure showed up with no concomitant disk-space
+  anomaly. Now: restore reads the first 4 bytes of the compressed
+  payload, reconstructs the big-endian uint32, and rejects any
+  claim above `MAX_UNCOMPRESSED` (500 MB) BEFORE qUncompress runs —
+  constant-time, no allocator pressure. Short-payload guard
+  (`compressed.size() < 4`) keeps the same path safe against
+  truncated inputs that can't carry a length prefix at all. The
+  post-decompression cap remains as a defense-in-depth backstop
+  against payloads that under-claim and over-deliver. Regression
+  test `tests/features/session_qcompress_length_guard` locks four
+  invariants — pre-flight reconstruction precedes qUncompress
+  (INV-1, INV-3), `MAX_UNCOMPRESSED` is the named constant (INV-2),
+  short-payload guard exists (INV-4). Pre-fix source fails four
+  invariant assertions; post-fix all four pass. ROADMAP § 0.7.12
+  Tier 2 entry retired.
+
+### Changed
+
+- **`QDataStream::status()` checks inside cell-decode loops
+  (`SessionManager::restore` `readCell` / `readCombining`).** Was:
+  the `readCell` lambda was void; a stream truncated mid-cell still
+  flowed default-constructed `QRgb` and `uint8_t` values through
+  `QColor::fromRgba` etc. into the cell, silently writing
+  uninitialized fg/bg/flags into the grid. The surrounding loops
+  didn't check per-iteration status either, so the grid kept
+  accepting cells from a stream already at `ReadPastEnd`. Now:
+  `readCell` returns `bool` and short-circuits on `in.status() !=
+  QDataStream::Ok`; every call site (scrollback cells, screen cells
+  in range, screen cells skipped on width shrink, screen cells
+  skipped on height shrink) is guarded by `if (!readCell(...))
+  return false`. The combining-character helper checks status after
+  each codepoint read, so a stream truncated mid-codepoint can't
+  push default-constructed `0` into the combining map either. Pre-
+  fix, a partial save (kernel crash mid-fsync, disk-full mid-write,
+  hostile sender truncating the envelope payload) could materialize
+  as garbage cells in the next restore — not a crash, but a
+  corrupted scrollback. Regression test
+  `tests/features/session_cell_loop_stream_status` locks three
+  invariants — `readCell` returns bool with status check (INV-1),
+  every call site uses `if (!readCell(...))` and at least four
+  sites exist (INV-2), `readCombining` inner codepoint loop checks
+  status (INV-3). Pre-fix source fails three invariant assertions;
+  post-fix all three pass. ROADMAP § 0.7.12 Tier 2 entry retired.
+
 ## [0.7.29] — 2026-04-25
 
 **Theme:** Audit pipeline II — output quality. Three ROADMAP § 0.7.12
