@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.26 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.27 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1114,18 +1114,41 @@ grep rules or individual tickets as they become actionable.
 
 ### 🔒 Tier 2 — hardening sweep
 
-- 📋 **PTY `closefrom` replacement.** `ptyhandler.cpp:84-85` hard-codes
-  `fd=3; fd<1024`. Use `closefrom(3)` on glibc ≥2.34 or iterate
-  `/proc/self/fd`. CWE-403 recurrence on systemd/container default
-  RLIMIT_NOFILE.
+- ✅ **PTY `closefrom` replacement.** Shipped 0.7.27. `Pty::start`
+  now issues `::syscall(SYS_close_range, 3, ~0U, 0)` first
+  (single signal-safe syscall on Linux 5.9+, atomic over the whole
+  range, ignores the soft cap), with a `getrlimit(RLIMIT_NOFILE)`-
+  bounded fallback when the syscall is unavailable. Fallback bound
+  is capped at 65536 to avoid the unbounded-loop pathology on
+  hardened-server profiles where `rlim_cur` is in the hundreds of
+  thousands. The previous hard-coded `fd<1024` loop silently
+  leaked descriptors above 1023 on systemd / container default
+  `RLIMIT_NOFILE` profiles — Qt display socket, D-Bus session,
+  plugin HTTP, Lua eventfds, remote-control IPC. Locked by
+  `tests/features/pty_closefrom` (5 invariants — close_range
+  reference, no fd<1024 loop, RLIMIT_NOFILE consulted, headers
+  included, 65536 sanity cap). Pre-fix source fails 4 of 5;
+  post-fix all 5 pass.
 - ✅ **Process-wide `signal(SIGPIPE, SIG_IGN)` in `main.cpp`.** Shipped
   0.6.28 (bc97485) but never regression-tested. Locked 0.7.17 via
   `tests/features/sigpipe_ignore` (source-grep invariants: the call
   exists, appears before `QApplication` construction, `<csignal>` is
   included).
-- 📋 **PTY write EAGAIN queue.** `ptyhandler.cpp:180-197` currently drops
-  data on partial write. Install a `QSocketNotifier(QSocketNotifier::Write)`
-  and queue the remainder.
+- ✅ **PTY write EAGAIN queue.** Shipped 0.7.27. `Pty::write` now
+  branches on `EAGAIN`/`EWOULDBLOCK` distinctly from fatal errors,
+  copies the unwritten remainder into a new `m_pendingWrite` queue,
+  and enables a `QSocketNotifier(QSocketNotifier::Write)` (created
+  disabled in `Pty::start` because PTY masters are writable nearly
+  continuously). New `Pty::onWriteReady` slot drains the queue when
+  the kernel signals writability and disables the notifier on
+  completion. FIFO ordering preserved — a fresh `write()` while
+  the queue is non-empty appends rather than bypass. Queue capped at
+  4 MiB (`MAX_PENDING_WRITE_BYTES`) so a permanently-stuck slave
+  cannot OOM the GUI process. Locked by
+  `tests/features/pty_write_eagain_queue` (7 invariants — write-
+  notifier created, queue + notifier members declared, slot declared
+  and connected, EAGAIN handled distinctly, 4 MiB cap, FIFO check).
+  Pre-fix source fails 5 of 7; post-fix all 7 pass.
 - 📋 **PTY dtor off-main-thread.** 500 ms `usleep` on GUI at
   `ptyhandler.cpp:37-40` × N splits = N×500 ms freeze on window close.
   Move escalation to a QThread.

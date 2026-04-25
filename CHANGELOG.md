@@ -10,6 +10,79 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.27] — 2026-04-25
+
+**Theme:** PTY-handler hardening sweep. Two ROADMAP § 0.7.12 Tier 2
+items shipped together — child-side FD closure no longer relies on
+a hard-coded `fd<1024` cap, and master-side writes no longer drop
+data on EAGAIN.
+
+### Security
+
+- **PTY child uses `close_range(2)` with RLIMIT_NOFILE-bounded
+  fallback (`Pty::start`).** Was: `for (int fd = 3; fd < 1024;
+  ++fd) ::close(fd)` — silently leaked any inherited FD with index
+  ≥ 1024 into the user's shell on systemd-service / container /
+  hardened-server profiles where `rlim_cur` sits above the
+  hard-coded ceiling. Qt's display socket, D-Bus session
+  connection, plugin HTTP sockets, Lua VM eventfds, and the
+  `remote-control` IPC socket are all valid leak candidates; a
+  leaked AI HTTP socket is a credentials-exfiltration vector,
+  a leaked D-Bus socket lets the shell impersonate the user's
+  desktop session, a leaked remote-control socket is a UID-scope
+  RCE-by-proxy vector. Now: post-fork child branch issues
+  `::syscall(SYS_close_range, 3, ~0U, 0)` first — single
+  signal-safe syscall on Linux 5.9+, atomic over the whole
+  range, ignores the soft cap. If the syscall returns non-zero
+  (kernel < 5.9, missing build-time `SYS_close_range`), the
+  fallback path consults `getrlimit(RLIMIT_NOFILE)` and iterates
+  up to the runtime soft cap, capped at 65536 to bound the
+  worst-case syscall storm on profiles where `rlim_cur` is in
+  the hundreds of thousands. Two new headers
+  (`<sys/resource.h>`, `<sys/syscall.h>`) added to
+  `ptyhandler.cpp`. Regression test
+  `tests/features/pty_closefrom` locks five invariants —
+  `SYS_close_range` referenced inside the post-fork child
+  branch (INV-1), the hard-coded `fd<1024` loop is gone (INV-2),
+  fallback consults `RLIMIT_NOFILE` (INV-3), required headers
+  included (INV-4), fallback bound is capped to 65536 to avoid
+  the unbounded-loop pathology (INV-5). Pre-fix source fails 4
+  of 5; post-fix all 5 pass. CWE-403 reference; ROADMAP § 0.7.12
+  Tier 2 entry retired.
+
+### Fixed
+
+- **`Pty::write` queues on EAGAIN instead of dropping bytes
+  (`Pty::write`, new `Pty::onWriteReady`).** Was: the master FD
+  is non-blocking, so a slow consumer on the slave side could fill
+  the kernel PTY buffer; on EAGAIN the write loop's else-clause
+  broke out with the comment `// EAGAIN or fatal error`, silently
+  dropping the unwritten remainder. Behaviourally invisible during
+  normal interactive use (the kernel buffer drains within
+  microseconds) but provoked by realistic bursts — large pastes,
+  AI-dialog command insertions, plugin-driven keystroke floods,
+  or any write into a slave whose reader is suspended. Now: a new
+  `m_pendingWrite` byte buffer and a `QSocketNotifier(
+  QSocketNotifier::Write)` on `m_masterFd` (initially disabled
+  because PTY masters are writable nearly continuously and a
+  hot notifier would burn CPU). On EAGAIN the unwritten remainder
+  is moved to the queue and the notifier is enabled; when the
+  kernel signals writability, `onWriteReady` drains the queue and
+  disables the notifier on completion. Fresh `write()` calls
+  arriving while the queue is non-empty append rather than
+  bypass, preserving FIFO ordering so newer keystrokes never race
+  ahead of older ones. Queue capped at 4 MiB
+  (`MAX_PENDING_WRITE_BYTES`) — large enough for realistic bursts,
+  small enough that a permanently-stuck slave cannot OOM the GUI
+  process. Regression test `tests/features/pty_write_eagain_queue`
+  locks seven invariants — write-side notifier creation (INV-1),
+  queue member declared (INV-2), notifier pointer member declared
+  (INV-3), `onWriteReady` slot declared and connected (INV-4),
+  EAGAIN handled distinctly inside `Pty::write` (INV-5), 4 MiB
+  cap present (INV-6), direct-write path checks queue first for
+  FIFO ordering (INV-7). Pre-fix source fails 5 of 7; post-fix
+  all 7 pass. ROADMAP § 0.7.12 Tier 2 entry retired.
+
 ## [0.7.26] — 2026-04-25
 
 **Theme:** menubar opacity — the actual root-cause fix. 0.7.25's

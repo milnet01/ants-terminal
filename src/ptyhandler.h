@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QObject>
 #include <QSocketNotifier>
 #include <QSize>
@@ -35,9 +36,17 @@ signals:
 
 private slots:
     void onReadReady();
+    void onWriteReady();
 
 private:
     int m_masterFd = -1;
     pid_t m_childPid = -1;
     QSocketNotifier *m_readNotifier = nullptr;
+    QSocketNotifier *m_writeNotifier = nullptr;
+    // Bytes accepted by ::write() but not yet flushed to the kernel's
+    // PTY buffer (master side returned EAGAIN). Drained by onWriteReady
+    // when the kernel signals writability. See
+    // tests/features/pty_write_eagain_queue/spec.md.
+    QByteArray m_pendingWrite;
+    static constexpr qsizetype MAX_PENDING_WRITE_BYTES = 4 * 1024 * 1024;
 };

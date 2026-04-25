@@ -103,6 +103,19 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.27" date="2026-04-25">
+      <description>
+        <p>PTY-handler hardening sweep. Two 0.7.12 ROADMAP Tier 2 items shipped together — child-side FD closure no longer relies on a hard-coded <code>fd&lt;1024</code> cap, and master-side writes no longer drop data on EAGAIN.</p>
+        <p>Security:</p>
+        <ul>
+          <li><em>PTY child uses <code>close_range(2)</code> with RLIMIT_NOFILE-bounded fallback (<code>Pty::start</code>).</em> Was: <code>for (int fd = 3; fd &lt; 1024; ++fd) ::close(fd)</code> — silently leaked any inherited FD with index ≥ 1024 into the user's shell on systemd-service / container / hardened-server profiles. Qt's display socket, D-Bus session connection, plugin HTTP sockets, Lua VM eventfds, and the remote-control IPC socket are all valid leak candidates; a leaked AI HTTP socket is a credentials-exfiltration vector, a leaked D-Bus socket lets the shell impersonate the user's desktop session, a leaked remote-control socket is a UID-scope RCE-by-proxy vector. Now: post-fork child branch issues <code>::syscall(SYS_close_range, 3, ~0U, 0)</code> first — single signal-safe syscall on Linux 5.9+, atomic over the whole range, ignores the soft cap. Fallback path consults <code>getrlimit(RLIMIT_NOFILE)</code> and iterates up to the runtime soft cap, capped at 65536 to bound the worst-case syscall storm on profiles where <code>rlim_cur</code> is in the hundreds of thousands. Locked by a five-invariant regression test (<code>tests/features/pty_closefrom</code>) that flips red against pre-fix source.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li><em><code>Pty::write</code> queues on EAGAIN instead of dropping bytes (<code>Pty::write</code>, new <code>Pty::onWriteReady</code>).</em> Was: the master FD is non-blocking, so a slow consumer on the slave side could fill the kernel PTY buffer; on EAGAIN the write loop broke out with the comment "EAGAIN or fatal error", silently dropping the unwritten remainder. Provoked by realistic bursts — large pastes, AI-dialog command insertions, plugin-driven keystroke floods, or writes into a slave whose reader is suspended. Now: a new <code>m_pendingWrite</code> byte buffer plus a <code>QSocketNotifier(QSocketNotifier::Write)</code> on the master FD (initially disabled — PTY masters are writable nearly continuously and a hot notifier would burn CPU). On EAGAIN the remainder is queued, the notifier enabled; when the kernel signals writability <code>onWriteReady</code> drains and disables. Fresh <code>write()</code> calls during a non-empty queue append rather than bypass, preserving FIFO ordering. Queue capped at 4 MiB so a permanently-stuck slave cannot OOM the GUI. Locked by a seven-invariant regression test (<code>tests/features/pty_write_eagain_queue</code>) that flips red against pre-fix source.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.26" date="2026-04-25">
       <description>
         <p>Menubar opacity — the actual root-cause fix. 0.7.25's palette + widget-local-QSS belt-and-suspenders did not in fact suspend any belt: the user reported the desktop wallpaper still showing through the menubar strip on KWin + Breeze + Qt 6.</p>

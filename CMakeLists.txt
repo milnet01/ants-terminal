@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.26 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.27 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1541,6 +1541,45 @@ if(ANTS_TESTS)
     )
     add_test(NAME sigpipe_ignore COMMAND test_sigpipe_ignore)
     set_tests_properties(sigpipe_ignore PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # pty_closefrom — 0.7.27 fix. Locks the post-fork close-inherited-FDs
+    # path: must use close_range(2) (Linux 5.9+) with a getrlimit-bounded
+    # fallback, not the prior hard-coded fd<1024 loop that leaked FDs on
+    # systemd / container default RLIMIT_NOFILE profiles. Source-grep
+    # test re-reads src/ptyhandler.cpp. See
+    # tests/features/pty_closefrom/spec.md.
+    add_executable(test_pty_closefrom
+        tests/features/pty_closefrom/test_pty_closefrom.cpp
+    )
+    target_compile_options(test_pty_closefrom PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_pty_closefrom PRIVATE
+        SRC_PTY_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.cpp"
+    )
+    add_test(NAME pty_closefrom COMMAND test_pty_closefrom)
+    set_tests_properties(pty_closefrom PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # pty_write_eagain_queue — 0.7.27 fix. Locks the EAGAIN-queue +
+    # write-side QSocketNotifier path that replaced the silent-drop
+    # break in Pty::write. Source-grep test against ptyhandler.{h,cpp}
+    # — see tests/features/pty_write_eagain_queue/spec.md.
+    add_executable(test_pty_write_eagain_queue
+        tests/features/pty_write_eagain_queue/test_pty_write_eagain_queue.cpp
+    )
+    target_compile_options(test_pty_write_eagain_queue PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_pty_write_eagain_queue PRIVATE
+        SRC_PTY_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_PTY_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.h"
+    )
+    add_test(NAME pty_write_eagain_queue COMMAND test_pty_write_eagain_queue)
+    set_tests_properties(pty_write_eagain_queue PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

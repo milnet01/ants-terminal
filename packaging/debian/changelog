@@ -1,3 +1,44 @@
+ants-terminal (0.7.27-1) unstable; urgency=medium
+
+  * PTY-handler hardening sweep. Two ROADMAP Tier 2 items shipped
+    together — child-side FD closure no longer relies on a hard-
+    coded fd<1024 cap, and master-side writes no longer drop data
+    on EAGAIN.
+  * Security: PTY child uses close_range(2) with
+    RLIMIT_NOFILE-bounded fallback (Pty::start). Was:
+    for (int fd = 3; fd < 1024; ++fd) ::close(fd) — silently leaked
+    any inherited FD with index ≥ 1024 into the user's shell on
+    systemd-service / container / hardened-server profiles. Qt's
+    display socket, D-Bus session connection, plugin HTTP sockets,
+    Lua VM eventfds, and the remote-control IPC socket are all
+    valid leak candidates. Now: post-fork child branch issues
+    ::syscall(SYS_close_range, 3, ~0U, 0) first — single signal-
+    safe syscall on Linux 5.9+, atomic over the whole range,
+    ignores the soft cap. Fallback path consults
+    getrlimit(RLIMIT_NOFILE) and iterates up to the runtime soft
+    cap, capped at 65536. Locked by a five-invariant regression
+    test (tests/features/pty_closefrom) that flips red against
+    pre-fix source.
+  * Fixed: Pty::write queues on EAGAIN instead of dropping bytes
+    (Pty::write, new Pty::onWriteReady). Was: the master FD is
+    non-blocking, so a slow consumer on the slave side could fill
+    the kernel PTY buffer; on EAGAIN the write loop broke out with
+    the comment "EAGAIN or fatal error", silently dropping the
+    unwritten remainder. Provoked by realistic bursts — large
+    pastes, AI-dialog command insertions, plugin-driven keystroke
+    floods. Now: a new m_pendingWrite byte buffer plus a
+    QSocketNotifier(QSocketNotifier::Write) on the master FD
+    (initially disabled). On EAGAIN the remainder is queued, the
+    notifier enabled; when the kernel signals writability
+    onWriteReady drains and disables. Fresh write() calls during
+    a non-empty queue append rather than bypass, preserving FIFO
+    ordering. Queue capped at 4 MiB so a permanently-stuck slave
+    cannot OOM the GUI. Locked by a seven-invariant regression
+    test (tests/features/pty_write_eagain_queue) that flips red
+    against pre-fix source.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 08:10:26 +0200
+
 ants-terminal (0.7.26-1) unstable; urgency=medium
 
   * Menubar opacity — the actual root-cause fix. 0.7.25's palette +
