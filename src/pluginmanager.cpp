@@ -106,16 +106,34 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
 
     if (m_pluginDir.isEmpty()) return;
 
-    QDir dir(m_pluginDir);
+    // 0.7.33: anchor to the canonical path so a symlink pointing the
+    // plugin directory at /etc, ~/.ssh, or anywhere else can't trick
+    // the scan into loading code from outside the user's plugin tree.
+    // canonicalFilePath returns "" if the path doesn't exist or
+    // resolves outside readable scope; fall back to the literal path
+    // in that case (the dir.exists() check below handles the
+    // non-existent case identically pre- and post-canonicalization).
+    QString canonicalRoot =
+        QFileInfo(m_pluginDir).canonicalFilePath();
+    if (canonicalRoot.isEmpty()) canonicalRoot = m_pluginDir;
+    const QString canonicalRootPrefix = canonicalRoot
+        + QStringLiteral("/");
+
+    QDir dir(canonicalRoot);
     if (!dir.exists()) return;
 
     if (devMode()) {
         emit logMessage(QString("[plugin-dev] scanning %1 (enabled=%2)")
-                        .arg(m_pluginDir, enabledList.join(',')));
+                        .arg(canonicalRoot, enabledList.join(',')));
     }
 
-    // Scan for plugin directories containing init.lua
-    QStringList dirs = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    // Scan for plugin directories containing init.lua. NoSymLinks
+    // rejects sub-entries whose name resolves through a symlink
+    // (the per-entry canonical-path check below catches more exotic
+    // cases — bind mounts, hardlinks under different names — but
+    // NoSymLinks is the cheap first-pass filter).
+    QStringList dirs = dir.entryList(
+        QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
 
     // Reset watcher (removes old paths)
     if (devMode() && m_watcher) {
@@ -124,28 +142,66 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
     }
 
     for (const QString &pluginDirName : dirs) {
-        QString pluginPath = m_pluginDir + "/" + pluginDirName;
-        QString initLua = pluginPath + "/init.lua";
+        QString pluginPath = canonicalRoot + "/" + pluginDirName;
+
+        // 0.7.33: confirm the entry's canonical path is anchored
+        // INSIDE the canonical plugin root. NoSymLinks above filters
+        // most escape patterns; this check picks up the residue
+        // (entry that exists at scan time but resolves outside via a
+        // bind mount, a chain through a non-symlink the kernel has
+        // remapped, etc.). Reject silently — a plugin tree shouldn't
+        // contain anything that needs canonicalization beyond a
+        // single component.
+        const QString canonicalPlugin =
+            QFileInfo(pluginPath).canonicalFilePath();
+        if (canonicalPlugin.isEmpty() ||
+            !(canonicalPlugin == canonicalRoot ||
+              canonicalPlugin.startsWith(canonicalRootPrefix))) {
+            qWarning("Ants: plugin entry %s resolves outside the plugin "
+                     "root (%s) — skipped",
+                     qUtf8Printable(pluginPath),
+                     qUtf8Printable(canonicalRoot));
+            continue;
+        }
+
+        QString initLua = canonicalPlugin + "/init.lua";
 
         if (!QFile::exists(initLua)) continue;
 
         PluginInfo info;
-        info.path = pluginPath;
+        info.path = canonicalPlugin;
         info.name = pluginDirName;
 
         // Read optional manifest.json
-        QString manifestPath = pluginPath + "/manifest.json";
+        QString manifestPath = canonicalPlugin + "/manifest.json";
         if (QFile::exists(manifestPath)) {
             QFile f(manifestPath);
             if (f.open(QIODevice::ReadOnly)) {
-                QJsonParseError err{};
-                QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
-                if (doc.isObject()) {
-                    parseManifestInto(info, doc.object());
-                } else {
-                    qWarning("Ants: plugin manifest %s failed to parse: %s (byte offset %d)",
+                // 0.7.33: cap manifest size before reading. Pre-fix
+                // `f.readAll()` allocated whatever the on-disk file
+                // claimed it had — a 4 GB manifest would OOM the
+                // process before QJsonDocument::fromJson got a chance
+                // to reject it. 1 MiB is ~250 plugins worth of
+                // permissions/description text; legitimate manifests
+                // are <10 KiB.
+                constexpr qint64 kMaxManifestBytes = 1024 * 1024;  // 1 MiB
+                if (f.size() > kMaxManifestBytes) {
+                    qWarning("Ants: plugin manifest %s exceeds %lld-byte cap "
+                             "(%lld bytes on disk) — skipped",
                              qUtf8Printable(manifestPath),
-                             qUtf8Printable(err.errorString()), err.offset);
+                             static_cast<long long>(kMaxManifestBytes),
+                             static_cast<long long>(f.size()));
+                } else {
+                    QJsonParseError err{};
+                    QJsonDocument doc = QJsonDocument::fromJson(
+                        f.read(kMaxManifestBytes), &err);
+                    if (doc.isObject()) {
+                        parseManifestInto(info, doc.object());
+                    } else {
+                        qWarning("Ants: plugin manifest %s failed to parse: %s (byte offset %d)",
+                                 qUtf8Printable(manifestPath),
+                                 qUtf8Printable(err.errorString()), err.offset);
+                    }
                 }
             }
         }
@@ -159,7 +215,7 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
                 // Watch init.lua + manifest.json for edits
                 m_watcher->addPath(initLua);
                 if (QFile::exists(manifestPath)) m_watcher->addPath(manifestPath);
-                m_watcher->addPath(pluginPath);
+                m_watcher->addPath(canonicalPlugin);
             }
         }
     }

@@ -39,6 +39,7 @@ class GlobalShortcutsPortal : public QObject {
     Q_OBJECT
 public:
     explicit GlobalShortcutsPortal(QObject *parent = nullptr);
+    ~GlobalShortcutsPortal() override;
 
     // Returns true iff the xdg-desktop-portal service is currently
     // registered on the session bus. Cheap synchronous query — safe to

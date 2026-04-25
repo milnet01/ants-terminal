@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.32 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.33 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -979,7 +979,7 @@ gets one CHANGELOG section and one drift cycle.
 | **0.7.30** | Session-file integrity | SHA-256 payload checksum · pre-validate compressed length prefix before `qUncompress` · `QDataStream::status()` checks inside cell loop | `sessionmanager.cpp` |
 | **0.7.31** ✅ | Persistence integrity (cross-file) | silent-data-loss on parse failure (settings-dialog mirror) · `setOwnerOnlyPerms` ordering bugs · concurrent-writer guard on `config.json` + `settings.local.json` · `secureio.h` split | `config.cpp`, `sessionmanager.cpp`, `claudeallowlist.cpp`, `debuglog.cpp`, `settingsdialog.cpp`, `secureio.h` |
 | **0.7.32** ✅ | UX bundle (Settings + Review Changes + Tab UX) | dependency-UI enable gating · Cancel rollback for Profiles tab · Restore Defaults per-tab · Review Changes branch awareness · Review Changes live updates (QFileSystemWatcher + Refresh) · always-visible tab × glyph (user feedback) | `settingsdialog.cpp`, `mainwindow.cpp` |
-| **0.7.33** | Lifecycle / cleanup | PTY dtor off-main-thread (last PTY Tier 2 item) · Portal session close · Lua manifest size cap + canonical plugin path | `ptyhandler.cpp`, `globalshortcutsportal.cpp`, `pluginmanager.cpp` |
+| **0.7.33** ✅ | Lifecycle / cleanup | PTY dtor off-main-thread (last PTY Tier 2 item) · Portal session close · Lua manifest size cap + canonical plugin path | `ptyhandler.cpp`, `globalshortcutsportal.cpp`, `pluginmanager.cpp` |
 | **0.7.34** | Terminal correctness | origin-mode translate on CUP / DECSC save origin (real tmux/screen breakage) | `terminalgrid.cpp` |
 
 **Standalone items (don't bundle):**
@@ -1203,9 +1203,20 @@ bundle's theme, fold it in rather than spinning up a new release.
   notifier created, queue + notifier members declared, slot declared
   and connected, EAGAIN handled distinctly, 4 MiB cap, FIFO check).
   Pre-fix source fails 5 of 7; post-fix all 7 pass.
-- 📋 **PTY dtor off-main-thread.** 500 ms `usleep` on GUI at
-  `ptyhandler.cpp:37-40` × N splits = N×500 ms freeze on window close.
-  Move escalation to a QThread.
+- ✅ **PTY dtor off-main-thread.** Shipped 0.7.33. The
+  `Pty::~Pty` destructor now spawns a detached `std::thread` for
+  the SIGTERM/SIGKILL escalation, with the cheap pre-escalation
+  reap (SIGHUP + close fd + `waitpid(WNOHANG)`) staying on the
+  calling thread so well-behaved children don't pay a thread
+  spawn. Pid captured by value; `try { ... }.detach()` wrapped
+  in a `catch (const std::system_error &)` that falls back to
+  the synchronous escalation when thread creation fails. Pre-fix
+  N split panes closing together blocked the GUI N×500 ms;
+  post-fix it's microseconds per pane regardless of how
+  stubborn the children are. Locked by
+  `tests/features/pty_dtor_off_main_thread/` — 11 invariants on
+  `<thread>` include, dtor body shape, lambda capture list, and
+  fallback retention.
 - ✅ **RIS (`ESC c`) preserves all integration callbacks.** Shipped
   0.7.17. The reset handler now stashes + restores 8 callbacks
   (`response`, `bell`, `notify`, `lineCompletion`, `progress`,
@@ -1285,10 +1296,20 @@ bundle's theme, fold it in rather than spinning up a new release.
   adding a second rejection gate at the Lua loader level for
   bytecode chunks (the first gate is the 0x1b-first-byte peek,
   already in place). Locked by `lua_sandbox_hardening` I1 + I4.
-- 📋 **Lua: cap manifest size + canonical plugin path.**
-  `pluginmanager.cpp:138-143` reads entire `manifest.json` (OOM
-  surface); `scanAndLoad` uses `QDir::entryList(QDir::Dirs)` without
-  `NoSymLinks` or `canonicalFilePath()` anchor.
+- ✅ **Lua: cap manifest size + canonical plugin path.** Shipped
+  0.7.33. `PluginManager::scanAndLoad` now reads at most 1 MiB of
+  `manifest.json` via `f.read(kMaxManifestBytes)` (was unbounded
+  `f.readAll()` — a multi-GB manifest would OOM-kill the process
+  before QJsonDocument could reject it). Plugin scan anchors on
+  `QFileInfo(m_pluginDir).canonicalFilePath()` and passes
+  `QDir::NoSymLinks` to `entryList`; per-entry it computes the
+  canonical path of each candidate plugin dir and rejects any
+  whose canonicalized path doesn't equal the canonical root or
+  start with `canonicalRoot + "/"`. Closes the symlink-escape
+  shape where a hostile plugin tarball's `evil -> /etc/cron.daily`
+  could redirect the loader. Locked by
+  `tests/features/plugin_manifest_safety/` — 12 invariants on the
+  cap, NoSymLinks, canonical anchor, per-entry containment.
 - ✅ **Lua: clear hook before `lua_close` in `shutdown()`.** Shipped
   0.7.21. `LuaEngine::shutdown` calls `lua_sethook(m_state,
   nullptr, 0, 0)` before `lua_close(m_state)` — closes the UAF
@@ -1337,9 +1358,19 @@ bundle's theme, fold it in rather than spinning up a new release.
   envelope payload) could materialize as garbage cells in the next
   restore — not a crash, but a corrupted scrollback. Regression test
   `tests/features/session_cell_loop_stream_status` (3 invariants).
-- 📋 **Portal session close.** `GlobalShortcutsPortal` has no destructor
-  / `Session::Close` call — session handle leaks for the process
-  lifetime of the D-Bus client.
+- ✅ **Portal session close.** Shipped 0.7.33.
+  `GlobalShortcutsPortal` now has a destructor that issues an
+  asynchronous `org.freedesktop.portal.Session.Close` call
+  against `m_sessionHandle` (when non-empty) before the QObject
+  unwinds. New `kSessionIface` constant alongside the existing
+  service/path/interface constants in the anonymous namespace.
+  Pre-fix `xdg-desktop-portal` accumulated one orphan session
+  per Ants invocation that crashed / was SIGKILLed, released
+  only when the portal service itself restarted. Locked by
+  `tests/features/portal_session_close/` — 8 invariants on
+  header dtor declaration, kSessionIface constant, empty-handle
+  early return, and the asyncCall(createMethodCall(...,
+  "Close", ...)) dispatch.
 - ✅ **Cached dialog + stale-widget-state on external config reload.**
   Shipped 0.7.20. `MainWindow::onConfigFileChanged` now closes the
   cached `m_settingsDialog` (if visible), schedules it via

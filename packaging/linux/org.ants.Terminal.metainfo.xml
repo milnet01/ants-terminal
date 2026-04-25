@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.33" date="2026-04-25">
+      <description>
+        <p>Lifecycle / cleanup. Three ROADMAP items addressing GUI-thread blocking on shutdown, an xdg-desktop-portal session leak, and two latent issues (OOM surface + symlink escape) in the Lua plugin loader.</p>
+        <p>Changed:</p>
+        <ul>
+          <li><em>PTY destructor escalation runs off the main thread.</em> Was: SIGTERM-then-busy-wait-then-SIGKILL ran on the GUI thread; N split panes closing together blocked window close N × 500 ms. Now: the SIGTERM/SIGKILL escalation moves to a detached <code>std::thread</code> capturing the pid by value. Cheap pre-escalation reap (SIGHUP + close master fd + WNOHANG) stays inline so well-behaved children don't pay a thread spawn. Synchronous fallback retained for the rare case of thread-creation failure under <code>ulimit -u</code> pressure. Locked by <code>tests/features/pty_dtor_off_main_thread/</code> with 11 invariants.</li>
+          <li><em>GlobalShortcutsPortal closes its session on destruction.</em> Was: no destructor at all — the session handle leaked for the lifetime of the D-Bus client. xdg-desktop-portal accumulated one orphan session per Ants invocation that crashed or was SIGKILLed before implicit cleanup. Now: destructor issues an asynchronous <code>org.freedesktop.portal.Session.Close</code> call against the session handle when non-empty. Locked by <code>tests/features/portal_session_close/</code> with 8 invariants.</li>
+          <li><em>Plugin manifest cap + canonical plugin path.</em> Was: <code>f.readAll()</code> on <code>manifest.json</code> was unbounded (multi-GB manifest would OOM before JSON parsing); plugin scan used <code>QDir::Dirs</code> without <code>NoSymLinks</code> or canonical anchoring (a tarball symlink could redirect <code>init.lua</code> loading to <code>/etc/cron.daily</code>). Now: 1 MiB manifest cap via bounded <code>f.read</code>; scan anchors on <code>QFileInfo::canonicalFilePath</code>, passes <code>QDir::NoSymLinks</code>, and per-entry verifies canonical containment inside the plugin root. Locked by <code>tests/features/plugin_manifest_safety/</code> with 12 invariants.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.32" date="2026-04-25">
       <description>
         <p>Dialog UX. Three Settings dialog ROADMAP items (dependency-UI gating, Cancel rollback for Profiles, Restore Defaults per-tab) plus a user feedback fix for the Review Changes dialog (2026-04-25): pre-fix it only surfaced current-branch state and missed work living on other branches.</p>

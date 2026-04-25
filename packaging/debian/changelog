@@ -1,3 +1,40 @@
+ants-terminal (0.7.33-1) unstable; urgency=medium
+
+  * Lifecycle / cleanup. Three ROADMAP items addressing GUI-
+    thread blocking on shutdown, an xdg-desktop-portal session
+    leak, and two latent issues (OOM surface + symlink escape)
+    in the Lua plugin loader.
+  * Changed: PTY destructor escalation runs off the main thread.
+    Pre-fix SIGTERM-then-busy-wait-then-SIGKILL ran on the GUI
+    thread; N split panes closing together blocked window close
+    N × 500 ms. Now: escalation moves to a detached std::thread
+    capturing the pid by value. Cheap pre-escalation reap
+    (SIGHUP + close master fd + WNOHANG) stays inline so
+    well-behaved children don't pay a thread spawn. Synchronous
+    fallback retained for thread-creation failure under
+    ulimit -u pressure. Locked by
+    tests/features/pty_dtor_off_main_thread (11 invariants).
+  * Changed: GlobalShortcutsPortal closes its session on
+    destruction. Pre-fix the class had no destructor — session
+    handle leaked for the lifetime of the D-Bus client.
+    xdg-desktop-portal accumulated one orphan session per Ants
+    invocation that crashed or was SIGKILLed. Now: destructor
+    issues an asynchronous org.freedesktop.portal.Session.Close
+    call against the session handle when non-empty. Locked by
+    tests/features/portal_session_close (8 invariants).
+  * Changed: Plugin manifest cap + canonical plugin path. Was:
+    unbounded f.readAll() on manifest.json (multi-GB manifest
+    would OOM before JSON parsing); plugin scan used QDir::Dirs
+    without NoSymLinks or canonical anchoring (tarball symlink
+    could redirect init.lua loading outside the plugin tree).
+    Now: 1 MiB manifest cap via bounded f.read; scan anchors on
+    QFileInfo::canonicalFilePath, passes QDir::NoSymLinks, and
+    per-entry verifies canonical containment inside the plugin
+    root. Locked by tests/features/plugin_manifest_safety
+    (12 invariants).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 18:23:00 +0200
+
 ants-terminal (0.7.32-1) unstable; urgency=medium
 
   * Dialog UX. Three Settings dialog ROADMAP items

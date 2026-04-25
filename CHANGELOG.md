@@ -10,6 +10,81 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.33] — 2026-04-25
+
+**Theme:** Lifecycle / cleanup. Three ROADMAP items addressing
+GUI-thread blocking on shutdown, an xdg-desktop-portal session
+leak, and two latent issues (OOM surface + symlink escape) in the
+Lua plugin loader.
+
+### Changed
+
+- **PTY destructor escalation runs off the main thread
+  (`Pty::~Pty`).** Was: SIGTERM-then-busy-wait-then-SIGKILL ran on
+  the GUI thread; N split panes closing together blocked the
+  window close N × 500 ms. KWin would throw a "window not
+  responding" hint at four splits. Now: the destructor still
+  does the cheap pre-escalation reap (SIGHUP + close master fd +
+  `waitpid(WNOHANG)`) inline — most shells exit on SIGHUP in
+  microseconds. If the cheap reap doesn't take, the
+  SIGTERM/SIGKILL escalation moves to a detached `std::thread`
+  capturing the pid by value (no `this` reference can outlive
+  the destructor). The thread creation is wrapped in a
+  `try { ... }.detach() } catch (const std::system_error &)`
+  that falls back to the synchronous escalation when thread
+  creation fails (rare — `ulimit -u` pressure at exit). Locked
+  by `tests/features/pty_dtor_off_main_thread/` — 11 invariants
+  on `<thread>` include, lambda capture list (rejects `[this]`
+  and `[&]`), `.detach()` call, fallback retention, and the
+  pre-escalation cheap reap remaining inline.
+
+- **GlobalShortcutsPortal closes its session on destruction
+  (`GlobalShortcutsPortal::~GlobalShortcutsPortal`).** Was: no
+  destructor at all — the session handle returned by
+  `CreateSession` leaked for the lifetime of the D-Bus client.
+  `xdg-desktop-portal` accumulated one orphan session per Ants
+  invocation that crashed or was SIGKILLed before the QObject
+  parent-tree cleanup could implicitly close the bus connection;
+  visible via `busctl --user introspect
+  org.freedesktop.portal.Desktop ...`. Now: the destructor
+  issues an asynchronous
+  `org.freedesktop.portal.Session.Close` call against
+  `m_sessionHandle` when non-empty (early-returns on empty
+  handle so X11 / GNOME / no-portal paths don't crash Qt's
+  D-Bus marshaller). New `kSessionIface` constant in the
+  anonymous namespace alongside the existing
+  service/path/interface constants. Locked by
+  `tests/features/portal_session_close/` — 8 invariants on
+  header dtor declaration with `override`, `kSessionIface`
+  constant, empty-handle early return, and the
+  `asyncCall(createMethodCall(..., kSessionIface, "Close"))`
+  dispatch.
+
+- **Plugin manifest cap + canonical plugin path
+  (`PluginManager::scanAndLoad`).** Two latent issues addressed
+  together. **Manifest cap:** `f.readAll()` was unbounded — a
+  multi-GB `manifest.json` (corrupt disk, malicious tarball)
+  would allocate that much RAM before `QJsonDocument::fromJson`
+  got a chance to reject it. Now: `f.read(kMaxManifestBytes)`
+  with `kMaxManifestBytes = 1024 * 1024` (1 MiB ≈ 250 plugins
+  worth of permission/description text — real manifests are
+  <10 KiB, so the cap never bites legitimate content). Files
+  larger than the cap log a warning and skip without parsing.
+  **Canonical plugin path:** the scan now anchors on
+  `QFileInfo(m_pluginDir).canonicalFilePath()`, passes
+  `QDir::NoSymLinks` to `entryList` (cheap first-pass filter),
+  and per-entry verifies the resolved path is anchored inside
+  the canonical root via
+  `startsWith(canonicalRoot + "/")`. Closes the symlink-escape
+  shape where a hostile plugin tarball containing
+  `evil -> /etc/cron.daily` could trick the loader into
+  attempting `init.lua` from outside the user's plugin tree.
+  Locked by `tests/features/plugin_manifest_safety/` — 12
+  invariants on the cap (named constant + value + bounded read
+  + no readAll-feeding-fromJson regression), NoSymLinks flag,
+  canonical anchor, per-entry containment check, and the
+  reject-warning message text.
+
 ## [0.7.32] — 2026-04-25
 
 **Theme:** Dialog UX. Three bundle items from the Settings dialog

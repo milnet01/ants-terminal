@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.32 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.33 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1905,6 +1905,64 @@ if(ANTS_TESTS)
     add_test(NAME settings_restore_defaults
         COMMAND test_settings_restore_defaults)
     set_tests_properties(settings_restore_defaults PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # pty_dtor_off_main_thread — 0.7.33 fix. Locks the destructor's
+    # detached std::thread for SIGTERM/SIGKILL escalation. Pre-fix
+    # window-close froze the GUI N×500ms when N split panes closed
+    # together. See tests/features/pty_dtor_off_main_thread/spec.md.
+    add_executable(test_pty_dtor_off_main_thread
+        tests/features/pty_dtor_off_main_thread/test_pty_dtor_off_main_thread.cpp
+    )
+    target_compile_options(test_pty_dtor_off_main_thread PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_pty_dtor_off_main_thread PRIVATE
+        SRC_PTYHANDLER_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.cpp"
+    )
+    add_test(NAME pty_dtor_off_main_thread
+        COMMAND test_pty_dtor_off_main_thread)
+    set_tests_properties(pty_dtor_off_main_thread PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # portal_session_close — 0.7.33 fix. Locks the dtor + Session.Close
+    # async dispatch on the active portal session handle. Pre-fix the
+    # session leaked for the lifetime of xdg-desktop-portal. See
+    # tests/features/portal_session_close/spec.md.
+    add_executable(test_portal_session_close
+        tests/features/portal_session_close/test_portal_session_close.cpp
+    )
+    target_compile_options(test_portal_session_close PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_portal_session_close PRIVATE
+        SRC_PORTAL_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/globalshortcutsportal.h"
+        SRC_PORTAL_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/globalshortcutsportal.cpp"
+    )
+    add_test(NAME portal_session_close
+        COMMAND test_portal_session_close)
+    set_tests_properties(portal_session_close PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # plugin_manifest_safety — 0.7.33 fix. Locks the 1 MiB manifest
+    # cap (OOM surface), QDir::NoSymLinks, canonical plugin root +
+    # per-entry canonical-containment check (symlink escape). See
+    # tests/features/plugin_manifest_safety/spec.md.
+    add_executable(test_plugin_manifest_safety
+        tests/features/plugin_manifest_safety/test_plugin_manifest_safety.cpp
+    )
+    target_compile_options(test_plugin_manifest_safety PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_plugin_manifest_safety PRIVATE
+        SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/pluginmanager.cpp"
+    )
+    add_test(NAME plugin_manifest_safety
+        COMMAND test_plugin_manifest_safety)
+    set_tests_properties(plugin_manifest_safety PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

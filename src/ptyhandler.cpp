@@ -12,6 +12,7 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
+#include <thread>      // 0.7.33: detached worker for SIGTERM/SIGKILL escalation
 #include <unistd.h>
 #include <vector>
 #include <pwd.h>
@@ -34,19 +35,53 @@ Pty::~Pty() {
         m_masterFd = -1;
     }
     if (m_childPid > 0) {
-        // Reap child — try non-blocking first, then escalate
+        // Quick non-blocking reap — most children exit on SIGHUP
+        // (closing the master fd via the close() above raises SIGHUP
+        // on the slave session, and the shell almost always honors
+        // it within microseconds).
         int status = 0;
         if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
-            // Child still running after SIGHUP — send SIGTERM and wait briefly
-            ::kill(m_childPid, SIGTERM);
-            for (int i = 0; i < 50; ++i) {
-                if (::waitpid(m_childPid, &status, WNOHANG) != 0) break;
-                ::usleep(10000); // 10ms
-            }
-            // Last resort — SIGKILL
-            if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
-                ::kill(m_childPid, SIGKILL);
-                ::waitpid(m_childPid, &status, 0);
+            // Child still running. 0.7.33: move SIGTERM/SIGKILL
+            // escalation to a detached worker thread so window-close
+            // doesn't freeze the GUI N×500ms when N split panes
+            // close together. The Pty object is being destroyed, so
+            // we capture only the pid by value — no `this` reference
+            // can outlive the destructor.
+            //
+            // Detached: the worker reaps the child and exits on its
+            // own. If the application itself exits before the worker
+            // finishes, the kernel reaps both the orphan child (which
+            // gets adopted by init) and the worker thread — no leak,
+            // just an interrupted escalation that init handles
+            // identically.
+            const pid_t pid = m_childPid;
+            try {
+                std::thread([pid]() {
+                    int st = 0;
+                    ::kill(pid, SIGTERM);
+                    for (int i = 0; i < 50; ++i) {
+                        if (::waitpid(pid, &st, WNOHANG) != 0) return;
+                        ::usleep(10000);  // 10 ms × 50 = 500 ms total
+                    }
+                    if (::waitpid(pid, &st, WNOHANG) == 0) {
+                        ::kill(pid, SIGKILL);
+                        ::waitpid(pid, &st, 0);
+                    }
+                }).detach();
+            } catch (const std::system_error &) {
+                // Thread creation failed (resource exhaustion at exit
+                // time — rare but possible under ulimit -u pressure).
+                // Fall back to the synchronous escalation: better a
+                // 500 ms freeze than a leaked child / zombie.
+                ::kill(pid, SIGTERM);
+                for (int i = 0; i < 50; ++i) {
+                    if (::waitpid(pid, &status, WNOHANG) != 0) break;
+                    ::usleep(10000);
+                }
+                if (::waitpid(pid, &status, WNOHANG) == 0) {
+                    ::kill(pid, SIGKILL);
+                    ::waitpid(pid, &status, 0);
+                }
             }
         }
         m_childPid = -1;
