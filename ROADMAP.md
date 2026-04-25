@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.30 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.31 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -977,7 +977,7 @@ gets one CHANGELOG section and one drift cycle.
 | **0.7.28** | Audit pipeline I — process-side robustness | per-tool timeout override · incremental QProcess output drain · distinguish segfault from "no findings" | `auditdialog.cpp` |
 | **0.7.29** | Audit pipeline II — output quality | SARIF `suppressions[]` array emission · regex-DoS watchdog on user `drop_if_matches` · widen `computeDedup` to 96 bits | `auditdialog.cpp` |
 | **0.7.30** | Session-file integrity | SHA-256 payload checksum · pre-validate compressed length prefix before `qUncompress` · `QDataStream::status()` checks inside cell loop | `sessionmanager.cpp` |
-| **0.7.31** | Persistence integrity (cross-file) | silent-data-loss on parse failure (settings-dialog mirror) · `setOwnerOnlyPerms` ordering bugs · concurrent-writer guard on `config.json` + `settings.local.json` · `secureio.h` split | `config.cpp`, `sessionmanager.cpp`, `claudeallowlist.cpp`, `debuglog.cpp`, `settingsdialog.cpp`, `secureio.h` |
+| **0.7.31** ✅ | Persistence integrity (cross-file) | silent-data-loss on parse failure (settings-dialog mirror) · `setOwnerOnlyPerms` ordering bugs · concurrent-writer guard on `config.json` + `settings.local.json` · `secureio.h` split | `config.cpp`, `sessionmanager.cpp`, `claudeallowlist.cpp`, `debuglog.cpp`, `settingsdialog.cpp`, `secureio.h` |
 | **0.7.32** | Settings dialog UX | dependency-UI enable gating · Cancel rollback for Profiles tab · Restore Defaults per-tab | `settingsdialog.cpp` |
 | **0.7.33** | Lifecycle / cleanup | PTY dtor off-main-thread (last PTY Tier 2 item) · Portal session close · Lua manifest size cap + canonical plugin path | `ptyhandler.cpp`, `globalshortcutsportal.cpp`, `pluginmanager.cpp` |
 | **0.7.34** | Terminal correctness | origin-mode translate on CUP / DECSC save origin (real tmux/screen breakage) | `terminalgrid.cpp` |
@@ -1008,19 +1008,29 @@ bundle's theme, fold it in rather than spinning up a new release.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
-- 📋 **Silent-data-loss on parse failure.** `config.cpp:26-33`,
-  `claudeallowlist.cpp:241-281`, `sessionmanager.cpp` V2+ unknown-field
-  path all follow the same shape: read → parse → on failure `root` stays
-  default-constructed → next save overwrites user data with defaults.
-  Fix class-wide: **refuse to save when the on-disk file existed and
-  failed to parse**, surface an error dialog, offer a `.bak` recovery.
+- ✅ **Silent-data-loss on parse failure.** Shipped 0.7.12 in
+  `config.cpp` + `claudeallowlist.cpp` + `settingsdialog.cpp`
+  (refuse-to-save + `rotateCorruptFileAside` shared helper).
+  Behavioural test coverage extended to the allowlist + settings-
+  dialog mirror sites in 0.7.31 via
+  `tests/features/settings_parse_failure_mirror/`. Cross-cutting
+  pattern fully retired.
 - 📋 **`/tmp/*.js` TOCTOU via predictable filenames.** KWin script paths
   at `xcbpositiontracker.cpp:34`, `mainwindow.cpp:2558, 2620`. Replace
   with `QTemporaryFile` (O_EXCL, unpredictable name).
-- 📋 **`setOwnerOnlyPerms` ordering bugs.** `sessionmanager.cpp:269`
-  (perms before write), `claudeallowlist.cpp:273-281` (pre-commit on a
-  temp fd — rename may drop perms), `debuglog.cpp:72` (no perms at all
-  on a log that holds PTY + HMAC + network material).
+- ✅ **`setOwnerOnlyPerms` ordering bugs.** Shipped 0.7.31. Every
+  persistence site that did fd-only chmod now also re-chmods the
+  final inode after rename / commit succeeds — `Config::save`,
+  `SessionManager::saveSession`, `SessionManager::saveTabOrder`,
+  `SettingsDialog::installClaudeHooks`,
+  `SettingsDialog::installClaudeGitContextHook`. The rename-fallback
+  path on FAT/exFAT/SMB/NFS/copy-unlink filesystems would otherwise
+  leak ai_api_key (config.json), bearer tokens (settings.json), or
+  paste-buffer scrollback (session_*.dat) at 0644. `debuglog.cpp`
+  was already covered in 0.7.20. `claudeallowlist.cpp` was already
+  covered in 0.7.17. Locked by
+  `tests/features/persistence_post_rename_chmod/` — 10 invariants
+  spanning the three remaining persistence files.
 - ✅ **"Documented feature, dead code" drift** — 5 distinct cases caught
   by 4 different reviewers, now all resolved:
   - `gpu_rendering` / partial-update spec: spec.md rewritten in
@@ -1536,16 +1546,26 @@ remainder, captured so they don't drop on the floor.
   at the "short first line with space is NOT a lang hint" and "short
   first line with tab is NOT a lang hint" cases. Roadmap bullet was
   stale; marking now.
-- 📋 **Allowlist + settings-dialog feature-test analogs.** The
-  parse-failure guard now lives at three sites (Config,
-  ClaudeAllowlist saveSettings, SettingsDialog Install-hooks) but
-  only Config has a behavioral test. Mirror for the other two.
+- ✅ **Allowlist + settings-dialog feature-test analogs.** Shipped
+  0.7.31 via `tests/features/settings_parse_failure_mirror/` (8
+  invariants: rotation call site, return-false-after-rotation
+  gating, open-failure branch distinct from parse-failure branch,
+  comment anchors). Closes the test-coverage hole — the code was
+  already correct (0.7.12), but only Config had behavioural test
+  coverage.
 - ✅ **Spec.md timestamp format drift.** Spec already uses
   `<ms_timestamp>` (line 51), matching the code. Roadmap bullet
   was stale.
-- 📋 **`secureio.h` split.** Growing to straddle two concerns
-  (perms + backup rotation). Before a third helper lands, split into
-  `secureio.h` (perms + future zeroize) + `configbackup.h` (rotation).
+- ✅ **`secureio.h` split.** Shipped 0.7.31. `secureio.h` is now
+  perms-only (`setOwnerOnlyPerms` overloads). `configbackup.h` owns
+  `rotateCorruptFileAside` (silent-data-loss recovery, was 0.7.12)
+  + the new `ConfigWriteLock` (cooperative POSIX flock(2) RAII guard,
+  added this release). Split happened *before* the third helper
+  landed — the trigger was wanting to add ConfigWriteLock, which
+  is even less about perms than rotation. Locked by
+  `tests/features/secureio_configbackup_split/` — 13 invariants
+  on file-content boundaries, non-copyable lock, and downstream
+  caller include sets.
 - ✅ **Plan-mode regression-test tightening.** Shipped 0.7.15.
   `runToggleFreeTailPreservesState` now attaches a
   `QSignalSpy(&ci, &ClaudeIntegration::planModeChanged)` and asserts

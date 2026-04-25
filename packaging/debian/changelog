@@ -1,3 +1,53 @@
+ants-terminal (0.7.31-1) unstable; urgency=medium
+
+  * Persistence integrity (cross-file). Four items addressing the
+    silent-data-loss / permission-drift / concurrent-writer surfaces
+    that span Config, ClaudeAllowlist, SessionManager, and
+    SettingsDialog. Splits secureio.h into secureio.h (perms) +
+    configbackup.h (rotation + cooperative write lock).
+  * Added: ConfigWriteLock cooperative write lock for shared
+    config files (src/configbackup.h). Was: two simultaneously-
+    running Ants instances saving the same
+    ~/.config/ants-terminal/config.json raced over <path>.tmp +
+    rename(2) — both writers truncated the shared tmp, partial
+    bytes interleaved on the same inode, and last-rename-wins
+    silently dropped one process's keystrokes / settings / profile
+    / AI key. Same shape for ~/.claude/settings.json where
+    Allowlist + Install-hooks + git-context-installer all read-
+    modify-write with no serialization. Now: an RAII guard wraps
+    POSIX flock(2) on a sibling <path>.lock file with a 5-second
+    poll deadline (100 × 50 ms), advisory so cooperating callers
+    serialize while non-cooperating editors (vim, jq) bypass by
+    design. Config::save, ClaudeAllowlistDialog::saveSettings,
+    SettingsDialog::installClaudeHooks, and
+    SettingsDialog::installClaudeGitContextHook now construct
+    ConfigWriteLock with an acquired() guard. Locked by
+    tests/features/concurrent_writer_lock (12 invariants).
+  * Added: Belt-and-suspenders post-rename setOwnerOnlyPerms at
+    every persistence site (Config::save, SessionManager::save-
+    Session, saveTabOrder, SettingsDialog hook installers). Was:
+    each site set 0600 on the temp fd before write but relied on
+    rename(2) preserving perms across the swap. ext4/xfs/btrfs
+    honor that; FAT/exFAT, some SMB/NFS servers, and Qt's
+    copy+unlink fallback do not. Files containing ai_api_key,
+    bearer tokens, or paste-buffer scrollback content could land
+    0644 on those filesystems and leak to every UID on the host.
+    Now: each site re-chmods the final inode after rename /
+    commit() returns success. Locked by
+    tests/features/persistence_post_rename_chmod (10 invariants).
+  * Added: secureio.h / configbackup.h split. secureio.h is now
+    perms-only. configbackup.h is the new home for
+    rotateCorruptFileAside (was 0.7.12) and the new
+    ConfigWriteLock. Locked by
+    tests/features/secureio_configbackup_split (13 invariants).
+  * Changed: Behavioural test coverage extended to the parse-
+    failure mirror sites in ClaudeAllowlist + SettingsDialog. The
+    0.7.12 refuse pattern shipped in three sites but only Config
+    had a regression test. Locked by
+    tests/features/settings_parse_failure_mirror (8 invariants).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 25 Apr 2026 14:43:32 +0200
+
 ants-terminal (0.7.30-1) unstable; urgency=medium
 
   * Session-file integrity. Three ROADMAP § 0.7.12 Tier 2 items

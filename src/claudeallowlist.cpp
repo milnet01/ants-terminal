@@ -1,5 +1,6 @@
 #include "claudeallowlist.h"
 
+#include "configbackup.h"
 #include "debuglog.h"
 #include "secureio.h"
 
@@ -303,6 +304,20 @@ bool ClaudeAllowlistDialog::saveSettings() {
     // Create .claude directory if needed
     if (!QDir().mkpath(QFileInfo(m_settingsPath).absolutePath()))
         return false;
+
+    // Serialize against concurrent writers. settings.local.json is the
+    // same path that SettingsDialog::installClaudeHooks /
+    // installClaudeGitContextHook write into; an Allowlist save racing
+    // a hook install previously could lose either the permissions
+    // block or the hooks block via QSaveFile last-rename-wins.
+    ConfigWriteLock writeLock(m_settingsPath);
+    if (!writeLock.acquired()) {
+        ANTS_LOG(DebugLog::Claude,
+                 "allowlist saveSettings: could not acquire write lock on %s "
+                 "within 5 s — refusing to save (another writer is active)",
+                 qUtf8Printable(m_settingsPath));
+        return false;
+    }
 
     // Atomic write with 0600 permissions.
     //

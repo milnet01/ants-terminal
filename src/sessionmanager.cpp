@@ -386,7 +386,17 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
             // crash is a worse outcome than the one-syscall cost.
             ::fsync(file.handle());
             file.close();
-            QFile::rename(tmpPath, path);
+            if (QFile::rename(tmpPath, path)) {
+                // Post-rename chmod: rename(2) preserves perms on
+                // most local FS, but FAT/exFAT/SMB/NFS edge cases or
+                // Qt's copy+unlink fallback can drop the 0600 set on
+                // the temp fd. Session blobs may hold scrollback
+                // content (passwords mistyped at the prompt, ssh
+                // command history, paste buffers); re-chmod the
+                // final inode. See sessionmanager.cpp:269 / ROADMAP
+                // 0.7.31 for the bundle context.
+                setOwnerOnlyPerms(path);
+            }
         } else {
             file.close();
             QFile::remove(tmpPath);
@@ -441,7 +451,10 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
         // is missing or empty after a crash, saved session blobs orphan.
         ::fsync(file.handle());
         file.close();
-        QFile::rename(tmpPath, path);
+        if (QFile::rename(tmpPath, path)) {
+            // Post-rename chmod — same rationale as saveSession().
+            setOwnerOnlyPerms(path);
+        }
     }
     ::umask(oldMask);
 }

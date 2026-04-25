@@ -1,5 +1,6 @@
 #include "settingsdialog.h"
 #include "config.h"
+#include "configbackup.h"
 #include "configpaths.h"
 #include "globalshortcutsportal.h"
 #include "secureio.h"
@@ -1101,14 +1102,32 @@ void SettingsDialog::installClaudeHooks() {
     }
     root["hooks"] = hooks;
 
+    // Serialize against concurrent writers (Ants Allowlist, another Ants
+    // Install-hooks invocation, jq -i piping by the user). Last-rename-
+    // wins on QSaveFile commit() would otherwise drop a sibling writer's
+    // permissions block.
+    ConfigWriteLock writeLock(settingsPath);
+    if (!writeLock.acquired()) {
+        QMessageBox::warning(this, "Install hooks",
+            QString("Another writer holds the lock on %1 — try again in a moment.")
+                .arg(settingsPath));
+        return;
+    }
+
     QSaveFile settingsOut(settingsPath);
     if (!settingsOut.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         QMessageBox::warning(this, "Install hooks",
             QString("Could not write %1").arg(settingsPath));
         return;
     }
+    setOwnerOnlyPerms(settingsOut);  // 0600 on temp fd
     settingsOut.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    settingsOut.commit();
+    if (!settingsOut.commit()) {
+        QMessageBox::warning(this, "Install hooks",
+            QString("Commit failed for %1").arg(settingsPath));
+        return;
+    }
+    setOwnerOnlyPerms(settingsPath);  // belt-and-suspenders post-rename
 
     refreshClaudeHooksStatus();
     QMessageBox::information(this, "Install hooks",
@@ -1317,14 +1336,28 @@ void SettingsDialog::installClaudeGitContextHook() {
         hooks["UserPromptSubmit"] = existing;
         root["hooks"] = hooks;
 
+        ConfigWriteLock writeLock(settingsPath);
+        if (!writeLock.acquired()) {
+            QMessageBox::warning(this, "Install git-context hook",
+                QString("Another writer holds the lock on %1 — try again in a moment.")
+                    .arg(settingsPath));
+            return;
+        }
+
         QSaveFile settingsOut(settingsPath);
         if (!settingsOut.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             QMessageBox::warning(this, "Install git-context hook",
                 QString("Could not write %1").arg(settingsPath));
             return;
         }
+        setOwnerOnlyPerms(settingsOut);
         settingsOut.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-        settingsOut.commit();
+        if (!settingsOut.commit()) {
+            QMessageBox::warning(this, "Install git-context hook",
+                QString("Commit failed for %1").arg(settingsPath));
+            return;
+        }
+        setOwnerOnlyPerms(settingsPath);
     }
 
     refreshClaudeGitContextStatus();

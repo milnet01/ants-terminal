@@ -1,10 +1,7 @@
 #pragma once
 
-#include <QDateTime>
-#include <QDir>
 #include <QFile>
 #include <QFileDevice>
-#include <QFileInfo>
 #include <QString>
 
 // Apply owner-only (0600) permissions to a file or local socket. The literal
@@ -14,6 +11,12 @@
 // silently widening access to a file that may hold an API key. Routing every
 // permission set through these named helpers makes the 0600 intent the only
 // way to call it.
+//
+// 0.7.31: split into two headers. Perms helpers stay here; corrupt-file
+// rotation + cooperative write-lock moved to configbackup.h. Both files
+// are header-only and inline; downstream call sites pick the include
+// they need rather than dragging the whole sweep along.
+//
 // ants-audit: disable-file=setPermissions_pair_no_helper
 // ^ this header is the helper: the raw 0600 bitmask is the definition, not
 //   a call site. The rule nudges all *other* call sites toward these helpers.
@@ -25,57 +28,4 @@ inline bool setOwnerOnlyPerms(QFileDevice &f) {
 inline bool setOwnerOnlyPerms(const QString &path) {
     return QFile::setPermissions(path,
         QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-}
-
-// Rotate a corrupt JSON-ish file aside so the next save() doesn't
-// clobber it. Used by Config, Claude allowlist, and SessionManager —
-// the 0.7.12 /indie-review sweep flagged the same silent-data-loss
-// pattern (parse failure → next save overwrites user bytes) in all
-// three, and the three reviewers asked for a shared helper rather
-// than three copies of the same ~30-line block.
-//
-// Behavior:
-//   - Builds `<path>.corrupt-<ms_timestamp>` and tries QFile::copy.
-//   - On collision (QFile::copy refuses to overwrite) retries with
-//     `-1`, `-2`, ... up to 10 suffixes. Races beyond that are
-//     pathological (same-millisecond multi-launch) and fall through
-//     to the failure path.
-//   - On success, prunes older siblings: any `<basename>.corrupt-*`
-//     files beyond the newest 5 are removed. Keeps recovery material
-//     available while preventing unbounded growth when a user keeps
-//     launching Ants with a broken config.
-//   - Returns the chosen backup path on success, empty QString on
-//     failure (disk full, perms, 10 ms collisions).
-//
-// Callers log success/failure using their own DebugLog category.
-inline QString rotateCorruptFileAside(const QString &path) {
-    const qint64 stamp = QDateTime::currentMSecsSinceEpoch();
-    QString chosen;
-    for (int attempt = 0; attempt < 10; ++attempt) {
-        QString candidate = path + QStringLiteral(".corrupt-")
-                          + QString::number(stamp);
-        if (attempt > 0) {
-            candidate += QStringLiteral("-") + QString::number(attempt);
-        }
-        if (QFile::copy(path, candidate)) {
-            chosen = candidate;
-            break;
-        }
-    }
-    if (chosen.isEmpty()) return QString();
-
-    // Prune older siblings beyond the newest 5. Siblings live in the
-    // same directory and share the `<basename>.corrupt-*` prefix.
-    const QFileInfo info(path);
-    QDir dir = info.absoluteDir();
-    const QString prefix = info.fileName() + QStringLiteral(".corrupt-");
-    QFileInfoList sibs = dir.entryInfoList(
-        {prefix + QStringLiteral("*")},
-        QDir::Files | QDir::NoSymLinks,
-        QDir::Time);  // newest first
-    constexpr int kKeep = 5;
-    for (int i = kKeep; i < sibs.size(); ++i) {
-        QFile::remove(sibs.at(i).absoluteFilePath());
-    }
-    return chosen;
 }

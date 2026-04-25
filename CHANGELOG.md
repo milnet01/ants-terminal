@@ -10,6 +10,98 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.31] — 2026-04-25
+
+**Theme:** Persistence integrity (cross-file). Four items from the
+post-0.7.30 grouping plan, addressing the silent-data-loss /
+permission-drift / concurrent-writer surfaces that span Config,
+ClaudeAllowlist, SessionManager, and SettingsDialog. Splits the
+growing `secureio.h` into `secureio.h` (perms) + `configbackup.h`
+(rotation + cooperative write lock) before a third helper landed.
+
+### Added
+
+- **`ConfigWriteLock` cooperative write lock for shared config files
+  (`src/configbackup.h`).** Was: two simultaneously-running Ants
+  instances saving the same `~/.config/ants-terminal/config.json`
+  raced over `<path>.tmp` + `rename(2)` — both writers truncated the
+  shared tmp, partial bytes interleaved on the same inode, and
+  last-rename-wins silently dropped one process's keystrokes /
+  settings / profile / AI key. Same shape for `~/.claude/settings.json`
+  where Allowlist + Install-hooks + git-context-installer all
+  read-modify-write with no serialization. Now: an RAII guard wraps
+  POSIX `flock(2)` on a sibling `<path>.lock` file with a 5-second
+  poll deadline (100 × 50 ms), advisory so cooperating callers
+  serialize while non-cooperating editors (vim, jq) bypass by
+  design. `Config::save`, `ClaudeAllowlistDialog::saveSettings`,
+  `SettingsDialog::installClaudeHooks`, and
+  `SettingsDialog::installClaudeGitContextHook` now construct
+  `ConfigWriteLock writeLock(path)` with an `acquired()` guard
+  before the write block; failure to acquire logs and returns
+  rather than risking the data race. Locked by
+  `tests/features/concurrent_writer_lock/` (5 runtime invariants
+  via fork(2) so flock semantics are honestly tested across
+  processes, plus 7 source-grep invariants on each save site).
+  Pre-fix source fails 7; post-fix all 12 pass.
+
+- **Belt-and-suspenders post-rename `setOwnerOnlyPerms` at every
+  persistence site (`Config::save`, `SessionManager::saveSession`,
+  `SessionManager::saveTabOrder`, `SettingsDialog::installClaudeHooks`,
+  `SettingsDialog::installClaudeGitContextHook`).** Was: each site
+  set 0600 on the temp fd before write but relied on `rename(2)`
+  preserving perms across the swap. ext4/xfs/btrfs honor that, but
+  FAT/exFAT on removable media (no POSIX bits at all), some
+  SMB/NFS servers (server-side rename applies server umask), and
+  Qt's copy+unlink fallback (cross-device rename, exotic mounts —
+  copy creates the destination with the *process* umask) do not.
+  Files containing `ai_api_key` (config.json), Claude Code bearer
+  tokens (settings.json), or paste-buffer scrollback content
+  (session_*.dat) could land 0644 on those filesystems and leak to
+  every UID on the host. Now: each site re-chmods the **final
+  inode** after `rename`/`commit()` returns success — idempotent on
+  POSIX filesystems, essential elsewhere. Locked by
+  `tests/features/persistence_post_rename_chmod/` (10 source-grep
+  invariants spanning config.cpp / sessionmanager.cpp /
+  settingsdialog.cpp). Pre-fix source fails 6; post-fix all 10
+  pass.
+
+- **`secureio.h` / `configbackup.h` split.** `secureio.h` is now
+  perms-only — `setOwnerOnlyPerms(QFileDevice&)` and
+  `setOwnerOnlyPerms(const QString&)`, the original 0600-bitmask
+  helpers that ~12 callers reach for. `configbackup.h` is the new
+  home for `rotateCorruptFileAside` (silent-data-loss recovery,
+  added 0.7.12) and the new `ConfigWriteLock` (concurrent-writer
+  guard, added this release). The split preempts a third-helper
+  cliff: the file was straddling perms + recovery + lock concerns
+  and a fourth would have made the include cost-of-business across
+  the codebase. Each downstream caller now picks the include it
+  actually needs (`config.cpp`, `claudeallowlist.cpp`,
+  `settingsdialog.cpp` pull both; sites that only set perms keep
+  their `secureio.h` include). Locked by
+  `tests/features/secureio_configbackup_split/` (13 invariants:
+  file-content boundaries, non-copyable lock, every caller's
+  include set). Pre-fix source fails 4; post-fix all 13 pass.
+
+### Changed
+
+- **Behavioural test coverage extended to the parse-failure mirror
+  sites in ClaudeAllowlist + SettingsDialog.** The 0.7.12
+  silent-data-loss-on-parse-failure refuse pattern shipped in
+  three sites — `Config::load`, `ClaudeAllowlistDialog::saveSettings`,
+  and `SettingsDialog::install{ClaudeHooks,ClaudeGitContextHook}` —
+  but only Config had a regression test
+  (`tests/features/config_parse_failure_guard/`). The other two
+  were locked only by adjacent grep-style asserts inside other
+  feature tests. Now they have their own dedicated test:
+  `tests/features/settings_parse_failure_mirror/` (8 invariants:
+  rotation call site, return-false-after-rotation gating,
+  open-failure branch distinct from parse-failure branch, comment
+  anchors explaining the clobber-risk reasoning). Closes the
+  ROADMAP "Allowlist + settings-dialog feature-test analogs" item.
+  Pre-fix source already passes — these tests lock previously
+  shipped behaviour against future regressions, not catch a new
+  bug.
+
 ## [0.7.30] — 2026-04-25
 
 **Theme:** Session-file integrity. Three ROADMAP § 0.7.12 Tier 2 items

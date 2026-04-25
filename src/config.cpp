@@ -1,5 +1,6 @@
 #include "config.h"
 
+#include "configbackup.h"
 #include "debuglog.h"
 #include "secureio.h"
 
@@ -106,6 +107,20 @@ void Config::save() {
     QString path = configPath();
     QString tmpPath = path + QStringLiteral(".tmp");
 
+    // Serialize against concurrent Ants instances writing the same
+    // config.json. Without this, two simultaneous saves race over the
+    // shared `.tmp` file and last-rename-wins silently drops one
+    // process's keystrokes/settings/profile changes. flock(2) on a
+    // sibling .lock file is advisory but covers cooperating callers.
+    ConfigWriteLock writeLock(path);
+    if (!writeLock.acquired()) {
+        ANTS_LOG(DebugLog::Config,
+                 "save() skipped — could not acquire write lock on %s "
+                 "within 5 s (another Ants process likely mid-save)",
+                 qUtf8Printable(path));
+        return;
+    }
+
     // Set restrictive umask before creating file to avoid brief world-readable window
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
@@ -148,6 +163,14 @@ void Config::save() {
                          qUtf8Printable(path),
                          errno, std::strerror(errno));
                 QFile::remove(tmpPath);
+            } else {
+                // Belt-and-suspenders: rename(2) preserves perms on
+                // most local filesystems, but FAT/exFAT/SMB/NFS edges
+                // and Qt's copy+unlink fallback path can drop the
+                // 0600 set on the temp fd. config.json may hold
+                // ai_api_key — re-chmod the final inode after the
+                // atomic rename succeeds.
+                setOwnerOnlyPerms(path);
             }
         } else {
             file.close();

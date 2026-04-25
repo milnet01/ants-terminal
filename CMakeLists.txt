@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.30 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.31 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1772,6 +1772,98 @@ if(ANTS_TESTS)
     add_test(NAME session_cell_loop_stream_status
         COMMAND test_session_cell_loop_stream_status)
     set_tests_properties(session_cell_loop_stream_status PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # persistence_post_rename_chmod — 0.7.31 fix. Locks the
+    # belt-and-suspenders post-rename chmod at every save site that
+    # writes a file containing API keys / scrollback / bearer tokens.
+    # Pre-fix, fd-only chmod relied on rename(2) preserving perms,
+    # which fails on FAT/exFAT/SMB/NFS/copy-unlink fallback. See
+    # tests/features/persistence_post_rename_chmod/spec.md.
+    add_executable(test_persistence_post_rename_chmod
+        tests/features/persistence_post_rename_chmod/test_persistence_post_rename_chmod.cpp
+    )
+    target_compile_options(test_persistence_post_rename_chmod PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_persistence_post_rename_chmod PRIVATE
+        SRC_CONFIG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
+        SRC_SESSIONMANAGER_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.cpp"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+    )
+    add_test(NAME persistence_post_rename_chmod
+        COMMAND test_persistence_post_rename_chmod)
+    set_tests_properties(persistence_post_rename_chmod PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # concurrent_writer_lock — 0.7.31 fix. Locks the ConfigWriteLock
+    # RAII guard around config.json + ~/.claude/settings.json saves.
+    # Two simultaneously-running Ants instances writing the same
+    # config previously raced on rename(2); the lock serializes them.
+    # See tests/features/concurrent_writer_lock/spec.md.
+    add_executable(test_concurrent_writer_lock
+        tests/features/concurrent_writer_lock/test_concurrent_writer_lock.cpp
+    )
+    target_compile_options(test_concurrent_writer_lock PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_concurrent_writer_lock PRIVATE
+        SRC_CONFIG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
+        SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeallowlist.cpp"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+    )
+    target_include_directories(test_concurrent_writer_lock PRIVATE src)
+    target_link_libraries(test_concurrent_writer_lock PRIVATE Qt6::Core)
+    add_test(NAME concurrent_writer_lock
+        COMMAND test_concurrent_writer_lock)
+    set_tests_properties(concurrent_writer_lock PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 15)
+
+    # secureio_configbackup_split — 0.7.31 refactor. Locks the split
+    # of secureio.h into perms-only and configbackup.h owning rotation
+    # + ConfigWriteLock. Asserts no helper drifts back into the wrong
+    # header and every caller pulls the include it actually needs.
+    # See tests/features/secureio_configbackup_split/spec.md.
+    add_executable(test_secureio_configbackup_split
+        tests/features/secureio_configbackup_split/test_secureio_configbackup_split.cpp
+    )
+    target_compile_options(test_secureio_configbackup_split PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_secureio_configbackup_split PRIVATE
+        SRC_SECUREIO_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/secureio.h"
+        SRC_CONFIGBACKUP_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/configbackup.h"
+        SRC_CONFIG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
+        SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeallowlist.cpp"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+    )
+    add_test(NAME secureio_configbackup_split
+        COMMAND test_secureio_configbackup_split)
+    set_tests_properties(secureio_configbackup_split PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # settings_parse_failure_mirror — 0.7.31 test-coverage fill-in.
+    # Mirrors the existing config_parse_failure_guard test for the
+    # other two parse-failure refuse sites: ClaudeAllowlist::saveSettings
+    # and SettingsDialog's two Claude-hook installers. See
+    # tests/features/settings_parse_failure_mirror/spec.md.
+    add_executable(test_settings_parse_failure_mirror
+        tests/features/settings_parse_failure_mirror/test_settings_parse_failure_mirror.cpp
+    )
+    target_compile_options(test_settings_parse_failure_mirror PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_settings_parse_failure_mirror PRIVATE
+        SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeallowlist.cpp"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+    )
+    add_test(NAME settings_parse_failure_mirror
+        COMMAND test_settings_parse_failure_mirror)
+    set_tests_properties(settings_parse_failure_mirror PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
