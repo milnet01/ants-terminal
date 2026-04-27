@@ -2154,6 +2154,212 @@ interpretation. Closes the self-graded-homework loop.
 
 ---
 
+## 0.7.50 — independent-review sweep (target: 2026-05)
+
+**Theme:** fold-in of the 2026-04-27 multi-agent code review (post-0.7.49).
+Eleven independent `general-purpose` subagents dispatched in parallel —
+one per subsystem — each briefed only with source paths + contract docs +
+external standards (ECMA-48, xterm ctlseqs, POSIX `forkpty(3)`, Lua 5.4
+manual, OWASP LLM Top 10, SARIF v2.1.0, RFC 8259, freedesktop GlobalShortcuts
+portal, WCAG 2.2). Agents had **zero context on implementation reasoning** —
+code reviewed against contracts, not intent.
+
+The sweep produced 14 CRITICAL/HIGH cross-cutting findings plus ~40 medium
+hardening items. The cross-cutting themes are the gold signal — patterns
+flagged by ≥2 independent reviewers regardless of which lane:
+
+### 🔥 Cross-cutting themes (≥2 reviewers)
+
+- 📋 **Atomic-write / data-loss drift.** The `QFile::rename` anti-pattern
+  Config retired once is unfixed in `SessionManager::saveSession` +
+  `saveTabOrder` and in the `auditdialog.cpp` SARIF/HTML export.
+  Lanes: Config, Audit.
+- 📋 **frameless+translucent `exec()` regression class is back.**
+  0.7.49 retired this for both About dialogs; the 0.7.47
+  update-confirmation `QMessageBox box(this); box.exec()` reintroduces
+  the same shape on the same MainWindow. Lanes: MainWindow, AI/dialogs.
+- 📋 **Missing argv `--` separator / quote-aware tokenisation.**
+  `git blame -- f.file` separator missing, ssh `extraArgs` quote-bypass
+  on `-o` allowlist, `openFileAtPath` doesn't `--`-separate captured
+  paths starting with `-`. Lanes: Audit, AI/dialogs, TerminalWidget.
+- 📋 **Permission allow-list / intersect missing.** Lua plugin
+  manifest accepts any permission string, prompt result not
+  intersected with requested set. SSH `-o` allowlist same shape.
+  Lanes: Lua, AI/dialogs.
+- 📋 **Color-only state encoding (WCAG 1.4.1).** Per-tab Claude state
+  dot, status-bar Claude label, chrome QLabels — no shape variation,
+  no `accessibleDescription`. Lanes: Chrome widgets, Claude integration,
+  MainWindow.
+- 📋 **Unbounded reads / OOM corner cases.** `extractCwdFromTranscript`
+  unbounded `readLine`, AI SSE parser blocks event loop on big chunks,
+  Roadmap dialog reads entire file unbounded. Lanes: Claude integration,
+  AI/dialogs.
+- 📋 **2 s status-timer redundant work.** 0.7.49 bg-tasks fix forces
+  full 16 MiB transcript reparse every tick on a quiet session;
+  `refreshReviewButton` spawns `git status` `QProcess` every 2 s with
+  no in-flight de-dup. Lanes: Claude integration, MainWindow.
+- 📋 **No clipboard-write redaction helper.** 7th-audit memory flagged
+  this; TerminalWidget has 12 raw `setText` sites. OSC 52 callback is
+  the headline exfil vector. Lanes: TerminalWidget.
+
+### 🔒 Tier 1 — ship-this-week (security / data-loss / shipped-broken)
+
+- 📋 **CRITICAL — Update-confirmation dialog same KDE/KWin frameless
+  regression.** `mainwindow.cpp:5264-5280` `QMessageBox box(this);
+  box.exec();` — convert to heap+show+activateWindow mirroring the
+  0.7.49 About-dialog pattern. User clicks Update, nothing happens,
+  in-place updater never fires.
+- 📋 **CRITICAL — SessionManager silent data loss.**
+  `sessionmanager.cpp:389, 454` `QFile::rename` refuses to overwrite
+  existing destination — every save after the first leaves `.dat.tmp`
+  accumulating; user's scrollback never updates. Switch to
+  `std::rename` mirroring `config.cpp:139-174`. Wrap both in
+  `ConfigWriteLock`; add corrupt-file rotation on `loadSession`
+  failure.
+- 📋 **CRITICAL — SARIF/HTML export not atomic + no 0600 perms.**
+  `auditdialog.cpp:3530-3554` uses raw `QFile::Truncate`; reports
+  may contain leaked secrets surfaced by `secrets_scan`/gitleaks.
+  Switch to `QSaveFile` + `setOwnerOnlyPerms`.
+- 📋 **HIGH — `new-tab` / `launch` IPC commands bypass `send-text` C0
+  filter.** `remotecontrol.cpp:401, 422`. Same-UID attacker reaches
+  keystroke-injection / OSC-52 primitives via a different command.
+  Route both through `filterControlChars` with the same `raw: true`
+  opt-out.
+- 📋 **HIGH — OSC 8 `file://` scheme in allowlist.**
+  `terminalgrid.cpp:898`. `xdg-open file:///foo.desktop` is an exfil +
+  RCE-adjacent vector. Drop `file:` (and `ftp:`).
+- 📋 **HIGH — ESC-in-OSC dispatches trailing byte as EscDispatch.**
+  `vtparser.cpp:403`. Crafted OSC ending in `ESC c` triggers RIS as
+  side-effect (full terminal reset). Add `OscStringEsc` peek state
+  matching xterm's parser.
+- 📋 **HIGH — X10 mouse byte > 0xDF corrupts UTF-8 stream.**
+  `terminalwidget.cpp:2668-2670` and `:1801-1809` (wheel). 224+col
+  terminals on UTF-8-reading apps mis-frame. Clamp `col`/`row` to 223
+  in X10 path.
+- 📋 **HIGH — Lua plugin permission allow-list + intersect missing.**
+  `pluginmanager.cpp:87, 243`. Manifest accepts any string into
+  `info.permissions`; prompt return not validated against the
+  requested set. Add allow-list against `{"clipboard.write",
+  "settings"}`; intersect prompt result.
+- 📋 **HIGH — `extractCwdFromTranscript` unbounded `readLine`.**
+  `claudeintegration.cpp:981`. One-line fix: pass `64*1024` max-size
+  to `readLine`. Removes 1 GiB single-line OOM corner case.
+- 📋 **HIGH — ssh `extraArgs` quote-bypass on `-o` allowlist.**
+  `sshdialog.cpp:112`. `extraArgs.split(\\s+)` doesn't handle quoted
+  `-o "ProxyCommand …"`; option allowlist silently bypassed. Replace
+  with `QProcess::splitCommand`.
+
+### 🔧 Tier 2 — hardening sweep
+
+- 📋 **Multi-row OSC 8 hyperlink span miscoded.** `terminalgrid.cpp:867`
+  — wrapped hyperlinks store `endCol < startCol` because `m_cursorCol`
+  is on the current row, not `m_hyperlinkStartRow`. Emit per-row spans
+  on each newline / wrap during the active hyperlink.
+- 📋 **ITU/ECMA-48 colon-RGB form `38:2::r:g:b` drops a channel.**
+  `vtparser.cpp:357` + `terminalgrid.cpp:1438`. Standards-compliant
+  form has empty colorspace slot before R; current parser shifts
+  the read window wrong. Reshape parser to track sub-parameter
+  sub-arrays per param, not flat vector + parallel boolean.
+- 📋 **Image-paste `m_imagePasteDir` not path-validated; filename
+  injected to PTY.** `terminalwidget.cpp:1439`. Hard-pin to
+  user-home or canonicalize-and-reject-non-writable; use UUID4
+  suffix to prevent millisecond-collision clobbers.
+- 📋 **`openFileAtPath` argv injection.** `terminalwidget.cpp:3286`
+  — paths starting with `-` reach VS Code/etc as flags. Prepend
+  `--` to args and `./` to any captured path that starts with `-`.
+- 📋 **Paste preview splits on LF only — CR-only payload spoofs
+  the dialog.** `terminalwidget.cpp:2059, 2138`. Normalize CR→LF
+  for preview only; keep original bytes for the actual write.
+- 📋 **`git blame` missing `--` argv terminator.**
+  `auditdialog.cpp:2488`. `f.file` is scanner-controlled.
+- 📋 **comment-suppress regex breaks on hyphenated rule IDs.**
+  `auditdialog.cpp:2268`. Terminator class includes `-` which
+  collides with rule-id charset; `// nosemgrep: bash-c-non-literal`
+  matches only `bash`. Replace terminator with `[)\]]|$|--`.
+- 📋 **Trend snapshot corrupted by UI filter clicks.**
+  `auditdialog.cpp:4449`. `appendSnapshot` runs inside
+  `renderResults` which is called on every severity-pill toggle.
+  Move to single completion point in `runNextCheck`.
+- 📋 **bg-tasks: split liveness from full reparse.**
+  `claudebgtasks.cpp` + `mainwindow.cpp:4920`. Add
+  `sweepLiveness()` that walks `m_tasks` mtimes only; let the
+  file watcher continue calling full `rescan`. Removes 16 MiB
+  reparse per 2 s tick.
+- 📋 **WCAG 1.4.1 — Claude state dot is colour-only.**
+  `coloredtabbar.cpp:130-151`. Add per-tab `setAccessibleDescription`
+  wired to indicator changes, OR a shape-differentiated rendering.
+- 📋 **A11y — status-bar QLabels missing `setAccessibleName`.**
+  `mainwindow.cpp` ~542+. Branch chip, repo-visibility, process,
+  Claude state — screen readers announce raw text or Powerline
+  glyph codepoint.
+- 📋 **`ClaudeBgTaskTracker::tasks()` returns by value on hot path.**
+  `claudebgtasks.h:56`. Cppcheck-flagged `returnByReference`. Hot
+  read on the new 2 s status-timer path.
+- 📋 **Endpoint scheme allowlist on `ai_endpoint`.** `aidialog.cpp:225`.
+  Reject anything other than `http`/`https` up-front.
+- 📋 **AI SSE parser cap iterations + re-arm via `singleShot(0)`.**
+  `aidialog.cpp:249`. Drains parseable head on overflow instead of
+  clearing the whole buffer.
+- 📋 **Bracketed-paste 8-bit C1 form `\x9B[200~` not stripped.**
+  `terminalwidget.cpp:2171`. 8-bit CSI is a valid terminator
+  the grid parses; sanitizer only matches 7-bit.
+- 📋 **Plan-mode reset on tab switch loses latched state.**
+  `claudeintegration.cpp:68`. If the new tab's tail window
+  doesn't include the plan-mode toggle event, `m_planMode`
+  silently stays false. Re-derive from latched per-tab state.
+- 📋 **`ToggleSwitch` accessibility plumbing missing.**
+  `toggleswitch.{h,cpp}`. No accessible name, no
+  `QAccessibleEvent(StateChanged)` after `setChecked`.
+- 📋 **`extraArgs` parsing for IPv6 in Quick Connect.**
+  `sshdialog.cpp:325-329`. `[2001:db8::1]:2222` parses host as
+  `[2001` and port as 0.
+
+### 🏗 Tier 3 — structural
+
+- 📋 **`mainwindow.cpp` decomposition (6162 LoC).** Extract
+  `RepoStatusController` (git/origin/visibility/update helpers,
+  ~280 LoC), diff-viewer dialog (`showDiffViewer` and friends,
+  ~430 LoC), Claude permission-prompt slot (~160 LoC of nested
+  lambdas). ~860 LoC carved off without cross-cutting state.
+- 📋 **`auditdialog.cpp` decomposition (5749 LoC).** `populateChecks`
+  data table → `auditcatalogue.cpp`; SARIF/HTML export →
+  `auditexport.cpp`; embedded sh fragments (e.g. line 444-460,
+  567-580) → `packaging/check-*.sh` mirroring the version-drift
+  pattern. ~1900 LoC carved off.
+- 📋 **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp-
+  file leak fix.** `xcbpositiontracker.cpp:13-75`. (a) Class is
+  DBus-only, never uses XCB — rename to `KWinPositionTracker`.
+  (b) Detect via `qgetenv("XDG_SESSION_TYPE")` and bail before
+  writing the temp script on non-KWin. (c) Guarantee
+  `QFile::remove(scriptPath)` runs in every failure branch via
+  `QScopeGuard`.
+- 📋 **Post-fork heap allocations in flatpak detect path.**
+  `ptyhandler.cpp:202-220`. `std::string`/`std::vector<const char*>`
+  between `forkpty` and `execlp` relies on glibc malloc fork-handler;
+  not strictly POSIX-safe. Build argv on the stack with C strings
+  before forkpty.
+- 📋 **`shellutils.h` denylist regex incomplete.** Missing `*`/`?`/
+  `<`/`>`/`[`/`]`. Switch to whitelist: quote unless
+  `[A-Za-z0-9_\-./:@%+,]+`.
+- 📋 **Reuse-before-rewrite: `claudeChildrenOf(pid)`.** Duplicated
+  proc-walking in `ClaudeIntegration::pollClaudeProcess`
+  (`claudeintegration.cpp:92-240`) and
+  `ClaudeTabTracker::detectClaudeChild`
+  (`claudetabtracker.cpp:137-254`). Rule of three says extract now.
+- 📋 **Audit-pipeline `populateChecks`-as-data-table.** ~1400 LoC of
+  shell-pipeline strings encoded as opaque C++ literals — unreviewable
+  and untestable without QProcess. Move to `auditcatalogue.cpp` data
+  table; promote multi-line shell fragments to `packaging/check-*.sh`
+  mirroring the version-drift script pattern.
+
+The 2026-04-27 review followed the same methodology as the 0.7.12
+sweep — no roadmap-internal short-cuts, every finding cites
+file:line, every cross-cutting theme has ≥2 lanes flagging it.
+Folded as standing practice: re-run `/indie-review` before each
+minor tag (next: pre-0.8.0).
+
+---
+
 ## 0.8.0 — multiplexing + marketplace (target: 2026-08)
 
 **Theme:** big new capabilities. This is the "features you'd expect from
