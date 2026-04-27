@@ -119,28 +119,25 @@ jobs:
 
       - name: Download linuxdeploy + Qt plugin (continuous channel)
         run: |
-          # linuxdeploy does not cut tagged releases — `continuous` is
-          # their canonical channel. We verify the SHA256 against the
-          # checksum file served alongside the AppImage; a tampered
-          # binary would change the hash and fail this step.
-          download_with_checksum() {
-            local name="$1" url="$2"
-            curl -fsSL -o "$name" "$url"
-            curl -fsSL -o "${name}.sha256" "${url}.sha256"
-            # The .sha256 file contains the hash followed by the basename
-            # of the original artefact. Rewrite the basename to match
-            # our local filename so `sha256sum -c` succeeds regardless
-            # of the upstream naming.
-            local hash
-            hash="$(awk '{print $1}' "${name}.sha256")"
-            echo "${hash}  ${name}" > "${name}.sha256"
-            sha256sum -c "${name}.sha256"
-            chmod +x "$name"
-          }
-          download_with_checksum linuxdeploy \
+          # linuxdeploy does not cut tagged releases and does not ship
+          # checksum files alongside the `continuous` AppImage (only a
+          # `.zsync` file is published). The supply-chain trade-off: a
+          # malicious push to linuxdeploy/linuxdeploy or
+          # linuxdeploy-plugin-qt could ship a backdoor that lands in
+          # our AppImage. Mitigations in lieu of checksums:
+          #   • the AppImage is smoke-tested below — a binary that
+          #     fails to print --version on a clean Ubuntu 22.04 runner
+          #     would fail CI before upload;
+          #   • this workflow runs only on tag push or manual
+          #     dispatch, not on PRs from forks, so an attacker cannot
+          #     trigger it without write access to the repo.
+          # If linuxdeploy starts publishing tagged releases with
+          # checksums, switch to those and verify here.
+          curl -fsSL --retry 3 --retry-delay 5 -o linuxdeploy \
             https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          download_with_checksum linuxdeploy-plugin-qt \
+          curl -fsSL --retry 3 --retry-delay 5 -o linuxdeploy-plugin-qt \
             https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
 
       - name: Build AppImage
         env:
