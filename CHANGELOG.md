@@ -10,6 +10,79 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.43] — 2026-04-27
+
+**Theme:** Roadmap viewer polish — the dialog the previous release
+introduced gets a working **Close** button and a **dynamic
+section-navigation sidebar** that lists every heading in the active
+ROADMAP.md and lets the user click to jump. The TOC is built per
+project from whatever headings the file happens to have (no
+hardcoded section names) so the same dialog adapts to every repo
+that opens with a roadmap.
+
+### Added
+
+- **TOC sidebar in the Roadmap viewer.** `QSplitter(Qt::Horizontal)`
+  inside `RoadmapDialog` puts a `QListWidget` (`objectName
+  "roadmap-toc"`) on the left and the rendered viewer on the right.
+  The list is rebuilt from the markdown on every refresh — including
+  live-update events on `ROADMAP.md` change — and entries are
+  indented two spaces per level above 1 with level-1 headings shown
+  bold. Click or activate an entry → the viewer scrolls to the
+  matching heading.
+- **Anchor-emitting renderer.** `RoadmapDialog::renderHtml` now
+  prepends `<a name="roadmap-toc-N"></a>` before each `<h1>`/`<h2>`/
+  `<h3>`/`<h4>` it emits. The N-th anchor matches the N-th entry
+  returned by the new pure helper `RoadmapDialog::extractToc`, which
+  returns a `QVector<TocEntry>` of `{level, text, anchor}` triples.
+  Both helpers are pure and static so they're driven by the
+  feature-conformance test without spinning a Qt widget tree.
+- **`QTextBrowser` in place of `QTextEdit`.** Required for
+  `scrollToAnchor` support. Links are pinned non-navigable
+  (`setOpenLinks(false)` / `setOpenExternalLinks(false)`) so a stray
+  markdown link can't replace the document.
+
+### Fixed
+
+- **Close button in the Roadmap viewer is now actually clickable.**
+  The dialog used the role-based `QDialogButtonBox::rejected` signal
+  alone; under some Qt 6 builds the standard `Close` button does not
+  trigger that signal, leaving the button looking active but doing
+  nothing. The Close button is now wired *both* via `rejected()`
+  (kept as belt-and-braces) and via a direct `clicked` connection on
+  the underlying `QPushButton` retrieved with
+  `button(QDialogButtonBox::Close)`. The direct connect is the
+  authoritative fix.
+
+### Tests
+
+- `tests/features/roadmap_viewer/test_roadmap_viewer.cpp` extended
+  from 10 → 14 invariants:
+  - **INV-11** — `extractToc` returns a 5-entry list with matching
+    levels, raw text, and `roadmap-toc-N` anchors against a known
+    multi-level input.
+  - **INV-12** — `renderHtml` emits an `<a name="roadmap-toc-0">`
+    immediately before the first `<h2>` so `scrollToAnchor` can
+    position the viewer at any TOC entry.
+  - **INV-13** — Source-grep on `roadmapdialog.cpp` confirms a
+    `QSplitter`, the `roadmap-toc` objectName, and a
+    `scrollToAnchor` invocation in the TOC handler.
+  - **INV-14** — Source-grep confirms the Close button is wired
+    directly via `QAbstractButton::clicked`, guarding against the
+    Qt 6 `rejected()`-only quirk.
+
+### Notes
+
+- The Roadmap viewer's TOC is intentionally flat (`QListWidget`)
+  rather than tree-shaped (`QTreeWidget`) — flat-list with leading
+  whitespace renders the hierarchy in O(1) widget cost without
+  per-node expand/collapse state, which would invite sync bugs on
+  live-update refreshes.
+- Out of scope for this release: cross-document jumps (e.g. from a
+  ROADMAP heading to a CHANGELOG entry), heading-fold/collapse,
+  fuzzy-search inside the TOC. The dialog is still a viewer, not an
+  editor.
+
 ## [0.7.42] — 2026-04-27
 
 **Theme:** Inline ghost-text completion in the Command Palette —

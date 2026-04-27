@@ -3,17 +3,21 @@
 #include "coloredtabbar.h"     // for ClaudeTabIndicator::color (ToolUse yellow)
 #include "themes.h"
 
+#include <QAbstractButton>
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QListWidget>
 #include <QProcess>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QSplitter>
 #include <QStringBuilder>
-#include <QTextEdit>
+#include <QTextBrowser>
 #include <QVBoxLayout>
 
 namespace {
@@ -31,6 +35,34 @@ QString htmlEscape(QString s) {
     s.replace('<', QStringLiteral("&lt;"));
     s.replace('>', QStringLiteral("&gt;"));
     return s;
+}
+
+// 1..4 if `raw` is a Markdown ATX heading, else 0. On a hit, `text`
+// receives the heading content with the `# ` prefix stripped. Walk
+// shape is shared between extractToc and renderHtml so the indices
+// line up — anchor `roadmap-toc-N` refers to the N-th hit.
+int headingLevel(const QString &raw, QString *text) {
+    if (raw.startsWith(QStringLiteral("#### "))) {
+        if (text) *text = raw.mid(5);
+        return 4;
+    }
+    if (raw.startsWith(QStringLiteral("### "))) {
+        if (text) *text = raw.mid(4);
+        return 3;
+    }
+    if (raw.startsWith(QStringLiteral("## "))) {
+        if (text) *text = raw.mid(3);
+        return 2;
+    }
+    if (raw.startsWith(QStringLiteral("# "))) {
+        if (text) *text = raw.mid(2);
+        return 1;
+    }
+    return 0;
+}
+
+QString tocAnchorAt(int index) {
+    return QStringLiteral("roadmap-toc-%1").arg(index);
 }
 
 // Backtick → <code>…</code>. Pure passthrough on everything else; the
@@ -154,8 +186,26 @@ QStringList RoadmapDialog::collectCurrentBullets() const {
     return out;
 }
 
+QVector<RoadmapDialog::TocEntry>
+RoadmapDialog::extractToc(const QString &markdownText) {
+    QVector<TocEntry> out;
+    const QStringList lines = markdownText.split('\n');
+    int idx = 0;
+    for (const QString &raw : lines) {
+        QString text;
+        const int level = headingLevel(raw, &text);
+        if (level <= 0) continue;
+        TocEntry e;
+        e.level = level;
+        e.text = text;
+        e.anchor = tocAnchorAt(idx++);
+        out.push_back(e);
+    }
+    return out;
+}
+
 // Pure renderer. See spec for the parsing rules. Returns a self-
-// contained HTML fragment ready for QTextEdit::setHtml.
+// contained HTML fragment ready for QTextBrowser::setHtml.
 QString RoadmapDialog::renderHtml(const QString &markdownText,
                                   unsigned filter,
                                   const QStringList &currentBullets,
@@ -221,6 +271,7 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
     bool inList = false;
     bool skipBlock = false;       // dropping a filtered-out bullet's continuation
     bool currentBlock = false;    // inside a current-work-highlighted bullet
+    int headingIdx = 0;           // increments per emitted heading; matches extractToc
 
     auto closeListIfOpen = [&]() {
         if (inList) {
@@ -232,29 +283,18 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
     for (int i = 0; i < lines.size(); ++i) {
         const QString &raw = lines[i];
 
-        // Headings — always rendered, regardless of filters.
-        if (raw.startsWith(QStringLiteral("# "))) {
+        // Headings — always rendered, regardless of filters. Each
+        // gets a `<a name="roadmap-toc-N">` anchor so the TOC sidebar
+        // can scroll to it via QTextBrowser::scrollToAnchor.
+        QString hText;
+        if (const int level = headingLevel(raw, &hText); level > 0) {
             closeListIfOpen();
             skipBlock = false;
-            html += QStringLiteral("<h1>") + applyInline(raw.mid(2)) + QStringLiteral("</h1>");
-            continue;
-        }
-        if (raw.startsWith(QStringLiteral("## "))) {
-            closeListIfOpen();
-            skipBlock = false;
-            html += QStringLiteral("<h2>") + applyInline(raw.mid(3)) + QStringLiteral("</h2>");
-            continue;
-        }
-        if (raw.startsWith(QStringLiteral("### "))) {
-            closeListIfOpen();
-            skipBlock = false;
-            html += QStringLiteral("<h3>") + applyInline(raw.mid(4)) + QStringLiteral("</h3>");
-            continue;
-        }
-        if (raw.startsWith(QStringLiteral("#### "))) {
-            closeListIfOpen();
-            skipBlock = false;
-            html += QStringLiteral("<h4>") + applyInline(raw.mid(5)) + QStringLiteral("</h4>");
+            const QString anchor = tocAnchorAt(headingIdx++);
+            html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
+            html += QStringLiteral("<h%1>").arg(level)
+                  + applyInline(hText)
+                  + QStringLiteral("</h%1>").arg(level);
             continue;
         }
 
@@ -394,12 +434,65 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     filterRow->addStretch(1);
     root->addLayout(filterRow);
 
-    m_viewer = new QTextEdit(this);
+    // Body: TOC list (left) + rendered viewer (right) inside a
+    // QSplitter so the user can resize the sidebar. QTextBrowser
+    // (vs plain QTextEdit) for `scrollToAnchor` support — the TOC
+    // entries jump to `<a name="roadmap-toc-N">` anchors emitted by
+    // renderHtml.
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->setObjectName(QStringLiteral("roadmap-splitter"));
+
+    m_toc = new QListWidget(splitter);
+    m_toc->setObjectName(QStringLiteral("roadmap-toc"));
+    m_toc->setUniformItemSizes(false);
+    m_toc->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+    m_toc->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_toc->setMinimumWidth(180);
+    splitter->addWidget(m_toc);
+
+    m_viewer = new QTextBrowser(splitter);
     m_viewer->setReadOnly(true);
-    root->addWidget(m_viewer, 1);
+    // Internal anchors only — disable navigation on `<a href>` so a
+    // stray markdown link can't replace the document.
+    m_viewer->setOpenLinks(false);
+    m_viewer->setOpenExternalLinks(false);
+    splitter->addWidget(m_viewer);
+
+    splitter->setStretchFactor(0, 0);
+    splitter->setStretchFactor(1, 1);
+    splitter->setSizes({220, 680});
+    root->addWidget(splitter, 1);
+
+    connect(m_toc, &QListWidget::itemActivated, this,
+            [this](QListWidgetItem *item) {
+                if (!item || !m_viewer) return;
+                const QString anchor =
+                    item->data(Qt::UserRole).toString();
+                if (anchor.isEmpty()) return;
+                m_viewer->scrollToAnchor(anchor);
+            });
+    connect(m_toc, &QListWidget::itemClicked, this,
+            [this](QListWidgetItem *item) {
+                if (!item || !m_viewer) return;
+                const QString anchor =
+                    item->data(Qt::UserRole).toString();
+                if (anchor.isEmpty()) return;
+                m_viewer->scrollToAnchor(anchor);
+            });
 
     auto *btns = new QDialogButtonBox(QDialogButtonBox::Close, this);
-    connect(btns, &QDialogButtonBox::rejected, this, &QDialog::close);
+    btns->setObjectName(QStringLiteral("roadmap-buttons"));
+    // Connect the Close button two ways. The role-based `rejected`
+    // signal is the documented path, but in practice user reports
+    // showed the standard "Close" button doing nothing on click in
+    // some Qt 6 builds — connecting `clicked` directly to the
+    // QPushButton bypasses any role-dispatch surprise.
+    connect(btns, &QDialogButtonBox::rejected, this, [this]() { close(); });
+    if (auto *closeBtn = btns->button(QDialogButtonBox::Close)) {
+        closeBtn->setObjectName(QStringLiteral("roadmap-close-button"));
+        connect(closeBtn, &QAbstractButton::clicked,
+                this, [this]() { close(); });
+    }
     root->addWidget(btns);
 
     // Live-update plumbing: 200 ms debounce shared with sibling
@@ -469,5 +562,28 @@ void RoadmapDialog::rebuild() {
     if (vbar) {
         if (wasAtBottom) vbar->setValue(vbar->maximum());
         else vbar->setValue(qMin(saved, vbar->maximum()));
+    }
+
+    // Refresh the TOC sidebar from the same markdown so the
+    // anchor indices line up with what renderHtml just emitted.
+    if (m_toc) {
+        const QString prevAnchor =
+            m_toc->currentItem()
+                ? m_toc->currentItem()->data(Qt::UserRole).toString()
+                : QString();
+        m_toc->clear();
+        const QVector<TocEntry> entries = extractToc(markdown);
+        for (const TocEntry &e : entries) {
+            // Indent by level — flat QListWidget shows hierarchy via
+            // leading spaces (two per level above 1).
+            QString prefix;
+            for (int i = 1; i < e.level; ++i) prefix.append(QStringLiteral("  "));
+            auto *item = new QListWidgetItem(prefix + e.text, m_toc);
+            item->setData(Qt::UserRole, e.anchor);
+            QFont itemFont = item->font();
+            itemFont.setBold(e.level == 1);
+            item->setFont(itemFont);
+            if (e.anchor == prevAnchor) m_toc->setCurrentItem(item);
+        }
     }
 }

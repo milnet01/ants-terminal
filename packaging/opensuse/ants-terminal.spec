@@ -26,7 +26,7 @@
 # both when releasing.
 
 Name:           ants-terminal
-Version:        0.7.42
+Version:        0.7.43
 Release:        0
 Summary:        Qt6 terminal emulator with Lua plugins and a project-audit dialog
 License:        MIT

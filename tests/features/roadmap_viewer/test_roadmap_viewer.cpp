@@ -18,9 +18,18 @@
 //   INV-9 MainWindow constructs an m_roadmapBtn and wires its clicked
 //         signal to a slot.
 //   INV-10 refreshStatusBarForActiveTab calls refreshRoadmapButton.
+//   INV-11 extractToc returns headings in document order with
+//          matching level, text, and `roadmap-toc-N` anchor.
+//   INV-12 renderHtml emits an `<a name="roadmap-toc-N">` anchor
+//          before each heading element.
+//   INV-13 Dialog wires a TOC list (m_toc / objectName "roadmap-toc")
+//          into a QSplitter and connects activation to scrollToAnchor.
+//   INV-14 Close button connected directly via
+//          QAbstractButton::clicked (not only via rejected()).
 //
-// INV-1 / INV-2 / INV-4 / INV-5 also drive the renderer behaviourally
-// (link the source file directly, call the helper, assert HTML).
+// INV-1 / INV-2 / INV-4 / INV-5 / INV-11 / INV-12 also drive the
+// renderer behaviourally (link the source file directly, call the
+// helper, assert HTML / TOC entries).
 //
 // Exit 0 = all assertions hold.
 
@@ -205,6 +214,65 @@ int main(int argc, char **argv) {
     if (!contains(fnBody, "refreshRoadmapButton"))
         return fail("INV-10", "refreshRoadmapButton not called from refreshStatusBarForActiveTab");
 
-    std::puts("OK roadmap_viewer: 10/10 invariants");
+    // INV-11: extractToc returns headings with matching level/text/anchor.
+    {
+        const QString tocSample = QStringLiteral(
+            "# Top heading\n"
+            "Some prose.\n"
+            "\n"
+            "## Section A\n"
+            "- bullet\n"
+            "\n"
+            "### Sub of A\n"
+            "\n"
+            "## Section B\n"
+            "#### Deep one\n");
+        const QVector<RoadmapDialog::TocEntry> toc =
+            RoadmapDialog::extractToc(tocSample);
+        if (toc.size() != 5)
+            return fail("INV-11", "expected 5 TOC entries");
+        const int levels[] = {1, 2, 3, 2, 4};
+        const char *texts[] = {
+            "Top heading", "Section A", "Sub of A", "Section B", "Deep one"
+        };
+        for (int i = 0; i < 5; ++i) {
+            if (toc[i].level != levels[i])
+                return fail("INV-11", "level mismatch");
+            if (toc[i].text != QString::fromUtf8(texts[i]))
+                return fail("INV-11", "text mismatch");
+            const QString want =
+                QStringLiteral("roadmap-toc-%1").arg(i);
+            if (toc[i].anchor != want)
+                return fail("INV-11", "anchor mismatch");
+        }
+    }
+
+    // INV-12: renderHtml emits anchors before headings. The sample
+    // has a single `## Section`, which renders as
+    // `<a name="roadmap-toc-0"></a><h2>Section</h2>`.
+    {
+        QString h = RoadmapDialog::renderHtml(
+            sample, allOn, {}, QStringLiteral("default"));
+        if (!qcontains(h, "<a name=\"roadmap-toc-0\"></a><h2>"))
+            return fail("INV-12", "anchor before heading missing");
+    }
+
+    // INV-13: TOC list widget wired into the dialog with scrollToAnchor.
+    if (!contains(source, "roadmap-toc"))
+        return fail("INV-13", "roadmap-toc objectName missing");
+    if (!contains(source, "QSplitter"))
+        return fail("INV-13", "QSplitter not used in dialog body");
+    if (!contains(source, "scrollToAnchor"))
+        return fail("INV-13", "scrollToAnchor not invoked from TOC handler");
+
+    // INV-14: Close button has a direct clicked connection.
+    if (!contains(source, "QDialogButtonBox::Close"))
+        return fail("INV-14", "Close standard button not present");
+    if (!contains(source, "QAbstractButton::clicked"))
+        return fail("INV-14",
+                    "direct QAbstractButton::clicked connect missing — "
+                    "Close button must not rely solely on rejected()");
+
+    std::puts("OK roadmap_viewer: 14/14 invariants");
     return 0;
 }

@@ -103,6 +103,22 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.43" date="2026-04-27">
+      <description>
+        <p>Roadmap viewer polish — the dialog the previous release introduced gets a working <em>Close</em> button and a dynamic section-navigation sidebar that lists every heading in the active <code>ROADMAP.md</code> and lets the user click to jump. The TOC is built per project from whatever headings the file happens to have (no hardcoded section names) so the same dialog adapts to every repo that opens with a roadmap.</p>
+        <p>Added:</p>
+        <ul>
+          <li><em>TOC sidebar in the Roadmap viewer.</em> <code>QSplitter(Qt::Horizontal)</code> inside <code>RoadmapDialog</code> puts a <code>QListWidget</code> (<code>objectName "roadmap-toc"</code>) on the left and the rendered viewer on the right. The list is rebuilt from the markdown on every refresh — including live-update events on <code>ROADMAP.md</code> change — and entries are indented two spaces per level above 1 with level-1 headings shown bold. Click or activate an entry → the viewer scrolls to the matching heading.</li>
+          <li><em>Anchor-emitting renderer.</em> <code>RoadmapDialog::renderHtml</code> now prepends <code>&lt;a name="roadmap-toc-N"&gt;&lt;/a&gt;</code> before each <code>&lt;h1&gt;</code>/<code>&lt;h2&gt;</code>/<code>&lt;h3&gt;</code>/<code>&lt;h4&gt;</code> it emits. The N-th anchor matches the N-th entry returned by the new pure helper <code>RoadmapDialog::extractToc</code>, which returns a <code>QVector&lt;TocEntry&gt;</code> of <code>{level, text, anchor}</code> triples. Both helpers are pure and static so they're driven by the feature-conformance test without spinning a Qt widget tree.</li>
+          <li><em><code>QTextBrowser</code> in place of <code>QTextEdit</code>.</em> Required for <code>scrollToAnchor</code> support. Links are pinned non-navigable (<code>setOpenLinks(false)</code> / <code>setOpenExternalLinks(false)</code>) so a stray markdown link can't replace the document.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li><em>Close button in the Roadmap viewer is now actually clickable.</em> The dialog used the role-based <code>QDialogButtonBox::rejected</code> signal alone; under some Qt 6 builds the standard <code>Close</code> button does not trigger that signal, leaving the button looking active but doing nothing. The Close button is now wired both via <code>rejected()</code> (kept as belt-and-braces) and via a direct <code>clicked</code> connection on the underlying <code>QPushButton</code> retrieved with <code>button(QDialogButtonBox::Close)</code>. The direct connect is the authoritative fix.</li>
+        </ul>
+        <p>Locked by <code>tests/features/roadmap_viewer/</code> — extended from 10 to 14 invariants. INV-11 verifies <code>extractToc</code> returns a 5-entry list with matching levels, raw text, and <code>roadmap-toc-N</code> anchors against a known multi-level input. INV-12 verifies <code>renderHtml</code> emits the anchor before each heading. INV-13 source-greps for <code>QSplitter</code> + <code>roadmap-toc</code> objectName + <code>scrollToAnchor</code> in the dialog. INV-14 source-greps the Close-button direct <code>QAbstractButton::clicked</code> connection.</p>
+      </description>
+    </release>
     <release version="0.7.42" date="2026-04-27">
       <description>
         <p>Inline ghost-text completion in the Command Palette — Claude Code's <code>/slash</code>-command UX, ported to Ctrl+Shift+P. As you type, the unmatched suffix of the top fuzzy-match is rendered in a dimmed colour right after the cursor; <code>Tab</code> commits the suggestion into the input. Retires ROADMAP § "Command Palette ghost-completion (near-term, small scope)".</p>

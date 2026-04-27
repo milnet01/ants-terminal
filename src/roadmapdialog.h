@@ -27,11 +27,13 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QVector>
 
 #include <memory>
 
 class QCheckBox;
-class QTextEdit;
+class QListWidget;
+class QTextBrowser;
 
 class RoadmapDialog : public QDialog {
     Q_OBJECT
@@ -69,11 +71,29 @@ public:
     // filter mask and current-work signal phrases. `currentBullets`
     // is a set of substrings; any bullet whose first 80 characters
     // (post-emoji-strip, normalised) contains one of them is treated
-    // as current work.
+    // as current work. Each emitted heading is preceded by an HTML
+    // anchor of the form `<a name="roadmap-toc-N"></a>` where N
+    // matches the corresponding entry in `extractToc(markdownText)`
+    // — that lets the TOC sidebar use `QTextBrowser::scrollToAnchor`
+    // to jump to a heading without re-parsing the rendered document.
     static QString renderHtml(const QString &markdownText,
                               unsigned filter,
                               const QStringList &currentBullets,
                               const QString &themeName);
+
+    // Heading entry surfaced in the TOC sidebar. `level` is 1..4,
+    // `text` is the raw heading text post-`#` strip (no inline
+    // expansion), `anchor` is the same name renderHtml emits.
+    struct TocEntry {
+        int level;
+        QString text;
+        QString anchor;
+    };
+
+    // Pure helper: walk `markdownText` and return its `# `..`#### `
+    // headings in document order. Walk shape mirrors renderHtml's
+    // heading detection so the indices line up.
+    static QVector<TocEntry> extractToc(const QString &markdownText);
 
 private slots:
     void rebuild();
@@ -87,7 +107,8 @@ private:
     QString m_themeName;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
-    QPointer<QTextEdit> m_viewer;
+    QPointer<QTextBrowser> m_viewer;
+    QPointer<QListWidget> m_toc;
     QPointer<QCheckBox> m_filterDone;
     QPointer<QCheckBox> m_filterPlanned;
     QPointer<QCheckBox> m_filterInProgress;

@@ -56,19 +56,45 @@ nothing.
   toggled off.
 
   All filter checkboxes have stable `objectName`s for testing.
-- Body: `QTextEdit` (read-only, rich-text). Same shape as
-  `ReviewChangesDialog` / `ClaudeBgTasksDialog`.
-- Bottom row: `QDialogButtonBox::Close` only.
+- Body: `QSplitter(Qt::Horizontal)` with two children —
+  - **Left:** `QListWidget` (`objectName "roadmap-toc"`) listing every
+    `# `..`#### ` heading parsed from the markdown. Indented by two
+    spaces per level above 1; level-1 headings rendered bold. The
+    list is **dynamic per project** — it's rebuilt from whatever
+    headings the active ROADMAP.md happens to have, no hardcoded
+    section names. Selecting / clicking an entry calls
+    `m_viewer->scrollToAnchor(<anchor>)`.
+  - **Right:** `QTextBrowser` (read-only, rich-text). `QTextBrowser`
+    instead of plain `QTextEdit` for `scrollToAnchor` support; links
+    are *not* navigable (`setOpenLinks(false)` /
+    `setOpenExternalLinks(false)`) so a stray markdown link can't
+    replace the document. Same scroll-preservation shape as
+    `ReviewChangesDialog` / `ClaudeBgTasksDialog`.
+- Bottom row: `QDialogButtonBox::Close` only. The Close button is
+  wired *both* via the role-based `rejected()` signal AND via a
+  direct `clicked()` connection on the button itself
+  (`button(QDialogButtonBox::Close)`). Some Qt 6 builds were observed
+  to leave `Close` non-functional through the role-based path alone;
+  the direct connection is the authoritative fix and the role-based
+  one is a belt-and-braces fallback. The Close button has
+  `objectName "roadmap-close-button"` for testing.
 
 ### Parsing & rendering
 
 - Pure helper `RoadmapDialog::renderHtml(const QString &markdownText,
   Filter f, const QSet<QString> &currentBullets) → QString`. Pure +
   static so tests can drive it without spinning a Qt widget.
+- Pure helper `RoadmapDialog::extractToc(const QString &markdownText)
+  → QVector<TocEntry>`. Walk shape mirrors renderHtml's heading
+  detection, so the N-th entry's `anchor` always equals the anchor
+  emitted before the N-th heading in the rendered HTML
+  (`roadmap-toc-N`). Both helpers are pure, static, and independent
+  of any QWidget — tests drive them without an event loop.
 - Walk the file line-by-line:
-  - `^# ` → `<h1>`. `^## ` → `<h2>`. `^### ` → `<h3>`. `^#### ` →
-    `<h4>`. Always emitted regardless of filters so document structure
-    stays intact.
+  - `^# ` → `<a name="roadmap-toc-N"></a><h1>`. `^## ` → likewise
+    `<h2>`. `^### ` → `<h3>`. `^#### ` → `<h4>`. Always emitted
+    regardless of filters so document structure stays intact, and
+    the anchor is always present so the TOC sidebar can scroll.
   - `^\| ` (table rows) — pass through verbatim, wrapped in
     `<pre style="font-family:monospace">` since pixel-aligned ASCII
     tables don't reflow well inside QTextEdit.
@@ -201,6 +227,22 @@ source-grep + pure-helper harness, no full Qt widget tree.
   instantiates `RoadmapDialog`.
 - INV-10 Tab-switch refresh: `refreshStatusBarForActiveTab` calls
   `refreshRoadmapButton()`.
+- INV-11 `extractToc` returns the headings in document order with
+  matching levels, raw text, and anchor names of the form
+  `roadmap-toc-N` — verified against a known multi-level input.
+- INV-12 `renderHtml` emits an `<a name="roadmap-toc-N">` anchor
+  *before* each heading element, so `QTextBrowser::scrollToAnchor`
+  can position the viewer at any TOC entry.
+- INV-13 The dialog wires a TOC list widget (`m_toc` + objectName
+  `roadmap-toc`) into a `QSplitter` next to the viewer, and connects
+  list-item activation to `scrollToAnchor` (source-grep on
+  `roadmapdialog.cpp`).
+- INV-14 The Close button is connected directly via
+  `QAbstractButton::clicked` (not only the role-based `rejected`
+  path) — guards against the Qt 6 quirk where `QDialogButtonBox::
+  rejected` was observed not firing for the standard `Close` button
+  (source-grep for the `closeBtn`/`QAbstractButton::clicked`
+  combination).
 
 ## Rationale
 

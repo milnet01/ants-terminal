@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.42 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.43 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1832,6 +1832,32 @@ remainder, captured so they don't drop on the floor.
   asserts five-bit filter semantics, the highlight CSS marker on
   signal match, the marker's absence on empty signal sets, the
   case-insensitive cwd probe, and the wire-up shape).
+
+- ✅ **Roadmap viewer polish — Close button fix + dynamic TOC sidebar.**
+  Shipped 0.7.43. User feedback 2026-04-27: "I love the roadmap
+  button / dialog. The 'X Close' button does nothing when clicked
+  though. Also, I would like a navigation bar added to jump to
+  various sections of the readme. This needs to be dynamic across
+  projects please." Two fixes in one bundle: (1) the standard
+  `QDialogButtonBox::Close` button under some Qt 6 builds doesn't
+  emit `rejected()` reliably — wire `clicked` directly on the
+  underlying `QPushButton` retrieved with
+  `button(QDialogButtonBox::Close)`, keeping `rejected()` as a
+  belt-and-braces fallback; (2) add a `QSplitter(Qt::Horizontal)`
+  with a left-side `QListWidget` (`objectName "roadmap-toc"`)
+  rebuilt from the markdown's `# `..`#### ` headings on every
+  refresh — entries are flat, indented two spaces per level above 1,
+  level-1 bold; click/activate → `m_viewer->scrollToAnchor(anchor)`.
+  `RoadmapDialog::renderHtml` now prepends
+  `<a name="roadmap-toc-N">` before each heading; the matching
+  `extractToc(markdown)` pure helper returns
+  `QVector<{level, text, anchor}>` so both walks share an index.
+  `QTextEdit` → `QTextBrowser` for `scrollToAnchor` support; links
+  pinned non-navigable. Locked by `tests/features/roadmap_viewer/`
+  extended from 10 → 14 invariants (INV-11 extractToc shape, INV-12
+  anchor-before-heading emission, INV-13 splitter+TOC+scrollToAnchor
+  source-grep, INV-14 direct `QAbstractButton::clicked` Close-button
+  connect).
 
 ### 🐜 Tab UX
 
