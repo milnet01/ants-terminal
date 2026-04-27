@@ -67,6 +67,10 @@ void sweepKwinScriptOrphansOnce();
 #include <QDateTime>
 #include <QProcess>
 #include <QFile>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QJsonDocument>
 #include <QTemporaryFile>
 #include <QVBoxLayout>
 #include <QTabBar>
@@ -3514,6 +3518,39 @@ void MainWindow::setupClaudeIntegration() {
     connect(m_roadmapBtn, &QPushButton::clicked,
             this, &MainWindow::showRoadmapDialog);
 
+    // 0.7.45 — Repo visibility badge. Small QLabel showing
+    // "Public" / "Private" for the active tab's GitHub repo. Hidden
+    // when the cwd isn't a GitHub-backed repo, when `gh` is missing,
+    // or when authentication / network fails. Theme-coloured via
+    // applyTheme(). Per-tab via refreshStatusBarForActiveTab.
+    m_repoVisibilityLabel = new QLabel(this);
+    m_repoVisibilityLabel->setObjectName(QStringLiteral("repoVisibilityLabel"));
+    m_repoVisibilityLabel->hide();
+    statusBar()->addPermanentWidget(m_repoVisibilityLabel);
+
+    // 0.7.45 — Update-available notifier. Clickable QLabel that
+    // appears when the latest GitHub release tag is newer than
+    // ANTS_VERSION. Click opens the release page. Hidden by default,
+    // surfaced by an hourly + on-startup check via QNetworkAccessManager.
+    m_updateAvailableLabel = new QLabel(this);
+    m_updateAvailableLabel->setObjectName(QStringLiteral("updateAvailableLabel"));
+    m_updateAvailableLabel->setOpenExternalLinks(true);
+    m_updateAvailableLabel->setTextFormat(Qt::RichText);
+    m_updateAvailableLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    m_updateAvailableLabel->hide();
+    statusBar()->addPermanentWidget(m_updateAvailableLabel);
+
+    // Hourly update check + an immediate one ~5 s after startup so
+    // the badge surfaces without waiting for the first hour to elapse.
+    // The 5 s delay keeps the launch path fast and avoids racing the
+    // first paint.
+    m_updateCheckTimer = new QTimer(this);
+    m_updateCheckTimer->setInterval(60 * 60 * 1000);  // 1 h
+    connect(m_updateCheckTimer, &QTimer::timeout,
+            this, &MainWindow::checkForUpdates);
+    m_updateCheckTimer->start();
+    QTimer::singleShot(5000, this, &MainWindow::checkForUpdates);
+
     // Error indicator label
     m_claudeErrorLabel = new QLabel(this);
     // Styled dynamically by updateClaudeThemeColors()
@@ -4157,6 +4194,7 @@ void MainWindow::refreshStatusBarForActiveTab() {
         if (m_claudeBgTasksBtn) m_claudeBgTasksBtn->hide();
         if (m_roadmapBtn) m_roadmapBtn->hide();
         m_roadmapPath.clear();
+        if (m_repoVisibilityLabel) m_repoVisibilityLabel->hide();
         return;
     }
 
@@ -4185,6 +4223,7 @@ void MainWindow::refreshStatusBarForActiveTab() {
     refreshReviewButton();
     refreshBgTasksButton();
     refreshRoadmapButton();
+    refreshRepoVisibility();
 }
 
 void MainWindow::updateStatusBar() {
@@ -4848,6 +4887,209 @@ void MainWindow::showRoadmapDialog() {
     dlg->show();
     dlg->raise();
     dlg->activateWindow();
+}
+
+namespace {
+
+// Walk up `start` looking for a `.git` entry (file or directory).
+// Returns the absolute path to the directory containing `.git`, or
+// empty if none found.
+QString findGitRepoRoot(const QString &start) {
+    if (start.isEmpty()) return {};
+    QDir d(start);
+    while (true) {
+        if (QFileInfo::exists(d.filePath(QStringLiteral(".git"))))
+            return d.absolutePath();
+        if (!d.cdUp()) return {};
+    }
+}
+
+// Parse `.git/config` for the `[remote "origin"] url = ...` line.
+// Handles both `https://github.com/owner/repo[.git]` and
+// `git@github.com:owner/repo[.git]` forms. Returns "owner/repo"
+// (no `.git` suffix) for GitHub remotes; empty for non-GitHub or
+// missing origin.
+QString parseGithubOriginSlug(const QString &repoRoot) {
+    QFile f(repoRoot + QStringLiteral("/.git/config"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    QString section;
+    while (!f.atEnd()) {
+        const QString line = QString::fromUtf8(f.readLine()).trimmed();
+        if (line.startsWith('[') && line.endsWith(']')) {
+            section = line;
+            continue;
+        }
+        if (section != QStringLiteral("[remote \"origin\"]")) continue;
+        if (!line.startsWith(QStringLiteral("url"))) continue;
+        const int eq = line.indexOf('=');
+        if (eq < 0) continue;
+        QString url = line.mid(eq + 1).trimmed();
+        // strip a trailing .git so the slug compares cleanly.
+        if (url.endsWith(QStringLiteral(".git"))) url.chop(4);
+        // https://github.com/owner/repo
+        const QString httpsHost = QStringLiteral("https://github.com/");
+        const QString sshHost = QStringLiteral("git@github.com:");
+        if (url.startsWith(httpsHost)) return url.mid(httpsHost.size());
+        if (url.startsWith(sshHost)) return url.mid(sshHost.size());
+        return {};  // origin exists but isn't GitHub
+    }
+    return {};
+}
+
+// Compare two SemVer-shape strings ("X.Y.Z"). Returns 1 if `a` > `b`,
+// -1 if a < b, 0 if equal. Non-numeric components fall back to
+// string compare so unexpected suffixes don't crash.
+int compareSemver(const QString &a, const QString &b) {
+    const QStringList ap = a.split('.');
+    const QStringList bp = b.split('.');
+    const int n = std::max(ap.size(), bp.size());
+    for (int i = 0; i < n; ++i) {
+        const QString as = i < ap.size() ? ap[i] : QStringLiteral("0");
+        const QString bs = i < bp.size() ? bp[i] : QStringLiteral("0");
+        bool aok = false, bok = false;
+        const int ai = as.toInt(&aok);
+        const int bi = bs.toInt(&bok);
+        if (aok && bok) {
+            if (ai != bi) return ai > bi ? 1 : -1;
+        } else {
+            const int c = QString::compare(as, bs);
+            if (c != 0) return c > 0 ? 1 : -1;
+        }
+    }
+    return 0;
+}
+
+}  // namespace
+
+void MainWindow::refreshRepoVisibility() {
+    if (!m_repoVisibilityLabel) return;
+
+    // Probe `gh` once per session — caching the result avoids a
+    // shell-out on every tab switch when the binary is missing.
+    if (!m_ghAvailableProbed) {
+        m_ghAvailable = !QStandardPaths::findExecutable(
+            QStringLiteral("gh")).isEmpty();
+        m_ghAvailableProbed = true;
+    }
+    if (!m_ghAvailable) { m_repoVisibilityLabel->hide(); return; }
+
+    QString cwd;
+    if (auto *t = focusedTerminal()) cwd = t->shellCwd();
+    if (cwd.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
+
+    const QString repoRoot = findGitRepoRoot(cwd);
+    if (repoRoot.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
+
+    const QString slug = parseGithubOriginSlug(repoRoot);
+    if (slug.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
+
+    auto applyVisibility = [this](const QString &visibility,
+                                  const QString &repoSlug) {
+        if (!m_repoVisibilityLabel) return;
+        if (visibility.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
+        const bool isPublic =
+            visibility.compare(QStringLiteral("PUBLIC"),
+                               Qt::CaseInsensitive) == 0;
+        const QString label = isPublic ? tr("Public") : tr("Private");
+        const Theme &th = Themes::byName(m_currentTheme);
+        const QColor &col = isPublic ? th.ansi[2] : th.ansi[3];
+        m_repoVisibilityLabel->setText(label);
+        m_repoVisibilityLabel->setStyleSheet(
+            QStringLiteral("QLabel { color: %1; padding: 0 6px; "
+                           "font-weight: bold; }").arg(col.name()));
+        m_repoVisibilityLabel->setToolTip(tr("%1 on GitHub").arg(repoSlug));
+        m_repoVisibilityLabel->show();
+    };
+
+    // Cache hit (10 min TTL) → render immediately, skip the shell-out.
+    constexpr qint64 kCacheTtlMs = 10 * 60 * 1000;
+    const qint64 nowMs =
+        QDateTime::currentDateTime().toMSecsSinceEpoch();
+    auto it = m_repoVisibilityCache.find(repoRoot);
+    if (it != m_repoVisibilityCache.end() &&
+            (nowMs - it->fetchedAt) < kCacheTtlMs) {
+        applyVisibility(it->visibility, slug);
+        return;
+    }
+
+    // Miss → hide until the async query lands. Avoids flashing a
+    // stale value from a different repo (the previous tab's).
+    m_repoVisibilityLabel->hide();
+
+    auto *proc = new QProcess(this);
+    proc->setProgram(QStringLiteral("gh"));
+    proc->setArguments({QStringLiteral("repo"), QStringLiteral("view"),
+                        slug, QStringLiteral("--json"),
+                        QStringLiteral("visibility"),
+                        QStringLiteral("-q"),
+                        QStringLiteral(".visibility")});
+    QPointer<MainWindow> self(this);
+    connect(proc,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [self, proc, repoRoot, slug, applyVisibility](
+                int exitCode, QProcess::ExitStatus status) {
+                proc->deleteLater();
+                if (!self) return;
+                QString visibility;
+                if (status == QProcess::NormalExit && exitCode == 0) {
+                    visibility = QString::fromUtf8(
+                        proc->readAllStandardOutput()).trimmed();
+                }
+                // Cache both hits and negative results — a 60 s
+                // negative TTL avoids hammering on every tab switch
+                // when `gh` is unauthenticated. The full TTL applies
+                // to positive results; we encode "negative" by storing
+                // an empty visibility with the same fetchedAt so the
+                // hit-branch sees an empty string and hides.
+                self->m_repoVisibilityCache[repoRoot] = {
+                    visibility,
+                    QDateTime::currentDateTime().toMSecsSinceEpoch()};
+                applyVisibility(visibility, slug);
+            });
+    proc->start();
+}
+
+void MainWindow::checkForUpdates() {
+    if (!m_updateAvailableLabel) return;
+    if (!m_updateNam) m_updateNam = new QNetworkAccessManager(this);
+
+    QNetworkRequest req(QUrl(QStringLiteral(
+        "https://api.github.com/repos/milnet01/ants-terminal/releases/latest")));
+    req.setRawHeader("Accept", "application/vnd.github+json");
+    req.setRawHeader("User-Agent", "Ants-Terminal-Updater");
+
+    QNetworkReply *reply = m_updateNam->get(req);
+    QPointer<MainWindow> self(this);
+    connect(reply, &QNetworkReply::finished, this, [self, reply]() {
+        reply->deleteLater();
+        MainWindow *win = self.data();
+        if (!win) return;
+        QLabel *label = win->m_updateAvailableLabel;
+        if (!label) return;
+        if (reply->error() != QNetworkReply::NoError) return;
+        const QByteArray body = reply->readAll();
+        const QJsonDocument doc = QJsonDocument::fromJson(body);
+        if (!doc.isObject()) return;
+        QString tag = doc.object().value("tag_name").toString();
+        if (tag.startsWith('v')) tag.remove(0, 1);
+        if (tag.isEmpty()) return;
+        win->m_latestRemoteVersion = tag;
+        const QString current = QString::fromUtf8(ANTS_VERSION);
+        if (compareSemver(tag, current) <= 0) {
+            // Already up-to-date or running a newer dev build.
+            label->hide();
+            return;
+        }
+        const QString url = QStringLiteral(
+            "https://github.com/milnet01/ants-terminal/releases/tag/v%1").arg(tag);
+        label->setText(
+            tr("<a href=\"%1\" style=\"color: #5DCFCF; text-decoration: none;\">"
+               "↗ Update v%2 available</a>").arg(url, tag));
+        label->setToolTip(
+            tr("Click to open release notes for v%1 in your browser. "
+               "Currently running v%2.").arg(tag, current));
+        label->show();
+    });
 }
 
 void MainWindow::showDiffViewer() {

@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.44 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.45 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1879,6 +1879,57 @@ remainder, captured so they don't drop on the floor.
   anchor-before-heading emission, INV-13 splitter+TOC+scrollToAnchor
   source-grep, INV-14 direct `QAbstractButton::clicked` Close-button
   connect).
+
+### 🎨 GitHub-aware status bar (user requests 2026-04-27)
+
+- ✅ **Public/Private repo badge + clickable update notifier.**
+  Shipped 0.7.45. Two user requests bundled together — "Can we
+  also have the status bar inform whether the repo is a public or
+  a private repo?" and "Can we add an auto-update feature?". Both
+  surface as small `QLabel` widgets on the status bar, both
+  hide-when-not-applicable, both source GitHub state. The repo
+  badge is per-tab (mirrors Roadmap button lifecycle via
+  `refreshStatusBarForActiveTab` → new `refreshRepoVisibility`):
+  walks the active tab's `shellCwd()` up for a `.git` ancestor,
+  parses `[remote "origin"] url` from `.git/config` (handles both
+  `https://github.com/owner/repo` and `git@github.com:owner/repo`
+  forms), then runs `gh repo view <owner>/<repo> --json
+  visibility -q .visibility`. Result is cached by repo root with
+  a 10-minute TTL. The update notifier is global (one badge per
+  running binary): a `QTimer` ticks every hour firing
+  `checkForUpdates`, which hits
+  `api.github.com/repos/milnet01/ants-terminal/releases/latest`
+  via `QNetworkAccessManager`, strips the `v` from `tag_name`,
+  and compares against `ANTS_VERSION` via a new pure
+  `compareSemver` helper that splits on `.` and compares
+  components as integers. A 5-second `singleShot` fires the first
+  check on startup so the badge surfaces before the first hourly
+  tick. New helpers in an anonymous namespace inside
+  `mainwindow.cpp`: `findGitRepoRoot`, `parseGithubOriginSlug`,
+  `compareSemver`. Locked by `tests/features/github_status_bar/`
+  (12 invariants — label declaration/construction/object-name/
+  hidden-default state, helper presence, both URL-form handling,
+  `refreshStatusBarForActiveTab` wiring, four hide-on-failure
+  branches in `refreshRepoVisibility`, the 10-minute cache TTL,
+  the minimal `gh` invocation, the 60-min timer + 5 s singleShot,
+  the releases/latest URL + User-Agent header,
+  `setOpenExternalLinks(true)`, component-wise integer
+  comparison in `compareSemver`). **Out of scope for this release:
+  the actual binary auto-update via AppImageUpdate / zsync** — a
+  follow-up release that needs the build workflow to publish a
+  `.zsync` sidecar and embed the `gh-releases-zsync|...`
+  update-information string in linuxdeploy. Cannot retroactively
+  update binaries shipped without the metadata. This release only
+  notifies.
+- 📋 **AppImageUpdate / zsync auto-update.** Follow-up to the
+  notifier above. Build workflow change: pass
+  `UPDATE_INFORMATION="gh-releases-zsync|milnet01|ants-terminal|latest|Ants_Terminal-*-x86_64.AppImage.zsync"`
+  to the linuxdeploy invocation and upload the resulting
+  `.zsync` sidecar to each release. In-app: shell out to
+  `appimageupdatetool` (probe via `which`) when the user clicks
+  the update notifier; fall back to opening the release page in
+  the browser when the tool is missing. This is the binary
+  delivery half of the auto-update story; v0.7.45 only notifies.
 
 ### 🐜 Tab UX
 

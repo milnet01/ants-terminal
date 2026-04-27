@@ -17,7 +17,9 @@
 #include <QElapsedTimer>
 #include <QJsonArray>
 #include <QShortcut>
+#include <QHash>
 
+class QNetworkAccessManager;
 class TitleBar;
 class OpaqueMenuBar;
 class OpaqueStatusBar;
@@ -325,6 +327,24 @@ private:
     // highlight from CHANGELOG [Unreleased] + recent commits).
     QPushButton *m_roadmapBtn = nullptr;
     QString m_roadmapPath;  // last canonical path the button was wired against
+    // 0.7.45 — Repo visibility badge. Small Public/Private indicator
+    // for the active tab's GitHub repo. Hidden when the cwd isn't a
+    // GitHub repo or `gh` is unavailable.
+    QLabel *m_repoVisibilityLabel = nullptr;
+    struct RepoVisibilityCache {
+        QString visibility;  // "PUBLIC" / "PRIVATE" / "" (negative cache)
+        qint64 fetchedAt = 0;  // ms since epoch
+    };
+    QHash<QString /*repoRoot*/, RepoVisibilityCache> m_repoVisibilityCache;
+    bool m_ghAvailable = false;        // probed once at startup
+    bool m_ghAvailableProbed = false;  // probe-once flag
+    // 0.7.45 — Update-available notifier. Clickable QLabel pointing
+    // at the GitHub release page when ANTS_VERSION lags behind the
+    // latest release's tag_name. Hourly check + on-startup.
+    QLabel *m_updateAvailableLabel = nullptr;
+    QString m_latestRemoteVersion;  // last seen tag_name from GitHub
+    QTimer *m_updateCheckTimer = nullptr;
+    QNetworkAccessManager *m_updateNam = nullptr;
     // 0.6.27 — cached last state/detail so the Claude status label can be
     // re-rendered when the permission-prompt overlay toggles without having
     // to wait for the next ClaudeIntegration::stateChanged tick. When
@@ -378,6 +398,18 @@ private:
     // Open the Roadmap dialog against m_roadmapPath. Non-modal so the
     // user can keep typing in the terminal while reading.
     void showRoadmapDialog();
+    // 0.7.45 — Probe the active tab's cwd for a `.git` ancestor,
+    // parse `[remote "origin"]` from `.git/config` to extract
+    // owner/repo, and show a "Public" / "Private" badge resolved via
+    // `gh repo view`. Result cached by repoRoot for 10 minutes;
+    // failures (no .git, non-GitHub origin, gh missing, gh
+    // unauthenticated, network) all hide the label.
+    void refreshRepoVisibility();
+    // 0.7.45 — Hit GitHub's `releases/latest` endpoint via QNAM,
+    // compare `tag_name` against ANTS_VERSION, and surface a
+    // clickable status-bar label when newer. No-op silently on
+    // network failure or rate-limit.
+    void checkForUpdates();
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS

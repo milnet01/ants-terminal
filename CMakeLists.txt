@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.44 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.45 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2087,6 +2087,24 @@ if(ANTS_TESTS)
     add_test(NAME claude_bg_tasks_button
         COMMAND test_claude_bg_tasks_button)
     set_tests_properties(claude_bg_tasks_button PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # github_status_bar — 0.7.45 feature. Two QLabel widgets on the
+    # status bar surfacing GitHub-derived context: a Public/Private
+    # repo-visibility badge and an "↗ Update vX.Y.Z available" link.
+    # Source-grep harness — same shape as claude_bg_tasks_button.
+    add_executable(test_github_status_bar
+        tests/features/github_status_bar/test_github_status_bar.cpp
+    )
+    target_link_libraries(test_github_status_bar PRIVATE Qt6::Core)
+    target_compile_definitions(test_github_status_bar PRIVATE
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+    )
+    add_test(NAME github_status_bar
+        COMMAND test_github_status_bar)
+    set_tests_properties(github_status_bar PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

@@ -10,6 +10,86 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.45] — 2026-04-27
+
+**Theme:** GitHub-aware status bar — two new badges that surface
+context the user previously had to alt-tab to a browser to see. A
+**Public/Private repo visibility** badge for the active tab's
+project, and an **"↗ Update vX.Y.Z available"** notifier that
+checks the GitHub releases API hourly and lets the user click
+through to the release page when a newer version exists.
+
+### Added
+
+- **`m_repoVisibilityLabel` — Public/Private repo badge.** Small
+  `QLabel` (`objectName "repoVisibilityLabel"`) added next to the
+  Roadmap button on the status bar. Theme-derived foreground:
+  `th.ansi[2]` green for public repos, `th.ansi[3]` amber for
+  private. Tooltip `<owner>/<repo> on GitHub`. Per-tab via
+  `refreshStatusBarForActiveTab` → new `refreshRepoVisibility()`:
+  walks the active tab's `shellCwd()` up looking for a `.git`
+  ancestor, parses `[remote "origin"] url` from `.git/config`
+  (handles both `https://github.com/owner/repo` and
+  `git@github.com:owner/repo` URL forms), then resolves visibility
+  via `gh repo view <owner>/<repo> --json visibility -q .visibility`.
+  Result is cached by repo root with a 10-minute TTL. Failure
+  modes (no `.git`, non-GitHub origin, `gh` missing,
+  unauthenticated, network error) all hide the label.
+- **`m_updateAvailableLabel` — clickable update notifier.**
+  Cyan-coloured `QLabel` (`objectName "updateAvailableLabel"`,
+  `setOpenExternalLinks(true)`, RichText) shown when a newer
+  GitHub release exists. New `checkForUpdates()` slot hits
+  `https://api.github.com/repos/milnet01/ants-terminal/releases/latest`
+  via `QNetworkAccessManager`, parses `tag_name`, and compares
+  against `ANTS_VERSION` via the new pure helper `compareSemver`.
+  An hourly `m_updateCheckTimer` plus a 5-second `singleShot` on
+  startup keep the badge fresh. Click opens the release page in
+  the user's browser. Sets a non-empty `User-Agent` header
+  (GitHub 403s requests without one).
+- **Pure helpers in `mainwindow.cpp`** (anonymous namespace):
+  `findGitRepoRoot(start)` walks up looking for a `.git`;
+  `parseGithubOriginSlug(repoRoot)` extracts `owner/repo` from
+  the origin URL; `compareSemver(a, b)` compares two `X.Y.Z`
+  triples component-wise as integers (so `0.10.0` correctly
+  outranks `0.9.0`).
+
+### Tests
+
+- New `tests/features/github_status_bar/` — 12 invariants on the
+  bundle:
+  - **INV-1/2** — both labels declared, constructed, named,
+    `addPermanentWidget`-ed, and start hidden.
+  - **INV-3** — three pure helpers (`findGitRepoRoot`,
+    `parseGithubOriginSlug`, `compareSemver`) exist.
+  - **INV-4** — `parseGithubOriginSlug` recognises both URL forms.
+  - **INV-5** — `refreshStatusBarForActiveTab` calls the new
+    `refreshRepoVisibility`.
+  - **INV-6** — `refreshRepoVisibility` hides the label on every
+    failure branch (≥ 4 `hide()` call sites).
+  - **INV-7** — 10-minute cache TTL constant present.
+  - **INV-8** — `gh` invoked with the minimal `--json visibility
+    -q .visibility` slug.
+  - **INV-9** — hourly timer + 5 s `singleShot` first run.
+  - **INV-10** — `checkForUpdates` hits `releases/latest` with a
+    `User-Agent` header.
+  - **INV-11** — update label has `setOpenExternalLinks(true)`.
+  - **INV-12** — `compareSemver` splits on `.` and uses `toInt` so
+    component compares are numeric (not lexicographic).
+
+### Notes
+
+- Out of scope: actual binary auto-update via AppImageUpdate / zsync.
+  That's a follow-up release — needs the build workflow to publish a
+  `.zsync` sidecar AND embed the `gh-releases-zsync|...`
+  update-information string in the linuxdeploy command. Cannot
+  retroactively update binaries that didn't ship with the metadata.
+  This release only **notifies**; the user clicks through to download
+  manually.
+- Update-available badge is global (one per running binary), not
+  per-tab. Repo-visibility badge is per-tab.
+- GitHub API rate limit (60 req/hour for unauthenticated) is well
+  within the hourly poll budget.
+
 ## [0.7.44] — 2026-04-27
 
 **Theme:** Two themed cleanups in one bundle. Retiring the dormant

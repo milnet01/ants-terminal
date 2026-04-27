@@ -1,3 +1,48 @@
+ants-terminal (0.7.45-1) unstable; urgency=medium
+
+  * GitHub-aware status bar — two new badges that surface context
+    the user previously had to alt-tab to a browser to see. A
+    Public/Private repo visibility badge for the active tab's
+    project, and an "↗ Update vX.Y.Z available" notifier that
+    checks the GitHub releases API hourly and lets the user click
+    through to the release page when a newer version exists.
+  * Added: Public/Private repo badge. Small QLabel next to the
+    Roadmap button. Theme-derived colour (green for public, amber
+    for private). Per-tab via refreshStatusBarForActiveTab → new
+    refreshRepoVisibility(): walks the active tab's shellCwd() up
+    for a .git ancestor, parses [remote "origin"] url from
+    .git/config (both https:// and git@ URL forms), then resolves
+    visibility via `gh repo view --json visibility -q .visibility`.
+    10-minute cache by repo root. Failure modes (no .git,
+    non-GitHub origin, gh missing/unauthenticated, network error)
+    all hide the label.
+  * Added: clickable update notifier. Cyan QLabel with
+    setOpenExternalLinks(true) shown when a newer GitHub release
+    exists. New checkForUpdates() slot hits
+    api.github.com/repos/milnet01/ants-terminal/releases/latest via
+    QNetworkAccessManager, parses tag_name, and compares against
+    ANTS_VERSION via the new pure helper compareSemver. Hourly
+    timer plus a 5 s singleShot on startup. Click opens the
+    release page in the user's browser.
+  * Added: pure helpers in mainwindow.cpp — findGitRepoRoot,
+    parseGithubOriginSlug, compareSemver.
+  * Tests: tests/features/github_status_bar/ — 12 invariants
+    covering label declaration/construction/object-name/hidden-
+    default state, helper presence, both URL-form handling,
+    refreshStatusBarForActiveTab wiring, four hide-on-failure
+    branches in refreshRepoVisibility, the 10-minute cache TTL,
+    the minimal gh invocation, the 60-min timer + 5 s singleShot,
+    the releases/latest URL + User-Agent header,
+    setOpenExternalLinks(true), and component-wise integer
+    comparison in compareSemver.
+  * Out of scope: actual binary auto-update via AppImageUpdate /
+    zsync — that's a follow-up release that needs the build
+    workflow to publish a .zsync sidecar and embed the
+    gh-releases-zsync|... update-information string in the
+    linuxdeploy command. This release only notifies.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 18:02:37 +0200
+
 ants-terminal (0.7.44-1) unstable; urgency=medium
 
   * Two themed cleanups in one bundle. Retiring the dormant GPU-
