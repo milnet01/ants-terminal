@@ -138,11 +138,12 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         const QRect r = tabRect(i);
         if (!event->region().intersects(r)) continue;
 
-        // Tab padding is 16 px on the left (see the app stylesheet's
-        // `QTabBar::tab { padding: 6px 16px; }`). Center the dot in that
-        // gutter so it sits at ~8 px from the edge and clears the first
-        // character of the tab text by ~6 px.
-        const int cx = r.left() + 8;
+        // Tab padding is 22 px on the left (see the app stylesheet's
+        // `QTabBar::tab { padding: 6px 16px 6px 22px; }` — bumped from
+        // 16 in 0.7.48 after user feedback the dot crowded the text).
+        // Center the dot in that gutter so it sits at ~11 px from the
+        // edge and clears the first character of the tab text by ~7 px.
+        const int cx = r.left() + 11;
         const int cy = r.center().y();
         painter.setPen(Qt::NoPen);
         painter.setBrush(fill);

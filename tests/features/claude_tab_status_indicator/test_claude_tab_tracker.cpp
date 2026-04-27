@@ -41,6 +41,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
@@ -402,6 +404,92 @@ int checkBashToolSurfacing() {
     return 0;
 }
 
+// INV-8 Per-shell transcript path is project-cwd-scoped. Two cwds → two
+// distinct project subdirs under ~/.claude/projects/ → sessionPathForCwd
+// must return each subdir's own .jsonl, not collapse them onto whichever
+// is system-wide newest. Source-grep + a round-trip on a synthetic
+// projects directory.
+int checkProjectCwdScopedTranscript() {
+    // Source-grep half — confirm the tracker reads /proc/<pid>/cwd and
+    // delegates to ClaudeIntegration::sessionPathForCwd, rather than
+    // the pre-0.7.48 system-wide newest walk.
+    {
+        QFile f(QString::fromUtf8(ANTS_SOURCE_DIR "/src/claudetabtracker.cpp"));
+        if (!f.open(QIODevice::ReadOnly)) {
+            std::fprintf(stderr, "[INV-8] FAIL cannot open claudetabtracker.cpp\n");
+            return 1;
+        }
+        const QByteArray src = f.readAll();
+        if (!src.contains("ClaudeIntegration::sessionPathForCwd")) {
+            std::fprintf(stderr, "[INV-8] FAIL tracker does not call sessionPathForCwd\n");
+            return 1;
+        }
+        if (!src.contains("/proc/%1/cwd")) {
+            std::fprintf(stderr, "[INV-8] FAIL tracker does not read /proc/<pid>/cwd\n");
+            return 1;
+        }
+    }
+
+    // Round-trip half — fake a ~/.claude/projects/ tree under a temp
+    // HOME, drop two subdirs (encoded forms of two cwds), put a
+    // .jsonl in each, and prove sessionPathForCwd routes each cwd to
+    // its own subdir's file.
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) { std::fprintf(stderr, "[INV-8] tmpdir fail\n"); return 1; }
+
+    // ConfigPaths::claudeProjectsDir() reads $HOME — override it.
+    const QByteArray oldHome = qgetenv("HOME");
+    qputenv("HOME", tmp.path().toUtf8());
+
+    auto restore = qScopeGuard([&]() {
+        if (oldHome.isEmpty()) qunsetenv("HOME");
+        else                   qputenv("HOME", oldHome);
+    });
+
+    const QString projectsDir = tmp.path() + "/.claude/projects";
+    QDir().mkpath(projectsDir);
+
+    const QString cwdA = tmp.path() + "/work/projA";
+    const QString cwdB = tmp.path() + "/work/projB";
+    QDir().mkpath(cwdA);
+    QDir().mkpath(cwdB);
+
+    const QString encA = ClaudeIntegration::encodeProjectPath(cwdA);
+    const QString encB = ClaudeIntegration::encodeProjectPath(cwdB);
+    QDir().mkpath(projectsDir + "/" + encA);
+    QDir().mkpath(projectsDir + "/" + encB);
+
+    const QString jsonlA = projectsDir + "/" + encA + "/sessA.jsonl";
+    const QString jsonlB = projectsDir + "/" + encB + "/sessB.jsonl";
+    write_file(jsonlA, "{}\n");
+    write_file(jsonlB, "{}\n");
+
+    const QString gotA = ClaudeIntegration::sessionPathForCwd(cwdA);
+    const QString gotB = ClaudeIntegration::sessionPathForCwd(cwdB);
+
+    if (QFileInfo(gotA).canonicalFilePath() != QFileInfo(jsonlA).canonicalFilePath()) {
+        std::fprintf(stderr, "[INV-8] FAIL cwdA → '%s' want '%s'\n",
+                     qPrintable(gotA), qPrintable(jsonlA));
+        return 1;
+    }
+    if (QFileInfo(gotB).canonicalFilePath() != QFileInfo(jsonlB).canonicalFilePath()) {
+        std::fprintf(stderr, "[INV-8] FAIL cwdB → '%s' want '%s'\n",
+                     qPrintable(gotB), qPrintable(jsonlB));
+        return 1;
+    }
+
+    // Empty cwd → empty (ensures no accidental fallback to global newest
+    // through this entry point).
+    if (!ClaudeIntegration::sessionPathForCwd(QString()).isEmpty()) {
+        std::fprintf(stderr, "[INV-8] FAIL empty cwd should resolve to empty\n");
+        return 1;
+    }
+
+    std::printf("[%-32s] cwdA→A.jsonl  cwdB→B.jsonl (independent)  PASS\n",
+                "INV-8-project-cwd-scoped");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -449,6 +537,7 @@ int main(int argc, char **argv) {
     failures += checkPlanModeLatching();
     failures += checkSessionIdRouting();
     failures += checkBashToolSurfacing();
+    failures += checkProjectCwdScopedTranscript();
 
     if (failures) {
         std::fprintf(stderr, "\n%d check(s) failed\n", failures);

@@ -204,23 +204,50 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
 
     if (entry.claudePid == 0) {
         entry.claudePid = found;
-        QDir claudeDir(ConfigPaths::claudeProjectsDir());
-        if (claudeDir.exists()) {
-            QFileInfo newest;
-            for (const QString &projDir : claudeDir.entryList(
-                    QDir::Dirs | QDir::NoDotAndDotDot)) {
-                QDir proj(claudeDir.filePath(projDir));
-                for (const QFileInfo &fi : proj.entryInfoList(
-                        {"*.jsonl"}, QDir::Files)) {
-                    if (!newest.exists() || fi.lastModified() > newest.lastModified())
-                        newest = fi;
+        // Resolve THIS shell's transcript via project-cwd encoding —
+        // not the system-wide newest. Pre-0.7.48 used the latter,
+        // which broke fan-out for users running Claude in multiple
+        // tabs: every shell got assigned the same transcript path,
+        // and the inverse `m_pathToShell` map was last-write-wins,
+        // so only one tab's dot ever updated.
+        //
+        // Source the cwd from claude itself (`/proc/<claudePid>/cwd`)
+        // — that's the directory Claude Code encodes into its project
+        // dir on launch, and it's stable for the session. Fall back to
+        // the shell's cwd if claude's symlink isn't readable (rare;
+        // /proc/PID/cwd readable to same-uid by default), then to the
+        // unscoped global newest as a last resort so nothing breaks
+        // outright if /proc isn't mounted.
+        QString cwd = QFile::symLinkTarget(
+            QString("/proc/%1/cwd").arg(found));
+        if (cwd.isEmpty())
+            cwd = QFile::symLinkTarget(
+                QString("/proc/%1/cwd").arg(entry.shellPid));
+        QString tx;
+        if (!cwd.isEmpty())
+            tx = ClaudeIntegration::sessionPathForCwd(cwd);
+        if (tx.isEmpty()) {
+            // Unscoped fallback (matches pre-0.7.48 behaviour).
+            QDir claudeDir(ConfigPaths::claudeProjectsDir());
+            if (claudeDir.exists()) {
+                QFileInfo newest;
+                for (const QString &projDir : claudeDir.entryList(
+                        QDir::Dirs | QDir::NoDotAndDotDot)) {
+                    QDir proj(claudeDir.filePath(projDir));
+                    for (const QFileInfo &fi : proj.entryInfoList(
+                            {"*.jsonl"}, QDir::Files)) {
+                        if (!newest.exists() ||
+                            fi.lastModified() > newest.lastModified())
+                            newest = fi;
+                    }
                 }
+                if (newest.exists()) tx = newest.absoluteFilePath();
             }
-            if (newest.exists()) {
-                entry.transcriptPath = newest.absoluteFilePath();
-                m_watcher.addPath(entry.transcriptPath);
-                m_pathToShell.insert(entry.transcriptPath, entry.shellPid);
-            }
+        }
+        if (!tx.isEmpty()) {
+            entry.transcriptPath = tx;
+            m_watcher.addPath(entry.transcriptPath);
+            m_pathToShell.insert(entry.transcriptPath, entry.shellPid);
         }
         entry.state.state = ClaudeState::Idle;
     }

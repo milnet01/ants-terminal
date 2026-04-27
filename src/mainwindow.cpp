@@ -2558,7 +2558,7 @@ void MainWindow::applyTheme(const QString &name) {
         "QStatusBar { background-color: %2; color: %6; border-top: 1px solid %4; }"
         "QTabWidget::pane { border: none; }"
         "QTabBar { background-color: %2; }"
-        "QTabBar::tab { background-color: %2; color: %6; padding: 6px 16px;"
+        "QTabBar::tab { background-color: %2; color: %6; padding: 6px 16px 6px 22px;"
         "  border: none; border-bottom: 2px solid transparent; }"
         "QTabBar::tab:selected { color: %3; border-bottom: 2px solid %5; }"
         "QTabBar::tab:hover { background-color: %1; color: %3; }"

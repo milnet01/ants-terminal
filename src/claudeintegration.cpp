@@ -241,7 +241,8 @@ void ClaudeIntegration::pollClaudeProcess() {
 
 // --- Session Transcripts ---
 
-QString ClaudeIntegration::activeSessionPath(const QString &projectCwd) const {
+QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd) {
+    if (projectCwd.isEmpty()) return {};
     QDir claudeDir(ConfigPaths::claudeProjectsDir());
     if (!claudeDir.exists()) return {};
 
@@ -249,28 +250,33 @@ QString ClaudeIntegration::activeSessionPath(const QString &projectCwd) const {
     // probe `~/.claude/projects/<encoded>/`. Deepest match wins —
     // catches the case where Claude Code was launched from a
     // sub-directory of the visible project root, and the inverse.
-    if (!projectCwd.isEmpty()) {
-        QDir cur(projectCwd);
-        while (true) {
-            const QString encoded = encodeProjectPath(cur.absolutePath());
-            QDir proj(claudeDir.filePath(encoded));
-            if (proj.exists()) {
-                QFileInfo newest;
-                for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time)) {
-                    if (!newest.exists() || fi.lastModified() > newest.lastModified())
-                        newest = fi;
-                }
-                if (newest.exists()) return newest.absoluteFilePath();
+    QDir cur(projectCwd);
+    while (true) {
+        const QString encoded = encodeProjectPath(cur.absolutePath());
+        QDir proj(claudeDir.filePath(encoded));
+        if (proj.exists()) {
+            QFileInfo newest;
+            for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time)) {
+                if (!newest.exists() || fi.lastModified() > newest.lastModified())
+                    newest = fi;
             }
-            if (!cur.cdUp()) break;
+            if (newest.exists()) return newest.absoluteFilePath();
         }
-        // No match for this project tree — return empty rather than
-        // leaking another project's transcript into the per-tab
-        // surfaces (background tasks, etc.).
-        return {};
+        if (!cur.cdUp()) break;
     }
+    // No match for this project tree — return empty rather than
+    // leaking another project's transcript into the per-tab
+    // surfaces (background tasks, etc.).
+    return {};
+}
+
+QString ClaudeIntegration::activeSessionPath(const QString &projectCwd) const {
+    if (!projectCwd.isEmpty())
+        return sessionPathForCwd(projectCwd);
 
     // Unscoped fallback — system-wide newest .jsonl.
+    QDir claudeDir(ConfigPaths::claudeProjectsDir());
+    if (!claudeDir.exists()) return {};
     QFileInfo newest;
     for (const QString &projDir : claudeDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         QDir proj(claudeDir.filePath(projDir));

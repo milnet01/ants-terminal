@@ -134,6 +134,31 @@ tracker class) rather than pixel-level painting:
    variant; a drift (e.g. quoting, lowercasing, prefixing) would
    silently collapse Bash back into the generic ToolUse color.
 
+8. **INV-8 Per-shell transcript path is project-cwd-scoped** *(added
+   0.7.48 after a user-visible regression where a multi-Claude-tab
+   layout showed the activity dot on only one tab)*. When
+   `detectClaudeChild` first attaches a transcript to a shell, the
+   path MUST resolve to the Claude project directory matching THAT
+   shell's cwd, not the system-wide newest `*.jsonl`. The static
+   helper `ClaudeIntegration::sessionPathForCwd(cwd)` is the source
+   of truth for the resolution: walk up `cwd`, encode each ancestor
+   via `encodeProjectPath` (replace `/` with `-`), probe
+   `~/.claude/projects/<encoded>/`, return the newest `.jsonl` from
+   the deepest match. With this rule, two shells in two distinct
+   project trees end up with two distinct transcript paths, and the
+   per-path `m_pathToShell` map fans `QFileSystemWatcher::fileChanged`
+   out to the right shell instead of last-write-wins-collapsing N
+   shells onto one entry. Tested by:
+   - **Source-grep:** `claudetabtracker.cpp` calls
+     `ClaudeIntegration::sessionPathForCwd` and reads
+     `/proc/<pid>/cwd` rather than walking `claudeProjectsDir()`
+     for the system-wide newest in the first-detection branch.
+   - **Round-trip:** create two synthetic `~/.claude/projects/`
+     subdirs (encoded forms of two different cwds), drop a `.jsonl`
+     in each with different mtimes, call
+     `ClaudeIntegration::sessionPathForCwd(cwdA)` /
+     `(cwdB)`, assert each returns the file from its own subdir.
+
 ## Rationale
 
 The existing single-global `ClaudeIntegration` design assumes one

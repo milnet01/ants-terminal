@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.47 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.48 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -445,6 +445,9 @@ if(ANTS_TESTS)
     target_include_directories(test_claude_tab_tracker PRIVATE src)
     target_compile_options(test_claude_tab_tracker PRIVATE
         -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_claude_tab_tracker PRIVATE
+        ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
     add_test(NAME claude_tab_status_indicator COMMAND test_claude_tab_tracker)
     set_tests_properties(claude_tab_status_indicator PROPERTIES

@@ -103,6 +103,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.48" date="2026-04-27">
+      <description>
+        <p>Two tab-bar fixes the user spotted after 0.7.47 shipped. The per-tab Claude Code activity dot was only painting on one tab — the most recently focused one — even when several tabs each had their own running Claude Code session. The dot also sat too close to the tab text. The first is a real correctness bug; the second is comfort.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li>Per-tab Claude state dot now renders on every tab with a live Claude Code session, not just the most recently focused one. <code>ClaudeTabTracker::detectClaudeChild</code> was assigning each shell the system-wide newest <code>*.jsonl</code> as its transcript path on first detection, so all N tabs running Claude ended up watching the same file and the inverse path-to-pid map was last-write-wins. The 0.7.44 walk-up logic from <code>ClaudeIntegration::activeSessionPath</code> is now extracted as a static helper <code>ClaudeIntegration::sessionPathForCwd(cwd)</code> and called from the tracker, with cwd taken from <code>/proc/&lt;claudePid&gt;/cwd</code> (falling back to <code>/proc/&lt;shellPid&gt;/cwd</code>). Two shells in two distinct project trees now end up with two distinct transcript paths and two independent state streams.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>Tab leading-edge gutter widened from 16 px to 22 px (<code>QTabBar::tab</code> stylesheet → <code>padding: 6px 16px 6px 22px</code>). The Claude state dot's center moves from <code>r.left() + 8</code> to <code>r.left() + 11</code> so it stays gutter-centered, leaving roughly 7 px between the dot's right edge and the first character of the tab text instead of the previous 4 px. Tabs without a Claude indicator pick up the same widened leading padding; the bar still looks balanced.</li>
+        </ul>
+        <p>Pinned by INV-8 in <code>tests/features/claude_tab_status_indicator/spec.md</code>: a source-grep half asserts the tracker calls <code>sessionPathForCwd</code> and reads <code>/proc/&lt;pid&gt;/cwd</code>; a round-trip half builds a synthetic <code>~/.claude/projects/</code> tree with two encoded subdirs and verifies each cwd resolves to its own subdir's <code>.jsonl</code>.</p>
+      </description>
+    </release>
     <release version="0.7.47" date="2026-04-27">
       <description>
         <p>Smaller-footprint update checks plus a pre-update warning dialog. Two pieces of user feedback after 0.7.46 shipped: the hourly background check was too noisy, and clicking the update badge to kick AppImageUpdate should warn that the terminal will need to be quit and re-launched (active Claude Code sessions will be disconnected). Both addressed in this release.</p>

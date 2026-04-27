@@ -90,6 +90,13 @@ public:
     // back to the global newest, matching the pre-0.7.44 behavior
     // (kept for callers that genuinely want the system-wide newest).
     QString activeSessionPath(const QString &projectCwd = QString()) const;
+    // Project-scoped form of the lookup, exposed as a free static so
+    // ClaudeTabTracker (and any future caller without a ClaudeIntegration
+    // handle) can resolve a per-shell transcript without drilling into
+    // private state. Same walk-up semantics as activeSessionPath's
+    // non-empty branch — returns empty if no ancestor has an encoded
+    // project directory under `~/.claude/projects/`.
+    static QString sessionPathForCwd(const QString &projectCwd);
     QJsonArray loadTranscript(const QString &path) const;
     QStringList recentSessions() const;
 

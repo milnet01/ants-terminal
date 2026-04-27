@@ -10,6 +10,60 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.48] — 2026-04-27
+
+**Theme:** Two tab-bar fixes the user spotted after 0.7.47 shipped.
+First, the per-tab Claude Code activity dot was only painting on
+one tab — the most recently focused one — even when multiple tabs
+each had their own running Claude Code session. Second, the dot
+sat too close to the tab text. The first one was a real correctness
+bug, the second is comfort.
+
+### Fixed
+
+- **Per-tab Claude state dot now renders on every tab with a live
+  Claude Code session, not just the most recently focused one.**
+  `ClaudeTabTracker::detectClaudeChild` was assigning each shell
+  the *system-wide newest* `*.jsonl` as its transcript path on
+  first detection — so all N tabs running Claude ended up watching
+  the same file, and the inverse path→pid map (`m_pathToShell`)
+  was last-write-wins, fanning the `QFileSystemWatcher::fileChanged`
+  signal to a single shell. Result: only the last-tracked tab's
+  dot ever updated; the others stayed on their initial-detection
+  state.
+
+  The 0.7.44 fix to `ClaudeIntegration::activeSessionPath` (which
+  walks up `projectCwd`, encodes each ancestor, and probes
+  `~/.claude/projects/<encoded>/` for the deepest match) already
+  had the right shape — it just wasn't reused by the tracker.
+  This release extracts that walk-up as a static helper
+  `ClaudeIntegration::sessionPathForCwd(cwd)` and calls it from
+  `detectClaudeChild`. The cwd comes from `/proc/<claudePid>/cwd`
+  (the directory Claude itself encodes into its project dir on
+  launch), with `/proc/<shellPid>/cwd` as a fallback. Two shells
+  in two distinct project trees now end up with two distinct
+  transcript paths and two independent state streams.
+
+  Pinned by **INV-8** in
+  `tests/features/claude_tab_status_indicator/spec.md`: a
+  source-grep half asserts the tracker calls `sessionPathForCwd`
+  and reads `/proc/<pid>/cwd`; a round-trip half builds a
+  synthetic `~/.claude/projects/` tree with two encoded subdirs
+  and verifies each cwd resolves to its own subdir's `.jsonl`.
+
+### Changed
+
+- **Tab leading-edge gutter widened from 16 px to 22 px**
+  (`QTabBar::tab` stylesheet → `padding: 6px 16px 6px 22px`). The
+  Claude state dot's center moves from `r.left() + 8` to
+  `r.left() + 11` so it stays gutter-centered, leaving ~7 px
+  between the dot's right edge and the first character of the
+  tab text instead of the previous 4 px. User feedback 2026-04-27:
+  "add a little space between the tab label and the Claude Code
+  status dot." Tabs without a Claude indicator pick up the same
+  widened leading padding; the visual change is subtle and the
+  bar still looks balanced.
+
 ## [0.7.47] — 2026-04-27
 
 **Theme:** Smaller-footprint update checks + a pre-update warning
