@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.40 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.41 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2175,6 +2175,43 @@ if(ANTS_TESTS)
     set_tests_properties(vtbatch_zero_copy PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # a11y_chrome_names — 0.7.41 a11y bundle. ROADMAP § "Accessibility
+    # pass on chrome" (L1914) + § "AT-SPI introspection lane" (L1918).
+    # Verifies that every glyph-only chrome control (TitleBar's four
+    # window buttons + the CommandPalette's search input/result list)
+    # carries an explicit setAccessibleName / setAccessibleDescription,
+    # and acts as the introspection lane: walks the chrome widget tree
+    # and asserts every QAbstractButton + QLineEdit reachable has a
+    # non-empty accessibleName() OR a non-empty text(). A future
+    # contributor adding a glyph-only chrome button without a name
+    # breaks this test. Links titlebar.cpp + commandpalette.cpp source
+    # so we can drive their constructors directly under the offscreen
+    # Qt platform — no MainWindow link needed. See spec.md.
+    add_executable(test_a11y_chrome_names
+        tests/features/a11y_chrome_names/test_a11y_chrome_names.cpp
+        src/titlebar.cpp
+        src/commandpalette.cpp
+    )
+    target_link_libraries(test_a11y_chrome_names PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_a11y_chrome_names PRIVATE src)
+    target_compile_options(test_a11y_chrome_names PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_a11y_chrome_names PRIVATE
+        TITLEBAR_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/titlebar.cpp"
+        COMMANDPALETTE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/commandpalette.cpp"
+    )
+    set_target_properties(test_a11y_chrome_names PROPERTIES AUTOMOC ON)
+    add_test(NAME a11y_chrome_names COMMAND test_a11y_chrome_names)
+    set_tests_properties(a11y_chrome_names PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # origin_mode_correctness — 0.7.34 fix. Locks DECOM (origin mode)
     # CUP/HVP/VPA row translation, DECSTBM origin-aware home, and

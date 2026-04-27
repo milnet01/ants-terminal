@@ -1,3 +1,39 @@
+ants-terminal (0.7.41-1) unstable; urgency=medium
+
+  * Accessibility. Every glyph-only chrome control now carries an
+    explicit setAccessibleName + setAccessibleDescription so Orca,
+    Speakup, and other AT-SPI screen readers announce them by purpose
+    ("Close window") instead of by codepoint name ("eight-spoked
+    asterisk", "multiplication sign x"). Two ROADMAP items retired in
+    one bundle: § "Accessibility pass on chrome" (mainwindow / palette
+    / title-bar control labels) and § "AT-SPI introspection lane" (an
+    automated check that every user-visible chrome control carries a
+    name).
+  * Added: TitleBar window controls (centerBtn, minimizeBtn,
+    maximizeBtn, closeBtn) each get explicit setAccessibleName and
+    setAccessibleDescription set immediately after setText in
+    titlebar.cpp:54-97, plus stable objectNames for the introspection
+    test. Visual rendering is unchanged — the glyphs (✥ – □ ✕) still
+    drive the on-screen pixels; only the AT-SPI tree changed.
+  * Added: Command Palette accessible names — m_input
+    (commandPaletteInput) gets "Command palette search" and
+    "Type to filter actions; Tab to commit; Esc to dismiss";
+    m_list (commandPaletteList) gets "Command palette results" and
+    "Available actions matching the current filter". Placeholder text
+    and visible behaviour are unchanged.
+  * Locked by tests/features/a11y_chrome_names/ (eight invariants
+    spanning the contract: T1-T4 each TitleBar button has the right
+    accessibleName + non-empty accessibleDescription; T5/T6 the
+    CommandPalette input + list have theirs; T7 the AT-SPI
+    introspection lane sweeps every reachable QAbstractButton +
+    QLineEdit; T8/T9 source-grep counts on titlebar.cpp +
+    commandpalette.cpp so a refactor that drops the calls fails the
+    build, not just AT-SPI usage at runtime). Runs under
+    QT_QPA_PLATFORM=offscreen so CI does not need a display. tr()
+    translation hooks are deferred to the 0.9.0 H10 i18n bundle.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 10:19:09 +0200
+
 ants-terminal (0.7.40-1) unstable; urgency=medium
 
   * Performance. Two Tier 3 perf items from ROADMAP.md § 0.7.x ⚡ / 🏗

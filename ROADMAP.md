@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.40 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.41 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1911,13 +1911,31 @@ remainder, captured so they don't drop on the floor.
   by `tests/features/settings_restore_defaults/` — 22
   invariants on objectNames + reset-value coverage + no-direct-
   config-write.
-- 📋 **Accessibility pass on chrome.** `mainwindow.cpp` chrome and
-  `CommandPalette` / `TitleBar` buttons have no
-  `setAccessibleName` / `setAccessibleDescription`. Screen readers
-  hear "push button" with no label. First pass: one line per control.
-- 📋 **AT-SPI introspection lane.** Automated check that every
-  user-visible control carries an accessible name — run in CI on a
-  canonical `TerminalWidget` + `MainWindow` + all dialogs.
+- ✅ **Accessibility pass on chrome.** Shipped 0.7.41. Every
+  glyph-only chrome control now carries an explicit
+  `setAccessibleName` + `setAccessibleDescription` set immediately
+  after `setText`. TitleBar's four window controls (`centerBtn`
+  "Center window", `minimizeBtn` "Minimize window", `maximizeBtn`
+  "Maximize window", `closeBtn` "Close window") and the
+  CommandPalette's two controls (`commandPaletteInput`
+  "Command palette search", `commandPaletteList`
+  "Command palette results") are covered. Status-bar push buttons
+  with English labels (`Background Tasks`, `Roadmap`,
+  `Review Changes`) are out of scope: they inherit their accessible
+  name from `text()` via Qt's `QAccessibleButton` adapter.
+  `tr()` translation hooks deferred to 0.9.0 H10 i18n bundle so
+  `.qm` files cover both UI text and a11y strings in one pass. Locked
+  by `tests/features/a11y_chrome_names/` (eight invariants).
+- ✅ **AT-SPI introspection lane.** Shipped 0.7.41 as part of the
+  same bundle. `tests/features/a11y_chrome_names/` walks the
+  TitleBar + CommandPalette widget trees under
+  `QT_QPA_PLATFORM=offscreen` and asserts every reachable
+  `QAbstractButton` carries either a non-empty `accessibleName()`
+  or a non-empty `text()`, and every reachable `QLineEdit` has an
+  explicit `accessibleName()`. A future contributor adding a
+  glyph-only chrome button without a name fails this test. Custom
+  `QAccessibleInterface` for `TerminalWidget` (the H9 a11y bundle)
+  remains separate, target 0.9.0.
 
 ### 📚 Sweep methodology — re-run before each minor tag
 

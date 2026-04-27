@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.41" date="2026-04-27">
+      <description>
+        <p>Accessibility. Every glyph-only chrome control now carries an explicit <code>setAccessibleName</code> and <code>setAccessibleDescription</code>, so Orca, Speakup, and other AT-SPI screen readers announce them by purpose ("Close window") instead of by codepoint name ("eight-spoked asterisk", "multiplication sign x"). Two ROADMAP items retired in one bundle: § "Accessibility pass on chrome" (mainwindow / palette / title-bar control labels) and § "AT-SPI introspection lane" (an automated check that every user-visible chrome control carries a name).</p>
+        <p>Added:</p>
+        <ul>
+          <li><em>Accessible names on TitleBar window controls.</em> <code>centerBtn</code> ("Center window"), <code>minimizeBtn</code> ("Minimize window"), <code>maximizeBtn</code> ("Maximize window" / "Maximize or restore this window"), and <code>closeBtn</code> ("Close window") each get an explicit <code>setAccessibleName</code> + <code>setAccessibleDescription</code> set immediately after <code>setText</code> in <code>titlebar.cpp:54-97</code>. Each button also gains a stable <code>objectName</code> so the introspection test can find them deterministically. Visual rendering is unchanged — the glyphs (<code>✥ – □ ✕</code>) still drive the on-screen pixels; only the AT-SPI tree changed.</li>
+          <li><em>Accessible names on the Command Palette.</em> The search input (objectName <code>commandPaletteInput</code>) gets <code>Command palette search</code> / <code>Type to filter actions; Tab to commit; Esc to dismiss</code>; the result list (objectName <code>commandPaletteList</code>) gets <code>Command palette results</code> / <code>Available actions matching the current filter</code>. Placeholder text and visible behaviour are unchanged: the placeholder is a typing hint for sighted users; the accessible name is what screen readers announce on focus.</li>
+        </ul>
+        <p>Locked by a new <code>tests/features/a11y_chrome_names/</code> spec + test (eight invariants — T1–T4 each TitleBar button has the right accessibleName + non-empty accessibleDescription; T5/T6 the CommandPalette input + list have theirs; T7 the AT-SPI introspection lane sweeps every reachable <code>QAbstractButton</code>/<code>QLineEdit</code> in the chrome tree; T8/T9 source-grep counts on <code>titlebar.cpp</code>/<code>commandpalette.cpp</code> so a refactor that drops the calls fails the build, not just AT-SPI usage at runtime). The test runs under <code>QT_QPA_PLATFORM=offscreen</code>, so it works in CI without a display. <code>tr()</code> translation hooks are deferred to the 0.9.0 H10 i18n bundle.</p>
+      </description>
+    </release>
     <release version="0.7.40" date="2026-04-27">
       <description>
         <p>Performance. Two Tier 3 perf items from <code>ROADMAP.md § 0.7.x ⚡ / 🏗 Tier 3 — structural</code> retired in one bundle: scroll-region rotate plus a zero-copy <code>VtBatch</code> hop across the worker→GUI thread boundary. Both are observably equivalent at the API level — the existing <code>tests/features/scroll_region_rotate/</code> and <code>tests/features/threaded_parse_equivalence/</code> regressions pass unchanged — so the win is throughput / cost, not visible behaviour.</p>

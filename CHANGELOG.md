@@ -10,6 +10,69 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.41] — 2026-04-27
+
+**Theme:** Accessibility — explicit `setAccessibleName` /
+`setAccessibleDescription` on every glyph-only chrome control so
+Orca, Speakup, and other AT-SPI screen readers announce them by
+purpose ("Close window") instead of by codepoint name ("eight-spoked
+asterisk", "multiplication sign x"). Two ROADMAP items retired in
+one bundle: § "Accessibility pass on chrome" (mainwindow / palette /
+title-bar control labels) and § "AT-SPI introspection lane" (an
+automated check that every user-visible chrome control carries a
+name).
+
+### Added
+
+- **Accessible names on TitleBar window controls.**
+  `centerBtn` ("Center window" / "Center this window on the active
+  screen"), `minimizeBtn` ("Minimize window"), `maximizeBtn`
+  ("Maximize window" / "Maximize or restore this window"), and
+  `closeBtn` ("Close window") each carry an explicit
+  `setAccessibleName` and `setAccessibleDescription` set immediately
+  after `setText` in `titlebar.cpp:54-97`. Each button also gains a
+  stable `objectName` (the previously-set `closeBtn` is joined by
+  the matching three siblings) so the introspection test can find
+  them deterministically. Visual rendering is unchanged — the glyphs
+  (`✥ – □ ✕`) still drive the on-screen pixels; only the AT-SPI tree
+  changed.
+
+- **Accessible names on the Command Palette.** `m_input`
+  (objectName `commandPaletteInput`) gains `Command palette search`
+  / `Type to filter actions; Tab to commit; Esc to dismiss`.
+  `m_list` (objectName `commandPaletteList`) gains
+  `Command palette results` / `Available actions matching the
+  current filter`. Placeholder text and visible behaviour are
+  unchanged. The placeholder is a typing hint for sighted users; the
+  accessible name is what screen readers announce on focus —
+  separating the two unblocks the keyboard-only workflow.
+
+### Tests
+
+- `tests/features/a11y_chrome_names/` — eight invariants spanning
+  the contract: T1–T4 each TitleBar button has the right
+  accessibleName + non-empty accessibleDescription; T5/T6 the
+  CommandPalette input + list have theirs; T7 the AT-SPI
+  introspection lane (every reachable `QAbstractButton` carries
+  either a non-empty `accessibleName()` or a non-empty `text()`,
+  every reachable `QLineEdit` has an explicit `accessibleName`),
+  T8/T9 source-grep counts on `titlebar.cpp` and `commandpalette.cpp`
+  so a future refactor that drops the `setAccessibleName` calls
+  fails the build, not just AT-SPI usage at runtime. The test
+  constructs the `TitleBar` and `CommandPalette` directly under
+  `QT_QPA_PLATFORM=offscreen` so it runs in CI without a display.
+
+### Notes
+
+- `tr()` translation hooks for the new strings are deferred to the
+  `0.9.0` H10 i18n bundle so the `.qm` files cover both UI text and
+  accessibility strings in one pass — pulling them in now would mean
+  re-touching every `setAccessibleName(...)` call later.
+- A custom `QAccessibleInterface` adapter for `TerminalWidget`
+  itself (the `text-changed` event lane behind the H9 a11y bundle in
+  `0.9.0`) is a separate, larger design cycle and is out of scope
+  for this bundle.
+
 ## [0.7.40] — 2026-04-27
 
 **Theme:** Performance — scroll-region rotate + VtBatch zero-copy
