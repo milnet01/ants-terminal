@@ -109,12 +109,15 @@ Signal set is built from two sources:
    `^Revert ` (mechanical). Keep subject up to first `—` /  `:` so
    long descriptive titles get the meaningful slice.
 
-When the "Current work" filter is checked, only bullets matching
-the signal set render. When it's unchecked (default), matching
-bullets are highlighted in-place: a left border in the spec palette's
-ToolUse yellow (`#E5C24A`), 4 px wide, and a `<a>`-style anchor jump
-on dialog open scrolls to the first match.
+"Currently being tackled" is a **peer category** filter, treated
+the same way as the four emoji categories: a bullet renders iff
+ANY of its enabled category memberships matches (inclusive OR).
+A current-work bullet whose emoji category is filtered off still
+renders if "Currently being tackled" is checked, and vice versa.
 
+The yellow left-border highlight (4 px, ToolUse palette `#E5C24A`)
+is applied to every rendered bullet whose payload matches a signal
+phrase — independent of which checkbox kept the bullet visible.
 A bullet that matches no signal phrase is *not* a current-work
 candidate. If the signal set is empty (Unreleased block absent, no
 recent commits), no highlights are shown — the feature is silent
@@ -169,11 +172,13 @@ source-grep + pure-helper harness, no full Qt widget tree.
   category checkbox off drops only that category's line and keeps
   the rest; toggling all category bits off keeps only the plain
   narrative bullet (Other category is always rendered).
-- INV-3 Status emojis recognised: source-grep on the renderer for the
-  four legend emojis (`✅`, `📋`, `🚧`, `💭`) so a future emoji change
-  in ROADMAP doesn't silently misclassify lines. Each of the five
-  filter bits (`ShowDone`, `ShowPlanned`, `ShowInProgress`,
-  `ShowConsidered`, `ShowCurrent`) is referenced in the renderer.
+- INV-3 Status emojis + filter bits recognised: source-grep on the
+  renderer for the four ROADMAP-legend emojis (`✅`, `📋`, `🚧`, `💭`)
+  so a future emoji change doesn't silently misclassify lines, plus
+  the five filter bits (`ShowDone`, `ShowPlanned`, `ShowInProgress`,
+  `ShowConsidered`, `ShowCurrent`) — four map to emoji categories
+  and the fifth is the CHANGELOG-derived "currently being tackled"
+  signal.
 - INV-4 Current-work highlight: rendering with a `currentBullets` set
   containing the substring "state-dot palette" against an input
   containing a bullet `- ✅ **State-dot palette**…` produces output
