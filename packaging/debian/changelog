@@ -1,3 +1,65 @@
+ants-terminal (0.7.39-1) unstable; urgency=medium
+
+  * Feature. Claude Code UX bundle plus a status-bar Roadmap viewer.
+    Two user requests landed in quick succession.
+    User request 1 (2026-04-27): "Let's have a round dot on each tab
+    that has a Claude Code session running (no icons or anything else
+    other than the tab label). The dot will change colour with the
+    various states that Claude Code is in. Each state has its own
+    colour (grey for idle). Then extend those colours to the status
+    bar Claude Code status too."
+    User request 2 (2026-04-27): "Add a button on the status bar to
+    view the roadmap. So, it brings up a dialog showing the roadmap.
+    It should have filters as well to show what is outstanding and
+    what is completed. If at all possible, it should also highlight
+    what item is being done currently. The roadmap button should only
+    show if there is roadmap documentation — let's simplify that to
+    requiring a roadmap.md file only."
+  * Added: Unified Claude state-dot palette across tabs and status bar
+    (coloredtabbar.h, mainwindow.cpp). New static helper
+    ClaudeTabIndicator::color(Glyph) is the single source of truth for
+    an eight-state palette (Idle grey, Thinking blue, ToolUse yellow,
+    Bash green, Planning cyan, Auditing magenta, Compacting violet,
+    AwaitingInput orange). Red intentionally absent — AwaitingInput is
+    a normal interaction state, not an error. paintEvent uses one
+    kDotRadius = 4 for every state; prior AwaitingInput outline +
+    radius 5 treatment removed.
+  * Added: Auditing lights the per-tab dot. Plumbed into
+    ClaudeTabTracker::ShellState::auditing; tab provider routes it to
+    Glyph::Auditing magenta. Precedence chain across both surfaces:
+    AwaitingInput → Planning → Auditing → state-derived.
+  * Added: Status-bar Roadmap viewer button (roadmapdialog.{h,cpp},
+    new files). Visible iff the active tab's shellCwd() contains a
+    ROADMAP.md (case-insensitive). Non-modal QDialog with five peer
+    category checkboxes (Done, Planned, In progress, Considered,
+    Currently being tackled), all default-checked. Static
+    RoadmapDialog::renderHtml is pure so tests drive it without Qt.
+  * Added: "Currently being tackled" highlight. Bullets match a
+    signal set built from local CHANGELOG.md [Unreleased] bullets +
+    last 5 non-release/non-merge/non-revert git commit subjects;
+    matched bullets get a yellow left-border CSS highlight (same
+    ToolUse yellow from the dot palette). Silent when the signal set
+    is empty.
+  * Added: Live-tail dialog mechanics. QFileSystemWatcher on
+    ROADMAP.md and CHANGELOG.md, 200 ms debounce, plus the
+    scroll-preservation triple from 0.7.37 / 0.7.38: m_lastHtml
+    shared_ptr cache + skip-identical-HTML guard, capture vbar before
+    setHtml, restore with qMin(saved, vbar->maximum()) clamp,
+    was-at-bottom pin so live appends stay visible.
+  * Changed: ClaudeTabIndicator::Glyph enum gains Auditing between
+    Planning and Compacting; ShellState gains bool auditing field with
+    a maybeEmit comparison branch. MainWindow::applyClaudeStatusLabel
+    no longer reads Theme::ansi[] for Claude-label colours — all state
+    → colour mappings route through the unified helper. Unused
+    Theme &th local removed.
+  * Removed: AwaitingInput-specific dot decoration (radius 5 + white
+    outline). Colour alone is the differentiator now.
+  * Locked by tests/features/claude_state_dot_palette/ (8 invariants)
+    and tests/features/roadmap_viewer/ (10 hybrid invariants —
+    source-grep plus behavioural drives of the static renderHtml).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 12:00:00 +0000
+
 ants-terminal (0.7.38-1) unstable; urgency=medium
 
   * Feature. Background-tasks status-bar surface for Claude Code.

@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.38 (2026-04-25). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.39 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1771,6 +1771,48 @@ remainder, captured so they don't drop on the floor.
   source-grep harness, no Qt link, asserts helper signature, full
   palette, paintEvent helper-call, uniform geometry, mainwindow
   wiring, auditing plumbing).
+
+### 🎨 Status-bar Roadmap viewer (user request 2026-04-27)
+
+- ✅ **Status-bar Roadmap button + filterable live-tail dialog.**
+  Shipped 0.7.39. User ask: "a button on the status bar to view the
+  roadmap. So, it brings up a dialog showing the roadmap. It should
+  have filters as well to show what is outstanding and what is
+  completed if the user wants to use the filters. If at all
+  possible, it should also highlight what item is being done
+  currently." Follow-up: "the roadmap button should only show if
+  there is roadmap documentation. Let's simplify that to requiring
+  a roadmap.md file only. The user should follow norms for the
+  roadmap button to show." Plus a clarification adding a fourth
+  emoji toggle and elevating "Currently being tackled" to a
+  peer filter. New `RoadmapDialog` (`roadmapdialog.{h,cpp}`)
+  parses ROADMAP.md line-by-line into themed HTML with 5 peer
+  category checkboxes (✅ Done · 📋 Planned · 🚧 In progress ·
+  💭 Considered · Currently being tackled). All default-checked;
+  combined inclusively (a bullet renders iff ANY enabled category
+  matches). Plain narration bullets without status emojis always
+  render. The "Currently being tackled" signal set is built from
+  `CHANGELOG.md` `[Unreleased]` block + the last 5
+  non-release/merge/revert git commit subjects, fuzzy-matched
+  (lowercase, hyphens-as-spaces, punctuation-stripped) against
+  bullet payloads. Matched bullets get a yellow left-border CSS
+  highlight (`border-left: 4px solid #E5C24A` — the new ToolUse
+  yellow from the dot palette, intentionally consistent across the
+  two surfaces). Live updates: `QFileSystemWatcher` on
+  ROADMAP.md + CHANGELOG.md, 200 ms debounce, the same
+  scroll-preservation triple shipped with 0.7.37 / 0.7.38
+  (capture vbar before `setHtml`, restore with `qMin(saved,
+  maximum())` clamp, was-at-bottom pin). Button visibility is
+  per-tab: `MainWindow::refreshRoadmapButton` (called from the
+  central `refreshStatusBarForActiveTab` tick) probes the active
+  tab's `shellCwd()` for any case-variant of `ROADMAP.md` and
+  shows/hides accordingly — terminals running outside any project
+  root pay nothing. Locked by `tests/features/roadmap_viewer/`
+  (10 invariants — links the dialog source so the static
+  `renderHtml` helper can be driven against synthetic markdown,
+  asserts five-bit filter semantics, the highlight CSS marker on
+  signal match, the marker's absence on empty signal sets, the
+  case-insensitive cwd probe, and the wire-up shape).
 
 ### 🐜 Tab UX
 

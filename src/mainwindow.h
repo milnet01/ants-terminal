@@ -319,6 +319,12 @@ private:
     // Click → ClaudeBgTasksDialog (live tail, scroll-preserving).
     QPushButton *m_claudeBgTasksBtn = nullptr;
     ClaudeBgTaskTracker *m_claudeBgTasks = nullptr;
+    // 0.7.39 — status-bar Roadmap viewer button. Visible iff the
+    // active tab's cwd contains a ROADMAP.md (case-insensitive).
+    // Click → RoadmapDialog (live-watching, filterable, current-work
+    // highlight from CHANGELOG [Unreleased] + recent commits).
+    QPushButton *m_roadmapBtn = nullptr;
+    QString m_roadmapPath;  // last canonical path the button was wired against
     // 0.6.27 — cached last state/detail so the Claude status label can be
     // re-rendered when the permission-prompt overlay toggles without having
     // to wait for the next ClaudeIntegration::stateChanged tick. When
@@ -365,6 +371,13 @@ private:
     // session, then update button visibility + label. Called on tab
     // switch, on tracker tasksChanged, and on session swap.
     void refreshBgTasksButton();
+    // Probe the active tab's cwd for a ROADMAP.md (case-insensitive)
+    // and show/hide the Roadmap button. Called from the central
+    // refreshStatusBarForActiveTab tick.
+    void refreshRoadmapButton();
+    // Open the Roadmap dialog against m_roadmapPath. Non-modal so the
+    // user can keep typing in the terminal while reading.
+    void showRoadmapDialog();
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS

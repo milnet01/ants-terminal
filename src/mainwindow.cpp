@@ -15,6 +15,7 @@
 #include "claudeallowlist.h"
 #include "claudebgtasks.h"
 #include "claudebgtasksdialog.h"
+#include "roadmapdialog.h"
 #include "claudeintegration.h"
 #include "claudetabtracker.h"
 #include "claudeprojects.h"
@@ -3513,6 +3514,18 @@ void MainWindow::setupClaudeIntegration() {
     connect(m_claudeBgTasks, &ClaudeBgTaskTracker::tasksChanged,
             this, &MainWindow::refreshBgTasksButton);
 
+    // 0.7.39 — Roadmap button. Sibling to Background Tasks; same size/
+    // policy contract. Hidden until the active tab's cwd is probed and
+    // a ROADMAP.md surfaces. User asked for it to follow the
+    // ROADMAP.md-presence convention so terminals running outside any
+    // project root pay nothing.
+    m_roadmapBtn = new QPushButton(tr("Roadmap"), this);
+    m_roadmapBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_roadmapBtn->hide();
+    statusBar()->addPermanentWidget(m_roadmapBtn);
+    connect(m_roadmapBtn, &QPushButton::clicked,
+            this, &MainWindow::showRoadmapDialog);
+
     // Error indicator label
     m_claudeErrorLabel = new QLabel(this);
     // Styled dynamically by updateClaudeThemeColors()
@@ -4154,6 +4167,8 @@ void MainWindow::refreshStatusBarForActiveTab() {
         if (m_claudeContextBar) m_claudeContextBar->hide();
         if (m_claudeBgTasks) m_claudeBgTasks->setTranscriptPath(QString());
         if (m_claudeBgTasksBtn) m_claudeBgTasksBtn->hide();
+        if (m_roadmapBtn) m_roadmapBtn->hide();
+        m_roadmapPath.clear();
         return;
     }
 
@@ -4181,6 +4196,7 @@ void MainWindow::refreshStatusBarForActiveTab() {
     updateStatusBar();
     refreshReviewButton();
     refreshBgTasksButton();
+    refreshRoadmapButton();
 }
 
 void MainWindow::updateStatusBar() {
@@ -4784,6 +4800,58 @@ void MainWindow::showBgTasksDialog() {
     // active tab's session, not whatever the tracker last saw.
     refreshBgTasksButton();
     auto *dlg = new ClaudeBgTasksDialog(m_claudeBgTasks, m_currentTheme, this);
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
+}
+
+void MainWindow::refreshRoadmapButton() {
+    if (!m_roadmapBtn) return;
+    auto *t = focusedTerminal();
+    if (!t) t = currentTerminal();
+    if (!t) {
+        m_roadmapBtn->hide();
+        m_roadmapPath.clear();
+        return;
+    }
+    const QString cwd = t->shellCwd();
+    if (cwd.isEmpty()) {
+        m_roadmapBtn->hide();
+        m_roadmapPath.clear();
+        return;
+    }
+    // Case-insensitive match — `ROADMAP.md` is the documented norm but
+    // accept any case so projects that follow norms loosely (lowercase
+    // `roadmap.md`, `Roadmap.md`) still get the button. Linux fs is
+    // case-sensitive so a manual entryList scan is required.
+    QString found;
+    QDir dir(cwd);
+    for (const QFileInfo &fi : dir.entryInfoList(QDir::Files)) {
+        if (fi.fileName().compare(QStringLiteral("ROADMAP.md"),
+                                  Qt::CaseInsensitive) == 0) {
+            found = fi.absoluteFilePath();
+            break;
+        }
+    }
+    if (found.isEmpty()) {
+        m_roadmapBtn->hide();
+        m_roadmapPath.clear();
+        return;
+    }
+    m_roadmapPath = found;
+    m_roadmapBtn->show();
+}
+
+void MainWindow::showRoadmapDialog() {
+    if (m_roadmapPath.isEmpty()) {
+        // Defensive: refresh once in case the click came in on a stale
+        // path. If still empty, nothing to show.
+        refreshRoadmapButton();
+        if (m_roadmapPath.isEmpty()) return;
+    }
+    showStatusMessage(QStringLiteral("Roadmap: opening…"), 1500);
+    auto *dlg = new RoadmapDialog(m_roadmapPath, m_currentTheme, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->show();
     dlg->raise();
     dlg->activateWindow();

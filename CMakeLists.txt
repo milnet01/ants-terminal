@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.38 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.39 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -76,6 +76,7 @@ add_executable(ants-terminal
     src/claudeallowlist.cpp
     src/claudebgtasks.cpp
     src/claudebgtasksdialog.cpp
+    src/roadmapdialog.cpp
     src/claudeintegration.cpp
     src/claudetabtracker.cpp
     src/claudeprojects.cpp
@@ -2111,6 +2112,43 @@ if(ANTS_TESTS)
     add_test(NAME claude_state_dot_palette
         COMMAND test_claude_state_dot_palette)
     set_tests_properties(claude_state_dot_palette PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
+    # status-bar Roadmap button visible iff the active tab's cwd
+    # contains a ROADMAP.md (case-insensitive); click opens a
+    # filterable dialog with five peer category checkboxes (Done /
+    # Planned / In progress / Considered / Currently being tackled).
+    # Current-work bullets get a yellow left-border highlight derived
+    # from CHANGELOG [Unreleased] + recent git commit subjects. The
+    # test is a hybrid source-grep + behavioral harness — links the
+    # roadmapdialog.cpp source so the static renderHtml helper can be
+    # called against synthetic markdown to verify filter semantics
+    # and the highlight CSS marker. See spec.md.
+    add_executable(test_roadmap_viewer
+        tests/features/roadmap_viewer/test_roadmap_viewer.cpp
+        src/roadmapdialog.cpp
+        src/coloredtabbar.cpp
+        src/themes.cpp
+    )
+    target_link_libraries(test_roadmap_viewer PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_roadmap_viewer PRIVATE src)
+    target_compile_options(test_roadmap_viewer PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_roadmap_viewer PRIVATE
+        ROADMAPDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.h"
+        ROADMAPDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.cpp"
+        MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME roadmap_viewer COMMAND test_roadmap_viewer)
+    set_tests_properties(roadmap_viewer PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

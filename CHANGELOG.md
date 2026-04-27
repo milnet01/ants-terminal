@@ -10,6 +10,142 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.39] — 2026-04-27
+
+**Theme:** Claude Code UX bundle + status-bar Roadmap viewer. Two
+user requests landed in quick succession.
+
+User request 1 (Claude state-dot palette):
+> "Let's have a round dot on each tab that has a Claude Code session
+> running (no icons or anything else other than the tab label). The
+> dot will change colour with the various states that Claude Code is
+> in. Each state has its own colour (grey for idle). Then extend
+> those colours to the status bar Claude Code status too."
+
+User request 2 (Roadmap viewer):
+> "Add a button on the status bar to view the roadmap. So, it brings
+> up a dialog showing the roadmap. It should have filters as well to
+> show what is outstanding and what is completed. If at all possible,
+> it should also highlight what item is being done currently. The
+> roadmap button should only show if there is roadmap documentation
+> — let's simplify that to requiring a roadmap.md file only."
+> Plus a clarification adding a fourth emoji toggle and elevating
+> "Currently being tackled" to a peer filter.
+
+### Added
+
+- **Unified Claude state-dot palette across tabs and status bar.**
+  New static helper `ClaudeTabIndicator::color(Glyph)` in
+  `coloredtabbar.h` is the single source of truth for an
+  eight-state palette: Idle grey `#888888`, Thinking blue
+  `#5BA0E5`, ToolUse yellow `#E5C24A`, Bash green `#6FCF50`,
+  Planning cyan `#5DCFCF`, Auditing magenta `#C76DC7`, Compacting
+  violet `#A87FE0`, AwaitingInput orange `#F08A4B`. Red is
+  intentionally absent — AwaitingInput is a normal interaction
+  state, not an error. `ColoredTabBar::paintEvent` calls the
+  helper for fill colour and uses a single `kDotRadius = 4` for
+  every state; the prior AwaitingInput "outline + radius 5"
+  treatment is removed (per "no icons or anything else"). The
+  bottom status-bar Claude Code label was rewired to map current
+  state → Glyph → helper colour, replacing the prior
+  `Theme::ansi[N]` mappings that drifted from the tab dot's
+  colour and varied across themes.
+
+- **Auditing now lights the per-tab dot.** Previously surfaced
+  only on the active-tab status bar (`m_claudeAuditing`). Plumbed
+  into `ClaudeTabTracker::ShellState::auditing` (mirrored from
+  the existing `ClaudeTranscriptSnapshot.auditing` field). Tab
+  provider routes it to `Glyph::Auditing` magenta; hover tooltip
+  reads "Claude: auditing". Precedence chain unchanged across
+  both surfaces:
+  AwaitingInput → Planning → Auditing → state-derived.
+
+- **Status-bar Roadmap viewer button (`roadmapdialog.{h,cpp}`,
+  new files).** Visible iff the active tab's `shellCwd()`
+  contains a `ROADMAP.md` (case-insensitive — accepts
+  `Roadmap.md`, `roadmap.md` too). `MainWindow::
+  refreshRoadmapButton` is called from the central
+  `refreshStatusBarForActiveTab` tick. Click opens
+  `RoadmapDialog`: a non-modal QDialog with a top row of five
+  peer category checkboxes (✅ Done · 📋 Planned · 🚧 In progress ·
+  💭 Considered · Currently being tackled), all default-checked.
+  A bullet renders iff any of its enabled category memberships
+  matches; plain narration bullets (no status emoji) always
+  render. The static `RoadmapDialog::renderHtml` helper is pure
+  so tests can drive it without spinning a Qt widget.
+
+- **"Currently being tackled" highlight.** A bullet matches the
+  current-work signal if its first-80-character payload (status-
+  emoji-stripped, normalised — lowercase, hyphens-and-underscores
+  as spaces, punctuation removed) contains a phrase from a signal
+  set built from (a) the local `CHANGELOG.md` `[Unreleased]`
+  block bullets, (b) the last 5 non-release/non-merge/non-revert
+  git commit subjects. Matched bullets get a yellow left-border
+  CSS highlight (`border-left: 4px solid #E5C24A` — the same
+  ToolUse yellow from the dot palette; the consistency is
+  intentional). When the signal set is empty, no highlight
+  renders — the feature is silent when there's nothing to point
+  at.
+
+- **Live-tail dialog mechanics.** `QFileSystemWatcher` on
+  `ROADMAP.md` and `CHANGELOG.md`, 200 ms debounce timer, and
+  the same scroll-preservation triple shipped with 0.7.37 /
+  0.7.38: `m_lastHtml` shared_ptr cache + skip-identical-HTML
+  guard, capture vbar before `setHtml`, restore with
+  `qMin(saved, vbar->maximum())` clamp, was-at-bottom pin so
+  live appends stay visible.
+
+### Changed
+
+- **`ClaudeTabIndicator::Glyph` enum gains `Auditing`.** Inserted
+  between `Planning` and `Compacting` so the palette ordering
+  reads Done-side → Action-side → InFlight-side → BlockingUser.
+  `ClaudeTabTracker::ShellState` gains a `bool auditing` field
+  and a new comparison branch in `maybeEmit` so changes to the
+  audit latch trigger `shellStateChanged` like every other
+  field.
+
+- **`MainWindow::applyClaudeStatusLabel` no longer reads
+  `Theme::ansi[]` for Claude-label colours.** All state →
+  colour mappings now route through the unified helper. The
+  `Theme &th = Themes::byName(...)` local was removed (unused).
+
+### Removed
+
+- **AwaitingInput-specific dot decoration** (`radius = 5` and
+  white outline). Colour alone is the differentiator now, per
+  the "no icons or anything else" user spec. The
+  `outline.alpha()` branch was removed from `paintEvent`.
+
+### Tests
+
+- `tests/features/claude_state_dot_palette/` — 8 source-grep
+  invariants asserting helper signature, full palette,
+  paintEvent helper-call, uniform geometry, mainwindow
+  status-bar wiring, Auditing plumbing through `ShellState`,
+  and double-use of the `Auditing` glyph (provider closure +
+  status applier).
+
+- `tests/features/roadmap_viewer/` — 10 hybrid invariants
+  (source-grep + behavioral). Links the dialog source so the
+  static `renderHtml` helper can be driven against synthetic
+  markdown to verify five-bit filter semantics, the highlight
+  CSS marker on signal match, the marker's absence on empty
+  signal sets, the case-insensitive cwd probe, the wire-up
+  shape (`m_roadmapBtn` construction + click connection), and
+  the `refreshRoadmapButton` call from
+  `refreshStatusBarForActiveTab`.
+
+### Documentation
+
+- ROADMAP user-request entries added for both 0.7.39 features
+  with full citation of the user asks. Two stale 📋 entries in
+  the cross-cutting themes section flipped to ✅ with
+  shipped-release citations (the `/tmp/*.js` TOCTOU and the
+  no-auth local-IPC chain — both shipped in the 0.7.12 Tier 1
+  batch but the umbrella narrative entries weren't updated at
+  the time).
+
 ## [0.7.38] — 2026-04-25
 
 **Theme:** Feature. Background-tasks status-bar surface for Claude
