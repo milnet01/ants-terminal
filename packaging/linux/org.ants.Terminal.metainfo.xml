@@ -103,6 +103,22 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.44" date="2026-04-27">
+      <description>
+        <p>Two themed cleanups in one bundle. Retiring the dormant GPU-accelerated glyph-atlas renderer (compiled-but-unreachable since 0.7.4) and its no-op user-facing chrome (Settings checkbox + View menu action) — ~900 LoC removed, retires ROADMAP § "Renderer subsystem decision". Plus scoping the Background Tasks dialog to the active tab's project tree so sessions running in another project's window don't leak into this window's button.</p>
+        <p>Changed:</p>
+        <ul>
+          <li><em>Background Tasks button now scopes to the active tab's project.</em> Previously <code>ClaudeIntegration::activeSessionPath()</code> walked <code>~/.claude/projects/</code> system-wide and returned the most-recently-modified <code>.jsonl</code>, which meant a busy session in one project's window would surface its bg-tasks count on a sibling window pointed at a different project. The method now accepts a <code>projectCwd</code> argument; the active tab's <code>shellCwd()</code> is encoded via <code>encodeProjectPath</code> and the helper walks up the cwd probing each ancestor's <code>~/.claude/projects/&lt;encoded&gt;/</code> subdir, returning the deepest match's newest <code>.jsonl</code>.</li>
+        </ul>
+        <p>Removed:</p>
+        <ul>
+          <li><em><code>src/glrenderer.{h,cpp}</code> (~900 LoC).</em> The optional GPU-accelerated glyph-atlas renderer with GLSL 3.3 shaders + instanced quads + a per-cell vertex buffer. Disabled in 0.7.4 when <code>TerminalWidget</code> switched from <code>QOpenGLWidget</code> to plain <code>QWidget</code>; sat compiled-but-unreachable for 39 releases.</li>
+          <li><em><code>gpu_rendering</code> Config key + Settings checkbox + View menu action.</em> All three wrote to the dormant bool with no observable effect since 0.7.4. Removed in this release. Existing config files with <code>"gpu_rendering": true</code> are silently ignored — <code>Config</code> doesn't validate unknown JSON keys.</li>
+          <li><em><code>TerminalWidget::setGpuRendering(bool)</code> / <code>gpuRendering()</code></em> + the <code>m_glRenderer</code> / <code>m_gpuRendering</code> members.</li>
+        </ul>
+        <p>Locked by <code>tests/features/claude_bg_tasks_button/</code> — extended from 10 to 11 invariants. INV-11 is a three-part check on the project-scoping fix: header signature accepts <code>projectCwd</code>, implementation walks up via <code>cdUp</code> + <code>encodeProjectPath</code>, and <code>MainWindow::refreshBgTasksButton</code> reads <code>focusedTerminal()-&gt;shellCwd()</code> and passes it through to <code>activeSessionPath(cwd)</code>. <code>tests/features/settings_restore_defaults/spec.md</code> updated to drop the no-longer-applicable <code>gpuRendering off</code> clause.</p>
+      </description>
+    </release>
     <release version="0.7.43" date="2026-04-27">
       <description>
         <p>Roadmap viewer polish — the dialog the previous release introduced gets a working <em>Close</em> button and a dynamic section-navigation sidebar that lists every heading in the active <code>ROADMAP.md</code> and lets the user click to jump. The TOC is built per project from whatever headings the file happens to have (no hardcoded section names) so the same dialog adapts to every repo that opens with a roadmap.</p>

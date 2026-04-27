@@ -95,7 +95,6 @@ private:
     QSlider *m_opacitySlider;
     QLabel *m_opacityLabel;
     QCheckBox *m_backgroundBlur;
-    QCheckBox *m_gpuRendering;
     QSpinBox *m_paddingSpinner;
     QLineEdit *m_badgeEdit;
     QCheckBox *m_autoColorScheme;

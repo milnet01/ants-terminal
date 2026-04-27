@@ -1,3 +1,44 @@
+ants-terminal (0.7.44-1) unstable; urgency=medium
+
+  * Two themed cleanups in one bundle. Retiring the dormant GPU-
+    accelerated glyph-atlas renderer (compiled-but-unreachable since
+    0.7.4) and its no-op user-facing chrome (Settings checkbox + View
+    menu action) — ~900 LoC removed, retires ROADMAP § "Renderer
+    subsystem decision". Plus scoping the Background Tasks dialog to
+    the active tab's project tree so sessions running in another
+    project's window don't leak into this window's button.
+  * Changed: Background Tasks button now scopes to the active tab's
+    project. Previously ClaudeIntegration::activeSessionPath() walked
+    ~/.claude/projects/ system-wide and returned the most-recently-
+    modified .jsonl, which meant a busy session in one project's
+    window would surface its bg-tasks count on a sibling window
+    pointed at a different project. The method now accepts a
+    projectCwd argument; the active tab's shellCwd() is encoded via
+    encodeProjectPath and the helper walks up the cwd probing each
+    ancestor's ~/.claude/projects/<encoded>/ subdir, returning the
+    deepest match's newest .jsonl.
+  * Removed: src/glrenderer.{h,cpp} (~900 LoC). The optional GPU-
+    accelerated glyph-atlas renderer with GLSL 3.3 shaders + instanced
+    quads + a per-cell vertex buffer. Disabled in 0.7.4 when
+    TerminalWidget switched from QOpenGLWidget to plain QWidget; sat
+    compiled-but-unreachable for 39 releases.
+  * Removed: gpu_rendering Config key + Settings checkbox + View menu
+    action. All three wrote to the dormant bool with no observable
+    effect since 0.7.4. Existing config files with
+    "gpu_rendering": true are silently ignored — Config doesn't
+    validate unknown JSON keys.
+  * Removed: TerminalWidget::setGpuRendering(bool) / gpuRendering()
+    plus the m_glRenderer / m_gpuRendering members.
+  * Tests: tests/features/claude_bg_tasks_button/ extended from 10 to
+    11 invariants. INV-11 is a three-part check on the project-scoping
+    fix: header signature accepts projectCwd, implementation walks up
+    via cdUp + encodeProjectPath, and refreshBgTasksButton reads
+    focusedTerminal()->shellCwd() and passes it through to
+    activeSessionPath(cwd). settings_restore_defaults spec updated to
+    drop the no-longer-applicable "gpuRendering off" clause.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 15:13:46 +0200
+
 ants-terminal (0.7.43-1) unstable; urgency=medium
 
   * Roadmap viewer polish — the dialog the previous release introduced

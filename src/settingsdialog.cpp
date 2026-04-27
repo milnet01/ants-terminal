@@ -247,9 +247,6 @@ void SettingsDialog::setupAppearanceTab(QWidget *tab) {
     m_backgroundBlur = new QCheckBox("Enable background blur (KDE/KWin)", tab);
     layout->addRow(m_backgroundBlur);
 
-    m_gpuRendering = new QCheckBox("GPU rendering (glyph atlas + GLSL shaders)", tab);
-    layout->addRow(m_gpuRendering);
-
     m_paddingSpinner = new QSpinBox(tab);
     m_paddingSpinner->setRange(0, 32);
     m_paddingSpinner->setSuffix(" px");
@@ -295,7 +292,6 @@ void SettingsDialog::setupAppearanceTab(QWidget *tab) {
         m_themeCombo->setCurrentText(QStringLiteral("Dark"));
         m_opacitySlider->setValue(100);
         m_backgroundBlur->setChecked(false);
-        m_gpuRendering->setChecked(false);
         m_paddingSpinner->setValue(4);
         m_badgeEdit->clear();
         m_autoColorScheme->setChecked(false);
@@ -583,7 +579,6 @@ void SettingsDialog::setupProfilesTab(QWidget *tab) {
         p["font_size"] = m_fontSize->value();
         p["opacity"] = m_opacitySlider->value() / 100.0;
         p["scrollback_lines"] = m_scrollbackLines->value();
-        p["gpu_rendering"] = m_gpuRendering->isChecked();
         m_pendingProfiles[name] = p;
 
         if (m_profileCombo->findText(name) < 0)
@@ -615,8 +610,6 @@ void SettingsDialog::setupProfilesTab(QWidget *tab) {
             m_opacitySlider->setValue(static_cast<int>(p["opacity"].toDouble() * 100));
         if (p.contains("scrollback_lines"))
             m_scrollbackLines->setValue(p["scrollback_lines"].toInt());
-        if (p.contains("gpu_rendering"))
-            m_gpuRendering->setChecked(p["gpu_rendering"].toBool());
 
         m_pendingActiveProfile = name;
     });
@@ -836,7 +829,6 @@ void SettingsDialog::loadSettings() {
     m_themeCombo->setCurrentText(m_config->theme());
     m_opacitySlider->setValue(static_cast<int>(m_config->opacity() * 100));
     m_backgroundBlur->setChecked(m_config->backgroundBlur());
-    m_gpuRendering->setChecked(m_config->gpuRendering());
     m_paddingSpinner->setValue(m_config->terminalPadding());
     m_badgeEdit->setText(m_config->badgeText());
     m_autoColorScheme->setChecked(m_config->autoColorScheme());
@@ -943,7 +935,6 @@ void SettingsDialog::applySettings() {
     m_config->setTheme(m_themeCombo->currentText());
     m_config->setOpacity(m_opacitySlider->value() / 100.0);
     m_config->setBackgroundBlur(m_backgroundBlur->isChecked());
-    m_config->setGpuRendering(m_gpuRendering->isChecked());
     m_config->setTerminalPadding(m_paddingSpinner->value());
     m_config->setBadgeText(m_badgeEdit->text().trimmed());
     m_config->setAutoColorScheme(m_autoColorScheme->isChecked());

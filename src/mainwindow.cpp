@@ -1447,17 +1447,6 @@ void MainWindow::setupMenus() {
         showStatusMessage(checked ? "Blur enabled (restart for full effect)" : "Blur disabled", 3000);
     });
 
-    // GPU rendering toggle
-    QAction *gpuAction = settingsMenu->addAction("&GPU Rendering");
-    gpuAction->setCheckable(true);
-    gpuAction->setChecked(m_config.gpuRendering());
-    connect(gpuAction, &QAction::toggled, this, [this](bool checked) {
-        m_config.setGpuRendering(checked);
-        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
-        for (auto *t : terminals) t->setGpuRendering(checked);
-        showStatusMessage(checked ? "GPU rendering enabled" : "GPU rendering disabled", 3000);
-    });
-
     // Session persistence toggle
     QAction *persistAction = settingsMenu->addAction("Session &Persistence");
     persistAction->setCheckable(true);
@@ -1758,7 +1747,6 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setEditorCommand(m_config.editorCommand());
     terminal->setImagePasteDir(m_config.imagePasteDir());
     terminal->setWindowOpacityLevel(m_config.opacity());
-    terminal->setGpuRendering(m_config.gpuRendering());
     terminal->setVisualBell(m_config.visualBell());
     terminal->setPadding(m_config.terminalPadding());
     terminal->setShowCommandMarks(m_config.showCommandMarks());
@@ -4772,12 +4760,17 @@ void MainWindow::refreshReviewButton() {
 
 void MainWindow::refreshBgTasksButton() {
     if (!m_claudeBgTasks || !m_claudeBgTasksBtn) return;
-    // Use the same transcript path the Claude integration just resolved
-    // for the active tab. activeSessionPath() walks ~/.claude/projects
-    // and returns the most-recently-modified .jsonl, which matches the
-    // session the user is currently driving from this tab's shell.
+    // Resolve the transcript path scoped to the active tab's project
+    // tree. activeSessionPath walks up the cwd, encodes each ancestor
+    // to Claude Code's `<dashed-cwd>` form, and returns the newest
+    // `.jsonl` from the deepest matching `~/.claude/projects/<…>/`
+    // subdir. Without this scoping, sessions from *other* projects
+    // (e.g. another tab's tree) would leak into the bg-tasks surface
+    // — which is exactly the user-reported 2026-04-27 bug.
+    QString cwd;
+    if (auto *t = focusedTerminal()) cwd = t->shellCwd();
     QString path;
-    if (m_claudeIntegration) path = m_claudeIntegration->activeSessionPath();
+    if (m_claudeIntegration) path = m_claudeIntegration->activeSessionPath(cwd);
     m_claudeBgTasks->setTranscriptPath(path);
 
     const int running = m_claudeBgTasks->runningCount();

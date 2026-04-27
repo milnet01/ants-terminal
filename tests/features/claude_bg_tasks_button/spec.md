@@ -122,6 +122,23 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   `CMakeLists.txt` lists both `src/claudebgtasks.cpp` and
   `src/claudebgtasksdialog.cpp` in the `ants-terminal` target.
 
+- **INV-11** (project-scoped lookup, added 0.7.44 — user feedback
+  2026-04-27 "ensure that it only references the background tasks
+  for that project, not all projects"):
+  `ClaudeIntegration::activeSessionPath` accepts a
+  `const QString &projectCwd` argument. Its body walks up
+  `projectCwd` via `cdUp`, encoding each ancestor with
+  `encodeProjectPath` to Claude Code's `<dashed-cwd>` directory
+  name, and returns the newest `*.jsonl` from the deepest matching
+  `~/.claude/projects/<encoded>/`. `MainWindow::refreshBgTasksButton`
+  reads the active tab's cwd via `focusedTerminal()->shellCwd()`
+  and passes it through. Without all three pieces, the dialog
+  shows the system-wide newest `.jsonl` regardless of the active
+  tab's project — visible to the user as "background tasks from
+  another window's project leaking into this window's button". The
+  source-grep checks the header signature, implementation walk-up,
+  and the call-site wiring.
+
 ## How to verify pre-fix code fails
 
 ```bash

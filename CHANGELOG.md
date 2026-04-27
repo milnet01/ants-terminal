@@ -10,6 +10,85 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.44] — 2026-04-27
+
+**Theme:** Two themed cleanups in one bundle. Retiring the dormant
+GPU-accelerated glyph-atlas renderer (compiled-but-unreachable since
+0.7.4) and its no-op user-facing chrome (Settings checkbox + View
+menu action) — ~900 LoC removed, retires ROADMAP § "Renderer
+subsystem decision". Plus scoping the Background Tasks dialog to the
+active tab's project tree so sessions running in another project's
+window don't leak into this window's button.
+
+### Changed
+
+- **Background Tasks button now scopes to the active tab's project.**
+  Previously `ClaudeIntegration::activeSessionPath()` walked
+  `~/.claude/projects/` system-wide and returned the most-recently-
+  modified `.jsonl`, which meant a busy session in one project's
+  window would surface its bg-tasks count on a sibling window
+  pointed at a different project. The method now accepts a
+  `projectCwd` argument; the active tab's `shellCwd()` is encoded
+  via `encodeProjectPath` and the helper walks up the cwd
+  (`cdUp`) probing each ancestor's `~/.claude/projects/<encoded>/`
+  subdir, returning the deepest match's newest `.jsonl`. Empty
+  `projectCwd` falls back to system-wide newest (kept for callers
+  that genuinely want it; nothing in tree currently does).
+
+### Removed
+
+- **`src/glrenderer.{h,cpp}` (~900 LoC).** The optional GPU-
+  accelerated glyph-atlas renderer with GLSL 3.3 shaders +
+  instanced quads + a per-cell vertex buffer. Disabled in 0.7.4
+  when `TerminalWidget` switched from `QOpenGLWidget` to plain
+  `QWidget`; sat compiled-but-unreachable for 39 releases. ROADMAP
+  framed the choice as "revive via `createWindowContainer` *or*
+  delete" — picked delete. The QPainter+QTextLayout path remains
+  the only paint path and is fast enough for every shipped corpus.
+- **`gpu_rendering` Config key + Settings checkbox + View menu.**
+  `Config::gpuRendering()` / `setGpuRendering()`, the Settings →
+  Appearance "GPU rendering (glyph atlas + GLSL shaders)"
+  checkbox, and the View → "GPU Rendering" menu action all wrote
+  to the dormant bool with no observable effect since 0.7.4. All
+  three are removed in this release. Existing config files with
+  `"gpu_rendering": true` are silently ignored — `Config` doesn't
+  validate unknown JSON keys.
+- **`TerminalWidget::setGpuRendering(bool)` / `gpuRendering()`** +
+  the `m_glRenderer` / `m_gpuRendering` members. The
+  `setGpuRendering` setter was a no-op stub; both are gone.
+- **Disabled-OpenGL-path landmark comment + commented-out
+  `m_glRenderer` cleanup** in the `TerminalWidget` destructor and
+  `paintEvent` chain.
+
+### Tests
+
+- `tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp`
+  extended from 10 → 11 invariants:
+  - **INV-11** — three-part check on the project-scoping fix:
+    (a) header signature `activeSessionPath(const QString
+    &projectCwd)`,
+    (b) implementation references `encodeProjectPath` AND `cdUp`
+    (the walk-up logic — no shortcut to a single string match),
+    (c) `MainWindow::refreshBgTasksButton` reads
+    `focusedTerminal()->shellCwd()` and passes it through to
+    `activeSessionPath(cwd)`.
+
+  Spec updated with the matching contract entry (linking the
+  user-feedback quote 2026-04-27).
+- `tests/features/settings_restore_defaults/spec.md` updated to
+  drop the no-longer-applicable `gpuRendering off` clause from
+  Invariant 2's reset-default catalogue.
+
+### Notes
+
+- No user-visible behaviour change from the GL renderer removal —
+  the path was never reachable. The user-visible improvements are
+  the two pieces of chrome that no longer lie about their effect.
+- Out of scope: actually adding a real GPU acceleration path (e.g.
+  via `createWindowContainer` + `QOpenGLWindow`). If that comes
+  back, it'll be a fresh design with current Qt 6 idioms, not a
+  resurrection of the 0.7.4-era code.
+
 ## [0.7.43] — 2026-04-27
 
 **Theme:** Roadmap viewer polish — the dialog the previous release

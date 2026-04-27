@@ -25,6 +25,12 @@
 #ifndef SRC_CMAKELISTS_PATH
 #error "SRC_CMAKELISTS_PATH compile definition required"
 #endif
+#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
+#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_CLAUDE_INTEGRATION_H_PATH
+#error "SRC_CLAUDE_INTEGRATION_H_PATH compile definition required"
+#endif
 
 static std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -55,6 +61,8 @@ int main() {
     const std::string dlgh   = slurp(SRC_BGDIALOG_H_PATH);
     const std::string mw     = slurp(SRC_MAINWINDOW_CPP_PATH);
     const std::string cml    = slurp(SRC_CMAKELISTS_PATH);
+    const std::string cicpp  = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cih    = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
 
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -233,11 +241,63 @@ int main() {
              "src/claudebgtasksdialog.cpp in the ants-terminal target");
     }
 
+    // INV-11 (added 0.7.44): bg-tasks lookup is scoped to the active
+    // tab's project tree, not system-wide newest. The fix changed
+    // `activeSessionPath()` to accept an optional `projectCwd`
+    // argument and walk up the cwd, encoding each ancestor and
+    // probing `~/.claude/projects/<encoded>/` for the deepest match.
+    // Without this, sessions from another open project leak into the
+    // bg-tasks button — the user-reported 2026-04-27 bug.
+    //
+    // Source-grep three pieces:
+    //   (a) header signature accepts a projectCwd argument
+    //   (b) implementation references `encodeProjectPath` AND `cdUp`
+    //       — the walk-up logic, no shortcut to a single string match
+    //   (c) refreshBgTasksButton in MainWindow reads cwd from
+    //       `focusedTerminal()->shellCwd()` and passes it to
+    //       `activeSessionPath(...)`.
+    {
+        std::regex projectScopedSig(
+            R"(activeSessionPath\s*\(\s*const\s+QString\s*&\s*projectCwd)");
+        if (!std::regex_search(cih, projectScopedSig)) {
+            fail("INV-11(a): ClaudeIntegration::activeSessionPath must "
+                 "accept `const QString &projectCwd` — without that "
+                 "scope parameter the bg-tasks surface returns the "
+                 "newest .jsonl across every project Claude has ever "
+                 "touched");
+        }
+        if (cicpp.find("encodeProjectPath") == std::string::npos) {
+            fail("INV-11(b): activeSessionPath must reference "
+                 "`encodeProjectPath` to translate the active tab's "
+                 "cwd into Claude Code's `<dashed-cwd>` directory name");
+        }
+        if (cicpp.find("cdUp") == std::string::npos) {
+            fail("INV-11(b): activeSessionPath must call `cdUp` to "
+                 "walk up the project tree — Claude may have been "
+                 "launched from a parent of the shell's current cwd");
+        }
+        // (c) MainWindow::refreshBgTasksButton must source the cwd
+        // from focusedTerminal()->shellCwd() and pass it through.
+        std::regex refreshScoped(
+            R"(focusedTerminal[^;]*shellCwd[\s\S]*?activeSessionPath\s*\([^)]*cwd[^)]*\))");
+        const std::string refreshBody = functionBody(mw,
+            "void MainWindow::refreshBgTasksButton()");
+        if (refreshBody.empty() ||
+                !std::regex_search(refreshBody, refreshScoped)) {
+            fail("INV-11(c): refreshBgTasksButton must read the "
+                 "active tab's cwd via `focusedTerminal()->shellCwd()` "
+                 "AND pass it to `activeSessionPath(cwd)` — without "
+                 "this wiring the global-newest fallback fires and "
+                 "the dialog leaks other projects' bg-tasks");
+        }
+    }
+
     if (failures > 0) {
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see spec.md for context\n", failures);
         return 1;
     }
-    std::printf("OK: claude background-tasks button invariants present\n");
+    std::printf("OK: claude background-tasks button invariants present "
+                "(11/11)\n");
     return 0;
 }

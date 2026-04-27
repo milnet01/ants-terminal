@@ -138,10 +138,9 @@ int main(int argc, char *argv[]) {
     // Ignore SIGPIPE — writing to a closed PTY delivers SIGPIPE which would
     // terminate the process.  Qt handles write errors via return codes.
     std::signal(SIGPIPE, SIG_IGN);
-    // Set default surface format with alpha for per-pixel transparency
+    // Set default surface format with alpha for per-pixel transparency.
     // Do NOT set Core Profile here — it breaks QPainter's GL paint engine
     // font scaling on displays where physical DPI differs from logical DPI.
-    // The GlRenderer requests Core Profile on its own context when needed.
     QSurfaceFormat fmt;
     fmt.setAlphaBufferSize(8);
     fmt.setDepthBufferSize(24);

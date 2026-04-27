@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.43 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.44 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1755,6 +1755,27 @@ remainder, captured so they don't drop on the floor.
   `tests/features/claude_bg_tasks_button/` (10 invariants —
   source-grep harness, no Qt link).
 
+- ✅ **Background-tasks button scopes to the active tab's project.**
+  Shipped 0.7.44. User feedback 2026-04-27: "For the background
+  tasks dialog, please ensure that it only references the
+  background tasks for that project, not all projects." Previously
+  `ClaudeIntegration::activeSessionPath()` walked
+  `~/.claude/projects/` system-wide and returned the most-recently-
+  modified `.jsonl`, which meant a busy session in one project's
+  window would surface its bg-tasks count on a sibling window
+  pointed at a different project. The method now accepts a
+  `projectCwd` argument; the active tab's `shellCwd()` is encoded
+  via `encodeProjectPath` and the helper walks up the cwd
+  (`cdUp`) probing each ancestor's `~/.claude/projects/<encoded>/`
+  subdir, returning the deepest match's newest `.jsonl`. Empty
+  `projectCwd` falls back to the system-wide newest (kept for
+  callers that genuinely want it; nothing in tree currently does).
+  Locked by `tests/features/claude_bg_tasks_button/` extended from
+  10 → 11 invariants — INV-11 source-greps the header signature,
+  the implementation walk-up logic (`encodeProjectPath` + `cdUp`),
+  and the call-site wiring through
+  `focusedTerminal()->shellCwd()`.
+
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 
 - ✅ **Single round dot per tab, colour-only differentiation, palette
@@ -1925,13 +1946,30 @@ remainder, captured so they don't drop on the floor.
   `tests/features/vtbatch_zero_copy/` (5 source-grep invariants
   on the carrier shape, alias declaration, make_shared emit
   sites, pointer-deref receiver, and metatype registration).
-- 📋 **Renderer subsystem decision:** revive `glrenderer.cpp` via
-  `createWindowContainer` *or* delete it. It's ~1 500 LoC of
-  compiled-but-unreachable code that bit-rots silently. If reviving,
-  fix the `GlyphQuad` UV-math bug (`glrenderer.cpp:378`: absolute vs
-  delta naming collision), add `glGetError` checks, restore GL state
-  on render exit, add HiDPI / `devicePixelRatio` handling, add
-  premultiplied-alpha pipeline.
+- ✅ **Renderer subsystem decision: deleted glrenderer.cpp.** Shipped
+  0.7.44. The dormant GPU-accelerated glyph-atlas renderer
+  (`src/glrenderer.{h,cpp}`, ~900 LoC) had been compiled-but-
+  unreachable since 0.7.4 — `TerminalWidget` switched to a plain
+  `QWidget` that paints via `QPainter`, leaving the GL-atlas path
+  with no live caller. Reviving via `createWindowContainer` would
+  have required fixing the GlyphQuad UV-math bug, restoring GL
+  state on render exit, HiDPI / `devicePixelRatio` handling, and a
+  premultiplied-alpha pipeline — none of which paid for themselves
+  while the QPainter+QTextLayout path remained fast enough for
+  every shipped corpus. Resolution: delete. Removed
+  `src/glrenderer.{h,cpp}`, the `gpu_rendering` Config key, the
+  `Config::gpuRendering` / `setGpuRendering` getters/setters, the
+  Settings → Appearance "GPU rendering (glyph atlas + GLSL
+  shaders)" checkbox, the View → "GPU Rendering" menu action, the
+  `m_glRenderer` / `m_gpuRendering` members on `TerminalWidget`,
+  and the `setGpuRendering(bool)` / `gpuRendering()` accessors.
+  Settings-restore-defaults spec updated to drop the no-longer-
+  present `gpuRendering off` clause. Existing config files with a
+  stale `gpu_rendering: true` key are silently ignored — Config
+  doesn't validate unknown keys. User-visible payoff: the
+  Settings checkbox + View menu item used to write the bool but
+  do nothing; both are gone, so the chrome no longer lies about
+  its own functionality.
 - ✅ **Settings dialog: dependency-UI enable gating.** Shipped
   0.7.32. AI tab fields (endpoint/key/model/context-lines)
   disabled when `m_aiEnabled` is unchecked; dark/light theme

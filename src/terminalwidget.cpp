@@ -1,9 +1,4 @@
 #include "terminalwidget.h"
-// glrenderer.h is kept included because std::unique_ptr<GlRenderer>
-// in the header needs GlRenderer complete at destructor instantiation.
-// The renderer itself is dormant in 0.7.4 — see setGpuRendering() for
-// the disabled entry point and the future-work note.
-#include "glrenderer.h"
 #include "debuglog.h"
 
 #include <QPainter>
@@ -67,13 +62,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // composition path entirely. QPainter works against the widget's
     // standard backing store, partial-rect updates work as expected,
     // and the menubar never repaints as a side-effect of terminal
-    // output. Tradeoff: the optional GL-glyph-atlas renderer
-    // (GlRenderer, gated by gpu_rendering config) is disabled until a
-    // future refactor re-introduces it as an embedded QOpenGLWindow
-    // via createWindowContainer. The default QPainter path —
-    // already ligature-aware via QTextLayout / HarfBuzz — is
-    // unaffected and remains the rendering path used by > 99% of
-    // users.
+    // output. The default QPainter path — already ligature-aware via
+    // QTextLayout / HarfBuzz — is the only rendering path; the
+    // dormant GlRenderer was retired in 0.7.44 after sitting
+    // compiled-but-unreachable for 39 releases.
     setAttribute(Qt::WA_OpaquePaintEvent, true);
 
 
@@ -380,13 +372,6 @@ TerminalWidget::~TerminalWidget() {
         m_parseThread->wait(2000);
     }
 
-    // Optional GL-atlas renderer was disabled in the 0.7.4 refactor
-    // (see class-top comment). The pointer is always null now; the
-    // block is kept commented out as a landmark for the re-enable
-    // refactor via embedded QOpenGLWindow.
-    // if (m_glRenderer && context() && context()->isValid()) {
-    //     makeCurrent(); m_glRenderer->cleanup(); doneCurrent();
-    // }
     if (m_logFile)
         m_logFile->close();
 }
@@ -3833,22 +3818,6 @@ void TerminalWidget::prevBookmark() {
     // Wrap to last bookmark
     m_scrollOffset = scrollbackSize - m_bookmarks.back();
     m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
-    update();
-}
-
-// --- OpenGL path (disabled in 0.7.4 — see class-top comment) ---
-//
-// The optional GPU-accelerated glyph-atlas renderer (GlRenderer) was
-// wired through QOpenGLWidget's initializeGL/resizeGL/paintGL
-// callbacks. Now that TerminalWidget is a plain QWidget, there's no
-// GL context to drive. setGpuRendering() is kept as a stub so the
-// config plumbing still compiles; flipping the bool has no effect
-// in 0.7.4. Future work: re-introduce the GL path as an embedded
-// QOpenGLWindow via createWindowContainer, sharing the grid data.
-
-void TerminalWidget::setGpuRendering(bool enabled) {
-    m_gpuRendering = enabled;
-    // No-op in 0.7.4 (see comment above).
     update();
 }
 

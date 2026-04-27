@@ -82,8 +82,14 @@ public:
     // Empty if no hook has fired yet.
     const QString &lastHookSessionId() const { return m_lastHookSessionId; }
 
-    // Session transcript
-    QString activeSessionPath() const;
+    // Session transcript. `projectCwd` scopes the lookup to the
+    // Claude project directory matching the caller's working tree —
+    // walks up `projectCwd` and checks each ancestor's encoded form
+    // against `~/.claude/projects/<encoded>/`, returning the newest
+    // `*.jsonl` from the deepest match. Empty `projectCwd` falls
+    // back to the global newest, matching the pre-0.7.44 behavior
+    // (kept for callers that genuinely want the system-wide newest).
+    QString activeSessionPath(const QString &projectCwd = QString()) const;
     QJsonArray loadTranscript(const QString &path) const;
     QStringList recentSessions() const;
 

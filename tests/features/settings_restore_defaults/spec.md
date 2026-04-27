@@ -37,7 +37,7 @@ control on that tab. The reset values match the schema defaults:
   empty, imagePasteDir empty, notificationTimeout 5,
   claudeTabStatusIndicator true, tabTitleFormat "title".
 - Appearance: fontSize 11, theme "Dark", opacity 100,
-  backgroundBlur off, gpuRendering off, terminalPadding 4,
+  backgroundBlur off, terminalPadding 4,
   badgeText empty, autoColorScheme off, darkTheme "Dark",
   lightTheme "Light".
 - Terminal: scrollbackLines 50000, showCommandMarks true,

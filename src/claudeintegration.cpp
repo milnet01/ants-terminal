@@ -241,10 +241,36 @@ void ClaudeIntegration::pollClaudeProcess() {
 
 // --- Session Transcripts ---
 
-QString ClaudeIntegration::activeSessionPath() const {
+QString ClaudeIntegration::activeSessionPath(const QString &projectCwd) const {
     QDir claudeDir(ConfigPaths::claudeProjectsDir());
     if (!claudeDir.exists()) return {};
 
+    // Project-scoped walk: encode each ancestor of `projectCwd` and
+    // probe `~/.claude/projects/<encoded>/`. Deepest match wins —
+    // catches the case where Claude Code was launched from a
+    // sub-directory of the visible project root, and the inverse.
+    if (!projectCwd.isEmpty()) {
+        QDir cur(projectCwd);
+        while (true) {
+            const QString encoded = encodeProjectPath(cur.absolutePath());
+            QDir proj(claudeDir.filePath(encoded));
+            if (proj.exists()) {
+                QFileInfo newest;
+                for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time)) {
+                    if (!newest.exists() || fi.lastModified() > newest.lastModified())
+                        newest = fi;
+                }
+                if (newest.exists()) return newest.absoluteFilePath();
+            }
+            if (!cur.cdUp()) break;
+        }
+        // No match for this project tree — return empty rather than
+        // leaking another project's transcript into the per-tab
+        // surfaces (background tasks, etc.).
+        return {};
+    }
+
+    // Unscoped fallback — system-wide newest .jsonl.
     QFileInfo newest;
     for (const QString &projDir : claudeDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         QDir proj(claudeDir.filePath(projDir));

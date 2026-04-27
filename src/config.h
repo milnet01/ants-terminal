@@ -59,10 +59,6 @@ public:
     QString keybinding(const QString &action, const QString &defaultKey) const;
     void setKeybinding(const QString &action, const QString &key);
 
-    // GPU rendering
-    bool gpuRendering() const;
-    void setGpuRendering(bool enabled);
-
     // Session persistence
     bool sessionPersistence() const;
     void setSessionPersistence(bool enabled);

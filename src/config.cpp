@@ -305,16 +305,6 @@ void Config::setKeybinding(const QString &action, const QString &key) {
     save();
 }
 
-// GPU rendering
-bool Config::gpuRendering() const {
-    return m_data.value("gpu_rendering").toBool(false);
-}
-
-void Config::setGpuRendering(bool enabled) {
-    m_data["gpu_rendering"] = enabled;
-    save();
-}
-
 // Session persistence — default ON. Modern terminals (iTerm2, WezTerm,
 // Kitty, Konsole) restore tabs out of the box; users expect the same here
 // without hunting through Settings. The only cost is ~a few KB of

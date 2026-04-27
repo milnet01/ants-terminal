@@ -17,8 +17,6 @@
 #include <memory>
 #include <sys/types.h>
 
-class GlRenderer;
-
 class QLabel;
 class QHBoxLayout;
 class QPushButton;
@@ -89,10 +87,6 @@ public:
 
     // Write a command string to the PTY (for SSH manager, plugins)
     void writeCommand(const QString &cmd);
-
-    // GPU rendering toggle
-    void setGpuRendering(bool enabled);
-    bool gpuRendering() const { return m_gpuRendering; }
 
     // Opacity (0.0-1.0), driven by `opacity` config key. Despite the
     // method name and the m_windowOpacity member, this is per-pixel
@@ -534,10 +528,6 @@ private:
 
     // Line bookmarks
     std::vector<int> m_bookmarks; // global line numbers
-
-    // GPU rendering
-    bool m_gpuRendering = false;
-    std::unique_ptr<GlRenderer> m_glRenderer;
 
     // Opacity factor for the terminal-area fillRect paint (0.0-1.0).
     // Driven by the `opacity` config key through setWindowOpacityLevel.
