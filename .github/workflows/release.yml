@@ -112,7 +112,7 @@ jobs:
           # `Icon=ants-terminal` line does not include a size. Provide
           # a top-level `ants-terminal.png` symlink to the 256px icon
           # so AppImage clients display a thumbnail in file managers.
-          cp AppDir/usr/share/icons/hicolor/256x256/apps/ants-terminal-256.png \
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/ants-terminal.png \
              AppDir/ants-terminal.png
           # Some AppImage launchers also look for a top-level .desktop;
           # linuxdeploy will populate this from the installed copy.
