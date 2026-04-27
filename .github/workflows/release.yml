@@ -175,6 +175,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
         run: |
+          # Pushing a tag does NOT auto-create a GitHub Release object
+          # — `gh release upload` 404s if the Release isn't there yet.
+          # `gh release view` returns non-zero on absence; create the
+          # Release on demand with the tag as title and an empty body
+          # (the user can flesh out the description after; CHANGELOG.md
+          # has the full notes already).
+          if ! gh release view "${{ steps.tag.outputs.ref }}" >/dev/null 2>&1; then
+            gh release create "${{ steps.tag.outputs.ref }}" \
+              --title "${{ steps.tag.outputs.ref }}" \
+              --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${{ steps.tag.outputs.ref }}/CHANGELOG.md) for release notes."
+            echo "Created GitHub Release ${{ steps.tag.outputs.ref }}"
+          fi
           gh release upload "${{ steps.tag.outputs.ref }}" \
             "${OUTPUT}" \
             --clobber
