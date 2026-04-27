@@ -148,6 +148,13 @@ jobs:
           # linuxdeploy emits noise about already-bundled libs at info
           # level; silence it to keep CI logs scannable.
           NO_STRIP: "1"
+          # By default linuxdeploy-plugin-qt bundles only the `xcb`
+          # platform plugin. Add `offscreen` so the AppImage can run
+          # headless (CI smoke tests, and any user automation hitting
+          # `QT_QPA_PLATFORM=offscreen ./Ants_Terminal-*.AppImage`),
+          # plus `wayland` so users on a Wayland session land on the
+          # native plugin without an XWayland fallback.
+          EXTRA_PLATFORM_PLUGINS: "libqoffscreen.so;libqwayland-generic.so"
         run: |
           ./linuxdeploy --appdir AppDir --plugin qt --output appimage
           ls -la "${OUTPUT}"
