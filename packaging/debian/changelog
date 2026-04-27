@@ -1,3 +1,37 @@
+ants-terminal (0.7.49-1) unstable; urgency=medium
+
+  * Three follow-up fixes to user reports against 0.7.48 — the
+    About menu's OK buttons silently no-op'd again, the GitHub
+    Public/Private badge wanted to live next to the git branch on
+    the left, and the Background Tasks chip showed phantom counts
+    of tasks that had long since exited.
+  * Fixed: both Help → About dialogs now dismiss on the OK button.
+    The 0.7.35 attempt only swapped the dialog type (QMessageBox →
+    QDialog); both still went through exec(). On KDE/KWin +
+    Qt 6.11 with the frameless + WA_TranslucentBackground
+    MainWindow, the nested QEventLoop exec() opens does not
+    surface the dialog as the active input window — the OK button
+    never receives focus and the click silently no-ops. Both
+    handlers now use the heap + WA_DeleteOnClose + show() +
+    raise() + activateWindow() pattern that already works for
+    other dialogs in this stack. About Qt dropped
+    QMessageBox::aboutQt for a custom QDialog with the same
+    treatment.
+  * Fixed: Background Tasks chip now reflects only tasks that are
+    genuinely running. parseTranscript performs a liveness sweep
+    at the end — unfinished tasks whose output file is gone or
+    whose mtime is older than 60 s are flipped to finished. The
+    2 s status timer drives refreshBgTasksButton so the sweep
+    keeps firing while the transcript itself is silent.
+  * Changed: GitHub Public/Private badge moved to the left side
+    of the status bar, next to the git-branch chip (was on the
+    right via addPermanentWidget, shipped 0.7.45). Restyled to
+    match the branch chip's rounded bgSecondary fill + border
+    frame while keeping the green-public / red-private foreground
+    colour.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 20:34:30 +0200
+
 ants-terminal (0.7.48-1) unstable; urgency=medium
 
   * Two tab-bar fixes the user spotted after 0.7.47 shipped. The

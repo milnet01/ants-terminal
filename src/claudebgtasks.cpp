@@ -251,5 +251,51 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
     for (auto &t : out) {
         if (!t.id.isEmpty()) filtered.append(std::move(t));
     }
+
+    // Liveness sweep — bug 2026-04-27.
+    // The transcript-based completion detection (KillShell event,
+    // BashOutput tool_result with status=completed/killed/failed) only
+    // catches tasks whose completion was *observed* by Claude Code via
+    // a follow-up tool call. Background tasks that were spawned and
+    // never polled, or whose completion landed after the assistant
+    // moved on, leave entries with `finished == false` indefinitely —
+    // resulting in a stale running-count chip on the status bar
+    // (12-task report from a session with zero genuinely-running
+    // tasks).
+    //
+    // Fix: cross-check each unfinished task against its on-disk output
+    // file. Claude Code writes background-task stdout/stderr to
+    // `/tmp/claude-$UID/<encoded-project>/<session>/tasks/<id>.output`
+    // and stops touching the file the moment the underlying process
+    // exits. We treat a task as finished when:
+    //   • the file no longer exists (most likely /tmp purge after a
+    //     reboot, but also fires if the file was reaped),
+    //   • OR the file's mtime is older than the staleness window
+    //     below (60 s of no writes ⇒ the producer is gone).
+    //
+    // The 60 s window is generous on purpose: a long-running build
+    // can have 30+ seconds of silence between progress prints (CMake
+    // configure step, slow link). 60 s only flips a task to finished
+    // once we're confident no producer is attached. False-negatives
+    // (real running task flagged finished) are corrected on the next
+    // tick once the file does write again — but in practice the
+    // assistant polls long-running tasks via BashOutput well before
+    // the 60 s window elapses.
+    constexpr qint64 kStaleSecs = 60;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (auto &t : filtered) {
+        if (t.finished) continue;
+        if (t.outputPath.isEmpty()) continue;  // can't tell — leave alone
+        const QFileInfo fi(t.outputPath);
+        if (!fi.exists()) {
+            t.finished = true;
+            continue;
+        }
+        const QDateTime mtime = fi.lastModified().toUTC();
+        if (mtime.secsTo(now) > kStaleSecs) {
+            t.finished = true;
+        }
+    }
+
     return filtered;
 }

@@ -14,16 +14,28 @@ GitHub API or `gh` CLI).
 
 ## Surface
 
-Two new `QLabel` widgets added as `addPermanentWidget` on the status
-bar, in this read order: Review Changes → Background Tasks →
-Roadmap → **Repo visibility** → **Update available** → Error label.
+Two `QLabel` widgets in the status bar with different placements:
+
+- **Repo visibility** sits on the **left** (added via `addWidget`)
+  next to the git-branch chip — the user-feedback placement
+  (2026-04-27, shipped 0.7.49). Reads as a "branch · visibility"
+  pair on the left side of the status bar; the right side stays
+  reserved for Claude Code chrome.
+- **Update available** sits on the right (added via
+  `addPermanentWidget`) alongside the Claude Code chrome
+  (Review Changes → Background Tasks → Roadmap → **Update
+  available** → Error label).
 
 ### Repo visibility — `m_repoVisibilityLabel` (objectName `repoVisibilityLabel`)
 
-A small badge that reads "Public" or "Private" with a
-theme-derived foreground colour (`th.ansi[2]` green for public,
-`th.ansi[3]` amber for private). Tooltip: `<owner>/<repo> on GitHub`.
-Padding `0 6px`, bold weight. Hidden by default.
+A chip-styled badge that reads "Public" or "Private" with the
+same `bgSecondary` fill + `border-1px` frame as the git-branch
+chip and a theme-derived foreground colour (`th.ansi[2]` green
+for public, `th.ansi[3]` amber for private). Tooltip:
+`<owner>/<repo> on GitHub`. Hidden by default. Placement: left
+side of the status bar via `addWidget`, immediately after
+`m_statusGitBranch` and before `m_statusGitSep`, so the two
+chips read as a pair.
 
 The badge's content reflects **the active tab's project** — the
 same per-tab lifecycle as the Roadmap button. Tab switch fires
@@ -138,7 +150,10 @@ source-grep harness, no Qt link.
   with the documented objectNames (`repoVisibilityLabel`,
   `updateAvailableLabel`).
 - **INV-2** Both labels are constructed in the status-bar setup
-  block, added via `addPermanentWidget`, and start `hide()`-n.
+  block and start `hide()`-n. The **repo-visibility** label is on
+  the left side via `addWidget` (next to the git-branch chip,
+  shipped 0.7.49). The **update-available** label is on the right
+  side via `addPermanentWidget` (next to the Claude Code chrome).
 - **INV-3** The pure helpers `findGitRepoRoot`, `parseGithubOriginSlug`,
   and `compareSemver` exist in `mainwindow.cpp`.
 - **INV-4** `parseGithubOriginSlug` handles both URL forms — source-

@@ -82,17 +82,47 @@ label — there's nothing in the About body the user needs to
 select, and including it (which is what `Qt::TextBrowserInteraction`
 implies) was part of the click-stealing surface above.
 
-### Invariant 5 — About Qt action is present and uses Qt's stock dialog
+### Invariant 5 — About Qt action is present and uses the same dialog pattern
 
-A second Help menu action `About &Qt...` exists and routes to
-`QMessageBox::aboutQt`. Inherits future Qt-version bumps
-automatically.
+A second Help menu action `About &Qt...` exists. As of 0.7.49 it
+**does not** use `QMessageBox::aboutQt` — that helper internally
+calls `QMessageBox::exec()`, which on KDE/KWin + Qt 6.11 + our
+frameless + `WA_TranslucentBackground` MainWindow does not surface
+the dialog as the active input window, so the OK button silently
+no-ops (user report 2026-04-27). The action constructs a custom
+`QDialog` mirroring the About Ants Terminal pattern (heap +
+`WA_DeleteOnClose` + `show()` + `raise()` + `activateWindow()`)
+and renders the Qt runtime + build versions plus a link to
+`qt.io/licensing`.
 
 ### Invariant 6 — ANTS_VERSION is the project-wide single source
 
 Source-grep confirms the About handler does not contain a
 hardcoded `0.7.` prefix or a `"Version: 0.7"` literal. The only
 version string inside the handler is `ANTS_VERSION`.
+
+### Invariant 7 — Both About dialogs use the heap+show pattern
+
+Both the About Ants Terminal and About Qt handlers construct
+their dialog as `auto *dlg = new QDialog(this)` with
+`Qt::WA_DeleteOnClose`, set `setModal(true)`, and call
+`dlg->show()` followed by `dlg->raise()` and
+`dlg->activateWindow()`. Neither uses `QDialog dlg(this)` +
+`dlg.exec()`.
+
+The blocking-`exec()` pattern was retired in 0.7.49: the nested
+`QEventLoop` `exec()` opens does not, on KDE/KWin + Qt 6.11
+under a frameless + `WA_TranslucentBackground` parent, surface
+the dialog as the active input window. The OK button receives
+no focus and clicks silently no-op. The `show()` pattern
+delegates dialog activation to KWin in the normal way and the
+OK click reaches its connected slot.
+
+The OK button's `clicked()` signal is connected to
+`QDialog::accept` directly, not only via
+`QDialogButtonBox::accepted` — belt-and-braces in case anything
+in the button box's internal accepted-emission path is
+interfered with by platform plumbing.
 
 ## How this test anchors to reality
 
@@ -141,3 +171,24 @@ hardcoded version literal, this test fires.
   visually clickable but never wired the URL handler, so the
   GitHub link click was a no-op too. Locked by the I4
   invariant changes above.
+- **Re-fixed again:** 0.7.49 — user reported 2026-04-27 that
+  *both* About dialogs again silently swallowed OK clicks. The
+  0.7.35 fix had only changed the dialog *type* (QMessageBox →
+  QDialog); both dialogs still went through `exec()`, which
+  opens a nested `QEventLoop`. On KDE/KWin + Qt 6.11 under our
+  frameless + `WA_TranslucentBackground` MainWindow, the nested
+  loop does not promote the dialog to active input window, so
+  the OK button receives no focus and the click silently no-ops
+  (the user has to dismiss via the WM close button, exactly as
+  in the 2026-04-25 report). Both About dialogs were converted
+  to heap + `WA_DeleteOnClose` + `show()` + `raise()` +
+  `activateWindow()`, mirroring the pattern already used by
+  the Background Tasks, Settings, and Claude Transcript dialogs
+  on this stack — which work correctly under the same
+  parent-window flags. The OK button's `clicked()` signal is
+  also wired directly to `QDialog::accept` in addition to the
+  existing `QDialogButtonBox::accepted` connection. The About
+  Qt dialog dropped `QMessageBox::aboutQt` (whose internal
+  `exec()` is the same regression shape) for a custom QDialog
+  with the same heap+show treatment. Locked by I5b (negative
+  grep on `QMessageBox::aboutQt`) and I7 (heap+show pattern).

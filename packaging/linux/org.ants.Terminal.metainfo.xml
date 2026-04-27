@@ -103,6 +103,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.49" date="2026-04-27">
+      <description>
+        <p>Three follow-up fixes to user reports against 0.7.48 — the About menu's OK buttons silently no-op'd again, the GitHub Public/Private badge wanted to live next to the git branch on the left, and the Background Tasks chip showed phantom counts of tasks that had long since exited.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li>Both Help → About dialogs now dismiss on the OK button. The 0.7.35 attempt at this bug only swapped the dialog type from <code>QMessageBox</code> to a custom <code>QDialog</code>; both dialogs still went through <code>exec()</code>. On KDE/KWin + Qt 6.11 with the frameless + <code>WA_TranslucentBackground</code> MainWindow, the nested <code>QEventLoop</code> opened by <code>exec()</code> does not surface the dialog as the active input window — the OK button never receives focus and the click silently no-ops. Both handlers now use the heap + <code>WA_DeleteOnClose</code> + <code>show()</code> + <code>raise()</code> + <code>activateWindow()</code> pattern that the Background Tasks, Settings, and Claude Transcript dialogs already use successfully under the same parent-window flags. The OK button's <code>clicked()</code> signal is also wired directly to <code>QDialog::accept</code> alongside the existing <code>QDialogButtonBox::accepted</code> connection. The "About Qt" entry dropped <code>QMessageBox::aboutQt</code> for a custom QDialog with the same heap+show treatment, surfacing the Qt runtime + build versions and a link to qt.io/licensing.</li>
+          <li>Background Tasks chip now reflects only tasks that are genuinely running. The transcript-only completion detection used through 0.7.48 only marked tasks finished when Claude Code recorded a matching <code>KillShell</code> event or a <code>BashOutput</code> tool_result with status completed/killed/failed — tasks that were spawned and never polled stayed running indefinitely (the user-reported "12 tasks" phantom count). <code>parseTranscript</code> now performs a liveness sweep at the end: each unfinished task whose output file no longer exists OR whose mtime is older than a 60 s staleness window is flipped to finished. <code>ClaudeBgTaskTracker::rescan</code> was promoted to <code>public slots:</code> and the 2 s status timer drives <code>refreshBgTasksButton</code> so the sweep keeps firing while the transcript is silent. The chip falls to 0 within ~60 s of the last task going idle.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>GitHub Public/Private badge moved to the left side of the status bar, next to the git-branch chip. Was on the right (<code>addPermanentWidget</code>, shipped 0.7.45) where it sat alongside the Claude Code chrome; the user asked 2026-04-27 to move it next to the branch where the two badges read as a "branch · visibility" pair. Restyled to match the branch chip — same rounded <code>bgSecondary</code> fill + <code>border-1px</code> frame — while keeping the green-for-public / red-for-private foreground colour from 0.7.45.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.48" date="2026-04-27">
       <description>
         <p>Two tab-bar fixes the user spotted after 0.7.47 shipped. The per-tab Claude Code activity dot was only painting on one tab — the most recently focused one — even when several tabs each had their own running Claude Code session. The dot also sat too close to the tab text. The first is a real correctness bug; the second is comfort.</p>

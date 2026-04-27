@@ -90,13 +90,23 @@ int main(int argc, char **argv) {
     if (!contains(h, "QLabel *m_updateAvailableLabel"))
         return fail("INV-1", "m_updateAvailableLabel QLabel* member missing");
 
-    // INV-2: both constructed in the cpp, addPermanentWidget'ed, hidden.
+    // INV-2: both constructed in the cpp, hidden by default. The
+    // update-available label sits on the right (addPermanentWidget);
+    // the repo-visibility badge moved to the LEFT side next to the
+    // git-branch chip in 0.7.49 (addWidget) per user feedback
+    // 2026-04-27 — repo provenance reads as "branch · visibility"
+    // naturally and the right side is busy with Claude Code chrome.
     if (!contains(s, "m_repoVisibilityLabel = new QLabel"))
         return fail("INV-2", "m_repoVisibilityLabel not constructed");
     if (!contains(s, "m_updateAvailableLabel = new QLabel"))
         return fail("INV-2", "m_updateAvailableLabel not constructed");
-    if (!contains(s, "addPermanentWidget(m_repoVisibilityLabel)"))
-        return fail("INV-2", "m_repoVisibilityLabel not added to status bar");
+    if (!contains(s, "addWidget(m_repoVisibilityLabel)"))
+        return fail("INV-2",
+            "m_repoVisibilityLabel must be on the LEFT side via "
+            "addWidget — addPermanentWidget would put it on the right "
+            "next to the Claude Code chrome (the 0.7.45 placement that "
+            "0.7.49 moved per user feedback). It must sit next to the "
+            "git-branch chip");
     if (!contains(s, "addPermanentWidget(m_updateAvailableLabel)"))
         return fail("INV-2", "m_updateAvailableLabel not added to status bar");
     if (!contains(s, "m_repoVisibilityLabel->hide()"))

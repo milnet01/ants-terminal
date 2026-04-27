@@ -139,6 +139,36 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   source-grep checks the header signature, implementation walk-up,
   and the call-site wiring.
 
+- **INV-12** (liveness sweep, added 0.7.49 — user feedback
+  2026-04-27 "Background Tasks are showing 12 tasks but there
+  shouldn't be any"):
+  Transcript-only completion detection misses tasks whose
+  completion events Claude Code never recorded (the assistant
+  moved on without polling `BashOutput`). Those linger as
+  `finished == false` indefinitely, producing a phantom
+  running-count chip on the status bar. The fix adds a liveness
+  sweep at the end of `parseTranscript`: for each unfinished task
+  with a non-empty `outputPath`, mark it finished if (a) the
+  output file no longer exists OR (b) its mtime is older than a
+  60 s staleness window. Pieces:
+  1. `claudebgtasks.cpp::parseTranscript` references
+     `lastModified()` AND `QFileInfo::exists()` (or `fi.exists()`).
+  2. `ClaudeBgTaskTracker::rescan` is exposed in `public slots:`
+     so the periodic-tick path can call it directly.
+     `setTranscriptPath` short-circuits when the path is
+     unchanged, so it can't be the entry point for the periodic
+     sweep on a quiet transcript.
+  3. `MainWindow::refreshBgTasksButton` calls
+     `m_claudeBgTasks->rescan()` whenever the resolved transcript
+     path is the same as the previous one (forcing the staleness
+     check to re-run). The 2 s status timer drives
+     `refreshBgTasksButton` so the sweep keeps firing while the
+     transcript itself is silent.
+
+  Without the sweep, the user sees stale running-counts that
+  only clear on app restart or transcript-rotate; with it, the
+  chip falls to 0 within ~60 s of the last task going idle.
+
 ## How to verify pre-fix code fails
 
 ```bash

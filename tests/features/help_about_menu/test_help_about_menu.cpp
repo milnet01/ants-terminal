@@ -11,8 +11,19 @@
 //               regression shape that silently dropped the OK click on
 //               KDE/KWin + Qt 6.11 — see spec.md Regression history
 //               2026-04-25).
-// Invariant 5 — "About Qt..." action routes to QMessageBox::aboutQt.
+// Invariant 5 — "About Qt..." action exists and uses the same
+//               heap+show pattern as About Ants Terminal — NOT
+//               QMessageBox::aboutQt (whose internal exec() blocked OK
+//               clicks on KDE/KWin + Qt 6.11 with a frameless
+//               translucent parent — see spec.md regression 2026-04-27).
 // Invariant 6 — no hardcoded "0.7." literal inside the About handler.
+// Invariant 7 — Both About dialogs use heap allocation +
+//               WA_DeleteOnClose + show()/raise()/activateWindow()
+//               rather than stack + exec(). The blocking-exec()
+//               pattern is what 0.7.49 retired — exec() opens a nested
+//               event loop that on KDE/KWin + Qt 6.11 + our frameless
+//               translucent MainWindow does not surface the dialog as
+//               the active input window, so OK clicks no-op.
 //
 // Source-grep only. MainWindow is too heavy to instantiate in a
 // feature test; the wiring of a menu item is structurally obvious
@@ -83,11 +94,21 @@ int main(int argc, char **argv) {
                QStringLiteral("addAction(\"&About Ants Terminal...\")")),
            "I2/about-ants-action-present");
 
-    // Invariant 5 — About Qt action.
+    // Invariant 5 — About Qt action present, but no longer routes to
+    // QMessageBox::aboutQt (its internal exec() blocked clicks under our
+    // frameless+translucent parent on KDE/KWin + Qt 6.11 — 2026-04-27).
     expect(src.contains(QStringLiteral("addAction(\"About &Qt...\")")),
            "I5a/about-qt-action-present");
-    expect(src.contains(QStringLiteral("QMessageBox::aboutQt(this")),
-           "I5b/about-qt-routes-to-qt-helper");
+    expect(!src.contains(QStringLiteral("QMessageBox::aboutQt(")),
+           "I5b/about-qt-no-longer-uses-aboutQt-helper",
+           QStringLiteral("QMessageBox::aboutQt(...) opens a nested "
+                          "event loop via exec() which on KDE/KWin + "
+                          "Qt 6.11 with a frameless+translucent "
+                          "MainWindow does not surface the dialog as "
+                          "the active input window — OK clicks no-op. "
+                          "Use a custom QDialog with show()+raise()+"
+                          "activateWindow() instead, mirroring the "
+                          "About Ants pattern."));
 
     // Scope subsequent greps to the About-action handler lambda. The
     // handler body runs from the first "About Ants Terminal..." mention
@@ -101,6 +122,17 @@ int main(int argc, char **argv) {
     expect(aboutStart > 0 && aboutEnd > aboutStart,
            "I2b/handler-block-located");
     const QString aboutBlock = src.mid(aboutStart, aboutEnd - aboutStart);
+
+    // Locate the About Qt handler block too (for I7's symmetry checks).
+    const int aboutQtStart = aboutEnd;
+    // The handler ends at "helpMenu->addSeparator()" or the next top-
+    // level menu addAction — ~2000 chars is plenty.
+    const int aboutQtEnd = src.indexOf(QStringLiteral("helpMenu->addSeparator"),
+                                       aboutQtStart);
+    expect(aboutQtStart > 0 && aboutQtEnd > aboutQtStart,
+           "I5c/aboutqt-handler-block-located");
+    const QString aboutQtBlock = src.mid(aboutQtStart,
+                                         aboutQtEnd - aboutQtStart);
 
     // Invariant 3 — ANTS_VERSION used, not a literal.
     expect(aboutBlock.contains(QStringLiteral("ANTS_VERSION")),
@@ -173,6 +205,84 @@ int main(int argc, char **argv) {
            QStringLiteral("QDialogButtonBox::accepted must be explicitly "
                           "connected to QDialog::accept so clicking OK closes "
                           "the dialog."));
+
+    // Invariant 7 — heap allocation + show()/raise()/activateWindow()
+    // pattern. A stack-allocated `QDialog dlg(this)` followed by
+    // `dlg.exec()` opens a nested event loop that on KDE/KWin +
+    // Qt 6.11 + our frameless translucent MainWindow does not promote
+    // the dialog to active input window, so OK clicks no-op
+    // (regression 2026-04-27). The fix mirrors the bg-tasks /
+    // settings / claude-transcript pattern that already works on
+    // this stack.
+    struct HandlerCheck {
+        const QString *block;
+        const char *name;
+    };
+    const HandlerCheck handlers[] = {
+        {&aboutBlock,   "About-Ants"},
+        {&aboutQtBlock, "About-Qt"},
+    };
+    for (const auto &h : handlers) {
+        const QString &blk = *h.block;
+        const char *name = h.name;
+        QString tag;
+
+        tag = QStringLiteral("I7a/%1/heap-allocated").arg(name);
+        expect(blk.contains(QStringLiteral("auto *dlg = new QDialog(this)")),
+               qUtf8Printable(tag),
+               QStringLiteral("Dialog must be heap-allocated via "
+                              "`new QDialog(this)` so it survives the "
+                              "lambda's return; the show()-pattern "
+                              "doesn't block the lambda."));
+
+        tag = QStringLiteral("I7b/%1/wa-delete-on-close").arg(name);
+        expect(blk.contains(QStringLiteral(
+                   "setAttribute(Qt::WA_DeleteOnClose)")),
+               qUtf8Printable(tag),
+               QStringLiteral("Heap-allocated dialog must set "
+                              "Qt::WA_DeleteOnClose so it deletes itself "
+                              "on dismissal — otherwise the QDialog "
+                              "leaks each time the menu item is invoked."));
+
+        tag = QStringLiteral("I7c/%1/uses-show-not-exec").arg(name);
+        expect(blk.contains(QStringLiteral("dlg->show()")),
+               qUtf8Printable(tag),
+               QStringLiteral("Dialog must be displayed via show(), not "
+                              "exec(). exec() opens a nested QEventLoop "
+                              "that doesn't surface the dialog as the "
+                              "active input window on KDE/KWin + Qt 6.11."));
+
+        tag = QStringLiteral("I7d/%1/raise-and-activate").arg(name);
+        expect(blk.contains(QStringLiteral("dlg->raise()")) &&
+                   blk.contains(QStringLiteral("dlg->activateWindow()")),
+               qUtf8Printable(tag),
+               QStringLiteral("After show(), the dialog must call "
+                              "raise() + activateWindow() so KWin "
+                              "promotes it to the active input window. "
+                              "Without these, the dialog appears but the "
+                              "OK button never receives focus."));
+
+        tag = QStringLiteral("I7e/%1/no-stack-exec").arg(name);
+        // Reject the pre-fix shape: `QDialog dlg(this);` … `dlg.exec();`
+        expect(!blk.contains(QStringLiteral("QDialog dlg(this)")) &&
+                   !blk.contains(QStringLiteral("dlg.exec()")),
+               qUtf8Printable(tag),
+               QStringLiteral("The stack-allocated `QDialog dlg(this)` + "
+                              "`dlg.exec()` pattern is exactly what "
+                              "regressed on KDE/KWin + Qt 6.11 — clicking "
+                              "OK no-opped because exec()'s nested event "
+                              "loop did not promote the dialog to the "
+                              "active input window."));
+
+        tag = QStringLiteral("I7f/%1/modal").arg(name);
+        expect(blk.contains(QStringLiteral("setModal(true)")),
+               qUtf8Printable(tag),
+               QStringLiteral("Dialog must call setModal(true) — without "
+                              "it, the show()-pattern produces a non-"
+                              "modal dialog that the focus-redirect logic "
+                              "can race against (focusChanged callback "
+                              "in mainwindow.cpp)."));
+    }
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);

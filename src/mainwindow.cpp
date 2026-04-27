@@ -541,6 +541,24 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     m_statusGitBranch->setTextInteractionFlags(Qt::TextSelectableByMouse);
     statusBar()->addWidget(m_statusGitBranch);
 
+    // 0.7.49 — Repo visibility badge. Public/Private chip for the
+    // active tab's GitHub repo. Was on the right (addPermanentWidget,
+    // 0.7.45) but the user asked 2026-04-27 for it next to the branch
+    // — repo provenance reads as "branch · visibility" naturally, and
+    // the right side is busy with Claude Code chrome. Same sizePolicy
+    // contract as the branch label: Fixed so it's never squeezed.
+    // Hidden when the cwd isn't a GitHub-backed repo, when `gh` is
+    // missing, or when authentication / network fails. Theme-coloured
+    // and chip-styled in refreshRepoVisibility(); the foreground colour
+    // (green ansi[2] for public, red ansi[3] for private) is preserved
+    // from 0.7.45 — only the chip frame is new.
+    m_repoVisibilityLabel = new QLabel(this);
+    m_repoVisibilityLabel->setObjectName(QStringLiteral("repoVisibilityLabel"));
+    m_repoVisibilityLabel->setSizePolicy(QSizePolicy::Fixed,
+                                         QSizePolicy::Preferred);
+    m_repoVisibilityLabel->hide();
+    statusBar()->addWidget(m_repoVisibilityLabel);
+
     // 0.6.26 — the "chip" styling on the branch label (rounded bg + border)
     // blends into the status bar background on low-contrast themes (Gruvbox
     // especially). A hard QFrame::VLine between the branch label and the
@@ -584,6 +602,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateStatusBar);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateTabTitles);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshReviewButton);
+    // 0.7.49 — also drive the background-tasks button refresh on the
+    // status tick. Without this the liveness-sweep (mtime check on
+    // /tmp/.../<id>.output) never re-runs while the transcript is
+    // silent, leaving a phantom "Background Tasks (12)" chip when
+    // every task has actually finished. User report 2026-04-27.
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshBgTasksButton);
     m_statusTimer->start();
 
     // Main-thread stall detector (ROADMAP § 0.8.0 "Terminal throughput
@@ -1687,25 +1711,37 @@ void MainWindow::setupMenus() {
             "https://github.com/milnet01/ants-terminal</a></p>")
             .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine);
 
-        // Custom QDialog rather than QMessageBox. The previous
-        // QMessageBox::Ok variant with Qt::TextBrowserInteraction had a
-        // user-reported bug (2026-04-25) where the OK button silently
-        // did nothing under our frameless + WA_TranslucentBackground
-        // MainWindow on KDE/KWin + Qt 6.11 — the dialog had to be
-        // dismissed via the window-manager close button. Switching to
-        // QDialog + QDialogButtonBox::Ok with an explicit accepted →
-        // accept connection gives us a click path that's standard,
-        // testable, and doesn't depend on QMessageBox's internal
-        // standard-button dispatch. As a bonus, setOpenExternalLinks
-        // on the body label makes the GitHub link actually open in
-        // the user's browser (the previous QMessageBox path enabled
-        // link-clicking via TextBrowserInteraction but never wired
-        // setOpenExternalLinks, so the link click was a no-op too).
-        QDialog dlg(this);
-        dlg.setWindowTitle(QStringLiteral("About Ants Terminal"));
-        dlg.setObjectName(QStringLiteral("aboutAntsDialog"));
-        auto *layout = new QVBoxLayout(&dlg);
-        auto *label = new QLabel(body, &dlg);
+        // Heap-allocated QDialog with show() rather than stack +
+        // exec(). Two distinct user-reported bugs forced this path:
+        //
+        //   2026-04-25 — original QMessageBox::Ok with TextBrowserInteraction
+        //     silently swallowed clicks. Fixed in 0.7.35 by switching to
+        //     a custom QDialog + QDialogButtonBox::Ok with explicit
+        //     accepted → accept wiring (still preserved below).
+        //
+        //   2026-04-27 — both About dialogs again reported to silently
+        //     swallow OK clicks. Diagnosed: nested QEventLoop opened by
+        //     QDialog::exec() under our FramelessWindowHint +
+        //     WA_TranslucentBackground MainWindow on KDE/KWin + Qt 6.11
+        //     does not always make the dialog the active input window —
+        //     the OK button receives no input focus, so the click never
+        //     fires the connected signal. The other dialogs in this
+        //     project that work fine (Background Tasks, Claude Transcript,
+        //     Settings) all use heap + WA_DeleteOnClose + show() +
+        //     raise() + activateWindow(); copying that pattern here
+        //     resolves the symptom.
+        //
+        // Modal-on-show + activateWindow() also fixes a focus-redirect
+        // race (mainwindow.cpp::focusChanged callback) where a non-modal
+        // visible QDialog was being treated as a candidate for focus
+        // hijack between show() and the platform's window-activate event.
+        auto *dlg = new QDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setWindowTitle(QStringLiteral("About Ants Terminal"));
+        dlg->setObjectName(QStringLiteral("aboutAntsDialog"));
+        dlg->setModal(true);
+        auto *layout = new QVBoxLayout(dlg);
+        auto *label = new QLabel(body, dlg);
         label->setObjectName(QStringLiteral("aboutAntsBody"));
         label->setTextFormat(Qt::RichText);
         // LinksAccessibleByMouse + LinksAccessibleByKeyboard only — no
@@ -1715,17 +1751,73 @@ void MainWindow::setupMenus() {
                                        | Qt::LinksAccessibleByKeyboard);
         label->setOpenExternalLinks(true);
         label->setWordWrap(true);
-        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, &dlg);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, dlg);
         buttons->setObjectName(QStringLiteral("aboutAntsButtons"));
-        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        // Wire BOTH the QDialogButtonBox aggregator AND the OK button's
+        // own clicked() signal. Belt-and-braces: if anything in the
+        // button box's accepted-emission path is interfered with by
+        // platform plumbing (the 2026-04-25/27 reports), the direct
+        // clicked → accept connection still closes the dialog.
+        connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+        if (auto *okBtn = buttons->button(QDialogButtonBox::Ok)) {
+            okBtn->setDefault(true);
+            okBtn->setAutoDefault(true);
+            connect(okBtn, &QPushButton::clicked, dlg, &QDialog::accept);
+        }
         layout->addWidget(label);
         layout->addWidget(buttons);
-        dlg.exec();
+        dlg->show();
+        dlg->raise();
+        dlg->activateWindow();
     });
 
     QAction *aboutQtAction = helpMenu->addAction("About &Qt...");
     connect(aboutQtAction, &QAction::triggered, this, [this]() {
-        QMessageBox::aboutQt(this, QStringLiteral("About Qt"));
+        // Custom dialog rather than QMessageBox::aboutQt for the same
+        // reason as the About Ants dialog above: QMessageBox::aboutQt
+        // uses an internal exec() which on KDE/KWin + Qt 6.11 + our
+        // frameless + translucent MainWindow doesn't make the dialog
+        // active, so OK clicks no-op (user report 2026-04-27).
+        // The body shows the Qt runtime + build versions and a pointer
+        // at qt.io for licensing details, mirroring the information
+        // QMessageBox::aboutQt would have surfaced.
+        const QString body = QStringLiteral(
+            "<h3>About Qt</h3>"
+            "<p>Ants Terminal uses the Qt application framework.</p>"
+            "<p><b>Qt runtime:</b> %1<br/>"
+            "<b>Qt build:</b> %2</p>"
+            "<p>Qt is licensed under multiple licenses including the GNU "
+            "LGPL version 3 and the Qt Commercial License.</p>"
+            "<p><a href=\"https://www.qt.io/licensing/\">"
+            "https://www.qt.io/licensing/</a></p>")
+            .arg(QString::fromLatin1(qVersion()),
+                 QString::fromLatin1(QT_VERSION_STR));
+        auto *dlg = new QDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setWindowTitle(QStringLiteral("About Qt"));
+        dlg->setObjectName(QStringLiteral("aboutQtDialog"));
+        dlg->setModal(true);
+        auto *layout = new QVBoxLayout(dlg);
+        auto *label = new QLabel(body, dlg);
+        label->setObjectName(QStringLiteral("aboutQtBody"));
+        label->setTextFormat(Qt::RichText);
+        label->setTextInteractionFlags(Qt::LinksAccessibleByMouse
+                                       | Qt::LinksAccessibleByKeyboard);
+        label->setOpenExternalLinks(true);
+        label->setWordWrap(true);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, dlg);
+        buttons->setObjectName(QStringLiteral("aboutQtButtons"));
+        connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+        if (auto *okBtn = buttons->button(QDialogButtonBox::Ok)) {
+            okBtn->setDefault(true);
+            okBtn->setAutoDefault(true);
+            connect(okBtn, &QPushButton::clicked, dlg, &QDialog::accept);
+        }
+        layout->addWidget(label);
+        layout->addWidget(buttons);
+        dlg->show();
+        dlg->raise();
+        dlg->activateWindow();
     });
 
     helpMenu->addSeparator();
@@ -3530,15 +3622,9 @@ void MainWindow::setupClaudeIntegration() {
     connect(m_roadmapBtn, &QPushButton::clicked,
             this, &MainWindow::showRoadmapDialog);
 
-    // 0.7.45 — Repo visibility badge. Small QLabel showing
-    // "Public" / "Private" for the active tab's GitHub repo. Hidden
-    // when the cwd isn't a GitHub-backed repo, when `gh` is missing,
-    // or when authentication / network fails. Theme-coloured via
-    // applyTheme(). Per-tab via refreshStatusBarForActiveTab.
-    m_repoVisibilityLabel = new QLabel(this);
-    m_repoVisibilityLabel->setObjectName(QStringLiteral("repoVisibilityLabel"));
-    m_repoVisibilityLabel->hide();
-    statusBar()->addPermanentWidget(m_repoVisibilityLabel);
+    // (0.7.45 repo visibility badge moved to the LEFT side next to the
+    // git branch in 0.7.49 — see addWidget call earlier in the
+    // constructor. Per-tab refresh via refreshRepoVisibility.)
 
     // 0.7.45 — Update-available notifier. Clickable QLabel that
     // appears when the latest GitHub release tag is newer than
@@ -4830,7 +4916,17 @@ void MainWindow::refreshBgTasksButton() {
     if (auto *t = focusedTerminal()) cwd = t->shellCwd();
     QString path;
     if (m_claudeIntegration) path = m_claudeIntegration->activeSessionPath(cwd);
+    const QString prevPath = m_claudeBgTasks->transcriptPath();
     m_claudeBgTasks->setTranscriptPath(path);
+    // setTranscriptPath only rescans when the path *changes*. Force a
+    // rescan when the path is identical so the liveness sweep
+    // (claudebgtasks.cpp — file-mtime check) re-evaluates each time
+    // this is called — without this, a transcript that's gone silent
+    // never re-runs the staleness check and the chip keeps showing
+    // a phantom running-count (2026-04-27 user report).
+    if (!path.isEmpty() && path == prevPath) {
+        m_claudeBgTasks->rescan();
+    }
 
     const int running = m_claudeBgTasks->runningCount();
     const int total = m_claudeBgTasks->tasks().size();
@@ -5014,9 +5110,18 @@ void MainWindow::refreshRepoVisibility() {
         const Theme &th = Themes::byName(m_currentTheme);
         const QColor &col = isPublic ? th.ansi[2] : th.ansi[3];
         m_repoVisibilityLabel->setText(label);
+        // Chip styling matches the git-branch label (mainwindow.cpp::
+        // applyTheme — rounded bg + border + bgSecondary fill +
+        // border-1px) so the two badges read as a paired left-side
+        // group. Foreground colour stays public-green / private-red
+        // for the at-a-glance visibility cue from 0.7.45.
         m_repoVisibilityLabel->setStyleSheet(
-            QStringLiteral("QLabel { color: %1; padding: 0 6px; "
-                           "font-weight: bold; }").arg(col.name()));
+            QStringLiteral(
+                "QLabel { color: %1; background: %2; "
+                "border: 1px solid %3; border-radius: 3px; "
+                "padding: 1px 8px; margin: 2px 6px 2px 0; "
+                "font-size: 11px; font-weight: 600; }")
+                .arg(col.name(), th.bgSecondary.name(), th.border.name()));
         m_repoVisibilityLabel->setToolTip(tr("%1 on GitHub").arg(repoSlug));
         m_repoVisibilityLabel->show();
     };

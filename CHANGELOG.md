@@ -10,6 +10,83 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.49] — 2026-04-27
+
+**Theme:** Three follow-up fixes to user reports against 0.7.48 — the
+About menu's OK buttons silently no-op'd again, the GitHub
+Public/Private badge wanted to live next to the git branch on the
+left, and the Background Tasks chip showed phantom counts of tasks
+that had long since exited.
+
+### Fixed
+
+- **Both Help → About dialogs now dismiss on the OK button.** The
+  0.7.35 attempt at this bug only swapped the dialog *type* (from
+  `QMessageBox` to a custom `QDialog`); both dialogs still went
+  through `exec()`. On KDE/KWin + Qt 6.11 with our frameless +
+  `WA_TranslucentBackground` MainWindow, the nested `QEventLoop`
+  `exec()` opens does not surface the dialog as the active input
+  window — the OK button never receives focus, the click silently
+  no-ops, and the user has to dismiss via the WM close button (the
+  same symptom shape as the 2026-04-25 report).
+
+  Both About handlers now use the heap + `Qt::WA_DeleteOnClose` +
+  `show()` + `raise()` + `activateWindow()` pattern that the
+  Background Tasks, Settings, and Claude Transcript dialogs already
+  use successfully under the same parent-window flags. The OK
+  button's `clicked()` signal is also wired directly to
+  `QDialog::accept` in addition to the existing
+  `QDialogButtonBox::accepted` connection — belt-and-braces in case
+  any platform plumbing interferes with the button box's internal
+  accepted-emission. The "About Qt" entry dropped
+  `QMessageBox::aboutQt` (whose internal `exec()` is the same
+  regression shape) for a custom QDialog with the same heap+show
+  treatment, surfacing the Qt runtime + build versions and a link
+  to qt.io/licensing. Locked by `tests/features/help_about_menu/`
+  spec INV-7 (heap+show pattern, with negative grep on
+  `QDialog dlg(this)` + `dlg.exec()` and on
+  `QMessageBox::aboutQt`).
+
+- **Background Tasks chip now reflects only tasks that are
+  genuinely running.** The transcript-only completion detection
+  used through 0.7.48 only marked tasks `finished` when Claude Code
+  recorded a matching `KillShell` event or a `BashOutput`
+  tool_result with `status=completed/killed/failed`. Background
+  tasks that were spawned and never polled — the assistant moved
+  on without checking their output — stayed `finished == false`
+  indefinitely, producing a phantom running-count chip (12 tasks
+  showing on a session with zero genuinely-running tasks per the
+  user report).
+
+  `parseTranscript` now performs a liveness sweep at the end: each
+  unfinished task whose `outputPath` either no longer exists OR
+  whose mtime is older than a 60 s staleness window is flipped to
+  `finished`. The 60 s window is generous on purpose — a slow CMake
+  configure or link step can have 30+ s of silence between progress
+  prints. `ClaudeBgTaskTracker::rescan` was promoted from a private
+  slot to `public slots:` and the 2 s status timer drives
+  `MainWindow::refreshBgTasksButton`, which calls `rescan()`
+  directly when the resolved transcript path is unchanged
+  (`setTranscriptPath` short-circuits on same-path so it can't be
+  the entry point for the periodic sweep). Result: the chip falls
+  to 0 within ~60 s of the last task going idle. Locked by
+  `tests/features/claude_bg_tasks_button/` spec INV-12.
+
+### Changed
+
+- **GitHub Public/Private badge moved to the left side of the
+  status bar, next to the git-branch chip.** Was on the right
+  (`addPermanentWidget`, shipped 0.7.45) where it sat alongside
+  the Claude Code chrome; the user asked 2026-04-27 to move it next
+  to the branch where the two badges read as a "branch ·
+  visibility" pair. Restyled to match the branch chip — same
+  rounded `bgSecondary` fill + `border-1px` frame — while keeping
+  the green-for-public / red-for-private foreground colour from
+  0.7.45 for the at-a-glance visibility cue. Locked by
+  `tests/features/github_status_bar/` spec INV-2 (negative grep on
+  `addPermanentWidget(m_repoVisibilityLabel)` — must be on the
+  left via `addWidget`).
+
 ## [0.7.48] — 2026-04-27
 
 **Theme:** Two tab-bar fixes the user spotted after 0.7.47 shipped.

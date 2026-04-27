@@ -65,7 +65,15 @@ public:
 signals:
     void tasksChanged();
 
-private slots:
+public slots:
+    // Re-parse the current transcript and update the task list. Needed
+    // for the liveness sweep: stale-task detection compares file mtime
+    // against now(), so we must re-evaluate periodically even when the
+    // transcript itself is silent. Public so the status-bar 2 s timer
+    // (mainwindow.cpp::refreshBgTasksButton) can drive periodic rescans
+    // — without this the 12-stale-tasks bug from 2026-04-27 returned
+    // every time a session sat idle. Cheap (one transcript walk capped
+    // at 16 MiB).
     void rescan();
 
 private:

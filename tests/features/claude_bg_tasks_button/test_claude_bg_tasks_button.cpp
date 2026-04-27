@@ -292,12 +292,76 @@ int main() {
         }
     }
 
+    // INV-12 (added 0.7.49): liveness sweep on parseTranscript.
+    // The transcript-only completion detection misses background tasks
+    // that were spawned and never polled — those entries linger as
+    // `finished == false` forever, producing a phantom running-count on
+    // the status-bar chip (12-task report from a session with zero
+    // genuinely-running tasks). The sweep cross-checks each unfinished
+    // task against its on-disk output file: if the file is gone OR its
+    // mtime is older than a 60 s staleness window, mark finished.
+    //
+    // Three pieces:
+    //   (a) parseTranscript references `lastModified` (the mtime check)
+    //       AND `QFileInfo::exists` / `fi.exists()` (the file-gone path)
+    //   (b) ClaudeBgTaskTracker::rescan is exposed in `public slots:`
+    //       so the status-tick path can drive periodic rescans (the
+    //       liveness sweep needs to fire even when the transcript has
+    //       gone silent — otherwise the chip stays stale forever).
+    //   (c) MainWindow::refreshBgTasksButton calls `m_claudeBgTasks->
+    //       rescan()` when the path is unchanged, AND the 2 s status
+    //       timer drives refreshBgTasksButton.
+    if (bgcpp.find("lastModified") == std::string::npos) {
+        fail("INV-12(a): parseTranscript must call `lastModified()` on "
+             "each task's outputPath — without the mtime check, "
+             "tasks whose completion was never polled stay 'running' "
+             "forever (2026-04-27 phantom-12-tasks bug)");
+    }
+    if (bgcpp.find("fi.exists()") == std::string::npos
+            && bgcpp.find("QFileInfo::exists") == std::string::npos) {
+        fail("INV-12(a): parseTranscript must check whether each "
+             "outputPath still exists — /tmp/claude-$UID purges across "
+             "reboots, and a missing file is the strongest "
+             "task-finished signal");
+    }
+    {
+        std::regex publicRescan(
+            R"(public\s+slots\s*:\s*[\s\S]*?void\s+rescan\s*\(\s*\))");
+        if (!std::regex_search(bgh, publicRescan)) {
+            fail("INV-12(b): ClaudeBgTaskTracker::rescan must be in "
+                 "`public slots:` — the periodic liveness sweep "
+                 "(refreshBgTasksButton on the 2 s status tick) needs "
+                 "to call rescan() directly when the transcript path "
+                 "is unchanged. setTranscriptPath short-circuits on "
+                 "same-path so it can't be the entry point");
+        }
+    }
+    {
+        const std::string body = functionBody(mw,
+            "void MainWindow::refreshBgTasksButton()");
+        if (body.empty()) {
+            fail("INV-12(c): refreshBgTasksButton body not found");
+        } else if (body.find("m_claudeBgTasks->rescan()") == std::string::npos) {
+            fail("INV-12(c): refreshBgTasksButton must call "
+                 "`m_claudeBgTasks->rescan()` directly when the "
+                 "transcript path is unchanged. setTranscriptPath "
+                 "early-returns on same-path so it cannot drive the "
+                 "periodic liveness sweep on its own");
+        }
+        if (mw.find("&MainWindow::refreshBgTasksButton") == std::string::npos) {
+            fail("INV-12(c): the 2 s status timer must connect to "
+                 "MainWindow::refreshBgTasksButton — without periodic "
+                 "rescans the liveness sweep never re-runs while the "
+                 "transcript is silent and the chip stays stale");
+        }
+    }
+
     if (failures > 0) {
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see spec.md for context\n", failures);
         return 1;
     }
     std::printf("OK: claude background-tasks button invariants present "
-                "(11/11)\n");
+                "(12/12)\n");
     return 0;
 }
