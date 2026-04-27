@@ -1015,9 +1015,16 @@ bundle's theme, fold it in rather than spinning up a new release.
   dialog mirror sites in 0.7.31 via
   `tests/features/settings_parse_failure_mirror/`. Cross-cutting
   pattern fully retired.
-- 📋 **`/tmp/*.js` TOCTOU via predictable filenames.** KWin script paths
-  at `xcbpositiontracker.cpp:34`, `mainwindow.cpp:2558, 2620`. Replace
-  with `QTemporaryFile` (O_EXCL, unpredictable name).
+- ✅ **`/tmp/*.js` TOCTOU via predictable filenames.** Shipped 0.7.12
+  (Tier 1 batch). All three KWin script paths
+  (`xcbpositiontracker.cpp`, `mainwindow.cpp` twice) migrated from
+  predictable `/tmp/kwin_*.js` filenames to `QTemporaryFile` with
+  `setAutoRemove(false)`; the async dbus-send chain removes the file
+  after use. Closes the same-UID symlink-swap TOCTOU + same-name
+  collision between Ants instances. Orphan-cleanup sweep added 0.7.15
+  (`MainWindow` ctor runs `sweepKwinScriptOrphansOnce()` for stale
+  files older than 1 hour, guarded by a `static bool` so a second
+  MainWindow doesn't re-sweep).
 - ✅ **`setOwnerOnlyPerms` ordering bugs.** Shipped 0.7.31. Every
   persistence site that did fd-only chmod now also re-chmods the
   final inode after rename / commit succeeds — `Config::save`,
@@ -1048,15 +1055,21 @@ bundle's theme, fold it in rather than spinning up a new release.
     ([Unreleased]); code default was right.
   - `font_size` range doc drift corrected in README ([Unreleased]);
     code range (4–48) was right.
-- 📋 **No-auth local IPC is a UID-scope RCE chain.** Remote control
-  listens by default (`mainwindow.cpp:788`), accepts unauthenticated
-  commands (`remotecontrol.cpp:66-113`), and `send-text` writes raw
-  bytes to the PTY with no control-char filtering (`remotecontrol.cpp:235`).
-  Any process under the user's UID (compromised browser tab,
-  `pip install` post-exec, random npm dependency) can shove
-  `\nrm -rf ~\n` into the next tab's shell. Blast radius = UID. Two
-  reviewers independently recommended defaulting `remote_control_enabled=false`
-  and landing control-char filtering before the X25519 auth work.
+- ✅ **No-auth local IPC is a UID-scope RCE chain.** Shipped 0.7.12
+  (Tier 1 batch). `remote_control_enabled` config key added (default
+  `false`, matching Kitty's `allow_remote_control=no`); MainWindow
+  gates the listener's `start()` on this key. `send-text` request
+  payloads pass through `RemoteControl::filterControlChars` which
+  strips `{0x00..0x08, 0x0B..0x1F, 0x7F}` while preserving HT/LF/CR
+  and all UTF-8 bytes >= 0x80. Callers needing raw byte pass-through
+  set `"raw": true` in the request JSON. Closes the UID-scope
+  keystroke-injection RCE chain. Hardened further 0.7.12 by caching
+  the gate decision at process start (`mainwindow.cpp:799`
+  `static const bool remoteControlGate = …`) so a second MainWindow
+  doesn't re-read the flag. Locked by
+  `tests/features/remote_control_opt_in/` (config round-trip
+  assertion + structural check that `start()` lives inside a
+  conditional). X25519 auth work for opt-in users tracked separately.
 
 ### 🔒 Tier 1 — ship-this-week fixes (security/data-loss blockers)
 
