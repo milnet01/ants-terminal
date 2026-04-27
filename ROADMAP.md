@@ -1004,9 +1004,9 @@ gets one CHANGELOG section and one drift cycle.
 **Standalone items (don't bundle):**
 - `VtBatch` zero-copy across thread hop (`vtstream.h`) — perf; pair
   with the 0.8.x perf work in § 0.8.0 ⚡ Performance instead.
-- Renderer subsystem decision: revive `glrenderer.cpp` via
-  `createWindowContainer` *or* delete it — needs its own decision
-  cycle, not a bundle slot.
+- ✅ Renderer subsystem decision — resolved 0.7.44 (deleted
+  `glrenderer.cpp`; QPainter+QTextLayout is the sole render path).
+  See entry below.
 
 **0.8.x external-signal CI lanes (separate phase):**
 - vttest as CI lane · differential screen-dump harness vs xterm/kitty

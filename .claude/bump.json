@@ -29,6 +29,13 @@
       "replace": "Current version: <strong>{NEW}</strong>"
     },
     {
+      "path": "README.md",
+      "$comment": "AppImage download URL in the Install section bakes the version into the filename. GitHub's /releases/latest/download/<filename> redirect requires the filename to match exactly, so the URL must move every release until the workflow ships an unversioned variant.",
+      "pattern": "Ants_Terminal-{OLD}-x86_64.AppImage",
+      "replace": "Ants_Terminal-{NEW}-x86_64.AppImage",
+      "replace_all": true
+    },
+    {
       "path": "ROADMAP.md",
       "pattern": "**Current version:** {OLD}",
       "replace": "**Current version:** {NEW} ({TODAY})"

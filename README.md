@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>A real terminal emulator built from scratch in C++ with Qt6.</strong><br>
-  No terminal libraries -- custom VT100/xterm parser, PTY management, and GPU-accelerated rendering.
+  No terminal libraries -- custom VT100/xterm parser, PTY management, and ligature-aware QPainter rendering.
 </p>
 
 <p align="center">
@@ -45,12 +45,9 @@
 - **Window title** -- reads OSC 0/2 title sequences from your shell prompt or running programs
 - **Dynamic resize** -- window size changes propagate to the PTY via `SIGWINCH` with scrollback reflow
 
-### GPU-Accelerated Rendering
+### Rendering
 
-Ants Terminal uses `QOpenGLWidget` for hardware-accelerated rendering out of the box. Two render paths are available:
-
-- **QPainter (default)** -- GPU-accelerated 2D painting via Qt's OpenGL paint engine. Uses `QTextLayout` for proper font ligature shaping.
-- **Custom GL Renderer** -- Optional glyph atlas-based renderer with GLSL 3.3 core shaders. Enable via `gpu_rendering: true` in config or Settings menu. Uses a 2048x2048 texture atlas with on-demand glyph rasterization, driver-safe texture swizzle for Intel/AMD compatibility, and per-vertex quad rendering. Note: ligatures are only available in the QPainter path.
+Ants Terminal paints via `QPainter` + `QTextLayout` (HarfBuzz). One render path, ligature-aware out of the box, partial-rect updates for sub-millisecond redraws on noisy output. The earlier optional GL-atlas renderer (`glrenderer.cpp`, GLSL 3.3 core, 2048x2048 texture atlas, instanced quads) was retired in 0.7.44 after sitting compiled-but-unreachable since 0.7.4 — see `CHANGELOG.md` for the post-mortem.
 
 ### Ligature Support
 
@@ -481,9 +478,9 @@ The fastest path. Each tagged release ships an x86_64 AppImage on the
 [Releases page](https://github.com/milnet01/ants-terminal/releases/latest):
 
 ```bash
-# Download the latest AppImage (replace 0.7.42 with whatever the latest tag is):
+# Download the latest AppImage (replace 0.7.44 with whatever the latest tag is):
 curl -L -o Ants_Terminal-x86_64.AppImage \
-  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.42-x86_64.AppImage
+  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.44-x86_64.AppImage
 chmod +x Ants_Terminal-x86_64.AppImage
 ./Ants_Terminal-x86_64.AppImage
 ```
@@ -720,11 +717,11 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
                                                       └──────┬───────┘
                                                              │
                                           ┌──────────────────┼──────────────────┐
-                                          v                  v                  v
-                                   ┌──────────┐     ┌──────────────┐    ┌──────────┐
-                                   │ QPainter │     │ GlRenderer   │    │ Session  │
-                                   │ (CPU)    │     │ (GPU/OpenGL) │    │ Manager  │
-                                   └──────────┘     └──────────────┘    └──────────┘
+                                          v                                     v
+                                   ┌─────────────────────┐               ┌──────────┐
+                                   │ QPainter +          │               │ Session  │
+                                   │ QTextLayout/HarfBuzz│               │ Manager  │
+                                   └─────────────────────┘               └──────────┘
 ```
 
 ### Components
@@ -734,8 +731,7 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
 | **Pty** | `ptyhandler.h/cpp` | Spawns shell via `forkpty()`, non-blocking I/O, PTY resize |
 | **VtParser** | `vtparser.h/cpp` | DEC VT100/xterm state machine, UTF-8 decoding, emits VtActions |
 | **TerminalGrid** | `terminalgrid.h/cpp` | Cell buffer, scrollback, cursor, ANSI colors, alt screen, Sixel/Kitty |
-| **TerminalWidget** | `terminalwidget.h/cpp` | QOpenGLWidget rendering, input, selection, search, URLs |
-| **GlRenderer** | `glrenderer.h/cpp` | OpenGL glyph atlas, GLSL 3.3 shaders, per-vertex rendering |
+| **TerminalWidget** | `terminalwidget.h/cpp` | QPainter+QTextLayout rendering, input, selection, search, URLs |
 | **MainWindow** | `mainwindow.h/cpp` | Window chrome, menus, themes, config, dialogs |
 | **AiDialog** | `aidialog.h/cpp` | AI chat dialog, OpenAI API, streaming SSE |
 | **SshDialog** | `sshdialog.h/cpp` | SSH bookmark manager, connection via PTY |
@@ -836,7 +832,6 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
     "auto_copy_on_select": true,
     "session_logging": false,
     "background_blur": false,
-    "gpu_rendering": false,
     "session_persistence": true,
     "image_paste_dir": "",
     "editor_command": "",
@@ -868,7 +863,6 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 | `auto_copy_on_select` | bool | `true` | Copy to clipboard on text selection |
 | `session_logging` | bool | `false` | Log raw session to file |
 | `background_blur` | bool | `false` | Enable KWin background blur |
-| `gpu_rendering` | bool | `false` | Use OpenGL glyph atlas renderer |
 | `session_persistence` | bool | `true` | Save/restore scrollback across restarts |
 | `image_paste_dir` | string | `""` | Image paste save directory |
 | `editor_command` | string | `""` | Editor for file path clicking |
@@ -989,7 +983,6 @@ ants-terminal/
     ├── themes.h/cpp            # 7 color themes with ANSI palettes
     ├── config.h/cpp            # JSON config persistence (0600 perms)
     ├── commandpalette.h/cpp    # Searchable command palette overlay
-    ├── glrenderer.h/cpp        # OpenGL glyph atlas + shader renderer
     ├── sessionmanager.h/cpp    # Session save/restore
     ├── aidialog.h/cpp          # AI assistant (OpenAI API)
     ├── sshdialog.h/cpp         # SSH bookmark manager

@@ -24,7 +24,7 @@
   <launchable type="desktop-id">org.ants.Terminal.desktop</launchable>
 
   <name>Ants Terminal</name>
-  <summary>Modern, themeable terminal emulator with GPU rendering and plugins</summary>
+  <summary>Modern, themeable terminal emulator with ligatures, inline images, and Lua plugins</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
@@ -44,7 +44,7 @@
     <p>Key features:</p>
     <ul>
       <li>Eleven built-in themes with full ANSI palette overrides, plus automatic dark/light switching that follows the system color scheme.</li>
-      <li>Optional OpenGL glyph-atlas renderer for GPU-accelerated draws; QPainter path with ligature-aware text shaping (HarfBuzz) remains the default.</li>
+      <li>Ligature-aware QPainter text shaping (HarfBuzz) with partial-rect updates for sub-millisecond redraws on noisy output.</li>
       <li>Inline images via Sixel, Kitty graphics protocol, and iTerm2 OSC 1337. Image paste auto-saves to disk — optimized for LLM / coding-agent workflows.</li>
       <li>Shell integration via OSC 133 (prompt jump, exit-status marks). OSC 8 hyperlinks, OSC 52 clipboard, OSC 9/777 desktop notifications, OSC 9;4 progress reporting.</li>
       <li>Kitty keyboard protocol with progressive enhancement, synchronized output, SGR mouse reporting, focus reporting.</li>
