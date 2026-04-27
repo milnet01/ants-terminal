@@ -66,34 +66,68 @@ in this order, taking the first hit:
    updater is installed or the binary isn't running as an
    AppImage (`$APPIMAGE` env var unset).
 
-When a tool is found AND `$APPIMAGE` is set, it's launched via
-`QProcess::startDetached` against the on-disk AppImage path. The
-parent process can quit/restart while the download runs. A
-status-bar message acknowledges the launch
-("AppImageUpdate launched — downloading the new version. Quit and
-restart to use it.").
+When a tool is found AND `$APPIMAGE` is set, the user is shown a
+**confirmation dialog** *(added 0.7.47)* before the spawn:
+
+> **Update Ants Terminal**
+>
+> Download and install the new version now?
+>
+> AppImageUpdate will fetch the new release and write it
+> alongside this binary in the background.
+>
+> To start using the new version you'll need to **quit and
+> re-launch** Ants Terminal — any active Claude Code sessions in
+> your tabs will be disconnected when you do, and will need to be
+> reconnected after the restart.
+>
+> [ Cancel ]   [ **Update** ]
+
+`Update` → launch via `QProcess::startDetached` against the
+on-disk AppImage path; the parent process can quit/restart while
+the download runs. Status-bar message: "AppImageUpdate launched —
+downloading the new version. Quit and restart to use it."
+
+`Cancel` → no spawn; status-bar message "Update cancelled."
 
 Tooltip: `Click to open release notes for v<X.Y.Z> in your browser.
 Currently running v<current>.`
 
-Lifecycle:
+Lifecycle (revised in 0.7.47 — user feedback "An hourly check I
+think is a bit much. Let's do the check when the terminal is
+opened and when the user clicked on Help > Check for Updates."):
 
-1. `m_updateCheckTimer` (`QTimer`) ticks every **1 hour** firing
-   `checkForUpdates()`.
-2. A `QTimer::singleShot(5000, ...)` fires the first check 5 s
-   after construction so the badge surfaces without waiting for the
-   first hourly tick. The 5 s delay keeps the launch path fast and
-   avoids racing the first paint.
-3. `checkForUpdates()` issues a `QNetworkAccessManager::get` against
+1. **Startup check** — a single `QTimer::singleShot(5000, ...)`
+   fires `checkForUpdates(/*userInitiated=*/false)` 5 s after
+   construction. The delay keeps the launch path fast and avoids
+   racing the first paint. **Silent on negative results** (no
+   "Up to date" message at startup) — startup probes that surface
+   negative results add launch noise the user didn't ask for.
+2. **Manual check** — `Help → Check for Updates` (objectName
+   `helpCheckForUpdatesAction`) calls
+   `checkForUpdates(/*userInitiated=*/true)`. The lambda also
+   shows a 2-second `Checking for updates…` status-bar message
+   for immediate visual feedback.
+3. **The hourly timer is gone** as of 0.7.47. Nothing in the
+   header should reference `m_updateCheckTimer`; INV-9 enforces
+   the absence.
+4. `checkForUpdates(bool userInitiated)` issues a
+   `QNetworkAccessManager::get` against
    `https://api.github.com/repos/milnet01/ants-terminal/releases/latest`
    with `Accept: application/vnd.github+json` and a non-empty
    `User-Agent` (GitHub rejects empty UAs).
-4. The `finished` slot parses the JSON, strips the leading `v` from
-   `tag_name`, and runs `compareSemver()` against `ANTS_VERSION`.
-   If the remote tag is **strictly newer**, the badge is shown; if
-   equal or older (the user is on a dev build), the badge is hidden.
-5. Network errors and rate-limits are silent — the badge stays in
-   its previous state. No retry storm.
+5. The `finished` slot parses the JSON, strips the leading `v`
+   from `tag_name`, and runs `compareSemver()` against
+   `ANTS_VERSION`.
+   - **Strictly newer** → badge shown (regardless of
+     `userInitiated`).
+   - **Equal or older** → badge hidden; if `userInitiated`,
+     surface `"Up to date — running v<X.Y.Z> (latest)"` for 4 s.
+   - **Network error** → badge unchanged; if `userInitiated`,
+     surface `"Update check failed: <err>"` for 5 s. Startup
+     probe stays silent.
+6. No retry storm — a failed check stays failed until the next
+   user-triggered check.
 
 ## Architectural invariants enforced by tests
 
@@ -121,9 +155,15 @@ source-grep harness, no Qt link.
 - **INV-8** `gh repo view` is invoked with `--json visibility -q
   .visibility` (the minimal field set — avoids fetching unrelated
   repo metadata).
-- **INV-9** `m_updateCheckTimer` is a `QTimer*` member, started with a
-  60-minute interval, connected to `checkForUpdates`, and a
-  `singleShot(5000, ...)` fires the first check soon after start.
+- **INV-9** *(revised in 0.7.47)* No hourly timer:
+  `m_updateCheckTimer` is **gone** from the header. Two trigger
+  paths only:
+  (a) Startup `QTimer::singleShot(5000, ...)` calling
+      `checkForUpdates` (silent / `userInitiated=false`).
+  (b) `Help → Check for Updates` action with objectName
+      `helpCheckForUpdatesAction`, calling
+      `checkForUpdates(/*userInitiated=*/true)` so the result
+      lands as a status-bar message.
 - **INV-10** `checkForUpdates` requests
   `api.github.com/repos/milnet01/ants-terminal/releases/latest`
   AND sets a `User-Agent` raw header (GitHub 403s without it).
@@ -158,6 +198,20 @@ source-grep harness, no Qt link.
   `QProcess::startDetached` so it outlives the parent process —
   the user can quit and restart Ants Terminal while the download
   runs without killing the updater.
+
+- **INV-17** *(added 0.7.47)* `handleUpdateClicked` shows a
+  confirmation dialog **before** invoking
+  `QProcess::startDetached`. The dialog must:
+  (a) be constructed lexically before the `startDetached` call so
+      a `Cancel` short-circuits the spawn,
+  (b) name the user's next step explicitly ("quit and re-launch"
+      / "quit and relaunch"),
+  (c) call out that Claude Code sessions will be disconnected and
+      need to be reconnected (user-feedback 2026-04-27 — the user's
+      primary concern was losing in-flight agent runs),
+  (d) emit a `Update cancelled` status-bar message on Cancel so
+      the click registers a visible acknowledgement (silent
+      cancel feels like a bug).
 
 ## Out of scope
 

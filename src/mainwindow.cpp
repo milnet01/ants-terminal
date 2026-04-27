@@ -1727,6 +1727,18 @@ void MainWindow::setupMenus() {
     connect(aboutQtAction, &QAction::triggered, this, [this]() {
         QMessageBox::aboutQt(this, QStringLiteral("About Qt"));
     });
+
+    helpMenu->addSeparator();
+    // 0.7.47 — manual update check. The startup probe already runs
+    // 5 s after launch (see m_updateAvailableLabel wiring); this
+    // gives the user a way to re-check on demand without restarting.
+    QAction *checkUpdatesAction = helpMenu->addAction(tr("Check for &Updates"));
+    checkUpdatesAction->setObjectName(
+        QStringLiteral("helpCheckForUpdatesAction"));
+    connect(checkUpdatesAction, &QAction::triggered, this, [this]() {
+        showStatusMessage(tr("Checking for updates…"), 2000);
+        checkForUpdates(/*userInitiated=*/true);
+    });
 }
 
 TerminalWidget *MainWindow::createTerminal() {
@@ -3547,16 +3559,17 @@ void MainWindow::setupClaudeIntegration() {
     m_updateAvailableLabel->hide();
     statusBar()->addPermanentWidget(m_updateAvailableLabel);
 
-    // Hourly update check + an immediate one ~5 s after startup so
-    // the badge surfaces without waiting for the first hour to elapse.
-    // The 5 s delay keeps the launch path fast and avoids racing the
-    // first paint.
-    m_updateCheckTimer = new QTimer(this);
-    m_updateCheckTimer->setInterval(60 * 60 * 1000);  // 1 h
-    connect(m_updateCheckTimer, &QTimer::timeout,
-            this, &MainWindow::checkForUpdates);
-    m_updateCheckTimer->start();
-    QTimer::singleShot(5000, this, &MainWindow::checkForUpdates);
+    // 0.7.47 — startup-only update check (was hourly in 0.7.45-0.7.46;
+    // user feedback "An hourly check I think is a bit much. Let's do
+    // the check when the terminal is opened and when the user clicked
+    // on Help > Check for Updates."). The 5 s singleShot delay keeps
+    // the launch path fast and avoids racing the first paint. Manual
+    // re-check is wired through the Help menu — see helpMenu setup.
+    // Wrapped in a lambda so the default `userInitiated=false` is
+    // forwarded — the bare PMF can't be passed to singleShot's
+    // 0-arg slot signature.
+    QTimer::singleShot(5000, this,
+        [this]() { checkForUpdates(/*userInitiated=*/false); });
 
     // Error indicator label
     m_claudeErrorLabel = new QLabel(this);
@@ -5056,7 +5069,7 @@ void MainWindow::refreshRepoVisibility() {
     proc->start();
 }
 
-void MainWindow::checkForUpdates() {
+void MainWindow::checkForUpdates(bool userInitiated) {
     if (!m_updateAvailableLabel) return;
     if (!m_updateNam) m_updateNam = new QNetworkAccessManager(this);
 
@@ -5067,13 +5080,22 @@ void MainWindow::checkForUpdates() {
 
     QNetworkReply *reply = m_updateNam->get(req);
     QPointer<MainWindow> self(this);
-    connect(reply, &QNetworkReply::finished, this, [self, reply]() {
+    connect(reply, &QNetworkReply::finished, this,
+            [self, reply, userInitiated]() {
         reply->deleteLater();
         MainWindow *win = self.data();
         if (!win) return;
         QLabel *label = win->m_updateAvailableLabel;
         if (!label) return;
-        if (reply->error() != QNetworkReply::NoError) return;
+        if (reply->error() != QNetworkReply::NoError) {
+            if (userInitiated) {
+                win->showStatusMessage(
+                    win->tr("Update check failed: %1")
+                        .arg(reply->errorString()),
+                    5000);
+            }
+            return;
+        }
         const QByteArray body = reply->readAll();
         const QJsonDocument doc = QJsonDocument::fromJson(body);
         if (!doc.isObject()) return;
@@ -5085,16 +5107,22 @@ void MainWindow::checkForUpdates() {
         if (compareSemver(tag, current) <= 0) {
             // Already up-to-date or running a newer dev build.
             label->hide();
+            if (userInitiated) {
+                win->showStatusMessage(
+                    win->tr("Up to date — running v%1 (latest)")
+                        .arg(current),
+                    4000);
+            }
             return;
         }
         const QString url = QStringLiteral(
             "https://github.com/milnet01/ants-terminal/releases/tag/v%1").arg(tag);
         label->setText(
-            tr("<a href=\"%1\" style=\"color: #5DCFCF; text-decoration: none;\">"
-               "↗ Update v%2 available</a>").arg(url, tag));
+            win->tr("<a href=\"%1\" style=\"color: #5DCFCF; text-decoration: none;\">"
+                    "↗ Update v%2 available</a>").arg(url, tag));
         label->setToolTip(
-            tr("Click to open release notes for v%1 in your browser. "
-               "Currently running v%2.").arg(tag, current));
+            win->tr("Click to open release notes for v%1 in your browser. "
+                    "Currently running v%2.").arg(tag, current));
         label->show();
     });
 }
@@ -5120,6 +5148,35 @@ void MainWindow::handleUpdateClicked(const QString &url) {
     const QString appimagePath = qEnvironmentVariable("APPIMAGE");
 
     if (!updater.isEmpty() && !appimagePath.isEmpty()) {
+        // 0.7.47 — confirm with the user before kicking the
+        // in-place update. The updater itself doesn't auto-restart
+        // the running binary; the user needs to quit + re-launch
+        // to pick up the new version. Any active Claude Code
+        // sessions in tabs will be killed by the relaunch and
+        // need to be reconnected. Surface that explicitly so the
+        // click isn't a footgun for users in the middle of an
+        // agent run. User feedback 2026-04-27.
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Question);
+        box.setWindowTitle(tr("Update Ants Terminal"));
+        box.setText(tr("Download and install the new version now?"));
+        box.setInformativeText(tr(
+            "AppImageUpdate will fetch the new release and write "
+            "it alongside this binary in the background.\n\n"
+            "To start using the new version you'll need to "
+            "<b>quit and re-launch</b> Ants Terminal — any active "
+            "Claude Code sessions in your tabs will be "
+            "disconnected when you do, and will need to be "
+            "reconnected after the restart."));
+        box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+        box.setDefaultButton(QMessageBox::Ok);
+        if (auto *okBtn = box.button(QMessageBox::Ok))
+            okBtn->setText(tr("Update"));
+        if (box.exec() != QMessageBox::Ok) {
+            showStatusMessage(tr("Update cancelled."), 3000);
+            return;
+        }
+
         // Detached spawn — the updater outlives this binary so the
         // user can quit and restart while the download runs. Qt 6
         // form: static `startDetached(program, args)`. Returns true

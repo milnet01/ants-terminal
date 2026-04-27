@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.46 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.47 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1926,6 +1926,28 @@ remainder, captured so they don't drop on the floor.
   update-information string in linuxdeploy. Cannot retroactively
   update binaries shipped without the metadata. This release only
   notifies.
+- ✅ **Update check cadence + pre-update warning dialog.**
+  Shipped 0.7.47. Two pieces of user feedback 2026-04-27 bundled:
+  (1) "An hourly check I think is a bit much. Let's do the check
+  when the terminal is opened and when the user clicked on
+  Help > Check for Updates." (2) "Before an update is processed,
+  it should warn the user that it will be restarting the
+  terminal. Any Claude Code sessions currently running will need
+  to be reconnected." Cadence: removed `m_updateCheckTimer` (the
+  hourly `QTimer`); kept the 5-second startup `singleShot`;
+  added `Help → Check for Updates` action (objectName
+  `helpCheckForUpdatesAction`) for manual re-check.
+  `checkForUpdates(bool userInitiated = false)` — manual triggers
+  surface "Up to date — running v0.7.47 (latest)" / "Update check
+  failed: <err>" status messages, startup probes stay silent.
+  Pre-update dialog: `handleUpdateClicked` now constructs a
+  `QMessageBox` *before* `QProcess::startDetached` explaining
+  that AppImageUpdate writes the new release alongside, that the
+  user must quit and re-launch to use it, and that active Claude
+  Code sessions will be disconnected and need to be reconnected.
+  Cancel short-circuits the spawn. Locked by
+  `tests/features/github_status_bar/` extended 16 → 17
+  invariants. INV-9 revised, INV-17 added.
 - ✅ **AppImageUpdate / zsync auto-update.** Shipped 0.7.46.
   Phase B of the auto-update story (Phase A was the notifier in
   0.7.45). Two changes: (1) `.github/workflows/release.yml` now

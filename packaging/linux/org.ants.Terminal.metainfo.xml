@@ -103,6 +103,25 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.47" date="2026-04-27">
+      <description>
+        <p>Smaller-footprint update checks plus a pre-update warning dialog. Two pieces of user feedback after 0.7.46 shipped: the hourly background check was too noisy, and clicking the update badge to kick AppImageUpdate should warn that the terminal will need to be quit and re-launched (active Claude Code sessions will be disconnected). Both addressed in this release.</p>
+        <p>Added:</p>
+        <ul>
+          <li>A new <code>Help → Check for Updates</code> menu action with the objectName <code>helpCheckForUpdatesAction</code>. The result lands as a status-bar message ("Up to date" / "Update check failed: ..." / the existing badge-show flow when a newer release exists).</li>
+          <li>A pre-update confirmation <code>QMessageBox</code> in <code>handleUpdateClicked</code>. The dialog explains that AppImageUpdate writes the new release alongside the running binary, that the user will need to quit and re-launch to use it, and that active Claude Code sessions will be disconnected and need to be reconnected. Cancel short-circuits the spawn and surfaces "Update cancelled." in the status bar.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li><code>checkForUpdates(bool userInitiated = false)</code>. The new <code>userInitiated</code> parameter scopes whether negative results are surfaced — startup probes stay silent so launch noise stays low; manual clicks from the Help menu surface their result so the user sees something happen.</li>
+        </ul>
+        <p>Removed:</p>
+        <ul>
+          <li>The hourly <code>m_updateCheckTimer</code> background poll. Updates are now checked at startup (5 s after launch) and on demand via the Help menu only.</li>
+        </ul>
+        <p>Locked by <code>tests/features/github_status_bar/</code> — extended from 16 to 17 invariants. INV-9 (revised) enforces the absence of the hourly timer plus the presence of the menu action plus the userInitiated flag plumbing. INV-17 (new) walks <code>handleUpdateClicked</code> asserting the dialog construction precedes the startDetached call, the dialog text mentions "quit and re-launch" + "Claude Code" + "reconnected", and Cancel surfaces a status message.</p>
+      </description>
+    </release>
     <release version="0.7.46" date="2026-04-27">
       <description>
         <p>Phase B of the auto-update story — actual in-place binary updates via AppImageUpdate and zsync. The 0.7.45 status bar notifier knew about new releases but only opened a download page; this release closes the loop. Click the update badge and the AppImage updates itself. v0.7.46 is the first release whose binary can be updated in place; pre-0.7.46 binaries shipped without the embedded metadata and continue to be manual-download only.</p>

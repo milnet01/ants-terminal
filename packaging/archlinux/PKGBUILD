@@ -11,7 +11,7 @@
 # upstream tag is published on GitHub.
 
 pkgname=ants-terminal
-pkgver=0.7.46
+pkgver=0.7.47
 pkgrel=1
 pkgdesc='Qt6 terminal emulator with Lua plugins and a project-audit dialog'
 arch=('x86_64')

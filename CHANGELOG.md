@@ -10,6 +10,81 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.47] — 2026-04-27
+
+**Theme:** Smaller-footprint update checks + a pre-update warning
+dialog. Two pieces of user feedback after 0.7.46 shipped, both
+addressed in this release: (1) "An hourly check I think is a bit
+much. Let's do the check when the terminal is opened and when the
+user clicked on Help > Check for Updates." (2) "Before an update
+is processed, it should warn the user that it will be restarting
+the terminal. Any Claude Code sessions currently running will need
+to be reconnected." Cadence dropped to startup + manual; the
+update click now opens a confirmation dialog explaining the
+quit-and-relaunch consequence before kicking the updater.
+
+### Added
+
+- **`Help → Check for Updates` menu action** (objectName
+  `helpCheckForUpdatesAction`). Click → 2-second `Checking for
+  updates…` status-bar message + a `userInitiated=true` call to
+  `checkForUpdates`. The result lands as a status-bar message:
+  `Up to date — running v0.7.47 (latest)` if no newer release,
+  `Update check failed: <error>` on network error, or the existing
+  badge-show flow when a newer release exists.
+
+- **Pre-update confirmation dialog** in
+  `MainWindow::handleUpdateClicked`. Before the `QProcess::
+  startDetached(updater, ...)` call, a `QMessageBox` asks
+  "Download and install the new version now?" with informative
+  text explaining (a) the new version is written alongside in the
+  background, (b) the user must quit and re-launch to start using
+  it, (c) **active Claude Code sessions will be disconnected and
+  need to be reconnected after the restart**. The Cancel branch
+  short-circuits the spawn and surfaces "Update cancelled." in
+  the status bar so the click registers a visible
+  acknowledgement.
+
+### Changed
+
+- **`MainWindow::checkForUpdates(bool userInitiated = false)`.**
+  New `userInitiated` parameter (default `false`). Background
+  startup probe stays silent on negative results
+  (`userInitiated=false`); manual triggers from the Help menu
+  surface their result so the user sees something happen.
+
+### Removed
+
+- **`m_updateCheckTimer` member** + its 1-hour `setInterval` +
+  start. The hourly background poll is gone; only startup +
+  manual remain.
+
+### Tests
+
+- `tests/features/github_status_bar/` — INV-9 revised + new
+  INV-17 added (16 → 17 invariants):
+  - **INV-9 revised:** `m_updateCheckTimer` must be absent from
+    the header; the 5 s `singleShot` startup probe still required;
+    `helpCheckForUpdatesAction` objectName must exist in the
+    Help menu setup; action's connect must call
+    `checkForUpdates(/*userInitiated=*/true)`.
+  - **INV-17 (new):** `handleUpdateClicked` must construct a
+    `QMessageBox` *before* the `QProcess::startDetached` call
+    (Cancel must short-circuit). The dialog text must mention
+    "quit and re-launch" AND "Claude Code" AND "reconnected" so
+    the warning is load-bearing rather than a generic confirm
+    prompt. Cancel must surface a "Update cancelled." status
+    message.
+
+### Notes
+
+- The startup probe stays at 5 s post-construction. If you don't
+  want even that, the simplest workaround is to disconnect from
+  the network — the call silently fails and nothing changes.
+- Privacy footprint: a single GET to
+  `api.github.com/.../releases/latest` per session (instead of
+  per session + once per hour).
+
 ## [0.7.46] — 2026-04-27
 
 **Theme:** Phase B of the auto-update story — actual in-place

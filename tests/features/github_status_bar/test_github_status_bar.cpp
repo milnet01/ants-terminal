@@ -177,15 +177,37 @@ int main(int argc, char **argv) {
         return fail("INV-8",
             "gh invocation must use jq selector .visibility (-q .visibility)");
 
-    // INV-9: update timer + 5 s singleShot.
-    if (!contains(h, "QTimer *m_updateCheckTimer"))
-        return fail("INV-9", "m_updateCheckTimer QTimer* member missing");
-    if (!contains(s, "m_updateCheckTimer->setInterval(60 * 60 * 1000)"))
-        return fail("INV-9", "update timer must tick every hour");
+    // INV-9 (revised in 0.7.47): startup-only update check via 5 s
+    // singleShot, plus a manual "Help → Check for Updates" action.
+    // No hourly QTimer (user feedback "an hourly check I think is a
+    // bit much"). Three pieces:
+    //   (a) m_updateCheckTimer member is GONE from the header — its
+    //       presence would be a regression.
+    //   (b) The 5 s singleShot still fires on startup with the bool
+    //       false (background, silent on no-update).
+    //   (c) helpCheckForUpdatesAction connected with bool true
+    //       (user-initiated, surfaces "Up to date" / "Failed").
+    if (contains(h, "m_updateCheckTimer"))
+        return fail("INV-9",
+            "0.7.47 retired the hourly update timer — m_updateCheckTimer "
+            "member must NOT be present");
     if (!contains(s, "QTimer::singleShot(5000"))
         return fail("INV-9",
-            "5 s singleShot for the first check is required so the badge "
-            "surfaces before the first hourly tick");
+            "5 s singleShot for the startup check is required so the "
+            "badge surfaces shortly after launch");
+    if (!contains(s, "helpCheckForUpdatesAction"))
+        return fail("INV-9",
+            "Help menu must add a `Check for Updates` action with "
+            "objectName `helpCheckForUpdatesAction` so a manual "
+            "trigger exists alongside the startup probe");
+    // The manual trigger must pass userInitiated=true. Source-grep
+    // for the bool argument near the action's connect.
+    if (!contains(s, "checkForUpdates(/*userInitiated=*/true)"))
+        return fail("INV-9",
+            "Help menu's Check for Updates action must invoke "
+            "checkForUpdates(true) so the result lands as a status "
+            "message ('Up to date' / 'Update check failed') instead "
+            "of the silent badge-only flow used by the startup probe");
 
     // INV-10: checkForUpdates hits the right URL and sets a UA.
     {
@@ -304,6 +326,55 @@ int main(int argc, char **argv) {
             "running the updater attached would block the parent on its "
             "lifetime and force a still-running terminal to wait on it");
 
-    std::puts("OK github_status_bar: 16/16 invariants");
+    // INV-17 (added 0.7.47): confirmation dialog before the updater
+    // is launched. User feedback 2026-04-27 — clicking the badge
+    // shouldn't silently kick a download that requires a restart;
+    // the user must be told that they'll need to quit + relaunch
+    // and that active Claude Code sessions will be disconnected.
+    {
+        const std::string body = functionBody(s,
+            "void MainWindow::handleUpdateClicked");
+        if (body.empty())
+            return fail("INV-17", "handleUpdateClicked body not found");
+        // The dialog must exist somewhere ahead of startDetached.
+        const auto dialogPos = body.find("QMessageBox box(this)");
+        const auto detachPos = body.find("QProcess::startDetached");
+        if (dialogPos == std::string::npos)
+            return fail("INV-17",
+                "handleUpdateClicked must construct a QMessageBox before "
+                "kicking the updater so the user is warned about the "
+                "quit-and-relaunch requirement");
+        if (detachPos == std::string::npos ||
+                dialogPos >= detachPos)
+            return fail("INV-17",
+                "the QMessageBox must precede QProcess::startDetached "
+                "so a Cancel can short-circuit the spawn");
+        // The body must mention the restart consequence — "quit"
+        // and "Claude Code" / "reconnected" — so the warning is
+        // load-bearing rather than a generic confirm prompt.
+        if (body.find("quit and re-launch") == std::string::npos &&
+                body.find("quit and relaunch") == std::string::npos)
+            return fail("INV-17",
+                "the dialog text must explicitly mention quitting + "
+                "re-launching as the next user step");
+        if (body.find("Claude Code") == std::string::npos)
+            return fail("INV-17",
+                "the dialog text must call out that Claude Code "
+                "sessions will be disconnected — that's the user's "
+                "primary concern per the 2026-04-27 feedback");
+        if (body.find("reconnected") == std::string::npos)
+            return fail("INV-17",
+                "the dialog text must say sessions need to be "
+                "reconnected — without that, the user might assume "
+                "the restart preserves session state");
+        // Cancel branch must short-circuit (no detach).
+        if (body.find("Update cancelled") == std::string::npos)
+            return fail("INV-17",
+                "Cancel must surface a status-bar acknowledgement so "
+                "the user knows the click was registered but not acted "
+                "on (silent cancel feels like a bug)");
+    }
+
+    std::puts("OK github_status_bar: 17/17 invariants");
     return 0;
 }

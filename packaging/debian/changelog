@@ -1,3 +1,39 @@
+ants-terminal (0.7.47-1) unstable; urgency=medium
+
+  * Smaller-footprint update checks plus a pre-update warning
+    dialog. Two pieces of user feedback after 0.7.46: the hourly
+    background check was too noisy, and clicking the update badge
+    to kick AppImageUpdate should warn that the terminal will need
+    to be quit and re-launched (active Claude Code sessions will
+    be disconnected). Both addressed in this release.
+  * Added: Help → Check for Updates menu action (objectName
+    helpCheckForUpdatesAction). Result lands as a status-bar
+    message ("Up to date — running v0.7.47 (latest)" / "Update
+    check failed: ..." / the existing badge-show flow when newer).
+  * Added: pre-update confirmation QMessageBox in
+    handleUpdateClicked. The dialog explains that AppImageUpdate
+    writes the new release alongside the running binary, that the
+    user will need to quit and re-launch to use it, and that
+    active Claude Code sessions will be disconnected and need to
+    be reconnected. Cancel short-circuits the spawn and surfaces
+    "Update cancelled." in the status bar.
+  * Changed: checkForUpdates(bool userInitiated = false). The new
+    parameter scopes whether negative results are surfaced —
+    startup probes stay silent; manual clicks surface their
+    result so the user sees something happen.
+  * Removed: the hourly m_updateCheckTimer background poll.
+    Updates are now checked at startup (5 s after launch) and on
+    demand via the Help menu only.
+  * Tests: tests/features/github_status_bar/ extended from 16 to
+    17 invariants. INV-9 revised to enforce the absence of the
+    hourly timer plus the menu action plus the userInitiated
+    flag. INV-17 walks handleUpdateClicked asserting the dialog
+    precedes startDetached, the dialog text mentions
+    "quit and re-launch" + "Claude Code" + "reconnected", and
+    Cancel surfaces a status message.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 19:03:56 +0200
+
 ants-terminal (0.7.46-1) unstable; urgency=medium
 
   * Phase B of the auto-update story — actual in-place binary

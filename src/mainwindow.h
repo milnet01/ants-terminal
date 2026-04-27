@@ -343,7 +343,6 @@ private:
     // latest release's tag_name. Hourly check + on-startup.
     QLabel *m_updateAvailableLabel = nullptr;
     QString m_latestRemoteVersion;  // last seen tag_name from GitHub
-    QTimer *m_updateCheckTimer = nullptr;
     QNetworkAccessManager *m_updateNam = nullptr;
     // 0.6.27 — cached last state/detail so the Claude status label can be
     // re-rendered when the permission-prompt overlay toggles without having
@@ -408,8 +407,12 @@ private:
     // 0.7.45 — Hit GitHub's `releases/latest` endpoint via QNAM,
     // compare `tag_name` against ANTS_VERSION, and surface a
     // clickable status-bar label when newer. No-op silently on
-    // network failure or rate-limit.
-    void checkForUpdates();
+    // network failure or rate-limit. `userInitiated` (added 0.7.47)
+    // enables status-bar feedback for the "no update available" /
+    // "network error" cases — startup probes stay silent so the
+    // launch path doesn't surface negative results that the user
+    // didn't ask for.
+    void checkForUpdates(bool userInitiated = false);
     // 0.7.46 — Click handler for the update-available label. Probes
     // for AppImageUpdate (GUI) or appimageupdatetool (CLI); if found
     // AND $APPIMAGE is set (binary is running as an AppImage),
