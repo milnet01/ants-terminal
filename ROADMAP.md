@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.41 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.42 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -2157,15 +2157,31 @@ shown inline in a dim/greyed color, and TAB commits it. This is
 separate from a popup/dropdown picker — it's inline with the cursor,
 zero-click, purely suggestive. Proposed in two scopes:
 
-- 📋 **Command Palette ghost-completion (near-term, small scope).**
-  The Command Palette (Ctrl+Shift+P) already has fuzzy-match wiring.
-  As the user types, render the top match's unmatched suffix in a
-  dimmed color inline with their input (roughly `palette[fg] * 0.45
-  alpha`). TAB commits. Esc / any non-matching keystroke
-  reshapes-or-cancels. Implementation lives entirely in
-  `commandpalette.cpp`; probably ~100 LoC. This is the scope that
-  matches the user-facing mental model of "like Claude Code's
-  /slash-command autocomplete."
+- ✅ **Command Palette ghost-completion (near-term, small scope).**
+  Shipped 0.7.42. New `GhostLineEdit` subclass of `QLineEdit`
+  (declared in `src/commandpalette.h`) overrides `paintEvent` to
+  draw the unmatched suffix of the top fuzzy-match at
+  `cursorRect().right() + 1` in `palette().color(QPalette::Text)`
+  with `setAlphaF(0.45)` — matches the design contract
+  `palette[fg] * 0.45 alpha` exactly. `populateList` calls a new
+  `updateGhostCompletion(filter)` that picks the top item, recovers
+  the underlying `QAction`, and (only for case-insensitive prefix
+  matches) sets the ghost to `name.mid(filter.length())`.
+  `contains()`-only matches get an empty ghost since the suffix
+  visual contract only makes sense flush after the user's input.
+  `Tab` is wired to `commitGhost()`, which appends the ghost to the
+  input via `setText`; the post-commit text equals the visible
+  composition (user-typed prefix + ghost suffix), preserving
+  user-typed casing on commit (shell-completion semantics). `Tab`
+  does not also execute — `Enter` runs, matching Claude Code's
+  `/slash`-completion contract. Tab is always consumed by the
+  palette so focus cannot leave the input while it is open. Locked
+  by `tests/features/command_palette_ghost_completion/` (ten
+  invariants); pre-fix verification: with `commandpalette.{h,cpp}`
+  stashed, the test fails to even compile (missing `GhostLineEdit`
+  symbol). The in-terminal shell ghost-suggestion (`💭` below)
+  remains separate scope — different surface, different data
+  source.
 - 💭 **In-terminal shell ghost-suggestion (fish-shell style, bigger
   scope).** As the user types at the shell prompt, ghost-suggest
   from shell history — fish's killer UX feature. Requires two

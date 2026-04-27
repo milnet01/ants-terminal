@@ -10,6 +10,89 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.42] — 2026-04-27
+
+**Theme:** Inline ghost-text completion in the Command Palette —
+Claude Code's `/slash`-command UX, ported to Ctrl+Shift+P. As you
+type, the unmatched suffix of the top fuzzy-match is rendered in a
+dimmed colour right after the cursor; `Tab` commits the suggestion
+into the input. Retires ROADMAP § "Command Palette ghost-completion
+(near-term, small scope)".
+
+### Added
+
+- **`GhostLineEdit` subclass of `QLineEdit`.** Lives in
+  `src/commandpalette.h`. Carries a `m_ghost` string set via
+  `setGhostSuffix()`; `paintEvent` calls
+  `QLineEdit::paintEvent(event)` first, then opens a fresh `QPainter`
+  and draws the ghost at `cursorRect().right() + 1` using
+  `palette().color(QPalette::Text)` with `setAlphaF(0.45)`. No
+  layout changes — the suffix overlays the existing line-edit content
+  area, so palette geometry is unchanged.
+
+- **`CommandPalette::updateGhostCompletion(filter)`.** Invoked from
+  `populateList` after the result list is rebuilt. Looks at
+  `m_list->item(0)`, recovers the underlying `QAction`, strips `&`
+  accelerators, and:
+  - if the filter is empty, list is empty, or the action name does
+    not start with the filter (case-insensitive) →
+    `setGhostSuffix("")`;
+  - otherwise → `setGhostSuffix(name.mid(filter.length()))`, which
+    preserves the action name's original casing in the ghost.
+
+  `contains()`-only matches (where the filter appears mid-string in
+  the top match) get an empty ghost — the visual contract is that
+  the suffix appears flush after the user's typed input, which only
+  makes sense for prefix matches.
+
+- **`Tab`-key commit handler.** `eventFilter` adds
+  `Qt::Key_Tab` → `commitGhost()`, which appends the ghost suffix to
+  the input via `setText`. The follow-up
+  `textChanged → filterActions → populateList → updateGhostCompletion`
+  cycle clears the ghost in the same dispatch since the new filter
+  equals the action name's tail exactly. The post-commit text equals
+  the visible composition (user-typed prefix + ghost suffix), so
+  user-typed casing is preserved — same as shell-completion
+  semantics. Tab is **always** consumed by the palette (even when
+  the ghost is empty) so focus cannot leak out of the input while
+  the palette is open. `Tab` does not also execute the action — the
+  user presses `Enter` to run, matching Claude Code's
+  `/slash`-completion contract.
+
+### Tests
+
+- `tests/features/command_palette_ghost_completion/` — ten
+  invariants spanning the contract: I1 the input is a `GhostLineEdit`
+  findable by `objectName`; I2 empty filter → empty ghost; I3
+  prefix `"ind"` → ghost `"ex Review"` (first item in setActions
+  order is `"Index Review"`); I4 uppercase `"INDEX"` →
+  ghost `" Review"` (case-insensitive prefix, casing preserved
+  from the action name); I5 `contains`-only match → empty ghost;
+  I6 no-match → empty ghost; I7 Tab commit → text =
+  filter + ghost (`"index Review"`) and ghost cleared; I8 Tab
+  with empty ghost is consumed (text unchanged, focus retained on
+  input); I9 source-grep on `commandpalette.cpp` (exactly one
+  `setAlphaF(0.45` literal, ≥1 `cursorRect(` reference); I10 Esc
+  still hides the palette and emits `closed()` exactly once
+  (regression guard on existing dismiss behaviour). Drives
+  `CommandPalette` directly under `QT_QPA_PLATFORM=offscreen` —
+  no MainWindow link, no PTY. Pre-fix verification: with
+  `commandpalette.{h,cpp}` stashed, the test fails to even compile
+  (missing `GhostLineEdit` symbol); restored, test passes.
+
+### Notes
+
+- **Out of scope.** The in-terminal shell ghost-suggestion
+  (fish-style, OSC 133 prompt-detection + history scraping) is a
+  separate ROADMAP item marked `💭` with deferral past 1.0. It
+  would touch `terminalgrid.cpp` paint path and `vtparser.cpp`
+  rather than `commandpalette.cpp`.
+- **Frequency-ranked top match.** The palette today picks the top
+  match by setActions iteration order. A frequency-ranked source
+  (most-used action first) is a noted future refinement; the
+  contract above stays stable across that change because the test
+  uses a fixed action ordering.
+
 ## [0.7.41] — 2026-04-27
 
 **Theme:** Accessibility — explicit `setAccessibleName` /

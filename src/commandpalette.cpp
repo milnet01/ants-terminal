@@ -2,7 +2,33 @@
 
 #include <QKeyEvent>
 #include <QPainter>
+#include <QFontMetrics>
 #include <QApplication>
+
+void GhostLineEdit::setGhostSuffix(const QString &suffix) {
+    if (m_ghost == suffix) return;
+    m_ghost = suffix;
+    update();
+}
+
+void GhostLineEdit::paintEvent(QPaintEvent *event) {
+    QLineEdit::paintEvent(event);
+    if (m_ghost.isEmpty()) return;
+
+    // Anchor the dimmed suffix to the right edge of the caret so the
+    // completion sits flush against what the user typed. palette[Text]
+    // at α=0.45 matches the design contract in
+    // tests/features/command_palette_ghost_completion/spec.md.
+    QPainter p(this);
+    QRect cr = cursorRect();
+    QFontMetrics fm(font());
+    QColor c = palette().color(QPalette::Text);
+    c.setAlphaF(0.45);
+    p.setPen(c);
+    int x = cr.right() + 1;
+    int y = cr.top() + fm.ascent();
+    p.drawText(x, y, m_ghost);
+}
 
 CommandPalette::CommandPalette(QWidget *parent) : QWidget(parent) {
     setWindowFlags(Qt::Widget);
@@ -13,7 +39,7 @@ CommandPalette::CommandPalette(QWidget *parent) : QWidget(parent) {
     m_layout->setContentsMargins(0, 0, 0, 0);
     m_layout->setSpacing(0);
 
-    m_input = new QLineEdit(this);
+    m_input = new GhostLineEdit(this);
     m_input->setObjectName("commandPaletteInput");
     m_input->setPlaceholderText("Type a command...");
     // Screen-reader label. Placeholder text is documentation, not the
@@ -78,6 +104,7 @@ void CommandPalette::show() {
 
     m_input->blockSignals(true);
     m_input->clear();
+    m_input->setGhostSuffix(QString());
     m_input->blockSignals(false);
     populateList("");
     positionAndResize();
@@ -125,6 +152,50 @@ void CommandPalette::populateList(const QString &filter) {
     int inputH = m_input->sizeHint().height();
     int totalH = inputH + visibleItems * itemH + 4;
     setFixedHeight(totalH);
+
+    updateGhostCompletion(filter);
+}
+
+void CommandPalette::updateGhostCompletion(const QString &filter) {
+    // Ghost is shown only when the filter is a strict (case-insensitive)
+    // prefix of the top match's action text. `contains`-only matches
+    // (top match has the filter mid-string) get an empty ghost — the
+    // visual contract is that the suffix appears flush after the
+    // user's typed input, which only makes sense for prefix matches.
+    if (filter.isEmpty() || !m_list || m_list->count() == 0) {
+        m_input->setGhostSuffix(QString());
+        return;
+    }
+    QListWidgetItem *top = m_list->item(0);
+    if (!top) {
+        m_input->setGhostSuffix(QString());
+        return;
+    }
+    int idx = top->data(Qt::UserRole).toInt();
+    if (idx < 0 || idx >= m_allActions.size()) {
+        m_input->setGhostSuffix(QString());
+        return;
+    }
+    QAction *action = m_allActions[idx].data();
+    if (!action) {
+        m_input->setGhostSuffix(QString());
+        return;
+    }
+    QString name = action->text().remove('&');
+    if (!name.toLower().startsWith(filter.toLower())) {
+        m_input->setGhostSuffix(QString());
+        return;
+    }
+    m_input->setGhostSuffix(name.mid(filter.length()));
+}
+
+void CommandPalette::commitGhost() {
+    QString g = m_input->ghostSuffix();
+    if (g.isEmpty()) return;
+    // setText fires textChanged → filterActions → populateList →
+    // updateGhostCompletion, which clears the ghost since the new
+    // filter equals the action name exactly.
+    m_input->setText(m_input->text() + g);
 }
 
 void CommandPalette::filterActions(const QString &text) {
@@ -153,6 +224,12 @@ bool CommandPalette::eventFilter(QObject *obj, QEvent *event) {
         case Qt::Key_Escape:
             hide();
             emit closed();
+            return true;
+        case Qt::Key_Tab:
+            // Always consume Tab so focus cannot leave the palette
+            // input while it's open. If a ghost suggestion is live,
+            // commit it; otherwise this is a no-op.
+            commitGhost();
             return true;
         case Qt::Key_Down:
             if (m_list->count() > 0) {

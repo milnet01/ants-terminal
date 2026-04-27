@@ -1,3 +1,42 @@
+ants-terminal (0.7.42-1) unstable; urgency=medium
+
+  * Inline ghost-text completion in the Command Palette — Claude
+    Code's /slash-command UX, ported to Ctrl+Shift+P. As the user
+    types, the unmatched suffix of the top fuzzy-match is rendered
+    in a dimmed colour right after the cursor; Tab commits the
+    suggestion into the input. Retires ROADMAP § "Command Palette
+    ghost-completion (near-term, small scope)".
+  * Added: GhostLineEdit subclass of QLineEdit (in
+    src/commandpalette.h). Carries an m_ghost string set via
+    setGhostSuffix(); paintEvent calls QLineEdit::paintEvent first,
+    then draws the ghost at cursorRect().right() + 1 using
+    palette().color(QPalette::Text) with setAlphaF(0.45). No layout
+    changes — the suffix overlays the existing line-edit content
+    area.
+  * Added: CommandPalette::updateGhostCompletion(filter), invoked
+    from populateList after the result list is rebuilt. Empty
+    filter, empty list, or non-prefix top-match → empty ghost;
+    case-insensitive prefix match → ghost = name.mid(filter.length())
+    with action-name casing preserved. contains()-only matches get
+    an empty ghost.
+  * Added: Tab-key commit handler. Appends ghost to input via
+    setText (preserving user-typed casing on commit, mirroring
+    shell-completion semantics). Tab is always consumed so focus
+    cannot leave the palette while it is open. Tab does not execute
+    — the user presses Enter to run, matching Claude Code's
+    /slash-completion contract.
+  * Tests: tests/features/command_palette_ghost_completion/ — ten
+    invariants on the GhostLineEdit type, ghost transitions across
+    empty / prefix / uppercase-prefix / contains-only / no-match
+    filters, Tab commit semantics, focus retention on empty-ghost
+    Tab, source-grep on the dimmed-color literal and cursorRect
+    anchor, and Esc dismiss regression. Drives CommandPalette
+    directly under QT_QPA_PLATFORM=offscreen. Pre-fix verification:
+    with the implementation stashed, the test fails to even compile
+    (missing GhostLineEdit symbol).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 12:21:03 +0200
+
 ants-terminal (0.7.41-1) unstable; urgency=medium
 
   * Accessibility. Every glyph-only chrome control now carries an

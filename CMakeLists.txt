@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.41 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.42 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2209,6 +2209,37 @@ if(ANTS_TESTS)
     set_target_properties(test_a11y_chrome_names PROPERTIES AUTOMOC ON)
     add_test(NAME a11y_chrome_names COMMAND test_a11y_chrome_names)
     set_tests_properties(a11y_chrome_names PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # command_palette_ghost_completion — 0.7.42. ROADMAP § "Command
+    # Palette ghost-completion (near-term, small scope)" (L2160). Pins
+    # the GhostLineEdit subclass + Tab-commit contract: empty/no-match/
+    # contains-only-match → empty ghost; case-insensitive prefix match
+    # → suffix preserves action-name casing; Tab commits ghost into
+    # input text and clears the ghost in the same dispatch cycle.
+    # Drives CommandPalette directly under the offscreen platform.
+    add_executable(test_command_palette_ghost_completion
+        tests/features/command_palette_ghost_completion/test_command_palette_ghost_completion.cpp
+        src/commandpalette.cpp
+    )
+    target_link_libraries(test_command_palette_ghost_completion PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::Test
+    )
+    target_include_directories(test_command_palette_ghost_completion PRIVATE src)
+    target_compile_options(test_command_palette_ghost_completion PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_command_palette_ghost_completion PRIVATE
+        COMMANDPALETTE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/commandpalette.cpp"
+    )
+    set_target_properties(test_command_palette_ghost_completion PROPERTIES AUTOMOC ON)
+    add_test(NAME command_palette_ghost_completion COMMAND test_command_palette_ghost_completion)
+    set_tests_properties(command_palette_ghost_completion PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

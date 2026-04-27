@@ -7,6 +7,25 @@
 #include <QVBoxLayout>
 #include <QList>
 #include <QPointer>
+#include <QString>
+
+// QLineEdit that paints an inline ghost-text suffix in dimmed colour
+// after the cursor. Owned by CommandPalette; ghost state is set by
+// CommandPalette::updateGhostCompletion as the result list rebuilds.
+class GhostLineEdit : public QLineEdit {
+    Q_OBJECT
+public:
+    explicit GhostLineEdit(QWidget *parent = nullptr) : QLineEdit(parent) {}
+
+    void setGhostSuffix(const QString &suffix);
+    QString ghostSuffix() const { return m_ghost; }
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
+private:
+    QString m_ghost;
+};
 
 class CommandPalette : public QWidget {
     Q_OBJECT
@@ -29,7 +48,7 @@ private slots:
     void executeSelected();
 
 private:
-    QLineEdit *m_input = nullptr;
+    GhostLineEdit *m_input = nullptr;
     QListWidget *m_list = nullptr;
     QVBoxLayout *m_layout = nullptr;
     QList<QPointer<QAction>> m_allActions;
@@ -37,4 +56,6 @@ private:
     void positionAndResize();
     void populateList(const QString &filter);
     void ensureListReady();
+    void updateGhostCompletion(const QString &filter);
+    void commitGhost();
 };
