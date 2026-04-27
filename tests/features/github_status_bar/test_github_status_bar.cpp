@@ -36,6 +36,9 @@
 #ifndef SRC_MAINWINDOW_H_PATH
 #error "SRC_MAINWINDOW_H_PATH compile definition required"
 #endif
+#ifndef SRC_RELEASE_WORKFLOW_PATH
+#error "SRC_RELEASE_WORKFLOW_PATH compile definition required"
+#endif
 
 namespace {
 
@@ -79,6 +82,7 @@ int main(int argc, char **argv) {
 
     const std::string h = slurp(SRC_MAINWINDOW_H_PATH);
     const std::string s = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string yml = slurp(SRC_RELEASE_WORKFLOW_PATH);
 
     // INV-1: both QLabel members declared with the documented names.
     if (!contains(h, "QLabel *m_repoVisibilityLabel"))
@@ -198,11 +202,19 @@ int main(int argc, char **argv) {
                 "User-Agent raw header is required — GitHub 403s without one");
     }
 
-    // INV-11: update label opens external links.
-    if (!contains(s, "m_updateAvailableLabel->setOpenExternalLinks(true)"))
+    // INV-11 (revised in 0.7.46): update label intercepts clicks via
+    // linkActivated, NOT setOpenExternalLinks(true). The handler
+    // probes for AppImageUpdate before falling back to the browser,
+    // so an unconditional auto-open would skip the in-place update.
+    if (!contains(s, "m_updateAvailableLabel->setOpenExternalLinks(false)"))
         return fail("INV-11",
-            "setOpenExternalLinks(true) must be set so the rendered <a href> "
-            "opens the release page in the user's browser");
+            "0.7.46+ requires setOpenExternalLinks(false) on the update "
+            "label — the linkActivated handler does the routing");
+    if (!contains(s, "&QLabel::linkActivated") ||
+            !contains(s, "&MainWindow::handleUpdateClicked"))
+        return fail("INV-11",
+            "update label must connect linkActivated to "
+            "MainWindow::handleUpdateClicked");
 
     // INV-12: compareSemver returns the right sign on the sample inputs.
     // Cannot link to the helper because it's in an anonymous namespace
@@ -232,6 +244,66 @@ int main(int argc, char **argv) {
                 "strings (or `0.10` would compare less than `0.9`)");
     }
 
-    std::puts("OK github_status_bar: 12/12 invariants");
+    // INV-13 (added 0.7.46): workflow embeds the AppImageUpdate
+    // gh-releases-zsync update-information string into linuxdeploy
+    // via the UPDATE_INFORMATION env var. Without this, the AppImage
+    // ships with no update metadata and AppImageUpdate refuses to
+    // run against it.
+    if (yml.find("UPDATE_INFORMATION:") == std::string::npos)
+        return fail("INV-13",
+            "release.yml must set UPDATE_INFORMATION env var on the "
+            "linuxdeploy step");
+    if (yml.find("gh-releases-zsync|milnet01|ants-terminal|latest|") ==
+            std::string::npos)
+        return fail("INV-13",
+            "UPDATE_INFORMATION must use the `gh-releases-zsync` schema "
+            "anchored on milnet01/ants-terminal latest release");
+    if (yml.find("Ants_Terminal-*-x86_64.AppImage.zsync") == std::string::npos)
+        return fail("INV-13",
+            "UPDATE_INFORMATION wildcard must point at the "
+            "Ants_Terminal-*-x86_64.AppImage.zsync sidecar pattern");
+
+    // INV-14: workflow uploads the .zsync sidecar alongside the AppImage.
+    if (yml.find("\"${OUTPUT}.zsync\"") == std::string::npos)
+        return fail("INV-14",
+            "release.yml's gh release upload step must include the "
+            "`${OUTPUT}.zsync` sidecar — without it, AppImageUpdate "
+            "clients fall back to whole-file fetch (slow) or fail");
+
+    // INV-15: handleUpdateClicked probes for AppImageUpdate (GUI)
+    // and appimageupdatetool (CLI) before falling back to the
+    // browser. Source-grep all three names.
+    {
+        const std::string body = functionBody(s,
+            "void MainWindow::handleUpdateClicked");
+        if (body.empty())
+            return fail("INV-15", "handleUpdateClicked body not found");
+        if (body.find("AppImageUpdate") == std::string::npos)
+            return fail("INV-15",
+                "handleUpdateClicked must probe for the AppImageUpdate GUI "
+                "binary before falling back");
+        if (body.find("appimageupdatetool") == std::string::npos)
+            return fail("INV-15",
+                "handleUpdateClicked must probe for the appimageupdatetool "
+                "CLI as the second-choice updater");
+        if (body.find("APPIMAGE") == std::string::npos)
+            return fail("INV-15",
+                "handleUpdateClicked must read the $APPIMAGE env var to "
+                "find the on-disk AppImage path the updater needs as arg");
+        if (body.find("QDesktopServices::openUrl") == std::string::npos)
+            return fail("INV-15",
+                "handleUpdateClicked must fall back to "
+                "QDesktopServices::openUrl when no updater is installed");
+    }
+
+    // INV-16: detached spawn — the updater outlives this process so
+    // the user can quit + restart while the download runs.
+    if (!contains(s, "QProcess::startDetached"))
+        return fail("INV-16",
+            "handleUpdateClicked must use QProcess::startDetached — "
+            "running the updater attached would block the parent on its "
+            "lifetime and force a still-running terminal to wait on it");
+
+    std::puts("OK github_status_bar: 16/16 invariants");
     return 0;
 }

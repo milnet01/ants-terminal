@@ -103,6 +103,22 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.46" date="2026-04-27">
+      <description>
+        <p>Phase B of the auto-update story — actual in-place binary updates via AppImageUpdate and zsync. The 0.7.45 status bar notifier knew about new releases but only opened a download page; this release closes the loop. Click the update badge and the AppImage updates itself. v0.7.46 is the first release whose binary can be updated in place; pre-0.7.46 binaries shipped without the embedded metadata and continue to be manual-download only.</p>
+        <p>Added:</p>
+        <ul>
+          <li>Update-information ELF note plus a <code>.zsync</code> sidecar in every release. The build workflow now passes a <code>UPDATE_INFORMATION</code> environment variable to linuxdeploy that uses the GitHub-releases-zsync schema; linuxdeploy embeds the string into the AppImage's update-info ELF note and produces the sidecar alongside. Both files are uploaded to each release.</li>
+          <li>A new click handler on the update-available label, <code>MainWindow::handleUpdateClicked</code>, wired via <code>linkActivated</code>. Probes for <code>AppImageUpdate</code> (GUI) first, <code>appimageupdatetool</code> (CLI) second; reads the <code>$APPIMAGE</code> env var to find the on-disk AppImage path; runs the updater detached via <code>QProcess::startDetached</code>. Falls back to opening the release page in the user's browser only when neither tool is installed or the binary isn't running as an AppImage.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>The update-available label now uses <code>setOpenExternalLinks(false)</code>; clicks route through the new handler instead of being auto-opened by Qt.</li>
+        </ul>
+        <p>Locked by <code>tests/features/github_status_bar/</code> — extended from 12 to 16 invariants. INV-11 (revised) requires the <code>linkActivated</code> connection. INV-13 source-greps the workflow for the <code>UPDATE_INFORMATION</code> env var with the right schema. INV-14 confirms the <code>.zsync</code> sidecar upload. INV-15 walks the new handler asserting both updater names, the <code>$APPIMAGE</code> read, and the browser fallback. INV-16 confirms <code>QProcess::startDetached</code> is used so the updater outlives the parent process.</p>
+        <p>Notes: AppImage updates write a fresh file alongside the original (with a <code>.zs-old</code> suffix on the previous version) — the running process keeps the old contents in memory until the user quits and relaunches. The first release that can use this feature is 0.7.46 itself; earlier AppImages were built without the metadata.</p>
+      </description>
+    </release>
     <release version="0.7.45" date="2026-04-27">
       <description>
         <p>GitHub-aware status bar — two new badges that surface context the user previously had to alt-tab to a browser to see. A Public/Private repo visibility badge for the active tab's project, and an "↗ Update vX.Y.Z available" notifier that checks the GitHub releases API hourly and lets the user click through to the release page when a newer version exists.</p>

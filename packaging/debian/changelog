@@ -1,3 +1,44 @@
+ants-terminal (0.7.46-1) unstable; urgency=medium
+
+  * Phase B of the auto-update story — actual in-place binary
+    updates via AppImageUpdate and zsync. The 0.7.45 status bar
+    notifier knew about new releases but only opened a download
+    page; this release closes the loop. Click the update badge
+    and the AppImage updates itself. v0.7.46 is the first release
+    whose binary can be updated in place; pre-0.7.46 binaries
+    shipped without the embedded metadata and continue to be
+    manual-download only.
+  * Added: update-information ELF note plus a .zsync sidecar in
+    every release. The build workflow now passes a
+    UPDATE_INFORMATION environment variable to linuxdeploy
+    (gh-releases-zsync|milnet01|ants-terminal|latest|
+    Ants_Terminal-*-x86_64.AppImage.zsync); linuxdeploy embeds the
+    string into the AppImage's update-info ELF note and produces
+    the sidecar alongside. Both files are uploaded to each release.
+  * Added: MainWindow::handleUpdateClicked slot wired to the
+    update-available label's linkActivated signal. Probes for
+    AppImageUpdate (GUI) first, appimageupdatetool (CLI) second;
+    reads $APPIMAGE to find the on-disk path; runs the updater
+    detached via QProcess::startDetached. Falls back to
+    QDesktopServices::openUrl only when neither tool is installed
+    or the binary isn't running as an AppImage.
+  * Changed: update-available label now uses
+    setOpenExternalLinks(false); clicks route through the new
+    handler instead of being auto-opened by Qt.
+  * Tests: tests/features/github_status_bar/ extended from 12 to
+    16 invariants. INV-11 (revised) requires the linkActivated
+    connection. INV-13 source-greps the workflow for the
+    UPDATE_INFORMATION env var. INV-14 confirms the .zsync
+    sidecar upload. INV-15 walks the new handler asserting both
+    updater names, the $APPIMAGE read, and the browser fallback.
+    INV-16 confirms QProcess::startDetached.
+  * Notes: AppImage updates write a fresh file alongside the
+    original (with a .zs-old suffix on the previous version) —
+    the running process keeps the old contents in memory until
+    the user quits and relaunches.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 18:39:05 +0200
+
 ants-terminal (0.7.45-1) unstable; urgency=medium
 
   * GitHub-aware status bar — two new badges that surface context

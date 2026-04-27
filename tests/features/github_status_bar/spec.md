@@ -53,9 +53,26 @@ same per-tab lifecycle as the Roadmap button. Tab switch fires
 ### Update available — `m_updateAvailableLabel` (objectName `updateAvailableLabel`)
 
 A clickable label showing `↗ Update v<X.Y.Z> available` (cyan
-`#5DCFCF`, matches the Thinking state-dot colour). Click opens
-`https://github.com/milnet01/ants-terminal/releases/tag/v<X.Y.Z>` in
-the user's default browser via `QLabel::setOpenExternalLinks(true)`.
+`#5DCFCF`, matches the Thinking state-dot colour). Click is
+intercepted by `MainWindow::handleUpdateClicked` (since 0.7.46 —
+prior versions used `setOpenExternalLinks(true)` and unconditionally
+opened the browser). The handler probes for an AppImage updater
+in this order, taking the first hit:
+
+1. `AppImageUpdate` (GUI) — preferred, gives the user a progress
+   window they can dismiss.
+2. `appimageupdatetool` (CLI) — silent fallback.
+3. Browser (`QDesktopServices::openUrl`) — only when neither
+   updater is installed or the binary isn't running as an
+   AppImage (`$APPIMAGE` env var unset).
+
+When a tool is found AND `$APPIMAGE` is set, it's launched via
+`QProcess::startDetached` against the on-disk AppImage path. The
+parent process can quit/restart while the download runs. A
+status-bar message acknowledges the launch
+("AppImageUpdate launched — downloading the new version. Quit and
+restart to use it.").
+
 Tooltip: `Click to open release notes for v<X.Y.Z> in your browser.
 Currently running v<current>.`
 
@@ -110,25 +127,48 @@ source-grep harness, no Qt link.
 - **INV-10** `checkForUpdates` requests
   `api.github.com/repos/milnet01/ants-terminal/releases/latest`
   AND sets a `User-Agent` raw header (GitHub 403s without it).
-- **INV-11** The update-available badge is a `QLabel` with
-  `setOpenExternalLinks(true)` — clicking the rendered `<a href>`
-  opens the release page; no slot wiring needed.
+- **INV-11** *(revised in 0.7.46)* The update-available badge sets
+  `setOpenExternalLinks(false)` and connects `linkActivated` to
+  `MainWindow::handleUpdateClicked` so the click handler can route
+  through the AppImage updater before falling back to the browser.
 - **INV-12** `compareSemver` returns `> 0` only when `tag_name` is
   strictly greater than `ANTS_VERSION`. Verified with a small table
   of cases (`0.7.44` < `0.7.45`, `0.7.45` == `0.7.45`, `0.7.45` >
   `0.7.44`, `0.8.0` > `0.7.99`).
 
+- **INV-13** *(added 0.7.46)* `.github/workflows/release.yml` sets
+  `UPDATE_INFORMATION` env var on the linuxdeploy step using the
+  `gh-releases-zsync|milnet01|ants-terminal|latest|Ants_Terminal-*-x86_64.AppImage.zsync`
+  schema. Without this, linuxdeploy doesn't embed the update-info
+  ELF note and AppImageUpdate refuses to run against the AppImage.
+
+- **INV-14** *(added 0.7.46)* Workflow uploads the
+  `${OUTPUT}.zsync` sidecar alongside the `.AppImage`. Without the
+  sidecar, AppImageUpdate clients fall back to whole-file fetch
+  (slow); with it, only changed blocks transfer.
+
+- **INV-15** *(added 0.7.46)* `MainWindow::handleUpdateClicked`
+  probes for `AppImageUpdate` (GUI) first, `appimageupdatetool`
+  (CLI) second; reads the `$APPIMAGE` env var (set by the AppImage
+  runtime) to find the on-disk path; falls back to
+  `QDesktopServices::openUrl` only when neither tool is installed
+  or the binary isn't running as an AppImage.
+
+- **INV-16** *(added 0.7.46)* The updater is launched via
+  `QProcess::startDetached` so it outlives the parent process —
+  the user can quit and restart Ants Terminal while the download
+  runs without killing the updater.
+
 ## Out of scope
 
-- Actual binary auto-update via AppImageUpdate / zsync. That's a
-  follow-up release — needs the build workflow to publish a `.zsync`
-  sidecar AND the linuxdeploy command to embed the
-  `gh-releases-zsync|...` update-information string. Cannot
-  retroactively update binaries that didn't ship with the metadata.
-  This release only *notifies*; the user clicks through to
-  download manually.
 - Per-tab update badge. The "Update available" state is a property
   of the running binary, not the active tab — it stays visible
   across tab switches.
 - Authenticated GitHub API access (rate limit applies — 60
   requests/hour for unauthenticated, well within the hourly poll).
+- Retroactive in-place update for AppImages built before 0.7.46.
+  The `UPDATE_INFORMATION` ELF note is embedded at build time —
+  v0.7.45 and earlier binaries were built without it and
+  AppImageUpdate refuses to act on them. Those users continue to
+  download manually until they're on 0.7.46+; from there forward,
+  the in-place flow works.

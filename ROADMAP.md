@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.45 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.46 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -278,10 +278,15 @@ liblua5.4 automatically; `--appimage-extract-and-run --version` /
    with a YAML metadata stub pointing at our GitHub Release artefact.
    AppImageHub is a listing directory, not a store — increases
    discoverability for Linux desktop users browsing for terminals.
-4. 📋 **Auto-update** via [AppImageUpdate](https://github.com/AppImage/AppImageUpdate)
-   — embed a zsync URL in the AppImage so users can self-update without
-   re-downloading. Requires generating a `.zsync` file alongside each
-   release artefact and uploading both.
+4. ✅ **Auto-update** via [AppImageUpdate](https://github.com/AppImage/AppImageUpdate)
+   — shipped 0.7.46. The build workflow embeds a `gh-releases-zsync`
+   update-info string in the AppImage and uploads a `.zsync` sidecar
+   alongside; in-app the update notifier's click handler runs
+   `AppImageUpdate` (GUI) or `appimageupdatetool` (CLI) detached
+   when the binary is running as an AppImage, falling back to
+   opening the release page in a browser otherwise. v0.7.46 is the
+   first release whose binary can be updated in place; pre-0.7.46
+   shipped without the metadata and remain manual-download only.
 5. 💭 **aarch64 AppImage** — second runner job once GitHub Actions
    `ubuntu-22.04-arm64` is GA (currently in preview). Niche but
    meaningful for Asahi Linux + Pi 5 + AWS Graviton dev boxes.
@@ -1921,15 +1926,30 @@ remainder, captured so they don't drop on the floor.
   update-information string in linuxdeploy. Cannot retroactively
   update binaries shipped without the metadata. This release only
   notifies.
-- 📋 **AppImageUpdate / zsync auto-update.** Follow-up to the
-  notifier above. Build workflow change: pass
+- ✅ **AppImageUpdate / zsync auto-update.** Shipped 0.7.46.
+  Phase B of the auto-update story (Phase A was the notifier in
+  0.7.45). Two changes: (1) `.github/workflows/release.yml` now
+  passes
   `UPDATE_INFORMATION="gh-releases-zsync|milnet01|ants-terminal|latest|Ants_Terminal-*-x86_64.AppImage.zsync"`
-  to the linuxdeploy invocation and upload the resulting
-  `.zsync` sidecar to each release. In-app: shell out to
-  `appimageupdatetool` (probe via `which`) when the user clicks
-  the update notifier; fall back to opening the release page in
-  the browser when the tool is missing. This is the binary
-  delivery half of the auto-update story; v0.7.45 only notifies.
+  to the linuxdeploy invocation, which embeds the update-info ELF
+  note into the AppImage AND produces a `<output>.zsync` sidecar
+  alongside it; the upload step uploads BOTH to the release.
+  (2) `MainWindow::handleUpdateClicked` is now wired to the update
+  label's `linkActivated` signal (`setOpenExternalLinks(false)`).
+  It probes for `AppImageUpdate` (GUI) first, `appimageupdatetool`
+  (CLI) second; reads `$APPIMAGE` to find the on-disk path; runs
+  the updater detached via `QProcess::startDetached`. Falls back
+  to `QDesktopServices::openUrl` only when neither tool is
+  installed or the binary isn't running as an AppImage. v0.7.46
+  is the **first release whose binary can be updated in place** —
+  v0.7.45 and earlier shipped without the metadata and continue
+  to be manual-download only (no way to retroactively add the ELF
+  note). Test contract extended from 12 → 16 invariants in
+  `tests/features/github_status_bar/` (INV-13 workflow embeds
+  UPDATE_INFORMATION, INV-14 uploads `.zsync` sidecar, INV-15
+  handler probes both updater names + reads `$APPIMAGE` + falls
+  back to QDesktopServices, INV-16 detached spawn via
+  `QProcess::startDetached`).
 
 ### 🐜 Tab UX
 

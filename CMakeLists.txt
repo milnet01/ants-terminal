@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.45 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.46 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2101,6 +2101,7 @@ if(ANTS_TESTS)
     target_compile_definitions(test_github_status_bar PRIVATE
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_RELEASE_WORKFLOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/.github/workflows/release.yml"
     )
     add_test(NAME github_status_bar
         COMMAND test_github_status_bar)

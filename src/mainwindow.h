@@ -410,6 +410,14 @@ private:
     // clickable status-bar label when newer. No-op silently on
     // network failure or rate-limit.
     void checkForUpdates();
+    // 0.7.46 — Click handler for the update-available label. Probes
+    // for AppImageUpdate (GUI) or appimageupdatetool (CLI); if found
+    // AND $APPIMAGE is set (binary is running as an AppImage),
+    // launches the updater detached. Falls back to opening the
+    // release page in the browser when neither is installed or the
+    // binary isn't an AppImage. The `url` argument is the release
+    // page URL emitted by the linkActivated signal.
+    void handleUpdateClicked(const QString &url);
 
     // Plugin manager
 #ifdef ANTS_LUA_PLUGINS

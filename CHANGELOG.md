@@ -10,6 +10,78 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.46] — 2026-04-27
+
+**Theme:** Phase B of the auto-update story — actual in-place
+binary updates via AppImageUpdate / zsync. The 0.7.45 status bar
+notifier knew about new releases but only opened a download page;
+this release closes the loop. Click "↗ Update vX.Y.Z available"
+and the AppImage updates itself. v0.7.46 is the **first release
+whose binary can be updated in place** — pre-0.7.46 binaries
+shipped without the embedded zsync metadata and continue to be
+manual-download only (no way to retroactively add the ELF note).
+
+### Added
+
+- **`UPDATE_INFORMATION` ELF note + `.zsync` sidecar.**
+  `.github/workflows/release.yml` now passes
+  `UPDATE_INFORMATION="gh-releases-zsync|milnet01|ants-terminal|latest|Ants_Terminal-*-x86_64.AppImage.zsync"`
+  to the linuxdeploy invocation. linuxdeploy embeds the string into
+  the AppImage's update-info ELF note AND produces a
+  `<output>.zsync` sidecar file. The upload step uploads BOTH the
+  AppImage and the `.zsync` sidecar to each release. The wildcard
+  pattern resolves against `latest` so the embedded URL is
+  version-stable — every shipped binary auto-updates to whatever's
+  tagged latest at the time the user runs the updater.
+
+- **`MainWindow::handleUpdateClicked` slot** wired to
+  `m_updateAvailableLabel`'s `linkActivated` signal (replaces
+  the prior unconditional `setOpenExternalLinks(true)`). Probe
+  order:
+  1. `AppImageUpdate` (GUI) — preferred when present, gives the
+     user a progress window they can dismiss.
+  2. `appimageupdatetool` (CLI) — silent fallback.
+  3. `QDesktopServices::openUrl` — only when neither updater is
+     installed or `$APPIMAGE` is unset (binary isn't running as
+     an AppImage).
+
+  When a tool is found AND `$APPIMAGE` is set, it's launched via
+  `QProcess::startDetached` so the updater outlives the parent
+  process. A status-bar message acknowledges the launch.
+
+### Changed
+
+- **Update label `setOpenExternalLinks(false)`.** Was `true` in
+  0.7.45 — clicks now route through `handleUpdateClicked` instead
+  of letting Qt auto-open the URL.
+
+### Tests
+
+- `tests/features/github_status_bar/` extended from 12 → 16
+  invariants:
+  - **INV-11** (revised) — label connects `linkActivated` to
+    `MainWindow::handleUpdateClicked`, no longer sets
+    `setOpenExternalLinks(true)`.
+  - **INV-13** — workflow embeds `UPDATE_INFORMATION` with the
+    `gh-releases-zsync|milnet01|ants-terminal|latest|...` schema.
+  - **INV-14** — workflow uploads `${OUTPUT}.zsync` sidecar.
+  - **INV-15** — `handleUpdateClicked` probes `AppImageUpdate`
+    (GUI) and `appimageupdatetool` (CLI); reads `$APPIMAGE`
+    env var; falls back to `QDesktopServices::openUrl`.
+  - **INV-16** — detached spawn via `QProcess::startDetached`.
+
+### Notes
+
+- AppImage updates write a fresh file alongside the original (with
+  a `.zs-old` suffix on the previous version) — the running
+  process keeps the old contents in memory until the user
+  restarts. Quit + relaunch picks up the new version.
+- The first release that can use this feature is 0.7.46 itself —
+  earlier AppImages were built without the metadata and
+  AppImageUpdate refuses to act on them.
+- AppImageHub listing (P7 follow-up #3) and aarch64 builds (#5)
+  are still open, untouched by this release.
+
 ## [0.7.45] — 2026-04-27
 
 **Theme:** GitHub-aware status bar — two new badges that surface

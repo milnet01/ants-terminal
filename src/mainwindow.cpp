@@ -3534,9 +3534,16 @@ void MainWindow::setupClaudeIntegration() {
     // surfaced by an hourly + on-startup check via QNetworkAccessManager.
     m_updateAvailableLabel = new QLabel(this);
     m_updateAvailableLabel->setObjectName(QStringLiteral("updateAvailableLabel"));
-    m_updateAvailableLabel->setOpenExternalLinks(true);
+    // 0.7.46 — intercept clicks via linkActivated rather than letting
+    // the QLabel auto-open the URL via setOpenExternalLinks. The
+    // handler probes for AppImageUpdate / appimageupdatetool and runs
+    // an in-place binary update when available, falling back to the
+    // browser only when neither tool is installed.
+    m_updateAvailableLabel->setOpenExternalLinks(false);
     m_updateAvailableLabel->setTextFormat(Qt::RichText);
     m_updateAvailableLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    connect(m_updateAvailableLabel, &QLabel::linkActivated,
+            this, &MainWindow::handleUpdateClicked);
     m_updateAvailableLabel->hide();
     statusBar()->addPermanentWidget(m_updateAvailableLabel);
 
@@ -5090,6 +5097,56 @@ void MainWindow::checkForUpdates() {
                "Currently running v%2.").arg(tag, current));
         label->show();
     });
+}
+
+void MainWindow::handleUpdateClicked(const QString &url) {
+    // Probe for either flavor of the AppImage updater. The GUI
+    // (`AppImageUpdate`) is preferred when present — it shows a
+    // progress window the user can dismiss; the CLI
+    // (`appimageupdatetool`) is the fallback and runs silently.
+    // QStandardPaths::findExecutable returns the absolute path or an
+    // empty string — empty means the binary isn't on PATH.
+    const QString gui = QStandardPaths::findExecutable(
+        QStringLiteral("AppImageUpdate"));
+    const QString cli = QStandardPaths::findExecutable(
+        QStringLiteral("appimageupdatetool"));
+    const QString updater = !gui.isEmpty() ? gui : cli;
+
+    // `$APPIMAGE` is set by the AppImage runtime when the binary is
+    // unpacked from an AppImage; it points at the on-disk AppImage
+    // file. When unset, the user is running an unbundled build —
+    // there's nothing to update in place, so fall back to the
+    // browser flow.
+    const QString appimagePath = qEnvironmentVariable("APPIMAGE");
+
+    if (!updater.isEmpty() && !appimagePath.isEmpty()) {
+        // Detached spawn — the updater outlives this binary so the
+        // user can quit and restart while the download runs. Qt 6
+        // form: static `startDetached(program, args)`. Returns true
+        // on successful fork; we surface the outcome via the status
+        // bar message rather than a modal dialog.
+        const bool ok = QProcess::startDetached(
+            updater, QStringList{appimagePath});
+        if (ok) {
+            showStatusMessage(
+                tr("AppImageUpdate launched — downloading the new "
+                   "version. Quit and restart to use it."),
+                8000);
+            return;
+        }
+        // Fork failed — fall through to the browser fallback so the
+        // user isn't left without recourse.
+        showStatusMessage(
+            tr("AppImageUpdate failed to launch — opening release "
+               "page in browser instead."),
+            5000);
+    }
+
+    // Fallback: open the release page in the user's default browser.
+    // QDesktopServices::openUrl is the Qt 6 idiom; it dispatches to
+    // xdg-open under XDG, the Win32 ShellExecute equivalent on
+    // Windows, and `open` on macOS.
+    QDesktopServices::openUrl(QUrl(url));
 }
 
 void MainWindow::showDiffViewer() {

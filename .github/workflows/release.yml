@@ -155,9 +155,24 @@ jobs:
           # plus `wayland` so users on a Wayland session land on the
           # native plugin without an XWayland fallback.
           EXTRA_PLATFORM_PLUGINS: "libqoffscreen.so;libqwayland-generic.so"
+          # AppImageUpdate / zsync auto-update metadata. linuxdeploy
+          # embeds this string into the AppImage's ELF header (via the
+          # update-information ELF note) and produces a
+          # `<OUTPUT>.zsync` sidecar file alongside the AppImage. The
+          # `gh-releases-zsync` schema (documented at
+          # docs.appimage.org/packaging-guide/optional/updates.html)
+          # tells AppImageUpdate to resolve the wildcard against the
+          # owner/repo's GitHub release tagged `latest`. Pinning to
+          # `latest` (not a specific tag) means the metadata is
+          # version-stable — every shipped AppImage from 0.7.46 forward
+          # auto-updates to whatever's tagged latest at the time the
+          # user runs the updater. Releases shipped before 0.7.46 do
+          # NOT carry this metadata and continue to be manual-download
+          # only — there's no way to retroactively add it.
+          UPDATE_INFORMATION: "gh-releases-zsync|milnet01|ants-terminal|latest|Ants_Terminal-*-x86_64.AppImage.zsync"
         run: |
           ./linuxdeploy --appdir AppDir --plugin qt --output appimage
-          ls -la "${OUTPUT}"
+          ls -la "${OUTPUT}" "${OUTPUT}.zsync"
           file "${OUTPUT}"
 
       - name: Smoke-test AppImage (--version + --help)
@@ -187,7 +202,13 @@ jobs:
               --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${{ steps.tag.outputs.ref }}/CHANGELOG.md) for release notes."
             echo "Created GitHub Release ${{ steps.tag.outputs.ref }}"
           fi
+          # Upload both the AppImage AND its `.zsync` sidecar.
+          # AppImageUpdate fetches the .zsync to compute partial
+          # downloads, so without it embedded clients fall back to
+          # whole-file fetch (still works, just slower). With it,
+          # only changed blocks transfer.
           gh release upload "${{ steps.tag.outputs.ref }}" \
             "${OUTPUT}" \
+            "${OUTPUT}.zsync" \
             --clobber
           echo "Uploaded ${OUTPUT} to release ${{ steps.tag.outputs.ref }}"
