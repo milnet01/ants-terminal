@@ -54,6 +54,17 @@ class Pty;
 // the structured action stream and the raw bytes (session logging and
 // asciicast recording stay on GUI so file ordering remains trivially
 // linear; the worker just hands over the bytes it already read).
+//
+// The batch is built on the worker thread and shipped to the GUI thread
+// via a `std::shared_ptr<const VtBatch>` (`VtBatchPtr`) over a queued
+// connection. The shared_ptr makes the cross-thread hop zero-copy: Qt
+// copies the smart-pointer (an atomic refcount bump) instead of the
+// underlying vector + QByteArray — those stay put on the heap. Prior
+// to the smart-pointer wrap, the queued-connection copy of `const
+// VtBatch &` was forced to deep-copy `actions` (~64 KB on a noisy
+// burst) regardless of any move-from-pending shaping the worker did,
+// because Qt's queued-connection plumbing has to own the parameters
+// it dispatches.
 struct VtBatch {
     std::vector<VtAction> actions;
     QByteArray rawBytes;
@@ -66,7 +77,8 @@ struct VtBatch {
     // (more accurate than sampling on GUI where paint latency skews it).
     qint64 wallClockMs = 0;
 };
-Q_DECLARE_METATYPE(VtBatch)
+using VtBatchPtr = std::shared_ptr<const VtBatch>;
+Q_DECLARE_METATYPE(VtBatchPtr)
 
 class VtStream : public QObject {
     Q_OBJECT
@@ -89,8 +101,12 @@ public:
 
 signals:
     // Emitted from the worker thread whenever a parse batch is ready.
-    // Connect with Qt::QueuedConnection to marshal onto GUI.
-    void batchReady(const VtBatch &batch);
+    // Connect with Qt::QueuedConnection to marshal onto GUI. The
+    // shared_ptr-wrapped payload makes the queued-connection hop
+    // zero-copy — the underlying `actions` vector + `rawBytes`
+    // QByteArray live on the heap and are not duplicated when Qt
+    // dispatches the slot.
+    void batchReady(VtBatchPtr batch);
     // Mirror of Pty::finished, forwarded so TerminalWidget can keep its
     // existing onPtyFinished slot. Queued to GUI.
     void finished(int exitCode);

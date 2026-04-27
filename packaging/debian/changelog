@@ -1,3 +1,41 @@
+ants-terminal (0.7.40-1) unstable; urgency=medium
+
+  * Performance. Two Tier 3 perf items from ROADMAP.md § 0.7.x ⚡ / 🏗
+    Tier 3 — structural retired in one bundle: scroll-region rotate plus
+    a zero-copy VtBatch hop across the worker→GUI thread boundary. Both
+    are observably equivalent at the API level — existing
+    tests/features/scroll_region_rotate/ and
+    tests/features/threaded_parse_equivalence/ regressions pass
+    unchanged — so the win is throughput / cost, not visible behaviour.
+  * Changed: TerminalGrid::scrollUp / scrollDown use std::rotate.
+    Replaced the per-iteration m_screenLines.erase + insert loop with a
+    single rotate over [scrollTop, scrollBottom], gated by a
+    pool-salvage / scrollback-push pre-pass and a fresh-blank
+    post-pass. The CSI 2J doubling-guard window check runs once per
+    batch instead of per iteration. m_scrollback cap enforcement
+    collapses from N pop_front passes to one. On CSI 100 S against an
+    80-row screen, row-shift cost drops from O(count × rows) memmoves
+    (8000) to O(rows) (80).
+  * Changed: VtStream::batchReady carries VtBatchPtr instead of
+    const VtBatch &. New alias
+    using VtBatchPtr = std::shared_ptr<const VtBatch>; in vtstream.h.
+    Qt's queued-connection plumbing must own dispatched parameters, so
+    the prior const T & signal forced a deep copy of the actions vector
+    + rawBytes QByteArray on every worker→GUI hop. The shared_ptr wrap
+    reduces the cross-thread payload to a 16-byte atomic refcount bump;
+    the underlying VtBatch lives on the heap and is not duplicated.
+    Both emit sites (flushBatch, onPtyFinished) build via
+    std::make_shared<VtBatch>(); TerminalWidget::onVtBatch signature is
+    now void onVtBatch(VtBatchPtr batch) with field access via batch->…
+  * Locked by tests/features/vtbatch_zero_copy/ (5 source-grep
+    invariants pinning the cross-thread signal shape). Behavioural
+    equivalence stays covered by
+    tests/features/threaded_parse_equivalence/; rotation correctness
+    stays covered by the 8 algorithm-agnostic invariants in
+    tests/features/scroll_region_rotate/.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 27 Apr 2026 13:00:00 +0000
+
 ants-terminal (0.7.39-1) unstable; urgency=medium
 
   * Feature. Claude Code UX bundle plus a status-bar Roadmap viewer.

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.39 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.40 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2149,6 +2149,30 @@ if(ANTS_TESTS)
     )
     add_test(NAME roadmap_viewer COMMAND test_roadmap_viewer)
     set_tests_properties(roadmap_viewer PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # vtbatch_zero_copy — 0.7.40 perf bundle. Locks the shape of the
+    # worker→GUI batch signal so a refactor can't silently revert
+    # back to the deep-copy `const VtBatch &` form. Behavioural
+    # equivalence (the action stream identity across the thread hop)
+    # is covered by threaded_parse_equivalence; this test only
+    # source-greps the cross-thread signal carrier shape, the alias,
+    # the make_shared emit sites, and the pointer-deref receiver.
+    add_executable(test_vtbatch_zero_copy
+        tests/features/vtbatch_zero_copy/test_vtbatch_zero_copy.cpp
+    )
+    target_compile_options(test_vtbatch_zero_copy PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_vtbatch_zero_copy PRIVATE
+        VTSTREAM_H="${CMAKE_CURRENT_SOURCE_DIR}/src/vtstream.h"
+        VTSTREAM_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/vtstream.cpp"
+        TERMINALWIDGET_H="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
+        TERMINALWIDGET_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+    )
+    add_test(NAME vtbatch_zero_copy COMMAND test_vtbatch_zero_copy)
+    set_tests_properties(vtbatch_zero_copy PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

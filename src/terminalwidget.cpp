@@ -1861,13 +1861,14 @@ void TerminalWidget::onPtyFinished(int exitCode) {
     emit shellExited(exitCode);
 }
 
-void TerminalWidget::onVtBatch(const VtBatch &batch) {
+void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     // Mirror of onPtyData, but the parse work is already done on the
     // worker. We apply the pre-built VtAction stream to the grid and run
     // the same GUI-side side-effects in the same order.
+    if (!batch) return;
     m_spanCacheDirty = true;
 
-    if (batch.clearSelectionHint) {
+    if (batch->clearSelectionHint) {
         clearSelection();
     }
 
@@ -1881,7 +1882,7 @@ void TerminalWidget::onVtBatch(const VtBatch &batch) {
     // so the math is stable even when the scrollback is full.
     uint64_t pushedBefore = m_grid->scrollbackPushed();
 
-    for (const auto &action : batch.actions) {
+    for (const auto &action : batch->actions) {
         m_grid->processAction(action);
     }
 
@@ -1904,15 +1905,15 @@ void TerminalWidget::onVtBatch(const VtBatch &batch) {
     // and paint matches legacy behaviour at a slightly coarser granularity
     // (one write per batch instead of one per PTY read).
     if (m_loggingEnabled && m_logFile && m_logFile->isOpen()) {
-        m_logFile->write(batch.rawBytes);
+        m_logFile->write(batch->rawBytes);
         m_logFile->flush();
     }
     if (m_recording && m_recordFile && m_recordFile->isOpen()) {
         // Asciicast timestamp: sampled on the worker at flush time, which
         // is more accurate than re-sampling here (paint latency would skew
         // it). Elapsed seconds since worker start.
-        double elapsed = batch.wallClockMs / 1000.0;
-        QString raw = QString::fromUtf8(batch.rawBytes);
+        double elapsed = batch->wallClockMs / 1000.0;
+        QString raw = QString::fromUtf8(batch->rawBytes);
         QString escaped;
         escaped.reserve(raw.size() + raw.size() / 4);
         for (QChar ch : raw) {
@@ -1948,8 +1949,8 @@ void TerminalWidget::onVtBatch(const VtBatch &batch) {
         emit titleChanged(title);
     }
     ANTS_LOG(DebugLog::Vt, "onVtBatch actions=%zu rawBytes=%lld",
-             batch.actions.size(),
-             static_cast<long long>(batch.rawBytes.size()));
+             batch->actions.size(),
+             static_cast<long long>(batch->rawBytes.size()));
 
     // Synchronized output (DEC 2026): same gating as legacy.
     bool wasSync = m_syncOutputActive;
@@ -1973,7 +1974,7 @@ void TerminalWidget::onVtBatch(const VtBatch &batch) {
     }
 
     // Trigger rules pattern-match raw bytes, same as legacy.
-    checkTriggers(batch.rawBytes);
+    checkTriggers(batch->rawBytes);
     updateSuggestion();
 
     // Acknowledge the batch so the worker can refill the queue. Must

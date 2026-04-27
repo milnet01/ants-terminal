@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.39 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.40 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -1850,13 +1850,36 @@ remainder, captured so they don't drop on the floor.
   the direct-callback path keeps the coalesced form. Locked by
   `tests/features/vtparser_print_run_coalesce` (8 invariants over
   grid-state equivalence vs. the scalar byte-by-byte feed).
-- 📋 **Scroll region perf: `std::rotate` for `scrollUp`/`scrollDown`.**
-  `scroll_region_rotate/spec.md` exists; `terminalgrid.cpp:1504-1590`
-  still uses `erase`/`insert` per-iteration. `CSI 100 S` on an 80-row
-  screen = 8 000 `memmove`s.
-- 📋 **`VtBatch` zero-copy across thread hop.** `vtstream.h:93` uses
-  `const VtBatch &` in a queued signal — Qt copies regardless of
-  const-ref. Wrap payload in `std::shared_ptr<const VtBatchData>`.
+- ✅ **Scroll region perf: `std::rotate` for `scrollUp`/`scrollDown`.**
+  Shipped 0.7.40. `TerminalGrid::scrollUp` and `scrollDown`
+  replaced their per-iteration `erase`+`insert` loop with a single
+  `std::rotate` call over `[scrollTop, scrollBottom]` plus a
+  pool-salvage / scrollback-push pre-pass and a fresh-blank
+  post-pass. The CSI 2J doubling-guard window check moves from
+  per-iteration to once-per-batch (elapsed time is microseconds
+  across the batch — same observable behaviour). Hyperlinks rotate
+  with the rows; scrollback cap pop_front loops once at the end of
+  the batch instead of N times. `CSI 100 S` on an 80-row screen
+  drops from O(count × rows) memmoves to O(rows). All eight
+  invariants in `tests/features/scroll_region_rotate/` stay green
+  (rotation behaviour was already pinned by the spec; this commit
+  was an algorithm swap behind that contract).
+- ✅ **`VtBatch` zero-copy across thread hop.** Shipped 0.7.40.
+  Introduced `using VtBatchPtr = std::shared_ptr<const VtBatch>;`
+  and changed `VtStream::batchReady` from `void(const VtBatch &)`
+  to `void(VtBatchPtr)`. `flushBatch` and `onPtyFinished` build
+  the batch via `std::make_shared<VtBatch>()` and emit the
+  smart-pointer; Qt's queued connection now copies a 16-byte
+  shared_ptr (atomic refcount bump) across the worker→GUI hop
+  instead of deep-copying the `actions` vector + `rawBytes`
+  QByteArray (tens of KB per batch on noisy bursts × hundreds
+  of batches/sec). `TerminalWidget::onVtBatch` updated to
+  pointer-deref. Behavioural equivalence preserved — the
+  `threaded_parse_equivalence` test (action-stream identity)
+  stays green. Locked additionally by
+  `tests/features/vtbatch_zero_copy/` (5 source-grep invariants
+  on the carrier shape, alias declaration, make_shared emit
+  sites, pointer-deref receiver, and metatype registration).
 - 📋 **Renderer subsystem decision:** revive `glrenderer.cpp` via
   `createWindowContainer` *or* delete it. It's ~1 500 LoC of
   compiled-but-unreachable code that bit-rots silently. If reviving,

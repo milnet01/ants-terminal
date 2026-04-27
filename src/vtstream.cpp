@@ -7,7 +7,7 @@ VtStream::VtStream(QObject *parent)
     : QObject(parent) {
     // One-time metatype registration for queued cross-thread signal args.
     // Safe to call repeatedly; Qt guards internally.
-    qRegisterMetaType<VtBatch>("VtBatch");
+    qRegisterMetaType<VtBatchPtr>("VtBatchPtr");
 }
 
 VtStream::~VtStream() {
@@ -142,17 +142,21 @@ void VtStream::flushBatch() {
         return;
     }
 
-    VtBatch b;
-    b.actions = std::move(m_pending);
-    b.rawBytes = std::move(m_pendingRaw);
-    b.clearSelectionHint = m_pendingClearSelection;
-    b.wallClockMs = m_wallClock.elapsed();
+    auto b = std::make_shared<VtBatch>();
+    b->actions = std::move(m_pending);
+    b->rawBytes = std::move(m_pendingRaw);
+    b->clearSelectionHint = m_pendingClearSelection;
+    b->wallClockMs = m_wallClock.elapsed();
 
     m_pending.clear();       // ensure moved-from vector is empty
     m_pendingRaw.clear();
     m_pendingClearSelection = false;
 
     ++m_inFlightBatches;
+    // Implicit shared_ptr<VtBatch> → shared_ptr<const VtBatch> on the
+    // signal carrier. Qt copies the smart-pointer across the queued
+    // connection, not the underlying VtBatch — so `actions` and
+    // `rawBytes` are NOT deep-copied on the worker→GUI hop.
     emit batchReady(b);
 }
 
@@ -162,11 +166,11 @@ void VtStream::onPtyFinished(int exitCode) {
     if (!m_pending.empty() || !m_pendingRaw.isEmpty()) {
         // Force a flush even if over the back-pressure cap — the PTY is
         // done, there's no more input coming.
-        VtBatch b;
-        b.actions = std::move(m_pending);
-        b.rawBytes = std::move(m_pendingRaw);
-        b.clearSelectionHint = m_pendingClearSelection;
-        b.wallClockMs = m_wallClock.elapsed();
+        auto b = std::make_shared<VtBatch>();
+        b->actions = std::move(m_pending);
+        b->rawBytes = std::move(m_pendingRaw);
+        b->clearSelectionHint = m_pendingClearSelection;
+        b->wallClockMs = m_wallClock.elapsed();
         m_pending.clear();
         m_pendingRaw.clear();
         m_pendingClearSelection = false;

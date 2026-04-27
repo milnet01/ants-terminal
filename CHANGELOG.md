@@ -10,6 +10,57 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.40] — 2026-04-27
+
+**Theme:** Performance — scroll-region rotate + VtBatch zero-copy
+across the worker→GUI thread hop. Two Tier 3 perf items from
+`ROADMAP.md § 0.7.x ⚡ / 🏗 Tier 3 — structural` retired in one
+bundle. Both are observably equivalent at the API level — the
+existing `tests/features/scroll_region_rotate/` and
+`tests/features/threaded_parse_equivalence/` regressions pass
+unchanged — so the win is throughput / cost, not visible behaviour.
+
+### Changed
+
+- **`TerminalGrid::scrollUp` / `scrollDown` use `std::rotate`.**
+  Replaced the per-iteration `m_screenLines.erase + insert` loop
+  with a single rotate over `[scrollTop, scrollBottom]`, gated by a
+  pool-salvage / scrollback-push pre-pass and a fresh-blank
+  post-pass. The CSI 2J doubling-guard window check now runs once
+  per batch (elapsed time across a batch is microseconds, so the
+  per-iteration window-extend was redundant). `m_scrollback` cap
+  enforcement collapses from N pop_front passes to one. On `CSI
+  100 S` against an 80-row screen, the row-shift cost goes from
+  O(count × rows) memmoves (8000) to O(rows) (80).
+
+- **`VtStream::batchReady` carries `VtBatchPtr` instead of
+  `const VtBatch &`.** `using VtBatchPtr = std::shared_ptr<const
+  VtBatch>;` is the new alias in `vtstream.h`. Qt's queued-
+  connection plumbing must own the parameters it dispatches, so
+  the prior `const T &` signal forced a deep copy of the entire
+  batch (the `actions` vector + `rawBytes` QByteArray) on every
+  worker→GUI hop, regardless of any move-from-pending shaping the
+  emitter performed. The shared_ptr wrap reduces the cross-thread
+  payload to a 16-byte atomic refcount bump; the underlying
+  `VtBatch` lives on the heap and is not duplicated. Both emit
+  sites (`flushBatch`, `onPtyFinished`) build via
+  `std::make_shared<VtBatch>()`. `TerminalWidget::onVtBatch`
+  signature changed to `void onVtBatch(VtBatchPtr batch)`; field
+  access is now via `batch->…` instead of `batch.…`.
+
+### Tests
+
+- `tests/features/vtbatch_zero_copy/` — 5 source-grep invariants
+  locking the cross-thread signal *shape* so a future refactor
+  can't silently revert to the deep-copy form. Behavioural
+  equivalence on the action stream is already covered by
+  `tests/features/threaded_parse_equivalence/`.
+
+- `tests/features/scroll_region_rotate/` — pre-existing 8
+  invariants on rotation correctness (I1–I8 in spec.md) still
+  pass. The spec was written algorithm-agnostic, anticipating this
+  swap.
+
 ## [0.7.39] — 2026-04-27
 
 **Theme:** Claude Code UX bundle + status-bar Roadmap viewer. Two

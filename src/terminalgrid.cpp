@@ -1656,89 +1656,126 @@ void TerminalGrid::insertBlanks(int count) {
 
 void TerminalGrid::scrollUp(int count) {
     markAllScreenDirty();
-    for (int i = 0; i < count; ++i) {
-        // 0.6.22 — sliding-window check for the CSI 2J redraw suppression.
-        // If the window was opened by eraseInDisplay(2) and this scrollUp
-        // is still within kCsiClearRedrawWindowMs of the last in-window
-        // event, extend the window (keeping it alive for the rest of the
-        // repaint burst) and force-drop the push. Once the app goes quiet
-        // for ≥ kCsiClearRedrawWindowMs, close the window so subsequent
-        // output pushes to scrollback normally.
-        bool inCsiClearWindow = false;
-        if (m_csiClearRedrawActive) {
-            if (m_csiClearRedrawTimer.isValid() &&
-                m_csiClearRedrawTimer.elapsed() < kCsiClearRedrawWindowMs) {
-                inCsiClearWindow = true;
-                m_csiClearRedrawTimer.restart();
-            } else {
-                m_csiClearRedrawActive = false;
-            }
-        }
+    const int regionSize = m_scrollBottom - m_scrollTop + 1;
+    if (count <= 0 || regionSize <= 0) return;
+    // INV-8 of scroll_region_rotate/spec.md: count > regionSize clamps
+    // to regionSize (the whole region goes blank; no extra rows leak
+    // into scrollback).
+    count = std::min(count, regionSize);
 
-        // Preserve the top screen line in scrollback when:
-        //   - we're on the real (main) screen, not the alt screen,
-        //   - the scroll region starts at row 0 (DECSTBM), AND
-        //   - we're not inside the post-full-clear suppression window
-        //     *with the user at the bottom*. The window only guards
-        //     against the "scrollback doubles on TUI repaint" symptom,
-        //     which is only observable when the user can see the tail
-        //     (scrollOffset == 0); suppressing pushes while the user is
-        //     scrolled up (scrollOffset > 0) removed content they were
-        //     about to read and — because scrollbackPushed() stayed
-        //     constant — also kept TerminalWidget's scroll anchor from
-        //     advancing, so the screen-scroll in scrollUp() bled into
-        //     viewport rows that overlapped the screen. Fix (0.6.25):
-        //     when the user is scrolled up, ALWAYS push — the anchor
-        //     in TerminalWidget::onOutputReceived advances scrollOffset
-        //     by the push count, keeping viewStart stable. Accepting
-        //     the push pollution here is the lesser evil: the user's
-        //     viewport stays readable, which is the invariant they
-        //     actually notice. See tests/features/scrollback_redraw/
-        //     spec.md §Viewport-stable.
-        const bool suppressForDoublingGuard =
-            inCsiClearWindow && !m_scrollbackInsertPaused;
-        if (m_scrollTop == 0 && !m_altScreenActive &&
-            !suppressForDoublingGuard) {
-            m_scrollback.push_back(std::move(m_screenLines[m_scrollTop]));
+    // 0.6.22 — sliding-window check for the CSI 2J redraw suppression.
+    // The whole batch of `count` shifts happens in microseconds within
+    // a single CSI S call, so the window-extend / window-close decision
+    // is made once for the batch, not per-iteration. Same observable
+    // behavior as the prior loop because elapsed() doesn't grow
+    // appreciably across the batch.
+    bool inCsiClearWindow = false;
+    if (m_csiClearRedrawActive) {
+        if (m_csiClearRedrawTimer.isValid() &&
+            m_csiClearRedrawTimer.elapsed() < kCsiClearRedrawWindowMs) {
+            inCsiClearWindow = true;
+            m_csiClearRedrawTimer.restart();
+        } else {
+            m_csiClearRedrawActive = false;
+        }
+    }
+
+    // Preserve the top screen line in scrollback when:
+    //   - we're on the real (main) screen, not the alt screen,
+    //   - the scroll region starts at row 0 (DECSTBM), AND
+    //   - we're not inside the post-full-clear suppression window
+    //     *with the user at the bottom*. See the long rationale block
+    //     in 0.6.25's commit + scrollback_redraw spec — preserved here
+    //     verbatim from the per-iteration loop.
+    const bool suppressForDoublingGuard =
+        inCsiClearWindow && !m_scrollbackInsertPaused;
+    const bool pushToScrollback =
+        (m_scrollTop == 0) && !m_altScreenActive && !suppressForDoublingGuard;
+
+    const int hlSize = static_cast<int>(m_screenHyperlinks.size());
+    const bool hlInRange = m_scrollBottom < hlSize;
+
+    // Push (or salvage) the top `count` rows. Order preserved — the
+    // push loop walks scrollTop..scrollTop+count-1 left-to-right, same
+    // as the prior per-iteration shape (which kept consuming row
+    // [scrollTop] after each erase, naturally walking the same range).
+    for (int i = 0; i < count; ++i) {
+        const int srcRow = m_scrollTop + i;
+        if (pushToScrollback) {
+            m_scrollback.push_back(std::move(m_screenLines[srcRow]));
             ++m_scrollbackPushed;
-            if (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
-                returnCellsRow(std::move(m_scrollback.front().cells));
-                m_scrollback.pop_front();
-            }
-            // Move hyperlinks to scrollback
-            if (m_scrollTop < static_cast<int>(m_screenHyperlinks.size())) {
-                m_scrollbackHyperlinks.push_back(std::move(m_screenHyperlinks[m_scrollTop]));
-                while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
-                    m_scrollbackHyperlinks.pop_front();
+            if (hlInRange) {
+                m_scrollbackHyperlinks.push_back(
+                    std::move(m_screenHyperlinks[srcRow]));
             }
         } else {
-            // No scrollback push: the top row's cells are about to be erased —
-            // salvage into the pool so they can feed the new bottom row below.
-            returnCellsRow(std::move(m_screenLines[m_scrollTop].cells));
+            returnCellsRow(std::move(m_screenLines[srcRow].cells));
         }
-        m_screenLines.erase(m_screenLines.begin() + m_scrollTop);
+    }
+    // Cap scrollback once after the batch (instead of N separate
+    // pop_front loops) — same final size, fewer deque rebalances.
+    while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
+        returnCellsRow(std::move(m_scrollback.front().cells));
+        m_scrollback.pop_front();
+    }
+    while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
+        m_scrollbackHyperlinks.pop_front();
+
+    // O(regionSize) rotate: shifts rows [top+count..bottom] up to
+    // [top..bottom-count]; the moved-from TermLines (cells already
+    // emptied above) end up at [bottom-count+1..bottom] and get
+    // overwritten with fresh blanks below.
+    std::rotate(m_screenLines.begin() + m_scrollTop,
+                m_screenLines.begin() + m_scrollTop + count,
+                m_screenLines.begin() + m_scrollBottom + 1);
+    if (hlInRange) {
+        std::rotate(m_screenHyperlinks.begin() + m_scrollTop,
+                    m_screenHyperlinks.begin() + m_scrollTop + count,
+                    m_screenHyperlinks.begin() + m_scrollBottom + 1);
+    }
+
+    // Re-blank the now-bottom `count` rows. Default-construct fresh
+    // TermLine to reset softWrapped / dirty / combining (the
+    // moved-from TermLine carries those fields from its previous role
+    // as one of the top rows); refill cells from the pool.
+    for (int i = 0; i < count; ++i) {
+        const int dstRow = m_scrollBottom - count + 1 + i;
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
-        m_screenLines.insert(m_screenLines.begin() + m_scrollBottom, std::move(tl));
-        // Shift hyperlink rows
-        if (m_scrollTop < static_cast<int>(m_screenHyperlinks.size()) &&
-            m_scrollBottom <= static_cast<int>(m_screenHyperlinks.size())) {
-            m_screenHyperlinks.erase(m_screenHyperlinks.begin() + m_scrollTop);
-            m_screenHyperlinks.insert(m_screenHyperlinks.begin() +
-                std::min(m_scrollBottom, static_cast<int>(m_screenHyperlinks.size())),
-                std::vector<HyperlinkSpan>{});
-        }
+        m_screenLines[dstRow] = std::move(tl);
+        if (hlInRange) m_screenHyperlinks[dstRow].clear();
     }
 }
 
 void TerminalGrid::scrollDown(int count) {
     markAllScreenDirty();
+    const int regionSize = m_scrollBottom - m_scrollTop + 1;
+    if (count <= 0 || regionSize <= 0) return;
+    count = std::min(count, regionSize);
+
+    // Salvage the bottom `count` rows' cells into the pool so they can
+    // feed the new top rows. Walk top-to-bottom of the doomed range
+    // for cache-friendly access.
     for (int i = 0; i < count; ++i) {
-        returnCellsRow(std::move(m_screenLines[m_scrollBottom].cells));
-        m_screenLines.erase(m_screenLines.begin() + m_scrollBottom);
+        const int srcRow = m_scrollBottom - count + 1 + i;
+        returnCellsRow(std::move(m_screenLines[srcRow].cells));
+    }
+
+    // Rotate the region down by `count`: with the new-first iterator
+    // pointing at (bottom + 1 - count), elements shift right by
+    // `count`. The moved-from TermLines land at [top..top+count-1] and
+    // get overwritten with fresh blanks below. (scrollDown does not
+    // shift hyperlinks — matches the prior implementation; reverse
+    // index is rare enough that hyperlink drift is acceptable.)
+    std::rotate(m_screenLines.begin() + m_scrollTop,
+                m_screenLines.begin() + m_scrollBottom + 1 - count,
+                m_screenLines.begin() + m_scrollBottom + 1);
+
+    for (int i = 0; i < count; ++i) {
+        const int dstRow = m_scrollTop + i;
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
-        m_screenLines.insert(m_screenLines.begin() + m_scrollTop, std::move(tl));
+        m_screenLines[dstRow] = std::move(tl);
     }
 }
 

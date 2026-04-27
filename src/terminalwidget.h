@@ -307,7 +307,7 @@ private slots:
     // stream to m_grid, consumes the raw-byte side-data (selection-clear
     // hint, logging, asciicast), then acknowledges the batch so the
     // worker can refill the queue.
-    void onVtBatch(const VtBatch &batch);
+    void onVtBatch(VtBatchPtr batch);
     void blinkCursor();
     void checkIdleNotification();
 
