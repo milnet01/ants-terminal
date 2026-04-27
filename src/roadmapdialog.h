@@ -19,7 +19,7 @@
 // Renderer: `RoadmapDialog::renderHtml` is a static pure helper so
 // tests can drive it without spinning a Qt widget tree. The dialog's
 // rebuild() chain composes signal-set discovery + parsing + HTML
-// emission into the QTextEdit.
+// emission into the QTextBrowser.
 
 #include <QDialog>
 #include <QFileSystemWatcher>

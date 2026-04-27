@@ -270,7 +270,6 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
     const QStringList lines = markdownText.split('\n');
     bool inList = false;
     bool skipBlock = false;       // dropping a filtered-out bullet's continuation
-    bool currentBlock = false;    // inside a current-work-highlighted bullet
     int headingIdx = 0;           // increments per emitted heading; matches extractToc
 
     auto closeListIfOpen = [&]() {
@@ -333,11 +332,9 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
                 (current && wantCurrent);
             if (!keep) {
                 skipBlock = true;
-                currentBlock = false;
                 continue;
             }
             skipBlock = false;
-            currentBlock = current;
             if (!inList) {
                 html += QStringLiteral("<ul>");
                 inList = true;
@@ -363,7 +360,6 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
             if (inList) html += QStringLiteral("</li>");
             closeListIfOpen();
             skipBlock = false;
-            currentBlock = false;
             continue;
         }
 
@@ -373,15 +369,6 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
         html += QStringLiteral("<p>") + applyInline(raw) + QStringLiteral("</p>");
     }
     closeListIfOpen();
-
-    // Reference the current-work CSS class even when no bullet matched
-    // — keeps the test's INV-5 contract clean ("the marker is absent
-    // from output when the signal set is empty"). Without this the
-    // .cur rule definition would always be present in the <style>
-    // header. That's intentional: INV-5 looks for `border-left: 4px
-    // solid` *applied to a bullet*, which only happens when a <li>
-    // gains class="cur".
-    Q_UNUSED(currentBlock);
 
     html += QStringLiteral("</body></html>");
     return html;

@@ -97,7 +97,7 @@ nothing.
     the anchor is always present so the TOC sidebar can scroll.
   - `^\| ` (table rows) — pass through verbatim, wrapped in
     `<pre style="font-family:monospace">` since pixel-aligned ASCII
-    tables don't reflow well inside QTextEdit.
+    tables don't reflow well inside the QTextBrowser viewer.
   - `^- ` bullet → leaf bullet. Inspect the first non-whitespace token
     after `- ` for a status emoji. Map:
       - `✅` → Done. Filtered out when `Done` checkbox is unchecked.
