@@ -2088,6 +2088,32 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # claude_state_dot_palette — 0.7.39 feature. User request
+    # 2026-04-27: a single round dot per tab in a state-specific
+    # colour, with grey for Idle, and the same palette extended to
+    # the bottom status-bar Claude label. Locks the unified helper,
+    # the eight-state palette, the uniform dot geometry (no outline,
+    # no per-state radius), the helper-driven status-bar applier, and
+    # the Auditing plumbing through ClaudeTabTracker::ShellState. See
+    # tests/features/claude_state_dot_palette/spec.md.
+    add_executable(test_claude_state_dot_palette
+        tests/features/claude_state_dot_palette/test_claude_state_dot_palette.cpp
+    )
+    target_compile_options(test_claude_state_dot_palette PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_claude_state_dot_palette PRIVATE
+        COLOREDTABBAR_H="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.h"
+        COLOREDTABBAR_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.cpp"
+        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        CLAUDETABTRACKER_H="${CMAKE_CURRENT_SOURCE_DIR}/src/claudetabtracker.h"
+    )
+    add_test(NAME claude_state_dot_palette
+        COMMAND test_claude_state_dot_palette)
+    set_tests_properties(claude_state_dot_palette PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # origin_mode_correctness — 0.7.34 fix. Locks DECOM (origin mode)
     # CUP/HVP/VPA row translation, DECSTBM origin-aware home, and
     # DECSC saving DECOM + DECAWM (with DECRC restoring them). Prior

@@ -1736,6 +1736,42 @@ remainder, captured so they don't drop on the floor.
   `tests/features/claude_bg_tasks_button/` (10 invariants —
   source-grep harness, no Qt link).
 
+### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
+
+- ✅ **Single round dot per tab, colour-only differentiation, palette
+  extended to status bar.** Shipped 0.7.39. User ask: "a round dot
+  on each tab that has a Claude Code session running (no icons or
+  anything else other than the tab label). The dot will change
+  colour with the various states that Claude Code is in. Each state
+  has its own colour (grey for idle). Then extend those colours to
+  the status bar Claude Code status too." New static helper
+  `ClaudeTabIndicator::color(Glyph)` in `coloredtabbar.h` is the
+  single source of truth for an eight-state palette: Idle `#888888`
+  (grey, per user spec), Thinking `#5BA0E5` (blue), ToolUse
+  `#E5C24A` (yellow), Bash `#6FCF50` (green), Planning `#5DCFCF`
+  (cyan), Auditing `#C76DC7` (magenta), Compacting `#A87FE0`
+  (violet), AwaitingInput `#F08A4B` (orange). Red is intentionally
+  absent — AwaitingInput is a normal interaction state, not an
+  error. `ColoredTabBar::paintEvent` calls the helper for fill
+  colour and now uses a single `kDotRadius = 4` for every state
+  (the prior AwaitingInput "radius 5 + white outline" treatment is
+  gone — colour alone is the differentiator, per "no icons or
+  anything else other than the tab label"). `MainWindow::
+  applyClaudeStatusLabel` was rewired to map current state →
+  Glyph → colour through the same helper, replacing the prior
+  `Theme::ansi[N]` mappings (which made the status-bar colour drift
+  from the tab dot's colour and varied across themes). Auditing —
+  previously surfaced only on the active-tab status bar — is now
+  plumbed into `ClaudeTabTracker::ShellState::auditing` and lights
+  the per-tab dot magenta on whichever tab's transcript has
+  `/audit` in flight, tooltip "Claude: auditing". Precedence
+  unchanged across the two surfaces: AwaitingInput → Planning →
+  Auditing → state-derived. Locked by
+  `tests/features/claude_state_dot_palette/` (8 invariants —
+  source-grep harness, no Qt link, asserts helper signature, full
+  palette, paintEvent helper-call, uniform geometry, mainwindow
+  wiring, auditing plumbing).
+
 ### 🐜 Tab UX
 
 - ✅ **Tab close button (×) always visible, not hover-only.**

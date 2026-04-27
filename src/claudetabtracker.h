@@ -39,6 +39,11 @@ public:
         // cleared when the user resolves the prompt. Underlying state
         // preserved so reverting keeps context.
         bool awaitingInput = false;
+        // /audit skill in flight, derived from the most recent user
+        // message in the transcript tail. Spans many tool-use turns —
+        // surfaced both on the per-tab dot (Auditing glyph) and on the
+        // bottom status-bar label.
+        bool auditing = false;
     };
 
     explicit ClaudeTabTracker(QObject *parent = nullptr);

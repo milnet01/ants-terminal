@@ -247,6 +247,7 @@ void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {
         it->state.tool = snap.tool;
     }
     it->state.planMode = snap.planMode;
+    it->state.auditing = snap.auditing;
 
     maybeEmit(shellPid, before);
 }
@@ -264,7 +265,8 @@ void ClaudeTabTracker::maybeEmit(pid_t shellPid, const ShellState &before) {
     if (before.state == after.state &&
         before.tool == after.tool &&
         before.planMode == after.planMode &&
-        before.awaitingInput == after.awaitingInput) {
+        before.awaitingInput == after.awaitingInput &&
+        before.auditing == after.auditing) {
         return;
     }
     emit shellStateChanged(shellPid);

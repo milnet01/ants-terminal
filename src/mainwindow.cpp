@@ -3198,7 +3198,6 @@ void MainWindow::showEvent(QShowEvent *event) {
 // waiting on them, so "idle" misrepresents the state.
 void MainWindow::applyClaudeStatusLabel() {
     if (!m_claudeStatusLabel) return;
-    const Theme &th = Themes::byName(m_currentTheme);
     const QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
 
     // NotRunning hides both label and the context progress bar regardless
@@ -3210,50 +3209,45 @@ void MainWindow::applyClaudeStatusLabel() {
     }
 
     QString text;
-    QColor color;
+    ClaudeTabIndicator::Glyph glyph = ClaudeTabIndicator::Glyph::Idle;
 
-    // Curated status vocabulary (user spec 2026-04-18):
+    // Status text vocabulary (user spec 2026-04-18):
     //   idle / thinking / prompting / bash / reading a file / planning /
-    //   auditing / compacting.
-    // Color legend, each distinct from both the branch chip (cyan) and
-    // the transient notification (textPrimary):
-    //   idle      → green   (ansi[2])   "ready, waiting on you"
-    //   thinking  → blue    (ansi[4])   "internal reasoning"
-    //   prompting → yellow  (ansi[3])   "needs your decision"
-    //   tool use  → yellow  (ansi[3])   also "active work"
-    //   planning  → ansi[6] (cyan-ish)  "read-only scoping"
-    //   auditing  → ansi[5] (magenta)   "sweeping for issues"
-    //   compacting→ ansi[5] (magenta)   "rewriting history"
+    //   auditing / compacting / etc.
+    // Colour comes from the unified Claude state palette
+    // (`ClaudeTabIndicator::color`) so the status-bar text matches the
+    // per-tab dot one-for-one — see
+    // `tests/features/claude_state_dot_palette/spec.md`.
     if (m_claudePromptActive) {
         // Prompt-active overrides the base state — a waiting permission
         // prompt is what the user needs to see.
         text = QStringLiteral("Claude: prompting");
-        color = th.ansi[3];
+        glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
     } else if (m_claudePlanMode) {
         // Plan mode is a user-selected interaction mode (Shift+Tab),
         // orthogonal to the transcript-derived state. While in plan mode
         // the assistant can think/read but cannot edit or run commands —
         // "planning" is the honest label.
         text = QStringLiteral("Claude: planning");
-        color = th.ansi[6];
+        glyph = ClaudeTabIndicator::Glyph::Planning;
     } else if (m_claudeAuditing) {
         // Auditing is detected from a recent user message that invoked
         // the /audit skill in the transcript. Lives beside state because
         // the user can audit during tool use, thinking, or idle — the
         // skill's lifecycle is not the same as any single tool.
         text = QStringLiteral("Claude: auditing");
-        color = th.ansi[5];
+        glyph = ClaudeTabIndicator::Glyph::Auditing;
     } else {
         switch (m_claudeLastState) {
         case ClaudeState::NotRunning:
             return;  // handled above
         case ClaudeState::Idle:
             text = QStringLiteral("Claude: idle");
-            color = th.ansi[2];
+            glyph = ClaudeTabIndicator::Glyph::Idle;
             break;
         case ClaudeState::Thinking:
             text = QStringLiteral("Claude: thinking");
-            color = th.ansi[4];
+            glyph = ClaudeTabIndicator::Glyph::Thinking;
             break;
         case ClaudeState::ToolUse: {
             // Map tool name → friendly vocabulary per user spec. Unknown
@@ -3265,36 +3259,40 @@ void MainWindow::applyClaudeStatusLabel() {
             const QString lower = t.toLower();
             if (lower == QLatin1String("bash")) {
                 text = QStringLiteral("Claude: bash");
-            } else if (lower == QLatin1String("read")) {
-                text = QStringLiteral("Claude: reading a file");
-            } else if (lower == QLatin1String("edit") ||
-                       lower == QLatin1String("write") ||
-                       lower == QLatin1String("notebookedit")) {
-                text = QStringLiteral("Claude: editing");
-            } else if (lower == QLatin1String("grep") ||
-                       lower == QLatin1String("glob")) {
-                text = QStringLiteral("Claude: searching");
-            } else if (lower == QLatin1String("webfetch") ||
-                       lower == QLatin1String("websearch")) {
-                text = QStringLiteral("Claude: browsing");
-            } else if (lower == QLatin1String("task") ||
-                       lower == QLatin1String("agent")) {
-                text = QStringLiteral("Claude: delegating");
-            } else if (t.isEmpty()) {
-                text = QStringLiteral("Claude: thinking");
+                glyph = ClaudeTabIndicator::Glyph::Bash;
             } else {
-                text = QStringLiteral("Claude: %1").arg(t);
+                if (lower == QLatin1String("read")) {
+                    text = QStringLiteral("Claude: reading a file");
+                } else if (lower == QLatin1String("edit") ||
+                           lower == QLatin1String("write") ||
+                           lower == QLatin1String("notebookedit")) {
+                    text = QStringLiteral("Claude: editing");
+                } else if (lower == QLatin1String("grep") ||
+                           lower == QLatin1String("glob")) {
+                    text = QStringLiteral("Claude: searching");
+                } else if (lower == QLatin1String("webfetch") ||
+                           lower == QLatin1String("websearch")) {
+                    text = QStringLiteral("Claude: browsing");
+                } else if (lower == QLatin1String("task") ||
+                           lower == QLatin1String("agent")) {
+                    text = QStringLiteral("Claude: delegating");
+                } else if (t.isEmpty()) {
+                    text = QStringLiteral("Claude: thinking");
+                } else {
+                    text = QStringLiteral("Claude: %1").arg(t);
+                }
+                glyph = ClaudeTabIndicator::Glyph::ToolUse;
             }
-            color = th.ansi[3];
             break;
         }
         case ClaudeState::Compacting:
             text = QStringLiteral("Claude: compacting");
-            color = th.ansi[5];
+            glyph = ClaudeTabIndicator::Glyph::Compacting;
             break;
         }
     }
 
+    const QColor color = ClaudeTabIndicator::color(glyph);
     m_claudeStatusLabel->setText(text);
     m_claudeStatusLabel->setStyleSheet(
         QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));
@@ -3398,6 +3396,10 @@ void MainWindow::setupClaudeIntegration() {
                 ind.glyph = ClaudeTabIndicator::Glyph::Planning;
                 return ind;
             }
+            if (s.auditing && s.state != ClaudeState::NotRunning) {
+                ind.glyph = ClaudeTabIndicator::Glyph::Auditing;
+                return ind;
+            }
             switch (s.state) {
                 case ClaudeState::NotRunning:
                     ind.glyph = ClaudeTabIndicator::Glyph::None; break;
@@ -3439,6 +3441,8 @@ void MainWindow::setupClaudeIntegration() {
                     tip = tr("Claude: awaiting input");
                 } else if (st.planMode && st.state != ClaudeState::NotRunning) {
                     tip = tr("Claude: planning");
+                } else if (st.auditing && st.state != ClaudeState::NotRunning) {
+                    tip = tr("Claude: auditing");
                 } else switch (st.state) {
                     case ClaudeState::NotRunning: tip.clear(); break;
                     case ClaudeState::Idle:       tip = tr("Claude: idle"); break;

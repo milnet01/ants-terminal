@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QTabBar>
 #include <QTabWidget>
 
@@ -12,24 +13,37 @@ class QPaintEvent;
 // nothing, so tab reorder / close don't need to update any tab-bar
 // side-table (the provider just returns the current value for the
 // tab's underlying session identity, whatever the caller uses).
+//
+// Palette is uniform across both the per-tab dot and the bottom
+// status-bar Claude label: callers retrieve the canonical colour for a
+// state via `ClaudeTabIndicator::color(Glyph)` so the two surfaces stay
+// in sync. See `tests/features/claude_state_dot_palette/spec.md` for
+// the contract.
 struct ClaudeTabIndicator {
-    // Which dot to draw. NotRunning means "no glyph" — paint skipped.
-    // Bash is split out from generic ToolUse because the roadmap calls
-    // it out as a distinct state (it's the tool most likely to be
-    // running long-lived commands), and because the bottom status bar
-    // already distinguishes "Claude: bash" from "Claude: reading a
-    // file" / "Claude: editing a file" / etc.
+    // Which dot to draw. None means "no glyph" — paint skipped.
+    // Bash is split out from generic ToolUse because Bash is the tool
+    // most likely to be running long-lived commands; the bottom status
+    // bar already distinguishes "Claude: bash" from "Claude: reading a
+    // file" / "Claude: editing a file" / etc., and the per-tab dot
+    // mirrors that.
     enum class Glyph {
         None,            // no Claude process under this tab's shell
-        Idle,            // muted dot
-        Thinking,        // plain dot
-        ToolUse,         // solid dot (neutral hue) — Read/Write/Edit/Grep/Glob/…
-        Bash,            // Bash tool specifically — separate hue
-        Planning,        // plan-mode active (distinct hue)
-        Compacting,      // /compact in flight
-        AwaitingInput,   // PermissionRequest pending — LOUD
+        Idle,            // grey
+        Thinking,        // blue
+        ToolUse,         // yellow — Read/Write/Edit/Grep/Glob/Task/…
+        Bash,            // green — Bash tool specifically
+        Planning,        // cyan — plan-mode active
+        Auditing,        // magenta — /audit skill in flight
+        Compacting,      // violet — /compact in flight
+        AwaitingInput,   // orange — PermissionRequest pending
     };
     Glyph glyph = Glyph::None;
+
+    // Single source of truth for the state→colour palette. Same hex
+    // values drive both the tab-bar dot fill and the bottom status-bar
+    // "Claude: …" label colour. None / unrecognised input returns an
+    // invalid QColor so callers can suppress paint with `isValid()`.
+    static QColor color(Glyph g);
 };
 
 // QTabBar subclass that renders an optional per-tab colour strip along
