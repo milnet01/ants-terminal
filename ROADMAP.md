@@ -106,7 +106,7 @@ manager without extra repository configuration.
 | **P4 — Fedora COPR** | RPM spec | ✅ spec (H5) | 📋 create `ants-terminal` COPR; later submit package review for `fedora-extras` | 0.8.0 |
 | **P5 — Debian / Ubuntu PPA** | deb source | ✅ debian/ tree (H5) | 📋 upload signed source package to Launchpad PPA | 0.8.0 |
 | **P6 — Snap Store (snapcraft.io)** | snapcraft.yaml | 📋 write `snap/snapcraft.yaml`, host-shell model like Flatpak | 📋 register `ants-terminal` snap name + publish via `snapcraft upload` | 0.9.0 |
-| **P7 — AppImage** | AppImage | 📋 write `ants-terminal.AppImage.yml` (linuxdeploy / appimage-builder) | 📋 publish nightly + release artifacts on GitHub Releases | 0.9.0 |
+| **P7 — AppImage** | AppImage | 🚧 [`.github/workflows/release.yml`](.github/workflows/release.yml) — linuxdeploy + qt plugin on Ubuntu 22.04 (glibc 2.35) | 🚧 publishing on tag push to GitHub Releases (first build: 0.7.42) | 0.7.42+ |
 | **P8 — Nixpkgs (NixOS)** | nix expression | 📋 write `pkgs/applications/terminal-emulators/ants-terminal/default.nix` | 📋 open PR against `NixOS/nixpkgs` master | 0.9.0 |
 | **P9 — Debian (main archive)** | deb, official | 📋 RFP → ITP → sponsored upload → new-queue review | 📋 file ITP bug, find DM sponsor | 1.0.0+ |
 | **P10 — Ubuntu (universe, via Debian)** | deb | Auto-sync from Debian unstable | 📋 rides on P9 | 1.0.0+ |
@@ -253,19 +253,38 @@ exist yet. Host-shell model similar to our Flatpak approach.
 
 ### P7 — AppImage
 
-**Prerequisites:** write an AppImage recipe. Not yet started.
+**Status:** 🚧 First binary shipped with v0.7.42. Recipe lives at
+[`.github/workflows/release.yml`](.github/workflows/release.yml) — fires on
+every `v*` tag push (and via `workflow_dispatch` for backfilling).
+Output is `Ants_Terminal-<version>-x86_64.AppImage`, attached to the
+matching GitHub Release. Build runs on Ubuntu 22.04 for glibc-2.35
+compatibility (covers Debian 12+, Ubuntu 22.04+, Fedora 36+, openSUSE
+Tumbleweed, Arch). linuxdeploy + linuxdeploy-plugin-qt bundle Qt6 and
+liblua5.4 automatically; `--appimage-extract-and-run --version` /
+`--help` smoke tests gate the upload step.
 
-1. **Choose tool:** `linuxdeploy` with its Qt plugin is the standard
-   for Qt-based AppImages (handles Qt6, QML plugins, platform
-   integrations).
-2. **Add a CI lane** (`.github/workflows/appimage.yml`) that runs on
-   tag push: `make` the project, `linuxdeploy --appdir AppDir
-   --plugin qt --output appimage`, attach the resulting
-   `Ants_Terminal-<version>-x86_64.AppImage` to the GitHub Release.
-3. **(Optional) publish to AppImageHub** (`appimage.github.io`)
-   by opening a PR with a YAML metadata stub. AppImageHub is a
-   listing directory, not a store — it points at our GitHub
-   Release artifact.
+**Done:**
+
+1. ✅ **Tool chosen:** `linuxdeploy` + `linuxdeploy-plugin-qt` (the
+   Qt6 standard).
+2. ✅ **CI lane added:** `.github/workflows/release.yml`. Replaces the
+   originally-planned `.github/workflows/appimage.yml` filename — same
+   shape, but the file is named for what it does (release artefacts,
+   plural future-proofing) rather than the artefact type.
+
+**Open follow-ups:**
+
+3. 📋 **Publish to AppImageHub** (`appimage.github.io`) — open a PR
+   with a YAML metadata stub pointing at our GitHub Release artefact.
+   AppImageHub is a listing directory, not a store — increases
+   discoverability for Linux desktop users browsing for terminals.
+4. 📋 **Auto-update** via [AppImageUpdate](https://github.com/AppImage/AppImageUpdate)
+   — embed a zsync URL in the AppImage so users can self-update without
+   re-downloading. Requires generating a `.zsync` file alongside each
+   release artefact and uploading both.
+5. 💭 **aarch64 AppImage** — second runner job once GitHub Actions
+   `ubuntu-22.04-arm64` is GA (currently in preview). Niche but
+   meaningful for Asahi Linux + Pi 5 + AWS Graviton dev boxes.
 
 ### P8 — Nixpkgs
 

@@ -12,6 +12,7 @@
 <p align="center">
   <a href="#features">Features</a> &bull;
   <a href="#claude-code-integration">Claude Code</a> &bull;
+  <a href="#install">Install</a> &bull;
   <a href="#building">Building</a> &bull;
   <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
   <a href="#themes">Themes</a> &bull;
@@ -471,6 +472,34 @@ Switch themes from the **View** menu. Your choice is saved between sessions.
 - **Split panes** -- horizontal (Ctrl+Shift+E) and vertical (Ctrl+Shift+O)
 
 ---
+
+## Install
+
+### Pre-built AppImage (x86_64 Linux)
+
+The fastest path. Each tagged release ships an x86_64 AppImage on the
+[Releases page](https://github.com/milnet01/ants-terminal/releases/latest):
+
+```bash
+# Download the latest AppImage (replace 0.7.42 with whatever the latest tag is):
+curl -L -o Ants_Terminal-x86_64.AppImage \
+  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.42-x86_64.AppImage
+chmod +x Ants_Terminal-x86_64.AppImage
+./Ants_Terminal-x86_64.AppImage
+```
+
+Runs on any glibc-2.35+ distro (Ubuntu 22.04+, Debian 12+, Fedora 36+,
+openSUSE Tumbleweed, Arch). Bundles Qt6 + Lua 5.4. To get the desktop
+entry + icons, integrate the AppImage with
+[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) —
+optional; the AppImage runs fine without it. Configuration lives in
+the user's home dir (`~/.config/ants-terminal/`) regardless of how the
+binary is launched.
+
+For other architectures (aarch64, riscv64) or distro-native packaging
+(`.deb`, `.rpm`, AUR, Flatpak) — build from source per the section
+below; native packaging is tracked in
+[ROADMAP.md § Distribution readiness](ROADMAP.md).
 
 ## Building
 

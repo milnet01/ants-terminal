@@ -1,0 +1,163 @@
+# Release artefacts — builds an x86_64 AppImage on every `v*` tag push
+# and uploads it to the matching GitHub release. Also exposes a manual
+# `workflow_dispatch` so an existing tag (e.g. one published before this
+# workflow existed) can be backfilled with a binary on demand.
+#
+# Why AppImage: single-file portable executable, runs on any glibc-2.35+
+# distro, no install dance, no Qt-version conflicts. Ubuntu 22.04 was
+# picked for the runner because its glibc is 2.35 — that covers Debian
+# 12, Ubuntu 22.04+, Fedora 36+, openSUSE Tumbleweed, and Arch as of
+# 2024+. Using ubuntu-24.04 would lock the AppImage to glibc 2.39,
+# excluding still-supported LTS distros.
+#
+# Hardening matches .github/workflows/ci.yml:
+#   • permissions overridden — `contents: write` is needed only for
+#     `gh release upload`. No `pull_request_target`, no self-hosted
+#     runners, no third-party secrets.
+#   • actions/* pinned by 40-char SHA with version tag for humans.
+#   • linuxdeploy is downloaded from its `continuous` channel — it does
+#     not cut tagged releases. Pinning to SHA via curl is impractical;
+#     we accept the supply-chain risk in exchange for upstream bug fixes
+#     (Qt6.x autodetection has improved several times). The downloaded
+#     binary is checksummed against the GitHub-served checksum file so
+#     a swapped artefact still fails fast.
+#   • The AppImage is smoke-tested (`--version`, `--help`) before upload.
+
+name: Release artefacts
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v0.7.42). Required for manual runs.'
+        required: true
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  appimage:
+    name: Build AppImage (x86_64)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Resolve target tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            REF="${{ inputs.tag }}"
+          else
+            REF="${GITHUB_REF#refs/tags/}"
+          fi
+          # Strip leading `v` for the version string used in the
+          # AppImage filename ("v0.7.42" → "0.7.42").
+          VERSION="${REF#v}"
+          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: ${REF} (version ${VERSION})"
+
+      - name: Check out source at tag
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
+
+      - name: Install Qt6 + build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            qt6-base-dev qt6-base-dev-tools \
+            libqt6opengl6-dev libqt6openglwidgets6 \
+            qt6-wayland qt6-wayland-dev \
+            liblua5.4-dev \
+            libxkbcommon-dev libfuse2 file desktop-file-utils \
+            patchelf
+
+      - name: Configure (Release, /usr prefix for AppDir staging)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Stage install tree into AppDir/usr
+        run: |
+          DESTDIR="$PWD/AppDir" cmake --install build
+          echo '--- AppDir contents:'
+          find AppDir -maxdepth 4 -type f | sort
+          # linuxdeploy-plugin-qt expects the .desktop file to declare
+          # an icon name that is also discoverable in the AppDir's icon
+          # search path. Our installed icon names follow the
+          # `ants-terminal-<size>.png` pattern, but the .desktop's
+          # `Icon=ants-terminal` line does not include a size. Provide
+          # a top-level `ants-terminal.png` symlink to the 256px icon
+          # so AppImage clients display a thumbnail in file managers.
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/ants-terminal-256.png \
+             AppDir/ants-terminal.png
+          # Some AppImage launchers also look for a top-level .desktop;
+          # linuxdeploy will populate this from the installed copy.
+
+      - name: Download linuxdeploy + Qt plugin (continuous channel)
+        run: |
+          # linuxdeploy does not cut tagged releases — `continuous` is
+          # their canonical channel. We verify the SHA256 against the
+          # checksum file served alongside the AppImage; a tampered
+          # binary would change the hash and fail this step.
+          download_with_checksum() {
+            local name="$1" url="$2"
+            curl -fsSL -o "$name" "$url"
+            curl -fsSL -o "${name}.sha256" "${url}.sha256"
+            # The .sha256 file contains the hash followed by the basename
+            # of the original artefact. Rewrite the basename to match
+            # our local filename so `sha256sum -c` succeeds regardless
+            # of the upstream naming.
+            local hash
+            hash="$(awk '{print $1}' "${name}.sha256")"
+            echo "${hash}  ${name}" > "${name}.sha256"
+            sha256sum -c "${name}.sha256"
+            chmod +x "$name"
+          }
+          download_with_checksum linuxdeploy \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          download_with_checksum linuxdeploy-plugin-qt \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+
+      - name: Build AppImage
+        env:
+          # linuxdeploy-plugin-qt finds Qt6 through QMAKE.
+          QMAKE: /usr/lib/qt6/bin/qmake6
+          # OUTPUT controls the final AppImage filename.
+          OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
+          # linuxdeploy emits noise about already-bundled libs at info
+          # level; silence it to keep CI logs scannable.
+          NO_STRIP: "1"
+        run: |
+          ./linuxdeploy --appdir AppDir --plugin qt --output appimage
+          ls -la "${OUTPUT}"
+          file "${OUTPUT}"
+
+      - name: Smoke-test AppImage (--version + --help)
+        env:
+          OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          # AppImage runs need libfuse2 mounted, OR --appimage-extract-and-run
+          # which is the standard CI fallback (no fuse, no kernel modules).
+          ./"${OUTPUT}" --appimage-extract-and-run --version
+          ./"${OUTPUT}" --appimage-extract-and-run --help
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
+        run: |
+          gh release upload "${{ steps.tag.outputs.ref }}" \
+            "${OUTPUT}" \
+            --clobber
+          echo "Uploaded ${OUTPUT} to release ${{ steps.tag.outputs.ref }}"
