@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include <QNetworkRequest>
 #include <QScrollBar>
+#include <QTimer>
 #include <QUrl>
 
 AiDialog::~AiDialog() {
@@ -283,10 +284,23 @@ void AiDialog::onReplyReadyRead() {
         return;
     }
 
+    // 0.7.54 (2026-04-27 indie-review) — cap per-tick iterations and
+    // re-arm via QTimer::singleShot(0). A misbehaving SSE endpoint
+    // streaming millions of tiny lines in one buffer would otherwise
+    // hold the event loop for the whole drain (UI freeze, no paint,
+    // no input). 256 lines per tick is generous: a normal model
+    // streams ~30 SSE events per second per token; 256 covers ~8
+    // seconds of legitimate output before yielding. After the cap,
+    // schedule a singleShot(0) drain continuation so the rest of the
+    // buffer is processed on the next event-loop iteration.
+    constexpr int kMaxLinesPerTick = 256;
+    int processed = 0;
+
     // Process complete lines (SSE lines are terminated by \n)
-    while (true) {
+    while (processed < kMaxLinesPerTick) {
         int nlPos = m_sseLineBuffer.indexOf('\n');
         if (nlPos < 0) break;
+        ++processed;
 
         QString line = QString::fromUtf8(m_sseLineBuffer.left(nlPos)).trimmed();
         m_sseLineBuffer = m_sseLineBuffer.mid(nlPos + 1);
@@ -320,6 +334,14 @@ void AiDialog::onReplyReadyRead() {
             }
             m_streamBuffer += content;
         }
+    }
+
+    // If we hit the iteration cap and there's still buffered data
+    // with at least one complete line ready, re-arm via singleShot(0)
+    // so the event loop gets a turn before we resume draining.
+    if (processed >= kMaxLinesPerTick &&
+        m_sseLineBuffer.indexOf('\n') >= 0) {
+        QTimer::singleShot(0, this, &AiDialog::onReplyReadyRead);
     }
 }
 

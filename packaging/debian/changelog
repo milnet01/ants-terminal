@@ -1,3 +1,22 @@
+ants-terminal (0.7.54-1) unstable; urgency=medium
+
+  * A11y + UX bundle from the 2026-04-27 indie-review. Six fixes.
+  * A11y — status-bar QLabels gain setAccessibleName (branch chip,
+    repo visibility, foreground process, status-message slot,
+    Claude session label + context bar, Review Changes button).
+    Claude label additionally updates accessibleDescription on
+    every state transition.
+  * A11y — ToggleSwitch a11y plumbing. Default accessibleName +
+    QAccessibleStateChangeEvent on every check-state flip.
+  * Plan-mode survives tab switch (per-pid plan-mode cache so the
+    indicator doesn't flicker off→on on tab flip).
+  * AI SSE parser caps per-tick iterations at 256 + re-arms via
+    singleShot(0). Prevents UI freeze on misbehaving endpoints.
+  * SSH Quick Connect parses IPv6 host literals
+    ([2001:db8::1]:2222) per RFC 3986 §3.2.2.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 28 Apr 2026 12:00:00 +0200
+
 ants-terminal (0.7.53-1) unstable; urgency=medium
 
   * Tier-1 remainders + VT/paste/plugin hardening from the 2026-04-27

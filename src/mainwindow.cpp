@@ -539,6 +539,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     m_statusGitBranch = new QLabel(this);
     m_statusGitBranch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_statusGitBranch->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    // 0.7.54 (2026-04-27 indie-review) — accessible name for screen
+    // readers. Powerline glyph in front of the branch name reads as
+    // an unrecognised codepoint; the accessible name overrides that
+    // with semantic text. Description updates dynamically via
+    // updateStatusBar when the branch changes.
+    m_statusGitBranch->setAccessibleName(tr("Git branch"));
     statusBar()->addWidget(m_statusGitBranch);
 
     // 0.7.49 — Repo visibility badge. Public/Private chip for the
@@ -556,6 +562,7 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     m_repoVisibilityLabel->setObjectName(QStringLiteral("repoVisibilityLabel"));
     m_repoVisibilityLabel->setSizePolicy(QSizePolicy::Fixed,
                                          QSizePolicy::Preferred);
+    m_repoVisibilityLabel->setAccessibleName(tr("GitHub repository visibility"));
     m_repoVisibilityLabel->hide();
     statusBar()->addWidget(m_repoVisibilityLabel);
 
@@ -581,10 +588,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
         lbl->setElideMode(Qt::ElideMiddle);
         m_statusMessage = lbl;
     }
+    m_statusMessage->setAccessibleName(tr("Status notification"));
     statusBar()->addWidget(m_statusMessage, 1);
 
     m_statusProcess = new QLabel(this);
     m_statusProcess->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_statusProcess->setAccessibleName(tr("Foreground process"));
     statusBar()->addWidget(m_statusProcess);
 
     // Status update timer (every 2 seconds). updateStatusBar() walks the
@@ -3376,6 +3385,11 @@ void MainWindow::applyClaudeStatusLabel() {
     m_claudeStatusLabel->setText(text);
     m_claudeStatusLabel->setStyleSheet(
         QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));
+    // 0.7.54 (2026-04-27 indie-review WCAG) — keep the accessible
+    // description in sync with the visible state. Screen readers
+    // announce accessibleName + accessibleDescription on focus, so
+    // colour-only state encoding is no longer the sole signal.
+    m_claudeStatusLabel->setAccessibleDescription(text);
     m_claudeStatusLabel->show();
 }
 
@@ -3550,6 +3564,13 @@ void MainWindow::setupClaudeIntegration() {
     m_claudeStatusLabel = new QLabel(this);
     m_claudeStatusLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_claudeStatusLabel->setStyleSheet("color: gray; padding: 0 8px; font-size: 11px;");
+    // 0.7.54 (2026-04-27 indie-review WCAG) — accessible name for the
+    // status-bar Claude session label. The visible text already carries
+    // the state (e.g. "Claude: thinking…"), but screen readers benefit
+    // from a stable accessibleName that doesn't change with the visible
+    // text. The accessibleDescription tracks the live state via
+    // applyClaudeStatusLabel.
+    m_claudeStatusLabel->setAccessibleName(tr("Claude Code session status"));
     m_claudeStatusLabel->hide();
     statusBar()->addPermanentWidget(m_claudeStatusLabel);
 
@@ -3562,6 +3583,7 @@ void MainWindow::setupClaudeIntegration() {
     m_claudeContextBar->setFormat("%p%");
     // Styled dynamically by updateClaudeThemeColors()
     m_claudeContextBar->setToolTip("Claude Code context window usage");
+    m_claudeContextBar->setAccessibleName(tr("Claude Code context window usage"));
     m_claudeContextBar->hide();
     statusBar()->addPermanentWidget(m_claudeContextBar);
 
@@ -3575,6 +3597,7 @@ void MainWindow::setupClaudeIntegration() {
     // Fixed horizontal sizePolicy — never squeezed for the benefit of
     // the notification slot. See layout contract at mainwindow.cpp:~320.
     m_claudeReviewBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_claudeReviewBtn->setAccessibleName(tr("Review Claude code changes"));
     m_claudeReviewBtn->hide();
     statusBar()->addPermanentWidget(m_claudeReviewBtn);
     connect(m_claudeReviewBtn, &QPushButton::clicked, this, &MainWindow::showDiffViewer);

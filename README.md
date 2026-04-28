@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>0.7.53</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
+  Current version: <strong>0.7.54</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
 </p>
 
 ---
@@ -480,7 +480,7 @@ The fastest path. Each tagged release ships an x86_64 AppImage on the
 ```bash
 # Download the latest AppImage (replace 0.7.44 with whatever the latest tag is):
 curl -L -o Ants_Terminal-x86_64.AppImage \
-  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.53-x86_64.AppImage
+  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.54-x86_64.AppImage
 chmod +x Ants_Terminal-x86_64.AppImage
 ./Ants_Terminal-x86_64.AppImage
 ```

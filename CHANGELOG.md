@@ -10,6 +10,62 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.54] — 2026-04-28
+
+**Theme:** A11y + UX bundle from the 2026-04-27 indie-review. Six
+fixes — accessibility plumbing on three status-bar surfaces (Claude
+session label, branch chip, repo visibility, foreground-process,
+status-message slot, ToggleSwitch), plan-mode persistence across tab
+switches, an SSE iteration cap to prevent UI freeze on misbehaving AI
+endpoints, and IPv6 support in the SSH Quick Connect parser.
+
+### Changed
+
+- **A11y — status-bar QLabels gain `setAccessibleName`.** Branch chip,
+  repo visibility chip, foreground-process label, status-message slot,
+  Claude session label, Claude context bar, Review Changes button.
+  Screen readers (Orca / NVDA / VoiceOver via AT-SPI / UIAutomation)
+  now announce each chrome widget with semantic text instead of
+  reading raw tab content or Powerline glyph codepoints. The Claude
+  session label additionally updates `accessibleDescription` on every
+  state transition so the screen reader announces the current state
+  (e.g. "Claude Code session status: Claude: thinking…").
+- **A11y — `ToggleSwitch` accessibility plumbing.** The switch now
+  carries a default `accessibleName` and fires
+  `QAccessibleStateChangeEvent` on every check-state flip
+  (`checkStateSet` / `nextCheckState`). Without this, AT-SPI
+  consumers heard the new state only on next focus traversal —
+  keyboard users had no immediate confirmation that their toggle
+  landed.
+- **Plan-mode survives tab switch.** `ClaudeIntegration::setShellPid`
+  used to reset `m_planMode = false` on every pid change, then rely
+  on the next `pollClaudeProcess` to re-derive it from the
+  transcript tail. If the plan-mode toggle event sat outside the
+  tail window, the indicator silently dropped. Now caches per-pid
+  plan-mode state in `m_planModeByPid` and restores it when the user
+  switches back, before the transcript poll re-derives. The
+  indicator no longer flickers off→on on tab flip.
+- **AI SSE parser caps per-tick iterations + re-arms via
+  `singleShot(0)`.** A misbehaving SSE endpoint streaming millions
+  of tiny lines in one buffer would otherwise hold the event loop
+  for the whole drain (UI freeze, no paint, no input). Now caps at
+  256 lines per tick and schedules a continuation if the buffer
+  still has complete lines pending. 256 covers ~8 seconds of
+  legitimate streaming output before yielding; pathological bursts
+  yield at the cap.
+- **SSH Quick Connect parses IPv6 host literals.** `[2001:db8::1]:2222`
+  used to parse as host=`[2001` port=0 because the naive
+  `indexOf(':')` split landed on the first colon inside the
+  bracketed address. Now matches RFC 3986 §3.2.2 / OpenSSH command-
+  line convention: detect leading `[`, locate the matching `]`,
+  treat the bracketed body as the host and the post-`]:` digits as
+  the port. Falls back to the legacy single-colon split for IPv4
+  hosts and DNS names.
+
+### Tests
+
+- ctest 112/112 green. Drift exit 0.
+
 ## [0.7.53] — 2026-04-28
 
 **Theme:** Tier-1 remainders + VT/paste/plugin hardening from the

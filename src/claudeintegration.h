@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFileSystemWatcher>
+#include <QHash>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QDateTime>
@@ -177,6 +178,15 @@ private:
     QStringList m_changedFiles;
     bool m_planMode = false;
     bool m_auditing = false;
+    // 0.7.54 (2026-04-27 indie-review) — per-shellPid plan-mode cache.
+    // setShellPid(pid) used to reset m_planMode unconditionally on tab
+    // switch, then rely on the next pollClaudeProcess parse to re-derive
+    // it. If the new tab's transcript-tail window didn't include the
+    // permission-mode toggle event (event scrolled past the tail
+    // bound), m_planMode silently stayed false and the bottom status
+    // dropped the "plan mode" indicator until the user toggled again.
+    // Cache lets us restore the latched state across tab flips.
+    QHash<pid_t, bool> m_planModeByPid;
     // session_id from the most recent hook event. Read by handlers via
     // lastHookSessionId() — see that accessor's comment.
     QString m_lastHookSessionId;

@@ -330,13 +330,44 @@ void SshDialog::onQuickConnect() {
         bm.user = input.left(atIdx);
         input = input.mid(atIdx + 1);
     }
-    int colonIdx = input.indexOf(':');
-    if (colonIdx >= 0) {
-        bm.host = input.left(colonIdx);
-        bm.port = input.mid(colonIdx + 1).toInt();
-        if (bm.port <= 0 || bm.port > 65535) bm.port = 22;
+
+    // 0.7.54 (2026-04-27 indie-review) — IPv6 host parsing. The naive
+    // `indexOf(':')` split mangled `[2001:db8::1]:2222` because the
+    // first colon is INSIDE the bracketed address, not the
+    // host/port separator. Per RFC 3986 §3.2.2, IPv6 literals MUST
+    // be bracketed in URI authority components; the bracket form is
+    // also the convention OpenSSH expects on the command line
+    // (`ssh -p 2222 [2001:db8::1]` works).
+    //
+    // Detect a leading `[` and locate the matching `]`. If found, the
+    // host is the bracketed body and the port (if any) follows after
+    // the closing `]:`. Otherwise fall back to the legacy single-
+    // colon split (covers IPv4 hosts and DNS names).
+    if (input.startsWith('[')) {
+        int rb = input.indexOf(']');
+        if (rb > 0) {
+            bm.host = input.mid(1, rb - 1);
+            // After `]` we expect `:port` or end-of-string.
+            if (rb + 1 < input.size() && input[rb + 1] == ':') {
+                bm.port = input.mid(rb + 2).toInt();
+                if (bm.port <= 0 || bm.port > 65535) bm.port = 22;
+            }
+        } else {
+            // Unmatched `[` — treat the whole thing as a host. Lets
+            // a typo like `[2001:db8::1` still fall through to ssh,
+            // which will fail with a sensible error rather than
+            // silently parsing as host=`[2001` port=0.
+            bm.host = input;
+        }
     } else {
-        bm.host = input;
+        int colonIdx = input.indexOf(':');
+        if (colonIdx >= 0) {
+            bm.host = input.left(colonIdx);
+            bm.port = input.mid(colonIdx + 1).toInt();
+            if (bm.port <= 0 || bm.port > 65535) bm.port = 22;
+        } else {
+            bm.host = input;
+        }
     }
 
     if (!bm.host.isEmpty()) {

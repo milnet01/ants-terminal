@@ -60,12 +60,29 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
     // reflects the tab switch within the current event-loop iteration.
     // Same-PID calls (rebind on identical shell) are idempotent.
     if (pid != m_shellPid) {
+        // Cache the outgoing tab's plan-mode state so we can restore
+        // it on a future tab-switch back. Without the cache, returning
+        // to a tab whose Claude session is in plan mode but whose
+        // transcript-tail window doesn't include the permission-mode
+        // event would silently drop the "plan mode" indicator.
+        // 0.7.54 (2026-04-27 indie-review).
+        if (m_shellPid > 0) m_planModeByPid[m_shellPid] = m_planMode;
+
         m_state = ClaudeState::NotRunning;
         m_currentTool.clear();
         m_contextPercent = 0;
         m_claudePid = 0;            // force pollClaudeProcess to re-detect
         m_activeSessionId.clear();
-        if (m_planMode) { m_planMode = false; emit planModeChanged(false); }
+
+        // Restore the incoming pid's cached plan mode if we have one.
+        // pollClaudeProcess will re-derive from transcript anyway, but
+        // restoring the cache first means the indicator doesn't flicker
+        // off→on across the tab switch.
+        const bool cached = pid > 0 && m_planModeByPid.value(pid, false);
+        if (m_planMode != cached) {
+            m_planMode = cached;
+            emit planModeChanged(cached);
+        }
         if (m_auditing) { m_auditing = false; emit auditingChanged(false); }
         if (!m_transcriptPath.isEmpty()) {
             m_transcriptWatcher.removePath(m_transcriptPath);
@@ -585,6 +602,10 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
 
     if (snap.planMode != m_planMode) {
         m_planMode = snap.planMode;
+        // Mirror into the per-shellPid cache so a future tab switch
+        // away-and-back restores the latched state. See setShellPid
+        // for the read side. 0.7.54.
+        if (m_shellPid > 0) m_planModeByPid[m_shellPid] = m_planMode;
         emit planModeChanged(m_planMode);
     }
     if (snap.auditing != m_auditing) {

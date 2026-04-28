@@ -103,6 +103,19 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.54" date="2026-04-28">
+      <description>
+        <p>A11y + UX bundle from the 2026-04-27 indie-review. Six fixes — accessibility plumbing on status-bar surfaces and ToggleSwitch, plan-mode persistence across tab switches, an SSE iteration cap to prevent UI freeze on misbehaving AI endpoints, and IPv6 support in the SSH Quick Connect parser.</p>
+        <p>Changed:</p>
+        <ul>
+          <li>A11y — status-bar QLabels gain setAccessibleName. Branch chip, repo visibility, foreground-process, status-message slot, Claude session label, context bar, Review Changes button. Screen readers (Orca / NVDA / VoiceOver) now announce semantic text instead of raw tab content or Powerline glyph codepoints. Claude session label additionally updates accessibleDescription on every state transition.</li>
+          <li>A11y — ToggleSwitch a11y plumbing. Default accessibleName + QAccessibleStateChangeEvent on every check-state flip. Keyboard users now get immediate AT-SPI / UIAutomation confirmation when their toggle lands.</li>
+          <li>Plan-mode survives tab switch. setShellPid used to reset m_planMode = false on every pid change; now caches per-pid plan-mode state and restores it across tab flips so the indicator doesn't flicker off→on.</li>
+          <li>AI SSE parser caps per-tick iterations at 256 + re-arms via singleShot(0). Prevents UI freeze on misbehaving endpoints streaming millions of tiny lines in one buffer.</li>
+          <li>SSH Quick Connect parses IPv6 host literals. [2001:db8::1]:2222 used to parse as host=[2001 port=0; now matches RFC 3986 §3.2.2 / OpenSSH command-line convention.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.53" date="2026-04-28">
       <description>
         <p>Tier-1 remainders + VT/paste/plugin hardening from the 2026-04-27 indie-review. Six security-class fixes — three completing the Tier-1 ship-this-week list (the OSC-ESC parser RCE-adjacent leak, X10 mouse UTF-8 corruption, Lua plugin permission allow-list/intersect drift), three from Tier-2 paste/image hardening.</p>
