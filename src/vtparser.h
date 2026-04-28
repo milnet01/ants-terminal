@@ -63,9 +63,13 @@ private:
         CsiParam,
         CsiIntermediate,
         OscString,
+        OscStringEsc,   // peek-state: just saw ESC inside OSC body — see vtparser.cpp
         DcsString,      // DCS sequence (Sixel graphics)
+        DcsStringEsc,   // peek-state: just saw ESC inside DCS body
         ApcString,      // APC sequence (Kitty graphics)
+        ApcStringEsc,   // peek-state: just saw ESC inside APC body
         IgnoreString,   // SOS, PM — consumed and ignored
+        IgnoreStringEsc,// peek-state: just saw ESC inside SOS/PM body
     };
 
     void processChar(uint32_t ch);

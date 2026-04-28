@@ -1,3 +1,29 @@
+ants-terminal (0.7.53-1) unstable; urgency=medium
+
+  * Tier-1 remainders + VT/paste/plugin hardening from the 2026-04-27
+    indie-review. Six security-class fixes.
+  * HIGH — VT parser dispatched OSC's trailing ESC byte as a real
+    ESC sequence. A crafted OSC ending in `ESC c` triggered RIS;
+    `ESC D` triggered IND; etc. Fixed at the C0 pre-handler —
+    string-state ESC no longer transitions to Escape. New
+    *StringEsc peek-states consume the trailing byte. Locked by
+    tests/features/vt_osc_esc_discard/.
+  * HIGH — X10 mouse byte > 0xDF corrupted UTF-8 stream.
+    Coordinates clamped to 223 in X10 mode.
+  * HIGH — Lua plugin permission allow-list + intersect missing.
+    Manifest entries filtered against knownPermissions(); prompt
+    result intersected with requested set.
+  * HIGH — Image-paste filename injection + path escape.
+    m_imagePasteDir canonicalised + required under $HOME; UUID4
+    suffix on filename.
+  * HIGH — Paste preview split on LF only — bare \r spoofed multi-
+    line as single line. Preview normalises \r\n + \r to \n; actual
+    paste still writes bytes verbatim.
+  * HIGH — Bracketed-paste 8-bit C1 form \x9B[200~ not stripped.
+    Strips 7-bit, raw 8-bit, and UTF-8-encoded 8-bit forms.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 28 Apr 2026 11:30:00 +0200
+
 ants-terminal (0.7.52-1) unstable; urgency=medium
 
   * First Tier-1 sweep of the 2026-04-27 indie-review findings.

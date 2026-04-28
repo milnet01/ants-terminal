@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.52 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.53 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -751,6 +751,27 @@ if(ANTS_TESTS)
     )
     add_test(NAME vtparser_simd_scan COMMAND test_vtparser_simd_scan)
     set_tests_properties(vtparser_simd_scan PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # vt_osc_esc_discard — locks the 0.7.53 fix for ESC inside OSC /
+    # DCS / APC / IgnoreString state. Pre-fix, the parser transitioned
+    # to Escape state on a mid-string ESC and dispatched the trailing
+    # byte as a fresh ESC sequence (RIS / IND / DECSC / ...), giving a
+    # hostile remote shell an RCE-adjacent trigger via OSC payloads.
+    # 0.7.53 added OscStringEsc / DcsStringEsc / ApcStringEsc /
+    # IgnoreStringEsc peek-states that consume the trailing byte and
+    # return to Ground. See tests/features/vt_osc_esc_discard/spec.md.
+    add_executable(test_vt_osc_esc_discard
+        tests/features/vt_osc_esc_discard/test_vt_osc_esc_discard.cpp
+        src/vtparser.cpp
+    )
+    target_include_directories(test_vt_osc_esc_discard PRIVATE src)
+    target_compile_options(test_vt_osc_esc_discard PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME vt_osc_esc_discard COMMAND test_vt_osc_esc_discard)
+    set_tests_properties(vt_osc_esc_discard PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

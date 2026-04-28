@@ -10,6 +10,85 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.53] — 2026-04-28
+
+**Theme:** Tier-1 remainders + VT/paste/plugin hardening from the
+2026-04-27 indie-review. Six security-class fixes — three completing
+the Tier-1 ship-this-week list (the OSC-ESC parser RCE-adjacent leak,
+the X10 mouse UTF-8 stream corruption, and the Lua plugin permission
+allow-list/intersect drift), three from Tier-2 paste/image hardening.
+
+### Fixed
+
+- **HIGH — VT parser dispatched OSC's trailing ESC byte as a real
+  ESC sequence.** A crafted OSC ending in `ESC c` triggered RIS
+  (full terminal reset); `ESC D` triggered IND; `ESC 7` /`ESC 8`
+  triggered DECSC/DECRC; etc. RCE-adjacent because OSC payloads can
+  arrive from a hostile remote shell, trigger-rule expansion, or
+  pasted content. Fixed at the C0 pre-handler — when in
+  `OscString` / `DcsString` / `ApcString` / `IgnoreString` state,
+  ESC no longer unconditionally transitions to Escape; instead the
+  per-state handler dispatches the appropriate End and routes the
+  trailing byte through new `*StringEsc` peek-states that consume +
+  discard it before returning to Ground. Locked by new
+  `tests/features/vt_osc_esc_discard/` (5 invariants + 11 sub-cases).
+
+- **HIGH — X10 mouse byte > 0xDF corrupted UTF-8 stream.** Coordinates
+  encoded as `col + 32` produced bytes ≥ 0xE0 when col exceeded 223,
+  which apps reading the terminal-emit stream interpreted as UTF-8
+  lead bytes — subsequent click-event bytes mis-framed as
+  continuations and the click position got mangled. Both the
+  `mousePressEvent` SGR-fallback path and the wheel-event handler
+  now clamp col/row to 223 in X10 mode (SGR mode is unaffected
+  because coordinates there are ASCII decimal).
+
+- **HIGH — Lua plugin permission allow-list + intersect missing.**
+  `parseManifestInto` accepted any string in the manifest's
+  `permissions` array (including unexercisable garbage that inflated
+  the user-prompt's apparent privilege surface as a phishing vector).
+  `loadPlugin` accepted any return from `m_permissionPrompt` without
+  checking it against the requested set (a buggy prompt could grant
+  more than the manifest asked for). Now: manifest entries are
+  filtered against `knownPermissions()` (canonical: `clipboard.write`,
+  `settings`); prompt-result is intersected with the requested set
+  before being passed to the engine. Keep `knownPermissions()` in
+  sync with `luaengine.cpp`'s `hasPermission(...)` call sites.
+
+- **HIGH — Image-paste filename injection + path escape.**
+  `m_imagePasteDir` is user-configurable; an attacker-controlled
+  setting like `~; rm -rf .` produced a filename starting with
+  `~; rm -rf ./paste_…` which a careless shell command could
+  tokenise dangerously. Path is now canonicalised and required to
+  live under `$HOME` — anything outside falls back to the safe
+  default `~/Pictures/ClaudePaste`. Filename also gains an 8-char
+  UUID4 suffix so paste bursts within the same millisecond can't
+  clobber an earlier paste.
+
+- **HIGH — Paste preview split on LF only — bare `\r` terminator
+  spoofed the dialog.** A clipboard payload using `\r` as the line
+  terminator (older Mac, some Windows tools, attacker constructing a
+  deceptive preview) rendered as a single line in the confirmation
+  dialog while still being multi-line at paste time. Preview now
+  normalises `\r\n` and bare `\r` to `\n` for *display only*; the
+  actual paste still writes the original bytes verbatim so legitimate
+  `\r`-using shells (zsh raw mode, ed) still work.
+
+- **HIGH — Bracketed-paste 8-bit C1 form `\x9B[200~` not stripped.**
+  The grid's VT parser accepts both 7-bit `\e[` and 8-bit `\x9B`
+  CSI introducers, so a paste payload containing `\x9B 200~` could
+  close bracketed-paste mid-stream — the same CVE-2021-28848-class
+  injection the 7-bit sanitiser was added to prevent. Now strips
+  three forms: 7-bit `\x1B[`, raw 8-bit `\x9B`, and UTF-8-encoded
+  8-bit `\xC2\x9B`.
+
+### Tests
+
+- New `tests/features/vt_osc_esc_discard/` — 5 invariants × 11 sub-
+  cases (RIS / IND / RI / DECSC / DECRC / DECPAM / DECPNM / ST /
+  DCS / body-preservation / parser-recovery). Locks the OSC-ESC
+  fix at the parser level so the regression can't return.
+- ctest 112/112 green. Drift exit 0.
+
 ## [0.7.52] — 2026-04-28
 
 **Theme:** First Tier-1 sweep of the 2026-04-27 indie-review findings.

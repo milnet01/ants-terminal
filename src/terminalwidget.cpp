@@ -3,6 +3,7 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QUuid>
 #include <QTextLayout>
 #include <QEvent>
 #include <QKeyEvent>
@@ -1435,14 +1436,47 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         if (mime->hasImage()) {
             QImage img = clipboard->image();
             if (!img.isNull()) {
-                // Auto-save image and insert filepath into terminal
-                QString dir = m_imagePasteDir;
-                if (dir.isEmpty())
-                    dir = QDir::homePath() + "/Pictures/ClaudePaste";
+                // Auto-save image and insert filepath into terminal.
+                //
+                // 0.7.53 (2026-04-27 indie-review HIGH) — path
+                // validation. m_imagePasteDir is user-configurable
+                // via the settings dialog, but the *filename* is
+                // pasted verbatim to the PTY for the shell to
+                // consume. A configured directory like
+                // `~; rm -rf .` would generate a filename starting
+                // with `~; rm -rf ./paste_…` and a careless shell
+                // command (e.g. `cat <paste>`) would tokenise it
+                // dangerously. Canonicalise the configured directory
+                // and require it to live under $HOME — anything
+                // outside falls back to the safe default. Also use
+                // a UUID4 suffix so a fast paste burst within the
+                // same millisecond can't clobber an earlier paste.
+                const QString defaultDir =
+                    QDir::homePath() + "/Pictures/ClaudePaste";
+                QString dir = m_imagePasteDir.isEmpty()
+                    ? defaultDir
+                    : m_imagePasteDir;
+
+                // Canonicalise. If the canonical form doesn't start
+                // with $HOME, the configured value escapes the user's
+                // home tree (symlink + traversal, attacker-controlled
+                // settings, etc.). Reject + fall back to default.
                 QDir().mkpath(dir);
-                QString filename = dir + "/paste_"
+                const QString canonDir = QDir(dir).canonicalPath();
+                const QString canonHome = QDir(QDir::homePath()).canonicalPath();
+                if (canonDir.isEmpty() || !canonDir.startsWith(canonHome)) {
+                    dir = defaultDir;
+                    QDir().mkpath(dir);
+                }
+
+                // UUID4 suffix — short form (8 chars) is unique enough
+                // for paste-collision purposes and keeps filenames
+                // tractable.
+                const QString uid = QUuid::createUuid()
+                    .toString(QUuid::WithoutBraces).left(8);
+                const QString filename = dir + "/paste_"
                     + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz")
-                    + ".png";
+                    + "_" + uid + ".png";
                 if (img.save(filename)) {
                     // Insert the filepath into the terminal (respect bracket paste)
                     pasteToTerminal(filename.toUtf8());
@@ -1798,9 +1832,21 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
                 QString seq = QString("\x1B[<%1;%2;%3M").arg(button).arg(col).arg(row);
                 ptyWrite(seq.toUtf8());
             } else {
+                // 0.7.53 (2026-04-27 indie-review HIGH) — clamp X10
+                // mouse coordinates to 223 so the encoded byte stays
+                // <= 255 (col + 32 <= 255 → col <= 223). Without the
+                // clamp, a 224+col terminal produces a 0xE0+ byte that
+                // looks like a UTF-8 lead byte to apps reading the
+                // terminal-emit stream; the next event's bytes get
+                // mis-framed as continuation bytes and the app
+                // misinterprets the click position. SGR mouse mode
+                // (above) doesn't have this problem — coordinates are
+                // ASCII decimal, no byte-encoding aliasing.
+                const int colC = std::min(col, 223);
+                const int rowC = std::min(row, 223);
                 char cb = static_cast<char>(button + 32);
-                char cx = static_cast<char>(col + 32);
-                char cy = static_cast<char>(row + 32);
+                char cx = static_cast<char>(colC + 32);
+                char cy = static_cast<char>(rowC + 32);
                 QByteArray seq;
                 seq.append("\x1B[M");
                 seq.append(cb);
@@ -2056,8 +2102,21 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data) {
     // gesture, every button-click reaching the dialog is swallowed.
     // The Review-Changes pattern is the only shape that works under
     // our frameless + translucent main window on KWin.
+    // 0.7.53 (2026-04-27 indie-review HIGH) — preview must split on
+    // CR + CRLF + LF, not LF only. A clipboard payload using bare
+    // \r as the line terminator (older Mac, some Windows tools, or
+    // an attacker constructing a deceptive preview) would render as
+    // a single line in the dialog while still being multi-line at
+    // paste time — the user OKs what they think is one safe line
+    // and gets a multi-line script executed. Normalise to \n for
+    // *preview rendering only*; the actual paste write below uses
+    // the original `data` bytes verbatim so legitimate \r-using
+    // shells (zsh raw mode, ed) still work.
     QString previewText = QString::fromUtf8(data);
-    QStringList lines = previewText.split('\n');
+    QString previewNormalised = previewText;
+    previewNormalised.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    previewNormalised.replace('\r', '\n');
+    QStringList lines = previewNormalised.split('\n');
     const int maxLines = 20;
     bool truncated = false;
     if (lines.size() > maxLines) {
@@ -2069,7 +2128,7 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data) {
     }
     if (truncated) {
         lines << QString("… (%1 more lines)")
-                     .arg(previewText.count('\n') + 1 - maxLines);
+                     .arg(previewNormalised.count('\n') + 1 - maxLines);
     }
 
     auto *dlg = new QDialog(this);
@@ -2168,9 +2227,21 @@ void TerminalWidget::performPaste(const QByteArray &data) {
     if (m_grid->bracketedPaste()) {
         // Strip embedded bracket paste markers that could inject escape sequences
         // (CVE-2021-28848 class: \e[201~ ends paste; \e[200~ starts a nested paste)
+        //
+        // 0.7.53 (2026-04-27 indie-review HIGH) — also strip the 8-bit
+        // C1 form. The grid's VT parser accepts both 7-bit `\e[` (ESC
+        // + [) and 8-bit `\x9B` (single CSI byte) as CSI introducers,
+        // so a payload containing `\x9B 200~` would close the bracket
+        // paste mode mid-stream just like `\x1B[200~` does. The 7-bit
+        // sanitiser above missed this 8-bit form. Strip both before
+        // wrapping the paste.
         QByteArray sanitized = data;
         sanitized.replace("\x1B[200~", "");
         sanitized.replace("\x1B[201~", "");
+        sanitized.replace("\xC2\x9B" "200~", "");  // UTF-8-encoded 8-bit CSI
+        sanitized.replace("\xC2\x9B" "201~", "");
+        sanitized.replace("\x9B" "200~", "");      // raw single-byte C1
+        sanitized.replace("\x9B" "201~", "");
         ptyWrite(QByteArray("\x1B[200~"));
         ptyWrite(sanitized);
         ptyWrite(QByteArray("\x1B[201~"));
@@ -2663,11 +2734,17 @@ void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release
         QString seq = QString("\x1B[<%1;%2;%3%4").arg(btn).arg(col).arg(row).arg(suffix);
         ptyWrite(seq.toUtf8());
     } else {
-        // X10/normal mode: CSI M Cb Cx Cy (all + 32)
+        // X10/normal mode: CSI M Cb Cx Cy (all + 32). 0.7.53 — clamp
+        // col/row at 223 so col+32 stays <= 255; otherwise a byte ≥
+        // 0xE0 looks like a UTF-8 lead and the apps reading the
+        // emit stream mis-frame subsequent bytes as continuations.
+        // See wheel-event handler above for the same clamp + rationale.
         if (release) return; // X10 doesn't report release
+        const int colC = std::min(col, 223);
+        const int rowC = std::min(row, 223);
         char cb = static_cast<char>(button + mods + 32);
-        char cx = static_cast<char>(col + 32);
-        char cy = static_cast<char>(row + 32);
+        char cx = static_cast<char>(colC + 32);
+        char cy = static_cast<char>(rowC + 32);
         QByteArray seq;
         seq.append("\x1B[M");
         seq.append(cb);

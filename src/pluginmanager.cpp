@@ -79,6 +79,26 @@ void PluginManager::firePaletteAction(const QString &pluginName, const QString &
     }
 }
 
+// 0.7.53 (2026-04-27 indie-review HIGH) — canonical permission allow-
+// list. The manifest schema only recognises permissions the engine
+// actually gates on (luaengine.cpp `hasPermission(...)` call sites).
+// Anything else in the manifest's `permissions` array is silently
+// dropped — the prior behaviour appended unknown strings into
+// info.permissions, which fed the user-facing prompt with garbage
+// names ("Plugin foo wants `delete_root`?") and let plugins claim
+// privileges they couldn't actually exercise to phish for trust.
+//
+// Keep this list in sync with luaengine.cpp's hasPermission() call
+// sites — every entry must correspond to a real gate on the Lua API
+// surface, and every gate must have a matching entry here.
+static const QStringList &knownPermissions() {
+    static const QStringList kKnown = {
+        QStringLiteral("clipboard.write"),
+        QStringLiteral("settings"),
+    };
+    return kKnown;
+}
+
 static void parseManifestInto(PluginInfo &info, const QJsonObject &obj) {
     info.name = obj["name"].toString(info.name);
     info.description = obj["description"].toString();
@@ -87,7 +107,14 @@ static void parseManifestInto(PluginInfo &info, const QJsonObject &obj) {
     if (obj.contains("permissions") && obj["permissions"].isArray()) {
         QStringList perms;
         for (const auto &v : obj["permissions"].toArray()) {
-            if (v.isString()) perms << v.toString();
+            if (!v.isString()) continue;
+            const QString p = v.toString();
+            // Filter against the engine's known-permission allow-list.
+            // Unknown strings are silently dropped (rather than passed
+            // through to the user prompt) to prevent unexercisable
+            // requests from inflating the plugin's apparent privilege
+            // surface.
+            if (knownPermissions().contains(p)) perms << p;
         }
         info.permissions = perms;
     }
@@ -240,7 +267,21 @@ void PluginManager::loadPlugin(const PluginInfo &info) {
             if (!saved.contains(p)) { needsPrompt = true; break; }
         }
         if (needsPrompt && m_permissionPrompt) {
-            granted = m_permissionPrompt(info, info.permissions);
+            // 0.7.53 (2026-04-27 indie-review HIGH) — intersect the
+            // prompt result with the requested set. The user-facing
+            // prompt CAN return more permissions than the manifest
+            // asked for (e.g. a buggy implementation that returns
+            // every checkbox on the dialog regardless of source);
+            // intersection prevents a manifest from acquiring
+            // privileges it never declared. Also, since the manifest
+            // is filtered against knownPermissions() above, the
+            // intersection here is automatically also filtered
+            // against the canonical list — no path lets unknown
+            // permission strings reach engine->setPermissions.
+            QStringList raw = m_permissionPrompt(info, info.permissions);
+            for (const QString &p : raw) {
+                if (info.permissions.contains(p)) granted << p;
+            }
             if (m_grantSave) m_grantSave(info.name, granted);
         } else {
             granted = saved;

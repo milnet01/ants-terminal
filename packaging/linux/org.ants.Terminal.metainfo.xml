@@ -103,6 +103,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.53" date="2026-04-28">
+      <description>
+        <p>Tier-1 remainders + VT/paste/plugin hardening from the 2026-04-27 indie-review. Six security-class fixes — three completing the Tier-1 ship-this-week list (the OSC-ESC parser RCE-adjacent leak, X10 mouse UTF-8 corruption, Lua plugin permission allow-list/intersect drift), three from Tier-2 paste/image hardening.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li>HIGH — VT parser dispatched OSC's trailing ESC byte as a real ESC sequence. A crafted OSC ending in `ESC c` triggered RIS (full terminal reset); `ESC D` triggered IND; etc. RCE-adjacent because OSC payloads can arrive from a hostile remote shell or trigger-rule expansion. Fixed at the C0 pre-handler — string-state ESC no longer transitions to Escape; new *StringEsc peek-states consume the trailing byte. Locked by tests/features/vt_osc_esc_discard/ (5 invariants × 11 sub-cases).</li>
+          <li>HIGH — X10 mouse byte > 0xDF corrupted UTF-8 stream. Coordinates clamped to 223 in X10 mode. SGR mode unaffected.</li>
+          <li>HIGH — Lua plugin permission allow-list + intersect missing. Manifest entries now filtered against knownPermissions() (clipboard.write, settings); prompt-result intersected with requested set before reaching engine.</li>
+          <li>HIGH — Image-paste filename injection + path escape. m_imagePasteDir canonicalised + required under $HOME; UUID4 suffix on filename to prevent millisecond-collision clobbers.</li>
+          <li>HIGH — Paste preview split on LF only. Bare \r terminator spoofed multi-line payload as single line. Now normalises \r\n + \r to \n for display; actual paste still writes bytes verbatim.</li>
+          <li>HIGH — Bracketed-paste 8-bit C1 form \x9B[200~ not stripped. Now strips 7-bit (\x1B[), raw 8-bit (\x9B), and UTF-8-encoded 8-bit (\xC2\x9B) forms.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.52" date="2026-04-28">
       <description>
         <p>First Tier-1 sweep of the 2026-04-27 indie-review findings. Eight fixes covering CRITICAL data-loss / security regressions plus HIGH security-class hardening — <code>SessionManager</code> silent scrollback loss, the same Wayland modal-grab pattern from 0.7.50 lurking in the update-confirmation dialog, SARIF/HTML reports leaking secrets at 0644, and five smaller HIGH items. The user-reported GitHub repo-type chip regression is also resolved (verified visible).</p>

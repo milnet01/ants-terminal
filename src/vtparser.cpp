@@ -217,6 +217,19 @@ void VtParser::processChar(uint32_t ch) {
     if (ch < 0x20 || ch == 0x7F) {
         switch (ch) {
         case 0x1B: // ESC
+            // 0.7.53 (2026-04-27 indie-review HIGH) — string states
+            // (OSC/DCS/APC/IgnoreString) MUST handle ESC themselves
+            // so they can dispatch their End action and transition to
+            // the matching *Esc peek state that consumes the trailing
+            // byte. Falling through to transition(Escape) here ate
+            // the End dispatch AND let the trailing byte be parsed as
+            // a fresh ESC sequence (RIS/IND/DECSC), giving a hostile
+            // OSC payload an RCE-adjacent terminal-reset trigger.
+            // See tests/features/vt_osc_esc_discard/spec.md.
+            if (m_state == OscString || m_state == DcsString ||
+                m_state == ApcString || m_state == IgnoreString) {
+                break;  // exit the C0 switch — per-state switch handles it
+            }
             transition(Escape);
             return;
         case 0x18: // CAN
@@ -401,18 +414,37 @@ void VtParser::processChar(uint32_t ch) {
             releaseIfLarge(m_oscString);
             transition(Ground);
         } else if (ch == 0x1B) {
-            // Might be ESC \ (ST)
-            // Peek: we handle this by checking next char
-            // For simplicity, end the OSC here
+            // 0.7.53 (2026-04-27 indie-review HIGH) — peek-state for
+            // ESC inside OSC body. xterm semantics: ESC inside OSC is
+            // the OSC's terminator regardless of what follows;
+            // specifically, ESC \ is the canonical 7-bit ST encoding,
+            // and ESC anything-else also terminates (the trailing byte
+            // is consumed and discarded). The previous code transitioned
+            // to Escape state, which dispatched the trailing byte as a
+            // real ESC sequence — so a crafted OSC ending in `ESC c`
+            // triggered RIS (full terminal reset), and `ESC D` triggered
+            // IND (line feed), etc. RCE-adjacent because the OSC body
+            // can be attacker-supplied (trigger rules, SSH, etc.). End
+            // the OSC now and route the next byte through OscStringEsc.
             VtAction a;
             a.type = VtAction::OscEnd;
             a.oscString = std::move(m_oscString);
             m_callback(a);
             releaseIfLarge(m_oscString);
-            transition(Escape);
+            transition(OscStringEsc);
         } else {
             appendUtf8(m_oscString, ch, 10 * 1024 * 1024); // 10MB cap for inline images
         }
+        break;
+
+    case OscStringEsc:
+        // Just consumed ESC inside an OSC. Whatever follows: discard.
+        // The OSC was already terminated and dispatched in the OscString
+        // branch above. We unconditionally fall back to Ground without
+        // dispatching the byte as a new ESC sequence. (xterm parser
+        // table: state OSC_STRING + ESC → 0x18 / 0x1A / ANY → Ground;
+        // the trailing byte is consumed but not acted on.)
+        transition(Ground);
         break;
 
     case DcsString:
@@ -424,15 +456,20 @@ void VtParser::processChar(uint32_t ch) {
             releaseIfLarge(m_dcsString);
             transition(Ground);
         } else if (ch == 0x1B) {
+            // Same fix as OscString — see comment above.
             VtAction a;
             a.type = VtAction::DcsEnd;
             a.oscString = std::move(m_dcsString);
             m_callback(a);
             releaseIfLarge(m_dcsString);
-            transition(Escape);
+            transition(DcsStringEsc);
         } else {
             appendUtf8(m_dcsString, ch, 10 * 1024 * 1024); // 10MB cap
         }
+        break;
+
+    case DcsStringEsc:
+        transition(Ground);
         break;
 
     case ApcString:
@@ -444,23 +481,32 @@ void VtParser::processChar(uint32_t ch) {
             releaseIfLarge(m_apcString);
             transition(Ground);
         } else if (ch == 0x1B) {
+            // Same fix as OscString — see comment above.
             VtAction a;
             a.type = VtAction::ApcEnd;
             a.oscString = std::move(m_apcString);
             m_callback(a);
             releaseIfLarge(m_apcString);
-            transition(Escape);
+            transition(ApcStringEsc);
         } else {
             appendUtf8(m_apcString, ch, 10 * 1024 * 1024); // 10MB cap
         }
+        break;
+
+    case ApcStringEsc:
+        transition(Ground);
         break;
 
     case IgnoreString:
         if (ch == 0x9C || ch == 0x07) {
             transition(Ground);
         } else if (ch == 0x1B) {
-            transition(Escape);
+            transition(IgnoreStringEsc);
         }
+        break;
+
+    case IgnoreStringEsc:
+        transition(Ground);
         break;
     }
 }
