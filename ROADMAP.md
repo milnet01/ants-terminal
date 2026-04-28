@@ -5,7 +5,8 @@
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
-> **Format:** v1 — see [docs/ROADMAP_FORMAT.md](docs/ROADMAP_FORMAT.md).
+> **Format:** v1 — see
+> [docs/standards/documentation.md § 3](docs/standards/documentation.md).
 > Every actionable bullet carries a stable `[ANTS-NNNN]` ID; ID is
 > identity, position is priority, items are tackled top-to-bottom.
 
@@ -2490,30 +2491,32 @@ minor tag (next: pre-0.8.0).
 
 ### 🎨 Roadmap viewer — enhancement bundle + format standard (user request 2026-04-28)
 
-- 📋 [ANTS-1055] **Define a public ROADMAP.md format standard for sibling
-  Claude Code projects.** User ask: "come up with a standard for
-  roadmap.md that we can share with Claude Code sessions to ensure
-  that the roadmap is written in that format for this terminal to
-  show it off better and in a more developer friendly manner." The
-  Ants Terminal `RoadmapDialog` already parses a specific dialect
-  — the five status emojis (✅ 🚧 📋 💭 plus the highlight signal),
-  the theme emoji prefix (🎨 ⚡ 🔌 🖥 🔒 🧰 📦 🐛), the bold-then-period
-  bullet headline convention, the ISO date stamps in subsection
-  titles (`### 🎨 Status-bar Roadmap viewer (user request 2026-04-27)`),
-  the ATX heading hierarchy. Today this is implicit in the parser.
-  Plan: write `docs/ROADMAP_FORMAT.md` (new) capturing the dialect
-  as a contract — heading conventions, emoji legend, bullet
-  payload shape, "currently being tackled" signal sources,
-  optional anchor-name embedding. Reference the spec from a
-  one-line `<!-- ants-roadmap-format: 1 -->` HTML comment at the
-  top of conforming `ROADMAP.md` files; the dialog can then
-  detect conforming-vs-best-effort parsing and surface a small
-  "(format v1)" label in the dialog footer. Ship the spec as a
-  shareable artefact (link from `README.md`'s "Use Ants for
-  developer workflows" section) so sibling Claude Code sessions
-  can be told "follow `docs/ROADMAP_FORMAT.md`" and have their
-  roadmaps render correctly in Ants out of the box. Lanes: docs,
-  RoadmapDialog (parser tolerance), README.
+- ✅ [ANTS-1055] **Public ROADMAP.md format standard + four-doc
+  shareable standards bundle.** Shipped 2026-04-28. Original ask:
+  "come up with a standard for roadmap.md that we can share with
+  Claude Code sessions to ensure that the roadmap is written in
+  that format for this terminal to show it off better and in a
+  more developer friendly manner." Scope expanded mid-flight from
+  one document into four parallel standards
+  (`docs/standards/{coding,documentation,testing,commits}.md`)
+  plus an index (`docs/standards/README.md`). The ROADMAP format
+  spec is folded into `documentation.md § 3` (covering header
+  marker `<!-- ants-roadmap-format: 1 -->`, heading hierarchy,
+  status/theme emojis, stable IDs in `[PROJ-NNNN]` form,
+  insertion-order rules, Kind/Source metadata, current-work
+  signaling, fold-in conventions). Sibling Kind/Source coverage
+  added across multiple iterations: implement / fix / audit-fix /
+  review-fix / doc / doc-fix / refactor / test / chore / release;
+  sources include planned / user / audit / indie-review /
+  debt-sweep / doc-review / static-analysis / regression /
+  external-CVE / upstream-<dep>. The CHANGELOG format
+  (Keep-a-Changelog with `[Unreleased]`) is at
+  `documentation.md § 4`. Commits standard mandates
+  `<ID>: <description>` subjects so every commit ties back to a
+  ROADMAP item. Testing standard mandates TDD by default. ADR
+  template seeded at `docs/decisions/0001-record-architecture-decisions.md`
+  alongside the standards-folder shells (specs/, decisions/,
+  journal/). Lanes: docs, ROADMAP, README, CHANGELOG.
 - 📋 [ANTS-1056] **Roadmap dialog feature additions.** User ask: "please add
   features to the Roadmap dialog box that you think will be useful
   and also come up with a standard for roadmap.md that we can

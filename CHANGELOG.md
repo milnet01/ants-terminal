@@ -10,6 +10,36 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [Unreleased]
+
+### Added
+
+- Four-document shareable standards bundle at `docs/standards/`
+  (coding · documentation · testing · commits) plus an index
+  README. The ROADMAP and CHANGELOG format specs fold into
+  `documentation.md` (§§ 3–4). Commits standard mandates
+  `<ID>: <description>` subjects so every commit links back to a
+  ROADMAP item; testing standard mandates TDD by default
+  (ANTS-1055).
+- ADR scaffolding at `docs/decisions/` with
+  `0001-record-architecture-decisions.md` (Michael Nygard's
+  format) plus per-folder README.
+- `docs/specs/` and `docs/journal/` placeholder folders for
+  per-feature spec drafts and per-phase outcomes.
+
+### Changed
+
+- ROADMAP masthead now points to
+  `docs/standards/documentation.md § 3` for the format spec
+  (was `docs/ROADMAP_FORMAT.md`); `docs/ROADMAP_FORMAT.md`
+  removed — its content lives in the documentation standard.
+
+### Fixed
+
+- CHANGELOG.md was missing a top-level `[Unreleased]` block that
+  the Roadmap dialog reads for current-work signaling
+  (documentation.md § 4.1 mandates one always, even empty).
+
 ## [0.7.55] — 2026-04-28
 
 **Theme:** VT parser correctness + audit-dialog hardening from the
