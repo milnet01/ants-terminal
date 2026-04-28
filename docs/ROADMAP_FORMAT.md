@@ -113,6 +113,7 @@ Theme emoji prefixes the level-3 (`###`) section heading:
 | 📦 | Packaging & distribution |
 | 🐛 | Bug fixes / regressions |
 | 🔍 | Audit / review findings fold-in |
+| 🧹 | Cleanup / debt — dead code, stale comments, drift, deferred housekeeping |
 
 Projects MAY introduce additional theme emojis; the viewer's filter
 panel will surface any emoji it sees in any `###` heading.
@@ -241,11 +242,23 @@ issue), declare the kind explicitly.
 | `user-YYYY-MM-DD` | User report on date YYYY-MM-DD |
 | `audit-YYYY-MM-DD` | `/audit` skill output on date YYYY-MM-DD |
 | `indie-review-YYYY-MM-DD` | `/indie-review` skill output on date YYYY-MM-DD |
+| `debt-sweep-YYYY-MM-DD` | `/debt-sweep` skill output on date YYYY-MM-DD |
 | `doc-review-YYYY-MM-DD` | Documentation review on date YYYY-MM-DD |
 | `static-analysis` | cppcheck / clazy / semgrep / ruff / bandit ad-hoc |
 | `regression` | Item was previously ✅ but a later change broke it |
 | `external-CVE-NNNN-NNNN` | Public CVE / advisory triggering this work |
 | `upstream-<dep>` | Driven by a dep / library upstream change |
+
+**Note on `/debt-sweep` specifically.** Most debt-sweep findings get
+fixed inline during the sweep itself (the skill's "trivial" bucket
+goes straight into a `chore: post-X.Y.Z debt sweep` commit) and never
+reach the roadmap. Only items the user must rule on (the
+"behavioural" bucket) or items deferred as out-of-scope land here.
+Use `🧹 Debt-sweep fold-in (YYYY-MM-DD)` as the section heading and
+`Source: debt-sweep-YYYY-MM-DD` if declared explicitly. Typical
+`Kind:` pairings: `chore` (dead var, stale `Q_UNUSED`), `doc-fix`
+(stale comment / README drift), `test` (missing coverage for a
+spec invariant), `refactor` (extracted helper).
 
 Like `Kind:`, `Source:` MAY be omitted if it's obvious from the
 section heading (which is the canonical way per §9). The fields
@@ -415,6 +428,25 @@ heading wording change.
   `combining` may be nullptr on freshly-cleared rows. Guard with
   null check.
   Lanes: TerminalGrid.
+
+### 🧹 Debt-sweep fold-in (2026-04-28)
+
+Trivial findings (stale type names in comments, a removed
+`Q_UNUSED` for a deleted variable, three packaging-version drifts
+caught by `check-version-drift.sh`) were fixed inline during the
+sweep — see `chore: post-0.7.55 debt sweep` commit. The bullets
+below are the "behavioural" findings the user opted to defer.
+
+- 📋 [ANTS-0540] **`tests/features/vt_throughput/` invariant list
+  grew but spec.md unchanged.** Two new INVs (16-bit charset,
+  CSI-RM-2026 stub) added to `test_vt_throughput.cpp` without
+  matching entries in `spec.md`. Update spec or remove the
+  speculative tests. Kind: test.
+  Lanes: vtparser, tests.
+- 📋 [ANTS-0541] **`README.md § Plugins` references removed `ants.fs.read`.**
+  API was retired in 0.7.30 but README example still uses it.
+  Three callsites + one screenshot caption. Kind: doc-fix.
+  Lanes: docs.
 ```
 
 Conventions for any findings fold-in:
