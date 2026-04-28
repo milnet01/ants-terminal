@@ -245,7 +245,11 @@ public:
 
     // Raw JSON access for settings dialog
     QJsonObject rawData() const { return m_data; }
-    void setRawData(const QJsonObject &data) { m_data = data; save(); }
+    void setRawData(const QJsonObject &data) {
+        if (m_data == data) return;
+        m_data = data;
+        save();
+    }
 
     void save();
 
@@ -262,6 +266,13 @@ public:
 private:
     void load();
     static QString configPath();
+
+    // Idempotent setter helper. Compares `value` against m_data[key] and
+    // assigns + returns true only when they differ; returns false (leaving
+    // m_data untouched) when they match. Lets every public setter
+    // short-circuit a no-op save() — the primary defense against the
+    // inotify-loop class of bug (see MainWindow::onConfigFileChanged).
+    bool storeIfChanged(const QString &key, const QJsonValue &value);
 
     QJsonObject m_data;
     bool m_loadFailed = false;

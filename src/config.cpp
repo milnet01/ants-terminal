@@ -180,15 +180,24 @@ void Config::save() {
     ::umask(oldMask);
 }
 
+// Idempotent helper. Compare-then-assign on m_data; returns true only when
+// the stored value differed from the new value (in which case caller does
+// the save()). Used by every setter below. Loop-prevention rationale lives
+// at MainWindow::onConfigFileChanged — short-circuiting a no-op save() at
+// the setter is the primary defense against the inotify-fileChanged-loop
+// class of bug.
+bool Config::storeIfChanged(const QString &key, const QJsonValue &value) {
+    if (m_data.value(key) == value) return false;
+    m_data[key] = value;
+    return true;
+}
+
 QString Config::theme() const {
     return m_data.value("theme").toString("Dark");
 }
 
 void Config::setTheme(const QString &name) {
-    // Idempotent: skip the disk write when the value already matches.
-    // Loop-prevention rationale lives at MainWindow::onConfigFileChanged.
-    if (m_data.value("theme").toString() == name) return;
-    m_data["theme"] = name;
+    if (!storeIfChanged("theme", name)) return;
     save();
 }
 
@@ -197,8 +206,7 @@ int Config::fontSize() const {
 }
 
 void Config::setFontSize(int size) {
-    size = qBound(4, size, 48);
-    m_data["font_size"] = size;
+    if (!storeIfChanged("font_size", qBound(4, size, 48))) return;
     save();
 }
 
@@ -208,10 +216,16 @@ int Config::windowX() const      { return m_data.value("window_x").toInt(-1); }
 int Config::windowY() const      { return m_data.value("window_y").toInt(-1); }
 
 void Config::setWindowGeometry(int x, int y, int w, int h) {
-    m_data["window_x"] = x;
-    m_data["window_y"] = y;
-    m_data["window_w"] = w;
-    m_data["window_h"] = h;
+    // Four-field setter: write all four through the helper, save only when
+    // at least one differed. The OR-fold is intentional — `||` short-
+    // circuits, but each storeIfChanged call has the side effect of
+    // writing when changed, so we use `|` (bitwise) so every call runs.
+    const bool dirty =
+        int(storeIfChanged("window_x", x)) |
+        int(storeIfChanged("window_y", y)) |
+        int(storeIfChanged("window_w", w)) |
+        int(storeIfChanged("window_h", h));
+    if (!dirty) return;
     save();
 }
 
@@ -220,7 +234,7 @@ QString Config::windowGeometryBase64() const {
 }
 
 void Config::setWindowGeometryBase64(const QString &base64) {
-    m_data["window_geometry"] = base64;
+    if (!storeIfChanged("window_geometry", base64)) return;
     save();
 }
 
@@ -229,7 +243,7 @@ int Config::scrollbackLines() const {
 }
 
 void Config::setScrollbackLines(int lines) {
-    m_data["scrollback_lines"] = qBound(1000, lines, 1000000);
+    if (!storeIfChanged("scrollback_lines", qBound(1000, lines, 1000000))) return;
     save();
 }
 
@@ -238,7 +252,7 @@ double Config::opacity() const {
 }
 
 void Config::setOpacity(double value) {
-    m_data["opacity"] = qBound(0.1, value, 1.0);
+    if (!storeIfChanged("opacity", qBound(0.1, value, 1.0))) return;
     save();
 }
 
@@ -247,7 +261,7 @@ bool Config::sessionLogging() const {
 }
 
 void Config::setSessionLogging(bool enabled) {
-    m_data["session_logging"] = enabled;
+    if (!storeIfChanged("session_logging", enabled)) return;
     save();
 }
 
@@ -256,7 +270,7 @@ bool Config::autoCopyOnSelect() const {
 }
 
 void Config::setAutoCopyOnSelect(bool enabled) {
-    m_data["auto_copy_on_select"] = enabled;
+    if (!storeIfChanged("auto_copy_on_select", enabled)) return;
     save();
 }
 
@@ -265,7 +279,7 @@ bool Config::confirmMultilinePaste() const {
 }
 
 void Config::setConfirmMultilinePaste(bool enabled) {
-    m_data["confirm_multiline_paste"] = enabled;
+    if (!storeIfChanged("confirm_multiline_paste", enabled)) return;
     save();
 }
 
@@ -274,7 +288,7 @@ QString Config::editorCommand() const {
 }
 
 void Config::setEditorCommand(const QString &cmd) {
-    m_data["editor_command"] = cmd;
+    if (!storeIfChanged("editor_command", cmd)) return;
     save();
 }
 
@@ -283,7 +297,7 @@ QString Config::imagePasteDir() const {
 }
 
 void Config::setImagePasteDir(const QString &dir) {
-    m_data["image_paste_dir"] = dir;
+    if (!storeIfChanged("image_paste_dir", dir)) return;
     save();
 }
 
@@ -292,7 +306,7 @@ bool Config::backgroundBlur() const {
 }
 
 void Config::setBackgroundBlur(bool enabled) {
-    m_data["background_blur"] = enabled;
+    if (!storeIfChanged("background_blur", enabled)) return;
     save();
 }
 
@@ -303,6 +317,7 @@ QString Config::keybinding(const QString &action, const QString &defaultKey) con
 
 void Config::setKeybinding(const QString &action, const QString &key) {
     QJsonObject kb = m_data.value("keybindings").toObject();
+    if (kb.value(action).toString() == key) return;
     kb[action] = key;
     m_data["keybindings"] = kb;
     save();
@@ -318,7 +333,7 @@ bool Config::sessionPersistence() const {
 }
 
 void Config::setSessionPersistence(bool enabled) {
-    m_data["session_persistence"] = enabled;
+    if (!storeIfChanged("session_persistence", enabled)) return;
     save();
 }
 
@@ -327,7 +342,7 @@ bool Config::remoteControlEnabled() const {
 }
 
 void Config::setRemoteControlEnabled(bool enabled) {
-    m_data["remote_control_enabled"] = enabled;
+    if (!storeIfChanged("remote_control_enabled", enabled)) return;
     save();
 }
 
@@ -338,7 +353,7 @@ bool Config::claudeTabStatusIndicator() const {
 }
 
 void Config::setClaudeTabStatusIndicator(bool enabled) {
-    m_data["claude_tab_status_indicator"] = enabled;
+    if (!storeIfChanged("claude_tab_status_indicator", enabled)) return;
     save();
 }
 
@@ -368,7 +383,10 @@ bool Config::isAuditRulePackTrusted(const QString &projectPath,
 void Config::trustAuditRulePack(const QString &projectPath,
                                 const QByteArray &rulesBytes) {
     QJsonObject store = m_data.value("audit_rule_pack_trust").toObject();
-    store[canonicalizeProject(projectPath)] = rulePackSha256Hex(rulesBytes);
+    const QString key = canonicalizeProject(projectPath);
+    const QString hash = rulePackSha256Hex(rulesBytes);
+    if (store.value(key).toString() == hash) return;
+    store[key] = hash;
     m_data["audit_rule_pack_trust"] = store;
     save();
 }
@@ -388,7 +406,7 @@ QString Config::aiEndpoint() const {
 }
 
 void Config::setAiEndpoint(const QString &url) {
-    m_data["ai_endpoint"] = url;
+    if (!storeIfChanged("ai_endpoint", url)) return;
     save();
 }
 
@@ -397,7 +415,7 @@ QString Config::aiApiKey() const {
 }
 
 void Config::setAiApiKey(const QString &key) {
-    m_data["ai_api_key"] = key;
+    if (!storeIfChanged("ai_api_key", key)) return;
     save();
 }
 
@@ -406,7 +424,7 @@ QString Config::aiModel() const {
 }
 
 void Config::setAiModel(const QString &model) {
-    m_data["ai_model"] = model;
+    if (!storeIfChanged("ai_model", model)) return;
     save();
 }
 
@@ -415,7 +433,7 @@ int Config::aiContextLines() const {
 }
 
 void Config::setAiContextLines(int lines) {
-    m_data["ai_context_lines"] = qBound(10, lines, 500);
+    if (!storeIfChanged("ai_context_lines", qBound(10, lines, 500))) return;
     save();
 }
 
@@ -424,7 +442,7 @@ bool Config::aiEnabled() const {
 }
 
 void Config::setAiEnabled(bool enabled) {
-    m_data["ai_enabled"] = enabled;
+    if (!storeIfChanged("ai_enabled", enabled)) return;
     save();
 }
 
@@ -434,7 +452,7 @@ QJsonArray Config::sshBookmarksJson() const {
 }
 
 void Config::setSshBookmarksJson(const QJsonArray &arr) {
-    m_data["ssh_bookmarks"] = arr;
+    if (!storeIfChanged("ssh_bookmarks", arr)) return;
     save();
 }
 
@@ -443,7 +461,7 @@ bool Config::sshControlMaster() const {
 }
 
 void Config::setSshControlMaster(bool enabled) {
-    m_data["ssh_control_master"] = enabled;
+    if (!storeIfChanged("ssh_control_master", enabled)) return;
     save();
 }
 
@@ -453,7 +471,7 @@ QString Config::pluginDir() const {
 }
 
 void Config::setPluginDir(const QString &dir) {
-    m_data["plugin_dir"] = dir;
+    if (!storeIfChanged("plugin_dir", dir)) return;
     save();
 }
 
@@ -469,7 +487,7 @@ void Config::setEnabledPlugins(const QStringList &plugins) {
     QJsonArray arr;
     for (const QString &p : plugins)
         arr.append(p);
-    m_data["enabled_plugins"] = arr;
+    if (!storeIfChanged("enabled_plugins", arr)) return;
     save();
 }
 
@@ -490,6 +508,7 @@ void Config::setPluginGrants(const QString &pluginName, const QStringList &grant
     QJsonObject all = m_data.value("plugin_grants").toObject();
     QJsonArray arr;
     for (const QString &g : grants) arr.append(g);
+    if (all.value(pluginName).toArray() == arr) return;
     all[pluginName] = arr;
     m_data["plugin_grants"] = all;
     save();
@@ -506,6 +525,7 @@ QString Config::pluginSetting(const QString &pluginName, const QString &key) con
 void Config::setPluginSetting(const QString &pluginName, const QString &key, const QString &value) {
     QJsonObject all = m_data.value("plugin_settings").toObject();
     QJsonObject plugin = all.value(pluginName).toObject();
+    if (plugin.value(key).toString() == value) return;
     plugin[key] = value;
     all[pluginName] = plugin;
     m_data["plugin_settings"] = all;
@@ -525,7 +545,7 @@ void Config::setClaudeProjectDirs(const QStringList &dirs) {
     QJsonArray arr;
     for (const QString &d : dirs)
         arr.append(d);
-    m_data["claude_project_dirs"] = arr;
+    if (!storeIfChanged("claude_project_dirs", arr)) return;
     save();
 }
 
@@ -535,7 +555,7 @@ QJsonArray Config::highlightRules() const {
 }
 
 void Config::setHighlightRules(const QJsonArray &rules) {
-    m_data["highlight_rules"] = rules;
+    if (!storeIfChanged("highlight_rules", rules)) return;
     save();
 }
 
@@ -545,7 +565,7 @@ QJsonArray Config::triggerRules() const {
 }
 
 void Config::setTriggerRules(const QJsonArray &rules) {
-    m_data["trigger_rules"] = rules;
+    if (!storeIfChanged("trigger_rules", rules)) return;
     save();
 }
 
@@ -555,7 +575,7 @@ QJsonObject Config::profiles() const {
 }
 
 void Config::setProfiles(const QJsonObject &profiles) {
-    m_data["profiles"] = profiles;
+    if (!storeIfChanged("profiles", profiles)) return;
     save();
 }
 
@@ -564,7 +584,7 @@ QString Config::activeProfile() const {
 }
 
 void Config::setActiveProfile(const QString &name) {
-    m_data["active_profile"] = name;
+    if (!storeIfChanged("active_profile", name)) return;
     save();
 }
 
@@ -574,7 +594,7 @@ bool Config::quakeMode() const {
 }
 
 void Config::setQuakeMode(bool enabled) {
-    m_data["quake_mode"] = enabled;
+    if (!storeIfChanged("quake_mode", enabled)) return;
     save();
 }
 
@@ -583,7 +603,7 @@ QString Config::quakeHotkey() const {
 }
 
 void Config::setQuakeHotkey(const QString &key) {
-    m_data["quake_hotkey"] = key;
+    if (!storeIfChanged("quake_hotkey", key)) return;
     save();
 }
 
@@ -593,7 +613,7 @@ bool Config::showCommandMarks() const {
 }
 
 void Config::setShowCommandMarks(bool enabled) {
-    m_data["show_command_marks"] = enabled;
+    if (!storeIfChanged("show_command_marks", enabled)) return;
     save();
 }
 
@@ -603,7 +623,7 @@ bool Config::broadcastMode() const {
 }
 
 void Config::setBroadcastMode(bool enabled) {
-    m_data["broadcast_mode"] = enabled;
+    if (!storeIfChanged("broadcast_mode", enabled)) return;
     save();
 }
 
@@ -613,7 +633,7 @@ QString Config::fontFamily() const {
 }
 
 void Config::setFontFamily(const QString &family) {
-    m_data["font_family"] = family;
+    if (!storeIfChanged("font_family", family)) return;
     save();
 }
 
@@ -623,7 +643,7 @@ QString Config::shellCommand() const {
 }
 
 void Config::setShellCommand(const QString &cmd) {
-    m_data["shell_command"] = cmd;
+    if (!storeIfChanged("shell_command", cmd)) return;
     save();
 }
 
@@ -633,7 +653,7 @@ QString Config::tabTitleFormat() const {
 }
 
 void Config::setTabTitleFormat(const QString &fmt) {
-    m_data["tab_title_format"] = fmt;
+    if (!storeIfChanged("tab_title_format", fmt)) return;
     save();
 }
 
@@ -643,7 +663,7 @@ bool Config::visualBell() const {
 }
 
 void Config::setVisualBell(bool enabled) {
-    m_data["visual_bell"] = enabled;
+    if (!storeIfChanged("visual_bell", enabled)) return;
     save();
 }
 
@@ -653,7 +673,7 @@ QString Config::backgroundImage() const {
 }
 
 void Config::setBackgroundImage(const QString &path) {
-    m_data["background_image"] = path;
+    if (!storeIfChanged("background_image", path)) return;
     save();
 }
 
@@ -663,7 +683,7 @@ QString Config::boldFontFamily() const {
 }
 
 void Config::setBoldFontFamily(const QString &family) {
-    m_data["bold_font_family"] = family;
+    if (!storeIfChanged("bold_font_family", family)) return;
     save();
 }
 
@@ -672,7 +692,7 @@ QString Config::italicFontFamily() const {
 }
 
 void Config::setItalicFontFamily(const QString &family) {
-    m_data["italic_font_family"] = family;
+    if (!storeIfChanged("italic_font_family", family)) return;
     save();
 }
 
@@ -681,7 +701,7 @@ QString Config::boldItalicFontFamily() const {
 }
 
 void Config::setBoldItalicFontFamily(const QString &family) {
-    m_data["bold_italic_font_family"] = family;
+    if (!storeIfChanged("bold_italic_font_family", family)) return;
     save();
 }
 
@@ -691,7 +711,7 @@ QJsonObject Config::tabGroups() const {
 }
 
 void Config::setTabGroups(const QJsonObject &groups) {
-    m_data["tab_groups"] = groups;
+    if (!storeIfChanged("tab_groups", groups)) return;
     save();
 }
 
@@ -701,7 +721,7 @@ QJsonArray Config::tabColorSequence() const {
 }
 
 void Config::setTabColorSequence(const QJsonArray &seq) {
-    m_data["tab_color_sequence"] = seq;
+    if (!storeIfChanged("tab_color_sequence", seq)) return;
     save();
 }
 
@@ -710,7 +730,7 @@ int Config::terminalPadding() const {
 }
 
 void Config::setTerminalPadding(int px) {
-    m_data["terminal_padding"] = px;
+    if (!storeIfChanged("terminal_padding", px)) return;
     save();
 }
 
@@ -720,7 +740,7 @@ QJsonArray Config::snippets() const {
 }
 
 void Config::setSnippets(const QJsonArray &snippets) {
-    m_data["snippets"] = snippets;
+    if (!storeIfChanged("snippets", snippets)) return;
     save();
 }
 
@@ -730,7 +750,7 @@ QJsonArray Config::autoProfileRules() const {
 }
 
 void Config::setAutoProfileRules(const QJsonArray &rules) {
-    m_data["auto_profile_rules"] = rules;
+    if (!storeIfChanged("auto_profile_rules", rules)) return;
     save();
 }
 
@@ -740,7 +760,7 @@ QString Config::badgeText() const {
 }
 
 void Config::setBadgeText(const QString &text) {
-    m_data["badge_text"] = text;
+    if (!storeIfChanged("badge_text", text)) return;
     save();
 }
 
@@ -750,7 +770,7 @@ int Config::notificationTimeoutMs() const {
 }
 
 void Config::setNotificationTimeoutMs(int ms) {
-    m_data["notification_timeout_ms"] = ms;
+    if (!storeIfChanged("notification_timeout_ms", ms)) return;
     save();
 }
 
@@ -760,7 +780,7 @@ bool Config::autoColorScheme() const {
 }
 
 void Config::setAutoColorScheme(bool enabled) {
-    m_data["auto_color_scheme"] = enabled;
+    if (!storeIfChanged("auto_color_scheme", enabled)) return;
     save();
 }
 
@@ -769,7 +789,7 @@ QString Config::darkTheme() const {
 }
 
 void Config::setDarkTheme(const QString &name) {
-    m_data["dark_theme"] = name;
+    if (!storeIfChanged("dark_theme", name)) return;
     save();
 }
 
@@ -778,6 +798,6 @@ QString Config::lightTheme() const {
 }
 
 void Config::setLightTheme(const QString &name) {
-    m_data["light_theme"] = name;
+    if (!storeIfChanged("light_theme", name)) return;
     save();
 }

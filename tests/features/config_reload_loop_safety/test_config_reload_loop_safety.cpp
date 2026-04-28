@@ -77,20 +77,61 @@ void testInv1_setThemeIdempotent_callShape() {
     const std::string body = extractBody(config, "void Config::setTheme(");
     expect(!body.empty(), "INV-1: Config::setTheme body found");
 
-    // Guard must precede the unconditional write+save. The exact text
-    // doesn't matter, but the early-return-on-equality must be present
-    // BEFORE the m_data["theme"] = name; save(); pair.
+    // Guard must precede save(). Two shapes are valid:
+    //   (a) inline: `if (m_data.value("theme").toString() == name) return;`
+    //   (b) helper: `if (!storeIfChanged("theme", ...)) return;`
+    // Either is correct as long as the early-return precedes save().
     const auto returnPos = body.find("return");
-    const auto writePos  = body.find("m_data[\"theme\"] = name");
+    const auto savePos   = body.find("save()");
     expect(returnPos != std::string::npos,
            "INV-1: Config::setTheme contains an early return");
-    expect(writePos != std::string::npos,
-           "INV-1: Config::setTheme retains the value-set + save() write");
-    expect(returnPos != std::string::npos && writePos != std::string::npos
-               && returnPos < writePos,
-           "INV-1: early return precedes the m_data[\"theme\"] = name write");
-    expect(contains(body, "m_data.value(\"theme\").toString() == name"),
-           "INV-1: guard compares incoming name against current theme value");
+    expect(savePos != std::string::npos,
+           "INV-1: Config::setTheme retains a save() call");
+    expect(returnPos != std::string::npos && savePos != std::string::npos
+               && returnPos < savePos,
+           "INV-1: early return precedes save()");
+
+    const bool inlineGuard =
+        contains(body, "m_data.value(\"theme\").toString() == name");
+    const bool helperGuard =
+        contains(body, "storeIfChanged(\"theme\"");
+    expect(inlineGuard || helperGuard,
+           "INV-1: setTheme uses an idempotent guard "
+           "(inline value-compare OR storeIfChanged helper)");
+}
+
+// Drive a setter twice with the same value in a fresh sandbox. Assert the
+// second call does NOT rewrite the file (mtime unchanged), proving the
+// setter is idempotent. The bounce sleep is past most filesystems' mtime
+// granularity (msec on ext4/btrfs).
+//
+// Each call constructs its own Config inline AFTER setting XDG_CONFIG_HOME,
+// not via a struct member — Config's constructor reads from disk via
+// QStandardPaths, which honors XDG_CONFIG_HOME at call time, so the
+// envvar must be set first or the Config loads the user's REAL config.
+template <typename Setter>
+void expectIdempotent(const char *name, Setter &&apply) {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) { expect(false, name, "QTemporaryDir setup"); return; }
+    qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+    const QString antsDir = tmp.path() + "/ants-terminal";
+    QDir().mkpath(antsDir);
+    const QString cfgPath = antsDir + "/config.json";
+
+    Config cfg;
+    apply(cfg);
+    if (!QFile::exists(cfgPath)) {
+        // First call may not write if the value already matches the
+        // default-constructed Config's view. That's still idempotent —
+        // the second call also won't write — so call it a pass.
+        std::fprintf(stderr, "[%-72s] PASS — first call no-op (default match)\n", name);
+        return;
+    }
+    const qint64 t1 = QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
+    QThread::msleep(50);
+    apply(cfg);
+    const qint64 t2 = QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
+    expect(t1 == t2, name, "second call rewrote the file");
 }
 
 void testInv1_setThemeIdempotent_functional() {
@@ -111,27 +152,116 @@ void testInv1_setThemeIdempotent_functional() {
 
     const qint64 mtimeAfterFirst =
         QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
-
-    // Most filesystems track mtime in millisecond granularity; sleep just
-    // past that so a rewrite would produce a strictly later mtime if it
-    // happened.
     QThread::msleep(50);
 
     cfg.setTheme(QStringLiteral("Dark"));
-    const qint64 mtimeAfterSecond =
-        QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
-
-    expect(mtimeAfterSecond == mtimeAfterFirst,
+    expect(QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch() == mtimeAfterFirst,
            "INV-1 (functional): second setTheme(\"Dark\") does not rewrite "
            "the file (mtime unchanged)");
 
     // Sanity: a setTheme to a different value DOES rewrite.
     QThread::msleep(50);
     cfg.setTheme(QStringLiteral("Solarized"));
-    const qint64 mtimeAfterChange =
-        QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
-    expect(mtimeAfterChange > mtimeAfterFirst,
+    expect(QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch() > mtimeAfterFirst,
            "INV-1 (functional): setTheme to a NEW value rewrites the file");
+}
+
+// INV-1b: every setter shape is idempotent — sample one of each
+// representative shape (bool, int with qBound, double, QString,
+// QStringList, QJsonArray, QJsonObject, compound sub-object). If a
+// future setter regresses to unconditional save(), this catches the
+// shape if it matches one of these. The 0.7.51 inotify-loop bug came
+// from setTheme being non-idempotent; INV-3's runtime guard catches
+// re-entry but only after the slot already woke up.
+void testInv1b_setterShapesIdempotent() {
+    expectIdempotent("INV-1b: setSessionLogging idempotent (bool)",
+                     [](Config &c) { c.setSessionLogging(true); });
+
+    expectIdempotent("INV-1b: setFontSize idempotent (int + qBound)",
+                     [](Config &c) { c.setFontSize(14); });
+
+    expectIdempotent("INV-1b: setOpacity idempotent (double + qBound)",
+                     [](Config &c) { c.setOpacity(0.85); });
+
+    expectIdempotent("INV-1b: setEditorCommand idempotent (QString)",
+                     [](Config &c) {
+                         c.setEditorCommand(QStringLiteral("/usr/bin/nvim"));
+                     });
+
+    expectIdempotent("INV-1b: setEnabledPlugins idempotent (QStringList)",
+                     [](Config &c) {
+                         c.setEnabledPlugins({QStringLiteral("foo"),
+                                              QStringLiteral("bar")});
+                     });
+
+    {
+        QJsonArray rules;
+        QJsonObject r;
+        r["pattern"] = QStringLiteral("ERROR.*");
+        r["color"] = QStringLiteral("#ff0000");
+        rules.append(r);
+        expectIdempotent("INV-1b: setHighlightRules idempotent (QJsonArray)",
+                         [rules](Config &c) { c.setHighlightRules(rules); });
+    }
+    {
+        QJsonObject groups;
+        groups["work"] = QJsonArray{QStringLiteral("default"),
+                                    QStringLiteral("ssh")};
+        expectIdempotent("INV-1b: setTabGroups idempotent (QJsonObject)",
+                         [groups](Config &c) { c.setTabGroups(groups); });
+    }
+
+    expectIdempotent("INV-1b: setKeybinding idempotent (compound sub-object)",
+                     [](Config &c) {
+                         c.setKeybinding(QStringLiteral("new_tab"),
+                                         QStringLiteral("Ctrl+T"));
+                     });
+
+    expectIdempotent("INV-1b: setPluginSetting idempotent (compound nested)",
+                     [](Config &c) {
+                         c.setPluginSetting(QStringLiteral("git_status"),
+                                            QStringLiteral("interval_ms"),
+                                            QStringLiteral("3000"));
+                     });
+
+    expectIdempotent("INV-1b: setWindowGeometry idempotent (4-tuple)",
+                     [](Config &c) {
+                         c.setWindowGeometry(100, 100, 1024, 768);
+                     });
+}
+
+// INV-1c: storeIfChanged returns false for matching value, true for
+// differing value, and leaves m_data correctly updated only in the
+// differing-value path. Tested via observable side-effect — the file
+// rewrite — since storeIfChanged is private.
+void testInv1c_storeIfChangedSemantics() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) {
+        expect(false, "INV-1c: QTemporaryDir construction"); return;
+    }
+    qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+    const QString antsDir = tmp.path() + "/ants-terminal";
+    QDir().mkpath(antsDir);
+    const QString cfgPath = antsDir + "/config.json";
+    Config cfg;
+
+    // First write of a non-default — must write.
+    cfg.setFontSize(14);
+    expect(QFile::exists(cfgPath),
+           "INV-1c: setFontSize(14) on default config writes the file");
+    const qint64 t1 = QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch();
+    QThread::msleep(50);
+
+    // Same value again — must not write.
+    cfg.setFontSize(14);
+    expect(QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch() == t1,
+           "INV-1c: setFontSize(14) when value already 14 does not write");
+    QThread::msleep(50);
+
+    // Different value — must write.
+    cfg.setFontSize(16);
+    expect(QFileInfo(cfgPath).lastModified().toMSecsSinceEpoch() > t1,
+           "INV-1c: setFontSize(16) when value was 14 writes the file");
 }
 
 void testInv2_onConfigFileChanged_skipsNoOpApplyTheme() {
@@ -201,6 +331,8 @@ int main(int argc, char *argv[]) {
     QCoreApplication app(argc, argv);
     testInv1_setThemeIdempotent_callShape();
     testInv1_setThemeIdempotent_functional();
+    testInv1b_setterShapesIdempotent();
+    testInv1c_storeIfChangedSemantics();
     testInv2_onConfigFileChanged_skipsNoOpApplyTheme();
     testInv3_reentrancyGuard();
     testInv4_failedBlockSignalsRemoved();

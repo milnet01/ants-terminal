@@ -60,7 +60,53 @@ fresh inotify event.
 The corresponding source pattern (locked by the test):
 `src/config.cpp` `Config::setTheme` body must contain a guard of the
 shape `if (m_data.value("theme").toString() == name) return;` before
-the unconditional `m_data["theme"] = name; save();` lines.
+the unconditional `m_data["theme"] = name; save();` lines (or
+equivalently, the body must short-circuit through the
+`storeIfChanged` helper).
+
+### Invariant 1b — every `Config` setter is idempotent
+
+The 0.7.51 fix made *only* `setTheme` idempotent because that's the
+one that broke. But every `Config` setter that ends in `save()`
+shares the same shape, and any of them could trigger the same
+inotify-loop class of bug if a future `onConfigFileChanged` ever
+re-applies them with the existing value. The 0.7.51 follow-up
+(post-debt-sweep) generalises idempotence to **every public setter
+that calls `save()`**: `setFontSize`, `setOpacity`, `setSessionLogging`,
+`setEditorCommand`, `setEnabledPlugins`, `setHighlightRules`,
+`setTabGroups`, `setKeybinding`, `setPluginSetting`,
+`setWindowGeometry`, `setRawData`, and the ~40 others.
+
+The recommended source pattern is the private helper
+`Config::storeIfChanged(const QString &key, const QJsonValue &value)`
+which encapsulates compare-then-assign:
+
+```cpp
+void Config::setX(T value) {
+    if (!storeIfChanged("x_key", value)) return;
+    save();
+}
+```
+
+For compound sub-object setters (`setKeybinding`, `setPluginGrants`,
+`setPluginSetting`, `trustAuditRulePack`) an inline guard reading the
+specific sub-object field is correct.
+
+For multi-field setters (`setWindowGeometry`'s 4 ints) the body must
+call `storeIfChanged` per field with bitwise-OR aggregation so every
+field is written, then `save()` only when at least one differed.
+
+Locked functionally: the test sweeps one setter per shape (bool, int
+with qBound, double, QString, QStringList, QJsonArray, QJsonObject,
+compound sub-object, compound-nested, multi-field) and asserts that a
+double-set with the same value does not change the file's mtime.
+
+### Invariant 1c — `storeIfChanged` returns false on match
+
+`Config::storeIfChanged(key, value)` returns false (and leaves
+`m_data` untouched) when the existing value at `key` already equals
+`value`; returns true (and assigns) otherwise. Tested via observable
+side-effect (mtime), since the helper is private.
 
 ### Invariant 2 — `onConfigFileChanged` skips no-op `applyTheme`
 
