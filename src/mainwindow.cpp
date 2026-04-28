@@ -1711,35 +1711,28 @@ void MainWindow::setupMenus() {
             "https://github.com/milnet01/ants-terminal</a></p>")
             .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine);
 
-        // Heap-allocated QDialog with show() rather than stack +
-        // exec(). Two distinct user-reported bugs forced this path:
+        // Heap-allocated, non-modal QDialog with plain QPushButton —
+        // mirrors the bg-tasks dialog pattern that does work under our
+        // KDE/KWin + Qt 6.11 + frameless+translucent parent on Wayland.
         //
-        //   2026-04-25 — original QMessageBox::Ok with TextBrowserInteraction
-        //     silently swallowed clicks. Fixed in 0.7.35 by switching to
-        //     a custom QDialog + QDialogButtonBox::Ok with explicit
-        //     accepted → accept wiring (still preserved below).
-        //
-        //   2026-04-27 — both About dialogs again reported to silently
-        //     swallow OK clicks. Diagnosed: nested QEventLoop opened by
-        //     QDialog::exec() under our FramelessWindowHint +
-        //     WA_TranslucentBackground MainWindow on KDE/KWin + Qt 6.11
-        //     does not always make the dialog the active input window —
-        //     the OK button receives no input focus, so the click never
-        //     fires the connected signal. The other dialogs in this
-        //     project that work fine (Background Tasks, Claude Transcript,
-        //     Settings) all use heap + WA_DeleteOnClose + show() +
-        //     raise() + activateWindow(); copying that pattern here
-        //     resolves the symptom.
-        //
-        // Modal-on-show + activateWindow() also fixes a focus-redirect
-        // race (mainwindow.cpp::focusChanged callback) where a non-modal
-        // visible QDialog was being treated as a candidate for focus
-        // hijack between show() and the platform's window-activate event.
+        // Three prior fix attempts failed (0.7.22, 0.7.35, 0.7.49) —
+        // each diagnosed a symptom rather than the root cause. The
+        // actual cause: Qt's setModal(true) maps to Qt::ApplicationModal,
+        // which Wayland's xdg-shell protocol has no equivalent for
+        // (QTBUG-79126, QTBUG-90005). The "modal" status on Wayland
+        // results in click-event grabs that route the OK click into
+        // the modal-grab handler instead of the button — silently
+        // dropping it. Removing setModal() and using a plain
+        // QPushButton (no QDialogButtonBox role-dispatch) restores
+        // normal click delivery. The dialog is still parented to the
+        // MainWindow so the WM keeps it on top via xdg_toplevel
+        // transient_for, which is enough for the About-dialog use
+        // case (the user has no business modifying the parent while
+        // reading version info).
         auto *dlg = new QDialog(this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->setWindowTitle(QStringLiteral("About Ants Terminal"));
         dlg->setObjectName(QStringLiteral("aboutAntsDialog"));
-        dlg->setModal(true);
         auto *layout = new QVBoxLayout(dlg);
         auto *label = new QLabel(body, dlg);
         label->setObjectName(QStringLiteral("aboutAntsBody"));
@@ -1751,21 +1744,16 @@ void MainWindow::setupMenus() {
                                        | Qt::LinksAccessibleByKeyboard);
         label->setOpenExternalLinks(true);
         label->setWordWrap(true);
-        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, dlg);
-        buttons->setObjectName(QStringLiteral("aboutAntsButtons"));
-        // Wire BOTH the QDialogButtonBox aggregator AND the OK button's
-        // own clicked() signal. Belt-and-braces: if anything in the
-        // button box's accepted-emission path is interfered with by
-        // platform plumbing (the 2026-04-25/27 reports), the direct
-        // clicked → accept connection still closes the dialog.
-        connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
-        if (auto *okBtn = buttons->button(QDialogButtonBox::Ok)) {
-            okBtn->setDefault(true);
-            okBtn->setAutoDefault(true);
-            connect(okBtn, &QPushButton::clicked, dlg, &QDialog::accept);
-        }
+        auto *btnRow = new QHBoxLayout;
+        btnRow->addStretch();
+        auto *okBtn = new QPushButton(tr("OK"), dlg);
+        okBtn->setObjectName(QStringLiteral("aboutAntsOkButton"));
+        okBtn->setDefault(true);
+        okBtn->setAutoDefault(true);
+        connect(okBtn, &QPushButton::clicked, dlg, &QDialog::close);
+        btnRow->addWidget(okBtn);
         layout->addWidget(label);
-        layout->addWidget(buttons);
+        layout->addLayout(btnRow);
         dlg->show();
         dlg->raise();
         dlg->activateWindow();
@@ -1773,14 +1761,10 @@ void MainWindow::setupMenus() {
 
     QAction *aboutQtAction = helpMenu->addAction("About &Qt...");
     connect(aboutQtAction, &QAction::triggered, this, [this]() {
-        // Custom dialog rather than QMessageBox::aboutQt for the same
-        // reason as the About Ants dialog above: QMessageBox::aboutQt
-        // uses an internal exec() which on KDE/KWin + Qt 6.11 + our
-        // frameless + translucent MainWindow doesn't make the dialog
-        // active, so OK clicks no-op (user report 2026-04-27).
-        // The body shows the Qt runtime + build versions and a pointer
-        // at qt.io for licensing details, mirroring the information
-        // QMessageBox::aboutQt would have surfaced.
+        // Custom dialog rather than QMessageBox::aboutQt: aboutQt
+        // wraps the dialog in a modal exec() which Wayland doesn't
+        // honour (QTBUG-79126), so OK clicks were silently dropped.
+        // Same plain-QPushButton + non-modal pattern as About Ants.
         const QString body = QStringLiteral(
             "<h3>About Qt</h3>"
             "<p>Ants Terminal uses the Qt application framework.</p>"
@@ -1796,7 +1780,6 @@ void MainWindow::setupMenus() {
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->setWindowTitle(QStringLiteral("About Qt"));
         dlg->setObjectName(QStringLiteral("aboutQtDialog"));
-        dlg->setModal(true);
         auto *layout = new QVBoxLayout(dlg);
         auto *label = new QLabel(body, dlg);
         label->setObjectName(QStringLiteral("aboutQtBody"));
@@ -1805,16 +1788,16 @@ void MainWindow::setupMenus() {
                                        | Qt::LinksAccessibleByKeyboard);
         label->setOpenExternalLinks(true);
         label->setWordWrap(true);
-        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, dlg);
-        buttons->setObjectName(QStringLiteral("aboutQtButtons"));
-        connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
-        if (auto *okBtn = buttons->button(QDialogButtonBox::Ok)) {
-            okBtn->setDefault(true);
-            okBtn->setAutoDefault(true);
-            connect(okBtn, &QPushButton::clicked, dlg, &QDialog::accept);
-        }
+        auto *btnRow = new QHBoxLayout;
+        btnRow->addStretch();
+        auto *okBtn = new QPushButton(tr("OK"), dlg);
+        okBtn->setObjectName(QStringLiteral("aboutQtOkButton"));
+        okBtn->setDefault(true);
+        okBtn->setAutoDefault(true);
+        connect(okBtn, &QPushButton::clicked, dlg, &QDialog::close);
+        btnRow->addWidget(okBtn);
         layout->addWidget(label);
-        layout->addWidget(buttons);
+        layout->addLayout(btnRow);
         dlg->show();
         dlg->raise();
         dlg->activateWindow();

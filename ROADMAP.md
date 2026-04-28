@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.49 (2026-04-27). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.50 (2026-04-28). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -2201,6 +2201,29 @@ flagged by ≥2 independent reviewers regardless of which lane:
 - 📋 **No clipboard-write redaction helper.** 7th-audit memory flagged
   this; TerminalWidget has 12 raw `setText` sites. OSC 52 callback is
   the headline exfil vector. Lanes: TerminalWidget.
+
+### 🐛 Regressions reported post-0.7.49 (user, 2026-04-27)
+
+- 📋 **HIGH — GitHub repo-type chip (Public/Private) not showing
+  at all.** Regression from the 0.7.49 placement move (right →
+  left, `addPermanentWidget` → `addWidget`, chip styling). Widget
+  is constructed and added but never becomes visible — investigate
+  whether `applyVisibility` lambda's `setVisible(true)` path is
+  reached, whether the chip stylesheet collapses to zero size, or
+  whether `refreshRepoVisibility` fires before the widget is parented.
+  Verify against `tests/features/github_status_bar/` — the test
+  asserts `addWidget` but doesn't actually check visibility at
+  runtime. Also confirm INV needs extending.
+- 📋 **HIGH — Status-bar transient notification stuck on "Config
+  reloaded from disk".** Two symptoms: (a) message never auto-clears
+  after the configured timeout; (b) other transient messages (paste
+  warnings, hyperlink hovers, etc.) don't appear to overwrite it.
+  Likely shape: a `statusBar()->showMessage(..., 0)` (timeout 0 =
+  permanent) somewhere on the config-reload path, OR the
+  config-watcher firing in a tight loop and re-asserting the message
+  every tick. Grep `showMessage.*Config reloaded` and check the
+  timeout argument; cross-reference `QFileSystemWatcher` re-arm
+  semantics on the config file.
 
 ### 🔒 Tier 1 — ship-this-week (security / data-loss / shipped-broken)
 

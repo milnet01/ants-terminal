@@ -3,9 +3,7 @@
 #include "coloredtabbar.h"     // for ClaudeTabIndicator::color (ToolUse yellow)
 #include "themes.h"
 
-#include <QAbstractButton>
 #include <QCheckBox>
-#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -467,20 +465,24 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                 m_viewer->scrollToAnchor(anchor);
             });
 
-    auto *btns = new QDialogButtonBox(QDialogButtonBox::Close, this);
-    btns->setObjectName(QStringLiteral("roadmap-buttons"));
-    // Connect the Close button two ways. The role-based `rejected`
-    // signal is the documented path, but in practice user reports
-    // showed the standard "Close" button doing nothing on click in
-    // some Qt 6 builds — connecting `clicked` directly to the
-    // QPushButton bypasses any role-dispatch surprise.
-    connect(btns, &QDialogButtonBox::rejected, this, [this]() { close(); });
-    if (auto *closeBtn = btns->button(QDialogButtonBox::Close)) {
-        closeBtn->setObjectName(QStringLiteral("roadmap-close-button"));
-        connect(closeBtn, &QAbstractButton::clicked,
-                this, [this]() { close(); });
-    }
-    root->addWidget(btns);
+    // Plain QPushButton in an HBox row, mirroring the bg-tasks dialog
+    // pattern that closes reliably on KDE/KWin + Qt 6.11 + frameless
+    // translucent parent on Wayland. Earlier 0.7.43 attempt used
+    // QDialogButtonBox::Close with both `rejected` and direct `clicked`
+    // wiring; user reports in 0.7.49 confirmed the QDialogButtonBox
+    // path still drops the click — likely the same xdg-shell modal /
+    // role-dispatch interaction documented in QTBUG-79126. The plain
+    // QPushButton route (no role-based dispatch) is what bg-tasks /
+    // settings dialogs use successfully on this stack.
+    auto *btnRow = new QHBoxLayout;
+    btnRow->addStretch();
+    auto *closeBtn = new QPushButton(tr("Close"), this);
+    closeBtn->setObjectName(QStringLiteral("roadmap-close-button"));
+    closeBtn->setDefault(true);
+    closeBtn->setAutoDefault(true);
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::close);
+    btnRow->addWidget(closeBtn);
+    root->addLayout(btnRow);
 
     // Live-update plumbing: 200 ms debounce shared with sibling
     // dialogs (review-changes, bg-tasks).

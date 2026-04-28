@@ -70,13 +70,16 @@ nothing.
     `setOpenExternalLinks(false)`) so a stray markdown link can't
     replace the document. Same scroll-preservation shape as
     `ReviewChangesDialog` / `ClaudeBgTasksDialog`.
-- Bottom row: `QDialogButtonBox::Close` only. The Close button is
-  wired *both* via the role-based `rejected()` signal AND via a
-  direct `clicked()` connection on the button itself
-  (`button(QDialogButtonBox::Close)`). Some Qt 6 builds were observed
-  to leave `Close` non-functional through the role-based path alone;
-  the direct connection is the authoritative fix and the role-based
-  one is a belt-and-braces fallback. The Close button has
+- Bottom row: a plain `QPushButton` labelled "Close" inside an
+  `QHBoxLayout`, NOT a `QDialogButtonBox`. The button's `clicked()`
+  signal is wired directly to `QDialog::close`. 0.7.43 used
+  `QDialogButtonBox::Close` with both the role-based `rejected()`
+  signal and a direct `clicked()` connection on the button itself,
+  but user reports against 0.7.49 confirmed the click was still
+  being dropped. Per [QTBUG-79126](https://bugreports.qt.io/browse/QTBUG-79126)
+  the role-dispatch path interacts badly with KWin/Wayland's
+  modal-grab routing; switching to a plain `QPushButton` avoids
+  the role-dispatch path entirely. The button has
   `objectName "roadmap-close-button"` for testing.
 
 ### Parsing & rendering
@@ -237,12 +240,15 @@ source-grep + pure-helper harness, no full Qt widget tree.
   `roadmap-toc`) into a `QSplitter` next to the viewer, and connects
   list-item activation to `scrollToAnchor` (source-grep on
   `roadmapdialog.cpp`).
-- INV-14 The Close button is connected directly via
-  `QAbstractButton::clicked` (not only the role-based `rejected`
-  path) — guards against the Qt 6 quirk where `QDialogButtonBox::
-  rejected` was observed not firing for the standard `Close` button
-  (source-grep for the `closeBtn`/`QAbstractButton::clicked`
-  combination).
+- INV-14 The Close button is a plain `QPushButton` (no
+  `QDialogButtonBox`) wired directly via `&QPushButton::clicked` →
+  `&QDialog::close`. 0.7.43 used `QDialogButtonBox::Close` with a
+  defensive direct-clicked connection, but the click was still
+  dropped on KWin/Wayland (user report 2026-04-28). 0.7.50
+  retired QDialogButtonBox here entirely — per QTBUG-79126 the
+  role-dispatch path is itself an aggravator. Source-grep ensures
+  `QDialogButtonBox` does not reappear and `QPushButton::clicked`/
+  `QDialog::close` are present.
 
 ## Rationale
 

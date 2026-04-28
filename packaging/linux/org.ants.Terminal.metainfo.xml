@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.50" date="2026-04-28">
+      <description>
+        <p>Round four on the same dialog-button bug — and the matching Roadmap-dialog Close button. Three prior fix attempts (0.7.22, 0.7.35, 0.7.49) each diagnosed a downstream symptom rather than the actual root cause; this release identifies it from upstream Qt bug reports and applies the fix that the bg-tasks dialog has been quietly using all along.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li>Both Help → About OK buttons (still) didn't dismiss the dialog in 0.7.49, and the Roadmap dialog's Close button hadn't worked since 0.7.43 either. User report 2026-04-28: "OK buttons still do nothing on the 2 About dialogs… Close button does nothing on the Roadmap either." Real root cause: both upstream Qt bugs QTBUG-79126 ("Dialogs behavior on Wayland is wrong") and QTBUG-90005 ("global modality on Wayland") document that Wayland's xdg-shell protocol has no equivalent of <code>Qt::ApplicationModal</code>. Calling <code>setModal(true)</code> (which 0.7.49 added) is a no-op on Wayland except for an aggravating side effect: KWin/Wayland routes click events into the modal-grab handler which then drops them. The role-based dispatch path inside <code>QDialogButtonBox</code> is a known second aggravator on the same bug. The Background Tasks dialog has been working all along on the same parent-window flags — by being non-modal, with a plain <code>QPushButton</code> whose <code>clicked()</code> is wired directly to <code>QDialog::close</code>. Both About dialogs and the Roadmap dialog now follow that proven shape: non-modal, plain <code>QPushButton</code>, direct <code>clicked()</code> → <code>close()</code>. No more <code>setModal(true)</code>, no more <code>QDialogButtonBox</code>. The OK / Close click reaches its slot and the dialog dismisses on the first try.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.49" date="2026-04-27">
       <description>
         <p>Three follow-up fixes to user reports against 0.7.48 — the About menu's OK buttons silently no-op'd again, the GitHub Public/Private badge wanted to live next to the git branch on the left, and the Background Tasks chip showed phantom counts of tasks that had long since exited.</p>

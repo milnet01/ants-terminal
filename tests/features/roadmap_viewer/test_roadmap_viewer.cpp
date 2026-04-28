@@ -265,13 +265,29 @@ int main(int argc, char **argv) {
     if (!contains(source, "scrollToAnchor"))
         return fail("INV-13", "scrollToAnchor not invoked from TOC handler");
 
-    // INV-14: Close button has a direct clicked connection.
-    if (!contains(source, "QDialogButtonBox::Close"))
-        return fail("INV-14", "Close standard button not present");
-    if (!contains(source, "QAbstractButton::clicked"))
+    // INV-14: Close button is a plain QPushButton wired to close.
+    // 0.7.50 retired QDialogButtonBox::Close — its role-dispatch path
+    // dropped clicks on KWin/Wayland (per QTBUG-79126) even with the
+    // direct clicked-on-button workaround that 0.7.43 added. Plain
+    // QPushButton + clicked → QDialog::close mirrors the proven
+    // bg-tasks pattern.
+    // Match the constructor call shape so explanatory comments
+    // mentioning the type don't false-positive the grep.
+    if (contains(source, "new QDialogButtonBox"))
         return fail("INV-14",
-                    "direct QAbstractButton::clicked connect missing — "
-                    "Close button must not rely solely on rejected()");
+                    "QDialogButtonBox constructor still present — 0.7.50 "
+                    "reverted to plain QPushButton because role-dispatch "
+                    "dropped clicks on KWin/Wayland (QTBUG-79126)");
+    if (!contains(source, "roadmap-close-button"))
+        return fail("INV-14", "roadmap-close-button objectName missing");
+    if (!contains(source, "&QPushButton::clicked"))
+        return fail("INV-14",
+                    "QPushButton::clicked connect missing — Close button "
+                    "must wire clicked() directly to QDialog::close");
+    if (!contains(source, "&QDialog::close"))
+        return fail("INV-14",
+                    "QDialog::close target missing — Close button must "
+                    "be wired to close the dialog");
 
     std::puts("OK roadmap_viewer: 14/14 invariants");
     return 0;

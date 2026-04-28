@@ -1,3 +1,30 @@
+ants-terminal (0.7.50-1) unstable; urgency=medium
+
+  * Round four on the same dialog-button bug — and the matching
+    Roadmap-dialog Close button. Three prior fix attempts (0.7.22,
+    0.7.35, 0.7.49) each diagnosed a downstream symptom rather than
+    the root cause; this release identifies it from upstream Qt
+    bug reports and applies the fix that the bg-tasks dialog has
+    been quietly using all along.
+  * Fixed: both Help → About OK buttons (still) didn't dismiss the
+    dialog in 0.7.49, and the Roadmap dialog's Close button hadn't
+    worked since 0.7.43 either. Real root cause per upstream Qt
+    bugs QTBUG-79126 ("Dialogs behavior on Wayland is wrong") and
+    QTBUG-90005 ("global modality on Wayland"): Wayland's xdg-shell
+    has no equivalent of Qt::ApplicationModal. Calling
+    setModal(true) — added in 0.7.49 on the wrong theory — is a
+    no-op on Wayland except for an aggravating side effect: KWin
+    routes click events into the modal-grab handler which drops
+    them. The role-based dispatch path inside QDialogButtonBox is
+    a known second aggravator on the same bug. Both About dialogs
+    and the Roadmap dialog now mirror the bg-tasks shape: non-modal
+    QDialog + plain QPushButton + clicked() → close(). No more
+    setModal(true), no more QDialogButtonBox in these three
+    handlers. OK / Close clicks reach their slots and dismiss the
+    dialog on the first try.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 28 Apr 2026 09:00:00 +0200
+
 ants-terminal (0.7.49-1) unstable; urgency=medium
 
   * Three follow-up fixes to user reports against 0.7.48 — the

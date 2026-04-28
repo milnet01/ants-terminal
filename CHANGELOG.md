@@ -10,6 +10,52 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.50] — 2026-04-28
+
+**Theme:** Round four on the same dialog-button bug — and the matching
+Roadmap-dialog Close button. Three prior fix attempts (0.7.22, 0.7.35,
+0.7.49) each diagnosed a downstream symptom rather than the actual
+root cause; this release identifies it from upstream Qt bug reports
+and applies the fix that the bg-tasks dialog has been quietly using
+all along.
+
+### Fixed
+
+- **Both Help → About OK buttons (still) didn't dismiss the dialog
+  in 0.7.49**, and the Roadmap dialog's Close button hadn't worked
+  since 0.7.43 either. User report 2026-04-28: "OK buttons still do
+  nothing on the 2 About dialogs… Close button does nothing on the
+  Roadmap either."
+
+  Real root cause: both upstream Qt bugs
+  [QTBUG-79126](https://bugreports.qt.io/browse/QTBUG-79126) ("Dialogs
+  behavior on Wayland is wrong") and
+  [QTBUG-90005](https://bugreports.qt.io/browse/QTBUG-90005) ("global
+  modality on Wayland") document that Wayland's `xdg-shell` protocol
+  has no equivalent of `Qt::ApplicationModal`. Calling `setModal(true)`
+  (which 0.7.49 added) is a no-op on Wayland *except* for an
+  aggravating side effect: KWin/Wayland routes click events into the
+  modal-grab handler which then drops them, instead of delivering them
+  to the dialog's button. The role-based dispatch path inside
+  `QDialogButtonBox` is a known second aggravator on the same bug.
+
+  The Background Tasks dialog has been working all along on the same
+  parent-window flags — by being non-modal, with a plain `QPushButton`
+  whose `clicked()` is wired directly to `QDialog::close`. Both About
+  dialogs and the Roadmap dialog now follow that proven shape:
+  non-modal, plain `QPushButton`, direct `clicked()` → `close()`. No
+  more `setModal(true)`, no more `QDialogButtonBox`. The OK / Close
+  click reaches its slot and the dialog dismisses on the first try.
+
+  Spec coverage extended: `tests/features/help_about_menu/` INV-4 now
+  asserts a plain `QPushButton` (negative grep on
+  `new QDialogButtonBox`); INV-7f flips from "must call
+  `setModal(true)`" to "must NOT call `dlg->setModal(`".
+  `tests/features/roadmap_viewer/` INV-14 mirrors the same.
+  `tests/features/help_about_menu/spec.md` regression history records
+  the Wayland-modal root cause so the next contributor doesn't repeat
+  the cycle.
+
 ## [0.7.49] — 2026-04-27
 
 **Theme:** Three follow-up fixes to user reports against 0.7.48 — the

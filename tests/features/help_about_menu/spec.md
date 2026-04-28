@@ -67,20 +67,23 @@ include `Qt::LinksAccessibleByMouse`, and which has
 `setOpenExternalLinks(true)` so the GitHub URL in the body
 opens in the user's browser when clicked.
 
-The dialog uses `QDialogButtonBox(QDialogButtonBox::Ok)` with
-the `accepted` signal explicitly connected to `QDialog::accept`,
-not `QMessageBox::Ok`. The QMessageBox path was changed to a
-custom QDialog in 0.7.35 because the QMessageBox + RichText +
-TextBrowserInteraction combination silently dropped clicks on
-the OK button under our frameless + WA_TranslucentBackground
-MainWindow on KDE/KWin + Qt 6.11 — the user could only dismiss
-the dialog via the window-manager close button (regression
-report 2026-04-25).
+The dialog uses a plain `QPushButton` labelled "OK" inside an
+`QHBoxLayout` row, NOT a `QDialogButtonBox`. The button's
+`clicked()` signal is connected to `QDialog::close`. The
+`QDialogButtonBox` path was retired in 0.7.50 because under
+KDE/KWin + Qt 6.11 + our frameless + `WA_TranslucentBackground`
+MainWindow on Wayland, the role-based dispatch path
+(`QDialogButtonBox::accepted` / button(Role)→clicked) was
+observed to silently drop clicks alongside the modal-grab
+issue (per QTBUG-79126). A plain `QPushButton::clicked` →
+`close` connection is what the bg-tasks / settings dialogs
+already use successfully on this stack.
 
 `Qt::TextSelectableByMouse` is intentionally NOT set on the
 label — there's nothing in the About body the user needs to
 select, and including it (which is what `Qt::TextBrowserInteraction`
-implies) was part of the click-stealing surface above.
+implies) was part of the click-stealing surface that regressed
+the dialog in 2026-04-25.
 
 ### Invariant 5 — About Qt action is present and uses the same dialog pattern
 
@@ -101,28 +104,31 @@ Source-grep confirms the About handler does not contain a
 hardcoded `0.7.` prefix or a `"Version: 0.7"` literal. The only
 version string inside the handler is `ANTS_VERSION`.
 
-### Invariant 7 — Both About dialogs use the heap+show pattern
+### Invariant 7 — Both About dialogs use the heap+show, non-modal pattern
 
 Both the About Ants Terminal and About Qt handlers construct
 their dialog as `auto *dlg = new QDialog(this)` with
-`Qt::WA_DeleteOnClose`, set `setModal(true)`, and call
-`dlg->show()` followed by `dlg->raise()` and
-`dlg->activateWindow()`. Neither uses `QDialog dlg(this)` +
-`dlg.exec()`.
+`Qt::WA_DeleteOnClose`, leave the dialog non-modal (no
+`setModal(true)` call), and call `dlg->show()` followed by
+`dlg->raise()` and `dlg->activateWindow()`. Neither uses
+`QDialog dlg(this)` + `dlg.exec()`.
 
 The blocking-`exec()` pattern was retired in 0.7.49: the nested
 `QEventLoop` `exec()` opens does not, on KDE/KWin + Qt 6.11
 under a frameless + `WA_TranslucentBackground` parent, surface
-the dialog as the active input window. The OK button receives
-no focus and clicks silently no-op. The `show()` pattern
-delegates dialog activation to KWin in the normal way and the
-OK click reaches its connected slot.
+the dialog as the active input window. The `setModal(true)`
+attempt that 0.7.49 introduced was retired in 0.7.50 — Wayland
+has no equivalent of `Qt::ApplicationModal` (QTBUG-79126,
+QTBUG-90005), and the modal grab actually re-introduced the
+click-drop. The non-modal `show()` pattern delegates dialog
+activation to KWin in the normal way and the OK click reaches
+its connected slot.
 
-The OK button's `clicked()` signal is connected to
-`QDialog::accept` directly, not only via
-`QDialogButtonBox::accepted` — belt-and-braces in case anything
-in the button box's internal accepted-emission path is
-interfered with by platform plumbing.
+The OK button is a plain `QPushButton` (NOT
+`QDialogButtonBox::Ok`) whose `clicked()` signal connects
+directly to `QDialog::close`. This bypasses the role-dispatch
+surface that QTBUG-79126 calls out as an aggravating factor
+on Wayland.
 
 ## How this test anchors to reality
 
@@ -139,8 +145,9 @@ source-grep on `src/mainwindow.cpp`:
    GitHub URL.
 4. The About handler sets `Qt::RichText` on a `QLabel`, sets
    `Qt::LinksAccessibleByMouse` on its `textInteractionFlags`,
-   calls `setOpenExternalLinks(true)`, and wires
-   `QDialogButtonBox::accepted` to `QDialog::accept`.
+   calls `setOpenExternalLinks(true)`, constructs a plain
+   `QPushButton` (not `QDialogButtonBox`) and wires its
+   `clicked()` to `QDialog::close`.
 5. No hardcoded `"0.7."` prefix appears inside the About handler
    body.
 
@@ -192,3 +199,19 @@ hardcoded version literal, this test fires.
   `exec()` is the same regression shape) for a custom QDialog
   with the same heap+show treatment. Locked by I5b (negative
   grep on `QMessageBox::aboutQt`) and I7 (heap+show pattern).
+- **Re-fixed yet again:** 0.7.50 — user reported 2026-04-28 that
+  *both* About OK buttons (still) did nothing under 0.7.49.
+  Diagnosis from prior fixes was wrong on two counts: (a)
+  `setModal(true)` is a no-op on Wayland's xdg-shell — there
+  is no concept matching `Qt::ApplicationModal` (per
+  [QTBUG-79126](https://bugreports.qt.io/browse/QTBUG-79126)
+  and [QTBUG-90005](https://bugreports.qt.io/browse/QTBUG-90005))
+  — and the modal-grab side effect on KWin/Wayland actually
+  routes the OK click into the modal handler and drops it; (b)
+  `QDialogButtonBox`'s role-dispatch path is a documented
+  aggravator on the same bug. Replaced both About dialogs with
+  the proven-working bg-tasks shape: non-modal QDialog + plain
+  `QPushButton` whose `clicked()` connects to `QDialog::close`.
+  Same fix applied to the Roadmap dialog (the user's third
+  report in the same message). Locked by I4 (plain QPushButton
+  shape) and I7f (negative grep on `setModal(true)`).

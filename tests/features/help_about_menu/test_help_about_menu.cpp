@@ -3,14 +3,17 @@
 // Invariant 1 — Help menu exists and is last on the menubar.
 // Invariant 2 — Help menu contains "About Ants Terminal..." action.
 // Invariant 3 — About handler body references ANTS_VERSION.
-// Invariant 4 — About dialog is a custom QDialog with QDialogButtonBox
-//               whose accepted signal connects to QDialog::accept; the
-//               body QLabel uses Qt::RichText + LinksAccessibleByMouse +
+// Invariant 4 — About dialog is a custom QDialog with a plain
+//               QPushButton (NOT QDialogButtonBox) whose clicked() is
+//               wired to QDialog::close; the body QLabel uses
+//               Qt::RichText + LinksAccessibleByMouse +
 //               setOpenExternalLinks(true), and does NOT enable
 //               TextSelectableByMouse / TextBrowserInteraction (the
 //               regression shape that silently dropped the OK click on
 //               KDE/KWin + Qt 6.11 — see spec.md Regression history
-//               2026-04-25).
+//               2026-04-25). 0.7.50 retired QDialogButtonBox after
+//               three failed fix attempts: per QTBUG-79126 the role-
+//               dispatch path is an aggravator on Wayland.
 // Invariant 5 — "About Qt..." action exists and uses the same
 //               heap+show pattern as About Ants Terminal — NOT
 //               QMessageBox::aboutQt (whose internal exec() blocked OK
@@ -19,11 +22,12 @@
 // Invariant 6 — no hardcoded "0.7." literal inside the About handler.
 // Invariant 7 — Both About dialogs use heap allocation +
 //               WA_DeleteOnClose + show()/raise()/activateWindow()
-//               rather than stack + exec(). The blocking-exec()
-//               pattern is what 0.7.49 retired — exec() opens a nested
-//               event loop that on KDE/KWin + Qt 6.11 + our frameless
-//               translucent MainWindow does not surface the dialog as
-//               the active input window, so OK clicks no-op.
+//               rather than stack + exec(), and are NON-MODAL (no
+//               setModal(true) call). 0.7.49's setModal(true) was
+//               retired in 0.7.50 — Wayland has no equivalent of
+//               Qt::ApplicationModal (QTBUG-79126), and the modal
+//               grab caused KWin/Wayland to route the OK click into
+//               the grab handler instead of the button.
 //
 // Source-grep only. MainWindow is too heavy to instantiate in a
 // feature test; the wiring of a menu item is structurally obvious
@@ -191,20 +195,30 @@ int main(int argc, char **argv) {
     expect(!aboutBlock.contains(QStringLiteral("QMessageBox mb(")),
            "I4f/no-qmessagebox-construction",
            QStringLiteral("The About handler must use QDialog + "
-                          "QDialogButtonBox(Ok) so we control the OK wiring "
+                          "plain QPushButton so we control the OK wiring "
                           "explicitly. QMessageBox::Ok is what regressed."));
-    expect(aboutBlock.contains(QStringLiteral("QDialogButtonBox::Ok")),
-           "I4g/uses-qdialogbuttonbox-ok");
-    // The OK button must be wired to dlg.accept() — the missing wire is
+    // 0.7.50 retired QDialogButtonBox in this dialog after three
+    // failed fix attempts; per QTBUG-79126 its role-dispatch path is
+    // a click-drop aggravator on KWin/Wayland. Match the constructor
+    // call shape (`new QDialogButtonBox`) so explanatory comments
+    // mentioning the type don't false-positive the grep.
+    expect(!aboutBlock.contains(QStringLiteral("new QDialogButtonBox")),
+           "I4g/no-qdialogbuttonbox",
+           QStringLiteral("The About handler must NOT construct a "
+                          "QDialogButtonBox — 0.7.50 reverted to a plain "
+                          "QPushButton because the role-dispatch path "
+                          "interacts badly with KWin/Wayland (QTBUG-79126). "
+                          "Use a plain QPushButton labelled \"OK\" wired to "
+                          "QDialog::close."));
+    // The OK button must be wired to dlg->close() — the missing wire is
     // exactly what makes a button "do nothing." Match against the
-    // QDialogButtonBox::accepted signal connect call shape.
+    // plain QPushButton::clicked → QDialog::close shape.
     expect(aboutBlock.contains(
-               QStringLiteral("&QDialogButtonBox::accepted")) &&
-           aboutBlock.contains(QStringLiteral("&QDialog::accept")),
-           "I4h/ok-connected-to-accept",
-           QStringLiteral("QDialogButtonBox::accepted must be explicitly "
-                          "connected to QDialog::accept so clicking OK closes "
-                          "the dialog."));
+               QStringLiteral("&QPushButton::clicked")) &&
+           aboutBlock.contains(QStringLiteral("&QDialog::close")),
+           "I4h/ok-connected-to-close",
+           QStringLiteral("Plain QPushButton::clicked must be connected to "
+                          "QDialog::close so clicking OK closes the dialog."));
 
     // Invariant 7 — heap allocation + show()/raise()/activateWindow()
     // pattern. A stack-allocated `QDialog dlg(this)` followed by
@@ -274,14 +288,21 @@ int main(int argc, char **argv) {
                               "loop did not promote the dialog to the "
                               "active input window."));
 
-        tag = QStringLiteral("I7f/%1/modal").arg(name);
-        expect(blk.contains(QStringLiteral("setModal(true)")),
+        tag = QStringLiteral("I7f/%1/non-modal").arg(name);
+        // 0.7.49 added setModal(true) on the theory it would help; the
+        // actual effect on Wayland (QTBUG-79126) was the opposite —
+        // the modal-grab routes the OK click into the grab handler
+        // instead of the button. 0.7.50 dropped it. Match the call-
+        // shape (`dlg->setModal`) so explanatory comments mentioning
+        // the bare token don't false-positive the grep.
+        expect(!blk.contains(QStringLiteral("dlg->setModal(")),
                qUtf8Printable(tag),
-               QStringLiteral("Dialog must call setModal(true) — without "
-                              "it, the show()-pattern produces a non-"
-                              "modal dialog that the focus-redirect logic "
-                              "can race against (focusChanged callback "
-                              "in mainwindow.cpp)."));
+               QStringLiteral("Dialog must NOT call setModal(true) — Wayland "
+                              "has no Qt::ApplicationModal equivalent "
+                              "(QTBUG-79126, QTBUG-90005), and the modal-"
+                              "grab side effect on KWin/Wayland routes the "
+                              "OK click into the grab handler, dropping it. "
+                              "0.7.50 reverted to non-modal."));
     }
 
     if (g_failures) {
