@@ -79,6 +79,13 @@ audit_brief_*.md
 ants-audit-*.txt
 ants-audit-*.sarif
 ants-audit-*.html
+# In-app Project Audit dialog rule-quality JSONL — recorded each
+# auditdialog.cpp `audit_rule_quality` run, captures rule-fire counts
+# + timing for the in-app dashboard. Deliberately local: file names
+# and the line numbers it cites change between runs, and it carries
+# no signal worth versioning.
+audit_rule_quality.json
+audit_rule_quality.jsonl
 __pycache__/
 *.pyc
 *.pyo
