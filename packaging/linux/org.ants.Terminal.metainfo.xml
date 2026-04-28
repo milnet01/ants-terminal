@@ -103,6 +103,27 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.52" date="2026-04-28">
+      <description>
+        <p>First Tier-1 sweep of the 2026-04-27 indie-review findings. Eight fixes covering CRITICAL data-loss / security regressions plus HIGH security-class hardening — <code>SessionManager</code> silent scrollback loss, the same Wayland modal-grab pattern from 0.7.50 lurking in the update-confirmation dialog, SARIF/HTML reports leaking secrets at 0644, and five smaller HIGH items. The user-reported GitHub repo-type chip regression is also resolved (verified visible).</p>
+        <p>Fixed:</p>
+        <ul>
+          <li>CRITICAL — SessionManager silent data loss. saveSession + saveTabOrder used QFile::rename, which on POSIX refuses to overwrite an existing destination. Every session save AFTER the first silently failed: the .dat file held the original snapshot, .dat.tmp accumulated each new write, user scrollback never updated past the first save. Switched both to std::rename (POSIX rename(2) — atomic replace), mirroring the 0.7.12 Config fix. Errno logged on failure; orphaned .tmp removed.</li>
+          <li>CRITICAL — Update-confirmation dialog same Wayland modal-grab regression as 0.7.50 About fix. handleUpdateClicked was a QMessageBox box(this); box.exec() — exactly the pattern that drops button clicks on KDE/KWin + frameless+translucent parent per QTBUG-79126 / QTBUG-90005. Converted to the proven non-modal QDialog + plain QPushButton + clicked→close shape, mirroring the 0.7.50 About-dialog fix.</li>
+          <li>CRITICAL — SARIF / HTML export not atomic + 0644 perms. The reports embed every finding including any leaked secret surfaced by the gitleaks / secrets_scan rules. Switched to QSaveFile + commit() (atomic write-rename-fsync) plus setOwnerOnlyPerms (0600).</li>
+          <li>HIGH — new-tab / launch IPC commands bypassed the send-text C0 filter. A same-UID attacker reaching the rc socket got ESC-sequence / OSC 52 / bracketed-paste primitives via a different command than the one that was hardened. Both now route through filterControlChars by default; both honour a raw:true opt-out.</li>
+          <li>HIGH — OSC 8 file:// and ftp:// schemes removed from the hyperlink allowlist. xdg-open file:///foo.desktop autoexecutes via the desktop's .desktop handler (RCE-adjacent); ftp:// drops credentials in plaintext. Allowlist now covers only http/https/mailto.</li>
+          <li>HIGH — SSH extraArgs quote-bypass on the dangerous-option allowlist. The previous regex split fractured quoted args, letting -o "ProxyCommand=…" silently bypass the case-insensitive ProxyCommand match. Switched to QProcess::splitCommand which mirrors POSIX shell quoting.</li>
+          <li>HIGH — extractCwdFromTranscript unbounded readLine. Caps readLine at 64 KiB so a corrupted transcript with a multi-GiB single-line head doesn't OOM the process.</li>
+          <li>HIGH — AI endpoint scheme allowlist (http/https only). Rejects file:// / gopher:// / bare-host schemes up-front rather than at request time when the body is already serialised.</li>
+          <li>HIGH — openFileAtPath argv-injection via attacker-controlled paths starting with -. The helper prepends ./ to single-arg combined-path branches and inserts -- before the path on separate-arg branches.</li>
+        </ul>
+        <p>User reports resolved:</p>
+        <ul>
+          <li>GitHub Public/Private repo-type chip not showing — user confirmed via screenshot 2026-04-28 that the chip is now visible.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.51" date="2026-04-28">
       <description>
         <p>Hot-reload doesn't loop any more. Same-day follow-up to 0.7.50 — three reported symptoms (status bar permanently sticking at "Config reloaded from disk", Help → Check for Updates appearing to do nothing, Settings → Preferences not opening) all traced to a single root cause: <code>MainWindow::onConfigFileChanged</code> re-entering itself in an infinite inotify loop. The 0.7.31 attempt at fixing the same loop (<code>m_configWatcher->blockSignals(true/false)</code> bracketing) never worked because Qt reads inotify events from the event loop after the slot returns — outliving the <code>blockSignals</code> window. Fix is at the source: make the setters idempotent so the slot has nothing to re-trigger.</p>

@@ -54,7 +54,10 @@ int main() {
     if (ntPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdNewTab definition missing");
     } else {
-        std::string body = rc.substr(ntPos, 1500);
+        // Window expanded to 3000 chars in 0.7.52 — cmdNewTab body
+        // grew by ~700 chars when filterControlChars was added on the
+        // command-bytes path (2026-04-27 indie-review HIGH).
+        std::string body = rc.substr(ntPos, 3000);
         if (body.find("\"cwd\"")     == std::string::npos ||
             body.find("\"command\"") == std::string::npos) {
             fail("INV-2b: cmdNewTab must read both \"cwd\" and \"command\" fields");
@@ -64,6 +67,19 @@ int main() {
         }
         if (body.find("\"index\"") == std::string::npos) {
             fail("INV-3b: cmdNewTab must return the tab index under the \"index\" key");
+        }
+        // INV-3c (added 0.7.52): command must be routed through
+        // filterControlChars by default so a same-UID attacker reaching
+        // the rc socket can't inject ESC sequences via new-tab the way
+        // they were blocked from doing via send-text. The `raw: true`
+        // opt-out is also required for symmetry with send-text.
+        if (body.find("filterControlChars") == std::string::npos) {
+            fail("INV-3c: cmdNewTab must filter command through "
+                 "filterControlChars by default (parity with send-text)");
+        }
+        if (body.find("\"raw\"") == std::string::npos) {
+            fail("INV-3d: cmdNewTab must support a `raw: true` opt-out "
+                 "for callers that need raw byte access");
         }
     }
 

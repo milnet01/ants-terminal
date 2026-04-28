@@ -336,29 +336,53 @@ int main(int argc, char **argv) {
             "running the updater attached would block the parent on its "
             "lifetime and force a still-running terminal to wait on it");
 
-    // INV-17 (added 0.7.47): confirmation dialog before the updater
-    // is launched. User feedback 2026-04-27 — clicking the badge
-    // shouldn't silently kick a download that requires a restart;
-    // the user must be told that they'll need to quit + relaunch
-    // and that active Claude Code sessions will be disconnected.
+    // INV-17 (added 0.7.47, revised 0.7.52): confirmation dialog before
+    // the updater is launched. User feedback 2026-04-27 — clicking the
+    // badge shouldn't silently kick a download that requires a restart;
+    // the user must be told that they'll need to quit + relaunch and
+    // that active Claude Code sessions will be disconnected.
+    //
+    // 0.7.52 revision: dialog is now a non-modal QDialog with a plain
+    // QPushButton "Update" (mirroring the 0.7.50 About-dialog Wayland
+    // fix — QMessageBox::exec on KDE/KWin + frameless+translucent
+    // parent drops button clicks, QTBUG-79126). Was QMessageBox::exec
+    // before 0.7.52, which is the same shape as the bug 0.7.50 retired.
     {
         const std::string body = functionBody(s,
             "void MainWindow::handleUpdateClicked");
         if (body.empty())
             return fail("INV-17", "handleUpdateClicked body not found");
-        // The dialog must exist somewhere ahead of startDetached.
-        const auto dialogPos = body.find("QMessageBox box(this)");
-        const auto detachPos = body.find("QProcess::startDetached");
-        if (dialogPos == std::string::npos)
+        // Dialog must exist somewhere ahead of startDetached. New
+        // shape: heap QDialog + WA_DeleteOnClose + plain QPushButton
+        // wired to clicked()→close(). Old QMessageBox shape is now
+        // forbidden (negative grep — same Wayland modal-grab trap as
+        // the About dialogs).
+        const auto qmsgPos    = body.find("QMessageBox box(this)");
+        const auto qdialogPos = body.find("new QDialog(this)");
+        const auto detachPos  = body.find("QProcess::startDetached");
+        if (qmsgPos != std::string::npos)
             return fail("INV-17",
-                "handleUpdateClicked must construct a QMessageBox before "
-                "kicking the updater so the user is warned about the "
-                "quit-and-relaunch requirement");
-        if (detachPos == std::string::npos ||
-                dialogPos >= detachPos)
+                "handleUpdateClicked must NOT use QMessageBox box(this) "
+                "+ box.exec() — that's the QTBUG-79126 modal-grab "
+                "click-drop shape the 0.7.50 About-dialog fix retired. "
+                "Use a heap QDialog + plain QPushButton instead.");
+        if (qdialogPos == std::string::npos)
             return fail("INV-17",
-                "the QMessageBox must precede QProcess::startDetached "
-                "so a Cancel can short-circuit the spawn");
+                "handleUpdateClicked must construct a non-modal QDialog "
+                "with `new QDialog(this)` so the user can confirm before "
+                "the updater is kicked");
+        if (detachPos == std::string::npos)
+            return fail("INV-17",
+                "handleUpdateClicked must still call "
+                "QProcess::startDetached on Update");
+        // Update click must be wired to QDialog::close so the dialog
+        // dismisses on a single click (matches About-dialog pattern).
+        if (body.find("&QPushButton::clicked") == std::string::npos ||
+                body.find("&QDialog::close") == std::string::npos)
+            return fail("INV-17",
+                "handleUpdateClicked must wire QPushButton::clicked to "
+                "QDialog::close on the dialog buttons (Wayland modal "
+                "fix per debug_wayland_modal_dialog.md memory)");
         // The body must mention the restart consequence — "quit"
         // and "Claude Code" / "reconnected" — so the warning is
         // load-bearing rather than a generic confirm prompt.

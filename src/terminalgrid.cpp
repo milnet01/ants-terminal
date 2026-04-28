@@ -882,10 +882,17 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                 m_hyperlinkUri.clear();
                 m_hyperlinkId.clear();
             } else {
-                // Validate URI scheme — STANDARDS.md §Security and RULES.md
-                // rule 7 mandate only http/https/ftp/file/mailto. A hostile
-                // program could otherwise emit `javascript:` / `data:` /
-                // `vnc:` and get Ctrl+click activation via QDesktopServices.
+                // Validate URI scheme. Only http/https/mailto are honoured.
+                // A hostile program could otherwise emit `javascript:` /
+                // `data:` / `vnc:` and get Ctrl+click activation via
+                // QDesktopServices.
+                //
+                // 0.7.52 (2026-04-27 indie-review HIGH) — `file:` and
+                // `ftp:` removed from the allowlist. `xdg-open
+                // file:///foo.desktop` autoexecutes via the desktop's
+                // .desktop handler (RCE-adjacent on most modern desktops);
+                // `ftp:` is plaintext-credential exfil. STANDARDS.md and
+                // RULES.md updated to match.
                 auto colonPos = uri.find(':');
                 bool validScheme = false;
                 if (colonPos != std::string::npos && colonPos > 0) {
@@ -894,7 +901,6 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                         if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
                     }
                     validScheme = (scheme == "http"   || scheme == "https" ||
-                                   scheme == "ftp"    || scheme == "file"  ||
                                    scheme == "mailto");
                 }
                 if (!validScheme) {
@@ -1874,9 +1880,9 @@ void TerminalGrid::addRowHyperlink(int row, int startCol, int endCol,
         int colonPos = uri.indexOf(':');
         if (colonPos <= 0) return;
         QString scheme = uri.left(colonPos).toLower();
+        // 0.7.52 — file:/ftp: removed (see OSC 8 handler — same rationale).
         static const QSet<QString> kAllowed = {
             QStringLiteral("http"),  QStringLiteral("https"),
-            QStringLiteral("ftp"),   QStringLiteral("file"),
             QStringLiteral("mailto")
         };
         if (!kAllowed.contains(scheme)) return;

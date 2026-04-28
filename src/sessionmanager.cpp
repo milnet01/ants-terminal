@@ -12,6 +12,9 @@
 #include <QStandardPaths>
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdio>      // std::rename — atomic POSIX-compliant overwrite
+#include <cstring>     // std::strerror
 #include <sys/stat.h>
 #include <unistd.h>    // fsync — durability guarantee before atomic rename
 
@@ -386,16 +389,35 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
             // crash is a worse outcome than the one-syscall cost.
             ::fsync(file.handle());
             file.close();
-            if (QFile::rename(tmpPath, path)) {
+            // 0.7.52 (2026-04-27 indie-review CRITICAL — silent data
+            // loss). Was QFile::rename, which on every POSIX target
+            // refuses to overwrite an existing destination — every
+            // session save AFTER the first silently failed (the .dat
+            // file held the original snapshot, .dat.tmp accumulated
+            // each new write). User scrollback never updated past the
+            // first save. std::rename mirrors POSIX rename(2) which
+            // atomically replaces the destination, matching Config's
+            // 0.7.12 fix. Log the errno on failure (ENOSPC, EACCES,
+            // EXDEV) and remove the orphaned .tmp so the disk doesn't
+            // accumulate corpses across session lifetimes.
+            const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
+                                       path.toLocal8Bit().constData());
+            if (rc == 0) {
                 // Post-rename chmod: rename(2) preserves perms on
                 // most local FS, but FAT/exFAT/SMB/NFS edge cases or
                 // Qt's copy+unlink fallback can drop the 0600 set on
                 // the temp fd. Session blobs may hold scrollback
                 // content (passwords mistyped at the prompt, ssh
                 // command history, paste buffers); re-chmod the
-                // final inode. See sessionmanager.cpp:269 / ROADMAP
-                // 0.7.31 for the bundle context.
+                // final inode.
                 setOwnerOnlyPerms(path);
+            } else {
+                qWarning("SessionManager::saveSession rename(%s -> %s) "
+                         "failed: errno=%d (%s) — prior session blob "
+                         "unchanged, tmp removed",
+                         qUtf8Printable(tmpPath), qUtf8Printable(path),
+                         errno, std::strerror(errno));
+                QFile::remove(tmpPath);
             }
         } else {
             file.close();
@@ -451,9 +473,22 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
         // is missing or empty after a crash, saved session blobs orphan.
         ::fsync(file.handle());
         file.close();
-        if (QFile::rename(tmpPath, path)) {
-            // Post-rename chmod — same rationale as saveSession().
+        // 0.7.52 — same QFile::rename → std::rename fix as saveSession.
+        // tab_order.txt was even worse: QFile::rename failing meant the
+        // FIRST run's tab order was the only one ever persisted. Every
+        // tab open/close/reorder thereafter looked like it saved but
+        // restoring a future session resurrected the original layout.
+        const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
+                                   path.toLocal8Bit().constData());
+        if (rc == 0) {
             setOwnerOnlyPerms(path);
+        } else {
+            qWarning("SessionManager::saveTabOrder rename(%s -> %s) "
+                     "failed: errno=%d (%s) — prior tab_order.txt "
+                     "unchanged, tmp removed",
+                     qUtf8Printable(tmpPath), qUtf8Printable(path),
+                     errno, std::strerror(errno));
+            QFile::remove(tmpPath);
         }
     }
     ::umask(oldMask);

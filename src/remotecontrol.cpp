@@ -377,7 +377,8 @@ QJsonDocument RemoteControl::cmdSetTitle(const QJsonObject &req) {
 }
 
 QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
-    // Request shape: {"cmd":"launch","cwd":"<path optional>","command":"<string required>"}
+    // Request shape: {"cmd":"launch","cwd":"<path optional>","command":"<string required>",
+    //                 "raw":<bool optional>}
     //
     // `launch` differs from `new-tab` in two ways:
     //   1. `command` is REQUIRED — the whole point of launch is to
@@ -388,6 +389,14 @@ QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
     //      "and run it"). new-tab leaves command untouched because
     //      it's the lower-level building block; launch is the sugar
     //      that "just works" for the common case.
+    //
+    // 0.7.52 (2026-04-27 indie-review HIGH) — `command` is routed
+    // through filterControlChars by default, identical to send-text.
+    // Without this, a same-UID attacker reaching the rc socket gets
+    // ESC-sequence / bracketed-paste / OSC 52 injection via launch
+    // even though send-text was hardened against it. The `raw: true`
+    // opt-out matches send-text's escape hatch for callers (test
+    // harnesses, plugins) who need raw byte access.
     QJsonObject out;
     const QJsonValue commandVal = req.value("command");
     if (!commandVal.isString() || commandVal.toString().isEmpty()) {
@@ -400,15 +409,25 @@ QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
     QString command = commandVal.toString();
     if (!command.endsWith('\n')) command += '\n';
 
+    const bool rawBypass = req.value("raw").toBool(false);
+    int stripped = 0;
+    const QByteArray rawBytes = command.toUtf8();
+    const QByteArray payload = rawBypass
+        ? rawBytes
+        : RemoteControl::filterControlChars(rawBytes, &stripped);
+    const QString filteredCommand = QString::fromUtf8(payload);
+
     const QString cwd = req.value("cwd").toString();
-    const int idx = m_main->newTabForRemote(cwd, command);
+    const int idx = m_main->newTabForRemote(cwd, filteredCommand);
     out["ok"] = true;
     out["index"] = idx;
+    if (!rawBypass && stripped > 0) out["stripped"] = stripped;
     return QJsonDocument(out);
 }
 
 QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
-    // Request shape: {"cmd":"new-tab","cwd":"<path>","command":"<string>"}
+    // Request shape: {"cmd":"new-tab","cwd":"<path>","command":"<string>",
+    //                 "raw":<bool optional>}
     //   - `cwd` optional; empty/absent → inherit cwd from the focused
     //     terminal (same default as the menu-driven newTab() slot)
     //   - `command` optional; when present, written to the new tab's
@@ -416,12 +435,29 @@ QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
     //     Caller is responsible for the trailing newline — matches
     //     `send-text` semantics so the two commands behave
     //     consistently with shell pipes.
+    //   - `raw` optional; default false. When true, skips C0 filter
+    //     (matches send-text). Otherwise `command` is filtered
+    //     identically to send-text — see cmdLaunch for rationale.
+    //
+    // 0.7.52 (2026-04-27 indie-review HIGH) — `command` is routed
+    // through filterControlChars by default, identical to send-text.
     QJsonObject out;
     const QString cwd     = req.value("cwd").toString();
     const QString command = req.value("command").toString();
-    const int idx = m_main->newTabForRemote(cwd, command);
+    const bool rawBypass  = req.value("raw").toBool(false);
+
+    QString filteredCommand = command;
+    int stripped = 0;
+    if (!command.isEmpty() && !rawBypass) {
+        const QByteArray payload =
+            RemoteControl::filterControlChars(command.toUtf8(), &stripped);
+        filteredCommand = QString::fromUtf8(payload);
+    }
+
+    const int idx = m_main->newTabForRemote(cwd, filteredCommand);
     out["ok"] = true;
     out["index"] = idx;
+    if (!rawBypass && stripped > 0) out["stripped"] = stripped;
     return QJsonDocument(out);
 }
 

@@ -5244,47 +5244,84 @@ void MainWindow::handleUpdateClicked(const QString &url) {
         // need to be reconnected. Surface that explicitly so the
         // click isn't a footgun for users in the middle of an
         // agent run. User feedback 2026-04-27.
-        QMessageBox box(this);
-        box.setIcon(QMessageBox::Question);
-        box.setWindowTitle(tr("Update Ants Terminal"));
-        box.setText(tr("Download and install the new version now?"));
-        box.setInformativeText(tr(
-            "AppImageUpdate will fetch the new release and write "
-            "it alongside this binary in the background.\n\n"
-            "To start using the new version you'll need to "
-            "<b>quit and re-launch</b> Ants Terminal — any active "
-            "Claude Code sessions in your tabs will be "
-            "disconnected when you do, and will need to be "
-            "reconnected after the restart."));
-        box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
-        box.setDefaultButton(QMessageBox::Ok);
-        if (auto *okBtn = box.button(QMessageBox::Ok))
-            okBtn->setText(tr("Update"));
-        if (box.exec() != QMessageBox::Ok) {
-            showStatusMessage(tr("Update cancelled."), 3000);
-            return;
-        }
+        //
+        // 0.7.52 (2026-04-27 indie-review CRITICAL) — was a
+        // QMessageBox::exec() (implicit modal + nested event loop)
+        // which is exactly the QTBUG-79126 / QTBUG-90005 click-drop
+        // shape that the 0.7.50 About-dialog fix retired. On
+        // KDE/KWin + Wayland + frameless+translucent parent the
+        // user clicks Update and *nothing happens* — the modal-grab
+        // handler eats the click. Mirror the same non-modal +
+        // plain QPushButton + clicked→close pattern: dialog is
+        // heap+WA_DeleteOnClose+show()+raise()+activateWindow();
+        // Update click runs the spawn-updater path on close, Cancel
+        // click just closes. See debug_wayland_modal_dialog.md memory.
+        auto *dlg = new QDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setWindowTitle(tr("Update Ants Terminal"));
+        dlg->setObjectName(QStringLiteral("updateConfirmDialog"));
 
-        // Detached spawn — the updater outlives this binary so the
-        // user can quit and restart while the download runs. Qt 6
-        // form: static `startDetached(program, args)`. Returns true
-        // on successful fork; we surface the outcome via the status
-        // bar message rather than a modal dialog.
-        const bool ok = QProcess::startDetached(
-            updater, QStringList{appimagePath});
-        if (ok) {
+        auto *layout = new QVBoxLayout(dlg);
+        auto *headline = new QLabel(
+            tr("<b>Download and install the new version now?</b>"), dlg);
+        auto *body = new QLabel(
+            tr("AppImageUpdate will fetch the new release and write "
+               "it alongside this binary in the background.<br><br>"
+               "To start using the new version you'll need to "
+               "<b>quit and re-launch</b> Ants Terminal — any active "
+               "Claude Code sessions in your tabs will be "
+               "disconnected when you do, and will need to be "
+               "reconnected after the restart."), dlg);
+        body->setWordWrap(true);
+        body->setTextFormat(Qt::RichText);
+        layout->addWidget(headline);
+        layout->addWidget(body);
+
+        auto *btnRow = new QHBoxLayout;
+        btnRow->addStretch();
+        auto *cancelBtn = new QPushButton(tr("Cancel"), dlg);
+        cancelBtn->setObjectName(QStringLiteral("updateCancelButton"));
+        connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
+        connect(cancelBtn, &QPushButton::clicked, this, [this]() {
+            showStatusMessage(tr("Update cancelled."), 3000);
+        });
+        auto *updateBtn = new QPushButton(tr("Update"), dlg);
+        updateBtn->setObjectName(QStringLiteral("updateConfirmButton"));
+        updateBtn->setDefault(true);
+        updateBtn->setAutoDefault(true);
+        connect(updateBtn, &QPushButton::clicked, dlg, &QDialog::close);
+        connect(updateBtn, &QPushButton::clicked, this,
+                [this, updater, appimagePath, url]() {
+            // Detached spawn — the updater outlives this binary so
+            // the user can quit and restart while the download runs.
+            // Qt 6 form: static startDetached(program, args). Returns
+            // true on successful fork; we surface the outcome via the
+            // status bar rather than another modal dialog.
+            const bool ok = QProcess::startDetached(
+                updater, QStringList{appimagePath});
+            if (ok) {
+                showStatusMessage(
+                    tr("AppImageUpdate launched — downloading the new "
+                       "version. Quit and restart to use it."),
+                    8000);
+                return;
+            }
+            // Fork failed — fall back to browser so the user isn't
+            // left without recourse.
             showStatusMessage(
-                tr("AppImageUpdate launched — downloading the new "
-                   "version. Quit and restart to use it."),
-                8000);
-            return;
-        }
-        // Fork failed — fall through to the browser fallback so the
-        // user isn't left without recourse.
-        showStatusMessage(
-            tr("AppImageUpdate failed to launch — opening release "
-               "page in browser instead."),
-            5000);
+                tr("AppImageUpdate failed to launch — opening release "
+                   "page in browser instead."),
+                5000);
+            QDesktopServices::openUrl(QUrl(url));
+        });
+        btnRow->addWidget(cancelBtn);
+        btnRow->addWidget(updateBtn);
+        layout->addLayout(btnRow);
+
+        dlg->show();
+        dlg->raise();
+        dlg->activateWindow();
+        return;
     }
 
     // Fallback: open the release page in the user's default browser.

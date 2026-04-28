@@ -49,7 +49,10 @@ int main() {
     if (lPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdLaunch definition missing");
     } else {
-        std::string body = rc.substr(lPos, 1500);
+        // Window expanded to 3000 chars in 0.7.52 — cmdLaunch body
+        // grew when filterControlChars was added on the command-bytes
+        // path (2026-04-27 indie-review HIGH).
+        std::string body = rc.substr(lPos, 3000);
         if (body.find("isString()") == std::string::npos) {
             fail("INV-2b: cmdLaunch must validate `command` via isString()");
         }
@@ -68,6 +71,19 @@ int main() {
         if (body.find("newTabForRemote") == std::string::npos) {
             fail("INV-4: cmdLaunch must delegate to MainWindow::newTabForRemote "
                  "rather than re-implementing tab creation");
+        }
+        // INV-4b (added 0.7.52): command must be routed through
+        // filterControlChars by default so a same-UID attacker reaching
+        // the rc socket can't inject ESC sequences via launch the way
+        // they were blocked from doing via send-text. The `raw: true`
+        // opt-out is also required for symmetry with send-text.
+        if (body.find("filterControlChars") == std::string::npos) {
+            fail("INV-4b: cmdLaunch must filter command through "
+                 "filterControlChars by default (parity with send-text)");
+        }
+        if (body.find("\"raw\"") == std::string::npos) {
+            fail("INV-4c: cmdLaunch must support a `raw: true` opt-out "
+                 "for callers that need raw byte access");
         }
     }
 

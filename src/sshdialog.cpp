@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFormLayout>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -109,8 +110,15 @@ QStringList SshBookmark::sanitizeExtraArgs(const QString &extraArgs,
         return false;
     };
 
-    const QStringList tokens =
-        extraArgs.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    // 0.7.52 (2026-04-27 indie-review HIGH) — quote-aware tokenisation.
+    // The previous regex split on whitespace silently fractured quoted
+    // arguments, which let `-o "ProxyCommand=…"` slip past the
+    // dangerous-key check (the leading quote attaches to "ProxyCommand,
+    // which doesn't match the case-insensitive keyword). QProcess::
+    // splitCommand mirrors POSIX shell quoting: handles single + double
+    // quotes, backslash escapes, and rejects unterminated quotes (returns
+    // empty list — caller treats as nothing-to-add, safe-fail).
+    const QStringList tokens = QProcess::splitCommand(extraArgs);
 
     QStringList safe;
     int i = 0;

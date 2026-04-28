@@ -106,9 +106,21 @@ void checkSessionManager() {
     expect(pathChmodCount >= 2,
            "I2/sessionmanager-post-rename-chmod-twice", buf);
 
-    // I2 (gating) — the chmod must be inside an `if (QFile::rename(...))`.
-    expect(src.find("if (QFile::rename(tmpPath, path))") != std::string::npos,
-           "I2/sessionmanager-rename-success-gated");
+    // I2 (gating) — chmod must be gated on rename success. 0.7.52
+    // switched both saveSession + saveTabOrder from QFile::rename to
+    // std::rename (POSIX rename(2)) — QFile::rename refuses to
+    // overwrite an existing destination on POSIX, which broke every
+    // session save after the first. Accept either spelling for the
+    // gating assertion: the key invariant is that chmod runs ONLY
+    // when the rename returned 0 / succeeded.
+    const bool gatedQt  =
+        src.find("if (QFile::rename(tmpPath, path))") != std::string::npos;
+    const bool gatedStd =
+        src.find("std::rename(tmpPath.toLocal8Bit().constData()") != std::string::npos
+        && src.find("if (rc == 0)") != std::string::npos;
+    expect(gatedQt || gatedStd,
+           "I2/sessionmanager-rename-success-gated",
+           "expected either QFile::rename gating OR std::rename + rc==0 gating");
 }
 
 void checkSettingsDialog() {

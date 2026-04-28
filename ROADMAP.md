@@ -1,6 +1,6 @@
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.51 (2026-04-28). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.52 (2026-04-28). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 
@@ -2204,16 +2204,17 @@ flagged by ≥2 independent reviewers regardless of which lane:
 
 ### 🐛 Regressions reported post-0.7.49 (user, 2026-04-27)
 
-- 📋 **HIGH — GitHub repo-type chip (Public/Private) not showing
-  at all.** Regression from the 0.7.49 placement move (right →
-  left, `addPermanentWidget` → `addWidget`, chip styling). Widget
-  is constructed and added but never becomes visible — investigate
-  whether `applyVisibility` lambda's `setVisible(true)` path is
-  reached, whether the chip stylesheet collapses to zero size, or
-  whether `refreshRepoVisibility` fires before the widget is parented.
-  Verify against `tests/features/github_status_bar/` — the test
-  asserts `addWidget` but doesn't actually check visibility at
-  runtime. Also confirm INV needs extending.
+- ✅ **HIGH — GitHub repo-type chip (Public/Private) not showing
+  at all.** Resolved as of 2026-04-28 (user confirmed via screenshot
+  showing the "Public" badge alongside the `main` branch chip on the
+  status bar's left side). The chip became visible after the 0.7.50
+  / 0.7.51 release cycle landed; the original suspicion (placement-
+  move regression hiding the widget) didn't manifest in the running
+  build once chrome ordering settled. No source change needed beyond
+  what already shipped. `tests/features/github_status_bar/` still
+  asserts the call shape but does not check runtime visibility —
+  worth extending the next time the GitHub-status-bar lane is
+  touched (deferred to T2 hardening, separate item).
 - ✅ **HIGH — Status-bar transient notification stuck on "Config
   reloaded from disk".** Shipped in 0.7.51 — root cause was the
   config-watcher firing in a tight loop (the second of the two

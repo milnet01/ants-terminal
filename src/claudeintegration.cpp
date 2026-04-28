@@ -976,9 +976,17 @@ static QString extractCwdFromTranscript(const QString &transcriptPath) {
     QFile file(transcriptPath);
     if (!file.open(QIODevice::ReadOnly)) return {};
 
+    // 0.7.52 (2026-04-27 indie-review HIGH) — cap readLine at 64 KiB. The
+    // transcript is a JSONL file written by Claude Code; pathological /
+    // corrupted input could put a multi-GiB single line at the head and
+    // OOM the process before we get to the early-return cap. 64 KiB is
+    // generous: real transcript records are <2 KiB, and any object whose
+    // serialized form exceeds 64 KiB has no `cwd` field worth recovering.
+    constexpr qint64 kMaxLineBytes = 64 * 1024;
+
     int linesRead = 0;
     while (!file.atEnd() && linesRead < 30) {
-        QByteArray line = file.readLine().trimmed();
+        QByteArray line = file.readLine(kMaxLineBytes).trimmed();
         ++linesRead;
         if (line.isEmpty()) continue;
         QJsonDocument doc = QJsonDocument::fromJson(line);

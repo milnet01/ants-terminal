@@ -3527,11 +3527,23 @@ void AuditDialog::buildUI() {
         const QString path = m_projectPath + "/.audit_cache/audit-"
                            + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
                            + ".sarif";
-        QFile f(path);
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            f.write(exportSarif().toUtf8());
-            f.close();
-            m_statusLabel->setFullText("SARIF saved: " + path);
+        // 0.7.52 (2026-04-27 indie-review CRITICAL) — atomic write +
+        // 0600 perms. The SARIF body may carry secrets surfaced by
+        // gitleaks / secrets_scan rules (the whole point of those
+        // checks is to find leaked tokens); persisting the report
+        // world-readable would just relocate the leak. QSaveFile +
+        // commit gives the same write-rename-fsync atomicity as the
+        // Config code path; setOwnerOnlyPerms locks 0600.
+        QSaveFile sf(path);
+        if (sf.open(QIODevice::WriteOnly)) {
+            setOwnerOnlyPerms(sf);
+            sf.write(exportSarif().toUtf8());
+            if (sf.commit()) {
+                setOwnerOnlyPerms(path);  // re-chmod final inode
+                m_statusLabel->setFullText("SARIF saved: " + path);
+            } else {
+                m_statusLabel->setFullText("SARIF save failed: " + sf.errorString());
+            }
         }
     });
     btnRow->addWidget(m_sarifBtn);
@@ -3546,11 +3558,20 @@ void AuditDialog::buildUI() {
         const QString path = m_projectPath + "/.audit_cache/audit-"
                            + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
                            + ".html";
-        QFile f(path);
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            f.write(exportHtml().toUtf8());
-            f.close();
-            m_statusLabel->setFullText("HTML report saved: " + path);
+        // 0.7.52 — same atomic + 0600 treatment as SARIF (CRITICAL
+        // from 2026-04-27 indie-review — the HTML body embeds the
+        // same finding metadata, including any leaked-secret strings
+        // surfaced by gitleaks rules).
+        QSaveFile sf(path);
+        if (sf.open(QIODevice::WriteOnly)) {
+            setOwnerOnlyPerms(sf);
+            sf.write(exportHtml().toUtf8());
+            if (sf.commit()) {
+                setOwnerOnlyPerms(path);
+                m_statusLabel->setFullText("HTML report saved: " + path);
+            } else {
+                m_statusLabel->setFullText("HTML save failed: " + sf.errorString());
+            }
         }
     });
     btnRow->addWidget(m_htmlBtn);

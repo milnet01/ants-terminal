@@ -10,6 +10,118 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.52] — 2026-04-28
+
+**Theme:** First Tier-1 sweep of the 2026-04-27 indie-review findings.
+Eight fixes covering CRITICAL data-loss / security regressions plus
+HIGH security-class hardening — `SessionManager` silent scrollback
+loss, the same Wayland modal-grab pattern from 0.7.50 lurking in the
+update-confirmation dialog, SARIF/HTML reports leaking secrets at
+0644, and five smaller HIGH items. The user-reported GitHub repo-type
+chip regression is also resolved (verified visible).
+
+### Fixed
+
+- **CRITICAL — `SessionManager` silent data loss.** `saveSession`
+  + `saveTabOrder` used `QFile::rename`, which on POSIX refuses to
+  overwrite an existing destination. Every session save AFTER the
+  first silently failed: the `.dat` file held the original
+  snapshot, `.dat.tmp` accumulated each new write, user scrollback
+  never updated past the first save. `tab_order.txt` was the same
+  shape. Switched both to `std::rename` (POSIX `rename(2)` —
+  atomic replace), mirroring the 0.7.12 Config fix. Errno logged
+  on failure (`ENOSPC`, `EACCES`, `EXDEV`); orphaned `.tmp`
+  removed so it doesn't accumulate across sessions. Locked by
+  `tests/features/persistence_post_rename_chmod/` INV-2 (revised
+  to accept either `QFile::rename` or `std::rename` + `rc==0`
+  gating).
+- **CRITICAL — Update-confirmation dialog same Wayland modal-grab
+  regression as 0.7.50 About fix.** `handleUpdateClicked` was a
+  `QMessageBox box(this); box.exec()` — exactly the pattern that
+  drops button clicks on KDE/KWin + frameless+translucent parent
+  per QTBUG-79126 / QTBUG-90005. User clicks the
+  "↗ Update vX available" badge, the confirmation dialog appears,
+  user clicks "Update", nothing happens. Converted to the proven
+  shape: heap `QDialog` + `WA_DeleteOnClose` + plain `QPushButton`
+  whose `clicked()` is wired to `QDialog::close()` plus the
+  `startDetached` spawn, mirroring the 0.7.50 About-dialog fix.
+  Locked by `tests/features/github_status_bar/` INV-17 (revised
+  to forbid `QMessageBox box(this)`, require `new QDialog(this)`
+  + `&QPushButton::clicked` + `&QDialog::close`).
+- **CRITICAL — SARIF / HTML export not atomic + 0644 perms.**
+  `auditdialog.cpp` SARIF and HTML export buttons used raw
+  `QFile` writes with default world-readable perms. The reports
+  embed every finding the audit ran, including any leaked secret
+  surfaced by the `gitleaks` / `secrets_scan` rules (whose whole
+  purpose is to find leaked tokens in the source tree).
+  Persisting that report at 0644 just relocates the leak.
+  Switched both to `QSaveFile` + `commit()` (atomic write-rename-
+  fsync) plus `setOwnerOnlyPerms` (0600).
+- **HIGH — `new-tab` / `launch` IPC commands bypassed the
+  `send-text` C0 filter.** `cmdNewTab` and `cmdLaunch` wrote
+  caller-supplied bytes verbatim to the new tab's PTY, with no
+  C0 stripping. A same-UID attacker reaching the rc socket got
+  ESC sequence / bracketed-paste / OSC 52 clipboard-overwrite
+  primitives via a different command than the one (`send-text`)
+  that was hardened against it. Both now route through
+  `RemoteControl::filterControlChars` by default; both honour
+  the `raw: true` opt-out for callers who genuinely need raw
+  byte access (test harnesses, escape-driven plugins). Locked
+  by `tests/features/remote_control_new_tab/` INV-3c/3d and
+  `tests/features/remote_control_launch/` INV-4b/4c.
+- **HIGH — OSC 8 `file://` and `ftp://` schemes removed from
+  the hyperlink allowlist.** A hostile remote shell or trigger-
+  rule output could otherwise emit
+  `\e]8;;file:///foo.desktop\e\\…\e]8;;\e\\` and turn a
+  Ctrl+click into autoexecution via xdg-open's `.desktop`
+  handler — RCE-adjacent on most modern desktops. `ftp://`
+  similarly drops user credentials over plaintext. Allowlist now
+  covers only `http`, `https`, `mailto`. Same allowlist applies
+  to user-trigger-rule make-hyperlink expansion in
+  `terminalgrid.cpp`.
+- **HIGH — SSH `extraArgs` quote-bypass on the dangerous-`-o`
+  allowlist.** `sanitizeExtraArgs` split tokens on
+  `QRegularExpression("\\s+")`, which fractured quoted args:
+  `-o "ProxyCommand=foo bar"` produced
+  `["-o", "\"ProxyCommand=foo", "bar\""]`. The leading `"`
+  prevented the case-insensitive `ProxyCommand` match → the
+  RCE-grade option silently bypassed the allowlist. Switched
+  to `QProcess::splitCommand`, which mirrors POSIX shell
+  quoting: handles single + double quotes, backslash escapes,
+  and rejects unterminated quotes with an empty list (safe
+  fail).
+- **HIGH — `extractCwdFromTranscript` unbounded `readLine`.**
+  Caps `readLine` at 64 KiB. Pathological / corrupted Claude-
+  Code transcript JSONL with a multi-GiB single-line head no
+  longer OOMs the process before the early-return cap fires.
+  Real transcript records are < 2 KiB; objects > 64 KiB don't
+  carry a `cwd` field worth recovering anyway.
+- **HIGH — AI endpoint scheme allowlist (http/https only).**
+  The dialog routes user prompts + terminal context (potentially
+  carrying secrets, file paths, command output) to the
+  configured `ai_endpoint` URL. A `file://` / `gopher://` /
+  bare-host scheme would leak that traffic. Now rejected up-
+  front with a status-label explanation rather than at request
+  time when the body is already serialised.
+- **HIGH — `openFileAtPath` argv-injection via attacker-
+  controlled paths starting with `-`.** PTY output is the
+  source of click-detected file paths, so a hostile remote
+  shell can produce `--cmd-injection-string` looking text. The
+  helper now (a) prepends `./` to any path starting with `-`
+  before single-arg branches (subl/hx/micro/code's
+  `path:line:col` form), and (b) inserts `--` before the path
+  argument in separate-arg branches (kate, vim, nano,
+  jetbrains, default).
+
+### Resolved (user reports, 2026-04-27)
+
+- **GitHub Public/Private repo-type chip not showing.** User
+  confirmed via screenshot 2026-04-28 that the chip is now
+  visible alongside the `main` branch indicator on the status
+  bar. The original suspicion (placement-move regression) didn't
+  manifest in the running build once chrome ordering settled
+  through 0.7.50 / 0.7.51.
+
 ## [0.7.51] — 2026-04-28
 
 **Theme:** Hot-reload doesn't loop any more. Same-day follow-up to

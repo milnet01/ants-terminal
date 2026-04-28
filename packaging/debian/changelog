@@ -1,3 +1,36 @@
+ants-terminal (0.7.52-1) unstable; urgency=medium
+
+  * First Tier-1 sweep of the 2026-04-27 indie-review findings.
+    Eight fixes covering CRITICAL data-loss / security regressions
+    plus HIGH security-class hardening.
+  * CRITICAL — SessionManager silent data loss. saveSession +
+    saveTabOrder used QFile::rename, which on POSIX refuses to
+    overwrite an existing destination. Every session save AFTER
+    the first silently failed. Switched both to std::rename
+    (POSIX rename(2) — atomic replace), mirroring the 0.7.12
+    Config fix. Errno logged on failure.
+  * CRITICAL — Update-confirmation dialog same Wayland modal-grab
+    regression as 0.7.50 About fix. Was QMessageBox::exec; now a
+    non-modal QDialog + plain QPushButton + clicked→close.
+  * CRITICAL — SARIF / HTML export not atomic + 0644 perms. Now
+    QSaveFile + commit() + setOwnerOnlyPerms (0600).
+  * HIGH — new-tab / launch IPC commands now route command bytes
+    through filterControlChars by default (parity with send-text).
+    raw:true opt-out preserved.
+  * HIGH — OSC 8 file:// and ftp:// schemes removed from the
+    hyperlink allowlist (RCE-adjacent / plaintext-creds).
+  * HIGH — SSH extraArgs uses QProcess::splitCommand for
+    quote-aware tokenisation, plugging the
+    -o "ProxyCommand=..." bypass.
+  * HIGH — extractCwdFromTranscript caps readLine at 64 KiB.
+  * HIGH — AI endpoint scheme allowlist (http/https only).
+  * HIGH — openFileAtPath argv-injection guard for paths
+    starting with -.
+  * Resolved (user report): GitHub Public/Private repo-type chip
+    not showing — confirmed visible 2026-04-28.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 28 Apr 2026 11:00:00 +0200
+
 ants-terminal (0.7.51-1) unstable; urgency=medium
 
   * Hot-reload doesn't loop any more. Same-day follow-up to 0.7.50 —

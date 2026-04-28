@@ -3257,6 +3257,26 @@ void TerminalWidget::openFileAtPath(const QString &path) {
     //   micro        <path>:<line>[:<col>]
     //   jetbrains (idea, pycharm, clion, goland, webstorm, rider, …)
     //                --line <line> [--column <col>] <path>
+    // 0.7.52 (2026-04-27 indie-review HIGH) — argv-injection guard.
+    // The `path` argument here originates from terminal output (file-
+    // path span detection on PTY bytes), so a hostile remote shell can
+    // produce `--some-flag` or `-rf` looking strings. If we just append
+    // `filePath` to argv, the editor parses it as a flag rather than a
+    // path, leading to "-rf reaches rm-equivalents in the editor's
+    // pre-flight" / "--cmd injection" / etc.
+    //
+    // Defense: (a) for editors that take the path as a *separate* argv
+    // element, insert `--` before the path so the editor's flag parser
+    // stops; (b) for editors that take `path:line` as a *combined*
+    // single argument, prepend `./` to any path starting with `-` so
+    // it doesn't lead with a flag character. The `./` prefix is
+    // resolved by the editor's filesystem layer the same way as the
+    // bare path.
+    auto pathSafe = [](const QString &p) -> QString {
+        return p.startsWith('-') ? QStringLiteral("./") + p : p;
+    };
+    const QString filePathSafe = pathSafe(filePath);
+
     QStringList args;
     QString editorBase = QFileInfo(editor).fileName();
     auto isCodeFamily = [&]() {
@@ -3272,42 +3292,42 @@ void TerminalWidget::openFileAtPath(const QString &path) {
     };
     if (line > 0) {
         if (isCodeFamily()) {
-            args << "--goto" << QString("%1:%2%3").arg(filePath).arg(line)
+            args << "--goto" << QString("%1:%2%3").arg(filePathSafe).arg(line)
                                                   .arg(col > 0 ? QString(":%1").arg(col) : "");
         } else if (editorBase == "kate") {
             args << "-l" << QString::number(line);
             if (col > 0) args << "-c" << QString::number(col);
-            args << filePath;
+            args << "--" << filePathSafe;
         } else if (editorBase == "subl" || editorBase == "sublime_text"
                 || editorBase == "hx" || editorBase == "helix"
                 || editorBase == "micro") {
             // These editors all accept the same path:line:col goto syntax
             // VSCode's --goto uses internally — append directly.
-            args << QString("%1:%2%3").arg(filePath).arg(line)
+            args << QString("%1:%2%3").arg(filePathSafe).arg(line)
                                        .arg(col > 0 ? QString(":%1").arg(col) : "");
         } else if (editorBase == "nvim" || editorBase == "vim"
                 || editorBase == "vi"   || editorBase == "ex") {
             // vi-family: +N file (col jump goes via -c "normal Mc|" — too
             // hostile for a casual click; line-only is the sensible default).
-            args << QString("+%1").arg(line) << filePath;
+            args << QString("+%1").arg(line) << "--" << filePathSafe;
         } else if (editorBase == "nano") {
             // nano: +line[,col] file
             args << (col > 0 ? QString("+%1,%2").arg(line).arg(col)
                              : QString("+%1").arg(line))
-                 << filePath;
+                 << "--" << filePathSafe;
         } else if (isJetBrains()) {
             args << "--line" << QString::number(line);
             if (col > 0) args << "--column" << QString::number(col);
-            args << filePath;
+            args << "--" << filePathSafe;
         } else {
             // Unknown editor — best-effort: just pass the path. If users
             // need line jump for an editor not above, they can set
             // editor_command to one of the recognized names (or wrap their
             // editor in a small shell script that translates).
-            args << filePath;
+            args << "--" << filePathSafe;
         }
     } else {
-        args << filePath;
+        args << "--" << filePathSafe;
     }
 
     QProcess::startDetached(editor, args);

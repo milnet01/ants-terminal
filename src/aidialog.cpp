@@ -114,6 +114,31 @@ void AiDialog::setTerminalContext(const QString &context) {
 
 void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
                           const QString &model, int contextLines) {
+    // 0.7.52 (2026-04-27 indie-review HIGH) — scheme allowlist on the
+    // configured AI endpoint. The dialog routes user prompts + terminal
+    // context (potentially carrying secrets, file paths, command output)
+    // to whatever URL is here. A `file://` / `gopher://` / bare-host
+    // schema with no transport encryption would leak that traffic, so
+    // reject anything other than http/https up-front rather than at
+    // request-time when the body is already serialised. Empty endpoint
+    // still means "AI disabled" (handled below); we only validate when
+    // a non-empty value is supplied.
+    if (!endpoint.isEmpty()) {
+        const QUrl u(endpoint);
+        const QString scheme = u.scheme().toLower();
+        if (scheme != QStringLiteral("http") && scheme != QStringLiteral("https")) {
+            m_endpoint.clear();
+            m_apiKey.clear();
+            m_model = model;
+            m_contextLines = contextLines;
+            m_statusLabel->setText(
+                QStringLiteral("AI endpoint rejected — only http/https are "
+                               "permitted (got '%1'). Set ai_endpoint in "
+                               "config.json to a https://… URL.").arg(scheme));
+            return;
+        }
+    }
+
     m_endpoint = endpoint;
     m_apiKey = apiKey;
     m_model = model;
