@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>0.7.55</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide.
+  Current version: <strong>0.7.55</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, and <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide. The roadmap follows <a href="docs/ROADMAP_FORMAT.md">ROADMAP_FORMAT v1</a> — a shareable contract for LLM-friendly roadmaps that any project can adopt.
 </p>
 
 ---
