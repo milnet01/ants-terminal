@@ -381,7 +381,12 @@ private:
 
     // SGR color parsing helpers
     QColor parse256Color(const std::vector<int> &params, size_t &i);
-    QColor parseRGBColor(const std::vector<int> &params, size_t &i);
+    // 0.7.55 (2026-04-27 indie-review) — colonSep added so we can
+    // detect the ITU/ECMA-48 colon-RGB form `38:2::r:g:b`. The empty
+    // colorspace slot becomes a colon-separated zero param, shifting
+    // R/G/B by 1 vs the legacy semicolon form `38;2;r;g;b`.
+    QColor parseRGBColor(const std::vector<int> &params,
+                         const std::vector<bool> &colonSep, size_t &i);
 
     void newLine();
     void carriageReturn();

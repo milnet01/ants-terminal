@@ -103,6 +103,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.55" date="2026-04-28">
+      <description>
+        <p>VT parser correctness + audit-dialog hardening from the 2026-04-27 indie-review. Six fixes — multi-row OSC 8 hyperlink span emission, ITU/ECMA-48 colon-RGB form parsing, audit comment-suppress hyphen handling, trend-snapshot dedup, bg-tasks liveness sweep split from full reparse, and a hot-path returnByReference fix.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li>Multi-row OSC 8 hyperlink spans miscoded. Pre-fix a hyperlink that wrapped to multiple rows stored only a single span on the start row with the wrong endCol; now emits per-row spans on close. Pre-0.7.55 shape preserved for single-row spans + the resize-pushed-text-to-scrollback edge case.</li>
+          <li>ITU/ECMA-48 colon-RGB form 38:2::r:g:b dropped a channel. Parser now detects the 4-slot colon group (colorspace + R + G + B) and reads R/G/B from the right offsets. Legacy 38;2;r;g;b and 3-slot 38:2:r:g:b continue unchanged.</li>
+          <li>Audit comment-suppress regex mis-handled hyphenated rule IDs (// nosemgrep: bash-c-non-literal matched only bash). Terminator class shrunk to [)\]]|$; hyphenated IDs now suppress correctly.</li>
+          <li>Trend snapshot duplicated on every UI filter click. Gated by m_snapshotPersisted (reset in runAudit, set on first authoritative render). Re-renders triggered by severity-pill toggles skip the append.</li>
+          <li>bg-tasks: split liveness sweep from full transcript reparse. Added sweepLiveness() that walks m_tasks via stat() calls + mtime check; the 2 s status-timer drives this cheap sweep instead of the 16 MiB transcript reparse. File-watcher continues to drive full rescan() on transcript-changed.</li>
+          <li>ClaudeBgTaskTracker::tasks() returned by value on the hot path. cppcheck-flagged returnByReference. Now returns const &.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.54" date="2026-04-28">
       <description>
         <p>A11y + UX bundle from the 2026-04-27 indie-review. Six fixes — accessibility plumbing on status-bar surfaces and ToggleSwitch, plan-mode persistence across tab switches, an SSE iteration cap to prevent UI freeze on misbehaving AI endpoints, and IPv6 support in the SSH Quick Connect parser.</p>

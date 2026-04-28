@@ -447,6 +447,13 @@ private:
     QStringList m_recentFiles;                 // computed at runAudit() start
     QHash<QString, QSet<int>> m_recentLines;   // file → {modified line numbers}
 
+    // 0.7.55 (2026-04-27 indie-review) — guard against duplicate trend
+    // snapshots. renderResults() runs on every UI filter click, but the
+    // snapshot append must only happen once per audit run. Reset to
+    // false in runAudit(); flipped to true on the first authoritative
+    // render in renderResults().
+    bool m_snapshotPersisted = false;
+
     // Project context docs to attach to the Claude-review handoff. Loaded
     // lazily when "Review with Claude" is pressed.
     QString readProjectDoc(const QString &name) const;

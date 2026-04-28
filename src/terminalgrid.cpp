@@ -863,13 +863,63 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             if (uri.empty()) {
                 // Close hyperlink
                 if (m_hyperlinkActive) {
-                    HyperlinkSpan span;
-                    span.startCol = m_hyperlinkStartCol;
-                    span.endCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
-                    span.uri = m_hyperlinkUri;
-                    span.id = m_hyperlinkId;
-                    if (m_hyperlinkStartRow < m_rows)
-                        m_screenHyperlinks[m_hyperlinkStartRow].push_back(std::move(span));
+                    // 0.7.55 (2026-04-27 indie-review) — multi-row span
+                    // emission. The hyperlink may have wrapped to one
+                    // or more rows since open; previously the close
+                    // path stored a single span on m_hyperlinkStartRow
+                    // with `endCol = m_cursorCol - 1`, but m_cursorCol
+                    // is on the *current* (wrapped) row, not the start
+                    // row. The recorded span was thus the wrong shape
+                    // (negative width when cursor was earlier in the
+                    // wrapped row, and zero coverage on intermediate
+                    // rows). Now emit:
+                    //   • startRow: [startCol, m_cols-1] if wrapped, or
+                    //               [startCol, cursorCol-1] if single-row
+                    //   • intermediate rows [startRow+1, cursorRow-1]:
+                    //               [0, m_cols-1] full row
+                    //   • endRow: [0, cursorCol-1] when wrapped
+                    const int startRow = m_hyperlinkStartRow;
+                    const int endRow = m_cursorRow;
+                    const int cols = m_cols;
+                    if (startRow >= endRow) {
+                        // startRow == endRow: single-row span.
+                        // startRow >  endRow: a resize/reflow has moved
+                        //   the hyperlink's text into scrollback while
+                        //   leaving startRow clamped to the new screen.
+                        //   The forward-wrap math doesn't apply; preserve
+                        //   the pre-0.7.55 single-row-at-startRow shape
+                        //   so the hyperlink_resize_clamp invariants
+                        //   (which depend on this exact behaviour) keep
+                        //   passing.
+                        HyperlinkSpan s;
+                        s.startCol = m_hyperlinkStartCol;
+                        s.endCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
+                        s.uri = m_hyperlinkUri;
+                        s.id = m_hyperlinkId;
+                        if (startRow >= 0 && startRow < m_rows)
+                            m_screenHyperlinks[startRow].push_back(std::move(s));
+                    } else {
+                        // Forward wrap (startRow < endRow) — emit per-row
+                        // spans so each wrapped row is independently
+                        // clickable. Pre-0.7.55 emitted ONE span on
+                        // startRow with the wrong endCol (cursor's column
+                        // on a different row).
+                        auto pushSpan = [&](int row, int sCol, int eCol) {
+                            if (row < 0 || row >= m_rows) return;
+                            if (eCol < sCol) return;
+                            HyperlinkSpan s;
+                            s.startCol = sCol;
+                            s.endCol = eCol;
+                            s.uri = m_hyperlinkUri;
+                            s.id = m_hyperlinkId;
+                            m_screenHyperlinks[row].push_back(std::move(s));
+                        };
+                        pushSpan(startRow, m_hyperlinkStartCol, cols - 1);
+                        for (int r = startRow + 1; r < endRow; ++r)
+                            pushSpan(r, 0, cols - 1);
+                        const int eCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
+                        pushSpan(endRow, 0, eCol);
+                    }
                     m_hyperlinkActive = false;
                     m_hyperlinkUri.clear();
                     m_hyperlinkId.clear();
@@ -1402,7 +1452,7 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
         case 38:
             if (i + 1 < params.size()) {
                 if (params[i + 1] == 5) m_currentAttrs.fg = parse256Color(params, i);
-                else if (params[i + 1] == 2) m_currentAttrs.fg = parseRGBColor(params, i);
+                else if (params[i + 1] == 2) m_currentAttrs.fg = parseRGBColor(params, colonSep, i);
             }
             break;
         case 39: m_currentAttrs.fg = m_defaultFg; break;
@@ -1414,7 +1464,7 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
         case 48:
             if (i + 1 < params.size()) {
                 if (params[i + 1] == 5) m_currentAttrs.bg = parse256Color(params, i);
-                else if (params[i + 1] == 2) m_currentAttrs.bg = parseRGBColor(params, i);
+                else if (params[i + 1] == 2) m_currentAttrs.bg = parseRGBColor(params, colonSep, i);
             }
             break;
         case 49: m_currentAttrs.bg = m_defaultBg; break;
@@ -1441,11 +1491,42 @@ QColor TerminalGrid::parse256Color(const std::vector<int> &params, size_t &i) {
     return m_defaultFg;
 }
 
-QColor TerminalGrid::parseRGBColor(const std::vector<int> &params, size_t &i) {
+QColor TerminalGrid::parseRGBColor(const std::vector<int> &params,
+                                   const std::vector<bool> &colonSep,
+                                   size_t &i) {
+    // Three forms accepted:
+    //
+    //   1. Legacy semicolon: `38;2;r;g;b`
+    //      → params[i..i+4] = [38, 2, r, g, b], no colonSep on slots.
+    //   2. Colon, no colorspace: `38:2:r:g:b`
+    //      → params[i..i+4] = [38, 2, r, g, b], colonSep true for i+1..i+4.
+    //   3. ITU/ECMA-48 with empty colorspace: `38:2::r:g:b`
+    //      → params[i..i+5] = [38, 2, 0, r, g, b], colonSep true for
+    //        i+1..i+5. The vtparser produces a zero-valued param for the
+    //        empty colorspace slot.
+    //
+    // Detect form 3 by checking whether the colon group after `2`
+    // extends to 4 sub-parameters (colorspace + R + G + B) instead of
+    // 3 (R + G + B). Without this branch, form 3 mis-reads the
+    // colorspace as red and shifts G/B off the end (or to whatever
+    // garbage follows in the SGR stream).
+    auto colonAt = [&](size_t k) {
+        return k < colonSep.size() && colonSep[k];
+    };
+    const bool ituForm = (i + 5 < params.size())
+        && colonAt(i + 1) && colonAt(i + 2)
+        && colonAt(i + 3) && colonAt(i + 4) && colonAt(i + 5);
+    if (ituForm) {
+        const int r = std::clamp(params[i + 3], 0, 255);
+        const int g = std::clamp(params[i + 4], 0, 255);
+        const int b = std::clamp(params[i + 5], 0, 255);
+        i += 5;
+        return QColor(r, g, b);
+    }
     if (i + 4 < params.size()) {
-        int r = std::clamp(params[i + 2], 0, 255);
-        int g = std::clamp(params[i + 3], 0, 255);
-        int b = std::clamp(params[i + 4], 0, 255);
+        const int r = std::clamp(params[i + 2], 0, 255);
+        const int g = std::clamp(params[i + 3], 0, 255);
+        const int b = std::clamp(params[i + 4], 0, 255);
         i += 4;
         return QColor(r, g, b);
     }

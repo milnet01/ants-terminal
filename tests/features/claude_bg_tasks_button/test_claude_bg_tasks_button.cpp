@@ -325,15 +325,25 @@ int main() {
              "task-finished signal");
     }
     {
+        // 0.7.55 (2026-04-27 indie-review) — sweepLiveness split out
+        // from rescan(). The 2 s status timer drives the cheap
+        // mtime-only sweep; rescan() now runs only on transcript-
+        // changed (file watcher) and same-path-bind. Both must remain
+        // public slots so the watcher and the timer can connect.
         std::regex publicRescan(
             R"(public\s+slots\s*:\s*[\s\S]*?void\s+rescan\s*\(\s*\))");
+        std::regex publicSweep(
+            R"(public\s+slots\s*:\s*[\s\S]*?void\s+sweepLiveness\s*\(\s*\))");
         if (!std::regex_search(bgh, publicRescan)) {
             fail("INV-12(b): ClaudeBgTaskTracker::rescan must be in "
-                 "`public slots:` — the periodic liveness sweep "
-                 "(refreshBgTasksButton on the 2 s status tick) needs "
-                 "to call rescan() directly when the transcript path "
-                 "is unchanged. setTranscriptPath short-circuits on "
-                 "same-path so it can't be the entry point");
+                 "`public slots:` so the file watcher can connect to "
+                 "transcript-changed events");
+        }
+        if (!std::regex_search(bgh, publicSweep)) {
+            fail("INV-12(b): ClaudeBgTaskTracker::sweepLiveness must "
+                 "be in `public slots:` — the 2 s status timer drives "
+                 "this lightweight mtime-only sweep instead of the "
+                 "full 16 MiB transcript reparse");
         }
     }
     {
@@ -341,17 +351,29 @@ int main() {
             "void MainWindow::refreshBgTasksButton()");
         if (body.empty()) {
             fail("INV-12(c): refreshBgTasksButton body not found");
-        } else if (body.find("m_claudeBgTasks->rescan()") == std::string::npos) {
-            fail("INV-12(c): refreshBgTasksButton must call "
-                 "`m_claudeBgTasks->rescan()` directly when the "
-                 "transcript path is unchanged. setTranscriptPath "
-                 "early-returns on same-path so it cannot drive the "
-                 "periodic liveness sweep on its own");
+        } else {
+            // 0.7.55 — the 2 s tick now calls sweepLiveness() (cheap),
+            // not rescan() (16 MiB reparse). The full rescan() runs on
+            // setTranscriptPath path change + the watcher's
+            // transcript-changed signal, so a same-path tick only
+            // needs the mtime sweep.
+            const bool callsSweep =
+                body.find("m_claudeBgTasks->sweepLiveness()") != std::string::npos;
+            const bool callsRescan =
+                body.find("m_claudeBgTasks->rescan()") != std::string::npos;
+            if (!callsSweep && !callsRescan) {
+                fail("INV-12(c): refreshBgTasksButton must call either "
+                     "sweepLiveness() (preferred — cheap mtime walk) "
+                     "or rescan() (full transcript reparse) when the "
+                     "transcript path is unchanged. setTranscriptPath "
+                     "early-returns on same-path so it cannot drive "
+                     "the periodic liveness sweep on its own");
+            }
         }
         if (mw.find("&MainWindow::refreshBgTasksButton") == std::string::npos) {
             fail("INV-12(c): the 2 s status timer must connect to "
                  "MainWindow::refreshBgTasksButton — without periodic "
-                 "rescans the liveness sweep never re-runs while the "
+                 "ticks the liveness sweep never re-runs while the "
                  "transcript is silent and the chip stays stale");
         }
     }

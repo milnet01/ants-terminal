@@ -2265,8 +2265,17 @@ bool AuditDialog::commentSuppresses(const QString &commentText, const QString &r
     if (tail.isEmpty() || tail.startsWith("--")) return true;
 
     // Pull out anything that looks like a rule-id list.
+    //
+    // 0.7.55 (2026-04-27 indie-review) — terminator class previously
+    // included `-`, which collides with the rule-id charset (rule IDs
+    // commonly contain hyphens, e.g. `bash-c-non-literal`,
+    // `google-cloud-credentials`). The non-greedy body match would
+    // stop at the first `-` in the rule ID, and `// nosemgrep:
+    // bash-c-non-literal` matched only `bash`, leaving the rest of
+    // the suppression silently inactive. Terminator class is now
+    // `[)\]]|$` — close-paren / close-bracket / end-of-string only.
     static const QRegularExpression reList(
-        R"([:=(\[\s]\s*([a-z0-9_\-\*\s,\.]+?)(?:[)\]-]|$))",
+        R"([:=(\[\s]\s*([a-z0-9_\-\*\s,\.]+?)(?:[)\]]|$))",
         QRegularExpression::CaseInsensitiveOption);
     const auto listMatch = reList.match(QString(" ") + tail);  // leading space ensures capture
     if (!listMatch.hasMatch()) return true;   // token present but shape unknown → conservative suppress
@@ -3727,6 +3736,7 @@ void AuditDialog::runAudit() {
     m_statusLabel->setVisible(true);
     m_completedResults.clear();
     m_cancelled = false;
+    m_snapshotPersisted = false;  // see m_snapshotPersisted in auditdialog.h
     // Cancel becomes the primary action while a run is in-flight; Run
     // button stays visible but disabled so the button-row geometry
     // doesn't jump.
@@ -4467,7 +4477,19 @@ void AuditDialog::renderResults() {
 
     // Persist the snapshot for next run's trend line. Skip if we're in
     // showNewOnly mode — that's a filtered view, not an authoritative count.
-    if (!m_showNewOnly) appendSnapshot(curr);
+    //
+    // 0.7.55 (2026-04-27 indie-review) — also gate on m_snapshotPersisted
+    // so re-renders triggered by severity-pill toggles, baseline switches,
+    // or other UI filter actions don't append duplicate snapshots. Was a
+    // fresh appendSnapshot per filter click before — the .audit_history
+    // file accumulated 10+ "snapshots" per audit run.
+    // m_snapshotPersisted is reset to false in runAudit() at the start of
+    // each new run, then flipped to true here on the first authoritative
+    // render. UI-only re-renders find it true and skip.
+    if (!m_showNewOnly && !m_snapshotPersisted) {
+        appendSnapshot(curr);
+        m_snapshotPersisted = true;
+    }
 
     // Per-check sections.
     for (const auto &r : sorted) {

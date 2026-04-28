@@ -53,7 +53,10 @@ public:
     void setTranscriptPath(const QString &path);
 
     QString transcriptPath() const { return m_transcriptPath; }
-    QList<ClaudeBackgroundTask> tasks() const { return m_tasks; }
+    // 0.7.55 (2026-04-27 indie-review — cppcheck returnByReference) —
+    // hot-path read called from the 2 s status-timer; returning by
+    // value copied the whole vector every tick. Caller doesn't mutate.
+    const QList<ClaudeBackgroundTask> &tasks() const { return m_tasks; }
     int runningCount() const;
 
     // Pure parser — exposed for tests. Returns all background tasks
@@ -66,15 +69,20 @@ signals:
     void tasksChanged();
 
 public slots:
-    // Re-parse the current transcript and update the task list. Needed
-    // for the liveness sweep: stale-task detection compares file mtime
-    // against now(), so we must re-evaluate periodically even when the
-    // transcript itself is silent. Public so the status-bar 2 s timer
-    // (mainwindow.cpp::refreshBgTasksButton) can drive periodic rescans
-    // — without this the 12-stale-tasks bug from 2026-04-27 returned
-    // every time a session sat idle. Cheap (one transcript walk capped
-    // at 16 MiB).
+    // Re-parse the current transcript and update the task list. Driven
+    // by the QFileSystemWatcher on transcript-changed (write-append by
+    // Claude Code). One transcript walk capped at 16 MiB.
     void rescan();
+
+    // 0.7.55 (2026-04-27 indie-review) — lightweight liveness sweep,
+    // separate from rescan(). Walks m_tasks only and updates the
+    // `finished` flag based on each task's output-file mtime. NO
+    // transcript reparse — costs N stat() calls instead of a 16 MiB
+    // file read. Called from the status-bar 2 s timer
+    // (mainwindow.cpp::refreshBgTasksButton); rescan() continues to
+    // run on actual transcript changes. Was previously rescan() on
+    // every tick — this slot replaces that hot path.
+    void sweepLiveness();
 
 private:
     QString m_transcriptPath;

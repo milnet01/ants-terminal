@@ -10,6 +10,76 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.55] — 2026-04-28
+
+**Theme:** VT parser correctness + audit-dialog hardening from the
+2026-04-27 indie-review. Six fixes — multi-row OSC 8 hyperlink span
+emission, ITU/ECMA-48 colon-RGB form parsing, audit comment-suppress
+hyphen handling, trend-snapshot dedup, bg-tasks liveness sweep split
+from full reparse, and a hot-path returnByReference fix.
+
+### Fixed
+
+- **Multi-row OSC 8 hyperlink spans miscoded.** Pre-fix, a hyperlink
+  that wrapped to two or more rows stored a single span on
+  `m_hyperlinkStartRow` with `endCol = m_cursorCol - 1` — but
+  `m_cursorCol` is on the *current* (wrapped) row, not the start row.
+  The recorded span had the wrong shape (sometimes negative width)
+  and intermediate rows had no span at all. Now emits per-row spans
+  on close: `[startCol, cols-1]` on startRow, full-row spans on
+  intermediate rows, `[0, cursorCol-1]` on endRow. The pre-0.7.55
+  single-row shape is preserved when `startRow >= endRow` (covers
+  the single-row case AND the resize-pushed-text-to-scrollback edge
+  case the existing `hyperlink_resize_clamp` test depends on).
+
+- **ITU/ECMA-48 colon-RGB form `38:2::r:g:b` dropped a channel.**
+  The standards-compliant colon form has an explicit (often empty)
+  colorspace identifier between `2` and `r`. The previous parser
+  read R/G/B from offsets +2/+3/+4 in `params`, which mis-read the
+  empty-colorspace zero as red and shifted G/B off by one. Now
+  `parseRGBColor` takes the `colonSep` vector, detects the 4-slot
+  colon group (colorspace + R + G + B), and reads R/G/B from
+  +3/+4/+5 in that case. Legacy semicolon form `38;2;r;g;b` and
+  3-slot colon form `38:2:r:g:b` continue to work unchanged.
+
+- **Audit comment-suppress regex mis-handled hyphenated rule IDs.**
+  `// nosemgrep: bash-c-non-literal` matched only `bash` because the
+  terminator class included `-`, which collides with the rule-id
+  charset. Terminator class shrunk to `[)\]]|$`; hyphenated rule IDs
+  like `bash-c-non-literal`, `google-cloud-credentials`, and the
+  `cve-2024-*` family now suppress correctly.
+
+- **Trend snapshot duplicated on every UI filter click.**
+  `appendSnapshot(curr)` was called inside `renderResults`, which
+  fires on every severity-pill toggle, baseline switch, or other
+  re-render. The `.audit_history` file accumulated 10+ "snapshots"
+  per audit run. Now gated by `m_snapshotPersisted`, reset to false
+  in `runAudit()` and flipped to true on the first authoritative
+  render. Re-renders triggered by UI filters skip the append.
+
+- **bg-tasks: split liveness sweep from full transcript reparse.**
+  The 2 s status-timer tick used to call `rescan()`, which re-reads
+  up to 16 MiB of transcript every tick on a quiet session. Added
+  `sweepLiveness()` that walks `m_tasks` with N stat() calls and
+  flips `finished` based on output-file mtime — same staleness
+  logic as `parseTranscript`'s liveness pass, just without the
+  16 MiB reparse. The QFileSystemWatcher continues to drive full
+  `rescan()` on actual transcript-changed events; the timer drives
+  only the cheap sweep.
+
+- **`ClaudeBgTaskTracker::tasks()` returned by value on the hot
+  path.** cppcheck-flagged `returnByReference`. The 2 s status-timer
+  read copies the whole vector every tick. Now returns
+  `const QList<ClaudeBackgroundTask> &`.
+
+### Tests
+
+- `claude_bg_tasks_button` INV-12 revised to accept either
+  `sweepLiveness()` or `rescan()` from `refreshBgTasksButton` (the
+  former is the new preferred shape; the latter is still valid for
+  the file-watcher-driven full reparse).
+- ctest 112/112 green. Drift exit 0.
+
 ## [0.7.54] — 2026-04-28
 
 **Theme:** A11y + UX bundle from the 2026-04-27 indie-review. Six

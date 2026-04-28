@@ -1,3 +1,26 @@
+ants-terminal (0.7.55-1) unstable; urgency=medium
+
+  * VT parser correctness + audit-dialog hardening from the
+    2026-04-27 indie-review. Six fixes.
+  * Multi-row OSC 8 hyperlink spans now emit per-row spans on
+    close. Pre-0.7.55 stored a single mis-shaped span on the start
+    row only, leaving wrapped rows un-clickable.
+  * ITU/ECMA-48 colon-RGB form 38:2::r:g:b dropped a channel —
+    parser now detects the 4-slot colon group and reads R/G/B
+    from the right offsets.
+  * Audit comment-suppress regex now handles hyphenated rule IDs
+    (// nosemgrep: bash-c-non-literal). Terminator class fixed.
+  * Trend snapshot dedup — was appended on every UI filter click;
+    now gated by m_snapshotPersisted, one append per audit run.
+  * bg-tasks split liveness sweep from full transcript reparse.
+    Cheap sweepLiveness() (N stat calls) replaces 16 MiB
+    transcript walk on every 2 s tick. File-watcher continues to
+    drive full rescan on transcript-changed.
+  * ClaudeBgTaskTracker::tasks() returns const & instead of by
+    value on the 2 s hot path.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 28 Apr 2026 12:30:00 +0200
+
 ants-terminal (0.7.54-1) unstable; urgency=medium
 
   * A11y + UX bundle from the 2026-04-27 indie-review. Six fixes.

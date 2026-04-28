@@ -4924,14 +4924,16 @@ void MainWindow::refreshBgTasksButton() {
     if (m_claudeIntegration) path = m_claudeIntegration->activeSessionPath(cwd);
     const QString prevPath = m_claudeBgTasks->transcriptPath();
     m_claudeBgTasks->setTranscriptPath(path);
-    // setTranscriptPath only rescans when the path *changes*. Force a
-    // rescan when the path is identical so the liveness sweep
-    // (claudebgtasks.cpp — file-mtime check) re-evaluates each time
-    // this is called — without this, a transcript that's gone silent
-    // never re-runs the staleness check and the chip keeps showing
-    // a phantom running-count (2026-04-27 user report).
+    // 0.7.55 (2026-04-27 indie-review) — sweep liveness only, not full
+    // rescan. setTranscriptPath() already triggers a full rescan when
+    // the path changes (initial bind, tab switch). When the path is
+    // unchanged but we still want a fresh staleness check, the cheap
+    // sweepLiveness() does N stat() calls — avoiding the 16 MiB
+    // transcript walk that the previous rescan() call caused on every
+    // 2 s timer tick. The QFileSystemWatcher continues to drive full
+    // rescan() on transcript-changed (Claude appended JSONL).
     if (!path.isEmpty() && path == prevPath) {
-        m_claudeBgTasks->rescan();
+        m_claudeBgTasks->sweepLiveness();
     }
 
     const int running = m_claudeBgTasks->runningCount();

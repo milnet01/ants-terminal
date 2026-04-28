@@ -48,6 +48,38 @@ int ClaudeBgTaskTracker::runningCount() const {
     return n;
 }
 
+// 0.7.55 (2026-04-27 indie-review) — liveness sweep without reparse.
+// Walks m_tasks and flips `finished` when the output file is gone or
+// stale (mtime > 60 s old). Same staleness logic as parseTranscript's
+// liveness pass, but skips the 16 MiB transcript walk — the status-
+// bar 2 s timer calls this instead of rescan() so every tick costs
+// N stat() calls rather than a full transcript read.
+//
+// Emits tasksChanged() only when at least one task's `finished` flag
+// flipped, mirroring rescan()'s no-op-no-emit behaviour so a settled
+// status bar doesn't repaint each tick.
+void ClaudeBgTaskTracker::sweepLiveness() {
+    constexpr qint64 kStaleSecs = 60;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    bool changed = false;
+    for (auto &t : m_tasks) {
+        if (t.finished) continue;
+        if (t.outputPath.isEmpty()) continue;
+        const QFileInfo fi(t.outputPath);
+        if (!fi.exists()) {
+            t.finished = true;
+            changed = true;
+            continue;
+        }
+        const QDateTime mtime = fi.lastModified().toUTC();
+        if (mtime.secsTo(now) > kStaleSecs) {
+            t.finished = true;
+            changed = true;
+        }
+    }
+    if (changed) emit tasksChanged();
+}
+
 void ClaudeBgTaskTracker::rescan() {
     QList<ClaudeBackgroundTask> next;
     if (!m_transcriptPath.isEmpty())
