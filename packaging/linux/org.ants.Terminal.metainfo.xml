@@ -113,7 +113,7 @@
           <li>Audit comment-suppress regex mis-handled hyphenated rule IDs (// nosemgrep: bash-c-non-literal matched only bash). Terminator class shrunk to [)\]]|$; hyphenated IDs now suppress correctly.</li>
           <li>Trend snapshot duplicated on every UI filter click. Gated by m_snapshotPersisted (reset in runAudit, set on first authoritative render). Re-renders triggered by severity-pill toggles skip the append.</li>
           <li>bg-tasks: split liveness sweep from full transcript reparse. Added sweepLiveness() that walks m_tasks via stat() calls + mtime check; the 2 s status-timer drives this cheap sweep instead of the 16 MiB transcript reparse. File-watcher continues to drive full rescan() on transcript-changed.</li>
-          <li>ClaudeBgTaskTracker::tasks() returned by value on the hot path. cppcheck-flagged returnByReference. Now returns const &.</li>
+          <li>ClaudeBgTaskTracker::tasks() returned by value on the hot path. cppcheck-flagged returnByReference. Now returns const &amp;.</li>
         </ul>
       </description>
     </release>

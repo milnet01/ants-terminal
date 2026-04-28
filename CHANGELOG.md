@@ -39,6 +39,9 @@ for security-relevant changes.
 - CHANGELOG.md was missing a top-level `[Unreleased]` block that
   the Roadmap dialog reads for current-work signaling
   (documentation.md § 4.1 mandates one always, even empty).
+- Unescaped `&` in the 0.7.55 metainfo `<release>` body broke
+  `appstreamcli validate` and turned CI red on every commit since
+  the release. Now `&amp;`. (ANTS-1099)
 
 ## [0.7.55] — 2026-04-28
 

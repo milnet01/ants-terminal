@@ -2489,6 +2489,22 @@ minor tag (next: pre-0.8.0).
   occurrence is identifiable from logs. Lanes: MainWindow plus
   whichever dialog-spawn site is found.
 
+### 🔍 CI fold-in (2026-04-28)
+
+- ✅ [ANTS-1099] **Unescaped `&` in 0.7.55 metainfo `<release>` body
+  broke `appstreamcli validate`.** CI's "Validate AppStream metainfo"
+  step has been red on every commit since the 0.7.55 release
+  (`packaging/linux/org.ants.Terminal.metainfo.xml:116` —
+  `Now returns const &.`). Fix: escape as `&amp;`. Other `&` in the
+  file are already correctly escaped. Same form not present in
+  `CHANGELOG.md` or `packaging/debian/changelog` (those aren't
+  XML and don't pass through validators). Root cause: the 0.7.55
+  release-note authoring overlooked one bare `&` when describing
+  a `const &` return-type change. Future-proof: pre-commit hook
+  should run `appstreamcli validate` on changes touching
+  metainfo.xml — separate item, not in this fold. Kind: doc-fix.
+  Source: regression. Lanes: packaging.
+
 ### 🎨 Roadmap viewer — enhancement bundle + format standard (user request 2026-04-28)
 
 - ✅ [ANTS-1055] **Public ROADMAP.md format standard + four-doc
