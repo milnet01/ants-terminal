@@ -5727,9 +5727,24 @@ void MainWindow::showDiffViewer() {
 // --- Hot-Reload Configuration ---
 
 void MainWindow::onConfigFileChanged(const QString &path) {
-    // Block watcher signals during reload to prevent infinite loop
-    // (applyTheme -> setTheme -> save -> triggers watcher -> onConfigFileChanged)
-    m_configWatcher->blockSignals(true);
+    // Re-entrancy guard. The 0.7.31 attempt at loop prevention was
+    // m_configWatcher->blockSignals(true/false) bracketing this slot, but
+    // that doesn't work: any save() call inside the reload path (e.g.
+    // applyTheme -> setTheme -> save) writes config.json synchronously,
+    // which queues a kernel inotify event. Qt only reads that event after
+    // this slot returns — by which time blockSignals(false) has already
+    // run, so the next fileChanged sails through and re-enters the slot
+    // in an infinite loop (status bar sticks at "Config reloaded from
+    // disk", the cached settings dialog is repeatedly deleteLater'd, and
+    // any other showStatusMessage call gets stomped within milliseconds).
+    //
+    // Two-layer fix:
+    //   1. Setters compare-then-write (Config::setTheme et al.) so a
+    //      reload that doesn't change values writes nothing. Primary fix.
+    //   2. This re-entrancy flag with deferred clear, in case a future
+    //      setter forgets to be idempotent. Defense-in-depth.
+    if (m_inConfigReload) return;
+    m_inConfigReload = true;
 
     // Re-add the watch (QFileSystemWatcher drops the watch after some changes)
     if (!m_configWatcher->files().contains(path))
@@ -5754,8 +5769,14 @@ void MainWindow::onConfigFileChanged(const QString &path) {
         m_settingsDialog = nullptr;
     }
 
-    // Re-apply all settings
-    applyTheme(m_config.theme());
+    // Re-apply all settings. applyTheme is skipped when the value didn't
+    // change because applyTheme rewrites the QSS, restyles every widget,
+    // and (via setTheme) used to write the config back — which is what
+    // started the inotify loop in the first place. The setter is now
+    // idempotent, but skipping the whole applyTheme call is also cheaper
+    // when the reload is just a window-geometry tick or similar.
+    const QString newTheme = m_config.theme();
+    if (newTheme != m_currentTheme) applyTheme(newTheme);
     applyFontSizeToAll(m_config.fontSize());
 
     QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
@@ -5783,7 +5804,13 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     }
 
     showStatusMessage("Config reloaded from disk", 3000);
-    m_configWatcher->blockSignals(false);
+
+    // Clear the re-entrancy flag on the next event-loop tick rather than
+    // immediately. Any inotify event queued by a save() inside this slot
+    // is read by Qt as soon as control returns to the loop; deferring the
+    // clear by 0 ms (singleShot) ensures we drop *that* re-entry, not the
+    // user's next genuine external edit.
+    QTimer::singleShot(0, this, [this]() { m_inConfigReload = false; });
 }
 
 // --- Dark/Light Mode Auto-Switching ---

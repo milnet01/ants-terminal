@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.50 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.51 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2640,6 +2640,35 @@ if(ANTS_TESTS)
     )
     add_test(NAME config_parse_failure_guard COMMAND test_config_parse_failure)
     set_tests_properties(config_parse_failure_guard PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # config_reload_loop_safety — locks the 0.7.50 fix for the inotify-
+    # driven config-reload loop. onConfigFileChanged used to call
+    # applyTheme -> setTheme -> save() unconditionally, which re-entered
+    # via inotify because Qt reads inotify events from the event loop
+    # *after* the slot returns (so blockSignals during the slot doesn't
+    # cover them). The test asserts the idempotent setter, the no-op
+    # applyTheme skip, the re-entrancy guard, and the absence of the
+    # failed 0.7.31 blockSignals attempt.
+    # See tests/features/config_reload_loop_safety/spec.md.
+    add_executable(test_config_reload_loop_safety
+        tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_config_reload_loop_safety PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_config_reload_loop_safety PRIVATE src)
+    target_compile_options(test_config_reload_loop_safety PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME config_reload_loop_safety
+        COMMAND test_config_reload_loop_safety
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(config_reload_loop_safety PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

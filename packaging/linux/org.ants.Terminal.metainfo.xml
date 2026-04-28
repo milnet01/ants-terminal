@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.51" date="2026-04-28">
+      <description>
+        <p>Hot-reload doesn't loop any more. Same-day follow-up to 0.7.50 — three reported symptoms (status bar permanently sticking at "Config reloaded from disk", Help → Check for Updates appearing to do nothing, Settings → Preferences not opening) all traced to a single root cause: <code>MainWindow::onConfigFileChanged</code> re-entering itself in an infinite inotify loop. The 0.7.31 attempt at fixing the same loop (<code>m_configWatcher->blockSignals(true/false)</code> bracketing) never worked because Qt reads inotify events from the event loop after the slot returns — outliving the <code>blockSignals</code> window. Fix is at the source: make the setters idempotent so the slot has nothing to re-trigger.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li>Config reload re-entered itself in an inotify loop. <code>Config::setTheme</code> unconditionally called <code>save()</code> even when the value matched, so any <code>applyTheme(m_config.theme())</code> from inside <code>onConfigFileChanged</code> rewrote the watched file → kernel inotify event → next event-loop tick re-emits <code>fileChanged</code> → slot re-enters → loop. <code>setTheme</code> now early-returns when the value matches, breaking the loop at its source. <code>onConfigFileChanged</code> additionally skips the no-op <code>applyTheme</code> call when the theme didn't change, and carries an <code>m_inConfigReload</code> re-entrancy flag (cleared via <code>QTimer::singleShot(0, ...)</code> so a save inside the slot is dropped but a subsequent genuine external edit is honored). The failed 0.7.31 <code>blockSignals</code> calls are removed. User-visible: status bar stops sticking, Help → Check for Updates produces a visible toast, Settings → Preferences opens. Locked down by tests/features/config_reload_loop_safety/ — INV-1 idempotent setter, INV-2 no-op skip, INV-3 re-entrancy guard, INV-4 failed blockSignals removed.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.50" date="2026-04-28">
       <description>
         <p>Round four on the same dialog-button bug — and the matching Roadmap-dialog Close button. Three prior fix attempts (0.7.22, 0.7.35, 0.7.49) each diagnosed a downstream symptom rather than the actual root cause; this release identifies it from upstream Qt bug reports and applies the fix that the bg-tasks dialog has been quietly using all along.</p>

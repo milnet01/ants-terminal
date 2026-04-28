@@ -1,3 +1,35 @@
+ants-terminal (0.7.51-1) unstable; urgency=medium
+
+  * Hot-reload doesn't loop any more. Same-day follow-up to 0.7.50 —
+    three reported symptoms (status bar permanently sticking at
+    "Config reloaded from disk", Help → Check for Updates appearing
+    to do nothing, Settings → Preferences not opening) all traced
+    to a single root cause: MainWindow::onConfigFileChanged
+    re-entering itself in an infinite inotify loop. The 0.7.31
+    attempt at fixing the same loop
+    (m_configWatcher->blockSignals(true/false) bracketing) never
+    worked because Qt reads inotify events from the event loop
+    *after* the slot returns — outliving the blockSignals window.
+  * Fixed: Config::setTheme unconditionally called save() even when
+    the value matched, so any applyTheme(m_config.theme()) from
+    inside onConfigFileChanged rewrote the watched file → inotify
+    event → next event-loop tick re-emits fileChanged → slot
+    re-enters → loop. setTheme now early-returns when the value
+    matches, breaking the loop at its source. onConfigFileChanged
+    additionally skips no-op applyTheme calls and carries an
+    m_inConfigReload re-entrancy flag (cleared via
+    QTimer::singleShot(0, ...) so a save inside the slot is
+    dropped but a subsequent genuine external edit is honored).
+    The failed 0.7.31 blockSignals calls are removed.
+  * User-visible: status bar stops sticking, Help → Check for
+    Updates produces a visible toast, Settings → Preferences opens.
+  * Locked down by tests/features/config_reload_loop_safety/ —
+    INV-1 idempotent setter (call shape + functional mtime),
+    INV-2 no-op skip at the call site, INV-3 re-entrancy guard,
+    INV-4 failed blockSignals attempt removed.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 28 Apr 2026 10:14:52 +0200
+
 ants-terminal (0.7.50-1) unstable; urgency=medium
 
   * Round four on the same dialog-button bug — and the matching

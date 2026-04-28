@@ -448,6 +448,15 @@ private:
     // Hot-reload: watch config.json for external changes
     QFileSystemWatcher *m_configWatcher = nullptr;
     void onConfigFileChanged(const QString &path);
+    // Re-entrancy guard for onConfigFileChanged. Set true on entry, cleared
+    // by a deferred singleShot that fires after Qt's event loop has had a
+    // chance to drain any inotify events queued by save() calls inside the
+    // reload path. Without this, save()-from-applyTheme triggers a fresh
+    // fileChanged after blockSignals(false), and the slot re-enters in a
+    // loop. Prior 0.7.31 fix (blockSignals on the watcher) is ineffective
+    // because the inotify event is dispatched after onConfigFileChanged
+    // returns. See tests/features/config_reload_loop_safety/spec.md.
+    bool m_inConfigReload = false;
 
     // Dark/light mode auto-switching
     void onSystemColorSchemeChanged();

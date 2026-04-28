@@ -10,6 +10,53 @@ for changes in existing behavior, **Deprecated** for soon-to-be-removed features
 **Removed** for now-removed features, **Fixed** for bug fixes, and **Security**
 for security-relevant changes.
 
+## [0.7.51] — 2026-04-28
+
+**Theme:** Hot-reload doesn't loop any more. Same-day follow-up to
+0.7.50 — three reported symptoms (status bar permanently sticking at
+"Config reloaded from disk", `Help → Check for Updates` appearing to
+do nothing, `Settings → Preferences` not opening) all traced to a
+single root cause: `MainWindow::onConfigFileChanged` re-entering itself
+in an infinite inotify loop. The 0.7.31 attempt at fixing the same
+loop (`m_configWatcher->blockSignals(true/false)` bracketing) never
+worked because Qt reads inotify events from the event loop *after* the
+slot returns — outliving the `blockSignals` window. Fix is at the
+source: make the setters idempotent so the slot has nothing to
+re-trigger.
+
+### Fixed
+
+- **Config reload re-entered itself in an inotify loop.** `Config::setTheme`
+  unconditionally called `save()` even when the value matched, so any
+  `applyTheme(m_config.theme())` from inside `onConfigFileChanged`
+  rewrote the watched file → kernel inotify event → next event-loop
+  tick re-emits `fileChanged` → slot re-enters → loop. `setTheme` now
+  early-returns when the value matches, breaking the loop at its
+  source. `onConfigFileChanged` additionally skips the no-op
+  `applyTheme` call when the theme didn't change, and carries a
+  `m_inConfigReload` re-entrancy flag (cleared via
+  `QTimer::singleShot(0, ...)` so a save inside the slot is dropped
+  but a subsequent genuine external edit is honored). The failed
+  0.7.31 `blockSignals` calls are removed — leaving them in place
+  misled future contributors into thinking the slot was protected.
+
+  User-visible cascade now resolves:
+  - Status bar stops sticking at "Config reloaded from disk" — the
+    3 s dismissal timer can actually expire.
+  - `Help → Check for Updates` produces a visible
+    "Checking for updates…" then "Up to date — running v0.7.51 (latest)"
+    toast (or the actual update notice when behind).
+  - `Settings → Preferences` opens the dialog instead of having it
+    deleted-on-reload faster than the user can click.
+
+  Locked down by `tests/features/config_reload_loop_safety/` —
+  INV-1 idempotent setter (call shape + functional mtime check),
+  INV-2 no-op skip at the call site, INV-3 re-entrancy guard, INV-4
+  failed `blockSignals` attempt removed. Memory pointer
+  `debug_qfilesystemwatcher_save_loop.md` saved so future
+  `/indie-review` runs get the gotcha attached to the config /
+  settings lane brief.
+
 ## [0.7.50] — 2026-04-28
 
 **Theme:** Round four on the same dialog-button bug — and the matching
