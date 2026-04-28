@@ -2382,6 +2382,195 @@ file:line, every cross-cutting theme has ≥2 lanes flagging it.
 Folded as standing practice: re-run `/indie-review` before each
 minor tag (next: pre-0.8.0).
 
+### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
+
+- 📋 **Auto-return focus to terminal when any dialog closes.** User
+  ask: "once any dialog box is closed, automatically shift focus
+  back to the terminal prompt." Today every dialog (About,
+  Preferences, Roadmap, Update-confirm, AI, SSH, Audit, Snippets,
+  …) leaves keyboard focus on the parent `MainWindow` chrome — the
+  user has to click into the terminal grid to resume typing. Fix
+  is centralised: install a `QObject::eventFilter` on
+  `qApp` that watches for `QEvent::Close` on any `QDialog` child
+  of `MainWindow`, then `m_currentTerminal->setFocus(Qt::OtherFocusReason)`
+  on the active tab's `TerminalWidget` after the close completes
+  (`QTimer::singleShot(0, ...)` so the dialog finishes its own
+  teardown first). Spec: every dialog-spawn site already routes
+  through MainWindow, so a single filter covers them all without
+  per-dialog plumbing. Lock with a feature test asserting (a) the
+  filter is installed in `MainWindow`'s ctor, (b) `Close` events
+  on a synthetic `QDialog` schedule a focus-restore call. Lanes:
+  MainWindow, TerminalWidget.
+- 📋 **Modal-style "behind the dialog is inert" semantics under the
+  KDE/KWin/Wayland constraint.** User ask: "when a dialog box is
+  open, only the dialog box is interactive, anything behind the
+  dialog box should not be interactive." 0.7.50 deliberately made
+  dialogs non-modal to dodge QTBUG-79126 (frameless+translucent
+  parent dropping `setModal(true)` clicks on Wayland), so we lost
+  click-blocking on the parent window as a side-effect. Plan:
+  install a per-dialog `QEventFilter` on the parent `MainWindow`
+  that swallows `MouseButtonPress`, `MouseButtonRelease`, and
+  `KeyPress` events while the dialog is `isVisible()` — a cheaper
+  manual emulation of modality that doesn't trip the Qt/KWin bug
+  because we never call `setModal(true)`. Filter installs on
+  `QDialog::show`, removes on `QDialog::done`. Edge case:
+  dialogs that themselves spawn a child dialog (Preferences →
+  Restore-defaults confirm) need filter-stacking, which falls out
+  naturally from the per-dialog filter pattern. Lock with
+  `tests/features/dialog_pseudo_modal/` asserting the filter
+  install/uninstall pattern + the three blocked event types.
+  Lanes: MainWindow, AboutDialog, RoadmapDialog, AiDialog,
+  SshDialog, SettingsDialog, AuditDialog.
+- 📋 **HIGH — Background-tasks status-bar button regressed:
+  no longer shows up.** User report 2026-04-28. Locked-in invariant
+  from 0.7.32+ (`tests/features/claude_bg_tasks_button/`) is
+  passing in CI but the button is missing in the running
+  binary. Likely culprits in order of probability: (a) 0.7.49
+  Public/Private badge placement reshuffled status-bar widget
+  insertion order and the button was demoted past the
+  `addStretch()` boundary so it gets clipped; (b) `refreshBgTasksButton`
+  early-return added in 0.7.54's liveness-sweep split now hides
+  the button when `tasks.isEmpty()` instead of just disabling it,
+  but the empty-state should still show as a 0-count chip;
+  (c) per-tab scoping introduced in 0.7.32 evaluates the active
+  tab's `shellCwd()` to nothing when the user is in a non-Claude
+  shell, hiding the button — but it should *still* show when
+  Claude is active in any tab. Triage path:
+  `git log --oneline -- src/mainwindow.cpp | head -20` plus
+  visual diff of `setupStatusBar` between 0.7.39 (last known
+  good) and HEAD. Spec extension: extend
+  `tests/features/claude_bg_tasks_button/` with a runtime
+  visibility assertion (`m_claudeBgTasks->isVisible()` after a
+  synthetic claude-session detect) so the next regression catches
+  itself. Lanes: MainWindow, ClaudeBgTasks, ClaudeIntegration.
+- 📋 **HIGH — Per-tab Background-tasks button scoping.** User
+  ask: "[Background Tasks button] should be specific to the tab
+  / Claude Code session it is on." Today `ClaudeBgTasks` is a
+  single MainWindow-wide model surfacing every running
+  `claude` PID across every tab. Fix: shift to per-tab —
+  `ClaudeBgTasks` becomes a tab-attached helper (one per
+  `TerminalTab`, similar to how `ClaudeIntegration::m_planModeByPid`
+  caches per-PID), the status-bar button reads from the active
+  tab's helper via `refreshStatusBarForActiveTab`. Discovery
+  walks only the active tab's `shellPid()` subtree (lazy probe
+  on tick), not every claude-rooted PID system-wide. Storage:
+  the helper itself is light enough to live as a
+  `std::unique_ptr<ClaudeBgTasks>` member on each tab; cleanup
+  follows the tab's lifecycle. Spec extension: add INV asserting
+  per-tab instance allocation + active-tab readout. Lanes:
+  ClaudeBgTasks, MainWindow, TerminalTab.
+- 📋 **MEDIUM — Mystery flashing dialog in centre of terminal.**
+  User report: "now and then there is a small dialog box that
+  flashes in the centre of the terminal. It is too quick to see
+  what it is." Investigation plan: (a) install a
+  `QApplication::installEventFilter` debug hook (gated by
+  `ANTS_TRACE_DIALOGS=1`) that logs every `QDialog::show` /
+  `QDialog::done` with the dialog's `objectName`, parent, and
+  call-site `QStackTrace` (Qt 6.8+); (b) reproduce by exercising
+  the workflows the user runs daily (file paste, Claude
+  notification arrival, audit run completion, GitHub badge tick,
+  update check); (c) candidate culprits — auto-update check
+  flashing the "no update available" path (regression of the
+  0.7.55 hardening that should have suppressed that path), the
+  Claude notification-permission dialog firing on every launch
+  rather than once-per-session, the SSH-known-hosts confirmation
+  dialog firing on transient network blips, the bracketed-paste
+  preview dialog flashing then auto-dismissing on tiny pastes;
+  (d) once captured, add the appropriate suppression to the
+  identified surface and ship as a regression-fix release.
+  Telemetry-style: add the `objectName` enforcement on every
+  `QDialog` subclass already in the codebase so the next
+  occurrence is identifiable from logs. Lanes: MainWindow plus
+  whichever dialog-spawn site is found.
+
+### 🎨 Roadmap viewer — enhancement bundle + format standard (user request 2026-04-28)
+
+- 📋 **Define a public ROADMAP.md format standard for sibling
+  Claude Code projects.** User ask: "come up with a standard for
+  roadmap.md that we can share with Claude Code sessions to ensure
+  that the roadmap is written in that format for this terminal to
+  show it off better and in a more developer friendly manner." The
+  Ants Terminal `RoadmapDialog` already parses a specific dialect
+  — the five status emojis (✅ 🚧 📋 💭 plus the highlight signal),
+  the theme emoji prefix (🎨 ⚡ 🔌 🖥 🔒 🧰 📦 🐛), the bold-then-period
+  bullet headline convention, the ISO date stamps in subsection
+  titles (`### 🎨 Status-bar Roadmap viewer (user request 2026-04-27)`),
+  the ATX heading hierarchy. Today this is implicit in the parser.
+  Plan: write `docs/ROADMAP_FORMAT.md` (new) capturing the dialect
+  as a contract — heading conventions, emoji legend, bullet
+  payload shape, "currently being tackled" signal sources,
+  optional anchor-name embedding. Reference the spec from a
+  one-line `<!-- ants-roadmap-format: 1 -->` HTML comment at the
+  top of conforming `ROADMAP.md` files; the dialog can then
+  detect conforming-vs-best-effort parsing and surface a small
+  "(format v1)" label in the dialog footer. Ship the spec as a
+  shareable artefact (link from `README.md`'s "Use Ants for
+  developer workflows" section) so sibling Claude Code sessions
+  can be told "follow `docs/ROADMAP_FORMAT.md`" and have their
+  roadmaps render correctly in Ants out of the box. Lanes: docs,
+  RoadmapDialog (parser tolerance), README.
+- 📋 **Roadmap dialog feature additions.** User ask: "please add
+  features to the Roadmap dialog box that you think will be useful
+  and also come up with a standard for roadmap.md that we can
+  share with Claude Code sessions." Candidate additions, in
+  priority order:
+  (1) **Status filter pill counts** — each filter checkbox shows
+  the number of bullets matching that status (`✅ 412 · 🚧 3 ·
+  📋 87 · 💭 24 · ★ 2`), updated live with the file-watcher;
+  helps a contributor see at a glance how much has shipped
+  vs how much is queued.
+  (2) **Inline search box** above the TOC — case-insensitive
+  substring filter applied across all bullets, scoped to the
+  enabled filter checkboxes; complements the TOC's section-jump.
+  (3) **"Copy permalink" affordance** — right-click any bullet →
+  "Copy ROADMAP.md link" pastes a `https://github.com/owner/repo/
+  blob/main/ROADMAP.md#anchor` URL, derived from the GitHub
+  origin slug we already cache for the Public/Private badge.
+  Falls back to a plain `ROADMAP.md:line` shape outside a GitHub
+  repo.
+  (4) **Theme overview** — clicking a theme emoji in the legend
+  filters to that theme alone (additive to the status filters);
+  surfaces "show me everything tagged 📦 Distribution".
+  (5) **"Mark as currently tackled" override** — a small
+  pin icon on each bullet that toggles a runtime override
+  layered on top of the auto-detected highlight set; useful
+  when the contributor's current work doesn't match a
+  CHANGELOG-or-recent-commit signal yet.
+  (6) **Export-as-Markdown** — File → Save filtered view…
+  writes the currently-visible bullets to a markdown file the
+  user picks, useful for sharing a triaged subset.
+  Each addition gets its own feature-test file under
+  `tests/features/roadmap_viewer_*/`. Lanes: RoadmapDialog,
+  MainWindow.
+
+### 🎨 Claude Code template integration (user request 2026-04-28)
+
+- 💭 **Claude Code project-template offload.** User ask: "I am
+  busy with a Claude Code template for any new project. Once I
+  have fully laid it out, I want Ants Terminal to do as much of
+  the work as possible so as to reduce token usage." The intent
+  is to move template-instantiation work from the LLM into the
+  terminal — saving the per-session token cost of asking Claude
+  Code to scaffold the same files for every new project. Sketch:
+  Settings → "Claude Code template" pane lets the user point at a
+  template root directory; `File → New project from template…`
+  spawns a wizard that prompts for the project name + target dir,
+  copies the template subtree (with mustache-style `{{name}}`
+  substitution on file contents and filenames), runs the
+  template's `post-init.sh` if present, then opens the new
+  project in a fresh tab with `claude` already invoked. Hooks
+  into existing Claude-detection so the per-tab status indicator
+  comes online immediately. Token savings come from the LLM
+  never having to read or write the template files — they're
+  baked into the template once, copied verbatim by the terminal.
+  Bridges to the existing `roadmap_format` standard above: a
+  template that ships `ROADMAP.md` in the v1 format gets
+  immediate Roadmap-button support in any tab opened via the
+  wizard. Deferred to 💭 because the template format itself
+  needs to settle (the user is still iterating); revisit once
+  they've shared the laid-out template. Lanes: MainWindow,
+  SettingsDialog, new `ProjectTemplateWizard` class, docs.
+
 ---
 
 ## 0.8.0 — multiplexing + marketplace (target: 2026-08)
