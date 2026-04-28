@@ -2214,16 +2214,16 @@ flagged by ≥2 independent reviewers regardless of which lane:
   Verify against `tests/features/github_status_bar/` — the test
   asserts `addWidget` but doesn't actually check visibility at
   runtime. Also confirm INV needs extending.
-- 📋 **HIGH — Status-bar transient notification stuck on "Config
-  reloaded from disk".** Two symptoms: (a) message never auto-clears
-  after the configured timeout; (b) other transient messages (paste
-  warnings, hyperlink hovers, etc.) don't appear to overwrite it.
-  Likely shape: a `statusBar()->showMessage(..., 0)` (timeout 0 =
-  permanent) somewhere on the config-reload path, OR the
-  config-watcher firing in a tight loop and re-asserting the message
-  every tick. Grep `showMessage.*Config reloaded` and check the
-  timeout argument; cross-reference `QFileSystemWatcher` re-arm
-  semantics on the config file.
+- ✅ **HIGH — Status-bar transient notification stuck on "Config
+  reloaded from disk".** Shipped in 0.7.51 — root cause was the
+  config-watcher firing in a tight loop (the second of the two
+  hypotheses in the original entry). `Config::setTheme` rewrote the
+  watched file even when the value matched, so any
+  `applyTheme(m_config.theme())` from inside `onConfigFileChanged`
+  re-entered via inotify after `blockSignals(false)` released. Fix
+  made `setTheme` idempotent + added an `m_inConfigReload` re-entrancy
+  guard with deferred clear via `QTimer::singleShot(0, ...)`. See
+  CHANGELOG 0.7.51 and `tests/features/config_reload_loop_safety/`.
 
 ### 🔒 Tier 1 — ship-this-week (security / data-loss / shipped-broken)
 

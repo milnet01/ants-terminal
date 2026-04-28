@@ -186,13 +186,7 @@ QString Config::theme() const {
 
 void Config::setTheme(const QString &name) {
     // Idempotent: skip the disk write when the value already matches.
-    // Without this guard, MainWindow::onConfigFileChanged ->
-    // applyTheme(m_config.theme()) -> setTheme(sameName) -> save() rewrites
-    // the watched file, which fires a fresh inotify event after
-    // onConfigFileChanged returns — outliving the blockSignals() window —
-    // and re-enters the slot in a loop. The earlier blockSignals fix
-    // (0.7.31) is ineffective for that reason; the only way to break the
-    // loop is to stop the redundant write at its source.
+    // Loop-prevention rationale lives at MainWindow::onConfigFileChanged.
     if (m_data.value("theme").toString() == name) return;
     m_data["theme"] = name;
     save();
