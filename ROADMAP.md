@@ -2567,6 +2567,70 @@ minor tag (next: pre-0.8.0).
   `tests/features/roadmap_viewer_*/`. Lanes: RoadmapDialog,
   MainWindow.
 
+- 📋 [ANTS-1100] **Roadmap dialog tab strip — All / Completed /
+  Current / Outstanding / Far Future.** User request 2026-04-28:
+  add a `QTabBar` (or `QTabWidget`) above the existing filter
+  checkboxes and TOC sidebar, with five tabs that act as
+  one-click presets over the existing five-bit filter:
+
+  | Tab | Filter applied | Notes |
+  |-----|----------------|-------|
+  | **All** | ✅ + 📋 + 🚧 + 💭 + ★ all on | Default tab; matches today's "all checkboxes ticked" view. |
+  | **Completed** | ✅ only | Read-only history view; ★ "currently being tackled" marker still drawn but no other status renders. |
+  | **Current** | 🚧 + ★ | The signal-set per documentation.md § 3.7 — a bullet is shown if 🚧 *or* if it matches the [Unreleased] / last-5-commit fuzzy signal. |
+  | **Outstanding** | 📋 only | The work queue. |
+  | **Far Future** | 💭 only | "Considered" — research-phase, scope/feasibility uncertain, a.k.a. nice-to-have. |
+
+  Tab selection translates into the existing
+  `unsigned filter` bitmask passed to `RoadmapDialog::renderHtml`
+  — no parser changes required, just a new presentation layer.
+  The five existing filter checkboxes stay (they let a user
+  customise the tab presets manually) but the active tab's
+  preset overrides them on click; subsequently toggling a
+  checkbox switches to a "Custom" implicit tab (deselects all
+  five named tabs to avoid lying about the current view).
+
+  Implementation sketch — `roadmapdialog.cpp`/`.h`:
+  - `enum class Preset { All, Completed, Current, Outstanding, FarFuture, Custom };`
+  - `static unsigned filterFor(Preset p);` — pure helper, returns
+    the bitmask. Gives the feature test a side-effect-free entry
+    point.
+  - `QTabBar *m_tabs;` placed above `m_filterDone` row.
+  - Connect `currentChanged` → `applyPreset(p)` →
+    `setFilters(filterFor(p))` → `refresh()`.
+  - Connect each existing filter checkbox's `toggled` signal to
+    a slot that detects "filter no longer matches any preset"
+    and switches the tab bar to a "Custom" tab. Custom tab is
+    visually de-emphasised; user can return to a named preset
+    any time.
+
+  Spec / lock: new `tests/features/roadmap_viewer_tabs/`
+  (spec.md + test_*.cpp). Invariants:
+  - INV-1: `filterFor(All)` returns `ShowDone | ShowPlanned |
+    ShowInProgress | ShowConsidered | ShowCurrent`.
+  - INV-2: `filterFor(Completed)` returns `ShowDone |
+    ShowCurrent`.
+  - INV-3: `filterFor(Current)` returns `ShowInProgress |
+    ShowCurrent`.
+  - INV-4: `filterFor(Outstanding)` returns `ShowPlanned`.
+  - INV-5: `filterFor(FarFuture)` returns `ShowConsidered`.
+  - INV-6: tab bar is the first widget in the dialog's vertical
+    layout (source-grep on the `addWidget(m_tabs, 0)` line).
+  - INV-7: connecting `m_filterDone->toggled` triggers a switch
+    to the Custom tab when the resulting bitmask doesn't match
+    any named preset (drive via `setChecked` on a synthetic
+    dialog).
+  - INV-8: `applyPreset(Completed)` then querying
+    `m_viewer->toHtml()` shows only ✅ bullets in the rendered
+    output (round-trip via the existing `renderHtml` static
+    helper — no Qt event loop needed).
+
+  Naming: "Completed" was chosen over "History" per the user's
+  follow-up — clearer signal that the tab shows shipped work,
+  not edit/version history. "Far Future" matches the existing
+  💭 emoji's intent ("research phase; scope or feasibility
+  uncertain"). Kind: implement. Lanes: RoadmapDialog.
+
 ### 🎨 Claude Code template integration (user request 2026-04-28)
 
 - 💭 [ANTS-1057] **Claude Code project-template offload.** User ask: "I am
