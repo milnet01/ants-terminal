@@ -108,9 +108,11 @@ Theme emoji prefixes the level-3 (`###`) section heading:
 | 🔌 | Plugins / extensibility |
 | 🖥 | Platform (ports, accessibility, OS-specific) |
 | 🔒 | Security |
-| 🧰 | Dev experience (tooling, tests, docs) |
+| 🧰 | Dev experience (tooling, tests, build, CI) |
+| 📚 | Documentation (user docs, dev docs, READMEs, contracts) |
 | 📦 | Packaging & distribution |
-| 🐛 | Bug fixes |
+| 🐛 | Bug fixes / regressions |
+| 🔍 | Audit / review findings fold-in |
 
 Projects MAY introduce additional theme emojis; the viewer's filter
 panel will surface any emoji it sees in any `###` heading.
@@ -138,6 +140,10 @@ Optional pieces:
 - **Body prose** — free-form, after the bold headline.
 - **`Lanes: X, Y, Z`** — declares ownership; helps subagents find
   test files.
+- **`Kind: <kind>`** — declares the type of work, when it's not
+  obvious from the section context. See §6.3.
+- **`Source: <source>`** — declares where the item came from, when
+  the section heading doesn't already make that clear. See §6.3.
 - **Sub-bullets** — for parametrised work (e.g. "implement for X / Y
   / Z").
 
@@ -194,7 +200,73 @@ This means a section's IDs may be **non-monotonic** in document order
 agent reads the file top-to-bottom and works the items in that
 order.
 
-### 6.3 LLM-agent execution contract
+### 6.3 Kinds and Sources
+
+The numbering system itself is uniform — every actionable bullet
+gets exactly one ID, regardless of what kind of work it represents.
+But different kinds of work have different follow-through (a
+documentation fix doesn't need a regression test; an audit-fix
+does), and different sources need traceability (a finding that came
+from a user report should remain attributable years later). Two
+optional metadata fields cover this without adding complexity to
+the bullet's surface form.
+
+**Recognised `Kind:` values:**
+
+| Kind | Meaning | Follow-through |
+|------|---------|----------------|
+| `implement` | New code for a planned feature | tests + changelog + docs |
+| `fix` | Code change to repair a bug | regression test + changelog |
+| `audit-fix` | Code change in response to an audit finding | regression test + changelog (cite finding source) |
+| `review-fix` | Code change in response to an indie-review or peer review | regression test + changelog (cite reviewer source) |
+| `doc` | New / updated documentation, no code | changelog if user-facing |
+| `doc-fix` | Documentation correction (typo, stale ref, drift) | no test, changelog optional |
+| `refactor` | Code reshape with no behavior change | tests must still pass; usually no changelog |
+| `test` | Test-only change (new spec, new fixture, harness improvement) | no changelog |
+| `chore` | Housekeeping (deps, build flags, generated files) | no test, changelog optional |
+| `release` | Version bump, packaging files, tag | drives the release skill |
+
+If a bullet's kind is obvious from the section context (e.g. a
+bullet under `### 🔍 Audit fold-in (2026-04-28)` is implicitly
+`audit-fix`), the `Kind:` line MAY be omitted. If the bullet does
+something atypical for its section (a `doc-fix` filed under 🐛
+Regressions because the doc bug *manifests* as a user-visible
+issue), declare the kind explicitly.
+
+**Recognised `Source:` values:**
+
+| Source | Meaning |
+|--------|---------|
+| `planned` | On the roadmap from project design (default; usually omitted) |
+| `user-YYYY-MM-DD` | User report on date YYYY-MM-DD |
+| `audit-YYYY-MM-DD` | `/audit` skill output on date YYYY-MM-DD |
+| `indie-review-YYYY-MM-DD` | `/indie-review` skill output on date YYYY-MM-DD |
+| `doc-review-YYYY-MM-DD` | Documentation review on date YYYY-MM-DD |
+| `static-analysis` | cppcheck / clazy / semgrep / ruff / bandit ad-hoc |
+| `regression` | Item was previously ✅ but a later change broke it |
+| `external-CVE-NNNN-NNNN` | Public CVE / advisory triggering this work |
+| `upstream-<dep>` | Driven by a dep / library upstream change |
+
+Like `Kind:`, `Source:` MAY be omitted if it's obvious from the
+section heading (which is the canonical way per §9). The fields
+exist for items where the heading-based inheritance isn't enough.
+
+**Example with explicit metadata:**
+
+```markdown
+- 📋 [PROJ-0234] **Fix typo in OSC 8 contract section.** PLUGINS.md
+  references `osc-8-handler` as the API name; the actual symbol is
+  `osc8-handler`. Update three callsites in the doc.
+  Kind: doc-fix.
+  Source: doc-review-2026-04-15.
+  Lanes: docs.
+```
+
+A bullet with no `Kind:` / `Source:` is implementation work for the
+planned roadmap (kind=`implement`, source=`planned`). That's the
+overwhelming majority case, so the format stays terse for it.
+
+### 6.4 LLM-agent execution contract
 
 When an LLM agent (Claude Code, Codex, etc.) is told *"work the
 roadmap"*, it MUST:
@@ -296,10 +368,15 @@ the 📋/🚧/💭 filters.
 
 ---
 
-## 9. Audit / review fold-in subsections
+## 9. Findings fold-in subsections
 
-When a `/audit` or `/indie-review` produces new items, fold them into
-a dedicated `###` subsection inside the active release block:
+When an external review produces new items — `/audit`,
+`/indie-review`, a documentation review, a user bug report,
+static-analysis run, an upstream advisory — fold them into a
+dedicated `###` subsection inside the active release block, with
+date and source stamped on the heading. The pattern is the same
+regardless of where the finding came from; only the theme emoji and
+heading wording change.
 
 ```markdown
 ### 🐛 Regressions reported post-0.7.55 (user, 2026-04-28)
@@ -309,19 +386,58 @@ a dedicated `###` subsection inside the active release block:
   is missing in the running binary. Triage path:
   `git log --oneline -- src/mainwindow.cpp | head -20`. Lanes:
   MainWindow, ClaudeBgTasks.
+
+### 🔍 Audit fold-in (2026-04-28)
+
+- 📋 [ANTS-0518] **CRITICAL — SARIF export not atomic.**
+  `auditdialog.cpp:3530` raw `QFile::Truncate` may leak partial
+  reports on crash. Switch to `QSaveFile + commit()`.
+  Lanes: AuditDialog.
+
+### 🔍 Indie-review fold-in (2026-04-23)
+
+- 📋 [ANTS-0521] **HIGH — TerminalGrid / TerminalWidget cohesion smell.**
+  Cross-cutting flag from 4 lanes — too much grid mutation in the
+  widget. Refactor to push pixel-only concerns into the widget.
+  Lanes: TerminalGrid, TerminalWidget.
+
+### 📚 Documentation review fold-in (2026-04-15)
+
+- 📋 [ANTS-0530] **PLUGINS.md OSC 8 surface mismatches code.**
+  Doc says `osc-8-handler`, code uses `osc8-handler`. Three
+  callsites. Kind: doc-fix.
+  Lanes: docs.
+
+### 🐛 Static-analysis fold-in (2026-04-12)
+
+- 📋 [ANTS-0535] **MEDIUM — cppcheck `nullPointerArithmetic`.**
+  `terminalgrid.cpp:1402` — `cells[col].combining + offset` when
+  `combining` may be nullptr on freshly-cleared rows. Guard with
+  null check.
+  Lanes: TerminalGrid.
 ```
 
-Conventions:
+Conventions for any findings fold-in:
+- **Choose the theme emoji from §5.** 🐛 for bug-shaped findings,
+  🔍 for audit/review fold-ins as a whole, 📚 for doc reviews, 🔒
+  if the finding is security-only, 📦 if it's packaging.
 - **Date-stamp the heading** — `(YYYY-MM-DD)` so the source of the
   finding is visible.
 - **Source-stamp the heading** — `(user, ...)`, `(audit, ...)`,
-  `(indie-review, ...)` so the reader can trace the finding to its
-  origin.
+  `(indie-review, ...)`, `(static-analysis, ...)`,
+  `(doc-review, ...)`, `(cppcheck, ...)`, etc. — whatever names the
+  finding's actual origin.
 - **Severity in the headline** — `**CRITICAL — ...**`,
-  `**HIGH — ...**`, etc. matches the audit-tool taxonomy.
+  `**HIGH — ...**`, `**MEDIUM — ...**`, `**LOW — ...**` matches
+  audit-tool taxonomies. Doc-fix bullets typically don't carry a
+  severity tag (the headline alone is enough).
 - **Position by priority** — Tier-1 / CRITICAL items go above
   existing Tier-2 / HIGH items in the release. Don't append blindly
   to the end.
+- **Kind/Source lines are usually inherited from the section.** A
+  bullet under `🔍 Audit fold-in (2026-04-28)` defaults to
+  `Kind: audit-fix`, `Source: audit-2026-04-28` — only declare them
+  on the bullet if the work shape is atypical for its section.
 
 ---
 
@@ -408,7 +524,7 @@ inline filtering, escaped-regex search.
 - 📋 [MYPRJ-0003] **Tabbed history.** Per-tab session memory. Lanes:
   SessionManager.
 
-### 🐛 Audit fold-in (2026-04-28)
+### 🔍 Audit fold-in (2026-04-28)
 
 - 📋 [MYPRJ-0017] **HIGH — Search escapes regex metachars.** Audit
   finding 2026-04-28 — current search treats `.` as wildcard
@@ -420,6 +536,13 @@ inline filtering, escaped-regex search.
 - 📋 [MYPRJ-0018] **CRITICAL — XSS in search results.** Audit
   finding 2026-04-28 — unescaped HTML in result snippets. Priority:
   CRITICAL — bypassable from any indexed page. Lanes: SearchBar.
+
+### 📚 Documentation review fold-in (2026-04-25)
+
+- 📋 [MYPRJ-0019] **README install steps stale.** Doc says
+  `apt install foo`; package was renamed to `foo-cli` upstream.
+  Update three references. Kind: doc-fix.
+  Lanes: docs.
 ```
 
 Notice:
@@ -428,6 +551,9 @@ Notice:
   higher priority than 0003.
 - ID 0018 was added under 🔒 Security — a different theme group, so
   it gets its own section.
+- ID 0019 is a doc-fix from a documentation review — same
+  numbering policy, different theme (📚) and different `Kind:`.
+  No regression test required because the work is doc-only.
 - Neither shuffled existing IDs.
 - The 🚧 bullet (0002) is currently being tackled; the rest are
   queued in document order.
