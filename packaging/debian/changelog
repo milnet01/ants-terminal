@@ -1,3 +1,44 @@
+ants-terminal (0.7.61-1) unstable; urgency=medium
+
+  * Dialog-and-roadmap polish bundle — fixes three user-visible
+    chrome bugs (theme propagation, focus-return on dialog close,
+    pseudo-modal click-blocking), splits the 260 KiB ROADMAP.md by
+    minor version so tooling can keep up, retires two long-
+    deprecated standards docs, and folds in indie-review Tier-3
+    closures.
+  * Theme stylesheet now reaches top-level dialogs. Switched
+    `MainWindow::applyTheme` from `setStyleSheet(ss)` on the
+    MainWindow instance to `qApp->setStyleSheet(ss)` — Qt's
+    stylesheet engine only propagates through a widget's render
+    subtree, not through QObject parent-child, so top-level
+    QDialogs never inherited the theme. (ANTS-1128)
+  * Auto-return focus to terminal when any dialog closes; pseudo-
+    modal click-blocking on the parent restored via the qApp
+    eventFilter and two pure-logic helpers in
+    `src/dialogfocus.h`. Mouse/key/wheel events landing outside
+    any visible dialog's tree are swallowed; refocus on Close is
+    deferred via `singleShot(0)` so dialog teardown completes
+    first. (ANTS-1050, ANTS-1051)
+  * Per-version ROADMAP archive — closed minors rotate to
+    `docs/roadmap/<MAJOR>.<MINOR>.md`. Viewer pulls archives in
+    only on demand (History preset / non-empty search). Numeric
+    sort defeats the 0.10 < 0.9 lexical trap. (ANTS-1125)
+  * `XcbPositionTracker` renamed to `KWinPositionTracker` with
+    KDE-presence guard + `QScopeGuard` temp-file cleanup;
+    post-fork heap allocations in the flatpak-spawn argv build
+    retired (`snprintf` into stack buffers, `const char *argv[12]`
+    assembled in the child). (ANTS-1045, ANTS-1046)
+  * Menubar dropdown flicker (ANTS-1058) and mystery flashing
+    dialog (ANTS-1054) confirmed resolved by the user.
+  * Deprecated top-level `STANDARDS.md` and `RULES.md` retired
+    (user-authorised). Live references redirected to
+    `docs/standards/`. (ANTS-1105)
+  * RoadmapDialog::rebuild's `readAll` now caps at 8 MiB;
+    `refreshReviewButton` deduplicates overlapping `git status`
+    probes via `m_reviewProbeInFlight`. (ANTS-1012, ANTS-1013)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 30 Apr 2026 18:00:00 +0000
+
 ants-terminal (0.7.60-1) unstable; urgency=medium
 
   * ANTS-1123 indie-review Tier 2 + Tier 3 fold-in — the remaining

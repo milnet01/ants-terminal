@@ -12,6 +12,182 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.61] — 2026-04-30
+
+**Theme:** dialog-and-roadmap polish bundle — fixes three user-visible
+chrome bugs (theme propagation to dialogs, focus-return on dialog
+close, pseudo-modal click-blocking on the parent), splits the now-
+260 KiB ROADMAP.md by minor version so tooling can keep up, retires
+two long-deprecated standards docs, and folds in a batch of
+indie-review Tier-3 closures (KWin position tracker rename + leak
+fix, post-fork stack-only argv).
+
+### Added
+
+- **ANTS-1125 — per-version ROADMAP archive.** The ROADMAP.md grew
+  past 260 KiB and was hitting tooling caps (Read-tool 256 KiB,
+  roadmap-query IPC cache, RoadmapDialog rebuild). Closed minors
+  rotate to `docs/roadmap/<MAJOR>.<MINOR>.md`. The viewer pulls
+  archives in only on demand (History preset OR non-empty search)
+  via three new pure-static helpers
+  (`archiveDirFor`, `loadMarkdown`, `shouldLoadHistory`) that the
+  feature test drives without instantiating a dialog. Numeric
+  `(major, minor)` descending sort defeats the lexical-sort trap at
+  minor 10 (`0.10.md` before `0.9.md`). Per-file 8 MiB cap + total
+  64 MiB cap with truncation sentinel. Thematic-break + HTML-
+  comment sentinel separators between archives. Symlink-safe
+  canonical-path resolution. Initial archives at `docs/roadmap/0.5.md`
+  and `0.6.md`; 0.7 stays in the live ROADMAP.md until 0.8.0 cuts.
+  `/bump`-driven rotation via `packaging/rotate-roadmap.sh` (atomic
+  via mktemp+mv, idempotent, no-clobber on existing archives,
+  regex-escapes the closed-minor's `.`, handles EOF sections,
+  walks closed-minor sub-headings together).
+  `docs/standards/roadmap-format.md` § 3.9 documents the rotation
+  convention. Spec at
+  `tests/features/roadmap_viewer_archive/spec.md` — 18 INVs across
+  three rounds of cold-eyes review (4+8+5+5 → 0+3+4+5 → 0+0+3 →
+  clean).
+
+### Fixed
+
+- **ANTS-1128 — theme stylesheet now reaches top-level dialogs.**
+  User reports 2026-04-30 (menubar dropdown background + Review
+  Changes dialog footer) traced to `MainWindow::applyTheme` calling
+  `setStyleSheet(ss)` on the MainWindow instance — Qt's stylesheet
+  engine only propagates through a widget's render subtree, NOT
+  through QObject parent-child relationships, so top-level QDialogs
+  never inherited the theme. Switched to `qApp->setStyleSheet(ss)`,
+  which fans out to every widget including not-yet-constructed
+  dialogs. All 9 dialog classes plus 7 ad-hoc `new QDialog(this)`
+  instances (about, paste preview, snippet editor, Review Changes,
+  settings-restore, etc.) now pick up the active theme.
+
+- **ANTS-1050 — auto-return focus to terminal when any dialog
+  closes.** User request 2026-04-28: "once any dialog box is
+  closed, automatically shift focus back to the terminal prompt."
+  The existing qApp eventFilter gained a Close-event branch backed
+  by a pure-logic helper `dialogfocus::shouldRefocusOnDialogClose`
+  in `src/dialogfocus.h`. Helper returns true iff the event is a
+  `QEvent::Close`, the watched object is a QDialog subclass, AND
+  no other QDialog is still visible (stacked-dialog suppression).
+  Refocus is deferred via `QTimer::singleShot(0, ...)` so the
+  dialog teardown completes before MainWindow grabs focus.
+  Null-guarded against early-startup dialogs closing before any
+  terminal exists.
+
+- **ANTS-1051 — pseudo-modal click-blocking on the parent.** User
+  request 2026-04-28: "when a dialog box is open, only the dialog
+  box is interactive, anything behind the dialog box should not
+  be interactive." 0.7.50 made all dialogs non-modal to dodge
+  QTBUG-79126 (KDE+KWin+Qt 6.11+frameless+translucent: setModal(true)
+  drops button clicks on Wayland), losing the click-blocking
+  semantics. Restored manually via the qApp eventFilter and a new
+  helper `dialogfocus::shouldSuppressEventForDialog`. Mouse/key/
+  wheel events landing outside any visible dialog's tree are
+  swallowed; events on the dialog itself (or its descendants) pass
+  through. Stacked dialogs both allowed; the strict-ancestor edge
+  case (a widget is not its own ancestor in Qt) is handled
+  explicitly so clicks on the dialog's own frame work.
+  `KeyRelease` paired with `KeyPress` to prevent modifier-state
+  desync.
+
+- **ANTS-1058 — menubar dropdown flicker on mouse motion.** User
+  confirmation 2026-04-30 that the 0.7.5 `NoAnimStyle` plus the
+  0.7.5+1 HoverMove suppression were fully sufficient on the
+  user's stack; the KWin-side experimentation hypothesis didn't
+  materialise. Closed without further fix-pass.
+
+- **ANTS-1054 — mystery flashing dialog in centre of terminal.**
+  User confirmation 2026-04-30 that another Claude Code session
+  resolved the flashing-dialog popups by adding a YML configuration
+  file (file local to the user's environment; Ants source has no
+  related change). The `ANTS_TRACE_DIALOGS=1` trace tooling
+  introduced in 0.7.57/0.7.58 stays in place for future incidents.
+
+- **ANTS-1045 — `XcbPositionTracker` rename + non-KWin bail +
+  temp-file leak.** Indie-review-2026-04-27 Tier-3. Class +
+  files renamed to `KWinPositionTracker` (the class doesn't use
+  XCB at all; it talks to KWin's scripting D-Bus interface).
+  KWin-presence guard checks `KDE_FULL_SESSION=true` OR
+  `XDG_CURRENT_DESKTOP` containing `KDE` and bails before any
+  temp-file write — non-KWin desktops no longer accumulate
+  `kwin_pos_ants_*.js` files at ~10 per Quake-mode toggle.
+  `QScopeGuard`-style cleanup runs `QFile::remove(scriptPath)` on
+  every synchronous failure path; the async dbus chain dismisses
+  the guard and owns cleanup explicitly via the QProcess
+  `finished` / `errorOccurred` lambdas. The 0.7.12 TOCTOU
+  fix (QTemporaryFile + setAutoRemove(false)) is preserved.
+
+- **ANTS-1046 — post-fork heap allocations in flatpak detect
+  path retired.** Indie-review-2026-04-27 Tier-3. The previous
+  `std::string` + `std::vector<const char *>` argv build between
+  `forkpty` and `execvp("flatpak-spawn", ...)` relied on the
+  glibc malloc fork-handler — usually safe, not strictly POSIX
+  async-signal-safe in a multithreaded program. Detection +
+  argv string buffers now build pre-fork in the parent via
+  `snprintf` (POSIX § 2.4.3 async-signal-safe) into stack
+  buffers; the child only assembles a stack-allocated
+  `const char *argv[12]` table and calls `execvp`. Zero
+  `std::string` / `std::vector` references between forkpty
+  and execvp. `<string>` and `<vector>` includes dropped from
+  `ptyhandler.cpp`.
+
+- **ANTS-1012 — RoadmapDialog::rebuild unbounded read.** The
+  remaining open gap from indie-review-2026-04-27's "unbounded
+  reads" cross-cutting theme. `f.readAll()` now caps at 8 MiB per
+  the `loadMarkdown` helper's per-file budget — defends against
+  symlinked `/dev/zero` or accidental binary content.
+
+- **ANTS-1013 — `refreshReviewButton` git-status QProcess
+  dedup.** The remaining open gap from indie-review-2026-04-27's
+  "2 s status-timer redundant work" cross-cutting theme. New
+  `m_reviewProbeInFlight` member skips the `git status
+  --porcelain=v1 -b` spawn when a previous probe is still alive;
+  cleared by both the `finished` and `errorOccurred` handlers.
+
+### Removed
+
+- **ANTS-1105 — deprecated top-level `STANDARDS.md` and
+  `RULES.md` retired** (user authorised). Both predated the
+  `docs/standards/` bundle (2026-04-13/14) and duplicated content
+  living canonically at `docs/standards/coding.md` and
+  `docs/standards/commits.md`. Live references updated in
+  `CONTRIBUTING.md`, `PLUGINS.md`, `README.md`,
+  `docs/RECOMMENDED_ROUTINES.md`, and `src/auditdialog.cpp`
+  (the "Review with Claude" header now prepends the four
+  `docs/standards/` files instead).
+
+### Documentation
+
+- **ANTS-1121 — documentation drift fold-in reconciliation.** The
+  9-theme finding list from doc-cold-eyes-2026-04-30 was largely
+  addressed in flight during the 0.7.50–0.7.59 cycle; this
+  release closes the bullet with a per-theme reconciliation
+  pass. T1 (GPU references in retired docs) folds into ANTS-1105
+  above; T6 (44-bullet `Source:` field backfill) deferred to
+  ANTS-1129 as a focused follow-up.
+
+- **ANTS-1122 — audit fold-in fixes** flipped to ✅; the four
+  range-loop-detach / constVariablePointer / returnByReference
+  fixes have been in code since the 0.7.59 / 0.7.60 cycle. This
+  release just refreshes the roadmap narrative.
+
+- **ANTS-1126 — three-pass cold-eyes review fold-in for the
+  ANTS-1125 archive spec.** 4 CRITICAL + 8 HIGH + 5 MEDIUM + 5
+  LOW on first pass; 0 CRITICAL + 3 HIGH on second pass; PASS on
+  third pass with 3 LOW polish folded inline. Plus an INV-14
+  cluster review on the rotation script: 0 CRITICAL + 3 HIGH + 4
+  MEDIUM + 4 LOW, all folded.
+
+- **ANTS-1007 → ANTS-1011 — indie-review cross-cutting themes
+  closed.** Atomic-write drift (closed by 1016+1017),
+  frameless+translucent exec() (closed by 1015), argv `--`
+  separator + quote tokens (closed by 1024+1028+1030),
+  Lua + ssh permission allow-lists (closed by 1022+1024),
+  WCAG 1.4.1 colour-only state (closed by 1034+1035+1041) —
+  each cross-cutting bullet's narrative refreshed with the
+  constituent fix references.
+
 ## [0.7.60] — 2026-04-30
 
 **Theme:** ANTS-1123 indie-review Tier 2 + Tier 3 fold-in — the

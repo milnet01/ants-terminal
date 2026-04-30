@@ -103,6 +103,29 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.61" date="2026-04-30">
+      <description>
+        <p>Dialog-and-roadmap polish bundle — fixes three user-visible chrome bugs (theme propagation to dialogs, focus-return on dialog close, pseudo-modal click-blocking on the parent), splits the now-260 KiB ROADMAP.md by minor version so tooling can keep up, retires two long-deprecated standards docs, and folds in a batch of indie-review Tier-3 closures.</p>
+        <p>Added:</p>
+        <ul>
+          <li>Per-version ROADMAP archive — closed minors rotate to <code>docs/roadmap/&lt;MAJOR&gt;.&lt;MINOR&gt;.md</code> via <code>packaging/rotate-roadmap.sh</code>. The viewer pulls archives in only on demand (History preset OR non-empty search). Numeric <code>(major, minor)</code> descending sort defeats the lexical-sort trap at minor 10. Per-file 8 MiB cap + total 64 MiB cap. Initial archives at 0.5.md and 0.6.md. (ANTS-1125)</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>Theme stylesheet now reaches top-level dialogs. Switched <code>MainWindow::applyTheme</code> from <code>setStyleSheet(ss)</code> on the MainWindow instance to <code>qApp-&gt;setStyleSheet(ss)</code> — Qt's stylesheet engine only propagates through a widget's render subtree, not through QObject parent-child relationships, so top-level QDialogs never inherited the theme. All 9 dialog classes plus 7 ad-hoc <code>new QDialog(this)</code> instances now match. (ANTS-1128)</li>
+          <li>Auto-return focus to terminal when any dialog closes. The qApp eventFilter gained a Close-event branch backed by a pure-logic helper <code>dialogfocus::shouldRefocusOnDialogClose</code>; refocus is deferred via <code>QTimer::singleShot(0)</code> so the dialog teardown completes first. Stacked-dialog suppression and early-startup null-guard included. (ANTS-1050)</li>
+          <li>Pseudo-modal blocking on the parent. 0.7.50 made all dialogs non-modal to dodge QTBUG-79126 on Wayland; click-blocking restored manually via <code>dialogfocus::shouldSuppressEventForDialog</code>. Mouse / key / wheel events landing outside any visible dialog's tree are swallowed. (ANTS-1051)</li>
+          <li>Menubar dropdown flicker confirmed resolved by the 0.7.5 NoAnimStyle plus HoverMove suppression — the KWin-side experimentation hypothesis didn't materialise. (ANTS-1058)</li>
+          <li>XcbPositionTracker renamed to KWinPositionTracker (the class talks to KWin's scripting D-Bus interface, not XCB). KDE-presence guard bails before any temp-file write on non-KDE compositors. <code>QScopeGuard</code> ensures the temp script is removed on every synchronous failure path. (ANTS-1045)</li>
+          <li>Post-fork heap allocations in flatpak-spawn argv build retired. Detection plus <code>snprintf</code> into stack buffers now happens pre-fork; the child only assembles a stack-allocated argv table and calls <code>execvp</code> — strictly POSIX async-signal-safe. (ANTS-1046)</li>
+          <li>RoadmapDialog::rebuild's <code>readAll</code> now caps at 8 MiB; <code>refreshReviewButton</code> deduplicates overlapping <code>git status</code> probes via <code>m_reviewProbeInFlight</code>. (ANTS-1012, ANTS-1013)</li>
+        </ul>
+        <p>Removed:</p>
+        <ul>
+          <li>Deprecated top-level <code>STANDARDS.md</code> and <code>RULES.md</code> retired (user-authorised). Both predated the <code>docs/standards/</code> bundle and duplicated content. Live references updated across CONTRIBUTING.md, PLUGINS.md, README.md, and the audit dialog's "Review with Claude" header. (ANTS-1105)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.60" date="2026-04-30">
       <description>
         <p>ANTS-1123 indie-review Tier 2 + Tier 3 fold-in — the remaining hardening + polish bullets from the 0.7.59 4-agent independent review of the Claude Code companion features. Cache contract on the <code>roadmap-query</code> IPC verb honours the spec "≤ 100 ms" budget literally; <code>ants-helper</code> rejects malformed JSON input shapes; <code>AuditEngine::parseFindings</code> no longer emits bogus SARIF locators for version-string tokens; RoadmapDialog gracefully handles a corrupt persisted geometry blob and preserves user state on Custom-tab clicks. CLAUDE.md streamlined.</p>
