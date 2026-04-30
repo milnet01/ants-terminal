@@ -1796,115 +1796,9 @@ void AuditDialog::populateChecks() {
 // Filter application
 // ---------------------------------------------------------------------------
 
-AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
-                                                    const OutputFilter &f) const {
-    if (raw.isEmpty()) return { QString(), 0 };
-
-    QRegularExpression dropRe;
-    bool hasDropRe = !f.dropIfMatches.isEmpty();
-    if (hasDropRe) {
-        if (isCatastrophicRegex(f.dropIfMatches)) {
-            qWarning("audit: dropIfMatches pattern rejected for shape-DoS risk: %s",
-                     qPrintable(f.dropIfMatches));
-            hasDropRe = false;
-        } else {
-            dropRe.setPattern(hardenUserRegex(f.dropIfMatches));
-            dropRe.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
-            if (!dropRe.isValid()) {
-                qWarning("audit: dropIfMatches invalid after hardening: %s",
-                         qPrintable(dropRe.errorString()));
-                hasDropRe = false;
-            }
-        }
-    }
-
-    // Context-window suppression bookkeeping. When enabled, we parse the
-    // `file:line:` prefix of each result line, read the source file once
-    // (cached in fileCache for the duration of this applyFilter call), and
-    // check whether any of f.dropIfContextContains appears in the ±window
-    // slice around the match. The 2026-04-16 triage motivated this: scheme-
-    // gate checks and bounded-callback truncation calls frequently live on
-    // adjacent lines to the flagged line but aren't textually on the match
-    // line itself, so a plain substring filter can't see them.
-    const bool hasContextFilter = !f.dropIfContextContains.isEmpty();
-    QHash<QString, QStringList> fileCache;
-    static const QRegularExpression fileLineRe(
-        QStringLiteral(R"(^\./([^:]+\.(?:cpp|cc|cxx|c|h|hpp|hxx|py|sh|js|ts|go|rs|lua|java)):(\d+):)"));
-
-    QStringList out;
-    const QStringList lines = raw.split('\n', Qt::KeepEmptyParts);
-    int keptCount = 0;
-    for (const QString &line : lines) {
-        if (line.isEmpty()) continue;
-
-        // dropIfContains (case-insensitive)
-        bool drop = false;
-        for (const QString &needle : f.dropIfContains) {
-            if (line.contains(needle, Qt::CaseInsensitive)) { drop = true; break; }
-        }
-        if (drop) continue;
-
-        // dropIfMatches (regex)
-        if (hasDropRe && dropRe.match(line).hasMatch()) continue;
-
-        // keepOnlyIfContains (AND — all must hit)
-        if (!f.keepOnlyIfContains.isEmpty()) {
-            bool allHit = true;
-            for (const QString &needle : f.keepOnlyIfContains) {
-                if (!line.contains(needle, Qt::CaseInsensitive)) { allHit = false; break; }
-            }
-            if (!allHit) continue;
-        }
-
-        // dropIfContextContains — read ±window lines around the match and
-        // check for any suppression substring. Gracefully falls through on
-        // parse failure or I/O error (better to leave the finding than to
-        // silently drop it due to a filter-side bug).
-        if (hasContextFilter) {
-            const QRegularExpressionMatch m = fileLineRe.match(line);
-            if (m.hasMatch()) {
-                const QString relPath = m.captured(1);
-                const int lineNo = m.captured(2).toInt();
-                QStringList *fileLines = fileCache.contains(relPath)
-                    ? &fileCache[relPath]
-                    : nullptr;
-                if (!fileLines) {
-                    QStringList &slot = fileCache[relPath];
-                    const QString abs = resolveProjectPath(relPath);
-                    if (!abs.isEmpty()) {
-                        QFile src(abs);
-                        if (src.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                            slot = QString::fromUtf8(src.readAll())
-                                       .split('\n', Qt::KeepEmptyParts);
-                        }
-                    }
-                    fileLines = &slot;
-                }
-                if (!fileLines->isEmpty() && lineNo > 0) {
-                    const int total = static_cast<int>(fileLines->size());
-                    const int lo = std::max(1, lineNo - f.contextWindow);
-                    const int hi = std::min(total, lineNo + f.contextWindow);
-                    bool ctxHit = false;
-                    for (int i = lo; i <= hi && !ctxHit; ++i) {
-                        const QString &ctxLine = fileLines->at(i - 1);
-                        for (const QString &needle : f.dropIfContextContains) {
-                            if (ctxLine.contains(needle, Qt::CaseInsensitive)) {
-                                ctxHit = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (ctxHit) continue;
-                }
-            }
-        }
-
-        out << line;
-        ++keptCount;
-        if (f.maxLines > 0 && keptCount >= f.maxLines) break;
-    }
-    return { out.join('\n'), keptCount };
-}
+// applyFilter / parseFindings / capFindings now live in
+// auditengine.cpp (ANTS-1119 v1). Call sites use the
+// `AuditEngine::` namespace directly.
 
 // ---------------------------------------------------------------------------
 // Parsing raw command output into Findings
@@ -1920,113 +1814,20 @@ AuditDialog::FilterResult AuditDialog::applyFilter(const QString &raw,
 // finding with no file/line. Parsing is best-effort; incorrectly-parsed
 // lines still appear, just without navigable location metadata.
 
+// sourceForCheck() lives in AuditEngine — ANTS-1123 indie-review H1
+// unification. Local thin alias kept so the existing call site at
+// onCheckFinished's r.source = sourceForCheck(check.id) compiles
+// without a namespace qualifier change.
 static QString sourceForCheck(const QString &checkId) {
-    if (checkId.startsWith("cppcheck"))  return "cppcheck";
-    if (checkId == "clang_tidy")         return "clang-tidy";
-    if (checkId == "clazy")              return "clazy";
-    if (checkId == "semgrep")            return "semgrep";
-    if (checkId == "pylint")             return "pylint";
-    if (checkId == "bandit")             return "bandit";
-    if (checkId == "ruff")               return "ruff";
-    if (checkId == "mypy")               return "mypy";
-    if (checkId == "shellcheck")         return "shellcheck";
-    if (checkId == "luacheck")           return "luacheck";
-    if (checkId == "cargo_clippy")       return "cargo-clippy";
-    if (checkId == "cargo_audit")        return "cargo-audit";
-    if (checkId == "go_vet")             return "go vet";
-    if (checkId == "govulncheck")        return "govulncheck";
-    if (checkId == "golangci_lint")      return "golangci-lint";
-    if (checkId == "eslint")             return "eslint";
-    if (checkId == "npm_audit")          return "npm audit";
-    if (checkId == "osv_scanner")        return "osv-scanner";
-    if (checkId == "trufflehog")         return "trufflehog";
-    if (checkId == "hadolint")           return "hadolint";
-    if (checkId == "checkov")            return "checkov";
-    if (checkId == "ast_grep")           return "ast-grep";
-    if (checkId == "spec_code_drift" ||
-        checkId == "changelog_test_coverage") return "feature-coverage";
-    if (checkId.startsWith("git_"))      return "git";
-    if (checkId == "compiler_warnings")  return "gcc";
-    // find-based checks
-    if (checkId == "large_files" || checkId == "dup_files" ||
-        checkId == "dangling_symlinks" || checkId == "binary_in_repo" ||
-        checkId == "env_files" || checkId == "temp_files" ||
-        checkId == "file_perms" || checkId == "header_guards" ||
-        checkId == "line_stats" || checkId == "long_files" ||
-        checkId == "encoding_check")
-        return "find";
-    return "grep";
+    return AuditEngine::sourceForCheck(checkId);
 }
 
-static QString computeDedup(const QString &file, int line,
-                            const QString &checkId, const QString &title) {
-    const QString raw = QString("%1:%2:%3:%4").arg(file).arg(line).arg(checkId, title);
-    // 24 hex chars = 96 bits. Pre-0.7.29 used 16 (64 bits); the same key
-    // is the SARIF partialFingerprint, the suppression-JSONL key, the
-    // rule-quality bucket, and the "Suppress" anchor URL fragment — so
-    // the collision cost is high. 96 bits raises the birthday threshold
-    // from ~2^32 to ~2^48 for 8 extra bytes per stored key.
-    return QString::fromLatin1(
-        QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Sha256)
-            .toHex().left(24));
-}
+// computeDedup() moved into AuditEngine (auditengine.cpp anonymous
+// namespace) per ANTS-1119 v1; was only referenced by the now-extracted
+// parseFindings.
 
-QList<Finding> AuditDialog::parseFindings(const QString &body, const AuditCheck &check) {
-    QList<Finding> out;
-    if (body.isEmpty()) return out;
-
-    // Patterns. Greedy on file segment, which can contain slashes but not
-    // colons or whitespace (matches the conventions of every tool we wrap).
-    static const QRegularExpression reFileLineCol(
-        R"(^([^\s:]+):(\d+):(?:\d+:)?\s*(.*)$)");
-    static const QRegularExpression reFileLine(
-        R"(^([^\s:]+):(\d+):\s*(.*)$)");
-    // A bare filename: path with at least one '/' OR an extension.
-    static const QRegularExpression reJustFile(
-        R"(^([^\s:]+\.[A-Za-z0-9_]+)$|^([^\s:]+/[^\s:]+)$)");
-
-    const QString source = sourceForCheck(check.id);
-    const QStringList lines = body.split('\n', Qt::SkipEmptyParts);
-    for (const QString &rawLine : lines) {
-        const QString line = rawLine.trimmed();
-        if (line.isEmpty()) continue;
-
-        Finding f;
-        f.checkId   = check.id;
-        f.checkName = check.name;
-        f.category  = check.category;
-        f.type      = check.type;
-        f.severity  = check.severity;
-        f.source    = source;
-        f.message   = line;
-
-        auto m1 = reFileLineCol.match(line);
-        auto m2 = reFileLine.match(line);
-        auto m3 = reJustFile.match(line);
-        if (m1.hasMatch()) {
-            f.file = m1.captured(1);
-            f.line = m1.captured(2).toInt();
-        } else if (m2.hasMatch()) {
-            f.file = m2.captured(1);
-            f.line = m2.captured(2).toInt();
-        } else if (m3.hasMatch()) {
-            f.file = m3.captured(1).isEmpty() ? m3.captured(2) : m3.captured(1);
-        }
-
-        // Title = first 80 chars of the (trimmed) body part — used in the
-        // dedup hash so two tools flagging the same line still collide.
-        const QString title = line.left(80);
-        f.dedupKey = computeDedup(f.file, f.line, check.id, title);
-        out.append(f);
-    }
-    return out;
-}
-
-void AuditDialog::capFindings(CheckResult &r, int cap) {
-    if (cap <= 0 || r.findings.size() <= cap) return;
-    r.omittedCount = r.findings.size() - cap;
-    r.findings.erase(r.findings.begin() + cap, r.findings.end());
-}
+// parseFindings / capFindings extracted to AuditEngine — see
+// auditengine.cpp (ANTS-1119 v1).
 
 // ---------------------------------------------------------------------------
 // Comment/string-aware line classification — the single biggest false-
@@ -2935,30 +2736,17 @@ bool AuditDialog::isSuppressed(const QString &dedupKey) const {
     return false;
 }
 
+// AuditDialog::isCatastrophicRegex / hardenUserRegex now forward to
+// the AuditEngine implementations (ANTS-1123 indie-review C1/C2/C3
+// unification — was: two divergent definitions; is: one). Callers
+// that look up `AuditDialog::isCatastrophicRegex` for source-grep
+// stability still resolve, but the body is in `auditengine.cpp`.
 bool AuditDialog::isCatastrophicRegex(const QString &pattern) {
-    if (pattern.isEmpty()) return false;
-    // Coarse heuristic for catastrophic backtracking shapes: a quantified
-    // group whose body itself contains a quantifier — e.g. `(.+)+`,
-    // `(\w*)*`, `(a+|b+)*`. False positives are possible (a user could
-    // legitimately write `([a-z]+\s+)+` for whitespace-trim splitting),
-    // but on grep-tool output the safer default is to drop with a warning
-    // rather than risk pinning the GUI thread on adversarial input. The
-    // PCRE2 step-limit (hardenUserRegex) is the precise second line of
-    // defense for patterns that don't trip the shape check.
-    static const QRegularExpression nested(
-        R"(\([^()]*[+*][^()]*\)[?*+])");
-    return nested.match(pattern).hasMatch();
+    return AuditEngine::isCatastrophicRegex(pattern);
 }
 
 QString AuditDialog::hardenUserRegex(const QString &pattern) {
-    if (pattern.isEmpty()) return {};
-    // PCRE2 inline option: cap the match-step budget. Qt6's
-    // QRegularExpression backend honors this; on overrun the matcher
-    // returns "no match" rather than running unbounded. 100,000 steps
-    // accommodates every sane pattern (typical match completes in
-    // < 1,000) and aborts adversarial patterns within milliseconds.
-    if (pattern.startsWith(QStringLiteral("(*LIMIT_"))) return pattern;
-    return QStringLiteral("(*LIMIT_MATCH=100000)") + pattern;
+    return AuditEngine::hardenUserRegex(pattern);
 }
 
 void AuditDialog::saveSuppression(const QString &dedupKey,
@@ -4092,7 +3880,8 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     const auto &check = m_checks[m_currentCheck];
 
     // Apply declarative post-filter (noise excludes, head caps, etc).
-    const FilterResult filtered = applyFilter(output, check.filter);
+    const FilterResult filtered =
+        AuditEngine::applyFilter(output, check.filter, m_projectPath);
 
     CheckResult r;
     r.checkId   = check.id;
@@ -4113,7 +3902,7 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     //      recent-commits set (unfiled findings always pass)
     //   6. Dedup within this single check (exact-duplicate message lines)
     QSet<QString> seenKeys;
-    QList<Finding> parsed = parseFindings(filtered.body, check);
+    QList<Finding> parsed = AuditEngine::parseFindings(filtered.body, check);
     QSet<QString> recent;
     if (m_recentOnly) for (const QString &p : std::as_const(m_recentFiles)) recent.insert(p);
     for (Finding &f : parsed) {
@@ -4171,7 +3960,7 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     // a missing-types nag doesn't eat 20 finding slots.
     consolidateMypyStubHints(r);
 
-    capFindings(r, kMaxFindingsPerCheck);
+    AuditEngine::capFindings(r, kMaxFindingsPerCheck);
     r.findingCount = r.findings.size() + r.omittedCount;
     m_completedResults.append(r);
 

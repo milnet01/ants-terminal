@@ -103,6 +103,33 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.59" date="2026-04-30">
+      <description>
+        <p>Claude Code companion features — faceted preset tabs and search on the Roadmap viewer (ANTS-1100), two read-only IPC verbs Claude can drive (tab-list, roadmap-query; ANTS-1117 v1), an optional standalone CLI helper (ants-helper drift-check; ANTS-1116 v1), an audit-engine extraction that unblocks future non-GUI audit consumers (ANTS-1119 v1), and a measurement gate that grounds further companion work in real token counts (ANTS-1120). Bundled with documentation cold-eyes review (ANTS-1121), audit fold-in fixes (ANTS-1122), and Tier 1 indie-review fixes (ANTS-1123).</p>
+        <p>Added:</p>
+        <ul>
+          <li>Roadmap dialog faceted preset tabs — Full / History / Current / Next / Far Future / Custom — each mapping to a (filter, sort) preset evaluated in pure C++. New search box accepts substring or <code>id:NNNN</code> shorthand to jump to a specific bullet. Default size 1200×800 with persisted geometry round-trip via <code>Config::roadmapDialogGeometry</code>. (ANTS-1100)</li>
+          <li>Two new remote-control IPC verbs (read-only): <code>roadmap-query</code> returns parsed ROADMAP bullets (id, status, headline, kind, lanes); <code>tab-list</code> returns rich per-tab snapshots (index, title, cwd, shell_pid, claude_running, color). Both inherit the existing UID-scoped trust check. (ANTS-1117 v1)</li>
+          <li>Optional <code>ants-helper</code> CLI binary (built when CMake is invoked with <code>-DANTS_ENABLE_HELPER_CLI=ON</code>). v1 ships <code>ants-helper drift-check</code>, which wraps <code>packaging/check-version-drift.sh</code> and emits a unified JSON envelope Claude can parse without re-interpreting the script's stdout. Builds against Qt6::Core only. (ANTS-1116 v1)</li>
+          <li><code>AuditEngine</code> GUI-free module — the data-shape types and three pure parsing functions extracted from <code>auditdialog.cpp</code> into <code>src/auditengine.{h,cpp}</code> depending on Qt6::Core only. Pure refactor; audit pipeline output is byte-identical pre/post. Unblocks future non-GUI audit consumers. (ANTS-1119 v1)</li>
+          <li>Companion-instrumentation harness (ANTS-1120) — <code>scripts/measure-companion-tokens.sh</code> skeleton plus journal placeholder for measuring per-call token savings of the helper-stub vs baseline configurations before any further companion bullets ship.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li><code>Kind:</code> field is now required on every actionable ROADMAP.md bullet (previously optional, inferred from section context). All 100 unannotated bullets backfilled. Spec updated at <code>docs/standards/roadmap-format.md § 3.5</code> and synced to the user-level <code>/start-app</code> template. (ANTS-1106)</li>
+          <li>Documentation tree refresh (ANTS-1121, full-app cold-eyes review): retired GPU-renderer references from STANDARDS.md / RULES.md / PLUGINS.md (the <code>glrenderer.cpp</code> path was removed in 0.7.44); refreshed version stamps across PLUGINS.md, SECURITY.md, packaging/README.md, README.md, and CONTRIBUTING.md; relocated archival snapshots (DISCOVERY.md, AUDIT.md, FIXPLAN.md, project_audit_updates.md) from project root to <code>docs/journal/</code> with historical-snapshot headers; retired the stale <code>docs/AUTOMATED_AUDIT_REPORT.md</code> copy.</li>
+          <li>Audit-engine fold-in fixes (ANTS-1122) — clazy <code>range-loop-detach</code> in <code>antshelper.cpp</code> and <code>roadmapdialog.cpp::parseBullets</code>; cppcheck <code>constVariablePointer</code> in <code>auditengine.cpp::applyFilter</code>; cppcheck <code>returnByReference</code> on <code>MainWindow::roadmapPathForRemote()</code>. Strengthened <code>tests/features/roadmap_viewer_tabs/</code> with negative-case and parsed-numeric invariants.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>Section-reference drift in newly-authored specs — <code>docs/specs/ANTS-1117.md</code>, <code>docs/specs/ANTS-1120.md</code>, and <code>docs/decisions/0002-cold-eyes-companion-cleanup.md</code> cited <code>§ 1.2</code> / <code>§ 3.1</code> / <code>§ 3.5</code> for facts that actually live in <code>§ 3.3</code> (status emojis) and <code>§ 3.5.1</code> (stable-ID immutability). Corrected during the cold-eyes cross-check pass.</li>
+        </ul>
+        <p>Security:</p>
+        <ul>
+          <li>regex-DoS divergence closed. Pre-0.7.59 the engine extraction had left two independent definitions of <code>isCatastrophicRegex</code> / <code>hardenUserRegex</code> between <code>auditengine.cpp</code> and <code>auditdialog.cpp</code> with differing LIMIT_MATCH values (200000 vs 100000), no double-prefix guard on the engine version, and shape detectors that caught different sets of catastrophic-backtracking patterns. A pattern that triggered the bound on one path could slip through on the other. Unified to a single definition exported from the engine; both call sites delegate. (ANTS-1123 indie-review C1+C2+C3+H1)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.58" date="2026-04-30">
       <description>
         <p>Runtime toggle for the ANTS-1054 dialog tracer. The 0.7.57 env-var-only path required restarting Ants Terminal to diagnose the user-reported mystery flashing dialogs; the new menu action lets the user enable / disable the tracer mid-session without losing tab state.</p>

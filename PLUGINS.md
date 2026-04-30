@@ -1,8 +1,10 @@
 # Ants Terminal — Plugin Authoring Standards
 
-> **Audience**: plugin authors writing against `ants-terminal` **v0.6.9**
-> (Lua 5.4 runtime). For internal plugin-system architecture notes aimed at
-> Ants-Terminal contributors, see `STANDARDS.md` → "Plugin System Standards".
+> **Audience**: plugin authors writing against `ants-terminal` **v0.7.58+**
+> (Lua 5.4 runtime). The plugin surface hasn't grown since 0.6.9 — per-event
+> "0.6.9" markers below remain accurate. For internal plugin-system
+> architecture notes aimed at Ants-Terminal contributors, see `STANDARDS.md`
+> → "Plugin System Standards".
 
 Plugins extend the terminal through a sandboxed Lua 5.4 runtime. They can
 react to terminal events (line of output, keypress, tab created, OSC 133
@@ -20,7 +22,7 @@ those drift from this doc, the doc wins and an issue should be filed.
 1. [Directory Layout](#directory-layout)
 2. [Manifest (`manifest.json`)](#manifest-manifestjson)
 3. [Entry Point (`init.lua`)](#entry-point-initlua)
-4. [The `ants.*` API — Current (v0.6.9)](#the-ants-api--current-v069)
+4. [The `ants.*` API — Current (v0.7.58+)](#the-ants-api--current-v0758)
 5. [Events](#events)
 6. [Sandbox Boundaries](#sandbox-boundaries)
 7. [Resource Limits](#resource-limits)
@@ -158,9 +160,11 @@ end)
   whole VM down and re-creates it, so re-registered handlers simply
   replace the old ones.
 
-## The `ants.*` API — Current (v0.6.9)
+## The `ants.*` API — Current (v0.7.58+)
 
-This is the complete surface as of **0.6.9**. Functions not listed here
+This is the complete surface as of **0.7.58** (no plugin-API additions
+have shipped between 0.6.9 and 0.7.58 — the per-event 0.6.9 markers in the
+table below remain historically accurate). Functions not listed here
 do not exist and will raise `attempt to call a nil value`. Permissioned
 functions (marked 🔒) are only present when the corresponding permission
 is granted.

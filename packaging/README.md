@@ -6,8 +6,9 @@ Flatpak manifest for the cross-distro sandboxed track. Each recipe is
 **self-contained** — drop it into the build tool of your choice and
 it produces a binary package without patching upstream.
 
-> **Version alignment.** The recipes carry `0.6.20` (or newer) in lockstep
-> with `CMakeLists.txt` `project(… VERSION …)`. When bumping the upstream
+> **Version alignment.** The recipes carry the current shipped version
+> (currently 0.7.58 / 0.7.59) in lockstep with `CMakeLists.txt`
+> `project(… VERSION …)`. When bumping the upstream
 > release, update the version string in this file's matching recipe
 > **and** run the tool-specific checksum refresh
 > (`updpkgsums` for Arch, `.changes` edit via `osc vc` for openSUSE,
@@ -115,7 +116,7 @@ cd ants-terminal
 updpkgsums
 makepkg --printsrcinfo > .SRCINFO   # required by AUR
 git add PKGBUILD .SRCINFO
-git commit -m "ants-terminal 0.6.20-1"
+git commit -m "ants-terminal X.Y.Z-1"   # use the current upstream version
 git push
 ```
 
@@ -171,7 +172,7 @@ dput ppa:<your-launchpad-user>/ants-terminal ../ants-terminal_*.changes
 Don't edit `debian/changelog` by hand — use `dch`:
 
 ```bash
-dch -v 0.6.21-1 "Upstream release."   # opens editor
+dch -v X.Y.Z-1 "Upstream release."   # opens editor; substitute current version
 ```
 
 `dch` fills in date, maintainer, and format correctly.

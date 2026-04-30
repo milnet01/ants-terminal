@@ -2724,6 +2724,46 @@ QJsonArray MainWindow::tabListForRemote() const {
     return tabs;
 }
 
+QJsonArray MainWindow::tabsAsJson() const {
+    // Richer per-tab snapshot for the `tab-list` IPC verb (ANTS-1117).
+    // Adds `shell_pid`, `claude_running`, and `color` on top of the
+    // narrower `tabListForRemote` shape — keeps the existing `ls`
+    // verb's contract unchanged for backward compat.
+    QJsonArray tabs;
+    const int n = m_tabWidget->count();
+    for (int i = 0; i < n; ++i) {
+        QJsonObject t;
+        t["index"] = i;
+        t["title"] = m_tabWidget->tabText(i);
+        QString cwd;
+        pid_t shellPid = 0;
+        if (auto *term = activeTerminalInTab(m_tabWidget->widget(i))) {
+            cwd = term->shellCwd();
+            shellPid = term->shellPid();
+        }
+        t["cwd"] = cwd;
+        t["shell_pid"] = qint64(shellPid);
+        bool claudeRunning = false;
+        if (m_claudeTabTracker && shellPid > 0) {
+            const auto state = m_claudeTabTracker->shellState(shellPid).state;
+            claudeRunning = (state != ClaudeState::NotRunning);
+        }
+        t["claude_running"] = claudeRunning;
+        QString color;
+        if (m_coloredTabBar) {
+            const QColor c = m_coloredTabBar->tabColor(i);
+            if (c.isValid()) color = c.name();
+        }
+        t["color"] = color;
+        tabs.append(t);
+    }
+    return tabs;
+}
+
+const QString &MainWindow::roadmapPathForRemote() const {
+    return m_roadmapPath;
+}
+
 void MainWindow::applyTheme(const QString &name) {
     m_currentTheme = name;
     m_config.setTheme(name);
@@ -5159,7 +5199,8 @@ void MainWindow::showRoadmapDialog() {
         if (m_roadmapPath.isEmpty()) return;
     }
     showStatusMessage(QStringLiteral("Roadmap: opening…"), 1500);
-    auto *dlg = new RoadmapDialog(m_roadmapPath, m_currentTheme, this);
+    auto *dlg = new RoadmapDialog(m_roadmapPath, m_currentTheme,
+                                  this, &m_config);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->show();
     dlg->raise();

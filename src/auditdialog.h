@@ -1,5 +1,9 @@
 #pragma once
 
+// Data types + pure-function helpers live in auditengine.h (Qt6::Core
+// only) per ANTS-1119. Re-exported here transitively so existing call
+// sites that include auditdialog.h continue to compile unchanged.
+#include "auditengine.h"
 #include "elidedlabel.h"
 #include "auditrulequality.h"
 
@@ -20,136 +24,6 @@
 #include <functional>
 
 class ToggleSwitch;
-
-// SonarQube-style taxonomy (informational tag for the UI + summary). A single
-// check is exactly one of these — the category string (General, Security,
-// C/C++, …) is orthogonal and groups checks for display.
-enum class CheckType {
-    Info,          // Informational counter (line count, large files, …)
-    CodeSmell,     // Maintainability concern; not a bug per se
-    Bug,           // Code that is demonstrably wrong or likely wrong
-    Hotspot,       // Security-sensitive; needs human judgement
-    Vulnerability, // Exploitable flaw
-};
-
-// SARIF-compatible severity; matches SonarQube's ordering.
-enum class Severity {
-    Info     = 0,  // FYI, no expected impact
-    Minor    = 1,  // Low impact
-    Major    = 2,  // Medium impact
-    Critical = 3,  // High impact or a security flaw
-    Blocker  = 4,  // Severe unintended consequences — fix immediately
-};
-
-// Declarative, line-level output filtering. Applied in C++ AFTER the shell
-// command returns so filter logic stays in the source instead of buried in
-// six-grep pipelines. Keeps individual checks readable and testable.
-struct OutputFilter {
-    // Drop a result line if it contains ANY of these substrings (case-insensitive).
-    QStringList dropIfContains;
-    // Drop a result line if this regex matches it. Empty = no regex.
-    QString dropIfMatches;
-    // Keep a result line only if it contains ALL of these substrings (optional).
-    QStringList keepOnlyIfContains;
-    // Cap output length after filtering. 0 = unlimited.
-    int maxLines = 100;
-    // Context-window suppression. If the result line has a `file:line:` prefix
-    // and any of these substrings appears in the source file within ±contextWindow
-    // lines of the match, drop the finding. Added 2026-04-16 to suppress "calls
-    // openUrl" / "callback payload" false positives where a gate check appears
-    // in the surrounding code but not on the matched line itself. Empty = no
-    // context-window check; the file is never opened in that case.
-    //
-    // Placed AFTER maxLines to preserve aggregate-init compatibility for the
-    // many existing `{ {...}, "", {}, N }` call sites. New call sites that
-    // want context filtering use designated initializers.
-    QStringList dropIfContextContains{};
-    int contextWindow = 5;
-};
-
-struct AuditCheck {
-    QString id;
-    QString name;
-    QString description;
-    QString category;
-    QString command;           // shell command to run
-    CheckType type = CheckType::CodeSmell;
-    Severity severity = Severity::Minor;
-    OutputFilter filter;
-    bool autoSelect = false;
-    bool available = true;
-    ToggleSwitch *toggle = nullptr;
-    // Optional in-process runner. When set, the check is executed by
-    // calling this function with the project path and feeding the
-    // returned text through the same post-processing pipeline that
-    // would normally run on QProcess stdout. `command` is ignored
-    // when this is populated. Used by checks whose logic is easier
-    // to express in C++ than in a bash/grep/awk pipeline — notably
-    // the feature-coverage lanes (spec↔code drift, CHANGELOG↔tests).
-    //
-    // Default-initialized so positional aggregate-init call sites
-    // (`{id, name, desc, category, cmd, type, sev, filter, auto, true, nullptr}`)
-    // that don't name this trailing field don't trip
-    // -Wmissing-field-initializers.
-    std::function<QString(const QString & /*projectPath*/)> inProcessRunner{};
-    // Per-check timeout for the QProcess runner. Default matches the
-    // pre-0.7.28 global cap so existing positional aggregate-init
-    // sites stay correct without repeating the value at every entry.
-    // Slow tools (cppcheck/clang-tidy/clazy/semgrep/osv-scanner/
-    // trufflehog) bump this in populateChecks; see
-    // tests/features/audit_per_tool_timeout/spec.md.
-    int timeoutMs = 30000;
-};
-
-// Individual finding parsed from a check's output. One per issue, not one
-// per check — lets us dedup across tools, suppress individually, and render
-// severity-sorted even within a check's output.
-struct Finding {
-    QString checkId;       // originating check
-    QString checkName;
-    QString category;      // General, Security, Qt, …
-    CheckType type;
-    Severity severity;
-    QString source;        // "cppcheck", "grep", "find", "clang-tidy", …
-    QString file;          // "src/terminalgrid.cpp" or empty
-    int     line = -1;     // 1-based line number; -1 if not parseable
-    QString message;       // the full raw output line (trimmed)
-    QString dedupKey;      // SHA-256(file:line:checkId:title) hex, truncated
-    bool    highConfidence = false; // true when ≥2 distinct tools flag the same line
-    bool    suppressed = false;     // dedupKey matched ~/.audit_suppress at parse time —
-                                    // hidden from UI/HTML, surfaced in SARIF
-                                    // result.suppressions[] per v2.1.0 §3.34
-
-    // Context-aware enrichment — populated during renderResults() so all
-    // exports (UI, HTML, SARIF, plain-text) see the same data.
-    int     confidence = -1;   // 0-100 weighted score; -1 = not computed yet
-    QString snippet;           // ±N lines around the finding (newline-joined)
-    int     snippetStart = 0;  // first line number of the snippet
-    // git-blame bag — empty when not a git repo or blame failed.
-    QString blameAuthor;       // e.g. "Anthony Schemel"
-    QString blameDate;         // ISO date of author time ("2026-04-11")
-    QString blameSha;          // 8-char short SHA
-    // AI-triage cache — populated when user clicks "🧠 Triage" on this finding.
-    QString aiVerdict;         // "TRUE_POSITIVE" | "FALSE_POSITIVE" | "NEEDS_REVIEW"
-    int     aiConfidence = -1; // 0-100 from the model, -1 = not triaged
-    QString aiReasoning;       // model's explanation (truncated to ~600 chars)
-};
-
-// One finding row after post-processing; kept per-check so we can sort the
-// final report by severity and compute summary counts.
-struct CheckResult {
-    QString checkId;
-    QString checkName;
-    QString category;
-    CheckType type;
-    Severity severity;
-    QString source;                // primary tool for this check
-    QList<Finding> findings;       // parsed individual findings
-    int omittedCount = 0;          // from per-check cap — "+ N more"
-    QString output;                // raw (post-filter) output for fallback display
-    int findingCount = 0;          // convenience: findings.size() + omittedCount
-    bool warning = false;          // timeout / start-failed
-};
 
 class AuditDialog : public QDialog {
     Q_OBJECT
@@ -269,26 +143,13 @@ private:
                       CheckType type, Severity sev, bool autoSelect,
                       const OutputFilter &filter = {});
 
-    // Apply OutputFilter to raw command output; returns a trimmed, capped body
-    // plus a finding count (non-empty line count) for the summary.
-    struct FilterResult { QString body; int count; };
-    // Non-static: context-window filtering (2026-04-16) needs m_projectPath
-    // to resolve `./relative/path.cpp` references from grep output to an
-    // absolute file path. Can't be made static without threading project
-    // path through the signature; the dialog is the only caller anyway.
-    FilterResult applyFilter(const QString &raw, const OutputFilter &f) const;
-
-    // Parse command output lines into structured Findings. Understands:
-    //   file:line:col: msg           (grep -n, cppcheck, clang-tidy, gcc)
-    //   file:line: msg               (shellcheck, some linters)
-    //   file                         (find, ls output)
-    //   other                        (whole line is a free-form message)
-    static QList<Finding> parseFindings(const QString &body,
-                                        const AuditCheck &check);
-
-    // Apply per-check cap; overflow entries are dropped and omittedCount
-    // is recorded so the UI can show "(+N more)".
-    static void capFindings(CheckResult &r, int cap);
+    // The pure-function helpers (applyFilter / parseFindings /
+    // capFindings) now live in `auditengine.{h,cpp}` — see ANTS-1119.
+    // Use `AuditEngine::applyFilter` / `AuditEngine::parseFindings` /
+    // `AuditEngine::capFindings` directly for new code. The dialog
+    // calls them through the namespace; no thin wrappers remain. The
+    // FilterResult shape (was nested) is now `AuditEngine::FilterResult`.
+    using FilterResult = AuditEngine::FilterResult;
 
     // Load user-defined rules from <project>/audit_rules.json. Schema:
     //   { "version": 1,

@@ -12,22 +12,230 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.59] — 2026-04-30
+
+**Theme:** Claude Code companion features — faceted tabs +
+search on the Roadmap viewer (ANTS-1100), two read-only IPC
+verbs Claude can drive (`tab-list`, `roadmap-query`; ANTS-1117
+v1), an optional standalone CLI helper (`ants-helper drift-check`;
+ANTS-1116 v1), an audit-engine extraction that unblocks future
+non-GUI audit consumers (ANTS-1119 v1), and a measurement gate
+that grounds further companion work in real token counts
+(ANTS-1120). Bundled with three rounds of fold-in fixes:
+documentation cold-eyes review (ANTS-1121, T1-T9 across PLUGINS
+/ STANDARDS / RULES / SECURITY / archival relocation), audit
+findings (ANTS-1122), and indie-review findings (ANTS-1123, Tier 1
+shipped in this cut). Strategic context in the new ADR-0002
+(cold-eyes scope cleanup of the broader companion-feature plan).
+
+### Added
+
+- **Roadmap dialog: faceted preset tabs + search + persisted
+  geometry.** Six tabs above the existing checkbox row —
+  Full / History / Current / Next / Far Future / Custom —
+  each maps to a `(filter, sort)` preset evaluated in pure
+  C++ over the already-parsed bullet model (zero LLM
+  round-trips). Search box accepts substring or `id:NNNN`
+  shorthand to jump to a specific bullet. Default size is now
+  1200×800 (was 900×700) with the user's resize persisted via
+  the new `Config::roadmapDialogGeometry`
+  `saveGeometry`/`restoreGeometry` round-trip. New static
+  helpers (`RoadmapDialog::filterFor` / `sortFor` /
+  `presetMatching`) plus a non-history `Document` sort that
+  preserves authored section order.
+  Locked by `tests/features/roadmap_viewer_tabs/` (13 INVs).
+  (ANTS-1100)
+
+- **Two new remote-control IPC verbs (read-only):
+  `roadmap-query` + `tab-list`.** Claude Code can now interrogate
+  the running Ants Terminal for parsed ROADMAP bullets (`id`,
+  `status`, `headline`, `kind`, `lanes` per top-level
+  status-emoji bullet) and per-tab state (`index`, `title`,
+  `cwd`, `shell_pid`, `claude_running`, `color`) without
+  reading the underlying files or running `ps`. Both verbs
+  inherit the existing `RemoteControl` transport's UID-scope
+  trust (`lstat` + `S_ISSOCK` + UID match) and only run when
+  `remote_control_enabled` is on. New helpers:
+  `RoadmapDialog::parseBullets` (pure markdown → bullet
+  records), `MainWindow::tabsAsJson` (rich per-tab snapshot
+  alongside the existing slim `tabListForRemote` used by `ls`).
+  Cache on the `roadmap-query` path keyed on file mtime so
+  repeated calls don't re-parse the 4500-line ROADMAP.md.
+  Locked by `tests/features/remote_control_roadmap_query/`
+  (9 INVs) + `tests/features/remote_control_tab_list/` (7 INVs).
+  (ANTS-1117 v1)
+
+- **`ants-helper` CLI binary (optional, default OFF).** New
+  standalone binary built when CMake is invoked with
+  `-DANTS_ENABLE_HELPER_CLI=ON`. v1 ships a single subcommand:
+  `ants-helper drift-check` wraps `packaging/check-version-drift.sh`
+  and emits a unified JSON envelope (`{"ok": true, "data":
+  {"clean": true|false, "violations":[…], "raw":"…",
+  "exit_code": N}}`) Claude can parse without re-running
+  the script's stdout through interpretation. Exit codes
+  per docs/specs/ANTS-1116.md § INV-8: 0=clean, 3=drift,
+  1=handler error, 2=usage error. Builds against `Qt6::Core`
+  only. v2 (`audit-run`, `id-allocate`, `test-runner`)
+  contingent on ANTS-1120 measurement validating per-call
+  token savings.
+  Locked by `tests/features/local_subagent_framework/` (8 INVs).
+  (ANTS-1116 v1)
+
+- **`AuditEngine` GUI-free module.** Extracted the data-shape
+  types (`CheckType`, `Severity`, `OutputFilter`, `Finding`,
+  `CheckResult`, `AuditCheck`) and the three pure parsing
+  functions (`applyFilter`, `parseFindings`, `capFindings`)
+  from `auditdialog.cpp` (~5800 lines, mixed engine +
+  presentation) into `src/auditengine.{h,cpp}` depending on
+  `Qt6::Core` only. The dialog re-exports the data types
+  via a transitive include of `auditengine.h`; the dialog's
+  static helpers `isCatastrophicRegex` / `hardenUserRegex`
+  now forward to the engine (closes the divergence vector
+  the indie-review C-cluster surfaced — pre-fix the engine's
+  local copies had drifted from the dialog originals on
+  `LIMIT_MATCH` value, double-prefix guard, and shape
+  detector). `sourceForCheck` + `computeDedup` likewise
+  promoted to the engine's public surface. Pure refactor;
+  audit pipeline output is byte-identical pre/post.
+  Unblocks ANTS-1116 v2 / ANTS-1117 v2 `audit-run` (no
+  `Qt6::Widgets` in the linker path).
+  Locked by `tests/features/audit_engine_extraction/` (9 INVs).
+  (ANTS-1119 v1)
+
+- **Companion-instrumentation harness (ANTS-1120).** New
+  `scripts/measure-companion-tokens.sh` skeleton + journal
+  placeholder at `docs/journal/ANTS-1120-measurement.md`. Per
+  ADR-0002 § Decision 5, before any further companion bullet
+  beyond ANTS-1117 v1 + ANTS-1116 v1 ships, this harness runs
+  one Claude task in two configurations (baseline vs stubbed
+  helpers) N≥3 times each, captures per-prompt token counts
+  from the API `usage` field, and produces a per-bullet
+  keep / iterate / drop / inconclusive verdict. v1 ships the
+  framework; the actual measurement run is gated on stub
+  capture + a representative scripted task. (ANTS-1120)
+
 ### Changed
 
-- `Kind:` field is now **required** on every actionable
-  `ROADMAP.md` bullet (previously optional, inferred from
-  section context). The viewer / parser no longer needs to
-  derive Kind from the surrounding heading — each bullet
-  declares it explicitly. Backfilled all 100 unannotated
-  bullets in `ROADMAP.md` (script + heuristic per section
-  heading + release-block theme; review-fixes attributed
-  to indie-review-2026-04-27, regressions cited from body
-  text, user requests dated from heading). `Source:` field
-  added where non-default. Spec updated at
+- **`auditdialog.cpp` slimmed by the engine extraction.** The
+  three moved functions (`applyFilter` / `parseFindings` /
+  `capFindings`) now live in `src/auditengine.cpp`; the
+  dialog's orchestration path (`onCheckFinished`) calls
+  through `AuditEngine::` directly. `isCatastrophicRegex` /
+  `hardenUserRegex` / `sourceForCheck` are unified — single
+  definition in the engine, dialog-side static helpers are
+  thin forwarders. (ANTS-1119 v1, ANTS-1123 indie-review
+  C-cluster + H1 fix-pass.)
+
+- **`ants-helper` JSON envelope on usage errors.** Both the
+  `unknown subcommand` and `invalid JSON` paths now emit a
+  `{"ok": false, "error": "…", "code": "usage_error"}` envelope
+  on stdout in addition to the human-readable stderr line.
+  Keeps the contract consistent — Claude consumers parsing
+  stdout no longer need to special-case usage errors.
+  (ANTS-1123 indie-review F1.)
+
+- **`ants-helper` error-string match to spec INV-5.**
+  `bash`-unavailable case now returns `{"error": "bash
+  unavailable", "code": "missing_bash"}` (was: `"could not
+  start bash"`). (ANTS-1123 indie-review F2.)
+
+- **`Kind:` field now required on every actionable
+  `ROADMAP.md` bullet** (previously optional, inferred from
+  section context). Backfilled all 100 unannotated bullets;
+  `Source:` added where non-default. Spec updated at
   `docs/standards/roadmap-format.md § 3.5` and synced to the
-  user-level `/start-app` template. Partial implementation
-  of ANTS-1106 — viewer faceted categorisation by Kind
-  remains 📋. (ANTS-1106)
+  user-level `/start-app` template. Partial implementation of
+  ANTS-1106 — viewer faceted categorisation by Kind remains
+  📋. (ANTS-1106)
+
+- **Documentation tree refresh** (ANTS-1121, full-app
+  cold-eyes review):
+  - GPU-renderer references retired from `STANDARDS.md`,
+    `RULES.md`, `PLUGINS.md` — `glrenderer.cpp` was removed
+    in 0.7.44; only the QPainter+QTextLayout path remains.
+  - Version stamps refreshed: `PLUGINS.md` (v0.6.9 → v0.7.58+),
+    `SECURITY.md` Supported Versions table (0.6.x → 0.7.x;
+    last-updated stamp), `packaging/README.md` (recipe-version
+    placeholder rather than a baked 0.6.20), `README.md`
+    install-snippet comment, `CONTRIBUTING.md` example commit
+    subject (`<ID>:` shape per `docs/standards/commits.md`).
+  - Archival snapshots (`DISCOVERY.md`, `AUDIT.md`,
+    `FIXPLAN.md`, `project_audit_updates.md`) relocated from
+    project root to `docs/journal/` with "historical snapshot,
+    not current" headers and date prefixes; cross-refs in
+    `EXPERIMENTAL.md` and the
+    `audit_2026_04_13_v2` agent-memory entry updated.
+  - `docs/AUTOMATED_AUDIT_REPORT.md` (17-day-stale
+    un-dated copy) retired; the dated archives at
+    `docs/AUTOMATED_AUDIT_REPORT_2026-04-{11,13}_*.md` remain.
+    `docs/AUDIT_TRIAGE_2026-04-16.md` gained a "historical
+    snapshot" header so readers don't mistake its 4 verified
+    findings for current state.
+  - ROADMAP section-target drift fixed: `## 0.7.0 / 0.7.7 /
+    0.7.12 / 0.7.50` headings re-tensed from "(target: 2026-NN)"
+    to "shipped 2026-MM-DD" (or the in-flight equivalent for
+    0.7.50–0.7.59).
+  - ROADMAP legend wording softened: "🚧 In progress (branch
+    or open PR)" → "(active commit work — usually direct-to-main
+    on this project; rarely a branch / PR)" reflecting the
+    actual workflow.
+
+- **Audit-engine fold-in fixes** (ANTS-1122, scoped /audit
+  pass): clazy `range-loop-detach` fixed in `antshelper.cpp`
+  drift-violation parser and in `roadmapdialog.cpp::parseBullets`
+  (bind `split()` results to a `const QStringList` local
+  before iteration); cppcheck `constVariablePointer` fixed in
+  `auditengine.cpp::applyFilter` (the cached `fileLines` slot
+  is read-through-pointer, written-through-reference);
+  cppcheck `returnByReference` fixed on
+  `MainWindow::roadmapPathForRemote()`. Strengthened
+  `tests/features/roadmap_viewer_tabs/` test (debt-sweep
+  finding 2.x): added INV-9b non-history-sort negative case,
+  parsed-numeric INV-12 dimension check (previously a
+  static-string match), and INV-13 covering
+  `sortFor(Custom) == Document`.
+
+- **`AscendingDocument` sort enum value retired** as YAGNI
+  (debt-sweep finding 1.1) — it was an alias declared
+  "reserved for future use" with zero call sites; removed
+  rather than carried forward.
+
+### Fixed
+
+- **`docs/standards/roadmap-format.md` section reference
+  drift in newly-authored specs** — internal cross-refs in
+  `docs/specs/ANTS-1117.md`, `docs/specs/ANTS-1120.md`, and
+  `docs/decisions/0002-cold-eyes-companion-cleanup.md` cited
+  `§ 1.2` / `§ 3.1` / `§ 3.5` for facts that actually live
+  in `§ 3.3` (status emojis) and `§ 3.5.1` (stable-ID
+  immutability). Corrected during the cold-eyes review's
+  full-doc cross-check pass.
+
+### Security
+
+- **regex-DoS divergence closed.** Pre-0.7.59 the engine
+  extraction had left two independent definitions of
+  `isCatastrophicRegex` / `hardenUserRegex` between
+  `auditengine.cpp` and `auditdialog.cpp`: differing
+  `LIMIT_MATCH` values (200000 vs 100000), no double-prefix
+  guard on the engine's version, and shape detectors that
+  caught different sets of catastrophic-backtracking patterns.
+  A pattern that triggered the bound on one path could slip
+  through on the other — the divergence-correctness vector
+  was the actual bug. Unified to a single definition exported
+  from the engine; both call sites delegate.
+  (ANTS-1123 indie-review C1+C2+C3+H1.)
+
+### New documentation
+
+- `docs/decisions/0002-cold-eyes-companion-cleanup.md` —
+  ADR for the scope reset of the Claude-Code companion
+  bundle (reorder ANTS-1116/1117 priority, retire ANTS-1110
+  catalogue + ANTS-1056 + ANTS-1114 wishlist, drop ANTS-1113
+  memory-drift category, register ANTS-1119 + ANTS-1120).
+- `docs/specs/ANTS-1116.md`, `docs/specs/ANTS-1117.md`,
+  `docs/specs/ANTS-1119.md`, `docs/specs/ANTS-1120.md` —
+  per-bullet contracts (acceptance criteria, INVs, deliverables).
 
 ## [0.7.58] — 2026-04-30
 

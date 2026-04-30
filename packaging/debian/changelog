@@ -1,3 +1,38 @@
+ants-terminal (0.7.59-1) unstable; urgency=medium
+
+  * Claude Code companion features — faceted preset tabs and search
+    on the Roadmap viewer (Full / History / Current / Next / Far
+    Future / Custom), plus an `id:NNNN` shorthand to jump straight
+    to a specific bullet. Default size 1200x800 with persisted
+    geometry. (ANTS-1100)
+  * Two new read-only remote-control IPC verbs Claude Code can
+    drive — `roadmap-query` returns parsed ROADMAP bullets,
+    `tab-list` returns rich per-tab snapshots — both inheriting
+    the existing UID-scoped socket trust check. (ANTS-1117 v1)
+  * Optional standalone `ants-helper` CLI binary (built with
+    `-DANTS_ENABLE_HELPER_CLI=ON`). v1 ships `ants-helper
+    drift-check` wrapping packaging/check-version-drift.sh and
+    emitting a unified JSON envelope. (ANTS-1116 v1)
+  * AuditEngine GUI-free module — data-shape types and pure
+    parsing functions extracted from auditdialog.cpp into
+    src/auditengine.{h,cpp} depending on Qt6::Core only. Pure
+    refactor; audit pipeline output is byte-identical pre/post.
+    Closes a regex-DoS divergence vector where two copies of
+    isCatastrophicRegex / hardenUserRegex had drifted on
+    LIMIT_MATCH and shape-detector behaviour. (ANTS-1119 v1,
+    ANTS-1123 C-cluster)
+  * Documentation tree refresh — retired GPU-renderer references
+    (the glrenderer.cpp path was removed in 0.7.44); refreshed
+    version stamps across PLUGINS.md / SECURITY.md / packaging
+    docs / README / CONTRIBUTING; relocated archival snapshots
+    from project root to docs/journal/ with historical-snapshot
+    headers. (ANTS-1121)
+  * `Kind:` field now required on every actionable ROADMAP.md
+    bullet — backfilled all 100 unannotated bullets. Spec
+    synced to the user-level `/start-app` template. (ANTS-1106)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 30 Apr 2026 16:00:00 +0200
+
 ants-terminal (0.7.58-1) unstable; urgency=medium
 
   * Runtime toggle for the ANTS-1054 dialog tracer. The 0.7.57

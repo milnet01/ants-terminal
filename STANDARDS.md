@@ -35,14 +35,18 @@
 
 ## Rendering Standards
 
-- **CPU path**: QPainter with QTextLayout for ligature-aware text shaping
-- **GPU path**: QOpenGLWidget with glyph atlas texture (2048x2048), GLSL 3.3 core shaders
-- GPU shaders use per-vertex data (CPU expands quads to 6 vertices) -- not instanced
-- GL resources must be cleaned up via explicit `cleanup()` with context current, not in destructors
-- Both paths must produce identical visual output (note: GPU path cannot render ligatures)
+- **CPU path (the only path):** QPainter with QTextLayout for
+  ligature-aware text shaping. The 0.7.44 release retired the optional
+  GPU/glrenderer path (`glrenderer.cpp`) — the QPainter+QTextLayout
+  path is fast enough with the glyph-shape cache (ANTS-1115 perf-sweep
+  row 3) and avoids the maintenance cost of a second renderer.
 - Per-pixel background alpha applied in paint loop, not at window level
 - Cell backgrounds drawn before text; cursor drawn last
-- GL_RED texture format with swizzle (R->ONE, G->ONE, B->ONE, A->RED) for driver compatibility
+- The chrome (title bar, menus, tabs, status bar) always paints opaque
+  via `WA_StyledBackground`; only the terminal-area `fillRect` honours
+  the user's `opacity` config (the prior `background_alpha` config key
+  was removed as redundant in 0.7.18 — see `CLAUDE.md` Key design
+  decisions).
 
 ## Plugin System Standards
 

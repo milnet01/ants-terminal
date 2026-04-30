@@ -1,4 +1,13 @@
-# Audit Tool Improvement Notes — 2026-04-16
+# Audit Tool Improvement Notes — 2026-04-16 (historical snapshot)
+
+> **Historical snapshot, not current state.** This file documents
+> the audit tool's noise/signal balance as of 2026-04-16 against
+> `ants-audit v0.6.30 @ 074c2a6`. Many of the rules discussed here
+> have shipped fixes since (see CHANGELOG between 0.6.30 and 0.7.58).
+> The file is preserved because `docs/RECOMMENDED_ROUTINES.md`
+> references it as a *gold-standard format example* for future
+> triage runs — read it for the structure, not for the live status
+> of the listed rules.
 
 Source report: `/tmp/ants-audit-oSmejL.txt` (ants-audit v0.6.30 @ `074c2a6`).
 Verifier: manual review with file:line evidence.

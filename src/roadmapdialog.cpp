@@ -1,13 +1,18 @@
 #include "roadmapdialog.h"
 
 #include "coloredtabbar.h"     // for ClaudeTabIndicator::color (ToolUse yellow)
+#include "config.h"
 #include "themes.h"
 
+#include <QByteArray>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QProcess>
 #include <QPushButton>
@@ -15,6 +20,7 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QStringBuilder>
+#include <QTabBar>
 #include <QTextBrowser>
 #include <QVBoxLayout>
 
@@ -174,13 +180,198 @@ QStringList readRecentCommitSubjects(const QString &repoRoot) {
     return out;
 }
 
+// Reorder a markdown document so its top-level (`## `) sections appear
+// in reverse order. Preamble (everything above the first `## `) and
+// per-section content stay intact; only the section sequence flips.
+// Used by renderHtml when SortOrder is DescendingChronological.
+QString reverseTopLevelSections(const QString &markdownText) {
+    const QStringList lines = markdownText.split('\n');
+    QStringList preamble;
+    QVector<QStringList> sections;
+    QStringList *currentSection = nullptr;
+
+    for (const QString &line : lines) {
+        if (line.startsWith(QStringLiteral("## "))) {
+            sections.push_back(QStringList());
+            currentSection = &sections.last();
+            currentSection->append(line);
+            continue;
+        }
+        if (currentSection) {
+            currentSection->append(line);
+        } else {
+            preamble.append(line);
+        }
+    }
+
+    if (sections.isEmpty()) return markdownText;
+
+    QStringList out;
+    out.reserve(lines.size());
+    out += preamble;
+    for (int i = sections.size() - 1; i >= 0; --i) {
+        out += sections[i];
+    }
+    return out.join('\n');
+}
+
+// Extract the four-digit numeric suffix of an `[ANTS-NNNN]` token from
+// `predicate` if it has the form `id:NNNN` (case-insensitive on the
+// `id:` prefix). Returns -1 if not an id-shorthand predicate.
+int parseIdShorthand(const QString &predicate) {
+    if (predicate.size() < 4) return -1;
+    if (!predicate.startsWith(QStringLiteral("id:"), Qt::CaseInsensitive))
+        return -1;
+    const QStringView digits = QStringView{predicate}.mid(3).trimmed();
+    if (digits.isEmpty()) return -1;
+    bool ok = false;
+    const int n = digits.toString().toInt(&ok);
+    return ok ? n : -1;
+}
+
 }  // namespace
+
+unsigned RoadmapDialog::filterFor(Preset p) {
+    switch (p) {
+        case Preset::Full:
+            return ShowDone | ShowPlanned | ShowInProgress |
+                   ShowConsidered | ShowCurrent;
+        case Preset::History:
+            return ShowDone;
+        case Preset::Current:
+            return ShowInProgress | ShowCurrent;
+        case Preset::Next:
+            return ShowPlanned;
+        case Preset::FarFuture:
+            return ShowConsidered;
+        case Preset::Custom:
+            return 0;
+    }
+    return 0;
+}
+
+RoadmapDialog::SortOrder RoadmapDialog::sortFor(Preset p) {
+    if (p == Preset::History) return SortOrder::DescendingChronological;
+    return SortOrder::Document;
+}
+
+RoadmapDialog::Preset RoadmapDialog::presetMatching(unsigned filter,
+                                                    SortOrder sort) {
+    const Preset named[] = {
+        Preset::Full, Preset::History, Preset::Current,
+        Preset::Next, Preset::FarFuture,
+    };
+    for (Preset p : named) {
+        if (filterFor(p) == filter && sortFor(p) == sort) return p;
+    }
+    return Preset::Custom;
+}
 
 QStringList RoadmapDialog::collectCurrentBullets() const {
     QStringList out;
     if (!m_changelogPath.isEmpty()) out += readUnreleasedBullets(m_changelogPath);
     const QFileInfo fi(m_roadmapPath);
     out += readRecentCommitSubjects(fi.absolutePath());
+    return out;
+}
+
+QVector<RoadmapDialog::BulletRecord>
+RoadmapDialog::parseBullets(const QString &markdownText) {
+    QVector<BulletRecord> out;
+    static const QRegularExpression rxId(QStringLiteral("\\[ANTS-(\\d+)\\]"));
+    static const QRegularExpression rxBold(QStringLiteral("\\*\\*([^*]+)\\*\\*"));
+    // MultilineOption so `^` anchors at the start of any line within
+    // the bullet body — Kind: / Lanes: live as continuation lines, not
+    // at the start of the string.
+    static const QRegularExpression rxKind(
+        QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
+        QRegularExpression::MultilineOption);
+    static const QRegularExpression rxLanes(
+        QStringLiteral("^\\s*Lanes:\\s*(.+?)\\s*[\\.\\n]"),
+        QRegularExpression::MultilineOption);
+
+    const QStringList lines = markdownText.split('\n');
+    int i = 0;
+    while (i < lines.size()) {
+        const QString &raw = lines[i];
+        // Top-level bullet: `^- ` or `^* ` (two-space indent is a
+        // continuation, not a bullet — same rule as renderHtml).
+        const bool isBullet = raw.startsWith(QStringLiteral("- ")) ||
+                              raw.startsWith(QStringLiteral("* "));
+        if (!isBullet) { ++i; continue; }
+        QString head = raw.mid(2);
+        // Strip leading status emoji; skip plain-narration bullets.
+        QString status;
+        if (head.startsWith(QString::fromUtf8(kEmojiDone))) {
+            status = QStringLiteral("✅");
+            head.remove(0, QString::fromUtf8(kEmojiDone).size());
+        } else if (head.startsWith(QString::fromUtf8(kEmojiPlanned))) {
+            status = QStringLiteral("📋");
+            head.remove(0, QString::fromUtf8(kEmojiPlanned).size());
+        } else if (head.startsWith(QString::fromUtf8(kEmojiInProgress))) {
+            status = QStringLiteral("🚧");
+            head.remove(0, QString::fromUtf8(kEmojiInProgress).size());
+        } else if (head.startsWith(QString::fromUtf8(kEmojiConsidered))) {
+            status = QStringLiteral("💭");
+            head.remove(0, QString::fromUtf8(kEmojiConsidered).size());
+        } else {
+            ++i;
+            continue;
+        }
+        while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);
+
+        BulletRecord rec;
+        rec.status = status;
+
+        // Collect the bullet body — first line + subsequent indented
+        // continuation lines until a blank line or another top-level
+        // bullet. Mirrors renderHtml's continuation walk.
+        QString body = head;
+        ++i;
+        while (i < lines.size()) {
+            const QString &cont = lines[i];
+            if (cont.trimmed().isEmpty()) break;
+            if (cont.startsWith(QStringLiteral("- ")) ||
+                cont.startsWith(QStringLiteral("* "))) break;
+            if (cont.startsWith(QStringLiteral("  "))) {
+                body.append('\n');
+                body.append(cont.trimmed());
+                ++i;
+                continue;
+            }
+            break;
+        }
+
+        // Extract structured fields from body.
+        const auto idMatch = rxId.match(body);
+        if (idMatch.hasMatch()) {
+            rec.id = QStringLiteral("ANTS-%1").arg(idMatch.captured(1));
+        }
+        const auto boldMatch = rxBold.match(body);
+        if (boldMatch.hasMatch()) {
+            QString h = boldMatch.captured(1).trimmed();
+            if (h.size() > 120) { h.truncate(120); h.append(QStringLiteral("…")); }
+            rec.headline = h;
+        }
+        const auto kindMatch = rxKind.match(body);
+        if (kindMatch.hasMatch()) {
+            rec.kind = kindMatch.captured(1).trimmed();
+        }
+        const auto lanesMatch = rxLanes.match(body);
+        if (lanesMatch.hasMatch()) {
+            const QString lanesRaw = lanesMatch.captured(1);
+            // Bind split() result first — clazy `range-loop-detach`
+            // (ANTS-1122 audit-fold-in r2 2026-04-30).
+            const QStringList parts =
+                lanesRaw.split(',', Qt::SkipEmptyParts);
+            for (const QString &part : parts) {
+                const QString trimmed = part.trimmed();
+                if (!trimmed.isEmpty()) rec.lanes.append(trimmed);
+            }
+        }
+
+        out.append(rec);
+    }
     return out;
 }
 
@@ -207,7 +398,21 @@ RoadmapDialog::extractToc(const QString &markdownText) {
 QString RoadmapDialog::renderHtml(const QString &markdownText,
                                   unsigned filter,
                                   const QStringList &currentBullets,
-                                  const QString &themeName) {
+                                  const QString &themeName,
+                                  SortOrder sortOrder,
+                                  const QString &searchPredicate) {
+    const QString sourceText =
+        (sortOrder == SortOrder::DescendingChronological)
+            ? reverseTopLevelSections(markdownText)
+            : markdownText;
+    const int idShorthand = parseIdShorthand(searchPredicate);
+    const QString idMarker =
+        idShorthand >= 0
+            ? QStringLiteral("[ANTS-%1]").arg(idShorthand)
+            : QString();
+    const QString plainSearch =
+        (idShorthand >= 0) ? QString() : searchPredicate.trimmed();
+
     const Theme &th = Themes::byName(themeName);
     const QString currentColor =
         ClaudeTabIndicator::color(ClaudeTabIndicator::Glyph::ToolUse).name();
@@ -265,7 +470,7 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
         return BulletKind::Other;
     };
 
-    const QStringList lines = markdownText.split('\n');
+    const QStringList lines = sourceText.split('\n');
     bool inList = false;
     bool skipBlock = false;       // dropping a filtered-out bullet's continuation
     int headingIdx = 0;           // increments per emitted heading; matches extractToc
@@ -321,13 +526,24 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
             // Inclusive-OR over enabled categories. Plain narration
             // bullets (Other) always render — they carry document
             // context, not status.
-            const bool keep =
+            const bool keepStatus =
                 (kind == BulletKind::Other) ||
                 (kind == BulletKind::Done && wantDone) ||
                 (kind == BulletKind::Planned && wantPlanned) ||
                 (kind == BulletKind::InProgress && wantInProgress) ||
                 (kind == BulletKind::Considered && wantConsidered) ||
                 (current && wantCurrent);
+            // Search predicate: case-insensitive substring against the
+            // bullet body, OR the `id:NNNN` shorthand against an
+            // `[ANTS-NNNN]` token in the body. Empty predicate keeps
+            // every bullet that survived the status filter.
+            bool keepSearch = true;
+            if (!idMarker.isEmpty()) {
+                keepSearch = body.contains(idMarker);
+            } else if (!plainSearch.isEmpty()) {
+                keepSearch = body.contains(plainSearch, Qt::CaseInsensitive);
+            }
+            const bool keep = keepStatus && keepSearch;
             if (!keep) {
                 skipBlock = true;
                 continue;
@@ -374,13 +590,18 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
 
 RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                              const QString &themeName,
-                             QWidget *parent)
+                             QWidget *parent,
+                             Config *cfg)
     : QDialog(parent),
       m_roadmapPath(roadmapPath),
       m_themeName(themeName),
-      m_lastHtml(std::make_shared<QString>()) {
+      m_lastHtml(std::make_shared<QString>()),
+      m_config(cfg) {
     setWindowTitle(tr("Roadmap — %1").arg(QFileInfo(roadmapPath).fileName()));
-    resize(900, 700);
+    // ANTS-1100 spec: 1200x800 default; restoreGeometry kicks in below
+    // if the user has resized us before.
+    resize(1200, 800);
+    setMinimumSize(720, 480);
 
     // Find a sibling CHANGELOG.md (case-insensitive) for the
     // current-work signal set.
@@ -394,6 +615,32 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     }
 
     auto *root = new QVBoxLayout(this);
+
+    // ANTS-1100 INV-7: tab bar is the first widget in the layout.
+    m_tabs = new QTabBar(this);
+    m_tabs->setObjectName(QStringLiteral("roadmap-tabs"));
+    m_tabs->setExpanding(false);
+    m_tabs->setDrawBase(false);
+    m_tabs->addTab(tr("Full roadmap"));     // 0 → Preset::Full
+    m_tabs->addTab(tr("History"));          // 1 → Preset::History
+    m_tabs->addTab(tr("Current"));          // 2 → Preset::Current
+    m_tabs->addTab(tr("Next"));             // 3 → Preset::Next
+    m_tabs->addTab(tr("Far Future"));       // 4 → Preset::FarFuture
+    m_tabs->addTab(tr("Custom"));           // 5 → Preset::Custom
+    root->addWidget(m_tabs);
+
+    // Search box. Debounced 120 ms per spec — saves a re-render per
+    // keystroke during fast typing.
+    auto *searchRow = new QHBoxLayout();
+    auto *searchLabel = new QLabel(tr("Search:"), this);
+    m_searchBox = new QLineEdit(this);
+    m_searchBox->setObjectName(QStringLiteral("roadmap-search-box"));
+    m_searchBox->setPlaceholderText(
+        tr("Substring match (or id:NNNN to jump to a specific ID)"));
+    m_searchBox->setClearButtonEnabled(true);
+    searchRow->addWidget(searchLabel);
+    searchRow->addWidget(m_searchBox, 1);
+    root->addLayout(searchRow);
 
     auto *filterRow = new QHBoxLayout();
     m_filterDone = new QCheckBox(tr("✅ Done"), this);
@@ -445,7 +692,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
 
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
-    splitter->setSizes({220, 680});
+    splitter->setSizes({260, 940});
     root->addWidget(splitter, 1);
 
     connect(m_toc, &QListWidget::itemActivated, this,
@@ -490,21 +737,129 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     m_debounce.setInterval(200);
     connect(&m_debounce, &QTimer::timeout, this, &RoadmapDialog::rebuild);
 
+    // ANTS-1100: 120 ms search debounce so a fast typist doesn't
+    // re-render after every keystroke.
+    m_searchDebounce.setSingleShot(true);
+    m_searchDebounce.setInterval(120);
+    connect(&m_searchDebounce, &QTimer::timeout, this, &RoadmapDialog::rebuild);
+    connect(m_searchBox, &QLineEdit::textChanged, this,
+            [this]() { m_searchDebounce.start(); });
+
     m_watcher.addPath(roadmapPath);
     if (!m_changelogPath.isEmpty()) m_watcher.addPath(m_changelogPath);
     connect(&m_watcher, &QFileSystemWatcher::fileChanged,
             this, &RoadmapDialog::scheduleRebuild);
 
-    connect(m_filterDone, &QCheckBox::toggled, this, &RoadmapDialog::rebuild);
-    connect(m_filterPlanned, &QCheckBox::toggled, this, &RoadmapDialog::rebuild);
-    connect(m_filterInProgress, &QCheckBox::toggled, this, &RoadmapDialog::rebuild);
-    connect(m_filterConsidered, &QCheckBox::toggled, this, &RoadmapDialog::rebuild);
-    connect(m_filterCurrent, &QCheckBox::toggled, this, &RoadmapDialog::rebuild);
+    connect(m_filterDone, &QCheckBox::toggled,
+            this, &RoadmapDialog::onCheckboxToggled);
+    connect(m_filterPlanned, &QCheckBox::toggled,
+            this, &RoadmapDialog::onCheckboxToggled);
+    connect(m_filterInProgress, &QCheckBox::toggled,
+            this, &RoadmapDialog::onCheckboxToggled);
+    connect(m_filterConsidered, &QCheckBox::toggled,
+            this, &RoadmapDialog::onCheckboxToggled);
+    connect(m_filterCurrent, &QCheckBox::toggled,
+            this, &RoadmapDialog::onCheckboxToggled);
+
+    connect(m_tabs, &QTabBar::currentChanged, this,
+            [this](int index) {
+                if (m_suppressTabSignal) return;
+                static const Preset order[] = {
+                    Preset::Full, Preset::History, Preset::Current,
+                    Preset::Next, Preset::FarFuture, Preset::Custom,
+                };
+                if (index < 0 ||
+                    index >= int(sizeof(order) / sizeof(order[0]))) return;
+                applyPreset(order[index]);
+            });
+
+    // Restore persisted geometry if Config has one — same shape as
+    // setWindowGeometryBase64 / saveGeometry round-trip.
+    if (m_config) {
+        const QString stored = m_config->roadmapDialogGeometry();
+        if (!stored.isEmpty()) {
+            const QByteArray bytes =
+                QByteArray::fromBase64(stored.toLatin1());
+            if (!bytes.isEmpty()) restoreGeometry(bytes);
+        }
+    }
+
+    // Default tab: Full roadmap (preset 0). This sets the initial
+    // filter state via applyPreset (which calls rebuild).
+    applyPreset(Preset::Full);
+}
+
+RoadmapDialog::~RoadmapDialog() = default;
+
+void RoadmapDialog::closeEvent(QCloseEvent *event) {
+    // Persist geometry on close so the next open lands at the same
+    // size + position. Mirrors the audit-dialog convention discussed
+    // in the ANTS-1100 spec.
+    if (m_config) {
+        const QByteArray bytes = saveGeometry();
+        m_config->setRoadmapDialogGeometry(
+            QString::fromLatin1(bytes.toBase64()));
+    }
+    QDialog::closeEvent(event);
+}
+
+void RoadmapDialog::applyPreset(Preset p) {
+    const unsigned mask = filterFor(p);
+    m_sortOrder = sortFor(p);
+
+    // Custom is "leave the checkboxes alone" — don't overwrite the
+    // user's tuning. For the named presets, sync the checkboxes to
+    // the preset's mask without re-firing onCheckboxToggled.
+    if (p != Preset::Custom) {
+        m_suppressCheckboxSignal = true;
+        if (m_filterDone)
+            m_filterDone->setChecked((mask & ShowDone) != 0);
+        if (m_filterPlanned)
+            m_filterPlanned->setChecked((mask & ShowPlanned) != 0);
+        if (m_filterInProgress)
+            m_filterInProgress->setChecked((mask & ShowInProgress) != 0);
+        if (m_filterConsidered)
+            m_filterConsidered->setChecked((mask & ShowConsidered) != 0);
+        if (m_filterCurrent)
+            m_filterCurrent->setChecked((mask & ShowCurrent) != 0);
+        m_suppressCheckboxSignal = false;
+    }
+
+    // Sync the tab bar selection to the preset (silent — no
+    // currentChanged loop).
+    if (m_tabs) {
+        const int idx = static_cast<int>(p);
+        if (m_tabs->currentIndex() != idx) {
+            m_suppressTabSignal = true;
+            m_tabs->setCurrentIndex(idx);
+            m_suppressTabSignal = false;
+        }
+    }
 
     rebuild();
 }
 
-RoadmapDialog::~RoadmapDialog() = default;
+void RoadmapDialog::onCheckboxToggled() {
+    if (m_suppressCheckboxSignal) return;
+    // The user diverged from a named preset; flip the tab bar to
+    // Custom (silent) and re-render with the current sort order.
+    if (m_tabs) {
+        unsigned mask = 0;
+        if (m_filterDone && m_filterDone->isChecked()) mask |= ShowDone;
+        if (m_filterPlanned && m_filterPlanned->isChecked()) mask |= ShowPlanned;
+        if (m_filterInProgress && m_filterInProgress->isChecked()) mask |= ShowInProgress;
+        if (m_filterConsidered && m_filterConsidered->isChecked()) mask |= ShowConsidered;
+        if (m_filterCurrent && m_filterCurrent->isChecked()) mask |= ShowCurrent;
+        const Preset p = presetMatching(mask, m_sortOrder);
+        const int idx = static_cast<int>(p);
+        if (m_tabs->currentIndex() != idx) {
+            m_suppressTabSignal = true;
+            m_tabs->setCurrentIndex(idx);
+            m_suppressTabSignal = false;
+        }
+    }
+    rebuild();
+}
 
 void RoadmapDialog::scheduleRebuild() {
     // Re-add the watch — QFileSystemWatcher drops watches after atomic
@@ -536,7 +891,9 @@ void RoadmapDialog::rebuild() {
     if (m_filterCurrent && m_filterCurrent->isChecked()) filter |= ShowCurrent;
 
     const QStringList signals_ = collectCurrentBullets();
-    const QString html = renderHtml(markdown, filter, signals_, m_themeName);
+    const QString predicate = m_searchBox ? m_searchBox->text() : QString();
+    const QString html = renderHtml(markdown, filter, signals_, m_themeName,
+                                    m_sortOrder, predicate);
 
     if (m_lastHtml && *m_lastHtml == html) return;  // skip identical re-render
 
@@ -555,13 +912,19 @@ void RoadmapDialog::rebuild() {
 
     // Refresh the TOC sidebar from the same markdown so the
     // anchor indices line up with what renderHtml just emitted.
+    // When the active sort reorders sections, the TOC must walk the
+    // post-reorder markdown so anchor indices match.
     if (m_toc) {
         const QString prevAnchor =
             m_toc->currentItem()
                 ? m_toc->currentItem()->data(Qt::UserRole).toString()
                 : QString();
         m_toc->clear();
-        const QVector<TocEntry> entries = extractToc(markdown);
+        const QString tocSource =
+            (m_sortOrder == SortOrder::DescendingChronological)
+                ? reverseTopLevelSections(markdown)
+                : markdown;
+        const QVector<TocEntry> entries = extractToc(tocSource);
         for (const TocEntry &e : entries) {
             // Indent by level — flat QListWidget shows hierarchy via
             // leading spaces (two per level above 1).

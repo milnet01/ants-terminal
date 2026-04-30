@@ -107,6 +107,22 @@ public:
     // `index`, `title`, `cwd`, `active` (used by the `ls` command).
     QJsonArray tabListForRemote() const;
 
+    // `tabsAsJson()` is the richer surface used by the `tab-list` IPC
+    // verb (ANTS-1117). Returns one JSON object per tab with the same
+    // `index`/`title`/`cwd` plus `shell_pid` (for process scripting),
+    // `claude_running` (true iff `ClaudeTabTracker::shellState(pid)
+    // .state != ClaudeState::NotRunning`), and `color` (the per-tab
+    // colored-tab-bar override colour, or empty when default). The
+    // `ls` verb's narrow shape stays unchanged for backward compat.
+    QJsonArray tabsAsJson() const;
+
+    // `roadmapPathForRemote()` exposes `m_roadmapPath` (the cached
+    // ROADMAP.md path probed by `refreshRoadmapButton`) to the
+    // `roadmap-query` IPC verb. Returns empty when no ROADMAP.md was
+    // detected for the active tab's CWD. Const-ref return — member
+    // outlives the call (ANTS-1122 audit-fold-in 2026-04-30).
+    const QString &roadmapPathForRemote() const;
+
     // `terminalAtTab(i)` returns the "active" terminal inside the
     // tab at index `i` (for split layouts that's the focused pane,
     // else the first). Returns nullptr on out-of-range index or

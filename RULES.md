@@ -34,10 +34,9 @@
 3. `TerminalWidget` renders the grid -- it never modifies grid state except through the parser
 4. `MainWindow` wires components -- it owns tabs, menus, and config application
 5. Split pane hierarchy: QTabWidget > QSplitter (nested) > TerminalWidget
-6. `GlRenderer` handles GPU rendering -- it reads grid state but never modifies it
-7. `LuaEngine` is sandboxed -- plugins communicate only through the `ants` API
-8. `AiDialog` is self-contained -- it makes network calls only when the user clicks Send
-9. `SessionManager` serializes read-only snapshots -- it never modifies grid state during save
+6. `LuaEngine` is sandboxed -- plugins communicate only through the `ants` API
+7. `AiDialog` is self-contained -- it makes network calls only when the user clicks Send
+8. `SessionManager` serializes read-only snapshots -- it never modifies grid state during save
 
 ## Feature Development Process
 
@@ -165,8 +164,7 @@ These rules are the project-level invariants the runtime must preserve.
 12. Undercurl renders in Neovim with LSP diagnostics
 13. Focus reporting works (test with vim's `set termguicolors`)
 14. Configurable keybindings load from config.json
-15. GPU rendering toggle works without artifacts
-16. Ligatures render correctly with JetBrains Mono / Fira Code
+15. Ligatures render correctly with JetBrains Mono / Fira Code
 17. SSH manager connects to remote hosts
 18. AI assistant sends/receives with configured endpoint
 19. Lua plugins load and fire events

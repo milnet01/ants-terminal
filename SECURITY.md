@@ -15,10 +15,11 @@ active `0.x` release line is the only one receiving security updates.
 
 | Version | Supported                |
 |---------|--------------------------|
-| 0.6.x   | ✅ Yes — current branch  |
+| 0.7.x   | ✅ Yes — current branch  |
+| 0.6.x   | ❌ Please upgrade        |
 | < 0.6   | ❌ Please upgrade        |
 
-Users on older point releases should upgrade to the latest `0.6.y`
+Users on older point releases should upgrade to the latest `0.7.y`
 before filing a report — the issue may already be fixed upstream. See
 [CHANGELOG.md](CHANGELOG.md) for what shipped in each release.
 
@@ -159,4 +160,5 @@ say so in your report.
 ---
 
 *This policy will be revised as the project matures. Last updated for
-the 0.6.16 release.*
+the 0.7.59 release (supported-versions table refreshed; the substantive
+disclosure policy is unchanged from 0.6.16).*

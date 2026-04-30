@@ -51,8 +51,23 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
 }
 
 int main() {
-    const std::string cpp = slurp(SRC_AUDIT_CPP_PATH);
-    const std::string hdr = slurp(SRC_AUDIT_H_PATH);
+    // ANTS-1119 v1: AuditCheck struct moved to auditengine.h. Search
+    // both headers / both sources for the per-check `timeoutMs` field
+    // and the populateChecks bumps.
+    const std::string dialogCpp = slurp(SRC_AUDIT_CPP_PATH);
+    const std::string dialogHdr = slurp(SRC_AUDIT_H_PATH);
+#ifdef SRC_AUDIT_ENGINE_CPP_PATH
+    const std::string engineCpp = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
+#else
+    const std::string engineCpp;
+#endif
+#ifdef SRC_AUDIT_ENGINE_H_PATH
+    const std::string engineHdr = slurp(SRC_AUDIT_ENGINE_H_PATH);
+#else
+    const std::string engineHdr;
+#endif
+    const std::string cpp = dialogCpp + engineCpp;
+    const std::string hdr = dialogHdr + engineHdr;
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

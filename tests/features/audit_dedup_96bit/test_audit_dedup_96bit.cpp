@@ -83,8 +83,17 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
 }
 
 int main() {
-    const std::string cpp = slurp(SRC_AUDIT_CPP_PATH);
-    const std::string hdr = slurp(SRC_AUDIT_H_PATH);
+    // ANTS-1119 v1 split: computeDedup moved to auditengine.cpp; the
+    // dialog still owns isSuppressed. Slurp both and search the union
+    // for the engine-side INVs, the dialog-side for the helper.
+    const std::string dialogCpp = slurp(SRC_AUDIT_CPP_PATH);
+    const std::string hdr       = slurp(SRC_AUDIT_H_PATH);
+#ifdef SRC_AUDIT_ENGINE_CPP_PATH
+    const std::string engineCpp = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
+#else
+    const std::string engineCpp;
+#endif
+    const std::string cpp = dialogCpp + engineCpp;
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
@@ -94,7 +103,8 @@ int main() {
     // INV-1 — computeDedup body has .left(24) (or wider).
     const std::string ddBody = extractFnBody(cpp, "computeDedup");
     if (ddBody.empty()) {
-        fail("precondition: computeDedup body not located in auditdialog.cpp.");
+        fail("precondition: computeDedup body not located in auditdialog.cpp "
+             "or auditengine.cpp (ANTS-1119 v1 moved it to the engine).");
     } else {
         std::regex wide(R"(\.left\(\s*(\d+)\s*\))");
         std::smatch m;

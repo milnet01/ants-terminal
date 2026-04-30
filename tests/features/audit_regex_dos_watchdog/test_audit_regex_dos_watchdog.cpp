@@ -78,7 +78,18 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
 }
 
 int main() {
-    const std::string cpp = slurp(SRC_AUDIT_CPP_PATH);
+    // ANTS-1119 v1: applyFilter (which calls the catastrophic-regex
+    // shape check + LIMIT_MATCH harden) lives in auditengine.cpp now.
+    // Search both files so the watchdog INVs see the engine-side
+    // copies of `isCatastrophicRegexLocal` / `hardenUserRegexLocal`
+    // and the `dropIfMatches` reference together.
+    const std::string dialogCpp = slurp(SRC_AUDIT_CPP_PATH);
+#ifdef SRC_AUDIT_ENGINE_CPP_PATH
+    const std::string engineCpp = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
+#else
+    const std::string engineCpp;
+#endif
+    const std::string cpp = dialogCpp + engineCpp;
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
@@ -133,14 +144,24 @@ int main() {
         }
     }
 
-    // INV-2 — the helper's body recognizes nested-quantifier shapes.
-    // Find the helper definition's body and ensure it contains a regex
-    // literal with both `+` and `*` (or `[+*]`) — the shape sentinel.
-    if (helperMatch.size() > 0) {
-        // Locate the helper's body via brace counting.
-        const size_t defStart = static_cast<size_t>(helperMatch.position(0));
-        const size_t openBrace = cpp.find('{', defStart);
-        if (openBrace != std::string::npos) {
+    // INV-2 — at least ONE helper body in the audit pipeline must
+    // contain a shape literal that detects nested-quantifier shapes.
+    // Iterate ALL helper definitions found across the joined source
+    // (ANTS-1119 v1 split engine + ANTS-1123 unification: a forward
+    // body in auditdialog.cpp delegates to the real engine impl —
+    // satisfying INV-2 requires the engine impl, not the forward.)
+    bool shapeLiteralFound = false;
+    {
+        std::regex shapeLiteral(R"(\[\s*\+\s*\*\s*\])");
+        std::regex altLiteral(R"(\\\+[^"]*\\\*|\\\*[^"]*\\\+)");
+        std::regex defAll(
+            R"(bool\s+(?:AuditDialog::)?(?:AuditEngine::)?\w*(?:[Cc]atastrophic|[Dd]angerous|[Rr]egex[Ss]hape)\w*\s*\()");
+        auto it = std::sregex_iterator(cpp.begin(), cpp.end(), defAll);
+        auto endIt = std::sregex_iterator();
+        for (; it != endIt; ++it) {
+            const size_t defStart = static_cast<size_t>(it->position(0));
+            const size_t openBrace = cpp.find('{', defStart);
+            if (openBrace == std::string::npos) continue;
             int depth = 1;
             size_t i = openBrace + 1;
             while (i < cpp.size() && depth > 0) {
@@ -150,22 +171,18 @@ int main() {
             }
             const std::string body =
                 cpp.substr(openBrace + 1, i - openBrace - 2);
-            // Look for a regex literal containing both '+' and '*'
-            // (the `[+*]` token in our impl satisfies this trivially).
-            // We check for `[+*]` directly OR the presence of both
-            // `+` and `*` characters inside an R"(...)" raw string literal.
-            std::regex shapeLiteral(R"(\[\s*\+\s*\*\s*\])");
-            if (!std::regex_search(body, shapeLiteral)) {
-                // Fallback: a raw regex literal that contains both `\+` and
-                // `\*` as quantifier escapes (the alternative encoding).
-                std::regex altLiteral(R"(\\\+[^"]*\\\*|\\\*[^"]*\\\+)");
-                if (!std::regex_search(body, altLiteral)) {
-                    fail("INV-2: shape-helper body lacks a regex literal "
-                         "that detects nested-quantifier shapes "
-                         "(expected `[+*]` inside the matcher pattern).");
-                }
+            if (std::regex_search(body, shapeLiteral) ||
+                std::regex_search(body, altLiteral)) {
+                shapeLiteralFound = true;
+                break;
             }
         }
+    }
+    if (helperMatch.size() > 0 && !shapeLiteralFound) {
+        fail("INV-2: no shape-helper body across the audit pipeline "
+             "(auditdialog.cpp + auditengine.cpp) contains a regex "
+             "literal that detects nested-quantifier shapes "
+             "(expected `[+*]` or escaped `\\+ ... \\*`).");
     }
 
     // INV-3 — PCRE2 LIMIT_MATCH=N applied. Look for the literal anywhere

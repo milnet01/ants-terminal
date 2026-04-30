@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -119,6 +120,18 @@ private:
     QJsonDocument cmdSetTitle(const QJsonObject &req);
     QJsonDocument cmdGetText(const QJsonObject &req);
     QJsonDocument cmdLaunch(const QJsonObject &req);
+    // ANTS-1117 v1 (read-only verbs).
+    QJsonDocument cmdTabList();
+    QJsonDocument cmdRoadmapQuery();
+
+    // Cached parse of `m_main->roadmapPathForRemote()` content. Refreshed
+    // on `roadmap-query` only when the file's mtime advances — keeps a
+    // misbehaving caller from re-parsing a 4500-line file at 1000 req/s
+    // (ANTS-1117 INV-10). Empty cache means "no parse yet" / "stale on
+    // mtime miss" and triggers a refresh.
+    mutable QString m_roadmapCachePath;
+    mutable qint64 m_roadmapCacheMtimeMs = 0;
+    mutable QJsonArray m_roadmapCacheBullets;
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent

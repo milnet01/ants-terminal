@@ -238,6 +238,15 @@ void Config::setWindowGeometryBase64(const QString &base64) {
     save();
 }
 
+QString Config::roadmapDialogGeometry() const {
+    return m_data.value("roadmap_dialog_geometry").toString("");
+}
+
+void Config::setRoadmapDialogGeometry(const QString &base64) {
+    if (!storeIfChanged("roadmap_dialog_geometry", base64)) return;
+    save();
+}
+
 int Config::scrollbackLines() const {
     return qBound(1000, m_data.value("scrollback_lines").toInt(50000), 1000000);
 }

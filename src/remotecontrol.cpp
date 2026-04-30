@@ -1,12 +1,15 @@
 #include "remotecontrol.h"
 #include "mainwindow.h"
+#include "roadmapdialog.h"
 #include "terminalwidget.h"
 #include "debuglog.h"
 #include "secureio.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <algorithm>
 #include <QJsonArray>
 #include <QLocalServer>
@@ -179,6 +182,12 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     }
     if (cmd == QLatin1String("launch")) {
         return cmdLaunch(req);
+    }
+    if (cmd == QLatin1String("tab-list")) {
+        return cmdTabList();
+    }
+    if (cmd == QLatin1String("roadmap-query")) {
+        return cmdRoadmapQuery();
     }
     QJsonObject e;
     e["ok"] = false;
@@ -458,6 +467,69 @@ QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
     out["ok"] = true;
     out["index"] = idx;
     if (!rawBypass && stripped > 0) out["stripped"] = stripped;
+    return QJsonDocument(out);
+}
+
+// ANTS-1117 v1: tab-list — richer per-tab snapshot than `ls`.
+QJsonDocument RemoteControl::cmdTabList() {
+    QJsonObject out;
+    out["ok"] = true;
+    out["tabs"] = m_main->tabsAsJson();
+    return QJsonDocument(out);
+}
+
+// ANTS-1117 v1: roadmap-query — parse the active tab's ROADMAP.md
+// (cached on mtime; INV-10 rate-limit) into a structured bullet
+// stream for Claude. Returns the unified `{ok, error, code}` shape
+// when no roadmap is loaded for the active tab.
+QJsonDocument RemoteControl::cmdRoadmapQuery() {
+    QJsonObject out;
+    const QString path = m_main->roadmapPathForRemote();
+    if (path.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "no ROADMAP.md detected for the active tab");
+        out["code"] = QStringLiteral("no_roadmap_loaded");
+        return QJsonDocument(out);
+    }
+
+    const QFileInfo fi(path);
+    const qint64 mtime = fi.lastModified().toMSecsSinceEpoch();
+    const bool cached = (m_roadmapCachePath == path) &&
+                        (m_roadmapCacheMtimeMs == mtime) &&
+                        (mtime != 0);
+    if (!cached) {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "could not open %1 for reading").arg(path);
+            out["code"] = QStringLiteral("read_failed");
+            return QJsonDocument(out);
+        }
+        const QString markdown = QString::fromUtf8(f.readAll());
+        const auto bullets = RoadmapDialog::parseBullets(markdown);
+        QJsonArray arr;
+        for (const auto &b : bullets) {
+            QJsonObject o;
+            o["id"] = b.id;
+            o["status"] = b.status;
+            o["headline"] = b.headline;
+            o["kind"] = b.kind;
+            QJsonArray lanes;
+            for (const QString &l : b.lanes) lanes.append(l);
+            o["lanes"] = lanes;
+            arr.append(o);
+        }
+        m_roadmapCachePath = path;
+        m_roadmapCacheMtimeMs = mtime;
+        m_roadmapCacheBullets = arr;
+    }
+
+    out["ok"] = true;
+    out["bullets"] = m_roadmapCacheBullets;
+    out["path"] = path;
+    out["count"] = m_roadmapCacheBullets.size();
     return QJsonDocument(out);
 }
 

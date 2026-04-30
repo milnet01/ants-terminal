@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.58 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.59 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -68,6 +68,7 @@ add_executable(ants-terminal
     src/settingsdialog.cpp
     src/toggleswitch.cpp
     src/auditdialog.cpp
+    src/auditengine.cpp
     src/audithygiene.cpp
     src/featurecoverage.cpp
     src/auditrulequality.cpp
@@ -130,6 +131,23 @@ target_compile_options(ants-terminal PRIVATE
     $<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3>
     -D_GLIBCXX_ASSERTIONS
 )
+
+# ANTS-1116 v1 — optional `ants-helper` CLI binary. Default OFF
+# until ANTS-1120 measurement validates the token-saving claim.
+option(ANTS_ENABLE_HELPER_CLI
+    "Build the ants-helper local-subagent CLI binary (ANTS-1116 v1)"
+    OFF)
+if(ANTS_ENABLE_HELPER_CLI)
+    add_executable(ants-helper
+        src/antshelpermain.cpp
+        src/antshelper.cpp
+    )
+    target_link_libraries(ants-helper PRIVATE Qt6::Core)
+    target_include_directories(ants-helper PRIVATE src)
+    target_compile_options(ants-helper PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+endif()
 
 # Sanitizer support (development builds)
 option(ANTS_SANITIZERS "Enable ASan+UBSan for debugging" OFF)
@@ -1670,6 +1688,8 @@ if(ANTS_TESTS)
     target_compile_definitions(test_audit_per_tool_timeout PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.cpp"
+        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.h"
     )
     add_test(NAME audit_per_tool_timeout COMMAND test_audit_per_tool_timeout)
     set_tests_properties(audit_per_tool_timeout PROPERTIES
@@ -1733,6 +1753,8 @@ if(ANTS_TESTS)
     target_compile_definitions(test_audit_dedup_96bit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.cpp"
+        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.h"
     )
     add_test(NAME audit_dedup_96bit COMMAND test_audit_dedup_96bit)
     set_tests_properties(audit_dedup_96bit PROPERTIES
@@ -1754,6 +1776,8 @@ if(ANTS_TESTS)
     target_compile_definitions(test_audit_regex_dos_watchdog PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.cpp"
+        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.h"
     )
     add_test(NAME audit_regex_dos_watchdog
         COMMAND test_audit_regex_dos_watchdog)
@@ -2195,6 +2219,8 @@ if(ANTS_TESTS)
         src/roadmapdialog.cpp
         src/coloredtabbar.cpp
         src/themes.cpp
+        src/config.cpp
+        src/debuglog.cpp
     )
     target_link_libraries(test_roadmap_viewer PRIVATE
         Qt6::Core
@@ -2215,6 +2241,152 @@ if(ANTS_TESTS)
     set_tests_properties(roadmap_viewer PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
+
+    # roadmap_viewer_tabs — ANTS-1100 (0.7.59). Faceted preset tabs +
+    # search predicate (with `id:NNNN` shorthand) + larger default
+    # size + persisted geometry on RoadmapDialog. 12 invariants across
+    # filterFor / sortFor / presetMatching round-trips, descending-
+    # chronological section reorder, search filter, and source-greps
+    # for the tab strip + persistence wiring. Behavioural assertions
+    # link the renderer source so synthetic markdown can be driven
+    # through `RoadmapDialog::renderHtml(..., SortOrder, predicate)`
+    # without spinning a real dialog. See spec.md.
+    add_executable(test_roadmap_viewer_tabs
+        tests/features/roadmap_viewer_tabs/test_roadmap_viewer_tabs.cpp
+        src/roadmapdialog.cpp
+        src/coloredtabbar.cpp
+        src/themes.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_roadmap_viewer_tabs PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_roadmap_viewer_tabs PRIVATE src)
+    target_compile_options(test_roadmap_viewer_tabs PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_roadmap_viewer_tabs PRIVATE
+        ROADMAPDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.h"
+        ROADMAPDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.cpp"
+    )
+    add_test(NAME roadmap_viewer_tabs COMMAND test_roadmap_viewer_tabs)
+    set_tests_properties(roadmap_viewer_tabs PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # remote_control_roadmap_query — ANTS-1117 v1 (0.7.59). New IPC
+    # verb that surfaces the parsed ROADMAP.md as structured JSON
+    # to a Claude Code session over the existing remote-control
+    # transport. Behavioural test drives RoadmapDialog::parseBullets
+    # against synthetic markdown, plus source-grep INVs for the verb
+    # registration + cache fields. See spec.md.
+    add_executable(test_remote_control_roadmap_query
+        tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp
+        src/roadmapdialog.cpp
+        src/coloredtabbar.cpp
+        src/themes.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_remote_control_roadmap_query PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_remote_control_roadmap_query PRIVATE src)
+    target_compile_options(test_remote_control_roadmap_query PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_roadmap_query PRIVATE
+        SRC_RC_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.h"
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+    )
+    add_test(NAME remote_control_roadmap_query
+        COMMAND test_remote_control_roadmap_query)
+    set_tests_properties(remote_control_roadmap_query PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # remote_control_tab_list — ANTS-1117 v1 (0.7.59). Source-grep
+    # harness for the new `tab-list` IPC verb: verifies dispatch
+    # registration, cmdTabList + tabsAsJson wiring, the six expected
+    # per-tab keys, and the ClaudeTabTracker integration for
+    # claude_running. See spec.md.
+    add_executable(test_remote_control_tab_list
+        tests/features/remote_control_tab_list/test_remote_control_tab_list.cpp
+    )
+    target_compile_options(test_remote_control_tab_list PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_remote_control_tab_list PRIVATE
+        SRC_RC_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.h"
+        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME remote_control_tab_list
+        COMMAND test_remote_control_tab_list)
+    set_tests_properties(remote_control_tab_list PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # audit_engine_extraction — ANTS-1119 v1 (0.7.59). Locks the
+    # extraction of pure-data types + applyFilter / parseFindings /
+    # capFindings into a Qt6::Core-only `auditengine.{h,cpp}` module.
+    # Behavioural INVs drive `AuditEngine::capFindings` and
+    # `AuditEngine::parseFindings` directly; structural INVs grep
+    # both files for the GUI-include exclusion + the dialog
+    # forwarding pattern. See spec.md.
+    add_executable(test_audit_engine_extraction
+        tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
+        src/auditengine.cpp
+    )
+    target_link_libraries(test_audit_engine_extraction PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_audit_engine_extraction PRIVATE src)
+    target_compile_options(test_audit_engine_extraction PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_audit_engine_extraction PRIVATE
+        SRC_AUDIT_ENGINE_H="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.h"
+        SRC_AUDIT_ENGINE_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.cpp"
+        SRC_AUDIT_H="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
+        SRC_AUDIT_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
+    )
+    add_test(NAME audit_engine_extraction
+        COMMAND test_audit_engine_extraction)
+    set_tests_properties(audit_engine_extraction PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # local_subagent_framework — ANTS-1116 v1 (0.7.59). Behavioural
+    # test of `AntsHelper::driftCheck` against synthetic tree
+    # fixtures (clean / drift / missing-script / bogus-root) plus a
+    # source-grep INV that the CMake `ANTS_ENABLE_HELPER_CLI` option
+    # gates the new `ants-helper` binary. See spec.md.
+    add_executable(test_local_subagent_framework
+        tests/features/local_subagent_framework/test_local_subagent_framework.cpp
+        src/antshelper.cpp
+    )
+    target_link_libraries(test_local_subagent_framework PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_local_subagent_framework PRIVATE src)
+    target_compile_options(test_local_subagent_framework PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_local_subagent_framework PRIVATE
+        SRC_CMAKELISTS="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    )
+    add_test(NAME local_subagent_framework
+        COMMAND test_local_subagent_framework)
+    set_tests_properties(local_subagent_framework PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 15)
 
     # vtbatch_zero_copy — 0.7.40 perf bundle. Locks the shape of the
     # worker→GUI batch signal so a refactor can't silently revert

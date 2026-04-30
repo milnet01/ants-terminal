@@ -28,6 +28,11 @@ public:
     QString windowGeometryBase64() const;
     void setWindowGeometryBase64(const QString &base64);
 
+    // Persisted RoadmapDialog geometry (ANTS-1100). Stored as
+    // base64-encoded saveGeometry() bytes.
+    QString roadmapDialogGeometry() const;
+    void setRoadmapDialogGeometry(const QString &base64);
+
     int scrollbackLines() const;
     void setScrollbackLines(int lines);
 

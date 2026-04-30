@@ -123,13 +123,18 @@ with a link to the shipped CHANGELOG entry.
 Example:
 
 ```
-0.6.7: three new audit rules — silent_catch, missing_build_flags, no_ci
+ANTS-1042: three new audit rules — silent_catch, missing_build_flags, no_ci
 
-Closes four ROADMAP 0.7.0 Dev-experience items. silent_catch matches
-empty `catch(...){}` bodies; missing_build_flags nudges toward better
+Closes four ROADMAP Dev-experience items. silent_catch matches empty
+`catch(...){}` bodies; missing_build_flags nudges toward better
 compile-time coverage; no_ci warns when a project has no CI config.
 Also wires a sanitizer CI job so ASan/UBSan runs on every push.
 ```
+
+(Per `docs/standards/commits.md` § 1.1: subject is `<ID>: <description>`
+where `<ID>` is the stable ANTS-NNNN per `docs/standards/roadmap-format.md`
+§ 3.5.1, or a literal version string for release commits like
+`0.7.59:` only.)
 
 ## Code style highlights
 

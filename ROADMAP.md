@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.58 (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.59 (2026-04-30) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -17,7 +17,7 @@ they move based on contributor bandwidth and real-world usage feedback.
 
 **Legend**
 - ✅ Done (shipped)
-- 🚧 In progress (branch or open PR)
+- 🚧 In progress (active commit work — usually direct-to-main on this project; rarely a branch / PR)
 - 📋 Planned (next up for this release)
 - 💭 Considered (research phase; may change scope or slip)
 
@@ -460,7 +460,7 @@ there before adding a multiplexer. Reference:
 
 ---
 
-## 0.7.0 — shell integration + triggers (target: 2026-06)
+## 0.7.0 — shell integration + triggers — shipped 2026-04-15
 
 **Theme:** make Ants the best terminal for **shell-aware workflows**.
 
@@ -741,7 +741,7 @@ the next run.
 
 ---
 
-## 0.7.7 — hardening pass (target: 2026-05)
+## 0.7.7 — hardening pass — shipped 2026-04-15
 
 **Theme:** four-dimensional review (perf / security / bugs / refactor)
 commissioned 2026-04-22 across the full codebase. Findings triaged into
@@ -975,7 +975,7 @@ behind."
 
 ---
 
-## 0.7.12 — independent-review sweep (target: 2026-05)
+## 0.7.12 — independent-review sweep — shipped 2026-04-19
 
 **Theme:** fold-in of the 2026-04-23 multi-agent code review. Fourteen
 independent `general-purpose` subagents were dispatched in parallel — one
@@ -2166,7 +2166,7 @@ interpretation. Closes the self-graded-homework loop.
 
 ---
 
-## 0.7.50 — independent-review sweep (target: 2026-05)
+## 0.7.50–0.7.59 — indie-review sweep + companion prep — shipped 2026-04-28+ (in flight at 0.7.59)
 
 **Theme:** fold-in of the 2026-04-27 multi-agent code review (post-0.7.49).
 Eleven independent `general-purpose` subagents dispatched in parallel —
@@ -2598,11 +2598,15 @@ minor tag (next: pre-0.8.0).
   className, objectName, windowTitle, parent class+objectName,
   geometry. Output goes to stderr always (and the `events`
   category of `~/.local/share/ants-terminal/debug.log` when
-  `ANTS_DEBUG=events` is also set). **Steps (b-d) still pending**:
-  user runs Ants with `ANTS_TRACE_DIALOGS=1` for a session, waits
-  for a flash, and reads the captured line. If the trace fires →
-  log identifies the spawn site → fix. If the trace stays silent
-  → confirms the popup is from a child process, not Ants. Lanes:
+  `ANTS_DEBUG=events` is also set). **Step (b) shipped 0.7.58** —
+  runtime menu toggle for the tracer (commit `64e67e7`,
+  CHANGELOG.md:32-55), so the user can flip the trace on
+  without restarting Ants. **Steps (c-d) still pending**:
+  user runs Ants with `ANTS_TRACE_DIALOGS=1` (or via the menu
+  toggle) for a session, waits for a flash, reads the captured
+  line. If the trace fires → log identifies the spawn site →
+  fix. If the trace stays silent → confirms the popup is from a
+  child process, not Ants. Lanes:
   MainWindow plus whichever dialog-spawn site is found.
   Kind: fix.
   Source: regression.
@@ -2685,41 +2689,19 @@ minor tag (next: pre-0.8.0).
   the CHANGELOG `[Unreleased]` block updated to point at the
   new sub-spec. Kind: doc-fix. Source: user-2026-04-30. Lanes:
   docs.
-- 📋 [ANTS-1056] **Roadmap dialog feature additions.** User ask: "please add
-  features to the Roadmap dialog box that you think will be useful
-  and also come up with a standard for roadmap.md that we can
-  share with Claude Code sessions." Candidate additions, in
-  priority order:
-  (1) **Status filter pill counts** — each filter checkbox shows
-  the number of bullets matching that status (`✅ 412 · 🚧 3 ·
-  📋 87 · 💭 24 · ★ 2`), updated live with the file-watcher;
-  helps a contributor see at a glance how much has shipped
-  vs how much is queued.
-  (2) **Inline search box** above the TOC — case-insensitive
-  substring filter applied across all bullets, scoped to the
-  enabled filter checkboxes; complements the TOC's section-jump.
-  (3) **"Copy permalink" affordance** — right-click any bullet →
-  "Copy ROADMAP.md link" pastes a `https://github.com/owner/repo/
-  blob/main/ROADMAP.md#anchor` URL, derived from the GitHub
-  origin slug we already cache for the Public/Private badge.
-  Falls back to a plain `ROADMAP.md:line` shape outside a GitHub
-  repo.
-  (4) **Theme overview** — clicking a theme emoji in the legend
-  filters to that theme alone (additive to the status filters);
-  surfaces "show me everything tagged 📦 Distribution".
-  (5) **"Mark as currently tackled" override** — a small
-  pin icon on each bullet that toggles a runtime override
-  layered on top of the auto-detected highlight set; useful
-  when the contributor's current work doesn't match a
-  CHANGELOG-or-recent-commit signal yet.
-  (6) **Export-as-Markdown** — File → Save filtered view…
-  writes the currently-visible bullets to a markdown file the
-  user picks, useful for sharing a triaged subset.
-  Each addition gets its own feature-test file under
-  `tests/features/roadmap_viewer_*/`. Lanes: RoadmapDialog,
-  MainWindow.
-  Kind: implement.
-  Source: user-2026-04-28.
+- [ANTS-1056] **Retired: superseded by ANTS-1100.** Per
+  [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md)
+  decision 6: ANTS-1100 (faceted tabs + search + larger
+  window — shipped 0.7.59) covers candidate additions (1) status
+  filter pill counts (delivered as the search predicate), (2)
+  inline search box (delivered), and (5) "currently tackled"
+  override (already lives via the auto-detection — manual pin not
+  pursued). The remaining additive items — (3) copy permalink, (4)
+  theme overview filter, (6) export-as-Markdown — only land if the
+  user explicitly asks for them; this bullet is not auto-promoted.
+  ID preserved per `docs/standards/roadmap-format.md` § 3.5.1
+  (stable-ID immutability); body annotated, status emoji removed.
+  Kind: doc-fix. Source: ADR-0002-2026-04-30.
 
 - 📋 [ANTS-1100] **Roadmap dialog redesign — faceted tabs +
   search + larger window.** User request 2026-04-30 (refines the
@@ -3077,104 +3059,25 @@ minor tag (next: pre-0.8.0).
 > `/indie-review` orchestration so Claude is invoked only for
 > the per-lane judgment + optional synthesis.
 
-- 📋 [ANTS-1110] **Absorb the `superpowers` skill set + Claude
-  Code orchestration into Ants Terminal.** User intent
-  2026-04-30: "incorporate as much as possible to take work off
-  Claude Code, reducing token usage… I want Ants Terminal as
-  the recommended terminal alongside Claude Code." Companion
-  scope to ANTS-1108 (the App-Build runner); this bullet
-  catalogues every Claude-Code-shaped workflow that has a
-  mechanical core Ants can execute natively.
-
-  Per-skill triage of the active superpowers bundle:
-
-  | Skill | Mechanical core (Ants) | LLM core (Claude) |
-  |-------|------------------------|-------------------|
-  | `verification-before-completion` | Run tests + lints + drift checks; check `git status` cleanliness; render pass/fail panel | None — pure offload |
-  | `using-git-worktrees` | `git worktree add/list/remove`, branch hygiene, abandoned-worktree GC | None — pure offload |
-  | `dispatching-parallel-agents` | Process pool that fans tasks out, captures stdout per task, aggregates | The agent task itself |
-  | `subagent-driven-development` | Same as above — orchestration + result aggregation | The subagent's reasoning |
-  | `executing-plans` | Walk `docs/specs/*.md` task list; advance / mark done; run gates between steps | The "implement" step in each task |
-  | `test-driven-development` | Run failing test → capture exit; run impl-changed test → confirm green; commit with the cite-spec template | Drafting the test + the implementation |
-  | `writing-plans` | Plan-template scaffold (frontmatter, dependency-graph syntax, task numbering); plan validator (referenced files exist; deps are acyclic) | The plan's actual content |
-  | `writing-skills` | SKILL.md template scaffold; frontmatter validator; storage-path picker | The skill's body |
-  | `requesting-code-review` | Diff extraction + checklist (per `docs/standards/`); render review-request prompt | Performing the review |
-  | `receiving-code-review` | Fetch comments via `gh pr view --json reviews,comments`; render in panel; track per-comment resolution status | Judgment on what to act on |
-  | `finishing-a-development-branch` | Run release gates, generate PR description from `git log` + commit-style template, `gh pr create` | Drafting the PR description prose |
-  | `systematic-debugging` | Reproducer harness (capture STDIN + run + diff STDOUT against expected); bisect helper (`git bisect run` wrapper); coredump fetcher | Forming hypotheses |
-  | `brainstorming` | Structured spec-intake form (Theme / Invariants / Out-of-scope / Lanes fields); writes directly to `tests/features/<name>/spec.md` | The brainstorm dialog itself |
-  | `frontend-design` | None — pure creative LLM | All of it |
-
-  Other Claude Code-flavoured offloads beyond superpowers:
-
-  - **CI watchdog panel** — `gh run watch` integration with
-    auto-refresh, attached-artifact list, failure-log
-    fetching. Replaces "ask Claude to check CI status".
-  - **PR review surface** — fetch PR comments via `gh api`,
-    render in a side panel with per-comment "applied / out
-    of scope / disagree" buttons that draft the reply.
-    Replaces "ask Claude to read the review and prepare
-    responses".
-  - **Token usage estimator** — pre-flight token counter on
-    any prompt the user is about to send (using the
-    pluggable LLM endpoint already wired through `aidialog`).
-    Warns on > 50 k input tokens; suggests splitting.
-  - **Prompt-cache hint** — Ants tracks which files a prompt
-    references and exploits Anthropic's 5-minute cache TTL
-    by re-using identical prefix prompts. Surfaces "this
-    prompt will hit cache (saves N tokens)" indicator.
-  - **MCP server orchestration** — `claude mcp`
-    add/remove/list via a Settings → MCP panel. Pure
-    mechanical.
-  - **Session history search** — Ants already has the
-    terminal output; index past Claude Code sessions in a
-    SQLite store; instant grep across history without
-    re-asking the LLM.
-  - **`.claude/settings.json` editor** — visual editor for
-    permissions, env vars, hooks. Replaces "ask Claude to
-    update my settings".
-  - **Hook-output capture + replay** — when a hook fires
-    (PreToolUse, PostToolUse, etc.), capture output and let
-    the user replay against a different prompt without
-    re-running the tool.
-  - **`.claude/skills/` library browser** — Settings →
-    Skills panel listing every installed skill, its
-    description, and a "test this skill" button that invokes
-    it with a sample prompt.
-  - **Plan-mode panel** — visual plan editor with task
-    drag/drop, dependency-graph view, status emojis matching
-    the ROADMAP format. Replaces ask-Claude-to-list-the-plan.
-  - **`/style` migration helpers** — when Claude Code has
-    multiple system prompts ("default" / "explanatory" /
-    "learning"), Ants exposes a tab strip that switches mode
-    without burning a round-trip.
-
-  Positioning: shipped together, these turn Ants Terminal
-  into the **Claude Code companion app** — a user can
-  install Ants, install Claude Code, and have everything
-  mechanical (workflow tracking, CI watching, PR review,
-  audit triage, test running, ID allocation, plan execution,
-  worktree management) handled in-app at zero token cost.
-  Claude is invoked only for the prose / judgment / drafting
-  steps where an LLM is actually doing thinking.
-
-  v1 priority order (ship one row at a time, each behind a
-  feature test): verification-before-completion → using-git-
-  worktrees → CI watchdog → PR review surface → executing-
-  plans → token estimator → /audit triage automation
-  (ANTS-1111) → /indie-review orchestration (ANTS-1112) →
-  the rest in any order based on user pull.
-
-  Locked by `tests/features/superpowers_offload/` (one
-  feature-conformance test per row in the table that can be
-  reduced to a determinism check; LLM-shaped rows have
-  source-grep tests confirming the prompt-templating path
-  exists).
-  Kind: implement.
-  Source: user-2026-04-30.
-  Lanes: MainWindow, new `WorkflowDialog` (extending
-  ANTS-1108), AuditDialog, aidialog (LLM endpoint),
-  status bar.
+- 💭 [ANTS-1110] **Catalogue retired — re-shaped per
+  [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
+  The original 13-row "absorb every superpowers skill" table mixed
+  mechanical-shape rows (e.g. `using-git-worktrees`) with judgment-
+  shape rows (e.g. `verification-before-completion`,
+  `brainstorming`) under one bullet. Cold-eyes review found the
+  catalogue had no acceptance criteria and would burn weeks on
+  rows that don't actually save tokens.
+  ID preserved per `docs/standards/roadmap-format.md` § 3.5.1
+  (stable-ID immutability); body trimmed; status flipped to 💭
+  (research) until each future skill-absorption ships under its
+  own bullet. **First candidate to promote out of 💭:**
+  `using-git-worktrees` — unambiguously mechanical, single-feature
+  scope. Subsequent promotions gated on ANTS-1120 measurement
+  results. `verification-before-completion`, `brainstorming`,
+  `frontend-design`, and the other judgment-heavy rows stay 💭
+  unless / until the user explicitly pulls them in.
+  Kind: research. Source: ADR-0002-2026-04-30.
+  Lanes: TBD per future per-skill bullet.
 
 - 📋 [ANTS-1111] **Fold `/audit` triage into the Project Audit
   tool — eliminate the LLM round-trip on the noise floor.**
@@ -3342,15 +3245,18 @@ minor tag (next: pre-0.8.0).
   (indie-review-partition.md), tests/features.
 
 - 📋 [ANTS-1113] **Fold `/debt-sweep` into the Project Audit
-  tool — every category is mechanical.** User ask 2026-04-30:
+  tool — four mechanical categories.** User ask 2026-04-30:
   "incorporate /debt-sweep too, comprehensive but minimising
-  false positives and token usage." The skill scans five
-  categories of post-feature drift; **all five have a
-  mechanical core** with only judgment-call edge cases needing
-  an LLM. Today the skill delegates to a `general-purpose`
-  subagent — ANTS-1113 absorbs the scan into the Project Audit
-  tool and reserves Claude only for the optional rule-on-it
-  step.
+  false positives and token usage." The skill originally scanned
+  five categories of post-feature drift; per
+  [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md)
+  decision 9 the **memory drift** row is dropped (it required
+  judgment to distinguish "moved file" from "stale behaviour" —
+  better covered by the existing "verify before recommending from
+  memory" rule). The remaining four categories all have a crisp
+  mechanical signature; ANTS-1113 absorbs the scan into the
+  Project Audit tool and reserves Claude only for the optional
+  rule-on-it step.
 
   Per-category mechanical scan:
 
@@ -3360,7 +3266,6 @@ minor tag (next: pre-0.8.0).
   | **Test coverage gaps** | Parse `spec.md` for `INV-N` markers, parse matching `test_*.cpp` / `test_*.py` for `INV-N` references, diff. New public methods without a `test_*` file in the same lane: cscope/ctags symbol-list vs test-file symbol-mention | "Is this method intentionally untested?" |
   | **Doc drift** | (a) ROADMAP ✅ items without a matching commit subject — grep git log for the ID; (b) CHANGELOG `[Unreleased]` bullets vs `git diff main..HEAD` file list; (c) README CLI flag references vs `ants-terminal --help` output | "Is this README wording correct or merely vague?" |
   | **Packaging drift** | Run `packaging/check-version-drift.sh` (already exists); diff CHANGELOG body vs metainfo `<release>` body vs debian/changelog body | None — pure mechanical |
-  | **Memory drift** | (a) memory entry references a file path → check the file exists; (b) memory references a function/flag → grep for it; (c) audit-report memory entries older than the most-recent audit run → flag for review | "Is this old memory still load-bearing or stale?" |
 
   Workflow inside the Project Audit tool:
 
@@ -3388,8 +3293,6 @@ minor tag (next: pre-0.8.0).
     annotation.
   - CHANGELOG `[Unreleased]` bullet referring to a file not in
     the diff → mark with `<!-- stale? -->` HTML comment.
-  - Memory file referenced path that no longer exists → mark
-    the memory entry with a stale flag header.
 
   Allowlist learning loop: same pattern as ANTS-1111. Every
   "Allow" entry the user confirms is appended to
@@ -3408,104 +3311,33 @@ minor tag (next: pre-0.8.0).
   Source: user-2026-04-30.
   Lanes: AuditDialog, audithygiene, featurecoverage, docs.
 
-- 📋 [ANTS-1114] **Additional Claude Code companion surfaces
-  beyond ANTS-1110.** User ask 2026-04-30: "think about how we
-  can incorporate anything in terms of Claude Code into Ants
-  Terminal with the aim of token usage reduction." Catalogue
-  of the further-out-but-still-mechanical surfaces, on top of
-  the ANTS-1110 list:
-
-  - **Context-window manager** — running token-count
-    indicator in the per-tab status bar; threshold-based
-    suggestions ("at 80 % — `/clear` after this turn?",
-    "at 95 % — `/compact` recommended"). Ants already knows
-    the active model via the Claude detection; pulling
-    `claude_session.json` for the running token total is a
-    file read.
-  - **Conversation export + search** — append-mode SQLite
-    store of every Claude Code session's transcript
-    (already in the terminal output buffer; Ants just
-    persists it). User can grep across past sessions
-    instantly without re-asking the LLM "what did we
-    discuss about X?".
-  - **Slash-command palette** — read every project's
-    `.claude/commands/*.md` + every installed skill's
-    metadata; surface a palette (`Ctrl+Shift+P`) for
-    one-click invocation. Replaces "what was that command
-    again?" trips through Claude.
-  - **`.claude/projects/*/memory/` editor** — visual editor
-    for the per-project memory files with diff-on-save and
-    a "stale entry" detector (see ANTS-1113 § Memory drift).
-    Replaces "ask Claude what's in my memory".
-  - **Skill installer / browser** — fetch skill bundles from
-    a registry (or local zip), validate the SKILL.md
-    frontmatter, install to `~/.claude/skills/`. Pure
-    mechanical; replaces ad-hoc `wget` + manual install.
-  - **Permission-hint learner** — Ants notices when the user
-    denies a tool call N times in a row, surfaces "want to
-    add `<tool-pattern>` to settings.json deny list?". Pure
-    rule-based; saves the user from reading the same
-    permission prompt repeatedly.
-  - **Output sanitiser** — strip terminal escape codes /
-    box-drawing / progress-bar fragments from past terminal
-    output before re-feeding to an LLM. Mechanical regex
-    pass; saves ~15 % of input tokens on long sessions.
-  - **Multi-session coordinator** — per-tab indicator
-    showing which Claude Code session is currently doing
-    what (last tool call, current prompt's first line, idle
-    vs active). Pulls from `claude_session.json`; helps the
-    user spot duplicated work across tabs without alt-tab
-    loops.
-  - **Auto-commit on safe changes** — file-system watcher;
-    if the changes match an allowlist (formatter output,
-    moc/uic/qrc/codegen, `git apply` of a known-good
-    patch), auto-commit without invoking the LLM. Replaces
-    "ask Claude to commit the formatter output".
-  - **Endpoint router** — for prose-drafting prompts route
-    to Claude; for code-completion route to a cheaper local
-    model (DeepSeek-Coder, Qwen-Coder via Ollama); for
-    audit-triage LLM tail (ANTS-1111 / 1112 / 1113) route to
-    a budget model. User picks the routing rules in
-    Settings → AI; Ants applies them per prompt-tag.
-  - **Cost-and-latency estimator** — same prompt costed
-    against multiple endpoints; user picks the cheapest
-    that meets latency target. Pre-flight, no LLM call.
-  - **Conversation replay** — re-run a past conversation
-    against a different model to compare outputs. The
-    transcript is local; the only LLM cost is the new
-    model's bill.
-  - **Settings drift detector** — track
-    `~/.claude/settings.json` git-style history; warn if a
-    change came from somewhere unexpected (autoupdater,
-    skill install).
-  - **Hook-output capture + replay** — when a hook fires,
-    capture stdout/stderr; let user replay against a
-    different prompt without re-running the underlying tool
-    (ctest, git diff, etc.).
-  - **Off-line mode** — when no Claude credentials are
-    configured, every panel still works (mechanical
-    surfaces only); LLM-shaped buttons are disabled with a
-    one-line "configure aidialog credentials to enable"
-    hint. Lets a user adopt Ants Terminal as their daily
-    terminal even before opting into Claude Code.
-
-  Each item is a small feature-test'able lane on its own;
-  the bullet exists as a tracking surface so the user can
-  pick priority and Ants doesn't have to re-discover the
-  list every roadmap-cycle.
-
-  Subsumes: nothing yet — ANTS-1110 stays the broader
-  superpowers-skill triage; ANTS-1114 is the "everything
-  else Claude-Code-shaped that's mechanical" supplement.
-
-  Locked by `tests/features/claude_code_companion/`
-  (one feature-conformance test per surface, in the same
-  shape as ANTS-1110: source-grep + determinism check
-  where applicable).
-  Kind: implement.
-  Source: user-2026-04-30.
-  Lanes: MainWindow, aidialog, Settings, Status bar,
-  new `WorkflowDialog` (extending ANTS-1108 / ANTS-1110).
+- 💭 [ANTS-1114] **Wishlist retired — re-shaped per
+  [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
+  The original 14-bullet "additional companion surfaces" wishlist
+  had no leverage ranking and mixed token-saving items
+  (Output sanitiser, Permission-hint learner) with UX features
+  dressed up as token savers (Conversation export + search,
+  Conversation replay, Skill installer/browser). Cold-eyes review
+  flagged this as scope-creep noise.
+  ID preserved per `docs/standards/roadmap-format.md` § 3.5.1
+  (stable-ID immutability); body trimmed; status flipped to 💭.
+  **Surviving candidates** (decided per user pull, gated on
+  ANTS-1120 measurement):
+  - **Output sanitiser** — strip ANSI / box-drawing / progress-bar
+    fragments before re-feeding terminal output to an LLM. Pure
+    regex pass; ~15 % token saving on long sessions.
+  - **Permission-hint learner** — surface "add `<tool-pattern>` to
+    settings.json deny list?" when the user denies a tool N times.
+    Saves repeated-prompt tokens.
+  Other items from the old list (Context-window manager,
+  Slash-command palette, Multi-session coordinator, Endpoint
+  router, Cost-and-latency estimator, Conversation replay,
+  Settings drift detector, Hook-output capture+replay, Off-line
+  mode, Auto-commit on safe changes, `.claude/projects/*/memory/`
+  editor, `.claude/skills/` library browser) only land if the user
+  explicitly asks for them; this bullet is not auto-promoted.
+  Kind: research. Source: ADR-0002-2026-04-30.
+  Lanes: TBD per future per-surface bullet.
 
 ### ⚡ Performance — hot-path sweep (user request 2026-04-30)
 
@@ -3809,7 +3641,7 @@ minor tag (next: pre-0.8.0).
 
   Far-future deferred (per user 2026-04-30): "allow these
   features to be integrated with the various AI platforms but
-  for now, let's focus on Claude Code." → 💭 [ANTS-1118+]
+  for now, let's focus on Claude Code." → 💭 [ANTS-NNNN+]
   candidates: Codex CLI integration, Aider integration, Ollama
   + open-router agentic shells. Same MCP-tool surface; just
   needs each platform's tool-discovery mechanism to find the
@@ -3826,6 +3658,430 @@ minor tag (next: pre-0.8.0).
   Lanes: remotecontrol.cpp, AuditDialog, RoadmapDialog,
   MainWindow, ClaudeBgTaskTracker, docs (CLAUDE.md
   IPC-verb-list).
+
+### 📚 Documentation cold-eyes fold-in (2026-04-30)
+
+> Aggregated findings from a 4-agent parallel cold-eyes review of
+> the entire docs tree (root .md files, docs/standards, docs/decisions,
+> docs/specs, CHANGELOG, audit-report archives, sample
+> tests/features). Single fix-pass per App-Build § Audit-fold pattern;
+> sub-bullets group by theme for easier tracking. **Top-of-queue per
+> user direction 2026-04-30: docs come clean before code.**
+
+- 📋 [ANTS-1121] **HIGH — Documentation drift fold-in.**
+  Source: doc-cold-eyes-2026-04-30. Kind: doc-fix.
+  Lanes: docs (root + standards + decisions + specs), packaging,
+  README, CHANGELOG.
+
+  **Theme T1 — GPU-renderer removal not propagated.** `glrenderer.cpp`
+  was retired in 0.7.44 (CHANGELOG line 1001). README.md:50 reflects
+  this; STANDARDS.md:39-45 still describes a live GPU path
+  (QOpenGLWidget, 2048x2048 atlas, GLSL 3.3, "two-render-paths
+  invariant"); RULES.md:37 / 168 still list `GlRenderer` and a
+  "GPU rendering toggle works without artifacts" release-checklist
+  item. Remove or mark deprecated.
+
+  **Theme T2 — Version pinning drift.** PLUGINS.md is stamped 0.6.9
+  throughout (lines 3, 23, 161, 163, 247, 271, 332-337, 422, 426,
+  534, 554, 556, 584); shipped is 0.7.58. SECURITY.md:18 supported-
+  versions table shows `0.6.x` as current (line 162: "Last updated
+  for the 0.6.16 release"). packaging/README.md:9, 118, 174 lock
+  recipe versions at 0.6.20/0.6.21. CONTRIBUTING.md:126 example
+  commit subject is `0.6.7:` (predates the `<ID>: <description>`
+  standard from `docs/standards/commits.md`). README.md:481 install
+  snippet comment says "replace 0.7.44" but URL hardcodes 0.7.58 —
+  pick one. PLUGINS.md "Roadmap" section (lines 570-576) marks
+  0.7-series `output_line` / `ants.trigger.register` items as
+  still-planned — verify whether they shipped during 0.7.x.
+
+  **Theme T3 — Archival docs at root pretending to be live.**
+  DISCOVERY.md (header `0.4.0` / commit `be261d9`), AUDIT.md
+  (`HEAD=be261d9`), FIXPLAN.md ("eighth audit"), and
+  project_audit_updates.md (`ants-audit v0.6.3`) are point-in-time
+  snapshots presented as root-level current docs. Move to
+  `docs/journal/` (and rename the AUDIT.md to avoid collision with
+  the audit-report files in `docs/`). Update any internal links.
+
+  **Theme T4 — Spec self-fixes from cold-eyes pass 2.**
+  - ANTS-1116.md test plan still cites `AntsHelper::auditRun` (a v2
+    handler not in v1). Drop or qualify as v2.
+  - ANTS-1116.md drift-detected response uses `ok: true` with exit
+    code 1 — caller-side switch on `ok` sees success while the shell
+    sees failure. Either add `exit_code: 3 = drift_detected` (and
+    keep `ok: true`), or shift drift into `ok: false`. Pick one and
+    pin it with a new INV.
+  - ANTS-1116.md INV gap: response fields `raw` and `exit_code` aren't
+    constrained by any INV. Add INV-11 covering both.
+  - ANTS-1117.md claims `RoadmapDialog::parseBullets` exists "already
+    extracted in ANTS-1100" — it doesn't (only `extractToc` is in
+    `roadmapdialog.{h,cpp}`). Re-word as "to be extracted as part of
+    ANTS-1117 implementation".
+  - ANTS-1117.md INV-6 cites `ClaudeTabIndicator::isActive(tab)` —
+    no such method exists in `coloredtabbar.h:22`. Replace with the
+    actual per-tab Claude detection accessor (look for the
+    `claudetabtracker.{h,cpp}` surface) before sign-off.
+  - ADR-0002 line 130 claims the older spec convention is documented;
+    add the concrete pointer to `tests/features/roadmap_viewer_tabs/spec.md`.
+  - ANTS-1119.md "row 8" reference is opaque; replace with a
+    section anchor.
+
+  **Theme T5 — ROADMAP section-target drift.** Sections `## 0.7.0
+  (target: 2026-06)` (line 463), `## 0.7.7 (target: 2026-05)`
+  (line 744), `## 0.7.12 (target: 2026-05)` (line 978), and
+  `## 0.7.50 (target: 2026-05)` (line 2169) are all already-shipped
+  versions per CHANGELOG.md. Either rename the bucket
+  ("0.7.0 — shell integration — shipped 2026-XX-XX") or drop the
+  `(target: ...)` clause. The 0.7.0/0.7.7/0.7.12/0.7.50 case is
+  same-class fix.
+
+  **Theme T6 — `Source:` backfill tail.** 44 of 117 ANTS bullets
+  are missing `Source:` per docs/standards/roadmap-format.md § 3.5.3;
+  L4123 ANTS-1065 lacks both `Kind:` and `Source:`. ANTS-1106 is
+  the in-flight backfill bullet; ANTS-1121 closes the tail.
+  Sample line numbers: 401, 437, 2148-2163, 3975, 4050-4060, 4123,
+  4141-4205, 4300-4352, 4370-4423.
+
+  **Theme T7 — Status-drift on ANTS-1054.** ROADMAP.md:2586 marks
+  ANTS-1054 🚧 with "Steps (b-d) still pending." Step (b) shipped
+  in 0.7.58 (commit `64e67e7`, CHANGELOG.md:32-55). Update body to
+  "Steps (c) and (d) still pending" (or flip to ✅ if (b) closes
+  the user report).
+
+  **Theme T8 — Stale audit-report archive hygiene.**
+  `docs/AUTOMATED_AUDIT_REPORT.md` header dates 2026-04-13 (17
+  days stale) — delete in favour of the dated archives, or rename
+  to `_2026-04-13` for symmetry. `docs/AUDIT_TRIAGE_2026-04-16.md`
+  cites pre-0.6.30 source and is referenced by RECOMMENDED_ROUTINES
+  as a *gold-standard format* — add a one-line "historical
+  snapshot, not current" header so readers don't mistake the 4
+  verified findings for the current state.
+
+  **Theme T9 — Minor placeholder / tone fixes.**
+  - L20 legend "🚧 In progress (branch or open PR)" — project ships
+    direct-to-main; soften to "active commit work."
+  - L3812 references `[ANTS-1118+]` as a placeholder, but ANTS-1118
+    is now allocated; replace with `[ANTS-NNNN+]`.
+  - L978 / L2169 share identical heading text "independent-review
+    sweep (target: 2026-05)" — TOC ambiguity; add a date.
+  - CLAUDE.md:165 narrates the 0.7.18 `background_alpha` removal —
+    ages; either trim or keep with date.
+  - EXPERIMENTAL.md items E1 (test harness) and E6 (sanitizer CI)
+    have largely shipped per CHANGELOG; revisit / mark complete.
+  - DISCOVERY.md:74 says `CONTRIBUTING.md | no` — file now exists;
+    update (subsumed by Theme T3 relocation).
+
+  **Acceptance:** all themes either applied or explicitly punted to
+  a follow-on bullet with reasoning. Re-running the same 4-agent
+  cold-eyes review pass returns 0 HIGH findings on the doc tree.
+
+### 🧰 Pre-implementation prep (ADR-0002 fold-out, 2026-04-30)
+
+> ADR-0002 (`docs/decisions/0002-cold-eyes-companion-cleanup.md`)
+> reshapes the Claude-Code companion bundle. The two new bullets
+> below are the structural prep work that ships before any
+> companion-feature code lands. The roadmap edits applied alongside
+> ANTS-1121 also retire ANTS-1056, shrink ANTS-1110's catalogue,
+> trim ANTS-1114, drop the `memory drift` row from ANTS-1113, and
+> swap ANTS-1116 / ANTS-1117 priority order. Specs at
+> `docs/specs/ANTS-1119.md` and `docs/specs/ANTS-1120.md`.
+
+- 📋 [ANTS-1119] **HIGH — Extract audit logic into a GUI-free
+  engine module.** Pure refactor: lift the engine + triage halves
+  of `auditdialog.cpp` (~5000 lines, mixed presentation +
+  orchestration) into a new `src/auditengine.{h,cpp}` depending on
+  `Qt6::Core` only. Unblocks ANTS-1116 v2 (`audit-run` subcommand)
+  and ANTS-1117 v2 (`audit-run` IPC verb) — both currently impossible
+  without dragging `Qt6::Widgets` into a non-GUI binary. Acceptance
+  invariants in `docs/specs/ANTS-1119.md` include byte-identical
+  finding-stream / SARIF / HTML output pre-/post-refactor and a
+  ≥30 % LOC drop from `auditdialog.cpp`. Test:
+  `tests/features/audit_engine_extraction/`.
+  Kind: refactor. Source: cold-eyes-review-2026-04-30.
+  Lanes: AuditDialog, new AuditEngine module, build.
+
+- 📋 [ANTS-1120] **MEDIUM — Companion-instrumentation gate.**
+  Before any further companion bullet beyond ANTS-1117 v1 +
+  ANTS-1116 v1 ships, run a side-by-side measurement (N≥3 replays
+  per configuration) of one Claude task with the existing flow
+  vs. stubs of the proposed `audit-run` / `roadmap-query` /
+  `id-allocate` mechanisms. Captured token counts (input + output
+  + cache_read + cache_creation per the API `usage` field) feed a
+  per-bullet keep / iterate / drop / inconclusive verdict, with the
+  threshold values picked by the user at measurement-review time.
+  Verdict reflects back into ROADMAP.md per the four-way disposition
+  rules in the spec. Bullet doesn't ship code; deliverable is a
+  journal artifact + measured ROADMAP edits. Spec:
+  `docs/specs/ANTS-1120.md`.
+  Kind: research. Source: cold-eyes-review-2026-04-30.
+  Lanes: scripts, docs/journal, ROADMAP.
+
+### 🔍 Audit fold-in — feature code (2026-04-30)
+
+> Aggregated findings from a scoped `/audit` run (cppcheck + clazy +
+> semgrep + gitleaks) over the ANTS-1116 / 1117 / 1119 / 1120 / 1100
+> implementation surface. semgrep and gitleaks both clean (0 raw).
+> cppcheck reported 5 false-positive `syntaxError` hits (header parser
+> tripping on `class`/`namespace`/`std::function` C++ keywords) and
+> several pre-existing `constVariablePointer` style hits in
+> `mainwindow.cpp` outside the new code — out of scope for this
+> fold-in.
+
+- 📋 [ANTS-1122] **Audit fold-in fixes — feature-code triage.**
+  Three small actionable findings inside the new code:
+  - **clazy `range-loop-detach` at `src/antshelper.cpp:92`** —
+    `for (const QString &line : stdoutText.split('\n', ...))`
+    risks detaching the temporary `QStringList` returned by `split`.
+    Fix: bind the split result to a local `const QStringList`
+    first, then iterate. Same pattern any Qt-aware audit will flag
+    on every refactor that ignores it.
+  - **cppcheck `constVariablePointer` at `src/auditengine.cpp:153`** —
+    `QStringList *fileLines` is reassigned but never written through;
+    can be `const QStringList *fileLines` (or pulled out as a
+    reference). Stylistic but correct.
+  - **cppcheck `returnByReference` at `src/mainwindow.h:123`** —
+    `MainWindow::roadmapPathForRemote()` returns `m_roadmapPath` by
+    value where `const QString &` would avoid the copy. Member
+    lifetime extends past the call so the reference is safe.
+  **Round-2 fold-in (after the round-1 fixes landed):**
+  - **clazy `range-loop-detach` at `src/roadmapdialog.cpp:363`** —
+    same Qt-detach pattern as the antshelper fix; the
+    `lanesRaw.split(',', ...)` inside `parseBullets` (the new ANTS-1117
+    helper) needs the bind-then-iterate idiom too. Fixed in the
+    same audit cycle.
+  - **cppcheck `knownConditionTrueFalse` at
+    `src/antshelpermain.cpp:117`** — false positive: `parseRequest`
+    *does* set `*errMsg` on a `QJsonParseError`; cppcheck misses the
+    pointer write because the helper lives in an anonymous namespace
+    and its cross-TU heuristic is brittle. Recorded as a known FP;
+    no code change.
+  Locked by re-running `/audit` against the same scope after the
+  fixes land — must return zero actionable findings on the next
+  pass. Kind: review-fix. Source: audit-2026-04-30.
+  Lanes: AntsHelper, AuditEngine, MainWindow, RoadmapDialog.
+
+### 🔍 Indie-review fold-in — feature code (2026-04-30)
+
+> Aggregated findings from a 4-agent independent review of the
+> ANTS-1116 / 1117 / 1119 / 1120 / 1100 implementation surface.
+> 4 lanes (AuditEngine, AntsHelper CLI, Remote-control verbs,
+> RoadmapDialog redesign). Each agent briefed only on source +
+> contract docs + external specs; no test files, no author intent.
+> Tiered Tier 1 / Tier 2 / Tier 3 per `/indie-review` discipline.
+
+- 📋 [ANTS-1123] **Indie-review fold-in fixes — feature-code triage.**
+
+  **Cross-cutting themes (caught across ≥2 lanes):**
+  - **Duplicated logic that will diverge** — the AuditEngine
+    extraction left `sourceForCheck` / `hardenUserRegex` /
+    `isCatastrophicRegex` duplicated between engine and dialog
+    files (AuditEngine lane C1/C2/C3/H1). Three CRITICALs in one
+    cluster: LIMIT_MATCH value drifts (engine 200000, dialog
+    100000), already-prefixed guard missing in engine, regex-shape
+    detector catches different sets between the two impls.
+  - **Spec ↔ code envelope drift** — AntsHelper F1 + Remote-control
+    F9: spec wording prescribes JSON envelope shapes (e.g.
+    `{ok:true, data:{}}`) that the code has already diverged from
+    (flat `{ok:true, tabs:[]}` per the prior `ls`/`get-text`
+    pattern). Reconcile at the spec layer.
+  - **Self-healing on corruption missing** — AntsHelper F3
+    (`QProcess::exitCode()` unspecified for `CrashExit`),
+    RoadmapDialog LOW-1 (`restoreGeometry` return value ignored;
+    corrupt blob persists forever).
+
+  **Tier 1 — ship-this-week (security/contract/data-loss):**
+
+  1. **AuditEngine C1+C2+C3+H1: unify regex helpers + sourceForCheck
+     into `AuditEngine`** and call from both engine and dialog.
+     Closes the regex-DoS-divergence vector permanently. The
+     spec deferral was wrong.
+     `src/auditengine.cpp:21-34` (engine local copies),
+     `src/auditdialog.cpp:2779,2792,1817-1854` (dialog originals).
+  2. **AntsHelper F2: fix INV-5 string mismatch.** Code emits
+     `"could not start bash"` but spec INV-5 prescribes
+     `"bash unavailable"`. One-liner at `src/antshelper.cpp:64`.
+  3. **AntsHelper F1: usage errors must emit JSON envelope on
+     stdout** (in addition to the stderr line). Currently
+     `unknown subcommand` and `invalid JSON` paths return non-zero
+     with no `{ok:false, ...}` body — Claude consumers parse
+     stdout. `src/antshelpermain.cpp:117-120, 130`.
+
+  **Tier 2 — hardening sweep:**
+
+  4. **AntsHelper F3: signal-kill error message uses
+     `proc.exitCode()` which is unspecified for `CrashExit`.**
+     Drop the `%1` substitution or substitute a real signal-number
+     accessor. `src/antshelper.cpp:70-75`.
+  5. **AntsHelper F6: `parseRequest` treats non-object JSON as
+     empty.** A request of `[]` silently runs as `{}` instead of
+     a usage error. `src/antshelpermain.cpp:35-45`.
+  6. **AuditEngine M1: `parseFindings` `reJustFile` regex
+     over-broad.** `[^\s:]+/[^\s:]+` matches bare URLs / version
+     strings (`cargo/1.75`); SARIF output gets bogus
+     `physicalLocation.artifactLocation.uri`. Tighten to require a
+     known extension or path-anchor. `src/auditengine.cpp:206-207`.
+  7. **AuditEngine H2: promote `computeDedup` to
+     `AuditEngine::computeDedup` (header-exported)** so future
+     authors can't write a third copy in
+     `consolidateMypyStubHints`-style sites.
+  8. **Remote-control F1: INV-10 cache-invalidation contract gap.**
+     Either add a 100ms wall-clock TTL OR hook
+     `QFileSystemWatcher::fileChanged` to invalidate the cache OR
+     revise the spec to match the implemented mtime-only behaviour.
+     `src/remotecontrol.cpp:497-500`.
+  9. **Remote-control F9: reconcile spec § "Error-response shape"
+     with the flat-envelope convention** (`{ok:true, tabs:[]}` vs
+     spec's `{ok:true, data:{}}`). The codebase precedent (`ls`,
+     `get-text`) is the actual contract; spec is the outlier.
+     `docs/specs/ANTS-1117.md` § Error-response shape.
+  10. **RoadmapDialog LOW-1: `restoreGeometry` return-value
+      ignored.** Clear the persisted blob on `restoreGeometry()
+      == false` so a corrupt save doesn't masquerade as valid
+      forever. `src/roadmapdialog.cpp:783`.
+  11. **RoadmapDialog LOW-3: `applyPreset(Custom)` silently flips
+      `m_sortOrder` to Document.** Spec INV-13 mandates this, so
+      contract-correct, but produces a UX edge: clicking the
+      Custom tab from History flips sort silently. Either keep
+      (document the choice in a comment) or short-circuit when
+      already on Custom. `src/roadmapdialog.cpp:806-808`.
+
+  **Tier 3 — polish (refactor/style/perf):**
+
+  - AntsHelper F4 (docstring usage-order disagreement),
+    F5 (TOCTOU note — bounded by UID-scope trust),
+    F7 (`readStdin` swallows open failure),
+    F8 (Linux-only discipline not documented in header).
+  - AuditEngine L1 (`parseFindings` matches all three regexes
+    eagerly — re-order to short-circuit),
+    L2 (`Finding::highConfidence` may be a zombie field per
+    `audit_feature_evolution_2026-04-13` memory; verify and remove
+    if unused),
+    M2 (one-line comment on `applyFilter` empty-line drop intent),
+    M3 (synchronous file reads in filter loop — covered by
+    ANTS-1115 perf-sweep).
+  - RoadmapDialog LOW-2 (tab dispatch static array brittleness vs
+    `Preset` enum — add `static_assert` or drop the array),
+    LOW-4 (`onCheckboxToggled` over-defensive `m_suppressCheckboxSignal`
+    guard — Qt's `toggled` doesn't fire on no-change `setChecked`;
+    document the retention),
+    LOW-5 (constructor ~200 lines — split into `setupHeader`/
+    `setupBody`/`setupSignals`/`restoreGeometryIfAny`),
+    LOW-6 (`m_searchDebounce` + `m_debounce` could share one timer).
+
+  Locked by re-running `/audit` and `/indie-review` after the
+  Tier 1 fixes land — must return zero CRITICAL / HIGH on the
+  next pass over the same scope. Kind: review-fix.
+  Source: indie-review-2026-04-30.
+  Lanes: AuditEngine, AuditDialog, AntsHelper, RemoteControl,
+  RoadmapDialog, Config.
+
+### 🐛 Scrollback overwrite during streaming (user request 2026-04-30)
+
+- 📋 [ANTS-1118] **HIGH — Scrolling up during a Claude Code stream
+  is being overwritten from the line the user is parked on.** User
+  report 2026-04-30: "the scrollback is still broken — when I scroll
+  up to read previous information while Claude Code is still busy
+  outputting data, it overwrites from the line I am at. We need a
+  way to properly debug this so that we can get to the root of the
+  problem. **The bug is not new — it has been an issue ever since
+  the first fix for the scrollback.**" Every prior pin/anchor
+  attempt (cf. 0.7.x scroll-pin work, the user-scrolled-pin guard
+  in `terminalwidget.cpp`, ANTS-0996, ANTS-1006) has shipped with
+  the same gap surviving — meaning the existing pin/anchor
+  invariants don't cover the actual code path the streaming output
+  follows. **Investigation must precede the fix** per
+  `feedback_no_workarounds.md`. The "first fix" framing matters:
+  a successful fix is one where step 5's INVs cover *every* code
+  path that mutates the visible viewport, not just the one repro
+  the previous attempt focused on.
+
+  **Step 1 — Reproduce reliably.** Capture a recording (e.g.
+  `script -c 'claude code <something heavy>' /tmp/repro.typescript`)
+  that consistently reproduces the overwrite. Replay via
+  `cat /tmp/repro.typescript > $TTY` or piping through Ants
+  while interactively scrolling. Acceptance: a 3-line
+  reproducer shell snippet that breaks the scrollback every
+  time on a clean tab.
+
+  **Step 2 — Instrument the suspect surfaces.** Add an opt-in
+  debug channel (gate via `DebugLog::Category::Scrollback` or a
+  new env-var `ANTS_DEBUG_SCROLLBACK=1`) that logs, *per
+  PTY-data-arrival batch*:
+  - The active scrollbar `value()` and `maximum()` before
+    apply.
+  - Whether `m_userScrolledPin` (or whatever the current pin
+    flag is named) is set, and the line number it points at.
+  - Whether the rebuild path took the "preserve scroll" branch
+    or the "auto-follow" branch.
+  - Which of `TerminalGrid::appendCell`, `appendLine`,
+    `scrollViewport`, `eraseInDisplay`, etc. fired during the
+    batch.
+  - The post-apply scrollbar `value()` and any clamp
+    adjustments.
+  Output goes to `~/.config/ants-terminal/debug.log` with
+  rotating size cap (1 MB). Acceptance: a 30-second repro
+  produces ≤ 200 KB of log and the responsible decision branch
+  is visible in plain text.
+
+  **Step 3 — Identify the root cause.** Likely candidates,
+  ranked by probability:
+  - (a) `m_userScrolledPin` resets on a code path the prior
+    fixes didn't cover (e.g. CSI 7-bit cursor restore, OSC 133
+    prompt-end, alt-screen toggle, DECSET 1049 enter/leave).
+  - (b) A new per-paint `verticalScrollBar()->setValue(...)`
+    site introduced after the pin (e.g. a 0.7.4x feature)
+    races with the pin's intended value and wins because it
+    fires later in the slot dispatch order.
+  - (c) `TerminalGrid` mutates the visible rows in-place
+    (overwriting the row the user is parked on) instead of
+    appending to scrollback when the grid is full + alt-screen
+    is *not* active.
+  - (d) `TerminalGrid::resize` semantics: a fast PTY write
+    that grows the grid past the tab's height triggers an
+    implicit scroll that the pin doesn't observe.
+  - (e) Newline-handling inside `vtparser`: `LF` after a wrapped
+    line emits a scroll-up that mutates the user's parked
+    line because `m_topLine` advances but the
+    `TerminalWidget` viewport offset isn't compensated.
+  Each candidate needs a targeted log signature in step 2 so
+  the actual cause falls out of one repro run. Document the
+  finding in a new `docs/journal/ANTS-1118-investigation.md`.
+
+  **Step 4 — Fix at the root.** No workarounds. The fix MUST
+  be a code change in the responsible component (TerminalGrid,
+  TerminalWidget, vtparser, or whichever step-3 diagnosis
+  fingers) — not a "snap to bottom on every PTY data" hack
+  that masks the symptom. If the pin needs to track an
+  additional event class, add it to the pin's contract; if
+  the grid is mutating in-place wrongly, fix the rotation
+  semantics.
+
+  **Step 5 — Lock with a feature-conformance test.**
+  `tests/features/scrollback_pin_during_stream/` with INVs:
+  - INV-1: replaying a 50 KB PTY write while the viewport is
+    pinned at row K leaves row K visible at the same y-pixel
+    when the write finishes (no scroll-by-output).
+  - INV-2: the pin survives DECSET 1049 enter/leave embedded
+    in the stream.
+  - INV-3: the pin survives an OSC 133 prompt-end embedded in
+    the stream.
+  - INV-4: the pin clears (auto-follow resumes) when the user
+    actively scrolls back to bottom (or presses End).
+  - INV-5: when the tab is *not* pinned (i.e. user is at
+    bottom), new output extends scrollback in place (current
+    behaviour).
+  - INV-6: when alt-screen is active (vim/htop), the pin is
+    a no-op (alt-screen has no scrollback by definition).
+
+  **Out of scope for this bullet:**
+  - Reflow / resize behaviour during the pinned state — that's
+    its own class of issues and stays in soft-wrap-reflow's
+    contract.
+  - Mouse-wheel acceleration tuning (separate UX concern).
+  - Search-pinned scrolling (search dialog already has its own
+    anchor).
+
+  Kind: fix. Source: user-2026-04-30 (recurring class).
+  Lanes: TerminalGrid, TerminalWidget, vtparser, debuglog.
 
 ### 🎨 Status-bar polish (user request 2026-04-30)
 
@@ -4017,6 +4273,7 @@ a modern terminal" release.
   over a Unix socket; `ants-terminal --attach <socket>` reconnects.
   Panes survive window close. Sparse scrollback fetched on demand via
   `GetLines` RPC.
+  Kind: implement. Source: prior-art-WezTerm.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
   dialog. Shipped in 0.7.1. Connects opened from the SSH Manager
   carry `-o ControlMaster=auto`,
