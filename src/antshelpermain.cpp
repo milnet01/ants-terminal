@@ -1,13 +1,13 @@
 // ants-helper command-line entry point (ANTS-1116 v1).
 //
 // Usage:
-//   ants-helper drift-check [--repo-root <path>] [json-arg | -]
+//   ants-helper drift-check [request-json | -] [--repo-root <path>]
 //   ants-helper list
 //   ants-helper --help | -h
 //
-// Reads optional JSON request from argv (first positional after the
-// subcommand) or from stdin if argv is `-` / absent. Writes one JSON
-// object per invocation to stdout. Exit codes per
+// Reads optional JSON request from argv (first non-flag positional
+// after the subcommand) or from stdin if argv is `-` / absent.
+// Writes one JSON object per invocation to stdout. Exit codes per
 // `docs/specs/ANTS-1116.md` § INV-8: 0=success, 1=handler error,
 // 2=usage error, 3=drift detected.
 
@@ -37,16 +37,27 @@ QJsonObject parseRequest(const QString &raw, QString *errMsg) {
     QJsonParseError err;
     const QJsonDocument doc =
         QJsonDocument::fromJson(raw.toUtf8(), &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+    if (err.error != QJsonParseError::NoError) {
         if (errMsg) *errMsg = err.errorString();
+        return {};
+    }
+    // ANTS-1123 indie-review F6: a non-object payload (`[]`, `42`,
+    // `"foo"`) used to silently degrade to an empty `{}`. That hid
+    // shape errors from upstream callers — callers must learn that
+    // the contract is "object or nothing." Surface as a usage error.
+    if (!doc.isObject()) {
+        if (errMsg) *errMsg = QStringLiteral(
+            "request body must be a JSON object");
         return {};
     }
     return doc.object();
 }
 
-QString readStdin() {
+QString readStdin(bool *opened = nullptr) {
     QFile f;
-    if (!f.open(stdin, QIODevice::ReadOnly)) return {};
+    const bool ok = f.open(stdin, QIODevice::ReadOnly);
+    if (opened) *opened = ok;
+    if (!ok) return {};
     return QString::fromUtf8(f.readAll());
 }
 
@@ -109,7 +120,25 @@ int main(int argc, char **argv) {
         }
     }
     if (jsonArg == QStringLiteral("-") || jsonArg.isEmpty()) {
-        jsonArg = readStdin();
+        bool stdinOpened = true;
+        jsonArg = readStdin(&stdinOpened);
+        // ANTS-1123 indie-review F7: a stdin open failure used to
+        // silently produce empty input, masquerading as "no request
+        // body." Surface it on the explicit `-` path (where the
+        // user opted into stdin) so a missing-stdin scenario doesn't
+        // get confused with a default empty request.
+        if (!stdinOpened && args.size() > 2 &&
+            args[2] == QStringLiteral("-")) {
+            QJsonObject err;
+            err.insert(QStringLiteral("ok"), false);
+            err.insert(QStringLiteral("error"),
+                       QStringLiteral("stdin not readable"));
+            err.insert(QStringLiteral("code"),
+                       QStringLiteral("stdin_unreadable"));
+            writeStdout(AntsHelper::jsonToCompactString(err));
+            writeStderr(QStringLiteral("stdin not readable"));
+            return 2;
+        }
     }
 
     QString parseErr;

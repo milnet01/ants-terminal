@@ -731,8 +731,13 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     btnRow->addWidget(closeBtn);
     root->addLayout(btnRow);
 
-    // Live-update plumbing: 200 ms debounce shared with sibling
-    // dialogs (review-changes, bg-tasks).
+    // Live-update plumbing: 200 ms file-change debounce shared with
+    // sibling dialogs (review-changes, bg-tasks). Kept separate from
+    // m_searchDebounce below — the two have different latency budgets:
+    // file-change can ride a 200 ms editor-save burst, while typing
+    // search needs the snappier 120 ms feel. Merging into one timer
+    // (ANTS-1123 indie-review LOW-6) would force one budget to win and
+    // hurt either watch-burst coalescing or per-keystroke latency.
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(200);
     connect(&m_debounce, &QTimer::timeout, this, &RoadmapDialog::rebuild);
@@ -764,23 +769,37 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     connect(m_tabs, &QTabBar::currentChanged, this,
             [this](int index) {
                 if (m_suppressTabSignal) return;
-                static const Preset order[] = {
+                static constexpr Preset order[] = {
                     Preset::Full, Preset::History, Preset::Current,
                     Preset::Next, Preset::FarFuture, Preset::Custom,
                 };
+                // ANTS-1123 indie-review LOW-2: catch any future
+                // Preset enum addition that would silently extend
+                // past the array — `static_cast<int>(Preset::Custom)`
+                // is the highest-numbered preset by convention; if a
+                // new value gets inserted before it, this trips and
+                // forces the author to update the array.
+                static_assert(sizeof(order) / sizeof(order[0]) ==
+                              static_cast<size_t>(Preset::Custom) + 1,
+                              "tab order[] must match Preset enum size");
                 if (index < 0 ||
                     index >= int(sizeof(order) / sizeof(order[0]))) return;
                 applyPreset(order[index]);
             });
 
     // Restore persisted geometry if Config has one — same shape as
-    // setWindowGeometryBase64 / saveGeometry round-trip.
+    // setWindowGeometryBase64 / saveGeometry round-trip. ANTS-1123
+    // indie-review LOW-1: clear the persisted blob if restoreGeometry
+    // returns false (corrupt / wrong-Qt-version saveformat) so a bad
+    // blob doesn't masquerade as valid forever — next open will fall
+    // back to the 1200x800 default and persist a clean blob on close.
     if (m_config) {
         const QString stored = m_config->roadmapDialogGeometry();
         if (!stored.isEmpty()) {
             const QByteArray bytes =
                 QByteArray::fromBase64(stored.toLatin1());
-            if (!bytes.isEmpty()) restoreGeometry(bytes);
+            const bool restored = !bytes.isEmpty() && restoreGeometry(bytes);
+            if (!restored) m_config->setRoadmapDialogGeometry(QString());
         }
     }
 
@@ -804,13 +823,34 @@ void RoadmapDialog::closeEvent(QCloseEvent *event) {
 }
 
 void RoadmapDialog::applyPreset(Preset p) {
+    // Custom is "leave the user's tuning alone" — both checkboxes and
+    // sort order. ANTS-1123 indie-review LOW-3: previously this code
+    // ran `m_sortOrder = sortFor(Custom) = Document` even on the
+    // Custom branch, so clicking the Custom tab from History flipped
+    // descending → document-order silently. Spec INV-13's "Custom →
+    // Document" applies to the named-preset → Custom transition via
+    // checkbox divergence (handled in onCheckboxToggled, which
+    // doesn't call applyPreset). For an explicit Custom tab click we
+    // preserve whatever the user has staged.
+    if (p == Preset::Custom) {
+        if (m_tabs) {
+            const int idx = static_cast<int>(p);
+            if (m_tabs->currentIndex() != idx) {
+                m_suppressTabSignal = true;
+                m_tabs->setCurrentIndex(idx);
+                m_suppressTabSignal = false;
+            }
+        }
+        rebuild();
+        return;
+    }
+
     const unsigned mask = filterFor(p);
     m_sortOrder = sortFor(p);
 
-    // Custom is "leave the checkboxes alone" — don't overwrite the
-    // user's tuning. For the named presets, sync the checkboxes to
-    // the preset's mask without re-firing onCheckboxToggled.
-    if (p != Preset::Custom) {
+    // Sync the checkboxes to the named preset's mask without
+    // re-firing onCheckboxToggled.
+    {
         m_suppressCheckboxSignal = true;
         if (m_filterDone)
             m_filterDone->setChecked((mask & ShowDone) != 0);
@@ -840,6 +880,13 @@ void RoadmapDialog::applyPreset(Preset p) {
 }
 
 void RoadmapDialog::onCheckboxToggled() {
+    // ANTS-1123 indie-review LOW-4: m_suppressCheckboxSignal is NOT
+    // redundant — Qt's QAbstractButton::toggled doesn't fire on a
+    // no-op `setChecked(currentState)`, but applyPreset switches
+    // between presets that have *different* mask shapes (e.g. Full
+    // vs Current), so any one of those `setChecked` calls actively
+    // flips state and would re-enter onCheckboxToggled and bounce
+    // the tab back to Custom mid-preset-apply. Guard retained.
     if (m_suppressCheckboxSignal) return;
     // The user diverged from a named preset; flip the tab bar to
     // Custom (silent) and re-render with the current sort order.

@@ -125,13 +125,16 @@ private:
     QJsonDocument cmdRoadmapQuery();
 
     // Cached parse of `m_main->roadmapPathForRemote()` content. Refreshed
-    // on `roadmap-query` only when the file's mtime advances — keeps a
-    // misbehaving caller from re-parsing a 4500-line file at 1000 req/s
-    // (ANTS-1117 INV-10). Empty cache means "no parse yet" / "stale on
-    // mtime miss" and triggers a refresh.
+    // on `roadmap-query` when EITHER the mtime advances OR the wall-clock
+    // age of the cache exceeds `kRoadmapCacheTtlMs`. INV-10 contract is
+    // both bounds ANDed: "≤ 100 ms cache lifetime" plus mtime detection
+    // for the rare edit-then-re-edit-within-the-same-tick case.
+    // ANTS-1123 indie-review F1 fold-in.
     mutable QString m_roadmapCachePath;
     mutable qint64 m_roadmapCacheMtimeMs = 0;
+    mutable qint64 m_roadmapCacheStampMs = 0;  // epoch ms of last refresh
     mutable QJsonArray m_roadmapCacheBullets;
+    static constexpr qint64 kRoadmapCacheTtlMs = 100;
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent

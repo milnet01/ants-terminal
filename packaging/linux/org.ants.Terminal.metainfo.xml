@@ -103,6 +103,19 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.60" date="2026-04-30">
+      <description>
+        <p>ANTS-1123 indie-review Tier 2 + Tier 3 fold-in — the remaining hardening + polish bullets from the 0.7.59 4-agent independent review of the Claude Code companion features. Cache contract on the <code>roadmap-query</code> IPC verb honours the spec "≤ 100 ms" budget literally; <code>ants-helper</code> rejects malformed JSON input shapes; <code>AuditEngine::parseFindings</code> no longer emits bogus SARIF locators for version-string tokens; RoadmapDialog gracefully handles a corrupt persisted geometry blob and preserves user state on Custom-tab clicks. CLAUDE.md streamlined.</p>
+        <p>Fixed:</p>
+        <ul>
+          <li><code>ants-helper</code> now rejects non-object JSON request bodies (<code>[]</code>, <code>42</code>, <code>"foo"</code>) with a usage-error envelope instead of silently treating them as <code>{}</code>; stdin-open failure surfaces a usage error rather than degrading to empty input. (F6, F7)</li>
+          <li><code>parseFindings</code> regex tightened to require an alphabetic-led extension — bare version-string locators like <code>cargo/1.75</code> no longer create bogus SARIF <code>physicalLocation</code> entries. Short-circuited the per-line regex chain (was matching three regexes per line; now one). (M1, L1)</li>
+          <li><code>roadmap-query</code> cache now honours the spec INV-10 "≤ 100 ms" wall-clock bound on top of the existing mtime check, so an in-place edit within the same mtime tick is still picked up. (F1)</li>
+          <li>Roadmap dialog: corrupt persisted geometry blob is now cleared instead of masquerading as valid forever; clicking the "Custom" tab preserves user checkbox tuning and sort order; tab-order array gained a <code>static_assert</code> against the <code>Preset</code> enum size. (LOW-1, LOW-2, LOW-3)</li>
+          <li>ANTS-1117 spec § Error-response shape rewritten to the flat-envelope convention (<code>{ok:true, bullets:[...]}</code>) the codebase actually ships — earlier nested-on-<code>data</code> wording was the outlier. (F9)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.59" date="2026-04-30">
       <description>
         <p>Claude Code companion features — faceted preset tabs and search on the Roadmap viewer (ANTS-1100), two read-only IPC verbs Claude can drive (tab-list, roadmap-query; ANTS-1117 v1), an optional standalone CLI helper (ants-helper drift-check; ANTS-1116 v1), an audit-engine extraction that unblocks future non-GUI audit consumers (ANTS-1119 v1), and a measurement gate that grounds further companion work in real token counts (ANTS-1120). Bundled with documentation cold-eyes review (ANTS-1121), audit fold-in fixes (ANTS-1122), and Tier 1 indie-review fixes (ANTS-1123).</p>

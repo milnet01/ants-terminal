@@ -87,6 +87,12 @@ struct Finding {
     int     line = -1;
     QString message;
     QString dedupKey;
+    // `highConfidence` survives in 0.7.x as the cross-tool corroboration
+    // flag set by `populateChecks` after the second tool reports the
+    // same dedup key (auditdialog.cpp:4042). Drives the ★ tag in the
+    // summary table, the +20 add in `confidence()` (auditdialog.cpp:2351),
+    // and the SARIF property emit. ANTS-1123 indie-review L2 cold-eyes
+    // flagged it as potentially zombie — verified live, retained.
     bool    highConfidence = false;
     bool    suppressed = false;
     int     confidence = -1;

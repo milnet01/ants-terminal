@@ -495,10 +495,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery() {
 
     const QFileInfo fi(path);
     const qint64 mtime = fi.lastModified().toMSecsSinceEpoch();
-    const bool cached = (m_roadmapCachePath == path) &&
-                        (m_roadmapCacheMtimeMs == mtime) &&
-                        (mtime != 0);
-    if (!cached) {
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    // INV-10 wall-clock cap: even if mtime hasn't advanced (1-second
+    // mtime resolution on some filesystems), force a refresh after
+    // kRoadmapCacheTtlMs so an in-place edit within the same tick is
+    // still picked up within the spec's "≤ 100 ms" budget.
+    const bool fresh = (m_roadmapCachePath == path) &&
+                       (m_roadmapCacheMtimeMs == mtime) &&
+                       (mtime != 0) &&
+                       (nowMs - m_roadmapCacheStampMs <= kRoadmapCacheTtlMs);
+    if (!fresh) {
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
             out["ok"] = false;
@@ -523,6 +529,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery() {
         }
         m_roadmapCachePath = path;
         m_roadmapCacheMtimeMs = mtime;
+        m_roadmapCacheStampMs = nowMs;
         m_roadmapCacheBullets = arr;
     }
 

@@ -137,6 +137,9 @@ FilterResult applyFilter(const QString &raw,
     const QStringList lines = raw.split('\n', Qt::KeepEmptyParts);
     int keptCount = 0;
     for (const QString &line : lines) {
+        // ANTS-1123 indie-review M2: empty lines are dropped silently
+        // — most checker outputs separate findings with blank lines and
+        // those carry no signal for the dedup/SARIF pipeline downstream.
         if (line.isEmpty()) continue;
 
         bool drop = false;
@@ -213,8 +216,17 @@ QList<Finding> parseFindings(const QString &body, const AuditCheck &check) {
         R"(^([^\s:]+):(\d+):(?:\d+:)?\s*(.*)$)");
     static const QRegularExpression reFileLine(
         R"(^([^\s:]+):(\d+):\s*(.*)$)");
+    // ANTS-1123 indie-review M1: previously the second alternation
+    // `[^\s:]+/[^\s:]+` matched any path-shaped token including bare
+    // version refs (`cargo/1.75`, `python/3.11.4`), producing bogus
+    // SARIF physicalLocation.artifactLocation.uri entries. The
+    // first-alternation shape `path.ext` already covers nested paths
+    // (the leading `[^\s:]+` allows `/`), so the bare-path branch
+    // added no real coverage and a lot of noise. Tightened to require
+    // an extension whose first character is a letter — the `1.75`
+    // shape's `.75` is rejected because `7` isn't `[A-Za-z]`.
     static const QRegularExpression reJustFile(
-        R"(^([^\s:]+\.[A-Za-z0-9_]+)$|^([^\s:]+/[^\s:]+)$)");
+        R"(^([^\s:]+\.[A-Za-z][A-Za-z0-9_]{0,15})$)");
 
     const QString source = sourceForCheck(check.id);
     const QStringList lines = body.split('\n', Qt::SkipEmptyParts);
@@ -231,17 +243,18 @@ QList<Finding> parseFindings(const QString &body, const AuditCheck &check) {
         f.source    = source;
         f.message   = line;
 
-        auto m1 = reFileLineCol.match(line);
-        auto m2 = reFileLine.match(line);
-        auto m3 = reJustFile.match(line);
-        if (m1.hasMatch()) {
+        // ANTS-1123 indie-review L1: short-circuit the regex chain.
+        // The previous form ran all three patterns up front; only one
+        // can match per line, so chaining the matches is a 2-3x cost
+        // saving on the common file:line:col path.
+        if (auto m1 = reFileLineCol.match(line); m1.hasMatch()) {
             f.file = m1.captured(1);
             f.line = m1.captured(2).toInt();
-        } else if (m2.hasMatch()) {
+        } else if (auto m2 = reFileLine.match(line); m2.hasMatch()) {
             f.file = m2.captured(1);
             f.line = m2.captured(2).toInt();
-        } else if (m3.hasMatch()) {
-            f.file = m3.captured(1).isEmpty() ? m3.captured(2) : m3.captured(1);
+        } else if (auto m3 = reJustFile.match(line); m3.hasMatch()) {
+            f.file = m3.captured(1);
         }
 
         const QString title = line.left(80);

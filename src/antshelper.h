@@ -28,6 +28,19 @@
 //   1 — handler error / runtime failure
 //   2 — usage error (unknown subcommand, malformed JSON input)
 //   3 — drift detected (handler ran fine; result is "not clean")
+//
+// Platform: Linux-only (forks `bash`, expects POSIX `/bin/bash` or
+// PATH-resolvable equivalent). Cross-platform exposure is non-goals
+// for v1 — Claude Code's primary target is Linux developer machines.
+// macOS works in practice (bash 3.2+ on PATH); Windows would need a
+// driftCheck rewrite that doesn't shell out.
+//
+// TOCTOU on the script-presence check: `QFileInfo::exists` then
+// `QProcess::start` is a check-then-use window where a malicious
+// rename in between could redirect bash to a different file. Bounded
+// by the existing UID-scoped trust model — the helper runs in the
+// user's own session, not setuid; an attacker with that UID has
+// already won. Surface noted here, not addressed.
 
 #include <QJsonObject>
 #include <QString>

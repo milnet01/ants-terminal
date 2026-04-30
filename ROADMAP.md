@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.59 (2026-04-30) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.60 (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -3868,7 +3868,7 @@ minor tag (next: pre-0.8.0).
 > contract docs + external specs; no test files, no author intent.
 > Tiered Tier 1 / Tier 2 / Tier 3 per `/indie-review` discipline.
 
-- 📋 [ANTS-1123] **Indie-review fold-in fixes — feature-code triage.**
+- ✅ [ANTS-1123] **Indie-review fold-in fixes — feature-code triage.**
 
   **Cross-cutting themes (caught across ≥2 lanes):**
   - **Duplicated logic that will diverge** — the AuditEngine
@@ -3973,6 +3973,23 @@ minor tag (next: pre-0.8.0).
   Source: indie-review-2026-04-30.
   Lanes: AuditEngine, AuditDialog, AntsHelper, RemoteControl,
   RoadmapDialog, Config.
+
+  **Tier 2 + Tier 3 shipped 2026-04-30 (post-0.7.59).** F6
+  (parseRequest non-object reject), M1 (reJustFile extension
+  tightening + bare-path branch dropped), F1 (100 ms wall-clock
+  TTL on roadmap-query cache, member added in remotecontrol.h),
+  F9 (spec § Error-response shape rewritten to flat envelope +
+  17-7 fold-in note), LOW-1 (clear corrupt geometry blob on
+  restoreGeometry false), LOW-3 (applyPreset(Custom)
+  short-circuits — preserves user sort/checkboxes on tab click).
+  Tier 3 polish: F4 docstring usage-order, F7 stdin open-failure
+  surfacing, F8 Linux-only platform note + TOCTOU note in
+  antshelper.h, L1 short-circuit regex chain in parseFindings,
+  L2 highConfidence verified live and documented as non-zombie,
+  M2 applyFilter empty-line drop comment, LOW-2 static_assert
+  on tab-order array vs Preset enum size, LOW-4 / LOW-6 guard
+  retention rationale in comments. F3 was already addressed in
+  the 0.7.59 commit. All 119 tests still pass.
 
 ### 🐛 Scrollback overwrite during streaming (user request 2026-04-30)
 

@@ -12,6 +12,50 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.60] — 2026-04-30
+
+**Theme:** ANTS-1123 indie-review Tier 2 + Tier 3 fold-in — the
+remaining hardening + polish bullets from the 0.7.59 4-agent
+independent review of the Claude Code companion features. Cache
+contract on the `roadmap-query` IPC verb honours the spec
+"≤ 100 ms" budget literally; AntsHelper rejects malformed JSON
+input shapes; AuditEngine's `parseFindings` no longer emits bogus
+SARIF locators for version-string tokens; RoadmapDialog gracefully
+handles a corrupt persisted geometry blob and preserves user
+state on Custom-tab clicks. CLAUDE.md streamlined (glrenderer
+removal acknowledged, module map extended for the new modules
+that landed in 0.7.59).
+
+### Fixed
+
+- **ANTS-1123 indie-review Tier 2 + Tier 3 fold-in.** F6:
+  `ants-helper` now rejects non-object JSON request bodies (`[]`,
+  `42`, `"foo"`) with a usage error envelope instead of silently
+  treating them as `{}`. M1: `parseFindings` `reJustFile` regex
+  tightened to require an alphabetic-led extension — bare
+  version-string locators like `cargo/1.75` no longer create
+  bogus SARIF physicalLocation entries. F1: `roadmap-query`
+  cache now honours the spec INV-10 "≤ 100 ms" wall-clock
+  bound on top of the existing mtime check, so an in-place edit
+  within the same mtime tick is still picked up. F9: ANTS-1117
+  spec § Error-response shape rewritten to the flat-envelope
+  convention (`{ok:true, bullets:[...]}`) the codebase actually
+  ships — earlier nested-on-`data` wording was the outlier.
+  LOW-1: corrupt persisted Roadmap-dialog geometry blob is now
+  cleared instead of masquerading as valid forever. LOW-3:
+  clicking the "Custom" tab on the Roadmap dialog now preserves
+  the user's checkbox tuning and sort order instead of resetting
+  to document order. LOW-2: tab-order array gained a
+  `static_assert` against the `Preset` enum size to catch future
+  enum drift at compile time. F4 / F7 / F8: helper docstring
+  usage-order corrected, stdin-open failure surfaces a usage
+  error instead of degrading to empty input, and Linux-only
+  platform note + TOCTOU note documented in `antshelper.h`. L1:
+  short-circuit regex chain in `parseFindings` (was matching
+  three regexes per line; now one). M2 / L2: comments added on
+  the `applyFilter` empty-line drop and the `highConfidence`
+  field's live cross-tool corroboration role.
+
 ## [0.7.59] — 2026-04-30
 
 **Theme:** Claude Code companion features — faceted tabs +

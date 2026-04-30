@@ -16,10 +16,10 @@ Listed only where behavior isn't obvious from the name.
   Sixel/Kitty-APC/iTerm2 images, DA/CPR/DSR response callback,
   per-line `combining` side-table for zero-cost non-combining lines,
   soft-wrap reflow on resize.
-- `terminalwidget` (QOpenGLWidget) — two render paths: QPainter+QTextLayout
-  (HarfBuzz ligatures) or `glrenderer` (glyph atlas, GLSL 3.3, instanced
-  quads). Handles SGR mouse, focus reporting, sync output, undercurl,
-  per-pixel bg alpha.
+- `terminalwidget` (QOpenGLWidget) — QPainter + QTextLayout renderer
+  with HarfBuzz ligatures. SGR mouse, focus reporting, sync output,
+  undercurl, per-pixel bg alpha. (The dormant glyph-atlas
+  `GlRenderer` was retired in 0.7.44.)
 - `ptyhandler` — forkpty + QSocketNotifier.
 - `auditdialog` — static-analysis panel. Pipeline:
   `OutputFilter → parseFindings → dedup(SHA-256) → generated-file skip →
@@ -29,12 +29,24 @@ Listed only where behavior isn't obvious from the name.
   Recognizes foreign suppression markers (NOLINT, cppcheck-suppress,
   noqa, nosec, nosemgrep, #gitleaks:allow, eslint-disable-*,
   pylint: disable) plus native `// ants-audit: disable[=rule]`.
+- `auditengine` (Qt6::Core only) — pure-function counterparts of the
+  dialog's parsing pipeline (`applyFilter`, `parseFindings`,
+  `capFindings`, `sourceForCheck`, `computeDedup`,
+  `isCatastrophicRegex`, `hardenUserRegex`). Non-GUI consumers
+  (CI runners, ants-helper v2 audit-run, future MCP) link this
+  without dragging Qt6::Widgets in. ANTS-1119.
 - `audithygiene` — splices project-local scanner config into invocations
   (`.semgrep.yml` header → `--exclude-rule`; `pyproject.toml` ruff S-codes
   → bandit `--skip B<nnn>`).
 - `featurecoverage` — in-process audit lanes via `AuditCheck::inProcessRunner`
   (no QProcess). Three: `spec_code_drift`, `changelog_test_coverage`,
   `test_health`.
+- `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
+  `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
+  `get-text`, `launch`, `tab-list`, `roadmap-query`. Trust model:
+  UID-scoped + 0700 perms + `lstat`-checked `S_ISSOCK`.
+- `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local
+  subagent for Claude Code; v1 surface is `drift-check`. ANTS-1116.
 - `luaengine` / `pluginmanager` — sandboxed Lua 5.4; plugins live in
   `~/.config/ants-terminal/plugins/`, gated by `ANTS_LUA_PLUGINS`.
 
@@ -43,111 +55,84 @@ Listed only where behavior isn't obvious from the name.
 `PTY → VtParser → TerminalGrid → TerminalWidget`
 Reverse (DA/CPR/DSR): `TerminalGrid → ResponseCallback → PTY`
 
-## Build
+## Build & test
 
 ```bash
-mkdir build && cd build && cmake .. && make -j$(nproc)
+mkdir build && cd build && cmake .. && make -j$(nproc) && ctest --output-on-failure
 ```
 
-Optional deps — each audit check probes with `which <tool>` and
-self-disables if absent. No errors on missing: `clazy`, `semgrep`,
-`osv-scanner`, `trufflehog` (default OFF — verification hits network),
-`hadolint`, `checkov`, `ast-grep`, `cppcheck`, `clang-tidy`,
-`shellcheck`, `pylint`, `bandit`, `ruff`. `clazy` needs
-`build*/compile_commands.json` (on by default via
+Optional audit deps probe with `which <tool>` and self-disable if
+absent (clazy, semgrep, osv-scanner, trufflehog, hadolint, checkov,
+ast-grep, cppcheck, clang-tidy, shellcheck, pylint, bandit, ruff).
+`clazy` needs `build*/compile_commands.json` (default-on via
 `CMAKE_EXPORT_COMPILE_COMMANDS`).
 
-## Testing
+**Cppcheck gotcha:** must pass `--library=qt` or it misparses `emit`
+as a type and flags every signal emission.
 
-```bash
-cd build && ctest --output-on-failure
-```
+## Test harnesses
 
-**`audit_rule_fixtures`** — `tests/audit_self_test.sh` matches rule
-regexes against `tests/audit_fixtures/<rule>/bad.*` (expect N hits with
-`// @expect <rule-id>` markers) and `good.*` (expect zero). Count-based,
-not line-number-based.
+- **`audit_rule_fixtures`** — `tests/audit_self_test.sh` matches rule
+  regexes against `tests/audit_fixtures/<rule>/bad.*` (expect N hits
+  with `// @expect <rule-id>` markers) and `good.*` (expect zero).
+  Count-based, not line-number-based.
+- **Feature-conformance** (`tests/features/*`, label `features`) —
+  each subdir pairs `spec.md` (human contract) with a standalone C++
+  test linking only the `src/*.cpp` objects it exercises (GUI-free).
+  To add a new one:
+  1. Write `spec.md` first (surface to user for sign-off before coding).
+  2. Write `test_<feature>.cpp` — exit 0/non-zero, print enough on
+     failure to diagnose without reproducing.
+  3. Wire in `CMakeLists.txt` via `add_executable` + `add_test` with
+     label `features;fast`.
+  4. **Verify the test fails against pre-fix code** (`git checkout
+     <sha> -- src/...`) before restoring the fix — prevents tests
+     that pass on broken code.
 
-**Feature-conformance** (`tests/features/*`, label `features`) — each
-subdir pairs `spec.md` (human contract) with a standalone C++ test
-linking only the `src/*.cpp` objects it exercises (GUI-free). To add:
-
-1. Write `spec.md` first (surface to user for sign-off before coding).
-2. Write `test_<feature>.cpp` — exit 0/non-zero, print enough on failure
-   to diagnose without reproducing.
-3. Wire in `CMakeLists.txt` via `add_executable` + `add_test` with
-   label `features;fast`.
-4. **Verify the test fails against pre-fix code** (`git checkout <sha>
-   -- src/...`) before restoring the fix — prevents tests that pass on
-   broken code.
-
-See `tests/features/README.md`.
-
-### Cppcheck gotcha
-
-Must pass `--library=qt` or cppcheck misparses `emit` as a type and
-flags every signal emission:
-
-```bash
-cppcheck --enable=all --std=c++20 --library=qt \
-  --suppress=missingIncludeSystem --suppress=unusedFunction \
-  --suppress=unknownMacro -I src src/
-```
+  See `tests/features/README.md`.
 
 ## Conventions
 
 - Signals/slots for cross-component comms.
-- Config at `~/.config/ants-terminal/config.json` with 0600 perms.
+- Config at `~/.config/ants-terminal/config.json`, mode 0600.
 - Scrollback default 50k, max 1M.
 - Theme colors set on `TerminalGrid`; ANSI palette (16+216+24) lives there.
 - QTextLayout for ligature shaping.
 
 ## Project standards
 
-Four shareable v1 standards live at `docs/standards/`:
+Four shareable v1 standards at `docs/standards/`:
 
-- [`coding.md`](docs/standards/coding.md) — code style, error
-  handling, naming, security.
-- [`documentation.md`](docs/standards/documentation.md) — README /
-  CLAUDE.md / API doc structure, screenshots, markdown style.
-- [`testing.md`](docs/standards/testing.md) — TDD policy, INV
-  numbering, spec-first authoring, coverage.
-- [`commits.md`](docs/standards/commits.md) — `<ID>: <description>`
-  subject mandate, hygiene, branching, push policy.
+- [`coding.md`](docs/standards/coding.md), [`documentation.md`](docs/standards/documentation.md),
+  [`testing.md`](docs/standards/testing.md), [`commits.md`](docs/standards/commits.md)
+- Sub-spec: [`roadmap-format.md`](docs/standards/roadmap-format.md)
+  — stable `[ANTS-NNNN]` IDs from `.roadmap-counter`, status emojis
+  (✅ 🚧 📋 💭), theme emojis, position-is-priority, `Kind:` /
+  `Source:` taxonomy, fold-in subsections.
 
-Detailed `ROADMAP.md` / `CHANGELOG.md` format spec is extracted as
-a sub-spec at [`docs/standards/roadmap-format.md`](docs/standards/roadmap-format.md)
-— stable `[ANTS-NNNN]` IDs from `.roadmap-counter`, status emojis
-(✅ 🚧 📋 💭), theme emojis, position-is-priority insertion rules,
-`Kind:` / `Source:` taxonomy, current-work signaling, fold-in
-subsections.
-
-These five files are byte-identical to the user-level
-`/start-app` template at
-`~/.claude/skills/app-workflow/templates/docs/standards/`, so
-projects scaffolded by `/start-app` and this project share one
-source of truth. The `/app-workflow` and `/close-phase` skills
-encode the same conventions for new projects; this codebase
+These five files are byte-identical to the `/start-app` template at
+`~/.claude/skills/app-workflow/templates/docs/standards/` so projects
+scaffolded by the skill share one source of truth. This codebase
 predates the skills and follows the standards directly.
 
-ADRs (architecture decision records) live at `docs/decisions/`
-in Michael Nygard format; per-feature spec drafts at
-`docs/specs/`; per-phase outcomes at `docs/journal/`.
+ADRs live at `docs/decisions/` (Michael Nygard format); per-feature
+specs at `docs/specs/`; per-phase outcomes at `docs/journal/`.
 
 ## Versioning & release files
 
-SemVer. **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single
-source of truth.** `ANTS_VERSION` macro propagates everywhere — never
-hardcode version strings in `.cpp`/`.h`.
+SemVer. **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the
+single source of truth.** `ANTS_VERSION` macro propagates everywhere
+— never hardcode version strings in `.cpp`/`.h`.
 
-Every bump touches: `CMakeLists.txt`, `CHANGELOG.md` (new dated section,
-Keep-a-Changelog), `README.md` ("Current version" line). Use the
-`/bump` skill — its `.claude/bump.json` recipe covers the packaging
-files too.
+Every bump touches `CMakeLists.txt`, `CHANGELOG.md` (new dated
+section, Keep-a-Changelog), `README.md` ("Current version" line). Use
+the `/bump` skill — its `.claude/bump.json` recipe covers the
+packaging files too.
 
-Completed `ROADMAP.md` items migrate to the matching CHANGELOG section.
-`PLUGINS.md` is the plugin-author contract — update it in the same
-commit when `luaengine` / `pluginmanager` change the `ants.*` surface.
+Completed `ROADMAP.md` items migrate to the matching CHANGELOG
+section. `PLUGINS.md` is the plugin-author contract — update it in
+the same commit when `luaengine` / `pluginmanager` change the
+`ants.*` surface.
 
 ## Key design decisions (non-obvious)
 
@@ -159,25 +144,27 @@ commit when `luaengine` / `pluginmanager` change the `ants.*` surface.
 - Lua sandbox strips dangerous globals + instruction-count timeout.
 - Session persistence via `QDataStream` + `qCompress`.
 - `opacity` config key drives per-pixel terminal-area fillRect alpha
-  only; chrome (title bar, menus, tabs, status bar) always paints
-  opaque via `WA_StyledBackground`. There is no separate whole-window
-  `setWindowOpacity()` path — prior `background_alpha` config key was
-  removed as redundant in 0.7.18.
-- Audit rule pack is JSON not YAML (`QJsonDocument` built-in; flat schema).
-  Hardcoded checks stay in C++; `audit_rules.json` only appends/overrides.
+  only; chrome paints opaque via `WA_StyledBackground`. No
+  `setWindowOpacity()` path — `background_alpha` was removed as
+  redundant in 0.7.18.
+- Audit rule pack is JSON not YAML (`QJsonDocument` built-in; flat
+  schema). Hardcoded checks stay in C++; `audit_rules.json` only
+  appends/overrides.
 - Audit uses `clazy-standalone` (Qt-aware AST) not embedded libclang.
-- `.audit_suppress` is JSONL v2 (`{key, rule, reason, timestamp}`); v1
-  plain-key lines load and convert on first write.
+- `.audit_suppress` is JSONL v2 (`{key, rule, reason, timestamp}`);
+  v1 plain-key lines load and convert on first write.
 - Audit external-tool calibration reads **existing** project configs
-  rather than adding new suppression files (rationale: 2026-04-21
-  audit-hygiene report — noise was already documented upstream).
-  `.audit_allowlist.json` exists only for custom grep rules with no
-  upstream config.
-- Audit test harness is shell-based against fixture dirs — no C++ unit
-  framework, no link-time coupling to `auditdialog`.
-- Confidence score (0-100): base = severity×15, +20 cross-tool, +10
-  external AST tool, −20 test path, adjusted by AI-triage verdicts.
-  Replaces the old binary `highConfidence` flag.
+  rather than adding new suppression files (2026-04-21 audit-hygiene
+  report). `.audit_allowlist.json` exists only for custom grep rules
+  with no upstream config.
+- Audit test harness is shell-based against fixture dirs — no C++
+  unit framework, no link-time coupling to `auditdialog`.
+- Confidence score (0-100): `severity×15`, +20 cross-tool corroboration
+  (sets the `highConfidence` flag — still live as the ★ tag in the
+  summary table and SARIF property), +10 external AST tool, −20 test
+  path, adjusted by AI-triage verdicts.
 - SARIF exports include `contextRegion` (±3 lines) + `properties.blame`
-  per sarif-tools convention. Generated files (`moc_*`, `ui_*`, `qrc_*`,
-  `*.pb.cc/.h`, `/generated/`, `_generated.*`) auto-skipped.
+  per sarif-tools convention. Generated files (`moc_*`, `ui_*`,
+  `qrc_*`, `*.pb.cc/.h`, `/generated/`, `_generated.*`) auto-skipped.
+- Roadmap-query IPC verb caches parsed bullets with mtime + 100 ms
+  wall-clock TTL (ANTS-1117 INV-10).
