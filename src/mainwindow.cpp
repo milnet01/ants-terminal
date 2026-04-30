@@ -11,6 +11,7 @@
 #include "settingsdialog.h"
 #include "sessionmanager.h"
 #include "remotecontrol.h"
+#include "dialogfocus.h"          // ANTS-1050 helper
 #include "kwinpositiontracker.h"
 #include "claudeallowlist.h"
 #include "claudebgtasks.h"
@@ -4405,6 +4406,24 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
             }
         }
     }
+    // ANTS-1050: auto-return focus to the active terminal when any
+    // dialog closes. The dialogfocus::shouldRefocusOnDialogClose
+    // helper is pure logic in src/dialogfocus.h so the feature test
+    // exercises it without constructing a real MainWindow. The
+    // deferred dispatch (singleShot(0)) lets the dialog finish its
+    // teardown before we grab focus. The null-guard on
+    // focusedTerminal() defends against early-startup dialogs
+    // (config-load failure) that close before any terminal exists.
+    if (dialogfocus::shouldRefocusOnDialogClose(watched, event)) {
+        QPointer<MainWindow> self(this);
+        QTimer::singleShot(0, this, [self]() {
+            if (!self) return;
+            if (auto *t = self->focusedTerminal()) {
+                t->setFocus(Qt::OtherFocusReason);
+            }
+        });
+    }
+
     return QMainWindow::eventFilter(watched, event);
 }
 

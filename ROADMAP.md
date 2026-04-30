@@ -2475,23 +2475,28 @@ minor tag (next: pre-0.8.0).
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
-- 📋 [ANTS-1050] **Auto-return focus to terminal when any dialog closes.** User
-  ask: "once any dialog box is closed, automatically shift focus
-  back to the terminal prompt." Today every dialog (About,
-  Preferences, Roadmap, Update-confirm, AI, SSH, Audit, Snippets,
-  …) leaves keyboard focus on the parent `MainWindow` chrome — the
-  user has to click into the terminal grid to resume typing. Fix
-  is centralised: install a `QObject::eventFilter` on
-  `qApp` that watches for `QEvent::Close` on any `QDialog` child
-  of `MainWindow`, then `m_currentTerminal->setFocus(Qt::OtherFocusReason)`
-  on the active tab's `TerminalWidget` after the close completes
-  (`QTimer::singleShot(0, ...)` so the dialog finishes its own
-  teardown first). Spec: every dialog-spawn site already routes
-  through MainWindow, so a single filter covers them all without
-  per-dialog plumbing. Lock with a feature test asserting (a) the
-  filter is installed in `MainWindow`'s ctor, (b) `Close` events
-  on a synthetic `QDialog` schedule a focus-restore call. Lanes:
-  MainWindow, TerminalWidget.
+- ✅ [ANTS-1050] **Auto-return focus to terminal when any dialog closes.**
+  Shipped 2026-04-30. The existing `qApp->installEventFilter(this)`
+  in MainWindow's ctor (line 364) was extended with a Close-event
+  branch in `MainWindow::eventFilter`: when
+  `dialogfocus::shouldRefocusOnDialogClose(watched, event)` returns
+  true, a `QTimer::singleShot(0, ...)` schedules
+  `focusedTerminal()->setFocus(Qt::OtherFocusReason)`. The helper
+  (in `src/dialogfocus.h` as a free function so the test can drive
+  it without linking the full MainWindow) returns true iff the
+  event is a `QEvent::Close`, the watched object is a
+  `QDialog`-derived widget, AND no other QDialog is still visible
+  (stacked-dialog case suppressed). Null-guarded inside the
+  deferred lambda to defend against early-startup dialogs (e.g.
+  config-load failure) that close before any terminal exists.
+  Locked by `tests/features/dialog_close_focus_return/spec.md` —
+  9 INVs across pure-helper drives (positive case, non-QDialog,
+  stacked-dialog, non-Close events, defensive nulls) plus
+  source-grep guards (qApp filter installation, deferred dispatch,
+  focusedTerminal() invocation, null-guard pattern, Close-event
+  branch). Two cold-eyes passes (3 HIGH + 3 MEDIUM + 4 LOW
+  on first pass, all folded; PASS + 3 LOW polish on second pass,
+  folded inline).
   Kind: fix.
   Source: regression.
 - 📋 [ANTS-1051] **Modal-style "behind the dialog is inert" semantics under the

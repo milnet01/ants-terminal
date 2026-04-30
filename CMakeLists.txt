@@ -2349,6 +2349,37 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # dialog_close_focus_return — ANTS-1050. Auto-return focus to the
+    # active terminal when any dialog closes. Drives the pure-logic
+    # helper dialogfocus::shouldRefocusOnDialogClose against synthetic
+    # QDialog/QWidget instances + source-greps mainwindow.{h,cpp} for
+    # the qApp filter installation, the eventFilter Close-event
+    # branch, the deferred-dispatch primitive (singleShot or
+    # invokeMethod), the focusedTerminal() resolution, and the
+    # null-guard. See spec.md.
+    add_executable(test_dialog_close_focus_return
+        tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
+    )
+    target_link_libraries(test_dialog_close_focus_return PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_dialog_close_focus_return PRIVATE src)
+    target_compile_options(test_dialog_close_focus_return PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_dialog_close_focus_return PRIVATE
+        MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        DIALOGFOCUS_H="${CMAKE_CURRENT_SOURCE_DIR}/src/dialogfocus.h"
+    )
+    add_test(NAME dialog_close_focus_return
+             COMMAND test_dialog_close_focus_return -platform offscreen)
+    set_tests_properties(dialog_close_focus_return PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # remote_control_roadmap_query — ANTS-1117 v1 (0.7.59). New IPC
     # verb that surfaces the parsed ROADMAP.md as structured JSON
     # to a Claude Code session over the existing remote-control
