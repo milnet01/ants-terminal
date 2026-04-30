@@ -2499,26 +2499,37 @@ minor tag (next: pre-0.8.0).
   folded inline).
   Kind: fix.
   Source: regression.
-- 📋 [ANTS-1051] **Modal-style "behind the dialog is inert" semantics under the
-  KDE/KWin/Wayland constraint.** User ask: "when a dialog box is
-  open, only the dialog box is interactive, anything behind the
-  dialog box should not be interactive." 0.7.50 deliberately made
-  dialogs non-modal to dodge QTBUG-79126 (frameless+translucent
-  parent dropping `setModal(true)` clicks on Wayland), so we lost
-  click-blocking on the parent window as a side-effect. Plan:
-  install a per-dialog `QEventFilter` on the parent `MainWindow`
-  that swallows `MouseButtonPress`, `MouseButtonRelease`, and
-  `KeyPress` events while the dialog is `isVisible()` — a cheaper
-  manual emulation of modality that doesn't trip the Qt/KWin bug
-  because we never call `setModal(true)`. Filter installs on
-  `QDialog::show`, removes on `QDialog::done`. Edge case:
-  dialogs that themselves spawn a child dialog (Preferences →
-  Restore-defaults confirm) need filter-stacking, which falls out
-  naturally from the per-dialog filter pattern. Lock with
-  `tests/features/dialog_pseudo_modal/` asserting the filter
-  install/uninstall pattern + the three blocked event types.
-  Lanes: MainWindow, AboutDialog, RoadmapDialog, AiDialog,
-  SshDialog, SettingsDialog, AuditDialog.
+- ✅ [ANTS-1051] **Modal-style "behind the dialog is inert" semantics under the
+  KDE/KWin/Wayland constraint.** Shipped 2026-04-30. Implemented
+  via the existing qApp eventFilter (already installed in
+  ANTS-1050) plus a new pure-logic helper
+  `dialogfocus::shouldSuppressEventForDialog(watched, event)`.
+  When ANY QDialog is visible and a `MouseButtonPress`,
+  `MouseButtonRelease`, `MouseButtonDblClick`, `Wheel`,
+  `KeyPress`, or `KeyRelease` event lands outside every visible
+  dialog's tree, the eventFilter returns `true` to swallow it.
+  `KeyRelease` paired with `KeyPress` prevents Qt modifier-state
+  desync; the strict-ancestor edge case (Qt's `isAncestorOf` is
+  strict — a widget is not its own ancestor) is handled
+  explicitly so clicks on the dialog's own frame pass through.
+  Stacked-dialog handling falls out of the iteration: with two
+  visible dialogs A and B, clicks on either A or B (or their
+  descendants) are allowed; clicks elsewhere are blocked. The
+  helper is mutually exclusive on event type with
+  `shouldRefocusOnDialogClose` (one fires on Close, the other
+  on mouse/key) so dispatch order in the eventFilter is
+  immaterial.
+  Locked by `tests/features/dialog_pseudo_modal/` — 8 INV
+  groups across pure-helper drives (positive case for all six
+  suppressed event types, dialog-itself negation,
+  child-of-dialog negation, no-dialog negation, non-mouse/key
+  negation including Close (cross-INV with ANTS-1050), stacked
+  dialogs, defensive nulls) plus source-grep guards (eventFilter
+  swallow path, shared-with-1050 contract).
+  Spec: tests/features/dialog_pseudo_modal/spec.md. Two-pass
+  cold-eyes review (3 HIGH + 3 MEDIUM + 4 LOW on first pass,
+  all folded; PASS + 1 MEDIUM on second pass, folded inline).
+  Lanes: MainWindow, dialogfocus.
   Kind: fix.
   Source: regression.
 - 📋 [ANTS-1052] **HIGH — Background-tasks status-bar button regressed:

@@ -2380,6 +2380,36 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # dialog_pseudo_modal — ANTS-1051. Pseudo-modal blocking via
+    # the qApp eventFilter — mouse/key/wheel events landing outside
+    # any visible QDialog get swallowed. Drives the pure-logic
+    # helper dialogfocus::shouldSuppressEventForDialog over all
+    # six suppressed event types + non-suppressed types + stacked
+    # dialogs + the dialog-itself edge case + defensive nulls.
+    # Source-greps mainwindow.cpp for the eventFilter wiring and
+    # the shared-with-1050 contract. See spec.md.
+    add_executable(test_dialog_pseudo_modal
+        tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp
+    )
+    target_link_libraries(test_dialog_pseudo_modal PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_dialog_pseudo_modal PRIVATE src)
+    target_compile_options(test_dialog_pseudo_modal PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_dialog_pseudo_modal PRIVATE
+        DIALOGFOCUS_H="${CMAKE_CURRENT_SOURCE_DIR}/src/dialogfocus.h"
+        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME dialog_pseudo_modal
+             COMMAND test_dialog_pseudo_modal -platform offscreen)
+    set_tests_properties(dialog_pseudo_modal PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # remote_control_roadmap_query — ANTS-1117 v1 (0.7.59). New IPC
     # verb that surfaces the parsed ROADMAP.md as structured JSON
     # to a Claude Code session over the existing remote-control

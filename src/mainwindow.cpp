@@ -4406,6 +4406,20 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
             }
         }
     }
+    // ANTS-1051: pseudo-modal blocking. When any QDialog is visible,
+    // mouse/key/wheel events that land outside its tree get
+    // suppressed — emulating the click-blocking semantics of
+    // setModal(true) without tripping QTBUG-79126 on
+    // KDE+KWin+Qt6.11+frameless. Pure-logic helper in
+    // src/dialogfocus.h so the feature test drives it without a
+    // real MainWindow. Returns true to swallow the event; the
+    // helper's mutual-exclusivity on event type with
+    // shouldRefocusOnDialogClose (one fires on Close, the other
+    // on mouse/key) means dispatch order here is immaterial.
+    if (dialogfocus::shouldSuppressEventForDialog(watched, event)) {
+        return true;  // swallow — Qt convention: true = consumed.
+    }
+
     // ANTS-1050: auto-return focus to the active terminal when any
     // dialog closes. The dialogfocus::shouldRefocusOnDialogClose
     // helper is pure logic in src/dialogfocus.h so the feature test
