@@ -4503,13 +4503,16 @@ a modern terminal" release.
   allocate row buffers; intern empty rows to a single shared sentinel.
   Alacritty's own data: 191 MB → 34 MB (20k-line scrollback).
   Kind: refactor.
+  Source: planned.
 - 📋 [ANTS-1061] **Async image decoding**. Hand sixel/Kitty/iTerm2 payloads to
   `QtConcurrent::run`; render a placeholder cell until `QImage`
   future resolves. Big sixel frames stop blocking the prompt.
   Kind: refactor.
+  Source: planned.
 - 💭 [ANTS-1062] **BTree scrollback** — O(log n) scroll-to-line instead of O(n)
   for jump-to-timestamp features.
   Kind: refactor.
+  Source: planned.
 
 ### 🎨 Features — multiplexing
 
@@ -4570,6 +4573,7 @@ a modern terminal" release.
   - 💭 [ANTS-1064] **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
     is set. Shipped after the command surface is complete.
   Kind: implement.
+  Source: planned.
 - 📋 [ANTS-1065] **Headless mux server with codec RPC**. WezTerm's architecture
   ([DeepWiki](https://deepwiki.com/wezterm/wezterm/2.2-multiplexer-architecture)):
   `ants-terminal --server` runs without a GUI and accepts attachments
@@ -4593,9 +4597,11 @@ a modern terminal" release.
   `docker ps`, opens a tab via `docker exec -it`; `KubeDomain` lists
   pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.
   Kind: implement.
+  Source: planned.
 - 💭 [ANTS-1067] **Persistent workspaces**: save/restore entire tab+split layout +
   scrollback to disk; one-click "resume yesterday's dev session."
   Kind: implement.
+  Source: planned.
 
 ### 🎨 Features — inline ghost-text completion
 
@@ -4653,12 +4659,14 @@ zero-click, purely suggestive. Proposed in two scopes:
   (`ghost_completion_enabled`, `ghost_completion_source`). Defer to
   beyond 1.0 unless users ask.
   Kind: implement.
+  Source: planned.
 - 💭 [ANTS-1069] **Frequency-ranked completion source.** Either form benefits
   from "show the most-used match first, not just the alphabetically-
   first match." The Command Palette could track selection counts;
   the terminal form can lean on shell history ordering. Worth a
   mention but not a blocker for the initial implementation.
   Kind: implement.
+  Source: planned.
 
 ### 📦 Distribution readiness (H5–H7, H13)
 
@@ -4772,6 +4780,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   [Distribution-adoption overview](#distribution-adoption-overview)
   from "H5 + H6 unblock this" to "unblocked".
   Kind: chore.
+  Source: planned.
 - 📋 [ANTS-1071] **H7 — project website + docs site**. Static GitHub Pages site
   at `ants-terminal.github.io` (or equivalent) with: screenshots,
   installation instructions (once H5/H6 land), plugin authoring
@@ -4780,6 +4789,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Content-as-code (markdown → static site generator) so the docs
   ship from the same repo.
   Kind: chore.
+  Source: planned.
 - 📋 [ANTS-1072] **H13 — distro-outreach launch**. Once H1–H7 are shipped:
   file **intent-to-package** bugs / RFPs in Debian / Fedora /
   NixOS / openSUSE / Arch (as applicable); write a
@@ -4789,6 +4799,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   first-class shell-integration blocks**. Measure via watching
   the GitHub stars + install metrics, not vanity.
   Kind: chore.
+  Source: planned.
 
 ### 🔌 Plugins — marketplace
 
@@ -4796,13 +4807,16 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   `init.lua`, `manifest.json`, and optional assets. Loader verifies
   against a project-maintained keyring + (optionally) user-added keys.
   Kind: implement.
+  Source: planned.
 - 📋 [ANTS-1074] **Public marketplace index**: static JSON hosted on GitHub Pages
   listing name, version, author, signature-status, permission summary.
   Settings → Plugins → Browse lists them with an install button.
   Kind: implement.
+  Source: planned.
 - 📋 [ANTS-1075] **Plugin dependency resolution**: `manifest.json` `requires: [...]`
   field; install flow resolves transitively.
   Kind: implement.
+  Source: planned.
 
 ### 🖥 Platform
 
@@ -4825,12 +4839,14 @@ here.)
   a "Linux terminal project", it's a "Linux-only terminal" —
   distinction matters for cross-platform press coverage.
   Kind: implement.
+  Source: planned.
 - 💭 [ANTS-1077] **H12 — Windows port**. ConPTY via `CreatePseudoConsole`
   replaces PTY; `xcbpositiontracker` becomes a no-op. Qt6's
   Windows platform plugin handles the rest. Sign + ship MSI /
   MSIX. Moved to Beyond 1.0 in practice — gating on macOS port
   completing first.
   Kind: implement.
+  Source: planned.
 
 ### 🖥 Accessibility
 
@@ -4843,10 +4859,12 @@ here.)
   Without this, Orca reads nothing in the terminal. Ubuntu /
   Fedora accessibility review gates on this.
   Kind: implement.
+  Source: planned.
 - 💭 [ANTS-1079] **Screen-magnifier-friendly rendering**: honor
   `QGuiApplication::styleHints()->mousePressAndHoldInterval()` and
   provide high-contrast theme variants.
   Kind: implement.
+  Source: planned.
 
 ### 🌍 Internationalization
 
@@ -4856,9 +4874,11 @@ here.)
   English → Spanish, French, German as a proof of concept. Some
   distros gate review on this.
   Kind: implement.
+  Source: planned.
 - 💭 [ANTS-1081] **Right-to-left text support** — bidirectional text in the grid.
   Non-trivial; defer until demand is concrete.
   Kind: implement.
+  Source: planned.
 
 ### 📦 Distribution readiness (H11)
 
@@ -4870,6 +4890,7 @@ here.)
   NixOS) a machine-readable dep inventory without having to scrape
   our build system.
   Kind: chore.
+  Source: planned.
 
 ### 🧰 Dev experience
 
@@ -4877,6 +4898,7 @@ here.)
   runs a plugin against a mock PTY with scripted events. Enables
   unit-testing plugins.
   Kind: implement.
+  Source: planned.
 
 ---
 
@@ -4887,6 +4909,7 @@ here.)
 - 📋 [ANTS-1084] **`ants.*` API stability pledge**: the 1.0 surface won't break in
   `1.x` minor releases. Breaking changes queue for 2.0.
   Kind: implement.
+  Source: planned.
 - 📋 [ANTS-1085] **Performance regression suite**: CI benchmarks (grid throughput,
   scrollback allocation, paint-loop time) with commit-level deltas.
   Kind: implement.
@@ -4894,21 +4917,25 @@ here.)
 - 📋 [ANTS-1086] **Documentation pass**: every user-facing feature has at least one
   screenshot + one animated demo. Rolls up into H7 (docs site).
   Kind: implement.
+  Source: planned.
 - 📋 [ANTS-1087] **External security audit**. `SECURITY.md` disclosure policy
   itself ships early under H1 (0.7.0); the 1.0 item is the
   **external** audit — budget a third-party review of the VT
   parser, plugin sandbox, and OSC-8/OSC-52 surfaces before
   stamping 1.0.
   Kind: implement.
+  Source: planned.
 - 📋 [ANTS-1088] **H14 — bus factor ≥ 2 + governance doc**. Second maintainer
   with commit rights; a short `GOVERNANCE.md` describing
   decision-making, release process, conflict resolution. Distros
   treat single-maintainer projects as a risk — a documented
   second maintainer clears the bar.
   Kind: implement.
+  Source: planned.
 - 📋 [ANTS-1089] **Plugin migration guide** for any manifest/API changes between
   0.9 and 1.0.
   Kind: implement.
+  Source: planned.
 
 ---
 
@@ -4925,10 +4952,12 @@ contributors don't duplicate research.
   sandbox than Lua's removed-globals model; language-agnostic. Ghostty
   is experimenting with a WASM-targeting VT library today.
   Kind: implement.
+  Source: planned.
 - 💭 [ANTS-1091] **Inter-plugin pub/sub**: `ants.bus.publish(topic, data)` /
   `ants.bus.subscribe(topic, handler)`. Needs careful permission
   modeling — a "read_bus: <topic>" capability.
   Kind: implement.
+  Source: planned.
 
 ### 🎨 Features
 
@@ -4936,13 +4965,16 @@ contributors don't duplicate research.
   accepts natural language, returns a shell command + explanation.
   Uses the existing OpenAI-compatible config; opt-in per invocation.
   Kind: implement.
+  Source: planned.
 - 💭 [ANTS-1093] **Collaborative sessions**: real-time shared terminal with a
   second user via an end-to-end encrypted relay. The "share
   terminal with a colleague" feature tmate popularized.
   Kind: implement.
+  Source: planned.
 - 💭 [ANTS-1094] **Workspace sync**: mirror `config.json`, plugins, and SSH
   bookmarks across devices via a user-configurable git remote.
   Kind: implement.
+  Source: planned.
 
 ### 🔒 Security
 
@@ -4952,6 +4984,7 @@ contributors don't duplicate research.
   enclave memory until it's shown on-screen. Heavy lift; benefit
   concentrated in a small user set.
   Kind: fix.
+  Source: planned.
 
 ### ⚡ Performance
 
@@ -4960,6 +4993,7 @@ contributors don't duplicate research.
   shaping step to a compute shader; keep the atlas path we already
   have.
   Kind: refactor.
+  Source: planned.
 
 ### 📦 Distribution & community (H15–H16)
 
@@ -4970,6 +5004,7 @@ contributors don't duplicate research.
   a hundred issues. Submit in the CFP window for whatever
   conference the project is scope-ready for at the time.
   Kind: chore.
+  Source: planned.
 - 💭 [ANTS-1098] **H16 — sponsorship / funding model**. GitHub Sponsors + Open
   Collective. Even small recurring funding signals project
   longevity to distro security teams (they care about "who pays
@@ -4977,6 +5012,7 @@ contributors don't duplicate research.
   plugin-author ($20/mo with logo on docs site), corporate
   ($250/mo with logo + priority issue triage).
   Kind: chore.
+  Source: planned.
 
 ---
 
