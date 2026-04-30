@@ -142,8 +142,9 @@ A pull request has just been opened against milnet01/ants-terminal. The PR
 context (title, body, base/head SHAs) is available via `gh pr view ${PR_NUMBER}
 --json title,body,baseRefName,headRefName,additions,deletions,files`.
 
-Step 1 — read STANDARDS.md, CONTRIBUTING.md, and CLAUDE.md. These are the
-project's gold-standard contracts; every review claim should cite one.
+Step 1 — read `docs/standards/` (coding/documentation/testing/commits),
+CONTRIBUTING.md, and CLAUDE.md. These are the project's gold-standard
+contracts; every review claim should cite one.
 
 Step 2 — run the equivalent of the in-tree /security-review skill:
 - Invoke `gh pr diff ${PR_NUMBER}` to get the patch.
@@ -162,8 +163,8 @@ Step 3 — leave inline comments via `gh pr review --comment` ONLY where there
 is a concrete, file:line-anchored finding. Each comment must:
 - Quote the offending line.
 - State the issue in one sentence.
-- Cite the standard or precedent (STANDARDS.md §X, audit rule ID, prior
-  incident commit SHA).
+- Cite the standard or precedent (e.g. `docs/standards/coding.md`
+  §X, audit rule ID, prior incident commit SHA).
 - Suggest a concrete fix (or say "hand to maintainer" if scope is unclear).
 
 Step 4 — leave a single summary comment that lists what categories you

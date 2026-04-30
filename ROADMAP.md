@@ -2574,7 +2574,7 @@ minor tag (next: pre-0.8.0).
   ClaudeBgTasks, MainWindow, TerminalTab.
   Kind: fix.
   Source: regression.
-- 🚧 [ANTS-1054] **MEDIUM — Mystery flashing dialog in centre of terminal.**
+- ✅ [ANTS-1054] **MEDIUM — Mystery flashing dialog in centre of terminal.**
   User report: "now and then there is a small dialog box that
   flashes in the centre of the terminal. It is too quick to see
   what it is." 2026-04-30 update — user shared a screenshot. The
@@ -2597,8 +2597,14 @@ minor tag (next: pre-0.8.0).
   toggle) for a session, waits for a flash, reads the captured
   line. If the trace fires → log identifies the spawn site →
   fix. If the trace stays silent → confirms the popup is from a
-  child process, not Ants. Lanes:
-  MainWindow plus whichever dialog-spawn site is found.
+  child process, not Ants. **Closed 2026-04-30 (user
+  confirmation):** another Claude Code session resolved the
+  flashing dialogs by adding a YML configuration file (the
+  exact file is local to the user's environment; Ants source
+  has no related change). The trace tooling stays in place for
+  future incidents.
+  Lanes: MainWindow plus whichever dialog-spawn site was
+  identified.
   Kind: fix.
   Source: regression.
 
@@ -2649,18 +2655,19 @@ minor tag (next: pre-0.8.0).
   ANTS-1104.) Lanes: docs, ROADMAP, README, CHANGELOG.
   Kind: implement.
   Source: user-2026-04-28.
-- 📋 [ANTS-1105] **Retire deprecated top-level `STANDARDS.md` and
-  `RULES.md`.** Both predate the `docs/standards/` bundle
-  (created 2026-04-13 / 2026-04-14) and now duplicate content
-  that lives canonically in `docs/standards/coding.md` and
-  `docs/standards/commits.md`. Per documentation standard § 1.5
-  ("one source of truth per fact") they should be removed; the
-  README's project-structure tree was updated under ANTS-1104 to
-  flag them as deprecated, but the files still ship. Removal is
-  a destructive action that warrants user confirmation (no
-  automatic deletion). Plan: confirm no external link to either
-  file (grep the project + GitHub issues), then `git rm`. Kind:
-  doc-fix. Source: debt-sweep-2026-04-30. Lanes: docs.
+- ✅ [ANTS-1105] **Retire deprecated top-level `STANDARDS.md` and
+  `RULES.md`.** Shipped 2026-04-30 (user authorised the destructive
+  removal). `git rm` of both files; live references updated in
+  `CONTRIBUTING.md`, `PLUGINS.md`, `README.md` (project-structure
+  tree + Claude review handoff prose), `docs/RECOMMENDED_ROUTINES.md`,
+  and `src/auditdialog.cpp` (the "Review with Claude" header now
+  prepends the four `docs/standards/` files instead of the retired
+  STANDARDS.md / RULES.md). The audit dialog's
+  `appendDocIfPresent` no-ops on missing files so the runtime is
+  fail-safe even where references slipped past this commit.
+  CHANGELOG references to the retired files are historical and
+  stay unchanged. Kind: doc-fix.
+  Source: debt-sweep-2026-04-30. Lanes: docs, src/auditdialog.
 - ✅ [ANTS-1104] **Sync `docs/standards/` to the App-Build suite
   template.** Shipped 2026-04-30. The four-doc bundle was
   forked into the user-level template at

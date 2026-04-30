@@ -353,7 +353,7 @@ Highlights:
   inline snippet reveal, and verdict badges (no external assets).
 - **Claude review handoff** — "Review with Claude" emits a plain-text
   report with snippets and confidence/blame/verdict tags, plus
-  `CLAUDE.md`, `STANDARDS.md`, `RULES.md`, and `CONTRIBUTING.md`
+  `CLAUDE.md`, `docs/standards/coding.md`, and `CONTRIBUTING.md`
   prepended, then signals the main window to open a Claude Code
   session on the report.
 
@@ -969,8 +969,6 @@ ants-terminal/
 ├── ROADMAP.md                  # Planned work (ROADMAP_FORMAT v1)
 ├── CHANGELOG.md                # Keep-a-Changelog history
 ├── PLUGINS.md                  # Plugin author contract
-├── STANDARDS.md                # Deprecated — see docs/standards/coding.md
-├── RULES.md                    # Deprecated — see docs/standards/
 ├── launch.sh                   # Self-locating launcher wrapper
 ├── ants-terminal.desktop.in    # Desktop entry template (@INSTALL_DIR@)
 ├── assets/                     # App icons (16-256px PNGs)

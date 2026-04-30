@@ -1,9 +1,11 @@
 # Contributing to Ants Terminal
 
 Thanks for your interest in contributing! This document is a short,
-actionable guide derived from [STANDARDS.md](STANDARDS.md) — the authoritative
-source for style, architecture, and invariants. Start here, follow the links
-for depth.
+actionable guide derived from [`docs/standards/`](docs/standards/) —
+the authoritative source for style, architecture, and invariants
+([coding](docs/standards/coding.md), [documentation](docs/standards/documentation.md),
+[testing](docs/standards/testing.md), [commits](docs/standards/commits.md)).
+Start here, follow the links for depth.
 
 By participating in this project you agree to abide by the
 [Code of Conduct](CODE_OF_CONDUCT.md) (Contributor Covenant 2.1).
@@ -37,7 +39,8 @@ tests/             ctest drivers + fixtures
   audit_self_test.sh       regression harness for audit rule regexes
   audit_fixtures/<id>/     bad.*/good.* fixtures per rule
 .github/workflows/ CI: build + ctest + cppcheck + ASan/UBSan smoke test
-STANDARDS.md       coding invariants (you are here's source of truth)
+docs/standards/    coding / documentation / testing / commits invariants
+                   (you are here's source of truth)
 PLUGINS.md         plugin API contract (update when ants.* changes)
 ROADMAP.md         forward-looking plan; move items to CHANGELOG on ship
 CHANGELOG.md       Keep-a-Changelog format, dated per-version sections
@@ -145,9 +148,10 @@ where `<ID>` is the stable ANTS-NNNN per `docs/standards/roadmap-format.md`
 - Signals/slots for cross-component comms — never direct sibling calls.
 - **No workarounds unless no viable solution exists.** Diagnose root cause
   first. Document the constraint if a workaround is genuinely the only
-  option (see `STANDARDS.md` §Error Handling).
+  option (see [`docs/standards/coding.md`](docs/standards/coding.md)
+  § Error handling).
 
-See `STANDARDS.md` for the full list.
+See [`docs/standards/coding.md`](docs/standards/coding.md) for the full list.
 
 ## What not to send
 

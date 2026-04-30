@@ -5415,10 +5415,12 @@ QString AuditDialog::plainTextResults() const {
         header += doc;
         header += "\n\n";
     };
-    appendDocIfPresent("CLAUDE.md",      "Project conventions");
-    appendDocIfPresent("STANDARDS.md",   "Project coding standards");
-    appendDocIfPresent("RULES.md",       "Project rules");
-    appendDocIfPresent("CONTRIBUTING.md","Contributing guidelines");
+    appendDocIfPresent("CLAUDE.md",                       "Project conventions");
+    appendDocIfPresent("docs/standards/coding.md",        "Coding standards");
+    appendDocIfPresent("docs/standards/testing.md",       "Testing standards");
+    appendDocIfPresent("docs/standards/commits.md",       "Commit standards");
+    appendDocIfPresent("docs/standards/documentation.md", "Documentation standards");
+    appendDocIfPresent("CONTRIBUTING.md",                 "Contributing guidelines");
 
     // 5-phase workflow scaffold for the downstream Claude session. Gives the
     // consumer a verification + approval gate rather than letting it plunge

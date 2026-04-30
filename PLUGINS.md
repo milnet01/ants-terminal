@@ -3,8 +3,8 @@
 > **Audience**: plugin authors writing against `ants-terminal` **v0.7.58+**
 > (Lua 5.4 runtime). The plugin surface hasn't grown since 0.6.9 — per-event
 > "0.6.9" markers below remain accurate. For internal plugin-system
-> architecture notes aimed at Ants-Terminal contributors, see `STANDARDS.md`
-> → "Plugin System Standards".
+> architecture notes aimed at Ants-Terminal contributors, see
+> [`docs/standards/coding.md`](docs/standards/coding.md) § Plugin system.
 
 Plugins extend the terminal through a sandboxed Lua 5.4 runtime. They can
 react to terminal events (line of output, keypress, tab created, OSC 133
