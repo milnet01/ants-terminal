@@ -3659,10 +3659,70 @@ minor tag (next: pre-0.8.0).
 > sub-bullets group by theme for easier tracking. **Top-of-queue per
 > user direction 2026-04-30: docs come clean before code.**
 
-- 📋 [ANTS-1121] **HIGH — Documentation drift fold-in.**
+- ✅ [ANTS-1121] **HIGH — Documentation drift fold-in.**
+  Closed 2026-04-30 after a per-theme audit reconciled current
+  state against the original 9-theme finding list. Most fixes
+  had landed in flight during the 0.7.50–0.7.59 cycle; the
+  reconciliation pass below confirms each.
   Source: doc-cold-eyes-2026-04-30. Kind: doc-fix.
   Lanes: docs (root + standards + decisions + specs), packaging,
   README, CHANGELOG.
+
+  **Resolution by theme:**
+  - **T1 (GPU renderer cleanup in STANDARDS.md / RULES.md)** —
+    deferred to ANTS-1105, which retires both files entirely.
+    Targeted edits to remove only the GPU references would be
+    wasted work given the planned full removal.
+  - **T2 (version pinning drift)** — PLUGINS.md updated to
+    v0.7.58+ stamp with explicit "the plugin surface hasn't
+    grown since 0.6.9 — per-event markers below remain
+    accurate" disclaimer; SECURITY.md "Last updated for"
+    refreshed to 0.7.59; CONTRIBUTING.md example commit
+    subject uses 0.7.59:; packaging/README.md has no stale
+    0.6.x references; README.md install URL up to date.
+  - **T3 (archival docs at root)** — DISCOVERY.md, AUDIT.md,
+    FIXPLAN.md, project_audit_updates.md all removed from
+    repo root.
+  - **T4 (spec self-fixes from cold-eyes pass 2)** —
+    ANTS-1116.md drift-detection contract clarified
+    (INV-3 + INV-3a + INV-8 disambiguate clean/drift/handler-
+    error via exit codes 0/3/1); raw + exit_code now pinned
+    by INV-3a; ANTS-1117.md notes parseBullets is "to be
+    extracted as part of this bullet's implementation" and
+    INV-6 cites ClaudeTabTracker::shellState (not
+    ClaudeTabIndicator::isActive); ADR-0002 line 131 carries
+    the concrete pointer.
+  - **T5 (ROADMAP section-target drift)** — `## 0.7.0`,
+    `## 0.7.7`, `## 0.7.12`, `## 0.7.50–0.7.59` headings all
+    say "shipped 2026-04-XX" instead of "(target: 2026-XX)".
+  - **T6 (Source: backfill tail)** — 44 bullets still missing
+    Source field. Deferred to ANTS-1129 below as a dedicated
+    backfill task — too large to fold inline.
+  - **T7 (ANTS-1054 status)** — body now reads "Steps (c) and
+    (d) still pending" reflecting the 0.7.58 step-(b) ship.
+  - **T8 (audit-report archive hygiene)** —
+    AUTOMATED_AUDIT_REPORT.md removed; AUDIT_TRIAGE_2026-04-16.md
+    carries an explicit "historical snapshot, not current
+    state" header.
+  - **T9 (minor placeholder/tone fixes)** — legend wording
+    updated ("active commit work — usually direct-to-main");
+    the L3812 ANTS-1118+ placeholder removed; only the
+    ANTS-NNNN+ form remains; EXPERIMENTAL.md has no stale
+    0.6.x markers.
+
+- 📋 [ANTS-1129] **`Source:` field backfill across ROADMAP.md.**
+  44 of 117 ANTS bullets are missing the `Source:` field per
+  `docs/standards/roadmap-format.md § 3.5.3`. Sample line
+  numbers: 401, 437, 2148-2163, 3975, 4050-4060, 4123,
+  4141-4205, 4300-4352, 4370-4423. ANTS-1106 was the in-flight
+  backfill for `Kind:` (mostly done); ANTS-1129 closes the
+  parallel `Source:` tail. Mechanical: read each bullet's
+  context, infer the most plausible source (`planned`, `user`,
+  `audit`, `indie-review`, `debt-sweep`, `regression`,
+  `external-CVE`, etc.), append the `Source:` line. Best done
+  in one focused pass rather than ad-hoc — bundled to keep the
+  cognitive load low. Kind: doc-fix.
+  Source: doc-cold-eyes-2026-04-30. Lanes: ROADMAP.
 
   **Theme T1 — GPU-renderer removal not propagated.** `glrenderer.cpp`
   was retired in 0.7.44 (CHANGELOG line 1001). README.md:50 reflects
