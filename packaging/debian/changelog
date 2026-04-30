@@ -1,3 +1,43 @@
+ants-terminal (0.7.56-1) unstable; urgency=medium
+
+  * App-Build suite alignment. Confirm-on-close for tabs running
+    non-shell processes, four-doc shareable standards bundle synced
+    to the user-level /start-app template, CI-blocking metainfo
+    escape fix, and the strategic roadmap for incorporating the
+    App-Build workflow natively into Ants Terminal so users can
+    run as much of it as possible without spending Claude tokens.
+  * Confirm-on-close for tabs running non-shell processes
+    (vim, top, claude, tail -f, ...). Wayland-correct non-modal
+    dialog names the process; "Don't ask again" checkbox flips
+    Config::confirmCloseWithProcesses to false. Default on.
+    Linux-only — probe walks /proc/<pid>/task/<pid>/children
+    transitively against an 11-shell allowlist.
+  * Reopen-closed-tab via Ctrl+Shift+Z surfaced as already-shipped
+    during the confirm-on-close pass.
+  * Four-document shareable standards bundle at docs/standards/
+    (coding · documentation · testing · commits) plus an index
+    README, with the detailed ROADMAP/CHANGELOG format spec
+    carried as a sub-spec at docs/standards/roadmap-format.md.
+    Commits standard mandates <ID>: <description> subjects;
+    testing standard mandates TDD by default.
+  * ADR scaffolding at docs/decisions/ (Michael Nygard format)
+    plus docs/specs/ and docs/journal/ placeholder folders.
+  * docs/standards/ now byte-identical to the user-level
+    /start-app template at ~/.claude/skills/app-workflow/
+    templates/docs/standards/.
+  * Roadmap for incorporating the App-Build workflow natively
+    into Ants Terminal (ANTS-1108) — Workflow panel running
+    the mechanical 70 % of the per-phase 9-step loop in C++
+    with zero LLM round-trips.
+  * Roadmap-dialog redesign refined — tabs now Full / History
+    / Current / Next / Far Future, search field above the TOC,
+    default size bumped with persisted geometry.
+  * Unescaped & in the 0.7.55 metainfo release body broke
+    appstreamcli validate and turned CI red on every commit
+    since the release. Now &amp;.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 30 Apr 2026 10:00:00 +0200
+
 ants-terminal (0.7.55-1) unstable; urgency=medium
 
   * VT parser correctness + audit-dialog hardening from the

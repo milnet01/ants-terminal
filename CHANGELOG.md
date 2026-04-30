@@ -12,6 +12,15 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.56] — 2026-04-30
+
+**Theme:** App-Build suite alignment — confirm-on-close for tabs
+running non-shell processes, four-doc shareable standards bundle
+synced to the user-level `/start-app` template, CI-blocking
+metainfo escape fix, and the strategic roadmap for incorporating
+the App-Build workflow natively into Ants Terminal so users can
+run as much of it as possible without spending Claude tokens.
+
 ### Added
 
 - Confirm-on-close for tabs running non-shell processes
@@ -33,7 +42,6 @@ for security-relevant changes.
   implementation pass. Existing m_closedTabs deque (cap 10)
   + File → Undo Close Tab now dual-references the original
   closeTab refactor (push lives in performTabClose).
-
 - Four-document shareable standards bundle at `docs/standards/`
   (coding · documentation · testing · commits) plus an index
   README, with the detailed ROADMAP and CHANGELOG format spec
@@ -46,6 +54,21 @@ for security-relevant changes.
   format) plus per-folder README.
 - `docs/specs/` and `docs/journal/` placeholder folders for
   per-feature spec drafts and per-phase outcomes.
+- New `Project standards` section in `CLAUDE.md` pointing at
+  the five standards files and the `/start-app`,
+  `/app-workflow`, `/close-phase` skills (ANTS-1104).
+- Roadmap for incorporating the App-Build workflow natively
+  into Ants Terminal (ANTS-1108) so the mechanical 70 % of
+  the per-phase 9-step loop (ID allocation, `/audit`, ctest,
+  drift checks, `/debt-sweep`, `/bump`, `/release`, fold-in
+  templating, atomic CHANGELOG/ROADMAP edits) runs in C++
+  with zero LLM round-trips. Three supporting roadmap items:
+  ANTS-1106 (mandatory `Kind:` + viewer faceted
+  categorisation), ANTS-1107 (adopt App-Build documentation
+  folder structure: glossary.md, known-issues.md,
+  audit-allowlist.md, ideas.md, design.md,
+  `.claude/workflow.md`), ANTS-1109 (status-bar git-branch
+  chip restyle to match the Public/Private repo pill).
 
 ### Changed
 
@@ -60,15 +83,24 @@ for security-relevant changes.
   with per-language idiom examples and push-policy details
   delegated to the global `~/.claude/CLAUDE.md` rather than
   duplicated in the project standards (ANTS-1104).
+- README.md project-structure tree adds `docs/standards/`,
+  `docs/decisions/`, `docs/specs/`, `docs/journal/`; flags
+  `STANDARDS.md` / `RULES.md` as deprecated (retire under
+  ANTS-1105 with explicit user confirmation).
+- ROADMAP dialog redesign refined per user feedback —
+  tabs now Full / History / Current / Next / Far Future
+  (rename of All/Completed/Outstanding), search field above
+  the TOC, default size bumped to ~1200x800 with persisted
+  geometry (ANTS-1100).
 
 ### Fixed
 
-- CHANGELOG.md was missing a top-level `[Unreleased]` block that
-  the Roadmap dialog reads for current-work signaling
+- CHANGELOG.md was missing a top-level `[Unreleased]` block
+  that the Roadmap dialog reads for current-work signaling
   (roadmap-format.md § 4.1 mandates one always, even empty).
 - Unescaped `&` in the 0.7.55 metainfo `<release>` body broke
-  `appstreamcli validate` and turned CI red on every commit since
-  the release. Now `&amp;`. (ANTS-1099)
+  `appstreamcli validate` and turned CI red on every commit
+  since the release. Now `&amp;`. (ANTS-1099)
 
 ## [0.7.55] — 2026-04-28
 

@@ -103,6 +103,30 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.56" date="2026-04-30">
+      <description>
+        <p>App-Build suite alignment — confirm-on-close for tabs running non-shell processes, four-doc shareable standards bundle synced to the user-level /start-app template, CI-blocking metainfo escape fix, and the strategic roadmap for incorporating the App-Build workflow natively into Ants Terminal so users can run as much of it as possible without spending Claude tokens.</p>
+        <p>Added:</p>
+        <ul>
+          <li>Confirm-on-close for tabs running non-shell processes (vim, top, claude, tail -f, ...). Wayland-correct non-modal dialog names the process; "Don't ask again" checkbox flips Config::confirmCloseWithProcesses to false. Default on. Probe walks /proc/&lt;pid&gt;/task/&lt;pid&gt;/children transitively (cap 256 visited PIDs) against an 11-shell allowlist (bash/zsh/fish/sh/ksh/dash/ash/tcsh/csh/mksh/yash). Locked by 11 invariants in tests/features/confirm_close_with_processes/.</li>
+          <li>Reopen-closed-tab via Ctrl+Shift+Z — surfaced as already-shipped during the confirm-on-close pass; m_closedTabs deque (cap 10) plus File → Undo Close Tab.</li>
+          <li>Four-document shareable standards bundle at docs/standards/ (coding · documentation · testing · commits) plus an index README, with the detailed ROADMAP/CHANGELOG format spec carried as a sub-spec at docs/standards/roadmap-format.md. Commits standard mandates &lt;ID&gt;: &lt;description&gt; subjects; testing standard mandates TDD by default.</li>
+          <li>ADR scaffolding at docs/decisions/ (Michael Nygard format) plus docs/specs/ and docs/journal/ placeholder folders.</li>
+          <li>Roadmap for incorporating the App-Build workflow natively into Ants Terminal (ANTS-1108) — Workflow panel that runs the mechanical 70 % of the per-phase 9-step loop in C++ (ID allocation, /audit, ctest, drift checks, /debt-sweep, /bump, /release, fold-in templating, atomic CHANGELOG/ROADMAP edits) with zero LLM round-trips.</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>ROADMAP masthead now points to docs/standards/roadmap-format.md for the format spec; docs/standards/ is now byte-identical to the user-level /start-app template, with per-language idiom examples and push-policy details delegated to the global ~/.claude/CLAUDE.md.</li>
+          <li>README.md project-structure tree adds docs/standards/, docs/decisions/, docs/specs/, docs/journal/; flags STANDARDS.md / RULES.md as deprecated (retire under ANTS-1105 with explicit user confirmation).</li>
+          <li>Roadmap-dialog redesign refined per user feedback — tabs now Full / History / Current / Next / Far Future, search field above the TOC, default size bumped to ~1200x800 with persisted geometry.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>CHANGELOG.md was missing a top-level [Unreleased] block that the Roadmap dialog reads for current-work signaling.</li>
+          <li>Unescaped &amp; in the 0.7.55 metainfo &lt;release&gt; body broke appstreamcli validate and turned CI red on every commit since the release. Now &amp;amp;.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.55" date="2026-04-28">
       <description>
         <p>VT parser correctness + audit-dialog hardening from the 2026-04-27 indie-review. Six fixes — multi-row OSC 8 hyperlink span emission, ITU/ECMA-48 colon-RGB form parsing, audit comment-suppress hyphen handling, trend-snapshot dedup, bg-tasks liveness sweep split from full reparse, and a hot-path returnByReference fix.</p>
