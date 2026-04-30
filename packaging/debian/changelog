@@ -1,3 +1,51 @@
+ants-terminal (0.7.57-1) unstable; urgency=medium
+
+  * Indie-review backlog cleanup — surgical Tier 3 fixes
+    (shellQuote whitelist, claudeChildrenOf extraction), a
+    diagnostic for the mystery flashing-dialog report, a
+    cppcheck returnByReference perf sweep, and a ROADMAP audit
+    that flipped 28 prior indie-review items from planned to
+    done once verified shipped in 0.7.52-0.7.55.
+  * ANTS_TRACE_DIALOGS=1 env var installs a DialogShowTracer
+    event filter on the QApplication. Logs every top-level
+    QWidget/QDialog Show event with className, objectName,
+    windowTitle, parent, and geometry to stderr. Diagnostic
+    step (a) of ANTS-1054 — the user reported a small popup
+    flashing periodically in the centre of the terminal;
+    the trace attributes the next occurrence to either an
+    Ants spawn site (logged) or a child process (silent
+    trace). Zero cost when the env var is unset.
+  * shellutils.h::shellQuote switched from a denylist regex to
+    a whitelist regex. The denylist missed glob wildcards
+    (* ?), redirection (< >), and bracket-expansion specials
+    ([ ]); a path containing any of those reached the shell
+    unquoted and underwent globbing. Whitelist closes the
+    class. Affects every caller of shellQuote — claude-launch
+    builders and ssh-argv construction. (ANTS-1047)
+  * ClaudeIntegration::findClaudeChildPid(pid_t) extracted
+    from the two near-identical /proc walks in
+    pollClaudeProcess and ClaudeTabTracker::detectClaudeChild.
+    Both call sites share one helper; detectClaudeChild also
+    gains the /proc-scan fallback that previously only
+    pollClaudeProcess had. (ANTS-1048)
+  * Cppcheck returnByReference perf sweep across seven hot
+    getters: Config::loadFailureBackupPath,
+    ClaudeBgTaskTracker::transcriptPath,
+    GhostLineEdit::ghostSuffix, TerminalGrid::windowTitle,
+    TerminalWidget::shellTitle, TerminalWidget::imagePasteDir,
+    PluginManager::pluginDir.
+  * tests/features/shellutils_whitelist/ — feature test for
+    the ANTS-1047 fix.
+  * ROADMAP.md hygiene — flipped 28 [ANTS-1015..1042, 1047,
+    1048] bullets from planned to done after verifying each
+    shipped in 0.7.52-0.7.55 (or in this 0.7.57 bundle).
+    Each done bullet cites the shipped version and the
+    source-comment line. ANTS-1054 flipped to in-progress
+    with the diagnostic-shipped note. Tier 3 refactors
+    ANTS-1043, 1044, 1045, 1046, 1049 remain planned.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 30 Apr 2026 13:19:20 +0200
+
 ants-terminal (0.7.56-1) unstable; urgency=medium
 
   * App-Build suite alignment. Confirm-on-close for tabs running

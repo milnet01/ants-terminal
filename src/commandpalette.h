@@ -18,7 +18,7 @@ public:
     explicit GhostLineEdit(QWidget *parent = nullptr) : QLineEdit(parent) {}
 
     void setGhostSuffix(const QString &suffix);
-    QString ghostSuffix() const { return m_ghost; }
+    const QString &ghostSuffix() const { return m_ghost; }
 
 protected:
     void paintEvent(QPaintEvent *event) override;

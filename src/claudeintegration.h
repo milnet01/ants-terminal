@@ -98,6 +98,22 @@ public:
     // non-empty branch — returns empty if no ancestor has an encoded
     // project directory under `~/.claude/projects/`.
     static QString sessionPathForCwd(const QString &projectCwd);
+
+    // Walk the children of `shellPid` via /proc/<pid>/task/<pid>/children
+    // and return the pid of the first child that looks like a Claude Code
+    // process — argv[0] basename matches `claude` / `claude-code`, OR a
+    // node/deno/bun launcher with a `claude`/`claude-code` script in
+    // argv[1..]. Returns 0 if no such child exists or if /proc isn't
+    // mounted. Stateless, safe to call from any thread.
+    //
+    // 0.7.57 (2026-04-30 indie-review ANTS-1048) — extracted from
+    // ClaudeIntegration::pollClaudeProcess and
+    // ClaudeTabTracker::detectClaudeChild, which carried two near-
+    // identical copies of this walk. Rule of three (two near-identical
+    // copies plus the obvious next caller — the planned local-subagent
+    // framework) says extract now.
+    static pid_t findClaudeChildPid(pid_t shellPid);
+
     QJsonArray loadTranscript(const QString &path) const;
     QStringList recentSessions() const;
 

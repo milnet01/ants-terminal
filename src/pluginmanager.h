@@ -35,7 +35,7 @@ public:
     static bool devMode();
 
     void setPluginDir(const QString &dir);
-    QString pluginDir() const { return m_pluginDir; }
+    const QString &pluginDir() const { return m_pluginDir; }
 
     // Scan for plugins and load enabled ones
     void scanAndLoad(const QStringList &enabledList);

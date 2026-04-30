@@ -29,6 +29,89 @@ for security-relevant changes.
   of ANTS-1106 — viewer faceted categorisation by Kind
   remains 📋. (ANTS-1106)
 
+## [0.7.57] — 2026-04-30
+
+**Theme:** indie-review backlog cleanup — surgical Tier 3 fixes
+(`shellQuote` whitelist, `claudeChildrenOf` extraction), a
+diagnostic for the mystery flashing-dialog report, a cppcheck
+`returnByReference` perf sweep, and a ROADMAP audit that flipped
+~30 prior indie-review items from 📋 to ✅ once verified shipped
+in 0.7.52–0.7.55.
+
+### Added
+
+- `ANTS_TRACE_DIALOGS=1` env var → `DialogShowTracer` event filter
+  installed on the `QApplication`. Logs every top-level
+  `QWidget` / `QDialog` `Show` event with className, objectName,
+  windowTitle, parent class+objectName, and geometry to stderr
+  (and the `events` debug-log category when enabled). Diagnostic
+  step (a) of ANTS-1054 — the user reported a small popup
+  flashing periodically in the centre of the terminal; the trace
+  attributes the next occurrence to either an Ants spawn site
+  (logged) or a child process (silent trace). Zero cost when the
+  env var is unset. (ANTS-1054 step a)
+
+- `tests/features/shellutils_whitelist/` — feature test for the
+  ANTS-1047 whitelist fix. Verifies the four invariants from
+  `spec.md`: empty input maps to `''`, the whitelist
+  `[A-Za-z0-9_\-./:@%+,]` passes through unchanged, anything
+  outside it forces single-quote wrapping (specifically the
+  glob/redirection/bracket characters the old denylist missed),
+  and embedded single quotes round-trip via the POSIX `'\''` form.
+  Pure C++ harness, links Qt6::Core only.
+
+### Changed
+
+- `ClaudeIntegration::findClaudeChildPid(pid_t shellPid)` —
+  extracted from the two near-identical `/proc/<pid>/task/<pid>/
+  children` walks in `pollClaudeProcess` and
+  `ClaudeTabTracker::detectClaudeChild`. Both call sites now
+  share one helper; `detectClaudeChild` also gains the `/proc`-
+  scan fallback that previously only `pollClaudeProcess` had
+  (resilience on kernels / containers that don't expose the
+  `task/<pid>/children` file). Static method on
+  `ClaudeIntegration`, no global state, safe to call from any
+  thread. (ANTS-1048)
+
+- Cppcheck `returnByReference` perf sweep across seven hot
+  getters: `Config::loadFailureBackupPath`,
+  `ClaudeBgTaskTracker::transcriptPath`,
+  `GhostLineEdit::ghostSuffix`, `TerminalGrid::windowTitle`,
+  `TerminalWidget::shellTitle`, `TerminalWidget::imagePasteDir`,
+  `PluginManager::pluginDir`. Each was returning a `QString` by
+  value — now returns `const QString &`. Hot read on the 2 s
+  status-timer path (`transcriptPath`) is the most consequential,
+  but each saves a heap allocation per call. Same class as the
+  0.7.55 `ClaudeBgTaskTracker::tasks` fix.
+
+### Security
+
+- `shellutils.h::shellQuote` switched from a denylist regex
+  `[\s'"\\$`!#&|;(){}]` to a whitelist regex
+  `[A-Za-z0-9_\-./:@%+,]+`. The denylist missed glob wildcards
+  (`*`, `?`), redirection (`<`, `>`), and bracket-expansion
+  specials (`[`, `]`); a path containing any of those reached
+  the shell unquoted and underwent globbing. Whitelist closes
+  the class — anything outside the safe set gets single-quote
+  wrapped. Affects every caller of `shellQuote` —
+  `mainwindow.cpp` claude-launch builders (`cd %1 && claude
+  --continue` etc.) and `sshdialog.cpp` ssh-argv construction.
+  (ANTS-1047)
+
+### Fixed
+
+- ROADMAP.md hygiene — flipped 28 `[ANTS-1015..1042, 1047, 1048]`
+  bullets from 📋 to ✅ after verifying each item shipped in the
+  0.7.52–0.7.55 cycle (or in this 0.7.57 bundle). Prior to the
+  audit, the roadmap presented these items as outstanding even
+  though the source files carried the corresponding fix
+  comments. Each ✅ bullet now cites the shipped version + the
+  exact source-comment line so the trail is reviewable. ANTS-1054
+  flipped from 📋 to 🚧 with the diagnostic-shipped note. Tier 3
+  refactors ANTS-1043, 1044, 1045, 1046, 1049 remain 📋 (large-
+  scope items deferred — file decompositions and Wayland-
+  specific work need their own focused passes).
+
 ## [0.7.56] — 2026-04-30
 
 **Theme:** App-Build suite alignment — confirm-on-close for tabs

@@ -266,7 +266,7 @@ public:
     // the user can hand-fix or copy-back. UI can surface this via a
     // one-time nag; the getter is the hook.
     bool loadFailed() const { return m_loadFailed; }
-    QString loadFailureBackupPath() const { return m_loadFailureBackupPath; }
+    const QString &loadFailureBackupPath() const { return m_loadFailureBackupPath; }
 
 private:
     void load();

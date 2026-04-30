@@ -134,7 +134,7 @@ public:
     int commandOutputStartLine() const { return m_commandOutputStart; }
 
     const Cell &cellAt(int row, int col) const;
-    QString windowTitle() const { return m_windowTitle; }
+    const QString &windowTitle() const { return m_windowTitle; }
 
     // Scrollback
     int scrollbackSize() const { return static_cast<int>(m_scrollback.size()); }

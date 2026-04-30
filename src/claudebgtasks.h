@@ -52,7 +52,7 @@ public:
     // Idempotent for the same path.
     void setTranscriptPath(const QString &path);
 
-    QString transcriptPath() const { return m_transcriptPath; }
+    const QString &transcriptPath() const { return m_transcriptPath; }
     // 0.7.55 (2026-04-27 indie-review — cppcheck returnByReference) —
     // hot-path read called from the 2 s status-timer; returning by
     // value copied the whole vector every tick. Caller doesn't mutate.

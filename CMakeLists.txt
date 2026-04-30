@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.56 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.57 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -916,6 +916,25 @@ if(ANTS_TESTS)
     )
     add_test(NAME ssh_extra_args_sanitize COMMAND test_ssh_extra_args_sanitize)
     set_tests_properties(ssh_extra_args_sanitize PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # shellutils_whitelist — asserts the 0.7.57 /indie-review fix
+    # (ANTS-1047) that switched shellQuote from a denylist regex to a
+    # whitelist. Pre-fix, glob/redirection/bracket characters slipped
+    # through unquoted; the test feeds each of the previously-missed
+    # classes plus the existing happy path. See
+    # tests/features/shellutils_whitelist/spec.md.
+    add_executable(test_shellutils_whitelist
+        tests/features/shellutils_whitelist/test_shellutils_whitelist.cpp
+    )
+    target_link_libraries(test_shellutils_whitelist PRIVATE Qt6::Core)
+    target_include_directories(test_shellutils_whitelist PRIVATE src)
+    target_compile_options(test_shellutils_whitelist PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME shellutils_whitelist COMMAND test_shellutils_whitelist)
+    set_tests_properties(shellutils_whitelist PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

@@ -137,54 +137,11 @@ void ClaudeTabTracker::pollAllShells() {
 void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
     if (entry.shellPid <= 0) return;
 
-    QFile childFile(QString("/proc/%1/task/%1/children").arg(entry.shellPid));
-    QList<pid_t> childPids;
-    if (childFile.open(QIODevice::ReadOnly)) {
-        QString children = QString::fromUtf8(childFile.readAll()).trimmed();
-        childFile.close();
-        for (const QString &pidStr : children.split(' ', Qt::SkipEmptyParts)) {
-            bool ok;
-            pid_t pid = pidStr.toInt(&ok);
-            if (ok && pid > 0) childPids.append(pid);
-        }
-    }
-
-    auto basename = [](const QString &path) -> QString {
-        int slash = path.lastIndexOf('/');
-        return slash >= 0 ? path.mid(slash + 1) : path;
-    };
-    auto isClaudeBin = [](const QString &name) {
-        return name == QLatin1String("claude") || name == QLatin1String("claude-code");
-    };
-
-    pid_t found = 0;
-    for (pid_t pid : childPids) {
-        QFile cmdFile(QString("/proc/%1/cmdline").arg(pid));
-        if (!cmdFile.open(QIODevice::ReadOnly)) continue;
-        QByteArray raw = cmdFile.readAll();
-        cmdFile.close();
-        QList<QByteArray> argv = raw.split('\0');
-        while (!argv.isEmpty() && argv.last().isEmpty()) argv.removeLast();
-        if (argv.isEmpty()) continue;
-
-        QString arg0 = basename(QString::fromUtf8(argv.first()));
-        bool match = isClaudeBin(arg0);
-        if (!match && (arg0 == QLatin1String("node") ||
-                       arg0 == QLatin1String("deno") ||
-                       arg0 == QLatin1String("bun"))) {
-            for (qsizetype i = 1; i < argv.size(); ++i) {
-                QString scriptName = basename(QString::fromUtf8(argv[i]));
-                QString full = QString::fromUtf8(argv[i]);
-                if (isClaudeBin(scriptName) ||
-                    full.contains(QLatin1String("/claude-code/")) ||
-                    full.contains(QLatin1String("/claude/"))) {
-                    match = true;
-                    break;
-                }
-            }
-        }
-        if (match) { found = pid; break; }
-    }
+    // /proc-walking + Claude-binary matching consolidated in
+    // ClaudeIntegration::findClaudeChildPid as of 0.7.57 (ANTS-1048).
+    // Same semantics this site used to inline, plus the /proc fallback
+    // for when /proc/<pid>/task/<pid>/children isn't available.
+    const pid_t found = ClaudeIntegration::findClaudeChildPid(entry.shellPid);
 
     if (found == 0) {
         if (entry.claudePid != 0) {

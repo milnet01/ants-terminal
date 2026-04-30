@@ -106,16 +106,15 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
     }
 }
 
-void ClaudeIntegration::pollClaudeProcess() {
-    if (m_shellPid <= 0) return;
+// Shared with ClaudeTabTracker. /proc-walking moved here in 0.7.57
+// (ANTS-1048) — see header for context.
+pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
+    if (shellPid <= 0) return 0;
 
-    // Scan only direct children of our shell via /proc/<pid>/task/<tid>/children
-    bool found = false;
-    pid_t foundPid = 0;
-
-    // Read child PIDs from the kernel's children file (much faster than scanning all /proc)
-    QFile childFile(QString("/proc/%1/task/%1/children").arg(m_shellPid));
+    // Read child PIDs from the kernel's children file (much faster than
+    // scanning all /proc).
     QList<pid_t> childPids;
+    QFile childFile(QString("/proc/%1/task/%1/children").arg(shellPid));
     if (childFile.open(QIODevice::ReadOnly)) {
         QString children = QString::fromUtf8(childFile.readAll()).trimmed();
         childFile.close();
@@ -125,7 +124,9 @@ void ClaudeIntegration::pollClaudeProcess() {
             if (ok && pid > 0) childPids.append(pid);
         }
     } else {
-        // Fallback: scan /proc but only check stat for ppid match
+        // Fallback: scan /proc but only check stat for ppid match.
+        // Resilience for kernels / containers that don't expose
+        // /proc/<pid>/task/<pid>/children.
         QDir procDir("/proc");
         for (const QString &entry : procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
             bool ok;
@@ -142,18 +143,19 @@ void ClaudeIntegration::pollClaudeProcess() {
             QStringList fields = stat.mid(closeParenIdx + 2).split(' ');
             if (fields.size() < 2) continue;
             pid_t ppid = fields[1].toInt();
-            if (ppid == m_shellPid) childPids.append(pid);
+            if (ppid == shellPid) childPids.append(pid);
         }
     }
 
-    // Match the executable, not any substring. "grep claude file" or a user
-    // with "~/bin/claude-search" must NOT be mistaken for Claude Code.
+    // Match the executable, not any substring. "grep claude file" or a
+    // user with "~/bin/claude-search" must NOT be mistaken for Claude Code.
     auto basename = [](const QString &path) -> QString {
         int slash = path.lastIndexOf('/');
         return slash >= 0 ? path.mid(slash + 1) : path;
     };
     auto isClaudeBin = [](const QString &name) {
-        return name == QLatin1String("claude") || name == QLatin1String("claude-code");
+        return name == QLatin1String("claude") ||
+               name == QLatin1String("claude-code");
     };
 
     for (pid_t pid : childPids) {
@@ -161,25 +163,20 @@ void ClaudeIntegration::pollClaudeProcess() {
         if (!cmdFile.open(QIODevice::ReadOnly)) continue;
         QByteArray raw = cmdFile.readAll();
         cmdFile.close();
-        // /proc/<pid>/cmdline is NUL-separated argv.
         QList<QByteArray> argv = raw.split('\0');
-        // Trailing empty element from the final NUL — drop it if present.
         while (!argv.isEmpty() && argv.last().isEmpty()) argv.removeLast();
         if (argv.isEmpty()) continue;
 
         QString arg0 = basename(QString::fromUtf8(argv.first()));
         bool match = isClaudeBin(arg0);
 
-        // Node/deno/bun launchers: inspect argv[1..] for a script basename.
+        // Node/deno/bun launchers: inspect argv[1..] for a script basename
+        // or a path containing "/claude/" or "/claude-code/".
         if (!match && (arg0 == QLatin1String("node") ||
                        arg0 == QLatin1String("deno") ||
                        arg0 == QLatin1String("bun"))) {
             for (qsizetype i = 1; i < argv.size(); ++i) {
                 QString scriptName = basename(QString::fromUtf8(argv[i]));
-                // Strip a trailing .js/.mjs/.cjs/.ts so "cli.js" and similar
-                // don't prevent a match — though typically the interesting
-                // basename is the parent directory, not the script. We match
-                // on the path containing "/claude/" or "/claude-code/".
                 QString full = QString::fromUtf8(argv[i]);
                 if (isClaudeBin(scriptName) ||
                     full.contains(QLatin1String("/claude-code/")) ||
@@ -190,12 +187,16 @@ void ClaudeIntegration::pollClaudeProcess() {
             }
         }
 
-        if (match) {
-            found = true;
-            foundPid = pid;
-            break;
-        }
+        if (match) return pid;
     }
+    return 0;
+}
+
+void ClaudeIntegration::pollClaudeProcess() {
+    if (m_shellPid <= 0) return;
+
+    const pid_t foundPid = findClaudeChildPid(m_shellPid);
+    const bool found = foundPid > 0;
 
     if (!found) {
         m_claudePid = 0;

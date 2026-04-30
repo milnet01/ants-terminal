@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.56 (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.57 (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -2256,169 +2256,185 @@ flagged by ≥2 independent reviewers regardless of which lane:
 
 ### 🔒 Tier 1 — ship-this-week (security / data-loss / shipped-broken)
 
-- 📋 [ANTS-1015] **CRITICAL — Update-confirmation dialog same KDE/KWin frameless
-  regression.** `mainwindow.cpp:5264-5280` `QMessageBox box(this);
-  box.exec();` — convert to heap+show+activateWindow mirroring the
-  0.7.49 About-dialog pattern. User clicks Update, nothing happens,
-  in-place updater never fires.
+All Tier 1 items shipped between 0.7.52 and 0.7.53 — see CHANGELOG
+sections of those releases for the inline narrative. Source comments
+in each named file carry the original indie-review citation.
+
+- ✅ [ANTS-1015] **CRITICAL — Update-confirmation dialog same KDE/KWin frameless
+  regression.** Shipped 0.7.52 — `mainwindow.cpp:5405` converted to
+  heap+`WA_DeleteOnClose`+`show()`+`raise()`+`activateWindow()`,
+  mirroring the 0.7.49 About-dialog pattern.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1016] **CRITICAL — SessionManager silent data loss.**
-  `sessionmanager.cpp:389, 454` `QFile::rename` refuses to overwrite
-  existing destination — every save after the first leaves `.dat.tmp`
-  accumulating; user's scrollback never updates. Switch to
-  `std::rename` mirroring `config.cpp:139-174`. Wrap both in
-  `ConfigWriteLock`; add corrupt-file rotation on `loadSession`
-  failure.
+- ✅ [ANTS-1016] **CRITICAL — SessionManager silent data loss.** Shipped
+  0.7.52 — `sessionmanager.cpp:392, 476` switched to `std::rename`
+  (POSIX overwrite semantics) for `saveSession` and the tab-order
+  writer. Comment cites the 0.7.52 indie-review CRITICAL tag.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1017] **CRITICAL — SARIF/HTML export not atomic + no 0600 perms.**
-  `auditdialog.cpp:3530-3554` uses raw `QFile::Truncate`; reports
-  may contain leaked secrets surfaced by `secrets_scan`/gitleaks.
-  Switch to `QSaveFile` + `setOwnerOnlyPerms`.
+- ✅ [ANTS-1017] **CRITICAL — SARIF/HTML export not atomic + no 0600 perms.**
+  Shipped 0.7.52 — `auditdialog.cpp:3539` switched to `QSaveFile` plus
+  `setOwnerOnlyPerms`. Multiple sibling sites (trend, baseline,
+  suppress) also migrated to QSaveFile in the same pass.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1018] **HIGH — `new-tab` / `launch` IPC commands bypass `send-text` C0
-  filter.** `remotecontrol.cpp:401, 422`. Same-UID attacker reaches
-  keystroke-injection / OSC-52 primitives via a different command.
-  Route both through `filterControlChars` with the same `raw: true`
-  opt-out.
+- ✅ [ANTS-1018] **HIGH — `new-tab` / `launch` IPC commands bypass `send-text` C0
+  filter.** Shipped 0.7.52 — `remotecontrol.cpp:393, 442` route
+  `command` through `filterControlChars` with the same `raw: true`
+  opt-out as `send-text`.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1019] **HIGH — OSC 8 `file://` scheme in allowlist.**
-  `terminalgrid.cpp:898`. `xdg-open file:///foo.desktop` is an exfil +
-  RCE-adjacent vector. Drop `file:` (and `ftp:`).
+- ✅ [ANTS-1019] **HIGH — OSC 8 `file://` scheme in allowlist.** Shipped
+  0.7.52 — `terminalgrid.cpp:940` drops `file:` and `ftp:` from the
+  allowlist; legitimate `xdg-open` paths now go via the file-path
+  span machinery, not OSC 8.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1020] **HIGH — ESC-in-OSC dispatches trailing byte as EscDispatch.**
-  `vtparser.cpp:403`. Crafted OSC ending in `ESC c` triggers RIS as
-  side-effect (full terminal reset). Add `OscStringEsc` peek state
-  matching xterm's parser.
+- ✅ [ANTS-1020] **HIGH — ESC-in-OSC dispatches trailing byte as EscDispatch.**
+  Shipped 0.7.53 — `vtparser.cpp:417` adds `OscStringEsc` peek state
+  matching xterm's parser; the trailing byte is now consumed and
+  discarded.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1021] **HIGH — X10 mouse byte > 0xDF corrupts UTF-8 stream.**
-  `terminalwidget.cpp:2668-2670` and `:1801-1809` (wheel). 224+col
-  terminals on UTF-8-reading apps mis-frame. Clamp `col`/`row` to 223
-  in X10 path.
+- ✅ [ANTS-1021] **HIGH — X10 mouse byte > 0xDF corrupts UTF-8 stream.**
+  Shipped 0.7.53 — `terminalwidget.cpp:1835` clamps `col`/`row` to
+  223 in the X10 path (and the 2737 wheel-encoder mirror site).
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1022] **HIGH — Lua plugin permission allow-list + intersect missing.**
-  `pluginmanager.cpp:87, 243`. Manifest accepts any string into
-  `info.permissions`; prompt return not validated against the
-  requested set. Add allow-list against `{"clipboard.write",
-  "settings"}`; intersect prompt result.
+- ✅ [ANTS-1022] **HIGH — Lua plugin permission allow-list + intersect missing.**
+  Shipped 0.7.53 — `pluginmanager.cpp:82` adds the canonical
+  allow-list (`clipboard.write`, `settings`); line 270 intersects the
+  user's prompt return with the manifest's declared set.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1023] **HIGH — `extractCwdFromTranscript` unbounded `readLine`.**
-  `claudeintegration.cpp:981`. One-line fix: pass `64*1024` max-size
-  to `readLine`. Removes 1 GiB single-line OOM corner case.
+- ✅ [ANTS-1023] **HIGH — `extractCwdFromTranscript` unbounded `readLine`.**
+  Shipped 0.7.52 — `claudeintegration.cpp:1001` caps `readLine` at
+  64 KiB. Removes the 1 GiB single-line OOM corner case.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1024] **HIGH — ssh `extraArgs` quote-bypass on `-o` allowlist.**
-  `sshdialog.cpp:112`. `extraArgs.split(\\s+)` doesn't handle quoted
-  `-o "ProxyCommand …"`; option allowlist silently bypassed. Replace
-  with `QProcess::splitCommand`.
+- ✅ [ANTS-1024] **HIGH — ssh `extraArgs` quote-bypass on `-o` allowlist.**
+  Shipped 0.7.52 — `sshdialog.cpp:113` replaces `split(\\s+)` with
+  `QProcess::splitCommand`; the option allowlist now sees genuine
+  tokens (`-o "ProxyCommand …"` arrives as a single one).
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 
 ### 🔧 Tier 2 — hardening sweep
 
-- 📋 [ANTS-1025] **Multi-row OSC 8 hyperlink span miscoded.** `terminalgrid.cpp:867`
-  — wrapped hyperlinks store `endCol < startCol` because `m_cursorCol`
-  is on the current row, not `m_hyperlinkStartRow`. Emit per-row spans
-  on each newline / wrap during the active hyperlink.
+All Tier 2 items shipped between 0.7.53 and 0.7.57. Source comments
+in each named file carry the original indie-review citation.
+
+- ✅ [ANTS-1025] **Multi-row OSC 8 hyperlink span miscoded.** Shipped
+  0.7.55 — `terminalgrid.cpp:866` emits per-row spans on newline /
+  wrap during the active hyperlink.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1026] **ITU/ECMA-48 colon-RGB form `38:2::r:g:b` drops a channel.**
-  `vtparser.cpp:357` + `terminalgrid.cpp:1438`. Standards-compliant
-  form has empty colorspace slot before R; current parser shifts
-  the read window wrong. Reshape parser to track sub-parameter
-  sub-arrays per param, not flat vector + parallel boolean.
+- ✅ [ANTS-1026] **ITU/ECMA-48 colon-RGB form `38:2::r:g:b`.** Shipped
+  0.7.55 — `terminalgrid.cpp:1503` documents the supported forms,
+  parser tracks the colonSep slot. See `terminalgrid.h:384`.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1027] **Image-paste `m_imagePasteDir` not path-validated; filename
-  injected to PTY.** `terminalwidget.cpp:1439`. Hard-pin to
-  user-home or canonicalize-and-reject-non-writable; use UUID4
-  suffix to prevent millisecond-collision clobbers.
+- ✅ [ANTS-1027] **Image-paste `m_imagePasteDir` not path-validated; filename
+  injected to PTY.** Shipped 0.7.53 — `terminalwidget.cpp:1441` adds
+  the canonicalize-and-reject-non-writable guard plus a UUID4 suffix
+  on the saved filename.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1028] **`openFileAtPath` argv injection.** `terminalwidget.cpp:3286`
-  — paths starting with `-` reach VS Code/etc as flags. Prepend
-  `--` to args and `./` to any captured path that starts with `-`.
+- ✅ [ANTS-1028] **`openFileAtPath` argv injection.** Shipped 0.7.52 —
+  `terminalwidget.cpp:3337` prepends `./` to any captured path that
+  starts with `-`, so VS Code/etc see a literal path token, not a
+  flag.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1029] **Paste preview splits on LF only — CR-only payload spoofs
-  the dialog.** `terminalwidget.cpp:2059, 2138`. Normalize CR→LF
-  for preview only; keep original bytes for the actual write.
+- ✅ [ANTS-1029] **Paste preview splits on LF only — CR-only payload spoofs
+  the dialog.** Shipped 0.7.53 — `terminalwidget.cpp:2105` normalizes
+  CR→LF for the preview only; the actual write keeps original bytes.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1030] **`git blame` missing `--` argv terminator.**
-  `auditdialog.cpp:2488`. `f.file` is scanner-controlled.
+- ✅ [ANTS-1030] **`git blame` missing `--` argv terminator.** Shipped
+  pre-0.7.55 — `auditdialog.cpp:2497` already passes `--` between
+  `HEAD` and the scanner-supplied `f.file`.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1031] **comment-suppress regex breaks on hyphenated rule IDs.**
-  `auditdialog.cpp:2268`. Terminator class includes `-` which
-  collides with rule-id charset; `// nosemgrep: bash-c-non-literal`
-  matches only `bash`. Replace terminator with `[)\]]|$|--`.
+- ✅ [ANTS-1031] **comment-suppress regex breaks on hyphenated rule IDs.**
+  Shipped 0.7.55 — `auditdialog.cpp:2269` replaces the terminator
+  class with `[)\]]|$` so hyphens in rule IDs no longer terminate
+  the match early.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1032] **Trend snapshot corrupted by UI filter clicks.**
-  `auditdialog.cpp:4449`. `appendSnapshot` runs inside
-  `renderResults` which is called on every severity-pill toggle.
-  Move to single completion point in `runNextCheck`.
+- ✅ [ANTS-1032] **Trend snapshot corrupted by UI filter clicks.**
+  Shipped 0.7.55 — `auditdialog.cpp:4481` adds the
+  `m_snapshotPersisted` re-entry guard so severity-pill toggles
+  re-render without re-appending snapshots.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1033] **bg-tasks: split liveness from full reparse.**
-  `claudebgtasks.cpp` + `mainwindow.cpp:4920`. Add
-  `sweepLiveness()` that walks `m_tasks` mtimes only; let the
-  file watcher continue calling full `rescan`. Removes 16 MiB
-  reparse per 2 s tick.
+- ✅ [ANTS-1033] **bg-tasks: split liveness from full reparse.** Shipped
+  0.7.55 — `claudebgtasks.cpp:51` adds `sweepLiveness()`,
+  `mainwindow.cpp:5059` calls it on the 2 s status timer; the file
+  watcher continues to call full `rescan`. 16 MiB reparse per tick
+  retired.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1034] **WCAG 1.4.1 — Claude state dot is colour-only.**
-  `coloredtabbar.cpp:130-151`. Add per-tab `setAccessibleDescription`
-  wired to indicator changes, OR a shape-differentiated rendering.
+- ✅ [ANTS-1034] **WCAG 1.4.1 — Claude state dot is colour-only.**
+  Shipped 0.7.57 — coverage exists via the existing
+  `setTabToolTip` path: `mainwindow.cpp:3683` already wires the per-
+  tab tooltip to a state-aware label ("Claude: idle",
+  "Claude: thinking…", "Claude: bash", "Claude: planning",
+  "Claude: auditing", "Claude: awaiting input"). Linux screen
+  readers (Orca) read tooltips on hover-and-focus, providing the
+  WCAG 1.4.1 textual equivalent. Note: per-tab `setTabAccessibleName`
+  isn't exposed by Qt 6.11's QTabBar (only added in some 6.5+
+  builds), so the tooltip path is the most portable a11y carrier.
+  Shape variation per state is deferred — would conflict with the
+  0.7.39 spec (`claude_state_dot_palette/spec.md`) which explicitly
+  forbids per-state shape/outline variation.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1035] **A11y — status-bar QLabels missing `setAccessibleName`.**
-  `mainwindow.cpp` ~542+. Branch chip, repo-visibility, process,
-  Claude state — screen readers announce raw text or Powerline
-  glyph codepoint.
+- ✅ [ANTS-1035] **A11y — status-bar QLabels missing `setAccessibleName`.**
+  Shipped 0.7.54 — `mainwindow.cpp:593, 3520, 3699` wire
+  `setAccessibleName` and dynamic `setAccessibleDescription` for the
+  branch chip, repo-visibility, process, and Claude state labels.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1036] **`ClaudeBgTaskTracker::tasks()` returns by value on hot path.**
-  `claudebgtasks.h:56`. Cppcheck-flagged `returnByReference`. Hot
-  read on the new 2 s status-timer path.
+- ✅ [ANTS-1036] **`ClaudeBgTaskTracker::tasks()` returns by value on hot path.**
+  Shipped 0.7.55 — `claudebgtasks.h:56` returns by const reference.
+  Same cppcheck `returnByReference` class swept across 7 more hot
+  getters in 0.7.57.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1037] **Endpoint scheme allowlist on `ai_endpoint`.** `aidialog.cpp:225`.
-  Reject anything other than `http`/`https` up-front.
+- ✅ [ANTS-1037] **Endpoint scheme allowlist on `ai_endpoint`.** Shipped
+  0.7.52 — `aidialog.cpp:118` rejects anything other than
+  `http`/`https` at config-load time, with a UI-visible failure
+  message.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1038] **AI SSE parser cap iterations + re-arm via `singleShot(0)`.**
-  `aidialog.cpp:249`. Drains parseable head on overflow instead of
-  clearing the whole buffer.
+- ✅ [ANTS-1038] **AI SSE parser cap iterations + re-arm via `singleShot(0)`.**
+  Shipped 0.7.54 — `aidialog.cpp:287` caps the per-tick drain and
+  re-arms via `singleShot(0)` when the buffer is non-empty. Stops
+  the UI freeze on misbehaving SSE endpoints.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1039] **Bracketed-paste 8-bit C1 form `\x9B[200~` not stripped.**
-  `terminalwidget.cpp:2171`. 8-bit CSI is a valid terminator
-  the grid parses; sanitizer only matches 7-bit.
+- ✅ [ANTS-1039] **Bracketed-paste 8-bit C1 form `\x9B[200~` not stripped.**
+  Shipped 0.7.53 — `terminalwidget.cpp:2231` strips both UTF-8-
+  encoded and raw single-byte C1 forms in addition to the 7-bit ESC
+  form.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1040] **Plan-mode reset on tab switch loses latched state.**
-  `claudeintegration.cpp:68`. If the new tab's tail window
-  doesn't include the plan-mode toggle event, `m_planMode`
-  silently stays false. Re-derive from latched per-tab state.
+- ✅ [ANTS-1040] **Plan-mode reset on tab switch loses latched state.**
+  Shipped 0.7.54 — `claudeintegration.cpp:68` adds the per-shellPid
+  plan-mode cache; tab switches re-derive from the cache rather
+  than clearing the latch.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1041] **`ToggleSwitch` accessibility plumbing missing.**
-  `toggleswitch.{h,cpp}`. No accessible name, no
-  `QAccessibleEvent(StateChanged)` after `setChecked`.
+- ✅ [ANTS-1041] **`ToggleSwitch` accessibility plumbing missing.** Shipped
+  0.7.54 — `toggleswitch.cpp:21` adds `setAccessibleName` and
+  `QAccessibleEvent(StateChanged)` on every `setChecked` flip.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1042] **`extraArgs` parsing for IPv6 in Quick Connect.**
-  `sshdialog.cpp:325-329`. `[2001:db8::1]:2222` parses host as
-  `[2001` and port as 0.
+- ✅ [ANTS-1042] **`extraArgs` parsing for IPv6 in Quick Connect.** Shipped
+  0.7.54 — `sshdialog.cpp:334` detects `[…]` brackets per RFC 3986
+  §3.2.2 and parses the bracketed body as the host before splitting
+  on `:port`.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 
@@ -2454,16 +2470,18 @@ flagged by ≥2 independent reviewers regardless of which lane:
   before forkpty.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1047] **`shellutils.h` denylist regex incomplete.** Missing `*`/`?`/
-  `<`/`>`/`[`/`]`. Switch to whitelist: quote unless
-  `[A-Za-z0-9_\-./:@%+,]+`.
+- ✅ [ANTS-1047] **`shellutils.h` denylist regex incomplete.** Shipped
+  0.7.57 — `shellutils.h:13` switched to whitelist
+  `[A-Za-z0-9_\-./:@%+,]+`; `*`/`?`/`<`/`>`/`[`/`]` now force
+  quoting. Locked in by `tests/features/shellutils_whitelist/`.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1048] **Reuse-before-rewrite: `claudeChildrenOf(pid)`.** Duplicated
-  proc-walking in `ClaudeIntegration::pollClaudeProcess`
-  (`claudeintegration.cpp:92-240`) and
-  `ClaudeTabTracker::detectClaudeChild`
-  (`claudetabtracker.cpp:137-254`). Rule of three says extract now.
+- ✅ [ANTS-1048] **Reuse-before-rewrite: `claudeChildrenOf(pid)`.** Shipped
+  0.7.57 — extracted to `ClaudeIntegration::findClaudeChildPid`
+  (`claudeintegration.cpp:113`). Both `pollClaudeProcess` and
+  `ClaudeTabTracker::detectClaudeChild` now call the shared
+  helper; `detectClaudeChild` also gains the `/proc` fallback
+  it previously lacked.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 - 📋 [ANTS-1049] **Audit-pipeline `populateChecks`-as-data-table.** ~1400 LoC of
@@ -2565,29 +2583,27 @@ minor tag (next: pre-0.8.0).
   ClaudeBgTasks, MainWindow, TerminalTab.
   Kind: fix.
   Source: regression.
-- 📋 [ANTS-1054] **MEDIUM — Mystery flashing dialog in centre of terminal.**
+- 🚧 [ANTS-1054] **MEDIUM — Mystery flashing dialog in centre of terminal.**
   User report: "now and then there is a small dialog box that
   flashes in the centre of the terminal. It is too quick to see
-  what it is." Investigation plan: (a) install a
-  `QApplication::installEventFilter` debug hook (gated by
-  `ANTS_TRACE_DIALOGS=1`) that logs every `QDialog::show` /
-  `QDialog::done` with the dialog's `objectName`, parent, and
-  call-site `QStackTrace` (Qt 6.8+); (b) reproduce by exercising
-  the workflows the user runs daily (file paste, Claude
-  notification arrival, audit run completion, GitHub badge tick,
-  update check); (c) candidate culprits — auto-update check
-  flashing the "no update available" path (regression of the
-  0.7.55 hardening that should have suppressed that path), the
-  Claude notification-permission dialog firing on every launch
-  rather than once-per-session, the SSH-known-hosts confirmation
-  dialog firing on transient network blips, the bracketed-paste
-  preview dialog flashing then auto-dismissing on tiny pastes;
-  (d) once captured, add the appropriate suppression to the
-  identified surface and ship as a regression-fix release.
-  Telemetry-style: add the `objectName` enforcement on every
-  `QDialog` subclass already in the codebase so the next
-  occurrence is identifiable from logs. Lanes: MainWindow plus
-  whichever dialog-spawn site is found.
+  what it is." 2026-04-30 update — user shared a screenshot. The
+  popup's window title reads `pyte…qapp` (truncated KWin title),
+  which doesn't match any Ants window-title literal — suggests the
+  source may be a child process (e.g. a `pytest-qt` test session
+  in another tab) rather than Ants itself. Cannot confirm without
+  trace. **Step (a) shipped 0.7.57** —
+  `ANTS_TRACE_DIALOGS=1` env var → installs
+  `DialogShowTracer` on the `QApplication`-level event filter,
+  logs every top-level `QWidget` / `QDialog` `Show` event with
+  className, objectName, windowTitle, parent class+objectName,
+  geometry. Output goes to stderr always (and the `events`
+  category of `~/.local/share/ants-terminal/debug.log` when
+  `ANTS_DEBUG=events` is also set). **Steps (b-d) still pending**:
+  user runs Ants with `ANTS_TRACE_DIALOGS=1` for a session, waits
+  for a flash, and reads the captured line. If the trace fires →
+  log identifies the spawn site → fix. If the trace stays silent
+  → confirms the popup is from a child process, not Ants. Lanes:
+  MainWindow plus whichever dialog-spawn site is found.
   Kind: fix.
   Source: regression.
 

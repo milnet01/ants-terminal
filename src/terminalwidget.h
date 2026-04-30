@@ -44,7 +44,7 @@ public:
                           const QColor &accent = QColor(),
                           const QColor &border = QColor());
     int scrollOffset() const { return m_scrollOffset; }
-    QString shellTitle() const { return m_lastTitle; }
+    const QString &shellTitle() const { return m_lastTitle; }
 
     // Live font size change
     void setFontSize(int size);
@@ -66,7 +66,7 @@ public:
 
     // Image paste directory (auto-save + insert path)
     void setImagePasteDir(const QString &dir) { m_imagePasteDir = dir; }
-    QString imagePasteDir() const { return m_imagePasteDir; }
+    const QString &imagePasteDir() const { return m_imagePasteDir; }
 
     // Send raw data to the PTY (for actions like clear-line)
     void sendToPty(const QByteArray &data);
