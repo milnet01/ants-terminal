@@ -3709,6 +3709,108 @@ minor tag (next: pre-0.8.0).
   more binaries in every distro package), docs (CLAUDE.md
   global rule), tests/features/.
 
+- 📋 [ANTS-1117] **Claude-Code → running-Ants GUI IPC — let
+  Claude invoke Ants's built-in panels and actions on the live
+  instance.** User ask 2026-04-30: "Can we update Ants Terminal
+  to allow Claude Code to invoke certain actions? Like run the
+  Project Audit tool that is built into Ants Terminal? I would
+  like Ants Terminal and Claude Code to be heavily integrated."
+  Companion to ANTS-1116 (the *stateless* CLI/MCP helper
+  framework) — this bullet covers the *stateful* GUI-aware
+  integration where Claude tells the running Ants Terminal
+  process to do something a panel/dialog already does, and gets
+  the output back as structured JSON.
+
+  Architecture rests on existing infrastructure: Ants Terminal
+  already ships a Kitty-style remote-control IPC at
+  `src/remotecontrol.{h,cpp}` exposing `ls`, `select-window`,
+  `set-title`, `get-text`, `launch` over a Unix-domain socket
+  (gated by the `remote_control_enabled` config key for trust).
+  ANTS-1117 extends the verb set; no new transport, no new
+  trust model.
+
+  New verbs (each translates Claude's request → existing GUI
+  action → structured JSON response):
+
+  | Verb | Calls into | Returns |
+  |------|-----------|---------|
+  | `audit-run` | `AuditDialog::runAudit()` (auditdialog.cpp) | `{"findings": [...], "trend": {...}, "duration_ms": N}` — same JSON the SARIF export emits, no rendering pass |
+  | `audit-fold-in` | `AuditDialog::foldIntoRoadmap()` (per ANTS-1111) | `{"new_ids": [...], "block_written": "..."}` |
+  | `roadmap-show` | Opens `RoadmapDialog`; honours filter / search query passed in | `{"opened": true, "filter_applied": "..."}` |
+  | `roadmap-query` | Same parser, no UI | `{"bullets": [{"id", "status", "kind", "headline", ...}]}` — Claude can interrogate the roadmap without opening the dialog |
+  | `tab-list` | `MainWindow::tabsAsJson()` (new helper) | `{"tabs": [{"index", "title", "cwd", "shellPid", "claude_running": bool, "color"}]}` |
+  | `tab-close` | Routes through `MainWindow::closeTab` (so the ANTS-1102 confirm-on-close logic runs) | `{"closed": true\|false, "blocked_by": "<process>"}` |
+  | `tab-rename` | Honours the manual-rename pin (per existing ANTS-1083 work) | `{"renamed": true, "title": "..."}` |
+  | `terminal-write` | Pastes text into the active tab's TerminalWidget | `{"written_bytes": N}` |
+  | `theme-apply` | `MainWindow::applyTheme(name)` | `{"applied": "...", "previous": "..."}` |
+  | `claude-detect` | Reads the Claude-detection state | `{"running": true, "tab": N, "model": "...", "session_path": "..."}` |
+  | `bg-tasks-list` | `ClaudeBgTaskTracker::tasks()` | `{"tasks": [{"id", "name", "started_at", "status"}]}` |
+  | `screenshot-capture` | Renders the active tab to a PNG | `{"path": "/tmp/ants-screenshot-...png"}` |
+  | `notification-show` | `QSystemTrayIcon::showMessage` | `{"shown": true}` |
+  | `audit-allowlist-add` | Atomic append to `docs/audit-allowlist.json` (per ANTS-1111) | `{"appended": true, "rule": "...", "reason": "..."}` |
+  | `id-allocate` | Same as the CLI helper but on the running instance | `{"id": "ANTS-1118"}` |
+
+  Wire path: Claude Code invokes via the existing `Bash` tool
+  with `kitten @ <verb> <args>`-style command, OR via an MCP
+  tool from the ANTS-1116 server that translates MCP calls →
+  IPC writes on the existing socket. No new transport.
+
+  Trust model: the `remote_control_enabled` config key already
+  gates the socket; default off. When the user opts in, the
+  socket sits in `$XDG_RUNTIME_DIR/ants-terminal-<pid>.sock`
+  (already 0700 perms). Claude Code can only access it if it
+  shares the user's UID — which it does, since it runs as the
+  user. No network exposure.
+
+  Token-saving wins (this builds on top of ANTS-1116):
+
+  - `audit-run` returns triaged JSON directly — Claude doesn't
+    re-trigger the LLM-driven audit-triage subagent. ~25× over
+    the LLM-orchestrated flow.
+  - `roadmap-query` returns parsed bullets as structured data —
+    Claude doesn't re-read the 3000-line ROADMAP.md every time
+    it needs to know "which bullets are 🚧?".
+  - `tab-list` + `claude-detect` give Claude operational
+    awareness of the user's terminal state without burning
+    context-window tokens reading screenshots / `ps` output /
+    `gh api` queries.
+
+  Why a separate bullet from ANTS-1116:
+
+  - ANTS-1116 is *stateless* — `ants-helper audit-run` works
+    even with no GUI running; it spawns the audit, returns JSON,
+    exits. The user might never see the output rendered.
+  - ANTS-1117 is *stateful* — `kitten @ audit-run` talks to
+    the running Ants Terminal; the user sees the audit panel
+    populate live; Claude gets the same JSON back. The result
+    of the action persists in the GUI for the user's later
+    inspection.
+
+  Both are useful — they cover different workflows. v1 ships
+  ANTS-1116 first (lower coupling, easier to test), then
+  ANTS-1117 layers on top (each verb is a thin GUI wrapper
+  over an already-tested action).
+
+  Far-future deferred (per user 2026-04-30): "allow these
+  features to be integrated with the various AI platforms but
+  for now, let's focus on Claude Code." → 💭 [ANTS-1118+]
+  candidates: Codex CLI integration, Aider integration, Ollama
+  + open-router agentic shells. Same MCP-tool surface; just
+  needs each platform's tool-discovery mechanism to find the
+  Ants MCP server. Mechanical work, no architectural shift.
+
+  Locked by `tests/features/remote_control_audit_run/`,
+  `tests/features/remote_control_roadmap_query/`,
+  `tests/features/remote_control_tab_close_confirm/` (the
+  confirm-on-close path must trigger the dialog correctly when
+  invoked over IPC — same invariants as ANTS-1102 plus
+  IPC-shape conformance).
+  Kind: implement.
+  Source: user-2026-04-30.
+  Lanes: remotecontrol.cpp, AuditDialog, RoadmapDialog,
+  MainWindow, ClaudeBgTaskTracker, docs (CLAUDE.md
+  IPC-verb-list).
+
 ### 🎨 Status-bar polish (user request 2026-04-30)
 
 - 📋 [ANTS-1109] **Restyle the git-branch chip to match the
