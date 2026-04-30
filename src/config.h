@@ -44,6 +44,11 @@ public:
     bool confirmMultilinePaste() const;
     void setConfirmMultilinePaste(bool enabled);
 
+    // Confirm before closing a tab whose shell has non-shell descendant
+    // processes (vim, top, claude, tail -f, etc.). Default on.
+    bool confirmCloseWithProcesses() const;
+    void setConfirmCloseWithProcesses(bool enabled);
+
     QString editorCommand() const;
     void setEditorCommand(const QString &cmd);
 

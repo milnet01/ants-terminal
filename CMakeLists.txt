@@ -2923,6 +2923,30 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # confirm_close_with_processes — ANTS-1102. Tabs running non-shell
+    # descendants prompt before close; "Don't ask again" flips the
+    # config. Source-grep against config.{h,cpp}, mainwindow.cpp,
+    # settingsdialog.{h,cpp}.
+    add_executable(test_confirm_close_with_processes
+        tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
+    )
+    target_link_libraries(test_confirm_close_with_processes PRIVATE Qt6::Core)
+    target_compile_options(test_confirm_close_with_processes PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_confirm_close_with_processes PRIVATE
+        SRC_CONFIG_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.h"
+        SRC_CONFIG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_SETTINGSDIALOG_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
+    )
+    add_test(NAME confirm_close_with_processes
+             COMMAND test_confirm_close_with_processes)
+    set_tests_properties(confirm_close_with_processes PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # help_about_menu — asserts MainWindow's Help menu carries an
     # "About Ants Terminal..." action whose handler reads ANTS_VERSION
     # (not a hardcoded literal) and renders as rich text with clickable

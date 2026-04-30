@@ -14,6 +14,26 @@ for security-relevant changes.
 
 ### Added
 
+- Confirm-on-close for tabs running non-shell processes
+  (ANTS-1102). Closing a tab whose shell has any non-shell
+  descendant (vim, top, claude, tail -f, ...) shows a
+  Wayland-correct confirmation dialog naming the process.
+  "Don't ask again" checkbox flips
+  `Config::confirmCloseWithProcesses` to false for subsequent
+  closes. Default on. Settings UI in the Terminal tab.
+  Default safe-shell allowlist: bash, zsh, fish, sh, ksh,
+  dash, ash, tcsh, csh, mksh, yash. Probe walks
+  `/proc/<pid>/task/<pid>/children` transitively (cap 256
+  visited PIDs) — Linux-only, mirrors the existing
+  ClaudeIntegration descendant probe. Locked by
+  tests/features/confirm_close_with_processes/ (11
+  invariants).
+- Reopen-closed-tab via Ctrl+Shift+Z — already shipped
+  pre-request, surfaced as ANTS-1101 ✅ during the 1102
+  implementation pass. Existing m_closedTabs deque (cap 10)
+  + File → Undo Close Tab now dual-references the original
+  closeTab refactor (push lives in performTabClose).
+
 - Four-document shareable standards bundle at `docs/standards/`
   (coding · documentation · testing · commits) plus an index
   README. The ROADMAP and CHANGELOG format specs fold into

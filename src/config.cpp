@@ -283,6 +283,15 @@ void Config::setConfirmMultilinePaste(bool enabled) {
     save();
 }
 
+bool Config::confirmCloseWithProcesses() const {
+    return m_data.value("confirm_close_with_processes").toBool(true);  // default on
+}
+
+void Config::setConfirmCloseWithProcesses(bool enabled) {
+    if (!storeIfChanged("confirm_close_with_processes", enabled)) return;
+    save();
+}
+
 QString Config::editorCommand() const {
     return m_data.value("editor_command").toString("");
 }

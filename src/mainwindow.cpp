@@ -118,6 +118,57 @@ namespace {
 // without racing an in-flight script that another instance just wrote.
 // Runs once per process; a second MainWindow (File → New Window) does
 // not re-sweep.
+// Names of shells that don't warrant a confirm-on-close prompt.
+// If a tab's only descendants are these, the close is silent.
+const QSet<QString> &safeShellNames() {
+    static const QSet<QString> kSet = {
+        QStringLiteral("bash"), QStringLiteral("zsh"),
+        QStringLiteral("fish"), QStringLiteral("sh"),
+        QStringLiteral("ksh"),  QStringLiteral("dash"),
+        QStringLiteral("ash"),  QStringLiteral("tcsh"),
+        QStringLiteral("csh"),  QStringLiteral("mksh"),
+        QStringLiteral("yash"),
+    };
+    return kSet;
+}
+
+// Return the comm of the first non-shell descendant of `shellPid`,
+// or empty if every descendant is a safe shell (or there are no
+// descendants). Walks the /proc/<pid>/task/<pid>/children tree
+// transitively, capped at kMaxVisitedPids to avoid pathological
+// cases. Linux-only (mirrors the existing claudeintegration probe).
+QString firstNonShellDescendant(pid_t shellPid) {
+    if (shellPid <= 0) return {};
+    constexpr int kMaxVisitedPids = 256;
+    QSet<pid_t> visited;
+    QList<pid_t> queue;
+    queue.append(shellPid);
+    while (!queue.isEmpty() && visited.size() < kMaxVisitedPids) {
+        const pid_t pid = queue.takeFirst();
+        if (visited.contains(pid)) continue;
+        visited.insert(pid);
+        QFile childFile(QString("/proc/%1/task/%1/children").arg(pid));
+        if (!childFile.open(QIODevice::ReadOnly)) continue;
+        const QString children = QString::fromUtf8(childFile.readAll()).trimmed();
+        childFile.close();
+        for (const QString &cstr : children.split(' ', Qt::SkipEmptyParts)) {
+            bool ok = false;
+            const pid_t cpid = cstr.toInt(&ok);
+            if (!ok || cpid <= 0) continue;
+            QFile commFile(QString("/proc/%1/comm").arg(cpid));
+            if (!commFile.open(QIODevice::ReadOnly)) continue;
+            const QString comm = QString::fromUtf8(commFile.readAll()).trimmed();
+            commFile.close();
+            if (comm.isEmpty()) continue;
+            if (!safeShellNames().contains(comm)) {
+                return comm;
+            }
+            queue.append(cpid);
+        }
+    }
+    return {};
+}
+
 void sweepKwinScriptOrphansOnce() {
     static bool swept = false;
     if (swept) return;
@@ -2354,6 +2405,26 @@ void MainWindow::closeTab(int index) {
     QWidget *w = m_tabWidget->widget(index);
     if (!w) return;
 
+    // Confirm-on-close (ANTS-1102): if the tab's shell has any non-shell
+    // descendant running (vim, top, claude, tail -f, ...), ask before
+    // tearing down. The dialog is async (Wayland-correct non-modal
+    // pattern); confirmation calls performTabClose(idx) on Close-anyway.
+    TerminalWidget *term = activeTerminalInTab(w);
+    if (m_config.confirmCloseWithProcesses() && term && term->shellPid() > 0) {
+        const QString descendant = firstNonShellDescendant(term->shellPid());
+        if (!descendant.isEmpty()) {
+            showCloseTabConfirmDialog(w, descendant);
+            return;
+        }
+    }
+
+    performTabClose(index);
+}
+
+void MainWindow::performTabClose(int index) {
+    QWidget *w = m_tabWidget->widget(index);
+    if (!w) return;
+
     // Save info for undo-close-tab — prefer the focused pane for split layouts
     TerminalWidget *term = activeTerminalInTab(w);
     if (term) {
@@ -2393,6 +2464,67 @@ void MainWindow::closeTab(int index) {
     if (auto *t = currentTerminal()) {
         t->setFocus();
     }
+}
+
+void MainWindow::showCloseTabConfirmDialog(QWidget *tabWidget,
+                                           const QString &processName) {
+    // Wayland-correct non-modal QDialog pattern (mirrors the About
+    // dialog at MainWindow ctor — see commit 6bea531 / 0.7.50 for the
+    // QTBUG-79126 rationale). Plain QPushButtons; no setModal.
+    auto *dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle(tr("Close tab?"));
+    dlg->setObjectName(QStringLiteral("confirmCloseTabDialog"));
+    auto *layout = new QVBoxLayout(dlg);
+
+    auto *label = new QLabel(
+        tr("This tab is running <b>%1</b>.<br>Close anyway? Long-running "
+           "processes will be terminated.")
+            .arg(processName.toHtmlEscaped()),
+        dlg);
+    label->setObjectName(QStringLiteral("confirmCloseTabBody"));
+    label->setTextFormat(Qt::RichText);
+    label->setWordWrap(true);
+    label->setAccessibleName(tr("Confirm tab close"));
+    label->setAccessibleDescription(label->text());
+
+    auto *dontAsk = new QCheckBox(
+        tr("Don't ask again (close tabs silently in future)"), dlg);
+    dontAsk->setObjectName(QStringLiteral("confirmCloseDontAsk"));
+
+    auto *btnRow = new QHBoxLayout;
+    btnRow->addStretch();
+    auto *cancelBtn = new QPushButton(tr("Cancel"), dlg);
+    cancelBtn->setObjectName(QStringLiteral("confirmCloseCancelBtn"));
+    cancelBtn->setDefault(true);
+    cancelBtn->setAutoDefault(true);
+    auto *closeBtn = new QPushButton(tr("Close anyway"), dlg);
+    closeBtn->setObjectName(QStringLiteral("confirmCloseProceedBtn"));
+    btnRow->addWidget(cancelBtn);
+    btnRow->addWidget(closeBtn);
+
+    layout->addWidget(label);
+    layout->addWidget(dontAsk);
+    layout->addLayout(btnRow);
+
+    // Track the actual widget; the index can shift if other tabs close
+    // while this dialog is open.
+    QPointer<QWidget> widgetRef(tabWidget);
+
+    connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
+    connect(closeBtn, &QPushButton::clicked, this,
+        [this, dlg, dontAsk, widgetRef]() {
+            if (dontAsk->isChecked())
+                m_config.setConfirmCloseWithProcesses(false);
+            dlg->close();
+            if (!widgetRef) return;
+            const int idx = m_tabWidget->indexOf(widgetRef);
+            if (idx >= 0) performTabClose(idx);
+        });
+
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
 }
 
 void MainWindow::closeCurrentTab() {

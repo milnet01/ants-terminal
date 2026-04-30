@@ -120,6 +120,11 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "Confirm multi-line / dangerous pastes (sudo, curl | sh, control chars)", tab);
     layout->addRow(m_confirmMultilinePaste);
 
+    m_confirmCloseWithProcesses = new QCheckBox(
+        "Confirm before closing tabs running non-shell processes "
+        "(vim, top, claude, tail -f, ...)", tab);
+    layout->addRow(m_confirmCloseWithProcesses);
+
     m_editorCmd = new QLineEdit(tab);
     m_editorCmd->setPlaceholderText("code, vim, nano, etc.");
     layout->addRow("Editor Command:", m_editorCmd);
@@ -209,6 +214,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         m_sessionLogging->setChecked(false);
         m_autoCopy->setChecked(true);
         m_confirmMultilinePaste->setChecked(true);
+        m_confirmCloseWithProcesses->setChecked(true);
         m_editorCmd->clear();
         m_imagePasteDir->clear();
         m_notificationTimeout->setValue(5);
@@ -812,6 +818,7 @@ void SettingsDialog::loadSettings() {
     m_sessionLogging->setChecked(m_config->sessionLogging());
     m_autoCopy->setChecked(m_config->autoCopyOnSelect());
     m_confirmMultilinePaste->setChecked(m_config->confirmMultilinePaste());
+    m_confirmCloseWithProcesses->setChecked(m_config->confirmCloseWithProcesses());
     m_editorCmd->setText(m_config->editorCommand());
     m_imagePasteDir->setText(m_config->imagePasteDir());
     if (m_notificationTimeout)
@@ -921,6 +928,7 @@ void SettingsDialog::applySettings() {
     m_config->setSessionLogging(m_sessionLogging->isChecked());
     m_config->setAutoCopyOnSelect(m_autoCopy->isChecked());
     m_config->setConfirmMultilinePaste(m_confirmMultilinePaste->isChecked());
+    m_config->setConfirmCloseWithProcesses(m_confirmCloseWithProcesses->isChecked());
     m_config->setEditorCommand(m_editorCmd->text().trimmed());
     m_config->setImagePasteDir(m_imagePasteDir->text().trimmed());
     m_config->setTabTitleFormat(m_tabTitleFormat->currentData().toString());

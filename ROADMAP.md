@@ -2661,133 +2661,56 @@ minor tag (next: pre-0.8.0).
 
 ### 🎨 Undo for accidental tab close (user request 2026-04-30)
 
-- 📋 [ANTS-1101] **Reopen-closed-tab — Ctrl+Shift+T.** User
-  ask 2026-04-30: "Do you think an Undo/Redo feature would be
-  helpful in Ants Terminal in relation to closing tabs, colour
-  changes, etc.? This wouldn't be about Claude Code or
-  commands run in the terminal." Recommendation: ship the
-  narrow tab-close undo; skip generic UI undo (color changes
-  already have Cancel/OK in Settings per 0.7.32; "etc." is a
-  slippery slope where the framework cost dwarfs the value).
+- ✅ [ANTS-1101] **Reopen-closed-tab — Ctrl+Shift+Z.** Discovered
+  during ANTS-1102 implementation that the headline behaviour was
+  already shipped pre-request: `m_closedTabs` deque (cap 10) plus
+  a `Ctrl+Shift+Z` action ("Undo Close Tab" in the File menu) that
+  pops the stack, opens a new tab, and `cd`s to the saved cwd.
+  Code at `mainwindow.cpp:952-970` (action) and `performTabClose`
+  (push, refactored from the original `closeTab` body during the
+  ANTS-1102 helper split). v1 capacity is hardcoded at 10;
+  configurable cap, title-restore, color-restore, and PTY-state
+  restore (vim/claude across close) are out of scope — the
+  prevention layer (ANTS-1102) covers the catastrophic-loss
+  case more effectively. Original ask: "Do you think an
+  Undo/Redo feature would be helpful in Ants Terminal in
+  relation to closing tabs, colour changes, etc.?" Lanes:
+  MainWindow.
 
-  **Headline behaviour.** `Ctrl+Shift+T` (and a `Tab → Reopen
-  Closed Tab` menu item, greyed-out when the stack is empty)
-  pops the most-recently-closed tab off a stack and recreates
-  it. Standard browser idiom — Chrome, Firefox, Konsole,
-  iTerm2, gnome-terminal all bind exactly this combo to
-  exactly this behaviour, so user expectation is well-set.
-
-  **Stack semantics.** LIFO. Default capacity: 10 closed tabs
-  (configurable as `max_reopen_history` in `config.json`,
-  range 0-50; 0 disables the feature for users who want
-  closes to be irreversible). When the stack is full, the
-  oldest entry is evicted on each new close. Stack is
-  in-memory only — does not persist across `ants-terminal`
-  restarts (orthogonal to `SessionManager`'s session-restore
-  feature which handles whole-window state across restarts).
-
-  **What gets restored on reopen.** v1 restores the *cheap*
-  state — anything we already have in `TerminalTab` at close
-  time:
-  - `cwd` — last known shell cwd, fed to the new PTY's
-    `chdir`. The most useful piece (the user almost always
-    wants to come back to "I was in `~/foo/bar/baz`").
-  - Tab title (if user had renamed it manually per ANTS-1042
-    work).
-  - Tab color (if the per-tab colour-tag feature gets shipped
-    — currently 💭).
-  - Whether it was the active tab at close.
-
-  v2 (deferred — not in this item) could capture and restore
-  scrollback by piggy-backing on
-  `SessionManager`'s existing `qCompress`-d cell serialisation
-  — bound the cost via `max_reopen_scrollback_lines`
-  (default 5000) so the in-memory stack stays small. Phase as
-  a separate `📋 [ANTS-NNNN]` item if user feedback shows v1
-  is missing the scrollback piece often enough to be worth
-  the complexity.
-
-  **What is NOT restored.** The PTY itself — a fresh `bash`
-  is spawned at the saved cwd. Long-running processes
-  (`vim`, `top`, `tail -f`, an active `claude` session) are
-  gone forever; the user would have to re-launch them. This
-  is the right scope for v1: restoring a live PTY across a
-  close→reopen would require process re-parenting which the
-  kernel doesn't support directly, plus we'd be papering
-  over the actual bug (the user shouldn't have been able to
-  close a Claude session by mistake — that's a separate UX
-  item, see "Confirm-on-close for tabs running long-lived
-  programs" in the 💭 follow-on).
-
-  **Implementation sketch:**
-  - Add `MainWindow::m_closedTabStack` —
-    `std::deque<ClosedTabSnapshot>` capped at
-    `max_reopen_history`.
-  - `struct ClosedTabSnapshot { QString cwd; QString title;
-    QColor tabColor; bool wasActive; qint64 closedAt; };`
-  - `MainWindow::onTabCloseRequested` (existing slot) →
-    push snapshot before destroying the widget.
-  - New action `actionReopenClosedTab` wired to
-    `Ctrl+Shift+T` and added to the `Tab` menu.
-    `setEnabled(!m_closedTabStack.empty())`; refresh enable
-    state on every `tabClose`/`reopenTab`.
-  - `MainWindow::reopenClosedTab()` — pop, spawn a fresh
-    `TerminalTab` via existing `addTab(cwd)`, apply title /
-    colour / active-state fields from the snapshot.
-  - Settings panel gains one new field: "Reopen closed-tab
-    history" (spinbox, 0-50, default 10).
-  - Stack cleared on `MainWindow::closeEvent` (no leak; no
-    cross-session persistence).
-
-  **Spec / lock:** new
-  `tests/features/reopen_closed_tab/` (spec.md +
-  test_reopen_closed_tab.cpp). Invariants:
-  - INV-1: `m_closedTabStack` is empty on `MainWindow` ctor.
-  - INV-2: Closing a tab pushes a snapshot containing its
-    cwd, title, colour, was-active flag.
-  - INV-3: Capacity cap evicts the oldest entry when
-    `max_reopen_history` is reached.
-  - INV-4: `actionReopenClosedTab` is `setEnabled(false)`
-    when the stack is empty, `setEnabled(true)` after a
-    close.
-  - INV-5: Triggering the action pops the stack and creates
-    a new `TerminalTab` with the recorded cwd. (Round-trip
-    via `addTab` mock or a synthetic harness — the real PTY
-    isn't required for the snapshot semantics check.)
-  - INV-6: `Ctrl+Shift+T` keyboard shortcut is bound to
-    `actionReopenClosedTab` (source-grep on
-    `setShortcut(QKeySequence("Ctrl+Shift+T"))`).
-  - INV-7: `max_reopen_history = 0` disables the feature
-    (close→reopen no-op; menu item permanently disabled).
-  - INV-8: `closeEvent` clears the stack (no leak).
-
-  Kind: implement. Lanes: MainWindow, Config, settings UI.
-
-- 💭 [ANTS-1102] **Confirm-on-close for tabs running
-  long-lived programs.** Follow-on to ANTS-1101. Konsole has
-  a "tab is running a process" prompt before close
-  (configurable). Less urgent than reopen-closed-tab because
-  the cure is downstream (don't close in the first place vs.
-  recover after closing); both layers help. Detection: walk
-  the PTY's child process list (`/proc/<shellPid>/task/.../children`)
-  and check whether any descendants are not in the user's
-  `safe_to_close_silently` list (default `bash`, `zsh`,
-  `fish`, `sh`). Default behaviour: confirm dialog with
-  Don't-Ask-Again checkbox. Lanes: MainWindow,
-  TerminalTab, ProcessProbe.
+- ✅ [ANTS-1102] **Confirm-on-close for tabs running non-shell
+  processes.** User-emphasised priority ("the confirm alone will
+  help a lot"). Walks `/proc/<shellPid>/task/<shellPid>/children`
+  transitively (cap 256 visited), comparing each descendant's
+  `comm` against an 11-shell allowlist (`bash`, `zsh`, `fish`,
+  `sh`, `ksh`, `dash`, `ash`, `tcsh`, `csh`, `mksh`, `yash`).
+  First non-shell descendant triggers a Wayland-correct non-modal
+  `QDialog` (heap, `WA_DeleteOnClose`, plain `QPushButton`s, no
+  `setModal` per the 0.7.50 QTBUG-79126 lessons) naming the
+  process; "Cancel" returns silently, "Close anyway" calls
+  `performTabClose`, optionally with a "Don't ask again"
+  checkbox flipping `Config::confirmCloseWithProcesses` to false.
+  Default on. Settings → Window/Tabs surface added. Refactored
+  `closeTab` into `closeTab` (probe gate) + `performTabClose`
+  (teardown) so the dialog's accept handler can re-enter cleanly.
+  Locked by `tests/features/confirm_close_with_processes/`
+  (11 invariants — config getter/setter + storeIfChanged
+  idempotency, `firstNonShellDescendant` helper shape,
+  `safeShellNames` baseline, `closeTab` probe + dialog routing,
+  `performTabClose` is the sole teardown + undo-push site, dialog
+  uses the Wayland-correct pattern, "Don't ask again" flips the
+  config, full SettingsDialog wire-up). Lanes: Config, MainWindow,
+  SettingsDialog.
 
 - 💭 [ANTS-1103] **Generic UI-action undo / redo stack
-  (deferred).** A wider mechanism beyond tab-close:
-  font-size changes, theme-pick, layout splits, etc. Not
-  recommended for v1 — Settings dialog already has Cancel/OK
-  semantics for everything it owns; the only remaining
-  uncovered surface (tab-close) is handled by ANTS-1101 with
-  a vastly cheaper implementation. Revisit only if user
-  feedback shows specific UI actions repeatedly in need of
-  undo. If reopened, the design likely splits per-domain
-  rather than one global stack: tabs (1101), themes (here),
-  panes (separate), each with its own LIFO so the user
-  understands what `Ctrl+Z` will revert in any given context.
+  (deferred).** A wider mechanism beyond tab-close: font-size
+  changes, theme-pick, layout splits, etc. Not recommended —
+  Settings dialog already has Cancel/OK for everything it owns;
+  the one remaining uncovered surface (tab-close) is handled by
+  ANTS-1101 + ANTS-1102 with a cheap implementation. Revisit
+  only if user feedback shows specific UI actions repeatedly in
+  need of undo. If reopened, the design likely splits per-domain
+  (tabs, themes, panes — each its own LIFO) rather than one
+  global stack so `Ctrl+Z` doesn't ambiguously cross domains.
   Lanes: TBD.
 
 ---

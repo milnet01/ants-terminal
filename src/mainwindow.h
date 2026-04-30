@@ -65,6 +65,14 @@ private slots:
     void newTab();
     void closeTab(int index);
     void closeCurrentTab();
+
+    // ANTS-1102: confirm-on-close helpers. closeTab() does the
+    // descendant-process probe and routes through showCloseTabConfirmDialog
+    // when a non-shell descendant is found; both confirm and silent
+    // paths land in performTabClose for the actual teardown.
+    void performTabClose(int index);
+    void showCloseTabConfirmDialog(QWidget *tabWidget,
+                                   const QString &processName);
     void onTabChanged(int index);
 
     // Split pane
