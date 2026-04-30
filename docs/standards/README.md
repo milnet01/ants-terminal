@@ -7,16 +7,22 @@ and self-contained; cross-references between them are explicit.
 | Standard | Covers |
 |----------|--------|
 | [coding.md](coding.md) | Code style, language idioms, error handling, comments, naming, security. Governs `Kind: implement / fix / refactor / audit-fix / review-fix` work. |
-| [documentation.md](documentation.md) | README / CLAUDE.md / SECURITY.md structure, **ROADMAP.md format**, **CHANGELOG.md format**, API contracts, screenshots, markdown style. Governs `Kind: doc / doc-fix` work. |
+| [documentation.md](documentation.md) | README / CLAUDE.md / SECURITY.md structure, API contracts, screenshots, markdown style. Governs `Kind: doc / doc-fix` work. |
 | [testing.md](testing.md) | TDD policy, test types, spec-first authoring, INV numbering, coverage, anti-patterns. Governs `Kind: test` work + the regression-test follow-through for `fix / audit-fix / review-fix`. |
 | [commits.md](commits.md) | The `<ID>: <description>` mandate, hygiene, branching, push policy, release commits. Governs every commit. |
+
+Sub-spec extracted from `documentation.md` for token efficiency:
+
+| Sub-spec | Covers |
+|----------|--------|
+| [roadmap-format.md](roadmap-format.md) | Detailed `ROADMAP.md` and `CHANGELOG.md` format spec — file-header marker, status / theme emojis, stable IDs (`PROJ-NNNN`), insertion semantics, `Kind:` / `Source:` taxonomy, current-work signaling, fold-in subsections, anti-patterns. Read when authoring either file or any tooling that consumes them. |
 
 ## How they fit together
 
 The four standards plus `ROADMAP.md` form a closed loop:
 
 1. **ROADMAP item** declares an `[ID]`, `Kind:`, and `Source:`
-   (per [documentation § 3](documentation.md)).
+   (per [roadmap-format § 3](roadmap-format.md)).
 2. **Implementation** follows the standard for that Kind:
    - `implement` / `fix` / `refactor` → [coding.md](coding.md)
    - `doc` / `doc-fix` → [documentation.md](documentation.md)
@@ -26,10 +32,10 @@ The four standards plus `ROADMAP.md` form a closed loop:
 4. **Commit** uses `<ID>: <description>` per
    [commits.md](commits.md) §1.1.
 5. **CHANGELOG** entry under `[Unreleased]` cites the ID per
-   [documentation § 4.2](documentation.md).
+   [roadmap-format § 4.2](roadmap-format.md).
 6. **Release** flips the ROADMAP bullet from 🚧 to ✅, moves the
    `[Unreleased]` entry to a dated section per
-   [documentation § 4.3](documentation.md).
+   [roadmap-format § 4.3](roadmap-format.md).
 
 Every step has a single owner and a single source of truth — no
 rules buried in commit messages, no conventions inferred from

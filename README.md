@@ -966,12 +966,19 @@ ants-terminal/
 ├── README.md                   # This file
 ├── LICENSE                     # MIT License
 ├── CLAUDE.md                   # Development context
-├── STANDARDS.md                # Coding standards
-├── RULES.md                    # Development rules
+├── ROADMAP.md                  # Planned work (ROADMAP_FORMAT v1)
+├── CHANGELOG.md                # Keep-a-Changelog history
+├── PLUGINS.md                  # Plugin author contract
+├── STANDARDS.md                # Deprecated — see docs/standards/coding.md
+├── RULES.md                    # Deprecated — see docs/standards/
 ├── launch.sh                   # Self-locating launcher wrapper
 ├── ants-terminal.desktop.in    # Desktop entry template (@INSTALL_DIR@)
 ├── assets/                     # App icons (16-256px PNGs)
 ├── packaging/linux/            # Spec-compliant .desktop + AppStream metainfo
+├── docs/standards/             # Shareable v1 standards bundle (coding · documentation · testing · commits + roadmap-format sub-spec)
+├── docs/decisions/             # Architecture Decision Records (Michael Nygard format)
+├── docs/specs/                 # Per-feature spec drafts (spec-first authoring)
+├── docs/journal/               # Per-phase outcomes / session notes
 └── src/
     ├── main.cpp                # Entry point, OpenGL format setup
     ├── mainwindow.h/cpp        # Window, menus, themes, dialogs

@@ -10,7 +10,6 @@ This standard governs ROADMAP bullets with `Kind: test`, plus the
 regression-test follow-through expected for `Kind: fix`,
 `audit-fix`, and `review-fix` work.
 
----
 
 ## 1. TDD policy — test first, code second
 
@@ -23,7 +22,7 @@ change that ships behaviour. The cycle is:
 3. **Write the minimum code** that makes the test pass.
 4. **Refactor** if needed; tests stay green.
 5. **Commit** code + test together (per
-   [commits § 1.4](commits.md)).
+   [commits § 1.1](commits.md)).
 
 This sequence catches the most common test-quality bug: a test
 written *after* the fix that accidentally tests the new behaviour
@@ -46,7 +45,6 @@ If TDD genuinely doesn't fit a change, write a comment in the
 commit body explaining why so a reader understands the deliberate
 deviation.
 
----
 
 ## 2. Principles
 
@@ -92,7 +90,6 @@ write the test that enforces each invariant.
 The test references the spec by section: `// INV-3 from
 spec.md § 2.1`. Reader can move between spec and test fluidly.
 
----
 
 ## 3. Test types
 
@@ -143,7 +140,6 @@ For rule-based tools (linters, audit checks): keep `bad.cpp` and
 against them, assert N hits on `bad` and 0 on `good`. Count-based,
 not line-number-based — line numbers shift across edits.
 
----
 
 ## 4. spec.md authoring
 
@@ -182,7 +178,6 @@ mark the INV as `**INV-3** (retired in 0.7.21): <reason>` rather
 than deleting it — that preserves the cross-reference from old
 test code and commit messages.
 
----
 
 ## 5. Test failure messages
 
@@ -202,7 +197,6 @@ Same principle for Python (`assert x == y, f"got {x}, want {y}"`)
 and any other language: every assertion carries enough context
 that the CI log alone is diagnosable.
 
----
 
 ## 6. Performance / determinism
 
@@ -216,7 +210,6 @@ that the CI log alone is diagnosable.
   needs `LABELS network` and an env-var gate (e.g.
   `ANTS_TEST_NETWORK=1`).
 
----
 
 ## 7. Coverage policy
 
@@ -231,7 +224,6 @@ that the CI log alone is diagnosable.
   ones passing. If the refactor reveals untested behaviour, that's
   a separate `Kind: test` ROADMAP item.
 
----
 
 ## 8. Test commits
 
@@ -252,7 +244,6 @@ When the test ships *with* a fix in the same commit (TDD's normal
 case), the commit covers both — the test goes in alongside the
 code change, with a single commit referencing the ROADMAP ID.
 
----
 
 ## 9. Anti-patterns
 

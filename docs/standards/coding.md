@@ -11,7 +11,6 @@ This standard governs ROADMAP bullets with `Kind: implement`,
 (`doc`, `test`, `chore`/`release`) defer to their respective
 companion documents.
 
----
 
 ## 1. Principles
 
@@ -57,22 +56,12 @@ prefer the latest stable release unless pinned for an explicit
 reason. When calling library APIs, use the current idiomatic
 syntax for that version — not the one current three years ago.
 
-- **Qt 6** — new-style `connect(sender, &Class::signal, ...)` not
-  SIGNAL/SLOT macros; `QPointer<T>` for QObject lifetime;
-  `QStringLiteral` over implicit `QString` from char\*;
-  `QOverload<...>` for overloaded signals.
-- **C++20+** — `std::span` over `(ptr, len)` pairs; concepts /
-  `requires` over SFINAE; designated initializers; `std::format`
-  over stringstreams.
-- **Python 3.10+** — `match`/`case` for type dispatch; `|` union
-  types over `Union[A, B]`; `list[int]` over `List[int]`.
-- **React 18+** — functional components + hooks, not class
-  components; new JSX transform without `import React`.
+For per-language idiom examples (Qt 6, C++20+, Python 3.10+,
+React 18+), see `~/.claude/CLAUDE.md § 5` — that's the
+canonical source. When unsure what's current, check the
+library docs first. Stale idioms compile but they age the
+codebase.
 
-When unsure what's current, check the library docs first. Stale
-idioms compile but they age the codebase.
-
----
 
 ## 2. Error handling
 
@@ -88,7 +77,6 @@ idioms compile but they age the codebase.
 - **Don't write fallbacks for scenarios that can't occur.** Trust
   framework guarantees; only fall back at real failure points.
 
----
 
 ## 3. Comments
 
@@ -108,7 +96,6 @@ Don't:
   for Y") — those belong in the commit body.
 - Write multi-line block comments or paragraph docstrings.
 
----
 
 ## 4. Naming
 
@@ -123,7 +110,6 @@ Don't:
   fine where a project uses it; type prefixes (`strName`, `iCount`)
   are not.
 
----
 
 ## 5. Language-specific notes
 
@@ -156,7 +142,6 @@ Don't:
 
 (Add language sections as the project grows.)
 
----
 
 ## 6. Performance
 
@@ -169,7 +154,6 @@ Don't:
   rvalue-returning helpers, reserve capacity on growable
   containers when the size is known.
 
----
 
 ## 7. Security
 
@@ -188,7 +172,6 @@ Don't:
 - **Don't log secrets.** Strip Authorization headers, API tokens,
   private-key blocks before any `qDebug` / `print` / log call.
 
----
 
 ## 8. Anti-patterns
 

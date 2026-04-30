@@ -9,7 +9,6 @@ the [index](README.md) for the full set.
 This standard governs every commit, plus the release-orchestration
 work under ROADMAP bullets with `Kind: chore` or `release`.
 
----
 
 ## 1. Commit message format
 
@@ -19,9 +18,9 @@ Every commit subject leads with the ROADMAP item ID it implements,
 followed by `:` and a present-tense description:
 
 ```
-ANTS-1234: implement live-search filter
-ANTS-1235: fix config-reload inotify loop
-ANTS-1236: extract storeIfChanged helper
+PROJ-1234: implement live-search filter
+PROJ-1235: fix config-reload inotify loop
+PROJ-1236: extract storeIfChanged helper
 ```
 
 This connects the commit to the work item end-to-end. A reader of
@@ -32,7 +31,7 @@ an ID and see exactly which commits implemented it.
 The ID prefix replaces the type-based prefix (`feat:`, `fix:`,
 `refactor:`) of conventional-commits style — the **kind** is
 declared by the ROADMAP item's `Kind:` field, not the commit
-subject. This avoids the awkward `ANTS-1234: feat: …` double
+subject. This avoids the awkward `PROJ-1234: feat: …` double
 prefix.
 
 ### 1.2 Exception — commits without a ROADMAP item
@@ -45,7 +44,7 @@ use a category prefix instead:
 | Release | `X.Y.Z: theme — short summary` | `0.7.55: VT parser correctness + audit-dialog hardening` |
 | Chore (debt sweep, gitignore tweak, dep bump) | `chore: short summary` | `chore: post-0.7.55 debt sweep` |
 | Doc-only (typo, README tweak not tracked on roadmap) | `docs: short summary` | `docs: fix typo in PLUGINS.md OSC 8 section` |
-| Hotfix without prior ROADMAP entry (will be back-filled) | `fix: short summary` + `Refs: ANTS-NNNN` trailer | see §1.4 |
+| Hotfix without prior ROADMAP entry (will be back-filled) | `fix: short summary` + `Refs: PROJ-NNNN` trailer | see §1.4 |
 
 If the work was substantive enough to be tracked on the roadmap
 (any feature, any non-trivial fix, any refactor), it gets a
@@ -56,10 +55,10 @@ ID. Don't ship code that should have been planned.
 
 - Single line, present tense, ≤ 72 chars.
 - No trailing period.
-- Capitalisation matches the ID's case (`ANTS-1234:`); the
+- Capitalisation matches the ID's case (`PROJ-1234:`); the
   description starts lowercase unless it begins with a proper
   noun.
-- Don't repeat the ID in the description ("ANTS-1234: ANTS-1234
+- Don't repeat the ID in the description ("PROJ-1234: PROJ-1234
   implement live search").
 
 ### 1.4 Body
@@ -68,7 +67,7 @@ Optional, but encouraged when the change isn't self-explanatory.
 Format:
 
 ```
-ANTS-1234: implement live-search filter
+PROJ-1234: implement live-search filter
 
 Optional one-paragraph description of the why.
 
@@ -76,7 +75,7 @@ Optional one-paragraph description of the why.
 - Bulleted list of files / subsystems touched.
 - Note any follow-up needed.
 
-Refs: ANTS-1235  (for related but separate work)
+Refs: PROJ-1235  (for related but separate work)
 Co-Authored-By: <name> <email>
 ```
 
@@ -90,7 +89,7 @@ WHAT.
 | `Co-Authored-By:` | Anyone who contributed materially (humans, AI agents) |
 | `Reviewed-by:` | After a `/indie-review` pass |
 | `Fixes:` | When the commit closes a tracker issue (Fixes: #42) |
-| `Refs:` | Cross-references — e.g. `Refs: ANTS-1235` for related ROADMAP items |
+| `Refs:` | Cross-references — e.g. `Refs: PROJ-1235` for related ROADMAP items |
 | `Signed-off-by:` | DCO-required projects |
 
 For AI-assisted commits, include the AI's identifier:
@@ -99,7 +98,6 @@ For AI-assisted commits, include the AI's identifier:
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 ```
 
----
 
 ## 2. Commit hygiene
 
@@ -149,7 +147,6 @@ Build artifacts (`build/`, `dist/`, `*.o`, `node_modules/`,
 `__pycache__/`) belong in `.gitignore`. Generated docs (`/_build/`,
 `docs/_static/`) too. Check `git status` before staging.
 
----
 
 ## 3. Branching
 
@@ -161,7 +158,7 @@ development), get rebased + merged in days, not weeks.
 
 ### 3.2 Branch names
 
-`<author>/<id>-<topic>` for personal branches: `alice/ANTS-1234-live-search`.
+`<author>/<id>-<topic>` for personal branches: `alice/PROJ-1234-live-search`.
 `feature/<id>-<topic>` for shared work. The ID lets a reviewer
 find the ROADMAP context at a glance.
 
@@ -171,33 +168,16 @@ find the ROADMAP context at a glance.
 branches, fine. On `main` / `master` / shared branches, never —
 use `git revert` + new commit instead.
 
----
 
 ## 4. Push policy
 
-### 4.1 Public repos — push freely
+### 4.1 Public vs private repos
 
-Public GitHub repos get unlimited Linux-runner minutes for free
-(per GitHub Actions billing). Push after each release without
-batching.
+Push cadence (public: push freely; private: batch + ask once
+5+ commits/tags accrue) lives in the user's global
+`~/.claude/CLAUDE.md` § 6 — canonical source.
 
-### 4.2 Private repos — batch + ask
-
-Private repos consume CI minutes against the account quota.
-Default behaviour: commit locally, don't push without explicit
-user approval. Track unpushed commits / tags; surface a prompt
-when the queue grows (≥ 5 commits or tags).
-
-When push time comes, send the whole batch in one go
-(`git push origin <branch> && git push --tags`). One CI run for
-the branch + N concurrent release-workflow runs is the most
-minute-efficient way to ship a batch.
-
-Counter-cases (push immediately even on a private repo): critical
-security fix on a shipped binary; user explicitly says "push this
-one"; CI signal needed before merging a feature branch.
-
-### 4.3 Tag format
+### 4.2 Tag format
 
 Annotated tags only:
 
@@ -212,7 +192,7 @@ Push tags explicitly: `git push origin vX.Y.Z` for one,
 `git push --tags` for a batch. **Don't force-push tags under any
 circumstance** — if a tag collision happens, stop and ask.
 
-### 4.4 Confirm before destructive operations
+### 4.3 Confirm before destructive operations
 
 `reset --hard`, `branch -D`, `clean -f`, `push --force` to a
 shared branch — pause and confirm with the user, unless the user
@@ -221,7 +201,6 @@ has explicitly authorised the specific operation in advance.
 A user approving an action once does NOT approve it in all
 contexts.
 
----
 
 ## 5. Release commits (`Kind: release`)
 
@@ -233,8 +212,8 @@ Release commits use the `X.Y.Z: theme — summary` format from
 
 Tier-1 fixes:
 
-- ANTS-1042: HIGH — ESC-in-OSC dispatches RIS as side-effect.
-- ANTS-1043: HIGH — Audit-pipeline rule-quality file pollutes git status.
+- PROJ-1042: HIGH — ESC-in-OSC dispatches RIS as side-effect.
+- PROJ-1043: HIGH — Audit-pipeline rule-quality file pollutes git status.
 
 Tier-2 hardening:
 
@@ -257,7 +236,6 @@ the version-bearing-file edits. Otherwise, do it manually and run
 any project-specific drift checks (e.g.
 `packaging/check-version-drift.sh`) before committing.
 
----
 
 ## 6. Releases on public hosts
 
@@ -276,7 +254,6 @@ CI (if wired up) will fire on the tag push and attach build
 artifacts (AppImage, MSI, .dmg) to the release automatically.
 Don't manually upload artifacts that CI will produce.
 
----
 
 ## 7. Anti-patterns
 

@@ -6,7 +6,7 @@
 > standards; this document covers what's **planned**.
 >
 > **Format:** v1 — see
-> [docs/standards/documentation.md § 3](docs/standards/documentation.md).
+> [docs/standards/roadmap-format.md](docs/standards/roadmap-format.md).
 > Every actionable bullet carries a stable `[ANTS-NNNN]` ID; ID is
 > identity, position is priority, items are tackled top-to-bottom.
 
@@ -2532,7 +2532,39 @@ minor tag (next: pre-0.8.0).
   ROADMAP item. Testing standard mandates TDD by default. ADR
   template seeded at `docs/decisions/0001-record-architecture-decisions.md`
   alongside the standards-folder shells (specs/, decisions/,
-  journal/). Lanes: docs, ROADMAP, README, CHANGELOG.
+  journal/). (Subsequently aligned with the suite template — see
+  ANTS-1104.) Lanes: docs, ROADMAP, README, CHANGELOG.
+- 📋 [ANTS-1105] **Retire deprecated top-level `STANDARDS.md` and
+  `RULES.md`.** Both predate the `docs/standards/` bundle
+  (created 2026-04-13 / 2026-04-14) and now duplicate content
+  that lives canonically in `docs/standards/coding.md` and
+  `docs/standards/commits.md`. Per documentation standard § 1.5
+  ("one source of truth per fact") they should be removed; the
+  README's project-structure tree was updated under ANTS-1104 to
+  flag them as deprecated, but the files still ship. Removal is
+  a destructive action that warrants user confirmation (no
+  automatic deletion). Plan: confirm no external link to either
+  file (grep the project + GitHub issues), then `git rm`. Kind:
+  doc-fix. Source: debt-sweep-2026-04-30. Lanes: docs.
+- ✅ [ANTS-1104] **Sync `docs/standards/` to the App-Build suite
+  template.** Shipped 2026-04-30. The four-doc bundle was
+  forked into the user-level template at
+  `~/.claude/skills/app-workflow/templates/docs/standards/` for
+  `/start-app` to scaffold; the template was then refined
+  (idiom examples delegated to global `~/.claude/CLAUDE.md § 5`,
+  push policy delegated to global § 6, ROADMAP/CHANGELOG format
+  spec extracted into a separate `roadmap-format.md` sub-spec
+  for token efficiency, `---` horizontal-rule separators removed
+  for diff-friendliness, §3.2 numbering gap closed, project-
+  agnostic `PROJ-NNNN` placeholder restored). This item brings
+  the project's own `docs/standards/` back in line with the
+  refined template — the four core standards plus the new
+  `roadmap-format.md` sub-spec are now byte-identical to the
+  template, so future `/start-app` scaffolds and this project
+  share one source of truth. README.md, ROADMAP.md masthead, and
+  the CHANGELOG `[Unreleased]` block updated to point at the
+  new sub-spec. Kind: doc-fix. Source: user-2026-04-30. Lanes:
+  docs.
 - 📋 [ANTS-1056] **Roadmap dialog feature additions.** User ask: "please add
   features to the Roadmap dialog box that you think will be useful
   and also come up with a standard for roadmap.md that we can
@@ -2567,69 +2599,86 @@ minor tag (next: pre-0.8.0).
   `tests/features/roadmap_viewer_*/`. Lanes: RoadmapDialog,
   MainWindow.
 
-- 📋 [ANTS-1100] **Roadmap dialog tab strip — All / Completed /
-  Current / Outstanding / Far Future.** User request 2026-04-28:
-  add a `QTabBar` (or `QTabWidget`) above the existing filter
-  checkboxes and TOC sidebar, with five tabs that act as
-  one-click presets over the existing five-bit filter:
+- 📋 [ANTS-1100] **Roadmap dialog redesign — faceted tabs +
+  search + larger window.** User request 2026-04-30 (refines the
+  earlier 2026-04-28 ask). Three coordinated changes to the
+  `RoadmapDialog`:
 
-  | Tab | Filter applied | Notes |
-  |-----|----------------|-------|
-  | **All** | ✅ + 📋 + 🚧 + 💭 + ★ all on | Default tab; matches today's "all checkboxes ticked" view. |
-  | **Completed** | ✅ only | Read-only history view; ★ "currently being tackled" marker still drawn but no other status renders. |
-  | **Current** | 🚧 + ★ | The signal-set per documentation.md § 3.7 — a bullet is shown if 🚧 *or* if it matches the [Unreleased] / last-5-commit fuzzy signal. |
-  | **Outstanding** | 📋 only | The work queue. |
-  | **Far Future** | 💭 only | "Considered" — research-phase, scope/feasibility uncertain, a.k.a. nice-to-have. |
+  1. **Tab strip** above the TOC, five faceted views over the
+     existing parser output (no parser change — pure presentation
+     layer):
 
-  Tab selection translates into the existing
-  `unsigned filter` bitmask passed to `RoadmapDialog::renderHtml`
-  — no parser changes required, just a new presentation layer.
-  The five existing filter checkboxes stay (they let a user
-  customise the tab presets manually) but the active tab's
-  preset overrides them on click; subsequently toggling a
-  checkbox switches to a "Custom" implicit tab (deselects all
-  five named tabs to avoid lying about the current view).
+     | Tab | What it shows | Sort order |
+     |-----|---------------|------------|
+     | **Full roadmap** | Everything (✅ + 🚧 + 📋 + 💭 + ★) — today's default view | Document order (per roadmap-format.md § 3.5.2) |
+     | **History** | ✅ only — what's shipped | Descending chronological (latest release first) |
+     | **Current** | 🚧 + ★ — bullets flagged 🚧 OR matching the [Unreleased] / last-5-commit signal (per roadmap-format.md § 3.6) | Document order |
+     | **Next** | 📋 only — the work queue | Ascending document order (top of file = highest priority) |
+     | **Far Future** | 💭 only — research-phase / nice-to-haves | Document order |
+
+     Existing five filter checkboxes stay — toggling one switches
+     to a "Custom" implicit tab (de-emphasised) so the user can
+     fine-tune. Token efficiency: zero LLM round-trips — the
+     filter bitmask + sort-order + search predicate are all
+     evaluated in C++ over the already-parsed bullet list.
+
+  2. **Search field** above the TOC. Case-insensitive substring
+     filter applied across bullet headlines + bodies + IDs,
+     scoped to the active tab's filter. Live update via
+     `QLineEdit::textChanged` → re-render. Should also accept
+     `id:1042` shorthand to jump to a specific ID. Debounced at
+     ~120 ms so typing doesn't thrash the renderer.
+
+  3. **Larger default size.** Bump from current `resize(800,
+     600)` (or wherever it lands) to roughly `resize(1200, 800)`
+     with `setSizeGripEnabled(true)` retained. Persist user
+     resize via `Config::roadmapDialogGeometry` (saveGeometry /
+     restoreGeometry round-trip — same shape as the audit dialog
+     already uses).
 
   Implementation sketch — `roadmapdialog.cpp`/`.h`:
-  - `enum class Preset { All, Completed, Current, Outstanding, FarFuture, Custom };`
-  - `static unsigned filterFor(Preset p);` — pure helper, returns
-    the bitmask. Gives the feature test a side-effect-free entry
-    point.
+  - `enum class Preset { Full, History, Current, Next, FarFuture, Custom };`
+  - `static unsigned filterFor(Preset p);` + new
+    `static SortOrder sortFor(Preset p);` (Document /
+    DescendingChronological / AscendingDocument).
   - `QTabBar *m_tabs;` placed above `m_filterDone` row.
-  - Connect `currentChanged` → `applyPreset(p)` →
-    `setFilters(filterFor(p))` → `refresh()`.
-  - Connect each existing filter checkbox's `toggled` signal to
-    a slot that detects "filter no longer matches any preset"
-    and switches the tab bar to a "Custom" tab. Custom tab is
-    visually de-emphasised; user can return to a named preset
-    any time.
+  - `QLineEdit *m_searchBox;` with debounced timer; passes a
+    `QString` predicate into `renderHtml`.
+  - Tab `currentChanged` → `applyPreset(p)` →
+    `setFilters(filterFor(p), sortFor(p))` → `refresh()`.
+  - Checkbox `toggled` → if resulting `(filter, sort)` doesn't
+    match any named preset, switch the tab bar to "Custom".
 
   Spec / lock: new `tests/features/roadmap_viewer_tabs/`
   (spec.md + test_*.cpp). Invariants:
-  - INV-1: `filterFor(All)` returns `ShowDone | ShowPlanned |
-    ShowInProgress | ShowConsidered | ShowCurrent`.
-  - INV-2: `filterFor(Completed)` returns `ShowDone |
-    ShowCurrent`.
-  - INV-3: `filterFor(Current)` returns `ShowInProgress |
-    ShowCurrent`.
-  - INV-4: `filterFor(Outstanding)` returns `ShowPlanned`.
-  - INV-5: `filterFor(FarFuture)` returns `ShowConsidered`.
-  - INV-6: tab bar is the first widget in the dialog's vertical
-    layout (source-grep on the `addWidget(m_tabs, 0)` line).
-  - INV-7: connecting `m_filterDone->toggled` triggers a switch
-    to the Custom tab when the resulting bitmask doesn't match
-    any named preset (drive via `setChecked` on a synthetic
-    dialog).
-  - INV-8: `applyPreset(Completed)` then querying
-    `m_viewer->toHtml()` shows only ✅ bullets in the rendered
-    output (round-trip via the existing `renderHtml` static
-    helper — no Qt event loop needed).
+  - INV-1..5: `filterFor(p)` returns the documented bitmask for
+    each named preset (Full / History / Current / Next /
+    FarFuture).
+  - INV-6: `sortFor(History)` is `DescendingChronological`;
+    other presets use `Document`.
+  - INV-7: tab bar is the first widget in the dialog's vertical
+    layout.
+  - INV-8: Custom tab activates when the active filter+sort
+    combination matches no named preset.
+  - INV-9: `applyPreset(History)` rendered HTML contains only ✅
+    bullets, in reverse chronological order (round-trip via the
+    `renderHtml` static helper — no Qt event loop needed).
+  - INV-10: search predicate `"OSC 8"` against a synthetic
+    document containing two bullets — one with `OSC 8` in the
+    headline, one without — yields exactly one bullet in the
+    rendered HTML.
+  - INV-11: search predicate `"id:1042"` jumps to the
+    `[ANTS-1042]` bullet regardless of headline content.
+  - INV-12: dialog default size is `≥ 1100x720`; geometry is
+    saved/restored across launches via the persisted
+    `roadmapDialogGeometry` key.
 
-  Naming: "Completed" was chosen over "History" per the user's
-  follow-up — clearer signal that the tab shows shipped work,
-  not edit/version history. "Far Future" matches the existing
-  💭 emoji's intent ("research phase; scope or feasibility
-  uncertain"). Kind: implement. Lanes: RoadmapDialog.
+  Why this matters for the user's underlying ask: the dialog is
+  the user's window into the project's state without spending
+  Claude tokens. The tabs replicate the most common Claude-side
+  questions ("what's done?" / "what's next?" / "what's in
+  flight?") in zero-token UI clicks. Kind: implement. Lanes:
+  RoadmapDialog, Config.
 
 ### 🎨 Claude Code template integration (user request 2026-04-28)
 
@@ -2712,6 +2761,205 @@ minor tag (next: pre-0.8.0).
   (tabs, themes, panes — each its own LIFO) rather than one
   global stack so `Ctrl+Z` doesn't ambiguously cross domains.
   Lanes: TBD.
+
+### 🎨 App-Build native integration (user request 2026-04-30)
+
+> **Strategic theme.** Move as much of the App-Build per-phase
+> 9-step loop into Ants Terminal natively as possible. Goal stated
+> by the user: "minimise token usage" by offloading mechanical
+> work from Claude Code to Ants. Triage of the 9 steps:
+>
+> | Step | Where it should run | Token cost |
+> |------|---------------------|------------|
+> | 1. Verify spec | Claude (judgment) | LLM |
+> | 2. Verify deps on the DAG | Ants (graph walk over `Source:` / `Refs:`) | none |
+> | 3. Write failing tests | Claude (drafting) | LLM |
+> | 4. Implement until green | Claude (drafting) | LLM |
+> | 5. Run `/audit` | Ants (already runs cppcheck/clazy/semgrep/etc. natively in `auditdialog`) | none |
+> | 6. Run `/indie-review` | Claude (judgment) | LLM |
+> | 7. Fold actionable findings → new FP## item | Ants (atomic file edit + counter increment) | none |
+> | 8. Update CHANGELOG / ROADMAP / journal | Mostly Ants (status flips, dated section creation, file moves); Claude only for the prose body | partial |
+> | 9. Commit, tag, push | Ants (`git` shell-out + `gh release create` for the GitHub-attached body) | none |
+>
+> Steps 2, 5, 7, parts of 8, and 9 are mechanical — they collapse
+> from "ask Claude to run the tool, paste the output, ask Claude
+> to triage, ask Claude to update the file" into one button
+> click. That's the win.
+
+- 📋 [ANTS-1106] **Mandatory `Kind:` field + viewer faceted
+  categorisation.** Stable IDs stay monotonic (`[ANTS-NNNN]`
+  with one counter at `.roadmap-counter`) — kind-prefixed IDs
+  considered and rejected (per-type counters fragment atomic
+  allocation; reclassifying a bullet's Kind would either renumber
+  it (breaks links) or create prefix/Kind mismatch). Instead, the
+  cleaner win is making the existing optional `Kind:` field
+  **required**: every bullet declares `Kind: implement|fix|
+  audit-fix|review-fix|doc|doc-fix|refactor|test|chore|release`.
+  The roadmap dialog adds a secondary faceted strip under the
+  ANTS-1100 tabs that lets the user filter by Kind (one or more
+  checked at a time), with per-Kind colour cues so an audit-fix
+  visually pops vs an `implement`. Backfill pass: scan every
+  existing bullet, infer `Kind:` from section heading + body, add
+  the line. Update `roadmap-format.md § 3.5.3` so the field is
+  documented as required (currently "MAY be omitted") and pull
+  the same change through to
+  `~/.claude/skills/app-workflow/templates/docs/standards/roadmap-format.md`
+  so the App-Build template stays aligned. Token efficiency: the
+  Kind facet is the structured tag the dialog needs to do the
+  user's "what kinds of work are queued?" query without an LLM
+  round-trip. Kind: doc-fix. Source: user-2026-04-30. Lanes: docs,
+  RoadmapDialog.
+
+- 📋 [ANTS-1107] **Adopt App-Build documentation folder
+  structure.** The user-level `/start-app` template ships a
+  richer `docs/` tree than this project currently has. Bring
+  Ants Terminal in line:
+
+  | File / dir | Purpose | Action |
+  |------------|---------|--------|
+  | `docs/standards/` | Shareable v1 standards bundle | ✅ done in ANTS-1104 |
+  | `docs/decisions/` | ADRs (Michael Nygard) | ✅ scaffolded in ANTS-1055 |
+  | `docs/specs/` | Per-feature spec drafts | ✅ scaffolded |
+  | `docs/journal/` | Per-phase outcomes / session notes | ✅ scaffolded (currently empty) |
+  | `docs/glossary.md` | Project terminology (VT actions, OSC numbers, MCP, IPC, etc.) | 📋 create — pull from CLAUDE.md module map and PLUGINS.md |
+  | `docs/known-issues.md` | Deferred bugs / upstream-blocked items / platform-specific quirks | 📋 create — start with QTBUG-79126, KWin maximize-restore, etc. |
+  | `docs/audit-allowlist.md` | Confirmed false positives the audit pipeline skips | 📋 create — current allowlist lives in `.audit_suppress` JSONL; surface human-readable rationale here |
+  | `docs/ideas.md` | Far-future research / nice-to-haves | 📋 create — lift the 💭 bullets out of ROADMAP into a dedicated file |
+  | `docs/discovery.md` | First-principles project framing | N/A — Ants is post-discovery; document the project's history briefly in `README.md` instead |
+  | `docs/design.md` | Architecture overview | 📋 create — extract from CLAUDE.md module-map + data-flow + design-decision sections; keep CLAUDE.md as the terse Claude-facing brief |
+  | `.claude/workflow.md` | Phase-tracking § 1 status header + journal § 3 | 📋 create — adapted to a post-1.0 release-driven project (no Phase A/B/C/D since discovery is decades behind us; the active surface is "current `[Unreleased]` cycle" + "next release target") |
+
+  Use this as a forcing function to delete `STANDARDS.md` and
+  `RULES.md` (per ANTS-1105) — their content was already
+  duplicated by `docs/standards/coding.md`. Each new file gets
+  one commit. Kind: doc. Source: user-2026-04-30. Lanes: docs.
+
+- 📋 [ANTS-1108] **Native App-Build runner inside Ants Terminal
+  — the strategic token-saver.** User ask 2026-04-30:
+  "incorporate the Ants App-Build suite into Ants Terminal so
+  that any user using Ants Terminal can use this without a
+  Claude subscription. Or at least perform as much as possible…
+  the aim is to reduce token usage by off-loading as much as
+  possible to Ants Terminal to perform instead of Claude Code."
+  Concrete deliverables, in priority order:
+
+  1. **Workflow panel** — new dialog, opens via `View →
+     Workflow` (or status-bar button). Reads `.claude/workflow.md`
+     § 1 status header; renders phase / active item / step
+     progress (✅ ⬜ 🚧). Each mechanical step from the 9-step
+     loop is a button:
+     - **Allocate next ID** — atomic increment of
+       `.roadmap-counter` under flock; copies `[ANTS-NNNN]` to
+       clipboard. (Replaces "ask Claude for the next ID".)
+     - **Run `/audit`** — invokes the existing `auditdialog`
+       pipeline scoped to the active item's `Lanes:`. Findings
+       feed the existing triage UI; folding into ROADMAP via a
+       templated `### 🔍 Audit fold-in (YYYY-MM-DD)` block done
+       by Ants directly (atomic file edit). (Replaces "ask Claude
+       to run /audit, paste the JSON, triage, fold in".)
+     - **Run tests** — `ctest --output-on-failure -L <lanes>`
+       in-process; parses CTest output, renders pass/fail with
+       per-test logs in a panel. (Replaces "ask Claude to run
+       ctest and report".)
+     - **Run drift check** — shells out to
+       `packaging/check-version-drift.sh`; renders pass/fail.
+     - **Run `/debt-sweep`** — native scanner: stale
+       `Q_UNUSED` / `_unused` markers, ROADMAP items still 📋
+       after a matching commit, packaging files still on a
+       previous version, comments referring to renamed types.
+       Surfaces a diff-style preview the user accepts/rejects.
+       (Replaces the LLM-driven debt-sweep delegate today.)
+     - **Run `/bump <version>`** — parses
+       `.claude/bump.json` and applies every templated edit
+       in-process via `QFile` + atomic write. (Replaces the
+       Claude-driven `/bump` skill end-to-end.)
+     - **Run `/release`** — orchestrates `/bump` → build →
+       tests → drift → commit → tag (gated by all-green; a
+       failing test stops the run with a structured error).
+
+  2. **CHANGELOG / ROADMAP edits** — Ants writes the templated
+     parts (status emoji flips, dated section creation, ID
+     allocation, fold-in headings) directly. Claude is only
+     invoked when the user wants prose drafted (a CHANGELOG
+     bullet body, a journal entry, an ADR), at which point Ants
+     opens the existing `aidialog` with a structured prompt
+     pre-filled — the user's own LLM credentials, billed once,
+     not per-step.
+
+  3. **`/start-app` analogue** — `File → New project from
+     App-Build template…` (extends ANTS-1057). Wizard prompts
+     name + path, copies
+     `~/.claude/skills/app-workflow/templates/` with
+     mustache-style substitution, runs `git init` +
+     scaffold-commit, opens in a fresh tab. Zero LLM round-trips.
+
+  4. **`/indie-review` partial offload** — Ants can still run
+     the lane partition + per-lane diff extraction natively;
+     the actual per-lane judgment stays in Claude (or the user's
+     own LLM via aidialog). This step is the only one that
+     genuinely needs LLM judgment, and even there, Ants prepares
+     the prompt so the user spends one LLM call per lane instead
+     of N.
+
+  5. **Per-phase completion ceremony** — flip status to ✅,
+     cross-reference the commit SHA in the bullet, write the
+     journal entry stub, ask the user about push. All
+     mechanical, all in C++.
+
+  Out of scope for v1: drafting prose (always Claude-shaped),
+  cross-cutting refactor judgment (review needs a model), spec
+  brainstorming. The contract: Ants does file IO + tool
+  orchestration + parsing + atomic edits + ID allocation; Claude
+  (or the user's own LLM via aidialog) does prose + judgment.
+
+  Spec parser: reads `tests/features/*/spec.md`, extracts INV
+  numbers + their assertions, can scaffold a test stub. CMake
+  wiring done by a templated `add_executable + add_test` block.
+
+  Storage: workflow state in `.claude/workflow.md` (already the
+  contract); no new config keys. The dialog reads / writes that
+  file directly.
+
+  Subsumes / supersedes the narrower ANTS-1057 (Claude Code
+  template offload) — that bullet stays for cross-reference but
+  its scope folds entirely into ANTS-1108.
+
+  Locked by `tests/features/workflow_runner/` (spec.md + tests
+  for: ID allocator atomicity under concurrent flock,
+  bump-recipe parser correctness, drift-check shell-out
+  exit-code propagation, audit-finding fold-in produces a
+  syntactically valid ROADMAP block matching roadmap-format.md
+  § 3.5.6, debt-sweep finding categorisation matches the
+  existing `/debt-sweep` skill's triage table). Kind: implement.
+  Source: user-2026-04-30. Lanes: MainWindow, new
+  `WorkflowDialog`, AuditDialog, Config, build/CMake.
+
+### 🎨 Status-bar polish (user request 2026-04-30)
+
+- 📋 [ANTS-1109] **Restyle the git-branch chip to match the
+  repo-visibility pill.** User screenshot 2026-04-30:
+  `main` branch label sits as plain text next to the framed
+  green `Public` pill, looking inconsistent now that the
+  visibility pill ships. Match the chip styles: same border
+  radius, same padding, same font size; colour cue derived
+  from the branch — e.g. green outline for `main` /
+  `master` / `trunk`, amber outline for any other branch
+  (visual hint that the user is on a feature branch).
+  Implementation lives in `mainwindow.cpp` status-bar widget
+  setup (search `m_branchLabel` / git-branch chip); style via
+  `setStyleSheet` mirroring the visibility-pill rule. Locked
+  by source-grep invariants in
+  `tests/features/status_bar_branch_chip/`:
+  - INV-1: branch label uses the same `border: 1px solid` /
+    `border-radius` / `padding` shape as the visibility pill
+    (compare style-sheet substrings).
+  - INV-2: green for `main` / `master` / `trunk`; amber
+    otherwise.
+  - INV-3: branch chip and visibility pill have equal
+    `sizeHint().height()` so they bottom-align.
+  Kind: doc-fix style-only / refactor (visual polish, no
+  behaviour change). Source: user-2026-04-30. Lanes: MainWindow,
+  status bar.
 
 ---
 

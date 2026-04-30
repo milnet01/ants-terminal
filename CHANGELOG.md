@@ -36,11 +36,11 @@ for security-relevant changes.
 
 - Four-document shareable standards bundle at `docs/standards/`
   (coding · documentation · testing · commits) plus an index
-  README. The ROADMAP and CHANGELOG format specs fold into
-  `documentation.md` (§§ 3–4). Commits standard mandates
-  `<ID>: <description>` subjects so every commit links back to a
-  ROADMAP item; testing standard mandates TDD by default
-  (ANTS-1055).
+  README, with the detailed ROADMAP and CHANGELOG format spec
+  carried as a sub-spec at `docs/standards/roadmap-format.md`.
+  Commits standard mandates `<ID>: <description>` subjects so
+  every commit links back to a ROADMAP item; testing standard
+  mandates TDD by default (ANTS-1055, ANTS-1104).
 - ADR scaffolding at `docs/decisions/` with
   `0001-record-architecture-decisions.md` (Michael Nygard's
   format) plus per-folder README.
@@ -50,15 +50,22 @@ for security-relevant changes.
 ### Changed
 
 - ROADMAP masthead now points to
-  `docs/standards/documentation.md § 3` for the format spec
-  (was `docs/ROADMAP_FORMAT.md`); `docs/ROADMAP_FORMAT.md`
-  removed — its content lives in the documentation standard.
+  `docs/standards/roadmap-format.md` for the format spec (was
+  `docs/ROADMAP_FORMAT.md` originally; briefly lived inline in
+  `documentation.md § 3` before being extracted as a sub-spec
+  for token efficiency under ANTS-1104).
+- `docs/standards/` now byte-identical to the user-level
+  `/start-app` template at
+  `~/.claude/skills/app-workflow/templates/docs/standards/`,
+  with per-language idiom examples and push-policy details
+  delegated to the global `~/.claude/CLAUDE.md` rather than
+  duplicated in the project standards (ANTS-1104).
 
 ### Fixed
 
 - CHANGELOG.md was missing a top-level `[Unreleased]` block that
   the Roadmap dialog reads for current-work signaling
-  (documentation.md § 4.1 mandates one always, even empty).
+  (roadmap-format.md § 4.1 mandates one always, even empty).
 - Unescaped `&` in the 0.7.55 metainfo `<release>` body broke
   `appstreamcli validate` and turned CI red on every commit since
   the release. Now `&amp;`. (ANTS-1099)

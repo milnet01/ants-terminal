@@ -102,6 +102,38 @@ cppcheck --enable=all --std=c++20 --library=qt \
 - Theme colors set on `TerminalGrid`; ANSI palette (16+216+24) lives there.
 - QTextLayout for ligature shaping.
 
+## Project standards
+
+Four shareable v1 standards live at `docs/standards/`:
+
+- [`coding.md`](docs/standards/coding.md) — code style, error
+  handling, naming, security.
+- [`documentation.md`](docs/standards/documentation.md) — README /
+  CLAUDE.md / API doc structure, screenshots, markdown style.
+- [`testing.md`](docs/standards/testing.md) — TDD policy, INV
+  numbering, spec-first authoring, coverage.
+- [`commits.md`](docs/standards/commits.md) — `<ID>: <description>`
+  subject mandate, hygiene, branching, push policy.
+
+Detailed `ROADMAP.md` / `CHANGELOG.md` format spec is extracted as
+a sub-spec at [`docs/standards/roadmap-format.md`](docs/standards/roadmap-format.md)
+— stable `[ANTS-NNNN]` IDs from `.roadmap-counter`, status emojis
+(✅ 🚧 📋 💭), theme emojis, position-is-priority insertion rules,
+`Kind:` / `Source:` taxonomy, current-work signaling, fold-in
+subsections.
+
+These five files are byte-identical to the user-level
+`/start-app` template at
+`~/.claude/skills/app-workflow/templates/docs/standards/`, so
+projects scaffolded by `/start-app` and this project share one
+source of truth. The `/app-workflow` and `/close-phase` skills
+encode the same conventions for new projects; this codebase
+predates the skills and follows the standards directly.
+
+ADRs (architecture decision records) live at `docs/decisions/`
+in Michael Nygard format; per-feature spec drafts at
+`docs/specs/`; per-phase outcomes at `docs/journal/`.
+
 ## Versioning & release files
 
 SemVer. **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single
