@@ -36,6 +36,7 @@ public:
         Shell      = 1u << 12, // OSC 133 / shell integration / HMAC verification
         Session    = 1u << 13, // session persistence save/restore
         Perf       = 1u << 14, // event-loop stalls, slow handlers, budget overruns
+        Scrollback = 1u << 15, // ANTS-1118 — scrollback pin / m_scrollOffset / overwrite-during-stream traces
         All        = 0xFFFFFFFFu,
     };
 

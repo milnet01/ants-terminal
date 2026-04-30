@@ -1912,6 +1912,26 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     // in scrollback. Diff against the monotonic scrollbackPushed() counter
     // so the math is stable even when the scrollback is full.
     uint64_t pushedBefore = m_grid->scrollbackPushed();
+    // ANTS-1118 diagnostic: snapshot pre-batch state.
+    const int sbSizeBefore = m_grid->scrollbackSize();
+    const int scrollOffsetBefore = m_scrollOffset;
+    const bool wasPinned = m_scrollOffset > 0;
+
+    // ANTS-1118: count action shapes that mutate the visible viewport
+    // without pushing to scrollback (the prime suspect class for the
+    // "overwrite-from-the-line-I'm-parked-on" bug). CSI dispatch
+    // covers eraseInDisplay (J), eraseInLine (K), DECSET 1049
+    // (alt-screen toggle), DECSTR / RIS, and the terminal-clear
+    // shortcut sequences. We log the count, not per-action detail —
+    // sufficient signal-to-noise for the user's repro capture.
+    int csiInBatch = 0;
+    int escInBatch = 0;
+    if (DebugLog::enabled(DebugLog::Scrollback)) {
+        for (const auto &action : batch->actions) {
+            if (action.type == VtAction::CsiDispatch) ++csiInBatch;
+            else if (action.type == VtAction::EscDispatch) ++escInBatch;
+        }
+    }
 
     for (const auto &action : batch->actions) {
         m_grid->processAction(action);
@@ -1929,6 +1949,24 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
         }
     } else {
         m_newOutputMarkerLine = -1;
+    }
+
+    // ANTS-1118 diagnostic: log pre/post snapshot when pinned. Gated
+    // on `ANTS_DEBUG=scrollback` (or runtime menu toggle). When NOT
+    // pinned (m_scrollOffset == 0), we don't log — those batches are
+    // the auto-follow happy path and would dominate the log volume.
+    if (wasPinned && DebugLog::enabled(DebugLog::Scrollback)) {
+        const uint64_t added = m_grid->scrollbackPushed() - pushedBefore;
+        const int sbSizeAfter = m_grid->scrollbackSize();
+        ANTS_LOG(DebugLog::Scrollback,
+                 "vtbatch: pinned offset=%d→%d sbSize=%d→%d pushed=+%llu "
+                 "actions=%zu csi=%d esc=%d marker=%d",
+                 scrollOffsetBefore, m_scrollOffset,
+                 sbSizeBefore, sbSizeAfter,
+                 static_cast<unsigned long long>(added),
+                 batch->actions.size(),
+                 csiInBatch, escInBatch,
+                 m_newOutputMarkerLine);
     }
 
     // Session logging + asciicast recording consume raw bytes from the

@@ -5161,7 +5161,13 @@ void MainWindow::refreshReviewButton() {
 }
 
 void MainWindow::refreshBgTasksButton() {
-    if (!m_claudeBgTasks || !m_claudeBgTasksBtn) return;
+    if (!m_claudeBgTasks || !m_claudeBgTasksBtn) {
+        ANTS_LOG(DebugLog::Claude,
+                 "bgtasks/refresh: tracker=%p btn=%p — early return",
+                 static_cast<void *>(m_claudeBgTasks),
+                 static_cast<void *>(m_claudeBgTasksBtn));
+        return;
+    }
     // Resolve the transcript path scoped to the active tab's project
     // tree. activeSessionPath walks up the cwd, encodes each ancestor
     // to Claude Code's `<dashed-cwd>` form, and returns the newest
@@ -5171,6 +5177,7 @@ void MainWindow::refreshBgTasksButton() {
     // — which is exactly the user-reported 2026-04-27 bug.
     QString cwd;
     if (auto *t = focusedTerminal()) cwd = t->shellCwd();
+    const bool focusedTabPresent = (focusedTerminal() != nullptr);
     QString path;
     if (m_claudeIntegration) path = m_claudeIntegration->activeSessionPath(cwd);
     const QString prevPath = m_claudeBgTasks->transcriptPath();
@@ -5189,6 +5196,32 @@ void MainWindow::refreshBgTasksButton() {
 
     const int running = m_claudeBgTasks->runningCount();
     const int total = m_claudeBgTasks->tasks().size();
+
+    // ANTS-1052 diagnostic: log every refresh outcome so the user can
+    // capture why the button hides under realistic conditions. Gated
+    // on ANTS_DEBUG=claude (or runtime menu toggle). Truncate path to
+    // its basename for brevity — full path is in prevPath state.
+    if (DebugLog::enabled(DebugLog::Claude)) {
+        const QString cwdShort = cwd.isEmpty()
+            ? QStringLiteral("(empty)") : cwd;
+        const QString pathShort = path.isEmpty()
+            ? QStringLiteral("(empty)")
+            : path.section('/', -1);
+        const char *branch =
+            (running > 0) ? "SHOW" :
+            path.isEmpty() ? "HIDE/no-path" :
+            (total == 0)  ? "HIDE/no-tasks-parsed" :
+                            "HIDE/all-finished";
+        ANTS_LOG(DebugLog::Claude,
+                 "bgtasks/refresh: focused-tab=%s cwd=%s path=%s "
+                 "prev-changed=%s running=%d total=%d → %s",
+                 focusedTabPresent ? "yes" : "no",
+                 cwdShort.toUtf8().constData(),
+                 pathShort.toUtf8().constData(),
+                 (path == prevPath) ? "no" : "yes",
+                 running, total, branch);
+    }
+
     if (running <= 0) {
         // No active background work — keep the chrome quiet.
         m_claudeBgTasksBtn->hide();
