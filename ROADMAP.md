@@ -3491,6 +3491,224 @@ minor tag (next: pre-0.8.0).
   Lanes: MainWindow, aidialog, Settings, Status bar,
   new `WorkflowDialog` (extending ANTS-1108 / ANTS-1110).
 
+### ⚡ Performance — hot-path sweep (user request 2026-04-30)
+
+- 📋 [ANTS-1115] **Performance, performance, performance — full
+  hot-path sweep across the ten subsystems that determine
+  perceived speed.** User ask 2026-04-30: "performance,
+  performance, performance — please think on how we can improve
+  performance of Ants Terminal." Triage of every place where
+  a measurable improvement is on the table, ranked by impact ×
+  feasibility. Each row is its own feature-test'able lane so
+  the sweep can ship one fix at a time with a perf benchmark
+  guard.
+
+  | # | Hot path | Current cost | Proposed change | Expected win |
+  |---|----------|--------------|-----------------|--------------|
+  | 1 | **VT parser printable runs** (`vtparser.cpp`) | State-machine traversal byte-by-byte, ~6 ns/byte at the steady state | SIMD scan (SSE2 / AVX2 — `_mm_cmplt_epi8` against `0x20` / `0x7F` / `0x1B`) for printable runs; emit one `Print` action per run instead of N | **3-5×** on `find /` / `tail -f /var/log/messages` style throughput |
+  | 2 | **CSI parameter parsing** (`vtparser.cpp`) | `strtol` per parameter; allocates on long DCS sequences | Fixed-buffer `parseDecimal(begin,end)` returning `int + tail` — no allocation, no errno, no locale dispatch | **5-10×** on heavy SGR streams (vim, neovim, fzf preview) |
+  | 3 | **Glyph shape cache** (`terminalwidget.cpp` QPainter path) | `QTextLayout` shaped per cell every paint when the cell content changes; no caching across frames | Persistent `QHash<(codepoint, fontStyle, sgrAttrs), QGlyphRun>` keyed on the shape inputs; LRU evict at ~50 k entries; reuse `QGlyphRun` directly via `QPainter::drawGlyphRun` | **2-4×** on text-heavy redraws (long lines, ligatures) |
+  | 4 | **Damage-rect-bounded paint** (`terminalwidget.cpp`) | `paintEvent` repaints the whole visible grid even when one cell changed | Track per-cell dirty bits; `update(QRect)` only the dirty region; drop the full-grid path entirely once the per-cell path is proven | **5-10×** on output-light interactive sessions (typing, prompt redraws) |
+  | 5 | **Scrollback ring buffer** (`terminalgrid.cpp`) | `QVector<TermLine>` — push grows/copies; trim shifts | True ring buffer (head index + size); allocate fixed 50 k slots once; `O(1)` push, `O(1)` trim | Latency stability — no pause on scrollback rotation |
+  | 6 | **PTY read coalescing** (`ptyhandler.cpp`) | `QSocketNotifier` fires per readable; small `read()` chunks (~1 KB) | Drain up to 64 KB per wake; coalesce notifier wakeups; skip the parser when input is empty | **2×** on heavy-output processes (`yes`, `dd`, build logs) |
+  | 7 | **Search lazy-lower index** (`terminalwidget.cpp` find feature) | Linear scan + per-call `toLower()` on every line | Maintain a per-line lowercased mirror computed once on append; reuse on every search; Boyer-Moore for the substring match | **10-20×** on scrollback search |
+  | 8 | **Audit dialog virtualisation** (`auditdialog.cpp`) | Single `QTextBrowser` building the entire findings HTML | Switch to a `QListView` + custom delegate for findings; render only visible rows; snippet/blame fetched on demand | **5-20×** on >500-finding sweeps; bounds memory |
+  | 9 | **Roadmap dialog incremental parse** (`roadmapdialog.cpp`) | Full re-parse on every open; >3000-line ROADMAP.md takes ~80 ms | Cache the parsed model; invalidate via the existing `QFileSystemWatcher`; incremental re-parse only the affected `##` block on file change | **10×** dialog-open latency |
+  | 10 | **Startup time** (`main.cpp`) | Cold start ~250 ms with full subsystem init (Lua, plugin discovery, audit tool init, theme load) | Defer Lua / audit / plugin init to first-use; load themes on first SettingsDialog open instead of `MainWindow` ctor; precompiled headers in CMake | **30-50 %** off cold-start |
+
+  Cross-cutting build-side wins:
+
+  - **Precompiled headers** in `CMakeLists.txt` — `target_precompile_headers(ants-terminal PRIVATE <Qt6Headers>)`; cuts incremental build by ~20 %.
+  - **Link-time-optimisation** — already on for Release; verify the LTO flags propagate to the test binaries too (faster test-suite runs).
+  - **Shared static lib for `src/*.o`** — currently every test binary recompiles every source it links; consolidate into a static lib once and link against it.
+  - **Profile-guided optimisation** — record a profile during a representative session (vim + tmux + claude code), feed back into the Release build. ~5-10 % steady-state win.
+
+  Measurement infrastructure:
+
+  - `tests/benchmarks/bench_vt_throughput.cpp` already exists.
+    Add: `bench_paint_throughput.cpp`, `bench_search_throughput.cpp`,
+    `bench_audit_render.cpp`, `bench_roadmap_parse.cpp`. Each
+    captures a wall-time number; CI publishes them as artifacts;
+    a regression in any benchmark > 10 % fails the PR.
+  - **Steady-state replay corpus** — record a 5-minute session
+    of typical use (vim + tmux + claude + browser-of-logs),
+    serialise the byte-stream, replay through VtParser in the
+    benchmark. Reproducible perf numbers.
+  - **Frame-time histogram** — `terminalwidget.cpp` already
+    has `m_lastPaintMs`; expose as a debug overlay
+    (Ctrl+Shift+F12 toggle); P50/P95/P99 visible during real
+    use.
+
+  Anti-goals (out of scope):
+
+  - **Custom rendering toolkit** (Skia, a glyph atlas only,
+    direct GPU). The QPainter+QTextLayout path is fast
+    enough once the cache is in place; ANTS-1024 retired the
+    glrenderer experiment in 0.7.44 with this exact lesson.
+  - **Multi-threaded VT parser** — the parser is sequential
+    (state machine); parallelising introduces synchronisation
+    overhead that kills the win. Stay single-threaded; let
+    SIMD do the heavy lifting.
+  - **Replacing Qt with a lighter toolkit** — Qt6 is the only
+    runtime dep; switching costs years and produces no user-
+    visible win.
+
+  Locked by `tests/features/perf_sweep/` (per-row perf
+  benchmark with a regression threshold). Each row of the
+  table ships as its own commit with the matching
+  `bench_*.cpp` regression test. Nothing in this bullet is
+  one big refactor; it's ten small, measurable, individually
+  shippable wins.
+  Kind: refactor.
+  Source: user-2026-04-30.
+  Lanes: VtParser, TerminalGrid, TerminalWidget,
+  AuditDialog, RoadmapDialog, MainWindow, ptyhandler,
+  build/CMake.
+
+### ⚡ Local-subagent framework — Claude offloads to the local machine (user request 2026-04-30)
+
+> **Strategic theme.** Inverse of ANTS-1108..ANTS-1114 (which
+> are Ants-driven offloads from Claude). Here the user wants
+> *Claude itself* to know "this task can run locally on the
+> user's machine instead of in the cloud" and dispatch to it.
+> Direct user motivation: cost — Claude Code subscriptions
+> billed in USD are heavy in ZAR (or any non-USD currency);
+> every token saved is a real economic win. The framework
+> below is the lever that lets Claude *prefer* local execution
+> for any task that's mechanical / structured / large-output.
+
+- 📋 [ANTS-1116] **Local-subagent framework — Ants exposes
+  mechanical helpers as a CLI library + MCP server so Claude
+  Code can invoke them as tools instead of doing the work in
+  tokens.** User ask 2026-04-30: "When it makes sense to do
+  so, Claude Code must offload certain tasks to the local
+  machine instead of sending it to the cloud, also reducing
+  token usage. Please think of a framework on how to achieve
+  this. So, think of the local machine as a subagent that can
+  perform certain tasks on behalf of Claude Code." Direct
+  cost framing: South Africa rand-vs-dollar makes per-token
+  cost real; the same task done locally costs zero.
+
+  Architecture, three layers:
+
+  1. **CLI library** — a single binary `ants-helper` (shipped
+     alongside the `ants-terminal` package) with subcommands.
+     Each subcommand reads JSON from stdin or argv, writes
+     structured JSON to stdout, exits non-zero on error with a
+     stderr message. Discoverable via `ants-helper list` and
+     `ants-helper <cmd> --help`. Subcommands:
+
+     | Subcommand | Input | Output | Token-saving vs Claude doing it directly |
+     |------------|-------|--------|-----------------------------------------|
+     | `test-runner` | `{"label": "fast", "filter": "..."}` | `{"passed": N, "failed": [{"name", "log"}], "duration_ms"}` | ~5 KB CTest output → ~500 B JSON. **10×** |
+     | `audit-run` | `{"tools": ["cppcheck","clazy"], "scope": ["src/"]}` | `{"findings": [...]}` triaged by mechanical filters | ~50 KB raw → ~2 KB triaged JSON. **25×** |
+     | `audit-fold-in` | `{"findings": [...], "date": "2026-04-30"}` | Writes `### 🔍 Audit fold-in (...)` block atomically; emits new IDs | Replaces Claude-drafted ROADMAP block (~3 KB output) with a single-line "wrote N bullets" ack. **30×** |
+     | `id-allocate` | `{"count": 1}` | `{"ids": ["ANTS-1117"], "next_counter": 1117}` | Replaces a 5-step Claude flow (read counter, increment, write, return) with one local op |
+     | `roadmap-status` | `{"id": "ANTS-1102", "to": "✅"}` | `{"ok": true, "before": "🚧", "after": "✅"}` | Replaces Claude editing the file. **20×** on confirmation tokens |
+     | `changelog-flip` | `{"version": "0.7.56", "date": "2026-04-30"}` | Moves `[Unreleased]` → `[X.Y.Z] - YYYY-MM-DD` atomically | Replaces a multi-edit Claude flow |
+     | `bump` | `{"version": "patch"\|"minor"\|"major"\|"X.Y.Z"}` | Applies the `.claude/bump.json` recipe; runs `post_check`; reports drift | Replaces 30+ Edit calls per release |
+     | `drift-check` | `{}` | `{"clean": true}` or `{"violations": [...]}` | Trivial wrapper around `packaging/check-version-drift.sh` but consumed structured |
+     | `spec-parse` | `{"path": "tests/features/foo/spec.md"}` | `{"theme": "...", "invariants": [{"id":"INV-1", "text":"..."}]}` | Saves Claude reading the spec to extract the structure |
+     | `spec-test-coverage` | `{"spec": "...", "test": "..."}` | `{"missing_invariants": ["INV-3"]}` | Replaces a careful Claude diff |
+     | `git-diff-summary` | `{"range": "main..HEAD"}` | `{"files_changed": N, "lines_added": M, "by_dir": {...}}` | Replaces a 50 KB diff Claude has to read |
+     | `pr-create` | `{"title", "body"}` | Runs `gh pr create`; returns URL | Saves the orchestration round-trip |
+     | `ci-watch` | `{"run_id": ...}` | `{"status", "conclusion", "duration_ms"}` | Replaces `gh run watch` orchestration |
+     | `debt-sweep` | `{"since": "<ref>"}` | `{"trivial_fixes": [...], "behavioral": [...]}` per ANTS-1113 | Replaces the LLM-driven /debt-sweep entirely for the mechanical 95 % |
+     | `indie-review-prep` | `{"partition": "..."}` | Per-lane briefs as JSON (one per lane) ready to dispatch via aidialog | Replaces orchestrator's per-lane context-budget |
+     | `grep-bounded` | `{"pattern", "scope", "max_results": 50}` | `{"matches": [...]}` truncated cleanly | Replaces unbounded grep that floods the context |
+     | `git-blame` | `{"file", "line"}` | `{"sha", "author", "date", "message"}` | Replaces Claude reading 30 lines of `git blame` output |
+
+  2. **MCP server** — `ants-mcp-server` (a thin wrapper over
+     the CLI library that conforms to the
+     Model-Context-Protocol stdio transport). Claude Code
+     declares it in `~/.claude/.mcp.json` once. Each
+     subcommand becomes an MCP tool with structured `input
+     schema` (so Claude knows the shape before calling) and
+     structured `output schema` (so Claude can parse the
+     response without LLM-tokens of "let me figure out the
+     format"). The MCP tool descriptions are short and
+     specific — Claude picks the right tool because the
+     description nails what it does.
+
+  3. **Behavioural-bias rules in `~/.claude/CLAUDE.md`** — a
+     new section §8 telling Claude to *prefer* the local
+     subagents:
+
+     > "When you need to run tests, run audits, allocate a
+     > ROADMAP ID, update CHANGELOG / ROADMAP status, bump a
+     > version, fetch git blame, summarise a diff, prepare a
+     > PR, watch CI, or perform any other mechanical /
+     > structured / large-output task: invoke the
+     > corresponding `ants-*` MCP tool (or `ants-helper
+     > <subcommand>` via the Bash tool when MCP isn't
+     > available) instead of doing it yourself in tool calls.
+     > Doing it yourself burns tokens on output that the
+     > local helper can deliver as structured JSON in 1 / 10
+     > the size."
+
+     Claude Code already has the disposition to prefer
+     skills and hooks (per `feedback_skills_hooks.md`); this
+     section extends that disposition to local helpers.
+
+  Discovery + adoption flow for a new project:
+
+  1. User installs `ants-terminal` (which ships
+     `ants-helper` + `ants-mcp-server` in the same package).
+  2. `ants-mcp-server --install` writes a default
+     `~/.claude/.mcp.json` entry; user can disable per-session
+     with `claude --no-mcp ants-mcp` if they ever want to
+     A/B-compare token costs.
+  3. First Claude Code invocation auto-discovers the tools.
+  4. Claude prefers them per the §8 rule; the user sees the
+     token bill drop measurably on the first heavy session.
+
+  Token-budget projection (rough order-of-magnitude on a
+  typical day's work):
+
+  | Workflow | Today (LLM does it) | With ANTS-1116 | Savings |
+  |----------|---------------------|----------------|---------|
+  | Run tests + interpret | ~5 K input + ~1 K output | ~200 input + ~200 output | ~6× |
+  | Run /audit + triage | ~50 K input + ~5 K output | ~2 K input + ~1 K output | ~18× |
+  | Allocate ID + write CHANGELOG flip + commit + tag | ~3 K input + ~2 K output (multi-Edit) | ~300 input + ~100 output | ~13× |
+  | Run /indie-review (orchestration only) | ~30 K input + ~5 K output | ~3 K input + ~1 K output | ~9× |
+  | Run /debt-sweep | ~10 K input + ~3 K output | ~500 input + ~300 output | ~16× |
+
+  Rough composite: a typical day of mechanical work that
+  would burn ~300 K tokens today drops to ~30 K. **10×
+  cost reduction** for the user, with no loss in
+  functionality — Claude is still in the loop for every
+  judgment / drafting decision.
+
+  v1 deliverable (smallest shippable slice):
+
+  - `ants-helper test-runner` + `ants-helper id-allocate` +
+    `ants-helper drift-check`. Three subcommands, three
+    feature tests, one CLAUDE.md rule. Ship behind a
+    `--enable-helper-cli` CMake option so the CLI is
+    distinct from the GUI binary.
+  - Validate the per-call token savings on a real Claude
+    Code session before expanding the surface.
+
+  v2: add the audit / roadmap / debt-sweep subcommands once
+  the infrastructure is proven.
+  v3: full MCP server with tool-discovery.
+  v4: expand to user's `~/.claude/CLAUDE.md` so the §8 rule
+  is global.
+
+  Locked by `tests/features/local_subagent_framework/`
+  (round-trip determinism per subcommand; JSON-shape
+  conformance to a versioned schema; CLI version-skew
+  detection so an old `ants-helper` doesn't break a newer
+  Claude session); `tests/features/mcp_server/`
+  (handshake + tool-listing + per-tool input/output
+  validation against the same schemas).
+  Kind: implement.
+  Source: user-2026-04-30.
+  Lanes: new `ants-helper` CLI binary, new `ants-mcp-server`
+  binary, build/CMake (new targets), packaging (ship two
+  more binaries in every distro package), docs (CLAUDE.md
+  global rule), tests/features/.
+
 ### 🎨 Status-bar polish (user request 2026-04-30)
 
 - 📋 [ANTS-1109] **Restyle the git-branch chip to match the
