@@ -3991,6 +3991,59 @@ minor tag (next: pre-0.8.0).
   retention rationale in comments. F3 was already addressed in
   the 0.7.59 commit. All 119 tests still pass.
 
+### 🎨 UX — relocate the update-available indicator (user request 2026-04-30)
+
+- 📋 [ANTS-1124] **Move the "update available" link from the
+  right of the status bar to the menu bar, immediately to the
+  right of the Help menu.** User-visible signalling lives in the
+  status bar today: `m_updateAvailableLabel` (QLabel,
+  `mainwindow.cpp:3832-3845`) is added via
+  `statusBar()->addPermanentWidget(...)` and shows a clickable
+  "Update available" link when the version-check probe finds a
+  newer release on GitHub. The indicator competes with the
+  Roadmap / Claude / git status widgets for the user's eye on
+  the right edge of the status bar; promoting it to the menu
+  bar (right of `&Help`) makes it the visually-loudest action
+  in the chrome — appropriate for a one-shot "you have a new
+  version" call-to-action — and frees the status-bar real
+  estate for steady-state telemetry only.
+
+  **Acceptance:**
+  1. When `m_updateAvailableLabel`'s show() is called, a new
+     menu-bar **action** (not a label / widget) appears to the
+     right of the existing Help menu, with text matching
+     today's "Update available" link copy. Clicking it routes
+     to the same `updateAvailableLabel` `linkActivated`
+     handler — same dialog, same Update / Skip / Postpone
+     flow at `mainwindow.cpp:5505-5540`.
+  2. When `hide()` is called (no update detected, or one
+     successfully installed), the menu-bar action is removed.
+     The state-machine driver doesn't change; only the surface.
+  3. The status-bar `m_updateAvailableLabel` is removed
+     entirely — no dual-surfacing.
+  4. Menu-bar placement uses `QMenuBar::setCornerWidget` (right
+     corner) or a top-level `QAction` added after the Help
+     menu; whichever survives Qt 6.6+ on KDE/GNOME/Wayland with
+     RTL layout — feature-test in `tests/features/` first.
+  5. Visually the action stands out (bold weight or colour
+     hint matching the theme accent) — the call-to-action
+     framing is the whole point of the move.
+
+  **Out of scope:** the version-check probe itself (already at
+  `versionCheck.cpp` / `mainwindow.cpp:1889+`); the in-place
+  update flow (`mainwindow.cpp:5505-5540`); the "Check for
+  Updates" Help-menu action (stays where it is — it's a
+  user-initiated re-probe, different from the passive
+  notification this bullet is moving).
+
+  Spec stub: write `docs/specs/ANTS-1124.md` with the INVs
+  before code per `feedback_app_build_strict_loop.md` (the
+  strict spec → review → fold → fix loop). Touches
+  `mainwindow.{h,cpp}` only; net diff likely ≤ 60 lines + the
+  feature-conformance test.
+
+  Kind: ux. Source: user-2026-04-30. Lanes: MainWindow.
+
 ### 🐛 Scrollback overwrite during streaming (user request 2026-04-30)
 
 - 📋 [ANTS-1118] **HIGH — Scrolling up during a Claude Code stream
