@@ -7,14 +7,12 @@
 #include <cstring>
 #include <fcntl.h>
 #include <pty.h>
-#include <string>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <thread>      // 0.7.33: detached worker for SIGTERM/SIGKILL escalation
 #include <unistd.h>
-#include <vector>
 #include <pwd.h>
 
 Pty::Pty(QObject *parent) : QObject(parent) {}
@@ -112,6 +110,36 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     ws.ws_xpixel = 0;
     ws.ws_ypixel = 0;
 
+    // ANTS-1046 indie-review-2026-04-27: pre-fork the flatpak-spawn
+    // argv and the version/directory string buffers so the child
+    // does no `std::string` / `std::vector` allocation between
+    // forkpty and execvp. The previous post-fork build relied on
+    // the glibc malloc fork-handler — usually safe, not strictly
+    // POSIX async-signal-safe in a multithreaded program (the
+    // parent has the audit pipeline, AI dialog, and Lua VMs
+    // threaded by the time forkpty fires). snprintf is on the
+    // POSIX async-signal-safe list (§ 2.4.3) and writes into
+    // these stack buffers without touching the heap. The argv
+    // pointers reference the parent's stack; forkpty's COW
+    // semantics make them readable in the child until execvp
+    // replaces the address space.
+    const bool inFlatpak =
+        ::getenv("FLATPAK_ID") != nullptr ||
+        ::access("/.flatpak-info", F_OK) == 0;
+    char flatpakVerArg[128];
+    char flatpakDirArg[PATH_MAX + 16];
+    if (inFlatpak) {
+        (void)::snprintf(flatpakVerArg, sizeof(flatpakVerArg),
+                         "--env=TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
+        if (!workDir.isEmpty()) {
+            const QByteArray workDirBytes = workDir.toLocal8Bit();
+            (void)::snprintf(flatpakDirArg, sizeof(flatpakDirArg),
+                             "--directory=%s", workDirBytes.constData());
+        } else {
+            flatpakDirArg[0] = '\0';
+        }
+    }
+
     m_childPid = forkpty(&m_masterFd, nullptr, nullptr, &ws);
 
     if (m_childPid < 0) {
@@ -188,41 +216,34 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         // `flatpak-spawn --host` so the sandbox doesn't cut off $PATH,
         // tools, and the real home directory. flatpak-spawn does NOT
         // inherit the calling process's env or cwd, so TERM* and
-        // workDir cross the sandbox boundary explicitly via --env= and
-        // --directory=. Detection checks both FLATPAK_ID (set by the
-        // flatpak launcher) and /.flatpak-info (present in every
-        // sandbox regardless of how the app was launched). If
-        // flatpak-spawn is missing we _exit(127) the same way a
+        // workDir cross the sandbox boundary explicitly via --env=
+        // and --directory=. Detection + argv string prep happens
+        // pre-fork (ANTS-1046); the child only assembles pointers to
+        // those buffers and calls execvp — no std::string or
+        // std::vector allocation between forkpty and execvp.
+        // If flatpak-spawn is missing we _exit(127) the same way a
         // missing shell would, matching the direct-exec fallback's
         // failure shape. See packaging/flatpak/org.ants.Terminal.yml.
-        const bool inFlatpak =
-            ::getenv("FLATPAK_ID") != nullptr ||
-            ::access("/.flatpak-info", F_OK) == 0;
         if (inFlatpak) {
-            const QByteArray workDirBytes = workDir.toLocal8Bit();
-            std::string verArg = "--env=TERM_PROGRAM_VERSION=";
-            verArg += ANTS_VERSION;
-            std::string dirArg;
-            if (!workDir.isEmpty()) {
-                dirArg = "--directory=";
-                dirArg.append(workDirBytes.constData(),
-                              static_cast<size_t>(workDirBytes.size()));
-            }
-            std::vector<const char *> argv;
-            argv.reserve(12);
-            argv.push_back("flatpak-spawn");
-            argv.push_back("--host");
-            argv.push_back("--env=TERM=xterm-256color");
-            argv.push_back("--env=COLORTERM=truecolor");
-            argv.push_back("--env=TERM_PROGRAM=AntsTerminal");
-            argv.push_back(verArg.c_str());
-            argv.push_back("--env=COLORFGBG=15;0");
-            if (!workDir.isEmpty()) argv.push_back(dirArg.c_str());
-            argv.push_back("--");
-            argv.push_back(shellCStr);
-            argv.push_back(nullptr);
+            // Stack-allocated argv pointer table. Slots filled
+            // unconditionally with stable string literals or with
+            // pre-built buffers from the pre-fork prep. No heap
+            // touch.
+            const char *argv[12];
+            size_t i = 0;
+            argv[i++] = "flatpak-spawn";
+            argv[i++] = "--host";
+            argv[i++] = "--env=TERM=xterm-256color";
+            argv[i++] = "--env=COLORTERM=truecolor";
+            argv[i++] = "--env=TERM_PROGRAM=AntsTerminal";
+            argv[i++] = flatpakVerArg;
+            argv[i++] = "--env=COLORFGBG=15;0";
+            if (flatpakDirArg[0] != '\0') argv[i++] = flatpakDirArg;
+            argv[i++] = "--";
+            argv[i++] = shellCStr;
+            argv[i++] = nullptr;
             ::execvp("flatpak-spawn",
-                     const_cast<char *const *>(argv.data()));
+                     const_cast<char *const *>(argv));
             ::_exit(127);
         }
 

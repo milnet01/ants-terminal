@@ -104,17 +104,30 @@ int main() {
         }
     }
     // TERM_PROGRAM_VERSION must pull from ANTS_VERSION (so a bump
-    // propagates without editing this file).
-    if (!has("\"--env=TERM_PROGRAM_VERSION=\"") ||
+    // propagates without editing this file). Accepts either the
+    // string-concat form (`"--env=TERM_PROGRAM_VERSION=" + version`)
+    // or the snprintf-format form (`"--env=TERM_PROGRAM_VERSION=%s"`,
+    // ANTS-1046's heap-free variant).
+    const bool hasVerPrefixConcat =
+        has("\"--env=TERM_PROGRAM_VERSION=\"");
+    const bool hasVerPrefixSnprintf =
+        has("\"--env=TERM_PROGRAM_VERSION=%s\"");
+    if ((!hasVerPrefixConcat && !hasVerPrefixSnprintf) ||
         !has("ANTS_VERSION")) {
-        fail("INV-3: TERM_PROGRAM_VERSION must be --env=TERM_PROGRAM_VERSION= "
-             "concatenated with ANTS_VERSION, not a hardcoded literal");
+        fail("INV-3: TERM_PROGRAM_VERSION must be either "
+             "--env=TERM_PROGRAM_VERSION= concatenated with ANTS_VERSION "
+             "OR --env=TERM_PROGRAM_VERSION=%s formatted with "
+             "ANTS_VERSION (ANTS-1046 stack-only argv form)");
     }
 
-    // INV-4 — working directory crosses via --directory=.
-    if (!has("\"--directory=\"")) {
-        fail("INV-4: host-branch argv must include a \"--directory=\" "
-             "prefix so workDir crosses the sandbox");
+    // INV-4 — working directory crosses via --directory=. Accepts
+    // either the string-concat form (`"--directory=" + workDir`) or
+    // the snprintf-format form (`"--directory=%s"`, ANTS-1046's
+    // heap-free variant).
+    if (!has("\"--directory=\"") && !has("\"--directory=%s\"")) {
+        fail("INV-4: host-branch argv must include a "
+             "\"--directory=\" prefix or \"--directory=%s\" format "
+             "string so workDir crosses the sandbox");
     }
     // The --directory handling must be conditional — appending it
     // unconditionally with an empty workDir would make flatpak-spawn

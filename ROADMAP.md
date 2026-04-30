@@ -2428,11 +2428,21 @@ in each named file carry the original indie-review citation.
   CRITICAL + 0 new HIGH on second pass).
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1046] **Post-fork heap allocations in flatpak detect path.**
-  `ptyhandler.cpp:202-220`. `std::string`/`std::vector<const char*>`
-  between `forkpty` and `execlp` relies on glibc malloc fork-handler;
-  not strictly POSIX-safe. Build argv on the stack with C strings
-  before forkpty.
+- ✅ [ANTS-1046] **Post-fork heap allocations in flatpak detect path.**
+  Shipped 2026-04-30. Detection (`getenv("FLATPAK_ID")` +
+  `access("/.flatpak-info")`) and the version/directory string
+  buffers all build pre-fork in the parent now. The child only
+  assembles a stack-allocated `const char *argv[12]` table and
+  calls `execvp` — no `std::string`/`std::vector` references
+  remain between forkpty and the execvp call. snprintf (POSIX
+  async-signal-safe per § 2.4.3) writes into the stack
+  buffers. The `<string>` and `<vector>` includes were dropped
+  from `ptyhandler.cpp` — they were only there for the
+  retired post-fork path. Verified by the existing
+  `flatpak_host_shell` feature test (extended to accept either
+  the string-concat or snprintf-format form of the env-arg
+  literals; the spec intent — "ANTS_VERSION must propagate
+  via the version arg" — is unchanged).
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 - ✅ [ANTS-1047] **`shellutils.h` denylist regex incomplete.** Shipped
@@ -4294,31 +4304,61 @@ minor tag (next: pre-0.8.0).
   Kind: review-fix. Source: cold-eyes-review-2026-04-30.
   Lanes: tests/features/roadmap_viewer_archive.
 
-### 🎨 Menubar dropdown theme alignment (user request 2026-04-30)
+### 🎨 Theme palette propagation gaps (user request 2026-04-30)
 
 - 📋 [ANTS-1127] **Menubar dropdown background not theme-aligned.**
   User report 2026-04-30 (paired with the ANTS-1058 close):
   "the colour scheme of the background of the drop down list does
-  not align to the theme." The dropdown opens with stable paint
-  (ANTS-1058 confirmed fixed) but the background colour is the
-  default Qt/Fusion grey rather than the active theme's `panel`
-  / `background` palette role. Likely cause: `NoAnimStyle` (the
-  Fusion subclass that killed the 60 Hz animation cycle) doesn't
-  forward the theme's `QPalette` to the popup `QMenu` — popups
-  inherit from their parent only when `setStyle` propagates,
-  which `NoAnimStyle` may not. Investigation path:
-  1. `grep -n "NoAnimStyle\|setStyle\|QMenu::polish" src/`
-     to find the propagation site.
-  2. Check whether `QMenu`'s palette is set explicitly on
-     `QMenuBar::addMenu(...)` callsites or relies on inheritance.
+  not align to the theme." Subsumed under ANTS-1128 below — the
+  dropdown is one of multiple chrome surfaces missing palette
+  propagation. Kind: fix. Source: user-2026-04-30.
+
+- 📋 [ANTS-1128] **Theme palette propagation to non-terminal
+  chrome.** User reports across 2026-04-30 — the menubar
+  dropdown (ANTS-1127) and the **Review Changes dialog**
+  (screenshot showing the bottom button strip and dialog
+  background in the default Plasma grey rather than the active
+  theme's dark background) both surface the same root cause:
+  parts of the chrome (popup `QMenu`, `QDialog` non-text
+  widgets, button-row backgrounds) keep the system-default
+  `QPalette` instead of the Ants theme's `background` /
+  `panel` colours. The terminal grid and `QTextBrowser`
+  contents paint correctly because `TerminalWidget` /
+  `RoadmapDialog` / `ReviewChangesDialog`'s viewer set
+  palettes explicitly on those subwidgets; the surrounding
+  chrome relies on inheritance from `qApp->palette()` which
+  the theme-apply path doesn't fan out to popups and dialog
+  shells.
+
+  Investigation path before code:
+  1. Read `src/themes.cpp` — find the theme-apply function and
+     check whether it sets `QApplication::setPalette(p)` (which
+     fans out to all toplevels) vs `MainWindow::setPalette(p)`
+     (which only affects the main window subtree).
+  2. `grep -n "setPalette\|setStyleSheet" src/*.cpp` — map every
+     site that touches a palette so the theme fan-out can be
+     consolidated.
   3. Verify by toggling between two Ants themes and watching
-     `qApp->palette()` vs the popup's `palette()`.
-  Spec stub: write `docs/specs/ANTS-1127.md` with the INVs before
-  code per the strict-loop rule. Touches `src/mainwindow.cpp`
-  menu setup or `src/themes.cpp` if the theme-apply path needs
-  to fan out to popups.
-  Kind: fix. Source: user-2026-04-30.
-  Lanes: MainWindow, Themes, NoAnimStyle.
+     the dropdown colour, the Review Changes dialog footer,
+     and the audit dialog (which probably has the same gap).
+  4. Likely fix: the theme-apply path calls
+     `QApplication::setPalette(p)` once at the top, and
+     specific subtrees (terminal, text browser) override
+     subroles. Currently it appears to do the opposite —
+     subtree-only palette set, no app-level fan-out.
+
+  Once root cause is confirmed, write a spec at
+  `tests/features/theme_palette_propagation/spec.md` capturing
+  the contract (INV: every Ants-owned dialog whose
+  `palette().window().color()` doesn't match `qApp->palette()
+  .window().color()` after theme-apply is a regression). Then
+  fix + lock with a feature test that opens a synthetic
+  dialog post-theme-apply and asserts its palette matches.
+
+  Kind: fix. Source: user-2026-04-30 (two reports, same
+  class). Lanes: Themes, MainWindow, dialogs (ReviewChanges,
+  RoadmapDialog, AuditDialog, AiDialog, SettingsDialog,
+  About, SshDialog, Snippets), NoAnimStyle.
 
 ---
 
