@@ -2968,13 +2968,27 @@ void MainWindow::applyTheme(const QString &name) {
           QStringLiteral("%23") + theme.textSecondary.name().mid(1),
           theme.ansi[1].name());  // ANSI red for close/danger
 
-    setStyleSheet(ss);
+    // ANTS-1128 (user reports 2026-04-30 of dropdown bg + Review Changes
+    // dialog bg not matching the theme): apply the stylesheet at the
+    // QApplication level, not the MainWindow level. Qt's stylesheet
+    // engine only propagates through a widget's render subtree —
+    // top-level QDialogs have their own paint chain and DO NOT inherit
+    // the parent QWidget's stylesheet, even though they're QObject
+    // children. qApp->setStyleSheet, by contrast, fans out to every
+    // widget in the application including not-yet-constructed dialogs.
+    // Both selectors used below (QMainWindow, QDialog, QMenu, etc.)
+    // are unchanged — they're still scoped to specific widget types,
+    // just sourced from the app-level stylesheet now. The previous
+    // setStyleSheet(this, ...) call was the comment's claim to
+    // "Qt already propagates via the object tree", which is the
+    // misconception the user's screenshots caught.
+    qApp->setStyleSheet(ss);
 
-    // Cascade to any already-open top-level dialog that was created with
-    // this MainWindow as parent. Qt already propagates via the object tree,
-    // but dialogs cached across theme changes (m_settingsDialog, m_aiDialog,
-    // m_auditDialog …) are re-polished here so the live widgets pick up the
-    // new palette without needing to re-instantiate.
+    // Re-polish any already-open top-level dialog so live widgets pick
+    // up the new palette without needing to re-instantiate. With qApp
+    // as the stylesheet root, this is mostly redundant for new dialogs,
+    // but cached singletons (m_settingsDialog, m_auditDialog …) need
+    // the kick to refresh their already-styled state.
     for (QWidget *child : findChildren<QDialog *>()) {
         child->style()->unpolish(child);
         child->style()->polish(child);

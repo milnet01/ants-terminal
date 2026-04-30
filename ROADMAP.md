@@ -4306,59 +4306,36 @@ minor tag (next: pre-0.8.0).
 
 ### 🎨 Theme palette propagation gaps (user request 2026-04-30)
 
-- 📋 [ANTS-1127] **Menubar dropdown background not theme-aligned.**
-  User report 2026-04-30 (paired with the ANTS-1058 close):
-  "the colour scheme of the background of the drop down list does
-  not align to the theme." Subsumed under ANTS-1128 below — the
-  dropdown is one of multiple chrome surfaces missing palette
-  propagation. Kind: fix. Source: user-2026-04-30.
+- ✅ [ANTS-1127] **Menubar dropdown background not theme-aligned.**
+  Closed by ANTS-1128 below.
+  Kind: fix. Source: user-2026-04-30.
 
-- 📋 [ANTS-1128] **Theme palette propagation to non-terminal
-  chrome.** User reports across 2026-04-30 — the menubar
-  dropdown (ANTS-1127) and the **Review Changes dialog**
-  (screenshot showing the bottom button strip and dialog
-  background in the default Plasma grey rather than the active
-  theme's dark background) both surface the same root cause:
-  parts of the chrome (popup `QMenu`, `QDialog` non-text
-  widgets, button-row backgrounds) keep the system-default
-  `QPalette` instead of the Ants theme's `background` /
-  `panel` colours. The terminal grid and `QTextBrowser`
-  contents paint correctly because `TerminalWidget` /
-  `RoadmapDialog` / `ReviewChangesDialog`'s viewer set
-  palettes explicitly on those subwidgets; the surrounding
-  chrome relies on inheritance from `qApp->palette()` which
-  the theme-apply path doesn't fan out to popups and dialog
-  shells.
-
-  Investigation path before code:
-  1. Read `src/themes.cpp` — find the theme-apply function and
-     check whether it sets `QApplication::setPalette(p)` (which
-     fans out to all toplevels) vs `MainWindow::setPalette(p)`
-     (which only affects the main window subtree).
-  2. `grep -n "setPalette\|setStyleSheet" src/*.cpp` — map every
-     site that touches a palette so the theme fan-out can be
-     consolidated.
-  3. Verify by toggling between two Ants themes and watching
-     the dropdown colour, the Review Changes dialog footer,
-     and the audit dialog (which probably has the same gap).
-  4. Likely fix: the theme-apply path calls
-     `QApplication::setPalette(p)` once at the top, and
-     specific subtrees (terminal, text browser) override
-     subroles. Currently it appears to do the opposite —
-     subtree-only palette set, no app-level fan-out.
-
-  Once root cause is confirmed, write a spec at
-  `tests/features/theme_palette_propagation/spec.md` capturing
-  the contract (INV: every Ants-owned dialog whose
-  `palette().window().color()` doesn't match `qApp->palette()
-  .window().color()` after theme-apply is a regression). Then
-  fix + lock with a feature test that opens a synthetic
-  dialog post-theme-apply and asserts its palette matches.
-
+- ✅ [ANTS-1128] **Theme stylesheet not reaching top-level
+  dialogs.** Shipped 2026-04-30. Two user reports (dropdown
+  bg + Review Changes dialog screenshot) traced to one root
+  cause: `MainWindow::applyTheme` was calling
+  `setStyleSheet(ss)` on the `MainWindow` instance, but Qt's
+  stylesheet engine only propagates through a widget's
+  **render subtree** — top-level `QDialog`s have their own
+  paint chain and DO NOT inherit a parent QWidget's
+  stylesheet, even when they're QObject children. The
+  comment at the call site ("Qt already propagates via the
+  object tree") was the misconception. Fix: switched to
+  `qApp->setStyleSheet(ss)`, which fans out to every widget
+  in the application including not-yet-constructed dialogs.
+  All 9 dialog classes (`aidialog`, `claudetranscript`,
+  `claudeallowlist`, `sshdialog`, `claudebgtasksdialog`,
+  `claudeprojects`, `auditdialog`, `settingsdialog`,
+  `roadmapdialog`) plus 7 ad-hoc `new QDialog(this)`
+  instances (about, paste preview, snippet editor, Review
+  Changes, settings-restore, etc.) now pick up the active
+  theme's `QDialog`/`QMenu`/etc. selectors. Targeted child-
+  widget `setStyleSheet` calls (e.g. label colours, button
+  pill styles in settings/audit dialogs) are unaffected —
+  they layer on top of the qApp-level stylesheet, not
+  replace it. 121 tests pass.
   Kind: fix. Source: user-2026-04-30 (two reports, same
-  class). Lanes: Themes, MainWindow, dialogs (ReviewChanges,
-  RoadmapDialog, AuditDialog, AiDialog, SettingsDialog,
-  About, SshDialog, Snippets), NoAnimStyle.
+  class). Lanes: MainWindow.
 
 ---
 
