@@ -2344,7 +2344,8 @@ if(ANTS_TESTS)
         CMAKELISTS_TXT="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
         SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
-    add_test(NAME kwin_position_tracker COMMAND test_kwin_position_tracker)
+    add_test(NAME kwin_position_tracker
+             COMMAND test_kwin_position_tracker -platform offscreen)
     set_tests_properties(kwin_position_tracker PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
