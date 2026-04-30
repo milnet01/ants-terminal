@@ -3717,18 +3717,20 @@ minor tag (next: pre-0.8.0).
     ANTS-NNNN+ form remains; EXPERIMENTAL.md has no stale
     0.6.x markers.
 
-- 📋 [ANTS-1129] **`Source:` field backfill across ROADMAP.md.**
-  44 of 117 ANTS bullets are missing the `Source:` field per
-  `docs/standards/roadmap-format.md § 3.5.3`. Sample line
-  numbers: 401, 437, 2148-2163, 3975, 4050-4060, 4123,
-  4141-4205, 4300-4352, 4370-4423. ANTS-1106 was the in-flight
-  backfill for `Kind:` (mostly done); ANTS-1129 closes the
-  parallel `Source:` tail. Mechanical: read each bullet's
-  context, infer the most plausible source (`planned`, `user`,
-  `audit`, `indie-review`, `debt-sweep`, `regression`,
-  `external-CVE`, etc.), append the `Source:` line. Best done
-  in one focused pass rather than ad-hoc — bundled to keep the
-  cognitive load low. Kind: doc-fix.
+- ✅ [ANTS-1129] **`Source:` field backfill across ROADMAP.md.**
+  Closed 2026-04-30. 36 long-term roadmap bullets in 0.8.0+
+  "Considered/planned" sections gained explicit
+  `Source: planned`. Bullets ANTS-1060, 1061, 1062, 1064,
+  1066–1098 (with gaps where IDs already had Source). The
+  four bullets at the top of the 0.8.0 "🧪 Future external-
+  signal lanes" subsection (ANTS-1003–1006) deliberately
+  remain without an explicit per-bullet Source — their
+  section heading "Future external-signal lanes (carry from
+  the 2026-04-23 review)" makes
+  `Source: indie-review-2026-04-23` unambiguous per § 3.5
+  inheritance. Total `Source:` count across the file:
+  68 → 104. Mechanical fix; no bullet reordering or content
+  edits beyond the appended field. Kind: doc-fix.
   Source: doc-cold-eyes-2026-04-30. Lanes: ROADMAP.
 
   **Theme T1 — GPU-renderer removal not propagated.** `glrenderer.cpp`
