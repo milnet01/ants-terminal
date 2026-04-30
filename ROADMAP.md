@@ -3049,6 +3049,448 @@ minor tag (next: pre-0.8.0).
   Source: user-2026-04-30. Lanes: MainWindow, new
   `WorkflowDialog`, AuditDialog, Config, build/CMake.
 
+### 🎨 Claude Code companion offload (user request 2026-04-30)
+
+> **Strategic theme.** Make Ants Terminal the recommended
+> terminal alongside Claude Code by absorbing every
+> Claude-Code-shaped workflow whose mechanical core can run
+> natively. Companion to ANTS-1108 (App-Build runner). The
+> three bullets below catalogue the work; ANTS-1110 is the
+> overview / per-superpowers-skill triage, ANTS-1111 folds
+> `/audit` triage into the Project Audit tool, ANTS-1112 lifts
+> `/indie-review` orchestration so Claude is invoked only for
+> the per-lane judgment + optional synthesis.
+
+- 📋 [ANTS-1110] **Absorb the `superpowers` skill set + Claude
+  Code orchestration into Ants Terminal.** User intent
+  2026-04-30: "incorporate as much as possible to take work off
+  Claude Code, reducing token usage… I want Ants Terminal as
+  the recommended terminal alongside Claude Code." Companion
+  scope to ANTS-1108 (the App-Build runner); this bullet
+  catalogues every Claude-Code-shaped workflow that has a
+  mechanical core Ants can execute natively.
+
+  Per-skill triage of the active superpowers bundle:
+
+  | Skill | Mechanical core (Ants) | LLM core (Claude) |
+  |-------|------------------------|-------------------|
+  | `verification-before-completion` | Run tests + lints + drift checks; check `git status` cleanliness; render pass/fail panel | None — pure offload |
+  | `using-git-worktrees` | `git worktree add/list/remove`, branch hygiene, abandoned-worktree GC | None — pure offload |
+  | `dispatching-parallel-agents` | Process pool that fans tasks out, captures stdout per task, aggregates | The agent task itself |
+  | `subagent-driven-development` | Same as above — orchestration + result aggregation | The subagent's reasoning |
+  | `executing-plans` | Walk `docs/specs/*.md` task list; advance / mark done; run gates between steps | The "implement" step in each task |
+  | `test-driven-development` | Run failing test → capture exit; run impl-changed test → confirm green; commit with the cite-spec template | Drafting the test + the implementation |
+  | `writing-plans` | Plan-template scaffold (frontmatter, dependency-graph syntax, task numbering); plan validator (referenced files exist; deps are acyclic) | The plan's actual content |
+  | `writing-skills` | SKILL.md template scaffold; frontmatter validator; storage-path picker | The skill's body |
+  | `requesting-code-review` | Diff extraction + checklist (per `docs/standards/`); render review-request prompt | Performing the review |
+  | `receiving-code-review` | Fetch comments via `gh pr view --json reviews,comments`; render in panel; track per-comment resolution status | Judgment on what to act on |
+  | `finishing-a-development-branch` | Run release gates, generate PR description from `git log` + commit-style template, `gh pr create` | Drafting the PR description prose |
+  | `systematic-debugging` | Reproducer harness (capture STDIN + run + diff STDOUT against expected); bisect helper (`git bisect run` wrapper); coredump fetcher | Forming hypotheses |
+  | `brainstorming` | Structured spec-intake form (Theme / Invariants / Out-of-scope / Lanes fields); writes directly to `tests/features/<name>/spec.md` | The brainstorm dialog itself |
+  | `frontend-design` | None — pure creative LLM | All of it |
+
+  Other Claude Code-flavoured offloads beyond superpowers:
+
+  - **CI watchdog panel** — `gh run watch` integration with
+    auto-refresh, attached-artifact list, failure-log
+    fetching. Replaces "ask Claude to check CI status".
+  - **PR review surface** — fetch PR comments via `gh api`,
+    render in a side panel with per-comment "applied / out
+    of scope / disagree" buttons that draft the reply.
+    Replaces "ask Claude to read the review and prepare
+    responses".
+  - **Token usage estimator** — pre-flight token counter on
+    any prompt the user is about to send (using the
+    pluggable LLM endpoint already wired through `aidialog`).
+    Warns on > 50 k input tokens; suggests splitting.
+  - **Prompt-cache hint** — Ants tracks which files a prompt
+    references and exploits Anthropic's 5-minute cache TTL
+    by re-using identical prefix prompts. Surfaces "this
+    prompt will hit cache (saves N tokens)" indicator.
+  - **MCP server orchestration** — `claude mcp`
+    add/remove/list via a Settings → MCP panel. Pure
+    mechanical.
+  - **Session history search** — Ants already has the
+    terminal output; index past Claude Code sessions in a
+    SQLite store; instant grep across history without
+    re-asking the LLM.
+  - **`.claude/settings.json` editor** — visual editor for
+    permissions, env vars, hooks. Replaces "ask Claude to
+    update my settings".
+  - **Hook-output capture + replay** — when a hook fires
+    (PreToolUse, PostToolUse, etc.), capture output and let
+    the user replay against a different prompt without
+    re-running the tool.
+  - **`.claude/skills/` library browser** — Settings →
+    Skills panel listing every installed skill, its
+    description, and a "test this skill" button that invokes
+    it with a sample prompt.
+  - **Plan-mode panel** — visual plan editor with task
+    drag/drop, dependency-graph view, status emojis matching
+    the ROADMAP format. Replaces ask-Claude-to-list-the-plan.
+  - **`/style` migration helpers** — when Claude Code has
+    multiple system prompts ("default" / "explanatory" /
+    "learning"), Ants exposes a tab strip that switches mode
+    without burning a round-trip.
+
+  Positioning: shipped together, these turn Ants Terminal
+  into the **Claude Code companion app** — a user can
+  install Ants, install Claude Code, and have everything
+  mechanical (workflow tracking, CI watching, PR review,
+  audit triage, test running, ID allocation, plan execution,
+  worktree management) handled in-app at zero token cost.
+  Claude is invoked only for the prose / judgment / drafting
+  steps where an LLM is actually doing thinking.
+
+  v1 priority order (ship one row at a time, each behind a
+  feature test): verification-before-completion → using-git-
+  worktrees → CI watchdog → PR review surface → executing-
+  plans → token estimator → /audit triage automation
+  (ANTS-1111) → /indie-review orchestration (ANTS-1112) →
+  the rest in any order based on user pull.
+
+  Locked by `tests/features/superpowers_offload/` (one
+  feature-conformance test per row in the table that can be
+  reduced to a determinism check; LLM-shaped rows have
+  source-grep tests confirming the prompt-templating path
+  exists).
+  Kind: implement.
+  Source: user-2026-04-30.
+  Lanes: MainWindow, new `WorkflowDialog` (extending
+  ANTS-1108), AuditDialog, aidialog (LLM endpoint),
+  status bar.
+
+- 📋 [ANTS-1111] **Fold `/audit` triage into the Project Audit
+  tool — eliminate the LLM round-trip on the noise floor.**
+  User ask 2026-04-30: "incorporate /audit into the Project
+  Audit tool, comprehensive but minimising false positives
+  and token usage." Today the Project Audit tool runs every
+  detector natively (cppcheck, clazy, semgrep, ruff, bandit,
+  gitleaks, trivy, custom rules) and produces a structured
+  finding list — that part already needs no LLM. The LLM
+  round-trip happens at **triage**: turning N raw findings
+  into the K actionable ones. The `/audit` skill delegates
+  this to the `audit-triage` subagent, which is the exact
+  step ANTS-1111 absorbs.
+
+  Mechanical noise filters (no LLM):
+
+  1. **Pre-triage drop catalog** at
+     `docs/audit-allowlist.md` (per ANTS-1107) — a
+     human-readable JSON sidecar
+     (`docs/audit-allowlist.json`) that maps `(rule_id,
+     file_pattern, message_pattern)` triples to a verdict
+     (`drop` | `info` | `keep`). The Audit tool reads it
+     before rendering and skips rows matching `drop`. Each
+     row carries a `reason` field so rejected findings can
+     be re-litigated later.
+  2. **Cross-tool corroboration scoring** — already partially
+     in auditdialog (confidence 0-100 with +20 cross-tool).
+     Extend: a finding flagged by ≥ 2 independent tools at
+     the same `file:line` auto-promotes severity by one
+     tier; a finding flagged only by one known-noisy rule
+     auto-demotes by one tier. Tunable per-project via
+     `.audit_rules.json`.
+  3. **Framework auto-detect** — already on the `/audit`
+     skill at the orchestration layer; lift into
+     `audithygiene` so the tool knows that "this is a Flask
+     project, run the Flask semgrep pack" without external
+     prompting.
+  4. **Inline suppression coverage** — auditdialog already
+     parses `// NOLINT`, `# noqa`, `// nosemgrep`, etc. Add
+     the unification: a single `// audit: drop[=rule]`
+     comment suppresses across every detector at that
+     `file:line`. Cuts the per-tool suppression noise.
+  5. **Baseline diff** — auditdialog already supports trend
+     snapshots; expose a "since-baseline" view that hides
+     pre-existing findings and shows only what this commit
+     introduced. The author's mental model is
+     "what-did-I-just-break"; mechanical baseline diff
+     answers it without an LLM.
+  6. **AI-triage fallback** — a "Triage with AI" button that
+     sends the *remaining* findings (after the mechanical
+     filters) to the user's chosen LLM via `aidialog` for
+     judgment on the genuinely-ambiguous tail. Optional;
+     defaults off so the user never accidentally pays for
+     triage tokens.
+
+  Fold-into-roadmap step: a "Fold actionable into ROADMAP"
+  button that templates a `### 🔍 Audit fold-in (YYYY-MM-DD)`
+  block from the user-confirmed actionable list, allocates
+  IDs from `.roadmap-counter`, writes the bullet bodies (with
+  `Kind: audit-fix`, `Source: audit-YYYY-MM-DD`), and saves
+  the file atomically. Pure mechanical.
+
+  Allowlist learning loop: after triage, every "drop" the
+  user confirms is offered as an allowlist addition with one
+  click — appends to `docs/audit-allowlist.md` with a
+  `reason:` field the user fills inline. Next run skips that
+  finding silently. Over time the noise floor approaches
+  zero without ever needing an LLM.
+
+  Locked by `tests/features/audit_triage_native/` (drop
+  catalog round-trip; corroboration-score arithmetic;
+  framework auto-detect probe; baseline-diff exclude logic;
+  fold-in templating produces a bullet conformant with
+  roadmap-format.md § 3.5; allowlist append is atomic).
+  Kind: implement.
+  Source: user-2026-04-30.
+  Lanes: AuditDialog, audithygiene, featurecoverage, docs
+  (audit-allowlist.md / .json).
+
+- 📋 [ANTS-1112] **Fold `/indie-review` orchestration into
+  Ants Terminal — Claude does only the judgment.** User ask
+  2026-04-30: "incorporate /indie-review as well,
+  comprehensive but minimising false positives and token
+  usage." The multi-agent independent review is currently
+  100 % LLM-driven (one Claude Code subagent per subsystem).
+  Most of the per-lane work is mechanical orchestration —
+  ANTS-1112 lifts that out of Claude.
+
+  Mechanical halves (Ants):
+
+  1. **Subsystem partition** — read
+     `docs/private/audit/indie-review-partition.md` (per the
+     spec's probe-path convention) for an authoritative
+     partition; if absent, derive a default partition from
+     the source tree (one lane per `src/<dir>/`, big files
+     split by line range). User can adjust before dispatch.
+  2. **Per-lane brief assembly** — for each lane, concatenate
+     the source paths + contract docs + external standards +
+     ROADMAP slice (grep ROADMAP.md for the lane's
+     basenames) + project-memory gotchas. All file IO +
+     string concat. The brief is the verbatim text passed to
+     the LLM — no LLM invocation yet.
+  3. **Dispatch** — for each lane, send the assembled brief
+     to the user's chosen LLM endpoint via `aidialog` (own
+     credentials, own model). One call per lane;
+     parallelisable via the existing process pool. Captures
+     each lane's report verbatim.
+  4. **Result aggregation** — collect per-lane reports,
+     render in a tabbed panel ("Lane A" / "Lane B" / …),
+     present verbatim with no synthesis filtering yet (per
+     the spec's two-message pattern).
+  5. **≥ 2-reviewer corroboration** — Ants extracts each
+     report's findings (regex on `file:line` mentions) and
+     marks any finding cited by ≥ 2 independent lanes as
+     "gold signal". This is the false-positive filter the
+     `/indie-review` skill describes as the most important
+     output of the sweep — and it's a pure regex pass.
+  6. **Synthesis** — *optional* second LLM call. The user
+     clicks "Synthesise" and Ants sends the aggregated
+     report set + threat-model docs (`CLAUDE.md`,
+     `SECURITY.md`, `.semgrep.yml`) to the LLM for
+     cross-cutting theme extraction + threat-model
+     calibration + recommended action order. This step
+     **is** LLM-shaped; budget is one synthesis call per
+     review run. User can skip if they're comfortable
+     reading the verbatim reports directly.
+  7. **Fold-into-roadmap** — same templating as ANTS-1111
+     but emits `### 🔍 Indie-review fold-in (YYYY-MM-DD)`
+     with `Kind: review-fix`, `Source: indie-review-YYYY-MM-DD`.
+
+  LLM-shaped halves (Claude or user's own LLM via aidialog):
+
+  - The per-lane review judgment itself (one LLM call per
+    lane × N lanes).
+  - The synthesis step (one optional call per run).
+  - Pre-pass: the user can ask aidialog to draft the
+    partition file from the source tree if the project
+    doesn't already have one — but this is a *one-time* per
+    project setup cost, not per-review.
+
+  Token-saving wins vs `/indie-review` today:
+
+  - The orchestrator (parent Claude session) is no longer
+    holding the entire per-lane briefing context in its own
+    window — Ants assembles each brief and dispatches
+    directly. Saves the orchestrator's full review-budget
+    on every run.
+  - Cross-lane corroboration is mechanical (regex), not an
+    LLM step.
+  - The verbatim-report rendering is mechanical (no LLM
+    summarisation pass to filter the per-lane reports).
+  - The fold-into-roadmap step is mechanical templating,
+    not LLM drafting.
+
+  Locked by `tests/features/indie_review_native/`
+  (partition-file round-trip; brief assembler produces a
+  byte-stable output for a fixed input; corroboration
+  filter requires ≥ 2 independent file:line citations;
+  fold-in templating produces a roadmap-format.md § 3.5
+  conformant block; synthesis prompt template renders
+  without LLM invocation).
+  Kind: implement.
+  Source: user-2026-04-30.
+  Lanes: AuditDialog, aidialog, MainWindow, docs
+  (indie-review-partition.md), tests/features.
+
+- 📋 [ANTS-1113] **Fold `/debt-sweep` into the Project Audit
+  tool — every category is mechanical.** User ask 2026-04-30:
+  "incorporate /debt-sweep too, comprehensive but minimising
+  false positives and token usage." The skill scans five
+  categories of post-feature drift; **all five have a
+  mechanical core** with only judgment-call edge cases needing
+  an LLM. Today the skill delegates to a `general-purpose`
+  subagent — ANTS-1113 absorbs the scan into the Project Audit
+  tool and reserves Claude only for the optional rule-on-it
+  step.
+
+  Per-category mechanical scan:
+
+  | Category | Mechanical detector | LLM-shaped tail |
+  |----------|--------------------|-----------------|
+  | **Code drift** | (a) stale-type-name comments — grep comments for symbols not present in current code; (b) dead vars — clazy/cppcheck `unusedVariable` already caught in auditdialog; (c) `TODO` / `FIXME` markers added in scope — grep diff vs baseline; (d) `Q_UNUSED` / `_unused` markers wrapping a now-undeclared variable | "Is this stale comment actually wrong, or merely terse?" |
+  | **Test coverage gaps** | Parse `spec.md` for `INV-N` markers, parse matching `test_*.cpp` / `test_*.py` for `INV-N` references, diff. New public methods without a `test_*` file in the same lane: cscope/ctags symbol-list vs test-file symbol-mention | "Is this method intentionally untested?" |
+  | **Doc drift** | (a) ROADMAP ✅ items without a matching commit subject — grep git log for the ID; (b) CHANGELOG `[Unreleased]` bullets vs `git diff main..HEAD` file list; (c) README CLI flag references vs `ants-terminal --help` output | "Is this README wording correct or merely vague?" |
+  | **Packaging drift** | Run `packaging/check-version-drift.sh` (already exists); diff CHANGELOG body vs metainfo `<release>` body vs debian/changelog body | None — pure mechanical |
+  | **Memory drift** | (a) memory entry references a file path → check the file exists; (b) memory references a function/flag → grep for it; (c) audit-report memory entries older than the most-recent audit run → flag for review | "Is this old memory still load-bearing or stale?" |
+
+  Workflow inside the Project Audit tool:
+
+  1. New "Debt Sweep" tab next to "Audit" — runs the
+     mechanical scan and presents findings grouped by category.
+  2. Each finding has three buttons: **Fix inline** (apply the
+     suggested edit, atomic), **Defer** (write a 📋 ROADMAP
+     bullet with `Kind: chore` / `doc-fix` and `Source:
+     debt-sweep-YYYY-MM-DD`), **Allow** (append to
+     `docs/audit-allowlist.md` so future sweeps skip).
+  3. The LLM-shaped tail (judgment column above) rolls up into
+     a "Triage with AI" button at the bottom — sends only
+     those findings to the user's chosen LLM via aidialog. Off
+     by default; one click, one billable call. Most users will
+     never need it.
+
+  Auto-fix coverage (mechanical, no LLM):
+
+  - Dead `Q_UNUSED(x)` where `x` is no longer declared → `git
+    rm` the line.
+  - `TODO: removed in 0.7.X` markers where 0.7.X has shipped →
+    `git rm` the line.
+  - ROADMAP ✅ items where the commit they cite no longer
+    exists in `git log` → flip status to 📋 with "Re-verify"
+    annotation.
+  - CHANGELOG `[Unreleased]` bullet referring to a file not in
+    the diff → mark with `<!-- stale? -->` HTML comment.
+  - Memory file referenced path that no longer exists → mark
+    the memory entry with a stale flag header.
+
+  Allowlist learning loop: same pattern as ANTS-1111. Every
+  "Allow" entry the user confirms is appended to
+  `docs/audit-allowlist.md` with the user's reason; future
+  sweeps skip silently.
+
+  Replaces the existing `/debt-sweep` skill end-to-end for
+  Ants-Terminal-managed projects. The skill itself stays
+  available for projects without Ants Terminal as a fallback.
+
+  Locked by `tests/features/debt_sweep_native/` (each
+  category's detector is its own test fixture: a synthetic
+  bad/good corpus per category, assert N findings on bad,
+  zero on good).
+  Kind: implement.
+  Source: user-2026-04-30.
+  Lanes: AuditDialog, audithygiene, featurecoverage, docs.
+
+- 📋 [ANTS-1114] **Additional Claude Code companion surfaces
+  beyond ANTS-1110.** User ask 2026-04-30: "think about how we
+  can incorporate anything in terms of Claude Code into Ants
+  Terminal with the aim of token usage reduction." Catalogue
+  of the further-out-but-still-mechanical surfaces, on top of
+  the ANTS-1110 list:
+
+  - **Context-window manager** — running token-count
+    indicator in the per-tab status bar; threshold-based
+    suggestions ("at 80 % — `/clear` after this turn?",
+    "at 95 % — `/compact` recommended"). Ants already knows
+    the active model via the Claude detection; pulling
+    `claude_session.json` for the running token total is a
+    file read.
+  - **Conversation export + search** — append-mode SQLite
+    store of every Claude Code session's transcript
+    (already in the terminal output buffer; Ants just
+    persists it). User can grep across past sessions
+    instantly without re-asking the LLM "what did we
+    discuss about X?".
+  - **Slash-command palette** — read every project's
+    `.claude/commands/*.md` + every installed skill's
+    metadata; surface a palette (`Ctrl+Shift+P`) for
+    one-click invocation. Replaces "what was that command
+    again?" trips through Claude.
+  - **`.claude/projects/*/memory/` editor** — visual editor
+    for the per-project memory files with diff-on-save and
+    a "stale entry" detector (see ANTS-1113 § Memory drift).
+    Replaces "ask Claude what's in my memory".
+  - **Skill installer / browser** — fetch skill bundles from
+    a registry (or local zip), validate the SKILL.md
+    frontmatter, install to `~/.claude/skills/`. Pure
+    mechanical; replaces ad-hoc `wget` + manual install.
+  - **Permission-hint learner** — Ants notices when the user
+    denies a tool call N times in a row, surfaces "want to
+    add `<tool-pattern>` to settings.json deny list?". Pure
+    rule-based; saves the user from reading the same
+    permission prompt repeatedly.
+  - **Output sanitiser** — strip terminal escape codes /
+    box-drawing / progress-bar fragments from past terminal
+    output before re-feeding to an LLM. Mechanical regex
+    pass; saves ~15 % of input tokens on long sessions.
+  - **Multi-session coordinator** — per-tab indicator
+    showing which Claude Code session is currently doing
+    what (last tool call, current prompt's first line, idle
+    vs active). Pulls from `claude_session.json`; helps the
+    user spot duplicated work across tabs without alt-tab
+    loops.
+  - **Auto-commit on safe changes** — file-system watcher;
+    if the changes match an allowlist (formatter output,
+    moc/uic/qrc/codegen, `git apply` of a known-good
+    patch), auto-commit without invoking the LLM. Replaces
+    "ask Claude to commit the formatter output".
+  - **Endpoint router** — for prose-drafting prompts route
+    to Claude; for code-completion route to a cheaper local
+    model (DeepSeek-Coder, Qwen-Coder via Ollama); for
+    audit-triage LLM tail (ANTS-1111 / 1112 / 1113) route to
+    a budget model. User picks the routing rules in
+    Settings → AI; Ants applies them per prompt-tag.
+  - **Cost-and-latency estimator** — same prompt costed
+    against multiple endpoints; user picks the cheapest
+    that meets latency target. Pre-flight, no LLM call.
+  - **Conversation replay** — re-run a past conversation
+    against a different model to compare outputs. The
+    transcript is local; the only LLM cost is the new
+    model's bill.
+  - **Settings drift detector** — track
+    `~/.claude/settings.json` git-style history; warn if a
+    change came from somewhere unexpected (autoupdater,
+    skill install).
+  - **Hook-output capture + replay** — when a hook fires,
+    capture stdout/stderr; let user replay against a
+    different prompt without re-running the underlying tool
+    (ctest, git diff, etc.).
+  - **Off-line mode** — when no Claude credentials are
+    configured, every panel still works (mechanical
+    surfaces only); LLM-shaped buttons are disabled with a
+    one-line "configure aidialog credentials to enable"
+    hint. Lets a user adopt Ants Terminal as their daily
+    terminal even before opting into Claude Code.
+
+  Each item is a small feature-test'able lane on its own;
+  the bullet exists as a tracking surface so the user can
+  pick priority and Ants doesn't have to re-discover the
+  list every roadmap-cycle.
+
+  Subsumes: nothing yet — ANTS-1110 stays the broader
+  superpowers-skill triage; ANTS-1114 is the "everything
+  else Claude-Code-shaped that's mechanical" supplement.
+
+  Locked by `tests/features/claude_code_companion/`
+  (one feature-conformance test per surface, in the same
+  shape as ANTS-1110: source-grep + determinism check
+  where applicable).
+  Kind: implement.
+  Source: user-2026-04-30.
+  Lanes: MainWindow, aidialog, Settings, Status bar,
+  new `WorkflowDialog` (extending ANTS-1108 / ANTS-1110).
+
 ### 🎨 Status-bar polish (user request 2026-04-30)
 
 - 📋 [ANTS-1109] **Restyle the git-branch chip to match the
