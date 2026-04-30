@@ -103,6 +103,19 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.58" date="2026-04-30">
+      <description>
+        <p>Runtime toggle for the ANTS-1054 dialog tracer. The 0.7.57 env-var-only path required restarting Ants Terminal to diagnose the user-reported mystery flashing dialogs; the new menu action lets the user enable / disable the tracer mid-session without losing tab state.</p>
+        <p>Added:</p>
+        <ul>
+          <li>Tools → Debug Mode → "Trace dialog show events" — checkable menu action that toggles the same DialogShowTracer the ANTS_TRACE_DIALOGS=1 env var path installs. Output goes to stderr (always) and to the events debug-log category when enabled. Status-bar transient confirms the toggle. (ANTS-1054 follow-up)</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>DialogShowTracer extracted from src/main.cpp to its own src/dialogshowtracer.{h,cpp} translation unit so both the startup env-var path and the runtime menu toggle call one setActive(bool) entry point. Process-global instance is parented to qApp; idempotent install / uninstall.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.57" date="2026-04-30">
       <description>
         <p>Indie-review backlog cleanup — surgical Tier 3 fixes (shellQuote whitelist, claudeChildrenOf extraction), a diagnostic for the mystery flashing-dialog report, a cppcheck returnByReference perf sweep, and a ROADMAP audit that flipped 28 prior indie-review items from planned to done once verified shipped in 0.7.52–0.7.55.</p>

@@ -1,3 +1,18 @@
+ants-terminal (0.7.58-1) unstable; urgency=medium
+
+  * Runtime toggle for the ANTS-1054 dialog tracer. The 0.7.57
+    env-var-only path required restarting Ants Terminal to
+    diagnose the user-reported mystery flashing dialogs; the
+    new Tools → Debug Mode → "Trace dialog show events" menu
+    action lets the user enable / disable the tracer
+    mid-session without losing tab state.
+  * DialogShowTracer extracted from src/main.cpp to its own
+    src/dialogshowtracer.{h,cpp} so both the startup env-var
+    path and the runtime menu toggle call one setActive(bool)
+    entry point.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 30 Apr 2026 14:00:00 +0200
+
 ants-terminal (0.7.57-1) unstable; urgency=medium
 
   * Indie-review backlog cleanup — surgical Tier 3 fixes

@@ -25,6 +25,7 @@
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
 #include "debuglog.h"
+#include "dialogshowtracer.h"
 
 namespace {
 // Forward declaration — definition lives next to setupQuakeMode() (its
@@ -1480,6 +1481,26 @@ void MainWindow::setupMenus() {
         DebugLog::setActive(DebugLog::None);
         for (QAction *a : debugMenu->actions())
             if (a->isCheckable()) a->setChecked(false);
+    });
+    debugMenu->addSeparator();
+    // 0.7.58 (ANTS-1054 follow-up) — runtime toggle for the dialog
+    // spawn tracer. Same entry point as the ANTS_TRACE_DIALOGS=1 env
+    // var path; ticking starts logging top-level QWidget/QDialog show
+    // events to stderr (and to the debug log when Events category is
+    // also active). Useful for capturing the "mystery flashing
+    // dialog" without restarting.
+    QAction *debugTraceDialogsAction = debugMenu->addAction(
+        "&Trace dialog show events (writes to stderr)");
+    debugTraceDialogsAction->setCheckable(true);
+    debugTraceDialogsAction->setChecked(DialogShowTracer::active());
+    connect(debugTraceDialogsAction, &QAction::toggled, this,
+            [this](bool on) {
+        DialogShowTracer::setActive(on);
+        showStatusMessage(on
+            ? QStringLiteral("Dialog-show tracer enabled — events logging "
+                             "to stderr (see debug log if running attached)")
+            : QStringLiteral("Dialog-show tracer disabled"),
+            6000);
     });
     debugMenu->addSeparator();
     QAction *debugOpenAction = debugMenu->addAction("Open &Log File");

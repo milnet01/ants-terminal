@@ -29,6 +29,31 @@ for security-relevant changes.
   of ANTS-1106 — viewer faceted categorisation by Kind
   remains 📋. (ANTS-1106)
 
+## [0.7.58] — 2026-04-30
+
+**Theme:** runtime toggle for the ANTS-1054 dialog tracer — the
+0.7.57 env-var-only path required restarting Ants Terminal to
+diagnose the user-reported mystery flashing dialogs. New menu
+action lets the user enable / disable the tracer mid-session
+without losing tab state.
+
+### Added
+
+- **Tools → Debug Mode → "Trace dialog show events"** — checkable
+  menu action that toggles the same `DialogShowTracer` the
+  `ANTS_TRACE_DIALOGS=1` env var path installs. Output goes to
+  stderr (always) and to the `events` debug-log category when
+  enabled. Status-bar transient confirms the toggle. (ANTS-1054
+  follow-up)
+
+### Changed
+
+- `DialogShowTracer` extracted from `src/main.cpp` to its own
+  `src/dialogshowtracer.{h,cpp}` translation unit so both the
+  startup env-var path and the runtime menu toggle call one
+  `setActive(bool)` entry point. Process-global instance is
+  parented to `qApp`; idempotent install / uninstall.
+
 ## [0.7.57] — 2026-04-30
 
 **Theme:** indie-review backlog cleanup — surgical Tier 3 fixes

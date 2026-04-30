@@ -1,10 +1,8 @@
 #include "mainwindow.h"
 #include "remotecontrol.h"
+#include "dialogshowtracer.h"
 
 #include <QApplication>
-#include <QDateTime>
-#include <QDialog>
-#include <QEvent>
 #include <QJsonObject>
 #include "debuglog.h"
 #include <QCommandLineParser>
@@ -47,62 +45,6 @@ public:
         default:
             return QProxyStyle::styleHint(hint, option, widget, returnData);
         }
-    }
-};
-
-// 0.7.57 (2026-04-30 ANTS-1054 diagnostic) — when ANTS_TRACE_DIALOGS=1 is
-// set in the env, install an application-level event filter that logs
-// every QDialog::show and every top-level QWidget::show with the dialog's
-// objectName, windowTitle, parent class+objectName, geometry, and the
-// elapsed time since the previous trace. Output goes to stderr (always)
-// and the debug log when ANTS_DEBUG includes `events`.
-//
-// Purpose: identify the source of the "mystery flashing dialog" the user
-// reported 2026-04-28. If the trace fires when the popup appears, it's
-// Ants Terminal — the log line names the spawn-site widget. If the trace
-// stays silent, the popup is from a child process (e.g. pytest-qt in a
-// shell tab) and Ants is innocent.
-//
-// Zero cost when the env var is unset — the filter is never installed.
-class DialogShowTracer : public QObject {
-public:
-    explicit DialogShowTracer(QObject *parent = nullptr) : QObject(parent) {}
-
-    bool eventFilter(QObject *obj, QEvent *ev) override {
-        if (ev->type() != QEvent::Show) return false;
-        auto *w = qobject_cast<QWidget *>(obj);
-        if (!w) return false;
-        // Top-level only — embedded children are uninteresting and
-        // would flood the log.
-        if (w->parentWidget() != nullptr && !w->isWindow()) return false;
-        const bool isDialog = qobject_cast<QDialog *>(w) != nullptr;
-        if (!isDialog && !w->isWindow()) return false;
-
-        const QString cls    = QString::fromLatin1(w->metaObject()->className());
-        const QString name   = w->objectName().isEmpty() ? "<unnamed>" : w->objectName();
-        const QString title  = w->windowTitle().isEmpty() ? "<no-title>" : w->windowTitle();
-        const QRect geom     = w->geometry();
-        const QObject *par   = w->parent();
-        const QString parCls = par
-            ? QString::fromLatin1(par->metaObject()->className())
-            : QStringLiteral("<no-parent>");
-        const QString parName = par && !par->objectName().isEmpty()
-            ? par->objectName() : QStringLiteral("<unnamed>");
-
-        const QString line = QString(
-            "[ANTS_TRACE_DIALOGS %1] show: cls=%2 obj=%3 title=\"%4\" "
-            "geom=%5x%6+%7+%8 parent=%9/%10")
-            .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs))
-            .arg(cls, name, title)
-            .arg(geom.width()).arg(geom.height())
-            .arg(geom.x()).arg(geom.y())
-            .arg(parCls, parName);
-
-        std::fprintf(stderr, "%s\n", qUtf8Printable(line));
-        std::fflush(stderr);
-        if (DebugLog::enabled(DebugLog::Events))
-            DebugLog::write(DebugLog::Events, line);
-        return false;
     }
 };
 
@@ -256,17 +198,13 @@ int main(int argc, char *argv[]) {
             QString::fromLocal8Bit(debugSpec)));
     }
 
-    // Dialog spawn tracer — install only when explicitly requested.
-    // See the DialogShowTracer comment above for context (ANTS-1054
-    // diagnostic). Parented to qApp so it lives the lifetime of the
-    // application and gets cleaned up on exit.
-    if (qEnvironmentVariableIntValue("ANTS_TRACE_DIALOGS") > 0) {
-        auto *tracer = new DialogShowTracer(&app);
-        app.installEventFilter(tracer);
-        std::fprintf(stderr,
-            "[ANTS_TRACE_DIALOGS] installed — every top-level "
-            "QWidget/QDialog show will be logged.\n");
-    }
+    // Dialog spawn tracer — install at startup only when the env var
+    // says so. The runtime menu toggle (Tools → Debug Mode → Trace
+    // dialog show events) calls the same setActive() entry point, so
+    // the user can also flip it after launch without a restart. See
+    // src/dialogshowtracer.h for context (ANTS-1054 diagnostic).
+    if (qEnvironmentVariableIntValue("ANTS_TRACE_DIALOGS") > 0)
+        DialogShowTracer::setActive(true);
 
     // CLI parsing — handles --help / --version / --new-plugin before GUI init.
     QCommandLineParser parser;
