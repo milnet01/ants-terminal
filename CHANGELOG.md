@@ -12,6 +12,23 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- `Kind:` field is now **required** on every actionable
+  `ROADMAP.md` bullet (previously optional, inferred from
+  section context). The viewer / parser no longer needs to
+  derive Kind from the surrounding heading — each bullet
+  declares it explicitly. Backfilled all 100 unannotated
+  bullets in `ROADMAP.md` (script + heuristic per section
+  heading + release-block theme; review-fixes attributed
+  to indie-review-2026-04-27, regressions cited from body
+  text, user requests dated from heading). `Source:` field
+  added where non-default. Spec updated at
+  `docs/standards/roadmap-format.md § 3.5` and synced to the
+  user-level `/start-app` template. Partial implementation
+  of ANTS-1106 — viewer faceted categorisation by Kind
+  remains 📋. (ANTS-1106)
+
 ## [0.7.56] — 2026-04-30
 
 **Theme:** App-Build suite alignment — confirm-on-close for tabs

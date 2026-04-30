@@ -400,6 +400,7 @@ there before adding a multiplexer. Reference:
   docs promoted).
 - 💭 [ANTS-1001] **Kitty Unicode-placeholder graphics** (U+10EEEE + diacritics).
   Moved to 0.7 backlog — scope-wise a standalone item, not a blocker.
+  Kind: implement.
 
 ### 🔌 Plugins — manifest v2 + capability model
 
@@ -435,6 +436,7 @@ there before adding a multiplexer. Reference:
   place.
 - 💭 [ANTS-1002] **EGL_EXT_swap_buffers_with_damage + EGL_EXT_buffer_age** on the GL
   path. Deferred — narrow Mesa-only win, revisit in 0.9 platform pass.
+  Kind: refactor.
 
 ### 🔒 Security
 
@@ -2147,16 +2149,20 @@ interpretation. Closes the self-graded-homework loop.
   program. Highest signal-per-effort for VT conformance drift.
   Runs a canonical xterm-compliance corpus against our parser; any
   divergence is a finding anchored to a published spec.
+  Kind: implement.
 - 📋 [ANTS-1004] **Differential screen-dump harness vs xterm/kitty.** Send a
   canonical byte-stream corpus to each, capture final screen state,
   diff. Divergences are findings regardless of what our unit tests
   say.
+  Kind: implement.
 - 📋 [ANTS-1005] **libFuzzer target against `VtParser`.** Feed random bytes,
   assert invariants (no crash, cursor bounded, scrollback bounded,
   combining side-table aligned). Mechanical — surfaces cases the
   author can't imagine.
+  Kind: implement.
 - 📋 [ANTS-1006] **Real-TUI smoke lane.** `vim`, `tmux`, `htop`, `neovim` in a
   headless session, snapshot screen, compare across releases.
+  Kind: implement.
 
 ---
 
@@ -2180,33 +2186,49 @@ flagged by ≥2 independent reviewers regardless of which lane:
   Config retired once is unfixed in `SessionManager::saveSession` +
   `saveTabOrder` and in the `auditdialog.cpp` SARIF/HTML export.
   Lanes: Config, Audit.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1008] **frameless+translucent `exec()` regression class is back.**
   0.7.49 retired this for both About dialogs; the 0.7.47
   update-confirmation `QMessageBox box(this); box.exec()` reintroduces
   the same shape on the same MainWindow. Lanes: MainWindow, AI/dialogs.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1009] **Missing argv `--` separator / quote-aware tokenisation.**
   `git blame -- f.file` separator missing, ssh `extraArgs` quote-bypass
   on `-o` allowlist, `openFileAtPath` doesn't `--`-separate captured
   paths starting with `-`. Lanes: Audit, AI/dialogs, TerminalWidget.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1010] **Permission allow-list / intersect missing.** Lua plugin
   manifest accepts any permission string, prompt result not
   intersected with requested set. SSH `-o` allowlist same shape.
   Lanes: Lua, AI/dialogs.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1011] **Color-only state encoding (WCAG 1.4.1).** Per-tab Claude state
   dot, status-bar Claude label, chrome QLabels — no shape variation,
   no `accessibleDescription`. Lanes: Chrome widgets, Claude integration,
   MainWindow.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1012] **Unbounded reads / OOM corner cases.** `extractCwdFromTranscript`
   unbounded `readLine`, AI SSE parser blocks event loop on big chunks,
   Roadmap dialog reads entire file unbounded. Lanes: Claude integration,
   AI/dialogs.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1013] **2 s status-timer redundant work.** 0.7.49 bg-tasks fix forces
   full 16 MiB transcript reparse every tick on a quiet session;
   `refreshReviewButton` spawns `git status` `QProcess` every 2 s with
   no in-flight de-dup. Lanes: Claude integration, MainWindow.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1014] **No clipboard-write redaction helper.** 7th-audit memory flagged
   this; TerminalWidget has 12 raw `setText` sites. OSC 52 callback is
   the headline exfil vector. Lanes: TerminalWidget.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 
 ### 🐛 Regressions reported post-0.7.49 (user, 2026-04-27)
 
@@ -2239,6 +2261,8 @@ flagged by ≥2 independent reviewers regardless of which lane:
   box.exec();` — convert to heap+show+activateWindow mirroring the
   0.7.49 About-dialog pattern. User clicks Update, nothing happens,
   in-place updater never fires.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1016] **CRITICAL — SessionManager silent data loss.**
   `sessionmanager.cpp:389, 454` `QFile::rename` refuses to overwrite
   existing destination — every save after the first leaves `.dat.tmp`
@@ -2246,38 +2270,56 @@ flagged by ≥2 independent reviewers regardless of which lane:
   `std::rename` mirroring `config.cpp:139-174`. Wrap both in
   `ConfigWriteLock`; add corrupt-file rotation on `loadSession`
   failure.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1017] **CRITICAL — SARIF/HTML export not atomic + no 0600 perms.**
   `auditdialog.cpp:3530-3554` uses raw `QFile::Truncate`; reports
   may contain leaked secrets surfaced by `secrets_scan`/gitleaks.
   Switch to `QSaveFile` + `setOwnerOnlyPerms`.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1018] **HIGH — `new-tab` / `launch` IPC commands bypass `send-text` C0
   filter.** `remotecontrol.cpp:401, 422`. Same-UID attacker reaches
   keystroke-injection / OSC-52 primitives via a different command.
   Route both through `filterControlChars` with the same `raw: true`
   opt-out.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1019] **HIGH — OSC 8 `file://` scheme in allowlist.**
   `terminalgrid.cpp:898`. `xdg-open file:///foo.desktop` is an exfil +
   RCE-adjacent vector. Drop `file:` (and `ftp:`).
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1020] **HIGH — ESC-in-OSC dispatches trailing byte as EscDispatch.**
   `vtparser.cpp:403`. Crafted OSC ending in `ESC c` triggers RIS as
   side-effect (full terminal reset). Add `OscStringEsc` peek state
   matching xterm's parser.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1021] **HIGH — X10 mouse byte > 0xDF corrupts UTF-8 stream.**
   `terminalwidget.cpp:2668-2670` and `:1801-1809` (wheel). 224+col
   terminals on UTF-8-reading apps mis-frame. Clamp `col`/`row` to 223
   in X10 path.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1022] **HIGH — Lua plugin permission allow-list + intersect missing.**
   `pluginmanager.cpp:87, 243`. Manifest accepts any string into
   `info.permissions`; prompt return not validated against the
   requested set. Add allow-list against `{"clipboard.write",
   "settings"}`; intersect prompt result.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1023] **HIGH — `extractCwdFromTranscript` unbounded `readLine`.**
   `claudeintegration.cpp:981`. One-line fix: pass `64*1024` max-size
   to `readLine`. Removes 1 GiB single-line OOM corner case.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1024] **HIGH — ssh `extraArgs` quote-bypass on `-o` allowlist.**
   `sshdialog.cpp:112`. `extraArgs.split(\\s+)` doesn't handle quoted
   `-o "ProxyCommand …"`; option allowlist silently bypassed. Replace
   with `QProcess::splitCommand`.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 
 ### 🔧 Tier 2 — hardening sweep
 
@@ -2285,64 +2327,100 @@ flagged by ≥2 independent reviewers regardless of which lane:
   — wrapped hyperlinks store `endCol < startCol` because `m_cursorCol`
   is on the current row, not `m_hyperlinkStartRow`. Emit per-row spans
   on each newline / wrap during the active hyperlink.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1026] **ITU/ECMA-48 colon-RGB form `38:2::r:g:b` drops a channel.**
   `vtparser.cpp:357` + `terminalgrid.cpp:1438`. Standards-compliant
   form has empty colorspace slot before R; current parser shifts
   the read window wrong. Reshape parser to track sub-parameter
   sub-arrays per param, not flat vector + parallel boolean.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1027] **Image-paste `m_imagePasteDir` not path-validated; filename
   injected to PTY.** `terminalwidget.cpp:1439`. Hard-pin to
   user-home or canonicalize-and-reject-non-writable; use UUID4
   suffix to prevent millisecond-collision clobbers.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1028] **`openFileAtPath` argv injection.** `terminalwidget.cpp:3286`
   — paths starting with `-` reach VS Code/etc as flags. Prepend
   `--` to args and `./` to any captured path that starts with `-`.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1029] **Paste preview splits on LF only — CR-only payload spoofs
   the dialog.** `terminalwidget.cpp:2059, 2138`. Normalize CR→LF
   for preview only; keep original bytes for the actual write.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1030] **`git blame` missing `--` argv terminator.**
   `auditdialog.cpp:2488`. `f.file` is scanner-controlled.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1031] **comment-suppress regex breaks on hyphenated rule IDs.**
   `auditdialog.cpp:2268`. Terminator class includes `-` which
   collides with rule-id charset; `// nosemgrep: bash-c-non-literal`
   matches only `bash`. Replace terminator with `[)\]]|$|--`.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1032] **Trend snapshot corrupted by UI filter clicks.**
   `auditdialog.cpp:4449`. `appendSnapshot` runs inside
   `renderResults` which is called on every severity-pill toggle.
   Move to single completion point in `runNextCheck`.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1033] **bg-tasks: split liveness from full reparse.**
   `claudebgtasks.cpp` + `mainwindow.cpp:4920`. Add
   `sweepLiveness()` that walks `m_tasks` mtimes only; let the
   file watcher continue calling full `rescan`. Removes 16 MiB
   reparse per 2 s tick.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1034] **WCAG 1.4.1 — Claude state dot is colour-only.**
   `coloredtabbar.cpp:130-151`. Add per-tab `setAccessibleDescription`
   wired to indicator changes, OR a shape-differentiated rendering.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1035] **A11y — status-bar QLabels missing `setAccessibleName`.**
   `mainwindow.cpp` ~542+. Branch chip, repo-visibility, process,
   Claude state — screen readers announce raw text or Powerline
   glyph codepoint.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1036] **`ClaudeBgTaskTracker::tasks()` returns by value on hot path.**
   `claudebgtasks.h:56`. Cppcheck-flagged `returnByReference`. Hot
   read on the new 2 s status-timer path.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1037] **Endpoint scheme allowlist on `ai_endpoint`.** `aidialog.cpp:225`.
   Reject anything other than `http`/`https` up-front.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1038] **AI SSE parser cap iterations + re-arm via `singleShot(0)`.**
   `aidialog.cpp:249`. Drains parseable head on overflow instead of
   clearing the whole buffer.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1039] **Bracketed-paste 8-bit C1 form `\x9B[200~` not stripped.**
   `terminalwidget.cpp:2171`. 8-bit CSI is a valid terminator
   the grid parses; sanitizer only matches 7-bit.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1040] **Plan-mode reset on tab switch loses latched state.**
   `claudeintegration.cpp:68`. If the new tab's tail window
   doesn't include the plan-mode toggle event, `m_planMode`
   silently stays false. Re-derive from latched per-tab state.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1041] **`ToggleSwitch` accessibility plumbing missing.**
   `toggleswitch.{h,cpp}`. No accessible name, no
   `QAccessibleEvent(StateChanged)` after `setChecked`.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1042] **`extraArgs` parsing for IPv6 in Quick Connect.**
   `sshdialog.cpp:325-329`. `[2001:db8::1]:2222` parses host as
   `[2001` and port as 0.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 
 ### 🏗 Tier 3 — structural
 
@@ -2351,11 +2429,15 @@ flagged by ≥2 independent reviewers regardless of which lane:
   ~280 LoC), diff-viewer dialog (`showDiffViewer` and friends,
   ~430 LoC), Claude permission-prompt slot (~160 LoC of nested
   lambdas). ~860 LoC carved off without cross-cutting state.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).** `populateChecks`
   data table → `auditcatalogue.cpp`; SARIF/HTML export →
   `auditexport.cpp`; embedded sh fragments (e.g. line 444-460,
   567-580) → `packaging/check-*.sh` mirroring the version-drift
   pattern. ~1900 LoC carved off.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp-
   file leak fix.** `xcbpositiontracker.cpp:13-75`. (a) Class is
   DBus-only, never uses XCB — rename to `KWinPositionTracker`.
@@ -2363,19 +2445,27 @@ flagged by ≥2 independent reviewers regardless of which lane:
   writing the temp script on non-KWin. (c) Guarantee
   `QFile::remove(scriptPath)` runs in every failure branch via
   `QScopeGuard`.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1046] **Post-fork heap allocations in flatpak detect path.**
   `ptyhandler.cpp:202-220`. `std::string`/`std::vector<const char*>`
   between `forkpty` and `execlp` relies on glibc malloc fork-handler;
   not strictly POSIX-safe. Build argv on the stack with C strings
   before forkpty.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1047] **`shellutils.h` denylist regex incomplete.** Missing `*`/`?`/
   `<`/`>`/`[`/`]`. Switch to whitelist: quote unless
   `[A-Za-z0-9_\-./:@%+,]+`.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1048] **Reuse-before-rewrite: `claudeChildrenOf(pid)`.** Duplicated
   proc-walking in `ClaudeIntegration::pollClaudeProcess`
   (`claudeintegration.cpp:92-240`) and
   `ClaudeTabTracker::detectClaudeChild`
   (`claudetabtracker.cpp:137-254`). Rule of three says extract now.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 - 📋 [ANTS-1049] **Audit-pipeline `populateChecks`-as-data-table.** ~1400 LoC of
   shell-pipeline strings encoded as opaque C++ literals — unreviewable
   and untestable without QProcess. Move to `auditcatalogue.cpp` data
@@ -2387,6 +2477,8 @@ sweep — no roadmap-internal short-cuts, every finding cites
 file:line, every cross-cutting theme has ≥2 lanes flagging it.
 Folded as standing practice: re-run `/indie-review` before each
 minor tag (next: pre-0.8.0).
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
@@ -2407,6 +2499,8 @@ minor tag (next: pre-0.8.0).
   filter is installed in `MainWindow`'s ctor, (b) `Close` events
   on a synthetic `QDialog` schedule a focus-restore call. Lanes:
   MainWindow, TerminalWidget.
+  Kind: fix.
+  Source: regression.
 - 📋 [ANTS-1051] **Modal-style "behind the dialog is inert" semantics under the
   KDE/KWin/Wayland constraint.** User ask: "when a dialog box is
   open, only the dialog box is interactive, anything behind the
@@ -2427,6 +2521,8 @@ minor tag (next: pre-0.8.0).
   install/uninstall pattern + the three blocked event types.
   Lanes: MainWindow, AboutDialog, RoadmapDialog, AiDialog,
   SshDialog, SettingsDialog, AuditDialog.
+  Kind: fix.
+  Source: regression.
 - 📋 [ANTS-1052] **HIGH — Background-tasks status-bar button regressed:
   no longer shows up.** User report 2026-04-28. Locked-in invariant
   from 0.7.32+ (`tests/features/claude_bg_tasks_button/`) is
@@ -2449,6 +2545,8 @@ minor tag (next: pre-0.8.0).
   visibility assertion (`m_claudeBgTasks->isVisible()` after a
   synthetic claude-session detect) so the next regression catches
   itself. Lanes: MainWindow, ClaudeBgTasks, ClaudeIntegration.
+  Kind: fix.
+  Source: user-2026-04-28.
 - 📋 [ANTS-1053] **HIGH — Per-tab Background-tasks button scoping.** User
   ask: "[Background Tasks button] should be specific to the tab
   / Claude Code session it is on." Today `ClaudeBgTasks` is a
@@ -2465,6 +2563,8 @@ minor tag (next: pre-0.8.0).
   follows the tab's lifecycle. Spec extension: add INV asserting
   per-tab instance allocation + active-tab readout. Lanes:
   ClaudeBgTasks, MainWindow, TerminalTab.
+  Kind: fix.
+  Source: regression.
 - 📋 [ANTS-1054] **MEDIUM — Mystery flashing dialog in centre of terminal.**
   User report: "now and then there is a small dialog box that
   flashes in the centre of the terminal. It is too quick to see
@@ -2488,6 +2588,8 @@ minor tag (next: pre-0.8.0).
   `QDialog` subclass already in the codebase so the next
   occurrence is identifiable from logs. Lanes: MainWindow plus
   whichever dialog-spawn site is found.
+  Kind: fix.
+  Source: regression.
 
 ### 🔍 CI fold-in (2026-04-28)
 
@@ -2534,6 +2636,8 @@ minor tag (next: pre-0.8.0).
   alongside the standards-folder shells (specs/, decisions/,
   journal/). (Subsequently aligned with the suite template — see
   ANTS-1104.) Lanes: docs, ROADMAP, README, CHANGELOG.
+  Kind: implement.
+  Source: user-2026-04-28.
 - 📋 [ANTS-1105] **Retire deprecated top-level `STANDARDS.md` and
   `RULES.md`.** Both predate the `docs/standards/` bundle
   (created 2026-04-13 / 2026-04-14) and now duplicate content
@@ -2598,6 +2702,8 @@ minor tag (next: pre-0.8.0).
   Each addition gets its own feature-test file under
   `tests/features/roadmap_viewer_*/`. Lanes: RoadmapDialog,
   MainWindow.
+  Kind: implement.
+  Source: user-2026-04-28.
 
 - 📋 [ANTS-1100] **Roadmap dialog redesign — faceted tabs +
   search + larger window.** User request 2026-04-30 (refines the
@@ -2679,6 +2785,7 @@ minor tag (next: pre-0.8.0).
   questions ("what's done?" / "what's next?" / "what's in
   flight?") in zero-token UI clicks. Kind: implement. Lanes:
   RoadmapDialog, Config.
+  Source: user-2026-04-28.
 
 ### 🎨 Claude Code template integration (user request 2026-04-28)
 
@@ -2707,6 +2814,8 @@ minor tag (next: pre-0.8.0).
   needs to settle (the user is still iterating); revisit once
   they've shared the laid-out template. Lanes: MainWindow,
   SettingsDialog, new `ProjectTemplateWizard` class, docs.
+  Kind: implement.
+  Source: user-2026-04-28.
 
 ### 🎨 Undo for accidental tab close (user request 2026-04-30)
 
@@ -2725,6 +2834,8 @@ minor tag (next: pre-0.8.0).
   Undo/Redo feature would be helpful in Ants Terminal in
   relation to closing tabs, colour changes, etc.?" Lanes:
   MainWindow.
+  Kind: implement.
+  Source: user-2026-04-30.
 
 - ✅ [ANTS-1102] **Confirm-on-close for tabs running non-shell
   processes.** User-emphasised priority ("the confirm alone will
@@ -2749,6 +2860,8 @@ minor tag (next: pre-0.8.0).
   uses the Wayland-correct pattern, "Don't ask again" flips the
   config, full SettingsDialog wire-up). Lanes: Config, MainWindow,
   SettingsDialog.
+  Kind: implement.
+  Source: user-2026-04-30.
 
 - 💭 [ANTS-1103] **Generic UI-action undo / redo stack
   (deferred).** A wider mechanism beyond tab-close: font-size
@@ -2761,6 +2874,8 @@ minor tag (next: pre-0.8.0).
   (tabs, themes, panes — each its own LIFO) rather than one
   global stack so `Ctrl+Z` doesn't ambiguously cross domains.
   Lanes: TBD.
+  Kind: implement.
+  Source: user-2026-04-30.
 
 ### 🎨 App-Build native integration (user request 2026-04-30)
 
@@ -2988,6 +3103,7 @@ a modern terminal" release.
   tick; (c) test under GNOME/Mutter and i3 to confirm KWin is the
   amplifier. Not a blocker (user-reported as "not the biggest issue")
   but tracked so the 0.7.x fix attempts don't get re-invented.
+  Kind: fix.
 
 ### ⚡ Performance
 
@@ -3042,16 +3158,21 @@ a modern terminal" release.
     watcher fire). The detector fingerprints which one on the
     next reproduction — log line shape is `STALL: main-thread
     blocked for Nms (gap=..., interval=..., count=..., worst=...)`.
+  Kind: refactor.
+  Source: user-2026-04-20.
 - 📋 [ANTS-1060] **Dynamic grid storage** (Alacritty
   [PR #1584](https://github.com/alacritty/alacritty/pull/1584/files)).
   Don't pre-allocate the full `Vec<Vec<Cell>>` scrollback; lazily
   allocate row buffers; intern empty rows to a single shared sentinel.
   Alacritty's own data: 191 MB → 34 MB (20k-line scrollback).
+  Kind: refactor.
 - 📋 [ANTS-1061] **Async image decoding**. Hand sixel/Kitty/iTerm2 payloads to
   `QtConcurrent::run`; render a placeholder cell until `QImage`
   future resolves. Big sixel frames stop blocking the prompt.
+  Kind: refactor.
 - 💭 [ANTS-1062] **BTree scrollback** — O(log n) scroll-to-line instead of O(n)
   for jump-to-timestamp features.
+  Kind: refactor.
 
 ### 🎨 Features — multiplexing
 
@@ -3111,6 +3232,7 @@ a modern terminal" release.
     this item is the X25519 auth layer (currently 💭).
   - 💭 [ANTS-1064] **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
     is set. Shipped after the command surface is complete.
+  Kind: implement.
 - 📋 [ANTS-1065] **Headless mux server with codec RPC**. WezTerm's architecture
   ([DeepWiki](https://deepwiki.com/wezterm/wezterm/2.2-multiplexer-architecture)):
   `ants-terminal --server` runs without a GUI and accepts attachments
@@ -3128,11 +3250,14 @@ a modern terminal" release.
   intact. Second tab to the same host opens in ms instead of
   seconds. See
   [CHANGELOG.md §0.7.1](CHANGELOG.md#071--2026-04-19).
+  Kind: implement.
 - 💭 [ANTS-1066] **Domain abstraction** à la WezTerm: `DockerDomain` lists
   `docker ps`, opens a tab via `docker exec -it`; `KubeDomain` lists
   pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.
+  Kind: implement.
 - 💭 [ANTS-1067] **Persistent workspaces**: save/restore entire tab+split layout +
   scrollback to disk; one-click "resume yesterday's dev session."
+  Kind: implement.
 
 ### 🎨 Features — inline ghost-text completion
 
@@ -3189,11 +3314,13 @@ zero-click, purely suggestive. Proposed in two scopes:
   (new OSC dispatch if shell plugin ships), new config keys
   (`ghost_completion_enabled`, `ghost_completion_source`). Defer to
   beyond 1.0 unless users ask.
+  Kind: implement.
 - 💭 [ANTS-1069] **Frequency-ranked completion source.** Either form benefits
   from "show the most-used match first, not just the alphabetically-
   first match." The Command Palette could track selection counts;
   the terminal form can lean on shell history ordering. Worth a
   mention but not a blocker for the initial implementation.
+  Kind: implement.
 
 ### 📦 Distribution readiness (H5–H7, H13)
 
@@ -3306,6 +3433,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   distro packages anywhere" entry in the
   [Distribution-adoption overview](#distribution-adoption-overview)
   from "H5 + H6 unblock this" to "unblocked".
+  Kind: chore.
 - 📋 [ANTS-1071] **H7 — project website + docs site**. Static GitHub Pages site
   at `ants-terminal.github.io` (or equivalent) with: screenshots,
   installation instructions (once H5/H6 land), plugin authoring
@@ -3313,6 +3441,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   quickstart, architecture overview, video/asciicast demos.
   Content-as-code (markdown → static site generator) so the docs
   ship from the same repo.
+  Kind: chore.
 - 📋 [ANTS-1072] **H13 — distro-outreach launch**. Once H1–H7 are shipped:
   file **intent-to-package** bugs / RFPs in Debian / Fedora /
   NixOS / openSUSE / Arch (as applicable); write a
@@ -3321,17 +3450,21 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   built-in capability-audited Lua plugin system + AI triage +
   first-class shell-integration blocks**. Measure via watching
   the GitHub stars + install metrics, not vanity.
+  Kind: chore.
 
 ### 🔌 Plugins — marketplace
 
 - 📋 [ANTS-1073] **Signed plugin packaging**: Ed25519 sig over a tarball containing
   `init.lua`, `manifest.json`, and optional assets. Loader verifies
   against a project-maintained keyring + (optionally) user-added keys.
+  Kind: implement.
 - 📋 [ANTS-1074] **Public marketplace index**: static JSON hosted on GitHub Pages
   listing name, version, author, signature-status, permission summary.
   Settings → Plugins → Browse lists them with an install button.
+  Kind: implement.
 - 📋 [ANTS-1075] **Plugin dependency resolution**: `manifest.json` `requires: [...]`
   field; install flow resolves transitively.
+  Kind: implement.
 
 ### 🖥 Platform
 
@@ -3353,11 +3486,13 @@ here.)
   addressable audience — a terminal that only runs on Linux is not
   a "Linux terminal project", it's a "Linux-only terminal" —
   distinction matters for cross-platform press coverage.
+  Kind: implement.
 - 💭 [ANTS-1077] **H12 — Windows port**. ConPTY via `CreatePseudoConsole`
   replaces PTY; `xcbpositiontracker` becomes a no-op. Qt6's
   Windows platform plugin handles the rest. Sign + ship MSI /
   MSIX. Moved to Beyond 1.0 in practice — gating on macOS port
   completing first.
+  Kind: implement.
 
 ### 🖥 Accessibility
 
@@ -3369,9 +3504,11 @@ here.)
   ([freedesktop AT-SPI2](https://www.freedesktop.org/wiki/Accessibility/AT-SPI2/)).
   Without this, Orca reads nothing in the terminal. Ubuntu /
   Fedora accessibility review gates on this.
+  Kind: implement.
 - 💭 [ANTS-1079] **Screen-magnifier-friendly rendering**: honor
   `QGuiApplication::styleHints()->mousePressAndHoldInterval()` and
   provide high-contrast theme variants.
+  Kind: implement.
 
 ### 🌍 Internationalization
 
@@ -3380,8 +3517,10 @@ here.)
   `assets/i18n/`. Today we have zero `tr()` usage. Start with
   English → Spanish, French, German as a proof of concept. Some
   distros gate review on this.
+  Kind: implement.
 - 💭 [ANTS-1081] **Right-to-left text support** — bidirectional text in the grid.
   Non-trivial; defer until demand is concrete.
+  Kind: implement.
 
 ### 📦 Distribution readiness (H11)
 
@@ -3392,12 +3531,14 @@ here.)
   signal; the SBOM gives downstream security teams (Debian,
   NixOS) a machine-readable dep inventory without having to scrape
   our build system.
+  Kind: chore.
 
 ### 🧰 Dev experience
 
 - 📋 [ANTS-1083] **Plugin development SDK**: `ants-terminal --plugin-test <dir>`
   runs a plugin against a mock PTY with scripted events. Enables
   unit-testing plugins.
+  Kind: implement.
 
 ---
 
@@ -3407,22 +3548,29 @@ here.)
 
 - 📋 [ANTS-1084] **`ants.*` API stability pledge**: the 1.0 surface won't break in
   `1.x` minor releases. Breaking changes queue for 2.0.
+  Kind: implement.
 - 📋 [ANTS-1085] **Performance regression suite**: CI benchmarks (grid throughput,
   scrollback allocation, paint-loop time) with commit-level deltas.
+  Kind: implement.
+  Source: regression.
 - 📋 [ANTS-1086] **Documentation pass**: every user-facing feature has at least one
   screenshot + one animated demo. Rolls up into H7 (docs site).
+  Kind: implement.
 - 📋 [ANTS-1087] **External security audit**. `SECURITY.md` disclosure policy
   itself ships early under H1 (0.7.0); the 1.0 item is the
   **external** audit — budget a third-party review of the VT
   parser, plugin sandbox, and OSC-8/OSC-52 surfaces before
   stamping 1.0.
+  Kind: implement.
 - 📋 [ANTS-1088] **H14 — bus factor ≥ 2 + governance doc**. Second maintainer
   with commit rights; a short `GOVERNANCE.md` describing
   decision-making, release process, conflict resolution. Distros
   treat single-maintainer projects as a risk — a documented
   second maintainer clears the bar.
+  Kind: implement.
 - 📋 [ANTS-1089] **Plugin migration guide** for any manifest/API changes between
   0.9 and 1.0.
+  Kind: implement.
 
 ---
 
@@ -3438,20 +3586,25 @@ contributors don't duplicate research.
   additive for authors who want Rust/Go/AssemblyScript. Stronger
   sandbox than Lua's removed-globals model; language-agnostic. Ghostty
   is experimenting with a WASM-targeting VT library today.
+  Kind: implement.
 - 💭 [ANTS-1091] **Inter-plugin pub/sub**: `ants.bus.publish(topic, data)` /
   `ants.bus.subscribe(topic, handler)`. Needs careful permission
   modeling — a "read_bus: <topic>" capability.
+  Kind: implement.
 
 ### 🎨 Features
 
 - 💭 [ANTS-1092] **AI command composer** (Warp-style). Dialog over the prompt
   accepts natural language, returns a shell command + explanation.
   Uses the existing OpenAI-compatible config; opt-in per invocation.
+  Kind: implement.
 - 💭 [ANTS-1093] **Collaborative sessions**: real-time shared terminal with a
   second user via an end-to-end encrypted relay. The "share
   terminal with a colleague" feature tmate popularized.
+  Kind: implement.
 - 💭 [ANTS-1094] **Workspace sync**: mirror `config.json`, plugins, and SSH
   bookmarks across devices via a user-configurable git remote.
+  Kind: implement.
 
 ### 🔒 Security
 
@@ -3460,6 +3613,7 @@ contributors don't duplicate research.
   type secrets into the terminal — every keystroke lives only in
   enclave memory until it's shown on-screen. Heavy lift; benefit
   concentrated in a small user set.
+  Kind: fix.
 
 ### ⚡ Performance
 
@@ -3467,6 +3621,7 @@ contributors don't duplicate research.
   render ligatures (HarfBuzz shaping is on the CPU path). Port the
   shaping step to a compute shader; keep the atlas path we already
   have.
+  Kind: refactor.
 
 ### 📦 Distribution & community (H15–H16)
 
@@ -3476,12 +3631,14 @@ contributors don't duplicate research.
   Everything Open, SCaLE. One talk reaches more maintainers than
   a hundred issues. Submit in the CFP window for whatever
   conference the project is scope-ready for at the time.
+  Kind: chore.
 - 💭 [ANTS-1098] **H16 — sponsorship / funding model**. GitHub Sponsors + Open
   Collective. Even small recurring funding signals project
   longevity to distro security teams (they care about "who pays
   for the 30-day CVE response?"). Tiered: individual ($5/mo),
   plugin-author ($20/mo with logo on docs site), corporate
   ($250/mo with logo + priority issue triage).
+  Kind: chore.
 
 ---
 

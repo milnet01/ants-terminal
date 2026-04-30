@@ -117,14 +117,20 @@ Required pieces:
 - **Bold headline ending in a period** — stands alone as a
   one-line summary; this is what the dialog filters and the LLM
   agent reads first.
+- **`Kind: <kind>.`** — declares the type of work. One of the
+  ten values in §3.5.3. **Required as of v1.1** so the Roadmap
+  viewer (and any tooling that consumes the file
+  deterministically) can categorise without inferring from the
+  surrounding section heading. The dominant Kind for a section
+  may be inherited implicitly via a section-level convention,
+  but the canonical bullet form carries the field explicitly
+  to make every bullet self-describing.
 
 Optional pieces:
 
 - **Body prose** — free-form, after the bold headline.
 - **`Lanes: X, Y, Z`** — declares ownership; helps subagents
   find test files.
-- **`Kind: <kind>`** — declares the type of work, when it's not
-  obvious from the section context. See §3.5.3.
 - **`Source: <source>`** — declares where the item came from,
   when the section heading doesn't already make that clear. See
   §3.5.3.
@@ -212,11 +218,14 @@ this without adding complexity to the bullet's surface form.
 | `chore` | Housekeeping (deps, build flags, generated files) | no test, changelog optional |
 | `release` | Version bump, packaging files, tag | drives the release skill |
 
-If a bullet's kind is obvious from the section context (e.g. a
-bullet under `### 🔍 Audit fold-in (2026-04-28)` is implicitly
-`audit-fix`), the `Kind:` line MAY be omitted. If the bullet
-does something atypical for its section, declare the kind
-explicitly.
+**Required as of v1.1** — every actionable bullet declares its
+`Kind:` explicitly, even when the surrounding section makes the
+default obvious. Section context is a hint for human readers;
+machine consumers (the Roadmap dialog, the App-Build runner,
+any tooling that filters / counts / reports by Kind) need the
+field on every bullet so the parser stays simple and one-pass.
+A backfill pass over the active roadmap is a `Kind: doc-fix`
+item.
 
 **Recognised `Source:` values:**
 
