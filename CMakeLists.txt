@@ -72,7 +72,7 @@ add_executable(ants-terminal
     src/audithygiene.cpp
     src/featurecoverage.cpp
     src/auditrulequality.cpp
-    src/xcbpositiontracker.cpp
+    src/kwinpositiontracker.cpp
     src/claudeallowlist.cpp
     src/claudebgtasks.cpp
     src/claudebgtasksdialog.cpp
@@ -2312,6 +2312,40 @@ if(ANTS_TESTS)
     )
     add_test(NAME roadmap_viewer_archive COMMAND test_roadmap_viewer_archive)
     set_tests_properties(roadmap_viewer_archive PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # kwin_position_tracker — ANTS-1045. KWinPositionTracker rename
+    # + KDE_FULL_SESSION / XDG_CURRENT_DESKTOP env-gate +
+    # QScopeGuard temp-file cleanup. Source-grep INVs (rename
+    # completeness, guard placement, scope-guard ordering, TOCTOU
+    # preservation, no hardcoded /tmp path regression) plus
+    # behavioural drives of the env-gate bail (INV-4b: unsetenv +
+    # temp-dir snapshot) and the failure-path cleanup (INV-5c:
+    # PATH=empty + bounded event-loop spin). See spec.md.
+    add_executable(test_kwin_position_tracker
+        tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp
+        src/kwinpositiontracker.cpp
+    )
+    target_link_libraries(test_kwin_position_tracker PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_kwin_position_tracker PRIVATE src)
+    target_compile_options(test_kwin_position_tracker PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_kwin_position_tracker PRIVATE
+        KWINPOS_H="${CMAKE_CURRENT_SOURCE_DIR}/src/kwinpositiontracker.h"
+        KWINPOS_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/kwinpositiontracker.cpp"
+        MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        CMAKELISTS_TXT="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+        SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    add_test(NAME kwin_position_tracker COMMAND test_kwin_position_tracker)
+    set_tests_properties(kwin_position_tracker PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

@@ -11,7 +11,7 @@
 #include "settingsdialog.h"
 #include "sessionmanager.h"
 #include "remotecontrol.h"
-#include "xcbpositiontracker.h"
+#include "kwinpositiontracker.h"
 #include "claudeallowlist.h"
 #include "claudebgtasks.h"
 #include "claudebgtasksdialog.h"
@@ -110,7 +110,7 @@ void sweepKwinScriptOrphansOnce();
 
 namespace {
 // Sweep stale `/tmp/kwin_{pos,move,center}_ants_*.js` files. These are
-// written by xcbpositiontracker and the mainwindow move/center helpers
+// written by kwinpositiontracker and the mainwindow move/center helpers
 // as `QTemporaryFile(autoRemove=false)` + chained-dbus removal on
 // script-unload. A crash, SIGKILL, or dbus-send hang between write and
 // unload orphans the file. No functional harm — KWin has already loaded
@@ -214,7 +214,7 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     resize(m_config.windowWidth(), m_config.windowHeight());
 
     // Position tracker — bypasses Qt's broken pos()/moveEvent for frameless windows
-    m_posTracker = new XcbPositionTracker(this);
+    m_posTracker = new KWinPositionTracker(this);
 
     // Always enable translucent background — on X11, the window visual (RGB vs
     // ARGB) is determined at creation time and cannot be changed after show().
@@ -3124,7 +3124,7 @@ void MainWindow::moveViaKWin(int targetX, int targetY) {
     ).arg(pid).arg(targetX).arg(targetY);
 
     // Unpredictable tempfile via QTemporaryFile — 0.7.12 TOCTOU fix.
-    // See xcbpositiontracker.cpp for rationale.
+    // See kwinpositiontracker.cpp for rationale.
     QString scriptPath;
     {
         QTemporaryFile f(QDir::tempPath() + "/kwin_move_ants_XXXXXX.js");

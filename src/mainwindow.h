@@ -38,7 +38,7 @@ class ColoredTabBar;
 class ColoredTabWidget;
 class QSplitter;
 class QFrame;
-class XcbPositionTracker;
+class KWinPositionTracker;
 class GlobalShortcutsPortal;
 class RemoteControl;
 #ifdef ANTS_LUA_PLUGINS
@@ -475,7 +475,7 @@ private:
     bool m_firstShow = true;
 
     // XCB position tracker (Qt's pos()/moveEvent broken for frameless windows on KWin)
-    XcbPositionTracker *m_posTracker = nullptr;
+    KWinPositionTracker *m_posTracker = nullptr;
 
     // Hot-reload: watch config.json for external changes
     QFileSystemWatcher *m_configWatcher = nullptr;

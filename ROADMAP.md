@@ -2406,13 +2406,26 @@ in each named file carry the original indie-review citation.
   pattern. ~1900 LoC carved off.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp-
-  file leak fix.** `xcbpositiontracker.cpp:13-75`. (a) Class is
-  DBus-only, never uses XCB — rename to `KWinPositionTracker`.
-  (b) Detect via `qgetenv("XDG_SESSION_TYPE")` and bail before
-  writing the temp script on non-KWin. (c) Guarantee
-  `QFile::remove(scriptPath)` runs in every failure branch via
-  `QScopeGuard`.
+- ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp-
+  file leak fix.** Shipped 2026-04-30 (post-0.7.60). Class +
+  files renamed to `KWinPositionTracker` /
+  `kwinpositiontracker.{h,cpp}`. KWin-presence guard checks
+  `KDE_FULL_SESSION=true` OR `XDG_CURRENT_DESKTOP` containing
+  `KDE` (XDG_SESSION_TYPE alone was insufficient — KWin runs on
+  both X11 and Wayland). Temp-file leak fixed via
+  `QScopeGuard`-style cleanup that fires on every synchronous
+  failure path; the async dbus chain dismisses the guard and
+  owns cleanup explicitly via the QProcess
+  `finished`/`errorOccurred` lambdas.
+  Locked by `tests/features/kwin_position_tracker/` (10 INVs:
+  rename completeness + carve-out, file-rename, no-leak across
+  src/CMake/packaging, env-gate placement, scope-guard ordering,
+  TOCTOU preservation, no hardcoded `/tmp/kwin_pos_ants` path,
+  plus behavioural drives of the env-gate bail and the
+  failure-path cleanup). 121 tests pass.
+  Spec: tests/features/kwin_position_tracker/spec.md.
+  Two-pass cold-eyes review (0 CRITICAL on first pass; 0
+  CRITICAL + 0 new HIGH on second pass).
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 - 📋 [ANTS-1046] **Post-fork heap allocations in flatpak detect path.**
@@ -4281,6 +4294,32 @@ minor tag (next: pre-0.8.0).
   Kind: review-fix. Source: cold-eyes-review-2026-04-30.
   Lanes: tests/features/roadmap_viewer_archive.
 
+### 🎨 Menubar dropdown theme alignment (user request 2026-04-30)
+
+- 📋 [ANTS-1127] **Menubar dropdown background not theme-aligned.**
+  User report 2026-04-30 (paired with the ANTS-1058 close):
+  "the colour scheme of the background of the drop down list does
+  not align to the theme." The dropdown opens with stable paint
+  (ANTS-1058 confirmed fixed) but the background colour is the
+  default Qt/Fusion grey rather than the active theme's `panel`
+  / `background` palette role. Likely cause: `NoAnimStyle` (the
+  Fusion subclass that killed the 60 Hz animation cycle) doesn't
+  forward the theme's `QPalette` to the popup `QMenu` — popups
+  inherit from their parent only when `setStyle` propagates,
+  which `NoAnimStyle` may not. Investigation path:
+  1. `grep -n "NoAnimStyle\|setStyle\|QMenu::polish" src/`
+     to find the propagation site.
+  2. Check whether `QMenu`'s palette is set explicitly on
+     `QMenuBar::addMenu(...)` callsites or relies on inheritance.
+  3. Verify by toggling between two Ants themes and watching
+     `qApp->palette()` vs the popup's `palette()`.
+  Spec stub: write `docs/specs/ANTS-1127.md` with the INVs before
+  code per the strict-loop rule. Touches `src/mainwindow.cpp`
+  menu setup or `src/themes.cpp` if the theme-apply path needs
+  to fan out to popups.
+  Kind: fix. Source: user-2026-04-30.
+  Lanes: MainWindow, Themes, NoAnimStyle.
+
 ---
 
 ## 0.8.0 — multiplexing + marketplace (target: 2026-08)
@@ -4290,25 +4329,18 @@ a modern terminal" release.
 
 ### 🐛 Carried over from 0.7.x
 
-- 💭 [ANTS-1058] **Menubar dropdown flicker on mouse movement.** Partially reduced
-  by 0.7.5 (`NoAnimStyle` killed Fusion's 60 Hz `QPropertyAnimation`
-  cycle) and the 0.7.5+1 follow-up commit `04f3409` (extended
-  intra-action suppression to `HoverMove`/`HoverEnter`/`HoverLeave`).
-  Residual flicker still visible to the user on mouse motion over an
-  open dropdown. Measured state on 2026-04-20: idle-log event volume
-  is clean, but a ~85 Hz `UpdateRequest` → paint cascade persists
-  even with `paintEvent()` forced to no-op (`ANTS_SKIP_PAINT=1`) and
-  `WA_TranslucentBackground` disabled (`ANTS_OPAQUE_WINDOW=1`),
-  which points at KWin's compositor sync handshake driving the
-  cycle rather than anything in our widget tree. Likely next-angle
-  fixes: (a) request KWin skip the blur-behind effect for our popup
-  QMenus (empty `_KDE_NET_WM_BLUR_BEHIND_REGION` property);
-  (b) disable `Qt::WA_Hover` on `QMenuBar` while a dropdown is open
-  so the style engine stops re-evaluating `:hover` on every cursor
-  tick; (c) test under GNOME/Mutter and i3 to confirm KWin is the
-  amplifier. Not a blocker (user-reported as "not the biggest issue")
-  but tracked so the 0.7.x fix attempts don't get re-invented.
-  Kind: fix.
+- ✅ [ANTS-1058] **Menubar dropdown flicker on mouse movement.**
+  Resolved 2026-04-30 (user confirmation): "the flicker on the
+  drop down menu while moving the mouse cursor over its menubar
+  item is gone. The drop down list is fully stable." The fix
+  came from 0.7.5's `NoAnimStyle` (killed Fusion's 60 Hz
+  `QPropertyAnimation` cycle) plus the 0.7.5+1 follow-up
+  (`04f3409`, extended intra-action suppression to
+  `HoverMove`/`HoverEnter`/`HoverLeave`). The 2026-04-20
+  hypothesis that KWin's compositor sync handshake was the
+  amplifier proved wrong on this hardware/Plasma combo — the
+  Qt-side suppressions were sufficient. Closed without further
+  KWin-side experimentation. Kind: fix. Source: regression.
 
 ### ⚡ Performance
 
