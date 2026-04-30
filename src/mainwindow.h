@@ -339,6 +339,14 @@ private:
     QLabel *m_claudeStatusLabel = nullptr;
     QProgressBar *m_claudeContextBar = nullptr;
     QPushButton *m_claudeReviewBtn = nullptr;
+    // ANTS-1013 indie-review-2026-04-27: in-flight de-dup for the
+    // 2 s `git status --porcelain=v1 -b` probe. The status timer used
+    // to spawn a fresh QProcess every tick even while the previous
+    // probe was still alive — visible cost on slow filesystems or
+    // pathologically large repos (the user's repo took ~600ms on a
+    // cold cache once). Guard skips the spawn while a probe is in
+    // flight; cleared by both the finished and errorOccurred handlers.
+    bool m_reviewProbeInFlight = false;
     QLabel *m_claudeErrorLabel = nullptr;
     // 0.7.38 — Claude Code background-tasks button. Visible only when
     // the per-session tracker reports ≥1 task in the active transcript.

@@ -165,6 +165,37 @@ public:
     // without re-burning the file content as tokens.
     static QVector<BulletRecord> parseBullets(const QString &markdownText);
 
+    // ANTS-1125: split-by-version archive helpers. Public-static so the
+    // feature test (`tests/features/roadmap_viewer_archive/`) can drive
+    // them without instantiating a dialog.
+    //
+    // `archiveDirFor(roadmapPath)` resolves the canonical
+    // (symlink-followed) `m_roadmapPath`, then returns
+    // `<dirname>/docs/roadmap/` iff that path exists, is a directory,
+    // and is readable. Returns the empty string in every other case
+    // (missing, regular file, broken symlink, symlink cycle,
+    // unreadable, non-directory). Spec INVs 1, 1a.
+    static QString archiveDirFor(const QString &roadmapPath);
+
+    // `loadMarkdown(roadmapPath, includeArchive)` reads the file at
+    // `roadmapPath` (capped at 8 MiB per `read()`) and, if
+    // `includeArchive` is true and `archiveDirFor` returns non-empty,
+    // appends each `*.md` archive matching `^[0-9]+\.[0-9]+\.md$`
+    // (case-sensitive), sorted numerically descending by the
+    // `(major, minor)` integer tuple parsed from the filename. Each
+    // archive is preceded by a thematic-break + HTML-comment sentinel
+    // separator. Total assembled-buffer cap is 64 MiB; once exceeded
+    // the loader emits a single truncation sentinel and stops.
+    // Spec INVs 2, 3, 3b, 4, 4a, 5, 5a, 11.
+    static QString loadMarkdown(const QString &roadmapPath, bool includeArchive);
+
+    // `shouldLoadHistory(activePreset, searchText)` returns true iff
+    // the dialog should pull archives for the next render. Triggers:
+    // `Preset::History` enumerator OR a non-empty trimmed search
+    // predicate. Spec INV-6.
+    static bool shouldLoadHistory(Preset activePreset,
+                                  const QString &searchText);
+
 protected:
     void closeEvent(QCloseEvent *event) override;
 
@@ -176,6 +207,16 @@ private:
     void applyPreset(Preset p);
     void onCheckboxToggled();
     QStringList collectCurrentBullets() const;
+
+    // ANTS-1125 instance wrappers — bind the active dialog state
+    // (`m_roadmapPath`, `m_activePreset`, `m_searchBox->text()`) to
+    // the public-static helpers above so `rebuild()` can call them
+    // without threading the state through manually.
+    QString historyArchiveDir() const { return archiveDirFor(m_roadmapPath); }
+    QString loadRoadmapMarkdown(bool includeArchive) const {
+        return loadMarkdown(m_roadmapPath, includeArchive);
+    }
+    bool wantsHistoryLoad() const;
 
     QString m_roadmapPath;
     QString m_changelogPath;
@@ -195,6 +236,10 @@ private:
     std::shared_ptr<QString> m_lastHtml;
     Config *m_config = nullptr;
     SortOrder m_sortOrder = SortOrder::Document;
+    // ANTS-1125 INV-6: track the active preset by enumerator so
+    // wantsHistoryLoad() doesn't depend on a tab-index literal.
+    // Set in applyPreset(); read in wantsHistoryLoad().
+    Preset m_activePreset = Preset::Full;
     bool m_suppressCheckboxSignal = false;
     bool m_suppressTabSignal = false;
 };

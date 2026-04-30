@@ -5034,6 +5034,13 @@ void MainWindow::refreshReviewButton() {
         return;
     }
 
+    // ANTS-1013 indie-review-2026-04-27: skip the spawn if a previous
+    // probe is still alive. The 2 s status timer races against any
+    // probe that takes longer than 2 s (cold-cache git status on a
+    // big repo, NFS-mounted cwd, etc.); without this guard each tick
+    // accumulated processes.
+    if (m_reviewProbeInFlight) return;
+
     // Policy (user spec 2026-04-18):
     //   - Not a git repo                      → hide entirely
     //   - Git repo, clean AND in-sync upstream → visible-but-DISABLED
@@ -5062,8 +5069,10 @@ void MainWindow::refreshReviewButton() {
 
     QPointer<QPushButton> btn = m_claudeReviewBtn;
     QPointer<QProcess> guard = proc;
+    QPointer<MainWindow> self(this);
+    m_reviewProbeInFlight = true;
     connect(proc, &QProcess::finished, this,
-            [btn, guard](int exitCode, QProcess::ExitStatus status) {
+            [btn, guard, self](int exitCode, QProcess::ExitStatus status) {
         if (btn) {
             if (status != QProcess::NormalExit || exitCode == 128) {
                 btn->hide();           // not a git repo / git crash
@@ -5092,11 +5101,13 @@ void MainWindow::refreshReviewButton() {
                 btn->show();
             }
         }
+        if (auto *p = self.data()) p->m_reviewProbeInFlight = false;
         if (guard) guard->deleteLater();
     });
     connect(proc, &QProcess::errorOccurred, this,
-            [btn, guard](QProcess::ProcessError) {
+            [btn, guard, self](QProcess::ProcessError) {
         if (btn) btn->hide();
+        if (auto *p = self.data()) p->m_reviewProbeInFlight = false;
         if (guard) guard->deleteLater();
     });
     proc->start();

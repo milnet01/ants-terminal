@@ -2277,6 +2277,44 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # roadmap_viewer_archive — ANTS-1125 (0.7.61). Per-version
+    # archive load path: archiveDirFor() canonical-resolves the
+    # archive dir; loadMarkdown() concatenates `<MAJOR>.<MINOR>.md`
+    # archives in numeric descending order with thematic-break +
+    # HTML-comment sentinel separators; shouldLoadHistory() gates
+    # the load on Preset::History or non-empty search. 13 INVs span
+    # the static helpers (driven on real temp-dir layouts) and
+    # source-greps for the watcher hookup, the IPC-scope guard-rail,
+    # and the format-standard amendment. See spec.md.
+    add_executable(test_roadmap_viewer_archive
+        tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
+        src/roadmapdialog.cpp
+        src/coloredtabbar.cpp
+        src/themes.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_roadmap_viewer_archive PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_roadmap_viewer_archive PRIVATE src)
+    target_compile_options(test_roadmap_viewer_archive PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_roadmap_viewer_archive PRIVATE
+        ROADMAPDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.h"
+        ROADMAPDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.cpp"
+        ROADMAP_FORMAT_MD="${CMAKE_CURRENT_SOURCE_DIR}/docs/standards/roadmap-format.md"
+        SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src"
+        ROTATE_ROADMAP_SH="${CMAKE_CURRENT_SOURCE_DIR}/packaging/rotate-roadmap.sh"
+    )
+    add_test(NAME roadmap_viewer_archive COMMAND test_roadmap_viewer_archive)
+    set_tests_properties(roadmap_viewer_archive PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # remote_control_roadmap_query — ANTS-1117 v1 (0.7.59). New IPC
     # verb that surfaces the parsed ROADMAP.md as structured JSON
     # to a Claude Code session over the existing remote-control

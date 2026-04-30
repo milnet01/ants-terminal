@@ -394,7 +394,41 @@ Conventions for any findings fold-in:
   existing Tier-2 / HIGH items.
 - **Kind/Source lines are usually inherited from the section.**
 
-### 3.9 ROADMAP anti-patterns
+### 3.9 Archive rotation
+
+When a `ROADMAP.md` grows past ~150 KiB, split closed minors out
+into per-minor archive files. The convention:
+
+- Archives live at `<dir(ROADMAP.md)>/docs/roadmap/<MAJOR>.<MINOR>.md`
+  — one file per closed minor version, named verbatim
+  (`0.5.md`, `0.6.md`, `0.7.md`).
+- File names follow the **case-sensitive regex**
+  `^[0-9]+\.[0-9]+\.md$`. No leading `v`, no `roadmap-` prefix, no
+  zero-padding (`0.7.md` not `00.07.md`), **no patch suffix**
+  (`0.7.0.md` is rejected — archives are per-minor only).
+- Tooling that reads archives sorts numerically by the
+  `(major, minor)` integer tuple, descending — lexical sort breaks
+  on minor 10 (`0.10` < `0.9` lexically). Numeric sort is the
+  contract; the naming rule (above) is what makes it parseable.
+- Rotation happens at `/bump` time on a minor or major bump only.
+  Patch bumps don't rotate. The `/bump` recipe (`.claude/bump.json`
+  on each project) owns the snip-and-create step. Rotation is
+  content-preserving: every bullet under the closed minor's
+  `## <closed>.0 — …` heading and its sub-headings moves to
+  `docs/roadmap/<closed>.md` byte-identical, then the heading and
+  bullets are removed from `ROADMAP.md`.
+- The viewer (Ants Terminal's `RoadmapDialog`) reads archives only
+  on demand — when the user picks the History preset or types in
+  the search box. Default render stays cheap.
+- The `roadmap-query` IPC verb (Ants ANTS-1117) reads only the
+  current `ROADMAP.md`. Archives are dialog-only by contract.
+
+Spec for the viewer's archive-load path:
+[`tests/features/roadmap_viewer_archive/spec.md`](../../tests/features/roadmap_viewer_archive/spec.md)
+(Ants project; the standard owns the layout, the spec owns the
+viewer behaviour).
+
+### 3.10 ROADMAP anti-patterns
 
 - ❌ Status emoji other than ✅ 🚧 📋 💭. Tools won't recognise
   them.

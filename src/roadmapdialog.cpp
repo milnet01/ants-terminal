@@ -752,7 +752,16 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
 
     m_watcher.addPath(roadmapPath);
     if (!m_changelogPath.isEmpty()) m_watcher.addPath(m_changelogPath);
+    // Watch the archive directory too, so a /bump rotation that adds
+    // a new <MAJOR>.<MINOR>.md to docs/roadmap/ triggers a rebuild
+    // while the dialog is open. Per-file watches happen lazily — only
+    // when an archive file is read does the user benefit from change
+    // detection on it; for now, dir-watch is enough to pick up adds.
+    const QString archiveDir = historyArchiveDir();
+    if (!archiveDir.isEmpty()) m_watcher.addPath(archiveDir);
     connect(&m_watcher, &QFileSystemWatcher::fileChanged,
+            this, &RoadmapDialog::scheduleRebuild);
+    connect(&m_watcher, &QFileSystemWatcher::directoryChanged,
             this, &RoadmapDialog::scheduleRebuild);
 
     connect(m_filterDone, &QCheckBox::toggled,
@@ -833,6 +842,7 @@ void RoadmapDialog::applyPreset(Preset p) {
     // doesn't call applyPreset). For an explicit Custom tab click we
     // preserve whatever the user has staged.
     if (p == Preset::Custom) {
+        m_activePreset = p;
         if (m_tabs) {
             const int idx = static_cast<int>(p);
             if (m_tabs->currentIndex() != idx) {
@@ -845,6 +855,7 @@ void RoadmapDialog::applyPreset(Preset p) {
         return;
     }
 
+    m_activePreset = p;
     const unsigned mask = filterFor(p);
     m_sortOrder = sortFor(p);
 
@@ -898,6 +909,7 @@ void RoadmapDialog::onCheckboxToggled() {
         if (m_filterConsidered && m_filterConsidered->isChecked()) mask |= ShowConsidered;
         if (m_filterCurrent && m_filterCurrent->isChecked()) mask |= ShowCurrent;
         const Preset p = presetMatching(mask, m_sortOrder);
+        m_activePreset = p;
         const int idx = static_cast<int>(p);
         if (m_tabs->currentIndex() != idx) {
             m_suppressTabSignal = true;
@@ -921,14 +933,133 @@ void RoadmapDialog::scheduleRebuild() {
     m_debounce.start();
 }
 
+QString RoadmapDialog::archiveDirFor(const QString &roadmapPath) {
+    // ANTS-1125 INV-1 / INV-1a: derive the archive path from the
+    // canonical (symlink-resolved) roadmapPath, then check that
+    // <dir>/docs/roadmap/ exists, is a directory, and is readable.
+    // Empty string in *every* failure mode (missing, regular-file,
+    // broken symlink, symlink cycle, unreadable, non-directory).
+    if (roadmapPath.isEmpty()) return QString();
+    const QString canonical =
+        QFileInfo(roadmapPath).canonicalFilePath();
+    if (canonical.isEmpty()) return QString();   // broken symlink / cycle
+    const QString candidatePath =
+        QFileInfo(canonical).absoluteDir().absolutePath()
+        + QStringLiteral("/docs/roadmap");
+    const QFileInfo candidateInfo(candidatePath);
+    if (!candidateInfo.exists()) return QString();
+    if (!candidateInfo.isDir()) return QString(); // regular file shadowing
+    if (!candidateInfo.isReadable()) return QString();
+    const QString resolved = candidateInfo.canonicalFilePath();
+    if (resolved.isEmpty()) return QString();    // archive dir is itself a cycle
+    return resolved;
+}
+
+namespace {
+// ANTS-1125 INV-4a: archive filename is exactly <MAJOR>.<MINOR>.md
+// (case-sensitive). 0.7.0.md / latest.md / 0.7.MD / hidden / .bak
+// are silently skipped.
+bool parseArchiveFilename(const QString &name, int *majorOut, int *minorOut) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^(\d+)\.(\d+)\.md$)"));
+    const auto m = re.match(name);
+    if (!m.hasMatch()) return false;
+    if (majorOut) *majorOut = m.captured(1).toInt();
+    if (minorOut) *minorOut = m.captured(2).toInt();
+    return true;
+}
+} // namespace
+
+QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
+                                    bool includeArchive) {
+    // ANTS-1012 indie-review-2026-04-27 + ANTS-1125 INV-5: per-file
+    // 8 MiB cap on every QFile::read() call inside this helper.
+    // Defends against /dev/zero symlinks and accidental binary
+    // content. Real archives top out under 1 MiB.
+    constexpr qint64 kPerFileCap = 8 * 1024 * 1024;
+    // ANTS-1125 INV-5a: total assembled-buffer cap of 64 MiB. After
+    // concatenation, if the assembled buffer would exceed this, the
+    // loader stops adding archives and emits a truncation sentinel.
+    constexpr qint64 kAssembledCap = 64 * 1024 * 1024;
+
+    QString markdown;
+    QFile f(roadmapPath);
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        markdown = QString::fromUtf8(f.read(kPerFileCap));
+    }
+    if (!includeArchive) return markdown;
+
+    const QString dir = archiveDirFor(roadmapPath);
+    if (dir.isEmpty()) return markdown;
+
+    // INV-4a: filter entries through the case-sensitive
+    // <MAJOR>.<MINOR>.md regex. Non-conforming entries (latest.md,
+    // 0.7.0.md, *.bak, hidden, non-.md) are skipped silently.
+    // INV-4 / INV-11: numeric descending sort by the parsed
+    // (major, minor) tuple — lexical sort breaks at minor 10
+    // (0.10 < 0.9 lexically).
+    QDir d(dir);
+    const QStringList rawEntries =
+        d.entryList(QDir::Files | QDir::Readable, QDir::NoSort);
+    struct Entry { int major; int minor; QString name; };
+    QVector<Entry> entries;
+    entries.reserve(rawEntries.size());
+    for (const QString &name : rawEntries) {
+        int major = 0, minor = 0;
+        if (parseArchiveFilename(name, &major, &minor)) {
+            entries.push_back({major, minor, name});
+        }
+    }
+    std::sort(entries.begin(), entries.end(),
+              [](const Entry &a, const Entry &b) {
+        if (a.major != b.major) return a.major > b.major;
+        return a.minor > b.minor;
+    });
+
+    for (const Entry &e : entries) {
+        // INV-5a: stop adding archives once the assembled buffer
+        // would exceed the total cap. Emit a single sentinel marking
+        // the truncation point and break out of the loop.
+        if (markdown.size() >= kAssembledCap) {
+            markdown += QStringLiteral(
+                "\n\n---\n\n<!-- archive: truncated past 64 MiB cap -->\n\n");
+            break;
+        }
+        QFile af(d.filePath(e.name));
+        if (!af.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        // INV-4: thematic-break + HTML-comment sentinel separator
+        // before each archive's content. Markdown's `---` thematic
+        // break terminates any open list/heading context the prior
+        // file's truncated tail might have left dangling.
+        markdown += QStringLiteral("\n\n---\n\n<!-- archive: ");
+        markdown += e.name;
+        markdown += QStringLiteral(" -->\n\n");
+        markdown += QString::fromUtf8(af.read(kPerFileCap));
+    }
+    return markdown;
+}
+
+bool RoadmapDialog::shouldLoadHistory(Preset activePreset,
+                                      const QString &searchText) {
+    // ANTS-1125 INV-6: trigger on Preset::History the *enumerator*
+    // (not a tab-index literal — the array order at construction may
+    // change), OR a non-empty trimmed search predicate.
+    if (activePreset == Preset::History) return true;
+    if (!searchText.trimmed().isEmpty()) return true;
+    return false;
+}
+
+bool RoadmapDialog::wantsHistoryLoad() const {
+    return shouldLoadHistory(
+        m_activePreset,
+        m_searchBox ? m_searchBox->text() : QString());
+}
+
 void RoadmapDialog::rebuild() {
     if (!m_viewer) return;
 
-    QFile f(m_roadmapPath);
-    QString markdown;
-    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        markdown = QString::fromUtf8(f.readAll());
-    }
+    const bool includeArchive = wantsHistoryLoad();
+    const QString markdown = loadRoadmapMarkdown(includeArchive);
 
     unsigned filter = 0;
     if (m_filterDone && m_filterDone->isChecked()) filter |= ShowDone;

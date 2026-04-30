@@ -369,94 +369,13 @@ adequately.
 
 ---
 
-## 0.5.0 — shipped (2026-04-13)
+## 0.5.x and 0.6.x — archived
 
-Reference point — see [CHANGELOG.md](CHANGELOG.md#050--2026-04-13) for the
-full list. Headline: **context-aware Project Audit** (inline suppressions,
-generated-file skip, path rules, code snippets, git blame enrichment,
-confidence score 0–100, Semgrep integration, AI triage per finding,
-version stamping on every export).
-
----
-
-## 0.6.0 — shipped (2026-04-14)
-
-**Theme of the release:** make the two features that already make Ants
-distinctive (plugins + audit) production-grade. No sprawl; polish what's
-there before adding a multiplexer. Reference:
-[CHANGELOG.md §0.6.0](CHANGELOG.md#060--2026-04-14).
-
-### 🎨 Features
-
-- ✅ **Scrollback regex search**. `Ctrl+Shift+F` floating bar with
-  three toggles — `.*` (regex), `Aa` (case), `Ab` (whole word,
-  Alt+R/C/W) — plus match counter, next/prev jump, all-match
-  highlight overlay, current-match accent, invalid-pattern feedback.
-  Ghostty 1.3 parity.
-- ✅ **OSC 9;4 progress reporting**. Parses
-  `ESC ] 9 ; 4 ; state ; pct ST` (ConEmu / Microsoft Terminal), renders
-  a thin colored strip along the bottom edge plus a tab-icon dot.
-- ✅ **Click-to-move-cursor on shell prompts** (previously in code;
-  docs promoted).
-- 💭 [ANTS-1001] **Kitty Unicode-placeholder graphics** (U+10EEEE + diacritics).
-  Moved to 0.7 backlog — scope-wise a standalone item, not a blocker.
-  Kind: implement.
-
-### 🔌 Plugins — manifest v2 + capability model
-
-- ✅ **Declarative permissions in `manifest.json`** — `permissions`
-  array with first-load confirmation dialog, persisted per-plugin grants
-  in `config.json` (`plugin_grants`). Un-granted permissions = missing
-  API functions (not `nil` stubs) so plugins can feature-detect.
-- ✅ **Per-plugin Lua VMs** — each plugin gets its own `lua_State`,
-  10 MB heap budget, 10 M instruction hook. `PluginManager` fans
-  events out over all loaded VMs.
-- ✅ **`ants.settings.get / .set`** — gated by `"settings"`. Backed by
-  `config.json`'s `plugin_settings.<name>.<key>`. Settings-dialog
-  auto-render of `"settings_schema"` is follow-up (API + store in
-  place).
-- ✅ **`ants.clipboard.write(text)`** — gated by `"clipboard.write"`.
-- ✅ **Hot reload** via `QFileSystemWatcher` on `init.lua` /
-  `manifest.json` / plugin dir. Fires `load` / `unload` lifecycle
-  events. Enabled only when `ANTS_PLUGIN_DEV=1`.
-- ✅ **Plugin keybindings** — `manifest.json` `"keybindings":
-  {"action-id": "Ctrl+Shift+X"}` block. Firing the shortcut sends a
-  `keybinding` event to the owning plugin.
-- ✅ **`ants._version`** + **`ants._plugin_name`** exposed.
-
-### ⚡ Performance
-
-- ✅ **LRU glyph-atlas eviction**. Per-glyph `lastFrame` counter,
-  warm-half retention on overflow, median-based fallback. See
-  `glrenderer.cpp:compactAtlas`.
-- ✅ **Per-line dirty tracking** (partial). `TermLine::dirty` set by
-  grid mutations; `TerminalWidget::invalidateSpanCaches()` does
-  targeted eviction of URL / highlight caches. Full cell-level
-  render-path partial-update remains as future work — primitive is in
-  place.
-- 💭 [ANTS-1002] **EGL_EXT_swap_buffers_with_damage + EGL_EXT_buffer_age** on the GL
-  path. Deferred — narrow Mesa-only win, revisit in 0.9 platform pass.
-  Kind: refactor.
-
-### 🔒 Security
-
-- ✅ **Multi-line paste confirmation**. Dialog on `\n` / `sudo ` /
-  `curl … | sh` / control chars. Policy independent of bracketed-paste
-  mode. Config key `confirm_multiline_paste` (default on).
-- ✅ **Per-terminal OSC 52 write quota**: 32 writes/min + 1 MB/min
-  (independent of the 1 MB per-string cap).
-- ✅ **OSC 8 homograph warning**: when visible label's hostname ≠
-  URL host, a confirm dialog shows both and requires opt-in.
-
-### 🧰 Dev experience
-
-- ✅ **`ants-terminal --new-plugin <name>`** — scaffolds init.lua /
-  manifest.json / README.md from templates. Name validated against
-  `[A-Za-z][A-Za-z0-9_-]{0,63}`.
-- ✅ **`ANTS_PLUGIN_DEV=1`** — verbose logging on plugin scan/load,
-  plus hot reload.
-- ✅ **`--help` / `--version`** CLI flags wired via
-  `QCommandLineParser`.
+Closed minor sections rotated to `docs/roadmap/0.5.md` and
+`docs/roadmap/0.6.md` per ANTS-1125. The viewer pulls them in on
+demand (History preset / search). See
+[`docs/standards/roadmap-format.md` § 3.9](docs/standards/roadmap-format.md)
+for the rotation contract.
 
 ---
 
@@ -2182,46 +2101,79 @@ flagged by ≥2 independent reviewers regardless of which lane:
 
 ### 🔥 Cross-cutting themes (≥2 reviewers)
 
-- 📋 [ANTS-1007] **Atomic-write / data-loss drift.** The `QFile::rename` anti-pattern
+- ✅ [ANTS-1007] **Atomic-write / data-loss drift.** The `QFile::rename` anti-pattern
   Config retired once is unfixed in `SessionManager::saveSession` +
   `saveTabOrder` and in the `auditdialog.cpp` SARIF/HTML export.
+  Closed by ANTS-1016 (`sessionmanager.cpp:403, 481` switched to
+  `std::rename` for both `saveSession` and the tab-order writer) and
+  ANTS-1017 (`auditdialog.cpp:3539` plus the trend / baseline /
+  suppress sibling sites all migrated to `QSaveFile` with
+  `setOwnerOnlyPerms`).
   Lanes: Config, Audit.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1008] **frameless+translucent `exec()` regression class is back.**
+- ✅ [ANTS-1008] **frameless+translucent `exec()` regression class is back.**
   0.7.49 retired this for both About dialogs; the 0.7.47
   update-confirmation `QMessageBox box(this); box.exec()` reintroduces
-  the same shape on the same MainWindow. Lanes: MainWindow, AI/dialogs.
+  the same shape on the same MainWindow. Closed by ANTS-1015
+  (shipped 0.7.52 — `mainwindow.cpp:5405` heap+`WA_DeleteOnClose`+
+  `show()`+`raise()`+`activateWindow()` mirroring the About-dialog
+  pattern). Lanes: MainWindow, AI/dialogs.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1009] **Missing argv `--` separator / quote-aware tokenisation.**
+- ✅ [ANTS-1009] **Missing argv `--` separator / quote-aware tokenisation.**
   `git blame -- f.file` separator missing, ssh `extraArgs` quote-bypass
   on `-o` allowlist, `openFileAtPath` doesn't `--`-separate captured
-  paths starting with `-`. Lanes: Audit, AI/dialogs, TerminalWidget.
+  paths starting with `-`. Closed by ANTS-1024 (ssh quote-bypass —
+  `sshdialog.cpp:113` uses `QProcess::splitCommand`), ANTS-1028
+  (`openFileAtPath` argv injection — `terminalwidget.cpp:3337`
+  prepends `./` to dash-leading paths), and ANTS-1030 (`git blame`
+  `--` terminator was already in by the time the review ran;
+  `auditdialog.cpp:2497`). Lanes: Audit, AI/dialogs, TerminalWidget.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1010] **Permission allow-list / intersect missing.** Lua plugin
+- ✅ [ANTS-1010] **Permission allow-list / intersect missing.** Lua plugin
   manifest accepts any permission string, prompt result not
   intersected with requested set. SSH `-o` allowlist same shape.
+  Closed by ANTS-1022 (Lua permission allow-list + intersect at
+  `pluginmanager.cpp:82, 270`) and ANTS-1024 (ssh `-o` allowlist
+  via `QProcess::splitCommand` quote-aware tokens).
   Lanes: Lua, AI/dialogs.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1011] **Color-only state encoding (WCAG 1.4.1).** Per-tab Claude state
+- ✅ [ANTS-1011] **Color-only state encoding (WCAG 1.4.1).** Per-tab Claude state
   dot, status-bar Claude label, chrome QLabels — no shape variation,
-  no `accessibleDescription`. Lanes: Chrome widgets, Claude integration,
-  MainWindow.
+  no `accessibleDescription`. Closed by ANTS-1034 (per-tab tooltip
+  carries the textual state — Orca-readable WCAG 1.4.1 equivalent),
+  ANTS-1035 (`mainwindow.cpp:593, 3520, 3699` add
+  `setAccessibleName` and dynamic `setAccessibleDescription` for
+  branch chip, repo-visibility, process, and Claude state labels),
+  and ANTS-1041 (`ToggleSwitch` accessibility plumbing via
+  `QAccessibleEvent(StateChanged)`).
+  Lanes: Chrome widgets, Claude integration, MainWindow.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1012] **Unbounded reads / OOM corner cases.** `extractCwdFromTranscript`
+- ✅ [ANTS-1012] **Unbounded reads / OOM corner cases.** `extractCwdFromTranscript`
   unbounded `readLine`, AI SSE parser blocks event loop on big chunks,
-  Roadmap dialog reads entire file unbounded. Lanes: Claude integration,
-  AI/dialogs.
+  Roadmap dialog reads entire file unbounded. Closed by ANTS-1023
+  (`claudeintegration.cpp:1001` caps `readLine` at 64 KiB),
+  ANTS-1038 (`aidialog.cpp:287` caps per-tick SSE drain and re-arms
+  via `singleShot(0)`), and the 2026-04-30 fold-in of the
+  RoadmapDialog gap — `roadmapdialog.cpp:929` now reads at most
+  8 MiB, capping a malicious or symlinked ROADMAP.md. Lanes: Claude
+  integration, AI/dialogs, RoadmapDialog.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1013] **2 s status-timer redundant work.** 0.7.49 bg-tasks fix forces
+- ✅ [ANTS-1013] **2 s status-timer redundant work.** 0.7.49 bg-tasks fix forces
   full 16 MiB transcript reparse every tick on a quiet session;
   `refreshReviewButton` spawns `git status` `QProcess` every 2 s with
-  no in-flight de-dup. Lanes: Claude integration, MainWindow.
+  no in-flight de-dup. Closed by ANTS-1033 (bg-tasks split —
+  `claudebgtasks.cpp:51` `sweepLiveness()` on the timer, full
+  rescan only on file-change) and the 2026-04-30 fold-in of the
+  refreshReviewButton gap — `MainWindow::m_reviewProbeInFlight`
+  guards against overlapping `git status --porcelain=v1 -b` probes
+  on slow filesystems / pathologically large repos. Lanes: Claude
+  integration, MainWindow.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 - 📋 [ANTS-1014] **No clipboard-write redaction helper.** 7th-audit memory flagged
@@ -3826,7 +3778,7 @@ minor tag (next: pre-0.8.0).
 > `mainwindow.cpp` outside the new code — out of scope for this
 > fold-in.
 
-- 📋 [ANTS-1122] **Audit fold-in fixes — feature-code triage.**
+- ✅ [ANTS-1122] **Audit fold-in fixes — feature-code triage.**
   Three small actionable findings inside the new code:
   - **clazy `range-loop-detach` at `src/antshelper.cpp:92`** —
     `for (const QString &line : stdoutText.split('\n', ...))`
@@ -3856,7 +3808,17 @@ minor tag (next: pre-0.8.0).
     no code change.
   Locked by re-running `/audit` against the same scope after the
   fixes land — must return zero actionable findings on the next
-  pass. Kind: review-fix. Source: audit-2026-04-30.
+  pass. **All four fixes shipped as part of the ANTS-1119 / 1117
+  cycle** — `src/antshelper.cpp:98` binds split() to a `const
+  QStringList lines` before iterating; `src/auditengine.cpp:170`
+  declares the cache pointer `const QStringList *fileLines` (the
+  write into the cache slot goes via a separate reference);
+  `src/mainwindow.h:124` returns `const QString &` from
+  `roadmapPathForRemote()`; `src/roadmapdialog.cpp:365` binds the
+  `lanesRaw.split(',', …)` result to a local before iterating. All
+  four sites carry an `ANTS-1122 audit-fold-in` source comment so
+  the fix isn't reverted on the next pass through that code.
+  Kind: review-fix. Source: audit-2026-04-30.
   Lanes: AntsHelper, AuditEngine, MainWindow, RoadmapDialog.
 
 ### 🔍 Indie-review fold-in — feature code (2026-04-30)
@@ -4179,6 +4141,145 @@ minor tag (next: pre-0.8.0).
   Kind: doc-fix style-only / refactor (visual polish, no
   behaviour change). Source: user-2026-04-30. Lanes: MainWindow,
   status bar.
+
+### 📚 Roadmap split — per-version archive (user request 2026-04-30)
+
+> ROADMAP.md crossed 260 KiB and is becoming unwieldy in tooling
+> that loads it whole — the Read-tool 256 KiB cap, the
+> roadmap-query IPC cache, and `RoadmapDialog::rebuild` itself.
+> User-approved approach: split by minor version. Keep the small
+> "open work" surface in the project root's `ROADMAP.md`, and
+> rotate closed-minor sections into per-minor archive files at
+> `<project-root>/docs/roadmap/<MAJOR>.<MINOR>.md`. The viewer
+> pulls archives in only on demand (History preset OR non-empty
+> search), so the default render stays cheap. Spec at
+> `tests/features/roadmap_viewer_archive/spec.md` (cold-eyes
+> reviewed 2026-04-30 — fold-in items captured below).
+
+- ✅ [ANTS-1125] **Roadmap split — archive feature.** Shipped
+  2026-04-30. Three-pass cold-eyes review on the spec produced
+  18 invariants spanning `archiveDirFor` / `loadMarkdown` /
+  `shouldLoadHistory` (instance wrappers in
+  `src/roadmapdialog.{h,cpp}`), the watcher hookup, the
+  IPC-scope guard-rail, and the `/bump` rotation contract
+  (`packaging/rotate-roadmap.sh` + `.claude/bump.json` todo +
+  `docs/standards/roadmap-format.md` § 3.9 amendment). Static
+  helpers driveable without instantiating a dialog. Numeric
+  descending sort by `(major, minor)` defeats the lexical-trap
+  at minor 10. Per-file 8 MiB + total 64 MiB caps. Thematic-
+  break + HTML-comment sentinel separators between archives.
+  Initial archive files at `docs/roadmap/0.5.md` and
+  `docs/roadmap/0.6.md` (the only closed minors as of 0.7.x);
+  0.7 stays in the live ROADMAP.md until 0.8.0 cuts. All 120
+  tests pass, including 18 new INVs in
+  `tests/features/roadmap_viewer_archive/`.
+  Kind: implement. Source: user-2026-04-30.
+  Lanes: RoadmapDialog, docs/standards, .claude/bump.json,
+  packaging/rotate-roadmap.sh, docs/roadmap/.
+
+- ✅ [ANTS-1126] **Spec cold-eyes fold-in — archive feature.**
+  Closed 2026-04-30 across three review passes:
+  - **Pass 1** (initial): 4 CRITICAL + 8 HIGH + 5 MEDIUM + 5 LOW
+    on the first draft — naming-rule contradiction, ordering
+    ambiguity, watcher routing, enum-vs-index brittleness, plus
+    failure-mode gaps and filter / sort / cap holes.
+  - **Pass 2** (after fold-in): zero CRITICAL, three new HIGH
+    (standard-amendment landed in same commit, `/bump` recipe
+    contract pinned, sentinel-string consistency), four MEDIUM,
+    five LOW.
+  - **Pass 3** (after second fold-in): PASS — zero CRITICAL,
+    zero new HIGH; three LOW editorial polish folded inline.
+  - **INV-14 cluster review**: zero CRITICAL, three HIGH (regex
+    dot-escape, EOF-case INV, idempotence content guarantee),
+    four MEDIUM, four LOW. All folded — script regex-escapes
+    the closed-minor `.`, no-clobber refuses to overwrite an
+    existing archive, atomic write applies to both the rewritten
+    ROADMAP.md and the new archive file.
+  Spec at `tests/features/roadmap_viewer_archive/spec.md`;
+  18 INVs across 13 main + 5 sub-INVs locked.
+
+  **CRITICAL:**
+  1. INV-1 / INV-11 naming-rule contradiction — pin the archive
+     dir as "directory containing the canonical
+     `m_roadmapPath`" (file-relative, not project-root-derived).
+  2. INV-4 / INV-5 ordering ambiguity — state whether the 8 MiB
+     truncation happens before or after concatenation, and
+     whether a sentinel separator guards against a truncated
+     trailing bullet bleeding into the next file's heading.
+  3. INV-8 watcher routing gap — pin the archive-dir
+     `directoryChanged` signal to the existing 200 ms
+     `scheduleRebuild` debounce, not to direct `rebuild()`,
+     so two `/bump`-time writes don't break scroll preservation.
+  4. INV-6 enum vs index brittleness — assert against
+     `Preset::History` enumerator, not the literal tab-index
+     `1`. Future tab reorder must not silently break the
+     trigger.
+
+  **HIGH:**
+  5. INV-1 failure-mode gaps — pin behaviour for `docs/roadmap/`
+     being a regular file, broken symlink, symlink cycle,
+     unreadable, or `docs/` itself being a symlink. Helper
+     returns empty on `!S_ISDIR` and on any `opendir` failure;
+     symlink-safe via canonical-path resolution.
+  6. INV-3 empty-dir gap — extend (or add INV-3b) so an
+     archive dir with zero `*.md` entries equals the
+     missing-dir case.
+  7. INV-4 filename-filter undefined — add INV-4a:
+     `^[0-9]+\.[0-9]+\.md$` case-sensitive; `0.7.0.md`,
+     `latest.md`, hidden files, `.bak`, non-`.md` skipped
+     silently.
+  8. INV-4 sort tie-breaker for `0.10.md` vs `0.9.md` — lexical
+     descending puts `0.10` before `0.9` (wrong). Decide:
+     zero-pad (`0.09.md`), numeric sort, or accept the bug
+     with a separate roadmap item to fix at minor 10.
+  9. INV-5 missing total cap — 8 MiB × N archives → potential
+     OOM. Add INV-5a: total assembled-buffer cap (e.g. 64 MiB)
+     OR archive-count cap (e.g. 50).
+  10. INV-8 incomplete watcher contract — `directoryChanged`
+      must fire on add, remove, AND rename (e.g. `git checkout`
+      across branches with different archives) — pin all three.
+  11. INV-9 search-parser coupling — strengthen to "INV-9 reuses
+      `roadmap_viewer_tabs` INV-11 search behaviour against
+      archive-augmented input". Single `id:NNNN` parser, two
+      input shapes.
+  12. INV-12 IPC-scope leakage — either move to the IPC contract
+      spec OR rewrite as a guard-rail "no new code path reads
+      from `historyArchiveDir()` outside `loadRoadmapMarkdown`."
+
+  **MEDIUM:**
+  13. `/bump` ownership unanchored — cross-reference the
+      `bump.json` recipe by file path, or move "rotation =
+      `/bump` responsibility" to a single sentence in
+      `roadmap-format.md`.
+  14. INV-13 redundant with INV-5 — fold the symlink-safety
+      case ("/dev/zero" defence) into INV-5; drop INV-13
+      standalone.
+  15. Backward-compat prose not load-bearing as INV — add
+      INV-3a: missing-dir → no extra watcher path registered.
+  16. Hidden coupling on `roadmap-format.md § archive rotation`
+      that doesn't exist yet — list the format-spec amendment
+      as an explicit deliverable in this spec.
+  17. Read-cap rationale ("~10× headroom") is operational
+      reasoning, not contract — drop the commentary, keep the
+      cap value.
+
+  **LOW:**
+  18. Title `(ANTS-1125)` consistency — match peer specs.
+  19. INV-6 parenthetical promote/demote — promote to sub-INV
+      or remove parenthetical entirely.
+  20. Watcher rationale "cost of N watches" — defensive prose
+      → ADR, not spec; trim.
+  21. How-to-verify-pre-fix `git checkout HEAD~1` placeholder —
+      align with peer-spec pattern.
+  22. Out-of-scope IPC bullet duplicates INV-12 — drop one.
+
+  Locked by re-running cold-eyes review after fold-in. Must
+  return zero CRITICAL on the next pass before ANTS-1125 code
+  is signed off (the code that's already drafted gets
+  re-evaluated against the corrected spec, not the other way
+  round).
+  Kind: review-fix. Source: cold-eyes-review-2026-04-30.
+  Lanes: tests/features/roadmap_viewer_archive.
 
 ---
 
