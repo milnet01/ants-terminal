@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.64 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.65 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4222,9 +4222,24 @@ minor tag (next: pre-0.8.0).
 
 ### 🐛 Scrollback overwrite during streaming (user request 2026-04-30)
 
-- 🚧 [ANTS-1118] **MEDIUM (downgraded from HIGH 2026-05-01) —
-  Scrolling up during a Claude Code stream briefly shows
-  overwritten text, but the underlying buffer is correct.**
+- ✅ [ANTS-1118] **Scrolling up during a Claude Code stream
+  briefly shows overwritten text — paint-cycle race during
+  streaming.** Shipped 2026-05-01 (0.7.65). Root cause confirmed
+  by indie-review L2 (paint pipeline lane): smooth-scroll path
+  defers snapshot capture until first non-zero `intStep`,
+  opening a 16–32 ms race window where `onVtBatch` lands
+  batches with `m_scrollOffset == 0` and lets the grid mutate
+  rows the user is scrolling past. Fix: `wheelEvent` calls
+  `captureScreenSnapshot()` + `m_grid->setScrollbackInsertPaused(true)`
+  on scroll INTENT (positive `m_smoothScrollTarget` from
+  offset 0 with no existing snapshot) rather than committed
+  offset transition. Plus `smoothScrollStep` timer-stop branch
+  cleans up stranded intent-captured snapshots via
+  `updateScrollBar()` (idempotent). Spec at
+  `docs/specs/ANTS-1118.md`; feature test at
+  `tests/features/scroll_snapshot_intent/` (4 INVs —
+  source-grep on the wheelEvent intent branch + smoothScrollStep
+  cleanup + onVtBatch regression guard). User report:
   User report 2026-05-01 (post-0.7.63): "the scrollback issue
   still happens but the severity has been downgraded — when I
   scroll back to the affected area, the text shows correctly.
@@ -4663,8 +4678,8 @@ partition (11 lanes) is documented in this fold-in for reuse.
   with synthetic wheel events + a fast-arrival batch.
   Kind: fix. Source: user-2026-04-30 + indie-review-2026-05-01.
   Lanes: TerminalWidget, terminalgrid (snapshot path).
-- 📋 [ANTS-1130] **VT alt-screen + scroll-region invariants —
-  unified fix-pass.** Three findings collapsed into one bullet
+- ✅ [ANTS-1130] **VT alt-screen + scroll-region invariants —
+  unified fix-pass.** Shipped 2026-05-01 (0.7.65). Three findings collapsed into one bullet
   because all live in `terminalgrid.cpp` and share the same
   fix-pass review surface:
   1. **DECSET 47/1047/1049 split** (L1 C-1) —
@@ -4685,10 +4700,15 @@ partition (11 lanes) is documented in this fold-in for reuse.
      + 1` can exceed `m_screenLines.size()` → `std::rotate`
      (line 1815) reads past end. Latent UB; fixed by clamp
      above (item 2).
-  Spec stub: write `docs/specs/ANTS-1130.md` enumerating xterm
-  ctlseqs anchors per item. Test:
-  `tests/features/vt_altscreen_invariants/` drives all three
-  in one .cpp.
+  Implementation: new `m_altScreenMode` member on TerminalGrid
+  tracks which mode entered (47/1047/1049); on exit, only mode
+  1049 restores DECSC (cursor + SGR + origin + wrap). Modes 47
+  and 1047 leave those alone — programs sometimes enter with
+  one and exit with another, xterm uses entry-mode for the
+  decision regardless of exit code. resize() clamps existing
+  scroll-region values to the new row range instead of
+  resetting to fullscreen. Same fix applied to the previously-
+  unclamped `m_altScrollTop`/`m_altScrollBottom`.
   Kind: fix. Source: indie-review-2026-05-01 (L1).
   Lanes: terminalgrid, vtparser.
 - 📋 [ANTS-1131] **PTY child-process lifecycle bugs.**

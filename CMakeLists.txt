@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.64 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.65 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2409,6 +2409,32 @@ if(ANTS_TESTS)
     add_test(NAME dialog_pseudo_modal
              COMMAND test_dialog_pseudo_modal -platform offscreen)
     set_tests_properties(dialog_pseudo_modal PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # scroll_snapshot_intent — ANTS-1118 (0.7.65). Locks the
+    # ANTS-1118 fix: smooth-scroll snapshot is captured on user
+    # scroll intent (wheelEvent: m_smoothScrollTarget > 0 from
+    # offset 0 with no existing snapshot), not on committed
+    # offset transition. Source-grep on terminalwidget.cpp.
+    # See spec.md for the root-cause analysis (indie-review L2
+    # fold-in 2026-05-01).
+    add_executable(test_scroll_snapshot_intent
+        tests/features/scroll_snapshot_intent/test_scroll_snapshot_intent.cpp
+    )
+    target_link_libraries(test_scroll_snapshot_intent PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_scroll_snapshot_intent PRIVATE src)
+    target_compile_options(test_scroll_snapshot_intent PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_scroll_snapshot_intent PRIVATE
+        TERMINALWIDGET_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+    )
+    add_test(NAME scroll_snapshot_intent
+             COMMAND test_scroll_snapshot_intent)
+    set_tests_properties(scroll_snapshot_intent PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

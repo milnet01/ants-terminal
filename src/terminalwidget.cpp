@@ -1873,6 +1873,28 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
                                        -static_cast<double>(m_scrollOffset),
                                        static_cast<double>(maxScroll - m_scrollOffset));
     m_smoothScrollCurrent = 0.0;
+    // ANTS-1118 fix: lock the snapshot + scrollback-pause flag on
+    // scroll INTENT, not committed offset. The first
+    // smoothScrollStep tick has step = target * 0.30 — for a
+    // single notch (target = 3.0) that's 0.9, which truncates to
+    // intStep = int(0.9) = 0. So the first 16-32 ms produces no
+    // offset transition and no updateScrollBar() / snapshot
+    // capture. Any onVtBatch arriving in that window sees
+    // m_scrollOffset == 0 and lets the grid mutate the rows the
+    // user is trying to scroll past — once the snapshot finally
+    // captures, it captures the post-mutation grid. Capturing
+    // synchronously here closes the race.
+    //
+    // Other scroll-up paths (Shift+PageUp, Shift+Home, Shift+Up)
+    // already work correctly because they set m_scrollOffset
+    // non-zero synchronously, so updateScrollBar() captures the
+    // snapshot before any batch can race. This branch only matters
+    // for the wheel/smooth-scroll path.
+    if (m_scrollOffset == 0 && m_smoothScrollTarget > 0.0 &&
+            m_frozenScreenRows.empty()) {
+        captureScreenSnapshot();
+        m_grid->setScrollbackInsertPaused(true);
+    }
     if (!m_smoothScrollTimer.isActive())
         m_smoothScrollTimer.start();
 }
@@ -2072,6 +2094,16 @@ void TerminalWidget::smoothScrollStep() {
         m_smoothScrollTimer.stop();
         m_smoothScrollTarget = 0.0;
         m_smoothScrollCurrent = 0.0;
+        // ANTS-1118: if wheelEvent captured a snapshot on intent
+        // but the target settled back to 0 without any tick
+        // committing a non-zero intStep (e.g. user wheeled up
+        // then down before the first 16 ms tick), the snapshot
+        // would otherwise be stranded with m_scrollOffset == 0.
+        // updateScrollBar() is the central choke-point for
+        // wantFrozen / haveFrozen reconciliation; one call here
+        // drops the stranded snapshot. Idempotent when there's
+        // nothing to drop.
+        updateScrollBar();
         return;
     }
     // Ease toward target: move 30% of remaining distance each frame

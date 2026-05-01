@@ -547,6 +547,12 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1047:
                     if (!m_altScreenActive) {
                         m_altScreenActive = true;
+                        // ANTS-1130 — track the mode that entered so
+                        // exit can do the right DECSC handling. Only
+                        // 1049 saves+restores cursor/SGR/origin/wrap;
+                        // 47 and 1047 leave those alone on exit per
+                        // xterm ctlseqs.
+                        m_altScreenMode = v;
                         // 0.6.22 — alt-screen doesn't touch scrollback; make sure
                         // a stale redraw window doesn't leak across the boundary.
                         m_csiClearRedrawActive = false;
@@ -559,7 +565,9 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_altScreenHyperlinks = m_screenHyperlinks;
                         m_altInlineImages = m_inlineImages;
                         m_altPromptRegions = m_promptRegions;
-                        // DECSC-equivalent: save SGR + origin + wrap alongside cursor.
+                        // DECSC-equivalent: save SGR + origin + wrap
+                        // alongside cursor — only meaningful for mode
+                        // 1049, but cheap to always snapshot.
                         m_altSavedAttrs = m_currentAttrs;
                         m_altSavedOriginMode = m_originMode;
                         m_altSavedAutoWrap = m_autoWrap;
@@ -611,19 +619,35 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 case 1047:
                     if (m_altScreenActive) {
                         m_altScreenActive = false;
+                        // ANTS-1130 — entry mode determines exit
+                        // semantics, NOT the exit code that arrived.
+                        // Programs sometimes enter with 1049 and exit
+                        // with a different code; xterm uses entry-mode
+                        // to decide DECSC restore.
+                        const int enteredMode = m_altScreenMode;
+                        m_altScreenMode = 0;
                         markAllScreenDirty();
                         m_screenLines = m_altScreen;
                         m_screenHyperlinks = m_altScreenHyperlinks;
                         m_inlineImages = m_altInlineImages;
                         m_promptRegions = m_altPromptRegions;
-                        m_cursorRow = m_altCursorRow;
-                        m_cursorCol = m_altCursorCol;
                         m_scrollTop = m_altScrollTop;
                         m_scrollBottom = m_altScrollBottom;
-                        // Restore DECSC-equivalent state saved on entry.
-                        m_currentAttrs = m_altSavedAttrs;
-                        m_originMode = m_altSavedOriginMode;
-                        m_autoWrap = m_altSavedAutoWrap;
+                        if (enteredMode == 1049) {
+                            // 1049: full DECSC restore — cursor + SGR
+                            // + origin + wrap.
+                            m_cursorRow = m_altCursorRow;
+                            m_cursorCol = m_altCursorCol;
+                            m_currentAttrs = m_altSavedAttrs;
+                            m_originMode = m_altSavedOriginMode;
+                            m_autoWrap = m_altSavedAutoWrap;
+                        }
+                        // 47 / 1047: per xterm ctlseqs, leave cursor /
+                        // SGR / origin / wrap as the alt-screen
+                        // application left them. The cells are restored
+                        // to main-screen content (above), so the cursor
+                        // may now point at a non-cleared cell — that's
+                        // intentional (matches xterm behaviour).
                         m_altScreen.clear();
                         m_altScreenHyperlinks.clear();
                         m_altInlineImages.clear();
@@ -2315,8 +2339,21 @@ void TerminalGrid::resize(int rows, int cols) {
 
     m_rows = rows;
     m_cols = cols;
-    m_scrollBottom = m_rows - 1;
-    m_scrollTop = 0;
+    // ANTS-1130 — preserve DECSTBM state across resize. Pre-fix
+    // behaviour was `m_scrollBottom = m_rows - 1; m_scrollTop = 0;`
+    // which destroyed any TUI's scroll region on every window
+    // resize (tmux split panes, less with status line, mc, etc.
+    // all lost their scroll regions). Per xterm: clamp top/bottom
+    // to the new row range; if the user shrinks below the
+    // previous bottom, bottom is clamped — top is preserved.
+    // Same fix applied to alt scroll-region (the alt path was
+    // never clamped at all — could leave m_altScrollBottom
+    // > m_rows-1 → next scrollUp reads OOB on m_screenLines
+    // after exit-from-alt → UB → crash).
+    m_scrollTop = std::clamp(m_scrollTop, 0, m_rows - 1);
+    m_scrollBottom = std::clamp(m_scrollBottom, m_scrollTop, m_rows - 1);
+    m_altScrollTop = std::clamp(m_altScrollTop, 0, m_rows - 1);
+    m_altScrollBottom = std::clamp(m_altScrollBottom, m_altScrollTop, m_rows - 1);
     // Pool entries are sized to the old m_cols; invalidate after resize.
     m_freeCellBuffers.clear();
     m_cursorRow = std::clamp(m_cursorRow, 0, m_rows - 1);

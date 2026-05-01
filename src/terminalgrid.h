@@ -574,13 +574,19 @@ private:
     std::vector<std::vector<HyperlinkSpan>> m_altScreenHyperlinks;
     std::vector<InlineImage> m_altInlineImages;
     std::vector<PromptRegion> m_altPromptRegions;
-    // DECSC state checkpointed on 1049/47/1047 entry, restored on exit.
-    // xterm docs: "Save cursor as in DECSC" — DEC VT510 DECSC saves cursor
-    // position, SGR attributes, origin mode, wrap flag. We snapshot the
-    // three pieces this grid actually tracks.
+    // DECSC state checkpointed on 1049 entry, restored on 1049 exit.
+    // 47 / 1047 do NOT save or restore the cursor / SGR / origin / wrap —
+    // per xterm ctlseqs, only 1049 carries DECSC semantics. ANTS-1130
+    // (0.7.65) split the three modes; m_altScreenMode tracks which mode
+    // entered alt-screen so exit can do the right thing.
     CellAttrs m_altSavedAttrs;
     bool m_altSavedOriginMode = false;
     bool m_altSavedAutoWrap = true;
+    // ANTS-1130 — mode that entered alt-screen (47, 1047, 1049, or 0
+    // when not on alt screen). Consulted on exit to decide whether to
+    // restore DECSC. xterm semantics: only 1049 restores cursor; 47
+    // and 1047 leave the cursor / SGR / origin / wrap unchanged on exit.
+    int m_altScreenMode = 0;
 
     QString m_windowTitle;
 

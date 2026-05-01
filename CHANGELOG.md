@@ -12,6 +12,74 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.65] — 2026-05-01
+
+**Theme:** Bundle G Tier 1 fix-pass. Two CRITICAL fixes from
+the 2026-05-01 multi-agent indie-review sweep — ANTS-1118
+(smooth-scroll snapshot race during streaming, root cause
+identified by the terminal-widget-paint reviewer) and
+ANTS-1130 (VT alt-screen + scroll-region invariants — DECSET
+47/1047/1049 conflation, resize() destroying DECSTBM, alt
+scroll-region OOB on shrink-resize). Two more Tier 1 items
+(ANTS-1131 PTY child lifecycle + ANTS-1132 IPC socket trust
+gaps) defer to 0.7.66 to keep this release's blast radius
+small. Tier 2 + Tier 3 follow per the fold-in plan.
+
+### Fixed
+
+- **ANTS-1118 — smooth-scroll snapshot race.** User report
+  2026-04-30 + downgrade 2026-05-01 ("scrolling up during a
+  Claude Code stream briefly shows overwritten text"). Root
+  cause: `wheelEvent` set `m_smoothScrollTarget` and started
+  the timer, but the first 16 ms tick had `intStep = int(0.9)
+  = 0`, so `updateScrollBar()` didn't fire and the snapshot
+  stayed uncaptured. During the 16–32 ms race window
+  `onVtBatch` saw `m_scrollOffset == 0` and let the grid
+  mutate the rows the user was scrolling past — once the
+  snapshot finally captured, it captured the *post-mutation*
+  grid. Fix: trigger `captureScreenSnapshot()` +
+  `m_grid->setScrollbackInsertPaused(true)` on scroll **intent**
+  (positive `m_smoothScrollTarget` from offset 0 with no
+  existing snapshot) rather than on committed offset
+  transition. Plus `smoothScrollStep` timer-stop branch calls
+  `updateScrollBar()` so any intent-captured-but-never-
+  committed snapshot is dropped. Spec at
+  `docs/specs/ANTS-1118.md`; feature test at
+  `tests/features/scroll_snapshot_intent/` drives 4 INVs
+  (source-grep on the wheelEvent intent branch +
+  smoothScrollStep cleanup + onVtBatch regression guard).
+
+- **ANTS-1130 — VT alt-screen + scroll-region invariants.**
+  Three findings from indie-review L1 (VT parser + grid),
+  all in `terminalgrid.cpp`, collapsed into one fix-pass:
+  1. **DECSET 47/1047/1049 split.** Per xterm ctlseqs only
+     mode 1049 carries DECSC semantics; 47 and 1047 don't
+     save or restore the cursor / SGR / origin / wrap.
+     Pre-fix code conflated all three. New `m_altScreenMode`
+     member tracks which mode entered alt-screen; on exit
+     only the 1049 path restores DECSC. Programs sometimes
+     enter with 1049 and exit with a different code — xterm
+     uses entry-mode for the decision regardless of exit
+     code, and we now match.
+  2. **`resize()` preserves DECSTBM.** Pre-fix code did
+     `m_scrollBottom = m_rows - 1; m_scrollTop = 0;` —
+     destroying any TUI's scroll region on every window
+     resize (tmux split panes, less with status line, mc,
+     all lost their regions). New behaviour: clamp the
+     existing top/bottom to the new row range. If the user
+     shrinks below the previous bottom, bottom is clamped;
+     top is preserved.
+  3. **Alt scroll-region OOB on shrink-resize.** Pre-fix
+     code never clamped `m_altScrollTop` /
+     `m_altScrollBottom` at all — after a shrink-resize
+     while on alt screen with a non-default scroll region,
+     `regionSize = m_scrollBottom - m_scrollTop + 1` could
+     exceed `m_screenLines.size()` and the next `scrollUp`'s
+     `std::rotate` would read past the end of
+     `m_screenLines`. Latent UB → crash class. Same clamp
+     as item 2, applied symmetrically to the alt scroll
+     region.
+
 ## [0.7.64] — 2026-05-01
 
 **Theme:** Companion partial closeouts pre-Bundle-G. ANTS-1106
