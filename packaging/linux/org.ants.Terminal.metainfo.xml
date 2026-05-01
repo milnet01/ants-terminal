@@ -103,6 +103,23 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.64" date="2026-05-01">
+      <description>
+        <p>Companion partial closeouts pre-Bundle-G. ANTS-1106 ships the Roadmap viewer's Kind-faceted secondary filter — the last half of the "mandatory Kind: field + viewer faceted categorisation" item, with the field-required half having landed in 0.7.59 alongside the standards doc update. Three status hygiene flips for ANTS-1116 v1 (<code>ants-helper drift-check</code>) and ANTS-1117 v1 (<code>roadmap-query</code> + <code>tab-list</code> IPC verbs) — both shipped in 0.7.59 but the status emoji never flipped. ANTS-1118 reframed from HIGH to MEDIUM after the user confirmed the bug downgraded post-0.7.63 (still a temporary visual artifact, but the scrollback buffer itself is intact).</p>
+        <p>Added:</p>
+        <ul>
+          <li>Roadmap viewer Kind-faceted filter — a new Kind row in RoadmapDialog underneath the existing status-checkbox row, with one toggle per Kind value (12 total — the 10 spec-defined plus the de-facto research / ux values). OR-include semantics across the active Kinds; bullets without a Kind: line are excluded under non-empty filters. (ANTS-1106)</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>ROADMAP status flips for ANTS-1116 v1 + ANTS-1117 v1 — both shipped in 0.7.59; the status emoji never flipped. v2 of each (MCP server wrapper + audit-run IPC verb) explicitly stays deferred per their specs, gated on ANTS-1120 measurement validation.</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>ANTS-1118 severity downgraded HIGH → MEDIUM after user confirmation — scrollback buffer is intact, visible artifact is a paint-cycle race during streaming. Folded into Bundle G (full /audit + /indie-review) as a candidate finding for the multi-agent fresh-eyes pass.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.63" date="2026-05-01">
       <description>
         <p>Outstanding-queue cleanup pre-Bundle-G (full /audit + /indie-review). ANTS-1014 clipboard-write redaction lands as the one real code fix — centralises 15 raw <code>setText(...)</code> sites behind a single hygiene funnel, with OSC 52 (the headline exfil vector flagged by the 7th-audit memory) and Lua plugin <code>ants.clipboard.write</code> getting a 1 MiB cap + NUL strip while user-initiated copy actions pass through unchanged. Two regressions get explicit "awaiting repro" status flips so the upcoming review pass doesn't re-flag them as untreated bugs, and six big items get explicit deferral annotations with re-evaluation triggers so orphan planned bullets read as deferred-by-design rather than forgotten.</p>

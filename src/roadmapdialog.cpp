@@ -400,7 +400,8 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
                                   const QStringList &currentBullets,
                                   const QString &themeName,
                                   SortOrder sortOrder,
-                                  const QString &searchPredicate) {
+                                  const QString &searchPredicate,
+                                  const QSet<QString> &kindFilter) {
     const QString sourceText =
         (sortOrder == SortOrder::DescendingChronological)
             ? reverseTopLevelSections(markdownText)
@@ -543,7 +544,38 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
             } else if (!plainSearch.isEmpty()) {
                 keepSearch = body.contains(plainSearch, Qt::CaseInsensitive);
             }
-            const bool keep = keepStatus && keepSearch;
+            // ANTS-1106 — Kind filter. Empty filter = no narrowing.
+            // Non-empty filter requires the bullet's Kind: line value
+            // to be a member of the set; bullets without a Kind: line
+            // are excluded under non-empty filters (the user filtering
+            // by Kind doesn't want unclassified bullets sneaking
+            // through). We peek ahead at the continuation lines to
+            // assemble the bullet's full body before extracting Kind:.
+            bool keepKind = true;
+            if (!kindFilter.isEmpty() && kind != BulletKind::Other) {
+                QString bodyFull = body;
+                for (int j = i + 1; j < lines.size(); ++j) {
+                    const QString &cont = lines[j];
+                    if (cont.trimmed().isEmpty()) break;
+                    if (cont.startsWith(QStringLiteral("- ")) ||
+                        cont.startsWith(QStringLiteral("* "))) break;
+                    if (cont.startsWith(QStringLiteral("  "))) {
+                        bodyFull.append('\n');
+                        bodyFull.append(cont.trimmed());
+                        continue;
+                    }
+                    break;
+                }
+                static const QRegularExpression rxKind(
+                    QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
+                    QRegularExpression::MultilineOption);
+                const auto km = rxKind.match(bodyFull);
+                const QString thisKind =
+                    km.hasMatch() ? km.captured(1).trimmed() : QString();
+                keepKind = !thisKind.isEmpty() &&
+                           kindFilter.contains(thisKind);
+            }
+            const bool keep = keepStatus && keepSearch && keepKind;
             if (!keep) {
                 skipBlock = true;
                 continue;
@@ -665,6 +697,55 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     filterRow->addWidget(m_filterCurrent);
     filterRow->addStretch(1);
     root->addLayout(filterRow);
+
+    // ANTS-1106 — Kind-faceted secondary filter. Empty by default
+    // (no narrowing). Each checkbox toggles a Kind value in
+    // m_kindFilter and triggers a re-render. Emoji prefixes are
+    // visual cues — `audit-fix` ought to pop visually vs
+    // `implement` so the user can distinguish at a glance which
+    // categories of work are queued.
+    auto *kindRow = new QHBoxLayout();
+    auto *kindLabel = new QLabel(tr("Kind:"), this);
+    kindLabel->setObjectName(QStringLiteral("roadmap-filter-kind-label"));
+    kindRow->addWidget(kindLabel);
+    // Each entry pairs (Kind: line value, objectName, label).
+    // objectNames are kept as literal strings so source-grep tests
+    // (`tests/features/roadmap_kind_facets/`) can pin them.
+    struct KindEntry {
+        const char *value;
+        const char *objectName;
+        const char *labelTxt;
+    };
+    const KindEntry kinds[] = {
+        {"implement",  "roadmap-filter-kind-implement",  "✨ implement"},
+        {"fix",        "roadmap-filter-kind-fix",        "🐛 fix"},
+        {"audit-fix",  "roadmap-filter-kind-audit-fix",  "🔍 audit-fix"},
+        {"review-fix", "roadmap-filter-kind-review-fix", "🔁 review-fix"},
+        {"doc",        "roadmap-filter-kind-doc",        "📚 doc"},
+        {"doc-fix",    "roadmap-filter-kind-doc-fix",    "📝 doc-fix"},
+        {"refactor",   "roadmap-filter-kind-refactor",   "🏗 refactor"},
+        {"test",       "roadmap-filter-kind-test",       "🧪 test"},
+        {"chore",      "roadmap-filter-kind-chore",      "🧹 chore"},
+        {"release",    "roadmap-filter-kind-release",    "🚢 release"},
+        {"research",   "roadmap-filter-kind-research",   "🔬 research"},
+        {"ux",         "roadmap-filter-kind-ux",         "🎨 ux"},
+    };
+    for (const KindEntry &k : kinds) {
+        auto *cb = new QCheckBox(tr(k.labelTxt), this);
+        cb->setObjectName(QString::fromLatin1(k.objectName));
+        cb->setChecked(false);  // empty filter by default = show all
+        const QString kindValue = QString::fromLatin1(k.value);
+        connect(cb, &QCheckBox::toggled, this,
+                [this, kindValue](bool on) {
+                    if (on) m_kindFilter.insert(kindValue);
+                    else    m_kindFilter.remove(kindValue);
+                    if (m_lastHtml) m_lastHtml->clear();  // force re-render
+                    rebuild();
+                });
+        kindRow->addWidget(cb);
+    }
+    kindRow->addStretch(1);
+    root->addLayout(kindRow);
 
     // Body: TOC list (left) + rendered viewer (right) inside a
     // QSplitter so the user can resize the sidebar. QTextBrowser
@@ -1071,7 +1152,7 @@ void RoadmapDialog::rebuild() {
     const QStringList signals_ = collectCurrentBullets();
     const QString predicate = m_searchBox ? m_searchBox->text() : QString();
     const QString html = renderHtml(markdown, filter, signals_, m_themeName,
-                                    m_sortOrder, predicate);
+                                    m_sortOrder, predicate, m_kindFilter);
 
     if (m_lastHtml && *m_lastHtml == html) return;  // skip identical re-render
 

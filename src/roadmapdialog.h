@@ -35,6 +35,7 @@
 #include <QDialog>
 #include <QFileSystemWatcher>
 #include <QPointer>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -124,12 +125,18 @@ public:
     // applied to each top-level bullet's body; empty disables
     // filtering. The `id:NNNN` shorthand matches a bullet whose
     // body contains `[ANTS-NNNN]` regardless of headline content.
+    // `kindFilter` (ANTS-1106) narrows by `Kind:` line value.
+    // Empty set = no filter (current behaviour). Non-empty set =
+    // only bullets whose Kind: matches one of the entries render;
+    // bullets with no Kind: line are excluded under a non-empty
+    // filter.
     static QString renderHtml(const QString &markdownText,
                               unsigned filter,
                               const QStringList &currentBullets,
                               const QString &themeName,
                               SortOrder sortOrder = SortOrder::Document,
-                              const QString &searchPredicate = QString());
+                              const QString &searchPredicate = QString(),
+                              const QSet<QString> &kindFilter = {});
 
     // Heading entry surfaced in the TOC sidebar. `level` is 1..4,
     // `text` is the raw heading text post-`#` strip (no inline
@@ -233,6 +240,10 @@ private:
     QPointer<QCheckBox> m_filterInProgress;
     QPointer<QCheckBox> m_filterConsidered;
     QPointer<QCheckBox> m_filterCurrent;
+    // ANTS-1106 — Kind-faceted secondary filter. Empty set = no
+    // narrowing (current behaviour). Populated from the Kind row's
+    // checkboxes; passed through to renderHtml on every refresh().
+    QSet<QString> m_kindFilter;
     std::shared_ptr<QString> m_lastHtml;
     Config *m_config = nullptr;
     SortOrder m_sortOrder = SortOrder::Document;

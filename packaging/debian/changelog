@@ -1,3 +1,28 @@
+ants-terminal (0.7.64-1) unstable; urgency=medium
+
+  * Companion partial closeouts pre-Bundle-G. ANTS-1106
+    ships the Roadmap viewer's Kind-faceted secondary filter
+    + three status hygiene flips for already-shipped items
+    (1116 v1, 1117 v1) + a severity downgrade on 1118.
+  * ANTS-1106 — Roadmap viewer Kind-faceted filter. New
+    Kind row in RoadmapDialog underneath the existing
+    status-checkbox row, with one toggle per Kind value (12
+    total — the 10 spec-defined plus de-facto research / ux).
+    OR-include semantics across active Kinds; bullets
+    without a Kind: line are excluded under non-empty
+    filters. Spec at docs/specs/ANTS-1106.md; feature test
+    at tests/features/roadmap_kind_facets/.
+  * ROADMAP status flips for ANTS-1116 v1 + ANTS-1117 v1 —
+    both shipped in 0.7.59; v2 of each (MCP server wrapper +
+    audit-run IPC verb) stays deferred per their specs.
+  * ANTS-1118 severity downgraded HIGH → MEDIUM. User
+    confirmed scrollback buffer is intact; visible artifact
+    is a paint-cycle race during streaming. Folded into
+    Bundle G as a candidate finding for the multi-agent
+    fresh-eyes pass.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 01 May 2026 16:00:00 +0000
+
 ants-terminal (0.7.63-1) unstable; urgency=medium
 
   * Outstanding-queue cleanup pre-Bundle-G (full /audit +

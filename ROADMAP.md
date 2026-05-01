@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.63 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.64 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -2936,8 +2936,27 @@ minor tag (next: pre-0.8.0).
 > to triage, ask Claude to update the file" into one button
 > click. That's the win.
 
-- 📋 [ANTS-1106] **Mandatory `Kind:` field + viewer faceted
-  categorisation.** Stable IDs stay monotonic (`[ANTS-NNNN]`
+- ✅ [ANTS-1106] **Mandatory `Kind:` field + viewer faceted
+  categorisation.** Shipped 2026-05-01 (0.7.64). Backfill across
+  the active ROADMAP landed in 0.7.59 (`Kind:` lines on every
+  bullet); standards doc (`docs/standards/roadmap-format.md`
+  § 3.5.3) marks the field "**Required as of v1.1**". 0.7.64
+  adds the viewer half — a Kind-faceted secondary filter row in
+  `RoadmapDialog` underneath the existing status-checkbox row,
+  with one toggle per Kind value (12 in total — the 10
+  spec-defined plus the de-facto `research` / `ux`). Empty
+  filter = no narrowing (no regression); non-empty filter =
+  OR-include semantics; bullets without a `Kind:` line are
+  excluded under non-empty filters. Implementation: extended
+  `renderHtml` with a defaulted `const QSet<QString> &kindFilter`
+  parameter, peek-ahead Kind extraction inside the bullet walk
+  (mirrors `parseBullets` regex), `m_kindFilter` set member +
+  per-Kind `QCheckBox` widgets with stable
+  `roadmap-filter-kind-<value>` objectNames. Spec at
+  `docs/specs/ANTS-1106.md`; feature test at
+  `tests/features/roadmap_kind_facets/` (7 INVs — pure-helper
+  drive across four filter shapes + source-grep on the row).
+  Stable IDs stay monotonic (`[ANTS-NNNN]`
   with one counter at `.roadmap-counter`) — kind-prefixed IDs
   considered and rejected (per-type counters fragment atomic
   allocation; reclassifying a bullet's Kind would either renumber
@@ -3486,7 +3505,17 @@ minor tag (next: pre-0.8.0).
 > below is the lever that lets Claude *prefer* local execution
 > for any task that's mechanical / structured / large-output.
 
-- 📋 [ANTS-1116] **Local-subagent framework — Ants exposes
+- ✅ [ANTS-1116] **v1 shipped 2026-04-30 (0.7.59).** v1 surface
+  is a single subcommand (`drift-check`) on the optional
+  `ants-helper` binary (built only with
+  `-DANTS_ENABLE_HELPER_CLI=ON`, default OFF). All 10 INVs from
+  `docs/specs/ANTS-1116.md` lock the binary shape, exit-code
+  semantics, and JSON contract. v2 (MCP server wrapper +
+  CLAUDE.md §8 bias rule + audit-run subcommand) explicitly
+  deferred to ANTS-1120 measurement validation per spec
+  § "Out of scope" + ADR-0002 decision 2.
+
+  **Original spec (kept for context):** Local-subagent framework — Ants exposes
   mechanical helpers as a CLI library + MCP server so Claude
   Code can invoke them as tools instead of doing the work in
   tokens.** User ask 2026-04-30: "When it makes sense to do
@@ -3618,7 +3647,17 @@ minor tag (next: pre-0.8.0).
   more binaries in every distro package), docs (CLAUDE.md
   global rule), tests/features/.
 
-- 📋 [ANTS-1117] **Claude-Code → running-Ants GUI IPC — let
+- ✅ [ANTS-1117] **v1 shipped 2026-04-30 (0.7.59).** v1 verbs
+  are `roadmap-query` (parsed bullet snapshot) and `tab-list`
+  (per-tab metadata) over the existing remote-control
+  Unix-domain socket. All 11 INVs from `docs/specs/ANTS-1117.md`
+  pass; feature tests at
+  `tests/features/remote_control_roadmap_query/` and
+  `tests/features/remote_control_tab_list/`. v2
+  (`audit-run` IPC verb, post-ANTS-1119 unblock) deferred until
+  ANTS-1120 measurement validates the lift.
+
+  **Original spec (kept for context):** Claude-Code → running-Ants GUI IPC — let
   Claude invoke Ants's built-in panels and actions on the live
   instance.** User ask 2026-04-30: "Can we update Ants Terminal
   to allow Claude Code to invoke certain actions? Like run the
@@ -4183,24 +4222,33 @@ minor tag (next: pre-0.8.0).
 
 ### 🐛 Scrollback overwrite during streaming (user request 2026-04-30)
 
-- 🚧 [ANTS-1118] **HIGH — Scrolling up during a Claude Code stream
-  is being overwritten from the line the user is parked on.**
-  **Awaiting user repro — but harder to trigger than expected.**
-  User reports 2026-05-01: "the scrollback issue is not easy to
-  reproduce — gives me a lot more confidence now to scroll up to
-  read while Claude Code is busy without losing anything in the
-  chat." Possible explanations: (a) the 0.7.61 diagnostic-logging
-  commit (`1abf768`) added invariants in the suspect code paths
-  that incidentally tightened the viewport-mutation contract, OR
-  (b) a downstream change between 0.7.49 (last reported reliable
-  repro) and 0.7.61 fixed the underlying bug as a side effect.
-  Kept open until a clean repro lands either way — closing now
-  would forget the history if it returns. Step 1 diagnostic
-  logging in `src/terminalwidget.cpp` (commit `1abf768`,
-  `ANTS_DEBUG=scrollback` instruments `onVtBatch` with viewport-
-  mutation traces). Steps 2–5 (root-cause + fix + verify) gated
-  on capturing one streaming session that reproduces the overwrite.
-  User
+- 🚧 [ANTS-1118] **MEDIUM (downgraded from HIGH 2026-05-01) —
+  Scrolling up during a Claude Code stream briefly shows
+  overwritten text, but the underlying buffer is correct.**
+  User report 2026-05-01 (post-0.7.63): "the scrollback issue
+  still happens but the severity has been downgraded — when I
+  scroll back to the affected area, the text shows correctly.
+  So it seems to be just a temporary visual artifact which we
+  should still fix but it isn't as serious as it was in the
+  past. Hopefully the full /audit and /indie-review will find
+  the issue for us to fix." Reframe of the bug: the *scrollback
+  buffer* is intact (the original fix from 0.7.49+ is doing its
+  job); what's broken is the *viewport repaint* during a stream
+  — the visible cells momentarily reflect new-line content
+  before the next paint cycle settles them back to the
+  scrolled-back position. Likely cause: a paint cycle's
+  intermediate state leaks to the visible viewport because the
+  repaint isn't atomic with respect to the cursor-write the
+  stream just performed. Prior diagnostic logging (commit
+  `1abf768`, `ANTS_DEBUG=scrollback`) traces `onVtBatch` —
+  may need extending to capture per-paint cursor + viewport
+  offset so the artifact frame is identifiable. Folded into
+  Bundle G (`/audit` + `/indie-review` sweep) as a candidate
+  finding — the multi-agent fresh-eyes pass over `terminalwidget.cpp`
+  paint code may surface the bug without needing a deterministic
+  repro. Step 1 diagnostic logging in `src/terminalwidget.cpp`
+  (commit `1abf768`). Steps 2–5 (root-cause + fix + verify)
+  gated on a Bundle-G finding OR a clean repro. User
   report 2026-04-30: "the scrollback is still broken — when I scroll
   up to read previous information while Claude Code is still busy
   outputting data, it overwrites from the line I am at. We need a

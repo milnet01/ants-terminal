@@ -12,6 +12,84 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.64] — 2026-05-01
+
+**Theme:** Companion partial closeouts pre-Bundle-G. ANTS-1106
+ships the Roadmap viewer's Kind-faceted secondary filter — the
+last half of the "mandatory `Kind:` field + viewer faceted
+categorisation" item, with the field-required half having
+landed in 0.7.59 alongside the standards doc update. Three
+status hygiene flips: ANTS-1116 v1 (`ants-helper drift-check`)
+and ANTS-1117 v1 (`roadmap-query` + `tab-list` IPC verbs) both
+shipped in 0.7.59 but the status emoji never flipped — done
+now, with v2 of each explicitly noted as deferred per their
+specs. ANTS-1118 reframed from HIGH to MEDIUM after the user
+confirmed the bug downgraded post-0.7.63 (still a temporary
+visual artifact, but the scrollback buffer itself is intact).
+
+### Added
+
+- **ANTS-1106 — Roadmap viewer Kind-faceted filter.** A new
+  Kind row in `RoadmapDialog` underneath the existing status-
+  checkbox row, with one toggle per Kind value (12 total — the
+  10 spec-defined `implement` / `fix` / `audit-fix` /
+  `review-fix` / `doc` / `doc-fix` / `refactor` / `test` /
+  `chore` / `release`, plus the de-facto `research` and `ux`
+  values that occur in the live ROADMAP). Each checkbox label
+  uses an emoji prefix as a visual cue (`✨ implement`,
+  `🐛 fix`, `🔍 audit-fix`, etc.). Empty filter set = no
+  narrowing (current behaviour preserved); non-empty filter =
+  OR-include semantics across the active Kinds; bullets
+  without a `Kind:` line are excluded under non-empty filters
+  (the user filtering by Kind doesn't want unclassified
+  bullets sneaking through). Implementation: extended the
+  static `RoadmapDialog::renderHtml` with a defaulted
+  `const QSet<QString> &kindFilter` parameter; bullet walk
+  peeks ahead for the `Kind:` line via the same regex
+  `parseBullets` already uses; `m_kindFilter` set member +
+  per-Kind `QPointer<QCheckBox>` widgets with stable
+  `roadmap-filter-kind-<value>` objectNames for QSS targeting
+  + test discovery. Spec at `docs/specs/ANTS-1106.md`;
+  feature test at `tests/features/roadmap_kind_facets/`
+  drives the helper through 7 INVs (pure-helper drive across
+  empty / single-Kind / multi-Kind / missing-Kind shapes,
+  source-grep on the row + objectNames). Standards doc
+  (`docs/standards/roadmap-format.md`) was already updated to
+  mark `Kind:` as **Required as of v1.1** in 0.7.59 — no
+  doc change needed in this release.
+
+### Changed
+
+- **ROADMAP status flips for ANTS-1116 v1 + ANTS-1117 v1.**
+  Both shipped in 0.7.59 but the status emoji never flipped.
+  ANTS-1116 v1 = the `ants-helper drift-check` subcommand on
+  the optional CLI binary (`-DANTS_ENABLE_HELPER_CLI=ON`,
+  default OFF). ANTS-1117 v1 = the `roadmap-query` +
+  `tab-list` IPC verbs on the existing remote-control Unix
+  socket. Both have full feature-test coverage from when they
+  shipped — the status flip is documentation hygiene only. v2
+  of each (MCP server wrapper + CLAUDE.md §8 bias rule for
+  1116; `audit-run` IPC verb for 1117) explicitly stays
+  deferred per their respective specs — both are gated on
+  ANTS-1120 measurement validation.
+
+### Fixed
+
+- **ANTS-1118 — severity downgraded HIGH → MEDIUM after user
+  confirmation.** User report 2026-05-01: "the scrollback
+  issue still happens but the severity has been downgraded —
+  when I scroll back to the affected area, the text shows
+  correctly. So it seems to be just a temporary visual
+  artifact which we should still fix but it isn't as serious
+  as it was in the past." Reframe: the scrollback *buffer*
+  is intact (the 0.7.49+ pin/anchor work is doing its job);
+  what's broken is the *viewport repaint* during a stream —
+  visible cells momentarily reflect new-line content before
+  the next paint cycle settles them back to the scrolled
+  position. Folded into Bundle G (`/audit` + `/indie-review`
+  sweep) as a candidate finding — multi-agent fresh-eyes
+  pass over `terminalwidget.cpp` paint code is the next step.
+
 ## [0.7.63] — 2026-05-01
 
 **Theme:** Outstanding-queue cleanup pre-Bundle-G. ANTS-1014

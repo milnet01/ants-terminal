@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.63 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.64 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2409,6 +2409,39 @@ if(ANTS_TESTS)
     add_test(NAME dialog_pseudo_modal
              COMMAND test_dialog_pseudo_modal -platform offscreen)
     set_tests_properties(dialog_pseudo_modal PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # roadmap_kind_facets — ANTS-1106 (0.7.64). Locks the
+    # Kind-faceted secondary filter in RoadmapDialog. Drives
+    # RoadmapDialog::renderHtml across four filter shapes (empty
+    # / single Kind / multi Kind / missing-Kind bullet under
+    # non-empty filter) and source-greps the dialog setup for
+    # the Kind row's QLabel + per-Kind checkbox objectNames.
+    add_executable(test_roadmap_kind_facets
+        tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
+        src/roadmapdialog.cpp
+        src/coloredtabbar.cpp
+        src/themes.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_roadmap_kind_facets PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+    )
+    target_include_directories(test_roadmap_kind_facets PRIVATE src)
+    target_compile_options(test_roadmap_kind_facets PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_roadmap_kind_facets PRIVATE
+        ROADMAPDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.h"
+        ROADMAPDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.cpp"
+    )
+    add_test(NAME roadmap_kind_facets
+             COMMAND test_roadmap_kind_facets -platform offscreen)
+    set_tests_properties(roadmap_kind_facets PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
