@@ -9,6 +9,7 @@
 #include <QImage>
 #include <QLineEdit>
 #include <QRegularExpression>
+#include <QTextLayout>
 #include <QFile>
 #include <QElapsedTimer>
 #include <QJsonArray>
@@ -570,6 +571,15 @@ private:
     // scrolled-back lines after high-throughput output.
     mutable uint64_t m_lastScrollbackPushed = 0;
     void invalidateSpanCaches() const;
+
+    // ANTS-1149 — paint-cycle QTextLayout reuse. Pre-fix code
+    // constructed a fresh QTextLayout per text run inside the
+    // inner paint loop; Claude Code's heavily-styled output
+    // produces dozens of runs per row, so the impl-alloc cost
+    // was a real hot spot. Reusing one layout via setText/setFont
+    // amortises the alloc across all runs per paint. Mutable so
+    // paintEvent's const-correctness is preserved.
+    mutable QTextLayout m_paintLayout;
 
     // Trigger rules
     std::vector<TriggerRule> m_triggerRules;

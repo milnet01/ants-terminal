@@ -103,6 +103,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.72" date="2026-05-02">
+      <description>
+        <p>Bundle G perf optimisations: ANTS-1140 (RoadmapDialog Kind extraction folded into a single pre-walk + thread-local cache, replacing per-bullet peek-ahead) and ANTS-1149 (paintEvent QTextLayout reuse across runs via setText/setFont, replacing per-run construction). Both originally deferred from the Tier 2 sweep as "pure perf, not a bug" — shipped per user direction.</p>
+      </description>
+    </release>
     <release version="0.7.71" date="2026-05-01">
       <description>
         <p>Bundle G post-revalidation closures. ANTS-1151 (Hook + MCP socket SO_PEERCRED + idle timeout — symmetric to ANTS-1132's remote-control hardening); ANTS-1152 (GlobalShortcutsPortal permanent-failure latch — enforces the terminal-per-process contract that ANTS-1142 H-1's first-failure clear had documented but not implemented); ANTS-1136 cancel-path RuleQualityTracker flush; ANTS-1134 modifier-only keypress guard extended to CapsLock / NumLock / Super / Hyper; static-analysis closures (cppcheck warning + cppcheck false-positive suppression + shellcheck SC1087 fixes).</p>

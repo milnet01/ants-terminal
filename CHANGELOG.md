@@ -12,6 +12,57 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.72] — 2026-05-02
+
+**Theme:** Bundle G perf optimisations from the post-revalidation
+review — closes ANTS-1140 (RoadmapDialog Kind extraction
+double-walk fold) and ANTS-1149 (paintEvent QTextLayout reuse
+across runs). Both were tagged "pure perf optimisation, not a
+bug" and originally deferred from the Tier 2 sweep; user
+explicit direction 2026-05-02 to ship them rather than defer.
+
+### Changed
+
+- **ANTS-1140 — Kind extraction folded into single pre-walk +
+  cache.** RoadmapDialog::renderHtml previously did a per-bullet
+  peek-ahead when `kindFilter` was non-empty: for each bullet,
+  walk forward through continuation lines, append into a
+  `bodyFull` QString, regex-match the `Kind:` line. With ~270
+  bullets and 8-10 renders/sec while the user types into the
+  search box (debounced 120 ms) with a Kind filter active,
+  this was the dominant render cost. Replaced with a single
+  pre-walk at the top of `renderHtml` that builds a
+  `QHash<int, QString> kindByLine` keyed on bullet line index,
+  cached thread-locally across calls (mirrors the
+  `reverseTopLevelSections` cache from 0.7.70). The bullet
+  block now does an O(1) lookup. All 7 INVs of
+  `tests/features/roadmap_kind_facets/` pass against the
+  refactor.
+
+- **ANTS-1149 — paintEvent QTextLayout reuse.** Pre-fix code
+  constructed a fresh `QTextLayout layout(runText, *drawFont)`
+  inside the inner paint loop on every text run. Claude Code's
+  heavily-styled output produces dozens of runs per row × N
+  visible rows × 60 fps, so the impl-alloc cost was a real hot
+  spot. New `mutable QTextLayout m_paintLayout` member is
+  reused across all runs in a paint via `setText` (and
+  `setFont` only when the run's font role changes — bold /
+  italic / both / regular). HarfBuzz shape pass still runs per
+  unique text — load-bearing for ligature support. A future
+  row-content-fingerprint cache could skip even the shape, but
+  is left for later.
+
+### Performance
+
+`tests/perf/bench_vt_throughput` baseline comparison (0.7.71 →
+0.7.72): minor parser-side gains (ASCII print 29.96→30.10
+MB/s, newline 6.04→6.30, ANSI SGR 18.02→18.32, UTF-8 CJK
+8.34→8.80) consistent with compiler optimisations on the
+recent code. The QTextLayout reuse impact is in `paintEvent`,
+not `vt_throughput`; a `bench_paint_throughput` harness (per
+ANTS-1115) is still pending — without it, the win is
+qualitative rather than quantified.
+
 ## [0.7.71] — 2026-05-01
 
 **Theme:** Bundle G post-revalidation closures. The 2026-05-01

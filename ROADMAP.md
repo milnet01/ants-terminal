@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.71 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.72 (2026-05-02) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4880,17 +4880,20 @@ partition (11 lanes) is documented in this fold-in for reuse.
   so the IPC verb's bullet set matches the rendered viewer.
   Kind: fix. Source: indie-review-2026-05-01 (L7).
   Lanes: RoadmapDialog.
-- 🚧 [ANTS-1140] **RoadmapDialog perf: Kind double-walk +
-  reverseSections cache** **reverseSections cache shipped
-  2026-05-01 (0.7.70)** — function-local thread-local
-  cache keyed on the input markdown; History-mode renders
-  on the assembled archive markdown (up to 64 MiB) now
-  short-circuit on identical input. **Kind extraction
-  double-walk fold deferred** — fix needs renderHtml
-  restructured to buffer-and-decide bullet emission
-  (current per-bullet peek-ahead does duplicate work
-  alongside the main outer for-loop). Pure perf
-  optimisation, not a bug. (L7 H-1, M-6). Fold Kind extraction
+- ✅ [ANTS-1140] **RoadmapDialog perf: Kind double-walk +
+  reverseSections cache** Shipped 2026-05-01 (0.7.70 +
+  0.7.72). Both sub-fixes complete. **0.7.70:**
+  reverseTopLevelSections gains a function-local
+  thread-local cache keyed on input markdown; History-mode
+  renders on the assembled archive markdown (up to 64 MiB)
+  short-circuit on identical input. **0.7.72:** Kind
+  extraction folded into a single pre-walk + cache (same
+  pattern as reverseSections). Pre-fix code did per-bullet
+  peek-ahead inside the main walk: O(bullets ×
+  continuation_lines) per render with a regex match per
+  bullet. With ~270 bullets × ~3 cont lines and 8-10
+  renders/sec while typing into the search box with a
+  Kind filter active, this was the dominant render cost. (L7 H-1, M-6). Fold Kind extraction
   into the existing top-level-bullet pass (drop the peek-
   ahead double walk); cache `reverseTopLevelSections` output
   keyed on `(markdown.size(), markdown.left(64).hash())`.
@@ -5031,7 +5034,20 @@ partition (11 lanes) is documented in this fold-in for reuse.
   snapshot in `paintEvent` until ESU. Folds cleanly with
   ANTS-1118's snapshot machinery.
   Kind: refactor. Source: indie-review-2026-05-01 (L2).
-- 📋 [ANTS-1149] **paintEvent QTextLayout-per-cell allocation**
+- ✅ [ANTS-1149] **paintEvent QTextLayout reuse across runs**
+  Shipped 2026-05-02 (0.7.72). Single `m_paintLayout` member
+  reused across all text runs in a paint, via
+  setText/setFont, instead of a fresh `QTextLayout` per run.
+  Pre-fix code's `QTextLayout layout(runText, *drawFont)`
+  inside the inner loop allocated the layout's private impl
+  + format-range vector + run cache on every text run;
+  Claude Code's heavily-styled output produces dozens of
+  runs per row × N visible rows × 60 fps. Re-use amortises
+  the alloc across all runs per paint. HarfBuzz shape pass
+  still runs per unique text — load-bearing for ligature
+  support, can't be skipped without a row-content
+  fingerprint cache (separate optimisation, not pursued
+  yet). Original spec text:
   (L2 H-5). Konsole-style: cache `QTextLayout` per row keyed
   on row content fingerprint. Same row also constructs
   `QPainterPath path` per curly-underline cell at line 873 —

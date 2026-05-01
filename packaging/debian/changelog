@@ -1,3 +1,14 @@
+ants-terminal (0.7.72-1) unstable; urgency=medium
+
+  * Bundle G perf optimisations. ANTS-1140 (RoadmapDialog
+    Kind extraction folded into single pre-walk + cache,
+    replacing per-bullet peek-ahead); ANTS-1149 (paintEvent
+    QTextLayout reuse across runs via setText/setFont).
+    Both originally deferred from Tier 2 as "pure perf,
+    not a bug" — shipped per user direction.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 02 May 2026 02:00:00 +0000
+
 ants-terminal (0.7.71-1) unstable; urgency=medium
 
   * Bundle G post-revalidation closures. ANTS-1151 (Hook +

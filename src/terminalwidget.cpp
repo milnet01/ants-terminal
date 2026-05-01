@@ -914,6 +914,21 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
         // Draw all text runs using QTextLayout for proper ligature shaping.
         // Build the QString from accumulated codepoints once per run.
+        //
+        // ANTS-1149 (0.7.72) — single QTextLayout reused across runs
+        // via setText/setFont instead of constructing a fresh
+        // QTextLayout per run. Pre-fix code's `QTextLayout layout(...)`
+        // inside the inner loop allocated the layout's private impl,
+        // format-range vector, and run cache on every text run — and
+        // Claude Code's heavily-styled output produces dozens of runs
+        // per row × N visible rows × 60 fps. Re-using setText/setFont
+        // amortises the impl alloc across all runs in a paint
+        // (HarfBuzz shape pass still runs per unique text, but that's
+        // load-bearing for ligature support and cannot be skipped
+        // without a row-content-fingerprint cache — separate
+        // optimisation, deferred). m_paintLayout is a mutable member
+        // so paintEvent's const-correctness is preserved.
+        const QFont *lastFont = nullptr;
         for (const auto &run : runs) {
             const QFont *drawFont = &m_font;
             if (run.bold && run.italic) drawFont = &m_fontBoldItalic;
@@ -925,16 +940,19 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
             QString runText = QString::fromUcs4(run.codepoints.data(),
                                                 static_cast<int>(run.codepoints.size()));
-            // Use QTextLayout for HarfBuzz-powered ligature shaping
-            QTextLayout layout(runText, *drawFont);
-            layout.beginLayout();
-            QTextLine tline = layout.createLine();
+            m_paintLayout.setText(runText);
+            if (drawFont != lastFont) {
+                m_paintLayout.setFont(*drawFont);
+                lastFont = drawFont;
+            }
+            m_paintLayout.beginLayout();
+            QTextLine tline = m_paintLayout.createLine();
             if (tline.isValid()) {
-                tline.setLineWidth(runText.length() * m_cellWidth * 2); // generous width
+                tline.setLineWidth(runText.length() * m_cellWidth * 2);
                 tline.setPosition(QPointF(0, 0));
             }
-            layout.endLayout();
-            layout.draw(&p, QPointF(px_x, px_y));
+            m_paintLayout.endLayout();
+            m_paintLayout.draw(&p, QPointF(px_x, px_y));
         }
     }
 

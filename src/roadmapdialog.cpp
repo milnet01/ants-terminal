@@ -505,6 +505,62 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
     };
 
     const QStringList lines = sourceText.split('\n');
+
+    // ANTS-1140 — pre-walk Kind extraction (one pass; cached
+    // across consecutive renderHtml calls on the same input).
+    // Pre-fix code did a per-bullet peek-ahead inside the main
+    // walk: O(bullets × continuation_lines) per render with a
+    // regex match per bullet. With 270 bullets × ~3 cont lines
+    // and 8-10 renders/sec while the user types into the
+    // search box with a Kind filter active, this was the
+    // dominant render cost. The cache + pre-walk pattern
+    // mirrors `reverseTopLevelSections` (0.7.70).
+    QHash<int, QString> kindByLine;
+    if (!kindFilter.isEmpty()) {
+        static thread_local QString s_lastInput;
+        static thread_local QHash<int, QString> s_lastKindMap;
+        if (sourceText.size() == s_lastInput.size() &&
+                sourceText == s_lastInput) {
+            kindByLine = s_lastKindMap;
+        } else {
+            static const QRegularExpression rxKind(
+                QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
+                QRegularExpression::MultilineOption);
+            int j = 0;
+            while (j < lines.size()) {
+                const QString &row = lines[j];
+                const bool isBullet =
+                    row.startsWith(QStringLiteral("- ")) ||
+                    row.startsWith(QStringLiteral("* "));
+                if (!isBullet) { ++j; continue; }
+                // Assemble bullet body: head + indented
+                // continuation lines until blank or next
+                // top-level bullet.
+                QString bodyFull = row.mid(2);
+                int k = j + 1;
+                while (k < lines.size()) {
+                    const QString &cont = lines[k];
+                    if (cont.trimmed().isEmpty()) break;
+                    if (cont.startsWith(QStringLiteral("- ")) ||
+                        cont.startsWith(QStringLiteral("* "))) break;
+                    if (cont.startsWith(QStringLiteral("  "))) {
+                        bodyFull.append('\n');
+                        bodyFull.append(cont.trimmed());
+                        ++k;
+                        continue;
+                    }
+                    break;
+                }
+                const auto km = rxKind.match(bodyFull);
+                if (km.hasMatch())
+                    kindByLine.insert(j, km.captured(1).trimmed());
+                j = k;  // skip past the continuation lines
+            }
+            s_lastInput = sourceText;
+            s_lastKindMap = kindByLine;
+        }
+    }
+
     bool inList = false;
     bool skipBlock = false;       // dropping a filtered-out bullet's continuation
     int headingIdx = 0;           // increments per emitted heading; matches extractToc
@@ -628,34 +684,21 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
             } else if (!plainSearch.isEmpty()) {
                 keepSearch = body.contains(plainSearch, Qt::CaseInsensitive);
             }
-            // ANTS-1106 — Kind filter. Empty filter = no narrowing.
-            // Non-empty filter requires the bullet's Kind: line value
-            // to be a member of the set; bullets without a Kind: line
-            // are excluded under non-empty filters (the user filtering
-            // by Kind doesn't want unclassified bullets sneaking
-            // through). We peek ahead at the continuation lines to
-            // assemble the bullet's full body before extracting Kind:.
+            // ANTS-1106 + ANTS-1140 — Kind filter. Empty
+            // filter = no narrowing. Non-empty filter requires
+            // the bullet's Kind: line value to be a member of
+            // the set; bullets without a Kind: line are
+            // excluded under non-empty filters. ANTS-1140
+            // (0.7.72) folds the per-bullet peek-ahead into a
+            // single pre-walk + cache (above) — `kindByLine[i]`
+            // is now O(1) lookup keyed by the bullet's line
+            // index instead of an O(continuation_lines) regex
+            // walk per render.
             bool keepKind = true;
             if (!kindFilter.isEmpty() && kind != BulletKind::Other) {
-                QString bodyFull = body;
-                for (int j = i + 1; j < lines.size(); ++j) {
-                    const QString &cont = lines[j];
-                    if (cont.trimmed().isEmpty()) break;
-                    if (cont.startsWith(QStringLiteral("- ")) ||
-                        cont.startsWith(QStringLiteral("* "))) break;
-                    if (cont.startsWith(QStringLiteral("  "))) {
-                        bodyFull.append('\n');
-                        bodyFull.append(cont.trimmed());
-                        continue;
-                    }
-                    break;
-                }
-                static const QRegularExpression rxKind(
-                    QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
-                    QRegularExpression::MultilineOption);
-                const auto km = rxKind.match(bodyFull);
+                const auto it = kindByLine.constFind(i);
                 const QString thisKind =
-                    km.hasMatch() ? km.captured(1).trimmed() : QString();
+                    (it != kindByLine.constEnd()) ? it.value() : QString();
                 keepKind = !thisKind.isEmpty() &&
                            kindFilter.contains(thisKind);
             }
