@@ -1,3 +1,14 @@
+ants-terminal (0.7.70-1) unstable; urgency=medium
+
+  * Bundle G Tier 2 heavy-items closeout. ANTS-1135 ✅
+    (post-fork setenv signal-safety: pre-fork envp +
+    execle in child); ANTS-1133 partial (3 more CSI verbs);
+    ANTS-1139 partial (markdown bold + table support);
+    ANTS-1140 partial (reverseSections cache).
+    See CHANGELOG.md § 0.7.70.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 01 May 2026 23:00:00 +0000
+
 ants-terminal (0.7.69-1) unstable; urgency=medium
 
   * Bundle G Tier 2 final closeouts. ANTS-1134, 1138, 1142,

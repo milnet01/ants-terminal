@@ -140,6 +140,53 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         }
     }
 
+    // ANTS-1135 — pre-fork envp build for the non-flatpak shell
+    // launch. Pre-fix code called ::setenv() five times in the
+    // child, but setenv is NOT on POSIX's async-signal-safe list
+    // (§ 2.4.3) — it can call realloc() to grow `environ`. The
+    // CLAUDE.md contract claims "child only does execvp" and the
+    // flatpak path already pays the engineering cost to prep argv
+    // pre-fork; this closes the same hole on the non-flatpak
+    // path. Stack-allocated buffers + pointer table; the child
+    // reads the parent's stack via fork's COW semantics until
+    // execle replaces the address space.
+    char termProgramVerArg[128];
+    (void)::snprintf(termProgramVerArg, sizeof(termProgramVerArg),
+                     "TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
+    constexpr size_t kEnvpCap = 512;
+    const char *childEnvp[kEnvpCap];
+    size_t envpCount = 0;
+    // Copy parent's environ entries, skipping the 5 keys we
+    // override. const_cast is safe — we only read the pointers,
+    // not their contents, and POSIX guarantees `environ` entries
+    // are NUL-terminated KEY=VALUE strings.
+    extern char **environ;
+    for (char **e = environ; *e != nullptr && envpCount < kEnvpCap - 8; ++e) {
+        const char *entry = *e;
+        const auto startsWith = [entry](const char *prefix) {
+            for (size_t i = 0; prefix[i] != '\0'; ++i) {
+                if (entry[i] != prefix[i]) return false;
+            }
+            return true;
+        };
+        if (startsWith("TERM=") || startsWith("COLORTERM=") ||
+            startsWith("TERM_PROGRAM=") ||
+            startsWith("TERM_PROGRAM_VERSION=") ||
+            startsWith("COLORFGBG=")) {
+            continue;
+        }
+        childEnvp[envpCount++] = entry;
+    }
+    // Append our 5 overrides (5 string literals + 1 snprintf'd
+    // buffer). The string-literal pointers live in the binary's
+    // .rodata so they outlive forkpty trivially.
+    childEnvp[envpCount++] = "TERM=xterm-256color";
+    childEnvp[envpCount++] = "COLORTERM=truecolor";
+    childEnvp[envpCount++] = "TERM_PROGRAM=AntsTerminal";
+    childEnvp[envpCount++] = termProgramVerArg;
+    childEnvp[envpCount++] = "COLORFGBG=15;0";
+    childEnvp[envpCount] = nullptr;
+
     m_childPid = forkpty(&m_masterFd, nullptr, nullptr, &ws);
 
     if (m_childPid < 0) {
@@ -193,13 +240,14 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             }
         }
 
-        // Set TERM so the shell knows our capabilities
-        ::setenv("TERM", "xterm-256color", 1);
-        ::setenv("COLORTERM", "truecolor", 1);
-        ::setenv("TERM_PROGRAM", "AntsTerminal", 1);
-        ::setenv("TERM_PROGRAM_VERSION", ANTS_VERSION, 1);
-        // Dark background hint (15=white fg, 0=black bg) — used by vim, mutt
-        ::setenv("COLORFGBG", "15;0", 1);
+        // ANTS-1135 — env passed via execle's envp arg below; the
+        // 5 setenv() calls that used to live here have been
+        // moved to the pre-fork prep block (which is signal-safe
+        // because the parent isn't post-fork). Pre-fix: child
+        // called setenv() ×5, which can realloc(environ) — not
+        // on POSIX's async-signal-safe list. CLAUDE.md asserts
+        // "child only does execvp"; this matches the flatpak
+        // path's pre-fork-allocation discipline.
 
         // Get just the shell name for argv[0]
         const char *shellName = ::strrchr(shellCStr, '/');
@@ -247,7 +295,15 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             ::_exit(127);
         }
 
-        ::execlp(shellCStr, argv0, nullptr);
+        // ANTS-1135 — execle (signal-safe) replaces execlp. The
+        // shell path comes from validated ShellEntry resolution
+        // above — already absolute, so PATH search isn't needed.
+        // childEnvp was built pre-fork in the parent; readable
+        // here via fork's COW semantics until execle replaces
+        // the address space.
+        ::execle(shellCStr, argv0,
+                 static_cast<const char *>(nullptr),
+                 const_cast<char *const *>(childEnvp));
         ::_exit(127);
     }
 

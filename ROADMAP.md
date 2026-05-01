@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.69 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.70 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4753,12 +4753,16 @@ partition (11 lanes) is documented in this fold-in for reuse.
 ### 🔧 Tier 2 — hardening sweep (0.7.66 / 0.7.67)
 
 - 🚧 [ANTS-1133] **VT parser: missing CSI verbs + edge cases.**
-  **CSI Pn b (REP) shipped 2026-05-01 (0.7.69)** — repeats the
-  preceding graphic character N times; common in less and
-  ncurses. Other sub-items (CSI Z CBT, CSI I CHT, CSI Pn `,
-  combining-after-wrap edge case, wide-cont rewrap orphan)
-  remain deferred — each is a discrete VT-spec gap rather
-  than a regression.
+  **CSI verbs shipped 2026-05-01 (0.7.69 + 0.7.70):** Pn b
+  (REP — repeat preceding char), Pn I (CHT — forward tab N),
+  Pn Z (CBT — backward tab N), Pn ` (HPA — column absolute).
+  All four common in `less`, ncurses, bash completion, and
+  zsh's reset-prompt path. **Remaining sub-items deferred
+  (genuinely rare edge cases):** combining-char attach after
+  wrap (only triggers at exact column-boundary wraps with
+  combining input — rare even in CJK + diacritic mixed text);
+  wide-cont rewrap orphan (resize() rewrap with wide-char
+  pair straddling wrap boundary).
   Bundles L1 H-1 (insertLines/deleteLines hyperlink shift
   fragility), H-2 (CSI Pn b — REP — silently dropped, common
   in `less` and ncurses), H-3 (combining-char attach after
@@ -4776,8 +4780,15 @@ partition (11 lanes) is documented in this fold-in for reuse.
   not landed yet. Re-evaluate in 0.7.68.
   Kind: fix. Source: indie-review-2026-05-01 (L2).
   Lanes: TerminalWidget.
-- 📋 [ANTS-1135] **Post-fork `setenv` async-signal-safety**
-  (L3 HIGH-1). Build env strings pre-fork; `execle` with a
+- ✅ [ANTS-1135] **Post-fork `setenv` async-signal-safety**
+  Shipped 2026-05-01 (0.7.70). Pre-fork envp build (skipping
+  TERM* + COLORFGBG entries from parent's `environ`, then
+  appending the 5 overrides via stack-allocated buffers);
+  child uses `execle(shellCStr, argv0, nullptr, envp)`
+  instead of the prior `execlp` + 5×setenv() pattern.
+  Matches the flatpak-path pre-fork-allocation discipline.
+  All 128 tests pass; flatpak_host_shell test INV-5 updated
+  to recognize the execle invocation. Original spec (L3 HIGH-1). Build env strings pre-fork; `execle` with a
   constructed `envp` array (or `putenv` with statically-
   allocated `KEY=VALUE` strings, which IS async-signal-safe
   when storage is pre-allocated). Mirrors the flatpak-path
@@ -4845,7 +4856,20 @@ partition (11 lanes) is documented in this fold-in for reuse.
   via a generation counter.
   Kind: fix. Source: indie-review-2026-05-01 (L6 H-1, H-4).
   Lanes: MainWindow, Config.
-- 📋 [ANTS-1139] **RoadmapDialog markdown subset gaps**
+- 🚧 [ANTS-1139] **RoadmapDialog markdown subset gaps**
+  **3 of 5 sub-fixes shipped 2026-05-01 (0.7.70):** `**bold**`
+  recognised in body prose via new pass in `applyInline`
+  (pre-fix code rendered literal `**` characters); markdown
+  tables render as `<table>` not `<pre>` — every `|`-row
+  becomes `<tr>`, header inferred from first row,
+  separator row (`|---|---|`) auto-skipped; per-cell
+  `applyInline` so backticks + bold work inside cells.
+  **Remaining sub-fixes deferred:** sub-bullet rendering
+  (heavy — both `parseBullets` and `renderHtml` would need
+  to recognize `^  - ` / `^  * ` as nested-list opens
+  rather than continuation lines); Kind regex multi-value
+  split-on-comma; bold regex hardening against intra-bold
+  asterisks. Per-item annotations follow.
   (L7 C-1, C-2, H-3, H-5, H-6). Sub-bullet rendering
   (`^  - ` / `^  * ` indent → nested `<ul><li>` instead of
   flattened-into-parent-body); markdown table → `<table>`
@@ -4856,8 +4880,17 @@ partition (11 lanes) is documented in this fold-in for reuse.
   so the IPC verb's bullet set matches the rendered viewer.
   Kind: fix. Source: indie-review-2026-05-01 (L7).
   Lanes: RoadmapDialog.
-- 📋 [ANTS-1140] **RoadmapDialog perf: Kind double-walk +
-  reverseSections cache** (L7 H-1, M-6). Fold Kind extraction
+- 🚧 [ANTS-1140] **RoadmapDialog perf: Kind double-walk +
+  reverseSections cache** **reverseSections cache shipped
+  2026-05-01 (0.7.70)** — function-local thread-local
+  cache keyed on the input markdown; History-mode renders
+  on the assembled archive markdown (up to 64 MiB) now
+  short-circuit on identical input. **Kind extraction
+  double-walk fold deferred** — fix needs renderHtml
+  restructured to buffer-and-decide bullet emission
+  (current per-bullet peek-ahead does duplicate work
+  alongside the main outer for-loop). Pure perf
+  optimisation, not a bug. (L7 H-1, M-6). Fold Kind extraction
   into the existing top-level-bullet pass (drop the peek-
   ahead double walk); cache `reverseTopLevelSections` output
   keyed on `(markdown.size(), markdown.left(64).hash())`.

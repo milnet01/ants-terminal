@@ -69,13 +69,21 @@ QString tocAnchorAt(int index) {
     return QStringLiteral("roadmap-toc-%1").arg(index);
 }
 
-// Backtick → <code>…</code>. Pure passthrough on everything else; the
-// ROADMAP doesn't use other inline markdown shapes outside list bullets.
+// Backtick → <code>…</code> + **bold** → <strong>…</strong>.
+// ANTS-1139 (0.7.70) added the bold pass per indie-review L7
+// H-6 — pre-fix code rendered the literal `**` characters in
+// body prose, defeating the format-spec invariant that every
+// bullet has a "**bold headline**". Order matters: htmlEscape
+// first (so `&`/`<`/`>` in user content don't smuggle markup),
+// then code (so `**` inside `` ` `` doesn't get bolded), then
+// bold.
 QString applyInline(const QString &line) {
     QString s = htmlEscape(line);
     static const QRegularExpression rxCode(QStringLiteral("`([^`]+)`"));
     s.replace(rxCode,
               QStringLiteral("<code style=\"font-family:monospace\">\\1</code>"));
+    static const QRegularExpression rxBold(QStringLiteral("\\*\\*([^*]+)\\*\\*"));
+    s.replace(rxBold, QStringLiteral("<strong>\\1</strong>"));
     return s;
 }
 
@@ -184,7 +192,22 @@ QStringList readRecentCommitSubjects(const QString &repoRoot) {
 // in reverse order. Preamble (everything above the first `## `) and
 // per-section content stay intact; only the section sequence flips.
 // Used by renderHtml when SortOrder is DescendingChronological.
+//
+// ANTS-1140 — function-local cache keyed on the input string's
+// (size, hash-of-prefix). reverseTopLevelSections is on the hot
+// path for History-mode renders (every search keystroke +
+// every filter toggle), and the input — particularly with
+// archive markdown attached (ANTS-1125) — is up to 64 MiB. Cache
+// hit rate is essentially 100% across consecutive renders of the
+// same document; cache miss invalidates on any markdown content
+// change.
 QString reverseTopLevelSections(const QString &markdownText) {
+    static thread_local QString s_lastInput;
+    static thread_local QString s_lastOutput;
+    if (markdownText.size() == s_lastInput.size() &&
+            markdownText == s_lastInput) {
+        return s_lastOutput;
+    }
     const QStringList lines = markdownText.split('\n');
     QStringList preamble;
     QVector<QStringList> sections;
@@ -204,7 +227,13 @@ QString reverseTopLevelSections(const QString &markdownText) {
         }
     }
 
-    if (sections.isEmpty()) return markdownText;
+    if (sections.isEmpty()) {
+        // ANTS-1140 — populate cache even on the no-sections path
+        // so subsequent identical calls hit it.
+        s_lastInput = markdownText;
+        s_lastOutput = markdownText;
+        return markdownText;
+    }
 
     QStringList out;
     out.reserve(lines.size());
@@ -212,7 +241,11 @@ QString reverseTopLevelSections(const QString &markdownText) {
     for (int i = sections.size() - 1; i >= 0; --i) {
         out += sections[i];
     }
-    return out.join('\n');
+    QString result = out.join('\n');
+    // ANTS-1140 — cache the reversed output keyed on the input.
+    s_lastInput = markdownText;
+    s_lastOutput = result;
+    return result;
 }
 
 // Extract the four-digit numeric suffix of an `[ANTS-NNNN]` token from
@@ -504,17 +537,68 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
         // Markdown table rows — render as a <pre> block so the columns
         // line up. Coalesce consecutive `|` lines into one block.
         if (raw.startsWith(QStringLiteral("|"))) {
+            // ANTS-1139 — render markdown tables as `<table>` not
+            // `<pre>` (indie-review L7 H-5). Pre-fix code wrapped
+            // the raw row text in `<pre>` so the user saw a
+            // monospace block of `|` characters instead of a
+            // proper table — which the QTextBrowser HTML
+            // renderer + the existing `table {…}` CSS in the
+            // header would otherwise render correctly.
+            //
+            // Walk row 1: emit as <th>. Detect separator row
+            // (cells are mostly dashes) and skip. Remaining rows
+            // emit as <tr><td>. applyInline runs per cell so
+            // backticks + bold work inside cells.
             closeListIfOpen();
             skipBlock = false;
-            html += QStringLiteral("<pre style=\"font-family:monospace;\">");
-            html += htmlEscape(raw);
-            html += '\n';
+            QStringList rows;
+            rows.append(raw);
             while (i + 1 < lines.size() && lines[i + 1].startsWith(QStringLiteral("|"))) {
                 ++i;
-                html += htmlEscape(lines[i]);
-                html += '\n';
+                rows.append(lines[i]);
             }
-            html += QStringLiteral("</pre>");
+            const auto splitRow = [](const QString &row) {
+                // `| a | b |` → `["a", "b"]`. Strip leading/
+                // trailing empties from the leading/trailing
+                // pipe.
+                QStringList parts = row.split(QLatin1Char('|'));
+                if (!parts.isEmpty() && parts.first().trimmed().isEmpty())
+                    parts.removeFirst();
+                if (!parts.isEmpty() && parts.last().trimmed().isEmpty())
+                    parts.removeLast();
+                for (QString &p : parts) p = p.trimmed();
+                return parts;
+            };
+            const auto isSeparator = [](const QStringList &cells) {
+                // Row is a separator if every cell is something
+                // like `---` / `:---:` / `---:`.
+                if (cells.isEmpty()) return false;
+                for (const QString &c : cells) {
+                    QString s = c;
+                    s.remove(QLatin1Char(':')).remove(QLatin1Char(' '));
+                    if (s.isEmpty()) return false;
+                    for (QChar ch : s)
+                        if (ch != QLatin1Char('-')) return false;
+                }
+                return true;
+            };
+            html += QStringLiteral("<table>");
+            bool sawHeader = false;
+            for (const QString &row : rows) {
+                const QStringList cells = splitRow(row);
+                if (cells.isEmpty()) continue;
+                if (isSeparator(cells)) continue;
+                const QString tag =
+                    sawHeader ? QStringLiteral("td") : QStringLiteral("th");
+                html += QStringLiteral("<tr>");
+                for (const QString &cell : cells) {
+                    html += '<' + tag + '>' + applyInline(cell)
+                          + QStringLiteral("</") + tag + '>';
+                }
+                html += QStringLiteral("</tr>");
+                sawHeader = true;
+            }
+            html += QStringLiteral("</table>");
             continue;
         }
 

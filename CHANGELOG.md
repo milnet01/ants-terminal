@@ -12,6 +12,63 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.70] — 2026-05-01
+
+**Theme:** Bundle G Tier 2 closeout — heavy items. ANTS-1135
+(post-fork setenv signal-safety, the headline correctness fix
+in this release), ANTS-1133 partial (3 more CSI verbs), 1140
+partial (reverseSections cache), 1139 partial (3 of 5
+markdown subset gaps closed). 128/128 tests pass.
+
+### Fixed
+
+- **ANTS-1135 — post-fork setenv async-signal-safety.** Pre-fix
+  code called `::setenv()` ×5 in the child after `forkpty`,
+  but `setenv` is NOT on POSIX's async-signal-safe list
+  (§ 2.4.3) — it can call `realloc()` to grow `environ`.
+  CLAUDE.md and the flatpak path's pre-fork-allocation
+  comment block both claimed "child only does execvp"; the
+  non-flatpak path was silently breaking the discipline. Fix:
+  pre-fork build of envp (parent thread, signal-safe context):
+  walk `environ`, skip the 5 keys we override, append our 5
+  overrides as static-storage / stack-allocated entries.
+  Child uses `execle(shellCStr, argv0, nullptr, envp)`
+  instead of `execlp + setenv loop`. Matches the flatpak-path
+  discipline. flatpak_host_shell test INV-5 updated to
+  recognize the execle invocation.
+
+- **ANTS-1133 (4/5) — CSI verbs.** Three more on top of REP
+  from 0.7.69: CSI Pn I (CHT, cursor horizontal forward
+  tabulation), CSI Pn Z (CBT, cursor backward tabulation),
+  CSI Pn ` (HPA, horizontal position absolute — same as CHA
+  but spelled with backtick). All three are common in
+  ncurses, less, and bash tab-completion. Combining-after-
+  wrap edge case + wide-cont rewrap orphan remain deferred
+  as discrete rare-edge items.
+
+- **ANTS-1139 (3/5) — RoadmapDialog markdown subset.** Two
+  fixes: (a) `**bold**` recognized in body prose via a new
+  pass in `applyInline` (pre-fix code rendered the literal
+  `**` characters in body text — every bullet's "**bold
+  headline**" was visually wrong); (b) markdown tables
+  render as `<table>` not `<pre>` — every `|`-row becomes
+  `<tr>`, first row is `<th>`, separator row (`|---|---|`)
+  auto-skipped, body rows are `<td>`. Per-cell `applyInline`
+  so backticks + bold work inside cells. Sub-bullet
+  rendering (heavy refactor) + Kind regex multi-value +
+  bold regex anchor hardening remain deferred.
+
+- **ANTS-1140 (1/2) — RoadmapDialog perf.** `reverseTopLevelSections`
+  gains a function-local thread-local cache keyed on the
+  input markdown. History-mode renders + search keystrokes
+  + filter toggles (every render path that uses
+  `DescendingChronological` sort) now short-circuit on
+  identical input. With archive markdown attached
+  (ANTS-1125), the input can reach 64 MiB; pre-fix code
+  re-walked the entire document on every render. Kind
+  double-walk fold (the harder optimisation) remains
+  deferred — perf only, not a bug.
+
 ## [0.7.69] — 2026-05-01
 
 **Theme:** Bundle G Tier 2 final closeouts. ANTS-1134, 1138,

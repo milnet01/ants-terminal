@@ -516,6 +516,43 @@ void TerminalGrid::handleCsi(const VtAction &a) {
     case '@': insertBlanks(param(0)); break;
     case 'S': scrollUp(param(0)); break;
     case 'T': scrollDown(param(0)); break;
+    case 'I': {
+        // ANTS-1133 — CSI Pn I (CHT): cursor horizontal forward
+        // tabulation. Move cursor to the Pn-th tab stop after
+        // the current column. Falls back to last column if no
+        // more stops. Default Pn=1.
+        int n = std::max(1, param(0, 1));
+        for (int i = 0; i < n; ++i) {
+            int c = m_cursorCol + 1;
+            while (c < m_cols &&
+                   (c >= static_cast<int>(m_tabStops.size()) || !m_tabStops[c]))
+                ++c;
+            m_cursorCol = std::min(c, m_cols - 1);
+        }
+        break;
+    }
+    case 'Z': {
+        // ANTS-1133 — CSI Pn Z (CBT): cursor backward tabulation.
+        // Move cursor to the Pn-th tab stop before the current
+        // column. Falls back to column 0. Default Pn=1. Bash emits
+        // this from `\t` reverse on completions.
+        int n = std::max(1, param(0, 1));
+        for (int i = 0; i < n; ++i) {
+            int c = m_cursorCol - 1;
+            while (c > 0 &&
+                   (c >= static_cast<int>(m_tabStops.size()) || !m_tabStops[c]))
+                --c;
+            m_cursorCol = std::max(c, 0);
+        }
+        break;
+    }
+    case '`': {
+        // ANTS-1133 — CSI Pn ` (HPA): horizontal position absolute.
+        // Same as CSI Pn G (CHA) — move cursor to column Pn,
+        // 1-based. ncurses emits this for column-absolute writes.
+        m_cursorCol = std::clamp(param(0, 1) - 1, 0, m_cols - 1);
+        break;
+    }
     case 'b': {
         // ANTS-1133 — CSI Pn b (REP): repeat preceding graphic
         // character Pn times. Common in less, ncurses (`tput rep`),

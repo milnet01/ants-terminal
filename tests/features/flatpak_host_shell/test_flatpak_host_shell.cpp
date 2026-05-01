@@ -137,22 +137,28 @@ int main() {
              "!workDir.isEmpty()");
     }
 
-    // INV-5 — direct-exec fallback preserved. The original execlp call
-    // must still be present, un-touched, for the non-Flatpak branch.
-    if (!has("execlp(shellCStr, argv0, nullptr)")) {
-        fail("INV-5: non-Flatpak branch must retain "
-             "execlp(shellCStr, argv0, nullptr)");
+    // INV-5 — direct-exec fallback preserved. The non-Flatpak
+    // branch invokes the user's shell directly with a pre-built
+    // envp (signal-safe). ANTS-1135 (0.7.70) replaced the prior
+    // ::execlp(...) call with ::execle(...) — execlp inherited
+    // env via setenv(), but setenv is NOT on POSIX's async-
+    // signal-safe list. execle takes envp explicitly and runs
+    // signal-safe in the child.
+    if (!has("execle(shellCStr, argv0,")) {
+        fail("INV-5: non-Flatpak branch must invoke "
+             "::execle(shellCStr, argv0, ...) with a pre-built envp "
+             "(ANTS-1135 signal-safety fix)");
     }
     // The Flatpak branch must come BEFORE the direct-exec call so we
     // actually take it when the detection succeeds.
     {
         auto flatpakBranchPos = src.find("execvp(\"flatpak-spawn\"");
-        auto directExecPos = src.find("execlp(shellCStr, argv0, nullptr)");
+        auto directExecPos = src.find("execle(shellCStr, argv0,");
         if (flatpakBranchPos != std::string::npos &&
             directExecPos != std::string::npos &&
             flatpakBranchPos > directExecPos) {
             fail("INV-5: Flatpak execvp branch must precede the direct "
-                 "execlp call so the detection branch wins");
+                 "execle call so the detection branch wins");
         }
     }
 
