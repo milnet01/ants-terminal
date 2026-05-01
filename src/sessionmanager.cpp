@@ -421,6 +421,10 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
                 // command history, paste buffers); re-chmod the
                 // final inode.
                 setOwnerOnlyPerms(path);
+                // ANTS-1141 — fsync parent dir for crash-safe
+                // rename durability (Postgres pattern). See
+                // Config::save for the full rationale.
+                fsyncParentDir(path);
             } else {
                 qWarning("SessionManager::saveSession rename(%s -> %s) "
                          "failed: errno=%d (%s) — prior session blob "
@@ -492,6 +496,8 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
                                    path.toLocal8Bit().constData());
         if (rc == 0) {
             setOwnerOnlyPerms(path);
+            // ANTS-1141 — fsync parent dir; see Config::save.
+            fsyncParentDir(path);
         } else {
             qWarning("SessionManager::saveTabOrder rename(%s -> %s) "
                      "failed: errno=%d (%s) — prior tab_order.txt "

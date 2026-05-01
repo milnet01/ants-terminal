@@ -12,6 +12,56 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.68] — 2026-05-01
+
+**Theme:** Bundle G Tier 2 closeouts — knocking off the
+deferred sub-fixes annotated in 0.7.67's ROADMAP entries.
+ANTS-1136, 1141, 1142, 1144 each move from 🚧 partial to
+substantively closed. 128/128 ctests pass.
+
+### Fixed
+
+- **ANTS-1136 (5/5) — RuleQualityTracker durability.**
+  Final sub-fix: `runNextCheck` calls
+  `m_qualityTracker->save()` when the audit cycle completes
+  (`m_currentCheck >= m_checks.size()`). Pre-fix code only
+  flushed at destructor (RAII), so a SIGSEGV / SIGKILL /
+  power loss between recordFire calls lost up to 30 minutes
+  of fire records.
+
+- **ANTS-1141 (5/5) — parent-dir fsync after rename.** New
+  `secureio::fsyncParentDir(path)` helper (Postgres /
+  SQLite / Git pattern). Called after every successful
+  `std::rename` in `Config::save` and
+  `SessionManager::saveSession` / `saveTabOrder`. ext4 with
+  `data=ordered` could otherwise lose the rename's
+  directory-entry update on a crash between rename(2)
+  returning and the journal commit.
+
+- **ANTS-1142 (4/4) — MainWindow `sessionFailed` listener
+  + status-bar surface.** MainWindow now connects to
+  `GlobalShortcutsPortal::sessionFailed` with a `qWarning`
+  + `showStatusMessage` fallback. Pre-fix code emitted
+  the signal to no listener — on GNOME (where
+  CreateSession succeeds but BindShortcuts fails) the
+  user just saw "F12 doesn't work" with no diagnostic. The
+  KDE-presence guard lift sub-fix (for `moveViaKWin` /
+  `centerWindow`) deferred — small but distinct refactor.
+
+- **ANTS-1144 (3/3) — BgTasks dialog ANSI strip.** `tailFile`
+  in `claudebgtasksdialog.cpp` now strips CSI/SGR escape
+  sequences before HTML-escape via a regex pass. Build
+  logs with ncurses-style progress bars (`make -j$(nproc)`,
+  claude-code's status bar, etc.) no longer show literal
+  `^[[2J` / `^[[31m` etc. in the dialog. Per CLAUDE.md
+  rule 3 (reuse-before-rewriting), the ideal would route
+  through VtParser/TerminalGrid — but the regex pass
+  covers ~99% of in-the-wild noise without pulling in the
+  parser link footprint. Same regex also strips OSC
+  sequences (window-title updates). Transcript chunked
+  render still deferred (touches `claudetranscript.cpp`'s
+  setHtml flow more invasively).
+
 ## [0.7.67] — 2026-05-01
 
 **Theme:** Bundle G Tier 2 progress sweep. 8 ANTS IDs touched

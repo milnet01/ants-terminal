@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.67 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.68 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4778,8 +4778,12 @@ partition (11 lanes) is documented in this fold-in for reuse.
   pre-fork-allocation discipline already in place.
   Kind: fix. Source: indie-review-2026-05-01 (L3).
   Lanes: ptyhandler.
-- 🚧 [ANTS-1136] **Audit pipeline doc drift + correctness
-  bundle** **4 of 5 sub-fixes shipped 2026-05-01 (0.7.67):**
+- ✅ [ANTS-1136] **Audit pipeline doc drift + correctness
+  bundle** Shipped 2026-05-01 (0.7.67 + 0.7.68). 5 of 5
+  sub-fixes complete. **(0.7.68 closed `RuleQualityTracker`
+  durability — `runNextCheck` flushes via
+  `m_qualityTracker->save()` on cycle end.)** Original spec body
+  follows. **4 of 5 sub-fixes shipped 2026-05-01 (0.7.67):**
   CLAUDE.md pipeline-order line + Confidence formula
   description corrected; mypy-stub dedup-key 16→24 hex via
   `AuditEngine::computeDedup`; `cancelAudit` sets
@@ -4853,8 +4857,12 @@ partition (11 lanes) is documented in this fold-in for reuse.
   keyed on `(markdown.size(), markdown.left(64).hash())`.
   Kind: refactor. Source: indie-review-2026-05-01 (L7).
   Lanes: RoadmapDialog.
-- 🚧 [ANTS-1141] **Config + persistence: dir perms 0700,
-  load-fail setters, parent fsync, .tmp cleanup** **4 of 5
+- ✅ [ANTS-1141] **Config + persistence: dir perms 0700,
+  load-fail setters, parent fsync, .tmp cleanup** Shipped
+  2026-05-01 (0.7.67 + 0.7.68). 5 of 5 sub-fixes complete.
+  **(0.7.68 closed parent-dir fsync — new
+  `secureio::fsyncParentDir(path)` helper called after every
+  atomic rename in Config + SessionManager.)** **4 of 5
   sub-fixes shipped 2026-05-01 (0.7.67):** sessions dir
   tightened to 0700 after `mkpath`; `setKeybinding` /
   `setPluginGrants` / `setPluginSetting` / `setRawData`
@@ -4882,7 +4890,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: fix. Source: indie-review-2026-05-01 (L9).
   Lanes: Config, SessionManager.
 - 🚧 [ANTS-1142] **Wayland integration: portal queue wedge,
-  KDE guard, debug log perms race** **2 of 4 sub-fixes
+  KDE guard, debug log perms race** Shipped 2026-05-01
+  (0.7.67 + 0.7.68). **3 of 4 sub-fixes complete.**
+  **(0.7.68 closed MainWindow listening to
+  `GlobalShortcutsPortal::sessionFailed` with `qWarning` +
+  `showStatusMessage` fallback.)** Remaining: KDE-presence
+  guard lift (for `moveViaKWin` / `centerWindow`) — small
+  refactor, defer to next sweep. **2 of 4 sub-fixes
   shipped 2026-05-01 (0.7.67):** `bindShortcut` queue
   drained + `m_sessionHandle` cleared on `BindShortcuts`
   failure (sessionFailed is now terminal-per-process);
@@ -4926,7 +4940,12 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: doc-fix. Source: indie-review-2026-05-01 (L8).
   Lanes: PLUGINS.md, luaengine.
 - 🚧 [ANTS-1144] **Other dialogs: AI partial-stream insert,
-  transcript large-doc render, BgTasks ANSI-strip** **AI
+  transcript large-doc render, BgTasks ANSI-strip** Shipped
+  2026-05-01 (0.7.67 + 0.7.68). **2 of 3 sub-fixes complete.**
+  **(0.7.68 closed BgTasks ANSI/SGR/OSC escape-sequence
+  strip in `tailFile` via regex pass.)** Remaining:
+  transcript incremental render (touches `claudetranscript.cpp`
+  setHtml flow more invasively); defer to next sweep. **AI
   partial-stream Insert-button fail-closed shipped 2026-05-01
   (0.7.67).** **Two sub-fixes deferred:** transcript
   incremental render (touches `claudetranscript.cpp`'s

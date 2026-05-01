@@ -103,6 +103,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.68" date="2026-05-01">
+      <description>
+        <p>Bundle G Tier 2 closeouts — knocking off the deferred sub-fixes annotated in 0.7.67. ANTS-1136 (5/5 — RuleQualityTracker durability), ANTS-1141 (5/5 — parent-dir fsync after rename), ANTS-1142 (3/4 — MainWindow listens to sessionFailed with status-bar fallback), ANTS-1144 (2/3 — BgTasks dialog ANSI/SGR/OSC strip in tail output).</p>
+      </description>
+    </release>
     <release version="0.7.67" date="2026-05-01">
       <description>
         <p>Bundle G Tier 2 progress sweep. 8 ANTS IDs touched: ANTS-1134 (modifier-only keypress guard), ANTS-1136 (audit pipeline doc + correctness — 4/5 sub-fixes), ANTS-1137 (MainWindow chrome perf), ANTS-1138 (applyTheme early-return), ANTS-1141 (Config + persistence — 4/5 sub-fixes), ANTS-1142 (Wayland portal + debug log — 2/4), ANTS-1143 (PLUGINS.md spec drift), ANTS-1144 (AI dialog partial-stream fail-closed — 1/3). Remaining Tier 2 sub-fixes deferred to 0.7.68 with explicit annotations in ROADMAP.</p>

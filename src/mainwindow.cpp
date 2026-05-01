@@ -934,6 +934,21 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
                         m_lastQuakeToggleMs = now;
                         toggleQuakeVisibility();
                     });
+            // ANTS-1142 — listen to sessionFailed with a status-bar
+            // notification fallback. Pre-fix code emitted
+            // sessionFailed to no listener — on GNOME (where
+            // CreateSession succeeds but BindShortcuts fails) the
+            // user just saw "F12 doesn't work" with no diagnostic.
+            // Surface it once, then move on (sessionFailed is
+            // terminal-per-process per the post-ANTS-1142 contract).
+            connect(m_gsPortal, &GlobalShortcutsPortal::sessionFailed,
+                    this, [this](const QString &reason) {
+                qWarning("GlobalShortcutsPortal::sessionFailed: %s",
+                         qUtf8Printable(reason));
+                showStatusMessage(
+                    tr("Global hotkey unavailable — %1").arg(reason),
+                    6000);
+            });
             m_gsPortal->bindShortcut(
                 QStringLiteral("toggle-quake"),
                 tr("Toggle Ants Terminal drop-down"),

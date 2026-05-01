@@ -4,7 +4,9 @@
 #include <QFileDevice>
 #include <QString>
 
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <QFileInfo>
 #include <unistd.h>
 
 // Apply owner-only (0600) permissions to a file or local socket. The literal
@@ -31,6 +33,26 @@ inline bool setOwnerOnlyPerms(QFileDevice &f) {
 inline bool setOwnerOnlyPerms(const QString &path) {
     return QFile::setPermissions(path,
         QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+}
+
+// ANTS-1141 — fsync the parent directory of a just-renamed file.
+// POSIX rename(2) guarantees the inode contents survive a crash,
+// but the directory entry update itself is not durable until the
+// parent is fsynced. ext4 with `data=ordered` + a power loss
+// between rename() returning and the journal commit can lose the
+// rename. Postgres / SQLite / Git all do this; we adopted the
+// pattern post-indie-review L9 finding M2.
+// Returns true on success; false (and a no-op) if the path's
+// parent can't be opened.
+inline bool fsyncParentDir(const QString &filePath) {
+    const QString parent = QFileInfo(filePath).absolutePath();
+    if (parent.isEmpty()) return false;
+    const QByteArray bytes = parent.toLocal8Bit();
+    const int dirfd = ::open(bytes.constData(), O_RDONLY | O_DIRECTORY);
+    if (dirfd < 0) return false;
+    const int rc = ::fsync(dirfd);
+    ::close(dirfd);
+    return rc == 0;
 }
 
 // ANTS-1132 — defence-in-depth before unlinking a Unix-domain socket

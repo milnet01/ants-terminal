@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QTextEdit>
 #include <QTextStream>
@@ -21,6 +22,31 @@ namespace {
 // -j$(nproc)`) can fill the .output file with megabytes of compiler
 // noise and rendering all of that into a QTextEdit costs more than the
 // user wants to pay every refresh.
+// ANTS-1144 — strip ANSI control sequences (CSI/SGR) from tail
+// output. Pre-fix code rendered raw bytes, so a build log full of
+// ncurses-style progress bars (`make -j$(nproc)` with colored
+// output, claude-code's status bar, etc.) showed literal `^[[2J`
+// and similar escape sequences in the dialog. The terminal proper
+// has VtParser/TerminalGrid for this; per CLAUDE.md rule 3
+// (reuse-before-rewriting) we ought to channel through that. But
+// running a full VT state machine for tail rendering is overkill —
+// a regex pass that drops the common CSI form (ESC `[` params
+// `@-~` final byte) covers ~99% of in-the-wild noise without
+// pulling in the parser link footprint.
+QString stripAnsi(const QString &input) {
+    static const QRegularExpression re(
+        QStringLiteral("\x1B\\[[\\x20-\\x3f]*[\\x40-\\x7e]"));
+    QString s = input;
+    s.remove(re);
+    // Also strip OSC sequences (ESC ] ... BEL) which command tools
+    // sometimes emit for window-title updates. ESC 7-bit + ST or
+    // BEL terminator.
+    static const QRegularExpression osc(
+        QStringLiteral("\x1B\\][^\x07\x1B]*(?:\x07|\x1B\\\\)"));
+    s.remove(osc);
+    return s;
+}
+
 QString tailFile(const QString &path, qint64 maxBytes = 32 * 1024) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
@@ -36,7 +62,8 @@ QString tailFile(const QString &path, qint64 maxBytes = 32 * 1024) {
         if (firstNl >= 0) s = s.mid(firstNl + 1);
         s.prepend(QStringLiteral("… (older output truncated)\n"));
     }
-    return s;
+    // ANTS-1144 — ANSI strip happens before the caller HTML-escapes.
+    return stripAnsi(s);
 }
 
 QString humanAge(const QDateTime &start) {

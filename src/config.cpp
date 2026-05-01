@@ -171,6 +171,14 @@ void Config::save() {
                 // ai_api_key — re-chmod the final inode after the
                 // atomic rename succeeds.
                 setOwnerOnlyPerms(path);
+                // ANTS-1141 — fsync the parent directory so the
+                // rename's directory-entry update is durable
+                // across power loss / kernel panic. Postgres /
+                // SQLite / Git pattern; ext4 with data=ordered
+                // can otherwise lose the rename on a crash
+                // between rename(2) returning and the journal
+                // commit.
+                fsyncParentDir(path);
             }
         } else {
             file.close();

@@ -3700,6 +3700,15 @@ void AuditDialog::runNextCheck() {
 
     if (m_currentCheck >= m_checks.size()) {
         m_progress->setValue(m_totalSelected);
+        // ANTS-1136 — flush rule-quality fires to disk at end of
+        // every audit run so a SIGSEGV / SIGKILL / power loss
+        // before clean shutdown doesn't lose 30 minutes of fire
+        // records. recordSuppression already saves immediately
+        // (user-initiated, rare); recordFire was deferred to
+        // RAII-on-destruction, which only fires on clean
+        // shutdown. One save() per run keeps disk traffic bounded
+        // while making the data durable.
+        if (m_qualityTracker) m_qualityTracker->save();
         renderResults();
         m_runBtn->setEnabled(true);
         if (m_cancelBtn)   m_cancelBtn->setVisible(false);
