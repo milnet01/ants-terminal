@@ -2459,11 +2459,12 @@ in each named file carry the original indie-review citation.
   it previously lacked.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1049] **Audit-pipeline `populateChecks`-as-data-table.** ~1400 LoC of
-  shell-pipeline strings encoded as opaque C++ literals — unreviewable
-  and untestable without QProcess. Move to `auditcatalogue.cpp` data
-  table; promote multi-line shell fragments to `packaging/check-*.sh`
-  mirroring the version-drift script pattern.
+- 📋 [ANTS-1049] **Audit-pipeline `populateChecks`-as-data-table.**
+  Subsumed by ANTS-1044 (`auditdialog.cpp` decomposition above) —
+  same scope: `auditcatalogue.cpp` data table +
+  `packaging/check-*.sh` shell-fragment extraction. Entry preserved
+  per `docs/standards/roadmap-format.md` § 3.5.1 (stable-ID
+  immutability); tracked under ANTS-1044's structural lane.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
@@ -2701,8 +2702,8 @@ minor tag (next: pre-0.8.0).
   (stable-ID immutability); body annotated, status emoji removed.
   Kind: doc-fix. Source: ADR-0002-2026-04-30.
 
-- 📋 [ANTS-1100] **Roadmap dialog redesign — faceted tabs +
-  search + larger window.** User request 2026-04-30 (refines the
+- ✅ [ANTS-1100] **Roadmap dialog redesign — faceted tabs +
+  search + larger window.** Shipped 2026-04-30 (0.7.59). User request 2026-04-30 (refines the
   earlier 2026-04-28 ask). Three coordinated changes to the
   `RoadmapDialog`:
 
@@ -3845,8 +3846,8 @@ minor tag (next: pre-0.8.0).
 > swap ANTS-1116 / ANTS-1117 priority order. Specs at
 > `docs/specs/ANTS-1119.md` and `docs/specs/ANTS-1120.md`.
 
-- 📋 [ANTS-1119] **HIGH — Extract audit logic into a GUI-free
-  engine module.** Pure refactor: lift the engine + triage halves
+- ✅ [ANTS-1119] **HIGH — Extract audit logic into a GUI-free
+  engine module.** Shipped 2026-04-30 (0.7.59). Pure refactor: lift the engine + triage halves
   of `auditdialog.cpp` (~5000 lines, mixed presentation +
   orchestration) into a new `src/auditengine.{h,cpp}` depending on
   `Qt6::Core` only. Unblocks ANTS-1116 v2 (`audit-run` subcommand)
