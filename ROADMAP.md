@@ -5696,7 +5696,154 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
 source-package packaging work; items that don't fit there live
 here.)
 
-### 🧰 Dev experience — Roadmap format v2
+### 🧰 Dev experience — Roadmap system v2
+
+- 📋 [ANTS-1156] **Roadmap-system audit: split, tag, integrate,
+  display, number, write — iron out how the roadmap works.**
+  User ask 2026-05-02: *"We need to iron out how the roadmap is
+  going to work."* Six concrete questions, three already partially
+  covered (defer those to existing items), three genuinely
+  open. This bullet is the **research + decision** parent;
+  concrete deliverables get spun out as child items as decisions
+  land.
+
+  **(1) File-splitting strategy** — `ROADMAP.md` is at ~6000
+  lines / ~250 KiB and growing; the existing § 3.9 archive-
+  rotation threshold of "~150 KiB" already triggers. Options to
+  evaluate, lightest-touch first:
+
+    a. *Status quo + rotation* — when ROADMAP.md crosses 150 KiB,
+       split shipped `##` release blocks into
+       `ROADMAP-archive-0.7.x.md`, leave the active and future
+       releases in `ROADMAP.md`. RoadmapDialog learns to load
+       both and present a unified view. Lowest disruption; one
+       file is still the source-of-truth for "what's live".
+    b. *Split per release* — `ROADMAP-0.8.0.md` /
+       `ROADMAP-0.9.0.md` / `ROADMAP-1.0.0.md`, with `ROADMAP.md`
+       as an index. Cleaner for human readers but every cross-
+       release link has to learn the new location.
+    c. *Split per theme* — `ROADMAP-features.md` /
+       `ROADMAP-perf.md` / etc. Bad fit — themes overlap a lot
+       (a feature can be performance-driven, an audit fix can be
+       UX-relevant), and most readers want "what's next" not
+       "what perf items exist."
+
+    Decision: probably (a). Spin out as a child item once the
+    rotation threshold is unambiguous (currently § 3.9 says
+    "~150 KiB" but doesn't define rotation cadence — once per
+    release? once per major? on demand?).
+
+  **(2) Tagging the different kinds of roadmap items** — already
+  covered by **ANTS-1154** (tagged-text v2: `<!-- kind:* -->`
+  comments on every bullet, `<!-- header:* -->` on headers,
+  `<!-- prose -->` on prose-only paragraphs, format-version
+  pragma). No duplication needed; this sub-question's answer is
+  "1154's spec is the contract."
+
+  **(3) Ants Terminal ↔ roadmap integration** — partially
+  covered by **ANTS-1154** (RoadmapDialog tab filtering on tags)
+  and the existing `roadmap-query` IPC verb (ANTS-1117). Open
+  questions:
+
+    a. *Per-tab roadmap context* — should the Roadmap button
+       only surface when the active tab's cwd contains a
+       ROADMAP.md (today's behaviour), or also for Ants's own
+       roadmap when the user is browsing a non-roadmap repo?
+       Today the dialog is gated on cwd presence; consider an
+       "Ants roadmap" item under the Help menu as a always-
+       available alternative.
+    b. *Cross-roadmap navigation* — multiple project roadmaps
+       across tabs. Today each tab has its own button; consider
+       a recent-roadmaps dropdown.
+    c. *Author-time vs reader-time* — RoadmapDialog is read-
+       only. Should it support inline status flips
+       (📋 → 🚧 → ✅) via the remote-control `roadmap-status`
+       verb already shipped in ANTS-1117? Current flow is
+       Claude Code calls the verb; a UI button would shorten
+       the loop for solo use.
+
+  **(4) Claude Code ↔ roadmap integration** — genuinely open.
+  The existing surface:
+
+    - `roadmap-query` IPC verb (ANTS-1117) — Claude Code can
+      ask "which bullets are 🚧?" via Unix socket.
+    - `roadmap-status` IPC verb (ANTS-1117) — Claude Code can
+      flip a bullet's status without editing the file by hand.
+    - The `/start-app` and `/app-workflow` skills already make
+      heavy use of the per-phase roadmap pattern.
+
+    Questions to answer:
+
+    a. *Should Claude Code automatically load the active
+       roadmap into context when a session starts in a
+       roadmap-bearing project?* Pro: Claude knows the
+       project's priorities without being told. Con: tokens —
+       a 6000-line ROADMAP.md is meaningful context budget.
+    b. *Roadmap-aware skills* — should `/triage`, `/audit`,
+       `/debt-sweep` learn to fold their findings into the
+       active roadmap as `📋` bullets automatically (with
+       `Source: audit-YYYY-MM-DD`)? Today the user pastes the
+       findings + asks Claude to roadmap them; automation here
+       would save a step per audit.
+    c. *MCP server for roadmap* — there's an MCP socket
+       per Ants instance (`mainwindow.cpp:setupClaudeMcpProviders`).
+       It currently exposes scrollback / cwd / lastCommand /
+       git-status / environment. Should it also expose a
+       `roadmap` capability — read the active project's
+       roadmap, query bullets by status/kind/theme, propose
+       new bullets?
+
+  **(5) Display** — covered by **ANTS-1154** (RoadmapDialog
+  tab filtering on tags) + the existing summary-table renderer
+  (ANTS-1139, shipped 0.7.70). Sub-question worth keeping in
+  scope here:
+
+    a. *Reading mode* — RoadmapDialog today is a single rich-
+       text panel; consider a two-pane layout (ToC on left,
+       content on right) for navigability when 6000 lines is
+       the steady-state. Cheap to prototype.
+
+  **(6) Numbering standards** — already documented in
+  `docs/standards/roadmap-format.md` § 3.5.1. No change needed.
+  Open question worth surfacing for completeness: do we ever
+  retire the `ANTS-` prefix and switch to a different prefix
+  (e.g. `AT-` if "Ants Terminal" gets renamed) — answer: no,
+  the prefix is permanent per § 3.5.1's append-only rule.
+
+  **(7) Writing standards** — already documented in
+  `docs/standards/roadmap-format.md` § 3.5 (bullet structure)
+  + § 3.10 (anti-patterns). Worth a refresh against the recent
+  six months of bullets: the actual median bullet is much
+  longer than the spec's example shows (≈30-50 LoC of body
+  vs. the spec's 3-4-line example). Either tighten the
+  written bullets or update § 3.5 to acknowledge that
+  longer-form bullets are the steady state. Spin out as a
+  child doc-fix item once 1154's tagging migration is done
+  (so we tag-then-tighten instead of tighten-then-retag).
+
+  **Deliverables (each spun out as a child item once decided):**
+
+  - `1156-A`: file-splitting decision + § 3.9 rewrite +
+    one-time rotation pass.
+  - `1156-B`: Help-menu "Ants roadmap" item + recent-roadmaps
+    dropdown.
+  - `1156-C`: Claude Code auto-load policy + /triage / /audit
+    / /debt-sweep auto-roadmap behaviour.
+  - `1156-D`: MCP `roadmap` capability surface.
+  - `1156-E`: RoadmapDialog two-pane reading mode.
+  - `1156-F`: § 3.5 writing-standards refresh against actual
+    bullet length.
+
+  Out of scope (but related): **ANTS-1154** (format v2 tagging
+  + RoadmapDialog filter implementation) lands first; this
+  bullet's child items consume v2 tags. Sequence: **1154 →
+  1156's child spin-outs → 1156-{A..F} as deliverable items**.
+
+  Lanes: docs (standards), mainwindow (RoadmapDialog),
+  remotecontrol (roadmap-query/-status verbs),
+  claudeintegration (MCP capability), tooling.
+  Kind: research.
+  Source: user-2026-05-02.
 
 - 📋 [ANTS-1154] **Tagged-text roadmap format v2 + RoadmapDialog
   tab filtering on tags.** Today the RoadmapDialog tabs (Full /
