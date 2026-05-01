@@ -2246,6 +2246,35 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # themedstylesheet_extraction — ANTS-1147 (0.7.74). Hybrid harness:
+    # source-grep for INVs 1-7, unit-level helper calls for INV-8.
+    # Links src/themedstylesheet.cpp + src/themes.cpp directly so
+    # INV-8 can exercise the pure helpers without instantiating any
+    # QWidget. See tests/features/themedstylesheet_extraction/spec.md
+    # and docs/specs/ANTS-1147.md.
+    add_executable(test_themedstylesheet_extraction
+        tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
+        src/themedstylesheet.cpp
+        src/themes.cpp
+    )
+    target_link_libraries(test_themedstylesheet_extraction PRIVATE
+        Qt6::Core Qt6::Gui)
+    target_include_directories(test_themedstylesheet_extraction PRIVATE src)
+    target_compile_options(test_themedstylesheet_extraction PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_themedstylesheet_extraction PRIVATE
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.cpp"
+        SRC_THEMEDSTYLESHEET_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.h"
+    )
+    add_test(NAME themedstylesheet_extraction
+        COMMAND test_themedstylesheet_extraction)
+    set_tests_properties(themedstylesheet_extraction PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
     # status-bar Roadmap button visible iff the active tab's cwd
     # contains a ROADMAP.md (case-insensitive); click opens a
