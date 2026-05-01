@@ -87,6 +87,7 @@ add_executable(ants-terminal
     src/dialogshowtracer.cpp
     src/remotecontrol.cpp
     src/diffviewer.cpp
+    src/claudestatuswidgets.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE
