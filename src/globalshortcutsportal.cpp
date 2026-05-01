@@ -272,6 +272,16 @@ void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
     detachResponseSlots(m_bindShortcutsReqPath);
     m_bindShortcutsReqPath.clear();
     if (response != 0) {
+        // ANTS-1142 — drain m_pending and clear m_sessionHandle
+        // on BindShortcuts failure. Pre-fix code left both
+        // populated, so a subsequent bindShortcut() call would
+        // see a non-empty session handle and re-trigger
+        // BindShortcuts → re-fail forever (the failure-loop
+        // pathology indie-review L11 HIGH-1 flagged on GNOME).
+        // sessionFailed is now terminal-per-process: callers
+        // should treat it as a permanent state and not retry.
+        m_pending.clear();
+        m_sessionHandle.clear();
         emit sessionFailed(QStringLiteral(
             "BindShortcuts rejected (response code %1)").arg(response));
         return;

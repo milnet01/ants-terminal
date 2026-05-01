@@ -22,6 +22,16 @@ QString SessionManager::sessionDir() {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
                   + "/ants-terminal/sessions";
     QDir().mkpath(dir);
+    // ANTS-1141 — tighten the directory perms to 0700. Pre-fix
+    // code inherited the process umask (typically 0022 → 0755),
+    // which left filenames + mtimes + sizes enumerable to other
+    // local users. Individual session_*.dat files are 0600 (per
+    // the saveSession path), but the directory listing leaks
+    // active-session timing and scrollback volume — symmetric
+    // with the config dir which is already 0700.
+    QFile::setPermissions(dir,
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+        QFileDevice::ExeOwner);
     return dir;
 }
 
@@ -512,9 +522,16 @@ QStringList SessionManager::loadTabOrder(int *activeIndex) {
         ids.append(line);
     }
 
-    // Remove the manifest after reading
+    // ANTS-1141 — do NOT remove the manifest on read. Pre-fix
+    // code unconditionally deleted tab_order.txt before
+    // saveAllSessions had a chance to overwrite it, so a crash
+    // within the 5-second uptime floor on
+    // MainWindow::saveAllSessions would lose the tab order
+    // permanently (the per-session .dat blobs survive but
+    // ordering reverts to mtime-based fallback). Atomic-write
+    // on save overwrites this file each time, so leaving it in
+    // place across reads is safe.
     file.close();
-    QFile::remove(path);
 
     // Only return IDs whose session files actually exist,
     // adjusting active index to account for filtered-out entries
@@ -546,6 +563,18 @@ void SessionManager::cleanupOldSessions(int maxAgeDays) {
     QDateTime cutoff = QDateTime::currentDateTime().addDays(-maxAgeDays);
     for (const QFileInfo &fi : files) {
         if (fi.lastModified() < cutoff)
+            QFile::remove(fi.absoluteFilePath());
+    }
+    // ANTS-1141 — sweep orphan .tmp files older than 1 day.
+    // saveSession + saveTabOrder both write to <name>.tmp and
+    // rename(2) onto the canonical path; on rename failure
+    // (ENOSPC, EROFS, EBUSY etc.) the tmp is QFile::removed in
+    // the failure branch. But a hard kill mid-rename can leave
+    // the tmp behind. Without this sweep they'd accumulate.
+    QFileInfoList tmps = dir.entryInfoList({"*.tmp"}, QDir::Files);
+    QDateTime tmpCutoff = QDateTime::currentDateTime().addDays(-1);
+    for (const QFileInfo &fi : tmps) {
+        if (fi.lastModified() < tmpCutoff)
             QFile::remove(fi.absoluteFilePath());
     }
 }

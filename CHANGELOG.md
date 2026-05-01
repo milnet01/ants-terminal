@@ -12,6 +12,112 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.67] — 2026-05-01
+
+**Theme:** Bundle G Tier 2 progress sweep. 8 ANTS IDs touched
+(ANTS-1134, 1136, 1137, 1138, 1141, 1142, 1143, 1144) — 3
+fully shipped (1137, 1143 doc-only, AI partial-stream
+fail-closed in 1144), 5 partial (sub-fixes shipped, remaining
+sub-fixes annotated in ROADMAP for 0.7.68). 128/128 ctests
+pass throughout.
+
+### Fixed
+
+- **ANTS-1134 (partial) — modifier-only keypress guard.**
+  `TerminalWidget::keyPressEvent` no longer resets
+  `m_scrollOffset` on bare modifier presses (Shift / Ctrl /
+  Alt / Meta / AltGr / Key_unknown). Pre-fix code killed the
+  scrolled-up workflow when the user reflexively pressed Ctrl
+  in preparation for `Ctrl+Shift+C`. Span-cache invalidation
+  on scrollback push deferred to 0.7.68.
+
+- **ANTS-1136 (4/5) — audit pipeline doc + correctness.**
+  CLAUDE.md pipeline-order line corrected to match
+  `handleCheckOutput` reality (`.audit_suppress` *marks* not
+  drops; dedup runs after drop steps); Confidence formula
+  description spelled out (floor +10, severity×15, cross-tool
+  +20, AST +10, grep-and-short −5, test path −20, AI verdict
+  caps ≤30 / ≥80). `consolidateMypyStubHints` dedup-key
+  width 16→24 hex via `AuditEngine::computeDedup`. `cancelAudit`
+  sets `m_snapshotPersisted = true` before `renderResults()`
+  so cancelled-run partial picture doesn't pollute
+  `trend.json`. `static QString sourceForCheck` trampoline
+  dropped — one call site uses fully-qualified
+  `AuditEngine::sourceForCheck`. `refactor_set_permissions_pair`
+  rule removed from `audit_rules.json` (duplicate of
+  hardcoded `setPermissions_pair_no_helper`). `RuleQualityTracker`
+  durability deferred to 0.7.68.
+
+- **ANTS-1137 — MainWindow chrome perf hotspots.**
+  `refreshRoadmapButton` replaces unbounded
+  `QDir::entryInfoList` (which enumerated the entire CWD on
+  every 2 s status tick) with three explicit
+  `QFileInfo::exists` calls for the case-variant ROADMAP.md
+  filenames (O(1) instead of O(N) per tick). New
+  `m_repoVisibilityProbeInFlight` map mirrors
+  `m_reviewProbeInFlight` to drop redundant `gh repo view`
+  QProcesses on fast tab-switches.
+
+- **ANTS-1138 (partial) — applyTheme early-return.**
+  `MainWindow::applyTheme(name)` early-returns when
+  `name == m_currentTheme && !m_currentTheme.isEmpty()`. Closes
+  the auto-profile-rules re-entrancy path (updateStatusBar
+  tick → checkAutoProfileRules → applyTheme → setTheme →
+  onConfigFileChanged → applyTheme) without depending on
+  the `m_inConfigReload` latency. Pattern-cache
+  invalidation deferred to 0.7.68.
+
+- **ANTS-1141 (4/5) — Config + persistence hardening.**
+  Sessions directory tightened to 0700 after `mkpath`
+  (matches the config dir which was already 0700 by accident
+  of an earlier run; no longer leaks filenames + mtimes +
+  sizes via directory listing). `Config::setKeybinding` /
+  `setPluginGrants` / `setPluginSetting` / `setRawData`
+  short-circuit when `m_loadFailed` is true (no more
+  fictional in-memory state on a parse-failure recovery
+  session). `cleanupOldSessions` extended to sweep orphan
+  `*.tmp` files older than 1 day (catches rename-failure
+  leftovers). `SessionManager::loadTabOrder` no longer
+  destructively removes `tab_order.txt` on read (the
+  atomic-write on save overwrites it; the destructive read
+  lost the order on a 0-5 s crash-window before
+  `saveAllSessions` could fire). Parent-dir fsync deferred
+  to 0.7.68.
+
+- **ANTS-1142 (2/4) — Wayland portal + debug log.**
+  `GlobalShortcutsPortal::onBindShortcutsResponse` drains
+  `m_pending` and clears `m_sessionHandle` on
+  `BindShortcuts` failure — sessionFailed is now
+  terminal-per-process, no more failure-loop pathology on
+  GNOME (where CreateSession succeeds but BindShortcuts
+  fails). Debug-log file creation wraps `s_file.open()` in
+  `umask(0077)` save/restore so the kernel applies 0600 at
+  create time, eliminating the same-UID race window between
+  open and the post-open `setOwnerOnlyPerms` call. Two
+  sub-fixes deferred to 0.7.68: KDE-presence guard lift
+  (for `moveViaKWin` / `centerWindow`), MainWindow
+  listening to `sessionFailed` with `qWarning` fallback.
+
+- **ANTS-1143 — PLUGINS.md spec drift.** `string.dump`
+  added to "libraries removed" list (the runtime nils it
+  via `LuaEngine::stripDangerousGlobals` for CVE-2014-5461
+  defence; doc was missing it). `os.date()` example
+  replaced with sandbox-safe `ants._version` so copy-paste
+  doesn't crash. C-call timeout caveat documented (string
+  regex / table.sort comparator chains bypass the
+  instruction-count hook). Optional Lua wall-clock watchdog
+  stays explicitly out-of-scope per the original spec.
+
+- **ANTS-1144 (1/3) — AI dialog partial-stream Insert
+  fail-closed.** `m_insertBtn->setEnabled(!hadError)` —
+  pre-fix code enabled Insert on truncated responses (e.g.
+  network drop mid-fenced-block leaving the prefix intact),
+  inviting the user to confirm a command missing its tail.
+  Now Insert is only reachable on cleanly-completed
+  responses. Two sub-fixes deferred to 0.7.68: transcript
+  incremental render, BgTasks dialog ANSI strip via
+  VtParser reuse.
+
 ## [0.7.66] — 2026-05-01
 
 **Theme:** Bundle G Tier 1 remainder. Two HIGH fixes from the

@@ -379,7 +379,15 @@ void AiDialog::onReplyFinished() {
     if (!m_streamBuffer.isEmpty()) {
         m_lastResponse = m_streamBuffer;
         appendMessage("AI", m_streamBuffer);
-        m_insertBtn->setEnabled(true);
+        // ANTS-1144 — fail-closed on partial-stream errors. The
+        // user's confirmation dialog (extractAndSanitizeCommand)
+        // is the OWASP LLM01 kill-switch, but enabling Insert on
+        // a truncated response invites the user to confirm a
+        // command that's missing its tail (network drop mid-
+        // fenced-block leaves the prefix intact). Pre-fix code
+        // enabled the button regardless. Now: only enable when
+        // the response landed cleanly.
+        m_insertBtn->setEnabled(!hadError);
     }
 
     m_currentReply->deleteLater();

@@ -312,10 +312,13 @@ persisted in the main `config.json`. Values are strings; encode structured
 data with `string.format` / manual JSON. Returns `nil` for unset keys.
 
 ```lua
+-- ANTS-1143 — example uses a sandbox-safe value to write. Earlier
+-- drafts called `os.date()`, which crashes in the sandbox (the
+-- `os` library is stripped — see "Sandbox Boundaries" below).
 if ants.settings then
     local last_run = ants.settings.get("last_run") or "never"
-    ants.settings.set("last_run", os.date())  -- (os removed in sandbox;
-    -- this is just an illustration — in practice, use a string you already have)
+    ants.log("plugin: last_run was " .. last_run)
+    ants.settings.set("last_run", ants._version)  -- any sandbox-safe string
 end
 ```
 
@@ -356,12 +359,29 @@ The plugin Lua environment has the following libraries **removed** before
 
 - `os`, `io` — no shell, no file I/O, no `getenv`
 - `loadfile`, `dofile`, `load` — no dynamic code
+- `string.dump` — no Lua bytecode emission (Lua 5.4 has no
+  bytecode verifier; bytecode-load attacks are the
+  CVE-2014-5461 class). The runtime nils this in
+  `LuaEngine::stripDangerousGlobals` even though `load` /
+  `loadstring` are also gone — defence in depth.
 - `require`, `package` — no module imports
 - `debug` — no stack/frame introspection
 - `coroutine` — no coroutines (a prior sandbox-escape vector)
 - `rawget`, `rawset`, `rawequal`, `rawlen` — no metatable bypass
 - `setmetatable`, `getmetatable` — no metatable modification
 - `collectgarbage` — no GC manipulation
+
+**C-call timeout caveat (ANTS-1143).** The instruction-count hook
+(`lua_sethook(LUA_MASKCOUNT, …)`) fires every 10 M VM steps and is
+the primary defence against runaway plugins. It does **not** fire
+inside pure-C Lua calls (e.g. `string.find` regex backtracking on
+a pathological pattern, `table.sort` with a comparator chain that
+recurses through user-controlled data, `string.gsub` on
+attacker-controlled input). A plugin that funnels untrusted user
+input into one of these C calls can spin in C land beyond the
+budget. Plugin authors: don't feed unsanitised user input directly
+into `string.find` / `string.match` / `string.gsub` regex; bound
+the input size first.
 
 Available: `string`, `table`, `math`, `utf8`, plus the stripped-down
 `_G`. `print()` is typically redirected to `ants.log`; don't rely on

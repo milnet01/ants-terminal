@@ -100,18 +100,6 @@
       "max_lines": 40
     },
     {
-      "id": "refactor_set_permissions_pair",
-      "name": "Raw setPermissions(ReadOwner|WriteOwner) — Use writeSecureFile",
-      "description": "12 copies of `file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)` across config/sessionmanager/claudeallowlist/auditdialog/claudeintegration/remotecontrol/auditrulequality. One typo away from leaking an API key. After the `writeSecureFile(path, data)` helper lands (ROADMAP 0.7.7+), flip call sites.",
-      "category": "Refactoring",
-      "command": "grep -rnE 'setPermissions\\(QFileDevice::ReadOwner[[:space:]]*\\|[[:space:]]*QFileDevice::WriteOwner\\)' src/ --include='*.cpp' || true",
-      "type": "smell",
-      "severity": "info",
-      "auto_select": false,
-      "drop_if_contains": ["// secure-io-helper"],
-      "max_lines": 40
-    },
-    {
       "id": "refactor_shell_quote_duplicate",
       "name": "Shell-Quote Logic Duplicated Outside sshdialog.cpp",
       "description": "`shellQuote` is implemented in sshdialog.cpp and re-implemented as a lambda in mainwindow.cpp. Two sources of truth drift apart. Consolidate into src/shellutils.h so a fix to one automatically benefits the other.",

@@ -103,6 +103,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.67" date="2026-05-01">
+      <description>
+        <p>Bundle G Tier 2 progress sweep. 8 ANTS IDs touched: ANTS-1134 (modifier-only keypress guard), ANTS-1136 (audit pipeline doc + correctness — 4/5 sub-fixes), ANTS-1137 (MainWindow chrome perf), ANTS-1138 (applyTheme early-return), ANTS-1141 (Config + persistence — 4/5 sub-fixes), ANTS-1142 (Wayland portal + debug log — 2/4), ANTS-1143 (PLUGINS.md spec drift), ANTS-1144 (AI dialog partial-stream fail-closed — 1/3). Remaining Tier 2 sub-fixes deferred to 0.7.68 with explicit annotations in ROADMAP.</p>
+      </description>
+    </release>
     <release version="0.7.66" date="2026-05-01">
       <description>
         <p>Bundle G Tier 1 remainder. Two HIGH fixes from the 2026-05-01 indie-review sweep — ANTS-1131 (PTY child-process lifecycle: WNOHANG=0 orphan + m_planModeByPid PID-reuse poisoning) and ANTS-1132 (IPC socket trust-model gaps: SO_PEERCRED UID match on remote-control accept, UserAccessOption + lstat-checked S_ISSOCK precheck on Claude hook + MCP server starts, per-connection idle timeout). Tier 2 + Tier 3 follow in subsequent bumps.</p>

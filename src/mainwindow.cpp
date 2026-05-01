@@ -2781,6 +2781,15 @@ const QString &MainWindow::roadmapPathForRemote() const {
 }
 
 void MainWindow::applyTheme(const QString &name) {
+    // ANTS-1138 — early-return when the requested theme matches
+    // the current one. Pre-fix code always rewrote the entire
+    // QSS even on no-op, which made the auto-profile-rules path
+    // (updateStatusBar tick → checkAutoProfileRules → applyTheme
+    // → setTheme → onConfigFileChanged → applyTheme) re-entrant
+    // by accident. Idempotent setTheme + this guard close the
+    // loop without depending on m_inConfigReload latency.
+    if (name == m_currentTheme && !m_currentTheme.isEmpty())
+        return;
     m_currentTheme = name;
     m_config.setTheme(name);
 
@@ -5302,16 +5311,22 @@ void MainWindow::refreshRoadmapButton() {
         m_roadmapPath.clear();
         return;
     }
-    // Case-insensitive match — `ROADMAP.md` is the documented norm but
-    // accept any case so projects that follow norms loosely (lowercase
-    // `roadmap.md`, `Roadmap.md`) still get the button. Linux fs is
-    // case-sensitive so a manual entryList scan is required.
+    // ANTS-1137 — case-insensitive match against three explicit
+    // case variants instead of QDir::entryInfoList(QDir::Files)
+    // which enumerated the entire CWD on every 2 s status-tick.
+    // On a directory with thousands of files (node_modules,
+    // ~/Downloads, vendored deps) the enumeration was visible
+    // UI stutter. Three QFileInfo::exists() calls is O(1).
     QString found;
-    QDir dir(cwd);
-    for (const QFileInfo &fi : dir.entryInfoList(QDir::Files)) {
-        if (fi.fileName().compare(QStringLiteral("ROADMAP.md"),
-                                  Qt::CaseInsensitive) == 0) {
-            found = fi.absoluteFilePath();
+    const QStringList candidates = {
+        QStringLiteral("ROADMAP.md"),
+        QStringLiteral("roadmap.md"),
+        QStringLiteral("Roadmap.md"),
+    };
+    for (const QString &name : candidates) {
+        const QString candidate = cwd + QLatin1Char('/') + name;
+        if (QFileInfo::exists(candidate)) {
+            found = candidate;
             break;
         }
     }
@@ -5434,6 +5449,13 @@ void MainWindow::refreshRepoVisibility() {
     const QString slug = parseGithubOriginSlug(repoRoot);
     if (slug.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
 
+    // ANTS-1137 — in-flight guard mirroring m_reviewProbeInFlight.
+    // Without this, a fast tab-switch could race two `gh repo view`
+    // QProcesses against the same repoRoot, both writing into the
+    // same cache slot — winner is order-dependent. Drop redundant
+    // probes; cached visibility is still rendered if available.
+    if (m_repoVisibilityProbeInFlight.value(repoRoot, false)) return;
+
     auto applyVisibility = [this](const QString &visibility,
                                   const QString &repoSlug) {
         if (!m_repoVisibilityLabel) return;
@@ -5504,8 +5526,15 @@ void MainWindow::refreshRepoVisibility() {
                 self->m_repoVisibilityCache[repoRoot] = {
                     visibility,
                     QDateTime::currentDateTime().toMSecsSinceEpoch()};
+                // ANTS-1137 — clear in-flight on completion regardless
+                // of success/failure path.
+                self->m_repoVisibilityProbeInFlight.remove(repoRoot);
                 applyVisibility(visibility, slug);
             });
+    // ANTS-1137 — mark in-flight before start so a re-entry within
+    // this 2 s tick (or any fast tab-switch before the QProcess
+    // completes) drops the redundant probe.
+    m_repoVisibilityProbeInFlight[repoRoot] = true;
     proc->start();
 }
 

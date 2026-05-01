@@ -8,6 +8,9 @@
 #include <QStandardPaths>
 #include <QTextStream>
 
+#include <sys/stat.h>
+#include <sys/types.h>
+
 std::mutex DebugLog::s_mutex;
 QFile DebugLog::s_file;
 quint32 DebugLog::s_active = 0;
@@ -71,10 +74,20 @@ void DebugLog::setActive(quint32 mask) {
         const QString path = logFilePath();
         QDir().mkpath(QFileInfo(path).absolutePath());
         s_file.setFileName(path);
+        // ANTS-1142 — tighten umask BEFORE create so the kernel
+        // applies 0600 perms at file-creation time, eliminating
+        // the same-UID race window between open() and the
+        // post-open setOwnerOnlyPerms call. Save/restore so the
+        // tighter umask doesn't leak into other parts of the
+        // process. The 0077 mask zeros every group/other perm
+        // bit at create; combined with the QFile::open default
+        // 0666 request, the kernel produces 0600.
+        const mode_t prevMask = ::umask(0077);
         // Append — don't truncate; user can clear() on demand.
         if (!s_file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
             fprintf(stderr, "DebugLog: could not open %s\n", qPrintable(path));
         }
+        ::umask(prevMask);
         if (s_file.isOpen()) {
             // Owner-only. The log can contain PTY output (keystrokes),
             // network responses (API bodies), and HMAC material from

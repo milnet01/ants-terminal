@@ -368,6 +368,10 @@ private:
         qint64 fetchedAt = 0;  // ms since epoch
     };
     QHash<QString /*repoRoot*/, RepoVisibilityCache> m_repoVisibilityCache;
+    // ANTS-1137 — in-flight guard mirroring m_reviewProbeInFlight.
+    // Drops redundant `gh repo view` probes when a fast tab-switch
+    // would otherwise race two QProcesses against the same repoRoot.
+    QHash<QString /*repoRoot*/, bool> m_repoVisibilityProbeInFlight;
     bool m_ghAvailable = false;        // probed once at startup
     bool m_ghAvailableProbed = false;  // probe-once flag
     // 0.7.62 (ANTS-1124) — Update-available notifier moved from a

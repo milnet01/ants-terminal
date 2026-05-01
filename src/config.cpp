@@ -334,6 +334,12 @@ QString Config::keybinding(const QString &action, const QString &defaultKey) con
 }
 
 void Config::setKeybinding(const QString &action, const QString &key) {
+    // ANTS-1141 — short-circuit on m_loadFailed. save() bails
+    // anyway, but the in-memory mutation otherwise leaves a
+    // fictional "your keybinding worked" state visible to
+    // subsequent getters in the session — UX-confusing
+    // because it never persists.
+    if (m_loadFailed) return;
     QJsonObject kb = m_data.value("keybindings").toObject();
     if (kb.value(action).toString() == key) return;
     kb[action] = key;
@@ -523,6 +529,7 @@ QStringList Config::pluginGrants(const QString &pluginName) const {
 }
 
 void Config::setPluginGrants(const QString &pluginName, const QStringList &grants) {
+    if (m_loadFailed) return;  // ANTS-1141 — see setKeybinding
     QJsonObject all = m_data.value("plugin_grants").toObject();
     QJsonArray arr;
     for (const QString &g : grants) arr.append(g);
@@ -541,6 +548,7 @@ QString Config::pluginSetting(const QString &pluginName, const QString &key) con
 }
 
 void Config::setPluginSetting(const QString &pluginName, const QString &key, const QString &value) {
+    if (m_loadFailed) return;  // ANTS-1141 — see setKeybinding
     QJsonObject all = m_data.value("plugin_settings").toObject();
     QJsonObject plugin = all.value(pluginName).toObject();
     if (plugin.value(key).toString() == value) return;

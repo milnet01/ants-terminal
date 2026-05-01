@@ -1814,13 +1814,10 @@ void AuditDialog::populateChecks() {
 // finding with no file/line. Parsing is best-effort; incorrectly-parsed
 // lines still appear, just without navigable location metadata.
 
-// sourceForCheck() lives in AuditEngine — ANTS-1123 indie-review H1
-// unification. Local thin alias kept so the existing call site at
-// onCheckFinished's r.source = sourceForCheck(check.id) compiles
-// without a namespace qualifier change.
-static QString sourceForCheck(const QString &checkId) {
-    return AuditEngine::sourceForCheck(checkId);
-}
+// sourceForCheck() lives in AuditEngine — ANTS-1123 indie-review
+// H1 unification. ANTS-1136 (0.7.67) dropped the local trampoline
+// here; the single call site at onCheckFinished now uses the
+// fully-qualified `AuditEngine::sourceForCheck(check.id)` form.
 
 // computeDedup() moved into AuditEngine (auditengine.cpp anonymous
 // namespace) per ANTS-1119 v1; was only referenced by the now-extracted
@@ -2679,10 +2676,17 @@ void AuditDialog::consolidateMypyStubHints(CheckResult &r) const {
     hint.message = QString("%1 missing stub package(s): pip install %2")
                        .arg(packages.size())
                        .arg(pipTypes.join(' '));
-    // Stable dedup key so this hint is idempotent across runs.
-    hint.dedupKey = QCryptographicHash::hash(
-        ("mypy-stub-hint:" + packages.join(',')).toUtf8(),
-        QCryptographicHash::Sha256).toHex().left(16);
+    // ANTS-1136 — route through AuditEngine::computeDedup so
+    // the synthetic finding's key uses the same 24-hex width
+    // as every other dedup key in the pipeline. Pre-fix
+    // 16-hex left() truncation made this site collide on
+    // 16-prefix-of-24 with isSuppressed() lookups (a 96 → 64
+    // bit birthday-attack space narrowing — astronomical, but
+    // the symmetry of the documented contract was broken).
+    hint.dedupKey = AuditEngine::computeDedup(
+        QStringLiteral("mypy-stub-hint"), 0,
+        QStringLiteral("mypy-stub-hint"),
+        packages.join(','));
     kept.prepend(hint);
 
     // Decrement findingCount for the collapsed entries.
@@ -3659,6 +3663,13 @@ void AuditDialog::cancelAudit() {
         m_completedResults.append(r);
     }
 
+    // ANTS-1136 — set the snapshot-persisted flag BEFORE
+    // renderResults() so the cancelled-run partial picture
+    // doesn't pollute trend.json. Pre-fix code let
+    // renderResults append a snapshot for an audit that ran
+    // 3 of 28 checks, producing a noise drop on the next
+    // run's trend line — opposite of what trends are for.
+    m_snapshotPersisted = true;
     // Render whatever completed + restore the UI to the idle state.
     renderResults();
     m_runBtn->setEnabled(true);
@@ -3889,7 +3900,7 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     r.category  = check.category;
     r.type      = check.type;
     r.severity  = check.severity;
-    r.source    = sourceForCheck(check.id);
+    r.source    = AuditEngine::sourceForCheck(check.id);
     r.output    = filtered.body;
     r.warning   = false;
 

@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.66 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.67 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4761,13 +4761,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
   char wrap boundaries), M-1 (CSI Z, I, `, a, e missing).
   Kind: fix. Source: indie-review-2026-05-01 (L1).
   Lanes: terminalgrid, vtparser.
-- 📋 [ANTS-1134] **Terminal widget: modifier-only key + cache
-  invalidation across scrollback push.** Bundles L2 H-1
-  (`keyPressEvent` resets `m_scrollOffset` on every key
-  including Shift / Ctrl / Alt / Meta — kills selection +
-  scrolled-up workflow when user presses a chord starter)
-  and H-2 (URL/highlight span caches keyed by globalLine
-  never invalidated when scrollback grows).
+- 🚧 [ANTS-1134] **Terminal widget: modifier-only key + cache
+  invalidation across scrollback push.** **H-1 shipped 2026-05-01
+  (0.7.67)** — modifier-only keypress guard added to
+  `keyPressEvent`. **H-2 (span-cache invalidation across
+  scrollback push) deferred** — fix needs a `m_lastScrollbackPushed`
+  member + comparison in `paintEvent`/`invalidateSpanCaches`;
+  not landed yet. Re-evaluate in 0.7.68.
   Kind: fix. Source: indie-review-2026-05-01 (L2).
   Lanes: TerminalWidget.
 - 📋 [ANTS-1135] **Post-fork `setenv` async-signal-safety**
@@ -4778,8 +4778,20 @@ partition (11 lanes) is documented in this fold-in for reuse.
   pre-fork-allocation discipline already in place.
   Kind: fix. Source: indie-review-2026-05-01 (L3).
   Lanes: ptyhandler.
-- 📋 [ANTS-1136] **Audit pipeline doc drift + correctness
-  bundle** (L4 HIGH-1, HIGH-2, HIGH-3, HIGH-4, HIGH-5).
+- 🚧 [ANTS-1136] **Audit pipeline doc drift + correctness
+  bundle** **4 of 5 sub-fixes shipped 2026-05-01 (0.7.67):**
+  CLAUDE.md pipeline-order line + Confidence formula
+  description corrected; mypy-stub dedup-key 16→24 hex via
+  `AuditEngine::computeDedup`; `cancelAudit` sets
+  `m_snapshotPersisted = true` before `renderResults()`;
+  `static QString sourceForCheck` trampoline dropped (one
+  call site uses fully-qualified `AuditEngine::sourceForCheck`);
+  `refactor_set_permissions_pair` removed from
+  `audit_rules.json` (overlapped hardcoded
+  `setPermissions_pair_no_helper`). **`RuleQualityTracker::recordFire`
+  durability deferred** — needs a save() at end of every audit
+  run in `runNextCheck`; not landed yet. Re-evaluate in
+  0.7.68. (L4 HIGH-1, HIGH-2, HIGH-3, HIGH-4, HIGH-5).
   1. CLAUDE.md pipeline-order line + Confidence formula
      description corrected to match `auditdialog.cpp` reality.
   2. `consolidateMypyStubHints` dedup-key width 16-hex →
@@ -4800,15 +4812,21 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Qt rule).
   Kind: fix. Source: indie-review-2026-05-01 (L4).
   Lanes: auditdialog, auditengine, audit_rules.json, CLAUDE.md.
-- 📋 [ANTS-1137] **MainWindow chrome perf hotspots.** Bundles
+- ✅ [ANTS-1137] **MainWindow chrome perf hotspots.** Shipped
+  2026-05-01 (0.7.67). Bundles
   L6 H-2 fixes: `refreshRoadmapButton` `QDir::entryInfoList`
   → three explicit `QFileInfo::exists` for case-variant
   ROADMAP.md filenames; `refreshRepoVisibility` in-flight
   guard mirroring `m_reviewProbeInFlight`.
   Kind: fix. Source: indie-review-2026-05-01 (L6).
   Lanes: MainWindow.
-- 📋 [ANTS-1138] **MainWindow re-entrancy: `applyTheme` via
-  auto-profile rules** (L6 H-1). Either make `applyTheme`
+- 🚧 [ANTS-1138] **MainWindow re-entrancy: `applyTheme` via
+  auto-profile rules** **`applyTheme` early-return shipped
+  2026-05-01 (0.7.67)** (no-op when `m_currentTheme == name`).
+  **Pattern-cache invalidation on auto_profile_rules change
+  deferred** — needs an `autoProfileRulesGen()` counter on
+  Config + cache-bump on `setAutoProfileRules`. Re-evaluate
+  in 0.7.68. Original spec: (L6 H-1). Either make `applyTheme`
   early-return when `m_currentTheme == name` (currently
   always rewrites the QSS even on no-op), OR move
   `setTheme(name)` out of `applyTheme` so callers persist
@@ -4835,8 +4853,20 @@ partition (11 lanes) is documented in this fold-in for reuse.
   keyed on `(markdown.size(), markdown.left(64).hash())`.
   Kind: refactor. Source: indie-review-2026-05-01 (L7).
   Lanes: RoadmapDialog.
-- 📋 [ANTS-1141] **Config + persistence: dir perms 0700,
-  load-fail setters, parent fsync, .tmp cleanup** (L9 M2,
+- 🚧 [ANTS-1141] **Config + persistence: dir perms 0700,
+  load-fail setters, parent fsync, .tmp cleanup** **4 of 5
+  sub-fixes shipped 2026-05-01 (0.7.67):** sessions dir
+  tightened to 0700 after `mkpath`; `setKeybinding` /
+  `setPluginGrants` / `setPluginSetting` / `setRawData`
+  short-circuit on `m_loadFailed`; orphan `*.tmp` sweep in
+  `cleanupOldSessions` (1-day cutoff); `loadTabOrder` no
+  longer destructively removes `tab_order.txt` on read
+  (atomic-write on save overwrites it; the destructive
+  read lost the order on a 0-5 s crash window). **Parent-dir
+  fsync after rename deferred** — needs `int dirfd =
+  open(parent, O_RDONLY|O_DIRECTORY); fsync(dirfd);
+  close(dirfd);` after both atomic-rename sites in Config +
+  SessionManager. Re-evaluate in 0.7.68. (L9 M2,
   M3, M4, M5, M6). Five tightly-related items in
   `config.cpp` + `sessionmanager.cpp`:
   1. `~/.local/share/ants-terminal/sessions/` → 0700 after
@@ -4851,8 +4881,18 @@ partition (11 lanes) is documented in this fold-in for reuse.
      overwrites on save anyway).
   Kind: fix. Source: indie-review-2026-05-01 (L9).
   Lanes: Config, SessionManager.
-- 📋 [ANTS-1142] **Wayland integration: portal queue wedge,
-  KDE guard, debug log perms race** (L11 HIGH-1, HIGH-2,
+- 🚧 [ANTS-1142] **Wayland integration: portal queue wedge,
+  KDE guard, debug log perms race** **2 of 4 sub-fixes
+  shipped 2026-05-01 (0.7.67):** `bindShortcut` queue
+  drained + `m_sessionHandle` cleared on `BindShortcuts`
+  failure (sessionFailed is now terminal-per-process);
+  debug-log file creation wraps `s_file.open()` in
+  `umask(0077)` save/restore for race-free 0600 at create
+  time. **Two sub-fixes deferred:** (a) lift KDE-presence
+  guard from `kwinpositiontracker` into a shared helper
+  used by `MainWindow::moveViaKWin` + `MainWindow::centerWindow`;
+  (b) `MainWindow` listens to `GlobalShortcutsPortal::sessionFailed`
+  with a `qWarning()` fallback. Re-evaluate in 0.7.68. (L11 HIGH-1, HIGH-2,
   HIGH-3 + L5 MED-2).
   1. `GlobalShortcutsPortal::bindShortcut` drains `m_pending`
      and clears `m_sessionHandle` on `sessionFailed`; document
@@ -4872,8 +4912,10 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: fix. Source: indie-review-2026-05-01 (L11).
   Lanes: globalshortcutsportal, kwinpositiontracker, debuglog,
   MainWindow.
-- 📋 [ANTS-1143] **PLUGINS.md spec drift + Lua wall-clock
-  watchdog** (L8 MEDIUM-1, MEDIUM-2). Doc fix: add
+- ✅ [ANTS-1143] **PLUGINS.md spec drift + Lua wall-clock
+  watchdog** Shipped 2026-05-01 (0.7.67) — doc fixes only;
+  the optional Lua wall-clock watchdog explicitly stays
+  out-of-scope per the original spec text. (L8 MEDIUM-1, MEDIUM-2). Doc fix: add
   `string.dump` to sandbox-removal list; replace `os.date()`
   call in settings example with sandbox-safe alternative.
   Plus: document the C-call escape hatch
@@ -4883,8 +4925,14 @@ partition (11 lanes) is documented in this fold-in for reuse.
   wall-time intervals.
   Kind: doc-fix. Source: indie-review-2026-05-01 (L8).
   Lanes: PLUGINS.md, luaengine.
-- 📋 [ANTS-1144] **Other dialogs: AI partial-stream insert,
-  transcript large-doc render, BgTasks ANSI-strip** (L10 H1,
+- 🚧 [ANTS-1144] **Other dialogs: AI partial-stream insert,
+  transcript large-doc render, BgTasks ANSI-strip** **AI
+  partial-stream Insert-button fail-closed shipped 2026-05-01
+  (0.7.67).** **Two sub-fixes deferred:** transcript
+  incremental render (touches `claudetranscript.cpp`'s
+  setHtml flow); BgTasks dialog ANSI-strip via VtParser
+  reuse (touches `claudebgtasksdialog.cpp`'s `tailFile`
+  rendering). Re-evaluate in 0.7.68. (L10 H1,
   L2, M2). AI dialog disables `m_insertBtn` on partial-
   stream errors (fail-closed alignment); Claude transcript
   dialog renders incrementally with a "showing last N of M"

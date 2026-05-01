@@ -1425,6 +1425,23 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         return;
     }
 
+    int key = event->key();
+    Qt::KeyboardModifiers mods = event->modifiers();
+
+    // ANTS-1134 — modifier-only key presses (Shift / Ctrl / Alt /
+    // Meta / AltGr / unknown) must NOT reset m_scrollOffset.
+    // Pre-fix code reset on every key including bare modifiers, so
+    // a user scrolled-up reading older output who reflexively
+    // pressed Ctrl in preparation for `Ctrl+Shift+C` would lose
+    // their scrolled-up workflow. Bare-modifier presses pass
+    // through to QWidget so accelerators / IM still work.
+    if (key == Qt::Key_Shift || key == Qt::Key_Control ||
+        key == Qt::Key_Alt || key == Qt::Key_Meta ||
+        key == Qt::Key_AltGr || key == Qt::Key_unknown) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
     m_scrollOffset = 0;
     m_newOutputMarkerLine = -1;
     updateScrollBar();
@@ -1432,8 +1449,6 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     m_cursorTimer.start();
 
     QByteArray data;
-    int key = event->key();
-    Qt::KeyboardModifiers mods = event->modifiers();
 
     // Ctrl+Shift+V -- paste
     if (key == Qt::Key_V && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {

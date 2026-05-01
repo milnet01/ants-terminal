@@ -256,6 +256,9 @@ public:
     // Raw JSON access for settings dialog
     QJsonObject rawData() const { return m_data; }
     void setRawData(const QJsonObject &data) {
+        // ANTS-1141 — short-circuit on m_loadFailed; same UX
+        // rationale as setKeybinding/setPluginGrants/setPluginSetting.
+        if (m_loadFailed) return;
         if (m_data == data) return;
         m_data = data;
         save();
