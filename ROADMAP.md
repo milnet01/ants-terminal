@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.73 (2026-05-02) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.74 (2026-05-02). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -5042,18 +5042,35 @@ partition (11 lanes) is documented in this fold-in for reuse.
   dialog (in-flight probes get killed on dialog close — strict
   improvement vs. previous zombie-process behaviour).
   Kind: refactor. Source: indie-review-2026-05-01 (L6).
-- 📋 [ANTS-1146] **Extract ClaudeStatusBarController from
-  mainwindow.cpp** — L6 LoC2. ~509 LoC carve-out
-  (mainwindow.cpp:3684-4192) into
-  `src/claudestatuswidgets.{cpp,h}`. Plus deduplication of
-  the two retraction connect blocks (~60 LoC).
+- ✅ [ANTS-1146] **Extract ClaudeStatusBarController from
+  mainwindow.cpp** — Shipped 0.7.74 (2026-05-02). L6 LoC2
+  carve-out into `src/claudestatuswidgets.{cpp,h}` (770 LoC).
+  Six signal-out + four std::function provider injection +
+  resetForTabSwitch atomic reset bundling the 5-line tab-switch
+  block. setupClaudeIntegration renamed to setupStatusBarChrome
+  with three orphans retained (Roadmap btn, update QAction,
+  5 s update timer). Spec at docs/specs/ANTS-1146.md cold-eyes-
+  reviewed before implementation; 9 INVs locked in
+  tests/features/claude_statusbar_extraction/; three pre-
+  existing tests re-pointed (claude_bg_tasks_button,
+  claude_state_dot_palette, allowlist_add §D). mainwindow.cpp:
+  6249 → 5656 LoC (-593).
   Kind: refactor. Source: indie-review-2026-05-01 (L6).
-- 📋 [ANTS-1147] **Extract themedstylesheet from
-  mainwindow.cpp** — L6 LoC3. ~178 LoC of inlined QSS plus
-  the per-widget restyle sites move into pure functions in
-  `src/themedstylesheet.{cpp,h}`. Enables `updateStatusBar`
-  to only re-set the chip stylesheet when `primaryBranch`
-  flipped (currently re-applies every 2 s tick).
+- ✅ [ANTS-1147] **Extract themedstylesheet from
+  mainwindow.cpp** — Shipped 0.7.74 (2026-05-02). L6 LoC3
+  carve-out into `src/themedstylesheet.{cpp,h}` (272 LoC).
+  Six pure-function helpers (buildAppStylesheet +
+  buildMenuBarStylesheet + buildStatusMessageStylesheet +
+  buildStatusProcessStylesheet + buildGitSeparatorStylesheet +
+  buildChipStylesheet); three pre-1147 chip-style call sites
+  (applyTheme:3118, updateStatusBar:4180, refreshRepoVisibility:
+  4911) collapsed onto buildChipStylesheet with a leftMarginPx
+  parameter. Cache-and-compare optimization for the branch-chip
+  restyle landed alongside (no setStyleSheet call when the
+  computed QSS string matches the cached value). Spec at
+  docs/specs/ANTS-1147.md; 8 INVs in
+  tests/features/themedstylesheet_extraction/. mainwindow.cpp:
+  5656 → 5464 LoC (-192).
   Kind: refactor. Source: indie-review-2026-05-01 (L6).
 - 📋 [ANTS-1148] **DEC mode 2026 (sync output) unified
   snapshot path** (L2 C-2). Today the implementation suppresses

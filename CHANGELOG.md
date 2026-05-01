@@ -12,6 +12,165 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.74] — 2026-05-02
+
+**Theme:** Bundle G Tier 3 carve-out — second and third of three
+L6 LoC decompositions of `src/mainwindow.cpp`. Ships the
+ClaudeStatusBarController extraction (ANTS-1146) and the
+themedstylesheet helper extraction (ANTS-1147), together cutting
+`mainwindow.cpp` from 6249 → 5464 LoC (-785, -12.6 %) — the
+largest single-bundle reduction in the file's recent history.
+Adds three roadmap items (ANTS-1155 / 1156 / 1157) covering the
+in-app self-update gap, a roadmap-system audit, and the Project
+Audit tool flesh-out. Closes with a post-bundle debt sweep
+(5 trivials + 3 behaviorals). 131/131 ctests pass.
+
+### Changed
+
+- **ANTS-1146 — ClaudeStatusBarController extracted from
+  mainwindow.cpp.** L6 LoC2 carve-out. Three contiguous
+  Claude-status sections — `applyClaudeStatusLabel`,
+  `updateClaudeThemeColors`, `setupClaudeIntegration` (~680 LoC
+  combined, including the ~120-LoC permission-button factory) —
+  moved to a top-level `ClaudeStatusBarController : QObject` in
+  new translation unit `src/claudestatuswidgets.{cpp,h}`. State
+  booleans (`m_claudePromptActive`, `m_claudePlanMode`,
+  `m_claudeAuditing`, `m_claudeLastState`, `m_claudeLastDetail`)
+  and the six widgets they drive (`m_claudeStatusLabel`,
+  `m_claudeContextBar`, `m_claudeReviewBtn`, `m_claudeErrorLabel`,
+  `m_claudeBgTasks`, `m_claudeBgTasksBtn`) all migrate; service
+  objects (`m_claudeIntegration`, `m_claudeTabTracker`) stay on
+  MainWindow and are observed via `attach()`. Coupling shape:
+  six signals out (`reviewClicked`, `bgTasksClicked`,
+  `allowlistRequested`, `reviewButtonShouldRefresh`,
+  `statusMessageRequested`, `statusMessageCleared`) plus four
+  `std::function` providers in (current/focused/at-tab terminal
+  + tab-indicator-enabled toggle). Three orphans that lived in
+  `setupClaudeIntegration` for historical convenience but aren't
+  Claude chrome (Roadmap button, update-available QAction, 5 s
+  startup update-check `singleShot`) stay on MainWindow under
+  the renamed `setupStatusBarChrome` host. `mainwindow.cpp`:
+  6249 → 5656 LoC (-593). Spec at `docs/specs/ANTS-1146.md`
+  cold-eyes-reviewed before implementation; new feature test at
+  `tests/features/claude_statusbar_extraction/` locks 9 INVs;
+  three pre-existing tests (`claude_bg_tasks_button`,
+  `claude_state_dot_palette`, `allowlist_add`) re-pointed at
+  `claudestatuswidgets.cpp` per the spec's INV-9 table.
+
+- **ANTS-1147 — themedstylesheet helpers extracted from
+  mainwindow.cpp + cache-and-compare branch chip.** L6 LoC3
+  carve-out. `applyTheme`'s ~178 LoC inline QSS body and four
+  per-widget restyle templates moved to pure-function builders
+  in new translation unit `src/themedstylesheet.{cpp,h}`: six
+  public helpers (`buildAppStylesheet`,
+  `buildMenuBarStylesheet`, `buildStatusMessageStylesheet`,
+  `buildStatusProcessStylesheet`, `buildGitSeparatorStylesheet`,
+  `buildChipStylesheet`). The chip QSS template that was
+  inlined three times (`applyTheme`, `updateStatusBar`,
+  `refreshRepoVisibility`) collapses onto one parameterised
+  helper; margin asymmetry preserved byte-for-byte (unit-free
+  `0` vs `<N>px`). `mainwindow.cpp`: 5656 → 5464 LoC (-192);
+  `themedstylesheet.cpp`: 272 LoC. New feature test at
+  `tests/features/themedstylesheet_extraction/` locks 8 INVs;
+  three pre-existing tests (`menubar_hover_stylesheet`,
+  `tab_close_button_visible`, `review_changes_clickable`)
+  re-pointed at `themedstylesheet.cpp`.
+
+### Performance
+
+- **ANTS-1147 — branch-chip restyle is now cache-and-compare.**
+  `updateStatusBar` runs every 2 s on the status timer; pre-fix
+  code rebuilt and re-applied the branch-chip QSS unconditionally
+  on every tick even when nothing changed. Two new private
+  members on MainWindow (`m_lastBranchChipQss` +
+  `m_lastBranchChipValid`) cache the last-applied stylesheet;
+  the tick now computes the new QSS via
+  `themedstylesheet::buildChipStylesheet` and only calls
+  `setStyleSheet` when it differs. `applyTheme` invalidates the
+  cache on theme change so the next tick re-applies. User-visible
+  only as a small CPU reduction in the steady-state status-tick
+  path; the optimisation was the roadmap entry's stated
+  motivation alongside the extraction.
+
+### Documentation
+
+- **ANTS-1155 added to 0.8.0 — true in-app self-update (no
+  AppImageUpdate dep).** Today's "Update" click in
+  `handleUpdateClicked` is in-place auto-update *only* when the
+  user already has `AppImageUpdate` (GUI) or
+  `appimageupdatetool` (CLI) on $PATH AND is running the
+  AppImage build; every other path falls through to
+  `QDesktopServices::openUrl` — a glorified browser link. User
+  feedback 2026-05-02: "the terminal must download and apply the
+  update directly, no link." Plan: download full AppImage via
+  `QNetworkAccessManager`, SHA-256 verify against the `*.sha256`
+  artefact already published by `release.yml`, atomic
+  `rename(2)` over `$APPIMAGE`, restart-with-session-preservation.
+  Three-bucket distribution-channel contract (`ANTS_BUILD_CHANNEL`
+  = `appimage` / `distro` / `source`): distro-packaged builds
+  suppress the notifier structurally — Flatpak / RPM / .deb /
+  Arch users update via their package manager, not via the app.
+  Placed in 📦 Distribution readiness between H7 (website) and
+  H13 (outreach launch) — auto-update lands before outreach so
+  the wave of new users actually stays on latest.
+
+- **ANTS-1156 added to 0.8.0 — Roadmap-system audit (split /
+  tag / integrate / display / number / write).** User ask
+  2026-05-02: "We need to iron out how the roadmap is going to
+  work" — six concrete questions. Three already covered (defer
+  to ANTS-1154 tagging, ANTS-1139 summary-table renderer, and
+  `docs/standards/roadmap-format.md` § 3.5.1 numbering); three
+  genuinely open (file-splitting strategy as ROADMAP.md
+  approaches the § 3.9 archive-rotation threshold; Ants Terminal
+  ↔ roadmap integration via Help-menu access + cross-roadmap
+  navigation + two-pane reading mode; Claude Code ↔ roadmap
+  integration via auto-load, fold-in of /audit and /debt-sweep
+  findings, and a roadmap MCP capability). Six child
+  deliverables (1156-A through 1156-F) enumerated to spin out
+  once decisions land. Sequence dependency: ANTS-1154 (format v2
+  tagging) lands first since 1156's child items consume v2
+  tags. Placed at the lead of 🧰 Dev experience.
+
+- **ANTS-1157 added to 0.8.0 — Project Audit tool flesh-out
+  (cross-skill / cross-project history).** User ask 2026-05-02:
+  flesh out the Project Audit concept by analysing every
+  `/audit`, `/indie-review`, and `/debt-sweep` run across all
+  projects. Six capabilities sequenced smallest-first: (1) run-
+  history persistence as dated SARIF v2.1.0 files in
+  `~/.local/share/ants-terminal/audit-history/<slug>/`; (2)
+  per-finding fingerprint + recurrence detection via SARIF
+  `partialFingerprints` (§ 3.36); (3) MTTR / open-finding-age
+  tracking + a new History tab in AuditDialog; (4) cross-skill
+  correlation lane for findings flagged by both static analysis
+  and cold-eyes review; (5) Projects tab with per-project
+  summary metrics modeled on Codacy/SonarQube; (6) roadmap-
+  fold-in audit trail (raw → ANTS-N → status flip → CHANGELOG)
+  integrating with ANTS-1117 IPC verbs and ANTS-1154 tagged-text.
+  Online research synthesised from SARIF 2.1.0 (OASIS),
+  DefectDojo v2.55.1, Microsoft sarif-tools, SARIF Visualizer,
+  Codacy, and SonarQube. Placed at the lead of 🧰 Dev experience
+  above ANTS-1156.
+
+- **Post-bundle debt sweep — 5 trivials + 3 behaviorals.**
+  Trivials: stale comment in `mainwindow.h:4` referencing the
+  pre-1146 `applyClaudeStatusLabel` rewritten to point at the
+  controller; `refreshStatusBarForActiveTab` doc-comment at
+  `mainwindow.h:404` updated similarly; unused `<QApplication>`
+  and `<QDir>` includes dropped from `claudestatuswidgets.cpp`;
+  `tests/features/claude_bg_tasks_button/spec.md` and
+  `tests/features/claude_state_dot_palette/spec.md` INV prose
+  updated to match the post-1146 controller-routed call shapes.
+  Behaviorals (user sign-off 2026-05-02): deleted write-only
+  `m_lastBranchChipPrimary` + `m_lastBranchChipTheme` cache
+  members from ANTS-1147 (the QSS string itself encodes the
+  theme × primary × margin triple, so per-flag fields were YAGNI
+  redundancy); added "verified externally via `git diff --stat`;
+  this in-process test asserts only the floor on the new TU"
+  disclaimer to the two-sided LoC anchors in both
+  `docs/specs/ANTS-1146.md` (INV-8) and `docs/specs/ANTS-1147.md`
+  (INV-7) so spec text matches what the source-grep harnesses
+  can actually enforce.
+
 ## [0.7.73] — 2026-05-02
 
 **Theme:** Bundle G Tier 3 carve-out — first of three L6 LoC

@@ -1,3 +1,35 @@
+ants-terminal (0.7.74-1) unstable; urgency=medium
+
+  * Bundle G Tier 3 carve-out — second and third of three L6
+    LoC decompositions of src/mainwindow.cpp. ANTS-1146
+    (ClaudeStatusBarController extracted into new
+    src/claudestatuswidgets.{cpp,h}: ~680 LoC of Claude-status
+    code plus five state booleans and six widgets migrate to a
+    top-level QObject; mainwindow.cpp 6249 → 5656). ANTS-1147
+    (themedstylesheet helpers extracted into new
+    src/themedstylesheet.{cpp,h}: ~178 LoC inline QSS body and
+    four restyle templates moved to six pure-function builders;
+    the thrice-inlined chip QSS template collapses onto one
+    parameterised helper; mainwindow.cpp 5656 → 5464).
+  * Combined: mainwindow.cpp -785 LoC (-12.6 %), the largest
+    single-bundle reduction in the file's recent history.
+  * Perf: branch-chip restyle on the 2 s status timer is now
+    cache-and-compare — only calls setStyleSheet when the
+    computed QSS differs from the last-applied one.
+  * Roadmap: ANTS-1155 (in-app self-update via
+    QNetworkAccessManager + SHA-256 + atomic rename — no
+    AppImageUpdate dep), ANTS-1156 (roadmap-system audit:
+    split / tag / integrate / display / number / write),
+    ANTS-1157 (Project Audit tool flesh-out with cross-skill /
+    cross-project history; SARIF v2.1.0 + DefectDojo + Codacy
+    research synthesised).
+  * Post-bundle debt sweep: 5 trivials (stale comments, unused
+    includes, INV prose) + 3 behaviorals (write-only cache
+    members deleted, two-sided LoC anchors disclaimer'd).
+  * 131/131 ctests pass. See CHANGELOG.md § 0.7.74.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 02 May 2026 06:00:00 +0000
+
 ants-terminal (0.7.73-1) unstable; urgency=medium
 
   * Bundle G Tier 3 carve-out — first of three L6 LoC

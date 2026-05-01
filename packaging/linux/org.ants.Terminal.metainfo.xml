@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.74" date="2026-05-02">
+      <description>
+        <p>Bundle G Tier 3 carve-out — second and third of three L6 LoC decompositions of src/mainwindow.cpp. Together cuts mainwindow.cpp from 6249 → 5464 LoC (-785, -12.6 %) — the largest single-bundle reduction in the file's recent history.</p>
+        <ul>
+          <li>ANTS-1146: ClaudeStatusBarController extracted from mainwindow.cpp into new <code>src/claudestatuswidgets.{cpp,h}</code> — three Claude-status sections (~680 LoC) plus five state booleans and six widgets migrate to a top-level QObject; service objects stay on MainWindow and are observed via attach(). mainwindow.cpp: 6249 → 5656 LoC.</li>
+          <li>ANTS-1147: themedstylesheet helpers extracted into new <code>src/themedstylesheet.{cpp,h}</code> — applyTheme's ~178 LoC inline QSS body and four restyle templates moved to six pure-function builders; the chip QSS template that was inlined three times collapses onto one parameterised helper. mainwindow.cpp: 5656 → 5464 LoC.</li>
+          <li>Performance: branch-chip restyle on the 2 s status timer is now cache-and-compare — the tick only calls setStyleSheet when the computed QSS differs from the last-applied one.</li>
+          <li>Roadmap: three new items added — ANTS-1155 (true in-app self-update via QNetworkAccessManager + SHA-256 verify + atomic rename, no AppImageUpdate dep), ANTS-1156 (roadmap-system audit covering split / tag / integrate / display / number / write), ANTS-1157 (Project Audit tool flesh-out with cross-skill / cross-project history modelled on SARIF v2.1.0 + DefectDojo + Codacy).</li>
+          <li>Post-bundle debt sweep: 5 trivials (stale comments, unused includes, INV prose updates) + 3 behaviorals (deleted write-only cache members, spec-text disclaimers on two-sided LoC anchors). 131/131 ctests pass.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.73" date="2026-05-02">
       <description>
         <p>Bundle G Tier 3 carve-out — first of three L6 LoC decompositions of src/mainwindow.cpp.</p>
