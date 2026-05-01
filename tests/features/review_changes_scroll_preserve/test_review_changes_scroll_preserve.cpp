@@ -21,27 +21,29 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-// Extract the body of MainWindow::showDiffViewer so each grep below
-// can be scoped to that function — the ctor and other methods also
-// touch QScrollBar / setHtml elsewhere in mainwindow.cpp and would
-// cause false positives. The function ends at the matching closing
-// brace; we approximate by capturing from the signature up to the
-// next top-level `void MainWindow::` definition.
-static std::string showDiffViewerBody(const std::string &mw) {
-    const std::string sig = "void MainWindow::showDiffViewer()";
-    const auto start = mw.find(sig);
+// Extract the body of diffviewer::show so each grep below can be
+// scoped to that function. ANTS-1145 (0.7.73): the dialog body
+// moved from MainWindow::showDiffViewer to a free
+// `diffviewer::show(QWidget *, const QString &, const QString &)`
+// in src/diffviewer.cpp. The CMake define `SRC_MAINWINDOW_CPP_PATH`
+// is repointed at that file — name preserved so the wiring noise
+// stays small. Function end is approximated by the next top-level
+// non-indented `}` followed by an empty line.
+static std::string showDiffViewerBody(const std::string &src) {
+    const std::string sig = "QDialog *show(";
+    const auto start = src.find(sig);
     if (start == std::string::npos) return {};
-    // Heuristic end: next `void MainWindow::` after the signature.
-    const auto next = mw.find("\nvoid MainWindow::", start + sig.size());
-    return mw.substr(start, next == std::string::npos ? std::string::npos
-                                                       : next - start);
+    // Heuristic end: closing brace of `namespace diffviewer` block.
+    const auto end = src.find("}  // namespace diffviewer", start);
+    return src.substr(start, end == std::string::npos ? std::string::npos
+                                                       : end - start);
 }
 
 int main() {
     const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
     const std::string body = showDiffViewerBody(mw);
     if (body.empty()) {
-        std::fprintf(stderr, "FAIL: cannot locate MainWindow::showDiffViewer\n");
+        std::fprintf(stderr, "FAIL: cannot locate diffviewer::show\n");
         return 1;
     }
 

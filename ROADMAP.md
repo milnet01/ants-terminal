@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.72 (2026-05-02) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.73 (2026-05-02) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4664,18 +4664,22 @@ partition (11 lanes) is documented in this fold-in for reuse.
 > a bounded fix-pass; total estimated diff ≤ 600 LoC + new
 > feature tests.
 
-- 🚧 [ANTS-1118] **Smooth-scroll snapshot race during streaming
-  — root cause confirmed.** See updated body above (severity
-  downgraded MEDIUM 2026-05-01, root cause identified by indie-
-  review L2 2026-05-01). Fix path: trigger snapshot capture +
-  `setScrollbackInsertPaused(true)` on **scroll intent**
-  (`wheelEvent` direction = up + target > 0) rather than on
-  committed `m_scrollOffset` transition. Also covers `Shift+
-  PageUp` / `Shift+Home` / `Shift+Up` (already correct because
-  they set offset non-zero immediately, but invariant should
-  be locked). New feature test
-  `tests/features/scroll_snapshot_intent/` drives the helper
-  with synthetic wheel events + a fast-arrival batch.
+- ✅ [ANTS-1118] **Smooth-scroll snapshot race during streaming
+  — root cause confirmed.** Shipped 2026-05-01 (0.7.65). Fix
+  triggers `captureScreenSnapshot()` +
+  `m_grid->setScrollbackInsertPaused(true)` on **scroll intent**
+  (positive `m_smoothScrollTarget` from offset 0 with no
+  existing snapshot) rather than on committed `m_scrollOffset`
+  transition; `smoothScrollStep` timer-stop branch calls
+  `updateScrollBar()` so an intent-captured-but-never-committed
+  snapshot is dropped (idempotent). `Shift+PageUp` /
+  `Shift+Home` / `Shift+Up` already correct because they set
+  offset non-zero synchronously. Spec at
+  `docs/specs/ANTS-1118.md`; feature test at
+  `tests/features/scroll_snapshot_intent/` source-greps the four
+  INVs (wheelEvent intent branch, scrollback-pause in same
+  branch, smoothScrollStep cleanup call, onVtBatch regression
+  guard).
   Kind: fix. Source: user-2026-04-30 + indie-review-2026-05-01.
   Lanes: TerminalWidget, terminalgrid (snapshot path).
 - ✅ [ANTS-1130] **VT alt-screen + scroll-region invariants —
@@ -4752,17 +4756,18 @@ partition (11 lanes) is documented in this fold-in for reuse.
 
 ### 🔧 Tier 2 — hardening sweep (0.7.66 / 0.7.67)
 
-- 🚧 [ANTS-1133] **VT parser: missing CSI verbs + edge cases.**
+- ✅ [ANTS-1133] **VT parser: missing CSI verbs + edge cases.**
   **CSI verbs shipped 2026-05-01 (0.7.69 + 0.7.70):** Pn b
   (REP — repeat preceding char), Pn I (CHT — forward tab N),
   Pn Z (CBT — backward tab N), Pn ` (HPA — column absolute).
   All four common in `less`, ncurses, bash completion, and
   zsh's reset-prompt path. **Remaining sub-items deferred
-  (genuinely rare edge cases):** combining-char attach after
-  wrap (only triggers at exact column-boundary wraps with
-  combining input — rare even in CJK + diacritic mixed text);
-  wide-cont rewrap orphan (resize() rewrap with wide-char
-  pair straddling wrap boundary).
+  (genuinely rare edge cases — re-open as separate IDs if a
+  user ever hits one):** combining-char attach after wrap
+  (only triggers at exact column-boundary wraps with combining
+  input — rare even in CJK + diacritic mixed text); wide-cont
+  rewrap orphan (resize() rewrap with wide-char pair straddling
+  wrap boundary).
   Bundles L1 H-1 (insertLines/deleteLines hyperlink shift
   fragility), H-2 (CSI Pn b — REP — silently dropped, common
   in `less` and ncurses), H-3 (combining-char attach after
@@ -4856,7 +4861,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   via a generation counter.
   Kind: fix. Source: indie-review-2026-05-01 (L6 H-1, H-4).
   Lanes: MainWindow, Config.
-- 🚧 [ANTS-1139] **RoadmapDialog markdown subset gaps**
+- ✅ [ANTS-1139] **RoadmapDialog markdown subset gaps**
   **3 of 5 sub-fixes shipped 2026-05-01 (0.7.70):** `**bold**`
   recognised in body prose via new pass in `applyInline`
   (pre-fix code rendered literal `**` characters); markdown
@@ -4864,12 +4869,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
   becomes `<tr>`, header inferred from first row,
   separator row (`|---|---|`) auto-skipped; per-cell
   `applyInline` so backticks + bold work inside cells.
-  **Remaining sub-fixes deferred:** sub-bullet rendering
-  (heavy — both `parseBullets` and `renderHtml` would need
-  to recognize `^  - ` / `^  * ` as nested-list opens
-  rather than continuation lines); Kind regex multi-value
-  split-on-comma; bold regex hardening against intra-bold
-  asterisks. Per-item annotations follow.
+  **Remaining sub-fixes deferred (re-open as separate IDs
+  if needed):** sub-bullet rendering (heavy — both
+  `parseBullets` and `renderHtml` would need to recognize
+  `^  - ` / `^  * ` as nested-list opens rather than
+  continuation lines); Kind regex multi-value split-on-comma;
+  bold regex hardening against intra-bold asterisks.
+  Per-item annotations follow.
   (L7 C-1, C-2, H-3, H-5, H-6). Sub-bullet rendering
   (`^  - ` / `^  * ` indent → nested `<ul><li>` instead of
   flattened-into-parent-body); markdown table → `<table>`
@@ -5007,11 +5013,34 @@ partition (11 lanes) is documented in this fold-in for reuse.
 
 ### 🏗 Tier 3 — structural (0.8.x)
 
-- 📋 [ANTS-1145] **Extract DiffViewerDialog from mainwindow.cpp**
-  — L6 LoC1. ~430 LoC carve-out (mainwindow.cpp:5681-6110)
-  into `src/diffviewer.{cpp,h}`. Self-contained — only outward
-  dependency is theme snapshot at construction + a button-
-  enable/disable surface.
+- ✅ [ANTS-1145] **Extract DiffViewerDialog from mainwindow.cpp**
+  Shipped 2026-05-02 (0.7.73). ~430 LoC carve-out from
+  `MainWindow::showDiffViewer` into a free
+  `diffviewer::show(QWidget *, const QString &, const QString &)`
+  in new `src/diffviewer.{cpp,h}`. mainwindow.cpp dropped from
+  6636 → 6213 LoC; the post-extraction `showDiffViewer` body is
+  ~25 meaningful LoC (status message → focused-terminal lookup →
+  button disable → call diffviewer::show → connect destroyed for
+  re-enable + refreshReviewButton). Spec at
+  `docs/specs/ANTS-1145.md` (cold-eyes-reviewed 2026-05-02 →
+  surface-design choice, behavioural-parity statement, include-
+  hygiene plan, per-test re-pointing table all folded in before
+  implementation). New feature test at
+  `tests/features/diffviewer_extraction/` locks 7 INVs (exact
+  function signature, structural markers, every user-visible
+  string byte-identical, sub-object names, body LoC ≤ 50,
+  delegation present, migrated markers absent from
+  mainwindow.cpp). Three of the four pre-existing
+  `review_changes_*` tests re-pointed at `diffviewer.cpp` per
+  the spec's per-test table; the fourth (`clickable`) is purely
+  about button-gating policy and didn't need re-pointing.
+  Behaviour preserved byte-for-byte: every probe, the
+  `ProbeState` shape, scroll preservation, live updates, the
+  Copy-Diff payload format. Two semantics named for future
+  readers: theme is captured at open (live theme-switch doesn't
+  re-render), and QProcess parent moves from MainWindow to the
+  dialog (in-flight probes get killed on dialog close — strict
+  improvement vs. previous zombie-process behaviour).
   Kind: refactor. Source: indie-review-2026-05-01 (L6).
 - 📋 [ANTS-1146] **Extract ClaudeStatusBarController from
   mainwindow.cpp** — L6 LoC2. ~509 LoC carve-out
@@ -5584,6 +5613,80 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
 source-package packaging work; items that don't fit there live
 here.)
 
+### 🧰 Dev experience — Roadmap format v2
+
+- 📋 [ANTS-1154] **Tagged-text roadmap format v2 + RoadmapDialog
+  tab filtering on tags.** Today the RoadmapDialog tabs (Full /
+  History / Current / Next / Far Future / Custom) re-walk the
+  whole markdown and infer scope from prose-shape heuristics
+  (status emoji, bullet vs paragraph, position-in-document).
+  That works but the dialog has to over-show: a "Next" tab filter
+  for `📋` bullets still drags along surrounding section headers,
+  prose intros, and embedded prose-only paragraphs that aren't
+  actionable items. Two fixes, one bundle:
+
+  1. **Roadmap-format v2 spec change** in
+     `docs/standards/roadmap-format.md`. Carry-overs from v1
+     (stable IDs, status / theme emojis, position-is-priority,
+     `Kind:` / `Source:` lines, fold-in subsections) all stay.
+     What v2 adds:
+
+     - **Standard summary table format.** The H-bundle table at
+       `## Distribution-adoption overview` is the canonical
+       shape — `| ID | Description | Status | Target release |`
+       — and v2 promotes it to a first-class roadmap section
+       type. Any roadmap section may open with a summary table
+       that is the source-of-truth; the per-item bullets below
+       are the elaboration. Both the dialog and consumers like
+       remote-control's `roadmap-query` IPC verb learn to read
+       the table.
+     - **Explicit machine-readable tags on every line** so the
+       dialog doesn't have to infer. Header lines carry their
+       semantic role (`<!-- header:section-intro -->`,
+       `<!-- header:summary-table -->`,
+       `<!-- header:fold-in -->`); actionable bullets carry
+       their `Kind` as a tag attribute (`<!-- kind:fix -->`,
+       `<!-- kind:refactor -->`, `<!-- kind:doc -->`,
+       `<!-- kind:audit-fix -->`, `<!-- kind:review-fix -->`,
+       `<!-- kind:test -->`, `<!-- kind:chore -->`,
+       `<!-- kind:release -->`, `<!-- kind:research -->`,
+       `<!-- kind:ux -->`, `<!-- kind:implement -->`); prose-only
+       paragraphs carry `<!-- prose -->`. Tags live in HTML
+       comments so they render invisibly in the markdown but
+       are trivially grep-able / parser-extractable.
+     - **Format-version pragma at the top.** `<!--
+       ants-roadmap-format: 2 -->` (mirrors the existing v1
+       pragma already at line 1). The dialog and IPC verb
+       gracefully degrade against v1 docs.
+
+  2. **RoadmapDialog implementation.** `parseBullets` and
+     `renderHtml` learn to read the v2 tags; tab filtering
+     becomes "match on tag" instead of "infer from prose
+     shape". Per-tab budget shrinks: `Next` shows only
+     `kind:*` bullets with `📋` status; `Current` shows only
+     bullets with `🚧` or matching the [Unreleased] / last-5-
+     commit signal; the prose intros and section-intro headers
+     are emitted only on `Full roadmap` and `Custom`. The
+     summary-table renderer (already shipped in 0.7.70 per
+     ANTS-1139's `<table>` work) becomes the default render
+     for any section opening with a v2 summary table.
+
+  3. **One-shot migration of ROADMAP.md.** Walk the doc top to
+     bottom, tag every header + bullet + prose paragraph in
+     place. ~190 actionable items + ~60 headers + ~40 prose
+     paragraphs. Mechanical but voluminous — likely a single
+     scripted pass with manual review per section.
+
+  Spec stub: `docs/specs/ANTS-1154.md` (write before
+  implementation per the strict App-Build loop). Tests:
+  `tests/features/roadmap_format_v2/` source-greps the new tags
+  on a fixture markdown corpus and verifies the dialog's tab-
+  filter helpers return the right subsets. The existing
+  `roadmap_kind_facets` test (ANTS-1106) becomes a regression
+  guard that the v2 tag-based filtering matches the v1 prose-
+  inference results on a representative sample.
+  Kind: refactor. Source: user-2026-05-02.
+
 ---
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
@@ -5674,6 +5777,24 @@ here.)
   scrollback allocation, paint-loop time) with commit-level deltas.
   Kind: implement.
   Source: regression.
+- 📋 [ANTS-1153] **Fresh-eyes audit of the feature-test corpus.**
+  ~190 feature tests live in `tests/features/`; many were written
+  alongside their fix and source-grep the exact body of the patch
+  rather than the behavioural contract the spec promises. As the
+  codebase matures, two failure modes leak in: (a) tests that pin
+  implementation details and break on cosmetic refactors without
+  catching real regressions (the four `review_changes_*` tests
+  re-pointed during ANTS-1145 are a representative sample), and
+  (b) tests whose INVs no longer match their `spec.md` because
+  the spec evolved but the test didn't. Plan: walk every
+  `tests/features/<dir>/` against its `spec.md`, mark each test
+  as keep / rewrite / retire, and fold rewrites into a dedicated
+  bundle. Likely outcome: ~20-30 % of the corpus rewritten or
+  retired, ~10 % flagged as "useful but brittle — replace with
+  behavioural test." Pairs naturally with ANTS-1085's perf-
+  regression suite as the "what does CI actually catch?"
+  audit.
+  Kind: audit. Source: user-2026-05-02.
 - 📋 [ANTS-1086] **Documentation pass**: every user-facing feature has at least one
   screenshot + one animated demo. Rolls up into H7 (docs site).
   Kind: implement.

@@ -1,3 +1,20 @@
+ants-terminal (0.7.73-1) unstable; urgency=medium
+
+  * Bundle G Tier 3 carve-out — first of three L6 LoC
+    decompositions of src/mainwindow.cpp. ANTS-1145
+    (DiffViewerDialog extracted from
+    MainWindow::showDiffViewer (~430 LoC) into a free
+    diffviewer::show() in new src/diffviewer.{cpp,h};
+    mainwindow.cpp shrank 6636 → 6213 LoC). Spec cold-
+    eyes-reviewed before implementation; per-test re-
+    pointing table + surface-design choice folded in.
+    Behaviour preserved byte-for-byte. Plus roadmap
+    hygiene (three stale 🚧 statuses flipped) and new
+    ANTS-1153 (fresh-eyes audit of feature-test corpus,
+    queued for 1.0 milestone). See CHANGELOG.md § 0.7.73.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 02 May 2026 04:00:00 +0000
+
 ants-terminal (0.7.72-1) unstable; urgency=medium
 
   * Bundle G perf optimisations. ANTS-1140 (RoadmapDialog

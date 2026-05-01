@@ -91,8 +91,11 @@ int main() {
 
     // I6 — runProbes lambda exists and reconstructs a fresh
     // ProbeState every call. The shared_ptr<ProbeState> is created
-    // *inside* the lambda body, not before it.
-    expect(contains(src, "auto runProbes = [this, cwd, dlgGuard"),
+    // *inside* the lambda body, not before it. ANTS-1145 (0.7.73):
+    // capture changed from `[this, ...]` to `[parent, ...]` when the
+    // function moved from MainWindow::showDiffViewer to a free
+    // diffviewer::show — `this` doesn't exist in the free form.
+    expect(contains(src, "auto runProbes = [parent, cwd, dlgGuard"),
            "I6/runProbes-lambda-defined");
     expect(contains(src, "auto state = std::make_shared<ProbeState>();"),
            "I6/runProbes-constructs-fresh-state-per-call");

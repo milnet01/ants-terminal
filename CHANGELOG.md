@@ -12,6 +12,86 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.73] — 2026-05-02
+
+**Theme:** Bundle G Tier 3 carve-out — first of three L6 LoC
+decompositions of `src/mainwindow.cpp`. Ships the
+DiffViewerDialog extraction (ANTS-1145) and a roadmap-hygiene
+pass that flips three stale 🚧 statuses (ANTS-1118 / 1133 /
+1139) to ✅ where the work was already shipped but the emoji
+hadn't been updated. Adds ANTS-1153 to the 1.0 milestone:
+fresh-eyes audit of the feature-test corpus.
+
+### Changed
+
+- **ANTS-1145 — DiffViewerDialog extracted from mainwindow.cpp.**
+  L6 LoC1 carve-out from the 2026-05-01 indie-review sweep.
+  `MainWindow::showDiffViewer` (~430 LoC of dialog construction
+  + five async git probes + `QFileSystemWatcher` +
+  scroll-preservation + Copy-Diff payload) moved to a free
+  function `diffviewer::show(QWidget *parent, const QString
+  &cwd, const QString &themeName)` in new translation unit
+  `src/diffviewer.{cpp,h}`. `mainwindow.cpp` shrank from 6636 →
+  6213 LoC; the post-extraction `showDiffViewer` slot is ~25
+  meaningful LoC (status message → focused-terminal lookup →
+  button disable → call into `diffviewer::show` → connect
+  dialog `destroyed` for re-enable + `refreshReviewButton`).
+  Spec at `docs/specs/ANTS-1145.md` was cold-eyes-reviewed
+  before the implementation: 1 CRITICAL + 2 HIGH + 3 MEDIUM
+  findings folded in (per-test re-pointing table, exact-
+  signature INV, user-visible-string preservation INV,
+  surface-design justification, theme-capture-at-open + QProcess-
+  parent-change semantics named explicitly). New feature test
+  at `tests/features/diffviewer_extraction/` locks 7 INVs;
+  three of the four pre-existing `review_changes_*` tests
+  re-pointed at `diffviewer.cpp` per the spec table; the
+  fourth (`clickable`) was about button-gating policy and
+  didn't need re-pointing. Full ctest 129/129 green.
+
+### Documentation
+
+- **Roadmap hygiene — three stale 🚧 statuses flipped to ✅.**
+  Survey of Bundle G surfaced three items whose work shipped in
+  earlier 0.7.x releases but whose emoji status was never
+  updated: ANTS-1118 (smooth-scroll snapshot race — shipped
+  2026-05-01 in 0.7.65 per CHANGELOG); ANTS-1133 (VT parser
+  CSI verbs — REP/CHT/CBT/HPA shipped 2026-05-01 in 0.7.69 +
+  0.7.70, edge cases explicitly deferred); ANTS-1139
+  (RoadmapDialog markdown subset — 3 of 5 sub-fixes shipped
+  2026-05-01 in 0.7.70, remaining 3 explicitly deferred). All
+  three flipped with deferred-sub-items called out inline so
+  future readers know what to re-open as separate IDs if the
+  edge cases ever bite a user.
+
+- **ANTS-1153 added to 1.0 milestone — fresh-eyes audit of
+  feature-test corpus.** ~190 feature tests live in
+  `tests/features/`; many were written alongside their fix and
+  source-grep the patch body rather than the behavioural
+  contract. As the codebase matures, two failure modes leak
+  in: tests that pin implementation details and break on
+  cosmetic refactors without catching real regressions, and
+  tests whose INVs no longer match their `spec.md` because the
+  spec evolved but the test didn't. Plan: walk every
+  `tests/features/<dir>/` against its `spec.md`, mark each as
+  keep / rewrite / retire, fold rewrites into a dedicated
+  bundle. Pairs naturally with ANTS-1085 (perf-regression
+  suite) as the "what does CI actually catch?" audit.
+
+- **ANTS-1154 added to 0.8.0 — tagged-text roadmap format v2 +
+  RoadmapDialog tab filtering on tags.** User report
+  2026-05-02: the RoadmapDialog tabs (Full / History / Current
+  / Next / Far Future / Custom) over-show because they infer
+  scope from prose shape rather than reading explicit tags. v2
+  promotes the H-bundle summary-table format (`| ID |
+  Description | Status | Target release |`) to a first-class
+  section type and adds machine-readable tags on every line
+  via HTML comments (`<!-- header:section-intro -->`,
+  `<!-- kind:fix -->`, `<!-- prose -->` etc.) so per-tab
+  filtering is exact instead of heuristic. RoadmapDialog
+  `parseBullets` + `renderHtml` learn the new tags; v1 docs
+  degrade gracefully. One-shot migration of ROADMAP.md tags
+  every existing item in place.
+
 ## [0.7.72] — 2026-05-02
 
 **Theme:** Bundle G perf optimisations from the post-revalidation

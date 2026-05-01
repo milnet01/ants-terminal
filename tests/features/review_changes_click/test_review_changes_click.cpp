@@ -202,9 +202,11 @@ void testQueuedRefocusSkippedWhenDialogActive() {
 // is disproportionate. The grep binds the test to the fix site
 // directly with minimal friction.
 void testShowDiffViewerCallsRaiseAndActivate() {
-    // Locate mainwindow.cpp relative to the source tree. Tests run
-    // from the build directory; CMAKE_CURRENT_SOURCE_DIR is baked in
-    // as SRC_MAINWINDOW_PATH by the CMakeLists wiring.
+    // ANTS-1145 (0.7.73): the dialog construction body lives in
+    // src/diffviewer.cpp's `diffviewer::show(QWidget *, const
+    // QString &, const QString &)` after the carve-out. The CMake
+    // define `SRC_MAINWINDOW_PATH` is repointed at diffviewer.cpp
+    // — name preserved so the wiring noise stays small.
     const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -216,14 +218,14 @@ void testShowDiffViewerCallsRaiseAndActivate() {
     }
     const QString src = QString::fromUtf8(f.readAll());
 
-    // Find the showDiffViewer function body. We search for the
-    // canonical signature and then scan forward to the matching
-    // closing brace (balanced-brace scan is sufficient — no string
-    // literals in this function contain unbalanced braces).
-    const int start = src.indexOf(QStringLiteral("void MainWindow::showDiffViewer()"));
+    // Find the dialog construction function body. Search for the
+    // post-carve-out signature and then balanced-brace-scan from
+    // its opening brace to the matching close.
+    const int start = src.indexOf(QStringLiteral("QDialog *show("));
     if (start < 0) {
         std::fprintf(stderr,
-                     "FAIL: showDiffViewer not found in %s — function renamed?\n",
+                     "FAIL: diffviewer::show not found in %s — function renamed "
+                     "or extraction reverted?\n",
                      qUtf8Printable(path));
         ++failures;
         return;

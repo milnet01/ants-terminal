@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.72 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.73 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -86,6 +86,7 @@ add_executable(ants-terminal
     src/debuglog.cpp
     src/dialogshowtracer.cpp
     src/remotecontrol.cpp
+    src/diffviewer.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE
@@ -690,11 +691,14 @@ if(ANTS_TESTS)
         -Wall -Wextra -Wpedantic
     )
     # Production-binding check: the test opens src/mainwindow.cpp at
-    # runtime to verify showDiffViewer still calls raise() and
+    # runtime to verify the dialog construction still calls raise() and
     # activateWindow(). Bake the absolute source path in at compile
     # time so the test runs correctly from the build directory.
+    # ANTS-1145 (0.7.73): repointed at src/diffviewer.cpp where the
+    # dialog body lives post-extraction; SRC_MAINWINDOW_PATH name
+    # kept so the test source's reference doesn't churn.
     target_compile_definitions(test_review_changes_click PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.cpp"
     )
     add_test(NAME review_changes_click COMMAND test_review_changes_click)
     set_tests_properties(review_changes_click PROPERTIES
@@ -2097,8 +2101,11 @@ if(ANTS_TESTS)
     target_compile_options(test_review_changes_branches PRIVATE
         -Wall -Wextra -Wpedantic
     )
+    # ANTS-1145 (0.7.73): dialog body lives in src/diffviewer.cpp;
+    # SRC_MAINWINDOW_CPP_PATH define name preserved so the test
+    # source doesn't need to rename its include guard.
     target_compile_definitions(test_review_changes_branches PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.cpp"
     )
     add_test(NAME review_changes_branches
         COMMAND test_review_changes_branches)
@@ -2120,8 +2127,11 @@ if(ANTS_TESTS)
     target_compile_options(test_review_changes_scroll_preserve PRIVATE
         -Wall -Wextra -Wpedantic
     )
+    # ANTS-1145 (0.7.73): dialog body lives in src/diffviewer.cpp;
+    # SRC_MAINWINDOW_CPP_PATH define name preserved so the test
+    # source doesn't need to rename its include guard.
     target_compile_definitions(test_review_changes_scroll_preserve PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.cpp"
     )
     add_test(NAME review_changes_scroll_preserve
         COMMAND test_review_changes_scroll_preserve)
@@ -2435,6 +2445,31 @@ if(ANTS_TESTS)
     add_test(NAME scroll_snapshot_intent
              COMMAND test_scroll_snapshot_intent)
     set_tests_properties(scroll_snapshot_intent PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # diffviewer_extraction — ANTS-1145 (0.7.73). Locks the
+    # extraction of the Review Changes dialog from
+    # MainWindow::showDiffViewer (~430 LoC) into
+    # src/diffviewer.{cpp,h}. Pure carve-out, behaviour preserved.
+    # Source-grep harness asserts: diffviewer.{h,cpp} exist with
+    # the namespace + dialog markers, the post-extraction
+    # MainWindow::showDiffViewer body is ≤ 30 LoC and delegates,
+    # and mainwindow.cpp no longer carries the migrated markers.
+    add_executable(test_diffviewer_extraction
+        tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
+    )
+    target_compile_options(test_diffviewer_extraction PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_diffviewer_extraction PRIVATE
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_DIFFVIEWER_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.h"
+        SRC_DIFFVIEWER_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.cpp"
+    )
+    add_test(NAME diffviewer_extraction
+             COMMAND test_diffviewer_extraction)
+    set_tests_properties(diffviewer_extraction PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
