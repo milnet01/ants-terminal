@@ -1429,15 +1429,26 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     Qt::KeyboardModifiers mods = event->modifiers();
 
     // ANTS-1134 — modifier-only key presses (Shift / Ctrl / Alt /
-    // Meta / AltGr / unknown) must NOT reset m_scrollOffset.
-    // Pre-fix code reset on every key including bare modifiers, so
-    // a user scrolled-up reading older output who reflexively
-    // pressed Ctrl in preparation for `Ctrl+Shift+C` would lose
-    // their scrolled-up workflow. Bare-modifier presses pass
-    // through to QWidget so accelerators / IM still work.
+    // Meta / AltGr / unknown / locks / Super / Hyper) must NOT
+    // reset m_scrollOffset. Pre-fix code reset on every key
+    // including bare modifiers, so a user scrolled-up reading
+    // older output who reflexively pressed Ctrl in preparation
+    // for `Ctrl+Shift+C` would lose their scrolled-up workflow.
+    // Bare-modifier presses pass through to QWidget so
+    // accelerators / IM still work.
+    //
+    // Revalidation fold-in (post-Bundle-G): added CapsLock,
+    // NumLock, ScrollLock, Super_L/R, Hyper_L/R, Mode_switch.
+    // Same reflexive-modifier class — pressing CapsLock while
+    // scrolled-up shouldn't kill the scroll position either.
     if (key == Qt::Key_Shift || key == Qt::Key_Control ||
         key == Qt::Key_Alt || key == Qt::Key_Meta ||
-        key == Qt::Key_AltGr || key == Qt::Key_unknown) {
+        key == Qt::Key_AltGr || key == Qt::Key_unknown ||
+        key == Qt::Key_CapsLock || key == Qt::Key_NumLock ||
+        key == Qt::Key_ScrollLock ||
+        key == Qt::Key_Super_L || key == Qt::Key_Super_R ||
+        key == Qt::Key_Hyper_L || key == Qt::Key_Hyper_R ||
+        key == Qt::Key_Mode_switch) {
         QWidget::keyPressEvent(event);
         return;
     }

@@ -106,5 +106,16 @@ private:
     QString m_createSessionReqPath;          // per-request, reset on completion
     QString m_bindShortcutsReqPath;
     bool m_sessionPending = false;           // CreateSession in flight
+    // ANTS-1152 — terminal-failure latch. Set by
+    // onCreateSessionResponse and onBindShortcutsResponse on
+    // response != 0 (or DBus reply error). Once latched, every
+    // subsequent bindShortcut() call early-returns with a
+    // sessionFailed signal — the failure is treated as
+    // process-permanent. Today's only caller (MainWindow's
+    // QuakeMode setup) fires once at startup, but a future
+    // config-reload / "Reload Plugins" path that re-bound
+    // shortcuts would otherwise re-enter the failure loop the
+    // 0.7.67 ANTS-1142 H-1 fix tried to close.
+    bool m_permanentlyFailed = false;
     QList<PendingBind> m_pending;
 };

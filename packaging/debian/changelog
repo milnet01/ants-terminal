@@ -1,3 +1,16 @@
+ants-terminal (0.7.71-1) unstable; urgency=medium
+
+  * Bundle G post-revalidation closures. ANTS-1151 (Hook +
+    MCP socket SO_PEERCRED + idle timeout); ANTS-1152
+    (GlobalShortcutsPortal permanent-failure latch);
+    ANTS-1136 cancel-path flush; ANTS-1134 modifier guard
+    extension; static-analysis closures (cppcheck +
+    shellcheck). All net-new findings from the 2026-05-01
+    /audit + /indie-review revalidation. See CHANGELOG.md
+    § 0.7.71.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 02 May 2026 00:00:00 +0000
+
 ants-terminal (0.7.70-1) unstable; urgency=medium
 
   * Bundle G Tier 2 heavy-items closeout. ANTS-1135 ✅

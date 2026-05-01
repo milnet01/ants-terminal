@@ -12,6 +12,70 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.71] — 2026-05-01
+
+**Theme:** Bundle G post-revalidation closures. The 2026-05-01
+revalidation pass (`/audit` re-run + scoped `/indie-review` on
+the changed surface) accepted all 13 Tier 1+2 closures shipped
+across 0.7.65–0.7.70 but surfaced 4 net-new findings worth
+closing before the codebase is called "audit-clean". 128/128
+ctests pass.
+
+### Added
+
+- **ANTS-1151 — Hook + MCP socket SO_PEERCRED + idle timeout.**
+  Symmetric extension of ANTS-1132's remote-control hardening
+  to the two `QLocalServer`s that `ClaudeIntegration` owns:
+  `onHookConnection` + `onMcpConnection`. The L3 indie-review
+  reviewer flagged that the file-side guarantees (0700 perms +
+  UserAccessOption + `safeToUnlinkLocalSocket`) hold, but the
+  peer-side trust-model reasoning that motivated SO_PEERCRED on
+  remote-control applies symmetrically — a same-UID-but-
+  different-process attacker (e.g. a malicious browser plugin)
+  could otherwise inject hook events shaped like
+  `processHookEvent` consumes, or call MCP verbs (filesystem
+  reads, git status, environment). 5-second per-connection
+  idle timeout closes the slow-loris foot-gun.
+
+- **ANTS-1152 — `GlobalShortcutsPortal` permanent-failure latch.**
+  ANTS-1142 H-1's 0.7.67 fix (clear `m_pending` + `m_sessionHandle`
+  on `BindShortcuts` rejection) was correct on first failure
+  but didn't enforce terminality across re-binds — a future
+  config-reload / "Reload Plugins" path that re-bound shortcuts
+  would re-enter the same backend failure (the loop on GNOME
+  the original finding flagged). Lane 6 reviewer caught this
+  during revalidation. New `m_permanentlyFailed` member set in
+  every sessionFailed-emit path; `bindShortcut` early-returns
+  when latched. Today's only caller fires once at startup so
+  the bug was dormant; latch makes the contract enforced
+  rather than aspirational.
+
+### Fixed
+
+- **ANTS-1136 (cancel path) — RuleQualityTracker flush on
+  cancel.** The 0.7.68 cycle-completion flush in `runNextCheck`
+  closed the kill-9-loses-fires class on clean completion;
+  this closes the symmetric hole on cancel. `cancelAudit` now
+  also calls `m_qualityTracker->save()` before `renderResults()`.
+  Lane 4 reviewer caught the asymmetry during revalidation.
+
+- **ANTS-1134 (modifier list extension) — CapsLock, NumLock,
+  Super, Hyper added to the modifier-only keypress guard.**
+  Lane 2 reviewer flagged the original list missed `Qt::Key_CapsLock`,
+  `Qt::Key_NumLock`, `Qt::Key_ScrollLock`, `Qt::Key_Super_L/R`,
+  `Qt::Key_Hyper_L/R`, `Qt::Key_Mode_switch`. Same reflexive-
+  modifier class — pressing CapsLock while scrolled-up
+  shouldn't kill the scroll position either.
+
+- **Static-analysis closures.** cppcheck `identicalConditionAfterEarlyExit`
+  at `auditdialog.cpp` (m_cancelled check after early return —
+  always false; redundant check removed). cppcheck `passedByValue`
+  at `globalshortcutsportal.cpp` (Qt SLOT signature requires
+  QString-by-value for old-style connect string-match;
+  suppressed inline with rationale comment). shellcheck SC1087
+  ×2 in `packaging/rotate-roadmap.sh` (array-expansion brace
+  hygiene).
+
 ## [0.7.70] — 2026-05-01
 
 **Theme:** Bundle G Tier 2 closeout — heavy items. ANTS-1135

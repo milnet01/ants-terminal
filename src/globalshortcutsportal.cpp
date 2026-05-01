@@ -96,6 +96,20 @@ GlobalShortcutsPortal::~GlobalShortcutsPortal() {
 void GlobalShortcutsPortal::bindShortcut(const QString &id,
                                          const QString &description,
                                          const QString &preferredTrigger) {
+    // ANTS-1152 — early-return on permanent failure. Without
+    // this guard, a re-bind path (config reload, plugin reload)
+    // would re-enter createSession()/BindShortcuts and re-trip
+    // the same backend failure that caused the original
+    // sessionFailed emission. The 0.7.67 ANTS-1142 H-1 fix
+    // cleared `m_pending` + `m_sessionHandle` to make
+    // sessionFailed terminal-per-process; this latch enforces
+    // that contract at the entry point.
+    if (m_permanentlyFailed) {
+        emit sessionFailed(QStringLiteral(
+            "GlobalShortcutsPortal session permanently failed earlier "
+            "this process — re-binds suppressed"));
+        return;
+    }
     // Replace any existing pending entry with the same id — the public
     // contract is idempotent-per-id.
     for (int i = 0; i < m_pending.size(); ++i) {
@@ -107,6 +121,7 @@ void GlobalShortcutsPortal::bindShortcut(const QString &id,
     m_pending.append({id, description, preferredTrigger});
 
     if (!isAvailable()) {
+        m_permanentlyFailed = true;  // ANTS-1152
         emit sessionFailed(QStringLiteral(
             "xdg-desktop-portal service is not registered on the session bus"));
         return;
@@ -182,6 +197,7 @@ void GlobalShortcutsPortal::createSession() {
                 m_sessionPending = false;
                 detachResponseSlots(m_createSessionReqPath);
                 m_createSessionReqPath.clear();
+                m_permanentlyFailed = true;  // ANTS-1152
                 emit sessionFailed(r.error().message());
             }
             // Success path: wait for onCreateSessionResponse.
@@ -195,11 +211,13 @@ void GlobalShortcutsPortal::onCreateSessionResponse(uint response,
     m_sessionPending = false;
 
     if (response != 0) {
+        m_permanentlyFailed = true;  // ANTS-1152
         emit sessionFailed(QStringLiteral(
             "CreateSession rejected (response code %1)").arg(response));
         return;
     }
     if (!results.contains(QStringLiteral("session_handle"))) {
+        m_permanentlyFailed = true;  // ANTS-1152
         emit sessionFailed(QStringLiteral(
             "CreateSession response missing session_handle"));
         return;
@@ -282,6 +300,7 @@ void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
         // should treat it as a permanent state and not retry.
         m_pending.clear();
         m_sessionHandle.clear();
+        m_permanentlyFailed = true;  // ANTS-1152
         emit sessionFailed(QStringLiteral(
             "BindShortcuts rejected (response code %1)").arg(response));
         return;
@@ -290,6 +309,14 @@ void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
     // shortcut fires. Nothing more to do here.
 }
 
+// ANTS-1142 audit-fold-in: cppcheck flagged shortcutId as
+// passedByValue. Reverted — QString is copy-on-write (atomic
+// refcount bump on copy), and Qt's old-style SLOT() macro
+// signature-matches by exact type string at connect time.
+// Changing to const QString & would silently break the connect
+// at globalshortcutsportal.cpp:219. Cppcheck false-positive
+// class; suppress in-line.
+// cppcheck-suppress passedByValue
 void GlobalShortcutsPortal::onActivatedSignal(QDBusObjectPath sessionHandle,
                                               QString shortcutId,
                                               qulonglong timestamp,

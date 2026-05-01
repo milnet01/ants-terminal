@@ -3670,6 +3670,12 @@ void AuditDialog::cancelAudit() {
     // 3 of 28 checks, producing a noise drop on the next
     // run's trend line — opposite of what trends are for.
     m_snapshotPersisted = true;
+    // ANTS-1136 (revalidation fold-in): also flush rule-quality
+    // fires here so a cancel-then-kill doesn't lose the records
+    // accumulated by checks that completed before cancel. The
+    // runNextCheck cycle-completion flush only covers clean
+    // completion.
+    if (m_qualityTracker) m_qualityTracker->save();
     // Render whatever completed + restore the UI to the idle state.
     renderResults();
     m_runBtn->setEnabled(true);
@@ -3747,7 +3753,12 @@ void AuditDialog::runNextCheck() {
             // deref if the dialog itself was closed.)
             if (m_cancelled) return;
             const QString output = runner(projectPath);
-            if (m_cancelled) return;
+            // ANTS-1136 audit-fold-in: cppcheck flagged the
+            // second m_cancelled check as identicalConditionAfter-
+            // EarlyExit (always false here — there's no path
+            // between the two reads that could mutate
+            // m_cancelled, since the runner is synchronous and
+            // member access doesn't fire signals). Removed.
             handleCheckOutput(output);
         });
         return;

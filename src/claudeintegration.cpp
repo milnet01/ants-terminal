@@ -12,7 +12,10 @@
 #include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QSet>
+#include <QTimer>
 #include <QCoreApplication>
+
+#include <sys/socket.h>
 
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
     // Poll for Claude Code process every 2 seconds. This is only for
@@ -705,6 +708,36 @@ void ClaudeIntegration::stopHookServer() {
 void ClaudeIntegration::onHookConnection() {
     while (m_hookServer->hasPendingConnections()) {
         QLocalSocket *socket = m_hookServer->nextPendingConnection();
+        // ANTS-1151 — extend the SO_PEERCRED + idle-timeout pattern
+        // from RemoteControl::onNewConnection to the Claude hook
+        // socket. UserAccessOption + safeToUnlinkLocalSocket
+        // already cover the file-side guarantees, but the peer
+        // side needs explicit getsockopt(SO_PEERCRED) — a
+        // same-UID-but-different-process attacker (e.g. a
+        // malicious browser plugin) could otherwise inject hook
+        // events shaped like processHookEvent consumes.
+        const qintptr fd = socket->socketDescriptor();
+        if (fd >= 0) {
+            struct ucred cred{};
+            socklen_t len = sizeof(cred);
+            if (::getsockopt(static_cast<int>(fd), SOL_SOCKET,
+                             SO_PEERCRED, &cred, &len) != 0 ||
+                cred.uid != ::getuid()) {
+                socket->disconnectFromServer();
+                socket->deleteLater();
+                continue;
+            }
+        }
+        // ANTS-1151 — slow-loris defence. A peer that connects
+        // and never sends bytes (or never closes) used to hold a
+        // QLocalSocket forever. 5 s idle timeout matches
+        // RemoteControl.
+        QTimer *idleTimer = new QTimer(socket);
+        idleTimer->setSingleShot(true);
+        idleTimer->setInterval(5000);
+        connect(idleTimer, &QTimer::timeout, socket,
+                [socket]() { socket->abort(); });
+        idleTimer->start();
         // Buffer incoming data — readyRead may fire with partial JSON
         socket->setProperty("_buf", QByteArray());
         connect(socket, &QLocalSocket::readyRead, this, [socket]() {
@@ -828,6 +861,28 @@ void ClaudeIntegration::setEnvironmentProvider(std::function<QString()> provider
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
+        // ANTS-1151 — same SO_PEERCRED + idle-timeout pattern as
+        // onHookConnection. MCP socket carries higher-leverage
+        // verbs (filesystem reads, git status, environment),
+        // peer-cred check is more important here.
+        const qintptr fd = socket->socketDescriptor();
+        if (fd >= 0) {
+            struct ucred cred{};
+            socklen_t len = sizeof(cred);
+            if (::getsockopt(static_cast<int>(fd), SOL_SOCKET,
+                             SO_PEERCRED, &cred, &len) != 0 ||
+                cred.uid != ::getuid()) {
+                socket->disconnectFromServer();
+                socket->deleteLater();
+                continue;
+            }
+        }
+        QTimer *idleTimer = new QTimer(socket);
+        idleTimer->setSingleShot(true);
+        idleTimer->setInterval(5000);
+        connect(idleTimer, &QTimer::timeout, socket,
+                [socket]() { socket->abort(); });
+        idleTimer->start();
         // Buffer incoming data — readyRead may fire with partial JSON.
         // Try to parse on each readyRead; process once valid JSON is received.
         socket->setProperty("_buf", QByteArray());

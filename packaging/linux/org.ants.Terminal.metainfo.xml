@@ -103,6 +103,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.71" date="2026-05-01">
+      <description>
+        <p>Bundle G post-revalidation closures. ANTS-1151 (Hook + MCP socket SO_PEERCRED + idle timeout — symmetric to ANTS-1132's remote-control hardening); ANTS-1152 (GlobalShortcutsPortal permanent-failure latch — enforces the terminal-per-process contract that ANTS-1142 H-1's first-failure clear had documented but not implemented); ANTS-1136 cancel-path RuleQualityTracker flush; ANTS-1134 modifier-only keypress guard extended to CapsLock / NumLock / Super / Hyper; static-analysis closures (cppcheck warning + cppcheck false-positive suppression + shellcheck SC1087 fixes).</p>
+      </description>
+    </release>
     <release version="0.7.70" date="2026-05-01">
       <description>
         <p>Bundle G Tier 2 heavy-items closeout. ANTS-1135 (post-fork setenv signal-safety: pre-fork envp build + execle in child, replacing the prior execlp+setenv-loop pattern that was not on POSIX async-signal-safe list); ANTS-1133 partial (CSI Pn I / Z / ` — CHT / CBT / HPA verbs added on top of REP from 0.7.69); ANTS-1139 partial (markdown bold rendered, tables render as &lt;table&gt; not &lt;pre&gt;); ANTS-1140 partial (reverseTopLevelSections cache).</p>

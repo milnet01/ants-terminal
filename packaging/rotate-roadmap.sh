@@ -70,7 +70,7 @@ fi
 # in `$CLOSED` must be regex-escaped so `## 0.7` doesn't accidentally
 # match `## 0X7` or `## 027` should the version ever stretch wider.
 ESCAPED=$(printf '%s' "$CLOSED" | sed 's/\./\\\\./g')
-START_LINE=$(awk -v pat="^## $ESCAPED[. ]" '
+START_LINE=$(awk -v pat="^## ${ESCAPED}[. ]" '
     $0 ~ pat { print NR; exit }
 ' "$ROADMAP")
 
@@ -81,7 +81,7 @@ fi
 
 # Walk forward to the next "## " heading that does NOT begin with the
 # closed-minor prefix. That's the end of the rotated block (exclusive).
-END_LINE=$(awk -v start="$START_LINE" -v pat="^## $ESCAPED[. ]" '
+END_LINE=$(awk -v start="$START_LINE" -v pat="^## ${ESCAPED}[. ]" '
     NR > start && /^## / && $0 !~ pat { print NR; exit }
 ' "$ROADMAP")
 
