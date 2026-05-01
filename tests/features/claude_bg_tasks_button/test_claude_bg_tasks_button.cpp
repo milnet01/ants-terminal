@@ -31,6 +31,12 @@
 #ifndef SRC_CLAUDE_INTEGRATION_H_PATH
 #error "SRC_CLAUDE_INTEGRATION_H_PATH compile definition required"
 #endif
+// ANTS-1146 — refreshBgTasksButton + the bg-tasks button construction
+// + clicked-connect all moved into ClaudeStatusBarController; this
+// test re-points its INV-5/6/11(c)/12(c) checks at the new TU.
+#ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
+#error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
+#endif
 
 static std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -63,6 +69,7 @@ int main() {
     const std::string cml    = slurp(SRC_CMAKELISTS_PATH);
     const std::string cicpp  = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string cih    = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string csw    = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -108,10 +115,11 @@ int main() {
     }
 
     // INV-5: status-bar button hidden when no tasks running.
-    const std::string body = functionBody(mw,
-        "void MainWindow::refreshBgTasksButton()");
+    // ANTS-1146 — function moved to ClaudeStatusBarController.
+    const std::string body = functionBody(csw,
+        "void ClaudeStatusBarController::refreshBgTasksButton()");
     if (body.empty()) {
-        fail("INV-5: cannot locate MainWindow::refreshBgTasksButton");
+        fail("INV-5: cannot locate ClaudeStatusBarController::refreshBgTasksButton in claudestatuswidgets.cpp");
     } else {
         std::regex hideGuard(
             R"(if\s*\(\s*running\s*<=\s*0\s*\)[^}]*?->hide\s*\(\s*\))");
@@ -142,14 +150,28 @@ int main() {
             fail("INV-6: showBgTasksDialog must call `dlg->show()`");
         }
     }
-    // The signal-connect path:
-    //   connect(m_claudeBgTasksBtn, &QPushButton::clicked,
-    //           this, &MainWindow::showBgTasksDialog);
+    // The signal-connect path. ANTS-1146 — the click is now relayed
+    // by ClaudeStatusBarController::bgTasksClicked, which MainWindow
+    // connects to its showBgTasksDialog slot (so the user-facing
+    // contract survives byte-for-byte). The clicked → bgTasksClicked
+    // hop lives in claudestatuswidgets.cpp's ctor; the
+    // bgTasksClicked → showBgTasksDialog hop lives in mainwindow.cpp's
+    // setupStatusBarChrome.
+    std::regex btnRelayInController(
+        R"(connect\s*\(\s*m_bgTasksBtn[^;]*ClaudeStatusBarController::bgTasksClicked\s*\))");
+    if (!std::regex_search(csw, btnRelayInController)) {
+        fail("INV-6: claudestatuswidgets.cpp must connect "
+             "m_bgTasksBtn::clicked → ClaudeStatusBarController::"
+             "bgTasksClicked — the relay that lets MainWindow act on "
+             "the click");
+    }
     std::regex btnConnect(
-        R"(connect\s*\(\s*m_claudeBgTasksBtn[^;]*showBgTasksDialog\s*\))");
+        R"(connect\s*\(\s*m_claudeStatusBarController[^;]*ClaudeStatusBarController::bgTasksClicked[^;]*MainWindow::showBgTasksDialog\s*\))");
     if (!std::regex_search(mw, btnConnect)) {
-        fail("INV-6: m_claudeBgTasksBtn must be `connect`-ed to "
-             "MainWindow::showBgTasksDialog");
+        fail("INV-6: mainwindow.cpp must `connect` "
+             "m_claudeStatusBarController::bgTasksClicked → "
+             "MainWindow::showBgTasksDialog — without this the click "
+             "is a no-op");
     }
 
     // INV-7: dialog rebuild reuses scroll-preservation pattern.
@@ -276,16 +298,20 @@ int main() {
                  "walk up the project tree — Claude may have been "
                  "launched from a parent of the shell's current cwd");
         }
-        // (c) MainWindow::refreshBgTasksButton must source the cwd
-        // from focusedTerminal()->shellCwd() and pass it through.
+        // (c) ClaudeStatusBarController::refreshBgTasksButton must
+        // source the cwd via the focused-terminal provider and pass
+        // it through to activeSessionPath. ANTS-1146 — function moved
+        // to claudestatuswidgets.cpp; the focusedTerminal() direct
+        // call became m_focusedTerminalProvider() (the controller
+        // can't reach into MainWindow's tab plumbing directly).
         std::regex refreshScoped(
-            R"(focusedTerminal[^;]*shellCwd[\s\S]*?activeSessionPath\s*\([^)]*cwd[^)]*\))");
-        const std::string refreshBody = functionBody(mw,
-            "void MainWindow::refreshBgTasksButton()");
+            R"(m_focusedTerminalProvider[\s\S]*?shellCwd[\s\S]*?activeSessionPath\s*\([^)]*cwd[^)]*\))");
+        const std::string refreshBody = functionBody(csw,
+            "void ClaudeStatusBarController::refreshBgTasksButton()");
         if (refreshBody.empty() ||
                 !std::regex_search(refreshBody, refreshScoped)) {
             fail("INV-11(c): refreshBgTasksButton must read the "
-                 "active tab's cwd via `focusedTerminal()->shellCwd()` "
+                 "active tab's cwd via the focusedTerminal provider "
                  "AND pass it to `activeSessionPath(cwd)` — without "
                  "this wiring the global-newest fallback fires and "
                  "the dialog leaks other projects' bg-tasks");
@@ -347,10 +373,12 @@ int main() {
         }
     }
     {
-        const std::string body = functionBody(mw,
-            "void MainWindow::refreshBgTasksButton()");
+        // ANTS-1146 — function moved to controller; member name went
+        // from m_claudeBgTasks → m_bgTasks at the same time.
+        const std::string body = functionBody(csw,
+            "void ClaudeStatusBarController::refreshBgTasksButton()");
         if (body.empty()) {
-            fail("INV-12(c): refreshBgTasksButton body not found");
+            fail("INV-12(c): refreshBgTasksButton body not found in claudestatuswidgets.cpp");
         } else {
             // 0.7.55 — the 2 s tick now calls sweepLiveness() (cheap),
             // not rescan() (16 MiB reparse). The full rescan() runs on
@@ -358,9 +386,9 @@ int main() {
             // transcript-changed signal, so a same-path tick only
             // needs the mtime sweep.
             const bool callsSweep =
-                body.find("m_claudeBgTasks->sweepLiveness()") != std::string::npos;
+                body.find("m_bgTasks->sweepLiveness()") != std::string::npos;
             const bool callsRescan =
-                body.find("m_claudeBgTasks->rescan()") != std::string::npos;
+                body.find("m_bgTasks->rescan()") != std::string::npos;
             if (!callsSweep && !callsRescan) {
                 fail("INV-12(c): refreshBgTasksButton must call either "
                      "sweepLiveness() (preferred — cheap mtime walk) "
@@ -370,11 +398,17 @@ int main() {
                      "the periodic liveness sweep on its own");
             }
         }
-        if (mw.find("&MainWindow::refreshBgTasksButton") == std::string::npos) {
+        // ANTS-1146 — connect target changed from
+        //   &MainWindow::refreshBgTasksButton
+        // to
+        //   &ClaudeStatusBarController::refreshBgTasksButton
+        // (the status timer now drives the controller's slot directly).
+        if (mw.find("&ClaudeStatusBarController::refreshBgTasksButton") == std::string::npos) {
             fail("INV-12(c): the 2 s status timer must connect to "
-                 "MainWindow::refreshBgTasksButton — without periodic "
-                 "ticks the liveness sweep never re-runs while the "
-                 "transcript is silent and the chip stays stale");
+                 "ClaudeStatusBarController::refreshBgTasksButton — "
+                 "without periodic ticks the liveness sweep never "
+                 "re-runs while the transcript is silent and the chip "
+                 "stays stale");
         }
     }
 

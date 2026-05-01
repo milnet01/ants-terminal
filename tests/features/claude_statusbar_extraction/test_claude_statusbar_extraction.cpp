@@ -303,13 +303,18 @@ int main() {
             "mainwindow.cpp still defines "
             "`void MainWindow::applyClaudeStatusLabel(` — body must "
             "have moved into ClaudeStatusBarController::apply");
+    // Two call sites are expected: the initial theme apply in
+    // setupStatusBarChrome's ctor sequence, and the central restyle
+    // helper at the previous line 3143. Spec said "exactly one" but
+    // missed the setup-time initial apply (caught at first ctest run).
     const std::size_t applyThemeCalls =
         countOccurrences(mw, "m_claudeStatusBarController->applyTheme(");
-    if (applyThemeCalls != 1) {
+    if (applyThemeCalls != 2) {
         return fail("INV-8",
-            "mainwindow.cpp must contain exactly one "
-            "`m_claudeStatusBarController->applyTheme(` call (the "
-            "central restyle helper); found " +
+            "mainwindow.cpp must contain exactly two "
+            "`m_claudeStatusBarController->applyTheme(` calls — one "
+            "in setupStatusBarChrome (initial apply) and one in the "
+            "central restyle helper; found " +
             std::to_string(applyThemeCalls));
     }
 

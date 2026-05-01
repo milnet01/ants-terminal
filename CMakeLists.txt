@@ -532,6 +532,7 @@ if(ANTS_TESTS)
     )
     target_compile_definitions(test_allowlist_add PRIVATE
         SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_CLAUDESTATUSWIDGETS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.cpp"
     )
     add_test(NAME allowlist_add COMMAND test_allowlist_add)
     set_tests_properties(allowlist_add PROPERTIES
@@ -2163,6 +2164,7 @@ if(ANTS_TESTS)
         SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeintegration.cpp"
         SRC_CLAUDE_INTEGRATION_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeintegration.h"
+        SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.cpp"
     )
     add_test(NAME claude_bg_tasks_button
         COMMAND test_claude_bg_tasks_button)
@@ -2208,6 +2210,7 @@ if(ANTS_TESTS)
         COLOREDTABBAR_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.cpp"
         MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
         CLAUDETABTRACKER_H="${CMAKE_CURRENT_SOURCE_DIR}/src/claudetabtracker.h"
+        CLAUDESTATUSWIDGETS_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.cpp"
     )
     add_test(NAME claude_state_dot_palette
         COMMAND test_claude_state_dot_palette)

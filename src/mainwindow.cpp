@@ -20,6 +20,7 @@
 #include "claudebgtasksdialog.h"
 #include "roadmapdialog.h"
 #include "claudeintegration.h"
+#include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
 #include "claudeprojects.h"
 #include "claudetranscript.h"
@@ -554,7 +555,7 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // the null-guarded m_claudeIntegration->setShellPid() call in newTab()
     // is a no-op for the first tab and polling never starts (so the
     // Claude status widget never appears in the status bar).
-    setupClaudeIntegration();
+    setupStatusBarChrome();
 
     // Create first tab (restoreSessions may replace it if there are saved sessions)
     newTab();
@@ -678,7 +679,7 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // /tmp/.../<id>.output) never re-runs while the transcript is
     // silent, leaving a phantom "Background Tasks (12)" chip when
     // every task has actually finished. User report 2026-04-27.
-    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshBgTasksButton);
+    connect(m_statusTimer, &QTimer::timeout, m_claudeStatusBarController, &ClaudeStatusBarController::refreshBgTasksButton);
     m_statusTimer->start();
 
     // Main-thread stall detector (ROADMAP § 0.8.0 "Terminal throughput
@@ -2115,12 +2116,10 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
 
     // Error detection — show failed command in status bar
     connect(terminal, &TerminalWidget::commandFailed, this, [this](int exitCode, const QString &output) {
-        if (m_claudeErrorLabel) {
-            m_claudeErrorLabel->setText(QString("Exit %1").arg(exitCode));
-            m_claudeErrorLabel->setToolTip(output.left(500));
-            m_claudeErrorLabel->show();
-            QTimer::singleShot(10000, m_claudeErrorLabel, &QWidget::hide);
-        }
+        if (m_claudeStatusBarController)
+            m_claudeStatusBarController->setError(QString("Exit %1").arg(exitCode),
+                                                  output.left(500),
+                                                  10000);
     });
 
     // Claude Code permission detection → status bar notification
@@ -2166,8 +2165,8 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
             m_claudeTabTracker->markShellAwaitingInput(scrollScanAwaitingPid, true);
 
         auto clearPromptActive = [this, scrollScanAwaitingPid]() {
-            m_claudePromptActive = false;
-            applyClaudeStatusLabel();
+            if (m_claudeStatusBarController)
+                m_claudeStatusBarController->setPromptActive(false);
             if (m_claudeTabTracker && scrollScanAwaitingPid > 0)
                 m_claudeTabTracker->markShellAwaitingInput(scrollScanAwaitingPid, false);
         };
@@ -2182,8 +2181,8 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         // 0.6.27 — mark prompt active so the Claude status label switches
         // to "Claude: prompting". Useful when the user is scrolled up in
         // the terminal history and can't see the prompt directly.
-        m_claudePromptActive = true;
-        applyClaudeStatusLabel();
+        if (m_claudeStatusBarController)
+            m_claudeStatusBarController->setPromptActive(true);
 
         // Primary retraction: terminal scrollback scanner notices the
         // footer is gone. Now debounced against transient TUI repaints
@@ -3140,7 +3139,8 @@ void MainWindow::applyTheme(const QString &name) {
         m_statusProcess->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[4].name(), statusStyle));
 
     // Restyle Claude integration widgets
-    updateClaudeThemeColors();
+    if (m_claudeStatusBarController)
+        m_claudeStatusBarController->applyTheme(m_currentTheme);
 
     // Apply colors + window opacity to ALL terminal widgets
     double opacity = m_config.opacity();
@@ -3550,344 +3550,49 @@ void MainWindow::showEvent(QShowEvent *event) {
     }
 }
 
-// 0.6.27 — central renderer for the "Claude: …" status-bar label. Kept
-// as a single method so the permission-prompt overlay ("Claude:
-// prompting") and the underlying ClaudeIntegration state ("Claude: idle
-// / thinking / tool-use / compacting") share one code path and stay in
-// sync. User rationale (2026-04-15): when scrolled up in scrollback
-// reading history, the user can't see Claude's live prompt — the
-// status-bar label is the only at-a-glance signal that a response is
-// waiting on them, so "idle" misrepresents the state.
-void MainWindow::applyClaudeStatusLabel() {
-    if (!m_claudeStatusLabel) return;
-    const QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
-
-    // NotRunning hides both label and the context progress bar regardless
-    // of prompt state — no Claude process = nothing to announce.
-    if (m_claudeLastState == ClaudeState::NotRunning) {
-        m_claudeStatusLabel->hide();
-        if (m_claudeContextBar) m_claudeContextBar->hide();
-        return;
-    }
-
-    QString text;
-    ClaudeTabIndicator::Glyph glyph = ClaudeTabIndicator::Glyph::Idle;
-
-    // Status text vocabulary (user spec 2026-04-18):
-    //   idle / thinking / prompting / bash / reading a file / planning /
-    //   auditing / compacting / etc.
-    // Colour comes from the unified Claude state palette
-    // (`ClaudeTabIndicator::color`) so the status-bar text matches the
-    // per-tab dot one-for-one — see
-    // `tests/features/claude_state_dot_palette/spec.md`.
-    if (m_claudePromptActive) {
-        // Prompt-active overrides the base state — a waiting permission
-        // prompt is what the user needs to see.
-        text = QStringLiteral("Claude: prompting");
-        glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
-    } else if (m_claudePlanMode) {
-        // Plan mode is a user-selected interaction mode (Shift+Tab),
-        // orthogonal to the transcript-derived state. While in plan mode
-        // the assistant can think/read but cannot edit or run commands —
-        // "planning" is the honest label.
-        text = QStringLiteral("Claude: planning");
-        glyph = ClaudeTabIndicator::Glyph::Planning;
-    } else if (m_claudeAuditing) {
-        // Auditing is detected from a recent user message that invoked
-        // the /audit skill in the transcript. Lives beside state because
-        // the user can audit during tool use, thinking, or idle — the
-        // skill's lifecycle is not the same as any single tool.
-        text = QStringLiteral("Claude: auditing");
-        glyph = ClaudeTabIndicator::Glyph::Auditing;
-    } else {
-        switch (m_claudeLastState) {
-        case ClaudeState::NotRunning:
-            return;  // handled above
-        case ClaudeState::Idle:
-            text = QStringLiteral("Claude: idle");
-            glyph = ClaudeTabIndicator::Glyph::Idle;
-            break;
-        case ClaudeState::Thinking:
-            text = QStringLiteral("Claude: thinking");
-            glyph = ClaudeTabIndicator::Glyph::Thinking;
-            break;
-        case ClaudeState::ToolUse: {
-            // Map tool name → friendly vocabulary per user spec. Unknown
-            // tools fall through to the raw name so MCP / custom tools
-            // remain legible. Comparison is case-insensitive because
-            // transcript tool names and hook tool names have historically
-            // differed in casing across Claude Code releases.
-            const QString t = m_claudeLastDetail.trimmed();
-            const QString lower = t.toLower();
-            if (lower == QLatin1String("bash")) {
-                text = QStringLiteral("Claude: bash");
-                glyph = ClaudeTabIndicator::Glyph::Bash;
-            } else {
-                if (lower == QLatin1String("read")) {
-                    text = QStringLiteral("Claude: reading a file");
-                } else if (lower == QLatin1String("edit") ||
-                           lower == QLatin1String("write") ||
-                           lower == QLatin1String("notebookedit")) {
-                    text = QStringLiteral("Claude: editing");
-                } else if (lower == QLatin1String("grep") ||
-                           lower == QLatin1String("glob")) {
-                    text = QStringLiteral("Claude: searching");
-                } else if (lower == QLatin1String("webfetch") ||
-                           lower == QLatin1String("websearch")) {
-                    text = QStringLiteral("Claude: browsing");
-                } else if (lower == QLatin1String("task") ||
-                           lower == QLatin1String("agent")) {
-                    text = QStringLiteral("Claude: delegating");
-                } else if (t.isEmpty()) {
-                    text = QStringLiteral("Claude: thinking");
-                } else {
-                    text = QStringLiteral("Claude: %1").arg(t);
-                }
-                glyph = ClaudeTabIndicator::Glyph::ToolUse;
-            }
-            break;
-        }
-        case ClaudeState::Compacting:
-            text = QStringLiteral("Claude: compacting");
-            glyph = ClaudeTabIndicator::Glyph::Compacting;
-            break;
-        }
-    }
-
-    const QColor color = ClaudeTabIndicator::color(glyph);
-    m_claudeStatusLabel->setText(text);
-    m_claudeStatusLabel->setStyleSheet(
-        QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));
-    // 0.7.54 (2026-04-27 indie-review WCAG) — keep the accessible
-    // description in sync with the visible state. Screen readers
-    // announce accessibleName + accessibleDescription on focus, so
-    // colour-only state encoding is no longer the sole signal.
-    m_claudeStatusLabel->setAccessibleDescription(text);
-    m_claudeStatusLabel->show();
-}
-
-void MainWindow::updateClaudeThemeColors() {
-    const Theme &th = Themes::byName(m_currentTheme);
-    QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
-    if (m_claudeStatusLabel)
-        m_claudeStatusLabel->setStyleSheet(QStringLiteral("color: %1; %2").arg(th.textSecondary.name(), statusStyle));
-    if (m_claudeContextBar)
-        m_claudeContextBar->setStyleSheet(
-            QStringLiteral("QProgressBar { border: 1px solid %1; border-radius: 3px; background: %2; font-size: 10px; color: %3; }"
-                    "QProgressBar::chunk { background: %4; border-radius: 2px; }")
-                .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), th.ansi[2].name()));
-    if (m_claudeReviewBtn) {
-        // 0.6.26 — side-by-side with the "Add to allowlist" button in the
-        // status bar, the custom-styled Review Changes button looked wildly
-        // out of place (see screenshot attached to the original report).
-        // "Add to allowlist" is created at mainwindow.cpp:1234 with *no*
-        // stylesheet, so it inherits the global QPushButton rule from
-        // mainwindow.cpp:1625-1630 — that's the target styling. Stop
-        // over-styling the enabled state: reset the font to Qt's default,
-        // clear any fixedHeight so the size-hint matches its sibling.
-        //
-        // Disabled state — the button stays visible on clean git repos so
-        // the user still sees "Claude edited something" (see
-        // refreshReviewButton at mainwindow.cpp:~2763). The visual must
-        // clearly read as non-actionable without shouting. Three layered
-        // cues: italic text (typographic "this is passive"), dashed border
-        // (borrowed from common desktop-toolkit conventions for disabled
-        // chip buttons), and textSecondary on bgSecondary (muted palette).
-        // Only the :disabled selector is set on the widget, so the global
-        // QPushButton enabled/hover/pressed rules still apply for the
-        // enabled state — no duplication, no drift.
-        //
-        // Palette force-set: survives the "dim on Gruvbox" contrast issue
-        // on the enabled state regardless of how Qt composites the text
-        // rect on a statusbar-parented widget (pre-0.6.26 this was
-        // rendered dim even with the stylesheet's color property set —
-        // root cause: platform style composited a reduced-alpha overlay).
-        m_claudeReviewBtn->setFont(QFont());
-        m_claudeReviewBtn->setMinimumHeight(0);
-        m_claudeReviewBtn->setMaximumHeight(QWIDGETSIZE_MAX);
-        m_claudeReviewBtn->setStyleSheet(QStringLiteral(
-            "QPushButton:disabled {"
-            "  color: %1;"
-            "  background-color: %2;"
-            "  border: 1px dashed %3;"
-            "  font-style: italic;"
-            "}").arg(th.textSecondary.name(),
-                     th.bgSecondary.name(),
-                     th.border.name()));
-
-        QPalette pal = m_claudeReviewBtn->palette();
-        pal.setColor(QPalette::Active,   QPalette::ButtonText, th.textPrimary);
-        pal.setColor(QPalette::Inactive, QPalette::ButtonText, th.textPrimary);
-        pal.setColor(QPalette::Disabled, QPalette::ButtonText, th.textSecondary);
-        pal.setColor(QPalette::Active,   QPalette::WindowText, th.textPrimary);
-        pal.setColor(QPalette::Inactive, QPalette::WindowText, th.textPrimary);
-        pal.setColor(QPalette::Disabled, QPalette::WindowText, th.textSecondary);
-        m_claudeReviewBtn->setPalette(pal);
-    }
-    if (m_claudeErrorLabel)
-        m_claudeErrorLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 4px; font-size: 11px;").arg(th.ansi[1].name()));
-}
-
-void MainWindow::setupClaudeIntegration() {
+// ANTS-1146 — formerly setupClaudeIntegration. Constructs
+// ClaudeIntegration + ClaudeTabTracker (services owned by
+// MainWindow), the ClaudeStatusBarController (chrome + per-session
+// render state), wires the controller's signals to MainWindow's
+// existing slots, then constructs the three orphan chrome items
+// (Roadmap button, update-available QAction, 5 s startup
+// update-check) that landed in this function for historical
+// convenience and remain here as the status-bar chrome remainder.
+// MCP-provider plumbing for ClaudeIntegration is split into
+// setupClaudeMcpProviders below.
+void MainWindow::setupStatusBarChrome() {
     m_claudeIntegration = new ClaudeIntegration(this);
+    m_claudeTabTracker  = new ClaudeTabTracker(this);
 
-    // Per-tab activity tracker. Always constructed (its polling cost is
-    // trivial: one /proc read per tracked shell every 2 s, zero when
-    // no shell has Claude). The user-facing toggle
-    // claude_tab_status_indicator gates the glyph rendering at the
-    // provider level — flipping it off doesn't destroy the tracker, it
-    // just makes the provider return Glyph::None until the toggle
-    // flips back on. That way live config reloads take effect on the
-    // next paint without any construct/destruct dance.
-    m_claudeTabTracker = new ClaudeTabTracker(this);
-    {
-        // Provider: look up the tab's active terminal, read its shell
-        // PID, and translate the tracker's per-shell state into a
-        // Glyph. The `awaitingInput` flag short-circuits whatever the
-        // transcript parser said because a pending prompt is what the
-        // user most needs to notice.
-        m_coloredTabBar->setClaudeIndicatorProvider([this](int tabIndex) {
-            ClaudeTabIndicator ind;
-            if (!m_claudeTabTracker) return ind;
-            if (!m_config.claudeTabStatusIndicator()) return ind;  // toggle off
-            auto *term = terminalAtTab(tabIndex);
-            if (!term) return ind;
-            const pid_t pid = term->shellPid();
-            if (pid <= 0) return ind;
-            const ClaudeTabTracker::ShellState s = m_claudeTabTracker->shellState(pid);
-            if (s.awaitingInput) {
-                ind.glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
-                return ind;
-            }
-            if (s.planMode && s.state != ClaudeState::NotRunning) {
-                ind.glyph = ClaudeTabIndicator::Glyph::Planning;
-                return ind;
-            }
-            if (s.auditing && s.state != ClaudeState::NotRunning) {
-                ind.glyph = ClaudeTabIndicator::Glyph::Auditing;
-                return ind;
-            }
-            switch (s.state) {
-                case ClaudeState::NotRunning:
-                    ind.glyph = ClaudeTabIndicator::Glyph::None; break;
-                case ClaudeState::Idle:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Idle; break;
-                case ClaudeState::Thinking:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Thinking; break;
-                case ClaudeState::ToolUse:
-                    // Bash is the tool with the most user-relevant runtime
-                    // (long-running commands, compilations, greps over
-                    // large repos) — split it out so the glyph carries
-                    // that signal at a glance.
-                    ind.glyph = (s.tool == QLatin1String("Bash"))
-                        ? ClaudeTabIndicator::Glyph::Bash
-                        : ClaudeTabIndicator::Glyph::ToolUse;
-                    break;
-                case ClaudeState::Compacting:
-                    ind.glyph = ClaudeTabIndicator::Glyph::Compacting; break;
-            }
-            return ind;
-        });
-        // Repaint the tab bar whenever any shell's state transitions.
-        // Cheap — QWidget::update() coalesces to one paint per event
-        // loop iteration, and paintEvent only queries the tracker once
-        // per tab. Also refresh the hover tooltip for the owning tab so
-        // the user can hover-to-disambiguate ("Claude: Bash" vs
-        // "Claude: reading a file") without opening the tab.
-        connect(m_claudeTabTracker, &ClaudeTabTracker::shellStateChanged,
-                this, [this](pid_t shellPid) {
-            if (m_coloredTabBar) m_coloredTabBar->update();
-            if (!m_tabWidget) return;
-            const int n = m_tabWidget->count();
-            for (int i = 0; i < n; ++i) {
-                auto *term = terminalAtTab(i);
-                if (!term || term->shellPid() != shellPid) continue;
-                const auto st = m_claudeTabTracker->shellState(shellPid);
-                QString tip;
-                if (st.awaitingInput) {
-                    tip = tr("Claude: awaiting input");
-                } else if (st.planMode && st.state != ClaudeState::NotRunning) {
-                    tip = tr("Claude: planning");
-                } else if (st.auditing && st.state != ClaudeState::NotRunning) {
-                    tip = tr("Claude: auditing");
-                } else switch (st.state) {
-                    case ClaudeState::NotRunning: tip.clear(); break;
-                    case ClaudeState::Idle:       tip = tr("Claude: idle"); break;
-                    case ClaudeState::Thinking:   tip = tr("Claude: thinking…"); break;
-                    case ClaudeState::Compacting: tip = tr("Claude: compacting…"); break;
-                    case ClaudeState::ToolUse:
-                        tip = st.tool.isEmpty()
-                            ? tr("Claude: tool use")
-                            : tr("Claude: %1").arg(st.tool);
-                        break;
-                }
-                m_tabWidget->setTabToolTip(i, tip);
-                break;
-            }
-        });
-    }
+    m_claudeStatusBarController =
+        new ClaudeStatusBarController(statusBar(), this);
+    m_claudeStatusBarController->setCurrentTerminalProvider(
+        [this]{ return currentTerminal(); });
+    m_claudeStatusBarController->setFocusedTerminalProvider(
+        [this]{ return focusedTerminal(); });
+    m_claudeStatusBarController->setTerminalAtTabProvider(
+        [this](int i){ return terminalAtTab(i); });
+    m_claudeStatusBarController->setTabIndicatorEnabledProvider(
+        [this]{ return m_config.claudeTabStatusIndicator(); });
+    m_claudeStatusBarController->attach(
+        m_claudeIntegration, m_claudeTabTracker,
+        m_coloredTabBar, m_tabWidget);
+    m_claudeStatusBarController->applyTheme(m_currentTheme);
 
-    // Status bar indicator for Claude Code state. Plain QLabel with Fixed
-    // horizontal sizePolicy — the vocabulary is a bounded set of short
-    // labels ("Claude: idle", "Claude: thinking...", "Claude: bash",
-    // "Claude: reading a file", "Claude: planning", "Claude: auditing",
-    // "Claude: prompting", "Claude: compacting..."), so the widget can
-    // grow to fit its natural width without ever needing to elide. The
-    // widget is hidden when the tab's shell has no Claude process.
-    m_claudeStatusLabel = new QLabel(this);
-    m_claudeStatusLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    m_claudeStatusLabel->setStyleSheet("color: gray; padding: 0 8px; font-size: 11px;");
-    // 0.7.54 (2026-04-27 indie-review WCAG) — accessible name for the
-    // status-bar Claude session label. The visible text already carries
-    // the state (e.g. "Claude: thinking…"), but screen readers benefit
-    // from a stable accessibleName that doesn't change with the visible
-    // text. The accessibleDescription tracks the live state via
-    // applyClaudeStatusLabel.
-    m_claudeStatusLabel->setAccessibleName(tr("Claude Code session status"));
-    m_claudeStatusLabel->hide();
-    statusBar()->addPermanentWidget(m_claudeStatusLabel);
-
-    // Context window pressure indicator (progress bar)
-    m_claudeContextBar = new QProgressBar(this);
-    m_claudeContextBar->setRange(0, 100);
-    m_claudeContextBar->setValue(0);
-    m_claudeContextBar->setFixedWidth(80);
-    m_claudeContextBar->setFixedHeight(14);
-    m_claudeContextBar->setFormat("%p%");
-    // Styled dynamically by updateClaudeThemeColors()
-    m_claudeContextBar->setToolTip("Claude Code context window usage");
-    m_claudeContextBar->setAccessibleName(tr("Claude Code context window usage"));
-    m_claudeContextBar->hide();
-    statusBar()->addPermanentWidget(m_claudeContextBar);
-
-    // Review Changes button (shown when Claude edits files). Size/height
-    // intentionally left at Qt's default so it matches the sibling
-    // "Add to allowlist" button (mainwindow.cpp:1234) that inherits the
-    // global QPushButton stylesheet. updateClaudeThemeColors() applies the
-    // palette force-set for contrast without adding compact-height
-    // overrides that would re-introduce the size mismatch.
-    m_claudeReviewBtn = new QPushButton("Review Changes", this);
-    // Fixed horizontal sizePolicy — never squeezed for the benefit of
-    // the notification slot. See layout contract at mainwindow.cpp:~320.
-    m_claudeReviewBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    m_claudeReviewBtn->setAccessibleName(tr("Review Claude code changes"));
-    m_claudeReviewBtn->hide();
-    statusBar()->addPermanentWidget(m_claudeReviewBtn);
-    connect(m_claudeReviewBtn, &QPushButton::clicked, this, &MainWindow::showDiffViewer);
-
-    // 0.7.38 — Background tasks button. Sibling to Review Changes; same
-    // size/policy contract. Hidden by default; shown only when the
-    // per-session tracker reports ≥1 background task in the active
-    // Claude Code transcript.
-    m_claudeBgTasks = new ClaudeBgTaskTracker(this);
-    m_claudeBgTasksBtn = new QPushButton(tr("Background Tasks"), this);
-    m_claudeBgTasksBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    m_claudeBgTasksBtn->hide();
-    statusBar()->addPermanentWidget(m_claudeBgTasksBtn);
-    connect(m_claudeBgTasksBtn, &QPushButton::clicked,
+    connect(m_claudeStatusBarController, &ClaudeStatusBarController::reviewClicked,
+            this, &MainWindow::showDiffViewer);
+    connect(m_claudeStatusBarController, &ClaudeStatusBarController::bgTasksClicked,
             this, &MainWindow::showBgTasksDialog);
-    connect(m_claudeBgTasks, &ClaudeBgTaskTracker::tasksChanged,
-            this, &MainWindow::refreshBgTasksButton);
+    connect(m_claudeStatusBarController, &ClaudeStatusBarController::allowlistRequested,
+            this, &MainWindow::openClaudeAllowlistDialog);
+    connect(m_claudeStatusBarController, &ClaudeStatusBarController::reviewButtonShouldRefresh,
+            this, &MainWindow::refreshReviewButton);
+    connect(m_claudeStatusBarController, &ClaudeStatusBarController::statusMessageRequested,
+            this, [this](const QString &t, int ms){ showStatusMessage(t, ms); });
+    connect(m_claudeStatusBarController, &ClaudeStatusBarController::statusMessageCleared,
+            this, &MainWindow::clearStatusMessage);
+
+    setupClaudeMcpProviders();
 
     // 0.7.39 — Roadmap button. Sibling to Background Tasks; same size/
     // policy contract. Hidden until the active tab's cwd is probed and
@@ -3936,242 +3641,14 @@ void MainWindow::setupClaudeIntegration() {
     // 0-arg slot signature.
     QTimer::singleShot(5000, this,
         [this]() { checkForUpdates(/*userInitiated=*/false); });
+}
 
-    // Error indicator label
-    m_claudeErrorLabel = new QLabel(this);
-    // Styled dynamically by updateClaudeThemeColors()
-    m_claudeErrorLabel->hide();
-    statusBar()->addPermanentWidget(m_claudeErrorLabel);
-
-    connect(m_claudeIntegration, &ClaudeIntegration::stateChanged,
-            this, [this](ClaudeState state, const QString &detail) {
-        m_claudeLastState = state;
-        m_claudeLastDetail = detail;
-        applyClaudeStatusLabel();
-    });
-
-    connect(m_claudeIntegration, &ClaudeIntegration::planModeChanged,
-            this, [this](bool active) {
-        m_claudePlanMode = active;
-        applyClaudeStatusLabel();
-    });
-
-    connect(m_claudeIntegration, &ClaudeIntegration::auditingChanged,
-            this, [this](bool active) {
-        m_claudeAuditing = active;
-        applyClaudeStatusLabel();
-    });
-
-    connect(m_claudeIntegration, &ClaudeIntegration::contextUpdated,
-            this, [this](int percent) {
-        // 0.6.26 — contextUpdated(0) is emitted by ClaudeIntegration::setShellPid
-        // on every tab switch as part of the state reset (alongside
-        // stateChanged(NotRunning)). Previously we called show() here
-        // unconditionally, which re-exposed the bar at 0% immediately after
-        // the NotRunning handler had hidden it — so a fresh tab (or a tab
-        // where Claude was never started) still painted a "0%" widget in
-        // the status bar. Treat 0 as "no session / nothing to show" and
-        // hide. The bar only re-appears once Claude emits a real,
-        // non-zero context percentage (claudeintegration.cpp:333-334).
-        if (percent <= 0) {
-            m_claudeContextBar->hide();
-            return;
-        }
-        m_claudeContextBar->setValue(percent);
-        m_claudeContextBar->show();
-        // Color-code: green < 60%, yellow 60-80%, red > 80%
-        const Theme &th = Themes::byName(m_currentTheme);
-        QString chunkColor = th.ansi[2].name();  // green
-        if (percent > 80) chunkColor = th.ansi[1].name();  // red
-        else if (percent > 60) chunkColor = th.ansi[3].name();  // yellow
-        m_claudeContextBar->setStyleSheet(
-            QStringLiteral("QProgressBar { border: 1px solid %1; border-radius: 3px; background: %2; font-size: 10px; color: %3; }"
-                    "QProgressBar::chunk { background: %4; border-radius: 2px; }")
-                .arg(th.border.name(), th.bgSecondary.name(), th.textPrimary.name(), chunkColor));
-        if (percent >= 80) {
-            m_claudeContextBar->setToolTip(
-                QString("Context %1% — consider using /compact").arg(percent));
-        }
-    });
-
-    connect(m_claudeIntegration, &ClaudeIntegration::fileChanged,
-            this, [this](const QString &path) {
-        showStatusMessage(QString("Claude edited: %1").arg(path), 3000);
-        // 0.6.22 — refreshReviewButton decides visibility + enabled state:
-        //   * not a git repo (or no cwd) → hidden entirely
-        //   * git repo with no diff     → visible but disabled
-        //   * git repo with diff        → visible and enabled
-        // This replaces the old unconditional show() which could leave
-        // the button visible in non-git contexts (where clicking it
-        // only produced a "No changes detected" toast).
-        refreshReviewButton();
-    });
-
-    connect(m_claudeIntegration, &ClaudeIntegration::permissionRequested,
-            this, [this](const QString &tool, const QString &input) {
-        QString rawRule = tool;
-        if (!input.isEmpty()) rawRule += "(" + input + ")";
-        // Normalize and generalize to a useful allowlist pattern
-        QString rule = ClaudeAllowlistDialog::normalizeRule(rawRule);
-        QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
-        if (!gen.isEmpty()) rule = gen;
-        showStatusMessage(QString("Claude permission: %1").arg(rule), 0);
-
-        // Dedup: a PermissionRequest hook that arrives while a scroll-scan
-        // permission button is already on screen should not stack a second
-        // button group beside it. Remove any existing "claudeAllowBtn"
-        // widgets (from either path) first — same objectName as the
-        // scroll-scan path so the onTabChanged cleanup catches both.
-        for (auto *w : statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn")))
-            w->deleteLater();
-
-        // Enhanced permission action buttons
-        auto *btnWidget = new QWidget(statusBar());
-        // 0.6.29 — same objectName as the scroll-scan path's button
-        // (see line ~1342) so the tab-switch cleanup in onTabChanged
-        // (line ~1643) removes both. Previously this widget had no
-        // objectName, so switching tabs mid-prompt left a stranded
-        // button group visible on the wrong tab.
-        btnWidget->setObjectName(QStringLiteral("claudeAllowBtn"));
-        // Fixed horizontal sizePolicy — must never be squeezed when
-        // the notification slot is wide. See layout principle at
-        // mainwindow.cpp:~320 (user spec 2026-04-18).
-        btnWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        auto *btnLayout = new QHBoxLayout(btnWidget);
-        btnLayout->setContentsMargins(0, 0, 0, 0);
-        btnLayout->setSpacing(4);
-
-        const Theme &th = Themes::byName(m_currentTheme);
-        auto *allowBtn = new QPushButton("Allow", btnWidget);
-        allowBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-            .arg(th.ansi[2].name(), th.bgPrimary.name()));
-        auto *denyBtn = new QPushButton("Deny", btnWidget);
-        denyBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-            .arg(th.ansi[1].name(), th.bgPrimary.name()));
-        auto *addBtn = new QPushButton("Add to allowlist", btnWidget);
-        addBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-            .arg(th.bgSecondary.name(), th.textPrimary.name()));
-
-        btnLayout->addWidget(allowBtn);
-        btnLayout->addWidget(denyBtn);
-        btnLayout->addWidget(addBtn);
-        statusBar()->addPermanentWidget(btnWidget);
-
-        // Mark prompt active so the Claude status label switches to
-        // "prompting" — matches the scroll-scan path's behavior and
-        // gives the user a second at-a-glance indicator beyond the
-        // button group itself.
-        m_claudePromptActive = true;
-        applyClaudeStatusLabel();
-
-        // Tab-glyph feedback: flag the owning tab's shell as awaiting
-        // input so its tab-bar dot turns loud/orange. The hook server
-        // is a single UDS shared across every Claude in every tab, so
-        // we must route by session_id (captured by ClaudeIntegration
-        // before this slot runs) to find the right shell. Fallback
-        // to the active tab when the session isn't tracked (e.g. the
-        // first prompt before the tracker's poll has noticed the new
-        // Claude child) — the bottom-status-bar already shows
-        // "Claude: prompting" for the active tab, so the glyph
-        // matches that contract when routing fails.
-        pid_t awaitingPid = 0;
-        if (m_claudeTabTracker) {
-            const QString sid = m_claudeIntegration->lastHookSessionId();
-            awaitingPid = m_claudeTabTracker->shellForSessionId(sid);
-            if (awaitingPid == 0) {
-                if (auto *term = currentTerminal()) awaitingPid = term->shellPid();
-            }
-            if (awaitingPid > 0)
-                m_claudeTabTracker->markShellAwaitingInput(awaitingPid, true);
-        }
-
-        auto clearPromptActive = [this, awaitingPid]() {
-            m_claudePromptActive = false;
-            applyClaudeStatusLabel();
-            if (m_claudeTabTracker && awaitingPid > 0)
-                m_claudeTabTracker->markShellAwaitingInput(awaitingPid, false);
-        };
-
-        connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
-            btnWidget->deleteLater();
-            clearStatusMessage();
-            clearPromptActive();
-        });
-        connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
-            btnWidget->deleteLater();
-            clearStatusMessage();
-            clearPromptActive();
-        });
-        connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget, clearPromptActive]() {
-            openClaudeAllowlistDialog(rule);
-            btnWidget->deleteLater();
-            clearStatusMessage();
-            clearPromptActive();
-        });
-
-        // Remove buttons when the prompt disappears from the screen.
-        // Same lesson as the grid-scan path above: don't tie retraction to
-        // `outputReceived`, which fires on every repaint and would retract
-        // the buttons while the prompt is still visible. `claudePermissionCleared`
-        // fires only on the transition to "no prompt on screen".
-        //
-        // Listen on ALL terminals (not just currentTerminal) so a prompt
-        // raised via hook on tab A disappears when the user approves/declines
-        // in tab A even after briefly visiting tab B. Multiple connects are
-        // fine; each disconnects itself via the shared pointer once fired.
-        for (auto *term : m_tabWidget->findChildren<TerminalWidget *>()) {
-            auto conn = std::make_shared<QMetaObject::Connection>();
-            *conn = connect(term, &TerminalWidget::claudePermissionCleared,
-                            btnWidget, [btnWidget, conn, clearPromptActive]() {
-                QObject::disconnect(*conn);
-                btnWidget->deleteLater();
-                clearPromptActive();
-            });
-        }
-
-        // 0.6.31 — `claudePermissionCleared` above only fires if the terminal
-        // scroll-scanner previously emitted `claudePermissionDetected` for
-        // this prompt (gated on `m_lastDetectedRule` being non-empty in
-        // terminalwidget.cpp:3658). When a PermissionRequest HOOK fires for
-        // a prompt the scroll-scanner never saw — unmatched prompt format,
-        // prompt already scrolled past the 12-line lookback window, or a
-        // headless Claude Code session where the hook is the only signal
-        // — `m_lastDetectedRule` stays empty and `claudePermissionCleared`
-        // never fires, orphaning the button forever. User-reported symptom:
-        // "Claude Code permission: Bash(cd * && cmake * | tail *) —" visible
-        // with no live prompt in any terminal.
-        //
-        // Retract on `toolFinished` (permission was granted and the tool
-        // completed), `sessionStopped` (session ended — prompt is moot),
-        // and `permissionRequested` (a new prompt implicitly resolves the
-        // previous one; the existing `findChildren` dedup at the top of
-        // this handler already removes the old btnWidget, which auto-
-        // disconnects these connections via the btnWidget context).
-        //
-        // These are proxy signals — Claude Code has no canonical
-        // "PermissionResolved" hook (confirmed in claudeintegration.cpp
-        // processHookEvent; PermissionRequest has no inverse). Using
-        // toolFinished/sessionStopped errs on the side of closing the
-        // button too early (user never clicks it) rather than too late
-        // (button lingers indefinitely on a resolved prompt, inviting a
-        // misdirected click).
-        auto finishedConn = std::make_shared<QMetaObject::Connection>();
-        *finishedConn = connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
-                                btnWidget, [btnWidget, finishedConn, clearPromptActive](const QString &, bool) {
-            QObject::disconnect(*finishedConn);
-            btnWidget->deleteLater();
-            clearPromptActive();
-        });
-        auto stoppedConn = std::make_shared<QMetaObject::Connection>();
-        *stoppedConn = connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
-                               btnWidget, [btnWidget, stoppedConn, clearPromptActive](const QString &) {
-            QObject::disconnect(*stoppedConn);
-            btnWidget->deleteLater();
-            clearPromptActive();
-        });
-    });
-
-    // Set up MCP server with all providers
+// ANTS-1146 — MCP-provider plumbing for ClaudeIntegration.
+// Provides the scrollback / cwd / lastCommand / git-status /
+// environment lookups MCP needs from MainWindow's tab/terminal
+// state, then starts the hook server. Split out from
+// setupClaudeIntegration because it isn't status-bar chrome.
+void MainWindow::setupClaudeMcpProviders() {
     QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
                         QString::number(QApplication::applicationPid());
     m_claudeIntegration->startMcpServer(mcpSocket);
@@ -4577,7 +4054,7 @@ void MainWindow::refreshStatusBarForActiveTab() {
     clearStatusMessage();
 
     // Category C: event-tied widgets die on tab switch.
-    if (m_claudeErrorLabel) m_claudeErrorLabel->hide();
+    if (m_claudeStatusBarController) m_claudeStatusBarController->clearError();
     // QWidget (not QPushButton) — the hook-server path uses a QWidget
     // container named "claudeAllowBtn" holding Allow/Deny/Add-to-allowlist
     // children; the scroll-scan path creates a bare QPushButton with the
@@ -4585,9 +4062,8 @@ void MainWindow::refreshStatusBarForActiveTab() {
     const auto staleAllowBtns =
         statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"));
     for (QWidget *w : staleAllowBtns) w->deleteLater();
-    if (m_claudePromptActive) {
-        m_claudePromptActive = false;  // applyClaudeStatusLabel called below
-    }
+    if (m_claudeStatusBarController)
+        m_claudeStatusBarController->setPromptActive(false);
 
     // No active terminal (last tab closed, mid-teardown) — clear every
     // Category A widget so the bar doesn't show stale data.
@@ -4601,15 +4077,11 @@ void MainWindow::refreshStatusBarForActiveTab() {
         }
         if (m_claudeIntegration)
             m_claudeIntegration->setShellPid(0);
-        m_claudeLastState = ClaudeState::NotRunning;
-        m_claudeLastDetail.clear();
-        m_claudePlanMode = false;
-        m_claudeAuditing = false;
-        applyClaudeStatusLabel();
-        if (m_claudeReviewBtn) m_claudeReviewBtn->hide();
-        if (m_claudeContextBar) m_claudeContextBar->hide();
-        if (m_claudeBgTasks) m_claudeBgTasks->setTranscriptPath(QString());
-        if (m_claudeBgTasksBtn) m_claudeBgTasksBtn->hide();
+        // ANTS-1146 — single atomic reset covers the five state
+        // booleans, three widget hides, and bg-tasks transcript path
+        // clear that this block used to enumerate inline.
+        if (m_claudeStatusBarController)
+            m_claudeStatusBarController->resetForTabSwitch();
         if (m_roadmapBtn) m_roadmapBtn->hide();
         m_roadmapPath.clear();
         if (m_repoVisibilityLabel) m_repoVisibilityLabel->hide();
@@ -4621,10 +4093,10 @@ void MainWindow::refreshStatusBarForActiveTab() {
     //     synchronously (both are cheap file reads).
     //   - setShellPid() kicks Claude Integration to re-detect Claude
     //     under this tab's shell; it emits stateChanged signals that
-    //     flow back into applyClaudeStatusLabel via the existing
-    //     connection. State is CLEARED inside setShellPid when the PID
-    //     changes, so the label never carries over from the previous
-    //     tab. See claudeintegration.cpp:58-71.
+    //     flow into the controller via the existing connection. State
+    //     is CLEARED inside setShellPid when the PID changes, so the
+    //     label never carries over from the previous tab. See
+    //     claudeintegration.cpp:58-71.
     //   - refreshReviewButton() spawns an async `git status` probe;
     //     the button is hidden immediately and revealed only when the
     //     probe confirms the new tab's cwd is a git repo.
@@ -4634,12 +4106,14 @@ void MainWindow::refreshStatusBarForActiveTab() {
     // be refreshed by the next ClaudeIntegration stateChanged signal,
     // but clear them now so the wrong-tab's flags don't briefly show
     // until that signal arrives.
-    m_claudePlanMode = false;
-    m_claudeAuditing = false;
-    applyClaudeStatusLabel();
+    if (m_claudeStatusBarController) {
+        m_claudeStatusBarController->setPlanMode(false);
+        m_claudeStatusBarController->setAuditing(false);
+    }
     updateStatusBar();
     refreshReviewButton();
-    refreshBgTasksButton();
+    if (m_claudeStatusBarController)
+        m_claudeStatusBarController->refreshBgTasksButton();
     refreshRoadmapButton();
     refreshRepoVisibility();
 }
@@ -5147,19 +4621,21 @@ void MainWindow::applyPersistedTabColor(QWidget *tabRoot) {
 }
 
 void MainWindow::refreshReviewButton() {
-    if (!m_claudeReviewBtn) return;
+    QPushButton *reviewBtn = m_claudeStatusBarController
+        ? m_claudeStatusBarController->reviewButton() : nullptr;
+    if (!reviewBtn) return;
 
     auto *t = focusedTerminal();
     if (!t) t = currentTerminal();
     if (!t) {
         // No active terminal — button has nothing to review against.
-        m_claudeReviewBtn->hide();
+        reviewBtn->hide();
         return;
     }
 
     const QString cwd = t->shellCwd();
     if (cwd.isEmpty()) {
-        m_claudeReviewBtn->hide();
+        reviewBtn->hide();
         return;
     }
 
@@ -5196,7 +4672,7 @@ void MainWindow::refreshReviewButton() {
     proc->setProgram("git");
     proc->setArguments({"status", "--porcelain=v1", "-b"});
 
-    QPointer<QPushButton> btn = m_claudeReviewBtn;
+    QPointer<QPushButton> btn = reviewBtn;
     QPointer<QProcess> guard = proc;
     QPointer<MainWindow> self(this);
     m_reviewProbeInFlight = true;
@@ -5242,86 +4718,15 @@ void MainWindow::refreshReviewButton() {
     proc->start();
 }
 
-void MainWindow::refreshBgTasksButton() {
-    if (!m_claudeBgTasks || !m_claudeBgTasksBtn) {
-        ANTS_LOG(DebugLog::Claude,
-                 "bgtasks/refresh: tracker=%p btn=%p — early return",
-                 static_cast<void *>(m_claudeBgTasks),
-                 static_cast<void *>(m_claudeBgTasksBtn));
-        return;
-    }
-    // Resolve the transcript path scoped to the active tab's project
-    // tree. activeSessionPath walks up the cwd, encodes each ancestor
-    // to Claude Code's `<dashed-cwd>` form, and returns the newest
-    // `.jsonl` from the deepest matching `~/.claude/projects/<…>/`
-    // subdir. Without this scoping, sessions from *other* projects
-    // (e.g. another tab's tree) would leak into the bg-tasks surface
-    // — which is exactly the user-reported 2026-04-27 bug.
-    QString cwd;
-    if (auto *t = focusedTerminal()) cwd = t->shellCwd();
-    const bool focusedTabPresent = (focusedTerminal() != nullptr);
-    QString path;
-    if (m_claudeIntegration) path = m_claudeIntegration->activeSessionPath(cwd);
-    const QString prevPath = m_claudeBgTasks->transcriptPath();
-    m_claudeBgTasks->setTranscriptPath(path);
-    // 0.7.55 (2026-04-27 indie-review) — sweep liveness only, not full
-    // rescan. setTranscriptPath() already triggers a full rescan when
-    // the path changes (initial bind, tab switch). When the path is
-    // unchanged but we still want a fresh staleness check, the cheap
-    // sweepLiveness() does N stat() calls — avoiding the 16 MiB
-    // transcript walk that the previous rescan() call caused on every
-    // 2 s timer tick. The QFileSystemWatcher continues to drive full
-    // rescan() on transcript-changed (Claude appended JSONL).
-    if (!path.isEmpty() && path == prevPath) {
-        m_claudeBgTasks->sweepLiveness();
-    }
-
-    const int running = m_claudeBgTasks->runningCount();
-    const int total = m_claudeBgTasks->tasks().size();
-
-    // ANTS-1052 diagnostic: log every refresh outcome so the user can
-    // capture why the button hides under realistic conditions. Gated
-    // on ANTS_DEBUG=claude (or runtime menu toggle). Truncate path to
-    // its basename for brevity — full path is in prevPath state.
-    if (DebugLog::enabled(DebugLog::Claude)) {
-        const QString cwdShort = cwd.isEmpty()
-            ? QStringLiteral("(empty)") : cwd;
-        const QString pathShort = path.isEmpty()
-            ? QStringLiteral("(empty)")
-            : path.section('/', -1);
-        const char *branch =
-            (running > 0) ? "SHOW" :
-            path.isEmpty() ? "HIDE/no-path" :
-            (total == 0)  ? "HIDE/no-tasks-parsed" :
-                            "HIDE/all-finished";
-        ANTS_LOG(DebugLog::Claude,
-                 "bgtasks/refresh: focused-tab=%s cwd=%s path=%s "
-                 "prev-changed=%s running=%d total=%d → %s",
-                 focusedTabPresent ? "yes" : "no",
-                 cwdShort.toUtf8().constData(),
-                 pathShort.toUtf8().constData(),
-                 (path == prevPath) ? "no" : "yes",
-                 running, total, branch);
-    }
-
-    if (running <= 0) {
-        // No active background work — keep the chrome quiet.
-        m_claudeBgTasksBtn->hide();
-        return;
-    }
-    m_claudeBgTasksBtn->setText(tr("Background Tasks (%1)").arg(running));
-    m_claudeBgTasksBtn->setToolTip(
-        tr("%1 running · %2 total in this session").arg(running).arg(total));
-    m_claudeBgTasksBtn->show();
-}
-
 void MainWindow::showBgTasksDialog() {
-    if (!m_claudeBgTasks) return;
+    ClaudeBgTaskTracker *tracker = m_claudeStatusBarController
+        ? m_claudeStatusBarController->bgTasksTracker() : nullptr;
+    if (!tracker) return;
     showStatusMessage(QStringLiteral("Background Tasks: opening…"), 1500);
     // Re-target the tracker before opening so the dialog reflects the
     // active tab's session, not whatever the tracker last saw.
-    refreshBgTasksButton();
-    auto *dlg = new ClaudeBgTasksDialog(m_claudeBgTasks, m_currentTheme, this);
+    m_claudeStatusBarController->refreshBgTasksButton();
+    auto *dlg = new ClaudeBgTasksDialog(tracker, m_currentTheme, this);
     dlg->show();
     dlg->raise();
     dlg->activateWindow();
@@ -5771,8 +5176,10 @@ void MainWindow::showDiffViewer() {
     // finished()/closeEvent lets us catch all close paths —
     // window-manager X button, Escape, Alt-F4, Close button —
     // without having to wire each one individually.
-    if (m_claudeReviewBtn) m_claudeReviewBtn->setEnabled(false);
-    QPointer<QPushButton> reviewBtnGuard(m_claudeReviewBtn);
+    QPushButton *reviewBtn = m_claudeStatusBarController
+        ? m_claudeStatusBarController->reviewButton() : nullptr;
+    if (reviewBtn) reviewBtn->setEnabled(false);
+    QPointer<QPushButton> reviewBtnGuard(reviewBtn);
 
     QDialog *dialog = diffviewer::show(this, cwd, m_currentTheme);
 

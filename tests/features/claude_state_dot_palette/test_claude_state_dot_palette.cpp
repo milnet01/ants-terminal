@@ -69,11 +69,16 @@ int main() {
     const std::string source = slurp(COLOREDTABBAR_CPP);
     const std::string mwSource = slurp(MAINWINDOW_CPP);
     const std::string trackerHeader = slurp(CLAUDETABTRACKER_H);
+    // ANTS-1146 — applyClaudeStatusLabel + the tab-indicator provider
+    // lambda both moved to claudestatuswidgets.cpp. INV-6/INV-8
+    // re-point at the new TU.
+    const std::string cswSource = slurp(CLAUDESTATUSWIDGETS_CPP);
 
     if (header.empty()) return fail("INV-1", "coloredtabbar.h not readable");
     if (source.empty()) return fail("INV-1", "coloredtabbar.cpp not readable");
     if (mwSource.empty()) return fail("INV-1", "mainwindow.cpp not readable");
     if (trackerHeader.empty()) return fail("INV-1", "claudetabtracker.h not readable");
+    if (cswSource.empty()) return fail("INV-1", "claudestatuswidgets.cpp not readable");
 
     // INV-1: helper signature
     if (!contains(header, "static QColor color(Glyph g)"))
@@ -130,16 +135,16 @@ int main() {
     if (contains(source, "outline.alpha()"))
         return fail("INV-5", "outline-alpha branch still present in dot pass");
 
-    // INV-6: mainwindow.cpp::applyClaudeStatusLabel calls the helper
-    // for label colour. The old th.ansi[…] mappings for the Claude
-    // label must be gone — search for the four prior call sites.
-    // Robust: ensure helper call appears in mainwindow.cpp at least
-    // once (the status applier path).
-    if (!contains(mwSource, "ClaudeTabIndicator::color("))
-        return fail("INV-6", "mainwindow does not use ClaudeTabIndicator::color()");
+    // INV-6: ClaudeStatusBarController::apply (formerly
+    // mainwindow.cpp::applyClaudeStatusLabel) calls the helper for
+    // label colour. The old th.ansi[…] mappings for the Claude label
+    // must be gone — search for the four prior call sites in the new
+    // TU.
+    if (!contains(cswSource, "ClaudeTabIndicator::color("))
+        return fail("INV-6", "claudestatuswidgets.cpp does not use ClaudeTabIndicator::color()");
     // The applier-specific assignment shape: `ClaudeTabIndicator::color(glyph)`
-    if (!contains(mwSource, "ClaudeTabIndicator::color(glyph)"))
-        return fail("INV-6", "applyClaudeStatusLabel doesn't compute color via helper");
+    if (!contains(cswSource, "ClaudeTabIndicator::color(glyph)"))
+        return fail("INV-6", "ClaudeStatusBarController::apply doesn't compute color via helper");
 
     // INV-7: ShellState.auditing + Glyph::Auditing exist
     if (!contains(trackerHeader, "bool auditing = false"))
@@ -148,13 +153,20 @@ int main() {
         return fail("INV-7", "Glyph::Auditing missing in coloredtabbar.h enum");
 
     // INV-8: status-bar applier maps the auditing branch to
-    // Glyph::Auditing. Source-grep on the assignment shape.
-    if (!contains(mwSource, "glyph = ClaudeTabIndicator::Glyph::Auditing"))
-        return fail("INV-8", "applyClaudeStatusLabel does not route auditing to Glyph::Auditing");
-    // And the provider closure for the tab dot also routes auditing
-    // to the Auditing glyph.
-    if (count(mwSource, "ClaudeTabIndicator::Glyph::Auditing") < 2)
-        return fail("INV-8", "Auditing glyph used fewer than 2x (expect provider + status applier)");
+    // Glyph::Auditing. ANTS-1146 — applier moved to
+    // claudestatuswidgets.cpp; tab-indicator provider lambda also
+    // moved (it's inside ClaudeStatusBarController::attach now).
+    if (!contains(cswSource, "glyph = ClaudeTabIndicator::Glyph::Auditing"))
+        return fail("INV-8", "ClaudeStatusBarController::apply does not route auditing to Glyph::Auditing");
+    // ANTS-1146 — both the status applier AND the provider closure
+    // moved to claudestatuswidgets.cpp; mainwindow.cpp's
+    // Auditing-glyph references should be zero. The total across the
+    // two source files must still be ≥ 2 (provider lambda + applier
+    // body).
+    if (count(mwSource, "ClaudeTabIndicator::Glyph::Auditing") != 0)
+        return fail("INV-8", "mainwindow.cpp still contains Glyph::Auditing references — should be zero post-extraction");
+    if (count(cswSource, "ClaudeTabIndicator::Glyph::Auditing") < 2)
+        return fail("INV-8", "Auditing glyph used fewer than 2x in claudestatuswidgets.cpp (expect provider + status applier)");
 
     std::puts("OK claude_state_dot_palette: 8/8 invariants");
     return 0;

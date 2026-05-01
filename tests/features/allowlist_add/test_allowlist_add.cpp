@@ -309,6 +309,21 @@ QString readMainWindowSrc() {
     return QString::fromUtf8(f.readAll());
 }
 
+// Read src/claudestatuswidgets.cpp (post-ANTS-1146 home of the
+// permissionRequested handler that §D asserts against). Path baked
+// in by CMake as SRC_CLAUDESTATUSWIDGETS_PATH.
+QString readClaudeStatusWidgetsSrc() {
+    const QString path = QStringLiteral(SRC_CLAUDESTATUSWIDGETS_PATH);
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        std::fprintf(stderr,
+                     "FAIL: cannot open %s — test harness wiring broken\n",
+                     qUtf8Printable(path));
+        return QString();
+    }
+    return QString::fromUtf8(f.readAll());
+}
+
 // --- §E production binding: openClaudeAllowlistDialog calls show+raise+activate ---
 
 int checkDialogShowSequence() {
@@ -380,20 +395,26 @@ int checkDialogShowSequence() {
 
 int checkHookPathRetraction() {
     int failures = 0;
-    const QString src = readMainWindowSrc();
+    // ANTS-1146 — handler moved from mainwindow.cpp into
+    // claudestatuswidgets.cpp (ClaudeStatusBarController::attach).
+    // The §D check now reads the new TU; the rest of the test still
+    // grep's mainwindow.cpp via readMainWindowSrc().
+    const QString src = readClaudeStatusWidgetsSrc();
     if (src.isEmpty()) return 1;
 
     // Locate the connect() to permissionRequested — the lambda body
     // following it contains the button creation and the retraction
     // wiring we care about. We bracket the search between the
-    // permissionRequested connect and the next top-level connect /
-    // function call that follows the hook handler block. The reliable
-    // anchor is the "Set up MCP server" comment that immediately
-    // follows the permissionRequested handler.
+    // permissionRequested connect and the closing brace of attach()
+    // (followed by the next out-of-line method definition
+    // setPromptActive). Pre-ANTS-1146 the end anchor was the
+    // "Set up MCP server" comment which sat next to the handler in
+    // setupClaudeIntegration; post-extraction MCP setup lives in a
+    // separate MainWindow helper, hence the new anchor.
     const QString startAnchor =
         QStringLiteral("ClaudeIntegration::permissionRequested");
     const QString endAnchor =
-        QStringLiteral("// Set up MCP server");
+        QStringLiteral("void ClaudeStatusBarController::setPromptActive");
     const int startIdx = src.indexOf(startAnchor);
     const int endIdx = src.indexOf(endAnchor, startIdx);
     if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) {

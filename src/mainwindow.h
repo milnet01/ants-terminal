@@ -34,6 +34,7 @@ class ClaudeTranscriptDialog;
 class ClaudeIntegration;
 class ClaudeTabTracker;
 class ClaudeBgTaskTracker;
+class ClaudeStatusBarController;
 class ColoredTabBar;
 class ColoredTabWidget;
 class QSplitter;
@@ -330,15 +331,14 @@ private:
     ClaudeAllowlistDialog *m_claudeDialog = nullptr;
     ClaudeProjectsDialog *m_claudeProjects = nullptr;
     ClaudeTranscriptDialog *m_claudeTranscript = nullptr;
-    // m_claudeStatusLabel shows "Claude: <state>" where state maps to a
-    // curated short vocabulary (idle/thinking/bash/reading a file/
-    // planning/auditing/prompting/compacting). The label is fixed-width
-    // via its sizeHint (plain QLabel, QSizePolicy::Fixed horizontal) so
-    // it never elides; the state vocabulary is bounded so worst-case
-    // width is known at design time.
-    QLabel *m_claudeStatusLabel = nullptr;
-    QProgressBar *m_claudeContextBar = nullptr;
-    QPushButton *m_claudeReviewBtn = nullptr;
+    // ANTS-1146 — Claude status-bar widgets + per-session render
+    // state + the permission-button-group factory live on the
+    // controller; MainWindow holds it but doesn't reach inside.
+    // Legacy refresh paths use accessors (reviewButton(),
+    // bgTasksButton()); manual state pokes use setters
+    // (setPromptActive, setPlanMode, setAuditing, setError,
+    // resetForTabSwitch). Theme changes route through applyTheme.
+    ClaudeStatusBarController *m_claudeStatusBarController = nullptr;
     // ANTS-1013 indie-review-2026-04-27: in-flight de-dup for the
     // 2 s `git status --porcelain=v1 -b` probe. The status timer used
     // to spawn a fresh QProcess every tick even while the previous
@@ -347,12 +347,6 @@ private:
     // cold cache once). Guard skips the spawn while a probe is in
     // flight; cleared by both the finished and errorOccurred handlers.
     bool m_reviewProbeInFlight = false;
-    QLabel *m_claudeErrorLabel = nullptr;
-    // 0.7.38 — Claude Code background-tasks button. Visible only when
-    // the per-session tracker reports ≥1 task in the active transcript.
-    // Click → ClaudeBgTasksDialog (live tail, scroll-preserving).
-    QPushButton *m_claudeBgTasksBtn = nullptr;
-    ClaudeBgTaskTracker *m_claudeBgTasks = nullptr;
     // 0.7.39 — status-bar Roadmap viewer button. Visible iff the
     // active tab's cwd contains a ROADMAP.md (case-insensitive).
     // Click → RoadmapDialog (live-watching, filterable, current-work
@@ -383,27 +377,13 @@ private:
     QAction *m_updateAvailableAction = nullptr;
     QString m_latestRemoteVersion;  // last seen tag_name from GitHub
     QNetworkAccessManager *m_updateNam = nullptr;
-    // 0.6.27 — cached last state/detail so the Claude status label can be
-    // re-rendered when the permission-prompt overlay toggles without having
-    // to wait for the next ClaudeIntegration::stateChanged tick. When
-    // m_claudePromptActive is true, the label shows "Claude: prompting"
-    // regardless of the underlying state (user's scrolled-up case from
-    // 2026-04-15 — they can't see the prompt directly so the status bar
-    // is the only at-a-glance indicator).
-    ClaudeState m_claudeLastState = ClaudeState::NotRunning;
-    QString m_claudeLastDetail;
-    bool m_claudePromptActive = false;
-    // Plan mode is a user-selected interaction mode (Shift+Tab in
-    // Claude Code) orthogonal to tool-use state; surfaced via
-    // ClaudeIntegration's plan-mode signal, which inspects transcript
-    // `permission-mode` metadata entries.
-    bool m_claudePlanMode = false;
-    // Auditing: user invoked the /audit skill in the most recent user
-    // message, detected via transcript scan (same shape as /compact
-    // detection). Lives beside ClaudeState because auditing spans
-    // multiple tool-use turns.
-    bool m_claudeAuditing = false;
-    void applyClaudeStatusLabel();
+    // ANTS-1146 — m_claudeLastState / LastDetail / PromptActive /
+    // PlanMode / Auditing all moved onto ClaudeStatusBarController.
+    // MainWindow's terminal-event handlers poke them via the
+    // controller's setPromptActive / setPlanMode / setAuditing
+    // setters; the auto-state ClaudeIntegration::stateChanged /
+    // planModeChanged / auditingChanged signals are consumed by
+    // the controller's own connect blocks set up in attach().
     // Single entry point that refreshes every per-tab status-bar widget
     // (branch chip, notification, process label, Claude state, Review
     // Changes button, Add-to-allowlist button) against the currently
@@ -415,8 +395,16 @@ private:
     void refreshStatusBarForActiveTab();
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
     void openClaudeProjectsDialog();
-    void setupClaudeIntegration();
-    void updateClaudeThemeColors();
+    // ANTS-1146 — formerly setupClaudeIntegration. Constructs
+    // ClaudeIntegration, the controller, the MCP-provider helper,
+    // and the three orphan chrome items (Roadmap button,
+    // update QAction, 5 s startup update-check).
+    void setupStatusBarChrome();
+    // ANTS-1146 — MCP-provider plumbing for ClaudeIntegration
+    // (scrollback / cwd / lastCommand / git-status / environment
+    // providers + startHookServer). Split from setupClaudeIntegration
+    // because it's not status-bar chrome.
+    void setupClaudeMcpProviders();
     void showDiffViewer();
     // Re-check git diff state and enable/disable the Review Changes
     // button accordingly. Async (QProcess) so it never blocks the UI
@@ -425,10 +413,11 @@ private:
     // that then shows "no changes" again).
     void refreshReviewButton();
     void showBgTasksDialog();
-    // Refresh the bg-tasks tracker against the active terminal's
-    // session, then update button visibility + label. Called on tab
-    // switch, on tracker tasksChanged, and on session swap.
-    void refreshBgTasksButton();
+    // ANTS-1146 — refreshBgTasksButton moved to
+    // ClaudeStatusBarController. Three call sites in mainwindow.cpp
+    // (status timer connect, onTabChanged, showBgTasksDialog
+    // post-dismissal) call m_claudeStatusBarController->
+    // refreshBgTasksButton() directly.
     // Probe the active tab's cwd for a ROADMAP.md (case-insensitive)
     // and show/hide the Roadmap button. Called from the central
     // refreshStatusBarForActiveTab tick.
