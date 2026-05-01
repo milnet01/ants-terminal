@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.65 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.66 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4711,7 +4711,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   unclamped `m_altScrollTop`/`m_altScrollBottom`.
   Kind: fix. Source: indie-review-2026-05-01 (L1).
   Lanes: terminalgrid, vtparser.
-- 📋 [ANTS-1131] **PTY child-process lifecycle bugs.**
+- ✅ [ANTS-1131] **PTY child-process lifecycle bugs.** Shipped 2026-05-01 (0.7.66).
   1. **`Pty::onReadReady` orphans `m_childPid` on
      EOF-before-reap** (L3 HIGH-2) — `ptyhandler.cpp:386-394`.
      `waitpid(WNOHANG) == 0` means child is alive but unreaped;
@@ -4728,8 +4728,8 @@ partition (11 lanes) is documented in this fold-in for reuse.
   `tests/features/claude_state_dot_palette/`.
   Kind: fix. Source: indie-review-2026-05-01 (L3).
   Lanes: ptyhandler, claudeintegration, MainWindow.
-- 📋 [ANTS-1132] **IPC socket trust-model gaps — unified
-  hardening.**
+- ✅ [ANTS-1132] **IPC socket trust-model gaps — unified
+  hardening.** Shipped 2026-05-01 (0.7.66).
   1. **Remote-control `SO_PEERCRED` UID match on accept** (L5
      HIGH-1) — `remotecontrol.cpp` after `nextPendingConnection()`,
      `getsockopt(SO_PEERCRED, ...)`, compare `cred.uid ==

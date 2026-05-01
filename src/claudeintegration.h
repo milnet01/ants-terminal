@@ -71,6 +71,13 @@ public:
 
     // Process detection: check if Claude Code is running under given shell PID
     void setShellPid(pid_t pid);
+
+    // ANTS-1131 — prune the per-PID plan-mode cache when a tab closes.
+    // Without this, m_planModeByPid grows monotonically over a long
+    // session and Linux PID reuse can poison a fresh shell with a
+    // stale plan-mode flag from a closed Claude tab. MainWindow::closeTab
+    // calls this alongside m_claudeTabTracker->untrackShell(pid).
+    void forgetShell(pid_t pid);
     ClaudeState currentState() const { return m_state; }
     const QString &currentTool() const { return m_currentTool; }
     int contextPercent() const { return m_contextPercent; }

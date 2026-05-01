@@ -388,9 +388,20 @@ void Pty::onReadReady() {
             int exitCode = -1;
             pid_t w = ::waitpid(m_childPid, &status, WNOHANG);
             if (w > 0) {
+                // Child genuinely reaped — record exit + clear PID so
+                // the destructor's escalation block doesn't try to
+                // double-reap.
                 exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+                m_childPid = -1;
             }
-            m_childPid = -1; // Prevent double-reap in destructor
+            // ANTS-1131 — when waitpid(WNOHANG) returns 0, the child
+            // closed the PTY but hasn't been reaped yet (very common:
+            // shell calls exec against a binary that segfaults during
+            // init). Pre-fix code unconditionally cleared m_childPid,
+            // defeating the destructor's SIGTERM/SIGKILL escalation
+            // and leaking the child as an init-adopted zombie. Now
+            // we leave m_childPid populated so destructor cleanup
+            // can escalate.
             emit finished(exitCode);
             break;
         } else {

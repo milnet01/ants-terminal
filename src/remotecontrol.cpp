@@ -17,29 +17,16 @@
 #include <QStandardPaths>
 #include <QTabWidget>
 
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <unistd.h>
 
-namespace {
-// Defence-in-depth before unlinking the /tmp fallback socket path: refuse
-// to remove anything that isn't a lstat()'d socket owned by the running
-// user. XDG_RUNTIME_DIR is 0700 and already safe; the fallback path lives
-// in shared /tmp where a prior-session symlink (or a same-uid confusion
-// between two apps sharing the UID-suffixed name) could otherwise cause
-// us to unlink an unrelated file. lstat (not stat) so a symlink is
-// reported as a symlink and gets refused.
-bool safeToUnlinkLocalSocket(const QString &path) {
-    const QByteArray bytes = path.toLocal8Bit();
-    struct stat st;
-    if (::lstat(bytes.constData(), &st) != 0) {
-        // ENOENT is the common case — nothing to remove, nothing to guard.
-        return true;
-    }
-    if (!S_ISSOCK(st.st_mode)) return false;
-    if (st.st_uid != ::getuid()) return false;
-    return true;
-}
-}
+#include <QTimer>
+
+// safeToUnlinkLocalSocket lives in secureio.h as of ANTS-1132 (0.7.66)
+// so the Claude hook + MCP server start paths can share the same
+// helper. The file-scope static here was unified with that lift.
 
 
 RemoteControl::RemoteControl(MainWindow *main, QObject *parent)
@@ -118,6 +105,44 @@ bool RemoteControl::start() {
 void RemoteControl::onNewConnection() {
     while (m_server->hasPendingConnections()) {
         QLocalSocket *socket = m_server->nextPendingConnection();
+        // ANTS-1132 — SO_PEERCRED UID match. The trust-model comment
+        // at the top of this file claims "UID-scoped + 0700 perms +
+        // lstat-checked S_ISSOCK"; UserAccessOption + safeToUnlink
+        // already cover the file-side guarantees, but the peer side
+        // needs explicit getsockopt(SO_PEERCRED) to enforce that the
+        // connecting process is the same UID. Defense in depth — on
+        // Linux with 0700 socket perms, the kernel already gates
+        // connect(2) on the file ACL, but if the socket path is
+        // ever moved (ANTS_REMOTE_SOCKET env override, abstract
+        // socket migration), the file ACL stops applying and only
+        // the peer-cred check holds the line.
+        const qintptr fd = socket->socketDescriptor();
+        if (fd >= 0) {
+            struct ucred cred{};
+            socklen_t len = sizeof(cred);
+            if (::getsockopt(static_cast<int>(fd), SOL_SOCKET,
+                             SO_PEERCRED, &cred, &len) != 0 ||
+                cred.uid != ::getuid()) {
+                ANTS_LOG(DebugLog::Network,
+                    "remote-control: peer UID mismatch "
+                    "(peer=%d self=%d) — disconnecting",
+                    static_cast<int>(cred.uid),
+                    static_cast<int>(::getuid()));
+                socket->disconnectFromServer();
+                socket->deleteLater();
+                continue;
+            }
+        }
+        // ANTS-1132 — slow-loris defence. Cap idle time per
+        // connection at 5 seconds. Each message is one-shot; if
+        // a peer hasn't sent a complete request within the
+        // window, abort.
+        QTimer *idleTimer = new QTimer(socket);
+        idleTimer->setSingleShot(true);
+        idleTimer->setInterval(5000);
+        connect(idleTimer, &QTimer::timeout, socket,
+                [socket]() { socket->abort(); });
+        idleTimer->start();
         // Line-buffer incoming data. Each connection handles exactly
         // one request/response round-trip today — simpler than a
         // persistent-session protocol and good enough for the full

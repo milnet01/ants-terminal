@@ -2483,6 +2483,13 @@ void MainWindow::performTabClose(int index) {
     // the widget is detached we can't recover its shell PID.
     if (m_claudeTabTracker && term && term->shellPid() > 0)
         m_claudeTabTracker->untrackShell(term->shellPid());
+    // ANTS-1131 — also prune the ClaudeIntegration plan-mode cache
+    // for the same PID. Without this, m_planModeByPid grows
+    // unbounded over a long session and Linux PID reuse can poison
+    // a freshly-launched shell with a stale plan-mode flag from a
+    // closed Claude tab.
+    if (m_claudeIntegration && term && term->shellPid() > 0)
+        m_claudeIntegration->forgetShell(term->shellPid());
 
     m_tabSessionIds.remove(w);
     m_tabTitlePins.remove(w);  // free pin alongside session id

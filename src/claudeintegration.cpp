@@ -50,6 +50,15 @@ ClaudeIntegration::~ClaudeIntegration() {
 
 // --- Process Detection ---
 
+void ClaudeIntegration::forgetShell(pid_t pid) {
+    // ANTS-1131 — drop the per-PID plan-mode cache entry. Called
+    // from MainWindow::closeTab alongside untrackShell so the cache
+    // doesn't accumulate stale entries over a long session and so
+    // Linux PID reuse doesn't poison a fresh shell with a stale
+    // flag from a closed Claude tab.
+    if (pid > 0) m_planModeByPid.remove(pid);
+}
+
 void ClaudeIntegration::setShellPid(pid_t pid) {
     // 0.6.22 — on tab switch, the caller hands us the new tab's shell PID.
     // Without this clear, the cached m_state / m_currentTool / context%
@@ -651,8 +660,23 @@ bool ClaudeIntegration::startHookServer() {
     if (m_hookServer) return true;
 
     m_hookServer = new QLocalServer(this);
+    // ANTS-1132 — UserAccessOption applies the 0700 perms at the
+    // socket layer BEFORE bind+listen, closing the TOCTOU window
+    // between listen() and the post-listen setOwnerOnlyPerms call.
+    // Matches the remote-control trust model.
+    m_hookServer->setSocketOptions(QLocalServer::UserAccessOption);
     QString socketPath = QDir::tempPath() + "/ants-claude-hooks-" +
                          QString::number(QCoreApplication::applicationPid());
+    // ANTS-1132 — gate removeServer() behind the lstat-checked
+    // S_ISSOCK + UID match guard. Without this, a hostile same-UID
+    // process could pre-create a symlink at socketPath pointing at
+    // e.g. ~/.ssh/known_hosts and removeServer would unlink the
+    // target. Same defence-in-depth shape as remotecontrol.
+    if (!safeToUnlinkLocalSocket(socketPath)) {
+        delete m_hookServer;
+        m_hookServer = nullptr;
+        return false;
+    }
     QLocalServer::removeServer(socketPath);
 
     if (!m_hookServer->listen(socketPath)) {
@@ -660,7 +684,8 @@ bool ClaudeIntegration::startHookServer() {
         m_hookServer = nullptr;
         return false;
     }
-    // Restrict socket permissions to owner only
+    // Restrict socket permissions to owner only (belt-and-braces
+    // alongside UserAccessOption above).
     setOwnerOnlyPerms(socketPath);
 
     connect(m_hookServer, &QLocalServer::newConnection,
@@ -749,6 +774,13 @@ bool ClaudeIntegration::startMcpServer(const QString &socketPath) {
     if (m_mcpServer) return true;
 
     m_mcpServer = new QLocalServer(this);
+    // ANTS-1132 — same trust-model pre-checks as the hook server.
+    m_mcpServer->setSocketOptions(QLocalServer::UserAccessOption);
+    if (!safeToUnlinkLocalSocket(socketPath)) {
+        delete m_mcpServer;
+        m_mcpServer = nullptr;
+        return false;
+    }
     QLocalServer::removeServer(socketPath);
 
     if (!m_mcpServer->listen(socketPath)) {
@@ -756,7 +788,8 @@ bool ClaudeIntegration::startMcpServer(const QString &socketPath) {
         m_mcpServer = nullptr;
         return false;
     }
-    // Restrict socket permissions to owner only
+    // Restrict socket permissions to owner only (belt-and-braces
+    // alongside UserAccessOption above).
     setOwnerOnlyPerms(socketPath);
 
     connect(m_mcpServer, &QLocalServer::newConnection,

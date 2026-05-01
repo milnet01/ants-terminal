@@ -12,6 +12,62 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.66] — 2026-05-01
+
+**Theme:** Bundle G Tier 1 remainder. Two HIGH fixes from the
+2026-05-01 indie-review sweep — ANTS-1131 (PTY child-process
+lifecycle) and ANTS-1132 (IPC socket trust-model gaps). Tier 2
++ Tier 3 follow in subsequent bumps.
+
+### Fixed
+
+- **ANTS-1131 — PTY child-process lifecycle.** Two related
+  bugs in `src/ptyhandler.cpp` + `src/claudeintegration.{cpp,h}`
+  + `src/mainwindow.cpp`:
+  1. **`Pty::onReadReady` orphans `m_childPid` on
+     EOF-before-reap** (indie-review L3 HIGH-2). Pre-fix code
+     unconditionally cleared `m_childPid = -1` even when
+     `waitpid(WNOHANG)` returned 0 (child alive, just not
+     reaped) — defeating the destructor's SIGTERM/SIGKILL
+     escalation block. Fix: gate the clear on `w > 0`. When
+     waitpid returns 0, the destructor's escalation thread
+     handles cleanup as designed.
+  2. **`m_planModeByPid` PID-reuse poisoning** (indie-review
+     L3 HIGH-3). The per-PID plan-mode cache grew
+     monotonically over a session — never pruned on tab
+     close. Linux PID reuse meant a freshly-launched shell
+     could inherit a stale plan-mode flag from a closed
+     Claude tab. Fix: new `ClaudeIntegration::forgetShell(pid)`
+     called from `MainWindow::closeTab` alongside the
+     existing `m_claudeTabTracker->untrackShell(pid)`.
+
+- **ANTS-1132 — IPC socket trust-model gaps.** Three related
+  hardenings (indie-review L5 HIGH-1 + L3 HIGH-4):
+  1. **`SO_PEERCRED` UID match on remote-control accept**.
+     Trust-model comment at `remotecontrol.cpp:31-36` claimed
+     UID-scope but the code only enforced file-side perms
+     (0700). Now `getsockopt(SO_PEERCRED)` confirms the peer
+     UID matches `getuid()` before any verb dispatches —
+     defence-in-depth for the case where the socket path is
+     ever moved (e.g. `ANTS_REMOTE_SOCKET` env override) and
+     file ACLs stop being load-bearing.
+  2. **`UserAccessOption` + `safeToUnlinkLocalSocket`
+     precheck on Claude hook + MCP servers**. Pre-fix code
+     called `removeServer()` against a `/tmp/ants-claude-
+     hooks-<pid>` path with no symlink guard — a hostile
+     same-UID process could pre-create a symlink there
+     pointing at e.g. `~/.ssh/known_hosts` and `removeServer`
+     would unlink the target. Now both paths gate the
+     unlink behind the lstat-checked S_ISSOCK + UID match
+     guard (lifted into `secureio.h` from its file-scope
+     home in `remotecontrol.cpp` so all three sockets share
+     one helper).
+  3. **Per-connection idle timeout on remote-control**.
+     Slow-loris defence — `QTimer::singleShot(5000, socket,
+     &QLocalSocket::abort)` per accepted connection. A peer
+     that opens an idle connection without sending bytes
+     can no longer hold the socket indefinitely.
+
 ## [0.7.65] — 2026-05-01
 
 **Theme:** Bundle G Tier 1 fix-pass. Two CRITICAL fixes from

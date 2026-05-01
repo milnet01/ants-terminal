@@ -103,6 +103,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.66" date="2026-05-01">
+      <description>
+        <p>Bundle G Tier 1 remainder. Two HIGH fixes from the 2026-05-01 indie-review sweep — ANTS-1131 (PTY child-process lifecycle: WNOHANG=0 orphan + m_planModeByPid PID-reuse poisoning) and ANTS-1132 (IPC socket trust-model gaps: SO_PEERCRED UID match on remote-control accept, UserAccessOption + lstat-checked S_ISSOCK precheck on Claude hook + MCP server starts, per-connection idle timeout). Tier 2 + Tier 3 follow in subsequent bumps.</p>
+      </description>
+    </release>
     <release version="0.7.65" date="2026-05-01">
       <description>
         <p>Bundle G Tier 1 fix-pass. Two CRITICAL fixes from the 2026-05-01 multi-agent indie-review sweep — ANTS-1118 (smooth-scroll snapshot race during streaming, root cause identified by the terminal-widget-paint reviewer) and ANTS-1130 (VT alt-screen + scroll-region invariants — DECSET 47/1047/1049 conflation, resize() destroying DECSTBM, alt scroll-region OOB on shrink-resize). Two more Tier 1 items (ANTS-1131 PTY child lifecycle + ANTS-1132 IPC socket trust gaps) defer to 0.7.66 to keep this release's blast radius small.</p>
