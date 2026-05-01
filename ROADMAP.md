@@ -5579,6 +5579,62 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   ship from the same repo.
   Kind: chore.
   Source: planned.
+- 📋 [ANTS-1155] **True in-app self-update — no external
+  `AppImageUpdate` dependency, no manual restart.** Today's
+  "Update" click in `MainWindow::handleUpdateClicked`
+  (`mainwindow.cpp:5632`) is in-place auto-update *only* when the
+  user already has `AppImageUpdate` (GUI) or `appimageupdatetool`
+  (CLI) on `$PATH` AND is running the AppImage build (`$APPIMAGE`
+  non-empty); when either condition fails the handler falls
+  through to `QDesktopServices::openUrl(url)` — i.e., a browser to
+  the GitHub release page. Neither updater binary is in the
+  default install of any major distro (openSUSE, Ubuntu, Fedora,
+  Arch all ship without it), so for the typical AppImage user
+  *the click is a glorified download link*, not auto-update.
+  Even on the happy path the user has to manually quit + relaunch
+  to pick up the new version; sessions are dropped.
+
+  **Surface:** "Update" click → in-app progress UI (download +
+  SHA-256 verify + atomic apply, all in-process, no shell hops) →
+  app restarts itself with all tab sessions preserved → user is
+  on the new version with no external tool, no manual quit /
+  relaunch, no browser detour. Cancel at any point during the
+  download is safe (tempfile is unlinked).
+
+  **Path of least resistance** — skip `zsync` deltas. Engineering
+  a delta-update path for a ~50 MB binary on a developer-bandwidth
+  audience isn't the right tradeoff; we ship every few days and
+  the full download takes seconds on a normal connection.
+  Concrete plan:
+
+  1. Download the new AppImage via `QNetworkAccessManager` to a
+     tempfile next to `$APPIMAGE` (same filesystem so the
+     subsequent rename is atomic).
+  2. Fetch the matching `*.sha256` artefact from the same release
+     (already published by `.github/workflows/release.yml`).
+  3. Verify the downloaded tempfile against the published hash;
+     refuse to proceed on mismatch — surface a status-bar error
+     and unlink the tempfile.
+  4. `chmod +x` the tempfile, then `rename(2)` over `$APPIMAGE`
+     (atomic on same fs; busy-binary rename is well-defined on
+     Linux — the running process keeps its open inode).
+  5. Call `MainWindow::restartSelf()`: serialize the session via
+     the existing `SessionManager` machinery, then `execv` back
+     into `$APPIMAGE` with the same argv. The new process loads
+     the saved session on startup.
+
+  Distro packages (rpm / deb / Flathub / AUR) keep delegating to
+  the system package manager — gated on `$APPIMAGE` non-empty so
+  non-AppImage builds silently fall back to today's behaviour.
+  ≈250 LoC + a feature test that mocks the
+  `QNetworkAccessManager` reply with a known fixture AppImage and
+  verifies (a) sha256 mismatch refuses the apply, (b) atomic
+  rename over a busy file succeeds, (c) `restartSelf` serializes
+  + restores the session round-trip.
+
+  Lanes: mainwindow, networking (new module), sessionmanager.
+  Kind: implement.
+  Source: user-2026-05-02.
 - 📋 [ANTS-1072] **H13 — distro-outreach launch**. Once H1–H7 are shipped:
   file **intent-to-package** bugs / RFPs in Debian / Fedora /
   NixOS / openSUSE / Arch (as applicable); write a
