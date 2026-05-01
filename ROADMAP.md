@@ -4185,11 +4185,21 @@ minor tag (next: pre-0.8.0).
 
 - 🚧 [ANTS-1118] **HIGH — Scrolling up during a Claude Code stream
   is being overwritten from the line the user is parked on.**
-  **Awaiting user repro** — Step 1 diagnostic logging landed in
-  `src/terminalwidget.cpp` (commit `1abf768`,
+  **Awaiting user repro — but harder to trigger than expected.**
+  User reports 2026-05-01: "the scrollback issue is not easy to
+  reproduce — gives me a lot more confidence now to scroll up to
+  read while Claude Code is busy without losing anything in the
+  chat." Possible explanations: (a) the 0.7.61 diagnostic-logging
+  commit (`1abf768`) added invariants in the suspect code paths
+  that incidentally tightened the viewport-mutation contract, OR
+  (b) a downstream change between 0.7.49 (last reported reliable
+  repro) and 0.7.61 fixed the underlying bug as a side effect.
+  Kept open until a clean repro lands either way — closing now
+  would forget the history if it returns. Step 1 diagnostic
+  logging in `src/terminalwidget.cpp` (commit `1abf768`,
   `ANTS_DEBUG=scrollback` instruments `onVtBatch` with viewport-
-  mutation traces). Steps 2–5 (root-cause + fix + verify) gated on
-  capturing one streaming session that reproduces the overwrite.
+  mutation traces). Steps 2–5 (root-cause + fix + verify) gated
+  on capturing one streaming session that reproduces the overwrite.
   User
   report 2026-04-30: "the scrollback is still broken — when I scroll
   up to read previous information while Claude Code is still busy
