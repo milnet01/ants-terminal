@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.61 (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.62 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4064,9 +4064,13 @@ minor tag (next: pre-0.8.0).
 
 ### 🎨 UX — relocate the update-available indicator (user request 2026-04-30)
 
-- 📋 [ANTS-1124] **Move the "update available" link from the
+- ✅ [ANTS-1124] **Move the "update available" link from the
   right of the status bar to the menu bar, immediately to the
-  right of the Help menu.** User-visible signalling lives in the
+  right of the Help menu.** Shipped 2026-05-01 (0.7.62). Migrated
+  `m_updateAvailableLabel` → `m_updateAvailableAction`; URL
+  stashed via `QAction::setData`; triggered lambda replays
+  through `handleUpdateClicked`. Spec at `docs/specs/ANTS-1124.md`;
+  feature test at `tests/features/update_available_menubar/`. User-visible signalling lives in the
   status bar today: `m_updateAvailableLabel` (QLabel,
   `mainwindow.cpp:3832-3845`) is added via
   `statusBar()->addPermanentWidget(...)` and shows a clickable
@@ -4226,8 +4230,13 @@ minor tag (next: pre-0.8.0).
 
 ### 🎨 Status-bar polish (user request 2026-04-30)
 
-- 📋 [ANTS-1109] **Restyle the git-branch chip to match the
-  repo-visibility pill.** User screenshot 2026-04-30:
+- ✅ [ANTS-1109] **Restyle the git-branch chip to match the
+  repo-visibility pill.** Shipped 2026-05-01 (0.7.62). New pure
+  helper `branchchip::isPrimaryBranch` picks `theme.ansi[2]`
+  (green) for `main`/`master`/`trunk`, `theme.ansi[3]` (amber)
+  for feature branches; both `applyTheme` and `updateStatusBar`
+  styling sites consult it. Margin asymmetry preserved on
+  purpose. Feature test at `tests/features/status_bar_branch_chip/`. User screenshot 2026-04-30:
   `main` branch label sits as plain text next to the framed
   green `Public` pill, looking inconsistent now that the
   visibility pill ships. Match the chip styles: same border

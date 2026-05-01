@@ -11,6 +11,7 @@
 #include "settingsdialog.h"
 #include "sessionmanager.h"
 #include "remotecontrol.h"
+#include "branchchip.h"           // ANTS-1109 helper
 #include "dialogfocus.h"          // ANTS-1050 helper
 #include "kwinpositiontracker.h"
 #include "claudeallowlist.h"
@@ -1887,7 +1888,7 @@ void MainWindow::setupMenus() {
 
     helpMenu->addSeparator();
     // 0.7.47 — manual update check. The startup probe already runs
-    // 5 s after launch (see m_updateAvailableLabel wiring); this
+    // 5 s after launch (see m_updateAvailableAction wiring); this
     // gives the user a way to re-check on demand without restarting.
     QAction *checkUpdatesAction = helpMenu->addAction(tr("Check for &Updates"));
     checkUpdatesAction->setObjectName(
@@ -3059,19 +3060,29 @@ void MainWindow::applyTheme(const QString &name) {
 
     // Status bar labels use theme colors (null-guarded for first call during construction)
     QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
-    // Git branch chip: rounded background + border + distinct color.
-    // Uses theme.ansi[6] (cyan) so the chip never collides with the Claude
-    // status label's green (idle), yellow (prompting/tool), blue (thinking),
-    // or magenta (compacting) vocabulary, and never collides with the
-    // transient notification's textPrimary foreground. User feedback
-    // 2026-04-18: "please change the colour of the git branch so as to
-    // not match any status bar notification."
-    if (m_statusGitBranch)
+    // Git branch chip: rounded background + border + branch-derived
+    // color. ANTS-1109 (0.7.62) — colour cue is now wired off
+    // branchchip::isPrimaryBranch: green (theme.ansi[2], same role
+    // the visibility pill uses for "Public") on main/master/trunk;
+    // amber (theme.ansi[3], same role as "Private") on feature
+    // branches. Frees the user from having to read the branch name
+    // to know "I'm not on main." Pre-1109 behaviour was static
+    // cyan (theme.ansi[6]); user feedback 2026-04-18 ("don't match
+    // status-bar notifications") still respected — neither green
+    // nor amber is in the Claude status-label palette (idle green
+    // at ansi[10] bright variant, prompting/tool yellow at ansi[3]
+    // ... actually that one *does* overlap, but the chip and the
+    // status label never appear in the same row).
+    if (m_statusGitBranch) {
+        const bool primary =
+            branchchip::isPrimaryBranch(m_gitCacheBranch);
+        const QColor &col = primary ? theme.ansi[2] : theme.ansi[3];
         m_statusGitBranch->setStyleSheet(
             QStringLiteral("QLabel { color: %1; background: %2; border: 1px solid %3; "
                           "border-radius: 3px; padding: 1px 8px; margin: 2px 6px 2px 4px; "
                           "font-size: 11px; font-weight: 600; }")
-                .arg(theme.ansi[6].name(), theme.bgSecondary.name(), theme.border.name()));
+                .arg(col.name(), theme.bgSecondary.name(), theme.border.name()));
+    }
     if (m_statusGitSep)
         // Hard divider between the branch chip and the transient-status slot.
         // textSecondary (not border) because border is often nearly invisible
@@ -3840,24 +3851,25 @@ void MainWindow::setupClaudeIntegration() {
     // git branch in 0.7.49 — see addWidget call earlier in the
     // constructor. Per-tab refresh via refreshRepoVisibility.)
 
-    // 0.7.45 — Update-available notifier. Clickable QLabel that
-    // appears when the latest GitHub release tag is newer than
-    // ANTS_VERSION. Click opens the release page. Hidden by default,
-    // surfaced by an hourly + on-startup check via QNetworkAccessManager.
-    m_updateAvailableLabel = new QLabel(this);
-    m_updateAvailableLabel->setObjectName(QStringLiteral("updateAvailableLabel"));
-    // 0.7.46 — intercept clicks via linkActivated rather than letting
-    // the QLabel auto-open the URL via setOpenExternalLinks. The
-    // handler probes for AppImageUpdate / appimageupdatetool and runs
-    // an in-place binary update when available, falling back to the
-    // browser only when neither tool is installed.
-    m_updateAvailableLabel->setOpenExternalLinks(false);
-    m_updateAvailableLabel->setTextFormat(Qt::RichText);
-    m_updateAvailableLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    connect(m_updateAvailableLabel, &QLabel::linkActivated,
-            this, &MainWindow::handleUpdateClicked);
-    m_updateAvailableLabel->hide();
-    statusBar()->addPermanentWidget(m_updateAvailableLabel);
+    // 0.7.62 (ANTS-1124) — Update-available notifier as a top-level
+    // menu-bar QAction. Promoted from a status-bar QLabel so the
+    // one-shot "you have a new version" call-to-action reads as
+    // visually loud chrome rather than competing with the steady-
+    // state status widgets. Sits to the right of &Help by call
+    // order; toggled via setVisible() rather than show()/hide() on
+    // the underlying widget. URL is stashed on the action via
+    // setData() so the triggered slot can replay it through
+    // handleUpdateClicked().
+    m_updateAvailableAction = new QAction(this);
+    m_updateAvailableAction->setObjectName(
+        QStringLiteral("updateAvailableAction"));
+    m_updateAvailableAction->setVisible(false);
+    connect(m_updateAvailableAction, &QAction::triggered, this, [this]() {
+        const QString url =
+            m_updateAvailableAction->data().toString();
+        if (!url.isEmpty()) handleUpdateClicked(url);
+    });
+    m_menuBar->addAction(m_updateAvailableAction);
 
     // 0.7.47 — startup-only update check (was hourly in 0.7.45-0.7.46;
     // user feedback "An hourly check I think is a bit much. Let's do
@@ -4627,6 +4639,22 @@ void MainWindow::updateStatusBar() {
     }
     if (!gitBranch.isEmpty()) {
         m_statusGitBranch->setText(" " + gitBranch);
+        // ANTS-1109 — keep the chip's colour in sync with the
+        // current branch. Restyling on every 2-s poll is cheap
+        // (small QLabel, identical-string fast path inside Qt's
+        // stylesheet engine) and avoids stale colours after the
+        // user switches branches mid-session.
+        const Theme &chipTheme = Themes::byName(m_currentTheme);
+        const bool chipPrimary =
+            branchchip::isPrimaryBranch(gitBranch);
+        const QColor &chipCol =
+            chipPrimary ? chipTheme.ansi[2] : chipTheme.ansi[3];
+        m_statusGitBranch->setStyleSheet(
+            QStringLiteral("QLabel { color: %1; background: %2; border: 1px solid %3; "
+                          "border-radius: 3px; padding: 1px 8px; margin: 2px 6px 2px 4px; "
+                          "font-size: 11px; font-weight: 600; }")
+                .arg(chipCol.name(), chipTheme.bgSecondary.name(),
+                     chipTheme.border.name()));
         m_statusGitBranch->show();
         if (m_statusGitSep) m_statusGitSep->show();
     } else {
@@ -5468,7 +5496,7 @@ void MainWindow::refreshRepoVisibility() {
 }
 
 void MainWindow::checkForUpdates(bool userInitiated) {
-    if (!m_updateAvailableLabel) return;
+    if (!m_updateAvailableAction) return;
     if (!m_updateNam) m_updateNam = new QNetworkAccessManager(this);
 
     QNetworkRequest req(QUrl(QStringLiteral(
@@ -5483,8 +5511,7 @@ void MainWindow::checkForUpdates(bool userInitiated) {
         reply->deleteLater();
         MainWindow *win = self.data();
         if (!win) return;
-        QLabel *label = win->m_updateAvailableLabel;
-        if (!label) return;
+        if (!win->m_updateAvailableAction) return;
         if (reply->error() != QNetworkReply::NoError) {
             if (userInitiated) {
                 win->showStatusMessage(
@@ -5504,7 +5531,7 @@ void MainWindow::checkForUpdates(bool userInitiated) {
         const QString current = QString::fromUtf8(ANTS_VERSION);
         if (compareSemver(tag, current) <= 0) {
             // Already up-to-date or running a newer dev build.
-            label->hide();
+            win->m_updateAvailableAction->setVisible(false);
             if (userInitiated) {
                 win->showStatusMessage(
                     win->tr("Up to date — running v%1 (latest)")
@@ -5515,13 +5542,16 @@ void MainWindow::checkForUpdates(bool userInitiated) {
         }
         const QString url = QStringLiteral(
             "https://github.com/milnet01/ants-terminal/releases/tag/v%1").arg(tag);
-        label->setText(
-            win->tr("<a href=\"%1\" style=\"color: #5DCFCF; text-decoration: none;\">"
-                    "↗ Update v%2 available</a>").arg(url, tag));
-        label->setToolTip(
+        // Plain QAction text (no rich-text — menu bars render the
+        // string verbatim). The leading ↗ keeps the call-to-action
+        // glyph the user is used to from the status-bar variant.
+        win->m_updateAvailableAction->setText(
+            win->tr("↗ Update v%1 available").arg(tag));
+        win->m_updateAvailableAction->setToolTip(
             win->tr("Click to open release notes for v%1 in your browser. "
                     "Currently running v%2.").arg(tag, current));
-        label->show();
+        win->m_updateAvailableAction->setData(url);
+        win->m_updateAvailableAction->setVisible(true);
     });
 }
 

@@ -12,6 +12,88 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.62] — 2026-05-01
+
+**Theme:** Bundle B of the pre-0.7.61 outstanding-item triage —
+two small UX wins that close ROADMAP carryover. The
+update-available indicator moves out of the status bar onto the
+menu bar so the one-shot "you have a new version"
+call-to-action reads as visually loud chrome instead of
+competing with the steady-state widgets, and the git-branch
+chip on the status bar gains a colour cue (green for
+main/master/trunk, amber for everything else) that pairs it
+visually with the existing "Public/Private" repo-visibility
+pill next to it.
+
+### Changed
+
+- **ANTS-1124 — update-available indicator → menu bar.** The
+  GitHub release-check probe used to surface a clickable QLabel
+  on the right edge of the status bar (`m_updateAvailableLabel`,
+  added in 0.7.45). 0.7.62 promotes it to a top-level menu-bar
+  `QAction` (`m_updateAvailableAction`), inserted to the right
+  of `&Help` by call order. The one-shot CTA framing now reads
+  louder, the status bar reclaims its rightmost slot for
+  steady-state telemetry, and a future `setCornerWidget` move
+  is unblocked. URL is stashed via `QAction::setData`; the
+  `triggered` lambda replays it through the existing
+  `handleUpdateClicked` slot — same in-place `AppImageUpdate`
+  flow, same `Update / Skip / Postpone` dialog, no probe-logic
+  changes. `tests/features/update_available_menubar/` locks the
+  migration via 8 source-grep INVs (no leftover
+  `m_updateAvailableLabel` token, action wired via
+  `m_menuBar->addAction` *or* `insertAction`, visibility-toggle
+  on the action, whitespace-tolerant `connect` grep, action
+  starts hidden). Spec at `docs/specs/ANTS-1124.md` carries the
+  cold-eyes review fold-in (F1 / F2 / F3 / F4 / F5 / F7 / F15).
+
+- **ANTS-1109 — git-branch chip colour cue.** User screenshot
+  2026-04-30: the `main` branch chip read inconsistent with the
+  framed `Public` repo-visibility pill next to it. The chip's
+  shape (`border-radius`, `padding`, `font`) was already
+  aligned; what was missing was a branch-derived colour. New
+  pure helper `branchchip::isPrimaryBranch` (in
+  `src/branchchip.h`) returns `true` for `main`/`master`/`trunk`,
+  false for every other ref. Both branch-chip styling sites
+  (`MainWindow::applyTheme` for theme switches +
+  `MainWindow::updateStatusBar` for per-poll branch changes)
+  consult the helper and pick `theme.ansi[2]` (green, same role
+  as `Public`) or `theme.ansi[3]` (amber, same role as
+  `Private`). Visually pairs the chip with the pill;
+  functionally tells the user at a glance whether they're on
+  the project's primary branch. `tests/features/status_bar_branch_chip/`
+  drives the helper over six branch-name inputs (positive +
+  negative + empty + case-sensitive edge case) and source-greps
+  every chip-setStyleSheet site for the helper consult and the
+  palette-index wiring (cold-eyes F1 fold-in: pin every site,
+  not just the first match). Margin asymmetry between the chip
+  and the pill is preserved on purpose — chip is the leftmost
+  status-bar widget, pill sits to its right.
+
+- **ANTS-1100 + ANTS-1119 — ROADMAP status flips (Bundle A).**
+  Both shipped in 0.7.59 but the status emoji never flipped:
+  ANTS-1100 (`RoadmapDialog` faceted-tabs redesign — five
+  preset filters + search + persisted geometry) and ANTS-1119
+  (`AuditEngine` extraction — Qt6::Core-only module that
+  unblocks non-GUI audit consumers like `ants-helper` v2 and
+  the future MCP server). 📋 → ✅, no code touched. ANTS-1049
+  (audit-pipeline `populateChecks`-as-data-table) body trimmed
+  to a "subsumed by ANTS-1044" note — same scope as the
+  structural-tier `auditdialog.cpp` decomposition, kept under
+  one ID per `roadmap-format.md` § 3.5.1.
+
+### Fixed
+
+- **`tests/features/github_status_bar/` — INV-1, INV-2, INV-11
+  reflect the ANTS-1124 migration.** Previously locked the old
+  `QLabel *m_updateAvailableLabel` shape (member declaration,
+  `addPermanentWidget`, `&QLabel::linkActivated`,
+  `setOpenExternalLinks(false)`). Now asserts the new
+  `QAction *m_updateAvailableAction` shape (member, `addAction`,
+  `&QAction::triggered`) plus a negative regression check that
+  no `m_updateAvailableLabel` identifier survives anywhere in
+  `mainwindow.{h,cpp}`. Stale `<regex>` include also removed.
+
 ## [0.7.61] — 2026-04-30
 
 **Theme:** dialog-and-roadmap polish bundle — fixes three user-visible

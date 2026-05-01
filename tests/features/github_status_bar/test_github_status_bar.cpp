@@ -26,7 +26,6 @@
 
 #include <cstdio>
 #include <fstream>
-#include <regex>
 #include <sstream>
 #include <string>
 
@@ -84,22 +83,31 @@ int main(int argc, char **argv) {
     const std::string s = slurp(SRC_MAINWINDOW_CPP_PATH);
     const std::string yml = slurp(SRC_RELEASE_WORKFLOW_PATH);
 
-    // INV-1: both QLabel members declared with the documented names.
+    // INV-1: visibility pill is a QLabel member; update notifier is
+    // a QAction member after ANTS-1124 (0.7.62) — the update link
+    // moved from a status-bar QLabel to a top-level menu-bar
+    // QAction sitting to the right of &Help.
     if (!contains(h, "QLabel *m_repoVisibilityLabel"))
         return fail("INV-1", "m_repoVisibilityLabel QLabel* member missing");
-    if (!contains(h, "QLabel *m_updateAvailableLabel"))
-        return fail("INV-1", "m_updateAvailableLabel QLabel* member missing");
+    if (!contains(h, "QAction *m_updateAvailableAction"))
+        return fail("INV-1",
+            "m_updateAvailableAction QAction* member missing — see "
+            "ANTS-1124 (the QLabel was retired in 0.7.62)");
 
-    // INV-2: both constructed in the cpp, hidden by default. The
-    // update-available label sits on the right (addPermanentWidget);
-    // the repo-visibility badge moved to the LEFT side next to the
-    // git-branch chip in 0.7.49 (addWidget) per user feedback
-    // 2026-04-27 — repo provenance reads as "branch · visibility"
-    // naturally and the right side is busy with Claude Code chrome.
+    // INV-2: visibility pill is constructed and added to the LEFT
+    // side of the status bar (next to the git-branch chip per
+    // 0.7.49). Update action is constructed and added to the menu
+    // bar (right of &Help per ANTS-1124). Both start hidden and
+    // surface only when their respective probes find something.
+    // Cross-spec: the menu-bar wiring is locked by the dedicated
+    // tests/features/update_available_menubar/ test; here we only
+    // check the absence of the *old* QLabel surface, which is the
+    // regression an earlier 0.7.x revert would re-introduce.
     if (!contains(s, "m_repoVisibilityLabel = new QLabel"))
         return fail("INV-2", "m_repoVisibilityLabel not constructed");
-    if (!contains(s, "m_updateAvailableLabel = new QLabel"))
-        return fail("INV-2", "m_updateAvailableLabel not constructed");
+    if (!contains(s, "m_updateAvailableAction = new QAction"))
+        return fail("INV-2",
+            "m_updateAvailableAction not constructed");
     if (!contains(s, "addWidget(m_repoVisibilityLabel)"))
         return fail("INV-2",
             "m_repoVisibilityLabel must be on the LEFT side via "
@@ -107,17 +115,28 @@ int main(int argc, char **argv) {
             "next to the Claude Code chrome (the 0.7.45 placement that "
             "0.7.49 moved per user feedback). It must sit next to the "
             "git-branch chip");
-    if (!contains(s, "addPermanentWidget(m_updateAvailableLabel)"))
-        return fail("INV-2", "m_updateAvailableLabel not added to status bar");
+    if (!contains(s, "m_menuBar->addAction(m_updateAvailableAction)"))
+        return fail("INV-2",
+            "m_updateAvailableAction must be added to the menu bar via "
+            "m_menuBar->addAction(...) — see ANTS-1124");
     if (!contains(s, "m_repoVisibilityLabel->hide()"))
         return fail("INV-2", "m_repoVisibilityLabel not hidden by default");
-    if (!contains(s, "m_updateAvailableLabel->hide()"))
-        return fail("INV-2", "m_updateAvailableLabel not hidden by default");
+    if (!contains(s, "m_updateAvailableAction->setVisible(false)"))
+        return fail("INV-2",
+            "m_updateAvailableAction not hidden by default");
     // ObjectNames present (used for QSS targeting + test discovery).
     if (!contains(s, "\"repoVisibilityLabel\""))
         return fail("INV-2", "repoVisibilityLabel objectName missing");
-    if (!contains(s, "\"updateAvailableLabel\""))
-        return fail("INV-2", "updateAvailableLabel objectName missing");
+    if (!contains(s, "\"updateAvailableAction\""))
+        return fail("INV-2", "updateAvailableAction objectName missing");
+    // Negative regression check: the old m_updateAvailableLabel
+    // identifier must not survive — a partial revert that left it
+    // around would silently re-add a status-bar QLabel.
+    if (contains(s, "m_updateAvailableLabel") ||
+        contains(h, "m_updateAvailableLabel"))
+        return fail("INV-2",
+            "stale m_updateAvailableLabel reference survives — see "
+            "ANTS-1124 (0.7.62 migration)");
 
     // INV-3: pure helpers exist.
     if (!contains(s, "findGitRepoRoot"))
@@ -234,19 +253,17 @@ int main(int argc, char **argv) {
                 "User-Agent raw header is required — GitHub 403s without one");
     }
 
-    // INV-11 (revised in 0.7.46): update label intercepts clicks via
-    // linkActivated, NOT setOpenExternalLinks(true). The handler
-    // probes for AppImageUpdate before falling back to the browser,
-    // so an unconditional auto-open would skip the in-place update.
-    if (!contains(s, "m_updateAvailableLabel->setOpenExternalLinks(false)"))
+    // INV-11 (revised in 0.7.62 / ANTS-1124): the update notifier
+    // is now a QAction, so click routing goes through
+    // QAction::triggered → handleUpdateClicked rather than
+    // QLabel::linkActivated. The pre-0.7.62 setOpenExternalLinks
+    // /linkActivated invariant doesn't apply: QAction doesn't
+    // auto-open URLs; the lambda we connect *is* the routing.
+    if (!contains(s, "&QAction::triggered") ||
+            !contains(s, "handleUpdateClicked"))
         return fail("INV-11",
-            "0.7.46+ requires setOpenExternalLinks(false) on the update "
-            "label — the linkActivated handler does the routing");
-    if (!contains(s, "&QLabel::linkActivated") ||
-            !contains(s, "&MainWindow::handleUpdateClicked"))
-        return fail("INV-11",
-            "update label must connect linkActivated to "
-            "MainWindow::handleUpdateClicked");
+            "update action must connect QAction::triggered to "
+            "handleUpdateClicked — see ANTS-1124");
 
     // INV-12: compareSemver returns the right sign on the sample inputs.
     // Cannot link to the helper because it's in an anonymous namespace

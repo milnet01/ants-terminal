@@ -103,6 +103,21 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.62" date="2026-05-01">
+      <description>
+        <p>Bundle B of the pre-0.7.61 outstanding-item triage — two small UX wins that close ROADMAP carryover. The update-available indicator moves out of the status bar onto the menu bar so the one-shot "you have a new version" call-to-action reads as visually loud chrome instead of competing with the steady-state widgets, and the git-branch chip on the status bar gains a colour cue (green for main/master/trunk, amber for everything else) that pairs it visually with the existing "Public/Private" repo-visibility pill next to it.</p>
+        <p>Changed:</p>
+        <ul>
+          <li>Update-available indicator promoted from a status-bar <code>QLabel</code> to a top-level menu-bar <code>QAction</code>, inserted to the right of <code>&amp;Help</code>. URL is stashed via <code>QAction::setData</code>; the <code>triggered</code> lambda replays it through the existing <code>handleUpdateClicked</code> slot — same in-place AppImageUpdate flow, same Update / Skip / Postpone dialog. Status bar reclaims its rightmost slot for steady-state telemetry. (ANTS-1124)</li>
+          <li>Git-branch chip on the status bar gains a branch-derived colour cue. New pure helper <code>branchchip::isPrimaryBranch</code> returns true for <code>main</code> / <code>master</code> / <code>trunk</code>, false for every other ref. Both styling sites (<code>applyTheme</code> for theme switches, <code>updateStatusBar</code> for per-poll branch changes) consult the helper and pick <code>theme.ansi[2]</code> (green, same role as the "Public" visibility pill) or <code>theme.ansi[3]</code> (amber, same role as "Private"). Visually pairs the chip with the pill; functionally tells the user at a glance whether they are on the project's primary branch. (ANTS-1109)</li>
+          <li>ROADMAP.md status flips for ANTS-1100 (<code>RoadmapDialog</code> faceted-tabs redesign) and ANTS-1119 (<code>AuditEngine</code> extraction) — both shipped in 0.7.59, status emoji never flipped. ANTS-1049 body trimmed to a "subsumed by ANTS-1044" note (same scope as the structural-tier <code>auditdialog.cpp</code> decomposition).</li>
+        </ul>
+        <p>Fixed:</p>
+        <ul>
+          <li>Test <code>tests/features/github_status_bar/</code> updated to reflect the ANTS-1124 migration: INV-1, INV-2, INV-11 now assert the new <code>QAction</code> shape plus a negative regression check that no <code>m_updateAvailableLabel</code> identifier survives anywhere in <code>mainwindow.{h,cpp}</code>.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.61" date="2026-04-30">
       <description>
         <p>Dialog-and-roadmap polish bundle — fixes three user-visible chrome bugs (theme propagation to dialogs, focus-return on dialog close, pseudo-modal click-blocking on the parent), splits the now-260 KiB ROADMAP.md by minor version so tooling can keep up, retires two long-deprecated standards docs, and folds in a batch of indie-review Tier-3 closures.</p>

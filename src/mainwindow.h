@@ -370,10 +370,13 @@ private:
     QHash<QString /*repoRoot*/, RepoVisibilityCache> m_repoVisibilityCache;
     bool m_ghAvailable = false;        // probed once at startup
     bool m_ghAvailableProbed = false;  // probe-once flag
-    // 0.7.45 — Update-available notifier. Clickable QLabel pointing
-    // at the GitHub release page when ANTS_VERSION lags behind the
-    // latest release's tag_name. Hourly check + on-startup.
-    QLabel *m_updateAvailableLabel = nullptr;
+    // 0.7.62 (ANTS-1124) — Update-available notifier moved from a
+    // status-bar QLabel to a top-level menu-bar QAction. Sits to
+    // the right of &Help by call order; surfaced when the
+    // version-check probe finds a newer release. URL is stored on
+    // the action via setData; the triggered slot replays it
+    // through handleUpdateClicked().
+    QAction *m_updateAvailableAction = nullptr;
     QString m_latestRemoteVersion;  // last seen tag_name from GitHub
     QNetworkAccessManager *m_updateNam = nullptr;
     // 0.6.27 — cached last state/detail so the Claude status label can be

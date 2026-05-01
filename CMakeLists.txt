@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.61 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.62 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2408,6 +2408,57 @@ if(ANTS_TESTS)
     add_test(NAME dialog_pseudo_modal
              COMMAND test_dialog_pseudo_modal -platform offscreen)
     set_tests_properties(dialog_pseudo_modal PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # update_available_menubar — ANTS-1124 (0.7.62). Locks the
+    # migration of the update-available indicator from a status-bar
+    # QLabel to a top-level menu-bar QAction (sits to the right of
+    # &Help). Source-grep only — the change is a wiring swap, no
+    # new behavioural surface to drive. See spec.md.
+    add_executable(test_update_available_menubar
+        tests/features/update_available_menubar/test_update_available_menubar.cpp
+    )
+    target_link_libraries(test_update_available_menubar PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_update_available_menubar PRIVATE src)
+    target_compile_options(test_update_available_menubar PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_update_available_menubar PRIVATE
+        MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME update_available_menubar
+             COMMAND test_update_available_menubar)
+    set_tests_properties(update_available_menubar PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # status_bar_branch_chip — ANTS-1109 (0.7.62). Locks the
+    # branch-derived colour cue on the git-branch chip
+    # (green/main-master-trunk vs amber/feature) and the
+    # pure-helper branchchip::isPrimaryBranch. Drives the helper
+    # over six branch-name inputs + source-greps mainwindow.cpp
+    # for the consultation site and palette-index wiring. See
+    # spec.md.
+    add_executable(test_status_bar_branch_chip
+        tests/features/status_bar_branch_chip/test_status_bar_branch_chip.cpp
+    )
+    target_link_libraries(test_status_bar_branch_chip PRIVATE
+        Qt6::Core
+    )
+    target_include_directories(test_status_bar_branch_chip PRIVATE src)
+    target_compile_options(test_status_bar_branch_chip PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_status_bar_branch_chip PRIVATE
+        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME status_bar_branch_chip
+             COMMAND test_status_bar_branch_chip)
+    set_tests_properties(status_bar_branch_chip PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

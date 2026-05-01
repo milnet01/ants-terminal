@@ -1,3 +1,26 @@
+ants-terminal (0.7.62-1) unstable; urgency=medium
+
+  * Bundle B of the pre-0.7.61 outstanding-item triage — two
+    small UX wins that close ROADMAP carryover.
+  * Update-available indicator moved from a status-bar QLabel to
+    a top-level menu-bar QAction, inserted to the right of
+    `&Help`. URL stashed via QAction::setData; triggered lambda
+    replays it through the existing handleUpdateClicked slot.
+    Status bar reclaims its rightmost slot for steady-state
+    telemetry. (ANTS-1124)
+  * Git-branch chip gains a branch-derived colour cue via the
+    new pure helper `branchchip::isPrimaryBranch`. Both styling
+    sites (applyTheme + updateStatusBar) pick theme.ansi[2]
+    (green) for main/master/trunk and theme.ansi[3] (amber) for
+    feature branches — pairs the chip visually with the existing
+    Public/Private repo-visibility pill. (ANTS-1109)
+  * ROADMAP status flips for ANTS-1100 (RoadmapDialog faceted-
+    tabs redesign) and ANTS-1119 (AuditEngine extraction) — both
+    shipped in 0.7.59, status emoji never flipped. ANTS-1049
+    body trimmed to a "subsumed by ANTS-1044" note.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 01 May 2026 12:00:00 +0000
+
 ants-terminal (0.7.61-1) unstable; urgency=medium
 
   * Dialog-and-roadmap polish bundle — fixes three user-visible
