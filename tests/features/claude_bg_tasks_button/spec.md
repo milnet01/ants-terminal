@@ -39,10 +39,12 @@ Three pieces:
    - `assistant` events whose `tool_use.name == "KillShell"` →
      finished by `shell_id`.
 
-2. **Status-bar button** — `m_claudeBgTasksBtn` in `MainWindow`,
-   sibling to the Review Changes button, hidden by default. Shown
-   only while `m_claudeBgTasks->runningCount() > 0` for the active
-   tab's session. Label: "Background Tasks (N)" where N is the
+2. **Status-bar button** — `m_bgTasksBtn` on the
+   `ClaudeStatusBarController` (post-ANTS-1146; pre-1146 it was
+   `m_claudeBgTasksBtn` on MainWindow), sibling to the Review
+   Changes button, hidden by default. Shown only while
+   `m_bgTasks->runningCount() > 0` for the active tab's session.
+   Label: "Background Tasks (N)" where N is the
    running count. Tooltip discloses running + total. Re-targeted on
    tab switch via `refreshBgTasksButton()` (called from
    `refreshStatusBarForActiveTab`).
@@ -90,14 +92,19 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   per-character appends from the in-flight transcript writer.
 
 - **INV-5** (status-bar button hidden when no tasks running):
-  `MainWindow::refreshBgTasksButton` calls `hide()` when
-  `runningCount() <= 0`. Without this the button stays visible
-  after every task finishes, which is the inverse of the user's
-  ask.
+  `ClaudeStatusBarController::refreshBgTasksButton` calls `hide()`
+  when `runningCount() <= 0`. (Post-ANTS-1146 — pre-1146 this was
+  `MainWindow::refreshBgTasksButton`.) Without this the button
+  stays visible after every task finishes, which is the inverse
+  of the user's ask.
 
-- **INV-6** (status-bar button click opens the dialog):
-  `m_claudeBgTasksBtn` is connected to `MainWindow::showBgTasksDialog`,
-  which constructs a `ClaudeBgTasksDialog` and calls `show()`.
+- **INV-6** (status-bar button click opens the dialog): the
+  controller's `m_bgTasksBtn` clicked-signal is relayed via
+  `ClaudeStatusBarController::bgTasksClicked`, which MainWindow
+  connects to its `showBgTasksDialog` slot. `showBgTasksDialog`
+  constructs a `ClaudeBgTasksDialog` and calls `show()`.
+  (Post-ANTS-1146 — pre-1146 the click was a direct
+  `connect(m_claudeBgTasksBtn, …, MainWindow::showBgTasksDialog)`.)
 
 - **INV-7** (dialog reuses scroll-preservation pattern):
   `ClaudeBgTasksDialog::rebuild()` declares a `*m_lastHtml == html`
@@ -130,9 +137,11 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   `projectCwd` via `cdUp`, encoding each ancestor with
   `encodeProjectPath` to Claude Code's `<dashed-cwd>` directory
   name, and returns the newest `*.jsonl` from the deepest matching
-  `~/.claude/projects/<encoded>/`. `MainWindow::refreshBgTasksButton`
-  reads the active tab's cwd via `focusedTerminal()->shellCwd()`
-  and passes it through. Without all three pieces, the dialog
+  `~/.claude/projects/<encoded>/`. `ClaudeStatusBarController::refreshBgTasksButton`
+  (moved from MainWindow by ANTS-1146) reads the active tab's
+  cwd via the `m_focusedTerminalProvider` callback (which
+  MainWindow installs as `[]{ return focusedTerminal(); }`) and
+  passes it through. Without all three pieces, the dialog
   shows the system-wide newest `.jsonl` regardless of the active
   tab's project — visible to the user as "background tasks from
   another window's project leaking into this window's button". The
@@ -158,12 +167,13 @@ the wire-up that, if reverted, breaks the user-visible behavior.
      `setTranscriptPath` short-circuits when the path is
      unchanged, so it can't be the entry point for the periodic
      sweep on a quiet transcript.
-  3. `MainWindow::refreshBgTasksButton` calls
-     `m_claudeBgTasks->rescan()` whenever the resolved transcript
-     path is the same as the previous one (forcing the staleness
-     check to re-run). The 2 s status timer drives
-     `refreshBgTasksButton` so the sweep keeps firing while the
-     transcript itself is silent.
+  3. `ClaudeStatusBarController::refreshBgTasksButton` (moved
+     from MainWindow by ANTS-1146) calls `m_bgTasks->sweepLiveness()`
+     whenever the resolved transcript path is the same as the
+     previous one (forcing the staleness check to re-run). The 2 s
+     status timer drives `refreshBgTasksButton` directly on the
+     controller (post-1146 connect target), so the sweep keeps
+     firing while the transcript itself is silent.
 
   Without the sweep, the user sees stale running-counts that
   only clear on app restart or transcript-rotate; with it, the

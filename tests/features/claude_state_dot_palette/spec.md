@@ -54,16 +54,20 @@ interaction state, not an error condition.
 3. **NotRunning paints nothing.** Tabs without a Claude session leave
    the leading gutter clean.
 
-4. **Status-bar colour parity.** `MainWindow::applyClaudeStatusLabel`
-   resolves the colour by mapping the current label state to the same
-   `Claude::stateColor` helper. The status-bar text reads in the same
-   colour as the active tab's dot.
+4. **Status-bar colour parity.** `ClaudeStatusBarController::apply`
+   (post-ANTS-1146; pre-1146 it was `MainWindow::applyClaudeStatusLabel`)
+   resolves the colour by mapping the current label state to the
+   same `Claude::stateColor` helper. The status-bar text reads in
+   the same colour as the active tab's dot.
 
 5. **Auditing extends to the tab.** Today auditing is surfaced only on
-   the status bar (active-tab `m_claudeAuditing` flag). The tracker
+   the status bar (active-tab `m_auditing` flag on the controller; pre-
+   ANTS-1146 it was `m_claudeAuditing` on MainWindow). The tracker
    (`ClaudeTabTracker::ShellState`) gains an `auditing` bool plumbed
    from the existing transcript-tail parser. `ClaudeTabIndicator::Glyph`
-   gains an `Auditing` member; the provider in `MainWindow` returns it
+   gains an `Auditing` member; the provider lambda installed by
+   `ClaudeStatusBarController::attach` (pre-1146 the provider was
+   inline in `MainWindow::setupClaudeIntegration`) returns it
    when `state.auditing` is true and no higher-precedence state
    (AwaitingInput / Planning) wins.
 
@@ -109,15 +113,20 @@ existing `claude_tab_status_indicator` test pattern.
   `radius` value of 4. AwaitingInput specifically does NOT set an
   outline pen (no `painter.setPen(QPen(outline, …))` branch followed
   by an outline assignment).
-- INV-6 `mainwindow.cpp::applyClaudeStatusLabel` calls
-  `Claude::stateColor` to derive the label colour rather than
+- INV-6 `claudestatuswidgets.cpp::ClaudeStatusBarController::apply`
+  (post-ANTS-1146; pre-1146 was `mainwindow.cpp::applyClaudeStatusLabel`)
+  calls `Claude::stateColor` to derive the label colour rather than
   `th.ansi[…]`. Theme-ansi mappings for the Claude label are removed.
 - INV-7 `ClaudeTabTracker::ShellState` exposes `auditing` (header source-
   grep). `ClaudeTabIndicator::Glyph` exposes `Auditing` (header source-
   grep).
 - INV-8 Status-bar applier handles the auditing branch by routing to
   `Claude::stateColor(Glyph::Auditing)` — source-grep confirms the call
-  site sits in the `m_claudeAuditing` branch.
+  site sits in the `m_auditing` branch (controller-internal flag,
+  post-ANTS-1146; pre-1146 was `m_claudeAuditing` on MainWindow). Both
+  the applier (in `apply()`) and the provider lambda (in `attach()`)
+  contain `Glyph::Auditing` references — split across the two source
+  files post-extraction.
 
 ## Rationale
 

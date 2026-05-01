@@ -3989,8 +3989,6 @@ void MainWindow::updateStatusBar() {
         if (!m_lastBranchChipValid || newQss != m_lastBranchChipQss) {
             m_statusGitBranch->setStyleSheet(newQss);
             m_lastBranchChipQss = newQss;
-            m_lastBranchChipPrimary = chipPrimary;
-            m_lastBranchChipTheme = m_currentTheme;
             m_lastBranchChipValid = true;
         }
         m_statusGitBranch->show();

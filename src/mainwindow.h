@@ -1,7 +1,7 @@
 #pragma once
 
 #include "config.h"
-#include "claudeintegration.h"  // for ClaudeState — used by applyClaudeStatusLabel()
+#include "claudeintegration.h"  // for ClaudeState (member-typed in ANTS-1146 controller; comments below also reference it)
 #include "elidedlabel.h"        // ElidedLabel — status-bar text slots
 #include "themes.h"
 
@@ -353,12 +353,12 @@ private:
     // changed; now the tick computes the new QSS via
     // themedstylesheet::buildChipStylesheet and only calls
     // setStyleSheet when the resulting string differs from the
-    // cached value. m_lastBranchChipValid handles the first-tick
-    // case where defaults are otherwise ambiguous.
+    // cached value. The QSS string itself encodes the
+    // (theme × primary × margin) triple so a single string compare
+    // is sufficient. m_lastBranchChipValid handles the first-tick
+    // case where the cached string is empty.
     bool m_lastBranchChipValid = false;
     QString m_lastBranchChipQss;
-    bool m_lastBranchChipPrimary = false;
-    QString m_lastBranchChipTheme;
     // 0.7.39 — status-bar Roadmap viewer button. Visible iff the
     // active tab's cwd contains a ROADMAP.md (case-insensitive).
     // Click → RoadmapDialog (live-watching, filterable, current-work
@@ -403,7 +403,9 @@ private:
     // async probe completes. Replaces the scatter of direct
     // updateStatusBar / refreshReviewButton / applyClaudeStatusLabel
     // calls that accumulated in onTabChanged and let per-tab state
-    // bleed from tab A to tab B.
+    // bleed from tab A to tab B. (ANTS-1146 — applyClaudeStatusLabel
+    // is now `m_claudeStatusBarController->setPlanMode/setAuditing/...`
+    // routing through the controller's private `apply()`.)
     void refreshStatusBarForActiveTab();
     void openClaudeAllowlistDialog(const QString &prefillRule = QString());
     void openClaudeProjectsDialog();

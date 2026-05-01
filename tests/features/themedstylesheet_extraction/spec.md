@@ -34,9 +34,11 @@ exercised without instantiating any QWidget).
   reused across all three pre-1147 chip-style call sites.
 - **INV-6** `MainWindow::updateStatusBar` body contains the
   cache-and-compare guard:
-  - `mainwindow.h` declares `m_lastBranchChipValid`,
-    `m_lastBranchChipQss`, `m_lastBranchChipPrimary`,
-    `m_lastBranchChipTheme`.
+  - `mainwindow.h` declares `m_lastBranchChipValid` and
+    `m_lastBranchChipQss`. (The original spec authorised four
+    members — the latter two were dropped in the post-1147 debt
+    sweep as write-only state; the QSS string itself encodes
+    (theme × primary × margin) so the string-compare is sufficient.)
   - `updateStatusBar`'s body contains
     `themedstylesheet::buildChipStylesheet(`,
     `newQss != m_lastBranchChipQss`, AND

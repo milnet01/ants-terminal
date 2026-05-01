@@ -154,11 +154,14 @@ int main() {
     }
 
     // INV-6 — cache-and-compare guard locked in.
+    // ANTS-1147 debt-sweep: m_lastBranchChipPrimary + m_lastBranchChipTheme
+    // were write-only when the spec landed; deleted in the post-1147 sweep
+    // since the QSS string already encodes (theme × primary × margin)
+    // and the cache compare uses only the string. INV-6 now asserts the
+    // two surviving members.
     static const char *kCacheMembers[] = {
         "m_lastBranchChipValid",
         "m_lastBranchChipQss",
-        "m_lastBranchChipPrimary",
-        "m_lastBranchChipTheme",
     };
     for (const char *m : kCacheMembers) {
         if (!contains(mwH, m))

@@ -1,7 +1,5 @@
 #include "claudestatuswidgets.h"
 
-#include <QApplication>
-#include <QDir>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QObject>
