@@ -121,35 +121,43 @@ int main(int argc, char **argv) {
     leakHits += scanForOldName("CMakeLists.txt", cmake);
     if (leakHits > 0) return 1;
 
-    // INV-4: KWin-presence guard via env-var greps inside setPosition.
-    // Scope all subsequent ordering checks to the function body —
-    // includes at the top of the file would otherwise produce false
-    // positives.
+    // INV-4: KWin-presence guard. ANTS-1142 (0.7.69) lifted the
+    // KDE_FULL_SESSION / XDG_CURRENT_DESKTOP env-var checks out
+    // of setPosition() and into the `kwinPresent()` free function
+    // in kwinpositiontracker.h, so MainWindow::moveViaKWin /
+    // centerWindow could share the same guard. The test now
+    // verifies (a) the env-var literals live in the header, and
+    // (b) setPosition() calls kwinPresent() before any
+    // QTemporaryFile is constructed.
+    if (!contains(header, "KDE_FULL_SESSION"))
+        return fail("INV-4",
+            "KDE_FULL_SESSION env-var check missing in kwinpositiontracker.h");
+    if (!contains(header, "XDG_CURRENT_DESKTOP"))
+        return fail("INV-4",
+            "XDG_CURRENT_DESKTOP env-var check missing in kwinpositiontracker.h");
+    if (!contains(header, "inline bool kwinPresent"))
+        return fail("INV-4",
+            "kwinPresent() helper missing in kwinpositiontracker.h "
+            "(ANTS-1142 lift)");
+    // Scope ordering checks to setPosition's body.
     const size_t fnStart = source.find("setPosition(int x, int y)");
     if (fnStart == std::string::npos)
         return fail("INV-4", "setPosition() definition not found");
     const std::string fnBody = source.substr(fnStart);
-    if (!contains(fnBody, "KDE_FULL_SESSION"))
-        return fail("INV-4", "KDE_FULL_SESSION env-var check missing");
-    if (!contains(fnBody, "XDG_CURRENT_DESKTOP"))
-        return fail("INV-4", "XDG_CURRENT_DESKTOP env-var check missing");
-    // Guard placement: first qgetenv before first QTemporaryFile
-    // *constructor call*. Match the constructor pattern
-    // `QTemporaryFile <ident>(` rather than the bare type name so
-    // narrative comments mentioning the type don't false-match.
     {
-        const size_t firstGetenv = fnBody.find("qgetenv(");
+        const size_t firstGuard = fnBody.find("kwinPresent(");
         const std::regex tempCtor(R"(QTemporaryFile\s+\w+\()");
         std::smatch tempMatch;
-        if (firstGetenv == std::string::npos)
-            return fail("INV-4", "qgetenv() not invoked in setPosition()");
+        if (firstGuard == std::string::npos)
+            return fail("INV-4",
+                "kwinPresent() not invoked in setPosition() — guard missing");
         if (!std::regex_search(fnBody, tempMatch, tempCtor))
             return fail("INV-4",
                 "no QTemporaryFile constructor call in setPosition()");
         const size_t firstTempCtor = static_cast<size_t>(tempMatch.position(0));
-        if (firstGetenv >= firstTempCtor)
+        if (firstGuard >= firstTempCtor)
             return fail("INV-4",
-                "qgetenv() must appear before QTemporaryFile ctor (guard placement)");
+                "kwinPresent() must appear before QTemporaryFile ctor (guard placement)");
     }
 
     // INV-4b: behavioural drive of the bail. With both env vars

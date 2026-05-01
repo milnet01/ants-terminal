@@ -12,6 +12,69 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.69] — 2026-05-01
+
+**Theme:** Bundle G Tier 2 final closeouts. ANTS-1134, 1138,
+1142, 1144 all flip ✅ (sub-fixes from 0.7.67/0.7.68 closed
+out); ANTS-1133 partial — CSI REP shipped, other CSI-spec
+gaps remain deferred. 128/128 tests pass.
+
+### Fixed
+
+- **ANTS-1134 (2/2) — span cache invalidation across
+  scrollback push.** New `m_lastScrollbackPushed` member
+  tracks the monotonic counter; `invalidateSpanCaches` clears
+  both URL + highlight span caches when the count changes
+  since the last paint. Pre-fix code only invalidated entries
+  for screen rows the grid flagged dirty — but scrollback
+  push shifts every cached scrollback-line entry to point at
+  a different historical line. Symptom: URL highlights
+  occasionally painted at the wrong column ranges on
+  scrolled-back lines after high-throughput output.
+
+- **ANTS-1138 (2/2) — auto-profile-rules pattern cache
+  invalidation.** New `Config::autoProfileRulesGeneration()`
+  counter bumped on every successful `setAutoProfileRules`
+  write; `MainWindow::checkAutoProfileRules` compares to a
+  function-local `s_lastRulesGen` and clears `s_patternCache`
+  + `s_warnedInvalid` on change. Pre-fix code retired
+  patterns lingered forever, and a fixed-then-rebroken
+  pattern wouldn't re-warn after the third edit.
+
+- **ANTS-1142 (4/4) — KDE-presence guard lifted into shared
+  helper.** `kwinPresent()` now lives as a free function in
+  `kwinpositiontracker.h` (header-only, env-var check
+  inlined). `KWinPositionTracker::setPosition`,
+  `MainWindow::moveViaKWin`, and `MainWindow::centerWindow`
+  all share the guard. Pre-fix code: `moveViaKWin` and
+  `centerWindow` unconditionally fired the kwin-script +
+  dbus-send chain on GNOME / Sway / Hyprland / etc.,
+  orphaning `/tmp/kwin_*_ants_*.js` files and triggering a
+  dbus-send to a non-existent service every time. Existing
+  `kwin_position_tracker` feature test updated to source-grep
+  the header for the env-var literals + assert
+  `setPosition()` calls `kwinPresent()` before any
+  `QTemporaryFile` constructor.
+
+- **ANTS-1144 (3/3) — Claude transcript render cap.**
+  `ClaudeTranscriptDialog::loadTranscript` now caps rendered
+  entries to the last 2000 with a "showing last N of M"
+  header. Pre-fix code built full HTML for transcripts up to
+  the integration-layer 100 MiB cap and handed it to
+  `QTextEdit::setHtml`, freezing the UI for tens of seconds
+  on long Claude Code sessions. 2000 is empirically generous
+  — even busy sessions stay well under that.
+
+- **ANTS-1133 (1/4) — CSI Pn b (REP) handler.** Repeats the
+  preceding graphic character N times. Common in less,
+  ncurses (`tput rep`), and zsh's reset-prompt path as a
+  bandwidth optimisation for runs of `─` borders, spaces,
+  etc. Pre-fix code dropped this silently — visible as
+  missing border chars in less redraws + blanks in TUI
+  separator lines on high-latency PTYs. Other CSI-spec gaps
+  (Z CBT, I CHT, ` HPA, combining-after-wrap, wide-cont
+  rewrap) remain deferred as discrete items.
+
 ## [0.7.68] — 2026-05-01
 
 **Theme:** Bundle G Tier 2 closeouts — knocking off the

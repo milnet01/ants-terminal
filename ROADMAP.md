@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.68 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.69 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -4752,7 +4752,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
 
 ### 🔧 Tier 2 — hardening sweep (0.7.66 / 0.7.67)
 
-- 📋 [ANTS-1133] **VT parser: missing CSI verbs + edge cases.**
+- 🚧 [ANTS-1133] **VT parser: missing CSI verbs + edge cases.**
+  **CSI Pn b (REP) shipped 2026-05-01 (0.7.69)** — repeats the
+  preceding graphic character N times; common in less and
+  ncurses. Other sub-items (CSI Z CBT, CSI I CHT, CSI Pn `,
+  combining-after-wrap edge case, wide-cont rewrap orphan)
+  remain deferred — each is a discrete VT-spec gap rather
+  than a regression.
   Bundles L1 H-1 (insertLines/deleteLines hyperlink shift
   fragility), H-2 (CSI Pn b — REP — silently dropped, common
   in `less` and ncurses), H-3 (combining-char attach after
@@ -4761,7 +4767,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   char wrap boundaries), M-1 (CSI Z, I, `, a, e missing).
   Kind: fix. Source: indie-review-2026-05-01 (L1).
   Lanes: terminalgrid, vtparser.
-- 🚧 [ANTS-1134] **Terminal widget: modifier-only key + cache
+- ✅ [ANTS-1134] **Terminal widget: modifier-only key + cache
   invalidation across scrollback push.** **H-1 shipped 2026-05-01
   (0.7.67)** — modifier-only keypress guard added to
   `keyPressEvent`. **H-2 (span-cache invalidation across
@@ -4824,7 +4830,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   guard mirroring `m_reviewProbeInFlight`.
   Kind: fix. Source: indie-review-2026-05-01 (L6).
   Lanes: MainWindow.
-- 🚧 [ANTS-1138] **MainWindow re-entrancy: `applyTheme` via
+- ✅ [ANTS-1138] **MainWindow re-entrancy: `applyTheme` via
   auto-profile rules** **`applyTheme` early-return shipped
   2026-05-01 (0.7.67)** (no-op when `m_currentTheme == name`).
   **Pattern-cache invalidation on auto_profile_rules change
@@ -4889,9 +4895,9 @@ partition (11 lanes) is documented in this fold-in for reuse.
      overwrites on save anyway).
   Kind: fix. Source: indie-review-2026-05-01 (L9).
   Lanes: Config, SessionManager.
-- 🚧 [ANTS-1142] **Wayland integration: portal queue wedge,
+- ✅ [ANTS-1142] **Wayland integration: portal queue wedge,
   KDE guard, debug log perms race** Shipped 2026-05-01
-  (0.7.67 + 0.7.68). **3 of 4 sub-fixes complete.**
+  (0.7.67 + 0.7.68 + 0.7.69). **4 of 4 sub-fixes complete.**
   **(0.7.68 closed MainWindow listening to
   `GlobalShortcutsPortal::sessionFailed` with `qWarning` +
   `showStatusMessage` fallback.)** Remaining: KDE-presence
@@ -4939,9 +4945,11 @@ partition (11 lanes) is documented in this fold-in for reuse.
   wall-time intervals.
   Kind: doc-fix. Source: indie-review-2026-05-01 (L8).
   Lanes: PLUGINS.md, luaengine.
-- 🚧 [ANTS-1144] **Other dialogs: AI partial-stream insert,
+- ✅ [ANTS-1144] **Other dialogs: AI partial-stream insert,
   transcript large-doc render, BgTasks ANSI-strip** Shipped
-  2026-05-01 (0.7.67 + 0.7.68). **2 of 3 sub-fixes complete.**
+  2026-05-01 (0.7.67 + 0.7.68 + 0.7.69). **3 of 3 sub-fixes
+  complete.** Transcript dialog now caps render to last 2000
+  entries with a "showing last N of M" header.
   **(0.7.68 closed BgTasks ANSI/SGR/OSC escape-sequence
   strip in `tailFile` via regex pass.)** Remaining:
   transcript incremental render (touches `claudetranscript.cpp`

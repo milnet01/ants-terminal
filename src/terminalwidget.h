@@ -563,6 +563,12 @@ private:
     mutable std::unordered_map<int, std::vector<UrlSpan>> m_urlSpanCache;
     mutable std::unordered_map<int, std::vector<PaintHighlightSpan>> m_hlSpanCache;
     mutable bool m_spanCacheDirty = true;
+    // ANTS-1134 — track the monotonic scrollback-push count so the
+    // span caches can drop stale entries whose globalLine key now
+    // refers to a different historical line. Without this, URL +
+    // highlight spans could paint at the wrong column ranges on
+    // scrolled-back lines after high-throughput output.
+    mutable uint64_t m_lastScrollbackPushed = 0;
     void invalidateSpanCaches() const;
 
     // Trigger rules

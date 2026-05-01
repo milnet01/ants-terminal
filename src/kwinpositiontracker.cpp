@@ -21,16 +21,11 @@ void KWinPositionTracker::setPosition(int x, int y) {
     // isn't the active compositor. The KWin-script + dbus-send chain
     // only works under KDE Plasma; on GNOME/Mutter, Sway, Hyprland,
     // etc. the dbus call goes nowhere and the temp file used to leak.
-    // Detect via the same env vars Plasma's session manager exports:
-    // KDE_FULL_SESSION=true OR XDG_CURRENT_DESKTOP containing "KDE".
-    // XDG_SESSION_TYPE alone is insufficient — KWin runs on both X11
-    // and Wayland.
-    const QByteArray fullSession = qgetenv("KDE_FULL_SESSION");
-    const QByteArray currentDesktop = qgetenv("XDG_CURRENT_DESKTOP");
-    const bool kwinPresent =
-        fullSession == "true" ||
-        currentDesktop.contains("KDE");
-    if (!kwinPresent) return;
+    // Detection lifted into the kwinPresent() free function in
+    // kwinpositiontracker.h (ANTS-1142 0.7.69) so MainWindow's
+    // sister moveViaKWin / centerWindow paths can share the same
+    // guard.
+    if (!kwinPresent()) return;
 
     qint64 pid = QApplication::applicationPid();
     QString kwinJs = QString(

@@ -3170,6 +3170,14 @@ void MainWindow::applyTheme(const QString &name) {
 }
 
 void MainWindow::moveViaKWin(int targetX, int targetY) {
+    // ANTS-1142 — bail on non-KDE compositors before writing
+    // any temp script. Pre-fix code unconditionally fired the
+    // kwin-script + dbus-send chain on GNOME/Sway/Hyprland/etc.,
+    // orphaning /tmp/kwin_move_ants_*.js files and triggering a
+    // dbus-send that hits a non-existent service. Same guard as
+    // KWinPositionTracker::setPosition (lifted to
+    // kwinpositiontracker.h::kwinPresent for sharing).
+    if (!kwinPresent()) return;
     qint64 pid = QApplication::applicationPid();
     QString kwinJs = QStringLiteral(
         "var clients = workspace.windowList();\n"
@@ -3233,6 +3241,13 @@ void MainWindow::centerWindow() {
         m_titleBar->setKnownWindowPos(QPoint(cx, cy));
         m_config.setWindowGeometry(cx, cy, width(), height());
     }
+
+    // ANTS-1142 — bail on non-KDE compositors before writing any
+    // temp script (same guard as moveViaKWin). The geometry
+    // update above already moved the window via the
+    // KWinPositionTracker abstraction; the kwin-script chain
+    // below is the KDE-specific frameGeometry refresh.
+    if (!kwinPresent()) return;
 
     qint64 pid = QApplication::applicationPid();
     QString kwinJs = QStringLiteral(
@@ -6298,6 +6313,19 @@ void MainWindow::checkAutoProfileRules(TerminalWidget *terminal) {
     // every tick with the same regex syntax error.
     static QHash<QString, QRegularExpression> s_patternCache;
     static QSet<QString> s_warnedInvalid;
+    // ANTS-1138 — clear caches when auto_profile_rules has been
+    // edited since last call. Otherwise retired patterns linger
+    // forever in s_patternCache (small leak; ~few KB per
+    // orphaned regex over a power-user session that edits rules
+    // many times) and `s_warnedInvalid` never re-warns when a
+    // fixed-then-rebroken pattern gets edited a third time.
+    static quint64 s_lastRulesGen = 0;
+    const quint64 currentGen = m_config.autoProfileRulesGeneration();
+    if (currentGen != s_lastRulesGen) {
+        s_patternCache.clear();
+        s_warnedInvalid.clear();
+        s_lastRulesGen = currentGen;
+    }
 
     for (const QJsonValue &rv : rules) {
         QJsonObject rule = rv.toObject();

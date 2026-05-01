@@ -1,7 +1,25 @@
 #pragma once
 
+#include <QByteArray>
 #include <QPoint>
 #include <QWidget>
+#include <QtGlobal>
+
+// ANTS-1142 — kwinPresent() lifted from
+// KWinPositionTracker::setPosition's inline guard so
+// MainWindow::moveViaKWin and MainWindow::centerWindow (which
+// fire the same dbus-send + kwin-script chain) can gate behind
+// it instead of always running and orphaning /tmp scripts on
+// non-KDE compositors.
+//
+// Detection mirrors Plasma's session manager: KDE_FULL_SESSION
+// or XDG_CURRENT_DESKTOP containing "KDE". XDG_SESSION_TYPE is
+// insufficient — KWin runs on both X11 and Wayland.
+inline bool kwinPresent() {
+    const QByteArray fullSession = qgetenv("KDE_FULL_SESSION");
+    const QByteArray currentDesktop = qgetenv("XDG_CURRENT_DESKTOP");
+    return fullSession == "true" || currentDesktop.contains("KDE");
+}
 
 // Tracks window position ourselves since Qt's pos()/moveEvent() are broken
 // for frameless windows on KWin compositor.

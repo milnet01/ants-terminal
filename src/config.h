@@ -231,6 +231,14 @@ public:
     // Auto-profile switching rules: [{pattern, type, profile}]
     QJsonArray autoProfileRules() const;
     void setAutoProfileRules(const QJsonArray &rules);
+    // ANTS-1138 — generation counter bumped on every successful
+    // setAutoProfileRules write. MainWindow's checkAutoProfileRules
+    // compares this to its locally-cached generation to invalidate
+    // the s_patternCache + s_warnedInvalid statics when the rules
+    // change. Without this, retired patterns linger in the cache
+    // and `s_warnedInvalid` never re-warns when a fixed pattern
+    // gets edited again.
+    quint64 autoProfileRulesGeneration() const { return m_autoProfileRulesGen; }
 
     // Badge text (displayed as watermark in terminal background)
     QString badgeText() const;
@@ -289,5 +297,7 @@ private:
 
     QJsonObject m_data;
     bool m_loadFailed = false;
+    // ANTS-1138 — see autoProfileRulesGeneration().
+    quint64 m_autoProfileRulesGen = 0;
     QString m_loadFailureBackupPath;
 };

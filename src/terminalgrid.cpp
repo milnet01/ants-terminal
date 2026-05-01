@@ -516,6 +516,39 @@ void TerminalGrid::handleCsi(const VtAction &a) {
     case '@': insertBlanks(param(0)); break;
     case 'S': scrollUp(param(0)); break;
     case 'T': scrollDown(param(0)); break;
+    case 'b': {
+        // ANTS-1133 — CSI Pn b (REP): repeat preceding graphic
+        // character Pn times. Common in less, ncurses (`tput rep`),
+        // and zsh's reset-prompt path as a bandwidth optimisation
+        // for runs of `─` borders, spaces, etc. Pre-fix code
+        // dropped this silently (no case in the switch),
+        // producing missing border chars in less redraws + blanks
+        // in TUI separator lines on high-latency PTYs.
+        //
+        // Find the source cell. With delayed-wrap (m_wrapNext)
+        // the just-written character sits at m_cursorCol on the
+        // current row; otherwise look one column to the left.
+        int srcCol;
+        if (m_wrapNext) {
+            srcCol = m_cursorCol;
+        } else if (m_cursorCol > 0) {
+            srcCol = m_cursorCol - 1;
+        } else {
+            // No previous character to repeat — bail.
+            break;
+        }
+        if (m_cursorRow < 0 || m_cursorRow >= m_rows) break;
+        const auto &row = m_screenLines[m_cursorRow];
+        if (srcCol < 0 || srcCol >= static_cast<int>(row.cells.size()))
+            break;
+        const uint32_t cp = row.cells[srcCol].codepoint;
+        if (cp == 0) break;  // empty cell — nothing to repeat
+        const int count = std::min(param(0), m_cols * m_rows);
+        for (int i = 0; i < count; ++i) {
+            handlePrint(cp);
+        }
+        break;
+    }
     case 'd': {
         // VPA (vertical position absolute). Origin-mode aware, mirroring
         // CUP — see the 'H'/'f' case above.

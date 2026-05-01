@@ -103,6 +103,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.69" date="2026-05-01">
+      <description>
+        <p>Bundle G Tier 2 final closeouts. ANTS-1134 (span cache invalidation across scrollback push), ANTS-1138 (auto-profile-rules pattern cache invalidation via generation counter), ANTS-1142 (KDE-presence guard lifted into shared kwinPresent() helper used by KWinPositionTracker + moveViaKWin + centerWindow), ANTS-1144 (Claude transcript render cap at last 2000 entries). ANTS-1133 partial — CSI Pn b (REP) handler shipped; other CSI-spec gaps remain deferred.</p>
+      </description>
+    </release>
     <release version="0.7.68" date="2026-05-01">
       <description>
         <p>Bundle G Tier 2 closeouts — knocking off the deferred sub-fixes annotated in 0.7.67. ANTS-1136 (5/5 — RuleQualityTracker durability), ANTS-1141 (5/5 — parent-dir fsync after rename), ANTS-1142 (3/4 — MainWindow listens to sessionFailed with status-bar fallback), ANTS-1144 (2/3 — BgTasks dialog ANSI/SGR/OSC strip in tail output).</p>

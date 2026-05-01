@@ -3219,6 +3219,18 @@ void TerminalWidget::invalidateSpanCaches() const {
             m_hlSpanCache.erase(gl);
         }
     }
+    // ANTS-1134 — when scrollback grows (push count increased
+    // since last paint), every existing scrollback-line entry is
+    // potentially mis-keyed: the same globalLine integer now
+    // refers to a different historical line. Drop both caches
+    // wholesale on any push — cheap (regex sweep on next paint
+    // re-fills incrementally) and the only correct invariant.
+    const uint64_t pushedNow = m_grid->scrollbackPushed();
+    if (pushedNow != m_lastScrollbackPushed) {
+        m_urlSpanCache.clear();
+        m_hlSpanCache.clear();
+        m_lastScrollbackPushed = pushedNow;
+    }
     m_grid->clearAllScreenDirty();
     m_spanCacheDirty = false;
 }

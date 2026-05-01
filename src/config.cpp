@@ -785,6 +785,9 @@ QJsonArray Config::autoProfileRules() const {
 
 void Config::setAutoProfileRules(const QJsonArray &rules) {
     if (!storeIfChanged("auto_profile_rules", rules)) return;
+    // ANTS-1138 — bump the generation counter so caches keyed on
+    // pattern strings can invalidate stale entries.
+    ++m_autoProfileRulesGen;
     save();
 }
 

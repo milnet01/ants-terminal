@@ -1,3 +1,11 @@
+ants-terminal (0.7.69-1) unstable; urgency=medium
+
+  * Bundle G Tier 2 final closeouts. ANTS-1134, 1138, 1142,
+    1144 all flip ✅; ANTS-1133 ships CSI Pn b (REP) handler.
+    See CHANGELOG.md § 0.7.69.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 01 May 2026 22:00:00 +0000
+
 ants-terminal (0.7.68-1) unstable; urgency=medium
 
   * Bundle G Tier 2 closeouts. ANTS-1136 (5/5),

@@ -74,9 +74,28 @@ void ClaudeTranscriptDialog::loadTranscript(const QString &path) {
     QJsonArray entries = m_integration->loadTranscript(path);
     m_transcriptView->clear();
 
+    // ANTS-1144 — cap rendered entries so a near-100-MiB
+    // transcript (the integration-layer file cap) doesn't
+    // freeze the UI for tens of seconds while QTextEdit lays
+    // out megabytes of HTML. Show the last N entries with a
+    // "showing last N of M" header; the user can re-open the
+    // file with a future "show all" button if they need the
+    // full record. 2000 is empirically generous — even busy
+    // Claude Code sessions stay well under that.
+    constexpr int kRenderCap = 2000;
+    const int total = entries.size();
+    const int firstIdx = total > kRenderCap ? total - kRenderCap : 0;
+
     QString html;
-    for (const QJsonValue &val : entries) {
-        html += formatEntry(val.toObject());
+    if (firstIdx > 0) {
+        html += QStringLiteral(
+            "<p style='color:#888;font-style:italic;'>"
+            "… showing last %1 of %2 entries (older entries trimmed "
+            "for render performance)</p>")
+            .arg(kRenderCap).arg(total);
+    }
+    for (int i = firstIdx; i < total; ++i) {
+        html += formatEntry(entries.at(i).toObject());
     }
 
     m_transcriptView->setHtml(html);
