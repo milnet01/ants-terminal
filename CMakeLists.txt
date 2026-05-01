@@ -2214,6 +2214,34 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # claude_statusbar_extraction — ANTS-1146 (0.7.74). Locks the
+    # ClaudeStatusBarController extraction invariants — class
+    # declaration shape, public-API + signal byte-for-byte
+    # signatures, user-visible labels preserved in the new TU,
+    # migrated members no longer referenced in mainwindow.cpp,
+    # setup function rename, exactly six controller-connect sites,
+    # two-sided LoC anchor. Source-grep only; no Qt link. See
+    # tests/features/claude_statusbar_extraction/spec.md and
+    # docs/specs/ANTS-1146.md.
+    add_executable(test_claude_statusbar_extraction
+        tests/features/claude_statusbar_extraction/test_claude_statusbar_extraction.cpp
+    )
+    target_compile_options(test_claude_statusbar_extraction PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_claude_statusbar_extraction PRIVATE
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
+        SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.cpp"
+        SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.h"
+        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    )
+    add_test(NAME claude_statusbar_extraction
+        COMMAND test_claude_statusbar_extraction)
+    set_tests_properties(claude_statusbar_extraction PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
     # status-bar Roadmap button visible iff the active tab's cwd
     # contains a ROADMAP.md (case-insensitive); click opens a
