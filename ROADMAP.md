@@ -4959,6 +4959,90 @@ braces in array expansion) — cosmetic, bundle as a debt-sweep item.
 Project's own grep-rule corpus + fixture coverage: **55 pass,
 0 fail.** Clean.
 
+### 🎨 Persistence sweep — make UI state stick across sessions (user request 2026-05-01)
+
+- 📋 [ANTS-1150] **Audit every piece of UI / chrome state and
+  persist what makes sense across sessions.** User ask
+  2026-05-01: *"Everything that makes sense to persist across
+  sessions, please make that persist."* This is a meta-bullet:
+  the action is to enumerate every transient piece of state in
+  the UI, decide whether each should survive a restart, and
+  wire the ones that should into `Config` (which already has
+  the atomic-write + JSON-round-trip + load-fail recovery
+  machinery from ANTS-1141 and predecessors).
+
+  **Already persists (for context — don't re-do):**
+  - Window position + size + opacity + theme +
+    keybindings + plugin grants + audit-allowlist +
+    `.audit_suppress` markers (Config).
+  - Tab session content + tab order (SessionManager,
+    `~/.local/share/ants-terminal/sessions/`).
+  - RoadmapDialog window geometry
+    (`Config::roadmapDialogGeometry`).
+  - Repo-visibility cache (10-min TTL, in-memory).
+  - Latest known remote version (Config — for the
+    update-available action).
+
+  **Candidate gaps (user to confirm which to close):**
+  - **RoadmapDialog state.** Active preset tab (Full /
+    History / Current / Next / Far Future / Custom),
+    search-box content, Kind-facet checkbox set, splitter
+    position, scrollbar position, last-clicked TOC heading.
+    ANTS-1106 spec explicitly chose "Kind filter resets on
+    each open" — the user may want to flip that decision.
+  - **AuditDialog state.** Severity-filter chip selection,
+    Source-filter chip selection, "show new only" toggle,
+    splitter position, last-selected finding.
+  - **Status-bar filter state.** None today — but per the
+    pattern, the 5 status-emoji checkboxes in
+    `RoadmapDialog` and any future status-bar filters
+    could persist their last state.
+  - **SettingsDialog last-active tab.** Resets to tab 0
+    every open. Persisting "user was last on Themes" is
+    cheap and useful for power users.
+  - **Per-tab terminal state beyond scrollback.** Search-bar
+    content, last-search direction, link-preview hover state
+    (probably not), font-size override (already
+    per-window-via-config but maybe per-tab?).
+  - **Active tab index across launch.** SessionManager
+    persists the *order*; the *which-was-active* selection
+    isn't currently saved.
+  - **Window position per-display.** When the user moves to
+    a different monitor, do they want geometry re-mapped?
+    (Probably out of scope — Qt + WM handle this.)
+  - **AI dialog conversation history.** Currently the
+    dialog clears on close. User may want a transcript
+    rolled into Claude's existing project-transcript
+    machinery.
+  - **CommandPalette recent-actions / fuzzy-match cache.**
+    Currently ephemeral.
+  - **Background-tasks dialog open state.** Probably not —
+    the chip in the status bar already surfaces task
+    presence; persisting "dialog was open" would re-open it
+    on every launch.
+
+  **Implementation pattern:** for each accepted candidate,
+  add a `Config::xxx()` getter + setter using the existing
+  `storeIfChanged` + atomic-write hygiene; load on dialog
+  construction; save on relevant change events
+  (debounced for rapid-firing changes like search-box
+  typing). Persisted state must round-trip through JSON
+  cleanly (no QByteArray-blob soup unless geometry-style
+  saveState/restoreState).
+
+  **Spec-first per App-Build strict loop**: write
+  `docs/specs/ANTS-1150.md` enumerating the user-confirmed
+  list of items to persist + the JSON schema additions +
+  the load/save event hooks per item before code starts.
+  Per-item INVs for each persisted key:
+  load-then-save-then-reload round-trip yields the same
+  value. Bundle into a single 0.7.6x release once the user
+  confirms scope.
+
+  Kind: implement. Source: user-2026-05-01. Lanes: Config,
+  RoadmapDialog, AuditDialog, SettingsDialog, MainWindow,
+  ClaudeBgTasksDialog, AiDialog, CommandPalette.
+
 ### 📚 Methodology — adopted as standing practice
 
 - Re-run `/audit` + `/indie-review` before every minor tag.
