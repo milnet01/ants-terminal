@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.62 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.63 (2026-05-01) (2026-04-30). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -2064,6 +2064,14 @@ interpretation. Closes the self-graded-homework loop.
 
 ### 🧪 Future external-signal lanes (carry from the 2026-04-23 review)
 
+> **Bundle deferred to a dedicated 0.8.x test-infra release.** All
+> four items are mechanical CI-lane additions that don't change
+> runtime code; they belong together (shared corpus / fixture
+> infrastructure / Docker images) rather than being interleaved
+> with feature work. Re-evaluate when planning 0.8.0 — the perf
+> sweep (ANTS-1115) likely lands first, then this bundle as the
+> regression-detection backbone.
+
 - 📋 [ANTS-1003] **vttest as a CI lane.** Thomas Dickey's public xterm test
   program. Highest signal-per-effort for VT conformance drift.
   Runs a canonical xterm-compliance corpus against our parser; any
@@ -2176,9 +2184,21 @@ flagged by ≥2 independent reviewers regardless of which lane:
   integration, MainWindow.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- 📋 [ANTS-1014] **No clipboard-write redaction helper.** 7th-audit memory flagged
-  this; TerminalWidget has 12 raw `setText` sites. OSC 52 callback is
-  the headline exfil vector. Lanes: TerminalWidget.
+- ✅ [ANTS-1014] **No clipboard-write redaction helper.** Shipped
+  2026-05-01 (0.7.63). Central funnel landed at
+  `src/clipboardguard.{h,cpp}` — pure `sanitize(text, source)`
+  helper splits on a `Source` enum (`Trusted` / `UntrustedPty` /
+  `UntrustedPlugin`); all sources strip `QChar(0)` (NUL); untrusted
+  sources truncate at 1 MiB. All 15 raw `QApplication::clipboard()->
+  setText(...)` sites in `terminalwidget.cpp` (13) and
+  `mainwindow.cpp` (2) converted: OSC 52 callback uses
+  `UntrustedPty`, Lua plugin glue uses `UntrustedPlugin`,
+  user-initiated copy actions use `Trusted`. Spec at
+  `docs/specs/ANTS-1014.md`; feature test at
+  `tests/features/clipboard_redaction/` (8 INVs — pure-helper
+  drive across the three sources for NUL-strip + cap behaviour
+  plus source-grep that no raw `setText(` survives). Lanes:
+  TerminalWidget, MainWindow, new clipboardguard module.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 
@@ -2397,6 +2417,10 @@ in each named file carry the original indie-review citation.
   ~280 LoC), diff-viewer dialog (`showDiffViewer` and friends,
   ~430 LoC), Claude permission-prompt slot (~160 LoC of nested
   lambdas). ~860 LoC carved off without cross-cutting state.
+  **Deferred to post-1.0** — structural refactor; high cost
+  (carve-out + test rewires + audit re-baseline), low user-visible
+  value. Re-evaluate when the file crosses 7000 LoC or when a
+  feature touches three of the four extraction lanes at once.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 - 📋 [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).** `populateChecks`
@@ -2404,6 +2428,9 @@ in each named file carry the original indie-review citation.
   `auditexport.cpp`; embedded sh fragments (e.g. line 444-460,
   567-580) → `packaging/check-*.sh` mirroring the version-drift
   pattern. ~1900 LoC carved off.
+  **Deferred to post-1.0** alongside ANTS-1043 — same rationale.
+  Subsumes ANTS-1049 (audit-pipeline `populateChecks`-as-data-table)
+  per the structural-tier note above.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 - ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp-
@@ -2533,8 +2560,13 @@ minor tag (next: pre-0.8.0).
   Lanes: MainWindow, dialogfocus.
   Kind: fix.
   Source: regression.
-- 📋 [ANTS-1052] **HIGH — Background-tasks status-bar button regressed:
-  no longer shows up.** User report 2026-04-28. Locked-in invariant
+- 🚧 [ANTS-1052] **HIGH — Background-tasks status-bar button regressed:
+  no longer shows up.** **Awaiting user repro** — diagnostic logging
+  landed in `src/mainwindow.cpp` (commit `1abf768`,
+  `ANTS_DEBUG=claude` traces `refreshBgTasksButton` pre/post state +
+  path resolution). Fix path is gated on capturing one repro session
+  to confirm which of the three candidate causes (a/b/c below) is
+  live. User report 2026-04-28. Locked-in invariant
   from 0.7.32+ (`tests/features/claude_bg_tasks_button/`) is
   passing in CI but the button is missing in the running
   binary. Likely culprits in order of probability: (a) 0.7.49
@@ -2557,7 +2589,13 @@ minor tag (next: pre-0.8.0).
   itself. Lanes: MainWindow, ClaudeBgTasks, ClaudeIntegration.
   Kind: fix.
   Source: user-2026-04-28.
-- 📋 [ANTS-1053] **HIGH — Per-tab Background-tasks button scoping.** User
+- 📋 [ANTS-1053] **HIGH — Per-tab Background-tasks button scoping.**
+  **Blocked on ANTS-1052 root cause** — once the regression is
+  understood + fixed, the per-tab refactor lands as the natural
+  follow-up (the existing single-instance model gets carved into
+  per-tab `std::unique_ptr<ClaudeBgTasks>` slots without changing
+  behaviour). Triggering it before 1052 lands risks shipping the
+  refactor with the same hidden regression. User
   ask: "[Background Tasks button] should be specific to the tab
   / Claude Code session it is on." Today `ClaudeBgTasks` is a
   single MainWindow-wide model surfacing every running
@@ -2923,7 +2961,15 @@ minor tag (next: pre-0.8.0).
   RoadmapDialog.
 
 - 📋 [ANTS-1107] **Adopt App-Build documentation folder
-  structure.** The user-level `/start-app` template ships a
+  structure.** **Deferred — paired with ANTS-1108** (native App-
+  Build runner). The five new doc files this bullet creates
+  (`docs/glossary.md`, `docs/known-issues.md`,
+  `docs/audit-allowlist.md`, `docs/ideas.md`, `docs/design.md`)
+  are most useful when the App-Build runner is live to consume
+  them; creating them ahead of the runner risks them becoming
+  stale before they're wired in. Re-evaluate when ANTS-1108
+  becomes imminent.
+  The user-level `/start-app` template ships a
   richer `docs/` tree than this project currently has. Bring
   Ants Terminal in line:
 
@@ -2947,7 +2993,15 @@ minor tag (next: pre-0.8.0).
   one commit. Kind: doc. Source: user-2026-04-30. Lanes: docs.
 
 - 📋 [ANTS-1108] **Native App-Build runner inside Ants Terminal
-  — the strategic token-saver.** User ask 2026-04-30:
+  — the strategic token-saver.** **Deferred — needs design pass
+  before scoping.** This is a multi-release feature (Workflow
+  panel + step buttons + roadmap-fold templating + per-step state
+  machine + .claude/workflow.md schema co-evolution); shipping it
+  in the current 0.7.x cycle would dwarf every other in-flight
+  bundle. Path forward: ADR + phased plan, then start when
+  ANTS-1120 measurement (or its successor) confirms the
+  token-saving leverage is real for the heavy verbs. Re-evaluate
+  at the 0.8.x planning point. User ask 2026-04-30:
   "incorporate the Ants App-Build suite into Ants Terminal so
   that any user using Ants Terminal can use this without a
   Claude subscription. Or at least perform as much as possible…
@@ -3342,7 +3396,15 @@ minor tag (next: pre-0.8.0).
 
 - 📋 [ANTS-1115] **Performance, performance, performance — full
   hot-path sweep across the ten subsystems that determine
-  perceived speed.** User ask 2026-04-30: "performance,
+  perceived speed.** **Deferred to 0.8.x.** Ten-row table is real
+  work that needs a dedicated release cycle and a benchmark
+  baseline first (the table's "Expected win" column is unmeasured
+  conjecture; without baselines the sweep can ship a "5×
+  improvement" that no user notices). Path forward: land
+  `bench_paint_throughput.cpp` / `bench_search_throughput.cpp`
+  scaffolding alongside the existing `bench_vt_throughput`, take
+  baseline numbers, then start picking off rows. Re-evaluate at
+  0.8.0 planning. User ask 2026-04-30: "performance,
   performance, performance — please think on how we can improve
   performance of Ants Terminal." Triage of every place where
   a measurable improvement is on the table, ranked by impact ×
@@ -4121,8 +4183,14 @@ minor tag (next: pre-0.8.0).
 
 ### 🐛 Scrollback overwrite during streaming (user request 2026-04-30)
 
-- 📋 [ANTS-1118] **HIGH — Scrolling up during a Claude Code stream
-  is being overwritten from the line the user is parked on.** User
+- 🚧 [ANTS-1118] **HIGH — Scrolling up during a Claude Code stream
+  is being overwritten from the line the user is parked on.**
+  **Awaiting user repro** — Step 1 diagnostic logging landed in
+  `src/terminalwidget.cpp` (commit `1abf768`,
+  `ANTS_DEBUG=scrollback` instruments `onVtBatch` with viewport-
+  mutation traces). Steps 2–5 (root-cause + fix + verify) gated on
+  capturing one streaming session that reproduces the overwrite.
+  User
   report 2026-04-30: "the scrollback is still broken — when I scroll
   up to read previous information while Claude Code is still busy
   outputting data, it overwrites from the line I am at. We need a

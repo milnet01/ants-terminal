@@ -103,6 +103,19 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.63" date="2026-05-01">
+      <description>
+        <p>Outstanding-queue cleanup pre-Bundle-G (full /audit + /indie-review). ANTS-1014 clipboard-write redaction lands as the one real code fix — centralises 15 raw <code>setText(...)</code> sites behind a single hygiene funnel, with OSC 52 (the headline exfil vector flagged by the 7th-audit memory) and Lua plugin <code>ants.clipboard.write</code> getting a 1 MiB cap + NUL strip while user-initiated copy actions pass through unchanged. Two regressions get explicit "awaiting repro" status flips so the upcoming review pass doesn't re-flag them as untreated bugs, and six big items get explicit deferral annotations with re-evaluation triggers so orphan planned bullets read as deferred-by-design rather than forgotten.</p>
+        <p>Added:</p>
+        <ul>
+          <li>Clipboard-write redaction funnel — new <code>src/clipboardguard.{h,cpp}</code> module with a pure <code>sanitize(text, source)</code> helper splitting on a <code>Source</code> enum (<code>Trusted</code> / <code>UntrustedPty</code> / <code>UntrustedPlugin</code>). Untrusted sources cap at 1 MiB; all sources strip <code>QChar(0)</code>. All 15 raw <code>QApplication::clipboard()-&gt;setText(...)</code> sites in <code>terminalwidget.cpp</code> + <code>mainwindow.cpp</code> converted with appropriate source classifications. (ANTS-1014)</li>
+        </ul>
+        <p>Changed:</p>
+        <ul>
+          <li>ROADMAP outstanding-queue cleanup — ANTS-1052 + ANTS-1118 flipped to "Awaiting user repro" status; ANTS-1043 / 1044 / 1003-1006 / 1107 / 1108 / 1115 annotated with explicit deferral rationale + re-evaluation triggers.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.62" date="2026-05-01">
       <description>
         <p>Bundle B of the pre-0.7.61 outstanding-item triage — two small UX wins that close ROADMAP carryover. The update-available indicator moves out of the status bar onto the menu bar so the one-shot "you have a new version" call-to-action reads as visually loud chrome instead of competing with the steady-state widgets, and the git-branch chip on the status bar gains a colour cue (green for main/master/trunk, amber for everything else) that pairs it visually with the existing "Public/Private" repo-visibility pill next to it.</p>

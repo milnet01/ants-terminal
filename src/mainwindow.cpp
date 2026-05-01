@@ -12,6 +12,7 @@
 #include "sessionmanager.h"
 #include "remotecontrol.h"
 #include "branchchip.h"           // ANTS-1109 helper
+#include "clipboardguard.h"       // ANTS-1014 clipboard funnel
 #include "dialogfocus.h"          // ANTS-1050 helper
 #include "kwinpositiontracker.h"
 #include "claudeallowlist.h"
@@ -506,9 +507,15 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_pluginManager, &PluginManager::logMessage, this, [this](const QString &msg) {
         showStatusMessage("Plugin: " + msg, 3000);
     });
-    // ants.clipboard.write — capability-gated clipboard write
+    // ants.clipboard.write — capability-gated clipboard write.
+    // ANTS-1014 — Lua plugins are untrusted (third-party code);
+    // funnel through clipboardguard so the 1 MiB cap + NUL strip
+    // apply uniformly with the OSC 52 path.
     connect(m_pluginManager, &PluginManager::clipboardWriteRequested, this,
-            [](const QString &text) { QApplication::clipboard()->setText(text); });
+            [](const QString &text) {
+        clipboardguard::writeText(text,
+            clipboardguard::Source::UntrustedPlugin);
+    });
     // ants.settings.get / set — backed by Config::pluginSetting[s]
     connect(m_pluginManager, &PluginManager::settingsGetRequested, this,
             [this](const QString &pluginName, const QString &key, QString &out) {
@@ -5993,7 +6000,8 @@ void MainWindow::showDiffViewer() {
                               + state->crossUnpushed + "\n\n";
                 if (!state->diff.isEmpty())
                     combined += "# Diff\n" + state->diff;
-                QApplication::clipboard()->setText(combined);
+                clipboardguard::writeText(combined,
+                    clipboardguard::Source::Trusted);
             });
         }
     };

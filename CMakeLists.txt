@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.62 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.63 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -69,6 +69,7 @@ add_executable(ants-terminal
     src/toggleswitch.cpp
     src/auditdialog.cpp
     src/auditengine.cpp
+    src/clipboardguard.cpp
     src/audithygiene.cpp
     src/featurecoverage.cpp
     src/auditrulequality.cpp
@@ -2408,6 +2409,41 @@ if(ANTS_TESTS)
     add_test(NAME dialog_pseudo_modal
              COMMAND test_dialog_pseudo_modal -platform offscreen)
     set_tests_properties(dialog_pseudo_modal PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # clipboard_redaction — ANTS-1014 (0.7.63). Locks the
+    # clipboard-write redaction funnel (clipboardguard::sanitize +
+    # clipboardguard::writeText). Drives the pure sanitize over
+    # the three Source shapes (Trusted, UntrustedPty,
+    # UntrustedPlugin) for NUL-strip + 1 MiB cap behaviour, plus
+    # source-greps terminalwidget.cpp + mainwindow.cpp for the
+    # absence of raw QApplication::clipboard()->setText( and the
+    # presence of the two untrusted-source classifications. See
+    # spec.md.
+    add_executable(test_clipboard_redaction
+        tests/features/clipboard_redaction/test_clipboard_redaction.cpp
+    )
+    # Qt6::Gui is needed because clipboardguard.h's writeText signature
+    # uses QClipboard::Mode as a default arg. The test only drives the
+    # pure sanitize free function — but the header still needs the
+    # type to parse.
+    target_link_libraries(test_clipboard_redaction PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_clipboard_redaction PRIVATE src)
+    target_compile_options(test_clipboard_redaction PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_clipboard_redaction PRIVATE
+        CLIPBOARDGUARD_H="${CMAKE_CURRENT_SOURCE_DIR}/src/clipboardguard.h"
+        TERMINALWIDGET_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+    )
+    add_test(NAME clipboard_redaction
+             COMMAND test_clipboard_redaction)
+    set_tests_properties(clipboard_redaction PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

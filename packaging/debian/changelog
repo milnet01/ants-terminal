@@ -1,3 +1,26 @@
+ants-terminal (0.7.63-1) unstable; urgency=medium
+
+  * Outstanding-queue cleanup pre-Bundle-G (full /audit +
+    /indie-review). One real code fix + a tidy of the ROADMAP
+    so the upcoming review pass surfaces only new signal.
+  * ANTS-1014 — clipboard-write redaction funnel. New module
+    src/clipboardguard.{h,cpp} centralises 15 raw
+    QApplication::clipboard()->setText(...) sites behind a
+    single hygiene helper. OSC 52 (the headline exfil vector
+    flagged by the 7th-audit memory) and ants.clipboard.write
+    Lua plugin glue cap at 1 MiB; user-initiated copy actions
+    pass large inputs through unchanged. All sources strip
+    embedded NUL bytes. Spec at docs/specs/ANTS-1014.md.
+  * ROADMAP outstanding-queue cleanup — ANTS-1052 and
+    ANTS-1118 flipped to "Awaiting user repro" status (both
+    have diagnostic logging in tree from commit 1abf768);
+    ANTS-1043 / 1044 / 1003-1006 / 1107 / 1108 / 1115
+    annotated with explicit deferral rationale +
+    re-evaluation triggers so orphan planned bullets read as
+    deferred-by-design rather than forgotten.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 01 May 2026 14:00:00 +0000
+
 ants-terminal (0.7.62-1) unstable; urgency=medium
 
   * Bundle B of the pre-0.7.61 outstanding-item triage — two

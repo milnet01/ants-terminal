@@ -1,4 +1,5 @@
 #include "terminalwidget.h"
+#include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
 
 #include <QPainter>
@@ -94,7 +95,11 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
             // OSC 52 clipboard set (prefixed with \0OSC52:)
             QString text = QString::fromUtf8(response.data() + 7,
                                               static_cast<int>(response.size()) - 7);
-            QApplication::clipboard()->setText(text);
+            // ANTS-1014 — OSC 52 is the headline exfil vector;
+            // funnel through clipboardguard so the 1 MiB cap +
+            // NUL strip apply uniformly.
+            clipboardguard::writeText(text,
+                clipboardguard::Source::UntrustedPty);
             return;
         }
         ptyWrite(QByteArray(response.data(), static_cast<int>(response.size())));
@@ -1409,7 +1414,8 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
                         QDesktopServices::openUrl(QUrl(ql.url));
                     } else {
                         // Non-URL match (SHA, IP, email) — copy to clipboard
-                        QApplication::clipboard()->setText(ql.url);
+                        clipboardguard::writeText(ql.url,
+                            clipboardguard::Source::Trusted);
                     }
                     return;
                 }
@@ -2878,9 +2884,12 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
 
             QString text = selectedText();
             if (!text.isEmpty()) {
-                QApplication::clipboard()->setText(text, QClipboard::Selection);
+                clipboardguard::writeText(text,
+                    clipboardguard::Source::Trusted,
+                    QClipboard::Selection);
                 if (m_autoCopyOnSelect)
-                    QApplication::clipboard()->setText(text);
+                    clipboardguard::writeText(text,
+                        clipboardguard::Source::Trusted);
             }
             update();
             return;
@@ -2976,10 +2985,13 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
             QString text = selectedText();
             if (!text.isEmpty()) {
                 // Always copy to X11 primary selection
-                QApplication::clipboard()->setText(text, QClipboard::Selection);
+                clipboardguard::writeText(text,
+                    clipboardguard::Source::Trusted,
+                    QClipboard::Selection);
                 // Auto-copy to clipboard too if enabled
                 if (m_autoCopyOnSelect) {
-                    QApplication::clipboard()->setText(text);
+                    clipboardguard::writeText(text,
+                        clipboardguard::Source::Trusted);
                 }
             }
         } else {
@@ -3021,9 +3033,12 @@ void TerminalWidget::mouseDoubleClickEvent(QMouseEvent *event) {
 
         QString text = selectedText();
         if (!text.isEmpty()) {
-            QApplication::clipboard()->setText(text, QClipboard::Selection);
+            clipboardguard::writeText(text,
+                clipboardguard::Source::Trusted,
+                QClipboard::Selection);
             if (m_autoCopyOnSelect) {
-                QApplication::clipboard()->setText(text);
+                clipboardguard::writeText(text,
+                    clipboardguard::Source::Trusted);
             }
         }
 
@@ -3125,7 +3140,8 @@ void TerminalWidget::copySelection() {
     if (!m_hasSelection) return;
     QString text = selectedText();
     if (!text.isEmpty()) {
-        QApplication::clipboard()->setText(text);
+        clipboardguard::writeText(text,
+            clipboardguard::Source::Trusted);
     }
 }
 
@@ -4219,7 +4235,8 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
             });
             QAction *copyUrl = menu.addAction("Copy Link");
             connect(copyUrl, &QAction::triggered, this, [s]() {
-                QApplication::clipboard()->setText(s.url);
+                clipboardguard::writeText(s.url,
+                    clipboardguard::Source::Trusted);
             });
             break;
         }
@@ -4242,14 +4259,18 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
         QAction *copyCmd = menu.addAction("Copy Command");
         connect(copyCmd, &QAction::triggered, this, [this, blockIdx]() {
             QString cmd = commandTextAt(blockIdx);
-            if (!cmd.isEmpty()) QApplication::clipboard()->setText(cmd);
+            if (!cmd.isEmpty())
+                clipboardguard::writeText(cmd,
+                    clipboardguard::Source::Trusted);
         });
 
         QAction *copyOut = menu.addAction("Copy Output");
         copyOut->setEnabled(pr.hasOutput);
         connect(copyOut, &QAction::triggered, this, [this, blockIdx]() {
             QString out = outputTextAt(blockIdx);
-            if (!out.isEmpty()) QApplication::clipboard()->setText(out);
+            if (!out.isEmpty())
+                clipboardguard::writeText(out,
+                    clipboardguard::Source::Trusted);
         });
 
         QAction *rerun = menu.addAction("Re-run Command");
@@ -4887,7 +4908,8 @@ int TerminalWidget::copyLastCommandOutput() {
         if (pr.commandEndMs > 0 && pr.hasOutput) {
             QString text = outputTextAt(i);
             if (text.isEmpty()) return -1;
-            QApplication::clipboard()->setText(text);
+            clipboardguard::writeText(text,
+                clipboardguard::Source::Trusted);
             return text.size();
         }
     }

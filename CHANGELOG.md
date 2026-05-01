@@ -12,6 +12,81 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.63] — 2026-05-01
+
+**Theme:** Outstanding-queue cleanup pre-Bundle-G. ANTS-1014
+clipboard-write redaction lands as the one real code fix
+(centralises 15 raw `setText(...)` sites behind a single
+hygiene funnel — OSC 52 was the headline exfil vector flagged
+by the 7th-audit memory). Two regressions get explicit
+"awaiting repro" status flips so the upcoming /audit + /indie-
+review pass doesn't re-flag them as untreated bugs. Six big
+items get explicit deferral annotations with re-evaluation
+triggers so orphan 📋 bullets read as "deferred-by-design,
+not forgotten."
+
+### Added
+
+- **ANTS-1014 — clipboard-write redaction funnel.** New module
+  `src/clipboardguard.{h,cpp}` exposes a pure
+  `sanitize(text, source)` helper splitting on a `Source` enum
+  (`Trusted` / `UntrustedPty` / `UntrustedPlugin`) plus a thin
+  `writeText(text, source, mode = Clipboard)` wrapper. All
+  sources strip embedded `QChar(0)` (NUL bytes that round-trip
+  through clipboard managers in unpredictable ways).
+  `UntrustedPty` (OSC 52 from the shell) and `UntrustedPlugin`
+  (`ants.clipboard.write` from Lua plugins) cap at 1 MiB —
+  defence-in-depth against accidental DoS via
+  `cat /dev/urandom | base64`. `Trusted` (user-initiated UI
+  copy actions) passes large inputs through unchanged so a
+  10 MiB context-menu copy of a file dump still works. All 15
+  raw `QApplication::clipboard()->setText(...)` sites (13 in
+  `terminalwidget.cpp`, 2 in `mainwindow.cpp`) converted with
+  appropriate source classifications. We deliberately do NOT
+  apply pattern-based secret detection — false-positive
+  redaction is worse than no redaction for this user surface.
+  Spec at `docs/specs/ANTS-1014.md`; feature test at
+  `tests/features/clipboard_redaction/` drives the helper
+  through 8 INVs (pure-helper drive across the three sources
+  for NUL-strip + cap behaviour, source-grep that no raw
+  `setText(` survives, source-grep that the two untrusted
+  classifications appear).
+
+### Changed
+
+- **ROADMAP outstanding-queue cleanup.** Bundle G (full /audit
+  + /indie-review) is up next; this pass tidies the queue so
+  the audit surfaces only *new* signal:
+  - **ANTS-1052 + ANTS-1118** flipped 📋 → 🚧 with explicit
+    "**Awaiting user repro**" headlines. Both have diagnostic
+    logging in tree (commit `1abf768`) waiting for the user
+    to capture one repro session each. Status change so the
+    /indie-review run knows the bugs are mid-investigation.
+  - **ANTS-1043 + ANTS-1044** annotated "Deferred to post-1.0"
+    with structural-refactor rationale + the re-evaluation
+    trigger ("when the file crosses 7000 LoC or when a feature
+    touches three of the four extraction lanes at once").
+  - **ANTS-1003 / 1004 / 1005 / 1006** bundled under a single
+    "Deferred to a dedicated 0.8.x test-infra release" preamble
+    — these four mechanical CI-lane additions belong together.
+  - **ANTS-1107 + ANTS-1108** paired: 1107 (App-Build doc
+    folder) waits for 1108 (Native App-Build runner) so the
+    docs aren't created stale. 1108 itself deferred — needs an
+    ADR + phased plan + the ANTS-1120 measurement (or its
+    successor) confirming token-saving leverage on the heavy
+    verbs before scoping.
+  - **ANTS-1115 — perf sweep** deferred to 0.8.x with a
+    baseline-first prerequisite — the ten-row table's
+    "Expected win" column is unmeasured conjecture; landing
+    `bench_paint_throughput.cpp` / `bench_search_throughput.cpp`
+    scaffolding first means the sweep ships measurable wins
+    rather than vibe-driven refactors.
+  - **ANTS-1053 — per-tab BgTasks** annotated "Blocked on
+    ANTS-1052 root cause" so the natural ordering is locked
+    in: fix the regression first, then the per-tab refactor
+    falls out as a clean follow-up rather than risking the
+    same hidden bug.
+
 ## [0.7.62] — 2026-05-01
 
 **Theme:** Bundle B of the pre-0.7.61 outstanding-item triage —
