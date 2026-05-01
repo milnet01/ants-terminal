@@ -5698,6 +5698,155 @@ here.)
 
 ### 🧰 Dev experience — Roadmap system v2
 
+- 📋 [ANTS-1157] **Project Audit tool flesh-out: aggregate /audit +
+  /indie-review + /debt-sweep history across runs and across
+  projects.** User ask 2026-05-02: *"Flesh out the Project Audit
+  tool... we can analyse all the document sweeps, /audit and
+  /indie-review done for each project and the /debt-sweep as well."*
+  Today's `AuditDialog` (`src/auditdialog.{cpp,h}`, ~5600 LoC)
+  shows the **most recent** audit run for a single project: parse
+  → enrich → SARIF v2.1.0 / HTML render. The window-of-one model
+  loses the per-finding history (recurrence, MTTR, drift),
+  the cross-skill correlation (a finding flagged by both /audit
+  and /indie-review is the gold signal — today they're separate
+  surfaces), and the cross-project view (a developer running
+  Ants on six repos has no way to compare audit health across
+  them). 2026 industry trend (DefectDojo, SonarQube, Codacy):
+  continuous monitoring + incremental drift queries replace
+  periodic snapshot audits — *"what changed this week, what does
+  it impact?"* over *"where's all the debt?"*.
+
+  **Six concrete capabilities to flesh out, smallest-first:**
+
+  1. **Run-history persistence.** Today each `/audit` invocation
+     emits SARIF + HTML to a one-shot file; `AuditDialog` parses
+     and renders the latest. Persist every run as a dated SARIF
+     file in `~/.local/share/ants-terminal/audit-history/<project-slug>/<YYYY-MM-DD>-<sid>.sarif.json`.
+     `/indie-review` already ships `.claude/indie-review/<date>/<subsystem>.md`
+     sidecar reports (per the skill's "ROADMAP fold-in is
+     default-on, sidecar-report saving is opt-in" rule); convert
+     those to a structured JSON sidecar (`<date>-indie-review.json`)
+     alongside the markdown so the tool can ingest both.
+     `/debt-sweep` similarly emits a per-run report — capture as
+     `<date>-debt-sweep.json`. Cross-skill schema: SARIF v2.1.0
+     `runs[]` with one run per skill invocation, `tool.driver.name`
+     = `"audit"` / `"indie-review"` / `"debt-sweep"` so a single
+     SARIF file can hold all three. Microsoft's `sarif-tools`
+     Python library already supports `sarif trend` for time-series
+     graphs from a SARIF directory — vendoring or invoking that
+     is cheaper than rolling our own.
+
+  2. **Per-finding fingerprint + recurrence detection.** SARIF
+     2.1.0 § 3.36 `fingerprints` and `partialFingerprints` already
+     exist for cross-run dedup. Compute a stable hash from
+     `(rule.id, location.physicalLocation.artifactLocation.uri,
+     contextRegion-snippet, surrounding-symbol-name)` so a
+     finding survives line-number drift across commits. The tool
+     answers: *"which findings have been seen in ≥3 runs without
+     being closed?"* — the recurrence-cluster signal. Already
+     half-shipped: `AuditDialog::computeDedup` does within-run
+     dedup by similar shape; extend to cross-run.
+
+  3. **MTTR / open-finding age tracking.** For each finding
+     fingerprint: *first-seen-date*, *last-seen-date*,
+     *closed-date* (when the next run no longer contains it OR
+     when the user marks it `.audit_suppress` with a reason).
+     Surface as `Mean Time to Remediate` per severity bucket
+     (CRITICAL / HIGH / MEDIUM / LOW), the DORA-adjacent metric
+     industry tooling settled on in 2026. AuditDialog gains a
+     "History" tab next to the existing Findings / SARIF / HTML
+     tabs, charting findings-open vs findings-closed over time
+     per skill.
+
+  4. **Cross-skill correlation.** A finding flagged by **both**
+     `/audit` (static analysis) and `/indie-review` (cold-eyes
+     code review) is the highest-signal class — different blind
+     spots aligned on the same line. The tool computes the
+     intersection set per project, ranks by severity, and
+     surfaces a "Corroborated findings" view. This formalizes
+     the existing `highConfidence` flag (CLAUDE.md: *"+20
+     cross-tool corroboration"*) into a dedicated UI lane.
+
+  5. **Cross-project view.** Today `AuditDialog` opens against
+     one project (constructor takes `const QString &projectPath`).
+     Add a Projects tab listing every project that has audit-
+     history persisted, with a per-project row of summary
+     metrics: total findings, open CRITICAL/HIGH count, MTTR,
+     last-run date, noise-rate trend. Click → drills into that
+     project's history. Modeled on Codacy / SonarQube's
+     organization dashboard pattern. Critical for users running
+     Ants on multiple repos (the common case for the dogfood
+     audience).
+
+  6. **Roadmap-fold-in audit trail.** Every `/audit` /
+     `/indie-review` / `/debt-sweep` already folds findings into
+     the project's `ROADMAP.md` under a dated subsection. The
+     tool displays the "fold-in chain" for a finding: *raw
+     finding from /audit on 2026-04-15 → ANTS-1133 created →
+     status flipped to ✅ on 2026-04-30 → CHANGELOG entry in
+     0.7.71*. Tracking source artefact through to release closes
+     the loop and turns the audit log into institutional memory
+     instead of a one-shot report.
+
+  **Industry references** (2026 thorough research surfaced these
+  as the contract shape the tool should match):
+
+  - **SARIF 2.1.0** (OASIS) — multi-tool aggregation, fingerprint
+    dedup, suppression catalog (`result.suppressions[]`).
+    AuditDialog already exports this format; consuming history
+    needs the same parser running over `audit-history/*.sarif.json`.
+  - **DefectDojo** (OWASP, latest 2.55.1 Feb 2026) — open-source
+    unified vulnerability management; aggregates 200+ tools,
+    deduplicates, tracks MTTR. Reference for the contract shape;
+    too heavyweight to embed (Django + Postgres) but the
+    parser/dedup/MTTR algorithms are well-documented.
+  - **Microsoft `sarif-tools`** — Python CLI: `sarif trend`,
+    `sarif diff`, `sarif summary`. In-tree dependency or shell-out
+    target.
+  - **SARIF Visualizer** (mykolaaleksandrov.dev, 2025) — modern
+    web PWA pattern for SARIF rendering with CVE/CWE enrichment,
+    100% client-side. Reference for the UX of the History /
+    Projects tabs.
+  - **Codacy / SonarQube** — dashboards aggregating 300+ tools
+    into a single quality-history surface; the
+    one-pane-of-glass model the cross-project tab should adopt.
+
+  **Sequencing.** Capability 1 (history persistence) is the
+  prerequisite for everything else and is the cheapest — a few
+  hundred LoC + a CLAUDE.md addendum to the three skill specs
+  for sidecar-JSON emission. Capabilities 2-4 build on (1)
+  incrementally; capability 5 follows once (2-4) ship with one
+  project's worth of data; capability 6 is the integration with
+  ANTS-1117's existing `roadmap-query` / `roadmap-status` IPC
+  verbs and ANTS-1154's tagged-text v2 (so the fold-in chain
+  is grep-able by tag).
+
+  **Cross-references** to other roadmap items:
+
+  - **ANTS-1156** (Roadmap-system audit) — sub-question (4)
+    "Claude Code ↔ roadmap integration" includes auto-folding
+    findings into the roadmap. 1157 is the consumer side: read
+    the audit history *back out* of the roadmap once the
+    automation lands.
+  - **ANTS-1154** (Tagged-text format v2) — `<!-- kind:audit-fix
+    -->` / `<!-- kind:review-fix -->` tags become the
+    machine-readable bridge between ROADMAP.md entries and the
+    audit-history fingerprints; this lets capability 6's
+    fold-in-chain rendering be a deterministic parse, not a
+    prose-shape inference.
+
+  **Out of scope** (for this bullet — spin off as children if
+  decisions land): centralized hosted dashboard (DefectDojo-as-
+  service), team / multi-developer aggregation (Ants is a
+  single-user terminal first), CI integration beyond the
+  existing `release.yml` flow.
+
+  Lanes: auditdialog, auditengine, mainwindow (Project Audit
+  menu wiring), claudeintegration (sidecar-JSON consumption),
+  remotecontrol (audit-history-query IPC verb), docs/standards/.
+  Kind: implement.
+  Source: user-2026-05-02.
+
 - 📋 [ANTS-1156] **Roadmap-system audit: split, tag, integrate,
   display, number, write — iron out how the roadmap works.**
   User ask 2026-05-02: *"We need to iron out how the roadmap is
