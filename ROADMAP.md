@@ -4560,6 +4560,400 @@ minor tag (next: pre-0.8.0).
 
 ---
 
+## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
+
+**Theme:** fold-in of the 2026-05-01 multi-agent code review. 11
+subsystems reviewed by independent `general-purpose` subagents (each
+briefed only with source paths + contract docs + external standards
+— ECMA-48, xterm ctlseqs, OWASP LLM Top 10, POSIX `forkpty(3)`,
+SARIF v2.1.0, Lua 5.4 sandbox, freedesktop GlobalShortcuts portal,
+Unix socket perms, RFC 8259, etc.). 5 critical / 24 high /
+~30 medium / many low. Static-analysis pass (cppcheck Qt-aware,
+clazy, clang-tidy on changed files, gitleaks per-dir, shellcheck,
+project's own grep-rule corpus + fixture coverage) added two more
+substantive findings on top of the noise floor (140/142 cppcheck
+findings were style noise, matching the ninth-audit calibration
+anchor). Headline win: **ANTS-1118's root cause was identified by
+the terminal-widget-paint reviewer** — paint-cycle race traced to
+the smooth-scroll snapshot timing in `terminalwidget.cpp:2070`.
+
+Methodology adopted as standing practice: `/audit + /indie-review`
+re-run before each minor tag (next: pre-0.8.0). Lane partition
+will be memoized at `docs/private/audit/indie-review-partition.md`
+once the project crosses run #3 of the same partition; today's
+partition (11 lanes) is documented in this fold-in for reuse.
+
+### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
+
+- 📋 **Trust-model gaps in IPC sockets.** Two independent
+  reviewers found different sockets with overlapping gaps:
+  Claude hook/MCP (claudeintegration.cpp:653, 748) misses
+  `setSocketOptions(QLocalServer::UserAccessOption)` + `lstat`
+  S_ISSOCK precheck before `removeServer`; remote-control
+  (remotecontrol.cpp:118-161) accepts every connection without
+  `SO_PEERCRED` UID match — yet the trust-model comment at
+  remotecontrol.cpp:31-36 explicitly claims `SO_PEERCRED UID
+  match`. The comment overstates what the code does; either the
+  comment shrinks to "UID-scoped + 0700 perms" or the code grows
+  to match. Bundled into ANTS-1132 below.
+- 📋 **Doc/code drift across four lanes.** Audit pipeline
+  (CLAUDE.md says one pipeline order, code does another;
+  Confidence formula in CLAUDE.md is missing the +10 floor and
+  the −5 grep-and-short and the AI-verdict caps), IPC verbs
+  (ANTS-1117 INV-10 says cache invalidates on
+  `QFileSystemWatcher::fileChanged` but impl uses wall-clock +
+  mtime; spec wording wrong, code is right), Lua plugins
+  (PLUGINS.md missing `string.dump` from sandbox-removal list;
+  `os.date()` example crashes in sandbox), Claude integration
+  (`claudeEnv()` function name promises sanitisation that the
+  body doesn't perform). Bundled by lane into ANTS-1136 / 1143
+  below.
+- 📋 **Per-poll work without caching.** MainWindow chrome runs
+  `QDir::entryInfoList` on the active CWD every 2 s
+  (refreshRoadmapButton); refreshRepoVisibility has no in-flight
+  guard so two `gh repo view` processes can race on tab-switch;
+  RoadmapDialog double-walks the markdown for Kind extraction
+  on every render and re-runs `reverseTopLevelSections` on the
+  full archived markdown on every History-mode render;
+  `featurecoverage` slurps the entire project tree into one
+  sourceBlob on every spec-drift run. ANTS-1137 + ANTS-1140 below.
+- 📋 **Resource-lifecycle leaks across long sessions.**
+  `m_planModeByPid` (claudeintegration) never pruned on tab
+  close — Linux PID reuse poisons the cache. `m_repoVisibilityCache`
+  unbounded. Orphan `.tmp` files from rename failures never
+  swept. `m_pending` queue in `GlobalShortcutsPortal` wedged
+  after `sessionFailed` from BindShortcuts. ANTS-1131 + ANTS-1141
+  + ANTS-1142 below.
+- 📋 **Async-signal-safety violations.** Post-fork `setenv`
+  ×5 in `Pty::start` (ptyhandler.cpp:197-202) is not on POSIX's
+  async-signal-safe list; CLAUDE.md and the flatpak path comment
+  block both claim "child only does execvp" — the non-flatpak
+  path silently breaks the discipline. Companion finding: debug
+  log file create perms applied AFTER `s_file.open()` —
+  same-UID race window between create and chmod. ANTS-1135 +
+  ANTS-1142 below.
+- 📋 **VT alt-screen + scroll-region invariants drift.**
+  DECSET 47 / 1047 / 1049 are silently coalesced into one
+  branch (different specs per xterm ctlseqs); `resize()`
+  unconditionally resets `m_scrollTop` / `m_scrollBottom` to
+  full-screen, destroying any TUI's `DECSTBM` state on every
+  window resize; alt scroll-region values not clamped on
+  shrink-resize → next `scrollUp` reads OOB on `m_screenLines`
+  (latent UB → crash); `CSI 3J` / `RIS` clears scrollback even
+  when the user is scrolled-up viewing it. Bundled into
+  ANTS-1130 below.
+
+### 🐛 Tier 1 — ship-this-week fixes (0.7.65)
+
+> Eight items, four IDs (1118 reused; 1130-1132 new). Each is
+> a bounded fix-pass; total estimated diff ≤ 600 LoC + new
+> feature tests.
+
+- 🚧 [ANTS-1118] **Smooth-scroll snapshot race during streaming
+  — root cause confirmed.** See updated body above (severity
+  downgraded MEDIUM 2026-05-01, root cause identified by indie-
+  review L2 2026-05-01). Fix path: trigger snapshot capture +
+  `setScrollbackInsertPaused(true)` on **scroll intent**
+  (`wheelEvent` direction = up + target > 0) rather than on
+  committed `m_scrollOffset` transition. Also covers `Shift+
+  PageUp` / `Shift+Home` / `Shift+Up` (already correct because
+  they set offset non-zero immediately, but invariant should
+  be locked). New feature test
+  `tests/features/scroll_snapshot_intent/` drives the helper
+  with synthetic wheel events + a fast-arrival batch.
+  Kind: fix. Source: user-2026-04-30 + indie-review-2026-05-01.
+  Lanes: TerminalWidget, terminalgrid (snapshot path).
+- 📋 [ANTS-1130] **VT alt-screen + scroll-region invariants —
+  unified fix-pass.** Three findings collapsed into one bullet
+  because all live in `terminalgrid.cpp` and share the same
+  fix-pass review surface:
+  1. **DECSET 47/1047/1049 split** (L1 C-1) —
+     `terminalgrid.cpp:545-588` (entry) + `:609-634` (exit).
+     Per xterm: 47 = swap only (no clear, no DECSC); 1047 =
+     swap + clear-on-exit; 1049 = save DECSC + clear + swap.
+     Currently all three take the 1049 path. Split into three
+     branches with distinct save/clear/restore.
+  2. **resize() preserves DECSTBM** (L1 C-2) —
+     `terminalgrid.cpp:2316-2319` currently does
+     `m_scrollBottom = m_rows - 1; m_scrollTop = 0;`. Should
+     clamp top/bottom to the new row range instead, matching
+     xterm. Same fix on `m_altScrollTop` / `m_altScrollBottom`
+     (currently never clamped).
+  3. **Alt scroll-region OOB on shrink-resize** (L1 H-5) —
+     when shrinking while on alt screen with a non-default
+     scroll region, `regionSize = m_scrollBottom - m_scrollTop
+     + 1` can exceed `m_screenLines.size()` → `std::rotate`
+     (line 1815) reads past end. Latent UB; fixed by clamp
+     above (item 2).
+  Spec stub: write `docs/specs/ANTS-1130.md` enumerating xterm
+  ctlseqs anchors per item. Test:
+  `tests/features/vt_altscreen_invariants/` drives all three
+  in one .cpp.
+  Kind: fix. Source: indie-review-2026-05-01 (L1).
+  Lanes: terminalgrid, vtparser.
+- 📋 [ANTS-1131] **PTY child-process lifecycle bugs.**
+  1. **`Pty::onReadReady` orphans `m_childPid` on
+     EOF-before-reap** (L3 HIGH-2) — `ptyhandler.cpp:386-394`.
+     `waitpid(WNOHANG) == 0` means child is alive but unreaped;
+     code unconditionally clears `m_childPid = -1`, defeating
+     the destructor's escalation block. Fix: gate the clear on
+     `w > 0`.
+  2. **`m_planModeByPid` PID-reuse poisoning** (L3 HIGH-3) —
+     never pruned on tab close. `MainWindow::closeTab` already
+     calls `m_claudeTabTracker->untrackShell(pid)`; add the
+     parallel `m_claudeIntegration->forgetShell(pid)` (or have
+     `setShellPid(0)` prune the outgoing PID's entry).
+  Spec stub: `docs/specs/ANTS-1131.md`; tests
+  `tests/features/pty_eof_orphan/` + extension to existing
+  `tests/features/claude_state_dot_palette/`.
+  Kind: fix. Source: indie-review-2026-05-01 (L3).
+  Lanes: ptyhandler, claudeintegration, MainWindow.
+- 📋 [ANTS-1132] **IPC socket trust-model gaps — unified
+  hardening.**
+  1. **Remote-control `SO_PEERCRED` UID match on accept** (L5
+     HIGH-1) — `remotecontrol.cpp` after `nextPendingConnection()`,
+     `getsockopt(SO_PEERCRED, ...)`, compare `cred.uid ==
+     getuid()`, disconnect on mismatch. Trust-model comment at
+     :31-36 already claims this.
+  2. **Claude hook/MCP server perms + S_ISSOCK precheck** (L3
+     HIGH-4) — `claudeintegration.cpp:653-668, 748-765`. Add
+     `setSocketOptions(QLocalServer::UserAccessOption)` before
+     `listen()`, mirror the existing `lstat`-checked-`S_ISSOCK`
+     guard from remotecontrol's `safeToUnlinkLocalSocket`
+     before any `QLocalServer::removeServer(socketPath)`.
+  3. **Per-connection idle timeout** (L5 HIGH-3 + L3 MEDIUM-1)
+     — both files; `QTimer::singleShot(5000, socket,
+     &QLocalSocket::abort)` per accept, cancel on first
+     complete request. Closes the slow-loris foot-gun.
+  Spec stub: `docs/specs/ANTS-1132.md`. Tests:
+  `tests/features/socket_trust_model/`.
+  Kind: fix. Source: indie-review-2026-05-01 (L3, L5).
+  Lanes: remotecontrol, claudeintegration.
+
+### 🔧 Tier 2 — hardening sweep (0.7.66 / 0.7.67)
+
+- 📋 [ANTS-1133] **VT parser: missing CSI verbs + edge cases.**
+  Bundles L1 H-1 (insertLines/deleteLines hyperlink shift
+  fragility), H-2 (CSI Pn b — REP — silently dropped, common
+  in `less` and ncurses), H-3 (combining-char attach after
+  wrap returns instead of attaching to wrapped row), H-4
+  (wide-cont rewrap orphan after window resize across wide-
+  char wrap boundaries), M-1 (CSI Z, I, `, a, e missing).
+  Kind: fix. Source: indie-review-2026-05-01 (L1).
+  Lanes: terminalgrid, vtparser.
+- 📋 [ANTS-1134] **Terminal widget: modifier-only key + cache
+  invalidation across scrollback push.** Bundles L2 H-1
+  (`keyPressEvent` resets `m_scrollOffset` on every key
+  including Shift / Ctrl / Alt / Meta — kills selection +
+  scrolled-up workflow when user presses a chord starter)
+  and H-2 (URL/highlight span caches keyed by globalLine
+  never invalidated when scrollback grows).
+  Kind: fix. Source: indie-review-2026-05-01 (L2).
+  Lanes: TerminalWidget.
+- 📋 [ANTS-1135] **Post-fork `setenv` async-signal-safety**
+  (L3 HIGH-1). Build env strings pre-fork; `execle` with a
+  constructed `envp` array (or `putenv` with statically-
+  allocated `KEY=VALUE` strings, which IS async-signal-safe
+  when storage is pre-allocated). Mirrors the flatpak-path
+  pre-fork-allocation discipline already in place.
+  Kind: fix. Source: indie-review-2026-05-01 (L3).
+  Lanes: ptyhandler.
+- 📋 [ANTS-1136] **Audit pipeline doc drift + correctness
+  bundle** (L4 HIGH-1, HIGH-2, HIGH-3, HIGH-4, HIGH-5).
+  1. CLAUDE.md pipeline-order line + Confidence formula
+     description corrected to match `auditdialog.cpp` reality.
+  2. `consolidateMypyStubHints` dedup-key width 16-hex →
+     route through `AuditEngine::computeDedup` for 24-hex
+     symmetry.
+  3. `cancelAudit` sets `m_snapshotPersisted = true` before
+     `renderResults()` so cancelled-run partial picture
+     doesn't pollute `trend.json`.
+  4. `RuleQualityTracker::recordFire` durability — flush at
+     end of every audit run (in `runNextCheck()` when
+     `m_currentCheck >= m_checks.size()`), not just at
+     destructor.
+  Plus: drop the `static QString sourceForCheck` trampoline
+  in auditdialog.cpp:1817-1823 (one call site, full
+  qualifier compiles), and remove the duplicate
+  `refactor_set_permissions_pair` from `audit_rules.json`
+  (overlaps the hardcoded `setPermissions_pair_no_helper`
+  Qt rule).
+  Kind: fix. Source: indie-review-2026-05-01 (L4).
+  Lanes: auditdialog, auditengine, audit_rules.json, CLAUDE.md.
+- 📋 [ANTS-1137] **MainWindow chrome perf hotspots.** Bundles
+  L6 H-2 fixes: `refreshRoadmapButton` `QDir::entryInfoList`
+  → three explicit `QFileInfo::exists` for case-variant
+  ROADMAP.md filenames; `refreshRepoVisibility` in-flight
+  guard mirroring `m_reviewProbeInFlight`.
+  Kind: fix. Source: indie-review-2026-05-01 (L6).
+  Lanes: MainWindow.
+- 📋 [ANTS-1138] **MainWindow re-entrancy: `applyTheme` via
+  auto-profile rules** (L6 H-1). Either make `applyTheme`
+  early-return when `m_currentTheme == name` (currently
+  always rewrites the QSS even on no-op), OR move
+  `setTheme(name)` out of `applyTheme` so callers persist
+  explicitly. Plus: invalidate `s_patternCache` /
+  `s_warnedInvalid` on `auto_profile_rules` config change
+  via a generation counter.
+  Kind: fix. Source: indie-review-2026-05-01 (L6 H-1, H-4).
+  Lanes: MainWindow, Config.
+- 📋 [ANTS-1139] **RoadmapDialog markdown subset gaps**
+  (L7 C-1, C-2, H-3, H-5, H-6). Sub-bullet rendering
+  (`^  - ` / `^  * ` indent → nested `<ul><li>` instead of
+  flattened-into-parent-body); markdown table → `<table>`
+  not `<pre>`; `**bold**` recognised in `applyInline`;
+  bold-headline regex hardened against escaped asterisks
+  and intra-bold formatting; Kind regex split on `,` for
+  multi-Kind support. Updates `parseBullets` symmetrically
+  so the IPC verb's bullet set matches the rendered viewer.
+  Kind: fix. Source: indie-review-2026-05-01 (L7).
+  Lanes: RoadmapDialog.
+- 📋 [ANTS-1140] **RoadmapDialog perf: Kind double-walk +
+  reverseSections cache** (L7 H-1, M-6). Fold Kind extraction
+  into the existing top-level-bullet pass (drop the peek-
+  ahead double walk); cache `reverseTopLevelSections` output
+  keyed on `(markdown.size(), markdown.left(64).hash())`.
+  Kind: refactor. Source: indie-review-2026-05-01 (L7).
+  Lanes: RoadmapDialog.
+- 📋 [ANTS-1141] **Config + persistence: dir perms 0700,
+  load-fail setters, parent fsync, .tmp cleanup** (L9 M2,
+  M3, M4, M5, M6). Five tightly-related items in
+  `config.cpp` + `sessionmanager.cpp`:
+  1. `~/.local/share/ants-terminal/sessions/` → 0700 after
+     `mkpath`.
+  2. `setKeybinding`, `setPluginGrants`, `setPluginSetting`,
+     `setRawData` short-circuit at top when `m_loadFailed`.
+  3. `fsync(parent_dir)` after `rename(tmp, dest)` for
+     crash-safe rename durability (Postgres-style).
+  4. `cleanupOldSessions` extended to remove `*.tmp` older
+     than 1 day; startup sweep for `config.json.tmp`.
+  5. `loadTabOrder` stops deleting on read (atomic-write
+     overwrites on save anyway).
+  Kind: fix. Source: indie-review-2026-05-01 (L9).
+  Lanes: Config, SessionManager.
+- 📋 [ANTS-1142] **Wayland integration: portal queue wedge,
+  KDE guard, debug log perms race** (L11 HIGH-1, HIGH-2,
+  HIGH-3 + L5 MED-2).
+  1. `GlobalShortcutsPortal::bindShortcut` drains `m_pending`
+     and clears `m_sessionHandle` on `sessionFailed`; document
+     `sessionFailed` as terminal-per-process.
+  2. Lift KDE-presence guard from `kwinpositiontracker` into
+     a shared helper; call from `MainWindow::moveViaKWin`
+     and `MainWindow::centerWindow` (currently both fire
+     dbus-send on non-KDE compositors and orphan temp scripts
+     in /tmp).
+  3. Debug-log file creation: `umask(0077)` save/restore
+     around `s_file.open()`, or drop to `::open()` with
+     explicit `mode=0600`. Closes the same-UID race window
+     between create and `setOwnerOnlyPerms`.
+  4. `MainWindow` listens to `GlobalShortcutsPortal::sessionFailed`
+     with a `qWarning()` fallback (currently silently
+     swallowed on GNOME).
+  Kind: fix. Source: indie-review-2026-05-01 (L11).
+  Lanes: globalshortcutsportal, kwinpositiontracker, debuglog,
+  MainWindow.
+- 📋 [ANTS-1143] **PLUGINS.md spec drift + Lua wall-clock
+  watchdog** (L8 MEDIUM-1, MEDIUM-2). Doc fix: add
+  `string.dump` to sandbox-removal list; replace `os.date()`
+  call in settings example with sandbox-safe alternative.
+  Plus: document the C-call escape hatch
+  (`string.find` regex backtracking, `table.sort` comparator
+  chains bypass instruction-count hook). Optional v2: add
+  `QTimer` watchdog to force `lua_sethook` fire at coarse
+  wall-time intervals.
+  Kind: doc-fix. Source: indie-review-2026-05-01 (L8).
+  Lanes: PLUGINS.md, luaengine.
+- 📋 [ANTS-1144] **Other dialogs: AI partial-stream insert,
+  transcript large-doc render, BgTasks ANSI-strip** (L10 H1,
+  L2, M2). AI dialog disables `m_insertBtn` on partial-
+  stream errors (fail-closed alignment); Claude transcript
+  dialog renders incrementally with a "showing last N of M"
+  cap; BgTasks dialog strips CSI/SGR sequences from tail
+  output via existing VtParser machinery before HTML-
+  escaping (reuse-before-rewriting per CLAUDE.md rule 3).
+  Kind: fix. Source: indie-review-2026-05-01 (L10).
+  Lanes: aidialog, claudetranscript, claudebgtasksdialog.
+
+### 🏗 Tier 3 — structural (0.8.x)
+
+- 📋 [ANTS-1145] **Extract DiffViewerDialog from mainwindow.cpp**
+  — L6 LoC1. ~430 LoC carve-out (mainwindow.cpp:5681-6110)
+  into `src/diffviewer.{cpp,h}`. Self-contained — only outward
+  dependency is theme snapshot at construction + a button-
+  enable/disable surface.
+  Kind: refactor. Source: indie-review-2026-05-01 (L6).
+- 📋 [ANTS-1146] **Extract ClaudeStatusBarController from
+  mainwindow.cpp** — L6 LoC2. ~509 LoC carve-out
+  (mainwindow.cpp:3684-4192) into
+  `src/claudestatuswidgets.{cpp,h}`. Plus deduplication of
+  the two retraction connect blocks (~60 LoC).
+  Kind: refactor. Source: indie-review-2026-05-01 (L6).
+- 📋 [ANTS-1147] **Extract themedstylesheet from
+  mainwindow.cpp** — L6 LoC3. ~178 LoC of inlined QSS plus
+  the per-widget restyle sites move into pure functions in
+  `src/themedstylesheet.{cpp,h}`. Enables `updateStatusBar`
+  to only re-set the chip stylesheet when `primaryBranch`
+  flipped (currently re-applies every 2 s tick).
+  Kind: refactor. Source: indie-review-2026-05-01 (L6).
+- 📋 [ANTS-1148] **DEC mode 2026 (sync output) unified
+  snapshot path** (L2 C-2). Today the implementation suppresses
+  `onVtBatch`'s own `update()` during BSU but doesn't actually
+  buffer the actions — blink/hover/focus paints leak the mid-
+  sync grid. Fix: snapshot the screen on BSU, render from
+  snapshot in `paintEvent` until ESU. Folds cleanly with
+  ANTS-1118's snapshot machinery.
+  Kind: refactor. Source: indie-review-2026-05-01 (L2).
+- 📋 [ANTS-1149] **paintEvent QTextLayout-per-cell allocation**
+  (L2 H-5). Konsole-style: cache `QTextLayout` per row keyed
+  on row content fingerprint. Same row also constructs
+  `QPainterPath path` per curly-underline cell at line 873 —
+  bound by row not cell.
+  Kind: refactor. Source: indie-review-2026-05-01 (L2).
+
+### 🔍 Static-analysis fold-in (2026-05-01)
+
+cppcheck (Qt-aware): 142 raw, 2 substantive (matches the ninth-
+audit calibration anchor of 12 noise / 14 raw):
+
+- 📋 [Tier-2 fold] **`identicalConditionAfterEarlyExit`** —
+  `auditdialog.cpp:3730` — second `m_cancelled` check is
+  always false. One-line fix; bundle into ANTS-1136.
+- 📋 [Tier-3 fold] **`passedByValue`** —
+  `globalshortcutsportal.cpp:284` — `shortcutId` should be
+  `const QString &`. Trivial; bundle into ANTS-1142.
+
+clang-tidy on changed files: 2 narrowing-conversion warnings
+(`remotecontrol.cpp:132`, `:138`) — bundle into ANTS-1132. Other
+findings (`performance-enum-size`) are debatable nits — defer.
+
+clazy: 0 substantive findings on the changed surface.
+
+gitleaks: 4 findings, all in test fixtures (intentional synthetic
+secrets for the audit-rule corpus + one private key in
+`tests/features/ai_context_redaction/test_*.cpp`). All FP per
+inspection.
+
+shellcheck: 2 findings on `packaging/rotate-roadmap.sh` (`SC1087`
+braces in array expansion) — cosmetic, bundle as a debt-sweep item.
+
+Project's own grep-rule corpus + fixture coverage: **55 pass,
+0 fail.** Clean.
+
+### 📚 Methodology — adopted as standing practice
+
+- Re-run `/audit` + `/indie-review` before every minor tag.
+  Next mandatory run: pre-0.8.0.
+- Memoize the lane partition at
+  `docs/private/audit/indie-review-partition.md` once the
+  project crosses run #3 of the same partition (currently at
+  run #2 — first sweep was 0.7.12, second was 0.7.50, this is
+  the third; partition file lands with ANTS-1130).
+- Plant candidate bugs in the relevant lane brief when known
+  (e.g. ANTS-1118 went into the L2 brief and was found
+  end-to-end with concrete fix sketch).
+
+---
+
 ## 0.8.0 — multiplexing + marketplace (target: 2026-08)
 
 **Theme:** big new capabilities. This is the "features you'd expect from
