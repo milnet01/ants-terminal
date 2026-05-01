@@ -5579,33 +5579,60 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   ship from the same repo.
   Kind: chore.
   Source: planned.
-- 📋 [ANTS-1155] **True in-app self-update — no external
-  `AppImageUpdate` dependency, no manual restart.** Today's
-  "Update" click in `MainWindow::handleUpdateClicked`
+- 📋 [ANTS-1155] **True in-app self-update for the AppImage —
+  no external `AppImageUpdate` dependency, no manual restart.**
+  Today's "Update" click in `MainWindow::handleUpdateClicked`
   (`mainwindow.cpp:5632`) is in-place auto-update *only* when the
   user already has `AppImageUpdate` (GUI) or `appimageupdatetool`
   (CLI) on `$PATH` AND is running the AppImage build (`$APPIMAGE`
   non-empty); when either condition fails the handler falls
-  through to `QDesktopServices::openUrl(url)` — i.e., a browser to
-  the GitHub release page. Neither updater binary is in the
-  default install of any major distro (openSUSE, Ubuntu, Fedora,
-  Arch all ship without it), so for the typical AppImage user
-  *the click is a glorified download link*, not auto-update.
-  Even on the happy path the user has to manually quit + relaunch
-  to pick up the new version; sessions are dropped.
+  through to `QDesktopServices::openUrl(url)` — a browser to the
+  GitHub release page. Neither updater binary is in the default
+  install of any major distro (openSUSE, Ubuntu, Fedora, Arch all
+  ship without it), so for the typical AppImage user *the click
+  is a glorified download link*, not auto-update. Even on the
+  happy path the user manually quits + relaunches to pick up the
+  new version; sessions drop.
 
-  **Surface:** "Update" click → in-app progress UI (download +
-  SHA-256 verify + atomic apply, all in-process, no shell hops) →
-  app restarts itself with all tab sessions preserved → user is
-  on the new version with no external tool, no manual quit /
-  relaunch, no browser detour. Cancel at any point during the
-  download is safe (tempfile is unlinked).
+  **Distribution-channel contract — three buckets.** The
+  controller's behaviour MUST track how the user installed Ants,
+  because fighting the package manager is worse than no
+  auto-update:
+
+  1. **AppImage** (`ANTS_BUILD_CHANNEL=appimage`, `$APPIMAGE`
+     non-empty at runtime) → full in-app self-update, the path
+     described below.
+  2. **Distro package** (`ANTS_BUILD_CHANNEL=distro` — set by the
+     `.spec` / `debian/rules` / Flatpak `org.ants.Terminal.yml` /
+     PKGBUILD / `snapcraft.yaml` builds) → **hide the update
+     notifier entirely.** `rpm` / `apt` / `flatpak` / `pacman` /
+     `snap` already own update delivery for these users; an
+     in-app "Update" button would only surface a confusing
+     browser link the package manager has already superseded.
+     Suppression is structural — the menu-bar action is never
+     constructed, the GitHub-release polling timer never fires.
+  3. **Self-built from source** (`ANTS_BUILD_CHANNEL=source`,
+     default) → today's behaviour stands: notifier shown, click
+     opens the GitHub release page in a browser. Self-builders
+     are tracking the repo anyway and aren't surprised.
+
+  Detection: `ANTS_BUILD_CHANNEL` is a CMake-cache string set by
+  each build's invocation (CI sets it explicitly; the dev default
+  is `source`). The runtime `$APPIMAGE` env-var probe stays as a
+  belt-and-braces disambiguator for the AppImage case.
+
+  **AppImage self-update surface:** "Update" click → in-app
+  progress UI (download + SHA-256 verify + atomic apply, all
+  in-process, no shell hops) → app restarts itself with all tab
+  sessions preserved → user is on the new version with no
+  external tool, no manual quit / relaunch, no browser detour.
+  Cancel during the download unlinks the tempfile cleanly.
 
   **Path of least resistance** — skip `zsync` deltas. Engineering
   a delta-update path for a ~50 MB binary on a developer-bandwidth
   audience isn't the right tradeoff; we ship every few days and
   the full download takes seconds on a normal connection.
-  Concrete plan:
+  Concrete plan for bucket 1:
 
   1. Download the new AppImage via `QNetworkAccessManager` to a
      tempfile next to `$APPIMAGE` (same filesystem so the
@@ -5623,16 +5650,16 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
      into `$APPIMAGE` with the same argv. The new process loads
      the saved session on startup.
 
-  Distro packages (rpm / deb / Flathub / AUR) keep delegating to
-  the system package manager — gated on `$APPIMAGE` non-empty so
-  non-AppImage builds silently fall back to today's behaviour.
-  ≈250 LoC + a feature test that mocks the
-  `QNetworkAccessManager` reply with a known fixture AppImage and
-  verifies (a) sha256 mismatch refuses the apply, (b) atomic
-  rename over a busy file succeeds, (c) `restartSelf` serializes
-  + restores the session round-trip.
+  ≈250 LoC for bucket 1, ≈30 LoC for the build-channel gate, +
+  a feature test that mocks the `QNetworkAccessManager` reply
+  with a known fixture AppImage and verifies (a) sha256 mismatch
+  refuses the apply, (b) atomic rename over a busy file succeeds,
+  (c) `restartSelf` serializes + restores the session round-trip,
+  (d) `ANTS_BUILD_CHANNEL=distro` suppresses the notifier
+  entirely (no menu-bar action, no polling timer).
 
-  Lanes: mainwindow, networking (new module), sessionmanager.
+  Lanes: mainwindow, networking (new module), sessionmanager,
+  CMake build flags, packaging recipes.
   Kind: implement.
   Source: user-2026-05-02.
 - 📋 [ANTS-1072] **H13 — distro-outreach launch**. Once H1–H7 are shipped:
