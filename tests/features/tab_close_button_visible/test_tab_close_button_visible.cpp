@@ -16,6 +16,14 @@
 #  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
 #endif
 
+// ANTS-1147 — the QTabBar::close-button stylesheet rules
+// (default + hover, with the data-URI SVG and the %23 arg
+// splices) moved into themedstylesheet::buildAppStylesheet.
+// All assertions in this test now read the new TU.
+#ifndef SRC_THEMEDSTYLESHEET_CPP_PATH
+#  error "SRC_THEMEDSTYLESHEET_CPP_PATH compile definition required"
+#endif
+
 namespace {
 
 int g_failures = 0;
@@ -47,7 +55,10 @@ bool contains(const std::string &h, const std::string &n) {
 }  // namespace
 
 int main() {
-    const std::string src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    // ANTS-1147 — the close-button QSS rules moved into
+    // themedstylesheet.cpp. Source path of the QSS body is now
+    // there; mainwindow.cpp no longer carries the data-URI SVG.
+    const std::string src = slurp(SRC_THEMEDSTYLESHEET_CPP_PATH);
 
     // I1 — default-state rule has the data-URI image.
     expect(contains(src, "QTabBar::close-button {"),

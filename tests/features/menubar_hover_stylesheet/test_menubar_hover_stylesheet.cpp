@@ -15,6 +15,14 @@
 #error "SRC_OPAQUEMENUBAR_PATH compile definition required"
 #endif
 
+// ANTS-1147 — the app-level QSS (including QMenuBar::item* rules)
+// moved into themedstylesheet::buildAppStylesheet. INV-3 / INV-4 /
+// INV-6 (the QSS-content checks) now grep this file. Construction-
+// site / palette / setBackgroundFill INVs stay rooted in mainwindow.cpp.
+#ifndef SRC_THEMEDSTYLESHEET_PATH
+#error "SRC_THEMEDSTYLESHEET_PATH compile definition required"
+#endif
+
 static std::string slurp(const char *path) {
     std::ifstream f(path);
     if (!f) {
@@ -27,6 +35,7 @@ static std::string slurp(const char *path) {
 
 int main() {
     const std::string mw = slurp(SRC_MAINWINDOW_PATH);
+    const std::string tss = slurp(SRC_THEMEDSTYLESHEET_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
@@ -51,13 +60,17 @@ int main() {
     // INV-3: QMenuBar::item:hover stylesheet rule with a non-transparent
     // background. Without it, the closed-menu hover flash returns (the
     // one-frame :hover-before-:selected gap on Breeze / Fusion).
+    // ANTS-1147 — rule moved from mainwindow.cpp to
+    // themedstylesheet::buildAppStylesheet (and the per-widget
+    // buildMenuBarStylesheet); search the new TU.
     std::regex hoverRule(
         R"(QMenuBar::item:hover\s*\{\s*background-color:\s*%\d+\s*;)");
-    if (!std::regex_search(mw, hoverRule)) {
-        fail("INV-3: QSS block is missing a QMenuBar::item:hover rule — "
-             "re-opens the closed-menu one-frame hover flash (2026-04-20 "
-             "original report). The dropdown-flicker co-regression is fixed "
-             "by WA_OpaquePaintEvent on the menubar, not by dropping this rule.");
+    if (!std::regex_search(tss, hoverRule)) {
+        fail("INV-3: QSS block is missing a QMenuBar::item:hover rule "
+             "in themedstylesheet.cpp — re-opens the closed-menu "
+             "one-frame hover flash (2026-04-20 original report). The "
+             "dropdown-flicker co-regression is fixed by "
+             "WA_OpaquePaintEvent on the menubar, not by dropping this rule.");
     }
 
     // INV-3b: WA_OpaquePaintEvent set on m_menuBar at construction.
@@ -79,11 +92,13 @@ int main() {
     }
 
     // INV-4: QMenuBar::item base rule (0.6.43) still present.
+    // ANTS-1147 — rule moved to themedstylesheet::buildAppStylesheet.
     std::regex baseItemRule(
         R"(QMenuBar::item\s*\{\s*background-color:\s*transparent)");
-    if (!std::regex_search(mw, baseItemRule)) {
-        fail("INV-4: QMenuBar::item base rule removed — Qt will fall back "
-             "to native rendering for the non-selected state (0.6.43 regression)");
+    if (!std::regex_search(tss, baseItemRule)) {
+        fail("INV-4: QMenuBar::item base rule removed from "
+             "themedstylesheet.cpp — Qt will fall back to native "
+             "rendering for the non-selected state (0.6.43 regression)");
     }
 
     // INV-5: setNativeMenuBar(false).
@@ -101,10 +116,11 @@ int main() {
     // 2026-04-20 user report first.
     std::regex qmenuTransparentBase(
         R"(QMenu::item\s*\{\s*background-color:\s*transparent)");
-    if (std::regex_search(mw, qmenuTransparentBase)) {
+    if (std::regex_search(tss, qmenuTransparentBase)) {
         fail("INV-6 (neg): QMenu::item must NOT have an explicit "
-             "transparent-background base rule — it re-opens the dropdown-"
-             "redraw flicker reported 2026-04-20");
+             "transparent-background base rule in themedstylesheet.cpp — "
+             "it re-opens the dropdown-redraw flicker reported "
+             "2026-04-20");
     }
 
     // INV-7 (0.7.25): applyTheme must install a palette fill AND a

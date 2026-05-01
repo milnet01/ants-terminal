@@ -95,7 +95,9 @@ void testRefreshShowsDisabledOnClean() {
 // written to prevent. The tri-state policy is only safe because this
 // gate exists.
 void testHoverStylesheetEnabledGated() {
-    const QString src = readSource(QStringLiteral(SRC_MAINWINDOW_PATH));
+    // ANTS-1147 — global QSS moved into
+    // themedstylesheet::buildAppStylesheet. Read the new TU.
+    const QString src = readSource(QStringLiteral(SRC_THEMEDSTYLESHEET_CPP_PATH));
     if (src.isEmpty()) return;
 
     // Accept either `QPushButton:hover:enabled` or
@@ -111,10 +113,12 @@ void testHoverStylesheetEnabledGated() {
     const bool hasBare   = bareHover.match(src).hasMatch();
 
     CHECK(hasGate,
-          "global QPushButton:hover rule is not gated with :enabled — the "
-          "visible-disabled Review Changes button will light up on hover, "
-          "advertising itself as actionable when it isn't. Update the "
-          "QSS rule in applyTheme() to `QPushButton:hover:enabled { ... }`");
+          "global QPushButton:hover rule is not gated with :enabled in "
+          "themedstylesheet.cpp — the visible-disabled Review Changes "
+          "button will light up on hover, advertising itself as "
+          "actionable when it isn't. Update the QSS rule in "
+          "themedstylesheet::buildAppStylesheet to "
+          "`QPushButton:hover:enabled { ... }`");
     CHECK(!hasBare,
           "an un-gated `QPushButton:hover {` rule is present. If it's "
           "intentional for a specific widget, anchor it with an object-"

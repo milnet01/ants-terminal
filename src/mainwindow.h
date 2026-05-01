@@ -347,6 +347,18 @@ private:
     // cold cache once). Guard skips the spawn while a probe is in
     // flight; cleared by both the finished and errorOccurred handlers.
     bool m_reviewProbeInFlight = false;
+    // ANTS-1147 — cache-and-compare guard for the branch-chip
+    // restyle. The 2 s status timer used to call setStyleSheet
+    // every tick even when neither theme nor primary-branch flag
+    // changed; now the tick computes the new QSS via
+    // themedstylesheet::buildChipStylesheet and only calls
+    // setStyleSheet when the resulting string differs from the
+    // cached value. m_lastBranchChipValid handles the first-tick
+    // case where defaults are otherwise ambiguous.
+    bool m_lastBranchChipValid = false;
+    QString m_lastBranchChipQss;
+    bool m_lastBranchChipPrimary = false;
+    QString m_lastBranchChipTheme;
     // 0.7.39 — status-bar Roadmap viewer button. Visible iff the
     // active tab's cwd contains a ROADMAP.md (case-insensitive).
     // Click → RoadmapDialog (live-watching, filterable, current-work

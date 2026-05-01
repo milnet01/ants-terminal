@@ -22,6 +22,7 @@
 #include "claudeintegration.h"
 #include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
+#include "themedstylesheet.h"
 #include "claudeprojects.h"
 #include "claudetranscript.h"
 #include "auditdialog.h"
@@ -2829,185 +2830,11 @@ void MainWindow::applyTheme(const QString &name) {
     // QMessageBox/QInputDialog/etc.) as long as they were created with the
     // main window as their parent. Untagged QDialog must therefore stay
     // anchor-selected here and not rely on dialog-local setStyleSheet().
-    QString ss = QString(
-        "QMainWindow { background-color: %1; }"
-        "QMenuBar { background-color: %2; color: %3; border-bottom: 1px solid %4; }"
-        // Explicit base ::item rule prevents Qt from falling back to the
-        // native style for the non-selected state. Without it, Qt composites
-        // native item drawing under the stylesheet's :selected overlay; on
-        // hover transitions the native and stylesheet layers race and the
-        // highlight appears to flash (user report 2026-04-19). Transparent
-        // background + matching padding makes the non-selected state a no-op
-        // so the :selected rule is the only visible state change.
-        "QMenuBar::item { background-color: transparent; padding: 4px 10px;"
-        "  margin: 0; border-radius: 4px; }"
-        // :hover and :selected both map to the same highlight. Qt's
-        // QStyleSheetStyle treats them as distinct pseudo-states on
-        // QMenuBar::item — Breeze / Fusion hover-flash for one frame
-        // before :selected engages, and on that frame only :hover
-        // styling applies. Mirroring :selected into :hover removes
-        // the one-frame gap (closed-menu hover flash, original
-        // 2026-04-20 report). The dropdown-flicker-when-both-apply
-        // regression that briefly came up mid-0.7.4 is fixed
-        // structurally by Qt::WA_OpaquePaintEvent on the menubar
-        // widget (see construction site) — not by dropping this
-        // rule.
-        "QMenuBar::item:hover { background-color: %5; }"
-        "QMenuBar::item:selected { background-color: %5; }"
-        "QMenuBar::item:pressed { background-color: %5; }"
-        "QMenu { background-color: %2; color: %3; border: 1px solid %4; padding: 4px; }"
-        // The item's :selected background is a rectangle filling the
-        // full item rect (no border-radius). Prior to 0.7.4 the base
-        // rule had `border-radius: 4px` on the item — rounded
-        // corners force Qt to paint the :selected fill with a clip
-        // shape, and the rows outside that clip shape (inside the
-        // item's bounding rect but outside the rounded pill) get
-        // painted with the menu's background. That compositing path
-        // shows a visible flash as the "current item" shifts rows
-        // on mouse move — reported 2026-04-20 after the paste-
-        // dialog fix exposed the leftover flicker. Dropping the
-        // radius means the :selected fill is the whole rect and
-        // deselect just repaints the same rect to the menu's
-        // background color. No compositing, no flash.
-        "QMenu::item { padding: 6px 24px 6px 12px; }"
-        "QMenu::item:selected { background-color: %5; color: %1; }"
-        "QMenu::separator { height: 1px; background: %4; margin: 4px 8px; }"
-        "QStatusBar { background-color: %2; color: %6; border-top: 1px solid %4; }"
-        "QTabWidget::pane { border: none; }"
-        "QTabBar { background-color: %2; }"
-        "QTabBar::tab { background-color: %2; color: %6; padding: 6px 16px 6px 22px;"
-        "  border: none; border-bottom: 2px solid transparent; }"
-        "QTabBar::tab:selected { color: %3; border-bottom: 2px solid %5; }"
-        "QTabBar::tab:hover { background-color: %1; color: %3; }"
-        // 0.7.32 (user feedback 2026-04-25) — the platform-style fallback
-        // (0.6.27) still rendered the × hover-only on Fusion / qt6ct /
-        // some Plasma color schemes — users couldn't see where to click
-        // without first mousing onto the tab. Force-render the glyph via
-        // a data-URI SVG that's always visible regardless of platform
-        // style. Hover variant uses textPrimary instead of textSecondary
-        // for "lifting" feedback and keeps the ansi-red background (%7)
-        // for the will-click cue.
-        "QTabBar::close-button {"
-        "  image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'"
-        " width='10' height='10' viewBox='0 0 10 10'>"
-        "<line x1='2' y1='2' x2='8' y2='8' stroke='%6'"
-        " stroke-width='1.5' stroke-linecap='round'/>"
-        "<line x1='8' y1='2' x2='2' y2='8' stroke='%6'"
-        " stroke-width='1.5' stroke-linecap='round'/></svg>\");"
-        "  subcontrol-position: right; margin: 2px; padding: 1px;"
-        "  width: 14px; height: 14px; border-radius: 3px; }"
-        "QTabBar::close-button:hover {"
-        "  image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'"
-        " width='10' height='10' viewBox='0 0 10 10'>"
-        "<line x1='2' y1='2' x2='8' y2='8' stroke='%3'"
-        " stroke-width='1.5' stroke-linecap='round'/>"
-        "<line x1='8' y1='2' x2='2' y2='8' stroke='%3'"
-        " stroke-width='1.5' stroke-linecap='round'/></svg>\");"
-        "  background-color: %7; border-radius: 3px; }"
-        "QSplitter::handle { background-color: %4; }"
-        "QSplitter::handle:horizontal { width: 2px; }"
-        "QSplitter::handle:vertical { height: 2px; }"
-        "QWidget#commandPalette { background-color: %2; border: 1px solid %4;"
-        "  border-radius: 8px; }"
-        "QLineEdit#commandPaletteInput { background: %1; color: %3; border: none;"
-        "  border-bottom: 1px solid %4; padding: 10px 14px; font-size: 14px;"
-        "  border-radius: 0px; }"
-        "QListWidget#commandPaletteList { background: %2; color: %3; border: none;"
-        "  outline: none; padding: 4px 0; }"
-        "QListWidget#commandPaletteList::item { padding: 6px 14px; }"
-        "QListWidget#commandPaletteList::item:selected { background-color: %5; color: %1; }"
 
-        // ---- Pop-up / dialog theming ----
-        // QMessageBox, QInputDialog, QColorDialog, QFileDialog, and our own
-        // QDialog subclasses (Settings/Audit/AI/SSH/Claude*) all cascade from
-        // here. Colors match the terminal's active theme.
-        "QDialog { background-color: %2; color: %3; }"
-        "QLabel { color: %3; background: transparent; }"
-        "QPushButton { background-color: %1; color: %3;"
-        "  border: 1px solid %4; padding: 6px 14px; border-radius: 4px; min-width: 60px; }"
-        // :hover must be gated by :enabled. Without the gate, a disabled
-        // button still gets the hover highlight, which advertises it as
-        // actionable even though Qt swallows clicks on disabled buttons
-        // (QAbstractButton::mousePressEvent early-returns). The Review
-        // Changes button on a clean repo is the canonical example: it's
-        // visible-but-disabled to tell the user "the repo is clean,"
-        // but without this gate the hover highlight lied and made the
-        // user think the button should work. See
-        // tests/features/review_changes_clickable/spec.md.
-        "QPushButton:hover:enabled { background-color: %5; color: %2; border-color: %5; }"
-        "QPushButton:pressed:enabled { background-color: %4; }"
-        "QPushButton:default { border: 1px solid %5; }"
-        "QPushButton:disabled { color: %6; border-color: %4; background-color: %2; }"
-        "QLineEdit { background-color: %1; color: %3; border: 1px solid %4;"
-        "  padding: 5px 8px; border-radius: 3px;"
-        "  selection-background-color: %5; selection-color: %2; }"
-        "QLineEdit:focus { border: 1px solid %5; }"
-        "QLineEdit:disabled { color: %6; }"
-        "QTextEdit, QPlainTextEdit, QTextBrowser { background-color: %1; color: %3;"
-        "  border: 1px solid %4; selection-background-color: %5; selection-color: %2; }"
-        "QCheckBox { color: %3; spacing: 6px; background: transparent; }"
-        "QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid %4;"
-        "  background: %1; border-radius: 3px; }"
-        "QCheckBox::indicator:checked { background: %5; border-color: %5; }"
-        "QRadioButton { color: %3; spacing: 6px; background: transparent; }"
-        "QRadioButton::indicator { width: 14px; height: 14px; border: 1px solid %4;"
-        "  background: %1; border-radius: 7px; }"
-        "QRadioButton::indicator:checked { background: %5; border-color: %5; }"
-        "QComboBox { background-color: %1; color: %3; border: 1px solid %4;"
-        "  padding: 4px 8px; border-radius: 3px; min-width: 80px; }"
-        "QComboBox:hover { border-color: %5; }"
-        "QComboBox::drop-down { border: none; width: 20px; }"
-        "QComboBox QAbstractItemView { background-color: %2; color: %3;"
-        "  border: 1px solid %4; selection-background-color: %5; selection-color: %2;"
-        "  outline: none; }"
-        "QSpinBox, QDoubleSpinBox { background-color: %1; color: %3;"
-        "  border: 1px solid %4; padding: 4px 6px; border-radius: 3px; }"
-        "QSpinBox:focus, QDoubleSpinBox:focus { border-color: %5; }"
-        "QGroupBox { color: %3; border: 1px solid %4; border-radius: 4px;"
-        "  margin-top: 10px; padding-top: 8px; background: transparent; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 10px;"
-        "  padding: 0 4px; color: %3; }"
-        "QListWidget, QTreeWidget, QTableWidget { background-color: %1; color: %3;"
-        "  border: 1px solid %4; selection-background-color: %5; selection-color: %2;"
-        "  alternate-background-color: %2; outline: none; }"
-        "QListWidget::item:hover, QTreeWidget::item:hover, QTableWidget::item:hover"
-        "  { background: %2; }"
-        "QHeaderView::section { background-color: %2; color: %3;"
-        "  border: 1px solid %4; padding: 4px 8px; }"
-        "QScrollBar:vertical { background-color: %2; width: 12px; margin: 0; border: none; }"
-        "QScrollBar::handle:vertical { background-color: %4; border-radius: 6px;"
-        "  min-height: 20px; margin: 2px; }"
-        "QScrollBar::handle:vertical:hover { background-color: %5; }"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; }"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
-        "QScrollBar:horizontal { background-color: %2; height: 12px; margin: 0; border: none; }"
-        "QScrollBar::handle:horizontal { background-color: %4; border-radius: 6px;"
-        "  min-width: 20px; margin: 2px; }"
-        "QScrollBar::handle:horizontal:hover { background-color: %5; }"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; border: none; }"
-        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }"
-        "QToolTip { background-color: %2; color: %3; border: 1px solid %4; padding: 4px; }"
-        "QProgressBar { background-color: %1; color: %3; border: 1px solid %4;"
-        "  border-radius: 3px; text-align: center; }"
-        "QProgressBar::chunk { background-color: %5; }"
-        "QDialogButtonBox QPushButton { min-width: 80px; }"
-    ).arg(theme.bgPrimary.name(),
-          theme.bgSecondary.name(),
-          // %3 — textPrimary; appears verbatim in most rules but ALSO
-          // as a stroke color in the data-URI SVG for the tab-close
-          // glyph hover variant. Pre-encode the leading `#` as %23 so
-          // Qt's CSS parser doesn't truncate the URI at the fragment
-          // delimiter; the `%23` literal would also collide with
-          // QString::arg() placeholder numbering, so we splice it
-          // here rather than embed it in the format string.
-          QStringLiteral("%23") + theme.textPrimary.name().mid(1),
-          theme.border.name(),
-          theme.accent.name(),
-          // %6 — textSecondary; same SVG-stroke pre-encoding as %3
-          // above, used by the default (non-hover) tab close button.
-          QStringLiteral("%23") + theme.textSecondary.name().mid(1),
-          theme.ansi[1].name());  // ANSI red for close/danger
-
+    // ANTS-1147 — QSS string-building moved into themedstylesheet::
+    // helpers; the side-effecting setStyleSheet / setBackgroundFill /
+    // re-polish calls stay here.
+    //
     // ANTS-1128 (user reports 2026-04-30 of dropdown bg + Review Changes
     // dialog bg not matching the theme): apply the stylesheet at the
     // QApplication level, not the MainWindow level. Qt's stylesheet
@@ -3016,13 +2843,20 @@ void MainWindow::applyTheme(const QString &name) {
     // the parent QWidget's stylesheet, even though they're QObject
     // children. qApp->setStyleSheet, by contrast, fans out to every
     // widget in the application including not-yet-constructed dialogs.
-    // Both selectors used below (QMainWindow, QDialog, QMenu, etc.)
-    // are unchanged — they're still scoped to specific widget types,
-    // just sourced from the app-level stylesheet now. The previous
-    // setStyleSheet(this, ...) call was the comment's claim to
-    // "Qt already propagates via the object tree", which is the
+    // The selectors below (QMainWindow, QDialog, QMenu, etc.) are
+    // scoped to specific widget types — they're still sourced from
+    // the app-level stylesheet, just built by the helper now. The
+    // previous setStyleSheet(this, ...) call was the comment's claim
+    // to "Qt already propagates via the object tree", which is the
     // misconception the user's screenshots caught.
-    qApp->setStyleSheet(ss);
+    qApp->setStyleSheet(themedstylesheet::buildAppStylesheet(theme));
+
+    // ANTS-1147 — invalidate the branch-chip cache. updateStatusBar's
+    // tick will recompute and re-apply on the next call. Without
+    // this, switching themes would leave the chip with the previous
+    // theme's colours until the user changed branches (the QSS string
+    // would still match the cache key).
+    m_lastBranchChipValid = false;
 
     // Re-polish any already-open top-level dialog so live widgets pick
     // up the new palette without needing to re-instantiate. With qApp
@@ -3059,18 +2893,7 @@ void MainWindow::applyTheme(const QString &name) {
         p.setColor(QPalette::Base, theme.bgSecondary);
         p.setColor(QPalette::WindowText, theme.textPrimary);
         m_menuBar->setPalette(p);
-        m_menuBar->setStyleSheet(QStringLiteral(
-            "QMenuBar { background-color: %1; color: %2; "
-            "  border-bottom: 1px solid %3; }"
-            "QMenuBar::item { background-color: transparent; "
-            "  padding: 4px 10px; margin: 0; border-radius: 4px; }"
-            "QMenuBar::item:hover { background-color: %4; }"
-            "QMenuBar::item:selected { background-color: %4; }"
-            "QMenuBar::item:pressed { background-color: %4; }"
-        ).arg(theme.bgSecondary.name(),
-              theme.textPrimary.name(),
-              theme.border.name(),
-              theme.accent.name()));
+        m_menuBar->setStyleSheet(themedstylesheet::buildMenuBarStylesheet(theme));
         m_menuBar->update();
     }
 
@@ -3096,47 +2919,28 @@ void MainWindow::applyTheme(const QString &name) {
         m_statusBar->update();
     }
 
-    // Status bar labels use theme colors (null-guarded for first call during construction)
-    QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
-    // Git branch chip: rounded background + border + branch-derived
-    // color. ANTS-1109 (0.7.62) — colour cue is now wired off
-    // branchchip::isPrimaryBranch: green (theme.ansi[2], same role
-    // the visibility pill uses for "Public") on main/master/trunk;
-    // amber (theme.ansi[3], same role as "Private") on feature
-    // branches. Frees the user from having to read the branch name
-    // to know "I'm not on main." Pre-1109 behaviour was static
-    // cyan (theme.ansi[6]); user feedback 2026-04-18 ("don't match
-    // status-bar notifications") still respected — neither green
-    // nor amber is in the Claude status-label palette (idle green
-    // at ansi[10] bright variant, prompting/tool yellow at ansi[3]
-    // ... actually that one *does* overlap, but the chip and the
-    // status label never appear in the same row).
+    // Status bar labels — ANTS-1147 routes through themedstylesheet
+    // helpers (null-guarded for first call during construction).
+    // Branch chip's foreground colour follows ANTS-1109 (0.7.62) —
+    // green (theme.ansi[2], same role the visibility pill uses for
+    // "Public") on main/master/trunk; amber (theme.ansi[3], same
+    // role as "Private") on feature branches.
     if (m_statusGitBranch) {
         const bool primary =
             branchchip::isPrimaryBranch(m_gitCacheBranch);
         const QColor &col = primary ? theme.ansi[2] : theme.ansi[3];
         m_statusGitBranch->setStyleSheet(
-            QStringLiteral("QLabel { color: %1; background: %2; border: 1px solid %3; "
-                          "border-radius: 3px; padding: 1px 8px; margin: 2px 6px 2px 4px; "
-                          "font-size: 11px; font-weight: 600; }")
-                .arg(col.name(), theme.bgSecondary.name(), theme.border.name()));
+            themedstylesheet::buildChipStylesheet(theme, col, /*leftMarginPx=*/4));
     }
     if (m_statusGitSep)
-        // Hard divider between the branch chip and the transient-status slot.
-        // textSecondary (not border) because border is often nearly invisible
-        // against bgPrimary on low-contrast themes (Gruvbox-dark, Nord, Solarized);
-        // textSecondary is the muted-but-readable role that every theme tunes
-        // for foreground legibility. Using background-color (not palette) to
-        // paint the QFrame::VLine works around Fusion's habit of drawing
-        // VLines in the window's palette midlight/dark roles, which also
-        // disappear on dark themes.
         m_statusGitSep->setStyleSheet(
-            QStringLiteral("QFrame { background-color: %1; border: none; }")
-                .arg(theme.textSecondary.name()));
+            themedstylesheet::buildGitSeparatorStylesheet(theme));
     if (m_statusMessage)
-        m_statusMessage->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.textPrimary.name(), statusStyle));
+        m_statusMessage->setStyleSheet(
+            themedstylesheet::buildStatusMessageStylesheet(theme));
     if (m_statusProcess)
-        m_statusProcess->setStyleSheet(QStringLiteral("color: %1; %2").arg(theme.ansi[4].name(), statusStyle));
+        m_statusProcess->setStyleSheet(
+            themedstylesheet::buildStatusProcessStylesheet(theme));
 
     // Restyle Claude integration widgets
     if (m_claudeStatusBarController)
@@ -4167,22 +3971,28 @@ void MainWindow::updateStatusBar() {
     }
     if (!gitBranch.isEmpty()) {
         m_statusGitBranch->setText(" " + gitBranch);
-        // ANTS-1109 — keep the chip's colour in sync with the
-        // current branch. Restyling on every 2-s poll is cheap
-        // (small QLabel, identical-string fast path inside Qt's
-        // stylesheet engine) and avoids stale colours after the
-        // user switches branches mid-session.
+        // ANTS-1147 — cache-and-compare guard. Pre-1147 this path
+        // re-applied the chip stylesheet on every 2-s tick even when
+        // neither theme nor primary-branch flag had changed. Now we
+        // compute the QSS via the helper, compare against the cached
+        // string, and only call setStyleSheet when it differs. The
+        // string itself encodes the (theme × primary × margin) triple
+        // so a single string-compare is sufficient. m_lastBranchChipValid
+        // covers the first-tick case where the cache is uninitialised.
         const Theme &chipTheme = Themes::byName(m_currentTheme);
         const bool chipPrimary =
             branchchip::isPrimaryBranch(gitBranch);
         const QColor &chipCol =
             chipPrimary ? chipTheme.ansi[2] : chipTheme.ansi[3];
-        m_statusGitBranch->setStyleSheet(
-            QStringLiteral("QLabel { color: %1; background: %2; border: 1px solid %3; "
-                          "border-radius: 3px; padding: 1px 8px; margin: 2px 6px 2px 4px; "
-                          "font-size: 11px; font-weight: 600; }")
-                .arg(chipCol.name(), chipTheme.bgSecondary.name(),
-                     chipTheme.border.name()));
+        const QString newQss = themedstylesheet::buildChipStylesheet(
+            chipTheme, chipCol, /*leftMarginPx=*/4);
+        if (!m_lastBranchChipValid || newQss != m_lastBranchChipQss) {
+            m_statusGitBranch->setStyleSheet(newQss);
+            m_lastBranchChipQss = newQss;
+            m_lastBranchChipPrimary = chipPrimary;
+            m_lastBranchChipTheme = m_currentTheme;
+            m_lastBranchChipValid = true;
+        }
         m_statusGitBranch->show();
         if (m_statusGitSep) m_statusGitSep->show();
     } else {
@@ -4651,9 +4461,10 @@ void MainWindow::refreshReviewButton() {
     //   - Git repo, clean AND in-sync upstream → visible-but-DISABLED
     //     (shows the user "this tab tracks a repo" without advertising
     //     an action there isn't anything to review). The global
-    //     QPushButton:hover:enabled CSS gate at mainwindow.cpp:~1850
-    //     prevents the disabled button from misleadingly lighting up
-    //     on hover.
+    //     hover-gate CSS rule lives in themedstylesheet::buildAppStylesheet
+    //     (post-ANTS-1147; pre-1147 it was inlined here in applyTheme)
+    //     and prevents the disabled button from misleadingly lighting
+    //     up on hover.
     //   - Git repo with dirty worktree OR unpushed commits OR no
     //     upstream-but-dirty → visible-AND-enabled, clickable.
     //
@@ -4903,18 +4714,15 @@ void MainWindow::refreshRepoVisibility() {
         const Theme &th = Themes::byName(m_currentTheme);
         const QColor &col = isPublic ? th.ansi[2] : th.ansi[3];
         m_repoVisibilityLabel->setText(label);
-        // Chip styling matches the git-branch label (mainwindow.cpp::
-        // applyTheme — rounded bg + border + bgSecondary fill +
-        // border-1px) so the two badges read as a paired left-side
-        // group. Foreground colour stays public-green / private-red
-        // for the at-a-glance visibility cue from 0.7.45.
+        // ANTS-1147 — chip QSS shared with the git-branch label via
+        // themedstylesheet::buildChipStylesheet. The only delta from
+        // the branch chip is the left margin: 0 here so the badge sits
+        // flush against the title bar (the branch chip uses 4 px to
+        // pair with the git separator). Foreground colour stays
+        // public-green / private-red for the at-a-glance visibility
+        // cue from 0.7.45.
         m_repoVisibilityLabel->setStyleSheet(
-            QStringLiteral(
-                "QLabel { color: %1; background: %2; "
-                "border: 1px solid %3; border-radius: 3px; "
-                "padding: 1px 8px; margin: 2px 6px 2px 0; "
-                "font-size: 11px; font-weight: 600; }")
-                .arg(col.name(), th.bgSecondary.name(), th.border.name()));
+            themedstylesheet::buildChipStylesheet(th, col, /*leftMarginPx=*/0));
         m_repoVisibilityLabel->setToolTip(tr("%1 on GitHub").arg(repoSlug));
         m_repoVisibilityLabel->show();
     };

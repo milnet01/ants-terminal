@@ -88,6 +88,7 @@ add_executable(ants-terminal
     src/remotecontrol.cpp
     src/diffviewer.cpp
     src/claudestatuswidgets.cpp
+    src/themedstylesheet.cpp
 )
 
 target_link_libraries(ants-terminal PRIVATE
@@ -1137,6 +1138,7 @@ if(ANTS_TESTS)
     )
     target_compile_definitions(test_review_changes_clickable PRIVATE
         SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.cpp"
     )
     add_test(NAME review_changes_clickable
              COMMAND test_review_changes_clickable)
@@ -1489,6 +1491,7 @@ if(ANTS_TESTS)
     target_compile_definitions(test_menubar_hover_stylesheet PRIVATE
         SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_OPAQUEMENUBAR_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/opaquemenubar.h"
+        SRC_THEMEDSTYLESHEET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.cpp"
     )
     add_test(NAME menubar_hover_stylesheet
              COMMAND test_menubar_hover_stylesheet)
@@ -2084,6 +2087,7 @@ if(ANTS_TESTS)
     )
     target_compile_definitions(test_tab_close_button_visible PRIVATE
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.cpp"
     )
     add_test(NAME tab_close_button_visible
         COMMAND test_tab_close_button_visible)
