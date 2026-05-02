@@ -5120,16 +5120,24 @@ partition (11 lanes) is documented in this fold-in for reuse.
 cppcheck (Qt-aware): 142 raw, 2 substantive (matches the ninth-
 audit calibration anchor of 12 noise / 14 raw):
 
-- 📋 [Tier-2 fold] **`identicalConditionAfterEarlyExit`** —
-  `auditdialog.cpp:3730` — second `m_cancelled` check is
-  always false. One-line fix; bundle into ANTS-1136.
-- 📋 [Tier-3 fold] **`passedByValue`** —
-  `globalshortcutsportal.cpp:284` — `shortcutId` should be
-  `const QString &`. Trivial; bundle into ANTS-1142.
+- ✅ [Tier-2 fold] **`identicalConditionAfterEarlyExit`** —
+  `auditdialog.cpp:3730` — second `m_cancelled` check removed;
+  in-line comment at the call site documents why (the runner
+  is synchronous, no path between the two reads can mutate
+  `m_cancelled`). Verified clean against fresh cppcheck run
+  2026-05-02.
+- ✅ [Tier-3 fold] **`passedByValue`** —
+  `globalshortcutsportal.cpp:284` — Qt's old-style `SLOT()` macro
+  signature-matches by exact type string at connect time, so
+  changing `QString shortcutId` → `const QString &` would silently
+  break the connect at `:219`. Resolved via `// cppcheck-suppress
+  passedByValue` with a comment naming the false-positive class.
 
 clang-tidy on changed files: 2 narrowing-conversion warnings
-(`remotecontrol.cpp:132`, `:138`) — bundle into ANTS-1132. Other
-findings (`performance-enum-size`) are debatable nits — defer.
+(`remotecontrol.cpp:132`, `:138`) — ✅ resolved via explicit
+`static_cast<int>` wraps on `cred.uid` / `::getuid()` /
+`getsockopt` fd. Verified 2026-05-02. Other findings
+(`performance-enum-size`) are debatable nits — defer.
 
 clazy: 0 substantive findings on the changed surface.
 
@@ -5138,8 +5146,11 @@ secrets for the audit-rule corpus + one private key in
 `tests/features/ai_context_redaction/test_*.cpp`). All FP per
 inspection.
 
-shellcheck: 2 findings on `packaging/rotate-roadmap.sh` (`SC1087`
-braces in array expansion) — cosmetic, bundle as a debt-sweep item.
+shellcheck: ✅ `packaging/rotate-roadmap.sh` clean as of
+2026-05-02 (re-run after `/audit` rule rebases). Earlier
+`SC1087` brace findings are no longer reproducible; the
+script's array-expansion sites use the `${arr[@]}` form
+shellcheck accepts.
 
 Project's own grep-rule corpus + fixture coverage: **55 pass,
 0 fail.** Clean.
@@ -5195,6 +5206,55 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
   Kind: implement. Source: user-2026-05-01. Lanes: Config,
   RoadmapDialog, AuditDialog, SettingsDialog, MainWindow.
+
+### 🐛 Crash-safe session persistence (user report 2026-05-02)
+
+- 📋 [ANTS-1159] **Save session state on a periodic timer + tab
+  events, not only on `closeEvent`.** User reported 2026-05-02
+  that after a SIGSEGV (which turned out to be a stale-binary
+  side-effect — see triage below), restart restored zero tabs.
+  Pre-fix code calls `saveAllSessions()` only from
+  `MainWindow::closeEvent` (mainwindow.cpp:3798), so any
+  abnormal termination — SEGV, OOM-kill, power loss — discards
+  every session file write since the last graceful shutdown.
+  ANTS-1141 already plugged a related leak (destructive read on
+  `tab_order.txt`); this closes the bigger one. **Fix shape
+  (option B, user-approved 2026-05-02):** add a 30-s
+  `m_sessionSaveTimer` in MainWindow → `saveAllSessions()`;
+  hook tab-create / tab-close / tab-reorder events to call a
+  cheap `SessionManager::saveTabOrder` (tab list survives a
+  crash within seconds; scrollback can be up to 30 s stale).
+  Spec at `docs/specs/ANTS-1159.md`.
+  **Stale-binary triage** (deferred to spec body): the
+  originating SEGV reported `(deleted)` in `/proc/<pid>/exe`
+  with binary mtime 29 min before crash; restarting from the
+  fresh binary did not reproduce. Not a code bug — but the
+  persistence-loss it exposed is.
+  Kind: fix. Source: user-2026-05-02.
+  Lanes: MainWindow.
+
+### 🎨 Claude Code UX — task-list status-bar surface (user request 2026-05-02)
+
+- 📋 [ANTS-1158] **Status-bar widget + dialog showing the active
+  Claude Code session's task list with status (completed,
+  in-progress, pending).** User ask 2026-05-02: *"When Claude
+  Code has a task list, please add a button to the task bar
+  that brings up a dialog that shows all the tasks. It must
+  show the task status (completed, running, outstanding)."*
+  Source of truth is the focused tab's session JSONL at
+  `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl` —
+  Claude Code's `~/.claude/tasks/<id>/` directory only holds
+  `.lock` and `.highwatermark` files (no payloads), so the
+  JSONL replay is the only authoritative path. Walk the file
+  forward applying `TodoWrite` (snapshot) and `TaskCreate` /
+  `TaskUpdate` (incremental) events to reconstruct current
+  state. Per-tab scope (matches the rest of the Claude Code
+  status-bar widgets); QFileSystemWatcher + 2 s coalesce mirroring
+  `claudebgtasks` so the dot count refreshes live. Hidden when
+  the focused tab has no active task list. Spec at
+  `docs/specs/ANTS-1158.md`.
+  Kind: implement. Source: user-2026-05-02.
+  Lanes: claudetasklist (new), claudestatuswidgets, MainWindow.
 
 ### 📚 Methodology — adopted as standing practice
 
