@@ -33,6 +33,53 @@ public:
     QString roadmapDialogGeometry() const;
     void setRoadmapDialogGeometry(const QString &base64);
 
+    // ANTS-1150 — UI / chrome state persistence Phase 1.
+    //
+    // SettingsDialog last-active tab index. Caller (SettingsDialog
+    // ctor) clamps the read int to [0, m_tabs->count()-1]; Config
+    // doesn't know how many tabs the dialog has.
+    int settingsDialogLastTab() const;
+    void setSettingsDialogLastTab(int index);
+
+    // RoadmapDialog active preset — one of "full", "history",
+    // "current", "next", "far_future", "custom". Unknown / missing
+    // → "full". For Custom-preset persistence to be honoured, the
+    // RoadmapDialog ctor must also have valid roadmap_status_filters
+    // (otherwise the dialog falls back to Full to avoid an empty-
+    // render dead-end — see docs/specs/ANTS-1150.md).
+    QString roadmapActivePreset() const;
+    void setRoadmapActivePreset(const QString &name);
+
+    // RoadmapDialog Kind facet checkbox set. Values from the
+    // KindEntry table in roadmapdialog.cpp ("implement", "fix",
+    // "audit-fix", "review-fix", "doc", "doc-fix", "refactor",
+    // "test", "chore", "release", "research", "ux"). Persisted
+    // sorted (ASCII codepoint) for diffability. Unknown values
+    // are silently dropped on read.
+    QStringList roadmapKindFilters() const;
+    void setRoadmapKindFilters(const QStringList &kinds);
+
+    // RoadmapDialog 5 status-emoji checkboxes — applies only when
+    // roadmap_active_preset == "custom". JSON shape:
+    //   { "done", "planned", "in_progress", "considered", "current" }
+    // each value bool. Empty/missing object → caller falls back
+    // to Preset::Full defaults.
+    QJsonObject roadmapStatusFilters() const;
+    void setRoadmapStatusFilters(const QJsonObject &filters);
+
+    // AuditDialog severity-filter pills. JSON shape:
+    //   { "blocker", "critical", "major", "minor", "info" }
+    // each value bool. Empty/missing → all 5 on.
+    QJsonObject auditSeverityFilters() const;
+    void setAuditSeverityFilters(const QJsonObject &filters);
+
+    // AuditDialog "Show new since baseline" toggle. Persisted bool
+    // is honoured at restore only when m_hasBaseline is true; the
+    // bool stays through baseline deletion (lazy-invalidate — re-
+    // honours on next saveBaseline).
+    bool auditShowNewOnly() const;
+    void setAuditShowNewOnly(bool enabled);
+
     int scrollbackLines() const;
     void setScrollbackLines(int lines);
 

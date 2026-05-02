@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QStandardPaths>
@@ -252,6 +253,97 @@ QString Config::roadmapDialogGeometry() const {
 
 void Config::setRoadmapDialogGeometry(const QString &base64) {
     if (!storeIfChanged("roadmap_dialog_geometry", base64)) return;
+    save();
+}
+
+// ANTS-1150 — UI / chrome state persistence Phase 1.
+
+int Config::settingsDialogLastTab() const {
+    return m_data.value("settings_dialog_last_tab").toInt(0);
+}
+
+void Config::setSettingsDialogLastTab(int index) {
+    if (!storeIfChanged("settings_dialog_last_tab", index)) return;
+    save();
+}
+
+QString Config::roadmapActivePreset() const {
+    const QString name = m_data.value("roadmap_active_preset").toString("full");
+    // Validate against the known set; unknown strings (corrupt
+    // hand-edits, older Ants writing a future enum value) fall back
+    // to "full".
+    if (name == "full" || name == "history" || name == "current" ||
+        name == "next" || name == "far_future" || name == "custom") {
+        return name;
+    }
+    return QStringLiteral("full");
+}
+
+void Config::setRoadmapActivePreset(const QString &name) {
+    if (!storeIfChanged("roadmap_active_preset", name)) return;
+    save();
+}
+
+QStringList Config::roadmapKindFilters() const {
+    static const QStringList kKnown = {
+        QStringLiteral("implement"),  QStringLiteral("fix"),
+        QStringLiteral("audit-fix"),  QStringLiteral("review-fix"),
+        QStringLiteral("doc"),        QStringLiteral("doc-fix"),
+        QStringLiteral("refactor"),   QStringLiteral("test"),
+        QStringLiteral("chore"),      QStringLiteral("release"),
+        QStringLiteral("research"),   QStringLiteral("ux"),
+    };
+    const QJsonArray arr = m_data.value("roadmap_kind_filters").toArray();
+    QStringList result;
+    result.reserve(arr.size());
+    for (const QJsonValue &v : arr) {
+        const QString s = v.toString();
+        // Drop unknowns silently — defends against a stale entry
+        // surviving a future KindEntry rename. Spec says known set
+        // is the KindEntry table at roadmapdialog.cpp:846.
+        if (kKnown.contains(s)) result.append(s);
+    }
+    return result;
+}
+
+void Config::setRoadmapKindFilters(const QStringList &kinds) {
+    // Sort ASCII codepoint-wise for stable on-disk ordering. Diffs
+    // across kind-toggle saves stay readable; QSet iteration order
+    // is unspecified, so an unsorted setter would re-write the
+    // same-content array in different orders. ASCII-only — every
+    // KindEntry value at roadmapdialog.cpp:846 is ASCII.
+    QStringList sorted = kinds;
+    sorted.sort();
+    QJsonArray arr;
+    for (const QString &k : sorted) arr.append(k);
+    if (!storeIfChanged("roadmap_kind_filters", arr)) return;
+    save();
+}
+
+QJsonObject Config::roadmapStatusFilters() const {
+    return m_data.value("roadmap_status_filters").toObject();
+}
+
+void Config::setRoadmapStatusFilters(const QJsonObject &filters) {
+    if (!storeIfChanged("roadmap_status_filters", filters)) return;
+    save();
+}
+
+QJsonObject Config::auditSeverityFilters() const {
+    return m_data.value("audit_severity_filters").toObject();
+}
+
+void Config::setAuditSeverityFilters(const QJsonObject &filters) {
+    if (!storeIfChanged("audit_severity_filters", filters)) return;
+    save();
+}
+
+bool Config::auditShowNewOnly() const {
+    return m_data.value("audit_show_new_only").toBool(false);
+}
+
+void Config::setAuditShowNewOnly(bool enabled) {
+    if (!storeIfChanged("audit_show_new_only", enabled)) return;
     save();
 }
 
