@@ -2333,6 +2333,25 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # crash_safe_session_persist — ANTS-1159. User report 2026-05-02:
+    # after a SIGSEGV, restart restored zero tabs because
+    # saveAllSessions was only wired to closeEvent. Pure source-grep
+    # wiring test (no link) — confirms the periodic timer + tab-event
+    # save hooks land. See tests/features/crash_safe_session_persist/
+    # spec.md and docs/specs/ANTS-1159.md.
+    add_executable(test_crash_safe_session_persist
+        tests/features/crash_safe_session_persist/test_crash_safe_session_persist.cpp
+    )
+    target_compile_options(test_crash_safe_session_persist PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME crash_safe_session_persist
+        COMMAND test_crash_safe_session_persist
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(crash_safe_session_persist PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
     # status-bar Roadmap button visible iff the active tab's cwd
     # contains a ROADMAP.md (case-insensitive); click opens a
