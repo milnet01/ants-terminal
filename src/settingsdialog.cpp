@@ -85,20 +85,22 @@ SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
 
     loadSettings();
 
-    // ANTS-1150 — restore last-active tab. QSignalBlocker so the
-    // setCurrentIndex doesn't write back through the just-installed
-    // currentChanged handler (cold-eyes MEDIUM #9 — without it,
-    // two windows with different tab counts could clamp-and-write
-    // each other's saved index).
+    // ANTS-1150 — connect FIRST, then restore under a QSignalBlocker
+    // so the blocker actually defends against the restore writing
+    // back through the handler. Order matters: the previous shape
+    // (set-then-connect) made the blocker dead defense — no slot
+    // existed yet to suppress. Defends two-windows-with-different-
+    // tab-counts: window A persisted 5, window B opens with 4 tabs,
+    // clamps to 3, blocker prevents B from writing 3 over A's 5.
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int idx) {
+        if (m_config) m_config->setSettingsDialogLastTab(idx);
+    });
     if (m_config) {
         const int saved = m_config->settingsDialogLastTab();
         const int clamped = qBound(0, saved, m_tabs->count() - 1);
         QSignalBlocker block(m_tabs);
         m_tabs->setCurrentIndex(clamped);
     }
-    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int idx) {
-        if (m_config) m_config->setSettingsDialogLastTab(idx);
-    });
 }
 
 void SettingsDialog::setupGeneralTab(QWidget *tab) {

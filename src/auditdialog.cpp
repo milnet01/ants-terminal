@@ -3238,21 +3238,21 @@ void AuditDialog::buildUI() {
     m_newOnlyBtn->setToolTip(
         m_hasBaseline ? "Hide findings already present in the saved baseline"
                       : "No baseline saved yet — run an audit and click 'Save baseline'");
-    // ANTS-1150 — restore persisted "show new only" toggle. Gated
-    // on m_hasBaseline (no point checking the box when there's no
-    // baseline to compare against). Lazy-invalidate stickiness: if
-    // baseline is later deleted, the persisted bool stays through
-    // the gap; next saveBaseline re-honours the preference.
-    if (m_config && m_hasBaseline && m_config->auditShowNewOnly()) {
-        QSignalBlocker block(m_newOnlyBtn);
-        m_newOnlyBtn->setChecked(true);
-        m_showNewOnly = true;
-    }
+    // ANTS-1150 — connect FIRST then restore under a QSignalBlocker
+    // so the blocker actually defends against the restore re-firing
+    // the handler. Lazy-invalidate stickiness for the m_hasBaseline
+    // gate: if baseline is later deleted, the persisted bool stays
+    // through the gap; next saveBaseline re-honours the preference.
     connect(m_newOnlyBtn, &QPushButton::toggled, this, [this](bool on) {
         m_showNewOnly = on;
         if (m_config) m_config->setAuditShowNewOnly(on);
         if (!m_completedResults.isEmpty()) renderResults();
     });
+    if (m_config && m_hasBaseline && m_config->auditShowNewOnly()) {
+        QSignalBlocker block(m_newOnlyBtn);
+        m_newOnlyBtn->setChecked(true);
+        m_showNewOnly = true;
+    }
     btnRow->addWidget(m_newOnlyBtn);
 
     // Recent-changes scope toggle (file-level).

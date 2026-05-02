@@ -1077,28 +1077,28 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         // Unknown / "full" → Preset::Full default.
     }
 
-    // (3) Custom-only status restore.
+    // (3) Custom-only status restore. If sf.isEmpty() (user picked
+    // Custom via tab click but never toggled a status checkbox, so
+    // onCheckboxToggled never wrote roadmap_status_filters), treat
+    // the missing object as "all on" — equivalent to a fresh-Custom
+    // state. We must NOT silently flip persisted back to Full here:
+    // doing so writes "full" to disk via persistActivePreset and
+    // discards the user's Custom choice without their knowledge.
+    // The .toBool(true) defaults handle the empty case naturally.
     if (persisted == Preset::Custom && m_config) {
         const QJsonObject sf = m_config->roadmapStatusFilters();
-        if (sf.isEmpty()) {
-            // Custom + empty mask = empty render dead-end. Fall
-            // back to Full instead of leaving every checkbox off.
-            // Same UX as today's first-launch behaviour.
-            persisted = Preset::Full;
-        } else {
-            m_suppressCheckboxSignal = true;
-            if (m_filterDone)
-                m_filterDone->setChecked(sf.value(QLatin1String("done")).toBool(true));
-            if (m_filterPlanned)
-                m_filterPlanned->setChecked(sf.value(QLatin1String("planned")).toBool(true));
-            if (m_filterInProgress)
-                m_filterInProgress->setChecked(sf.value(QLatin1String("in_progress")).toBool(true));
-            if (m_filterConsidered)
-                m_filterConsidered->setChecked(sf.value(QLatin1String("considered")).toBool(true));
-            if (m_filterCurrent)
-                m_filterCurrent->setChecked(sf.value(QLatin1String("current")).toBool(true));
-            m_suppressCheckboxSignal = false;
-        }
+        m_suppressCheckboxSignal = true;
+        if (m_filterDone)
+            m_filterDone->setChecked(sf.value(QLatin1String("done")).toBool(true));
+        if (m_filterPlanned)
+            m_filterPlanned->setChecked(sf.value(QLatin1String("planned")).toBool(true));
+        if (m_filterInProgress)
+            m_filterInProgress->setChecked(sf.value(QLatin1String("in_progress")).toBool(true));
+        if (m_filterConsidered)
+            m_filterConsidered->setChecked(sf.value(QLatin1String("considered")).toBool(true));
+        if (m_filterCurrent)
+            m_filterCurrent->setChecked(sf.value(QLatin1String("current")).toBool(true));
+        m_suppressCheckboxSignal = false;
     }
 
     // (4) Apply the persisted preset (fires rebuild).
