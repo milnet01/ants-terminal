@@ -12,6 +12,93 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.75] — 2026-05-02
+
+**Theme:** ANTS-1148 — DEC private mode 2026 (Synchronized Output /
+BSU/ESU) atomicity fix. Pre-fix, `onVtBatch` suppressed only its own
+`update()` during BSU but left the live grid mutated by
+`processAction`; any other paint trigger (`blinkCursor`,
+`focusIn/Out`, hover, selection, visual-bell flash) would call
+`paintEvent` which read the live half-applied state and leak mid-
+sync content to screen. The fix unifies sync output onto the
+existing 0.6.33 frozen-screen snapshot machinery: pre-scan a
+`VtBatch` for `CSI ?2026h`, capture the snapshot before the
+`processAction` loop, route `paintEvent`'s cursor reads through new
+`effectiveCursorRow/Col()` accessors, and clear on ESU or via the
+500 ms safety timer. Single TU touched (`terminalwidget.{cpp,h}`),
+behavioural-correctness only — no LoC delta on `mainwindow.cpp`.
+132/132 ctests pass.
+
+### Fixed
+
+- **ANTS-1148 — Synchronized Output (DEC mode 2026) is now
+  atomic against non-batch paint triggers.** Pre-fix, BSU
+  (`CSI ?2026h`) suppressed `onVtBatch`'s trailing `update()` but
+  did nothing about the live grid mutation underneath: any
+  `paintEvent` driven by `blinkCursor` (550 ms cadence),
+  `focusInEvent` / `focusOutEvent`, mouse-hover OSC 8 hyperlink
+  rollover, selection drag, or visual-bell flash would re-render
+  from the half-applied grid mid-BSU and leak partial state —
+  exactly the tearing the protocol exists to prevent. Fix folds
+  sync output onto the existing 0.6.33 frozen-screen snapshot
+  path: a new file-scope helper `batchEntersSyncOutput` pre-scans
+  the `VtBatch` for `CSI ?2026h` (CsiDispatch + intermediate `?` +
+  finalChar `h` + `2026` in params), and `onVtBatch` captures the
+  snapshot under
+  `(m_syncOutputActive || batchEntersSyncOutput(*batch)) &&
+  m_frozenScreenRows.empty()` *before* `processAction` runs. The
+  left disjunct handles eviction-recovery — resize / RIS / alt-
+  screen toggle clear the snapshot mid-sync, and we need to
+  re-capture for the rest of the block. Cleanup runs at end-of-
+  batch when `!m_syncOutputActive && m_scrollOffset == 0 &&
+  !m_frozenScreenRows.empty()` (drops the prior `wasSync &&` gate
+  that stranded same-batch BSU+ESU snapshots — cold-eyes C2); the
+  500 ms safety timer also clears on force-end. `paintEvent`'s
+  three cursor-render sites (cursor draw, under-cursor glyph,
+  autocomplete ghost) route through new
+  `effectiveCursorRow/Col()` inline accessors that read
+  `m_frozenCursorRow/Col` when `m_frozenScreenRows` is non-empty
+  and live otherwise; the eight typing / IME / semantic-output
+  cursor reads (`keyPressEvent`, `inputMethodQuery`,
+  `clickToMoveCursor`, `findMatchingBracket`, `toggleFoldAtCursor`,
+  `toggleBookmark`, `updateSuggestion`, `lastCommandOutput`)
+  intentionally keep direct `m_grid->cursorRow/Col()` reads —
+  those paths want the real cursor, not the rendered one. Spec at
+  `docs/specs/ANTS-1148.md` cold-eyes-reviewed before code (10
+  findings folded — 2 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW); new
+  feature test at `tests/features/sync_output_snapshot/` locks
+  9 INVs by source-grep. Out-of-snapshot scope (intentional,
+  matches xterm/foot): cursor visibility / shape / blink
+  (DECSCUSR, DECTCEM) and inline images (Sixel / Kitty / iTerm2)
+  read live mid-BSU.
+
+- **ANTS-1148 — `updateScrollBar`'s frozen-snapshot predicate
+  extended to cover sync output.** Indie-review HIGH on commit
+  `9674e5a` caught a missed call site: `updateScrollBar` at
+  `terminalwidget.cpp:2793` still used the pre-1148 predicate
+  `wantFrozen = (m_scrollOffset > 0)`. Closes spec transition
+  row 7 — scrolled-back-during-sync, user scrolls back to bottom
+  while BSU is still active: without the sync clause, the
+  snapshot is evicted and the next paint reads the half-applied
+  grid. Fix extends to `(m_scrollOffset > 0) || m_syncOutputActive`,
+  matching the unified-predicate pattern already in use at the
+  other three call sites (`onVtBatch` pre-scan, end-of-loop
+  cleanup, safety-timer slot). Test gains INV-4b locking the
+  disjunction at this third site (`74395a6`).
+
+### Changed
+
+- **`blinkCursor` partial-update rect routes through
+  `effectiveCursorRow/Col()`.** Pre-fix the blink invalidation
+  rect was computed from `m_grid->cursorRow/Col()` directly; under
+  sync the live cursor position can have advanced past the
+  frozen-rendered cell, so the partial-update rect wouldn't cover
+  the cell `paintEvent` actually draws and the cursor would
+  visually stall mid-BSU. Routing through the centralised
+  accessor locks the invalidation rect to the rendered cell — a
+  small consistency win that drops out of the snapshot
+  unification rather than a separate fix.
+
 ## [0.7.74] — 2026-05-02
 
 **Theme:** Bundle G Tier 3 carve-out — second and third of three

@@ -1,3 +1,41 @@
+ants-terminal (0.7.75-1) unstable; urgency=medium
+
+  * ANTS-1148 — DEC private mode 2026 (Synchronized Output /
+    BSU/ESU) atomicity fix. Pre-fix BSU (CSI ?2026h) suppressed
+    only onVtBatch's trailing update() while leaving the live
+    grid mutated by processAction; any non-batch paint trigger
+    re-rendered mid-sync from the half-applied state and leaked
+    partial content to screen — exactly the tearing the protocol
+    exists to prevent.
+  * Leak vector closed: blinkCursor (550 ms cadence), focusIn/
+    focusOut, mouse-hover OSC 8 hyperlink rollover, selection
+    drag, and visual-bell flash all previously drove paintEvent
+    from the half-applied grid mid-BSU.
+  * Fix unifies sync output onto the existing 0.6.33 frozen-
+    screen snapshot machinery: new file-scope helper
+    batchEntersSyncOutput pre-scans the VtBatch for CSI ?2026h;
+    onVtBatch captures the snapshot before the processAction
+    loop; end-of-batch cleanup drops the prior wasSync && gate
+    that stranded same-batch BSU+ESU snapshots; the 500 ms
+    safety timer also clears on force-end. Single TU touched
+    (src/terminalwidget.{cpp,h}).
+  * paintEvent's three cursor-render sites (cursor draw, under-
+    cursor glyph, autocomplete ghost) route through new
+    effectiveCursorRow/Col() inline accessors; the eight typing /
+    IME / semantic-output cursor reads keep direct grid reads.
+  * Indie-review HIGH fold-in (commit 9674e5a): updateScrollBar
+    at terminalwidget.cpp:2793 still used the pre-1148 predicate
+    (m_scrollOffset > 0); extended to (m_scrollOffset > 0) ||
+    m_syncOutputActive to match the unified pattern at the other
+    three call sites. Test gains INV-4b (74395a6).
+  * Spec at docs/specs/ANTS-1148.md cold-eyes-reviewed before
+    code (10 findings folded — 2 CRITICAL, 3 HIGH, 3 MEDIUM,
+    2 LOW); new feature test at tests/features/sync_output_
+    snapshot/ locks 9 INVs by source-grep. 132/132 ctests pass.
+    See CHANGELOG.md § 0.7.75.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 02 May 2026 07:00:00 +0000
+
 ants-terminal (0.7.74-1) unstable; urgency=medium
 
   * Bundle G Tier 3 carve-out — second and third of three L6

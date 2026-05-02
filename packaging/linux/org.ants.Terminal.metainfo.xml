@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.75" date="2026-05-02">
+      <description>
+        <p>ANTS-1148 — DEC private mode 2026 (Synchronized Output / BSU/ESU) atomicity fix. Pre-fix, BSU suppressed only <code>onVtBatch</code>'s trailing <code>update()</code> while leaving the live grid mutated by <code>processAction</code>; any other paint trigger could re-render mid-sync and leak partial state. Fix unifies sync output onto the existing 0.6.33 frozen-screen snapshot machinery in a single TU (<code>terminalwidget.{cpp,h}</code>). 132/132 ctests pass.</p>
+        <ul>
+          <li>Closes the leak vector: <code>blinkCursor</code> (550 ms cadence), <code>focusInEvent</code> / <code>focusOutEvent</code>, mouse-hover OSC 8 hyperlink rollover, selection drag, and visual-bell flash all previously drove <code>paintEvent</code> from the half-applied grid mid-BSU — exactly the tearing the protocol exists to prevent.</li>
+          <li>New file-scope helper <code>batchEntersSyncOutput</code> pre-scans the <code>VtBatch</code> for <code>CSI ?2026h</code>; <code>onVtBatch</code> captures a frozen snapshot before the <code>processAction</code> loop, and end-of-batch cleanup drops the prior <code>wasSync &amp;&amp;</code> gate that stranded same-batch BSU+ESU snapshots.</li>
+          <li><code>paintEvent</code>'s three cursor-render sites (cursor draw, under-cursor glyph, autocomplete ghost) route through new <code>effectiveCursorRow/Col()</code> accessors that read frozen state when active; the eight typing / IME / semantic-output cursor reads intentionally keep direct grid reads.</li>
+          <li>Indie-review HIGH fold-in: <code>updateScrollBar</code> at <code>terminalwidget.cpp:2793</code> still used the pre-1148 predicate <code>(m_scrollOffset &gt; 0)</code>; extended to <code>(m_scrollOffset &gt; 0) || m_syncOutputActive</code> to match the unified pattern at the other three call sites. Locks spec transition row 7 (scroll-back-to-bottom mid-BSU).</li>
+          <li>Spec at <code>docs/specs/ANTS-1148.md</code> cold-eyes-reviewed before code (10 findings folded — 2 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW); new feature test at <code>tests/features/sync_output_snapshot/</code> locks 9 INVs by source-grep.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.74" date="2026-05-02">
       <description>
         <p>Bundle G Tier 3 carve-out — second and third of three L6 LoC decompositions of src/mainwindow.cpp. Together cuts mainwindow.cpp from 6249 → 5464 LoC (-785, -12.6 %) — the largest single-bundle reduction in the file's recent history.</p>

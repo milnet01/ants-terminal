@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.74 (2026-05-02). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.75 (2026-05-02). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -5072,14 +5072,29 @@ partition (11 lanes) is documented in this fold-in for reuse.
   tests/features/themedstylesheet_extraction/. mainwindow.cpp:
   5656 → 5464 LoC (-192).
   Kind: refactor. Source: indie-review-2026-05-01 (L6).
-- 📋 [ANTS-1148] **DEC mode 2026 (sync output) unified
-  snapshot path** (L2 C-2). Today the implementation suppresses
-  `onVtBatch`'s own `update()` during BSU but doesn't actually
-  buffer the actions — blink/hover/focus paints leak the mid-
-  sync grid. Fix: snapshot the screen on BSU, render from
-  snapshot in `paintEvent` until ESU. Folds cleanly with
-  ANTS-1118's snapshot machinery.
-  Kind: refactor. Source: indie-review-2026-05-01 (L2).
+- ✅ [ANTS-1148] **DEC mode 2026 (sync output) unified
+  snapshot path** — Shipped 0.7.75 (2026-05-02). L2 C-2 from
+  indie-review-2026-05-01. Pre-fix the implementation suppressed
+  `onVtBatch`'s own `update()` during BSU but other paint
+  triggers (blinkCursor, focusIn/Out, hover, selection,
+  visual-bell) read the live half-applied grid via paintEvent.
+  Fix unifies the existing 0.6.33 frozen-screen snapshot
+  machinery (m_frozenScreenRows + m_frozenScreenCombining)
+  under the disjunction
+  `(m_scrollOffset > 0) || m_syncOutputActive`; cursor
+  position snapshotted alongside cells (m_frozenCursorRow /
+  Col) with new effectiveCursorRow/Col() accessors used by
+  paintEvent + blinkCursor. Pre-scan in onVtBatch detects
+  `CSI ?2026h` and captures BEFORE the processAction loop
+  (snapshot-from-pre-batch-state). Cold-eyes review folded in
+  10 findings (2 CRITICAL: VtAction field name + same-batch
+  BSU+ESU stranding); indie-review --fix folded in 1 HIGH
+  (updateScrollBar wantFrozen disjunction also needed the
+  sync clause). 9 INVs + 1 INV-4b in
+  tests/features/sync_output_snapshot/. Out of scope (xterm/
+  foot match): cursor visibility / shape / blink + inline
+  images are read live during sync.
+  Kind: fix. Source: indie-review-2026-05-01 (L2).
 - ✅ [ANTS-1149] **paintEvent QTextLayout reuse across runs**
   Shipped 2026-05-02 (0.7.72). Single `m_paintLayout` member
   reused across all text runs in a paint, via
