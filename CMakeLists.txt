@@ -2279,6 +2279,30 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # sync_output_snapshot — ANTS-1148 (0.7.75). Locks the unified-
+    # snapshot fix for DEC mode 2026 (synchronized output): pre-scan
+    # in onVtBatch, capture-on-BSU, end-of-batch clear, safety-timer
+    # cleanup, frozen cursor row/col members, effectiveCursorRow/Col
+    # accessors used by paintEvent + blinkCursor while other readers
+    # stay live. Source-grep only; no Qt link. See
+    # tests/features/sync_output_snapshot/spec.md and
+    # docs/specs/ANTS-1148.md.
+    add_executable(test_sync_output_snapshot
+        tests/features/sync_output_snapshot/test_sync_output_snapshot.cpp
+    )
+    target_compile_options(test_sync_output_snapshot PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_sync_output_snapshot PRIVATE
+        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_TERMINALWIDGET_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
+    )
+    add_test(NAME sync_output_snapshot
+        COMMAND test_sync_output_snapshot)
+    set_tests_properties(sync_output_snapshot PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
     # status-bar Roadmap button visible iff the active tab's cwd
     # contains a ROADMAP.md (case-insensitive); click opens a
