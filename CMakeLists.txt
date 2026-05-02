@@ -2352,6 +2352,32 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # claude_task_list — ANTS-1158. User request 2026-05-02:
+    # status-bar widget + dialog showing the focused tab's Claude
+    # Code task list (TodoWrite snapshot OR TaskCreate / TaskUpdate
+    # replay) with status. Hybrid harness — links claudetasklist.cpp
+    # for parser-behaviour INVs (1-8); source-greps the wiring sites
+    # for INVs 9-13. See tests/features/claude_task_list/spec.md and
+    # docs/specs/ANTS-1158.md.
+    add_executable(test_claude_task_list
+        tests/features/claude_task_list/test_claude_task_list.cpp
+        src/claudetasklist.cpp
+    )
+    target_link_libraries(test_claude_task_list PRIVATE
+        Qt6::Core
+        Qt6::Test
+    )
+    target_include_directories(test_claude_task_list PRIVATE src)
+    target_compile_options(test_claude_task_list PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME claude_task_list
+        COMMAND test_claude_task_list
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(claude_task_list PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
     # status-bar Roadmap button visible iff the active tab's cwd
     # contains a ROADMAP.md (case-insensitive); click opens a
