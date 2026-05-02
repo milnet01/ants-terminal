@@ -129,8 +129,10 @@ const QSet<QString> kNonPosixFilesystems = {
 // Construction
 // ---------------------------------------------------------------------------
 
-AuditDialog::AuditDialog(const QString &projectPath, QWidget *parent)
-    : QDialog(parent), m_projectPath(projectPath) {
+AuditDialog::AuditDialog(const QString &projectPath,
+                         QWidget *parent,
+                         Config *config)
+    : QDialog(parent), m_projectPath(projectPath), m_config(config) {
     setWindowTitle(QStringLiteral("Project Audit — ants-audit v") + ANTS_VERSION);
     setMinimumSize(900, 600);
     resize(1050, 750);
@@ -3236,8 +3238,19 @@ void AuditDialog::buildUI() {
     m_newOnlyBtn->setToolTip(
         m_hasBaseline ? "Hide findings already present in the saved baseline"
                       : "No baseline saved yet — run an audit and click 'Save baseline'");
+    // ANTS-1150 — restore persisted "show new only" toggle. Gated
+    // on m_hasBaseline (no point checking the box when there's no
+    // baseline to compare against). Lazy-invalidate stickiness: if
+    // baseline is later deleted, the persisted bool stays through
+    // the gap; next saveBaseline re-honours the preference.
+    if (m_config && m_hasBaseline && m_config->auditShowNewOnly()) {
+        QSignalBlocker block(m_newOnlyBtn);
+        m_newOnlyBtn->setChecked(true);
+        m_showNewOnly = true;
+    }
     connect(m_newOnlyBtn, &QPushButton::toggled, this, [this](bool on) {
         m_showNewOnly = on;
+        if (m_config) m_config->setAuditShowNewOnly(on);
         if (!m_completedResults.isEmpty()) renderResults();
     });
     btnRow->addWidget(m_newOnlyBtn);
@@ -3431,18 +3444,27 @@ void AuditDialog::buildUI() {
     });
     filterRow->addWidget(m_filterInput, 1);
 
-    struct SevSpec { const char *label; Severity sev; const char *color; };
+    struct SevSpec { const char *label; Severity sev; const char *color; const char *jsonKey; };
     static const SevSpec kSevs[] = {
-        {"BLK", Severity::Blocker,  "#8B0000"},
-        {"CRT", Severity::Critical, "#E74856"},
-        {"MAJ", Severity::Major,    "#FFA500"},
-        {"MIN", Severity::Minor,    "#FFD700"},
-        {"INF", Severity::Info,     "#4CAF50"},
+        {"BLK", Severity::Blocker,  "#8B0000", "blocker"},
+        {"CRT", Severity::Critical, "#E74856", "critical"},
+        {"MAJ", Severity::Major,    "#FFA500", "major"},
+        {"MIN", Severity::Minor,    "#FFD700", "minor"},
+        {"INF", Severity::Info,     "#4CAF50", "info"},
     };
+    // ANTS-1150 — read persisted severity-filter pill states. Empty
+    // object means "all 5 on" (matches first-launch behaviour).
+    const QJsonObject persistedSev = m_config ? m_config->auditSeverityFilters()
+                                              : QJsonObject{};
     for (const auto &sp : kSevs) {
         auto *pill = new QPushButton(sp.label, m_filterBar);
         pill->setCheckable(true);
-        pill->setChecked(true);
+        // Default checked == true (matches m_activeSeverities = {0..4}).
+        // If the persisted object has an explicit key, honor it.
+        const bool initial = persistedSev.isEmpty()
+            ? true
+            : persistedSev.value(QLatin1String(sp.jsonKey)).toBool(true);
+        pill->setChecked(initial);
         pill->setFixedSize(44, 26);
         pill->setToolTip(QString("Show %1 findings").arg(sp.label));
         pill->setStyleSheet(QString(
@@ -3452,9 +3474,26 @@ void AuditDialog::buildUI() {
             "QPushButton:!checked { color:#555; border-color:#555; }"
         ).arg(sp.color));
         const int sevIndex = static_cast<int>(sp.sev);
+        // Sync m_activeSeverities to the restored pill state. The
+        // member-default initialiser at auditdialog.h:472 is
+        // {0,1,2,3,4} — i.e. all on; remove the index here if the
+        // persisted state had this severity off.
+        if (!initial) m_activeSeverities.remove(sevIndex);
         connect(pill, &QPushButton::toggled, this, [this, sevIndex](bool on) {
             if (on) m_activeSeverities.insert(sevIndex);
             else    m_activeSeverities.remove(sevIndex);
+            // ANTS-1150 — persist the full 5-key severity-filter
+            // object on every toggle. storeIfChanged short-circuits
+            // when nothing actually changed.
+            if (m_config) {
+                QJsonObject sf;
+                sf[QLatin1String("blocker")]  = m_activeSeverities.contains(static_cast<int>(Severity::Blocker));
+                sf[QLatin1String("critical")] = m_activeSeverities.contains(static_cast<int>(Severity::Critical));
+                sf[QLatin1String("major")]    = m_activeSeverities.contains(static_cast<int>(Severity::Major));
+                sf[QLatin1String("minor")]    = m_activeSeverities.contains(static_cast<int>(Severity::Minor));
+                sf[QLatin1String("info")]     = m_activeSeverities.contains(static_cast<int>(Severity::Info));
+                m_config->setAuditSeverityFilters(sf);
+            }
             if (!m_completedResults.isEmpty()) renderResults();
         });
         filterRow->addWidget(pill);

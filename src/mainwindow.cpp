@@ -1348,7 +1348,7 @@ void MainWindow::setupMenus() {
         QString cwd;
         if (auto *t = focusedTerminal()) cwd = t->shellCwd();
         if (cwd.isEmpty()) cwd = QDir::currentPath();
-        auto *dlg = new AuditDialog(cwd, this);
+        auto *dlg = new AuditDialog(cwd, this, &m_config);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         connect(dlg, &AuditDialog::reviewRequested, this, [this](const QString &resultsFile) {
             auto *t = focusedTerminal();

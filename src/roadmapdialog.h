@@ -34,6 +34,7 @@
 
 #include <QDialog>
 #include <QFileSystemWatcher>
+#include <QHash>
 #include <QPointer>
 #include <QSet>
 #include <QString>
@@ -215,6 +216,13 @@ private:
     void onCheckboxToggled();
     QStringList collectCurrentBullets() const;
 
+    // ANTS-1150: persist the active preset to Config. Called from
+    // BOTH applyPreset (named-preset path) and onCheckboxToggled
+    // (Custom-divergence path) so m_activePreset's two write sites
+    // both round-trip through disk. Switch-on-enum guarantees
+    // compiler -Wswitch-enum coverage of future Preset additions.
+    void persistActivePreset(Preset p);
+
     // ANTS-1125 instance wrappers — bind the active dialog state
     // (`m_roadmapPath`, `m_activePreset`, `m_searchBox->text()`) to
     // the public-static helpers above so `rebuild()` can call them
@@ -244,6 +252,12 @@ private:
     // narrowing (current behaviour). Populated from the Kind row's
     // checkboxes; passed through to renderHtml on every refresh().
     QSet<QString> m_kindFilter;
+    // ANTS-1150 — keyed by KindEntry value (matches m_kindFilter
+    // entries). Populated during ctor's Kind-row build loop;
+    // re-iterated during the persisted-Kind-filter restore so we
+    // don't have to walk findChildren<QCheckBox*>() and parse
+    // objectName prefixes. Same-life as the dialog.
+    QHash<QString, QCheckBox *> m_kindCheckboxes;
     std::shared_ptr<QString> m_lastHtml;
     Config *m_config = nullptr;
     SortOrder m_sortOrder = SortOrder::Document;

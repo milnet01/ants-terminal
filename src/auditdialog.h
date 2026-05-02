@@ -23,13 +23,19 @@
 
 #include <functional>
 
+class Config;
 class ToggleSwitch;
 
 class AuditDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit AuditDialog(const QString &projectPath, QWidget *parent = nullptr);
+    // ANTS-1150: third arg is `Config *config`, REQUIRED (no
+    // nullptr default per cold-eyes HIGH #3 — single call site
+    // at mainwindow.cpp:1351 always has &m_config available).
+    AuditDialog(const QString &projectPath,
+                QWidget *parent,
+                Config *config);
 
 signals:
     // Emitted when user clicks "Review with Claude" — carries path to temp results file
@@ -260,6 +266,11 @@ private:
     QSet<QString> m_baselineFingerprints;
     bool m_hasBaseline = false;
     bool m_showNewOnly = false;  // UI toggle
+
+    // ANTS-1150 — persisted UI state. Severity-filter pill states +
+    // show-new-only restored from m_config on ctor; saved on every
+    // toggle. Required (non-null) per HIGH #3.
+    Config *m_config = nullptr;
 
     // Persistent per-project suppressions (by Finding::dedupKey) — read from
     // <project>/.audit_suppress at load time, suppressed findings are hidden

@@ -84,6 +84,21 @@ SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
     mainLayout->addWidget(buttonBox);
 
     loadSettings();
+
+    // ANTS-1150 — restore last-active tab. QSignalBlocker so the
+    // setCurrentIndex doesn't write back through the just-installed
+    // currentChanged handler (cold-eyes MEDIUM #9 — without it,
+    // two windows with different tab counts could clamp-and-write
+    // each other's saved index).
+    if (m_config) {
+        const int saved = m_config->settingsDialogLastTab();
+        const int clamped = qBound(0, saved, m_tabs->count() - 1);
+        QSignalBlocker block(m_tabs);
+        m_tabs->setCurrentIndex(clamped);
+    }
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int idx) {
+        if (m_config) m_config->setSettingsDialogLastTab(idx);
+    });
 }
 
 void SettingsDialog::setupGeneralTab(QWidget *tab) {

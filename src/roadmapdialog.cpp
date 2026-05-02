@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -40,6 +41,33 @@ QString htmlEscape(QString s) {
     s.replace('>', QStringLiteral("&gt;"));
     return s;
 }
+
+// ANTS-1106 + ANTS-1150 — Kind facet entries. Lifted to file scope
+// so the ctor's build loop and the persisted-Kind-filter restore
+// iterate the same source-of-truth table. Adding a new Kind here
+// is a one-touch change: a new checkbox appears + the new value
+// participates in persistence. objectNames are kept as literal
+// strings so existing source-grep tests
+// (`tests/features/roadmap_kind_facets/`) can pin them.
+struct KindEntry {
+    const char *value;
+    const char *objectName;
+    const char *labelTxt;
+};
+constexpr KindEntry kKinds[] = {
+    {"implement",  "roadmap-filter-kind-implement",  "✨ implement"},
+    {"fix",        "roadmap-filter-kind-fix",        "🐛 fix"},
+    {"audit-fix",  "roadmap-filter-kind-audit-fix",  "🔍 audit-fix"},
+    {"review-fix", "roadmap-filter-kind-review-fix", "🔁 review-fix"},
+    {"doc",        "roadmap-filter-kind-doc",        "📚 doc"},
+    {"doc-fix",    "roadmap-filter-kind-doc-fix",    "📝 doc-fix"},
+    {"refactor",   "roadmap-filter-kind-refactor",   "🏗 refactor"},
+    {"test",       "roadmap-filter-kind-test",       "🧪 test"},
+    {"chore",      "roadmap-filter-kind-chore",      "🧹 chore"},
+    {"release",    "roadmap-filter-kind-release",    "🚢 release"},
+    {"research",   "roadmap-filter-kind-research",   "🔬 research"},
+    {"ux",         "roadmap-filter-kind-ux",         "🎨 ux"},
+};
 
 // 1..4 if `raw` is a Markdown ATX heading, else 0. On a hit, `text`
 // receives the heading content with the `# ` prefix stripped. Walk
@@ -835,38 +863,28 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     auto *kindLabel = new QLabel(tr("Kind:"), this);
     kindLabel->setObjectName(QStringLiteral("roadmap-filter-kind-label"));
     kindRow->addWidget(kindLabel);
-    // Each entry pairs (Kind: line value, objectName, label).
-    // objectNames are kept as literal strings so source-grep tests
-    // (`tests/features/roadmap_kind_facets/`) can pin them.
-    struct KindEntry {
-        const char *value;
-        const char *objectName;
-        const char *labelTxt;
-    };
-    const KindEntry kinds[] = {
-        {"implement",  "roadmap-filter-kind-implement",  "✨ implement"},
-        {"fix",        "roadmap-filter-kind-fix",        "🐛 fix"},
-        {"audit-fix",  "roadmap-filter-kind-audit-fix",  "🔍 audit-fix"},
-        {"review-fix", "roadmap-filter-kind-review-fix", "🔁 review-fix"},
-        {"doc",        "roadmap-filter-kind-doc",        "📚 doc"},
-        {"doc-fix",    "roadmap-filter-kind-doc-fix",    "📝 doc-fix"},
-        {"refactor",   "roadmap-filter-kind-refactor",   "🏗 refactor"},
-        {"test",       "roadmap-filter-kind-test",       "🧪 test"},
-        {"chore",      "roadmap-filter-kind-chore",      "🧹 chore"},
-        {"release",    "roadmap-filter-kind-release",    "🚢 release"},
-        {"research",   "roadmap-filter-kind-research",   "🔬 research"},
-        {"ux",         "roadmap-filter-kind-ux",         "🎨 ux"},
-    };
-    for (const KindEntry &k : kinds) {
+    // KindEntry table is at file scope (see kKinds in the anon
+    // namespace) so the ctor's build loop and the ANTS-1150
+    // persisted-Kind-filter restore iterate the same source-of-
+    // truth table.
+    for (const KindEntry &k : kKinds) {
         auto *cb = new QCheckBox(tr(k.labelTxt), this);
         cb->setObjectName(QString::fromLatin1(k.objectName));
         cb->setChecked(false);  // empty filter by default = show all
         const QString kindValue = QString::fromLatin1(k.value);
+        m_kindCheckboxes.insert(kindValue, cb);
         connect(cb, &QCheckBox::toggled, this,
                 [this, kindValue](bool on) {
                     if (on) m_kindFilter.insert(kindValue);
                     else    m_kindFilter.remove(kindValue);
                     if (m_lastHtml) m_lastHtml->clear();  // force re-render
+                    // ANTS-1150 — persist the Kind filter set on
+                    // every toggle. setRoadmapKindFilters sorts on
+                    // write for stable on-disk ordering.
+                    if (m_config) {
+                        m_config->setRoadmapKindFilters(QStringList(
+                            m_kindFilter.begin(), m_kindFilter.end()));
+                    }
                     rebuild();
                 });
         kindRow->addWidget(cb);
@@ -1020,9 +1038,71 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         }
     }
 
-    // Default tab: Full roadmap (preset 0). This sets the initial
-    // filter state via applyPreset (which calls rebuild).
-    applyPreset(Preset::Full);
+    // ANTS-1150 — restore persisted UI state. Order matters
+    // (cold-eyes CRITICAL #1):
+    //   (1) Restore Kind filter set — always (Kind is preset-
+    //       orthogonal).
+    //   (2) Determine persisted preset enum.
+    //   (3) For Custom only — restore status checkboxes silently.
+    //       Named presets get applyPreset's canonical mask anyway
+    //       so a status restore would be dead code.
+    //   (4) Apply the persisted preset (fires rebuild).
+    //
+    // (1) Kind filter set.
+    if (m_config) {
+        const QStringList persistedKinds = m_config->roadmapKindFilters();
+        m_kindFilter = QSet<QString>(persistedKinds.begin(),
+                                     persistedKinds.end());
+        for (auto it = m_kindCheckboxes.constBegin();
+                  it != m_kindCheckboxes.constEnd(); ++it) {
+            QSignalBlocker block(it.value());
+            it.value()->setChecked(m_kindFilter.contains(it.key()));
+        }
+        // Belt-and-suspenders (cold-eyes HIGH #4): clear the
+        // rendered-html cache so the first rebuild after restore
+        // re-renders with the restored filter, even if a watcher
+        // fire raced ahead.
+        if (m_lastHtml) m_lastHtml->clear();
+    }
+
+    // (2) Persisted preset.
+    Preset persisted = Preset::Full;
+    if (m_config) {
+        const QString name = m_config->roadmapActivePreset();
+        if      (name == QLatin1String("history"))    persisted = Preset::History;
+        else if (name == QLatin1String("current"))    persisted = Preset::Current;
+        else if (name == QLatin1String("next"))       persisted = Preset::Next;
+        else if (name == QLatin1String("far_future")) persisted = Preset::FarFuture;
+        else if (name == QLatin1String("custom"))     persisted = Preset::Custom;
+        // Unknown / "full" → Preset::Full default.
+    }
+
+    // (3) Custom-only status restore.
+    if (persisted == Preset::Custom && m_config) {
+        const QJsonObject sf = m_config->roadmapStatusFilters();
+        if (sf.isEmpty()) {
+            // Custom + empty mask = empty render dead-end. Fall
+            // back to Full instead of leaving every checkbox off.
+            // Same UX as today's first-launch behaviour.
+            persisted = Preset::Full;
+        } else {
+            m_suppressCheckboxSignal = true;
+            if (m_filterDone)
+                m_filterDone->setChecked(sf.value(QLatin1String("done")).toBool(true));
+            if (m_filterPlanned)
+                m_filterPlanned->setChecked(sf.value(QLatin1String("planned")).toBool(true));
+            if (m_filterInProgress)
+                m_filterInProgress->setChecked(sf.value(QLatin1String("in_progress")).toBool(true));
+            if (m_filterConsidered)
+                m_filterConsidered->setChecked(sf.value(QLatin1String("considered")).toBool(true));
+            if (m_filterCurrent)
+                m_filterCurrent->setChecked(sf.value(QLatin1String("current")).toBool(true));
+            m_suppressCheckboxSignal = false;
+        }
+    }
+
+    // (4) Apply the persisted preset (fires rebuild).
+    applyPreset(persisted);
 }
 
 RoadmapDialog::~RoadmapDialog() = default;
@@ -1051,6 +1131,7 @@ void RoadmapDialog::applyPreset(Preset p) {
     // preserve whatever the user has staged.
     if (p == Preset::Custom) {
         m_activePreset = p;
+        persistActivePreset(p);  // ANTS-1150
         if (m_tabs) {
             const int idx = static_cast<int>(p);
             if (m_tabs->currentIndex() != idx) {
@@ -1064,6 +1145,7 @@ void RoadmapDialog::applyPreset(Preset p) {
     }
 
     m_activePreset = p;
+    persistActivePreset(p);  // ANTS-1150
     const unsigned mask = filterFor(p);
     m_sortOrder = sortFor(p);
 
@@ -1118,6 +1200,22 @@ void RoadmapDialog::onCheckboxToggled() {
         if (m_filterCurrent && m_filterCurrent->isChecked()) mask |= ShowCurrent;
         const Preset p = presetMatching(mask, m_sortOrder);
         m_activePreset = p;
+        persistActivePreset(p);  // ANTS-1150 — second m_activePreset
+                                 // write site (cold-eyes CRITICAL #2)
+        // ANTS-1150 — persist the status-checkbox mask too. Only
+        // matters when p == Custom (named-preset reads from
+        // applyPreset's canonical mask), but unconditional save is
+        // simpler than branching and storeIfChanged short-circuits
+        // on no-change anyway.
+        if (m_config) {
+            QJsonObject sf;
+            sf[QLatin1String("done")]        = m_filterDone        && m_filterDone->isChecked();
+            sf[QLatin1String("planned")]     = m_filterPlanned     && m_filterPlanned->isChecked();
+            sf[QLatin1String("in_progress")] = m_filterInProgress  && m_filterInProgress->isChecked();
+            sf[QLatin1String("considered")]  = m_filterConsidered  && m_filterConsidered->isChecked();
+            sf[QLatin1String("current")]     = m_filterCurrent     && m_filterCurrent->isChecked();
+            m_config->setRoadmapStatusFilters(sf);
+        }
         const int idx = static_cast<int>(p);
         if (m_tabs->currentIndex() != idx) {
             m_suppressTabSignal = true;
@@ -1126,6 +1224,20 @@ void RoadmapDialog::onCheckboxToggled() {
         }
     }
     rebuild();
+}
+
+void RoadmapDialog::persistActivePreset(Preset p) {
+    if (!m_config) return;
+    const char *name = nullptr;
+    switch (p) {
+        case Preset::Full:      name = "full";       break;
+        case Preset::History:   name = "history";    break;
+        case Preset::Current:   name = "current";    break;
+        case Preset::Next:      name = "next";       break;
+        case Preset::FarFuture: name = "far_future"; break;
+        case Preset::Custom:    name = "custom";     break;
+    }
+    if (name) m_config->setRoadmapActivePreset(QString::fromLatin1(name));
 }
 
 void RoadmapDialog::scheduleRebuild() {
