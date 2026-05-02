@@ -176,6 +176,28 @@ int main() {
                 "post-loop block must call clearScreenSnapshot()");
     }
 
+    // INV-4b (cold-eyes 2026-05-02 indie-review HIGH) —
+    // updateScrollBar's wantFrozen disjunction must include sync,
+    // not just scrollOffset>0. Closes spec transition row 7
+    // (scrolled+sync → user scrolls back to bottom while sync
+    // still active → snapshot must NOT be cleared). Pre-1148
+    // this site read `(m_scrollOffset > 0)` only; without the
+    // sync clause, scrolling back during sync evicts the
+    // snapshot and the next paint leaks the live half-state.
+    {
+        const std::string body = functionBody(tw,
+            "void TerminalWidget::updateScrollBar()");
+        if (body.empty())
+            return fail("INV-4b", "updateScrollBar body missing");
+        if (!contains(body, "(m_scrollOffset > 0) || m_syncOutputActive"))
+            return fail("INV-4b",
+                "updateScrollBar's wantFrozen predicate must include "
+                "`(m_scrollOffset > 0) || m_syncOutputActive` — without "
+                "the sync clause, scrolling back to bottom during BSU "
+                "evicts the snapshot and the next paint reads live "
+                "half-state (spec transition row 7)");
+    }
+
     // INV-5 — safety-timer slot.
     {
         // The lambda body lives between `m_syncTimer` connect and the

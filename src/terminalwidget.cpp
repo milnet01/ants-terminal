@@ -2790,7 +2790,12 @@ void TerminalWidget::updateScrollBar() {
     // screen resumes rendering. Every transition routes through
     // updateScrollBar(), so one place catches wheel/scrollbar/
     // keyboard/anchor/clear paths.
-    const bool wantFrozen = (m_scrollOffset > 0);
+    // ANTS-1148 — disjunction matches the spec's unified-predicate
+    // pattern. Pre-1148 this site only considered scroll-up; if the
+    // user scrolled back to bottom while sync was still active, the
+    // snapshot would be cleared and the next paint would read the
+    // live half-applied grid (transition row 7 in the spec table).
+    const bool wantFrozen = (m_scrollOffset > 0) || m_syncOutputActive;
     const bool haveFrozen = !m_frozenScreenRows.empty();
     if (wantFrozen && !haveFrozen) captureScreenSnapshot();
     else if (!wantFrozen && haveFrozen) clearScreenSnapshot();
