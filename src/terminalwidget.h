@@ -442,8 +442,18 @@ private:
     std::vector<std::vector<Cell>> m_frozenScreenRows;
     std::vector<std::unordered_map<int, std::vector<uint32_t>>>
         m_frozenScreenCombining;
+    // ANTS-1148 — cursor position snapshot. Captured alongside
+    // m_frozenScreenRows by captureScreenSnapshot(); read by
+    // effectiveCursorRow() / Col() accessors below from paintEvent
+    // and blinkCursor when the snapshot is populated. Other cursor
+    // readers (keyPress / IME / click / etc.) intentionally bypass
+    // the accessors — they want the live typing position.
+    int m_frozenCursorRow = 0;
+    int m_frozenCursorCol = 0;
     void captureScreenSnapshot();
     void clearScreenSnapshot();
+    int effectiveCursorRow() const { return m_frozenScreenRows.empty() ? m_grid->cursorRow() : m_frozenCursorRow; }
+    int effectiveCursorCol() const { return m_frozenScreenRows.empty() ? m_grid->cursorCol() : m_frozenCursorCol; }
 
     // Theme cursor color
     QColor m_cursorColor{0x89, 0xB4, 0xFA};

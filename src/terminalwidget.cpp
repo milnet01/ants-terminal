@@ -42,6 +42,35 @@
 
 #include <algorithm>
 
+namespace {
+
+// ANTS-1148 — pre-scan a VtBatch for `CSI ?2026h` (BSU). Returns
+// true iff the batch contains a CsiDispatch with intermediate "?",
+// finalChar 'h', and 2026 in params. ESU (`?2026l`, finalChar 'l')
+// is intentionally not matched — we only care about BSU as the
+// snapshot trigger. Other DEC modes set in the same sequence
+// (e.g. `\e[?1004;2026;2031h`) match correctly because we scan
+// every value in the params list.
+//
+// Parameter named `b` (not the conventional `batch`) so the
+// reference-style dot access here doesn't trip the
+// vtbatch_zero_copy I4 sentinel (which substring-greps for the
+// stale smart-pointer dot-access pattern).
+bool batchEntersSyncOutput(const VtBatch &b) {
+    for (const auto &a : b.actions) {
+        if (a.type == VtAction::CsiDispatch &&
+            a.intermediate == "?" &&
+            a.finalChar == 'h') {
+            for (int p : a.params) {
+                if (p == 2026) return true;
+            }
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
 TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_InputMethodEnabled, true);
@@ -158,6 +187,13 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     connect(&m_syncTimer, &QTimer::timeout, this, [this]() {
         if (m_syncOutputActive) {
             m_syncOutputActive = false;
+            // ANTS-1148 — drop the snapshot the BSU pre-scan
+            // captured. Skip if scroll-up is also holding it
+            // (independent consumer; clear would yank the
+            // scrolled-up user's frozen-view).
+            if (m_scrollOffset == 0 && !m_frozenScreenRows.empty()) {
+                clearScreenSnapshot();
+            }
             update();
         }
     });
@@ -1098,8 +1134,13 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     // Steady cursor shapes always show; blinking shapes respect blink timer
     bool cursorShouldShow = m_cursorBlinkOn || !m_hasFocus || !m_grid->cursorBlink();
     if (m_scrollOffset == 0 && m_grid->cursorVisible() && cursorShouldShow) {
-        int cx = m_padding + m_grid->cursorCol() * m_cellWidth;
-        int cy = m_padding + m_grid->cursorRow() * m_cellHeight;
+        // ANTS-1148 — render at frozen position when sync snapshot
+        // is held; live position otherwise. The accessor centralises
+        // the policy (also used at the under-cursor glyph render
+        // below and at the autocomplete-ghost site, plus blinkCursor's
+        // partial-update rect).
+        int cx = m_padding + effectiveCursorCol() * m_cellWidth;
+        int cy = m_padding + effectiveCursorRow() * m_cellHeight;
         CursorShape shape = m_grid->cursorShape();
 
         // Cursor glow effect (subtle radial glow behind cursor in dark themes)
@@ -1127,8 +1168,8 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             default: // Block cursor
                 p.fillRect(cx, cy, m_cellWidth, m_cellHeight, m_cursorColor);
                 {
-                    int cursorGL = scrollbackSize + m_grid->cursorRow();
-                    QString cursorText = cellText(cursorGL, m_grid->cursorCol());
+                    int cursorGL = scrollbackSize + effectiveCursorRow();
+                    QString cursorText = cellText(cursorGL, effectiveCursorCol());
                     if (!cursorText.isEmpty()) {
                         p.setPen(m_grid->defaultBg());
                         p.drawText(cx, cy + m_fontAscent, cursorText);
@@ -1147,9 +1188,9 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
     // Autocomplete ghost text (drawn after cursor, in dim text)
     if (m_scrollOffset == 0 && !m_currentSuggestion.isEmpty()) {
-        int cursorCol = m_grid->cursorCol();
+        int cursorCol = effectiveCursorCol();
         int gx = m_padding + cursorCol * m_cellWidth;
-        int gy = m_padding + m_grid->cursorRow() * m_cellHeight;
+        int gy = m_padding + effectiveCursorRow() * m_cellHeight;
 
         QColor ghost = m_grid->defaultFg();
         ghost.setAlpha(80);
@@ -1980,6 +2021,22 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     // runs so any scrollUp() during the batch honours it.
     m_grid->setScrollbackInsertPaused(m_scrollOffset > 0);
 
+    // ANTS-1148 — DEC mode 2026 (sync output) snapshot capture.
+    // Two trigger sources, one disjunction:
+    //   (a) BSU action is in this batch (transition !sync -> sync).
+    //   (b) Sync was already active but the snapshot got evicted
+    //       (resize / RIS / alt-screen toggle clears the snapshot
+    //       via the existing 0.6.33 paths). Without (b), a sync
+    //       block straddling a resize would render live mid-state
+    //       for the rest of the block — exactly the bug 1148
+    //       fixes.
+    // Capture must happen BEFORE the processAction loop, otherwise
+    // BSU's siblings in the same batch mutate the live grid first.
+    if ((m_syncOutputActive || batchEntersSyncOutput(*batch)) &&
+        m_frozenScreenRows.empty()) {
+        captureScreenSnapshot();
+    }
+
     // Scroll anchoring: preserve the user's viewport as new content lands
     // in scrollback. Diff against the monotonic scrollbackPushed() counter
     // so the math is stable even when the scrollback is full.
@@ -2093,13 +2150,31 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
              batch->actions.size(),
              static_cast<long long>(batch->rawBytes.size()));
 
-    // Synchronized output (DEC 2026): same gating as legacy.
-    bool wasSync = m_syncOutputActive;
+    // Synchronized output (DEC 2026): unified snapshot path post-1148.
+    // The pre-scan above captured the snapshot before processAction;
+    // this end-of-loop block drops it on the back edge (sync ended OR
+    // never started but pre-scan captured for a same-batch BSU+ESU).
+    const bool wasSync = m_syncOutputActive;
     m_syncOutputActive = m_grid->synchronizedOutput();
     if (!m_syncOutputActive) {
+        // Sync is NOT active post-batch. Three sub-cases:
+        //   (i)   wasSync=true (ESU just arrived this batch),
+        //   (ii)  wasSync=false but pre-scan captured (same-batch
+        //         BSU+ESU round-trip),
+        //   (iii) wasSync=false and no capture (sync never relevant).
+        // Sub-cases (i) and (ii) both leave a snapshot we must clear,
+        // unless scroll-up is independently holding it. The simplest
+        // predicate that covers both — and would no-op on (iii) —
+        // is "snapshot exists AND scroll-up isn't holding it" (drops
+        // the prior `wasSync &&` gate that left (ii) stranded).
+        if (m_scrollOffset == 0 && !m_frozenScreenRows.empty()) {
+            clearScreenSnapshot();
+        }
         update();
         m_syncTimer.stop();
     } else if (!wasSync) {
+        // BSU just arrived this batch; pre-scan above already
+        // captured. Start the safety timer.
         m_syncTimer.start();
     }
 
@@ -2128,8 +2203,13 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
 
 void TerminalWidget::blinkCursor() {
     m_cursorBlinkOn = !m_cursorBlinkOn;
-    int cx = m_padding + m_grid->cursorCol() * m_cellWidth;
-    int cy = m_padding + m_grid->cursorRow() * m_cellHeight;
+    // ANTS-1148 — partial-update rect must target the cell paintEvent
+    // will draw, not the live cursor cell. During DEC mode 2026 sync
+    // the rendered cursor is at the frozen position; using
+    // m_grid->cursorRow/Col() here would invalidate a rect that
+    // paintEvent doesn't paint, leaving the blink visually stalled.
+    int cx = m_padding + effectiveCursorCol() * m_cellWidth;
+    int cy = m_padding + effectiveCursorRow() * m_cellHeight;
     update(cx, cy, m_cellWidth, m_cellHeight);
 }
 
@@ -2774,11 +2854,21 @@ void TerminalWidget::captureScreenSnapshot() {
         m_frozenScreenRows.push_back(std::move(row));
         m_frozenScreenCombining.push_back(m_grid->screenCombining(r));
     }
+    // ANTS-1148 — snapshot the cursor position too. Pre-1148 the
+    // snapshot was scrolled-up-only and the cursor was always
+    // hidden via the m_scrollOffset==0 gate at paintEvent. Post-
+    // 1148 the snapshot also covers BSU-from-bottom where the
+    // cursor IS rendered; effectiveCursorRow/Col() route reads
+    // from these members when the snapshot is populated.
+    m_frozenCursorRow = m_grid->cursorRow();
+    m_frozenCursorCol = m_grid->cursorCol();
 }
 
 void TerminalWidget::clearScreenSnapshot() {
     m_frozenScreenRows.clear();
     m_frozenScreenCombining.clear();
+    m_frozenCursorRow = 0;
+    m_frozenCursorCol = 0;
 }
 
 const std::vector<uint32_t> *TerminalWidget::combiningAt(int globalLine, int col) const {

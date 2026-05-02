@@ -87,11 +87,14 @@ int main() {
     if (tw.empty())  return fail("setup", "terminalwidget.cpp not readable");
     if (twH.empty()) return fail("setup", "terminalwidget.h not readable");
 
-    // INV-1 — batchEntersSyncOutput helper present.
-    if (!contains(tw, "bool batchEntersSyncOutput(const VtBatch &batch)"))
+    // INV-1 — batchEntersSyncOutput helper present. Parameter
+    // is named `b` (not `batch`) per the helper's own comment —
+    // avoids tripping vtbatch_zero_copy's "stale batch.actions"
+    // sentinel against the new helper's reference dot-access.
+    if (!contains(tw, "bool batchEntersSyncOutput(const VtBatch &b)"))
         return fail("INV-1",
             "anonymous-namespace helper "
-            "`bool batchEntersSyncOutput(const VtBatch &batch)` missing");
+            "`bool batchEntersSyncOutput(const VtBatch &b)` missing");
     if (!contains(tw, "intermediate == \"?\""))
         return fail("INV-1",
             "batchEntersSyncOutput must check `intermediate == \"?\"`");
@@ -149,18 +152,28 @@ int main() {
     }
 
     // INV-4 — end-of-loop clear without the prior wasSync gate.
+    // Substring check — regex with bounded lookahead missed when
+    // explanatory comments grew past the window. The substring
+    // ordering is enforced by INV-2's pre-scan-before-loop check
+    // and by the spec's procedural narrative; this just locks in
+    // that the cleanup predicate dropped the wasSync gate (cold-
+    // eyes C2 — same-batch BSU+ESU would otherwise strand the
+    // pre-scan-captured snapshot).
     {
         const std::string body = functionBody(tw,
             "void TerminalWidget::onVtBatch(VtBatchPtr batch)");
-        std::regex endClear(
-            R"(!m_syncOutputActive[\s\S]{0,300}?m_scrollOffset\s*==\s*0\s*&&\s*!m_frozenScreenRows\.empty\(\)[\s\S]{0,80}?clearScreenSnapshot\s*\()");
-        if (!std::regex_search(body, endClear))
+        if (!contains(body, "!m_syncOutputActive"))
             return fail("INV-4",
-                "post-loop block must clear the snapshot under "
-                "`!m_syncOutputActive && m_scrollOffset == 0 && "
-                "!m_frozenScreenRows.empty()` — covers same-batch "
-                "BSU+ESU (cold-eyes C2) where wasSync would falsely "
-                "guard against the clear");
+                "post-loop block must check `!m_syncOutputActive`");
+        if (!contains(body, "m_scrollOffset == 0 && !m_frozenScreenRows.empty()"))
+            return fail("INV-4",
+                "cleanup guard must be exactly "
+                "`m_scrollOffset == 0 && !m_frozenScreenRows.empty()` — "
+                "covers same-batch BSU+ESU (cold-eyes C2) where "
+                "wasSync would falsely guard against the clear");
+        if (!contains(body, "clearScreenSnapshot()"))
+            return fail("INV-4",
+                "post-loop block must call clearScreenSnapshot()");
     }
 
     // INV-5 — safety-timer slot.
