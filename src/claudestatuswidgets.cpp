@@ -18,6 +18,7 @@
 #include "claudebgtasks.h"
 #include "claudeintegration.h"
 #include "claudetabtracker.h"
+#include "claudetasklist.h"
 #include "coloredtabbar.h"
 #include "debuglog.h"
 #include "terminalwidget.h"
@@ -95,6 +96,20 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
             this, &ClaudeStatusBarController::bgTasksClicked);
     connect(m_bgTasks, &ClaudeBgTaskTracker::tasksChanged,
             this, &ClaudeStatusBarController::refreshBgTasksButton);
+
+    // ANTS-1158 — task-list chip. Sibling to bg-tasks; same size
+    // contract. Hidden until the focused tab's transcript reports
+    // ≥ 1 plan row. Label shape "<unfinished>/<total>", e.g. 3/5.
+    m_tasks = new ClaudeTaskListTracker(this);
+    m_tasksBtn = new QPushButton(QStringLiteral("☰ 0/0"), m_statusBar);
+    m_tasksBtn->setObjectName(QStringLiteral("claudeTasksBtn"));
+    m_tasksBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_tasksBtn->hide();
+    m_statusBar->addPermanentWidget(m_tasksBtn);
+    connect(m_tasksBtn, &QPushButton::clicked,
+            this, &ClaudeStatusBarController::tasksClicked);
+    connect(m_tasks, &ClaudeTaskListTracker::tasksChanged,
+            this, &ClaudeStatusBarController::refreshTasksButton);
 
     // Error indicator label — surfaces the exit-code from the
     // commandFailed terminal signal, auto-hides after the timeout the
@@ -487,6 +502,8 @@ void ClaudeStatusBarController::resetForTabSwitch() {
     if (m_contextBar)  m_contextBar->hide();
     if (m_bgTasksBtn)  m_bgTasksBtn->hide();
     if (m_bgTasks)     m_bgTasks->setTranscriptPath(QString());
+    if (m_tasksBtn)    m_tasksBtn->hide();
+    if (m_tasks)       m_tasks->setTranscriptPath(QString());
     apply();
 }
 
@@ -627,6 +644,44 @@ void ClaudeStatusBarController::refreshBgTasksButton() {
     m_bgTasksBtn->show();
 }
 
+void ClaudeStatusBarController::refreshTasksButton() {
+    if (!m_tasks || !m_tasksBtn) return;
+
+    // Resolve transcript path the same way refreshBgTasksButton does
+    // — scope to the focused tab's project tree.
+    QString cwd;
+    auto *focused = m_focusedTerminalProvider
+                        ? m_focusedTerminalProvider() : nullptr;
+    if (focused) cwd = focused->shellCwd();
+    QString path;
+    if (m_integration) path = m_integration->activeSessionPath(cwd);
+    if (path != m_tasks->transcriptPath())
+        m_tasks->setTranscriptPath(path);
+
+    const int total      = m_tasks->totalCount();
+    const int unfinished = m_tasks->unfinishedCount();
+    const int inProgress = m_tasks->inProgressCount();
+    const int pending    = m_tasks->pendingCount();
+    const int done       = m_tasks->completedCount();
+
+    if (total <= 0) {
+        // Hide on every empty case (no transcript, no plan events,
+        // empty plan list). Single rule per spec §6.
+        m_tasksBtn->hide();
+        return;
+    }
+    m_tasksBtn->setText(QStringLiteral("☰ %1/%2").arg(unfinished).arg(total));
+    m_tasksBtn->setToolTip(
+        tr("Claude Code task list — %1 task%2 (%3 done, %4 running, "
+           "%5 outstanding). Click to view.")
+            .arg(total)
+            .arg(total == 1 ? QString() : QStringLiteral("s"))
+            .arg(done)
+            .arg(inProgress)
+            .arg(pending));
+    m_tasksBtn->show();
+}
+
 void ClaudeStatusBarController::setCurrentTerminalProvider(
         std::function<TerminalWidget *()> p) {
     m_currentTerminalProvider = std::move(p);
@@ -657,6 +712,14 @@ QPushButton *ClaudeStatusBarController::bgTasksButton() const {
 
 ClaudeBgTaskTracker *ClaudeStatusBarController::bgTasksTracker() const {
     return m_bgTasks;
+}
+
+QPushButton *ClaudeStatusBarController::tasksButton() const {
+    return m_tasksBtn;
+}
+
+ClaudeTaskListTracker *ClaudeStatusBarController::tasksTracker() const {
+    return m_tasks;
 }
 
 void ClaudeStatusBarController::apply() {

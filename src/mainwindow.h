@@ -435,6 +435,9 @@ private:
     // that then shows "no changes" again).
     void refreshReviewButton();
     void showBgTasksDialog();
+    // ANTS-1158 — open the task-list dialog against the focused tab's
+    // ClaudeTaskListTracker. Non-modal, mirrors showBgTasksDialog.
+    void showTaskListDialog();
     // ANTS-1146 — refreshBgTasksButton moved to
     // ClaudeStatusBarController. Three call sites in mainwindow.cpp
     // (status timer connect, onTabChanged, showBgTasksDialog

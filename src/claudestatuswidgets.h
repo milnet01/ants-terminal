@@ -27,6 +27,7 @@ class QTabWidget;
 class ClaudeTabTracker;
 class ColoredTabBar;
 class ClaudeBgTaskTracker;
+class ClaudeTaskListTracker;
 class TerminalWidget;
 
 class ClaudeStatusBarController : public QObject {
@@ -72,6 +73,13 @@ public:
     // tracker state.
     void refreshBgTasksButton();
 
+    // ANTS-1158 — task-list chip refresh. Called from the same
+    // status-bar tick + tab-switch sites as refreshBgTasksButton.
+    // Re-targets m_tasks at the focused tab's transcript path,
+    // hides m_tasksBtn when the parsed list is empty, otherwise
+    // shows the "<unfinished>/<total>" label.
+    void refreshTasksButton();
+
     // Provider injection — Qt-idiomatic; matches the existing
     // ClaudeIntegration::set*Provider pattern.
     void setCurrentTerminalProvider(std::function<TerminalWidget *()>);
@@ -85,10 +93,13 @@ public:
     QPushButton *reviewButton() const;
     QPushButton *bgTasksButton() const;
     ClaudeBgTaskTracker *bgTasksTracker() const;
+    QPushButton *tasksButton() const;
+    ClaudeTaskListTracker *tasksTracker() const;
 
 signals:
     void reviewClicked();
     void bgTasksClicked();
+    void tasksClicked();
     void allowlistRequested(const QString &rule);
     void reviewButtonShouldRefresh();
     void statusMessageRequested(const QString &text, int timeoutMs);
@@ -115,6 +126,13 @@ private:
     QLabel              *m_errorLabel = nullptr;
     ClaudeBgTaskTracker *m_bgTasks = nullptr;
     QPushButton         *m_bgTasksBtn = nullptr;
+
+    // ANTS-1158 — Claude Code task-list chip (TodoWrite snapshot
+    // OR TaskCreate / TaskUpdate replay of the focused tab's
+    // session JSONL). Sibling to m_bgTasks; one tracker per
+    // controller, retargeted on tab switch.
+    ClaudeTaskListTracker *m_tasks = nullptr;
+    QPushButton           *m_tasksBtn = nullptr;
 
     // Render state — formerly the m_claude{LastState, LastDetail,
     // PromptActive, PlanMode, Auditing} fivesome on MainWindow.

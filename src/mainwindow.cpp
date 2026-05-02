@@ -18,6 +18,8 @@
 #include "claudeallowlist.h"
 #include "claudebgtasks.h"
 #include "claudebgtasksdialog.h"
+#include "claudetasklist.h"
+#include "claudetasklistdialog.h"
 #include "roadmapdialog.h"
 #include "claudeintegration.h"
 #include "claudestatuswidgets.h"
@@ -702,6 +704,14 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // silent, leaving a phantom "Background Tasks (12)" chip when
     // every task has actually finished. User report 2026-04-27.
     connect(m_statusTimer, &QTimer::timeout, m_claudeStatusBarController, &ClaudeStatusBarController::refreshBgTasksButton);
+    // ANTS-1158 — task-list chip ticks alongside bg-tasks. Same 2 s
+    // cadence; cheap (one parseTranscript per fire on a 16 MiB-capped
+    // file) but only meaningful when the focused tab has a Claude
+    // session. The refresh function self-gates on transcript
+    // presence.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshTasksButton);
     m_statusTimer->start();
 
     // Main-thread stall detector (ROADMAP § 0.8.0 "Terminal throughput
@@ -3453,6 +3463,8 @@ void MainWindow::setupStatusBarChrome() {
             this, &MainWindow::showDiffViewer);
     connect(m_claudeStatusBarController, &ClaudeStatusBarController::bgTasksClicked,
             this, &MainWindow::showBgTasksDialog);
+    connect(m_claudeStatusBarController, &ClaudeStatusBarController::tasksClicked,
+            this, &MainWindow::showTaskListDialog);
     connect(m_claudeStatusBarController, &ClaudeStatusBarController::allowlistRequested,
             this, &MainWindow::openClaudeAllowlistDialog);
     connect(m_claudeStatusBarController, &ClaudeStatusBarController::reviewButtonShouldRefresh,
@@ -4607,6 +4619,20 @@ void MainWindow::showBgTasksDialog() {
     // active tab's session, not whatever the tracker last saw.
     m_claudeStatusBarController->refreshBgTasksButton();
     auto *dlg = new ClaudeBgTasksDialog(tracker, m_currentTheme, this);
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
+}
+
+void MainWindow::showTaskListDialog() {
+    ClaudeTaskListTracker *tracker = m_claudeStatusBarController
+        ? m_claudeStatusBarController->tasksTracker() : nullptr;
+    if (!tracker) return;
+    showStatusMessage(QStringLiteral("Task List: opening…"), 1500);
+    // Re-target the tracker before opening so the dialog reflects
+    // the focused tab's session, mirroring showBgTasksDialog.
+    m_claudeStatusBarController->refreshTasksButton();
+    auto *dlg = new ClaudeTaskListDialog(tracker, m_currentTheme, this);
     dlg->show();
     dlg->raise();
     dlg->activateWindow();

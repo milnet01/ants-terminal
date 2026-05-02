@@ -77,6 +77,8 @@ add_executable(ants-terminal
     src/claudeallowlist.cpp
     src/claudebgtasks.cpp
     src/claudebgtasksdialog.cpp
+    src/claudetasklist.cpp
+    src/claudetasklistdialog.cpp
     src/roadmapdialog.cpp
     src/claudeintegration.cpp
     src/claudetabtracker.cpp

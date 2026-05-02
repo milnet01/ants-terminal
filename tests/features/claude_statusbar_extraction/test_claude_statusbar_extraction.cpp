@@ -256,19 +256,22 @@ int main() {
             "mainwindow.cpp does not retain the 5 s startup "
             "update-check `QTimer::singleShot(5000`");
 
-    // INV-7 — exactly six connect(m_claudeStatusBarController, …)
+    // INV-7 — exactly seven connect(m_claudeStatusBarController, …)
     // substrings AND exactly one PMF per signal.
+    // ANTS-1158 added `tasksClicked` as the 7th signal (task-list
+    // status-bar surface, sibling to bgTasksClicked).
     const std::size_t connectCount =
         countOccurrences(mw, "connect(m_claudeStatusBarController,");
-    if (connectCount != 6) {
+    if (connectCount != 7) {
         return fail("INV-7",
-            "mainwindow.cpp must contain exactly 6 "
+            "mainwindow.cpp must contain exactly 7 "
             "`connect(m_claudeStatusBarController,` substrings; found " +
             std::to_string(connectCount));
     }
     static const char *kSignalPmfs[] = {
         "&ClaudeStatusBarController::reviewClicked",
         "&ClaudeStatusBarController::bgTasksClicked",
+        "&ClaudeStatusBarController::tasksClicked",
         "&ClaudeStatusBarController::allowlistRequested",
         "&ClaudeStatusBarController::reviewButtonShouldRefresh",
         "&ClaudeStatusBarController::statusMessageRequested",
