@@ -2303,6 +2303,36 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # ui_state_persistence — ANTS-1150 (0.7.76). Hybrid round-trip
+    # (link Config) + source-grep (settingsdialog / roadmapdialog /
+    # auditdialog / mainwindow) test for the Phase 1 cohort:
+    # SettingsDialog last-active tab, RoadmapDialog active preset
+    # + Kind facets + 5 status checkboxes, AuditDialog severity-
+    # filter chips + show-new-only toggle. INV labels qualified
+    # ANTS-1150-INV-N. Sandboxes XDG_CONFIG_HOME via QTemporaryDir
+    # so the user's real config.json is untouched.
+    # See tests/features/ui_state_persistence/spec.md and
+    # docs/specs/ANTS-1150.md.
+    add_executable(test_ui_state_persistence
+        tests/features/ui_state_persistence/test_ui_state_persistence.cpp
+        src/config.cpp
+        src/debuglog.cpp
+    )
+    target_link_libraries(test_ui_state_persistence PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_ui_state_persistence PRIVATE src)
+    target_compile_options(test_ui_state_persistence PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME ui_state_persistence
+        COMMAND test_ui_state_persistence
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(ui_state_persistence PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
     # status-bar Roadmap button visible iff the active tab's cwd
     # contains a ROADMAP.md (case-insensitive); click opens a
