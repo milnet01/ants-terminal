@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.75 (2026-05-02). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.76 (2026-05-02). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -5146,87 +5146,55 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🎨 Persistence sweep — make UI state stick across sessions (user request 2026-05-01)
 
-- 📋 [ANTS-1150] **Audit every piece of UI / chrome state and
-  persist what makes sense across sessions.** User ask
-  2026-05-01: *"Everything that makes sense to persist across
-  sessions, please make that persist."* This is a meta-bullet:
-  the action is to enumerate every transient piece of state in
-  the UI, decide whether each should survive a restart, and
-  wire the ones that should into `Config` (which already has
-  the atomic-write + JSON-round-trip + load-fail recovery
-  machinery from ANTS-1141 and predecessors).
+- ✅ [ANTS-1150] **Audit every piece of UI / chrome state and
+  persist what makes sense across sessions** — Phase 1 shipped
+  0.7.76 (2026-05-02). User ask 2026-05-01: *"Everything that
+  makes sense to persist across sessions, please make that
+  persist."* Phase 1 cohort = 6 of the candidates below
+  (user-approved 2026-05-02): SettingsDialog last-active tab,
+  RoadmapDialog active preset, RoadmapDialog Kind facet
+  checkbox set, RoadmapDialog 5 status-emoji checkboxes,
+  AuditDialog severity-filter pills, AuditDialog show-new-only
+  toggle. Discoveries during exploration: AuditDialog "Source-
+  filter chips" don't exist as a widget today (substitute
+  candidates — confidence-sort, recent-only, recent-lines-only —
+  deferred to Phase 2); active terminal tab index is already
+  persisted by SessionManager::saveTabOrder when
+  session_persistence is on (no work needed).
 
-  **Already persists (for context — don't re-do):**
-  - Window position + size + opacity + theme +
-    keybindings + plugin grants + audit-allowlist +
-    `.audit_suppress` markers (Config).
-  - Tab session content + tab order (SessionManager,
-    `~/.local/share/ants-terminal/sessions/`).
-  - RoadmapDialog window geometry
-    (`Config::roadmapDialogGeometry`).
-  - Repo-visibility cache (10-min TTL, in-memory).
-  - Latest known remote version (Config — for the
-    update-available action).
+  Implementation hygiene: Config getters validate / drop
+  unknown values; setRoadmapKindFilters sorts ASCII codepoint-
+  wise on write for stable on-disk diffs; RoadmapDialog ctor
+  restore is ordered Kind-then-preset-then-(Custom-only-status);
+  m_activePreset has TWO write sites (applyPreset + onCheckboxToggled)
+  and BOTH persist via the new persistActivePreset switch-on-
+  enum helper; KindEntry table lifted to file scope as kKinds[];
+  AuditDialog ctor takes Config* as a required third arg (no
+  default-nullptr). Cold-eyes folded 2 CRITICAL + 5 HIGH + 6
+  MEDIUM + 4 LOW; indie-review folded 1 MEDIUM (Custom silent
+  rewrite to Full when status filters never toggled) + 2 LOW
+  (dead-defense QSignalBlockers). 15 ANTS-1150-INV-N
+  invariants in `tests/features/ui_state_persistence/`. Spec
+  at `docs/specs/ANTS-1150.md`.
 
-  **Candidate gaps (user to confirm which to close):**
-  - **RoadmapDialog state.** Active preset tab (Full /
-    History / Current / Next / Far Future / Custom),
-    search-box content, Kind-facet checkbox set, splitter
-    position, scrollbar position, last-clicked TOC heading.
-    ANTS-1106 spec explicitly chose "Kind filter resets on
-    each open" — the user may want to flip that decision.
-  - **AuditDialog state.** Severity-filter chip selection,
-    Source-filter chip selection, "show new only" toggle,
-    splitter position, last-selected finding.
-  - **Status-bar filter state.** None today — but per the
-    pattern, the 5 status-emoji checkboxes in
-    `RoadmapDialog` and any future status-bar filters
-    could persist their last state.
-  - **SettingsDialog last-active tab.** Resets to tab 0
-    every open. Persisting "user was last on Themes" is
-    cheap and useful for power users.
-  - **Per-tab terminal state beyond scrollback.** Search-bar
-    content, last-search direction, link-preview hover state
-    (probably not), font-size override (already
-    per-window-via-config but maybe per-tab?).
-  - **Active tab index across launch.** SessionManager
-    persists the *order*; the *which-was-active* selection
-    isn't currently saved.
-  - **Window position per-display.** When the user moves to
-    a different monitor, do they want geometry re-mapped?
-    (Probably out of scope — Qt + WM handle this.)
-  - **AI dialog conversation history.** Currently the
-    dialog clears on close. User may want a transcript
-    rolled into Claude's existing project-transcript
-    machinery.
-  - **CommandPalette recent-actions / fuzzy-match cache.**
-    Currently ephemeral.
-  - **Background-tasks dialog open state.** Probably not —
-    the chip in the status bar already surfaces task
-    presence; persisting "dialog was open" would re-open it
-    on every launch.
-
-  **Implementation pattern:** for each accepted candidate,
-  add a `Config::xxx()` getter + setter using the existing
-  `storeIfChanged` + atomic-write hygiene; load on dialog
-  construction; save on relevant change events
-  (debounced for rapid-firing changes like search-box
-  typing). Persisted state must round-trip through JSON
-  cleanly (no QByteArray-blob soup unless geometry-style
-  saveState/restoreState).
-
-  **Spec-first per App-Build strict loop**: write
-  `docs/specs/ANTS-1150.md` enumerating the user-confirmed
-  list of items to persist + the JSON schema additions +
-  the load/save event hooks per item before code starts.
-  Per-item INVs for each persisted key:
-  load-then-save-then-reload round-trip yields the same
-  value. Bundle into a single 0.7.6x release once the user
-  confirms scope.
+  **Phase 2 backlog (not yet approved — needs separate sign-off):**
+  - RoadmapDialog QSplitter sidebar position (needs base64
+    saveState/restoreState blob).
+  - AuditDialog confidence-sort / recent-only / recent-lines-
+    only toggles.
+  - AuditDialog last-selected finding (fragile — finding IDs
+    aren't stable across re-runs; defer until ANTS-1132 audit-
+    finding tagging lands).
+  - RoadmapDialog search-box content + per-tab terminal search-
+    bar content (debatable UX — yesterday's search resurfacing
+    is surprising).
+  - SettingsDialog last-active sub-state inside any tab
+    (e.g. which highlight rule was selected when last closed).
+  - CommandPalette recent-actions / fuzzy-match cache (needs
+    MRU scoring scheme).
 
   Kind: implement. Source: user-2026-05-01. Lanes: Config,
-  RoadmapDialog, AuditDialog, SettingsDialog, MainWindow,
-  ClaudeBgTasksDialog, AiDialog, CommandPalette.
+  RoadmapDialog, AuditDialog, SettingsDialog, MainWindow.
 
 ### 📚 Methodology — adopted as standing practice
 

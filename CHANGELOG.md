@@ -12,6 +12,82 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.76] — 2026-05-02
+
+**Theme:** ANTS-1150 Phase 1 — UI / chrome state persistence. User
+ask 2026-05-01: *"Everything that makes sense to persist across
+sessions, please make that persist."* Six persisted UI choices that
+previously reset on every launch — SettingsDialog last-active tab,
+RoadmapDialog active preset + Kind facet checkbox set + 5 status-
+emoji checkboxes, AuditDialog severity-filter pills + show-new-only
+toggle. Six new `Config` getter/setter pairs follow the existing
+`storeIfChanged` + atomic-write hygiene; round-trip identity tested
+via a sandboxed-`XDG_CONFIG_HOME` `QTemporaryDir` lane. 15 ANTS-
+1150-INV-N invariants in `tests/features/ui_state_persistence/`.
+Cold-eyes spec review folded 2 CRITICAL + 5 HIGH + 6 MEDIUM + 4 LOW
+before code; indie-review of the implementation folded 1 MEDIUM + 2
+LOW (Custom-preset silent rewrite to Full + dead-defense
+`QSignalBlocker`s on tab/show-new restore — re-ordered connect-
+before-restore so blockers actually defend). 132/132 ctests pass.
+
+### Added
+
+- **ANTS-1150 Phase 1 — six pieces of UI state now survive a restart.**
+  Phase-1 cohort, all driven by user ask 2026-05-01:
+  - **SettingsDialog last-active tab** (`settings_dialog_last_tab`).
+    Open Settings on whichever of the 9 tabs (General / Appearance /
+    Terminal / AI / Highlights / Triggers / Keybindings / Profiles /
+    Plugins) you closed it on, not always General. Index-keyed,
+    clamped at the call site against the dialog's tab count.
+  - **RoadmapDialog active preset** (`roadmap_active_preset`,
+    string: `"full"` / `"history"` / `"current"` / `"next"` /
+    `"far_future"` / `"custom"`). Re-opens to your last tab choice;
+    invalid stored values fall back to `"full"`.
+  - **RoadmapDialog Kind facet checkboxes** (`roadmap_kind_filters`,
+    sorted ASCII-codepoint array). Reverses the explicit ANTS-1106
+    "Kind filter resets on each open" decision per 2026-05-01 ask.
+    Setter sorts on write so two saves of the same set produce
+    byte-identical JSON (diff-friendly). Unknown Kind strings drop
+    silently on read — defends a future `KindEntry` rename.
+  - **RoadmapDialog 5 status-emoji checkboxes**
+    (`roadmap_status_filters`, 5-key boolean object —
+    `done`/`planned`/`in_progress`/`considered`/`current`).
+    Restored only when the persisted preset is `"custom"` (named
+    presets ride `applyPreset`'s canonical mask anyway). Empty
+    object on first read defaults each checkbox to true (the
+    `.toBool(true)` Qt contract on missing keys).
+  - **AuditDialog severity-filter pills** (`audit_severity_filters`,
+    5-key boolean object — `blocker`/`critical`/`major`/`minor`/`info`).
+    The MIN+INF-off post-noise-sweep state survives a re-run.
+  - **AuditDialog "Show new since baseline" toggle**
+    (`audit_show_new_only`). Restored at dialog ctor only when
+    `m_hasBaseline` is true (no point checking the box without a
+    baseline to compare against). Lazy-invalidate stickiness:
+    persisted bool stays through baseline-deletion gaps; next
+    `saveBaseline` re-honours the preference.
+
+  Implementation hygiene: **two-write-site invariant for
+  `m_activePreset`** — `applyPreset` (named-preset path) and
+  `onCheckboxToggled` (Custom-divergence path) both call the new
+  `RoadmapDialog::persistActivePreset` helper, which uses a
+  `switch` on `Preset` for compiler `-Wswitch-enum` coverage of
+  any future enum addition. **Lifted `KindEntry` table to file
+  scope** as `kKinds[]` so the build loop and the persisted-Kind
+  restore iterate the same source-of-truth; new
+  `m_kindCheckboxes` (`QHash<QString, QCheckBox *>`) hash for
+  O(1) lookup during restore. **AuditDialog ctor signature
+  changed** to require `Config *` as a third arg — no
+  `= nullptr` default per the cold-eyes review (single call site
+  at `mainwindow.cpp:1351` always has `&m_config` available; a
+  default would be dead scaffolding).
+
+### Changed
+
+- `Config::setRoadmapKindFilters` now sorts ASCII-codepoint-wise
+  on write (not at the call site). Centralizes the canonicalization
+  so future call sites can't accidentally write an unsorted list
+  and break diffability.
+
 ## [0.7.75] — 2026-05-02
 
 **Theme:** ANTS-1148 — DEC private mode 2026 (Synchronized Output /

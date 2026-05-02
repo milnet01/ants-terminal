@@ -1,3 +1,38 @@
+ants-terminal (0.7.76-1) unstable; urgency=medium
+
+  * ANTS-1150 Phase 1 — UI / chrome state persistence. User ask
+    2026-05-01: "Everything that makes sense to persist across
+    sessions, please make that persist." Six pieces of UI state
+    that previously reset on every launch now survive a restart:
+    SettingsDialog last-active tab, RoadmapDialog active preset +
+    Kind facet checkboxes + 5 status-emoji checkboxes, AuditDialog
+    severity-filter pills + show-new-only toggle.
+  * Six new Config getter/setter pairs follow the existing
+    storeIfChanged + atomic-write hygiene. Round-trip identity
+    tested via a sandboxed-XDG_CONFIG_HOME QTemporaryDir lane.
+  * RoadmapDialog implementation hygiene: two-write-site invariant
+    for m_activePreset via the new persistActivePreset helper
+    (switch-on-enum so future Preset enum additions get caught at
+    compile time); KindEntry table lifted to file scope as kKinds[]
+    so the build loop and the persisted-Kind restore iterate the
+    same source-of-truth; new m_kindCheckboxes (QHash<QString,
+    QCheckBox*>) hash for O(1) restore lookup.
+  * AuditDialog ctor signature changed to require Config* as a
+    third arg (no = nullptr default per cold-eyes review — single
+    call site at mainwindow.cpp:1351 always has &m_config available;
+    a default would be dead scaffolding).
+  * Spec at docs/specs/ANTS-1150.md cold-eyes-reviewed before code
+    (2 CRITICAL, 5 HIGH, 6 MEDIUM, 4 LOW folded). Indie-review of
+    the implementation folded 1 MEDIUM (Custom-preset silent rewrite
+    to Full when status filters were never toggled) and 2 LOW (dead-
+    defense QSignalBlockers on tab/show-new restore — re-ordered
+    connect-before-restore so the blockers actually defend a future
+    inotify-driven re-entry or two-window clamp race).
+  * 15 ANTS-1150-INV-N invariants in tests/features/ui_state_persistence/
+    pass; 132/132 ctests pass.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 02 May 2026 10:01:25 +0200
+
 ants-terminal (0.7.75-1) unstable; urgency=medium
 
   * ANTS-1148 — DEC private mode 2026 (Synchronized Output /
