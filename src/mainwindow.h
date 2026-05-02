@@ -182,6 +182,14 @@ private:
     // Session persistence
     void saveAllSessions();
     void restoreSessions();
+    // ANTS-1159 — cheap tab-order-only save, called on every tab
+    // create / close / reorder so the tab list survives a crash
+    // even when the periodic timer hasn't ticked yet. Subset of
+    // saveAllSessions: walks m_tabWidget, builds the tabOrder
+    // QStringList + active index, calls
+    // SessionManager::saveTabOrder. Honors the same
+    // sessionPersistence + 5 s uptime guards.
+    void saveTabOrderOnly();
 
     TitleBar *m_titleBar = nullptr;
     OpaqueMenuBar *m_menuBar = nullptr;
@@ -523,6 +531,13 @@ private:
     QElapsedTimer m_stallLastFire;
     qint64 m_stallWorstMs = 0;
     quint64 m_stallCount = 0;
+
+    // ANTS-1159 — periodic session-save timer. 30 s cadence ⇒
+    // worst-case crash loss is ~30 s of new scrollback / cwd /
+    // pinned-title state. Tab list itself is cheaper and saved
+    // synchronously on tab create / close / reorder (see
+    // saveTabOrderOnly).
+    QTimer *m_sessionSaveTimer = nullptr;
 
     // Remote-control JSON-over-Unix-socket server. Non-owning
     // pointer — MainWindow owns it via QObject parent/child tree.

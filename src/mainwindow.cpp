@@ -564,6 +564,27 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // Restore saved sessions from previous run
     restoreSessions();
 
+    // ANTS-1159 — periodic session save so a SIGSEGV / OOM-kill /
+    // power loss can't discard everything since the last graceful
+    // close. saveAllSessions() already short-circuits on
+    // !sessionPersistence and on the 5 s uptime floor, so the
+    // timer is a single Qt connect with no extra guards. Tab list
+    // itself is also saved synchronously on tab create / close /
+    // reorder (see saveTabOrderOnly) — this timer covers per-tab
+    // scrollback / cwd / pinned-title.
+    m_sessionSaveTimer = new QTimer(this);
+    m_sessionSaveTimer->setInterval(30000);
+    connect(m_sessionSaveTimer, &QTimer::timeout,
+            this, &MainWindow::saveAllSessions);
+    m_sessionSaveTimer->start();
+
+    // ANTS-1159 — tab-order saved on every tab move. (Create /
+    // close are hooked from inside newTab + performTabClose
+    // since those paths run setup/teardown that should complete
+    // before the save fires.)
+    connect(m_coloredTabBar, &QTabBar::tabMoved,
+            this, [this](int, int) { saveTabOrderOnly(); });
+
     // Apply ordered tab-color sequence from the previous run. Must run
     // AFTER all tabs are in place. For session-persistence ON, the
     // UUID-keyed path inside restoreSessions already colored matching
@@ -2257,6 +2278,16 @@ void MainWindow::newTab() {
 
     // Hide tab bar when only one tab
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
+
+    // ANTS-1159 — persist the new tab in the on-disk order
+    // immediately so a crash in the next 30 s window doesn't
+    // lose it. saveTabOrderOnly's own guards short-circuit
+    // when sessionPersistence is off or during the 5 s uptime
+    // floor (the constructor's restoreSessions path lands here
+    // for every restored tab and we don't want those replays
+    // overwriting the on-disk order with a partially-built
+    // list).
+    saveTabOrderOnly();
 }
 
 void MainWindow::onSshConnect(const QString &sshCommand, bool inNewTab) {
@@ -2517,6 +2548,10 @@ void MainWindow::performTabClose(int index) {
     if (auto *t = currentTerminal()) {
         t->setFocus();
     }
+
+    // ANTS-1159 — persist the post-close order so a crash within
+    // the next 30 s timer window doesn't resurrect the closed tab.
+    saveTabOrderOnly();
 }
 
 void MainWindow::showCloseTabConfirmDialog(QWidget *tabWidget,
@@ -3214,6 +3249,37 @@ void MainWindow::saveAllSessions() {
     SessionManager::saveTabOrder(tabOrder, activeIndex);
 }
 
+// ANTS-1159 — cheap tab-order-only save. Walks the tab widget,
+// builds the tabOrder QStringList + active index, calls
+// SessionManager::saveTabOrder. Does NOT touch the per-tab
+// scrollback `.dat` files (saveAllSessions handles those, on
+// the 30 s timer + closeEvent). Mirrors saveAllSessions's
+// guards — sessionPersistence + 5 s uptime floor.
+void MainWindow::saveTabOrderOnly() {
+    if (!m_config.sessionPersistence()) return;
+    if (m_uptimeTimer.elapsed() < 5000) return;
+
+    QStringList tabOrder;
+    int activeIndex = 0;
+    const int currentIdx = m_tabWidget->currentIndex();
+
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        QWidget *w = m_tabWidget->widget(i);
+        auto *t = activeTerminalInTab(w);
+        if (!t) continue;
+
+        QString tabId = m_tabSessionIds.value(w);
+        if (tabId.isEmpty() && t != w)
+            tabId = m_tabSessionIds.value(t);
+        if (tabId.isEmpty()) continue;
+
+        if (i == currentIdx)
+            activeIndex = tabOrder.size();
+        tabOrder.append(tabId);
+    }
+    SessionManager::saveTabOrder(tabOrder, activeIndex);
+}
+
 void MainWindow::restoreSessions() {
     if (!m_config.sessionPersistence()) return;
 
@@ -3789,6 +3855,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    // ANTS-1159 — stop the periodic session-save timer first so
+    // a tick landing mid-shutdown can't re-enter the save path
+    // and race the explicit shutdown save below.
+    if (m_sessionSaveTimer) m_sessionSaveTimer->stop();
+
     QPoint realPos = m_posTracker->currentPos();
     m_config.setWindowGeometry(realPos.x(), realPos.y(), width(), height());
     // Persist tab color sequence unconditionally — independent of
