@@ -5414,6 +5414,524 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ---
 
+### 🐛 Terminal rendering — server output only updates top half of window (user report 2026-05-07)
+
+- 📋 [ANTS-1187] **Long-running server tab renders new output
+  only into the upper half of the terminal; bottom half stays
+  blank.** User report 2026-05-07: ran a Python web server
+  (RetroDB / waitress) in a tab; banner + startup logs print
+  fine, but as the server keeps writing log lines they pile up
+  at the *middle* of the window instead of scrolling at the
+  bottom edge. The bottom ~50% of the visible grid stays
+  permanently blank. Scrolling up DOES reveal text at the
+  bottom of the viewport (so scrollback is intact), and the
+  output keeps moving — it just stops a few lines after the
+  middle row instead of scrolling against the last row.
+  Symptom strongly suggests one of:
+  (a) DECSTBM scroll region was set by a prior process (or a
+  prior TUI repaint inside this process — claude-code's status
+  footer, ncurses progress bar) and never reset on RIS / DECSTR
+  / window resize, so the grid is still scrolling within the
+  upper margin region.
+  (b) `m_rows` / scroll-region bottom out of sync with the
+  visible viewport after the most recent resize — a stale
+  `m_scrollRegionBottom` left behind by a resize() that didn't
+  recompute it.
+  (c) An alt-screen leftover — an earlier alt-screen TUI exit
+  that didn't fully restore the main-screen scroll bounds.
+  Investigation: (1) reproduce with the same server (or any
+  long-running line-emitter that writes via plain `print`) on
+  a freshly launched tab in a >40-row window; (2) `printf
+  '\\033[r'` (reset scroll region to full screen) and check
+  whether the symptom clears — if YES, this is a scroll-region
+  leak (most likely root cause); (3) inspect `m_scrollRegionTop
+  / m_scrollRegionBottom` at the moment the symptom appears
+  (debug-log under `vt` category); (4) bisect against the
+  Tier 1 PTY/grid changes from this same date — ANTS-1166
+  (Kitty `a=d` cross-protocol fix), ANTS-1167 (forkpty
+  F_SETFL), ANTS-1169 (Kitty c/r safeStoi clamp + OSC 8 URI
+  cap) all touched terminalgrid.cpp / ptyhandler.cpp on
+  2026-05-07, but none of those should affect text-grid scroll
+  bounds — likely a pre-existing latent bug surfaced by the
+  user's specific shell session, not a regression.
+  Acceptance: server output streams against the bottom row of
+  the visible terminal, with scrollback growing upward, even
+  after a long session that may have included TUI helpers
+  (claude-code's footer, htop, vim) earlier in the same tab.
+  Add a feature test that drives DECSTBM (`\\033[10;20r`),
+  prints text past the bottom margin, sends RIS (`\\033c`),
+  and asserts the next 100 lines of plain-print output land
+  at the bottom of the visible grid.
+  Note from user: roadmap this for now, do not fix immediately.
+  Kind: fix. Source: user-2026-05-07.
+  Lanes: terminalgrid (DECSTBM / scroll region), terminalwidget
+  (resize → grid bound recompute).
+
+---
+
+## 0.7.78 — independent-review sweep #2 (target: 2026-05) — 2026-05-07
+
+**Theme:** fold-in of the 2026-05-07 multi-agent code review. 11
+subsystems reviewed by independent `general-purpose` subagents
+(each briefed only with source paths + contract docs + external
+standards — ECMA-48, xterm ctlseqs, OWASP LLM Top 10, POSIX
+`forkpty(3)`, SARIF v2.1.0, Lua 5.4 sandbox, freedesktop
+GlobalShortcuts portal, Unix socket perms, RFC 8259, etc.).
+**4 calibrated CRITICAL / 22 HIGH / many MEDIUM/LOW** after
+threat-model calibration and dedup against prior roadmap. Static-
+analysis pass (cppcheck Qt-aware, clazy, gitleaks, semgrep,
+shellcheck, project's own grep-rule corpus + fixture coverage)
+returned 5 LOW Qt6-idiom-polish findings on top of a 96% noise
+floor — matches the ninth-audit calibration anchor (≤5
+actionable) almost exactly.
+
+**Headline pattern**: ANTS-1163 (just-fixed: Task List dialog
+showed stale tasks across sessions) was a single instance of a
+wider structural bug class. **Three independent reviewers found
+the same staleness pattern in ≥5 more dialogs**, including the
+ClaudeTranscriptDialog, SshDialog form fields, `m_changedFiles`
+on tab switch, and `pollClaudeProcess`'s unscoped global-
+newest-by-mtime pick. The "self-graded homework" trap exactly
+as the `/indie-review` skill describes — ANTS-1163's regression
+test validates the specific fixed dialog; the pattern is
+structural and lives elsewhere. Closing all sites in one sweep
+(ANTS-1168) and adding a dialog-staleness lint rule.
+
+### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
+
+- 📋 **Dialog-staleness pattern recurs in 5+ sites (ANTS-1163
+  family).** Lanes 4, 6, 10 independently surfaced cached
+  dialogs that don't reset state on re-show: `m_aiDialog`,
+  `m_sshDialog`, `m_claudeDialog`, `m_claudeProjects`,
+  `m_claudeTranscript` in `mainwindow.cpp:1142-3711`;
+  `ClaudeTranscriptDialog` shows global-newest-by-mtime
+  regardless of focused tab (`claudetranscript.cpp:50`);
+  `pollClaudeProcess` second site of unscoped global-newest-
+  by-mtime (`claudeintegration.cpp:228-240`); `m_changedFiles`
+  not cleared on `setShellPid` PID change
+  (`claudeintegration.cpp:75-106`); SshDialog form fields
+  persist across re-opens (`sshdialog.cpp:245-248`). All same
+  shape as ANTS-1163. Bundled into ANTS-1168.
+- 📋 **Spec/code drift on documented invariants** — Lanes 1,
+  5, 7, 8 each found a doc that disagrees with the code that
+  ships. Audit pipeline order (`auditdialog.cpp:4009-4033` vs
+  CLAUDE.md post-ANTS-1136 doc-fix); ANTS-1116 INV-6 message
+  ("drift script killed by signal" vs spec's "…by signal N");
+  PLUGINS.md says `print()` redirected to `ants.log` but
+  `luaopen_base` installs the real `print`; vtparser comment
+  "clear() keeps capacity" stale because clear() isn't called
+  any more. Each is small individually; collectively the
+  pattern signals that doc-drift is happening between minor
+  revs without a reconciliation pass.
+- 📋 **Unbounded resource paths via untrusted input** —
+  Lanes 1, 2, 6, 8, 9, 11 each surfaced an untrusted-input
+  surface lacking an explicit max-size + canonicalize-and-
+  prefix-check. Kitty APC `c`/`r` unbounded
+  (`terminalgrid.cpp:2915-2922`); OSC 8 trigger URI unbounded
+  (`terminalgrid.cpp:2040-2081`); background-image dim not
+  capped (`terminalwidget.cpp:4948`); `tailFile` reads
+  attacker-controlled path (`claudebgtasksdialog.cpp:50-67`);
+  `parseTranscriptTail` gives up on >4 MiB
+  (`claudeintegration.cpp:484-525`); `runClient` receive
+  unbounded (`remotecontrol.cpp:614,595-599`); 6 config-path
+  setters take untrusted strings; main.cpp `--remote send-text`
+  stdin no length cap. Bundled into ANTS-1169 (boundary-cap
+  audit).
+- 📋 **`m_engines.values()` per-call allocation on hot
+  paths** — independently flagged by static analysis (clazy)
+  AND Lane 7 reviewer. Cross-confirmation upgrades confidence;
+  rolled into ANTS-1185 (Qt6 idiom polish bundle) but kept on
+  the cross-cutting list because both signals saw it.
+
+### 🔒 Tier 1 — ship-this-week fixes (CRITICAL — security/data-loss/dead documented features)
+
+- 📋 **[ANTS-1164] [🔒 Security] PTY-write debug log leaks
+  keystroke + paste payloads.** `ptyhandler.cpp:333` writes
+  `data.left(60).toPercentEncoding()` when `ANTS_DEBUG=pty` or
+  `=all` is set, with NO call to `SecretRedact::scrub()`. Short
+  tokens (`ghp_…` 40 chars, `AKIA…` 20 chars, sub-60-char
+  passwords pasted at `sudo`) land verbatim in
+  `~/.local/share/ants-terminal/debug.log`. Log is 0600 so
+  local-only, but backup tools / sync clients / `find` on
+  `~/.local/share` surface them. Fix: route the slice through
+  `SecretRedact::scrub()` before percent-encoding, OR downgrade
+  to length-only when `Pty` category is enabled outside an
+  explicit "include-payloads" sub-flag.
+  **Source:** indie-review 2026-05-07 (Lane 11 C-1).
+  **Kind:** fix.
+- 📋 **[ANTS-1165] [🐛 Bug] `Ctrl+Shift+Up/Down` configured
+  bookmark shortcut silently dead.** `mainwindow.cpp:1678,1686`
+  bind `next_bookmark`/`prev_bookmark` QShortcuts on the same
+  chord that `mainwindow.cpp:1266,1271` advertise as
+  "Previous/Next Prompt" (intercepted by
+  `TerminalWidget::keyPressEvent` per the `// intercepted`
+  comment at line 1263). Terminal swallows the keypress before
+  the QShortcut layer, so the user-configurable
+  `next_bookmark` keybinding does nothing whenever the terminal
+  has focus (i.e. always). Documented + configurable + dead.
+  Either change defaults to a non-conflicting chord (e.g.
+  `Ctrl+Alt+Up/Down`) or surface a config-conflict warning at
+  startup.
+  **Source:** indie-review 2026-05-07 (Lane 4 C-1).
+  **Kind:** fix.
+- 📋 **[ANTS-1166] [🔒 Security] Kitty APC `a=d,d=a` wipes
+  Sixel + iTerm2 images cross-protocol.**
+  `terminalgrid.cpp:2773-2777` — Kitty graphics protocol
+  "delete all images" is supposed to clear only Kitty-protocol
+  images, but the implementation also clears `m_inlineImages`,
+  wiping every Sixel and iTerm2 image the terminal has ever
+  displayed. Exploitable from untrusted PTY output: a single
+  APC `\e_Ga=d,d=a;\e\\` from a hostile process erases visual
+  context across protocols (think: log redaction via image
+  deletion). Fix: track origin per `InlineImage` or maintain a
+  separate Kitty-only display vector.
+  **Source:** indie-review 2026-05-07 (Lane 1 C-1).
+  **Kind:** fix.
+- 📋 **[ANTS-1167] [🐛 Bug] `forkpty` F_SETFL return value
+  ignored; silent fall-through to blocking master.**
+  `ptyhandler.cpp:311-318` — the second `fcntl(F_SETFL, …|
+  O_NONBLOCK)` return is unchecked. If F_GETFL fails the
+  `if (flags >= 0)` guard at line 316 swallows it entirely. A
+  spurious `QSocketNotifier` wakeup on a still-blocking master
+  freezes the GUI thread inside `read()`. Breaks the central
+  "forkpty + QSocketNotifier is the entire model" contract
+  from CLAUDE.md. Two-line fix: log the F_SETFL failure and
+  abort `start()` (or fall back to a polled read loop).
+  **Source:** indie-review 2026-05-07 (Lane 3 C-1).
+  **Kind:** fix.
+
+### 🔒 Tier 1 — ship-this-week fixes (HIGH — composing with the criticals)
+
+- 📋 **[ANTS-1168] [🐛 Bug] ANTS-1163 dialog-staleness sweep
+  across all cached dialogs.** Same pattern, ≥5 sites:
+  (a) `mainwindow.cpp:1142-1163` `m_sshDialog` keeps form
+  values across re-opens; (b) `mainwindow.cpp:1372-1389`
+  `m_aiDialog` re-pushes terminal context but dialog-local
+  history/scroll/last-error state survives;
+  (c) `mainwindow.cpp:3617-3669` `m_claudeDialog`
+  (allowlist) keeps selection/scroll/unsaved-edits state;
+  (d) `mainwindow.cpp:3671-3711` `m_claudeProjects` only
+  refreshes on re-open path (first show after construction
+  is stale); (e) `claudetranscript.cpp:50` shows global
+  newest-by-mtime regardless of focused tab + dialog cached
+  in `mainwindow.cpp:1435`; (f) `claudeintegration.cpp:228-
+  240` `pollClaudeProcess` second site of unscoped global-
+  newest-by-mtime — ANTS-1163 fixed `sessionPathForCwd` but
+  missed this; (g) `claudeintegration.cpp:75-106`
+  `setShellPid` doesn't clear `m_changedFiles` on PID change
+  → MCP `get_session_info` returns prior tab's edited files.
+  Apply the existing `m_settingsDialog` pattern at
+  `mainwindow.cpp:5157-5161` (close + deleteLater + null on
+  `destroyed`) to every cached dialog, OR document a hard
+  contract that every per-open setter is enumerated. Add a
+  static-analysis lint (`tools/audit/audit-config.json` once
+  created) that any cached `QDialog*` member must either be
+  `WA_DeleteOnClose` or have a `clear()`/`reset()` slot
+  called from `show()`.
+  **Source:** indie-review 2026-05-07 (Lane 4 H-1, Lane 6
+  C-1+H-1+H-2, Lane 10 H-1). **Cross-cutting theme A**.
+  **Kind:** fix.
+- 📋 **[ANTS-1169] [🔒 Security] Boundary-cap audit —
+  every untrusted-input crossing.** Eight sites surfaced
+  by 6 reviewers; all share the same shape (untrusted input
+  + missing max-size or canonicalize-and-prefix-check).
+  (a) `claudebgtasksdialog.cpp:50-67` `tailFile` reads
+  attacker-controlled `outputPath` derived from a transcript
+  `tool_result` body (LLM01 prompt-injection-reachable) — no
+  canonicalization vs `/tmp/claude-$UID/<…>/tasks/`, no
+  `lstat+S_ISREG`. `~/.ssh/id_ed25519` rendered in dialog.
+  (b) `config.cpp:413,593,797,670,404,767` setters for
+  `image_paste_dir`, `plugin_dir`, `background_image`,
+  `claude_project_dirs`, `editor_command`, `shell_command` —
+  no path validation; `image_paste_dir=~/.ssh/` silent
+  SSH-key clobber on paste. (c) `terminalwidget.cpp:4948`
+  `m_backgroundImage = QImage(path)` — no
+  `QImageReader::size()` peek; ROADMAP mandates
+  `MAX_IMAGE_DIM=4096`. Malicious 50000×50000 PNG → ~10 GB
+  alloc at startup. (d) `terminalgrid.cpp:2915-2922` Kitty
+  APC `c`/`r` unbounded `safeStoi` → integer overflow
+  downstream. (e) `terminalgrid.cpp:2040-2081` OSC 8
+  trigger URI unbounded; trigger templates expand
+  attacker-controllable PTY backrefs; multi-GB span alloc.
+  (f) `claudeintegration.cpp:484-525` `parseTranscriptTail`
+  doubles to 4 MiB then `return snap;` instead of falling
+  back to last newline-delimited record — state bar appears
+  frozen on legit 5 MiB tool_result. (g) `remotecontrol.cpp:
+  614,595-599` `runClient` receive loop no size cap; mirror
+  server's 1 MiB cap. (h) `main.cpp:303-311` `--remote
+  send-text` stdin no length cap.
+  **Source:** indie-review 2026-05-07 (Lane 1 H-2+H-3,
+  Lane 2 H-3, Lane 6 H-3+H-4, Lane 8 H-3, Lane 9 H-3,
+  Lane 11 main.cpp). **Cross-cutting theme C**.
+  **Kind:** fix.
+- 📋 **[ANTS-1170] [🔒 Security] `ANTS_DEBUG` opt-in gate
+  + log rotation.** `main.cpp:195-199` reads the env
+  unconditionally; an inherited `ANTS_DEBUG=all` from a CI
+  image / `.envrc` / sourced helper silently turns on
+  full keystroke capture. `debuglog.cpp:87` opens with
+  `QIODevice::Append` — no rotation, no size cap, persists
+  across runs. Combined with ANTS-1164 a forgotten env
+  var writes secrets indefinitely. Fix: require
+  `ANTS_DEBUG_OPT_IN=1` alongside the categories OR print
+  one-line stderr banner ("Ants debug log active →
+  /path") so the user sees it; cap log to ~10 MiB with
+  rename-on-open rotation, or truncate on each launch.
+  **Source:** indie-review 2026-05-07 (Lane 11 H-1+H-2).
+  **Kind:** fix.
+
+### 🔒 Tier 2 — hardening sweep (HIGH/MEDIUM)
+
+- 📋 **[ANTS-1171] [🐛 Bug] Audit pipeline-order spec/code
+  drift.** `auditdialog.cpp:4009-4033` does
+  `dedup → comment/string → mypy-stub-fold → cap`; CLAUDE.md
+  (post-ANTS-1136 doc-fix) declares
+  `dedup → cap → comment/string → mypy-stub-fold →
+  enrichment`. Either spec or code is wrong on the exact axis
+  ANTS-1136 flagged as critical. Side effect: cap on wrong
+  side wastes pipeline cost — comment/string and mypy passes
+  run on all findings before cap trims to 100. Pick one
+  source of truth in the same commit so the next reviewer
+  doesn't re-loop.
+  **Source:** indie-review 2026-05-07 (Lane 5 C-1; calibrated
+  HIGH per single-user threat model).
+  **Cross-cutting theme B**. **Kind:** fix.
+- 📋 **[ANTS-1172] [🔒 Security] Lua C-call wall-clock
+  watchdog (un-defer ANTS-1143).** `luaengine.cpp:94-100`
+  `LUA_MASKCOUNT` instruction-count timeout doesn't fire
+  inside pure-C Lua calls (`string.find/match/gsub/rep`,
+  `table.sort`). PLUGINS.md openly admits the limitation;
+  ANTS-1143 deferred the watchdog. A plugin author who feeds
+  `event.data` (PTY output line / OSC 1337 / palette payload)
+  into `data:gsub("(.-)+", …)` freezes the UI thread.
+  ~30-line `QTimer` watchdog flips `m_timedOut` and installs
+  `LUA_MASKLINE | LUA_MASKCOUNT` hook. Closes the only
+  documented sandbox-escape path. Un-defer ANTS-1143.
+  **Source:** indie-review 2026-05-07 (Lane 7 C-1; calibrated
+  HIGH — plugin trust model is "I trust this author", UI
+  freeze not RCE). **Kind:** fix.
+- 📋 **[ANTS-1173] [🐛 Bug] Plugin `unloadAll` snapshot
+  before iteration.** `pluginmanager.cpp:50-58` doesn't
+  snapshot `m_engines` before iterating, unlike `fireEvent`
+  at line 323 which does. If an `unload` handler re-enters
+  the event loop (status signal → palette repaint →
+  keypress → fireEvent), `m_engines.values()` may
+  dereference an already-`deleteLater`'d engine.
+  Deterministic UAF window in dev/hot-reload mode.
+  Three-line snapshot fix.
+  **Source:** indie-review 2026-05-07 (Lane 7 H-2).
+  **Kind:** fix.
+- 📋 **[ANTS-1174] [🐛 Bug] Mainwindow lifetime hygiene —
+  Connection leak + proxy-action heap leak.**
+  (a) `mainwindow.cpp:2240,2258,2266`
+  `std::make_shared<QMetaObject::Connection>` lambdas leak
+  the `Connection` object until the last lambda copy is
+  dropped. Each Claude permission button creates 3 Connection
+  shared_ptrs, none destroyed cleanly. Replace with
+  `Qt::SingleShotConnection` (Qt 6.0+) or receiver-based
+  auto-disconnect. (b) `mainwindow.cpp:3221,3228`
+  `collectActions` heap-allocates fresh proxy `QAction`s on
+  every `rebuildCommandPalette()` call, parented to `this`,
+  never deleted. After N plugin reloads: 200-500 stranded
+  QActions. Either parent proxies to a transient holder
+  reset on every rebuild, or skip the proxy entirely and
+  pass real menu QActions to `CommandPalette::setActions`.
+  **Source:** indie-review 2026-05-07 (Lane 4 H-3+H-4).
+  **Kind:** fix.
+- 📋 **[ANTS-1175] [🐛 Bug] PTY robustness — envp
+  truncation log + waitpid finished semantic.**
+  (a) `ptyhandler.cpp:156-179` `kEnvpCap=512` silently
+  truncates parent environ. Modern desktop sessions can
+  exceed 500 entries; child shell loses PATH/HOME with no
+  diagnostic; users report it as "ants-terminal sometimes
+  opens a shell with no PATH." Add `qWarning` on
+  `envpCount >= kEnvpCap - 8`, or grow the table dynamically
+  (parent-side, no signal-safety constraint).
+  (b) `ptyhandler.cpp:443-461` `waitpid(WNOHANG)==0` emits
+  `finished(-1)` indistinguishable from "child still
+  running, will be killed in dtor" vs "child exited with
+  status -1." Defer the `finished` emit until the destructor
+  reaps, OR carry a separate "child still alive at EOF"
+  signal so UI can choose between "restart shell" and
+  "tab is dying."
+  **Source:** indie-review 2026-05-07 (Lane 3 H-1+H-2).
+  **Kind:** fix.
+- 📋 **[ANTS-1176] [🔒 Security] Remote-control
+  observability + receive cap.**
+  (a) `remotecontrol.cpp:223-505` no `ANTS_LOG` on any
+  dispatched verb (`cmdSendText` / `cmdLaunch` /
+  `cmdNewTab` / `cmdSetTitle` / `cmdSelectWindow`). Logging
+  exists only on the trust-boundary path (UID mismatch,
+  listen failure). Same-UID-attack post-mortem has no
+  record. Add one `ANTS_LOG(DebugLog::Network, "rc dispatch
+  cmd=%s tab=%d bytes=%d stripped=%d", …)` per verb without
+  leaking the payload itself. (b) `remotecontrol.cpp:614,
+  595-599` `runClient` parses untrusted server output via
+  `QJsonDocument::fromJson` with no size cap.
+  `ANTS_REMOTE_SOCKET=/tmp/anything` lets a same-UID
+  malicious local process answer the client; 100 MB
+  response saturates the helper. Mirror server's 1 MB cap
+  on `runClient`'s receive loop.
+  **Source:** indie-review 2026-05-07 (Lane 8 H-2+H-3).
+  **Kind:** fix.
+- 📋 **[ANTS-1177] [🐛 Bug] ANTS-1116 INV-6
+  spec/code reconciliation.** `antshelper.cpp:77` emits
+  `"drift script killed by signal"` (no N); ANTS-1116
+  INV-6/INV-8 mandates `"drift script killed by signal N"`.
+  Pick one source of truth: either revise INV-6 to drop N
+  (cite `QProcess::exitStatus`'s undefined-on-CrashExit
+  caveat), or use `proc.exitCode()` + a clear "raw value"
+  disclaimer.
+  **Source:** indie-review 2026-05-07 (Lane 8 H-1).
+  **Cross-cutting theme B**. **Kind:** fix.
+- 📋 **[ANTS-1178] [🔒 Security] SettingsDialog regex
+  validation + AI key ImhSensitiveData.**
+  (a) `settingsdialog.cpp:982-1012` Highlights/Triggers
+  regex strings pushed into config without
+  `QRegularExpression::isValid()` + `isCatastrophicRegex()`
+  gate; the helper exists in `auditengine` per CLAUDE.md
+  but the dialog doesn't use it. Catastrophic regex inside
+  a terminal hot path crashes responsiveness without
+  crashing the process — worst kind of latent UX bug.
+  (b) `settingsdialog.cpp:408-411` AI API key field has
+  `QLineEdit::Password` echo but missing
+  `setInputMethodHints(Qt::ImhSensitiveData |
+  Qt::ImhHiddenText | Qt::ImhNoAutoUppercase |
+  Qt::ImhNoPredictiveText)`. Virtual-keyboard / IME
+  predictive cache can capture keystrokes.
+  **Source:** indie-review 2026-05-07 (Lane 10 H-2+H-3).
+  **Kind:** fix.
+- 📋 **[ANTS-1179] [🐛 Bug] Config robustness — NaN guard,
+  asymmetric validation, theme cache.**
+  (a) `config.cpp:130` `QJsonDocument(m_data).toJson()`
+  writes NaN/Infinity as `null` per RFC 8259. `setRawData`
+  accepts arbitrary `QJsonObject`; future numeric setter
+  could silently lose data shape. Add numeric-validity
+  check at write path. (b) `config.cpp:282-321`
+  `setRoadmapKindFilters`/`setRoadmapActivePreset` accept
+  unknowns silently while the getter validates against the
+  known set; future renames leave zombie values on disk.
+  Mirror getter's validation. (c) `themes.cpp:260-313`
+  static `themes` cache permanently caches I/O failure as
+  canonical state. Transient unreadability + parse-failure
+  `continue` silently — user's selected theme silently
+  reverts AND is persisted-as-reverted. Apply
+  `config.cpp`'s parse-failure-rotation pattern to
+  user-theme parse failures.
+  **Source:** indie-review 2026-05-07 (Lane 9 H-1+H-2+C-1;
+  C-1 calibrated HIGH per data-loss-bounded-to-theme-name).
+  **Kind:** fix.
+
+### ⚡ / 🏗 Tier 3 — structural (after Tier 1/2 lands)
+
+- 📋 **[ANTS-1180] [⚡ Performance] Per-cell `fillRect`
+  coalescing in paintEvent.** `terminalwidget.cpp:806-811`
+  inner per-cell loop calls `p.fillRect(...)` every cell
+  whose bg differs from default; `N×cols` per frame for
+  fully-styled vim status lines. The `TextRun` aggregator
+  above coalesces text but bg-fills stay per-cell. Coalesce
+  contiguous same-bg cells the same way `TextRun` does.
+  Next obvious paint hotspot after the QTextLayout reuse
+  fix.
+  **Source:** indie-review 2026-05-07 (Lane 2 H-1).
+  **Kind:** improve.
+- 📋 **[ANTS-1181] [🧹 Refactor] Extract `setupMenus()`
+  + carve About/Snippets/Confirm-Close to separate TUs.**
+  `mainwindow.cpp:1067-1973` is a 900-line `setupMenus()`
+  inside a 5576-LoC `mainwindow.cpp`. Split per-menu
+  (`setupFileMenu`/`setupEditMenu`/...), carve out the
+  About-Ants / About-Qt / update-check dialogs (lines
+  1849-1972, ~120 lines), and the `showSnippetsDialog`
+  (lines 5332-5489) to their own TU(s) like
+  `diffviewer.{cpp,h}` was carved out per ANTS-1145. Net
+  diff: ~−1500 LoC on `mainwindow.cpp`, ~+1700 across new
+  TUs. Pre-requisite for catching the next regression
+  cleanly in this density.
+  **Source:** indie-review 2026-05-07 (Lane 4 M-1).
+  **Kind:** improve.
+- 📋 **[ANTS-1182] [⚡ Performance] Replace 13
+  `findChildren<TerminalWidget*>()` walks with a
+  `QList<QPointer<TerminalWidget>>` member.**
+  `mainwindow.cpp:1327, 1339, 1344, 1601, 1611, 1620, 1715,
+  1770, 2056, 3013, 3190, 5173` — 13 sites walk the entire
+  tab-widget tree to apply a single property. With 20 tabs
+  × split panes that's 20-80 QList allocations per toggle.
+  `setBroadcastCallback` lambda at line 2054-2060 walks the
+  tree every keystroke under broadcast mode — fix that one
+  first. Maintain the list in `connectTerminal` and
+  `cleanupEmptySplitters`.
+  **Source:** indie-review 2026-05-07 (Lane 4 M-2).
+  **Kind:** improve.
+- 📋 **[ANTS-1183] [🧹 Refactor] Schema versioning in
+  `config.json` (`_schema: 1` + `migrate(int from, int
+  to)`).** Today's flat-`QJsonObject` store has no rename/
+  migrate hook. Future renames (e.g. `opacity` →
+  `terminal_opacity`) have no place to translate. ~10 lines
+  pre-empts the next breaking change.
+  **Source:** indie-review 2026-05-07 (Lane 9 M-1).
+  **Kind:** improve.
+- 📋 **[ANTS-1184] [🔒 Security] Extend `SecretRedact`
+  with Google API + GCP service-account JSON.**
+  `secretredact.h:54-131` covers AWS, GitHub, OpenAI,
+  Anthropic, Slack, Stripe, JWT, Bearer, PEM,
+  generic-assignment. Missing: `AIza…` (Google API keys, 39
+  chars), `ya29.…` (Google OAuth tokens), GCP private-key
+  JSON shape. Two regex lines.
+  **Source:** indie-review 2026-05-07 (Lane 11 M-1).
+  **Kind:** improve.
+- 📋 **[ANTS-1185] [🖥 Platform] Tab a11y — per-tab
+  Claude state dot exposed to AT-SPI.** `coloredtabbar.cpp:
+  130-151` paints the per-tab Claude state dot purely
+  visually; AT-SPI/Orca read tab labels verbatim and the
+  glyph is invisible to screen-readers. Add
+  `m_tabWidget->setTabAccessibleName(i, label + " — Claude
+  " + glyphName)` from the indicator provider, re-trigger
+  from `onTabChanged`.
+  **Source:** indie-review 2026-05-07 (Lane 4 M-4).
+  **Kind:** improve.
+
+### 🧹 Tier 4 — Qt6 idiom polish (LOW from `/audit` static analysis)
+
+- 📋 **[ANTS-1186] [🧹 Cleanup] Qt6 idiom polish bundle —
+  5 LOW findings from cppcheck/clazy.** All Qt6
+  modern-idiom polish; bundled because they fit a single
+  small commit.
+  (a) `pluginmanager.cpp:50,332,338` — `m_engines.values()`
+  per-call alloc (cross-confirmed by Lane 7); use
+  `std::as_const(m_engines)` direct value-iteration. Hot
+  path on every PTY output flush.
+  (b) `mainwindow.cpp:4845,4884` — replace
+  `QDateTime::currentDateTime().toMSecsSinceEpoch()` with
+  `QDateTime::currentMSecsSinceEpoch()` (skips the
+  QDateTime construction).
+  (c) `featurecoverage.cpp:392` — `QDir projectDir(...)`
+  declared and never read; delete.
+  (d) `titlebar.h:19` — `QColor("#e74856")` → `QColor::
+  fromRgb(0xe74856)`.
+  (e) `claudebgtasksdialog.cpp:195`,
+  `dialogshowtracer.cpp:46`, `settingsdialog.cpp:1196,1434`
+  — collapse chained `.arg()` into multi-arg call (matches
+  the 2026-04-16 commit 89f7ea8 pattern in `auditdialog.cpp`).
+  **Source:** /audit 2026-05-07 (cppcheck + clazy).
+  **Kind:** improve.
+
+### 📚 Methodology adopted as standing practice
+
+- Re-run `/audit + /indie-review` before each minor tag
+  (next: pre-0.8.0). This sweep found 4 calibrated CRITICAL
+  + 22 HIGH against a codebase with `gitleaks=0/semgrep=0/
+  cppcheck-clean/clazy-style-only` static-analysis profile.
+  Static analysis cannot reach this class.
+- Adopt **spec-first workflow** for new features — write
+  `docs/specs/ANTS-XXXX.md` first, get user sign-off, then
+  code → test against approved spec.
+- **Memoize the lane partition** at
+  `docs/private/audit/indie-review-partition.md` — this is
+  the project's second balanced-default 11-lane partition;
+  one more matching run and it qualifies for memoization
+  per the `/indie-review` skill's appendix.
+
+---
+
 ## 0.8.0 — multiplexing + marketplace (target: 2026-08)
 
 **Theme:** big new capabilities. This is the "features you'd expect from
