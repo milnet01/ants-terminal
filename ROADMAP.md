@@ -5256,6 +5256,120 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: implement. Source: user-2026-05-02.
   Lanes: claudetasklist (new), claudestatuswidgets, MainWindow.
 
+### 🐛 Claude Code UX — bottom status-bar `Claude:` widget shows wrong tab's state (user report 2026-05-07)
+
+- 📋 [ANTS-1161] **Bottom-of-window status-bar `Claude: <state>`
+  widget appears to display another tab's state, not the focused
+  tab's.** User report 2026-05-07: focused tab was "Claude: Ants
+  Terminal" with Claude actively presenting a design (transcript
+  showed `· Presenting design… · 150 tokens · thought for 32s`
+  and a `Present design sections` task in_progress in the Task
+  List dialog), but the bottom status bar read `Claude: bash`.
+  User hypothesis: cross-tab pollution — the widget is reading
+  from another tab's session (likely the "Claude: MAME Curator"
+  tab, which was probably running a Bash tool_use at the time).
+  This is a divergence from the **per-tab dot indicator**
+  (ANTS-1118), which is correctly PID-keyed — the dot showed the
+  right state on the focused tab. The smoking gun is precisely
+  that divergence: the dot is correct, the bottom widget is
+  wrong, so the bottom widget's retarget on `onTabChanged` is
+  the suspect path.
+  Investigation steps before fix: (a) confirm reproduction with
+  a 2-tab repro (one running Bash, one thinking); (b) trace
+  which signal updates the bottom-widget label
+  (`ClaudeStatusBarController` per ANTS-1146); (c) verify
+  retarget on `onTabChanged` writes into the correct
+  per-tab-bound widget; (d) check whether the timer-driven
+  refresh path (`m_statusTimer`) reads from a singleton instead
+  of from the focused tab's Claude tracker; (e) look for shared
+  state accidentally reused across tabs.
+  Acceptance: bottom `Claude: <state>` widget always reflects
+  the focused tab's current Claude Code state, matching the
+  per-tab dot. Source-grep feature test for the widget's
+  retarget call in `onTabChanged`, mirroring
+  `claude_task_list` and `roadmap_status_bar_refresh`.
+  Note from user: do not fix immediately — user needs to reboot
+  before further work today.
+  Kind: fix. Source: user-2026-05-07.
+  Lanes: claudestatuswidgets, MainWindow::onTabChanged,
+  claudeintegration.
+
+### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
+
+- 📋 [ANTS-1162] **First-class scaffolding inside Ants Terminal
+  for creating the Claude Code hooks, skills, sub-agents, and
+  MCP server(s) required for the terminal ↔ Claude bidirectional
+  surface.** User ask 2026-05-07: *"We need the terminal to help
+  create all the Claude Code hooks / skills / subagents required
+  to make the terminal and Claude Code talk to each other. I
+  think you also mentioned a MCP service."*
+  Today the terminal already exposes several IPC surfaces
+  (`remotecontrol.cpp` Unix socket; the upcoming ANTS-1160
+  Phase-1 verbs `roadmap-allocate-id`, `roadmap-bump-counter`,
+  etc.), but creating the **Claude-side** integrations (hook
+  scripts in `~/.claude/settings.json`, skills under
+  `~/.claude/plugins/`, sub-agents under `~/.claude/agents/`,
+  and an MCP server) is currently a manual workflow that
+  vibe-coders are unlikely to know how to do. Goal: make Ants
+  Terminal the on-ramp.
+  Proposed scope (locked in design phase, before code):
+    1. **Hook generator** — Settings → Claude Code tab → "Add
+       hook…" wizard that writes a hook entry into
+       `~/.claude/settings.json` and a matching shim script
+       under `~/.claude/hooks/<name>` that talks to the
+       terminal via the existing `remotecontrol` socket.
+    2. **Skill generator** — same surface for `Skill: ...`
+       skills. Templates the standard skill scaffolding
+       (frontmatter + checklist + DOT process diagram per
+       superpowers convention) so vibe-coders ship valid
+       skills first try.
+    3. **Sub-agent generator** — wizard that writes a
+       `~/.claude/agents/<name>.md` file with the agent
+       definition + tool allowlist + isolation mode.
+    4. **MCP server** — `ants-mcp-server` companion binary
+       advertising the terminal's verbs (open-tab,
+       run-command, get-current-cwd, allocate-roadmap-id,
+       run-audit, get-task-list, …) over the standard MCP
+       stdio transport, registered in `~/.claude/settings.json`'s
+       `mcpServers` block. This is the **richest** of the four
+       surfaces — gives Claude tool-use access to the terminal
+       rather than only hook callbacks.
+    5. **Test harness** — for each generated artefact, a
+       "Try it" button that runs a smoke test through the
+       relevant Claude Code surface and reports back. Closes
+       the "did I write it correctly" loop without leaving
+       the terminal.
+  Cross-references:
+    - ANTS-1160 P3 — the roadmap-dialog redesign also adds IPC
+      verbs (`roadmap-allocate-id` etc.); the MCP server here
+      exposes those same verbs on a higher-level transport.
+      Sequence: ANTS-1160 P3 ships verbs first, then this can
+      wrap them.
+    - ANTS-1141 — `~/.claude/settings.json` lifecycle pattern
+      that the hook/skill/agent generators write into.
+    - ANTS-1158 — JSONL transcript surface; MCP server may
+      expose a `current-task-list` tool that reuses
+      `parseTranscript`.
+    - ANTS-1118 / ANTS-1146 — the existing per-tab Claude
+      tracker is the natural source for the MCP `get-claude-state`
+      verb.
+  Audience reminder: **vibe-coders**. Wizard copy must be plain
+  English ("This will let Claude open new tabs in your
+  terminal") not jargon ("Register a tool-use callback"). Per
+  the ANTS-1160 redesign, the layman summary is the primary
+  view; programmer detail behind a toggle.
+  Out of scope for V1: visual editor for hook/skill/agent
+  bodies (use simple form wizard, hand-edit afterward);
+  cross-machine MCP (stdio only — no TCP server on first cut);
+  marketplace for sharing user-authored hooks/skills/agents
+  (defer to ANTS-1xxx successor).
+  Spec location (when written): `docs/specs/ANTS-1162.md`.
+  Note from user: do not start now — user needs to reboot;
+  this is a road-map placeholder for later prioritisation.
+  Kind: implement. Source: user-2026-05-07.
+  Lanes: new (claudeintegrationwizard), settingsdialog,
+  mcp_server (new binary).
+
 ### 📚 Methodology — adopted as standing practice
 
 - Re-run `/audit` + `/indie-review` before every minor tag.
