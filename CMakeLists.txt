@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.76 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.77 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -2249,6 +2249,29 @@ if(ANTS_TESTS)
     add_test(NAME claude_statusbar_extraction
         COMMAND test_claude_statusbar_extraction)
     set_tests_properties(claude_statusbar_extraction PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
+    # roadmap_status_bar_refresh — ANTS-1160 P2 (0.7.78). Locks the
+    # invariant that refreshRoadmapButton and refreshRepoVisibility
+    # are wired to BOTH m_statusTimer AND the startup singleShot(0)
+    # lambda, in addition to onTabChanged. Source-grep only; no Qt
+    # link. Spec at tests/features/roadmap_status_bar_refresh/spec.md;
+    # design at docs/specs/ANTS-1160.md §9; plan at
+    # docs/plans/ANTS-1160.md P2.
+    add_executable(test_roadmap_status_bar_refresh
+        tests/features/roadmap_status_bar_refresh/test_roadmap_status_bar_refresh.cpp
+    )
+    target_compile_options(test_roadmap_status_bar_refresh PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_roadmap_status_bar_refresh PRIVATE
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        DOCS_STATUS_BAR_STANDARD_PATH="${CMAKE_CURRENT_SOURCE_DIR}/docs/standards/status-bar.md"
+    )
+    add_test(NAME roadmap_status_bar_refresh
+        COMMAND test_roadmap_status_bar_refresh)
+    set_tests_properties(roadmap_status_bar_refresh PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 

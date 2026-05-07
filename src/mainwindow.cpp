@@ -698,6 +698,17 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateStatusBar);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateTabTitles);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshReviewButton);
+    // ANTS-1160 P2 (0.7.78) — RoadMap button + GitHub repo-type
+    // badge both read shellCwd(), which depends on shellPid().
+    // The first onTabChanged(0) fires from newTab()'s setCurrentIndex
+    // BEFORE startShell() sets the PID, so shellCwd() returns empty
+    // and the widget hides on the first tick. Wire to the 2-second
+    // status timer so a stale-hidden state is recovered within 2 s
+    // of any cwd change. Same fix shape as refreshBgTasksButton
+    // (already correct via line 706 below). Spec: docs/specs/
+    // ANTS-1160.md §9. Test: tests/features/roadmap_status_bar_refresh/.
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRoadmapButton);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRepoVisibility);
     // 0.7.49 — also drive the background-tasks button refresh on the
     // status tick. Without this the liveness-sweep (mtime check on
     // /tmp/.../<id>.output) never re-runs while the transcript is
@@ -764,6 +775,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     QTimer::singleShot(0, this, [this]() {
         updateStatusBar();
         refreshReviewButton();
+        // ANTS-1160 P2 — first refresh AFTER startShell() has had
+        // a turn of the event loop and shellPid() is set. Without
+        // this both widgets stay hidden until the user manually
+        // switches tabs (v0.7.77 regression).
+        refreshRoadmapButton();
+        refreshRepoVisibility();
     });
 
     // 0.6.26 — auto-return focus to the active terminal whenever focus
