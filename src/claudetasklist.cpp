@@ -1,5 +1,6 @@
 #include "claudetasklist.h"
 
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -114,6 +115,23 @@ void ClaudeTaskListTracker::rescan() {
     }
     m_tasks = std::move(next);
     if (!same) emit tasksChanged();
+
+    // Track the rescanned file's mtime so poll() can short-circuit
+    // when nothing has changed between ticks.
+    if (!m_transcriptPath.isEmpty()) {
+        const QFileInfo fi(m_transcriptPath);
+        if (fi.exists())
+            m_lastRescanMtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    }
+}
+
+void ClaudeTaskListTracker::poll() {
+    if (m_transcriptPath.isEmpty()) return;
+    const QFileInfo fi(m_transcriptPath);
+    if (!fi.exists()) return;
+    const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    if (mtimeMs == m_lastRescanMtimeMs) return;
+    rescan();
 }
 
 // Pure parser. Walks the transcript line by line. See header for

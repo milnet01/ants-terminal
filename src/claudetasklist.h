@@ -65,9 +65,18 @@ signals:
 
 public slots:
     void rescan();
+    // 2026-05-07 followup to ANTS-1158: polling rescue for the case
+    // where QFileSystemWatcher silently drops its watch on atomic
+    // rewrite. Claude Code writes the transcript via tmpfile+rename
+    // on every TodoWrite/TaskCreate/TaskUpdate, which trips the
+    // watcher and stops fileChanged from firing. Called from the
+    // status-bar 2 s timer (refreshTasksButton). Cheap when settled:
+    // an mtime check short-circuits the full JSONL parse.
+    void poll();
 
 private:
     QString m_transcriptPath;
     QFileSystemWatcher m_watcher;
     QList<ClaudeTask> m_tasks;
+    qint64 m_lastRescanMtimeMs = 0;
 };

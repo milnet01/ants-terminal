@@ -658,6 +658,13 @@ void ClaudeStatusBarController::refreshTasksButton() {
     if (path != m_tasks->transcriptPath())
         m_tasks->setTranscriptPath(path);
 
+    // Polling rescue: QFileSystemWatcher silently drops its watch on
+    // atomic rewrite (Claude writes the JSONL via tmpfile+rename),
+    // so fileChanged stops firing and the dialog freezes. poll()
+    // mtime-checks and only rescans on real change. Same shape as
+    // ClaudeBgTaskTracker::sweepLiveness on the bg-tasks side.
+    m_tasks->poll();
+
     const int total      = m_tasks->totalCount();
     const int unfinished = m_tasks->unfinishedCount();
     const int inProgress = m_tasks->inProgressCount();
