@@ -33,6 +33,16 @@ public slots:
 signals:
     void dataReceived(const QByteArray &data);
     void finished(int exitCode);
+    // ANTS-1175: emitted when the child closed the PTY (EOF) but
+    // waitpid(WNOHANG) hasn't yet returned the exit status. The
+    // child may still be alive (very common: shell calls exec
+    // against a binary that segfaults during init; or a
+    // long-running cleanup hook). UI consumers that distinguish
+    // "tab dying" from "child crashed and reaped with -1" should
+    // listen here in addition to finished. Pre-existing finished()
+    // continues to fire with exitCode = -1 on the same code path
+    // for legacy callers.
+    void childUnreapedAtEof();
 
 private slots:
     void onReadReady();

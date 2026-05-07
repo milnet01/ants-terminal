@@ -3,6 +3,7 @@
 #include "configpaths.h"
 #include "secureio.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -101,6 +102,10 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
             m_transcriptWatcher.removePath(m_transcriptPath);
             m_transcriptPath.clear();
         }
+        // ANTS-1168: m_changedFiles is per-tab/per-session; clearing it
+        // on PID change keeps MCP `get_session_info` from returning the
+        // prior tab's edited-file list to the new tab's queries.
+        m_changedFiles.clear();
         emit stateChanged(ClaudeState::NotRunning, QString());
         emit contextUpdated(0);
     }
@@ -225,31 +230,34 @@ void ClaudeIntegration::pollClaudeProcess() {
         // Newly detected Claude process
         m_claudePid = foundPid;
 
-        // Find the most recently modified transcript across ALL projects
-        QDir claudeDir(ConfigPaths::claudeProjectsDir());
-        if (claudeDir.exists()) {
-            QFileInfo newest;
-            for (const QString &projDir : claudeDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-                QDir proj(claudeDir.filePath(projDir));
-                for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files)) {
-                    if (!newest.exists() || fi.lastModified() > newest.lastModified())
-                        newest = fi;
-                }
-            }
-            if (newest.exists()) {
-                m_transcriptPath = newest.absoluteFilePath();
+        // ANTS-1168: scope to the focused tab's project rather than
+        // walking ALL ~/.claude/projects entries. Without scoping, the
+        // tab whose Claude process JUST started momentarily reads the
+        // transcript for whichever other project happened to be most
+        // recently active globally — same shape as ANTS-1163's stale-
+        // session bug, which fixed `sessionPathForCwd` but not this
+        // second site.
+        const QFileInfo cwdInfo(QString("/proc/%1/cwd").arg(m_shellPid));
+        const QString projectCwd =
+            cwdInfo.exists() ? cwdInfo.symLinkTarget() : QString();
+        const qint64 procStartMs = processStartTimeMs(m_claudePid);
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        const QString scoped =
+            sessionPathForCwd(projectCwd, procStartMs, nowMs);
 
-                // Swap watch to the new transcript. Signal hookup happens
-                // once in the constructor, so no disconnect/connect dance.
-                QStringList oldFiles = m_transcriptWatcher.files();
-                if (!oldFiles.isEmpty())
-                    m_transcriptWatcher.removePaths(oldFiles);
-                m_transcriptWatcher.addPath(m_transcriptPath);
+        if (!scoped.isEmpty()) {
+            m_transcriptPath = scoped;
 
-                // Seed state from the current transcript tail — without this
-                // the UI would show "Idle" until the next write event fires.
-                parseTranscriptForState(m_transcriptPath);
-            }
+            // Swap watch to the new transcript. Signal hookup happens
+            // once in the constructor, so no disconnect/connect dance.
+            QStringList oldFiles = m_transcriptWatcher.files();
+            if (!oldFiles.isEmpty())
+                m_transcriptWatcher.removePaths(oldFiles);
+            m_transcriptWatcher.addPath(m_transcriptPath);
+
+            // Seed state from the current transcript tail — without this
+            // the UI would show "Idle" until the next write event fires.
+            parseTranscriptForState(m_transcriptPath);
         }
 
         // Set initial Idle state, then let transcript parse refine it
@@ -481,6 +489,33 @@ QStringList ClaudeIntegration::recentSessions() const {
     return sessions;
 }
 
+QStringList ClaudeIntegration::recentSessionsForCwd(const QString &projectCwd) const {
+    if (projectCwd.isEmpty()) return recentSessions();
+
+    QStringList sessions;
+    QDir claudeDir(ConfigPaths::claudeProjectsDir());
+    if (!claudeDir.exists()) return sessions;
+
+    // Walk from projectCwd up the directory tree, taking the first
+    // ancestor that has an encoded project entry on disk (mirrors
+    // sessionPathForCwd's deepest-match-wins logic).
+    QDir cur(projectCwd);
+    while (true) {
+        const QString encoded = encodeProjectPath(cur.absolutePath());
+        QDir proj(claudeDir.filePath(encoded));
+        if (proj.exists()) {
+            for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"},
+                                                          QDir::Files, QDir::Time)) {
+                sessions.append(fi.absoluteFilePath());
+                if (sessions.size() >= 20) return sessions;
+            }
+            return sessions;
+        }
+        if (!cur.cdUp()) break;
+    }
+    return sessions;
+}
+
 ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         const QString &path, bool latchedPlanMode) {
     ClaudeTranscriptSnapshot snap;
@@ -520,7 +555,25 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
             tail.remove(0, firstNl + 1);
             break;
         }
-        if (window >= kMaxWindow) return snap;
+        if (window >= kMaxWindow) {
+            // ANTS-1169: a single tool_result that exceeds the 4 MiB
+            // window (e.g. legitimate 5 MiB inline file body) used to
+            // bail and return an empty snapshot — the status bar
+            // appeared frozen because no event ever survived the
+            // tail-trim. Instead, fall back to the LAST complete
+            // newline-delimited record in the buffer so state still
+            // moves forward on giant turns. This sacrifices earlier
+            // records inside the window but keeps the live-update
+            // contract intact.
+            QByteArray work = tail;
+            // Drop a trailing newline if present so lastIndexOf below
+            // finds the separator BEFORE the last record, not the
+            // record's own terminator.
+            if (work.endsWith('\n')) work.chop(1);
+            const int lastNl = work.lastIndexOf('\n');
+            tail = (lastNl >= 0) ? work.mid(lastNl + 1) : work;
+            break;
+        }
         window = std::min(window * 2, kMaxWindow);
     }
 

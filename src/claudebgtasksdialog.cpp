@@ -3,6 +3,7 @@
 #include "claudebgtasks.h"
 #include "themes.h"
 
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -14,6 +15,10 @@
 #include <QTextStream>
 #include <QVBoxLayout>
 #include <QtMath>
+
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 namespace {
 
@@ -47,7 +52,27 @@ QString stripAnsi(const QString &input) {
     return s;
 }
 
+// ANTS-1169: validate `path` is inside the legitimate task-output tree
+// (`/tmp/claude-$UID/`) and points at a regular file before opening.
+// Without this, a hostile transcript event (LLM01-reachable) can set
+// `outputPath` to `~/.ssh/id_ed25519` or `/etc/shadow` (when readable
+// by uid) and have its contents rendered into the dialog. lstat
+// avoids the symlink trap; the canonicalize step closes traversal
+// (`..`) gaps.
+bool tailPathSafe(const QString &path) {
+    if (path.isEmpty()) return false;
+    const QString canonical = QFileInfo(path).canonicalFilePath();
+    if (canonical.isEmpty()) return false;
+    const QString base = QStringLiteral("/tmp/claude-%1/")
+                             .arg(static_cast<uint>(::getuid()));
+    if (!canonical.startsWith(base)) return false;
+    struct stat st{};
+    if (::lstat(canonical.toLocal8Bit().constData(), &st) != 0) return false;
+    return S_ISREG(st.st_mode);
+}
+
 QString tailFile(const QString &path, qint64 maxBytes = 32 * 1024) {
+    if (!tailPathSafe(path)) return {};
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
     const qint64 size = f.size();

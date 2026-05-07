@@ -1324,7 +1324,7 @@ void MainWindow::setupMenus() {
     perfAction->setShortcut(QKeySequence("Ctrl+Shift+F12"));
     perfAction->setCheckable(true);
     connect(perfAction, &QAction::toggled, this, [this](bool checked) {
-        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        QList<TerminalWidget *> terminals = liveTerminals();
         for (auto *t : terminals) t->setShowPerformanceOverlay(checked);
     });
 
@@ -1336,12 +1336,12 @@ void MainWindow::setupMenus() {
         if (path.isEmpty()) {
             // Clear background image
             m_config.setBackgroundImage("");
-            QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+            QList<TerminalWidget *> terminals = liveTerminals();
             for (auto *t : terminals) t->setBackgroundImage("");
             showStatusMessage("Background image cleared", 3000);
         } else {
             m_config.setBackgroundImage(path);
-            QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+            QList<TerminalWidget *> terminals = liveTerminals();
             for (auto *t : terminals) t->setBackgroundImage(path);
             showStatusMessage("Background image set", 3000);
         }
@@ -1378,7 +1378,10 @@ void MainWindow::setupMenus() {
                 if (auto *t = focusedTerminal()) t->setFocus();
             });
         }
-        // Update context and config
+        // Update context and config; ANTS-1168 — reset transient
+        // state (input/status/in-flight reply) so a stale "rate
+        // limited" surface from a prior open doesn't carry over.
+        m_aiDialog->resetTransient();
         if (auto *t = focusedTerminal()) {
             m_aiDialog->setTerminalContext(t->recentOutput(m_config.aiContextLines()));
         }
@@ -1437,6 +1440,12 @@ void MainWindow::setupMenus() {
                 if (auto *t = focusedTerminal()) t->setFocus();
             });
         }
+        // ANTS-1168: scope to focused tab's project so we don't surface
+        // a different project's session as "newest by mtime" — calls
+        // setProjectFilter which triggers a fresh refresh internally.
+        QString projectCwd;
+        if (auto *t = focusedTerminal()) projectCwd = t->shellCwd();
+        m_claudeTranscript->setProjectFilter(projectCwd);
         m_claudeTranscript->show();
         m_claudeTranscript->raise();
     });
@@ -1598,7 +1607,7 @@ void MainWindow::setupMenus() {
     connect(loggingAction, &QAction::toggled, this, [this](bool checked) {
         m_config.setSessionLogging(checked);
         // Apply to all terminals
-        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        QList<TerminalWidget *> terminals = liveTerminals();
         for (auto *t : terminals) t->setSessionLogging(checked);
         showStatusMessage(checked ? "Session logging enabled" : "Session logging disabled", 3000);
     });
@@ -1608,7 +1617,7 @@ void MainWindow::setupMenus() {
     autoCopyAction->setChecked(m_config.autoCopyOnSelect());
     connect(autoCopyAction, &QAction::toggled, this, [this](bool checked) {
         m_config.setAutoCopyOnSelect(checked);
-        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        QList<TerminalWidget *> terminals = liveTerminals();
         for (auto *t : terminals) t->setAutoCopyOnSelect(checked);
     });
 
@@ -1617,7 +1626,7 @@ void MainWindow::setupMenus() {
     bellAction->setChecked(m_config.visualBell());
     connect(bellAction, &QAction::toggled, this, [this](bool checked) {
         m_config.setVisualBell(checked);
-        QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+        QList<TerminalWidget *> terminals = liveTerminals();
         for (auto *t : terminals) t->setVisualBell(checked);
         showStatusMessage(checked ? "Visual bell enabled" : "Visual bell disabled", 3000);
     });
@@ -1674,8 +1683,15 @@ void MainWindow::setupMenus() {
         if (t) t->toggleBookmark();
     });
 
+    // ANTS-1165: previous defaults of Ctrl+Shift+Down / Ctrl+Shift+Up
+    // collided with the OSC 133 prompt-navigation chord that
+    // TerminalWidget::keyPressEvent intercepts before Qt dispatches
+    // QShortcuts (see view-menu comment near setupPromptNav). The
+    // bookmark shortcut was therefore silently dead whenever the
+    // terminal had focus. Move both defaults to Ctrl+Alt+Up/Down,
+    // which TerminalWidget does not intercept.
     QAction *nextBmAction = settingsMenu->addAction("Next Bookmark");
-    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark", "Ctrl+Shift+Down")));
+    nextBmAction->setShortcut(QKeySequence(m_config.keybinding("next_bookmark", "Ctrl+Alt+Down")));
     connect(nextBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -1683,7 +1699,7 @@ void MainWindow::setupMenus() {
     });
 
     QAction *prevBmAction = settingsMenu->addAction("Previous Bookmark");
-    prevBmAction->setShortcut(QKeySequence(m_config.keybinding("prev_bookmark", "Ctrl+Shift+Up")));
+    prevBmAction->setShortcut(QKeySequence(m_config.keybinding("prev_bookmark", "Ctrl+Alt+Up")));
     connect(prevBmAction, &QAction::triggered, this, [this]() {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
@@ -1712,7 +1728,7 @@ void MainWindow::setupMenus() {
         m_scrollbackGroup->addAction(a);
         connect(a, &QAction::triggered, this, [this, lines]() {
             m_config.setScrollbackLines(lines);
-            QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+            QList<TerminalWidget *> terminals = liveTerminals();
             for (auto *t : terminals) t->setMaxScrollback(lines);
             showStatusMessage(QString("Scrollback: %1 lines").arg(lines), 3000);
         });
@@ -1767,7 +1783,7 @@ void MainWindow::setupMenus() {
                 applyTheme(m_config.theme());
                 applyFontSizeToAll(m_config.fontSize());
 
-                QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+                QList<TerminalWidget *> terminals = liveTerminals();
                 for (auto *t : terminals) {
                     applyConfigToTerminal(t);
                     t->setHighlightRules(m_config.highlightRules());
@@ -2014,7 +2030,32 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     if (!badge.isEmpty()) terminal->setBadgeText(badge);
 }
 
+QList<TerminalWidget *> MainWindow::liveTerminals() const {
+    // ANTS-1182: O(N) over a small contiguous list rather than the
+    // full QObject child tree. Returned snapshot is owned by the
+    // caller so iteration is stable even if a terminal is destroyed
+    // mid-loop. The pointers themselves remain owned by Qt's parent
+    // chain.
+    QList<TerminalWidget *> live;
+    live.reserve(m_allTerminals.size());
+    for (const QPointer<TerminalWidget> &p : m_allTerminals) {
+        if (p) live.append(p.data());
+    }
+    return live;
+}
+
 void MainWindow::connectTerminal(TerminalWidget *terminal) {
+    // ANTS-1182: register with the flat all-terminals list so
+    // iterate-all sites don't each walk the QObject child tree.
+    m_allTerminals.append(QPointer<TerminalWidget>(terminal));
+    connect(terminal, &QObject::destroyed, this, [this](QObject *obj) {
+        m_allTerminals.removeIf(
+            [obj](const QPointer<TerminalWidget> &p) {
+                return p.data() == static_cast<TerminalWidget *>(obj)
+                       || p.isNull();
+            });
+    });
+
     connect(terminal, &TerminalWidget::titleChanged, this, [this, terminal](const QString &title) {
         // Find which tab this terminal is in
         for (int i = 0; i < m_tabWidget->count(); ++i) {
@@ -2053,7 +2094,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     // Broadcast callback
     terminal->setBroadcastCallback([this](TerminalWidget *source, const QByteArray &data) {
         if (!m_broadcastMode) return;
-        QList<TerminalWidget *> all = m_tabWidget->findChildren<TerminalWidget *>();
+        QList<TerminalWidget *> all = liveTerminals();
         for (auto *t : all) {
             if (t != source) t->sendToPty(data);
         }
@@ -2236,13 +2277,16 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         // Primary retraction: terminal scrollback scanner notices the
         // footer is gone. Now debounced against transient TUI repaints
         // (see terminalwidget.cpp:checkForClaudePermissionPrompt).
-        auto conn = std::make_shared<QMetaObject::Connection>();
-        *conn = connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn, [addBtn, conn, clearPromptActive, this]() {
-            QObject::disconnect(*conn);
+        // ANTS-1174: Qt::SingleShotConnection auto-disconnects on
+        // first emission so we no longer need a heap-allocated
+        // shared_ptr<Connection> just to capture-and-call-disconnect
+        // from inside the lambda.
+        connect(terminal, &TerminalWidget::claudePermissionCleared, addBtn,
+                [addBtn, clearPromptActive, this]() {
             addBtn->deleteLater();
             clearStatusMessage();
             clearPromptActive();
-        });
+        }, Qt::SingleShotConnection);
 
         // 0.6.33 — belt-and-suspenders retraction parity with the hook
         // path (see line ~2676). If the terminal scanner never notices
@@ -2255,22 +2299,19 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         // allowlist" stranded on the bar after the user already
         // approved.
         if (m_claudeIntegration) {
-            auto finishedConn = std::make_shared<QMetaObject::Connection>();
-            *finishedConn = connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
-                                    addBtn, [addBtn, finishedConn, clearPromptActive, this](const QString &, bool) {
-                QObject::disconnect(*finishedConn);
+            // ANTS-1174: same SingleShotConnection treatment.
+            connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
+                    addBtn, [addBtn, clearPromptActive, this](const QString &, bool) {
                 addBtn->deleteLater();
                 clearStatusMessage();
                 clearPromptActive();
-            });
-            auto stoppedConn = std::make_shared<QMetaObject::Connection>();
-            *stoppedConn = connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
-                                   addBtn, [addBtn, stoppedConn, clearPromptActive, this](const QString &) {
-                QObject::disconnect(*stoppedConn);
+            }, Qt::SingleShotConnection);
+            connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
+                    addBtn, [addBtn, clearPromptActive, this](const QString &) {
                 addBtn->deleteLater();
                 clearStatusMessage();
                 clearPromptActive();
-            });
+            }, Qt::SingleShotConnection);
         }
     });
 }
@@ -3010,7 +3051,7 @@ void MainWindow::applyTheme(const QString &name) {
 
     // Apply colors + window opacity to ALL terminal widgets
     double opacity = m_config.opacity();
-    QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+    QList<TerminalWidget *> terminals = liveTerminals();
     for (auto *t : terminals) {
         t->applyThemeColors(theme.textPrimary, theme.bgPrimary, theme.cursor,
                              theme.accent, theme.border);
@@ -3187,7 +3228,7 @@ void MainWindow::changeFontSize(int delta) {
 }
 
 void MainWindow::applyFontSizeToAll(int size) {
-    QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+    QList<TerminalWidget *> terminals = liveTerminals();
     for (auto *t : terminals) {
         t->setFontSize(size);
     }
@@ -3206,7 +3247,8 @@ void MainWindow::onTitleChanged(const QString &title) {
 }
 
 
-void MainWindow::collectActions(QMenu *menu, QList<QAction *> &out) {
+void MainWindow::collectActions(QMenu *menu, QObject *proxyParent,
+                                QList<QAction *> &out) {
     for (QAction *action : menu->actions()) {
         if (action->menu()) {
             // Recurse into submenus, prefix action names
@@ -3217,15 +3259,18 @@ void MainWindow::collectActions(QMenu *menu, QList<QAction *> &out) {
                     QString prefix2 = prefix + action->menu()->title().remove('&') + " > ";
                     for (QAction *sub2 : sub->menu()->actions()) {
                         if (!sub2->isSeparator() && !sub2->text().isEmpty()) {
-                            // Create a proxy action with prefixed name
-                            auto *proxy = new QAction(prefix2 + sub2->text().remove('&'), this);
+                            // Create a proxy action with prefixed name.
+                            // Parent to proxyParent (transient holder)
+                            // not `this` so previous-rebuild proxies
+                            // get destroyed together. ANTS-1174.
+                            auto *proxy = new QAction(prefix2 + sub2->text().remove('&'), proxyParent);
                             proxy->setShortcut(sub2->shortcut());
                             connect(proxy, &QAction::triggered, sub2, &QAction::trigger);
                             out.append(proxy);
                         }
                     }
                 } else if (!sub->isSeparator() && !sub->text().isEmpty()) {
-                    auto *proxy = new QAction(prefix + sub->text().remove('&'), this);
+                    auto *proxy = new QAction(prefix + sub->text().remove('&'), proxyParent);
                     proxy->setShortcut(sub->shortcut());
                     connect(proxy, &QAction::triggered, sub, &QAction::trigger);
                     out.append(proxy);
@@ -3702,9 +3747,11 @@ void MainWindow::openClaudeProjectsDialog() {
         connect(m_claudeProjects, &QDialog::finished, this, [this]() {
             if (auto *t = focusedTerminal()) t->setFocus();
         });
-    } else {
-        m_claudeProjects->refresh();
     }
+    // ANTS-1168: refresh on every open, including the first. The prior
+    // construction-only branch left the first show stale until the user
+    // closed and re-opened.
+    m_claudeProjects->refresh();
 
     m_claudeProjects->show();
     m_claudeProjects->raise();
@@ -5170,7 +5217,7 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     if (newTheme != m_currentTheme) applyTheme(newTheme);
     applyFontSizeToAll(m_config.fontSize());
 
-    QList<TerminalWidget *> terminals = m_tabWidget->findChildren<TerminalWidget *>();
+    QList<TerminalWidget *> terminals = liveTerminals();
     for (auto *t : terminals) {
         applyConfigToTerminal(t);
         t->setHighlightRules(m_config.highlightRules());
@@ -5492,10 +5539,15 @@ void MainWindow::showSnippetsDialog() {
 
 void MainWindow::rebuildCommandPalette() {
     if (!m_commandPalette) return;
+    // ANTS-1174: replace the proxy holder so previous proxies are
+    // destroyed before fresh ones are built — prevents N-rebuild
+    // accumulation under plugin reloads / config refreshes.
+    delete m_paletteProxyHolder;
+    m_paletteProxyHolder = new QObject(this);
     QList<QAction *> all;
     for (QAction *menuAction : m_menuBar->actions()) {
         if (menuAction->menu())
-            collectActions(menuAction->menu(), all);
+            collectActions(menuAction->menu(), m_paletteProxyHolder, all);
     }
 #ifdef ANTS_LUA_PLUGINS
     // Append plugin-registered entries last so they sort below built-ins —

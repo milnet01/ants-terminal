@@ -19,8 +19,41 @@
 #include <sys/stat.h>
 #include <unistd.h>    // fsync — durability guarantee before atomic rename
 
+namespace {
+// ANTS-1169: PATH_MAX-sized cap on user-typable path settings. The
+// six path/command setters below run user-supplied strings through
+// this gate. A nul-embedded value is also rejected — POSIX path
+// semantics treat nul as a terminator, so a value like
+// "/safe\0;/etc/shadow" would otherwise be saved to JSON intact and
+// reinterpreted differently at downstream read sites.
+constexpr int kMaxPathSetterLen = 4096;
+
+bool acceptablePathValue(const QString &v) {
+    if (v.size() > kMaxPathSetterLen) return false;
+    if (v.contains(QChar(0))) return false;
+    return true;
+}
+} // namespace
+
 Config::Config() {
     load();
+}
+
+void Config::migrate(int from, int to) {
+    // ANTS-1183: placeholder. Future on-disk renames ship as a new
+    // arm:
+    //
+    //   if (from < 2) { ... rename "opacity" → "terminal_opacity"; }
+    //   if (from < 3) { ... split "shell_command" into argv array; }
+    //
+    // Migrations stack: a v0 → v3 jump runs each arm in order. The
+    // top-level `_schema` key is stamped on the next save().
+    Q_UNUSED(to);
+    if (from < 1) {
+        // No-op for the v0 → v1 transition: the keys that exist at
+        // v1 are exactly the keys that existed before the schema
+        // stamp landed. Future bumps add real arms here.
+    }
 }
 
 QString Config::configPath() {
@@ -53,6 +86,15 @@ void Config::load() {
     QJsonDocument doc = QJsonDocument::fromJson(raw, &parseErr);
     if (doc.isObject()) {
         m_data = doc.object();
+        // ANTS-1183: schema migration. Pre-stamp configs (no
+        // `_schema` key) are v0; everything written by 0.7.78+
+        // carries the current version. Newer-than-current values
+        // are read as-is — the binary that wrote them owned the
+        // forward-compat decision.
+        const int onDisk = m_data.value(QStringLiteral("_schema")).toInt(0);
+        if (onDisk < kSchemaVersion) {
+            migrate(onDisk, kSchemaVersion);
+        }
         return;
     }
 
@@ -121,6 +163,10 @@ void Config::save() {
                  qUtf8Printable(path));
         return;
     }
+
+    // ANTS-1183: stamp schema version on every save so the next load
+    // can decide whether to migrate. Cheap; idempotent.
+    m_data[QStringLiteral("_schema")] = kSchemaVersion;
 
     // Set restrictive umask before creating file to avoid brief world-readable window
     mode_t oldMask = ::umask(0077);
@@ -280,6 +326,17 @@ QString Config::roadmapActivePreset() const {
 }
 
 void Config::setRoadmapActivePreset(const QString &name) {
+    // ANTS-1179: mirror the getter's known-set validation. Without
+    // this, setRoadmapActivePreset("zombie") writes through, the
+    // getter then silently returns "full" but the JSON file keeps
+    // the zombie value forever — a future KindEntry rename / preset
+    // rename would leave dead values stranded on disk.
+    static const QSet<QString> kKnown = {
+        QStringLiteral("full"), QStringLiteral("history"),
+        QStringLiteral("current"), QStringLiteral("next"),
+        QStringLiteral("far_future"), QStringLiteral("custom"),
+    };
+    if (!kKnown.contains(name)) return;
     if (!storeIfChanged("roadmap_active_preset", name)) return;
     save();
 }
@@ -307,15 +364,31 @@ QStringList Config::roadmapKindFilters() const {
 }
 
 void Config::setRoadmapKindFilters(const QStringList &kinds) {
+    // ANTS-1179: filter to the known kind set so unknowns can't
+    // sneak through the setter and live on as zombies in the JSON
+    // file. Mirrors the getter's validation list so the in-memory
+    // and on-disk views stay in sync.
+    static const QSet<QString> kKnown = {
+        QStringLiteral("implement"),  QStringLiteral("fix"),
+        QStringLiteral("audit-fix"),  QStringLiteral("review-fix"),
+        QStringLiteral("doc"),        QStringLiteral("doc-fix"),
+        QStringLiteral("refactor"),   QStringLiteral("test"),
+        QStringLiteral("chore"),      QStringLiteral("release"),
+        QStringLiteral("research"),   QStringLiteral("ux"),
+    };
+    QStringList filtered;
+    filtered.reserve(kinds.size());
+    for (const QString &k : kinds) {
+        if (kKnown.contains(k)) filtered.append(k);
+    }
     // Sort ASCII codepoint-wise for stable on-disk ordering. Diffs
     // across kind-toggle saves stay readable; QSet iteration order
     // is unspecified, so an unsorted setter would re-write the
     // same-content array in different orders. ASCII-only — every
     // KindEntry value at roadmapdialog.cpp:846 is ASCII.
-    QStringList sorted = kinds;
-    sorted.sort();
+    filtered.sort();
     QJsonArray arr;
-    for (const QString &k : sorted) arr.append(k);
+    for (const QString &k : filtered) arr.append(k);
     if (!storeIfChanged("roadmap_kind_filters", arr)) return;
     save();
 }
@@ -406,6 +479,7 @@ QString Config::editorCommand() const {
 }
 
 void Config::setEditorCommand(const QString &cmd) {
+    if (!acceptablePathValue(cmd)) return;
     if (!storeIfChanged("editor_command", cmd)) return;
     save();
 }
@@ -415,6 +489,7 @@ QString Config::imagePasteDir() const {
 }
 
 void Config::setImagePasteDir(const QString &dir) {
+    if (!acceptablePathValue(dir)) return;
     if (!storeIfChanged("image_paste_dir", dir)) return;
     save();
 }
@@ -595,6 +670,7 @@ QString Config::pluginDir() const {
 }
 
 void Config::setPluginDir(const QString &dir) {
+    if (!acceptablePathValue(dir)) return;
     if (!storeIfChanged("plugin_dir", dir)) return;
     save();
 }
@@ -669,8 +745,10 @@ QStringList Config::claudeProjectDirs() const {
 
 void Config::setClaudeProjectDirs(const QStringList &dirs) {
     QJsonArray arr;
-    for (const QString &d : dirs)
+    for (const QString &d : dirs) {
+        if (!acceptablePathValue(d)) continue;
         arr.append(d);
+    }
     if (!storeIfChanged("claude_project_dirs", arr)) return;
     save();
 }
@@ -769,6 +847,7 @@ QString Config::shellCommand() const {
 }
 
 void Config::setShellCommand(const QString &cmd) {
+    if (!acceptablePathValue(cmd)) return;
     if (!storeIfChanged("shell_command", cmd)) return;
     save();
 }
@@ -799,6 +878,7 @@ QString Config::backgroundImage() const {
 }
 
 void Config::setBackgroundImage(const QString &path) {
+    if (!acceptablePathValue(path)) return;
     if (!storeIfChanged("background_image", path)) return;
     save();
 }

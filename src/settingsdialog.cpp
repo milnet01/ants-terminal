@@ -1,4 +1,5 @@
 #include "settingsdialog.h"
+#include "auditengine.h"
 #include "config.h"
 #include "configbackup.h"
 #include "configpaths.h"
@@ -7,6 +8,7 @@
 #include "themes.h"
 
 #include <QFormLayout>
+#include <QRegularExpression>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -407,6 +409,17 @@ void SettingsDialog::setupAiTab(QWidget *tab) {
 
     m_aiApiKey = new QLineEdit(tab);
     m_aiApiKey->setEchoMode(QLineEdit::Password);
+    // ANTS-1178: Password echo alone isn't enough — Qt forwards the
+    // line edit to the IME / virtual-keyboard, which on some
+    // platforms keeps a predictive cache of recently-typed text.
+    // The Imh hints below tell the IME to treat the field as
+    // sensitive (no auto-uppercase, no predictive completion, no
+    // auto-correct), matching what desktop GUIs do for password
+    // managers and OAuth-token fields.
+    m_aiApiKey->setInputMethodHints(Qt::ImhSensitiveData |
+                                     Qt::ImhHiddenText |
+                                     Qt::ImhNoAutoUppercase |
+                                     Qt::ImhNoPredictiveText);
     m_aiApiKey->setPlaceholderText("API key (optional for local models)");
     layout->addRow("API Key:", m_aiApiKey);
 
@@ -979,12 +992,24 @@ void SettingsDialog::applySettings() {
     m_config->setAiModel(m_aiModel->text().trimmed());
     m_config->setAiContextLines(m_aiContextLines->value());
 
-    // Highlights
+    // Highlights. ANTS-1178: drop rows whose pattern is invalid or
+    // matches the catastrophic-regex shape (`(.+)+`, alternation
+    // under a quantifier, etc.). A pattern that backtracks
+    // pathologically inside the terminal hot path crashes responsive
+    // typing without crashing the process — the worst kind of latent
+    // UX bug. Saved-but-disabled rows still get persisted so the
+    // user can fix them; only unfixable ones are dropped here.
     QJsonArray highlights;
     for (int row = 0; row < m_highlightTable->rowCount(); ++row) {
         QJsonObject obj;
         auto *item = m_highlightTable->item(row, 0);
-        obj["pattern"] = item ? item->text() : "";
+        const QString pattern = item ? item->text() : QString();
+        if (!pattern.isEmpty()) {
+            const QRegularExpression re(pattern);
+            if (!re.isValid() || AuditEngine::isCatastrophicRegex(pattern))
+                continue;
+        }
+        obj["pattern"] = pattern;
         auto *fgBtn = qobject_cast<QPushButton *>(m_highlightTable->cellWidget(row, 1));
         obj["fg"] = (fgBtn && fgBtn->text() != "Default") ? fgBtn->text() : "";
         auto *bgBtn = qobject_cast<QPushButton *>(m_highlightTable->cellWidget(row, 2));
@@ -995,12 +1020,18 @@ void SettingsDialog::applySettings() {
     }
     m_config->setHighlightRules(highlights);
 
-    // Triggers
+    // Triggers. Same regex-validity gate as Highlights above.
     QJsonArray triggers;
     for (int row = 0; row < m_triggerTable->rowCount(); ++row) {
         QJsonObject obj;
         auto *item = m_triggerTable->item(row, 0);
-        obj["pattern"] = item ? item->text() : "";
+        const QString pattern = item ? item->text() : QString();
+        if (!pattern.isEmpty()) {
+            const QRegularExpression re(pattern);
+            if (!re.isValid() || AuditEngine::isCatastrophicRegex(pattern))
+                continue;
+        }
+        obj["pattern"] = pattern;
         auto *typeCombo = qobject_cast<QComboBox *>(m_triggerTable->cellWidget(row, 1));
         obj["action_type"] = typeCombo ? typeCombo->currentText() : "notify";
         auto *valItem = m_triggerTable->item(row, 2);

@@ -78,12 +78,20 @@ enum class ProgressState : uint8_t {
 
 // Inline image placed in the terminal
 struct InlineImage {
+    // Which display-protocol produced this image. Used by the Kitty
+    // graphics protocol's "delete all" action (a=d,d=a) which must
+    // only clear Kitty-protocol entries — clearing Sixel / iTerm2
+    // cross-protocol would let a hostile PTY frame erase visual
+    // context across protocols (ANTS-1166).
+    enum class Origin : quint8 { Kitty, Sixel, ITerm2 };
+
     QImage image;
     int row;        // screen row where image starts
     int col;        // column where image starts
     int cellWidth;  // width in cells (or pixels if pixelSized)
     int cellHeight; // height in cells (or pixels if pixelSized)
     bool pixelSized = false; // true for Sixel/Kitty (dimensions are pixels, not cells)
+    Origin origin = Origin::ITerm2;
 };
 
 // OSC 8 hyperlink span stored per-line
@@ -110,6 +118,12 @@ struct PromptRegion {
 // Represents the terminal screen buffer and handles all actions from the parser.
 class TerminalGrid {
 public:
+    // Per-image dimension cap shared by every image-intake path
+    // (Sixel, Kitty graphics, iTerm2 OSC 1337, and the
+    // background-image setter in TerminalWidget). Exposed so non-grid
+    // callers don't drift to a different literal. ANTS-1169.
+    static constexpr int MAX_IMAGE_DIM = 4096;
+
     TerminalGrid(int rows, int cols);
 
     void processAction(const VtAction &action);
@@ -682,7 +696,9 @@ private:
     // Buffer/resource limits
     static constexpr int MAX_INLINE_IMAGES = 100;
     static constexpr int MAX_KITTY_CACHE = 200;
-    static constexpr int MAX_IMAGE_DIM = 4096;
+    // MAX_IMAGE_DIM is declared public above (ANTS-1169) so non-grid
+    // image-intake sites (TerminalWidget background image) can share
+    // the cap. The class scope means the original literal stays put.
     static constexpr int MAX_COMBINING_PER_CELL = 8;
     static constexpr int MAX_PROMPT_REGIONS = 1000;
 

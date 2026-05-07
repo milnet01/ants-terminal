@@ -156,6 +156,13 @@ public:
 
     QJsonArray loadTranscript(const QString &path) const;
     QStringList recentSessions() const;
+    // ANTS-1168: project-scoped variant. When projectCwd is non-empty,
+    // restrict the result to the encoded project directory matching
+    // that path (or any of its ancestors); otherwise behave like the
+    // unscoped recentSessions(). Used by the transcript dialog so a
+    // dialog shown from tab A doesn't surface tab B's most-recently-
+    // touched session.
+    QStringList recentSessionsForCwd(const QString &projectCwd) const;
 
     // Hook server (receives events from Claude Code hooks)
     bool startHookServer();

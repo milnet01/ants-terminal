@@ -2,6 +2,7 @@
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
 
+#include <QImageReader>
 #include <QPainter>
 #include <QPainterPath>
 #include <QUuid>
@@ -753,6 +754,15 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         current.startCol = 0;
         bool currentValid = false;
 
+        // ANTS-1180: coalesce contiguous same-bg cells into a single
+        // fillRect. Previously the inner loop called fillRect once
+        // per non-default-bg cell — a fully-styled vim status line
+        // (cols × N) at every paint. Same shape as the TextRun
+        // aggregation above, applied to backgrounds.
+        int bgRunStartX = 0;
+        int bgRunWidth = 0;   // 0 == no run active
+        QColor bgRunColor;
+
         for (int col = 0; col < cols; ++col) {
             int px_x = m_padding + col * m_cellWidth;
 
@@ -801,13 +811,34 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 fg = m_urlColor;
             }
 
-            // Paint cell background (wide chars get double-width bg)
+            // Paint cell background (wide chars get double-width bg).
+            // ANTS-1180: coalesce — extend the active bg run if the
+            // colour matches; otherwise flush the previous run with
+            // one fillRect and start a new one. Default-bg cells
+            // flush whatever was running and don't open a new run.
             int cellDrawWidth = c.isWideChar ? m_cellWidth * 2 : m_cellWidth;
+            QColor cellBg;
+            bool wantBgFill = false;
             if (bg != defaultBg) {
-                QColor cellBg = bg;
+                cellBg = bg;
                 if (effectiveAlpha < 255 && !selected && !isCellSearchMatch(globalLine, col))
                     cellBg.setAlpha(effectiveAlpha);
-                p.fillRect(px_x, px_y, cellDrawWidth, m_cellHeight, cellBg);
+                wantBgFill = true;
+            }
+            if (wantBgFill && bgRunWidth > 0 && cellBg == bgRunColor) {
+                bgRunWidth += cellDrawWidth;
+            } else {
+                if (bgRunWidth > 0) {
+                    p.fillRect(bgRunStartX, px_y, bgRunWidth,
+                               m_cellHeight, bgRunColor);
+                }
+                if (wantBgFill) {
+                    bgRunStartX = px_x;
+                    bgRunWidth = cellDrawWidth;
+                    bgRunColor = cellBg;
+                } else {
+                    bgRunWidth = 0;
+                }
             }
 
             // Skip continuation cells of wide characters (already drawn)
@@ -946,6 +977,12 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         // Flush last run
         if (currentValid && !current.codepoints.empty()) {
             runs.push_back(std::move(current));
+        }
+
+        // ANTS-1180: flush trailing bg-fill run for this row.
+        if (bgRunWidth > 0) {
+            p.fillRect(bgRunStartX, px_y, bgRunWidth,
+                       m_cellHeight, bgRunColor);
         }
 
         // Draw all text runs using QTextLayout for proper ligature shaping.
@@ -4945,10 +4982,22 @@ void TerminalWidget::setBackgroundImage(const QString &path) {
     if (path.isEmpty()) {
         m_backgroundImage = QImage();
     } else {
-        m_backgroundImage = QImage(path);
-        if (!m_backgroundImage.isNull())
-            m_backgroundImage = m_backgroundImage.scaled(size(), Qt::KeepAspectRatioByExpanding,
-                                                          Qt::SmoothTransformation);
+        // ANTS-1169: peek dimensions via QImageReader before
+        // QImage(path) so a 50000×50000 PNG (or compression bomb)
+        // can't trigger a multi-GB allocation at startup. Match the
+        // MAX_IMAGE_DIM=4096 cap that Sixel / Kitty / iTerm2 image
+        // intake already enforces in TerminalGrid.
+        QImageReader reader(path);
+        const QSize declared = reader.size();
+        if (declared.width()  > TerminalGrid::MAX_IMAGE_DIM ||
+            declared.height() > TerminalGrid::MAX_IMAGE_DIM) {
+            m_backgroundImage = QImage();
+        } else {
+            m_backgroundImage = QImage(path);
+            if (!m_backgroundImage.isNull())
+                m_backgroundImage = m_backgroundImage.scaled(size(), Qt::KeepAspectRatioByExpanding,
+                                                              Qt::SmoothTransformation);
+        }
     }
     update();
 }

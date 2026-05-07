@@ -71,6 +71,10 @@ private slots:
 
 private:
     void refreshList();
+    // Reset form fields + selection state to the just-opened state
+    // so the dialog doesn't surface the previously-edited bookmark
+    // (and its identity-file path / extra-args) on re-show. ANTS-1168.
+    void clearForm();
     SshBookmark currentFormData() const;
 
     QListWidget *m_bookmarkList = nullptr;

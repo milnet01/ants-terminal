@@ -18,6 +18,7 @@
 #include <QJsonArray>
 #include <QShortcut>
 #include <QHash>
+#include <QPointer>
 
 class QNetworkAccessManager;
 class TitleBar;
@@ -203,8 +204,29 @@ private:
     QActionGroup *m_scrollbackGroup = nullptr;
     QActionGroup *m_opacityGroup = nullptr;
 
+    // ANTS-1182: maintain a flat list of every TerminalWidget under
+    // m_tabWidget so the 13 broadcast / iterate-all sites don't each
+    // walk the QObject child tree per call. Updated on connectTerminal
+    // (append) + on each terminal's destroyed signal (compact). The
+    // hot path (broadcast keystroke / focus change) reads this list
+    // directly. QPointer entries auto-null on object destruction so
+    // any stragglers slip through harmlessly even if compact misses.
+    QList<QPointer<TerminalWidget>> m_allTerminals;
+    // Compact m_allTerminals by erasing nulled QPointers + return
+    // the live set in one pass. Inline in the .cpp; declared here so
+    // every iterate-all site can call it without a public API surface
+    // expansion.
+    QList<TerminalWidget *> liveTerminals() const;
+
     CommandPalette *m_commandPalette = nullptr;
-    void collectActions(QMenu *menu, QList<QAction *> &out);
+    // ANTS-1174: parent for proxy QActions created on every
+    // rebuildCommandPalette(). Replaced (deleted + recreated) at the
+    // start of each rebuild so previous proxies are destroyed
+    // together rather than leaking onto the MainWindow's child list
+    // and accumulating across plugin reloads / config refreshes.
+    QObject *m_paletteProxyHolder = nullptr;
+    void collectActions(QMenu *menu, QObject *proxyParent,
+                        QList<QAction *> &out);
 
     // AI assistant
     AiDialog *m_aiDialog = nullptr;

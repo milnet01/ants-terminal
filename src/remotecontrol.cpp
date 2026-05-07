@@ -187,6 +187,15 @@ void RemoteControl::onNewConnection() {
 
 QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     const QString cmd = req.value("cmd").toString();
+    // ANTS-1176: per-verb structured log so a same-UID-attack
+    // post-mortem has a record. Deliberately does NOT include the
+    // payload itself (text/cwd/command bodies can carry secrets);
+    // size + tab + stripped-bytes count are the diagnostic axes.
+    const int tabId = req.value("tab").toInt(-1);
+    const int textBytes = req.value("text").toString().size();
+    ANTS_LOG(DebugLog::Network,
+             "rc dispatch cmd=%s tab=%d text_bytes=%d",
+             qUtf8Printable(cmd), tabId, textBytes);
     if (cmd == QLatin1String("ls")) {
         return cmdLs();
     }
@@ -591,11 +600,23 @@ int RemoteControl::runClient(const QString &command,
         fprintf(stderr, "ants-terminal --remote: write timeout\n");
         return 1;
     }
-    // Read until newline or disconnect.
+    // Read until newline or disconnect. ANTS-1169: cap the receive
+    // buffer at 1 MiB to mirror the server's frame cap. Without this
+    // a same-UID malicious local process could answer the client
+    // (set $ANTS_REMOTE_SOCKET to its own listener) and reply with a
+    // multi-hundred-MB body that saturates this client process.
+    constexpr qint64 kMaxResponseBytes = 1 * 1024 * 1024;
     QByteArray resp;
     while (socket.waitForReadyRead(2000)) {
         resp += socket.readAll();
         if (resp.contains('\n')) break;
+        if (resp.size() > kMaxResponseBytes) {
+            fprintf(stderr,
+                    "ants-terminal --remote: response exceeds %lld bytes; "
+                    "aborting (suspect socket hijack)\n",
+                    static_cast<long long>(kMaxResponseBytes));
+            return 1;
+        }
     }
     if (resp.isEmpty()) {
         fprintf(stderr, "ants-terminal --remote: no response\n");

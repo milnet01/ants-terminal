@@ -29,8 +29,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -139,16 +141,50 @@ void testInv2_roadmapActivePreset() {
         expect(b.roadmapActivePreset() == QStringLiteral("current"),
                "ANTS-1150-INV-2: setRoadmapActivePreset(\"current\") round-trip");
     }
-    // Unknown-string fallback: persist a bogus value; reader returns
-    // the documented "full" default.
+    // Unknown-string fallback: simulate an on-disk corruption (e.g.
+    // a future preset enum being downgraded to). The setter has been
+    // hardened in ANTS-1179 to reject unknown strings, so the only
+    // realistic path to a bogus value on disk is a direct file edit
+    // or a forward-version write being read by an older binary.
+    // Whatever the source, the getter must still fall back to "full"
+    // so the dialog opens in a known-good preset rather than empty.
     {
-        Config c;
-        c.setRoadmapActivePreset(QStringLiteral("garbage-not-a-preset"));
+        // Write a garbage preset directly into config.json, bypassing
+        // the setter (mimics a forward-version write or a hand edit).
+        const QString cfgPath = QStandardPaths::writableLocation(
+                                    QStandardPaths::ConfigLocation)
+                                + "/ants-terminal/config.json";
+        QFile f(cfgPath);
+        QJsonObject obj;
+        if (f.exists() && f.open(QIODevice::ReadOnly)) {
+            obj = QJsonDocument::fromJson(f.readAll()).object();
+            f.close();
+        }
+        obj["roadmap_active_preset"] = QStringLiteral("garbage-not-a-preset");
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            f.write(QJsonDocument(obj).toJson());
+            f.close();
+        }
     }
     {
         Config d;
         expect(d.roadmapActivePreset() == QStringLiteral("full"),
                "ANTS-1150-INV-2: unknown preset string falls back to \"full\"");
+    }
+    // ANTS-1179: setter now rejects unknown strings outright (defense
+    // at write). Verify the rejection by setting a known value, then
+    // attempting to overwrite with garbage, then reading back — the
+    // known value should survive.
+    {
+        Config e;
+        e.setRoadmapActivePreset(QStringLiteral("history"));
+        e.setRoadmapActivePreset(QStringLiteral("garbage-not-a-preset"));
+    }
+    {
+        Config f;
+        expect(f.roadmapActivePreset() == QStringLiteral("history"),
+               "ANTS-1179: setRoadmapActivePreset(unknown) is a no-op; "
+               "prior known value preserved");
     }
 }
 

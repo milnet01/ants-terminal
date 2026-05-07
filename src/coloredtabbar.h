@@ -44,6 +44,14 @@ struct ClaudeTabIndicator {
     // "Claude: …" label colour. None / unrecognised input returns an
     // invalid QColor so callers can suppress paint with `isValid()`.
     static QColor color(Glyph g);
+
+    // ANTS-1185: human-readable glyph name for screen-reader exposure
+    // via `QTabBar::setTabAccessibleName()`. AT-SPI / Orca read tab
+    // labels verbatim and the dot is invisible to them; appending
+    // " — Claude <name>" to the accessible name keeps assistive
+    // surfaces in sync with the visual state. None returns an empty
+    // string — caller suppresses the suffix in that case.
+    static QString glyphName(Glyph g);
 };
 
 // QTabBar subclass that renders an optional per-tab colour strip along

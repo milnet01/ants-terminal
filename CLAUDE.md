@@ -22,18 +22,22 @@ Listed only where behavior isn't obvious from the name.
   `GlRenderer` was retired in 0.7.44.)
 - `ptyhandler` — forkpty + QSocketNotifier.
 - `auditdialog` — static-analysis panel. Pipeline (ANTS-1136
-  doc-fix 2026-05-01: order corrected to match
-  `handleCheckOutput` reality):
+  doc-fix 2026-05-01 + ANTS-1171 doc-fix 2026-05-07: order
+  corrected to match `handleCheckOutput` reality):
   `OutputFilter → parseFindings → mark .audit_suppress → drop
    generated-file → drop/shift path_rules → drop allowlist →
-   drop inline-suppress → drop non-recent → dedup → cap →
-   comment/string filter → mypy-stub fold → enrichment (snippet
-   ±3, git blame, confidence 0-100) → trend → render + SARIF
-   v2.1.0 / HTML`. (`.audit_suppress` *marks* `f.suppressed=true`
-   so SARIF `result.suppressions[]` § 3.34 can surface them; it
-   doesn't drop. Dedup runs after the drop steps so we don't
-   double-count work on findings that would have been dropped
-   anyway.)
+   drop inline-suppress → drop non-recent → dedup →
+   comment/string filter → mypy-stub fold → cap →
+   enrichment (snippet ±3, git blame, confidence 0-100) →
+   trend → render + SARIF v2.1.0 / HTML`. (`.audit_suppress`
+   *marks* `f.suppressed=true` so SARIF `result.suppressions[]`
+   § 3.34 can surface them; it doesn't drop. Dedup runs after
+   the drop steps so we don't double-count work on findings that
+   would have been dropped anyway. Comment/string + mypy-fold
+   run before cap deliberately — capping first would surface
+   junk findings that real ones get pushed out behind. The
+   incremental compute cost is bounded by per-check find counts
+   below the cap.)
   Recognizes foreign suppression markers (NOLINT, cppcheck-suppress,
   noqa, nosec, nosemgrep, #gitleaks:allow, eslint-disable-*,
   pylint: disable) plus native `// ants-audit: disable[=rule]`.

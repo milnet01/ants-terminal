@@ -331,8 +331,22 @@ public:
     bool loadFailed() const { return m_loadFailed; }
     const QString &loadFailureBackupPath() const { return m_loadFailureBackupPath; }
 
+    // ANTS-1183: schema version stamp. Bump kSchemaVersion when a
+    // breaking on-disk rename / type change ships, and add the
+    // corresponding migration arm in migrate(). Pre-stamp configs
+    // (those written by Ants ≤ 0.7.77 with no `_schema` key) are
+    // treated as v0 and migrated to v1 on first load. Persisted as
+    // a top-level int key `"_schema"` — leading underscore so it
+    // sorts ahead of user keys in any pretty-print and signals
+    // "internal metadata, do not hand-edit."
+    static constexpr int kSchemaVersion = 1;
+
 private:
     void load();
+    // Apply on-disk schema migrations from `from` to `to`. Empty
+    // arms today; placeholder so a future rename has a canonical
+    // home rather than ad-hoc per-getter compatibility shims.
+    void migrate(int from, int to);
     static QString configPath();
 
     // Idempotent setter helper. Compares `value` against m_data[key] and

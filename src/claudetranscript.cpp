@@ -47,9 +47,16 @@ ClaudeTranscriptDialog::ClaudeTranscriptDialog(ClaudeIntegration *integration,
     onRefresh();
 }
 
+void ClaudeTranscriptDialog::setProjectFilter(const QString &projectCwd) {
+    m_projectFilter = projectCwd;
+    onRefresh();
+}
+
 void ClaudeTranscriptDialog::onRefresh() {
     m_sessionCombo->clear();
-    QStringList sessions = m_integration->recentSessions();
+    QStringList sessions = m_projectFilter.isEmpty()
+        ? m_integration->recentSessions()
+        : m_integration->recentSessionsForCwd(m_projectFilter);
     for (const QString &path : sessions) {
         QFileInfo fi(path);
         QString label = fi.dir().dirName() + "/" + fi.fileName()

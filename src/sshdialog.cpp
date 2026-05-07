@@ -245,6 +245,22 @@ SshDialog::SshDialog(QWidget *parent) : QDialog(parent) {
 void SshDialog::setBookmarks(const QList<SshBookmark> &bookmarks) {
     m_bookmarks = bookmarks;
     refreshList();
+    // ANTS-1168: each show() loads bookmarks fresh; reset the editing
+    // form too so the previously-edited bookmark's identity-file
+    // path / extra-args don't linger across opens.
+    clearForm();
+}
+
+void SshDialog::clearForm() {
+    m_currentIndex = -1;
+    if (m_bookmarkList) m_bookmarkList->setCurrentRow(-1);
+    if (m_nameEdit)       m_nameEdit->clear();
+    if (m_hostEdit)       m_hostEdit->clear();
+    if (m_userEdit)       m_userEdit->clear();
+    if (m_portSpin)       m_portSpin->setValue(22);
+    if (m_identityEdit)   m_identityEdit->clear();
+    if (m_extraArgsEdit)  m_extraArgsEdit->clear();
+    if (m_quickConnect)   m_quickConnect->clear();
 }
 
 void SshDialog::refreshList() {

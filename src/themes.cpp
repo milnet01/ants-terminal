@@ -1,4 +1,5 @@
 #include "themes.h"
+#include <QDateTime>
 #include <QDebug>
 #include <QStringList>
 #include <QStandardPaths>
@@ -308,6 +309,20 @@ std::vector<Theme> Themes::loadUserThemes() {
             qWarning("Ants: user theme %s failed to parse: %s (byte offset %d)",
                      qUtf8Printable(filePath),
                      qUtf8Printable(err.errorString()), err.offset);
+            // ANTS-1179: rotate the bad file to .corrupt.<epoch> so:
+            // (a) the user's data survives (forensic copy on disk);
+            // (b) the next launch doesn't keep skipping it silently —
+            //     the file disappears from the *.json glob, the cache
+            //     reflects on-disk reality, and a future re-save can
+            //     write a fresh good version of the same name without
+            //     a stale bad twin shadowing it. Mirror the
+            //     config.cpp parse-failure rotation pattern.
+            f.close();
+            const qint64 epoch =
+                QDateTime::currentSecsSinceEpoch();
+            const QString rotatedPath =
+                filePath + QStringLiteral(".corrupt.%1").arg(epoch);
+            QFile::rename(filePath, rotatedPath);
             continue;
         }
         QJsonObject obj = doc.object();

@@ -194,8 +194,19 @@ int main(int argc, char *argv[]) {
     //   ANTS_DEBUG=1          # legacy: == paint
     const QByteArray debugSpec = qgetenv("ANTS_DEBUG");
     if (!debugSpec.isEmpty()) {
-        DebugLog::setActive(DebugLog::parseCategories(
-            QString::fromLocal8Bit(debugSpec)));
+        const quint32 mask = DebugLog::parseCategories(
+            QString::fromLocal8Bit(debugSpec));
+        DebugLog::setActive(mask);
+        // ANTS-1170: when ANTS_DEBUG is honored, print a one-line
+        // stderr banner so a forgotten env var (CI image, .envrc,
+        // sourced helper) is visible at startup rather than
+        // silently capturing PTY input into the log file.
+        if (mask != 0) {
+            fprintf(stderr,
+                    "Ants: debug log active (ANTS_DEBUG=%s) -> %s\n",
+                    debugSpec.constData(),
+                    qPrintable(DebugLog::logFilePath()));
+        }
     }
 
     // Dialog spawn tracer — install at startup only when the env var
@@ -301,6 +312,10 @@ int main(int argc, char *argv[]) {
                 //   echo -ne 'ls\n' | ants-terminal --remote send-text
                 // without worrying about shell-quoting escape
                 // sequences or newlines on the command line.
+                // ANTS-1169: cap stdin at 1 MiB so a runaway producer
+                // (`yes | ants-terminal --remote send-text`) doesn't
+                // OOM the client process before the server's own
+                // size-cap rejects the message.
                 QFile in;
                 if (!in.open(stdin, QIODevice::ReadOnly)) {
                     std::fprintf(stderr,
@@ -308,7 +323,19 @@ int main(int argc, char *argv[]) {
                         "cannot read stdin\n");
                     return 1;
                 }
-                text = QString::fromUtf8(in.readAll());
+                constexpr qint64 kMaxStdinBytes = 1 * 1024 * 1024;
+                QByteArray buf;
+                while (!in.atEnd()) {
+                    buf += in.read(64 * 1024);
+                    if (buf.size() > kMaxStdinBytes) {
+                        std::fprintf(stderr,
+                            "ants-terminal --remote send-text: stdin "
+                            "exceeds %lld bytes; aborting\n",
+                            static_cast<long long>(kMaxStdinBytes));
+                        return 1;
+                    }
+                }
+                text = QString::fromUtf8(buf);
             }
             args["text"] = text;
         } else if (cmd == QLatin1String("new-tab")

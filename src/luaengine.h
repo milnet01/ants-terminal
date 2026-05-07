@@ -106,11 +106,22 @@ private:
     // Custom memory allocator with limit
     static void *luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize);
 
+    // ANTS-1172: start the wall-clock budget for the next pcall.
+    // Combined with the LUA_MASKLINE | LUA_MASKCOUNT hook below, this
+    // catches plugins that spend their time inside a single large C
+    // call (string.gsub with a catastrophic regex, table.sort with a
+    // pathological comparator) — the instruction-count hook alone
+    // can't fire while pure-C is executing, so a wall-clock check at
+    // the next bytecode boundary is the closest we can get to
+    // bounded-duration termination on the main thread.
+    void startPcallBudget();
+
     QString m_pluginName;
     QStringList m_permissions;
     lua_State *m_state = nullptr;
     size_t m_luaMemUsage = 0;  // Current Lua memory usage in bytes
     bool m_timedOut = false;    // Set by instruction hook, checked after pcall
+    qint64 m_pcallDeadlineMs = 0;  // ANTS-1172 — wall-clock deadline.
     QString m_recentOutput;
     QString m_cwd;
 

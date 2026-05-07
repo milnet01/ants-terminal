@@ -1,5 +1,6 @@
 #include "ptyhandler.h"
 #include "debuglog.h"
+#include "secretredact.h"
 
 #include <cerrno>
 #include <csignal>
@@ -161,7 +162,8 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     // not their contents, and POSIX guarantees `environ` entries
     // are NUL-terminated KEY=VALUE strings.
     extern char **environ;
-    for (char **e = environ; *e != nullptr && envpCount < kEnvpCap - 8; ++e) {
+    bool envpTruncated = false;
+    for (char **e = environ; *e != nullptr; ++e) {
         const char *entry = *e;
         const auto startsWith = [entry](const char *prefix) {
             for (size_t i = 0; prefix[i] != '\0'; ++i) {
@@ -175,7 +177,22 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             startsWith("COLORFGBG=")) {
             continue;
         }
+        if (envpCount >= kEnvpCap - 8) {
+            // ANTS-1175: surface the silent truncation that produced
+            // the user-reported "ants-terminal sometimes opens a
+            // shell with no PATH" symptom on environments with 500+
+            // entries (modern desktop sessions hit this routinely).
+            // Only warn once per fork.
+            envpTruncated = true;
+            break;
+        }
         childEnvp[envpCount++] = entry;
+    }
+    if (envpTruncated) {
+        ANTS_LOG_ALWAYS(
+            "Pty: parent environ exceeded %zu entries; "
+            "child shell may be missing PATH/HOME/etc.",
+            kEnvpCap);
     }
     // Append our 5 overrides (5 string literals + 1 snprintf'd
     // buffer). The string-literal pointers live in the binary's
@@ -310,10 +327,19 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     // Parent process — set O_CLOEXEC so master FD doesn't leak to child processes
     ::fcntl(m_masterFd, F_SETFD, FD_CLOEXEC);
 
-    // Set master to non-blocking
+    // Set master to non-blocking. The QSocketNotifier model below assumes
+    // a non-blocking master — a spurious wakeup on a still-blocking fd
+    // would freeze the GUI thread inside ::read(). Treat F_GETFL or
+    // F_SETFL failure as a hard error rather than falling through.
     int flags = ::fcntl(m_masterFd, F_GETFL);
-    if (flags >= 0)
-        ::fcntl(m_masterFd, F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0 || ::fcntl(m_masterFd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        ANTS_LOG_ALWAYS("Pty: failed to set master non-blocking: %s",
+                        std::strerror(errno));
+        ::close(m_masterFd);
+        m_masterFd = -1;
+        if (m_childPid > 0) ::kill(m_childPid, SIGHUP);
+        return false;
+    }
 
     m_readNotifier = new QSocketNotifier(m_masterFd, QSocketNotifier::Read, this);
     connect(m_readNotifier, &QSocketNotifier::activated, this, &Pty::onReadReady);
@@ -330,8 +356,17 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
 
 void Pty::write(const QByteArray &data) {
     if (m_masterFd < 0) return;
-    ANTS_LOG(DebugLog::Pty, "write %lld bytes: %s", (long long)data.size(),
-             data.left(60).toPercentEncoding().constData());
+    if (DebugLog::enabled(DebugLog::Pty)) {
+        // ANTS-1164: scrub well-known secret shapes (ghp_…, AKIA…,
+        // Bearer …, sk-ant-…, PEM, etc.) from the debug-log slice so
+        // a forgotten ANTS_DEBUG=pty doesn't silently capture pasted
+        // tokens in ~/.local/share/ants-terminal/debug.log.
+        const QString preview =
+            SecretRedact::scrub(QString::fromUtf8(data.left(60))).text;
+        ANTS_LOG(DebugLog::Pty, "write %lld bytes: %s",
+                 (long long)data.size(),
+                 preview.toUtf8().toPercentEncoding().constData());
+    }
 
     // FIFO ordering — if a previous call queued bytes on EAGAIN, every
     // fresh write must go behind them, never ahead. Bypass would let
@@ -458,6 +493,11 @@ void Pty::onReadReady() {
             // and leaking the child as an init-adopted zombie. Now
             // we leave m_childPid populated so destructor cleanup
             // can escalate.
+            // ANTS-1175 — emit childUnreapedAtEof() when w==0 so UI
+            // consumers can tell apart "child crashed, reaped, exit
+            // -1" from "child still alive at EOF, exit unknown."
+            // finished(-1) continues to fire for legacy callers.
+            if (w == 0) emit childUnreapedAtEof();
             emit finished(exitCode);
             break;
         } else {

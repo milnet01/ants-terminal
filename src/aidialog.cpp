@@ -113,6 +113,24 @@ void AiDialog::setTerminalContext(const QString &context) {
     m_terminalContext = context;
 }
 
+void AiDialog::resetTransient() {
+    // ANTS-1168: clear per-open transient state. Chat history is left
+    // alone deliberately — users expect the conversation thread to
+    // continue across re-opens.
+    if (m_input)        m_input->clear();
+    if (m_statusLabel)  m_statusLabel->clear();
+    if (m_currentReply) {
+        QNetworkReply *r = m_currentReply;
+        m_currentReply = nullptr;
+        r->abort();
+        r->deleteLater();
+    }
+    m_streamBuffer.clear();
+    m_sseLineBuffer.clear();
+    m_streamTruncated = false;
+    m_httpWarned = false;
+}
+
 void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
                           const QString &model, int contextLines) {
     // 0.7.52 (2026-04-27 indie-review HIGH) — scheme allowlist on the

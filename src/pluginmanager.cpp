@@ -47,15 +47,21 @@ void PluginManager::setPluginDir(const QString &dir) {
 }
 
 void PluginManager::unloadAll() {
-    for (auto *engine : m_engines.values()) {
+    // ANTS-1173: snapshot the engine pointers and clear m_engines BEFORE
+    // firing Unload, mirroring what fireEvent() already does at line 323.
+    // An Unload handler that re-enters the event loop (status signal →
+    // palette repaint → keypress → fireEvent) would otherwise traverse
+    // m_engines.values() against an already-`deleteLater()`d engine in
+    // dev/hot-reload mode — deterministic UAF window.
+    const auto engines = m_engines.values();
+    m_engines.clear();
+    for (auto *engine : engines) {
         if (engine) {
-            // Fire unload event so plugins can save state / cleanup
             engine->fireEvent(PluginEvent::Unload, engine->pluginName());
             engine->shutdown();
             engine->deleteLater();
         }
     }
-    m_engines.clear();
 }
 
 void PluginManager::wireEngine(LuaEngine *engine) {

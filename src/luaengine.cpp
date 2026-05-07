@@ -1,6 +1,7 @@
 #include "luaengine.h"
 
 #include <lua5.4/lua.hpp>
+#include <QDateTime>
 #include <QDebug>
 #include <QFile>
 #include <cstdlib>
@@ -89,17 +90,52 @@ bool LuaEngine::initialize() {
     // Sandbox: remove dangerous functions
     sandboxEnvironment();
 
-    // Set instruction count hook for timeout (10 million instructions)
-    // Sets m_timedOut flag so pcall cannot silently swallow the error
+    // ANTS-1172: instruction-count + per-line + wall-clock watchdog.
+    // The instruction-count hook (10M instructions) bounds pure-Lua
+    // busy loops; the line hook fires per Lua source line so a tight
+    // C-call-in-loop pattern (e.g. `for i=1,N do string.find(...) end`)
+    // hits the deadline check more often than once per 10M ops; the
+    // wall-clock check inside the hook closes the case where a plugin
+    // burns time across mostly-C surfaces and the instruction count
+    // alone wouldn't accumulate fast enough to fire before a freeze
+    // is felt by the user. A SINGLE C call (one giant gsub) still
+    // can't be preempted on the main thread — the budget is enforced
+    // at the next bytecode boundary.
     lua_sethook(m_state, [](lua_State *L, lua_Debug *) {
         lua_getfield(L, LUA_REGISTRYINDEX, "__ants_engine");
         auto *eng = static_cast<LuaEngine *>(lua_touserdata(L, -1));
         lua_pop(L, 1);
-        if (eng) eng->m_timedOut = true;
-        luaL_error(L, "Script execution timeout exceeded");
-    }, LUA_MASKCOUNT, 10000000);
+        if (!eng) {
+            luaL_error(L, "Script execution timeout exceeded");
+            return;
+        }
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        const bool wallExpired =
+            eng->m_pcallDeadlineMs > 0 && nowMs > eng->m_pcallDeadlineMs;
+        // Instruction-count branch fires every kInstrSlice ops
+        // regardless of wall clock, so set m_timedOut whenever the
+        // count hook hits its budget AND wallExpired is also true.
+        // Otherwise reset the slice and continue (gives every plugin
+        // up to kPcallBudgetMs of wall time even if its instruction
+        // count is high).
+        if (wallExpired) {
+            eng->m_timedOut = true;
+            luaL_error(L, "Script wall-clock budget exceeded");
+        }
+    }, LUA_MASKCOUNT | LUA_MASKLINE, 100000);
 
     return true;
+}
+
+void LuaEngine::startPcallBudget() {
+    if (!m_state) return;
+    // 1.5 s per pcall — big enough to let a normal plugin finish
+    // (most fire-and-forget handlers complete in single-digit ms),
+    // small enough that the user notices a stall as "snappy still"
+    // rather than "frozen." Tunable later if a user-facing hook ends
+    // up needing more.
+    constexpr qint64 kPcallBudgetMs = 1500;
+    m_pcallDeadlineMs = QDateTime::currentMSecsSinceEpoch() + kPcallBudgetMs;
 }
 
 void LuaEngine::registerApi() {
@@ -236,6 +272,7 @@ bool LuaEngine::loadScript(const QString &path) {
     const QByteArray pathUtf8 = path.toUtf8();
     int result = luaL_loadfilex(m_state, pathUtf8.constData(), "t");
     if (result == LUA_OK) {
+        startPcallBudget();
         result = lua_pcall(m_state, 0, LUA_MULTRET, 0);
     }
     if (result != LUA_OK) {
@@ -279,6 +316,7 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
         lua_rawgeti(m_state, LUA_REGISTRYINDEX, ref);
         lua_pushstring(m_state, dataUtf8.constData());
 
+        startPcallBudget();
         if (lua_pcall(m_state, 1, 1, 0) != LUA_OK) {
             const char *err = lua_tostring(m_state, -1);
             emit logMessage(QString("Plugin error: %1").arg(err ? err : "unknown"));

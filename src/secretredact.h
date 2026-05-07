@@ -101,6 +101,18 @@ inline const std::vector<Rule> &rules()
         { QRegularExpression(QStringLiteral("\\bxox[abpros]-[A-Za-z0-9-]{10,}")),
           QStringLiteral("slack"), 0 },
 
+        // Google API keys — `AIza` prefix + 35 chars (39 total).
+        // Documented shape per Google Cloud's API-key format.
+        // ANTS-1184.
+        { QRegularExpression(QStringLiteral("\\bAIza[A-Za-z0-9_\\-]{35}\\b")),
+          QStringLiteral("google_api_key"), 0 },
+        // Google OAuth 2.0 access token — `ya29.` prefix + opaque
+        // base64url-ish payload. Length varies; 20+ is a safe lower
+        // bound that doesn't false-positive on `ya29.` words.
+        // ANTS-1184.
+        { QRegularExpression(QStringLiteral("\\bya29\\.[A-Za-z0-9_\\-]{20,}")),
+          QStringLiteral("google_oauth"), 0 },
+
         // Stripe live secret/restricted keys. 24+ alphanum payload.
         { QRegularExpression(QStringLiteral("\\b(?:sk|rk)_live_[A-Za-z0-9]{24,}\\b")),
           QStringLiteral("stripe"), 0 },

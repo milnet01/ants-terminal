@@ -167,6 +167,11 @@ ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) 
 void ClaudeAllowlistDialog::setSettingsPath(const QString &path) {
     m_settingsPath = path;
     loadSettings();
+    // ANTS-1168: clear transient editing state so a stale unsaved
+    // rule + validation hint from the previous open don't carry over
+    // to a fresh project's allowlist.
+    if (m_ruleInput)        m_ruleInput->clear();
+    if (m_validationLabel)  m_validationLabel->clear();
 }
 
 void ClaudeAllowlistDialog::prefillRule(const QString &rule) {

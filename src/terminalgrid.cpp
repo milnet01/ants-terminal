@@ -1429,6 +1429,7 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     iimg.col = m_cursorCol;
     iimg.cellWidth = cellW;
     iimg.cellHeight = cellH;
+    iimg.origin = InlineImage::Origin::ITerm2;
     m_imageBudget.add(imageByteCost(iimg.image));
     m_inlineImages.push_back(std::move(iimg));
 
@@ -2041,6 +2042,13 @@ void TerminalGrid::addRowHyperlink(int row, int startCol, int endCol,
                                    const QString &uri) {
     if (row < 0 || row >= m_rows) return;
     if (uri.isEmpty()) return;
+    // ANTS-1169: cap trigger-expanded URI length. The make_hyperlink
+    // template expands attacker-controllable $1..$9 backrefs from
+    // PTY output, so a single matching line carrying multi-megabyte
+    // captured groups would otherwise allocate a multi-GB span URI
+    // before the scheme check below ever ran.
+    constexpr int kMaxHyperlinkUriLen = 4096;
+    if (uri.size() > kMaxHyperlinkUriLen) return;
 
     // 0.6.14 security — enforce the same URI scheme allowlist OSC 8 uses
     // (see handleOsc 8 branch ~line 605). make_hyperlink trigger rules
@@ -2673,6 +2681,7 @@ void TerminalGrid::handleDcs(const std::string &payload) {
     img.cellWidth = imgWidth;
     img.cellHeight = imgHeight;
     img.pixelSized = true;
+    img.origin = InlineImage::Origin::Sixel;
     m_imageBudget.add(imageByteCost(img.image));
     m_inlineImages.push_back(img);
 }
@@ -2771,10 +2780,22 @@ void TerminalGrid::handleApc(const std::string &payload) {
         char deleteType = 'a';
         if (params.count('d')) deleteType = params['d'][0];
         if (deleteType == 'a') {
+            // ANTS-1166: Kitty's "delete all" must only remove
+            // Kitty-protocol display entries. Wiping m_inlineImages
+            // wholesale would let a hostile PTY frame
+            // (`\e_Ga=d,d=a;\e\\`) erase Sixel + iTerm2 images
+            // cross-protocol — visual-context redaction.
             m_kittyImages.clear();
             m_kittyImageOrder.clear();
-            m_inlineImages.clear();
-            m_imageBudget.reset(); // all bytes released
+            m_inlineImages.erase(
+                std::remove_if(m_inlineImages.begin(), m_inlineImages.end(),
+                               [](const InlineImage &i) {
+                                   return i.origin == InlineImage::Origin::Kitty;
+                               }),
+                m_inlineImages.end());
+            // Recompute budget rather than reset(); Sixel + iTerm2
+            // entries that survived still own their bytes.
+            recomputeImageBudget();
         } else if (deleteType == 'i' && imageId > 0) {
             auto delIt = m_kittyImages.find(imageId);
             if (delIt != m_kittyImages.end()) {
@@ -2910,14 +2931,22 @@ void TerminalGrid::handleApc(const std::string &payload) {
             img.cellWidth = displayImg.width();
             img.cellHeight = displayImg.height();
             img.pixelSized = true;
+            img.origin = InlineImage::Origin::Kitty;
 
-            // Use cols/rows if specified (cell units override pixel sizing)
+            // Use cols/rows if specified (cell units override pixel
+            // sizing). ANTS-1169: clamp to MAX_IMAGE_DIM so a hostile
+            // PTY frame can't request a 2-billion-cell image and
+            // overflow downstream pixel-byte math. Negative values
+            // also collapse to 0 — safeStoi already returns the
+            // default on parse failure, but the upper bound was open.
             if (params.count('c')) {
-                img.cellWidth = safeStoi(params['c']);
+                int v = safeStoi(params['c']);
+                img.cellWidth = std::clamp(v, 0, MAX_IMAGE_DIM);
                 img.pixelSized = false;
             }
             if (params.count('r')) {
-                img.cellHeight = safeStoi(params['r']);
+                int v = safeStoi(params['r']);
+                img.cellHeight = std::clamp(v, 0, MAX_IMAGE_DIM);
                 if (!params.count('c')) img.pixelSized = false;
             }
 

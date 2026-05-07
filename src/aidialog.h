@@ -20,6 +20,13 @@ public:
     void setConfig(const QString &endpoint, const QString &apiKey,
                    const QString &model, int contextLines);
 
+    // ANTS-1168: clear transient state (status label, input field,
+    // any in-flight reply) on each show() so a stale "Error: rate
+    // limited" or half-typed prompt from the previous open doesn't
+    // surface in this open. Chat history is preserved deliberately
+    // — users expect the conversation to continue across re-opens.
+    void resetTransient();
+
 signals:
     void insertCommand(const QString &cmd); // Insert AI-suggested command into PTY
 

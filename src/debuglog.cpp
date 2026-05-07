@@ -5,11 +5,21 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QTextStream>
 
 #include <sys/stat.h>
 #include <sys/types.h>
+
+namespace {
+// ANTS-1170: cap on-disk debug log size. When a fresh open() finds an
+// existing log larger than this, it's renamed to debug.log.1 (replacing
+// any prior .1) before the new log is opened. One generation is enough
+// for typical "I just hit the bug, let me grab the log" workflows
+// without growing unboundedly across forgotten ANTS_DEBUG=all sessions.
+constexpr qint64 kMaxLogBytes = 10 * 1024 * 1024;
+} // namespace
 
 std::mutex DebugLog::s_mutex;
 QFile DebugLog::s_file;
@@ -73,6 +83,16 @@ void DebugLog::setActive(quint32 mask) {
     if (mask != 0 && !s_file.isOpen()) {
         const QString path = logFilePath();
         QDir().mkpath(QFileInfo(path).absolutePath());
+        // ANTS-1170: rotate when the existing log exceeds the cap, so a
+        // forgotten ANTS_DEBUG=all session can't write secrets
+        // indefinitely. Single-generation rotation: debug.log → .log.1
+        // (replacing any prior .1).
+        QFileInfo existing(path);
+        if (existing.exists() && existing.size() > kMaxLogBytes) {
+            const QString rotated = path + QStringLiteral(".1");
+            QFile::remove(rotated);
+            QFile::rename(path, rotated);
+        }
         s_file.setFileName(path);
         // ANTS-1142 — tighten umask BEFORE create so the kernel
         // applies 0600 perms at file-creation time, eliminating
