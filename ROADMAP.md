@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.76 (2026-05-02). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.77 (2026-05-02). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -5209,8 +5209,8 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Crash-safe session persistence (user report 2026-05-02)
 
-- 📋 [ANTS-1159] **Save session state on a periodic timer + tab
-  events, not only on `closeEvent`.** User reported 2026-05-02
+- ✅ [ANTS-1159] **Save session state on a periodic timer + tab
+  events, not only on `closeEvent`.** Shipped 2026-05-02 in 0.7.77. User reported 2026-05-02
   that after a SIGSEGV (which turned out to be a stale-binary
   side-effect — see triage below), restart restored zero tabs.
   Pre-fix code calls `saveAllSessions()` only from
@@ -5235,9 +5235,9 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🎨 Claude Code UX — task-list status-bar surface (user request 2026-05-02)
 
-- 📋 [ANTS-1158] **Status-bar widget + dialog showing the active
+- ✅ [ANTS-1158] **Status-bar widget + dialog showing the active
   Claude Code session's task list with status (completed,
-  in-progress, pending).** User ask 2026-05-02: *"When Claude
+  in-progress, pending).** Shipped 2026-05-02 in 0.7.77. User ask 2026-05-02: *"When Claude
   Code has a task list, please add a button to the task bar
   that brings up a dialog that shows all the tasks. It must
   show the task status (completed, running, outstanding)."*

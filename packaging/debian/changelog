@@ -1,3 +1,87 @@
+ants-terminal (0.7.77-1) unstable; urgency=medium
+
+  * ANTS-1158 — Claude Code task-list status-bar widget + dialog.
+    When the focused tab's Claude Code session has an active plan,
+    a new status-bar chip shows <unfinished>/<total>; click opens
+    a non-modal dialog listing each task with status (☐ pending /
+    ◐ in_progress / ✓ completed) and a header
+    "<N> tasks — <Y> running, <Z> outstanding, <X> done".
+    Hidden when no plan exists for the focused tab.
+  * Replays from ~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl
+    in two modes. Mode A (TodoWrite snapshot): walk backwards from
+    EOF in 64 KiB blocks to find the most-recent TodoWrite —
+    avoids scanning the whole file to grab a near-tail event.
+    Mode B (incremental): forward walk over TaskCreate (paired
+    with tool_result for the allocated ID, mirroring
+    claudebgtasks.cpp:222–243) + TaskUpdate flips, 16 MiB tail cap.
+  * Filters out events with isSidechain == true (subagent tool
+    calls inlined in the parent transcript) and Task / Agent
+    tool_uses with subagent_type (sub-agent dispatch ≠ plan row).
+    Per-tab retarget on onTabChanged mirrors m_bgTasks;
+    QFileSystemWatcher + 2 s coalesce drives live updates.
+  * Dialog is non-modal with plain QPushButton close — no
+    setModal(true), no QDialogButtonBox (per the
+    debug_wayland_modal_dialog memory: QTBUG-79126 drops button
+    clicks on KDE+KWin+Qt 6.11+frameless+translucent parent).
+    13 ANTS-1158-INV-N invariants in
+    tests/features/claude_task_list/ pass.
+  * ANTS-1159 — session state now persists on a 30 s timer and
+    on every tab create / close / reorder, not only on closeEvent.
+    User reported 2026-05-02 that after a SIGSEGV, restart restored
+    zero tabs. Pre-fix, MainWindow::saveAllSessions() was wired
+    *only* to closeEvent (mainwindow.cpp:3798), so any abnormal
+    termination — SEGV, OOM-kill, power loss, kernel panic —
+    bypassed it. ANTS-1141 had already plugged a related leak
+    (the destructive read on tab_order.txt); this closes the
+    bigger one.
+  * Fix shape (option B, user-approved): new QTimer
+    *m_sessionSaveTimer on MainWindow, 30 s autoreloading,
+    timeout → existing saveAllSessions(). Started in the ctor
+    after restoreSessions() so the first save doesn't race the
+    restore; stopped in closeEvent before the explicit save so
+    it can't re-enter mid-shutdown.
+  * Three new tab hooks call a cheap saveTabOrderOnly() slot
+    (walks m_tabWidget, builds tabOrder QStringList + active
+    index, calls SessionManager::saveTabOrder — no scrollback
+    serialisation): from newTab() (post-addTab), from
+    performTabClose() (post-removeTab), and from
+    m_coloredTabBar's tabMoved signal. Same sessionPersistence()
+    -off and 5-s uptime-floor guards as saveAllSessions.
+    currentChanged is intentionally not hooked — tab switches
+    fire constantly; the periodic timer covers it. 9
+    ANTS-1159-INV-N invariants in
+    tests/features/crash_safe_session_persist/ pass.
+  * Claude Code Task List dialog now refreshes when the
+    transcript file is rewritten (ANTS-1158 follow-up).
+    QFileSystemWatcher silently drops its inotify watch when the
+    watched file is replaced via atomic-rewrite — Claude Code's
+    transcript update pattern — and never re-arms. Added
+    ClaudeTaskListTracker::poll() with mtime-gated rescan, called
+    from claudestatuswidgets::refreshTasksButton() which already
+    ticks on the 2 s status-bar timer. Same fix shape as
+    ClaudeBgTaskTracker::poll(); existing 13 ANTS-1158-INV-N
+    invariants still hold.
+  * RoadMap status-bar button + GitHub repo-type badge now
+    appear on cold launch instead of waiting for the first tab
+    switch (ANTS-1160 P2). Both widgets read shellCwd();
+    shellPid() is set by startShell() AFTER newTab()'s
+    setCurrentIndex() triggers onTabChanged(0) for the first
+    time, so the previous onTabChanged-only wiring saw
+    shellCwd() == "" on first fire and hid the widget. Fix is
+    additive: refreshRoadmapButton and refreshRepoVisibility
+    are now also invoked from the 2 s m_statusTimer periodic
+    refresh AND the startup QTimer::singleShot(0, ...) lambda.
+    Same three-connection pattern that refreshBgTasksButton
+    already follows correctly; same regression class as the
+    v0.6.29 review-button regression. New
+    docs/standards/status-bar.md documents the State-category-
+    widget refresh contract plus a checklist for new widgets.
+    5 ANTS-1160-INV-N invariants in
+    tests/features/roadmap_status_bar_refresh/ pass.
+  * 136/136 ctests pass.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 02 May 2026 11:30:00 +0200
+
 ants-terminal (0.7.76-1) unstable; urgency=medium
 
   * ANTS-1150 Phase 1 — UI / chrome state persistence. User ask
