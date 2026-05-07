@@ -2403,6 +2403,37 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # claude_session_freshness — ANTS-1163. User report 2026-05-07:
+    # Task List dialog shows tasks from the previous Claude Code
+    # session after a fresh launch (reboot + new claude). Root cause:
+    # ClaudeIntegration::sessionPathForCwd picks newest .jsonl by
+    # mtime alone; a prior session's transcript outranks the new
+    # session's empty transcript until the first event lands.
+    # Fix: process-start anchored filter + 24h liveness floor.
+    # See tests/features/claude_session_freshness/spec.md.
+    add_executable(test_claude_session_freshness
+        tests/features/claude_session_freshness/test_claude_session_freshness.cpp
+        src/claudeintegration.cpp
+    )
+    target_link_libraries(test_claude_session_freshness PRIVATE
+        Qt6::Core
+        Qt6::Network
+        Qt6::Test
+    )
+    target_include_directories(test_claude_session_freshness PRIVATE src)
+    target_compile_definitions(test_claude_session_freshness PRIVATE
+        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+    )
+    target_compile_options(test_claude_session_freshness PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME claude_session_freshness
+        COMMAND test_claude_session_freshness
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(claude_session_freshness PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
     # status-bar Roadmap button visible iff the active tab's cwd
     # contains a ROADMAP.md (case-insensitive); click opens a

@@ -2,6 +2,7 @@
 
 #include "configpaths.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -181,8 +182,18 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
             cwd = QFile::symLinkTarget(
                 QString("/proc/%1/cwd").arg(entry.shellPid));
         QString tx;
-        if (!cwd.isEmpty())
-            tx = ClaudeIntegration::sessionPathForCwd(cwd);
+        if (!cwd.isEmpty()) {
+            // ANTS-1163: thread the per-tab claude PID's start time
+            // (process-anchored identity) and the current epoch
+            // (24h liveness floor) so we don't bind a tab to a
+            // stale transcript from a prior `claude` invocation.
+            const qint64 procStartMs =
+                ClaudeIntegration::processStartTimeMs(found);
+            const qint64 nowMs =
+                QDateTime::currentMSecsSinceEpoch();
+            tx = ClaudeIntegration::sessionPathForCwd(
+                cwd, procStartMs, nowMs);
+        }
         if (tx.isEmpty()) {
             // Unscoped fallback (matches pre-0.7.48 behaviour).
             QDir claudeDir(ConfigPaths::claudeProjectsDir());

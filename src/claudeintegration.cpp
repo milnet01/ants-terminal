@@ -16,6 +16,7 @@
 #include <QCoreApplication>
 
 #include <sys/socket.h>
+#include <unistd.h>
 
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
     // Poll for Claude Code process every 2 seconds. This is only for
@@ -271,10 +272,117 @@ void ClaudeIntegration::pollClaudeProcess() {
 
 // --- Session Transcripts ---
 
-QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd) {
+// ANTS-1163: read the most recent ISO 8601 `timestamp` field from the
+// JSONL tail. Walks backwards over the last 32 KB so we don't pay the
+// full transcript scan on every refresh tick. Returns 0 when no
+// timestamped event sits in the tail window — caller falls back to
+// file mtime.
+qint64 ClaudeIntegration::lastEventTimestampMs(const QString &path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+
+    constexpr qint64 kWindow = 32 * 1024;
+    const qint64 size = f.size();
+    const qint64 start = std::max<qint64>(0, size - kWindow);
+    if (!f.seek(start)) return 0;
+    QByteArray tail = f.read(size - start);
+    f.close();
+
+    // Drop a likely-truncated leading partial line if we didn't read
+    // from offset 0 — same trick parseTranscriptTail uses.
+    if (start > 0) {
+        const int firstNl = tail.indexOf('\n');
+        if (firstNl < 0) return 0;
+        tail.remove(0, firstNl + 1);
+    }
+
+    const QList<QByteArray> lines = tail.split('\n');
+    for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
+        const QByteArray line = it->trimmed();
+        if (line.isEmpty()) continue;
+        const QJsonDocument doc = QJsonDocument::fromJson(line);
+        if (!doc.isObject()) continue;
+        const QJsonValue ts = doc.object().value(QStringLiteral("timestamp"));
+        if (!ts.isString()) continue;
+        const QDateTime dt = QDateTime::fromString(
+            ts.toString(), Qt::ISODateWithMs);
+        if (!dt.isValid()) continue;
+        return dt.toMSecsSinceEpoch();
+    }
+    return 0;
+}
+
+// ANTS-1163: wall-clock epoch ms when `pid` started. /proc/<pid>/stat
+// field 22 is starttime in clock ticks since boot; /proc/stat's
+// `btime` line is boot time epoch seconds. Their sum is the process
+// start in epoch seconds; multiply by 1000 for ms. Returns 0 on any
+// parse failure (treated as "no anchor available").
+qint64 ClaudeIntegration::processStartTimeMs(pid_t pid) {
+    if (pid <= 0) return 0;
+
+    QFile statF(QStringLiteral("/proc/%1/stat").arg(static_cast<int>(pid)));
+    if (!statF.open(QIODevice::ReadOnly)) return 0;
+    const QByteArray statRaw = statF.readAll();
+    statF.close();
+
+    // The `comm` field (parenthesized) can contain spaces/parens. The
+    // safe parse: scan after the closing `)` of comm, then split the
+    // remainder by space — field 22 is at index 19 (state is 0 in the
+    // post-comm slice; starttime is the 22nd field overall, indexed
+    // from 1; in the post-comm slice it's index 19).
+    const int closeParen = statRaw.lastIndexOf(')');
+    if (closeParen < 0) return 0;
+    const QByteArray rest = statRaw.mid(closeParen + 1).trimmed();
+    const QList<QByteArray> fields = rest.split(' ');
+    if (fields.size() < 20) return 0;
+    bool ok = false;
+    const qulonglong starttimeTicks = fields[19].toULongLong(&ok);
+    if (!ok) return 0;
+
+    // /proc/stat reports `size() == 0` so QFile::atEnd() / readLine()
+    // loops bail out immediately. readAll() is the only reliable way
+    // to get the full body of a /proc text file.
+    QFile bootF(QStringLiteral("/proc/stat"));
+    if (!bootF.open(QIODevice::ReadOnly)) return 0;
+    const QByteArray bootRaw = bootF.readAll();
+    bootF.close();
+    qulonglong btime = 0;
+    for (const QByteArray &line : bootRaw.split('\n')) {
+        if (!line.startsWith("btime ")) continue;
+        btime = line.mid(6).trimmed().toULongLong(&ok);
+        if (!ok) btime = 0;
+        break;
+    }
+    if (btime == 0) return 0;
+
+    const long ticksPerSec = ::sysconf(_SC_CLK_TCK);
+    if (ticksPerSec <= 0) return 0;
+    const qulonglong startSec = btime + (starttimeTicks / ticksPerSec);
+    return static_cast<qint64>(startSec) * 1000;
+}
+
+// Effective last-event ms for a JSONL — last timestamped event in the
+// tail if found, else file mtime. Used as the freshness signal in
+// sessionPathForCwd.
+static qint64 effectiveLastEventMs(const QFileInfo &fi) {
+    const qint64 fromContent =
+        ClaudeIntegration::lastEventTimestampMs(fi.absoluteFilePath());
+    if (fromContent > 0) return fromContent;
+    return fi.lastModified().toMSecsSinceEpoch();
+}
+
+QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd,
+                                              qint64 minLastEventMs,
+                                              qint64 nowMs) {
     if (projectCwd.isEmpty()) return {};
     QDir claudeDir(ConfigPaths::claudeProjectsDir());
     if (!claudeDir.exists()) return {};
+
+    // ANTS-1163: clock-skew leeway. Claude Code may write its first
+    // event a few ms before /proc/<pid>/stat reports the process
+    // started (rare; clock-tick rounding plus our ms-conversion).
+    constexpr qint64 kLeewayMs = 5'000;
+    constexpr qint64 kStaleMaxMs = 24LL * 60 * 60 * 1000;
 
     // Project-scoped walk: encode each ancestor of `projectCwd` and
     // probe `~/.claude/projects/<encoded>/`. Deepest match wins —
@@ -285,12 +393,26 @@ QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd) {
         const QString encoded = encodeProjectPath(cur.absolutePath());
         QDir proj(claudeDir.filePath(encoded));
         if (proj.exists()) {
-            QFileInfo newest;
+            QFileInfo bestInfo;
+            qint64 bestEffMs = 0;
             for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time)) {
-                if (!newest.exists() || fi.lastModified() > newest.lastModified())
-                    newest = fi;
+                const qint64 effMs = effectiveLastEventMs(fi);
+                // Process-anchored identity filter (a).
+                if (minLastEventMs > 0 && effMs < minLastEventMs - kLeewayMs)
+                    continue;
+                // 24 h liveness floor (b). Independent safety net.
+                if (nowMs > 0 && effMs < nowMs - kStaleMaxMs)
+                    continue;
+                if (effMs > bestEffMs) {
+                    bestEffMs = effMs;
+                    bestInfo = fi;
+                }
             }
-            if (newest.exists()) return newest.absoluteFilePath();
+            if (bestInfo.exists()) return bestInfo.absoluteFilePath();
+            // A matching project dir exists but no candidate survived
+            // the freshness filter — return empty rather than walking
+            // up to a parent dir whose JSONLs would also be stale.
+            if (minLastEventMs > 0 || nowMs > 0) return {};
         }
         if (!cur.cdUp()) break;
     }
@@ -301,10 +423,19 @@ QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd) {
 }
 
 QString ClaudeIntegration::activeSessionPath(const QString &projectCwd) const {
-    if (!projectCwd.isEmpty())
-        return sessionPathForCwd(projectCwd);
+    if (!projectCwd.isEmpty()) {
+        // ANTS-1163: thread the process-start anchor (a) and the 24 h
+        // liveness floor (b). When m_claudePid is 0 (claude not yet
+        // detected, or not running), the process anchor degrades to
+        // 0 — disabled — and only the liveness floor applies. That
+        // still rejects week-old transcripts, which is the failure
+        // mode the user reported on cold start.
+        const qint64 procStartMs = processStartTimeMs(m_claudePid);
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        return sessionPathForCwd(projectCwd, procStartMs, nowMs);
+    }
 
-    // Unscoped fallback — system-wide newest .jsonl.
+    // Unscoped fallback — system-wide newest .jsonl. Legacy callers.
     QDir claudeDir(ConfigPaths::claudeProjectsDir());
     if (!claudeDir.exists()) return {};
     QFileInfo newest;

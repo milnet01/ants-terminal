@@ -12,6 +12,45 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **ANTS-1163 — Task List dialog showed tasks from a previous
+  Claude Code session after a fresh launch.** User report
+  2026-05-07: *"there is still this task list even though I
+  rebooted and just started up a new Claude Code session."* Root
+  cause: `ClaudeIntegration::sessionPathForCwd` picked the newest
+  `.jsonl` in `~/.claude/projects/<encoded-cwd>/` by **mtime
+  alone**. After a `reboot → claude` sequence, the prior
+  session's transcript outranked the new (empty) transcript
+  until the new session appended its first event — surfacing
+  the prior plan's TodoWrite tasks in the chip and dialog.
+  `/clear` was a no-op because the bug lived in file selection,
+  not in tracker state. Fix is two-layered: (a) **process-anchored
+  identity filter** — when the focused tab's `m_claudePid` is
+  known, candidates whose effective last-event ms predates the
+  Claude Code process start by more than 5 s are dropped; (b)
+  **24 h liveness floor** — independent of (a), candidates
+  whose effective last-event ms is older than 24 h are dropped,
+  defending against the early-startup race where `m_claudePid`
+  is briefly 0. "Effective last-event ms" reads the last ISO
+  8601 `timestamp` from the JSONL tail (32 KB window, walks past
+  trailing metadata events like `last-prompt`/`permission-mode`)
+  and falls back to file mtime when no timestamped event exists.
+  New static helpers `processStartTimeMs(pid)` (parses
+  `/proc/<pid>/stat` field 22 + `/proc/stat` `btime`) and
+  `lastEventTimestampMs(path)`; new overload
+  `sessionPathForCwd(cwd, minLastEventMs, nowMs)` with default
+  args preserving legacy newest-by-mtime behaviour for callers
+  that don't have a process boundary. `activeSessionPath` and
+  `ClaudeTabTracker`'s per-tab transcript bind both thread the
+  filter. Note for future maintenance: `QFile::atEnd()` returns
+  `true` immediately for `/proc/stat` because the kernel reports
+  `size() == 0` — `readAll()` plus `split('\n')` is the only
+  reliable way to read /proc text files; the per-line
+  `readLine()` loop pattern silently no-ops. New feature test
+  `claude_session_freshness` (16 INVs) covers both filter
+  layers, the metadata-only fallback, and the wiring.
+
 ## [0.7.77] — 2026-05-02
 
 **Theme:** two user-driven items landed back-to-back. ANTS-1158 —

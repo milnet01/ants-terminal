@@ -5256,6 +5256,35 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: implement. Source: user-2026-05-02.
   Lanes: claudetasklist (new), claudestatuswidgets, MainWindow.
 
+### 🐛 Claude Code UX — Task List dialog stale across sessions (user report 2026-05-07)
+
+- ✅ [ANTS-1163] **Task List dialog shows tasks from a previous
+  Claude Code session after a fresh launch.** Shipped 2026-05-07
+  on `main` (Unreleased section of CHANGELOG; will land in the
+  next 0.7.x release). User report 2026-05-07: *"there is still
+  this task list even though I rebooted and just started up a
+  new Claude Code session."* The chip and dialog inherited the
+  prior session's TodoWrite plan because
+  `ClaudeIntegration::sessionPathForCwd` picked the newest
+  `.jsonl` in `~/.claude/projects/<encoded-cwd>/` by mtime
+  alone — the prior transcript outranked the new (empty)
+  transcript until the first event of the new session landed.
+  Two-layer fix: (a) process-anchored identity filter (drop
+  candidates whose effective last-event ms predates `m_claudePid`
+  start by > 5 s) + (b) 24h liveness floor (drop candidates older
+  than 24 h regardless). Effective last-event ms = last ISO 8601
+  `timestamp` from the JSONL tail; falls back to file mtime when
+  the transcript contains only metadata events. New static
+  helpers `processStartTimeMs(pid)` and
+  `lastEventTimestampMs(path)`; new overload
+  `sessionPathForCwd(cwd, minLastEventMs, nowMs)` with default
+  args preserving legacy newest-by-mtime behaviour. Wired through
+  `activeSessionPath` and `ClaudeTabTracker`'s per-tab transcript
+  bind. New feature test `claude_session_freshness` (16 INVs).
+  Spec at `tests/features/claude_session_freshness/spec.md`.
+  Kind: fix. Source: user-2026-05-07.
+  Lanes: claudeintegration, claudetabtracker.
+
 ### 🐛 Claude Code UX — bottom status-bar `Claude:` widget shows wrong tab's state (user report 2026-05-07)
 
 - 📋 [ANTS-1161] **Bottom-of-window status-bar `Claude: <state>`

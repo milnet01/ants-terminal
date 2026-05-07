@@ -104,7 +104,40 @@ public:
     // private state. Same walk-up semantics as activeSessionPath's
     // non-empty branch — returns empty if no ancestor has an encoded
     // project directory under `~/.claude/projects/`.
-    static QString sessionPathForCwd(const QString &projectCwd);
+    //
+    // ANTS-1163 (2026-05-07) — two-layer freshness filter:
+    //
+    //   * `minLastEventMs` (process-anchored identity): when > 0, drop
+    //     candidate JSONLs whose effective last-event ms is < this
+    //     boundary. Pass `processStartTimeMs(claudePid)` here.
+    //   * `nowMs` (24h liveness floor): when > 0, drop candidate
+    //     JSONLs whose effective last-event ms is < `nowMs - 24h`.
+    //
+    // "Effective last-event ms" is `lastEventTimestampMs(path)` if it
+    // returns > 0, else `QFileInfo::lastModified()`. Surviving
+    // candidate with the largest effective ms wins.
+    //
+    // Both default to 0 → legacy newest-by-mtime behaviour.
+    static QString sessionPathForCwd(const QString &projectCwd,
+                                      qint64 minLastEventMs = 0,
+                                      qint64 nowMs = 0);
+
+    // Wall-clock epoch ms when `pid` started, derived from
+    // /proc/<pid>/stat field 22 (starttime in clock ticks since boot)
+    // and /proc/stat's `btime` (boot time epoch). Returns 0 if the
+    // PID is dead, /proc isn't mounted, or parsing fails. Stateless,
+    // safe to call from any thread.
+    static qint64 processStartTimeMs(pid_t pid);
+
+    // Most recent ISO 8601 `timestamp` field in the JSONL tail at
+    // `path`. Walks backwards from EOF over the last 32 KB, parsing
+    // each line as JSON, returning the first `timestamp` that parses
+    // successfully (skipping metadata events like `last-prompt`,
+    // `permission-mode`, `file-history-snapshot`, `ai-title` that
+    // have no `timestamp` field). Returns 0 if no timestamped event
+    // is found in the tail window. Used by sessionPathForCwd to
+    // anchor freshness against transcript content rather than mtime.
+    static qint64 lastEventTimestampMs(const QString &path);
 
     // Walk the children of `shellPid` via /proc/<pid>/task/<pid>/children
     // and return the pid of the first child that looks like a Claude Code
