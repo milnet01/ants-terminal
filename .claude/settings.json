@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /mnt/Storage/Scripts/Linux/Ants/packaging/hook-on-cmakelists-edit.sh",
+            "command": "bash /mnt/Storage/Scripts/Linux/Ants_Terminal/packaging/hook-on-cmakelists-edit.sh",
             "statusMessage": "Checking packaging-version drift…",
             "timeout": 10
           }
