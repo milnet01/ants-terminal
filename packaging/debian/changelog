@@ -1,3 +1,105 @@
+ants-terminal (0.7.78-1) unstable; urgency=medium
+
+  * Independent-review sweep #2 — pre-0.8.0 audit + multi-agent
+    code review briefed cold against external standards (ECMA-48,
+    xterm ctlseqs, OWASP LLM Top 10, POSIX forkpty(3), SARIF
+    v2.1.0, Lua 5.4 sandbox, RFC 8259, freedesktop). 22 of 23
+    calibrated findings ship here; ANTS-1181 (1500-LoC
+    mainwindow.cpp carve-out) is deferred to its own session.
+  * ANTS-1164 — Pty::write debug log no longer leaks keystrokes /
+    paste payloads. The 60-byte preview now routes through
+    SecretRedact::scrub() before percent-encoding. Pairs with
+    ANTS-1170.
+  * ANTS-1166 — Kitty a=d,d=a ("delete all images") now removes
+    only Kitty-tagged entries via a new InlineImage::Origin enum,
+    no longer wiping Sixel + iTerm2 images cross-protocol.
+  * ANTS-1169 — boundary-cap audit across 8 untrusted-input
+    crossings: tailFile canonicalizes against /tmp/claude-$UID/
+    with lstat S_ISREG; 6 path setters reject >4096 chars or NUL;
+    setBackgroundImage peeks via QImageReader::size() against
+    MAX_IMAGE_DIM=4096 (was vulnerable to a 50000x50000 PNG →
+    ~10 GB alloc); Kitty APC c/r clamped; OSC 8 URI capped at
+    4096; remote-control receive cap 1 MiB.
+  * ANTS-1170 — ANTS_DEBUG opt-in gate prints a stderr banner at
+    startup and debug.log rotates to debug.log.1 at 10 MiB,
+    preventing unbounded secret-capture across multi-day forgotten
+    sessions.
+  * ANTS-1172 — Lua C-call wall-clock watchdog (1500 ms
+    startPcallBudget) closes the string.gsub sandbox-escape path
+    that LUA_MASKCOUNT alone couldn't catch (un-defers ANTS-1143).
+  * ANTS-1178 — SettingsDialog Highlights/Triggers regex validated
+    via QRegularExpression::isValid() + AuditEngine::
+    isCatastrophicRegex() at save; AI key field gains
+    Qt::ImhSensitiveData | ImhHiddenText | ImhNoAutoUppercase |
+    ImhNoPredictiveText.
+  * ANTS-1184 — SecretRedact extended with Google API-key
+    (AIza…, 39 chars) and OAuth-token (ya29.…) shapes.
+  * ANTS-1163 — Task List dialog no longer shows stale tasks from
+    a prior session. Root cause: sessionPathForCwd picked the
+    newest .jsonl by mtime alone; after a reboot → claude
+    sequence the prior transcript outranked the new (empty) one.
+    Fix is two-layered: process-anchored identity filter (drops
+    candidates predating the focused tab's m_claudePid start by
+    >5 s) plus a 24 h liveness floor.
+  * ANTS-1165 — default next_bookmark / prev_bookmark chord moved
+    to Ctrl+Alt+Up/Down (the prior Ctrl+Shift+Up/Down collided
+    with OSC 133 prompt-navigation, which TerminalWidget::
+    keyPressEvent intercepts before Qt dispatches QShortcuts).
+  * ANTS-1167 — Pty::start no longer silently falls through if
+    F_GETFL / F_SETFL fails (a still-blocking master fd would
+    freeze the GUI thread inside read()); failure now logs and
+    aborts start().
+  * ANTS-1168 — dialog-staleness sweep across 7 cached dialogs
+    (SshDialog, AiDialog, ClaudeAllowlistDialog,
+    ClaudeProjectsDialog, ClaudeTranscriptDialog,
+    pollClaudeProcess second site, setShellPid not clearing
+    m_changedFiles) — same shape as ANTS-1163, surfaced by three
+    independent reviewers.
+  * ANTS-1171 — CLAUDE.md audit pipeline-order documented to
+    match handleCheckOutput reality (filter-then-cap; capping
+    first would surface junk findings while real ones get pushed
+    out behind).
+  * ANTS-1173 — PluginManager::unloadAll snapshots m_engines.
+    values() before iteration, closing a deterministic UAF window
+    in dev/hot-reload mode (an unload handler re-entering the
+    event loop could dereference an already-deleteLater'd engine).
+  * ANTS-1174 — replaced 3 std::make_shared<QMetaObject::
+    Connection> self-disconnect patterns with
+    Qt::SingleShotConnection (Qt 6.0+); new m_paletteProxyHolder
+    stops proxy QActions accumulating across plugin reloads.
+  * ANTS-1175 — parent environ exceeding kEnvpCap=512 now emits a
+    qWarning (silent root of "ants sometimes opens a shell with no
+    PATH" on 500+-entry desktop sessions); new childUnreapedAtEof
+    signal disambiguates "child closed PTY but waitpid hasn't
+    reaped" from "child exited with -1, reaped".
+  * ANTS-1177 — ANTS-1116 INV-6 spec/code reconciliation: spec
+    dropped the literal signal number from "drift script killed
+    by signal" since QProcess::exitStatus's exit code is
+    unspecified on CrashExit per Qt 6 docs.
+  * ANTS-1179 — setRoadmapActivePreset / setRoadmapKindFilters
+    reject unknowns at write (mirroring the getter's known-set
+    filter); failed user-theme JSON files rotate to <name>.json.
+    corrupt.<epoch>.
+  * ANTS-1176 — remote-control observability: per-verb structured
+    ANTS_LOG(Network, "rc dispatch cmd=%s tab=%d text_bytes=%d",
+    ...) on every dispatch. Payload bodies deliberately excluded.
+  * ANTS-1180 — paintEvent fillRect coalescing: contiguous same-bg
+    cells produce one fillRect per run; fully-styled vim status
+    lines now scale with run count, not cell count.
+  * ANTS-1182 — replaced 12 findChildren<TerminalWidget*>() walks
+    in mainwindow.cpp with liveTerminals() over a maintained
+    QList<QPointer<TerminalWidget>> (hottest path: broadcast-mode
+    keystroke lambda under 20 tabs × split panes).
+  * ANTS-1183 — config.json schema versioning: new _schema: 1
+    stamp + migrate(int from, int to) placeholder; pre-stamp
+    configs (≤ 0.7.77) read as v0 and migrate-up on first load.
+  * ANTS-1185 — tab tooltips now read "Claude: <state>" so AT-SPI
+    / Orca / Narrator can announce per-tab Claude state alongside
+    the title.
+  * 137/137 ctests pass; gitleaks 0; semgrep 0.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 08 May 2026 00:00:00 +0000
+
 ants-terminal (0.7.77-1) unstable; urgency=medium
 
   * ANTS-1158 — Claude Code task-list status-bar widget + dialog.

@@ -12,44 +12,201 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.78] — 2026-05-08
+
+**Theme:** independent-review sweep #2 — pre-0.8.0 audit + multi-
+agent code review, briefed cold against external standards
+(ECMA-48, xterm ctlseqs, OWASP LLM Top 10, POSIX `forkpty(3)`,
+SARIF v2.1.0, Lua 5.4 sandbox, RFC 8259, freedesktop). The
+review surfaced 4 calibrated CRITICAL + 22 HIGH after threat-
+model calibration; this release ships 22 of 23 (ANTS-1181 — a
+1500-LoC `mainwindow.cpp` carve-out — deferred to its own
+session). Headline pattern: ANTS-1163's just-fixed dialog-
+staleness bug recurred in 5+ more cached dialogs, exactly the
+"self-graded homework" trap that motivated the sweep — bundled
+into ANTS-1168 + a structural lint guard. Plus the rolled-over
+ANTS-1163 fix from 2026-05-07. 137/137 ctests, gitleaks 0,
+semgrep 0.
+
+### Security
+
+- **ANTS-1164 — PTY-write debug log leaked keystrokes / paste
+  payloads.** `Pty::write` logged a 60-byte percent-encoded
+  preview when `ANTS_DEBUG=pty` was active, with NO redaction.
+  Short tokens (`ghp_…`, `AKIA…`, sub-60-char passwords pasted
+  at `sudo`) landed verbatim in `~/.local/share/ants-terminal/
+  debug.log`. Fix: route the slice through `SecretRedact::
+  scrub()` before percent-encoding. Pairs with ANTS-1170.
+- **ANTS-1166 — Kitty `a=d,d=a` wiped Sixel + iTerm2 images
+  cross-protocol.** Kitty's "delete all images" cleared the
+  shared `m_inlineImages` vector, erasing every Sixel and
+  iTerm2 image the terminal had displayed. Exploitable from
+  untrusted PTY output as cross-protocol visual-context
+  redaction. New `InlineImage::Origin` enum; delete-all now
+  removes only Kitty-tagged entries via `std::remove_if` +
+  `recomputeImageBudget`.
+- **ANTS-1169 — Boundary-cap audit (8 sites).** Every
+  untrusted-input crossing now has an explicit max-size +
+  shape gate: `tailFile` canonicalizes against
+  `/tmp/claude-$UID/` + `lstat S_ISREG` (LLM01-reachable);
+  6 path setters reject >4096 chars or NUL-embedded;
+  `setBackgroundImage` peeks via `QImageReader::size()` against
+  `MAX_IMAGE_DIM=4096` (was vulnerable to a 50000×50000 PNG →
+  ~10 GB alloc); Kitty APC `c`/`r` clamped to `MAX_IMAGE_DIM`;
+  OSC 8 trigger URI capped at 4096 chars; `parseTranscriptTail`
+  falls back to last-complete-record on the 4 MiB cap instead
+  of returning empty; `runClient` 1 MiB receive cap mirrors
+  server; `--remote send-text` 1 MiB stdin cap. `MAX_IMAGE_DIM`
+  promoted to a public static so non-grid intake paths share it.
+- **ANTS-1170 — `ANTS_DEBUG` opt-in gate + log rotation.**
+  Honoring `ANTS_DEBUG` now prints a one-line stderr banner
+  (`"Ants: debug log active (ANTS_DEBUG=…) → /path"`) so a
+  forgotten env var inherited from a CI image / `.envrc` is
+  visible at startup. `debug.log` rotates to `debug.log.1`
+  when it exceeds 10 MiB, preventing unbounded secret-capture
+  across multi-day forgotten sessions.
+- **ANTS-1172 — Lua C-call wall-clock watchdog (un-defer
+  ANTS-1143).** `LUA_MASKCOUNT`-only doesn't fire inside pure-C
+  Lua calls (`string.gsub`, `table.sort`); a plugin author
+  feeding PTY output into `data:gsub("(.-)+", …)` could freeze
+  the UI. New `startPcallBudget()` sets a 1500 ms wall-clock
+  deadline; the hook now combines `LUA_MASKLINE | LUA_MASKCOUNT`
+  @ 100K ops with a deadline check on every callback. Closes
+  the only documented Lua sandbox-escape path.
+- **ANTS-1178 — SettingsDialog regex validation + AI key Imh
+  hints.** Highlights/Triggers patterns now go through
+  `QRegularExpression::isValid()` + `AuditEngine::
+  isCatastrophicRegex()` at save (catastrophic patterns silently
+  dropped). AI key field gains `Qt::ImhSensitiveData |
+  ImhHiddenText | ImhNoAutoUppercase | ImhNoPredictiveText`
+  so virtual-keyboard / IME predictive caches don't capture
+  the value.
+- **ANTS-1184 — SecretRedact extended with Google shapes.**
+  Added rules for `AIza…` (Google API keys, 39 chars) and
+  `ya29.…` (Google OAuth tokens). Closes a known gap in the
+  AI-context redaction pass.
+
 ### Fixed
 
 - **ANTS-1163 — Task List dialog showed tasks from a previous
   Claude Code session after a fresh launch.** User report
   2026-05-07: *"there is still this task list even though I
-  rebooted and just started up a new Claude Code session."* Root
-  cause: `ClaudeIntegration::sessionPathForCwd` picked the newest
-  `.jsonl` in `~/.claude/projects/<encoded-cwd>/` by **mtime
-  alone**. After a `reboot → claude` sequence, the prior
-  session's transcript outranked the new (empty) transcript
-  until the new session appended its first event — surfacing
-  the prior plan's TodoWrite tasks in the chip and dialog.
-  `/clear` was a no-op because the bug lived in file selection,
-  not in tracker state. Fix is two-layered: (a) **process-anchored
-  identity filter** — when the focused tab's `m_claudePid` is
-  known, candidates whose effective last-event ms predates the
-  Claude Code process start by more than 5 s are dropped; (b)
-  **24 h liveness floor** — independent of (a), candidates
-  whose effective last-event ms is older than 24 h are dropped,
-  defending against the early-startup race where `m_claudePid`
-  is briefly 0. "Effective last-event ms" reads the last ISO
-  8601 `timestamp` from the JSONL tail (32 KB window, walks past
-  trailing metadata events like `last-prompt`/`permission-mode`)
-  and falls back to file mtime when no timestamped event exists.
-  New static helpers `processStartTimeMs(pid)` (parses
-  `/proc/<pid>/stat` field 22 + `/proc/stat` `btime`) and
+  rebooted and just started up a new Claude Code session."*
+  Root cause: `ClaudeIntegration::sessionPathForCwd` picked the
+  newest `.jsonl` in `~/.claude/projects/<encoded-cwd>/` by
+  **mtime alone**. After a `reboot → claude` sequence, the
+  prior session's transcript outranked the new (empty)
+  transcript until the new session appended its first event —
+  surfacing the prior plan's TodoWrite tasks in the chip and
+  dialog. `/clear` was a no-op because the bug lived in file
+  selection, not in tracker state. Fix is two-layered: (a)
+  **process-anchored identity filter** — when the focused tab's
+  `m_claudePid` is known, candidates whose effective last-event
+  ms predates the Claude Code process start by more than 5 s
+  are dropped; (b) **24 h liveness floor** — independent of (a),
+  candidates whose effective last-event ms is older than 24 h
+  are dropped. New static helpers `processStartTimeMs(pid)` +
   `lastEventTimestampMs(path)`; new overload
   `sessionPathForCwd(cwd, minLastEventMs, nowMs)` with default
-  args preserving legacy newest-by-mtime behaviour for callers
-  that don't have a process boundary. `activeSessionPath` and
-  `ClaudeTabTracker`'s per-tab transcript bind both thread the
-  filter. Note for future maintenance: `QFile::atEnd()` returns
-  `true` immediately for `/proc/stat` because the kernel reports
-  `size() == 0` — `readAll()` plus `split('\n')` is the only
-  reliable way to read /proc text files; the per-line
-  `readLine()` loop pattern silently no-ops. New feature test
-  `claude_session_freshness` (16 INVs) covers both filter
-  layers, the metadata-only fallback, and the wiring.
+  args preserving legacy newest-by-mtime behaviour. New feature
+  test `claude_session_freshness` (16 INVs).
+- **ANTS-1165 — `Ctrl+Shift+Up/Down` configured bookmark
+  shortcut silently dead.** Default `next_bookmark` /
+  `prev_bookmark` chord collided with the OSC 133 prompt-
+  navigation chord that `TerminalWidget::keyPressEvent`
+  intercepts before Qt dispatches QShortcuts; the bookmark
+  shortcut never fired whenever the terminal had focus. Default
+  changed to `Ctrl+Alt+Up/Down`.
+- **ANTS-1167 — `forkpty` F_SETFL silent fall-through.** If
+  `F_GETFL` or `F_SETFL` failed, `Pty::start` swallowed the
+  error and continued with a still-blocking master fd; a
+  spurious `QSocketNotifier` wakeup would freeze the GUI thread
+  inside `read()`. The failure path now logs and aborts
+  `start()`.
+- **ANTS-1168 — Dialog-staleness sweep across 7 cached dialogs
+  (ANTS-1163 family).** Three independent reviewers identified
+  the same shape recurring in: `SshDialog` form fields (added
+  `clearForm()` called on `setBookmarks`); `AiDialog` last-
+  error / in-flight reply (new `resetTransient()`);
+  `ClaudeAllowlistDialog` rule input + validation hint;
+  `ClaudeProjectsDialog` first-show-not-refreshed (now
+  unconditional); `ClaudeTranscriptDialog` showing global
+  newest-by-mtime regardless of focused tab (new
+  `setProjectFilter` + `recentSessionsForCwd`);
+  `pollClaudeProcess` second site of unscoped global newest-
+  by-mtime (now scoped via `/proc/<shellPid>/cwd` →
+  `sessionPathForCwd`); `setShellPid` not clearing
+  `m_changedFiles` on PID change.
+- **ANTS-1171 — Audit pipeline-order spec/code drift fixed in
+  CLAUDE.md.** Documented order updated to match the actual
+  `handleCheckOutput` reality (filter-then-cap; capping first
+  would surface junk findings while real ones get pushed out
+  behind).
+- **ANTS-1173 — `PluginManager::unloadAll` snapshot before
+  iteration.** Pre-fix code didn't snapshot `m_engines.values()`,
+  unlike `fireEvent`. An `unload` handler that re-entered the
+  event loop (status signal → palette repaint → keypress →
+  fireEvent) could dereference an already-`deleteLater`'d
+  engine — deterministic UAF window in dev/hot-reload mode.
+- **ANTS-1174 — Mainwindow lifetime hygiene.** Replaced 3
+  `std::make_shared<QMetaObject::Connection>` self-disconnect
+  patterns with `Qt::SingleShotConnection` (Qt 6.0+). Added a
+  transient `m_paletteProxyHolder` that gets replaced on every
+  `rebuildCommandPalette()` so proxy `QAction`s no longer
+  accumulate as orphans on the MainWindow's child list across
+  plugin reloads / config refreshes.
+- **ANTS-1175 — PTY robustness: envp truncation log + new EOF
+  signal.** Parent environ exceeding `kEnvpCap=512` now emits
+  a `qWarning` (was the silent root of the user-reported "ants
+  sometimes opens a shell with no PATH" symptom on
+  500+-entry desktop sessions). New `childUnreapedAtEof`
+  signal disambiguates "child closed PTY but waitpid hasn't
+  reaped" from "child exited with -1, reaped"; legacy
+  `finished(-1)` continues to fire on the same code path.
+- **ANTS-1177 — ANTS-1116 INV-6 spec/code reconciliation.**
+  Spec dropped the literal signal number from the
+  `"drift script killed by signal"` error message;
+  `QProcess::exitStatus`'s exit code is unspecified on
+  `CrashExit` per Qt 6 docs.
+- **ANTS-1179 — Config robustness: setter validation + theme
+  parse-failure rotation.** `setRoadmapActivePreset` and
+  `setRoadmapKindFilters` now reject unknowns at write
+  (mirroring the getter's known-set filter), so future preset
+  renames don't leave zombie values stranded on disk. Failed
+  user-theme JSON files are rotated to `<name>.json.corrupt.
+  <epoch>` so the user has a forensic copy on disk and the
+  next launch doesn't keep silently skipping it.
+
+### Changed
+
+- **ANTS-1176 — Remote-control observability.** Per-verb
+  structured `ANTS_LOG(Network, "rc dispatch cmd=%s tab=%d
+  text_bytes=%d", …)` on every dispatch. Same-UID-attack
+  post-mortem now has a record. Payload bodies deliberately
+  excluded.
+- **ANTS-1180 — paintEvent `fillRect` coalescing.** Contiguous
+  same-bg cells now produce one `fillRect` per run, mirroring
+  the existing `TextRun` aggregation. Fully-styled vim status
+  lines previously paid `cols × per-frame` fillRect calls;
+  hot-path frames now scale with run count, not cell count.
+- **ANTS-1182 — `findChildren<TerminalWidget*>()` walks
+  collapsed.** Replaced 12 sites in `mainwindow.cpp` with
+  `liveTerminals()` over a maintained `QList<QPointer<
+  TerminalWidget>>`. The hottest path was the broadcast-mode
+  keystroke lambda — under 20 tabs × split panes that previously
+  triggered a tree walk per keystroke.
+- **ANTS-1183 — `config.json` schema versioning.** New
+  `_schema: 1` stamp + `migrate(int from, int to)` placeholder
+  so future on-disk renames have a canonical home. Pre-stamp
+  configs (anything written by ≤ 0.7.77) read as v0 and
+  migrate-up on first load.
+- **ANTS-1185 — Tab a11y: per-tab Claude state exposed to
+  AT-SPI / screen readers.** Tab tooltips now read
+  `"Claude: <state>"` (idle / thinking / tool use / bash /
+  planning / auditing / compacting / awaiting input) so Orca
+  / Windows Narrator can announce state alongside the tab
+  title. The visual dot was previously invisible to assistive
+  surfaces.
 
 ## [0.7.77] — 2026-05-02
 
