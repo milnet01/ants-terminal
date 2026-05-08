@@ -992,6 +992,16 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
             QString runText = QString::fromUcs4(run.codepoints.data(),
                                                 static_cast<int>(run.codepoints.size()));
+            // ANTS-1205 — m_paintLayout is reused across runs and
+            // across paint events. setText() resets the layout's
+            // glyph state but not its additional-format ranges.
+            // Today no caller installs formats (so this is a no-op
+            // in practice), but any future addition that calls
+            // setFormats({...}) once would leak that formatting
+            // into every subsequent run for the lifetime of the
+            // widget. Defensive clear here pre-empts that class
+            // of bug invisible to tests. Indie-review #3 Lane C H2.
+            m_paintLayout.clearFormats();
             m_paintLayout.setText(runText);
             if (drawFont != lastFont) {
                 m_paintLayout.setFont(*drawFont);
