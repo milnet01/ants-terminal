@@ -868,10 +868,13 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         }
         break;
     }
-    // SECURITY: CSI 20t/21t (XTWINOPS title reporting) intentionally NOT implemented.
-    // Reporting the window title allows escape-sequence injection attacks
-    // (CVE-2024-56803, CVE-2003-0063).  Similarly, DECRQSS (DCS $q) is not
-    // implemented to prevent echoing attacker-controlled data.
+    // SECURITY: CSI 20t/21t (XTWINOPS title reporting) intentionally NOT
+    // implemented. Reporting the window title allows escape-sequence
+    // injection attacks (CVE-2024-56803, CVE-2003-0063). DECRQSS (DCS $q)
+    // IS implemented in handleDcs (ANTS-1213 doc-fix 2026-05-08); its
+    // replies are terminal-controlled (DECSTBM `r`, SGR `m`, DECSCA `" q`,
+    // DECSCUSR `SP q`) and don't echo attacker-supplied bytes, so the
+    // CVE-2003-0063 echo-back class doesn't apply.
 }
 
 void TerminalGrid::handleEsc(const VtAction &a) {
