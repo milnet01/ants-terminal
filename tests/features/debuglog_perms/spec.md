@@ -45,10 +45,15 @@ After the first `DebugLog::setActive(<any non-zero mask>)` call,
 `stat(debug.log).st_mode & 0777 == 0600`, even when the process
 umask is 0022 at the moment of open.
 
-### Invariant 2 — re-open preserves 0600
+### Invariant 2 — clear keeps logging open at 0600
 
-If `DebugLog::clear()` is called (which closes + removes the file)
-and `setActive` is called again, the new file also lands 0600.
+If `DebugLog::clear()` is called while at least one category is
+active, it closes the file, removes it, and immediately reopens it
+empty. The reopened file lands at 0600. (ANTS-1190 — pre-1190
+behaviour was "remove and leave closed", which silently dropped
+every subsequent log line until the user toggled a category off
+and on. The fix routes `clear()` through the same
+`openLogFileLocked()` helper as `setActive()`.)
 
 ### Invariant 3 — pre-existing wider perms are narrowed
 

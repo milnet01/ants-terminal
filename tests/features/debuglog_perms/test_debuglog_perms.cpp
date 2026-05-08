@@ -70,16 +70,28 @@ void runRuntimeChecks() {
            QStringLiteral("expected 0600, got 0%1")
                .arg(mode, 4, 8, QLatin1Char('0')));
 
-    // Invariant 2 — clear + re-open stays 0600.
+    // Invariant 2 — clear() keeps logging open at 0600 (ANTS-1190).
+    // Pre-ANTS-1190, clear() only removed the file and left the
+    // handle closed, silently dropping every subsequent log line.
+    // The fix routes clear() through the same open-helper as
+    // setActive(), so the file is recreated immediately.
     DebugLog::clear();
-    expect(!QFileInfo::exists(expected),
-           "I2/precondition-file-gone-after-clear");
-    DebugLog::setActive(DebugLog::Events);
     expect(QFileInfo::exists(expected),
-           "I2/file-recreated-on-reactivate");
+           "I2/file-still-open-after-clear");
     mode = statMode(expected);
     expect(mode == 0600,
-           "I2/reopen-perms-are-0600",
+           "I2/clear-reopen-perms-are-0600",
+           QStringLiteral("expected 0600, got 0%1")
+               .arg(mode, 4, 8, QLatin1Char('0')));
+    // setActive again is idempotent — file is already open. Run it
+    // anyway to assert that the perms hold across a setActive call
+    // following a clear-while-active.
+    DebugLog::setActive(DebugLog::Events);
+    expect(QFileInfo::exists(expected),
+           "I2/file-stays-after-reactivate");
+    mode = statMode(expected);
+    expect(mode == 0600,
+           "I2/reactivate-perms-still-0600",
            QStringLiteral("expected 0600, got 0%1")
                .arg(mode, 4, 8, QLatin1Char('0')));
 

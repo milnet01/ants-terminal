@@ -399,6 +399,29 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # scroll_region_growth_on_resize — pins the "default scroll
+    # region grows / shrinks with the grid on resize" contract
+    # that ANTS-1130's clamp-only path silently broke. Driven by
+    # user report 2026-05-08 (output piles into upper rows after
+    # window-grow). Closes ANTS-1187 / ANTS-1193 / ANTS-1194.
+    add_executable(test_scroll_region_growth
+        tests/features/scroll_region_growth_on_resize/test_scroll_region_growth.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_scroll_region_growth PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_scroll_region_growth PRIVATE src)
+    target_compile_options(test_scroll_region_growth PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME scroll_region_growth COMMAND test_scroll_region_growth)
+    set_tests_properties(scroll_region_growth PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # sgr_attribute_reset — asserts every SGR set/reset pair (bold, italic,
     # underline, inverse, strikethrough) + SGR 0 full-reset correctly clear
     # the cell attribute on subsequent writes. See

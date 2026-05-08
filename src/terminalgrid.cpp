@@ -2187,6 +2187,20 @@ void TerminalGrid::clearScreenContent() {
 void TerminalGrid::resize(int rows, int cols) {
     if (rows == m_rows && cols == m_cols) return;
 
+    // ANTS-1194 — capture "scroll region was at full screen" before any
+    // mutation. If yes, the resize must EXPAND/contract the region with
+    // the grid (the user's mental model: "no scroll region set"). If no,
+    // it's an explicit DECSTBM and resize must preserve / clamp it (the
+    // ANTS-1130 contract). Mixing the two is what produced the user-
+    // reported "output piles into upper rows after maximizing the
+    // window" symptom: tab opened at 24 rows → m_scrollBottom=23 →
+    // window grew to 60 rows → clamp(23, 0, 59) = 23 → bottom 36 rows
+    // stayed empty until DECSTBM/RIS/manual reset.
+    const bool primaryWasFullScreen =
+        (m_scrollTop == 0 && m_scrollBottom == m_rows - 1);
+    const bool altWasFullScreen =
+        (m_altScrollTop == 0 && m_altScrollBottom == m_rows - 1);
+
     // A "logical line" is a join of all cells from one or more soft-wrapped
     // lines, plus a parallel combining map keyed by position-in-the-join.
     struct LogicalLine {
@@ -2429,21 +2443,35 @@ void TerminalGrid::resize(int rows, int cols) {
 
     m_rows = rows;
     m_cols = cols;
-    // ANTS-1130 — preserve DECSTBM state across resize. Pre-fix
-    // behaviour was `m_scrollBottom = m_rows - 1; m_scrollTop = 0;`
-    // which destroyed any TUI's scroll region on every window
-    // resize (tmux split panes, less with status line, mc, etc.
-    // all lost their scroll regions). Per xterm: clamp top/bottom
-    // to the new row range; if the user shrinks below the
-    // previous bottom, bottom is clamped — top is preserved.
-    // Same fix applied to alt scroll-region (the alt path was
-    // never clamped at all — could leave m_altScrollBottom
-    // > m_rows-1 → next scrollUp reads OOB on m_screenLines
-    // after exit-from-alt → UB → crash).
-    m_scrollTop = std::clamp(m_scrollTop, 0, m_rows - 1);
-    m_scrollBottom = std::clamp(m_scrollBottom, m_scrollTop, m_rows - 1);
-    m_altScrollTop = std::clamp(m_altScrollTop, 0, m_rows - 1);
-    m_altScrollBottom = std::clamp(m_altScrollBottom, m_altScrollTop, m_rows - 1);
+    // ANTS-1130 — preserve DECSTBM state across resize for the explicit
+    // case (TUI set a partial scroll region: tmux splits, less with
+    // status line, mc): clamp top/bottom to the new row range.
+    //
+    // ANTS-1194 — for the implicit case (no DECSTBM ever set, or
+    // DECSTBM matches the full screen), grow/shrink the region with
+    // the grid. Pre-1194 code only clamped, which silently broke
+    // window-grow: tab at 24 rows → bottom=23 → grow to 60 rows →
+    // clamp(23,0,59)=23 → output piled into top 24 rows, bottom 36
+    // stayed empty. Snapshot of "was full-screen" was captured at
+    // function entry (before any mutation).
+    if (primaryWasFullScreen) {
+        m_scrollTop = 0;
+        m_scrollBottom = m_rows - 1;
+    } else {
+        m_scrollTop = std::clamp(m_scrollTop, 0, m_rows - 1);
+        m_scrollBottom = std::clamp(m_scrollBottom, m_scrollTop, m_rows - 1);
+    }
+    if (altWasFullScreen) {
+        m_altScrollTop = 0;
+        m_altScrollBottom = m_rows - 1;
+    } else {
+        // Same fix as primary, but on alt scroll-region. Pre-1130 the
+        // alt path was never clamped at all — could leave
+        // m_altScrollBottom > m_rows-1 → next scrollUp reads OOB on
+        // m_screenLines after exit-from-alt → UB → crash.
+        m_altScrollTop = std::clamp(m_altScrollTop, 0, m_rows - 1);
+        m_altScrollBottom = std::clamp(m_altScrollBottom, m_altScrollTop, m_rows - 1);
+    }
     // Pool entries are sized to the old m_cols; invalidate after resize.
     m_freeCellBuffers.clear();
     m_cursorRow = std::clamp(m_cursorRow, 0, m_rows - 1);

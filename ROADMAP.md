@@ -5762,10 +5762,19 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Paint pipeline — cell mutations don't trigger viewport repaint (user reports 2026-05-07/08)
 
-- 📋 [ANTS-1193] **`TerminalWidget` viewport doesn't repaint when
+- ✅ [ANTS-1193] **`TerminalWidget` viewport doesn't repaint when
   `onVtBatch` mutates cells, even though `update()` is called.**
-  CONSOLIDATED ROOT CAUSE for ANTS-1187 (Flask "bottom rows blank"
-  symptom) + ANTS-1188 (Claude Code spinner duplicates in
+  Closed 2026-05-08 — the umbrella was misdiagnosed. The actual
+  root cause was ANTS-1194 (TerminalGrid::resize() only clamped
+  the scroll region, never widened on grow). With the scroll
+  region permanently capped at the original tab's row count,
+  `onVtBatch` correctly mutated cells but only inside rows
+  0..oldRows-1; rows below stayed empty until DECSTBM reset.
+  Paint pipeline was innocent. **Original investigation notes
+  retained below for the audit trail.**
+
+  CONSOLIDATED SYMPTOM CLUSTER for ANTS-1187 (Flask "bottom rows
+  blank") + ANTS-1188 (Claude Code spinner duplicates in
   scrollback). Discovered 2026-05-08 via fresh-tab test
   (ANTS-1187 follow-up): symptom reproduces in a brand-new tab
   with no prior commands, ruling out prior-tab-state. Tools →
@@ -5862,6 +5871,63 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: fix. Source: user-2026-05-07 (ANTS-1187 origin),
   user-2026-05-08 (paint-pipeline finding). Lanes:
   terminalwidget (paintEvent + onVtBatch + snapshot lifecycle).
+
+### 🐛 TerminalGrid::resize — default scroll region doesn't grow with grid (user report 2026-05-08, ANTS-1187/1193 root cause)
+
+- ✅ [ANTS-1194] **`TerminalGrid::resize()` only clamped the scroll
+  region; never widened it on grow.** Shipped 2026-05-08.
+  User-reported symptom: tab opens at 24×80 default → user
+  maximizes window to (e.g.) 60 rows → `m_scrollBottom` stays at
+  23 because `std::clamp(23, 0, 59) == 23`. Output piles into
+  rows 0–23, bottom 36 rows stay empty until manual DECSTBM/RIS.
+  This is the **actual root cause** for ANTS-1187 (Flask "bottom
+  rows blank"), ANTS-1193 (paint-pipeline umbrella, mis-
+  diagnosed), and likely ANTS-1188 (Claude Code spinner
+  duplication — same scroll-region-too-small mechanism applied
+  to a smaller mutation surface).
+
+  The ANTS-1130 fix that introduced the clamp was correct for
+  shrink (preserves explicit DECSTBM from tmux splits / mc / less
+  with status line) but silently wrong for grow when no DECSTBM
+  was ever set. Per xterm: at "full screen" (default), the
+  scroll region tracks the screen on resize; at "explicit
+  partial", it's preserved as much as possible.
+
+  **Layman:** when you opened a terminal window at default size
+  and then maximized it, output kept piling into the original
+  smaller area instead of using the full window. Now the
+  terminal grows the writable region with the window.
+
+  **Fix:** capture `primaryWasFullScreen` and `altWasFullScreen`
+  snapshots at function entry (BEFORE `m_rows` mutates). In the
+  post-mutation block, conditionally widen on full-screen, clamp
+  on explicit partial. Same shape applied to the alt scroll-
+  region for symmetry.
+
+  **Test:** `tests/features/scroll_region_growth_on_resize/` —
+  7 invariants (default-grow, default-shrink, explicit-preserved-
+  on-grow, explicit-clamped-on-shrink-below-bottom, alt-default-
+  grows, alt-explicit-preserved, sequential grow/shrink). Verified
+  fails 5/7 against pre-1194 code.
+
+  **Also fixed in same commit:** `tests/features/debuglog_perms/`
+  was failing post-ANTS-1190 because its I2 invariant still
+  asserted "file gone after clear()" — the ANTS-1190 fix made
+  `clear()` reopen the file (so subsequent writes hit a real
+  file). Slipped through because ANTS-1190 was shipped without
+  the full features sweep. Spec + test updated to reflect the
+  ANTS-1190 contract.
+
+  Cross-reference: this closes ANTS-1187, ANTS-1193, and likely
+  ANTS-1188 (will confirm post-relaunch). The original ANTS-1187
+  user-facing escape hatch (Tools → Reset Scroll Region) stays —
+  it's still useful for the "TUI app set DECSTBM and exited
+  without resetting" case which is genuinely a separate bug
+  shape.
+
+  Kind: fix. Source: user-2026-05-08. Lanes: terminalgrid
+  (resize scroll-region semantics), tests (7-INV growth contract,
+  debuglog_perms post-1190 catch-up).
 
 ---
 
