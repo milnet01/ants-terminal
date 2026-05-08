@@ -114,6 +114,13 @@ TerminalGrid::TerminalGrid(int rows, int cols)
 {
     initPalette();
     m_scrollBottom = m_rows - 1;
+    // ANTS-1204 — symmetry with primary: alt scroll-region defaults
+    // are also "full screen" so any code that consults the alt slots
+    // outside an active alt-session doesn't read 0/0 (the m_alt*
+    // members keep their header defaults of 0/0 until first alt-
+    // entry overwrites them — pre-fix any future caller reading
+    // alt members as a snapshot would see uninitialized values).
+    m_altScrollBottom = m_rows - 1;
     m_currentAttrs.fg = m_defaultFg;
     m_currentAttrs.bg = m_defaultBg;
     m_screenLines.resize(m_rows);
@@ -2239,9 +2246,19 @@ void TerminalGrid::resize(int rows, int cols) {
     // window" symptom: tab opened at 24 rows → m_scrollBottom=23 →
     // window grew to 60 rows → clamp(23, 0, 59) = 23 → bottom 36 rows
     // stayed empty until DECSTBM/RIS/manual reset.
-    const bool primaryWasFullScreen =
+    //
+    // ANTS-1204 (indie-review #3 Lane A M1) — naming: m_scrollTop /
+    // m_scrollBottom are LIVE values (whichever buffer is active);
+    // m_altScrollTop / m_altScrollBottom are SAVED values for the
+    // OTHER buffer (set on alt-screen entry at handleCsi:632-633 from
+    // the primary's region; restored on exit at :704-705). So during
+    // alt-screen mode "live" = alt's region and "saved" = primary's
+    // region; during primary mode it's the reverse. The conditional-
+    // widen logic applies the same way to whichever pair is "live"
+    // (auto-grow if user hadn't carved out an explicit DECSTBM).
+    const bool liveWasFullScreen =
         (m_scrollTop == 0 && m_scrollBottom == m_rows - 1);
-    const bool altWasFullScreen =
+    const bool savedWasFullScreen =
         (m_altScrollTop == 0 && m_altScrollBottom == m_rows - 1);
 
     // A "logical line" is a join of all cells from one or more soft-wrapped
@@ -2497,14 +2514,14 @@ void TerminalGrid::resize(int rows, int cols) {
     // clamp(23,0,59)=23 → output piled into top 24 rows, bottom 36
     // stayed empty. Snapshot of "was full-screen" was captured at
     // function entry (before any mutation).
-    if (primaryWasFullScreen) {
+    if (liveWasFullScreen) {
         m_scrollTop = 0;
         m_scrollBottom = m_rows - 1;
     } else {
         m_scrollTop = std::clamp(m_scrollTop, 0, m_rows - 1);
         m_scrollBottom = std::clamp(m_scrollBottom, m_scrollTop, m_rows - 1);
     }
-    if (altWasFullScreen) {
+    if (savedWasFullScreen) {
         m_altScrollTop = 0;
         m_altScrollBottom = m_rows - 1;
     } else {
