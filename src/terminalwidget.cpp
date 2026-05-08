@@ -1071,7 +1071,14 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             m_paintLayout.beginLayout();
             QTextLine tline = m_paintLayout.createLine();
             if (tline.isValid()) {
-                tline.setLineWidth(runText.length() * m_cellWidth * 2);
+                // ANTS-1211 — pre-fix used `runText.length() * m_cellWidth * 2`
+                // which conflates UTF-16 code units with glyph cells (CJK is 1
+                // unit / 2 cells; emoji surrogate pair is 2 units / 1 cell)
+                // and overshoots for ASCII. The * 2 was a fudge to mask both.
+                // Setting to qreal max-int directly says "do not break this
+                // run on width" — which is what monospace cell-grid rendering
+                // wants regardless of run length.
+                tline.setLineWidth(static_cast<qreal>(INT_MAX));
                 tline.setPosition(QPointF(0, 0));
             }
             m_paintLayout.endLayout();
@@ -4968,6 +4975,15 @@ void TerminalWidget::updateSuggestion() {
 void TerminalWidget::setFontFamily(const QString &family) {
     if (family.isEmpty()) return;
     m_font.setFamily(family);
+    // ANTS-1211 — propagating to the 3 styled variants matches the
+    // user mental model "I picked one font for everything." If the
+    // user has previously customized per-style families via
+    // setBoldFontFamily / setItalicFontFamily / setBoldItalicFontFamily,
+    // those are silently dropped here (and will be re-derived from the
+    // new base inside updateFontMetrics(): m_fontBold = m_font +
+    // setBold). UI ordering: callers that want both base + per-style
+    // customization MUST call setFontFamily FIRST, then the per-style
+    // setters. Reverse order silently loses the per-style overrides.
     m_fontBold.setFamily(family);
     m_fontItalic.setFamily(family);
     m_fontBoldItalic.setFamily(family);
