@@ -234,6 +234,13 @@ public:
 
     // Synchronized output
     bool synchronizedOutput() const { return m_synchronizedOutput; }
+    // ANTS-1200 — force-clear the DEC mode 2026 BSU/ESU latch from
+    // outside the grid. Called by the widget's sync-output safety
+    // timer when a BSU has held for >500 ms with no ESU; without
+    // this, the next batch's pre-scan re-arms `m_syncOutputActive`
+    // (because the grid latch is still set) and the timer fires
+    // again ad infinitum, producing a 500-ms flicker loop.
+    void forceClearSynchronizedOutput() { m_synchronizedOutput = false; }
 
     // Alt screen active (vim, htop, etc.)
     bool altScreenActive() const { return m_altScreenActive; }

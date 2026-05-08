@@ -176,6 +176,14 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
             if (m_scrollOffset == 0 && !m_frozenScreenRows.empty()) {
                 clearScreenSnapshot();
             }
+            // ANTS-1200 — also force-clear the grid's BSU latch.
+            // Without this, next batch's pre-scan re-reads
+            // `m_grid->synchronizedOutput()==true` (latch never
+            // got ESU), re-arms m_syncOutputActive, restarts
+            // this timer → 500 ms flicker loop forever.
+            if (m_grid && m_grid->synchronizedOutput()) {
+                m_grid->forceClearSynchronizedOutput();
+            }
             update();
         }
     });
