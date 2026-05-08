@@ -5931,6 +5931,239 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ---
 
+## 0.7.79 — scoped indie-review #3 on TerminalGrid + TerminalWidget — 2026-05-08
+
+**Theme:** post-ANTS-1194 sanity sweep on `src/terminalgrid.cpp` (3003 LoC)
++ `src/terminalwidget.cpp` (5237 LoC) using `/indie-review` with 4 parallel
+lanes: A=resize/scroll-region (recently-changed), B=VT action processor,
+C=paint pipeline + onVtBatch + snapshot lifecycle, D=text shaping + glyph
+rendering + fonts. **17 net-new findings** after threat-model calibration:
+**1 calibrated CRITICAL / 7 HIGH / 9 MEDIUM** plus an INFO swarm of doc-
+rot, per-frame allocations, and Unicode handling gaps.
+
+**Headline pattern**: doc-rot at scale. Four out of four lanes surfaced
+comments that survived a refactor and now actively mislead — Lane B's
+"DECRQSS not implemented" comment contradicts a present `handleDcs`
+implementation; Lane C and Lane D both flagged `CompositionMode_Source`
++ FBO rationale comments referencing a QOpenGLWidget retired in 0.7.44;
+Lane A flagged `primaryWasFullScreen` naming that inverts during alt-
+screen mode. Comments survive but their truth conditions don't.
+
+### 🔥 Cross-cutting themes (≥2 reviewers)
+
+- 📋 **Doc-rot: comments lie about current code (4 lanes).** Stale
+  rationale survives refactors. Lane A M1 (variable name inverted in
+  alt-screen), Lane B Critical (DECRQSS comment vs present
+  implementation), Lane C info × 2 + Lane D HIGH (FBO/QOpenGLWidget
+  comments post-0.7.44). Bundled into ANTS-1206 (doc-rot sweep on
+  terminalwidget.cpp + targeted comment fixes).
+- 📋 **Default-state asymmetry foot-guns (2 lanes).** Lane A M3
+  (`m_altScrollBottom = 0` not `m_rows-1` at construction; symptom-
+  free today but reads as 0 if any future caller consults outside an
+  active alt-session); Lane B Critical (comment claims defense not
+  implemented). Initialize defensively at construction.
+- 📋 **Per-frame allocator pressure (Lane D, multi-finding).** Four
+  separate per-paint `QFont` constructions (badge × 4pt-bold,
+  command-mark labels, quick-select, perf-overlay); `QString::fromUcs4`
+  per text run UTF-32→UTF-16 transcoding ASCII content; span-cache
+  full-clear on every scrollback push. Bundled into ANTS-1207.
+- 📋 **Unicode/i18n holes (3 lanes).** Lane A M2 (rewrap splits
+  wide-char on resize), Lane C M3 (IME cursor desync during BSU
+  sync-output blocks), Lane D Low × 2 (block-cursor bypasses ligature/
+  fallback path; no RTL handling). The Unicode story is incomplete.
+- 📋 **Resource-exhaustion gaps in input handlers (Lane B).** OSC
+  133 unbounded HMAC verification per attacker payload (CPU DOS);
+  REP `m_cols * m_rows` cap (16k handlePrint calls per CSI byte).
+  Both parse-thread-only — GUI unaffected — but pin the worker.
+
+### 🔒 Tier 1 — ship-this-week fixes (CRITICAL after calibration)
+
+- 📋 [ANTS-1195] **Zombie feature: `m_fallbackFont` (emoji/CJK) and
+  `m_nerdFallbackFont` (Powerline) loaded, sized on font-size change,
+  never used in any render path.** `terminalwidget.cpp:138-166` +
+  `terminalwidget.h:529-530, 685-686`. Constructor probes for fonts,
+  flags `m_hasFallbackFont` / `m_hasNerdFallback`, `setFontSize`
+  faithfully resizes — but grep across the file returns zero non-
+  declaration references. Today emoji/CJK/Powerline glyphs render
+  via implicit FontConfig substitution only (Linux-dependent). The
+  exact "self-graded homework" class this sweep exists to catch.
+  Decide: delete (~10-line reduction) or wire via per-codepoint range
+  check (`cp ∈ PUA E000-F8FF` → nerd; `cp ≥ 1F000` or CJK block →
+  fallback). Kind: fix. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1196] **DECSTR (`CSI ! p`) handler missing.** Per xterm
+  ctlseqs, soft-reset MUST reset DECSTBM to full-screen, origin mode
+  off, autowrap on, attrs to default, cursor to (0,0). Lane A
+  confirmed neither CSI nor ESC dispatch handles intermediate `'!'`
+  + final `'p'`. Same bug shape as ANTS-1194 (stale scroll region
+  traps user) — closes the broader contract. Add to `processCsi` /
+  `handleEsc`. Kind: fix. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1197] **OSC 9;4 progress disambiguator misclassifies
+  short payload `9;4`.** `terminalgrid.cpp:1310-1331`. Length-check
+  requires ≥4; payload `"9;4"` (legal ConEmu state-0 "remove
+  progress") falls through to OSC 9 desktop notification at line
+  1338 and pops a notification with body "4". Fix predicate to
+  `>= semi + 2` and treat trailing-bytes-absent as state-0/percent-0.
+  Also covers the open-question case where notification body
+  literally starts with "4;" — recommend documenting the
+  disambiguator behaviour in CLAUDE.md. Kind: fix. Source:
+  indie-review-2026-05-08.
+- 📋 [ANTS-1198] **Per-style font setters miss `setKerning(false)`,
+  break monospace contract.** `terminalwidget.cpp:4950-4976` —
+  `setBoldFontFamily` / `setItalicFontFamily` /
+  `setBoldItalicFontFamily` reconstruct fonts but bypass
+  `updateFontMetrics()` which otherwise re-asserts kerning-off.
+  Direct CLAUDE.md memory note violation: *"Bold / italic /
+  boldItalic font variants must inherit `setKerning(false)` from
+  the base — kerning + monospace = column drift."* User-visible
+  on configured custom bold/italic families. Five-line fix: route
+  through a single `setStyledFont(Style, QString)` helper. Kind:
+  fix. Source: indie-review-2026-05-08.
+
+### 🔒 Tier 2 — pre-release sweep (HIGH / MEDIUM)
+
+- 📋 [ANTS-1199] **`recalcGridSize` clears the snapshot
+  unconditionally; sync-block straddling resize tears for the
+  inter-batch window.** `terminalwidget.cpp:2789` —
+  `clearScreenSnapshot()` runs even when `m_syncOutputActive`. Spec
+  ANTS-1148 §H1 calls out this case; recovery via the disjunction
+  works but only on next batch. Add immediate re-capture:
+  `if (m_syncOutputActive) captureScreenSnapshot();` after the
+  clear. Closes documented sync-block tear. Kind: fix. Source:
+  indie-review-2026-05-08.
+- 📋 [ANTS-1200] **No escape from stuck-sync state.** `m_syncTimer`
+  drops the local snapshot but never resets `m_grid->synchronizedOutput()`.
+  Next batch re-arms `m_syncOutputActive`, re-captures, re-arms
+  timer — infinite loop on a malformed BSU. After N consecutive
+  safety-timer fires, force the grid out via synthetic `\x1B[?2026l`
+  action. `terminalwidget.cpp:187, 195-197, 2195, 2211-2215`.
+  Kind: fix. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1201] **OSC 52 selection field discarded; clipboard
+  target hardcoded.** `terminalgrid.cpp:1083-1132`. xterm spec:
+  `p` (primary) shouldn't clobber `c` (system clipboard); on Linux
+  this matters for `pbcopy`-equivalent shell aliases targeting
+  primary. Either honour selection field downstream (plumb through
+  the OSC52 sentinel envelope) or document single-target limitation
+  in CLAUDE.md. Kind: fix. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1202] **OSC 8 hyperlink hardening — three findings
+  bundled.** (1) `terminalgrid.cpp:1075-1078`: `id=` parser harvests
+  embedded `id=` from a non-id value (`"x=id=trick"` → id=`"trick"`).
+  Use key-by-key scan splitting `:` first, then `=`. (2)
+  `terminalgrid.cpp:1057-1066`: re-opening OSC 8 without close uses
+  pre-fix span shape — 0.7.55 multi-row fix only patched the close
+  path. Refactor multi-row emission lambda from line 1001 into a
+  `pushHyperlinkSpansForActive()` helper, call from both close +
+  reopen. (3) `terminalgrid.cpp:1039-1049`: URI-scheme allowlist
+  applied on open only, not close (defense-in-depth gap). Kind:
+  fix. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1203] **`rewrap()` ignores wide-char boundaries on
+  resize.** `terminalgrid.cpp:2245-2258`. `int chunk = std::min(cols,
+  total - pos)` pays no attention to `Cell::isWideChar` /
+  `isWideCont`; can split a double-width character with its
+  continuation cell on the next reflowed line. Pre-existing
+  (predates ANTS-1194). Decrement `chunk` by 1 when
+  `logical.cells[pos+chunk-1].isWideChar`. Kind: fix. Source:
+  indie-review-2026-05-08.
+- 📋 [ANTS-1204] **`primaryWasFullScreen` rename + initialize
+  `m_altScrollBottom = m_rows - 1`.** Lane A M1 + M3. Variable
+  name (`terminalgrid.cpp:2199-2202`) inverts reality during alt-
+  screen because the swap at 632-633 puts the saved-primary in
+  the alt slots. Rename to `liveWasFullScreen` /
+  `savedWasFullScreen` with one-line comment. Companion: header
+  default `m_altScrollBottom = 0` should be `m_rows - 1` for
+  symmetry with the constructor's primary init at line 116
+  (foot-gun for any future caller consulting alt members outside
+  an active alt-session). Kind: fix. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1205] **`m_paintLayout.clearFormats()` discipline.**
+  `terminalwidget.cpp` paintEvent runs loop. Mutable QTextLayout
+  reused across paints; no `setFormats({})` clear. Benign today
+  (no caller sets formats), but any future addition that calls
+  `setFormats(...)` once will leak that formatting to every
+  subsequent run for the lifetime of the widget. Add
+  `m_paintLayout.clearFormats()` at the top of the runs loop +
+  comment naming the contract. Pre-empts a class of bug invisible
+  to tests. Kind: fix. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1213] **DECRQSS comment cleanup (CRITICAL→HIGH after
+  threat-model calibration).** `terminalgrid.cpp:846-847` claims
+  "DECRQSS (DCS $q) is not implemented" while `handleDcs` at line
+  2511 implements it. Calibration: the implementation IS safe
+  (replies are terminal-controlled, not echo of attacker bytes —
+  CVE-2003-0063 class doesn't apply), so the comment is misleading,
+  not a security hole. Either delete the comment + retain only the
+  CSI 20t/21t XTWINOPS portion which IS still absent, OR remove
+  DECRQSS handler if the security stance still stands. Decide.
+  Kind: doc-fix. Source: indie-review-2026-05-08.
+
+### ⚡ Tier 3 — perf / hardening / structural
+
+- 📋 [ANTS-1206] **Doc-rot sweep on terminalwidget.cpp.** Replace
+  stale FBO / QOpenGLWidget rationale at `:629-636` and `:1917-1918`;
+  audit the file for any other "GL"/"FBO"/"QOpenGLWidget" literal
+  references post-0.7.44 retirement. Cross-cutting outcome of the
+  4-lane review's #1 theme. Kind: doc-fix. Source:
+  indie-review-2026-05-08.
+- 📋 [ANTS-1207] **Per-frame allocator hygiene bundle.** Cache
+  `m_badgeFont` (4× pt-size with bold), command-mark-label font
+  (`:1267-1268`), quick-select font (`:1278-1280`), perf-overlay
+  font (`:1400-1401`); add ASCII fast-path for `QString::fromUcs4`
+  (>90% of TUI content); guard `m_freeCellBuffers.clear()` at
+  `terminalgrid.cpp:2476` with `if (cols != m_cols)`. Kind:
+  perf. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1208] **paintEvent re-entrancy investigation.**
+  `terminalwidget.cpp:2877-2878` snapshot fallback to `m_grid->cellAt`
+  during `processAction` loop could tear on Wayland + dbus modal
+  pump path. Open question — agent could not pin to a concrete
+  callback. Audit: every callback the grid invokes (notify, bell,
+  forgery, lineCompletion) for synchronous event-pumping side
+  effects. If found, add an "in_processAction" guard flag refusing
+  repaint during the loop. Kind: investigate. Source:
+  indie-review-2026-05-08.
+- 📋 [ANTS-1209] **Input-handler resource caps + IME cursor sync.**
+  Three findings bundled. (1) OSC 133 marker validation:
+  `terminalgrid.cpp:1144-1198` — bound marker set early
+  (`if (marker != 'A' && != 'B' && != 'C' && != 'D') return;`)
+  before HMAC verify spends SHA-256 cycles on attacker payload.
+  (2) REP cap: `:583-586` — replace `m_cols * m_rows` with
+  `m_cols * 2`; consider ASCII fast-path for cp ∈ [0x20..0x7E].
+  (3) `inputMethodQuery::ImCursorRectangle` should use
+  `effectiveCursorRow/Col()` during BSU so IME panel doesn't
+  jump to live-but-unrendered cursor (Lane C M3). Kind: fix.
+  Source: indie-review-2026-05-08.
+- 📋 [ANTS-1210] **CSI X (ECH) ignores BCE attrs reset.**
+  `terminalgrid.cpp:742-751`. Other erase paths zero attrs
+  before assigning bg via `eraseBg()`; ECH leaves bold/italic/
+  underline active on a space. xterm reference clears all
+  attrs except bg/fg on ECH. Mirror `clearRow` pattern. Kind:
+  fix. Source: indie-review-2026-05-08.
+- 📋 [ANTS-1211] **`tline.setLineWidth(length * cellW * 2)` fudge
+  + minor render polish.** `terminalwidget.cpp:1024`. UTF-16
+  length not glyph cells; `* 2` factor is a fix for the wrong
+  problem (CJK doubles, emoji surrogates). Replace with
+  `qreal(INT_MAX)` or `qInf()`. Companion polish: underline pen
+  restoration ordering (`:957, 964`); block-cursor bypasses
+  ligature path (`:1205-1213`); `setFontFamily` at `:4905-4914`
+  clobbers per-style families set via `setBoldFontFamily`
+  (call-order hazard); nerd-font + snowman probes use
+  `horizontalAdvance > 0` (false-positive on tofu glyphs) —
+  use `QRawFont::supportsCharacter`. Kind: fix. Source:
+  indie-review-2026-05-08.
+
+### 📋 Open questions / observability gaps (logged, not actionable yet)
+
+- Wayland repaint coalescing through `ColoredTabWidget → QStackedWidget
+  → TerminalWidget`. No code-level finding; needs instrumentation +
+  side-by-side X11/Wayland repro to judge.
+- Test names look spec-grounded across the board (`scroll_region_*`,
+  `sync_output_snapshot`, `scrollback_frozen_view`, `osc8_apc_memory_caps`,
+  `image_bomb_png_header_peek`) BUT a few are internal-implementation-
+  named (`terminal_partial_update_mode`, `combining_on_resize`,
+  `scrollback_redraw`) — recommend explicit external-spec citation in
+  each spec.md.
+- Alt-screen DECSTBM-on-entry: code inherits primary's region rather
+  than resetting to full-screen. xterm behaviour is impl-defined; some
+  terminals reset. Worth confirming intended contract.
+
+---
+
 ## 0.7.78 — independent-review sweep #2 (target: 2026-05) — 2026-05-07
 
 **Theme:** fold-in of the 2026-05-07 multi-agent code review. 11
