@@ -428,6 +428,15 @@ private:
     void saveCursor();
     void restoreCursor();
 
+    // ANTS-1202 — Emit hyperlink spans for the currently-active OSC 8
+    // open (m_hyperlinkUri / m_hyperlinkStartRow / m_hyperlinkStartCol).
+    // Called from BOTH the close path and the reopen-without-close
+    // path so multi-row wrap shape stays correct in both. Pre-fix
+    // the reopen path used the legacy single-row emission and re-
+    // introduced the bug 0.7.55 was supposed to close (multi-row
+    // hyperlinks across the reopen point lost intermediate rows).
+    void pushHyperlinkSpansForActive();
+
     // SGR color parsing helpers
     QColor parse256Color(const std::vector<int> &params, size_t &i);
     // 0.7.55 (2026-04-27 indie-review) — colonSep added so we can

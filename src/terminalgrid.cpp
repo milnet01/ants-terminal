@@ -992,65 +992,10 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             std::string uri = rest.substr(semi2 + 1);
 
             if (uri.empty()) {
-                // Close hyperlink
+                // Close hyperlink — emit spans via the helper that
+                // both close + reopen paths share (ANTS-1202).
                 if (m_hyperlinkActive) {
-                    // 0.7.55 (2026-04-27 indie-review) — multi-row span
-                    // emission. The hyperlink may have wrapped to one
-                    // or more rows since open; previously the close
-                    // path stored a single span on m_hyperlinkStartRow
-                    // with `endCol = m_cursorCol - 1`, but m_cursorCol
-                    // is on the *current* (wrapped) row, not the start
-                    // row. The recorded span was thus the wrong shape
-                    // (negative width when cursor was earlier in the
-                    // wrapped row, and zero coverage on intermediate
-                    // rows). Now emit:
-                    //   • startRow: [startCol, m_cols-1] if wrapped, or
-                    //               [startCol, cursorCol-1] if single-row
-                    //   • intermediate rows [startRow+1, cursorRow-1]:
-                    //               [0, m_cols-1] full row
-                    //   • endRow: [0, cursorCol-1] when wrapped
-                    const int startRow = m_hyperlinkStartRow;
-                    const int endRow = m_cursorRow;
-                    const int cols = m_cols;
-                    if (startRow >= endRow) {
-                        // startRow == endRow: single-row span.
-                        // startRow >  endRow: a resize/reflow has moved
-                        //   the hyperlink's text into scrollback while
-                        //   leaving startRow clamped to the new screen.
-                        //   The forward-wrap math doesn't apply; preserve
-                        //   the pre-0.7.55 single-row-at-startRow shape
-                        //   so the hyperlink_resize_clamp invariants
-                        //   (which depend on this exact behaviour) keep
-                        //   passing.
-                        HyperlinkSpan s;
-                        s.startCol = m_hyperlinkStartCol;
-                        s.endCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
-                        s.uri = m_hyperlinkUri;
-                        s.id = m_hyperlinkId;
-                        if (startRow >= 0 && startRow < m_rows)
-                            m_screenHyperlinks[startRow].push_back(std::move(s));
-                    } else {
-                        // Forward wrap (startRow < endRow) — emit per-row
-                        // spans so each wrapped row is independently
-                        // clickable. Pre-0.7.55 emitted ONE span on
-                        // startRow with the wrong endCol (cursor's column
-                        // on a different row).
-                        auto pushSpan = [&](int row, int sCol, int eCol) {
-                            if (row < 0 || row >= m_rows) return;
-                            if (eCol < sCol) return;
-                            HyperlinkSpan s;
-                            s.startCol = sCol;
-                            s.endCol = eCol;
-                            s.uri = m_hyperlinkUri;
-                            s.id = m_hyperlinkId;
-                            m_screenHyperlinks[row].push_back(std::move(s));
-                        };
-                        pushSpan(startRow, m_hyperlinkStartCol, cols - 1);
-                        for (int r = startRow + 1; r < endRow; ++r)
-                            pushSpan(r, 0, cols - 1);
-                        const int eCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
-                        pushSpan(endRow, 0, eCol);
-                    }
+                    pushHyperlinkSpansForActive();
                     m_hyperlinkActive = false;
                     m_hyperlinkUri.clear();
                     m_hyperlinkId.clear();
@@ -1093,25 +1038,36 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                 } else {
                     // Open hyperlink
                     if (m_hyperlinkActive) {
-                        // Close previous first
-                        HyperlinkSpan span;
-                        span.startCol = m_hyperlinkStartCol;
-                        span.endCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
-                        span.uri = m_hyperlinkUri;
-                        span.id = m_hyperlinkId;
-                        if (m_hyperlinkStartRow < m_rows)
-                            m_screenHyperlinks[m_hyperlinkStartRow].push_back(std::move(span));
+                        // Close previous first via the shared helper
+                        // (ANTS-1202 — pre-fix this branch used the
+                        // legacy single-row emission and silently re-
+                        // introduced the multi-row bug 0.7.55 closed
+                        // for the dedicated close path).
+                        pushHyperlinkSpansForActive();
                     }
                     m_hyperlinkActive = true;
                     m_hyperlinkUri = uri;
                     m_hyperlinkStartCol = m_cursorCol;
                     m_hyperlinkStartRow = m_cursorRow;
-                    // Parse id from params (id=value)
+                    // ANTS-1202 — parse id from params (id=value).
+                    // Pre-fix used a naive `find("id=")` which matched
+                    // an embedded `id=` inside a value (e.g.
+                    // params="x=id=trick" would yield id="trick").
+                    // OSC 8 spec separates params with `:` and uses
+                    // `=` for key/value within each param; split on
+                    // `:` first, then accept only tokens beginning
+                    // with `id=`.
                     m_hyperlinkId.clear();
-                    auto idpos = params.find("id=");
-                    if (idpos != std::string::npos) {
-                        auto idend = params.find(':', idpos);
-                        m_hyperlinkId = params.substr(idpos + 3, idend != std::string::npos ? idend - idpos - 3 : std::string::npos);
+                    size_t tokenStart = 0;
+                    while (tokenStart < params.size()) {
+                        size_t tokenEnd = params.find(':', tokenStart);
+                        if (tokenEnd == std::string::npos) tokenEnd = params.size();
+                        const std::string token = params.substr(tokenStart, tokenEnd - tokenStart);
+                        if (token.size() > 3 && token.compare(0, 3, "id=") == 0) {
+                            m_hyperlinkId = token.substr(3);
+                            break;
+                        }
+                        tokenStart = tokenEnd + 1;
                     }
                 }
             }
@@ -2067,6 +2023,69 @@ void TerminalGrid::resetScrollRegion() {
     m_scrollBottom = m_rows - 1;
     m_altScrollTop = 0;
     m_altScrollBottom = m_rows - 1;
+}
+
+void TerminalGrid::pushHyperlinkSpansForActive() {
+    // 0.7.55 + ANTS-1202 — single shared multi-row span emitter for
+    // OSC 8 close AND reopen-without-close paths. Pre-1202 only the
+    // close path had this; reopen used legacy single-row emission so
+    // a wrapped hyperlink followed by a new OSC 8 open without
+    // intervening close lost intermediate rows.
+    //
+    // Defense-in-depth: scheme allowlist re-checked here. The open
+    // path validates and rejects bad schemes, so m_hyperlinkUri
+    // SHOULD never carry an unvalidated scheme — but session
+    // restore / future paths that mutate m_hyperlinkUri without
+    // validation would leak otherwise.
+    if (!m_hyperlinkActive) return;
+    {
+        const auto colonPos = m_hyperlinkUri.find(':');
+        if (colonPos == std::string::npos || colonPos == 0) return;
+        std::string scheme(m_hyperlinkUri.begin(),
+                           m_hyperlinkUri.begin() + colonPos);
+        for (auto &c : scheme) {
+            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        }
+        if (scheme != "http" && scheme != "https" && scheme != "mailto") {
+            return;
+        }
+    }
+    const int startRow = m_hyperlinkStartRow;
+    const int endRow = m_cursorRow;
+    const int cols = m_cols;
+    if (startRow >= endRow) {
+        // startRow == endRow: single-row span.
+        // startRow >  endRow: a resize/reflow has moved the
+        //   hyperlink's text into scrollback while leaving startRow
+        //   clamped to the new screen. The forward-wrap math doesn't
+        //   apply; preserve the pre-0.7.55 single-row-at-startRow
+        //   shape so the hyperlink_resize_clamp invariants stay green.
+        HyperlinkSpan s;
+        s.startCol = m_hyperlinkStartCol;
+        s.endCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
+        s.uri = m_hyperlinkUri;
+        s.id = m_hyperlinkId;
+        if (startRow >= 0 && startRow < m_rows)
+            m_screenHyperlinks[startRow].push_back(std::move(s));
+    } else {
+        // Forward wrap (startRow < endRow) — emit per-row spans so
+        // each wrapped row is independently clickable.
+        auto pushSpan = [&](int row, int sCol, int eCol) {
+            if (row < 0 || row >= m_rows) return;
+            if (eCol < sCol) return;
+            HyperlinkSpan s;
+            s.startCol = sCol;
+            s.endCol = eCol;
+            s.uri = m_hyperlinkUri;
+            s.id = m_hyperlinkId;
+            m_screenHyperlinks[row].push_back(std::move(s));
+        };
+        pushSpan(startRow, m_hyperlinkStartCol, cols - 1);
+        for (int r = startRow + 1; r < endRow; ++r)
+            pushSpan(r, 0, cols - 1);
+        const int eCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
+        pushSpan(endRow, 0, eCol);
+    }
 }
 
 void TerminalGrid::saveCursor() {
