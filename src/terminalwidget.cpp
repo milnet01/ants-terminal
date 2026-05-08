@@ -2776,6 +2776,16 @@ void TerminalWidget::recalcGridSize() {
         // below re-capture at the new dimensions if the user is still
         // scrolled up.
         clearScreenSnapshot();
+        // ANTS-1199 — if a sync-output (DEC mode 2026 BSU) block is
+        // active when the grid resizes, re-capture immediately at the
+        // new dimensions. The next-batch disjunction in `onVtBatch`
+        // also recovers, but until that batch arrives (could be
+        // hundreds of milliseconds during human-paced output) the
+        // user sees the live mid-applied frame the BSU was supposed
+        // to hide. Spec ANTS-1148 §H1 calls out this exact gap.
+        if (m_syncOutputActive) {
+            captureScreenSnapshot();
+        }
     }
     positionScrollBar();
     updateScrollBar();
