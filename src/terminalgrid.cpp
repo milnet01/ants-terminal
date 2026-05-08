@@ -1122,7 +1122,24 @@ void TerminalGrid::handleOsc(const std::string &payload) {
         std::string rest = payload.substr(semi + 1);
         size_t semi2 = rest.find(';');
         if (semi2 != std::string::npos) {
-            // std::string selection = rest.substr(0, semi2); // c, p, s, etc.
+            // ANTS-1201 — collapse the multi-char selection field
+            // (per xterm: any of c=clipboard, p=primary, s=select,
+            // q=cut-buffer-0, 0-7=cut-buffers, plus combinations like
+            // `s0`) down to a single shipping char {'c','p'}. The
+            // sentinel envelope below carries it to the widget which
+            // routes it to QClipboard::Clipboard or
+            // QClipboard::Selection. Empty selection per xterm spec
+            // defaults to `s0` (=primary); we follow modern OSC52
+            // implementations (xterm.js, kitty) and default to
+            // clipboard ('c') instead — primary's middle-click paste
+            // behaviour surprises users who didn't explicitly request
+            // it.
+            const std::string selectionField = rest.substr(0, semi2);
+            char selChar = 'c';
+            for (char s : selectionField) {
+                if (s == 'p' || s == 's') { selChar = 'p'; break; }
+                if (s == 'c') { selChar = 'c'; break; }
+            }
             std::string b64 = rest.substr(semi2 + 1);
             if (b64 == "?") {
                 // Query — not supported for security (terminal exfil vector)
@@ -1156,10 +1173,17 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                     m_osc52WriteCount += 1;
                     m_osc52WriteBytes += decoded.size();
 
-                    // Emit clipboard set via response callback with special prefix
+                    // Emit clipboard set via response callback with special prefix.
+                    // ANTS-1201 — sentinel format extended:
+                    //   "\0OSC52:<selChar>:<decoded-bytes>"
+                    // where <selChar> is 'c' (system clipboard) or 'p'
+                    // (primary/X11 selection). Widget callback maps to
+                    // QClipboard::Clipboard / QClipboard::Selection.
                     if (m_responseCallback) {
                         std::string clipData(1, '\0');
                         clipData += "OSC52:";
+                        clipData += selChar;
+                        clipData += ':';
                         clipData += std::string(decoded.constData(), decoded.size());
                         m_responseCallback(clipData);
                     }

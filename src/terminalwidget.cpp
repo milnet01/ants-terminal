@@ -121,15 +121,27 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // Under the threaded parse path (0.7.0), PTY writes from this callback cross
     // the GUI → worker thread boundary via ptyWrite(); clipboard stays on GUI.
     m_grid->setResponseCallback([this](const std::string &response) {
-        if (response.size() > 6 && response.compare(1, 6, "OSC52:") == 0) {
-            // OSC 52 clipboard set (prefixed with \0OSC52:)
-            QString text = QString::fromUtf8(response.data() + 7,
-                                              static_cast<int>(response.size()) - 7);
+        // OSC 52 sentinel envelope: "\0OSC52:<selChar>:<decoded-bytes>"
+        // where selChar is 'c' (system clipboard) or 'p' (primary
+        // selection / X11 middle-click buffer). ANTS-1201 — pre-fix
+        // shipped "\0OSC52:<bytes>" with no selection field so every
+        // OSC 52 hit the system clipboard regardless of the shell's
+        // request; modern xterm-style apps that target primary now
+        // get routed correctly.
+        if (response.size() > 8 && response.compare(1, 6, "OSC52:") == 0 &&
+            response[8] == ':') {
+            const char selChar = response[7];
+            QClipboard::Mode mode = (selChar == 'p')
+                                        ? QClipboard::Selection
+                                        : QClipboard::Clipboard;
+            QString text = QString::fromUtf8(response.data() + 9,
+                                              static_cast<int>(response.size()) - 9);
             // ANTS-1014 — OSC 52 is the headline exfil vector;
             // funnel through clipboardguard so the 1 MiB cap +
             // NUL strip apply uniformly.
             clipboardguard::writeText(text,
-                clipboardguard::Source::UntrustedPty);
+                clipboardguard::Source::UntrustedPty,
+                mode);
             return;
         }
         ptyWrite(QByteArray(response.data(), static_cast<int>(response.size())));
