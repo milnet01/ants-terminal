@@ -117,3 +117,6 @@ tmp/
 .env
 .env.*
 !.env.example
+
+# Local design-synthesis scratch (multi-model brainstorm dumps)
+RoadMap_Design/
