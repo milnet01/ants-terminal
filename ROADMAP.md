@@ -6226,9 +6226,9 @@ shellcheck, project's own grep-rule corpus + fixture coverage)
 returned 5 LOW Qt6-idiom-polish findings on top of a 96% noise
 floor — matches the ninth-audit calibration anchor (≤5
 actionable) almost exactly. **22/23 shipped 2026-05-08** in commit
-`efad292` (release `06bd078`); ANTS-1181 (mainwindow.cpp setupMenus
-1500-LoC carve) and ANTS-1186 (Qt6 idiom polish bundle) tracked
-forward to 0.7.80 and a follow-up session respectively.
+`efad292` (release `06bd078`). ANTS-1181 (setupMenus per-menu split
++ About dialog carve) and ANTS-1186 (Qt6 idiom polish, 4/5 sub-
+findings) followed up in the post-fold-in session — both ✅.
 
 **Headline pattern**: ANTS-1163 (just-fixed: Task List dialog
 showed stale tasks across sessions) was a single instance of a
@@ -6579,18 +6579,24 @@ structural and lives elsewhere. Closing all sites in one sweep
   fix.
   **Source:** indie-review 2026-05-07 (Lane 2 H-1).
   **Kind:** improve.
-- 📋 **[ANTS-1181] [🧹 Refactor] Extract `setupMenus()`
-  + carve About/Snippets/Confirm-Close to separate TUs.**
-  `mainwindow.cpp:1067-1973` is a 900-line `setupMenus()`
-  inside a 5576-LoC `mainwindow.cpp`. Split per-menu
-  (`setupFileMenu`/`setupEditMenu`/...), carve out the
-  About-Ants / About-Qt / update-check dialogs (lines
-  1849-1972, ~120 lines), and the `showSnippetsDialog`
-  (lines 5332-5489) to their own TU(s) like
-  `diffviewer.{cpp,h}` was carved out per ANTS-1145. Net
-  diff: ~−1500 LoC on `mainwindow.cpp`, ~+1700 across new
-  TUs. Pre-requisite for catching the next regression
-  cleanly in this density.
+- ✅ **[ANTS-118&] [🧹 Refactor] Extract `setupMenus()`
+  + carve About to separate TU.** Phase A: `setupMenus()`
+  (947 LoC orchestrator) split into `setupFileMenu` /
+  `setupEditMenu` / `setupViewMenu` / `setupSplitMenu` /
+  `setupToolsMenu` / `setupSettingsMenu` / `setupHelpMenu`
+  helpers — each top-level menu is now independently
+  navigable. Phase B (partial): About-Ants + About-Qt
+  dialog factories carved to `aboutdialogs.{cpp,h}`
+  (~130 + 24 LoC) as namespace free functions; `setupHelp-
+  Menu` calls `AboutDialogs::showAboutAnts()` /
+  `showAboutQt()`. **Deferred:** `showSnippetsDialog` carve
+  to its own TU — would force `Config&` + focused/current-
+  terminal callbacks through the dialog's signature; the
+  refactor cost outweighs the LoC win for this case (kept
+  as a `MainWindow` method until the surrounding TU starts
+  to feel pressure again). `checkForUpdates` likewise stays
+  on MainWindow — it has tight coupling to `m_updateAvail-
+  ableAction` and a dozen other members.
   **Source:** indie-review 2026-05-07 (Lane 4 M-1).
   **Kind:** improve.
 - ✅ **[ANTS-118&] [⚡ Performance] Replace 13

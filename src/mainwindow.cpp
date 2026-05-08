@@ -27,6 +27,7 @@
 #include "themedstylesheet.h"
 #include "claudeprojects.h"
 #include "claudetranscript.h"
+#include "aboutdialogs.h"          // ANTS-1181 — About-Ants/About-Qt
 #include "auditdialog.h"
 #include "shellutils.h"
 #include "elidedlabel.h"
@@ -1064,8 +1065,23 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     }
 }
 
+// ANTS-1181 — setupMenus() was historically a 947-line block stuffed
+// inside this same TU. Each top-level menu is now its own helper so the
+// menu-bar wiring can be located + read + edited independently of its
+// neighbours. setupMenus() is the orchestrator; the helpers contain the
+// per-menu body verbatim (no behaviour change).
+
 void MainWindow::setupMenus() {
-    // File menu
+    setupFileMenu();
+    setupEditMenu();
+    setupViewMenu();
+    setupSplitMenu();
+    setupToolsMenu();
+    setupSettingsMenu();
+    setupHelpMenu();
+}
+
+void MainWindow::setupFileMenu() {
     QMenu *fileMenu = m_menuBar->addMenu("&File");
 
     QAction *newTabAction = fileMenu->addAction("New &Tab");
@@ -1168,8 +1184,9 @@ void MainWindow::setupMenus() {
     QAction *exitAction = fileMenu->addAction("E&xit");
     exitAction->setShortcut(QKeySequence(m_config.keybinding("exit", "Ctrl+Shift+Q")));
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
+}
 
-    // Edit menu
+void MainWindow::setupEditMenu() {
     QMenu *editMenu = m_menuBar->addMenu("&Edit");
 
     QAction *richCopyAction = editMenu->addAction("Copy with &Colors");
@@ -1189,8 +1206,9 @@ void MainWindow::setupMenus() {
         if (!t) t = currentTerminal();
         if (t) t->sendToPty(QByteArray("\x01\x0B", 2)); // Ctrl+A + Ctrl+K
     });
+}
 
-    // View menu
+void MainWindow::setupViewMenu() {
     QMenu *viewMenu = m_menuBar->addMenu("&View");
 
     // Themes submenu
@@ -1346,8 +1364,9 @@ void MainWindow::setupMenus() {
             showStatusMessage("Background image set", 3000);
         }
     });
+}
 
-    // Split menu
+void MainWindow::setupSplitMenu() {
     QMenu *splitMenu = m_menuBar->addMenu("&Split");
 
     QAction *splitH = splitMenu->addAction("Split &Horizontal");
@@ -1361,8 +1380,9 @@ void MainWindow::setupMenus() {
     QAction *closePane = splitMenu->addAction("&Close Pane");
     closePane->setShortcut(QKeySequence(m_config.keybinding("close_pane", "Ctrl+Shift+X")));
     connect(closePane, &QAction::triggered, this, &MainWindow::closeFocusedPane);
+}
 
-    // Tools menu
+void MainWindow::setupToolsMenu() {
     QMenu *toolsMenu = m_menuBar->addMenu("&Tools");
 
     // AI Assistant
@@ -1621,8 +1641,9 @@ void MainWindow::setupMenus() {
         showStatusMessage(QStringLiteral("Debug log cleared: %1")
                             .arg(DebugLog::logFilePath()), 4000);
     });
+}
 
-    // Settings menu
+void MainWindow::setupSettingsMenu() {
     QMenu *settingsMenu = m_menuBar->addMenu("S&ettings");
 
     QAction *loggingAction = settingsMenu->addAction("Session &Logging");
@@ -1875,8 +1896,9 @@ void MainWindow::setupMenus() {
             QString("Loaded %1 plugins").arg(m_pluginManager->pluginCount()), 3000);
     });
 #endif
+}
 
-    // --- Help menu ---
+void MainWindow::setupHelpMenu() {
     // Standard last-position menu carrying About (user-requested 2026-04-24
     // — there was no GUI-surfaced way to check the running version before;
     // `ants-terminal --version` on the CLI was the only path). About Qt
@@ -1888,115 +1910,12 @@ void MainWindow::setupMenus() {
 
     QAction *aboutAction = helpMenu->addAction("&About Ants Terminal...");
     connect(aboutAction, &QAction::triggered, this, [this]() {
-        const QString qtVer = QString::fromLatin1(qVersion());
-        QString luaLine;
-#ifdef ANTS_LUA_PLUGINS
-        // lua.h is not included here (Lua is a plugin-layer detail).
-        // Ship the engine version as a short literal kept in sync with
-        // the CMake probe (`Lua ${LUA_VERSION}` line in the configure
-        // output). Matches what PluginManager advertises.
-        luaLine = QStringLiteral("<br/><b>Lua:</b> 5.4");
-#endif
-        const QString body = QStringLiteral(
-            "<h3>Ants Terminal</h3>"
-            "<p><b>Version:</b> %1<br/>"
-            "<b>Qt runtime:</b> %2%3</p>"
-            "<p>A modern, themeable terminal emulator with GPU "
-            "rendering and Lua plugins. MIT-licensed.</p>"
-            "<p><a href=\"https://github.com/milnet01/ants-terminal\">"
-            "https://github.com/milnet01/ants-terminal</a></p>")
-            .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine);
-
-        // Heap-allocated, non-modal QDialog with plain QPushButton —
-        // mirrors the bg-tasks dialog pattern that does work under our
-        // KDE/KWin + Qt 6.11 + frameless+translucent parent on Wayland.
-        //
-        // Three prior fix attempts failed (0.7.22, 0.7.35, 0.7.49) —
-        // each diagnosed a symptom rather than the root cause. The
-        // actual cause: Qt's setModal(true) maps to Qt::ApplicationModal,
-        // which Wayland's xdg-shell protocol has no equivalent for
-        // (QTBUG-79126, QTBUG-90005). The "modal" status on Wayland
-        // results in click-event grabs that route the OK click into
-        // the modal-grab handler instead of the button — silently
-        // dropping it. Removing setModal() and using a plain
-        // QPushButton (no QDialogButtonBox role-dispatch) restores
-        // normal click delivery. The dialog is still parented to the
-        // MainWindow so the WM keeps it on top via xdg_toplevel
-        // transient_for, which is enough for the About-dialog use
-        // case (the user has no business modifying the parent while
-        // reading version info).
-        auto *dlg = new QDialog(this);
-        dlg->setAttribute(Qt::WA_DeleteOnClose);
-        dlg->setWindowTitle(QStringLiteral("About Ants Terminal"));
-        dlg->setObjectName(QStringLiteral("aboutAntsDialog"));
-        auto *layout = new QVBoxLayout(dlg);
-        auto *label = new QLabel(body, dlg);
-        label->setObjectName(QStringLiteral("aboutAntsBody"));
-        label->setTextFormat(Qt::RichText);
-        // LinksAccessibleByMouse + LinksAccessibleByKeyboard only — no
-        // TextSelectableByMouse, so the label doesn't grab focus or
-        // intercept mouse events meant for the dialog frame / button.
-        label->setTextInteractionFlags(Qt::LinksAccessibleByMouse
-                                       | Qt::LinksAccessibleByKeyboard);
-        label->setOpenExternalLinks(true);
-        label->setWordWrap(true);
-        auto *btnRow = new QHBoxLayout;
-        btnRow->addStretch();
-        auto *okBtn = new QPushButton(tr("OK"), dlg);
-        okBtn->setObjectName(QStringLiteral("aboutAntsOkButton"));
-        okBtn->setDefault(true);
-        okBtn->setAutoDefault(true);
-        connect(okBtn, &QPushButton::clicked, dlg, &QDialog::close);
-        btnRow->addWidget(okBtn);
-        layout->addWidget(label);
-        layout->addLayout(btnRow);
-        dlg->show();
-        dlg->raise();
-        dlg->activateWindow();
+        AboutDialogs::showAboutAnts(this);
     });
 
     QAction *aboutQtAction = helpMenu->addAction("About &Qt...");
     connect(aboutQtAction, &QAction::triggered, this, [this]() {
-        // Custom dialog rather than QMessageBox::aboutQt: aboutQt
-        // wraps the dialog in a modal exec() which Wayland doesn't
-        // honour (QTBUG-79126), so OK clicks were silently dropped.
-        // Same plain-QPushButton + non-modal pattern as About Ants.
-        const QString body = QStringLiteral(
-            "<h3>About Qt</h3>"
-            "<p>Ants Terminal uses the Qt application framework.</p>"
-            "<p><b>Qt runtime:</b> %1<br/>"
-            "<b>Qt build:</b> %2</p>"
-            "<p>Qt is licensed under multiple licenses including the GNU "
-            "LGPL version 3 and the Qt Commercial License.</p>"
-            "<p><a href=\"https://www.qt.io/licensing/\">"
-            "https://www.qt.io/licensing/</a></p>")
-            .arg(QString::fromLatin1(qVersion()),
-                 QString::fromLatin1(QT_VERSION_STR));
-        auto *dlg = new QDialog(this);
-        dlg->setAttribute(Qt::WA_DeleteOnClose);
-        dlg->setWindowTitle(QStringLiteral("About Qt"));
-        dlg->setObjectName(QStringLiteral("aboutQtDialog"));
-        auto *layout = new QVBoxLayout(dlg);
-        auto *label = new QLabel(body, dlg);
-        label->setObjectName(QStringLiteral("aboutQtBody"));
-        label->setTextFormat(Qt::RichText);
-        label->setTextInteractionFlags(Qt::LinksAccessibleByMouse
-                                       | Qt::LinksAccessibleByKeyboard);
-        label->setOpenExternalLinks(true);
-        label->setWordWrap(true);
-        auto *btnRow = new QHBoxLayout;
-        btnRow->addStretch();
-        auto *okBtn = new QPushButton(tr("OK"), dlg);
-        okBtn->setObjectName(QStringLiteral("aboutQtOkButton"));
-        okBtn->setDefault(true);
-        okBtn->setAutoDefault(true);
-        connect(okBtn, &QPushButton::clicked, dlg, &QDialog::close);
-        btnRow->addWidget(okBtn);
-        layout->addWidget(label);
-        layout->addLayout(btnRow);
-        dlg->show();
-        dlg->raise();
-        dlg->activateWindow();
+        AboutDialogs::showAboutQt(this);
     });
 
     helpMenu->addSeparator();

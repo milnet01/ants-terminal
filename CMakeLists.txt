@@ -67,6 +67,7 @@ add_executable(ants-terminal
     src/sshdialog.cpp
     src/settingsdialog.cpp
     src/toggleswitch.cpp
+    src/aboutdialogs.cpp
     src/auditdialog.cpp
     src/auditengine.cpp
     src/clipboardguard.cpp

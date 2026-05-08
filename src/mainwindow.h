@@ -86,7 +86,17 @@ private slots:
     void onSshConnect(const QString &sshCommand, bool newTab);
 
 private:
+    // ANTS-1181 — setupMenus() was a 947-line block; split per menu so
+    // each TUs-worth of action wiring is independently readable and
+    // navigable. setupMenus() is now a 7-call orchestrator.
     void setupMenus();
+    void setupFileMenu();
+    void setupEditMenu();
+    void setupViewMenu();
+    void setupSplitMenu();
+    void setupToolsMenu();
+    void setupSettingsMenu();
+    void setupHelpMenu();
     void applyTheme(const QString &name);
     void centerWindow();
     void moveViaKWin(int targetX, int targetY);
