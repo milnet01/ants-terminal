@@ -60,16 +60,28 @@ void expect(bool cond, const char *label, const QString &detail = {}) {
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
 
-    const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr,
-                     "[FAIL] source-open: cannot read %s\n",
-                     qUtf8Printable(path));
-        return 1;
-    }
-    const QString src = QString::fromUtf8(f.readAll());
-    f.close();
+    auto loadFile = [](const QString &path) -> QString {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            std::fprintf(stderr,
+                         "[FAIL] source-open: cannot read %s\n",
+                         qUtf8Printable(path));
+            return {};
+        }
+        const QString s = QString::fromUtf8(f.readAll());
+        f.close();
+        return s;
+    };
+
+    // Menu-structure invariants (I1, I2, I5) live in mainwindow.cpp's
+    // setupHelpMenu. Dialog-construction invariants (I3, I4, I6, I7)
+    // moved to src/aboutdialogs.cpp post-ANTS-1181 — both files are
+    // checked, and the dialog-body grep is scoped to aboutdialogs.cpp.
+    const QString src = loadFile(QStringLiteral(SRC_MAINWINDOW_PATH));
+    if (src.isEmpty()) return 1;
+
+    const QString aboutSrc = loadFile(QStringLiteral(SRC_ABOUTDIALOGS_PATH));
+    if (aboutSrc.isEmpty()) return 1;
 
     // Invariant 1 — Help menu present, and it appears AFTER every other
     // m_menuBar->addMenu(...) call (so Qt places it last).
@@ -114,29 +126,46 @@ int main(int argc, char **argv) {
                           "activateWindow() instead, mirroring the "
                           "About Ants pattern."));
 
-    // Scope subsequent greps to the About-action handler lambda. The
-    // handler body runs from the first "About Ants Terminal..." mention
-    // until the closing `});` of the enclosing connect lambda. We pull
-    // a generous window (2 000 chars) which is plenty for the handler
-    // without overlapping the aboutQt lambda below it.
-    const int aboutStart = src.indexOf(
-        QStringLiteral("&About Ants Terminal..."));
-    const int aboutEnd = src.indexOf(QStringLiteral("About &Qt..."),
-                                     aboutStart);
-    expect(aboutStart > 0 && aboutEnd > aboutStart,
-           "I2b/handler-block-located");
-    const QString aboutBlock = src.mid(aboutStart, aboutEnd - aboutStart);
+    // ANTS-1181: dialog construction lives in aboutdialogs.cpp; the
+    // showAboutAnts() / showAboutQt() function bodies hold what used to
+    // be inline lambdas. Both delegate to a file-local makeAboutDialog
+    // helper for the heap+show+raise+activate scaffolding, so the I7
+    // patterns appear ONCE in the helper rather than duplicated per
+    // dialog. We scope `aboutBlock` to showAboutAnts (text + ANTS_VERSION
+    // + body invariants) and `aboutQtBlock` to showAboutQt (text + Qt-
+    // body invariants); shared scaffolding is verified via `aboutSrc`.
+    auto extractFunctionBody = [](const QString &source,
+                                  const QString &signature) -> QString {
+        const int sigIdx = source.indexOf(signature);
+        if (sigIdx < 0) return {};
+        // Walk forward to the opening `{`, then balance braces to the
+        // matching `}`.
+        int braceIdx = source.indexOf(QChar('{'), sigIdx);
+        if (braceIdx < 0) return {};
+        int depth = 1;
+        int i = braceIdx + 1;
+        while (i < source.size() && depth > 0) {
+            const QChar c = source.at(i);
+            if (c == QChar('{')) ++depth;
+            else if (c == QChar('}')) --depth;
+            ++i;
+        }
+        return source.mid(braceIdx, i - braceIdx);
+    };
 
-    // Locate the About Qt handler block too (for I7's symmetry checks).
-    const int aboutQtStart = aboutEnd;
-    // The handler ends at "helpMenu->addSeparator()" or the next top-
-    // level menu addAction — ~2000 chars is plenty.
-    const int aboutQtEnd = src.indexOf(QStringLiteral("helpMenu->addSeparator"),
-                                       aboutQtStart);
-    expect(aboutQtStart > 0 && aboutQtEnd > aboutQtStart,
-           "I5c/aboutqt-handler-block-located");
-    const QString aboutQtBlock = src.mid(aboutQtStart,
-                                         aboutQtEnd - aboutQtStart);
+    const QString aboutBlock = extractFunctionBody(
+        aboutSrc, QStringLiteral("void showAboutAnts(QWidget *parent)"));
+    expect(!aboutBlock.isEmpty(), "I2b/handler-block-located",
+           QStringLiteral("Could not locate showAboutAnts() body in "
+                          "aboutdialogs.cpp — has the function been "
+                          "renamed or removed?"));
+
+    const QString aboutQtBlock = extractFunctionBody(
+        aboutSrc, QStringLiteral("void showAboutQt(QWidget *parent)"));
+    expect(!aboutQtBlock.isEmpty(), "I5c/aboutqt-handler-block-located",
+           QStringLiteral("Could not locate showAboutQt() body in "
+                          "aboutdialogs.cpp — has the function been "
+                          "renamed or removed?"));
 
     // Invariant 3 — ANTS_VERSION used, not a literal.
     expect(aboutBlock.contains(QStringLiteral("ANTS_VERSION")),
@@ -159,25 +188,29 @@ int main(int argc, char **argv) {
                           "across releases"));
 
     // Invariant 4 — rich-text + clickable links via the custom QDialog
-    // path (see spec.md, regression 2026-04-25).
-    expect(aboutBlock.contains(QStringLiteral("setTextFormat(Qt::RichText)")),
+    // path (see spec.md, regression 2026-04-25). ANTS-1181: the QLabel
+    // setup lives in the file-local makeAboutDialog() helper in
+    // aboutdialogs.cpp, so I4a-c + I4h scope to `aboutSrc` (file-wide)
+    // rather than per-handler — the helper applies the contract
+    // identically to both About dialogs.
+    expect(aboutSrc.contains(QStringLiteral("setTextFormat(Qt::RichText)")),
            "I4a/rich-text-enabled");
-    expect(aboutBlock.contains(QStringLiteral("Qt::LinksAccessibleByMouse")),
+    expect(aboutSrc.contains(QStringLiteral("Qt::LinksAccessibleByMouse")),
            "I4b/links-clickable",
            QStringLiteral("Body QLabel must enable Qt::LinksAccessibleByMouse "
                           "so the GitHub URL is clickable."));
-    expect(aboutBlock.contains(QStringLiteral("setOpenExternalLinks(true)")),
+    expect(aboutSrc.contains(QStringLiteral("setOpenExternalLinks(true)")),
            "I4c/open-external-links",
            QStringLiteral("Body QLabel must call setOpenExternalLinks(true); "
                           "without it, link clicks silently no-op even when "
                           "LinksAccessibleByMouse is set."));
-    // Negative: the QMessageBox + TextBrowserInteraction shape that caused
-    // the 2026-04-25 OK-button regression must stay out of this handler.
-    // TextSelectableByMouse on the label is part of the regression — we
-    // only need links clickable, not selection.
+    // Negative: the QMessageBox + TextBrowserInteraction shape that
+    // caused the 2026-04-25 OK-button regression must stay out of the
+    // dialog factory file. TextSelectableByMouse on the label is part
+    // of the regression — we only need links clickable, not selection.
     // Match the call shape, not the bare token, so prose comments
     // explaining the regression don't false-positive on the grep.
-    expect(!aboutBlock.contains(
+    expect(!aboutSrc.contains(
                QStringLiteral("setTextInteractionFlags(Qt::TextBrowserInteraction)")),
            "I4d/no-textbrowserinteraction-regression",
            QStringLiteral("setTextInteractionFlags(Qt::TextBrowserInteraction) "
@@ -186,13 +219,13 @@ int main(int argc, char **argv) {
                           "MainWindow on KDE/KWin + Qt 6.11. Use "
                           "Qt::LinksAccessibleByMouse + setOpenExternalLinks(true) "
                           "instead — same user-visible behaviour, no click steal."));
-    expect(!aboutBlock.contains(
+    expect(!aboutSrc.contains(
                QStringLiteral("setTextInteractionFlags(Qt::TextSelectableByMouse")),
            "I4e/no-text-selection-on-body",
            QStringLiteral("TextSelectableByMouse on the About body is part of "
                           "the regression shape — there's nothing in the body "
                           "the user needs to select."));
-    expect(!aboutBlock.contains(QStringLiteral("QMessageBox mb(")),
+    expect(!aboutSrc.contains(QStringLiteral("QMessageBox mb(")),
            "I4f/no-qmessagebox-construction",
            QStringLiteral("The About handler must use QDialog + "
                           "plain QPushButton so we control the OK wiring "
@@ -202,7 +235,7 @@ int main(int argc, char **argv) {
     // a click-drop aggravator on KWin/Wayland. Match the constructor
     // call shape (`new QDialogButtonBox`) so explanatory comments
     // mentioning the type don't false-positive the grep.
-    expect(!aboutBlock.contains(QStringLiteral("new QDialogButtonBox")),
+    expect(!aboutSrc.contains(QStringLiteral("new QDialogButtonBox")),
            "I4g/no-qdialogbuttonbox",
            QStringLiteral("The About handler must NOT construct a "
                           "QDialogButtonBox — 0.7.50 reverted to a plain "
@@ -213,9 +246,9 @@ int main(int argc, char **argv) {
     // The OK button must be wired to dlg->close() — the missing wire is
     // exactly what makes a button "do nothing." Match against the
     // plain QPushButton::clicked → QDialog::close shape.
-    expect(aboutBlock.contains(
+    expect(aboutSrc.contains(
                QStringLiteral("&QPushButton::clicked")) &&
-           aboutBlock.contains(QStringLiteral("&QDialog::close")),
+           aboutSrc.contains(QStringLiteral("&QDialog::close")),
            "I4h/ok-connected-to-close",
            QStringLiteral("Plain QPushButton::clicked must be connected to "
                           "QDialog::close so clicking OK closes the dialog."));
@@ -225,9 +258,32 @@ int main(int argc, char **argv) {
     // `dlg.exec()` opens a nested event loop that on KDE/KWin +
     // Qt 6.11 + our frameless translucent MainWindow does not promote
     // the dialog to active input window, so OK clicks no-op
-    // (regression 2026-04-27). The fix mirrors the bg-tasks /
-    // settings / claude-transcript pattern that already works on
-    // this stack.
+    // (regression 2026-04-27). Post-ANTS-1181 the heap+WA_DeleteOnClose
+    // scaffolding lives in a file-local makeAboutDialog() helper, so the
+    // alloc invariants are checked against `aboutSrc` (file-wide) while
+    // the show/raise/activate sequence stays per-handler (each
+    // showAboutAnts/showAboutQt body issues its own show+raise+activate).
+
+    // I7a — heap allocation must use `new QDialog(parent)` (post-1181)
+    // or `new QDialog(this)` (pre-1181 inline shape). Either is fine
+    // for the contract being tested.
+    expect(aboutSrc.contains(QStringLiteral("new QDialog(parent)")) ||
+               aboutSrc.contains(QStringLiteral("new QDialog(this)")),
+           "I7a/heap-allocated",
+           QStringLiteral("Dialog must be heap-allocated via "
+                          "`new QDialog(parent)` (or `(this)` if inline) "
+                          "so it survives the function's return; the "
+                          "show()-pattern doesn't block the caller."));
+
+    // I7b — WA_DeleteOnClose set in the helper (or inline body).
+    expect(aboutSrc.contains(QStringLiteral(
+               "setAttribute(Qt::WA_DeleteOnClose)")),
+           "I7b/wa-delete-on-close",
+           QStringLiteral("Heap-allocated dialog must set "
+                          "Qt::WA_DeleteOnClose so it deletes itself "
+                          "on dismissal — otherwise the QDialog "
+                          "leaks each time the menu item is invoked."));
+
     struct HandlerCheck {
         const QString *block;
         const char *name;
@@ -240,23 +296,6 @@ int main(int argc, char **argv) {
         const QString &blk = *h.block;
         const char *name = h.name;
         QString tag;
-
-        tag = QStringLiteral("I7a/%1/heap-allocated").arg(name);
-        expect(blk.contains(QStringLiteral("auto *dlg = new QDialog(this)")),
-               qUtf8Printable(tag),
-               QStringLiteral("Dialog must be heap-allocated via "
-                              "`new QDialog(this)` so it survives the "
-                              "lambda's return; the show()-pattern "
-                              "doesn't block the lambda."));
-
-        tag = QStringLiteral("I7b/%1/wa-delete-on-close").arg(name);
-        expect(blk.contains(QStringLiteral(
-                   "setAttribute(Qt::WA_DeleteOnClose)")),
-               qUtf8Printable(tag),
-               QStringLiteral("Heap-allocated dialog must set "
-                              "Qt::WA_DeleteOnClose so it deletes itself "
-                              "on dismissal — otherwise the QDialog "
-                              "leaks each time the menu item is invoked."));
 
         tag = QStringLiteral("I7c/%1/uses-show-not-exec").arg(name);
         expect(blk.contains(QStringLiteral("dlg->show()")),
@@ -292,9 +331,7 @@ int main(int argc, char **argv) {
         // 0.7.49 added setModal(true) on the theory it would help; the
         // actual effect on Wayland (QTBUG-79126) was the opposite —
         // the modal-grab routes the OK click into the grab handler
-        // instead of the button. 0.7.50 dropped it. Match the call-
-        // shape (`dlg->setModal`) so explanatory comments mentioning
-        // the bare token don't false-positive the grep.
+        // instead of the button. 0.7.50 dropped it.
         expect(!blk.contains(QStringLiteral("dlg->setModal(")),
                qUtf8Printable(tag),
                QStringLiteral("Dialog must NOT call setModal(true) — Wayland "

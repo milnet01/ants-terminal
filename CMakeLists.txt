@@ -3817,8 +3817,13 @@ if(ANTS_TESTS)
     target_compile_options(test_help_about_menu PRIVATE
         -Wall -Wextra -Wpedantic
     )
+    # ANTS-1181: dialog factories carved to aboutdialogs.cpp; the test
+    # now reads both files to verify the same heap+show+raise+activate
+    # contract, the rich-text label invariants, and ANTS_VERSION usage —
+    # whichever file the implementation lives in.
     target_compile_definitions(test_help_about_menu PRIVATE
         SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_ABOUTDIALOGS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/aboutdialogs.cpp"
     )
     add_test(NAME help_about_menu COMMAND test_help_about_menu)
     set_tests_properties(help_about_menu PROPERTIES
