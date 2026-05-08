@@ -525,10 +525,6 @@ private:
     QTimer m_syncTimer;  // safety timeout for stuck sync mode
     QByteArray m_syncBuffer;
 
-    // Font fallback for missing glyphs (emoji, CJK)
-    QFont m_fallbackFont;
-    bool m_hasFallbackFont = false;
-
     // Last mouse cell for SGR reporting
     QPoint m_lastMouseCell{-1, -1};
 
@@ -680,8 +676,4 @@ private:
 
     // Scratchpad overlay
     QWidget *m_scratchpad = nullptr;
-
-    // Nerd Font symbol fallback
-    QFont m_nerdFallbackFont;
-    bool m_hasNerdFallback = false;
 };

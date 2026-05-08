@@ -135,35 +135,16 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
         ptyWrite(QByteArray(response.data(), static_cast<int>(response.size())));
     });
 
-    // Font fallback for emoji/symbols
-    QStringList fallbackFamilies = {"Noto Color Emoji", "Noto Emoji", "Symbola",
-                                     "Noto Sans CJK SC", "Noto Sans CJK", "WenQuanYi Micro Hei"};
-    for (const QString &family : fallbackFamilies) {
-        QFont test(family);
-        QFontMetrics fm(test);
-        if (fm.horizontalAdvance(QChar(0x2603)) > 0) { // snowman test
-            m_fallbackFont = test;
-            m_fallbackFont.setPointSize(m_font.pointSize());
-            m_hasFallbackFont = true;
-            break;
-        }
-    }
-
-    // Nerd Font symbol fallback (Powerline, Devicons, etc.)
-    QStringList nerdFamilies = {"Symbols Nerd Font Mono", "Symbols Nerd Font",
-                                 "Hack Nerd Font Mono", "JetBrainsMono Nerd Font Mono",
-                                 "FiraCode Nerd Font Mono"};
-    for (const QString &family : nerdFamilies) {
-        QFont test(family);
-        QFontMetrics fm(test);
-        // Test with Powerline branch symbol (U+E0A0)
-        if (fm.horizontalAdvance(QChar(0xE0A0)) > 0) {
-            m_nerdFallbackFont = test;
-            m_nerdFallbackFont.setPointSize(m_font.pointSize());
-            m_hasNerdFallback = true;
-            break;
-        }
-    }
+    // ANTS-1195 — emoji/CJK + Nerd Font fallback used to be probed
+    // here and stored in m_fallbackFont / m_nerdFallbackFont, but
+    // the paint loop never consulted those members (zombie feature
+    // surfaced by indie-review #3 Lane D). Today the implicit
+    // FontConfig substitution chain handles missing-glyph fallback
+    // automatically on Linux/macOS — the explicit ceremony was
+    // dead code. If a future change wants explicit per-codepoint
+    // routing (faster than FontConfig query per glyph), wire it in
+    // alongside the m_paintLayout setFont path, not via the
+    // unused-flag pattern this code originally took.
 
     // Cursor blink timer
     m_cursorTimer.setInterval(530);
@@ -444,8 +425,6 @@ void TerminalWidget::updateFontMetrics() {
 void TerminalWidget::setFontSize(int size) {
     size = qBound(4, size, 48);
     m_font.setPointSize(size);
-    if (m_hasFallbackFont) m_fallbackFont.setPointSize(size);
-    if (m_hasNerdFallback) m_nerdFallbackFont.setPointSize(size);
     updateFontMetrics();
     recalcGridSize();
     update();
