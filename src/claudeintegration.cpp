@@ -390,7 +390,19 @@ QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd,
     // event a few ms before /proc/<pid>/stat reports the process
     // started (rare; clock-tick rounding plus our ms-conversion).
     constexpr qint64 kLeewayMs = 5'000;
-    constexpr qint64 kStaleMaxMs = 24LL * 60 * 60 * 1000;
+    // 24 h floor when filter (a) is active (Claude PID known) — this
+    // is a wide safety net rejecting truly ancient transcripts.
+    constexpr qint64 kStaleMaxMsWithPid = 24LL * 60 * 60 * 1000;
+    // ANTS-1163 follow-up (2026-05-08): tight floor when filter (a)
+    // is INACTIVE (m_claudePid==0, cold start before pollClaudeProcess
+    // detects the new Claude process). User repro: relaunched Ants +
+    // Claude Code, opened Task List dialog, saw 27 done tasks from
+    // yesterday's session — within 24 h, so the wide floor let them
+    // through. The window where m_claudePid is briefly 0 is 1-3
+    // seconds; 5 minutes is generous leeway. Anything older than that
+    // and m_claudePid is still 0 means "no live Claude process," in
+    // which case prior-session tasks should NOT surface.
+    constexpr qint64 kStaleMaxMsNoPid = 5LL * 60 * 1000;
 
     // Project-scoped walk: encode each ancestor of `projectCwd` and
     // probe `~/.claude/projects/<encoded>/`. Deepest match wins —
@@ -408,9 +420,14 @@ QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd,
                 // Process-anchored identity filter (a).
                 if (minLastEventMs > 0 && effMs < minLastEventMs - kLeewayMs)
                     continue;
-                // 24 h liveness floor (b). Independent safety net.
-                if (nowMs > 0 && effMs < nowMs - kStaleMaxMs)
-                    continue;
+                // Liveness floor (b). Tight when (a) is inactive
+                // (no PID known); wide otherwise.
+                if (nowMs > 0) {
+                    const qint64 floor = (minLastEventMs > 0)
+                                             ? kStaleMaxMsWithPid
+                                             : kStaleMaxMsNoPid;
+                    if (effMs < nowMs - floor) continue;
+                }
                 if (effMs > bestEffMs) {
                     bestEffMs = effMs;
                     bestInfo = fi;

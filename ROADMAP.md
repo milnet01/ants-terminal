@@ -5271,19 +5271,32 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   transcript until the first event of the new session landed.
   Two-layer fix: (a) process-anchored identity filter (drop
   candidates whose effective last-event ms predates `m_claudePid`
-  start by > 5 s) + (b) 24h liveness floor (drop candidates older
-  than 24 h regardless). Effective last-event ms = last ISO 8601
-  `timestamp` from the JSONL tail; falls back to file mtime when
-  the transcript contains only metadata events. New static
-  helpers `processStartTimeMs(pid)` and
+  start by > 5 s) + (b) liveness floor — wide (24 h) when filter
+  (a) is active, tight (5 min) when it isn't. Effective last-event
+  ms = last ISO 8601 `timestamp` from the JSONL tail; falls back
+  to file mtime when the transcript contains only metadata events.
+  New static helpers `processStartTimeMs(pid)` and
   `lastEventTimestampMs(path)`; new overload
   `sessionPathForCwd(cwd, minLastEventMs, nowMs)` with default
   args preserving legacy newest-by-mtime behaviour. Wired through
   `activeSessionPath` and `ClaudeTabTracker`'s per-tab transcript
-  bind. New feature test `claude_session_freshness` (16 INVs).
+  bind. Feature test `claude_session_freshness` (now 17 INVs).
   Spec at `tests/features/claude_session_freshness/spec.md`.
-  Kind: fix. Source: user-2026-05-07.
-  Lanes: claudeintegration, claudetabtracker.
+
+  **Follow-up 2026-05-08 (regression repro on relaunch):** user
+  relaunched Ants Terminal + Claude Code, opened the Task List
+  dialog, saw 27 done tasks from the previous day's `/close-phase`
+  workflow on ANTS-1160 (cold-eyes review rounds). The original
+  fix's wide 24h floor in (b) let those through because
+  `m_claudePid` was 0 at the moment the dialog read the path
+  (Claude hadn't been re-detected yet by `pollClaudeProcess`).
+  Tightened the floor to 5 min when filter (a) is inactive — the
+  PID-detection window is 1-3 s in practice, and 5 min is generous
+  leeway. Added INV-12 (cold-start tight floor drops 12h-old
+  transcript) and INV-13 (idle long-running Claude session with
+  known PID NOT dropped) to lock both directions.
+  Kind: fix. Source: user-2026-05-07 (initial), user-2026-05-08
+  (regression). Lanes: claudeintegration, claudetabtracker.
 
 ### 🐛 Claude Code UX — bottom status-bar `Claude:` widget shows wrong tab's state (user report 2026-05-07)
 

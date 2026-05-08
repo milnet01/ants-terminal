@@ -255,6 +255,54 @@ void testFilterAndPick(QTemporaryDir &home) {
                "ANTS-1163-INV-11: metadata-only file uses mtime fallback",
                "picked=" + picked.toStdString());
     }
+
+    // INV-12 (ANTS-1163 follow-up 2026-05-08): cold-start tight floor.
+    // When minLastEventMs == 0 (no Claude PID detected yet), the
+    // liveness floor must be tight — yesterday's transcript (within
+    // 24h, the previous wide floor) must be DROPPED. The window where
+    // m_claudePid is briefly 0 is 1-3 seconds; 5 minutes is generous.
+    // User repro: relaunched Ants + Claude, opened Task List dialog,
+    // saw 27 done tasks from yesterday's session because the wide
+    // 24h floor let them through.
+    {
+        const qint64 yesterdayTsMs = nowMs - 12LL*60*60*1000;  // 12h ago
+        QByteArray body = fixtureBody({
+            timestampedAssistantEvent(isoUtc(yesterdayTsMs)),
+        });
+        DIE_IF_FALSE(writeWithMtime(oldPath, body, yesterdayTsMs / 1000),
+                     "rewrite " + oldPath.toStdString());
+        QFile::remove(newPath);
+
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/0, /*nowMs=*/nowMs);
+        expect(picked.isEmpty(),
+               "ANTS-1163-INV-12: tight floor on cold start drops "
+               "yesterday's 12h-old transcript when no Claude PID known");
+    }
+
+    // INV-13 (ANTS-1163 follow-up 2026-05-08): tight floor stays
+    // tight only on cold start. With Claude PID known (minLastEventMs > 0),
+    // the wide 24h floor still applies — a long-running Claude session
+    // that's been idle for hours but has events from after Claude
+    // started must NOT be dropped.
+    {
+        const qint64 hoursAgoTsMs = nowMs - 3LL*60*60*1000;   // 3h ago
+        QByteArray body = fixtureBody({
+            timestampedAssistantEvent(isoUtc(hoursAgoTsMs)),
+        });
+        DIE_IF_FALSE(writeWithMtime(oldPath, body, hoursAgoTsMs / 1000),
+                     "rewrite " + oldPath.toStdString());
+        // Claude started 4h ago; idle session with last event 3h ago
+        // is OLDER than start anchor + leeway (good for filter (a))
+        // but newer than the 24h floor (good for filter (b) wide).
+        const qint64 claudeStart4hMs = nowMs - 4LL*60*60*1000;
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/claudeStart4hMs, /*nowMs=*/nowMs);
+        expect(picked == oldPath,
+               "ANTS-1163-INV-13: idle long-running Claude session not "
+               "dropped by liveness floor when PID is known",
+               "picked=" + picked.toStdString());
+    }
 }
 
 void testWiring() {

@@ -62,6 +62,26 @@ Either filter alone leaves a hole.
 
 Stacking gives identity-when-known plus a coarse liveness floor.
 
+### Floor split (2026-05-08 follow-up)
+
+Filter (b) is **two-tier**:
+
+- **Wide (24 h)** when filter (a) is active (`m_claudePid > 0`,
+  PID known) — defends against truly ancient transcripts but
+  doesn't reject idle long-running sessions whose last event is
+  hours old.
+- **Tight (5 min)** when filter (a) is inactive (cold start,
+  `m_claudePid == 0`, PID not yet detected by
+  `pollClaudeProcess`) — the detection window is 1-3 s in
+  practice; 5 min is generous leeway. Anything older than that
+  with no PID known means "no live Claude process for this
+  project," so prior-session tasks should NOT surface.
+
+Without the split, the user's repro (2026-05-08) re-triggered:
+relaunched Ants + Claude, opened Task List dialog before
+`pollClaudeProcess` had detected the new Claude PID, and the
+wide 24h floor let yesterday's 12h-old transcript through.
+
 ## 4. INV map
 
 INV labels qualified `ANTS-1163-INV-N`.
@@ -79,6 +99,8 @@ INV labels qualified `ANTS-1163-INV-N`.
 | 9  | wiring | `activeSessionPath(cwd)` calls `processStartTimeMs(m_claudePid)` and threads it as `minLastEventMs` when `m_claudePid > 0`. |
 | 10 | wiring | `activeSessionPath(cwd)` always passes the current epoch as `nowMs` so the 24 h liveness floor is applied even when `m_claudePid == 0`. |
 | 11 | fallback | A JSONL with only metadata events (no `timestamp` field anywhere) falls back to mtime as the effective last-event ms. |
+| 12 | filter | Cold-start tight floor: `sessionPathForCwd(cwd, minLastEventMs=0, nowMs=NOW)` drops a 12 h-old transcript (within the 24 h wide floor, but outside the 5 min tight floor that applies when filter (a) is inactive). |
+| 13 | filter | Wide floor preserved when PID known: `sessionPathForCwd(cwd, minLastEventMs=T, nowMs=NOW)` does NOT drop a 3 h-old transcript with `T = NOW - 4h` — idle long-running Claude session shouldn't get nuked. |
 
 ## 5. Test shape
 
