@@ -5519,6 +5519,136 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   resetScrollRegion), mainwindow (Tools menu wiring),
   tests/features/scroll_region_leak_after_apps.
 
+### 🐛 Claude Code spinner duplicates in scrollback (user report 2026-05-08)
+
+- 📋 [ANTS-1188] **Claude Code's `Tempering…`/`Sublimating…`
+  status-spinner lines pile up in scrollback instead of
+  overwriting in place.** User report 2026-05-08 (screenshot
+  captured): the same spinner status appears 5+ times in
+  succession in scrollback as Claude Code updates its
+  in-flight progress, with each frame showing a different
+  elapsed time and token count. The "fixes itself when I
+  scroll out of view or to the bottom" wording from the user
+  is the symptom — the LIVE viewport is fine, the scrollback
+  *history* has the duplicates. Distinct from ANTS-1118
+  (paint-cycle race during scroll) which was about the live
+  view, not scrollback history. **Layman:** Claude Code's
+  busy spinner shows up many times in the chat history
+  instead of just updating in place — looks like the spinner
+  is "leaking" into history.
+
+  Likely root cause class: Claude Code (Ink-based) uses
+  `cursor-up + erase-line + new content` to update the
+  spinner — it does NOT issue `CSI 2J`. The
+  `m_csiClearRedrawActive` suppression window in
+  `terminalgrid.cpp` only arms on full-clear sequences (mode 2,
+  or mode 0/1 from the corner) — it doesn't help here.
+  When the spinner update happens at the BOTTOM of the screen
+  (cursor at last row, `\n` after content), each new spinner
+  frame causes a `scrollUp` that pushes the OLD spinner row
+  into scrollback BEFORE the new content overwrites it on
+  the now-bottom row. Result: every spinner frame ends up
+  archived as scrollback even though only one is "live" at
+  any moment.
+
+  Investigation steps:
+  1. Identify the exact byte sequence Claude Code emits
+     between two spinner updates (capture via
+     `ANTS_DEBUG=vt` over a Claude Code session that's
+     actively spinning — easy to repro).
+  2. Compare to xterm's behaviour for the same sequence —
+     does xterm's scrollback also get duplicates? (If yes,
+     this is xterm-conformant per spec; we'd need a
+     non-conformant feature flag. If no, we have a real
+     divergence.)
+  3. If the issue is real: either (a) extend the
+     suppression window to cover spinner-style updates
+     (cursor-up + erase-line + cursor-down at row=bottom),
+     or (b) detect the "we just pushed an essentially
+     blank line into scrollback" case and elide the push.
+
+  **Cross-reference:** ANTS-1118 (live-viewport paint race
+  during scroll, shipped 0.7.65) was about a different
+  symptom in the same neighbourhood. ANTS-1059 perf
+  investigation (just landed) showed `scrollUp` is 65% of
+  newline_stream cost — any fix here that reduces scroll
+  pushes will also help throughput.
+
+  Kind: fix. Source: user-2026-05-08.
+  Lanes: terminalgrid (`scrollUp` / scrollback push,
+  suppression window), terminalwidget.
+
+### 🐛 Crash on app exit — Pty thread races MainWindow destruction (user report 2026-05-08)
+
+- 📋 [ANTS-1189] **`SIGABRT` in glibc `free()` during
+  TerminalWidget destruction at app exit.** Two crashes captured
+  in coredumps on 2026-05-08 (PIDs 3856 and 10723). Stack trace
+  pattern is identical:
+
+  ```
+  __libc_message → unlink_chunk → _int_free_chunk
+  libQt6Widgets ~Widget impl
+  QObject::destroyed signal
+  QWidget::~QWidget (D1)
+  QObjectPrivate::deleteChildren
+  TerminalWidget::~TerminalWidget (D0)
+  QStackedWidget::~QStackedWidget
+  ColoredTabWidget::~ColoredTabWidget
+  ... up to main()
+  ```
+
+  And a smoking-gun thread:
+
+  ```
+  Thread 11186:  // (or 4111 in the first crash)
+  __libc_start syscall → __nanosleep → usleep
+  std::thread::_State_impl
+    Pty::~Pty()::lambda (D4Ev)  ← THIS
+  ```
+
+  **Root cause hypothesis:** `Pty::~Pty()` spawns or already has
+  an active background thread (likely the PTY drain / read loop)
+  that's in `usleep` when the destructor returns. The destructor
+  does NOT `join()` the thread before its members go out of
+  scope. Once the parent destructor proceeds, the thread is
+  reading/writing memory that's being freed by the parent's
+  member destructors — classic UAF causing heap corruption that
+  surfaces a few `~QWidget` calls later in `_int_free_chunk`.
+
+  **Layman:** Sometimes when closing Ants Terminal a background
+  thread keeps running while the app is shutting down, which
+  scrambles memory that another part of shutdown is still
+  using — leading to a crash on close.
+
+  Investigation:
+  1. Read `src/ptyhandler.{h,cpp}` and locate the `Pty`
+     class destructor + thread management. Confirm the
+     thread is not joined.
+  2. Add `if (m_thread.joinable()) m_thread.join();` before
+     the destructor returns. Coordinate with any condition
+     variable / cancellation flag the thread polls so it
+     exits promptly (otherwise app exit blocks on the
+     thread's next `usleep` cycle).
+  3. Add a feature test that creates + destroys a Pty
+     in a tight loop with ASan (`-DANTS_SANITIZE=address`
+     build) to surface any remaining race.
+
+  Caveat: cannot reproduce by hand reliably — both crashes
+  happened during normal app exit, not via a deterministic
+  trigger. The `usleep` + thread frame is the only repeatable
+  signal. The `build-asan/` directory is already configured —
+  next time the user can repro the crash, asking them to run
+  the asan build will give us a chase-able diagnostic.
+
+  Cross-reference: this is in the "graceful shutdown" class
+  alongside the existing `confirm_close_with_processes`
+  feature test (which checks user-prompt UX, not thread
+  cleanup). ANTS-1189 covers the cleanup contract.
+
+  Kind: fix. Source: user-2026-05-08.
+  Lanes: ptyhandler (destructor thread join), tests
+  (asan build-mode regression test).
+
 ---
 
 ## 0.7.78 — independent-review sweep #2 (target: 2026-05) — 2026-05-07
