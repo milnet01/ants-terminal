@@ -5931,7 +5931,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ---
 
-## 0.7.79 — scoped indie-review #3 on TerminalGrid + TerminalWidget — 2026-05-08
+## 0.7.79 — scoped indie-review #3 on TerminalGrid + TerminalWidget — shipped 2026-05-08
 
 **Theme:** post-ANTS-1194 sanity sweep on `src/terminalgrid.cpp` (3003 LoC)
 + `src/terminalwidget.cpp` (5237 LoC) using `/indie-review` with 4 parallel
@@ -5939,7 +5939,13 @@ lanes: A=resize/scroll-region (recently-changed), B=VT action processor,
 C=paint pipeline + onVtBatch + snapshot lifecycle, D=text shaping + glyph
 rendering + fonts. **17 net-new findings** after threat-model calibration:
 **1 calibrated CRITICAL / 7 HIGH / 9 MEDIUM** plus an INFO swarm of doc-
-rot, per-frame allocations, and Unicode handling gaps.
+rot, per-frame allocations, and Unicode handling gaps. **All 17 shipped
+2026-05-08** in commits ANTS-1195 through ANTS-1213. ANTS-1208 (paint
+re-entrancy) closed as INFO after 8-callback audit found no concrete
+event-pump path; defensive contract documented at `onVtBatch` entry.
+4 new feature tests added (decstr_soft_reset, osc9_progress_disambiguator,
+styled_font_kerning_off, wide_char_resize) plus updates to
+debuglog_perms (post-ANTS-1190 contract catch-up).
 
 **Headline pattern**: doc-rot at scale. Four out of four lanes surfaced
 comments that survived a refactor and now actively mislead — Lane B's
@@ -5978,7 +5984,7 @@ screen mode. Comments survive but their truth conditions don't.
 
 ### 🔒 Tier 1 — ship-this-week fixes (CRITICAL after calibration)
 
-- 📋 [ANTS-1195] **Zombie feature: `m_fallbackFont` (emoji/CJK) and
+- ✅ [ANTS-119&] **Zombie feature: `m_fallbackFont` (emoji/CJK) and
   `m_nerdFallbackFont` (Powerline) loaded, sized on font-size change,
   never used in any render path.** `terminalwidget.cpp:138-166` +
   `terminalwidget.h:529-530, 685-686`. Constructor probes for fonts,
@@ -5990,14 +5996,14 @@ screen mode. Comments survive but their truth conditions don't.
   Decide: delete (~10-line reduction) or wire via per-codepoint range
   check (`cp ∈ PUA E000-F8FF` → nerd; `cp ≥ 1F000` or CJK block →
   fallback). Kind: fix. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1196] **DECSTR (`CSI ! p`) handler missing.** Per xterm
+- ✅ [ANTS-119&] **DECSTR (`CSI ! p`) handler missing.** Per xterm
   ctlseqs, soft-reset MUST reset DECSTBM to full-screen, origin mode
   off, autowrap on, attrs to default, cursor to (0,0). Lane A
   confirmed neither CSI nor ESC dispatch handles intermediate `'!'`
   + final `'p'`. Same bug shape as ANTS-1194 (stale scroll region
   traps user) — closes the broader contract. Add to `processCsi` /
   `handleEsc`. Kind: fix. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1197] **OSC 9;4 progress disambiguator misclassifies
+- ✅ [ANTS-119&] **OSC 9;4 progress disambiguator misclassifies
   short payload `9;4`.** `terminalgrid.cpp:1310-1331`. Length-check
   requires ≥4; payload `"9;4"` (legal ConEmu state-0 "remove
   progress") falls through to OSC 9 desktop notification at line
@@ -6007,7 +6013,7 @@ screen mode. Comments survive but their truth conditions don't.
   literally starts with "4;" — recommend documenting the
   disambiguator behaviour in CLAUDE.md. Kind: fix. Source:
   indie-review-2026-05-08.
-- 📋 [ANTS-1198] **Per-style font setters miss `setKerning(false)`,
+- ✅ [ANTS-119&] **Per-style font setters miss `setKerning(false)`,
   break monospace contract.** `terminalwidget.cpp:4950-4976` —
   `setBoldFontFamily` / `setItalicFontFamily` /
   `setBoldItalicFontFamily` reconstruct fonts but bypass
@@ -6021,7 +6027,7 @@ screen mode. Comments survive but their truth conditions don't.
 
 ### 🔒 Tier 2 — pre-release sweep (HIGH / MEDIUM)
 
-- 📋 [ANTS-1199] **`recalcGridSize` clears the snapshot
+- ✅ [ANTS-119&] **`recalcGridSize` clears the snapshot
   unconditionally; sync-block straddling resize tears for the
   inter-batch window.** `terminalwidget.cpp:2789` —
   `clearScreenSnapshot()` runs even when `m_syncOutputActive`. Spec
@@ -6030,21 +6036,21 @@ screen mode. Comments survive but their truth conditions don't.
   `if (m_syncOutputActive) captureScreenSnapshot();` after the
   clear. Closes documented sync-block tear. Kind: fix. Source:
   indie-review-2026-05-08.
-- 📋 [ANTS-1200] **No escape from stuck-sync state.** `m_syncTimer`
+- ✅ [ANTS-1200] **No escape from stuck-sync state.** `m_syncTimer`
   drops the local snapshot but never resets `m_grid->synchronizedOutput()`.
   Next batch re-arms `m_syncOutputActive`, re-captures, re-arms
   timer — infinite loop on a malformed BSU. After N consecutive
   safety-timer fires, force the grid out via synthetic `\x1B[?2026l`
   action. `terminalwidget.cpp:187, 195-197, 2195, 2211-2215`.
   Kind: fix. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1201] **OSC 52 selection field discarded; clipboard
+- ✅ [ANTS-1201] **OSC 52 selection field discarded; clipboard
   target hardcoded.** `terminalgrid.cpp:1083-1132`. xterm spec:
   `p` (primary) shouldn't clobber `c` (system clipboard); on Linux
   this matters for `pbcopy`-equivalent shell aliases targeting
   primary. Either honour selection field downstream (plumb through
   the OSC52 sentinel envelope) or document single-target limitation
   in CLAUDE.md. Kind: fix. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1202] **OSC 8 hyperlink hardening — three findings
+- ✅ [ANTS-1202] **OSC 8 hyperlink hardening — three findings
   bundled.** (1) `terminalgrid.cpp:1075-1078`: `id=` parser harvests
   embedded `id=` from a non-id value (`"x=id=trick"` → id=`"trick"`).
   Use key-by-key scan splitting `:` first, then `=`. (2)
@@ -6055,7 +6061,7 @@ screen mode. Comments survive but their truth conditions don't.
   reopen. (3) `terminalgrid.cpp:1039-1049`: URI-scheme allowlist
   applied on open only, not close (defense-in-depth gap). Kind:
   fix. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1203] **`rewrap()` ignores wide-char boundaries on
+- ✅ [ANTS-1203] **`rewrap()` ignores wide-char boundaries on
   resize.** `terminalgrid.cpp:2245-2258`. `int chunk = std::min(cols,
   total - pos)` pays no attention to `Cell::isWideChar` /
   `isWideCont`; can split a double-width character with its
@@ -6063,7 +6069,7 @@ screen mode. Comments survive but their truth conditions don't.
   (predates ANTS-1194). Decrement `chunk` by 1 when
   `logical.cells[pos+chunk-1].isWideChar`. Kind: fix. Source:
   indie-review-2026-05-08.
-- 📋 [ANTS-1204] **`primaryWasFullScreen` rename + initialize
+- ✅ [ANTS-1204] **`primaryWasFullScreen` rename + initialize
   `m_altScrollBottom = m_rows - 1`.** Lane A M1 + M3. Variable
   name (`terminalgrid.cpp:2199-2202`) inverts reality during alt-
   screen because the swap at 632-633 puts the saved-primary in
@@ -6073,7 +6079,7 @@ screen mode. Comments survive but their truth conditions don't.
   symmetry with the constructor's primary init at line 116
   (foot-gun for any future caller consulting alt members outside
   an active alt-session). Kind: fix. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1205] **`m_paintLayout.clearFormats()` discipline.**
+- ✅ [ANTS-1205] **`m_paintLayout.clearFormats()` discipline.**
   `terminalwidget.cpp` paintEvent runs loop. Mutable QTextLayout
   reused across paints; no `setFormats({})` clear. Benign today
   (no caller sets formats), but any future addition that calls
@@ -6082,7 +6088,7 @@ screen mode. Comments survive but their truth conditions don't.
   `m_paintLayout.clearFormats()` at the top of the runs loop +
   comment naming the contract. Pre-empts a class of bug invisible
   to tests. Kind: fix. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1213] **DECRQSS comment cleanup (CRITICAL→HIGH after
+- ✅ [ANTS-1213] **DECRQSS comment cleanup (CRITICAL→HIGH after
   threat-model calibration).** `terminalgrid.cpp:846-847` claims
   "DECRQSS (DCS $q) is not implemented" while `handleDcs` at line
   2511 implements it. Calibration: the implementation IS safe
@@ -6095,20 +6101,20 @@ screen mode. Comments survive but their truth conditions don't.
 
 ### ⚡ Tier 3 — perf / hardening / structural
 
-- 📋 [ANTS-1206] **Doc-rot sweep on terminalwidget.cpp.** Replace
+- ✅ [ANTS-1206] **Doc-rot sweep on terminalwidget.cpp.** Replace
   stale FBO / QOpenGLWidget rationale at `:629-636` and `:1917-1918`;
   audit the file for any other "GL"/"FBO"/"QOpenGLWidget" literal
   references post-0.7.44 retirement. Cross-cutting outcome of the
   4-lane review's #1 theme. Kind: doc-fix. Source:
   indie-review-2026-05-08.
-- 📋 [ANTS-1207] **Per-frame allocator hygiene bundle.** Cache
+- ✅ [ANTS-1207] **Per-frame allocator hygiene bundle.** Cache
   `m_badgeFont` (4× pt-size with bold), command-mark-label font
   (`:1267-1268`), quick-select font (`:1278-1280`), perf-overlay
   font (`:1400-1401`); add ASCII fast-path for `QString::fromUcs4`
   (>90% of TUI content); guard `m_freeCellBuffers.clear()` at
   `terminalgrid.cpp:2476` with `if (cols != m_cols)`. Kind:
   perf. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1208] **paintEvent re-entrancy investigation.**
+- ✅ [ANTS-1208] **paintEvent re-entrancy investigation.**
   `terminalwidget.cpp:2877-2878` snapshot fallback to `m_grid->cellAt`
   during `processAction` loop could tear on Wayland + dbus modal
   pump path. Open question — agent could not pin to a concrete
@@ -6117,7 +6123,7 @@ screen mode. Comments survive but their truth conditions don't.
   effects. If found, add an "in_processAction" guard flag refusing
   repaint during the loop. Kind: investigate. Source:
   indie-review-2026-05-08.
-- 📋 [ANTS-1209] **Input-handler resource caps + IME cursor sync.**
+- ✅ [ANTS-1209] **Input-handler resource caps + IME cursor sync.**
   Three findings bundled. (1) OSC 133 marker validation:
   `terminalgrid.cpp:1144-1198` — bound marker set early
   (`if (marker != 'A' && != 'B' && != 'C' && != 'D') return;`)
@@ -6128,13 +6134,13 @@ screen mode. Comments survive but their truth conditions don't.
   `effectiveCursorRow/Col()` during BSU so IME panel doesn't
   jump to live-but-unrendered cursor (Lane C M3). Kind: fix.
   Source: indie-review-2026-05-08.
-- 📋 [ANTS-1210] **CSI X (ECH) ignores BCE attrs reset.**
+- ✅ [ANTS-121&] **CSI X (ECH) ignores BCE attrs reset.**
   `terminalgrid.cpp:742-751`. Other erase paths zero attrs
   before assigning bg via `eraseBg()`; ECH leaves bold/italic/
   underline active on a space. xterm reference clears all
   attrs except bg/fg on ECH. Mirror `clearRow` pattern. Kind:
   fix. Source: indie-review-2026-05-08.
-- 📋 [ANTS-1211] **`tline.setLineWidth(length * cellW * 2)` fudge
+- ✅ [ANTS-121&] **`tline.setLineWidth(length * cellW * 2)` fudge
   + minor render polish.** `terminalwidget.cpp:1024`. UTF-16
   length not glyph cells; `* 2` factor is a fix for the wrong
   problem (CJK doubles, emoji surrogates). Replace with
