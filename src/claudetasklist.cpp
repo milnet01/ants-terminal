@@ -55,9 +55,16 @@ void ClaudeTaskListTracker::setTranscriptPath(const QString &path) {
 }
 
 int ClaudeTaskListTracker::unfinishedCount() const {
+    // ANTS-1216 — match the header contract: pending + in_progress.
+    // Pre-fix used `!= "completed"`, which over-counted "deleted"
+    // tasks. User repro 2026-05-08: 27 completed + 1 deleted left
+    // unfinishedCount=1, so the status-bar Tasks chip read "☰ 1/28"
+    // and stayed visible even though the dialog header (which sums
+    // done + running + outstanding) showed 0 outstanding.
     int n = 0;
     for (const auto &t : m_tasks) {
-        if (t.status != QStringLiteral("completed")) ++n;
+        if (t.status == QStringLiteral("pending") ||
+            t.status == QStringLiteral("in_progress")) ++n;
     }
     return n;
 }

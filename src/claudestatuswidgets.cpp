@@ -702,9 +702,14 @@ void ClaudeStatusBarController::refreshTasksButton() {
                  total, unfinished, inProgress, pending, done, branch);
     }
 
-    if (total <= 0) {
+    if (total <= 0 || unfinished <= 0) {
         // Hide on every empty case (no transcript, no plan events,
-        // empty plan list). Single rule per spec §6.
+        // empty plan list) AND on the "all done" case. ANTS-1216 user
+        // report 2026-05-08: a tab whose tasks are all completed kept
+        // the chip visible at "☰ 0/N", which read as actionable
+        // chrome when there was nothing left to do. The chip's
+        // purpose is to surface outstanding work; an all-done state
+        // is just noise.
         m_tasksBtn->hide();
         return;
     }

@@ -5954,6 +5954,28 @@ made the desktop feel noisy in normal use.
   **Layman:** Ants Terminal stops nagging you when commands
   succeed; only failures interrupt your focus now.
   Kind: fix. Source: user-2026-05-08.
+- ✅ [ANTS-1216] **Tasks chip stays visible after every task is done
+  + miscount of "deleted" tasks as unfinished.** User report
+  2026-05-08 (screenshot): Task List dialog showed "27 done, 0
+  running, 0 outstanding" but the status-bar chip still read
+  "☰ 1/28" and hadn't dimmed. Two stacked bugs:
+  (1) `ClaudeTaskListTracker::unfinishedCount()` used
+  `status != "completed"`, so a `deleted` task counted as
+  unfinished — the chip showed "1" outstanding when the dialog
+  showed zero. Header-stated contract was "pending + in_progress";
+  implementation drifted. **Fix:** count only `pending` +
+  `in_progress`.
+  (2) `refreshTasksButton` only hid the chip when `total <= 0`,
+  so a fully-done task list kept the chip visible at "☰ 0/N",
+  reading as actionable chrome. **Fix:** also hide when
+  `unfinished <= 0` (the chip's purpose is to surface
+  outstanding work).
+  Both layered: even with the count fix, the all-done case still
+  surfaced "☰ 0/27" until the show-rule change.
+  **Layman:** the Tasks button at the bottom-right now disappears
+  when you've actually finished everything, instead of lingering
+  with a "0" indicator.
+  Kind: fix. Source: user-2026-05-08.
 - ✅ [ANTS-1215] **Review Changes button stays active after every
   push because of an untracked `.directory` file (KDE Dolphin
   metadata).** User report 2026-05-08 with screenshot of a clean
