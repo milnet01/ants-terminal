@@ -134,6 +134,12 @@ public:
     int cursorRow() const { return m_cursorRow; }
     int cursorCol() const { return m_cursorCol; }
     bool cursorVisible() const { return m_cursorVisible; }
+    // ANTS-1196 — origin mode + autoWrap accessors expose state needed
+    // for the DECSTR (soft reset) feature test. Single-thread reads
+    // from GUI-thread paint and from the parse-worker, both pointer-
+    // sized loads, no atomicity concern.
+    bool originMode() const { return m_originMode; }
+    bool autoWrap() const { return m_autoWrap; }
     bool bracketedPaste() const { return m_bracketedPaste; }
     CursorShape cursorShape() const { return m_cursorShape; }
     bool cursorBlink() const {

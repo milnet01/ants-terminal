@@ -600,6 +600,33 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         break;
     }
     case 'm': handleSGR(p, a.colonSep); break;
+    case 'p':
+        if (a.intermediate == "!") {
+            // ANTS-1196 — DECSTR (Soft Terminal Reset) per xterm
+            // ctlseqs / VT220 ref. Conformant TUIs (vim, neovim, mc,
+            // htop) emit this on startup to recover from a hostile
+            // prior shell state. Subset of RIS — does NOT wipe
+            // screen, scrollback, hyperlinks, OSC 133, callbacks,
+            // m_osc133Key, kitty kbd stack, alt-screen state. See
+            // tests/features/decstr_soft_reset/spec.md.
+            m_scrollTop = 0;
+            m_scrollBottom = m_rows - 1;
+            m_originMode = false;
+            m_autoWrap = true;
+            m_cursorVisible = true;
+            m_currentAttrs = CellAttrs{};
+            m_currentAttrs.fg = m_defaultFg;
+            m_currentAttrs.bg = m_defaultBg;
+            m_savedRow = 0;
+            m_savedCol = 0;
+            m_savedAttrs = CellAttrs{};
+            m_savedAttrs.fg = m_defaultFg;
+            m_savedAttrs.bg = m_defaultBg;
+            m_savedOriginMode = false;
+            m_savedAutoWrap = true;
+            m_wrapNext = false;
+        }
+        break;
     case 'r':
         setScrollRegion(param(0, 1) - 1, p.size() > 1 ? param(1, m_rows) - 1 : m_rows - 1);
         break;

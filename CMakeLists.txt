@@ -422,6 +422,26 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # decstr_soft_reset — pins DECSTR (CSI ! p) soft-reset semantics
+    # per xterm ctlseqs / VT220 reference. ANTS-1196 from indie-review #3.
+    add_executable(test_decstr_soft_reset
+        tests/features/decstr_soft_reset/test_decstr_soft_reset.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_decstr_soft_reset PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_decstr_soft_reset PRIVATE src)
+    target_compile_options(test_decstr_soft_reset PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME decstr_soft_reset COMMAND test_decstr_soft_reset)
+    set_tests_properties(decstr_soft_reset PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # sgr_attribute_reset — asserts every SGR set/reset pair (bold, italic,
     # underline, inverse, strikethrough) + SGR 0 full-reset correctly clear
     # the cell attribute on subsequent writes. See
