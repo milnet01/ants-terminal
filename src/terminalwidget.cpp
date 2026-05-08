@@ -2052,8 +2052,16 @@ void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
 
 QVariant TerminalWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
     if (query == Qt::ImCursorRectangle) {
-        int x = m_padding + m_grid->cursorCol() * m_cellWidth;
-        int y = m_padding + m_grid->cursorRow() * m_cellHeight;
+        // ANTS-1209 — return the position the user CAN SEE, not the
+        // grid's live cursor. During a DEC mode 2026 BSU block (sync
+        // output) the painted cursor is parked at the snapshot's
+        // frozen position; pre-fix code returned the live cursor,
+        // which during an htop-style redraw could land anywhere on
+        // the grid → IME panel jumps to the wrong spot mid-redraw.
+        // effectiveCursorRow/Col already encapsulate the
+        // "snapshot if frozen, else live" logic that paintEvent uses.
+        int x = m_padding + effectiveCursorCol() * m_cellWidth;
+        int y = m_padding + effectiveCursorRow() * m_cellHeight;
         return QRect(x, y, m_cellWidth, m_cellHeight);
     }
     return QWidget::inputMethodQuery(query);

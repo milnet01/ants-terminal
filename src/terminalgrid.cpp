@@ -587,7 +587,13 @@ void TerminalGrid::handleCsi(const VtAction &a) {
             break;
         const uint32_t cp = row.cells[srcCol].codepoint;
         if (cp == 0) break;  // empty cell — nothing to repeat
-        const int count = std::min(param(0), m_cols * m_rows);
+        // ANTS-1209 — pre-fix cap was m_cols * m_rows (e.g. 16,000 calls
+        // into the heavy handlePrint per single CSI byte on a 200×80 grid).
+        // A malicious payload `\e[16000b\e[16000b...` could pin the parser
+        // thread on a single sequence. Real REP use cases (border drawing
+        // in less / `tput rep`) need at most m_cols; cap at 2*m_cols so a
+        // legit user emitting a "fill the row twice" gesture still works.
+        const int count = std::min(param(0), m_cols * 2);
         for (int i = 0; i < count; ++i) {
             handlePrint(cp);
         }
@@ -1171,6 +1177,16 @@ void TerminalGrid::handleOsc(const std::string &payload) {
     // behaviour is unchanged.
     else if (oscNum == "133" && semi != std::string::npos && semi + 1 < payload.size()) {
         const char marker = payload[semi + 1];
+        // ANTS-1209 — bound the marker set BEFORE the HMAC verifier
+        // path runs. With m_osc133Key set, every received `OSC 133;X;...`
+        // triggers a SHA-256 verification round; an attacker can pin
+        // a parse-thread CPU by spamming markers we don't recognize
+        // (`OSC 133;Z;ahmac=<hex>` repeats). Drop early — only A/B/C/D
+        // are spec'd, and unknown markers fall through with no useful
+        // side effect anyway.
+        if (marker != 'A' && marker != 'B' && marker != 'C' && marker != 'D') {
+            return;
+        }
         std::string rest = payload.substr(semi + 1);
 
         // Split rest on ';'. parts[0] = marker letter (single char),
