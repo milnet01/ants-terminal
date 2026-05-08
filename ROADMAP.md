@@ -5416,14 +5416,21 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Terminal rendering — server output only updates top half of window (user report 2026-05-07)
 
-- 📋 [ANTS-1187] **Long-running server tab renders new output
+- 🚧 [ANTS-1187] **Long-running server tab renders new output
   only into the upper half of the terminal; bottom half stays
-  blank.** User report 2026-05-07: ran a Python web server
-  (RetroDB / waitress) in a tab; banner + startup logs print
+  blank.** User report 2026-05-07, narrowed 2026-05-08: ran a
+  Python web server (RetroDB / waitress, then narrowed to
+  Flask specifically) in a tab; banner + startup logs print
   fine, but as the server keeps writing log lines they pile up
   at the *middle* of the window instead of scrolling at the
   bottom edge. The bottom ~50% of the visible grid stays
-  permanently blank. Scrolling up DOES reveal text at the
+  permanently blank. **Flask-only repro** — other long-running
+  output (`tail -f`, plain logs from non-Flask servers) does
+  NOT exhibit it. **Layman:** When a Python Flask web server
+  is running, new log lines stop scrolling at the middle of
+  the terminal instead of the bottom. The "Reset Scroll
+  Region" menu item under Tools fixes it instantly until the
+  root cause is identified. Scrolling up DOES reveal text at the
   bottom of the viewport (so scrollback is intact), and the
   output keeps moving — it just stops a few lines after the
   middle row instead of scrolling against the last row.
@@ -5458,14 +5465,46 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   the visible terminal, with scrollback growing upward, even
   after a long session that may have included TUI helpers
   (claude-code's footer, htop, vim) earlier in the same tab.
-  Add a feature test that drives DECSTBM (`\\033[10;20r`),
-  prints text past the bottom margin, sends RIS (`\\033c`),
-  and asserts the next 100 lines of plain-print output land
-  at the bottom of the visible grid.
-  Note from user: roadmap this for now, do not fix immediately.
+
+  **Investigation 2026-05-08 — escape hatch shipped, root
+  cause still pending:**
+  1. Wrote `tests/features/scroll_region_leak_after_apps/`
+     (spec.md + test_scroll_region_leak.cpp) with 7 invariants
+     pinning the standard DECSTBM reset paths (CSI r, RIS) and
+     the alt-screen save/restore semantics. **All 7 pass
+     against current code** — the grid's reset paths are
+     correct per xterm contract.
+  2. Added public `TerminalGrid::scrollTop()` /
+     `scrollBottom()` accessors and `bool altScreenActive()`
+     (already existed) so tests + future debug log lines can
+     inspect DECSTBM directly.
+  3. Added `TerminalGrid::resetScrollRegion()` public method:
+     resets main + alt scroll regions to full-screen
+     `[0, rows-1]` without touching grid contents, attrs,
+     modes, or scrollback. Wired into a new **Tools → Reset
+     Scroll Region** menu action (manual escape hatch matching
+     xterm's "Hard Reset" pattern). Status-tip explains the
+     symptom; status bar confirms with `Scroll region reset
+     to full screen [0, N]`.
+  4. INV-7 in the test pins the menu-action contract: after
+     `resetScrollRegion()`, both the active region AND the
+     saved alt region are full-screen, so re-entering alt
+     starts from a clean state.
+
+  **Root cause still unknown.** Symptom is Flask-specific (not
+  reproduced with `tail -f`, plain server logs from other
+  tools). Hypotheses — werkzeug dev-server banner emits
+  DECSTBM, Flask reloader fork+exec leaves PTY in a weird
+  mode, or Click/Rich-style traceback formatter sets a scroll
+  region that never resets. Next step: minimal Flask app,
+  `ANTS_DEBUG=vt` capture during startup, identify the
+  offending escape sequence. The escape hatch covers the
+  user-facing pain in the meantime.
+
   Kind: fix. Source: user-2026-05-07.
-  Lanes: terminalgrid (DECSTBM / scroll region), terminalwidget
-  (resize → grid bound recompute).
+  Lanes: terminalgrid (DECSTBM / scroll region accessors +
+  resetScrollRegion), mainwindow (Tools menu wiring),
+  tests/features/scroll_region_leak_after_apps.
 
 ---
 

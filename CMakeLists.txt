@@ -376,6 +376,29 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # scroll_region_leak_after_apps — pins DECSTBM reset paths
+    # (CSI r / RIS) plus the alt-screen save/restore so a TUI exit
+    # can't leak the alt's scroll region onto main. Driven by user
+    # report ANTS-1187 (long-running server tab rendered only into
+    # upper half).
+    add_executable(test_scroll_region_leak
+        tests/features/scroll_region_leak_after_apps/test_scroll_region_leak.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_scroll_region_leak PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_scroll_region_leak PRIVATE src)
+    target_compile_options(test_scroll_region_leak PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME scroll_region_leak COMMAND test_scroll_region_leak)
+    set_tests_properties(scroll_region_leak PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # sgr_attribute_reset — asserts every SGR set/reset pair (bold, italic,
     # underline, inverse, strikethrough) + SGR 0 full-reset correctly clear
     # the cell attribute on subsequent writes. See

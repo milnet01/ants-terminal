@@ -1983,6 +1983,18 @@ void TerminalGrid::setScrollRegion(int top, int bottom) {
     setCursorPos(m_originMode ? m_scrollTop : 0, 0);
 }
 
+void TerminalGrid::resetScrollRegion() {
+    // ANTS-1187 user escape hatch — reset DECSTBM to full screen on
+    // both main + alt scroll-region pairs without disturbing grid
+    // contents, attributes, modes, or scrollback. Same observable
+    // effect as the running shell sending CSI r, but the user can
+    // trigger it from the menu without poking the running process.
+    m_scrollTop = 0;
+    m_scrollBottom = m_rows - 1;
+    m_altScrollTop = 0;
+    m_altScrollBottom = m_rows - 1;
+}
+
 void TerminalGrid::saveCursor() {
     m_savedRow = m_cursorRow;
     m_savedCol = m_cursorCol;

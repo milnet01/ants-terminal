@@ -147,6 +147,28 @@ public:
     int lastExitCode() const { return m_lastExitCode; }
     int commandOutputStartLine() const { return m_commandOutputStart; }
 
+    // DECSTBM scroll region — 0-indexed, both inclusive. Defaults to
+    // [0, rows()-1] (full screen). Exposed for diagnostics + tests
+    // that pin DECSTBM behaviour (ANTS-1187 — long-running output not
+    // reaching the bottom row symptom). altScreenActive() already
+    // exposed below (legacy alt-screen accessor).
+    int scrollTop() const { return m_scrollTop; }
+    int scrollBottom() const { return m_scrollBottom; }
+
+    // ANTS-1187 — user escape hatch for stuck DECSTBM. A prior
+    // process (claude-code's status footer, ncurses TUI, alt-screen
+    // app that crashed without restoring) can leave a non-default
+    // DECSTBM region that subsequent plain output is constrained
+    // by, producing the "output piles in the middle, bottom rows
+    // blank" symptom. By xterm contract this only clears on RIS,
+    // DECSTR, DECSTBM-with-no-params, or window resize that drops
+    // the prior bottom — none of which the user can easily trigger.
+    // This method resets the scroll region to full-screen on both
+    // main and alt without touching grid contents, attributes, or
+    // modes — the least-destructive recovery. Wired into the
+    // Tools → Reset Scroll Region menu action.
+    void resetScrollRegion();
+
     const Cell &cellAt(int row, int col) const;
     const QString &windowTitle() const { return m_windowTitle; }
 

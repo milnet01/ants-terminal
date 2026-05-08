@@ -1518,6 +1518,29 @@ void MainWindow::setupMenus() {
         if (auto *t = focusedTerminal()) t->toggleFoldAtCursor();
     });
 
+    // ANTS-1187 — user escape hatch when a prior process leaves the
+    // scroll region (DECSTBM) constrained, so new output piles in
+    // a sub-band of the terminal instead of scrolling against the
+    // bottom edge. Most commonly seen with Flask's dev server in
+    // a tab that previously hosted a TUI helper. Resets both
+    // main + alt scroll regions to full screen without touching
+    // grid contents, attrs, modes, or scrollback.
+    QAction *resetScrollRegionAction = toolsMenu->addAction(
+        "&Reset Scroll Region");
+    resetScrollRegionAction->setStatusTip(
+        "Clear stuck DECSTBM scroll region — fixes 'output piles "
+        "in the middle, bottom rows blank' symptom when a prior "
+        "process didn't restore it.");
+    connect(resetScrollRegionAction, &QAction::triggered, this, [this]() {
+        if (auto *t = focusedTerminal()) {
+            t->grid()->resetScrollRegion();
+            showStatusMessage(
+                QStringLiteral("Scroll region reset to full screen "
+                               "[0, %1]").arg(t->grid()->rows() - 1),
+                4000);
+        }
+    });
+
     toolsMenu->addSeparator();
 
     // Tools → Debug Mode submenu. Each category is a checkable
