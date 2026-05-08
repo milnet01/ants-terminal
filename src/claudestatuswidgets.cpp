@@ -645,7 +645,13 @@ void ClaudeStatusBarController::refreshBgTasksButton() {
 }
 
 void ClaudeStatusBarController::refreshTasksButton() {
-    if (!m_tasks || !m_tasksBtn) return;
+    if (!m_tasks || !m_tasksBtn) {
+        ANTS_LOG(DebugLog::Claude,
+                 "tasks/refresh: tracker=%p btn=%p — early return",
+                 static_cast<void *>(m_tasks),
+                 static_cast<void *>(m_tasksBtn));
+        return;
+    }
 
     // Resolve transcript path the same way refreshBgTasksButton does
     // — scope to the focused tab's project tree.
@@ -653,9 +659,11 @@ void ClaudeStatusBarController::refreshTasksButton() {
     auto *focused = m_focusedTerminalProvider
                         ? m_focusedTerminalProvider() : nullptr;
     if (focused) cwd = focused->shellCwd();
+    const bool focusedTabPresent = (focused != nullptr);
     QString path;
     if (m_integration) path = m_integration->activeSessionPath(cwd);
-    if (path != m_tasks->transcriptPath())
+    const QString prevPath = m_tasks->transcriptPath();
+    if (path != prevPath)
         m_tasks->setTranscriptPath(path);
 
     // Polling rescue: QFileSystemWatcher silently drops its watch on
@@ -670,6 +678,29 @@ void ClaudeStatusBarController::refreshTasksButton() {
     const int inProgress = m_tasks->inProgressCount();
     const int pending    = m_tasks->pendingCount();
     const int done       = m_tasks->completedCount();
+
+    // Diagnostic logging mirrors refreshBgTasksButton's pattern (see
+    // line 615+). Gated on ANTS_DEBUG=claude (or runtime toggle).
+    // Lets the user capture why the chip hides under realistic
+    // conditions — added 2026-05-08 because the 11-task TaskCreate
+    // run that day left the chip hidden with no signal to debug.
+    if (DebugLog::enabled(DebugLog::Claude)) {
+        const QString cwdShort = cwd.isEmpty()
+            ? QStringLiteral("(empty)") : cwd;
+        const QString pathShort = path.isEmpty()
+            ? QStringLiteral("(empty)")
+            : path.section('/', -1);
+        const char *branch = (total > 0) ? "SHOW" : "HIDE/empty";
+        ANTS_LOG(DebugLog::Claude,
+                 "tasks/refresh: focused-tab=%s cwd=%s path=%s "
+                 "prev-changed=%s total=%d unfinished=%d "
+                 "in-progress=%d pending=%d done=%d → %s",
+                 focusedTabPresent ? "yes" : "no",
+                 cwdShort.toUtf8().constData(),
+                 pathShort.toUtf8().constData(),
+                 (path == prevPath) ? "no" : "yes",
+                 total, unfinished, inProgress, pending, done, branch);
+    }
 
     if (total <= 0) {
         // Hide on every empty case (no transcript, no plan events,

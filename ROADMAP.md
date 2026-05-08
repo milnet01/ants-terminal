@@ -5649,6 +5649,50 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Lanes: ptyhandler (destructor thread join), tests
   (asan build-mode regression test).
 
+### 🐛 Debug-log infrastructure — Clear Log silences subsequent writes (user report 2026-05-08)
+
+- ✅ [ANTS-1190] **`Tools → Debug Mode → Clear Log File` permanently
+  silences subsequent `ANTS_LOG` writes until the user toggles a
+  category off-and-on.** Shipped 2026-05-08 (commit `98e6cb3`).
+  User repro 2026-05-08 (root cause for the "VT debug log not
+  capturing Flask startup" symptom): user toggled Vt + Claude +
+  Perf categories, then clicked Clear Log File, then ran Flask —
+  no `~/.local/share/ants-terminal/debug.log` was written despite
+  categories remaining ticked. Code path: `clear()` closed `s_file`
+  and unlinked the path; `write()` checks `if (s_file.isOpen())`
+  before writing and silently dropped every subsequent log line.
+  Fix: extracted the file-open block from `setActive()` into a new
+  `openLogFileLocked()` private helper, and `clear()` now calls it
+  after the `QFile::remove()`. Idempotent — no-op if `s_active == 0`
+  or file is already open. Both `setActive` and `clear` continue to
+  hold `s_mutex` while calling. **Layman:** the "Clear Log" button
+  used to break debug logging until you toggled a category — fixed
+  so logging keeps writing afterwards.
+  Kind: fix. Source: user-2026-05-08.
+  Lanes: debuglog.
+
+### 🐛 Tasks chip — no diagnostic logging on hide path (user report 2026-05-08)
+
+- ✅ [ANTS-1191] **`refreshTasksButton` had no diagnostic logging,
+  unlike `refreshBgTasksButton`.** User repro 2026-05-08: created
+  11 tasks via `TaskCreate` in the active Claude Code session. The
+  `.jsonl` recorded the events with current timestamps, but the
+  status-bar Tasks chip stayed hidden. Without the per-refresh
+  diagnostic line that the bg-tasks side gained for ANTS-1052, there
+  was no signal to debug — was the path empty? did the parser fail?
+  was `m_tasks` null? Mirrored the bg-tasks pattern: gated on
+  `ANTS_DEBUG=claude` (or the runtime menu toggle), each refresh
+  emits a single line with focused-tab presence, cwd, transcript
+  basename, prev-path-changed flag, total/unfinished/in-progress/
+  pending/done counts, and the show/hide branch decision. Resolves
+  the "tasks chip hidden — why?" debug gap; doesn't address the
+  underlying cause (still pending — see ANTS-1052 / ANTS-1163
+  follow-up investigation once the user shares a captured log).
+  **Layman:** added invisible per-tick log lines to the Tasks
+  chip code so we can tell why it's empty when it doesn't show up.
+  Kind: fix. Source: user-2026-05-08.
+  Lanes: claudestatuswidgets.
+
 ---
 
 ## 0.7.78 — independent-review sweep #2 (target: 2026-05) — 2026-05-07
