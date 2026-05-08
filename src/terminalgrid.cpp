@@ -2304,6 +2304,19 @@ void TerminalGrid::resize(int rows, int cols) {
         int total = static_cast<int>(logical.cells.size());
         while (pos < total) {
             int chunk = std::min(cols, total - pos);
+            // ANTS-1203 — never split a wide character across a wrap.
+            // If the last cell of this chunk is a wide-char lead and
+            // its continuation cell falls in the next chunk, push the
+            // lead to the next line so the pair stays together.
+            // Pre-fix code happily orphaned the lead, leaving an
+            // isWideChar cell whose isWideCont partner was on the
+            // next reflowed line — visual corruption under CJK / emoji
+            // resize. The min-1 guard ensures forward progress (a
+            // chunk of 1 always emits at least the trailing lead).
+            if (chunk > 1 && pos + chunk < total &&
+                logical.cells[pos + chunk - 1].isWideChar) {
+                --chunk;
+            }
             TermLine tl;
             tl.cells = makeRow(cols, m_defaultFg, m_defaultBg);
             for (int i = 0; i < chunk; ++i) tl.cells[i] = logical.cells[pos + i];

@@ -464,6 +464,28 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # wide_char_resize — pins rewrap's wide-char boundary respect.
+    # ANTS-1203 from indie-review #3 — pre-fix chunk loop split a
+    # wide-char lead from its continuation when the wrap point landed
+    # mid-pair, producing visually-corrupt scrollback under CJK / emoji.
+    add_executable(test_wide_char_resize
+        tests/features/wide_char_resize/test_wide_char_resize.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_wide_char_resize PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_wide_char_resize PRIVATE src)
+    target_compile_options(test_wide_char_resize PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME wide_char_resize COMMAND test_wide_char_resize)
+    set_tests_properties(wide_char_resize PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # sgr_attribute_reset — asserts every SGR set/reset pair (bold, italic,
     # underline, inverse, strikethrough) + SGR 0 full-reset correctly clear
     # the cell attribute on subsequent writes. See
