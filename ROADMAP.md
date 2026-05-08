@@ -5504,15 +5504,31 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
      saved alt region are full-screen, so re-entering alt
      starts from a clean state.
 
-  **Root cause still unknown.** Symptom is Flask-specific (not
-  reproduced with `tail -f`, plain server logs from other
-  tools). Hypotheses — werkzeug dev-server banner emits
-  DECSTBM, Flask reloader fork+exec leaves PTY in a weird
-  mode, or Click/Rich-style traceback formatter sets a scroll
-  region that never resets. Next step: minimal Flask app,
-  `ANTS_DEBUG=vt` capture during startup, identify the
-  offending escape sequence. The escape hatch covers the
-  user-facing pain in the meantime.
+  **2026-05-08 byte capture — Flask is innocent.** Captured
+  `/tmp/flask.bytes` (4 KB) via `script -q -c "./start.sh"`.
+  Greppped for DECSTBM and all CSI sequences. Result: **zero
+  scroll-region escapes, zero cursor manipulation, zero
+  alt-screen toggles, zero DECSTBM / DECSC / DECSTR / RIS**.
+  Only SGR colour codes (`[0;32m`, `[0;36m`, `[0m`, `[1;33m`),
+  plain text, and UTF-8 box-drawing chars (`╔══╗`, `║`, `═`).
+  Flask + the surrounding `./start.sh` cannot cause the
+  bottom-half-blank symptom on their own.
+
+  Two remaining hypotheses, both new:
+  - **H1: prior tab state leaks into next process.** Something
+    earlier in the RetroDB tab (Claude Code TUI footer, an SSH
+    session, an ncurses tool) set DECSTBM / scroll-region /
+    cursor-position and didn't restore on exit. `./start.sh`
+    inherits the constrained region.
+  - **H2: Ants-side rendering bug** unrelated to DECSTBM —
+    paint/viewport/scrollback/cell-write divergence at the
+    specific byte pattern `./start.sh` produces.
+
+  Discriminating test: run `./start.sh` in a brand-new tab,
+  no prior commands. If symptom does NOT occur → H1 (chase
+  whatever was running before). If symptom DOES occur on
+  fresh tab → H2 (instrument byte-level Vt logging in
+  TerminalGrid action dispatch).
 
   Kind: fix. Source: user-2026-05-07.
   Lanes: terminalgrid (DECSTBM / scroll region accessors +
