@@ -4953,6 +4953,10 @@ void TerminalWidget::setBoldFontFamily(const QString &family) {
     m_fontBold.setBold(true);
     m_fontBold.setStyleHint(QFont::Monospace);
     m_fontBold.setFixedPitch(true);
+    // ANTS-1198 — kerning off matches the contract `updateFontMetrics`
+    // re-asserts on all variants. A custom bold family with kerning
+    // enabled drifts columns under styled runs.
+    m_fontBold.setKerning(false);
     update();
 }
 
@@ -4962,6 +4966,7 @@ void TerminalWidget::setItalicFontFamily(const QString &family) {
     m_fontItalic.setItalic(true);
     m_fontItalic.setStyleHint(QFont::Monospace);
     m_fontItalic.setFixedPitch(true);
+    m_fontItalic.setKerning(false);  // ANTS-1198 — same as bold setter
     update();
 }
 
@@ -4972,6 +4977,7 @@ void TerminalWidget::setBoldItalicFontFamily(const QString &family) {
     m_fontBoldItalic.setItalic(true);
     m_fontBoldItalic.setStyleHint(QFont::Monospace);
     m_fontBoldItalic.setFixedPitch(true);
+    m_fontBoldItalic.setKerning(false);  // ANTS-1198 — same as bold setter
     update();
 }
 

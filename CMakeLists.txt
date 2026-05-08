@@ -2123,6 +2123,25 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # styled_font_kerning_off — pins setKerning(false) discipline
+    # in setBold/Italic/BoldItalicFontFamily. ANTS-1198 from
+    # indie-review #3 — pre-fix setters bypassed updateFontMetrics()
+    # and inherited Qt-default kerning, drifting columns.
+    add_executable(test_styled_font_kerning_off
+        tests/features/styled_font_kerning_off/test_styled_font_kerning_off.cpp
+    )
+    target_compile_options(test_styled_font_kerning_off PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    target_compile_definitions(test_styled_font_kerning_off PRIVATE
+        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
+    )
+    add_test(NAME styled_font_kerning_off
+        COMMAND test_styled_font_kerning_off)
+    set_tests_properties(styled_font_kerning_off PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # portal_session_close — 0.7.33 fix. Locks the dtor + Session.Close
     # async dispatch on the active portal session handle. Pre-fix the
     # session leaked for the lifetime of xdg-desktop-portal. See
