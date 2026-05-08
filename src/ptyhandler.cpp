@@ -12,7 +12,6 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
-#include <thread>      // 0.7.33: detached worker for SIGTERM/SIGKILL escalation
 #include <unistd.h>
 #include <pwd.h>
 
@@ -40,46 +39,48 @@ Pty::~Pty() {
         // it within microseconds).
         int status = 0;
         if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
-            // Child still running. 0.7.33: move SIGTERM/SIGKILL
-            // escalation to a detached worker thread so window-close
-            // doesn't freeze the GUI N×500ms when N split panes
-            // close together. The Pty object is being destroyed, so
-            // we capture only the pid by value — no `this` reference
-            // can outlive the destructor.
+            // Child still running — synchronous SIGTERM → 500 ms wait
+            // → SIGKILL escalation on the calling thread.
             //
-            // Detached: the worker reaps the child and exits on its
-            // own. If the application itself exits before the worker
-            // finishes, the kernel reaps both the orphan child (which
-            // gets adopted by init) and the worker thread — no leak,
-            // just an interrupted escalation that init handles
-            // identically.
-            const pid_t pid = m_childPid;
-            try {
-                std::thread([pid]() {
-                    int st = 0;
-                    ::kill(pid, SIGTERM);
-                    for (int i = 0; i < 50; ++i) {
-                        if (::waitpid(pid, &st, WNOHANG) != 0) return;
-                        ::usleep(10000);  // 10 ms × 50 = 500 ms total
-                    }
-                    if (::waitpid(pid, &st, WNOHANG) == 0) {
-                        ::kill(pid, SIGKILL);
-                        ::waitpid(pid, &st, 0);
-                    }
-                }).detach();
-            } catch (const std::system_error &) {
-                // Thread creation failed (resource exhaustion at exit
-                // time — rare but possible under ulimit -u pressure).
-                // Fall back to the synchronous escalation: better a
-                // 500 ms freeze than a leaked child / zombie.
-                ::kill(pid, SIGTERM);
-                for (int i = 0; i < 50; ++i) {
-                    if (::waitpid(pid, &status, WNOHANG) != 0) break;
-                    ::usleep(10000);
-                }
-                if (::waitpid(pid, &status, WNOHANG) == 0) {
-                    ::kill(pid, SIGKILL);
-                    ::waitpid(pid, &status, 0);
+            // ANTS-1189 (2026-05-08): pre-fix code spawned a detached
+            // worker here to keep the GUI responsive when N split
+            // panes closed together. That worker outlived the
+            // destructor and raced main-thread Qt teardown, producing
+            // reproducible `_int_free_chunk` SIGABRT crashes in
+            // `~TerminalWidget` on app exit (3 user repros, identical
+            // fingerprint).
+            //
+            // The 0.7.33 "GUI freezes 500 ms × N panes" concern no
+            // longer applies: in the threaded VtStream architecture
+            // (0.7.0+) `~Pty` runs on the parse-worker thread (see
+            // `VtStream::~VtStream`), not the GUI thread. The GUI
+            // blocks at most on `m_parseThread->wait(2000)` in
+            // `TerminalWidget::~TerminalWidget`, which already caps
+            // its own wait at 2 s. The worker thread blocks here,
+            // never the GUI thread.
+            ::kill(m_childPid, SIGTERM);
+            for (int i = 0; i < 50; ++i) {
+                if (::waitpid(m_childPid, &status, WNOHANG) != 0) break;
+                ::usleep(10000);  // 10 ms × 50 = 500 ms total
+            }
+            if (::waitpid(m_childPid, &status, WNOHANG) == 0) {
+                ::kill(m_childPid, SIGKILL);
+                // Bounded reap — SIGKILL almost always reaches the
+                // process within microseconds, but a process stuck
+                // in uninterruptible sleep (broken NFS, wedged kernel
+                // I/O) can defer signal delivery briefly. Cap at 1 s
+                // so total destructor budget stays ≤ 1.5 s, comfortably
+                // within `m_parseThread->wait(2000)` in
+                // `~TerminalWidget`. Pre-fix used a blocking
+                // `waitpid(pid, &st, 0)` here — unbounded wait could
+                // hang the worker thread, time out the GUI's wait(),
+                // and trigger Qt's "destroying a running QThread
+                // aborts the program" assertion. On bounded-loop
+                // timeout we leak a zombie; init reaps it on app
+                // exit, which is the acceptable degradation path.
+                for (int i = 0; i < 100; ++i) {
+                    if (::waitpid(m_childPid, &status, WNOHANG) != 0) break;
+                    ::usleep(10000);  // 10 ms × 100 = 1 s total
                 }
             }
         }

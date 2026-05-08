@@ -1,9 +1,17 @@
 // Feature-conformance test for spec.md —
 //
-// Source-grep test. Pty::~Pty must spawn a detached std::thread
-// for the SIGTERM/SIGKILL escalation, retain the cheap pre-
-// escalation reap, capture pid by value, and keep a synchronous
-// fallback for thread-creation failure.
+// Source-grep test. Pty::~Pty must escalate child reaping
+// synchronously on the parse-worker thread (not via a detached
+// std::thread), with bounded SIGTERM and SIGKILL waits so total
+// destructor time stays within m_parseThread->wait(2000)'s budget.
+//
+// ANTS-1189 (2026-05-08): the previous spec required a detached
+// std::thread for the escalation. That design caused reproducible
+// SIGABRT crashes in ~TerminalWidget on app exit (heap corruption
+// from worker-thread/main-thread teardown race). The current spec
+// requires synchronous escalation — the threaded VtStream
+// architecture (~Pty already runs on parse-worker) makes the
+// detach redundant, and removing it eliminates the crash.
 
 #include <cstdio>
 #include <cstdlib>
@@ -75,58 +83,74 @@ std::string extractDtor(const std::string &src) {
 
 int main() {
     const std::string src = slurp(SRC_PTYHANDLER_CPP_PATH);
-
-    // I4 — <thread> header included.
-    expect(contains(src, "#include <thread>"),
-           "I4/thread-header-included");
-
     const std::string dtor = extractDtor(src);
     expect(!dtor.empty(), "extract/dtor-body-found");
 
-    // I1 — std::thread([ ... ]) lambda inside the destructor.
-    expect(contains(dtor, "std::thread([pid]()"),
-           "I1/dtor-spawns-std-thread-with-pid-capture");
-
-    // I2 — detached, not joined.
-    expect(contains(dtor, ".detach();"),
-           "I2/dtor-detaches-the-worker-thread");
-
-    // I3 — pid captured by value (the [pid] literal). Guards
-    // against a regression that switches to [this] or [&] which
-    // would dangle.
-    {
-        std::regex byValueCapture(R"(std::thread\(\[pid\]\(\))");
-        expect(std::regex_search(dtor, byValueCapture),
-               "I3/lambda-captures-pid-by-value-only");
-    }
-    expect(!contains(dtor, "std::thread([this]"),
-           "I3/lambda-does-NOT-capture-this");
-    expect(!contains(dtor, "std::thread([&"),
-           "I3/lambda-does-NOT-capture-by-reference");
-
-    // I5 — synchronous fallback retained inside a catch.
-    expect(contains(dtor, "catch (const std::system_error &)"),
-           "I5/system-error-catch-clause-present");
-    {
-        // After the catch keyword, the rest of the destructor body
-        // must contain both SIGTERM and SIGKILL — that's the
-        // synchronous fallback. We don't need to delimit the catch
-        // body's exact end; the only later content in the dtor is
-        // `m_childPid = -1;` which doesn't contain these signal
-        // names.
-        const size_t catchAt = dtor.find("catch (const std::system_error &)");
-        const std::string after = (catchAt != std::string::npos)
-            ? dtor.substr(catchAt) : std::string{};
-        expect(contains(after, "SIGTERM") && contains(after, "SIGKILL"),
-               "I5/fallback-keeps-SIGTERM-and-SIGKILL-escalation");
-    }
-
-    // I6 — pre-escalation cheap reap retained: SIGHUP, close, then
-    // a WNOHANG check before any thread is spawned.
+    // I1 — SIGHUP sent up front.
     expect(contains(dtor, "::kill(m_childPid, SIGHUP);"),
-           "I6/SIGHUP-still-sent-up-front");
-    expect(contains(dtor, "::waitpid(m_childPid, &status, WNOHANG)"),
-           "I6/WNOHANG-cheap-reap-retained");
+           "I1/SIGHUP-sent-up-front");
+
+    // I2 — master FD closed before reap loop.
+    {
+        const size_t closeAt = dtor.find("::close(m_masterFd);");
+        const size_t firstWaitpid = dtor.find("::waitpid(m_childPid");
+        expect(closeAt != std::string::npos &&
+               firstWaitpid != std::string::npos &&
+               closeAt < firstWaitpid,
+               "I2/master-FD-closed-before-reap-loop");
+    }
+
+    // I3 — cheap WNOHANG reap before escalation.
+    {
+        const size_t firstWaitpid = dtor.find(
+            "::waitpid(m_childPid, &status, WNOHANG)");
+        const size_t firstSigterm = dtor.find("SIGTERM");
+        expect(firstWaitpid != std::string::npos &&
+               firstSigterm != std::string::npos &&
+               firstWaitpid < firstSigterm,
+               "I3/WNOHANG-cheap-reap-before-SIGTERM");
+    }
+
+    // I4 — synchronous SIGTERM/SIGKILL escalation, both bounded.
+    expect(contains(dtor, "::kill(m_childPid, SIGTERM);"),
+           "I4/SIGTERM-issued");
+    expect(contains(dtor, "::kill(m_childPid, SIGKILL);"),
+           "I4/SIGKILL-issued");
+    {
+        // SIGTERM loop: 50 × 10 ms = 500 ms cap.
+        std::regex sigtermLoop(
+            R"(SIGTERM[\s\S]*?for \(int i = 0; i < 50; \+\+i\)[\s\S]*?usleep\(10000\))");
+        expect(std::regex_search(dtor, sigtermLoop),
+               "I4/SIGTERM-loop-bounded-50x10ms");
+    }
+    {
+        // SIGKILL reap: 100 × 10 ms = 1 s cap.
+        std::regex sigkillLoop(
+            R"(SIGKILL[\s\S]*?for \(int i = 0; i < 100; \+\+i\)[\s\S]*?usleep\(10000\))");
+        expect(std::regex_search(dtor, sigkillLoop),
+               "I4/SIGKILL-reap-bounded-100x10ms");
+    }
+
+    // I5 — NO std::thread in the destructor (anti-regression for ANTS-1189).
+    expect(!contains(dtor, "std::thread"),
+           "I5/no-std::thread-in-dtor");
+    expect(!contains(dtor, ".detach("),
+           "I5/no-detach-in-dtor");
+
+    // I6 — NO blocking waitpid(pid, _, 0) after SIGKILL.
+    {
+        // The exact pattern that hung indefinitely in the pre-fix
+        // code. Catches both `waitpid(m_childPid, &status, 0)` and
+        // any equivalent literal-0 third-arg form.
+        std::regex blockingWaitpid(
+            R"(::waitpid\([^,]+,\s*&[A-Za-z_]+,\s*0\s*\))");
+        expect(!std::regex_search(dtor, blockingWaitpid),
+               "I6/no-blocking-waitpid-third-arg-0");
+    }
+
+    // I7 — <thread> header not included (companion to I5).
+    expect(!contains(src, "#include <thread>"),
+           "I7/no-thread-header-include");
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);

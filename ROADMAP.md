@@ -1167,20 +1167,25 @@ bundle's theme, fold it in rather than spinning up a new release.
   notifier created, queue + notifier members declared, slot declared
   and connected, EAGAIN handled distinctly, 4 MiB cap, FIFO check).
   Pre-fix source fails 5 of 7; post-fix all 7 pass.
-- ✅ **PTY dtor off-main-thread.** Shipped 0.7.33. The
-  `Pty::~Pty` destructor now spawns a detached `std::thread` for
-  the SIGTERM/SIGKILL escalation, with the cheap pre-escalation
-  reap (SIGHUP + close fd + `waitpid(WNOHANG)`) staying on the
-  calling thread so well-behaved children don't pay a thread
-  spawn. Pid captured by value; `try { ... }.detach()` wrapped
-  in a `catch (const std::system_error &)` that falls back to
-  the synchronous escalation when thread creation fails. Pre-fix
-  N split panes closing together blocked the GUI N×500 ms;
-  post-fix it's microseconds per pane regardless of how
-  stubborn the children are. Locked by
-  `tests/features/pty_dtor_off_main_thread/` — 11 invariants on
-  `<thread>` include, dtor body shape, lambda capture list, and
-  fallback retention.
+- ✅ **PTY dtor off-main-thread.** Shipped 0.7.33; reworked
+  0.7.45 (ANTS-1189). Original 0.7.33 design spawned a detached
+  `std::thread` from `Pty::~Pty` to keep the GUI responsive when
+  multiple panes closed together (pre-0.7.0, `~Pty` ran on the
+  GUI thread; N panes × 500 ms = N×500 ms freeze). The 0.7.0
+  threaded VtStream rework had since moved `~Pty` onto the
+  parse-worker thread, making the detach redundant — and
+  user-reported app-exit crashes (3 SIGABRT repros 2026-05-08)
+  showed the detached worker racing main-thread Qt teardown via
+  glibc malloc arenas. **0.7.45 (ANTS-1189)** removed the
+  detached worker; escalation now runs synchronously on the
+  parse-worker (GUI bounded by `m_parseThread->wait(2000)`).
+  Also bounded the post-SIGKILL reap at 1 s (was an unbounded
+  blocking `waitpid` that could hang on uninterruptible-sleep
+  processes and trigger Qt's "destroying a running QThread
+  aborts" assertion). Locked by `tests/features/pty_dtor_off_main_thread/` —
+  12 invariants on synchronous-on-worker contract + anti-
+  regression for the detached design (no `std::thread`, no
+  `.detach()`, no `<thread>` header, no blocking `waitpid(_, _, 0)`).
 - ✅ **RIS (`ESC c`) preserves all integration callbacks.** Shipped
   0.7.17. The reset handler now stashes + restores 8 callbacks
   (`response`, `bell`, `notify`, `lineCompletion`, `progress`,
@@ -5608,10 +5613,10 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Crash on app exit — Pty thread races MainWindow destruction (user report 2026-05-08)
 
-- 📋 [ANTS-1189] **`SIGABRT` in glibc `free()` during
-  TerminalWidget destruction at app exit.** Two crashes captured
-  in coredumps on 2026-05-08 (PIDs 3856 and 10723). Stack trace
-  pattern is identical:
+- ✅ [ANTS-1189] **`SIGABRT` in glibc `free()` during
+  TerminalWidget destruction at app exit.** Shipped 2026-05-08.
+  Three crashes captured in coredumps (PIDs 3856, 10723, 17749).
+  Stack trace pattern is identical:
 
   ```
   __libc_message → unlink_chunk → _int_free_chunk
@@ -5634,39 +5639,43 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
     Pty::~Pty()::lambda (D4Ev)  ← THIS
   ```
 
-  **Root cause hypothesis:** `Pty::~Pty()` spawns or already has
-  an active background thread (likely the PTY drain / read loop)
-  that's in `usleep` when the destructor returns. The destructor
-  does NOT `join()` the thread before its members go out of
-  scope. Once the parent destructor proceeds, the thread is
-  reading/writing memory that's being freed by the parent's
-  member destructors — classic UAF causing heap corruption that
-  surfaces a few `~QWidget` calls later in `_int_free_chunk`.
+  **Root cause:** the 0.7.33 detached-`std::thread` escalation
+  (added when `~Pty` ran on the GUI thread to avoid 5-pane × 500 ms
+  freezes) outlived the destructor's return. The threaded
+  VtStream architecture (0.7.0+) had since moved `~Pty` onto the
+  per-tab parse-worker thread, making the detach redundant — but
+  the detached worker now raced main-thread Qt teardown. By the
+  time the GUI was deep in `~TerminalWidget`'s QPainter /
+  QTextLayout free chain, the lambda was still parked in
+  `usleep`, and its eventual `pthread_exit` corrupted glibc's
+  malloc arenas during the main thread's free() activity —
+  surfacing as the `_int_free_chunk` SIGABRT a few `~QWidget`
+  calls later.
 
-  **Layman:** Sometimes when closing Ants Terminal a background
-  thread keeps running while the app is shutting down, which
-  scrambles memory that another part of shutdown is still
-  using — leading to a crash on close.
+  **Layman:** When closing Ants Terminal, a leftover background
+  helper kept running while the app was shutting down. Memory
+  bookkeeping got mixed up between the two and caused a crash.
 
-  Investigation:
-  1. Read `src/ptyhandler.{h,cpp}` and locate the `Pty`
-     class destructor + thread management. Confirm the
-     thread is not joined.
-  2. Add `if (m_thread.joinable()) m_thread.join();` before
-     the destructor returns. Coordinate with any condition
-     variable / cancellation flag the thread polls so it
-     exits promptly (otherwise app exit blocks on the
-     thread's next `usleep` cycle).
-  3. Add a feature test that creates + destroys a Pty
-     in a tight loop with ASan (`-DANTS_SANITIZE=address`
-     build) to surface any remaining race.
+  **Fix (commit `<TBD>`, 0.7.45):** removed the detached worker
+  entirely. The escalation now runs synchronously on the calling
+  thread (which is the parse-worker, not the GUI). Total budget
+  is 500 ms SIGTERM wait + 1 s bounded SIGKILL reap = 1.5 s,
+  comfortably within `m_parseThread->wait(2000)` in
+  `~TerminalWidget`. Also bounded the post-SIGKILL reap loop
+  (was an unbounded blocking `waitpid(pid, _, 0)` that could
+  hang on processes in uninterruptible sleep — would have timed
+  out the GUI's wait() and triggered Qt's "destroying a running
+  QThread aborts" assertion, a worse failure mode than the
+  detach race). Removed `#include <thread>` since unused.
 
-  Caveat: cannot reproduce by hand reliably — both crashes
-  happened during normal app exit, not via a deterministic
-  trigger. The `usleep` + thread frame is the only repeatable
-  signal. The `build-asan/` directory is already configured —
-  next time the user can repro the crash, asking them to run
-  the asan build will give us a chase-able diagnostic.
+  Test: `tests/features/pty_dtor_off_main_thread/` rewritten —
+  spec.md now describes the synchronous-on-worker contract; test
+  has 12 invariants spanning SIGHUP-first, master-FD-close-before-
+  reap, WNOHANG-cheap-reap, bounded SIGTERM/SIGKILL loops, and
+  anti-regression invariants for the detached-thread design (no
+  `std::thread`, no `.detach()`, no `<thread>` header, no
+  unbounded blocking `waitpid`). Verified the test fails 7/12
+  invariants against the pre-fix code — locks the contract.
 
   Cross-reference: this is in the "graceful shutdown" class
   alongside the existing `confirm_close_with_processes`
@@ -5674,8 +5683,8 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   cleanup). ANTS-1189 covers the cleanup contract.
 
   Kind: fix. Source: user-2026-05-08.
-  Lanes: ptyhandler (destructor thread join), tests
-  (asan build-mode regression test).
+  Lanes: ptyhandler (destructor synchronous escalation), tests
+  (12-INV grep contract).
 
 ### 🐛 Debug-log infrastructure — Clear Log silences subsequent writes (user report 2026-05-08)
 
