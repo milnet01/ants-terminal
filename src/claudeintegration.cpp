@@ -1276,9 +1276,19 @@ QString ClaudeIntegration::decodeProjectPath(const QString &encoded) {
 }
 
 QString ClaudeIntegration::encodeProjectPath(const QString &path) {
-    // Matches Claude Code's encoding: replace / with -
+    // Matches Claude Code's encoding: BOTH `/` AND `_` collapse to `-`.
+    // ANTS-1192 root-cause for the chip + BG-tasks button hiding after
+    // a project-directory rename like Ants-Terminal → Ants_Terminal:
+    // Claude Code stores sessions under `~/.claude/projects/<encoded>/`
+    // where it folds underscores into hyphens, so a cwd
+    // `/mnt/Storage/Scripts/Linux/Ants_Terminal` lives at
+    // `-mnt-Storage-Scripts-Linux-Ants-Terminal` on disk. We were
+    // producing `-mnt-Storage-Scripts-Linux-Ants_Terminal` (underscore
+    // preserved) which never matched, so QDir::exists() failed and
+    // sessionPathForCwd silently returned empty.
     QString encoded = path;
     encoded.replace('/', '-');
+    encoded.replace('_', '-');
     return encoded;
 }
 

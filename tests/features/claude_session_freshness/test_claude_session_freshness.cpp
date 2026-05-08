@@ -305,6 +305,36 @@ void testFilterAndPick(QTemporaryDir &home) {
     }
 }
 
+// ANTS-1192: encodeProjectPath must collapse BOTH `/` AND `_` into `-`,
+// matching Claude Code's actual on-disk encoding under
+// ~/.claude/projects/<encoded>/. Latent for any cwd containing
+// underscores; surfaced 2026-05-08 by the project rename
+// Ants-Terminal → Ants_Terminal.
+void testEncodeProjectPath() {
+    // INV-14: pure-slash path encodes to leading-dash + dashes.
+    expect(ClaudeIntegration::encodeProjectPath("/mnt/Storage/Scripts/Linux/Ants-Terminal")
+               == QStringLiteral("-mnt-Storage-Scripts-Linux-Ants-Terminal"),
+           "ANTS-1192-INV-14: slash-only path encodes correctly",
+           ClaudeIntegration::encodeProjectPath(
+               "/mnt/Storage/Scripts/Linux/Ants-Terminal").toStdString());
+
+    // INV-15: underscores in path components also collapse to `-`.
+    // This is the bug fix — previously underscores were preserved,
+    // mismatching Claude Code's directory.
+    expect(ClaudeIntegration::encodeProjectPath("/mnt/Storage/Scripts/Linux/Ants_Terminal")
+               == QStringLiteral("-mnt-Storage-Scripts-Linux-Ants-Terminal"),
+           "ANTS-1192-INV-15: underscore in path component also folds to dash",
+           ClaudeIntegration::encodeProjectPath(
+               "/mnt/Storage/Scripts/Linux/Ants_Terminal").toStdString());
+
+    // INV-16: mixed underscore/dash + multiple underscores collapse uniformly.
+    expect(ClaudeIntegration::encodeProjectPath("/home/user/my_proj_v2/sub-dir")
+               == QStringLiteral("-home-user-my-proj-v2-sub-dir"),
+           "ANTS-1192-INV-16: multiple underscores all collapse to dash",
+           ClaudeIntegration::encodeProjectPath(
+               "/home/user/my_proj_v2/sub-dir").toStdString());
+}
+
 void testWiring() {
     const std::string cicpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
@@ -343,6 +373,7 @@ int main(int argc, char **argv) {
     if (!homeDir.isValid()) die("cannot create homeDir");
     testFilterAndPick(homeDir);
     testWiring();
+    testEncodeProjectPath();
 
     if (g_failures > 0) {
         std::fprintf(stderr, "\nANTS-1163: %d INV failure(s)\n", g_failures);

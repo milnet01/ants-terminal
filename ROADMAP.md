@@ -5693,6 +5693,36 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: fix. Source: user-2026-05-08.
   Lanes: claudestatuswidgets.
 
+### 🔒 Path encoding — `_` → `-` collapse missing (user report 2026-05-08)
+
+- ✅ [ANTS-1192] **`encodeProjectPath` only collapsed `/`, not `_`,
+  silently breaking session-path resolution under
+  `~/.claude/projects/` for any cwd containing underscores.** ROOT
+  CAUSE for the 2026-05-08 chip-hidden symptom AND for
+  ANTS-1052 (BG-tasks button missing — same encoding mismatch).
+  Diagnosed via the ANTS-1191 diagnostic line on the same day,
+  which showed `path=(empty)` every 2 s while the `.jsonl`
+  existed with current events. Investigation: the actual on-disk
+  directory is `~/.claude/projects/-mnt-Storage-Scripts-Linux-
+  Ants-Terminal/` (hyphen) but the cwd is
+  `/mnt/Storage/Scripts/Linux/Ants_Terminal` (underscore). Claude
+  Code's encoding folds `_` → `-` along with `/` → `-`; Ants only
+  did `/`. Trigger: project rename `Ants-Terminal` →
+  `Ants_Terminal` (commit `22bd362`, 2026-05-07) made the
+  previously-equal encodings diverge, so `QDir::exists()` failed
+  and `sessionPathForCwd` silently returned empty for every
+  cold-start refresh. Fix: one-line addition
+  `encoded.replace('_', '-');` in
+  `claudeintegration.cpp:encodeProjectPath`. Test:
+  `tests/features/claude_session_freshness/` gained INV-14/15/16
+  pinning the contract — slash-only, single-underscore, and
+  multi-underscore paths all encode to the Claude-Code-compatible
+  form. **Layman:** when a project folder name has underscores
+  in it, the Tasks chip and Background-Tasks button now find
+  the right Claude Code session log instead of silently failing.
+  Kind: fix. Source: user-2026-05-08.
+  Lanes: claudeintegration.
+
 ---
 
 ## 0.7.78 — independent-review sweep #2 (target: 2026-05) — 2026-05-07
