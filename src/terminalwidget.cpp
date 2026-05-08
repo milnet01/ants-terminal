@@ -2106,6 +2106,20 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     // Mirror of onPtyData, but the parse work is already done on the
     // worker. We apply the pre-built VtAction stream to the grid and run
     // the same GUI-side side-effects in the same order.
+    //
+    // ANTS-1208 contract — no callback installed on m_grid (bell, notify,
+    // progress, commandFinished, userVar, osc133Forgery, lineCompletion,
+    // response) may pump the Qt event loop synchronously. Pre-fix worry
+    // was that an event pump from inside processAction would re-enter
+    // paintEvent which falls through to live grid cells when the snapshot
+    // is empty (terminalwidget.cpp around the cellAtGlobal fallback) and
+    // tear under a half-applied batch. Audit 2026-05-08: every callback
+    // is signal-emit (queued at consumer end), flag-set, or grid mutation
+    // — none pump events. If a future callback addition wants to dispatch
+    // synchronously into the GUI (e.g. show modal dialog), it MUST queue
+    // via QMetaObject::invokeMethod(..., Qt::QueuedConnection) instead
+    // of calling directly. Failing this rule re-introduces the
+    // re-entrancy class.
     if (!batch) return;
     m_spanCacheDirty = true;
 
