@@ -66,6 +66,12 @@ public:
     static const char *nameFor(Category c);
 
 private:
+    // Open the log file. Caller must hold s_mutex. Idempotent — does
+    // nothing if `s_active == 0` or `s_file.isOpen()`. Used by both
+    // setActive (first activation) and clear (re-open after the
+    // previous file was unlinked while categories remained active).
+    static void openLogFileLocked();
+
     static std::mutex s_mutex;
     static QFile s_file;
     static quint32 s_active;
