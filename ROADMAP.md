@@ -2560,11 +2560,23 @@ minor tag (next: pre-0.8.0).
   Lanes: MainWindow, dialogfocus.
   Kind: fix.
   Source: regression.
-- 🚧 [ANTS-1052] **HIGH — Background-tasks status-bar button regressed:
-  no longer shows up.** **Awaiting user repro** — diagnostic logging
+- ✅ [ANTS-1052] **HIGH — Background-tasks status-bar button regressed:
+  no longer shows up.** Resolved 2026-05-08 by ANTS-1192 (commit
+  `2424fb3`). The diagnostic logging shipped earlier (`ANTS_DEBUG=claude`
+  traces `refreshBgTasksButton`) finally produced its repro on
+  2026-05-08: every refresh tick logged `path=(empty)` because
+  `encodeProjectPath` only collapsed `/` to `-`, not `_` to `-`.
+  Latent until the project-directory rename `Ants-Terminal` →
+  `Ants_Terminal` (commit `22bd362`, 2026-05-07) made Ants's
+  encoded path diverge from Claude Code's on-disk encoding under
+  `~/.claude/projects/`. One-line fix in `encodeProjectPath` closes
+  this bullet plus the same-day Tasks-chip-hidden symptom (also
+  fixed by ANTS-1192). See ANTS-1192's bullet for the full
+  diagnosis. **Original triage notes preserved below for history.**
+  ~~**Awaiting user repro** — diagnostic logging
   landed in `src/mainwindow.cpp` (commit `1abf768`,
   `ANTS_DEBUG=claude` traces `refreshBgTasksButton` pre/post state +
-  path resolution). Fix path is gated on capturing one repro session
+  path resolution). Fix path is gated on capturing one repro session~~
   to confirm which of the three candidate causes (a/b/c below) is
   live. User report 2026-04-28. Locked-in invariant
   from 0.7.32+ (`tests/features/claude_bg_tasks_button/`) is
@@ -5738,6 +5750,109 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   the right Claude Code session log instead of silently failing.
   Kind: fix. Source: user-2026-05-08.
   Lanes: claudeintegration.
+
+### 🐛 Paint pipeline — cell mutations don't trigger viewport repaint (user reports 2026-05-07/08)
+
+- 📋 [ANTS-1193] **`TerminalWidget` viewport doesn't repaint when
+  `onVtBatch` mutates cells, even though `update()` is called.**
+  CONSOLIDATED ROOT CAUSE for ANTS-1187 (Flask "bottom rows blank"
+  symptom) + ANTS-1188 (Claude Code spinner duplicates in
+  scrollback). Discovered 2026-05-08 via fresh-tab test
+  (ANTS-1187 follow-up): symptom reproduces in a brand-new tab
+  with no prior commands, ruling out prior-tab-state. Tools →
+  Reset Scroll Region had no effect (rules out DECSTBM). Window
+  resize had no effect (rules out grid-size mismatch). User
+  observation: *"The terminal log did not update at all. I tried
+  various things but the terminal log did not update at all.
+  Then I scrolled up and down with the mouse wheel and suddenly
+  everything popped up but first, it duplicated some of the text.
+  Then I scrolled again and it changed what was on the screen
+  to the actual terminal log data."*
+
+  **Bug shape:**
+  1. The grid IS being mutated correctly — Flask's HTTP request
+     log lines (10:23, 10:24 in the screenshot) made it into the
+     scrollback / screen rows.
+  2. `onVtBatch` IS calling `update()` (terminalwidget.cpp:2210
+     for the non-sync path).
+  3. But the visible viewport stays frozen on stale content
+     until something forces a repaint via a different code path.
+  4. Mouse-scroll's first repaint shows duplicated text — span
+     cache or `m_frozenScreenRows` snapshot is out of sync with
+     live grid state.
+  5. A second mouse-scroll yields a clean repaint — the actual
+     current grid state finally renders.
+
+  **Hypotheses for the actual mechanism:**
+  - **(a) Snapshot lifecycle gap:** `m_frozenScreenRows` not
+    being cleared on a code path it should be. The render reads
+    from the snapshot when present, so live mutations are
+    invisible until the snapshot is dropped (which scroll does
+    via `clearScreenSnapshot` in `updateScrollBar`).
+  - **(b) Span cache invalidation timing:** `m_spanCacheDirty`
+    set on every batch but maybe paintEvent doesn't see the
+    flag in time, or there's a path where the cache is rebuilt
+    from stale grid state.
+  - **(c) Sync output flag stuck on:** if `m_syncOutputActive`
+    becomes true and never flips back (e.g. BSU received but
+    ESU never arrives + safety timer silently broken), the
+    `update()` at line 2210 is gated behind
+    `if (!m_syncOutputActive)`. Flask doesn't emit DEC 2026 so
+    this is unlikely as the ANTS-1187 trigger but worth ruling
+    out for ANTS-1188 (Claude Code DOES use sync output).
+  - **(d) Qt update-event coalescing in this widget hierarchy
+    + Wayland combination:** `update()` schedules a paint, but
+    something further up the widget tree (maybe a parent
+    ColoredTabWidget / QStackedWidget container) is blocking
+    propagation under specific conditions.
+
+  **Layman:** Sometimes when programs print to a tab — Flask
+  web servers, Claude Code's busy spinner, others — the
+  terminal stops showing new lines on screen even though the
+  data is being received. Scrolling with the mouse wheel
+  unstucks it.
+
+  **Investigation plan:**
+  1. Add `ANTS_LOG(DebugLog::Vt, ...)` lines in (i) `onVtBatch`
+     at entry/exit (with `m_syncOutputActive`,
+     `m_frozenScreenRows.size()`, `m_scrollOffset`,
+     `m_spanCacheDirty`), (ii) `paintEvent` at entry (same
+     state), (iii) `captureScreenSnapshot` /
+     `clearScreenSnapshot`. Build + relaunch + run Flask once.
+     User shares log; we read which `update()` calls are
+     followed by `paintEvent` and which aren't, and what the
+     snapshot/cache state is at each point. This is the cheapest
+     way to pin (a) vs (b) vs (c) vs (d).
+  2. Once mechanism is known, fix it (likely a small change to
+     the snapshot lifecycle or a missing `update()` after a
+     specific edge case).
+  3. Spec at `tests/features/paint_pipeline_repaint/` (or
+     extend the existing `scroll_snapshot_intent` test) pinning
+     the contract: after onVtBatch mutates cells, the
+     viewport's next paintEvent reads the new state, not a
+     stale snapshot. Source-grep INV: `update()` called from
+     onVtBatch in every non-sync path.
+
+  **Cross-references:**
+  - ANTS-1187 (Tools → Reset Scroll Region escape hatch + spec)
+    is a USER-FACING WORKAROUND for one symptom of this bug.
+    The escape hatch fixes a stuck DECSTBM, but the more
+    common Flask trigger is THIS paint bug — even Reset Scroll
+    Region won't help (user confirmed 2026-05-08).
+  - ANTS-1188 (Claude Code spinner duplication) is the same
+    root cause exhibiting differently — Ink's frequent
+    cursor-up + erase-line + new-content cycle hits the
+    paint-skip pattern, so each frame leaks into scrollback
+    instead of overwriting.
+  - ANTS-1118 (paint-cycle race during scroll, shipped 0.7.65)
+    is in the same neighbourhood but addressed a DIFFERENT
+    symptom (overwrites during user scroll). The fix landed
+    `wheelEvent` snapshot-on-intent — that helped that case
+    but doesn't help when no scroll is happening.
+
+  Kind: fix. Source: user-2026-05-07 (ANTS-1187 origin),
+  user-2026-05-08 (paint-pipeline finding). Lanes:
+  terminalwidget (paintEvent + onVtBatch + snapshot lifecycle).
 
 ---
 
