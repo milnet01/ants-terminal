@@ -12,6 +12,351 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.79] — 2026-05-08
+
+**Theme:** two bug-fix passes back-to-back. **Pass 1 (morning,
+user-driven)** chased a cluster of user-visible scrollback /
+output-pile / spinner-duplication / app-exit-crash reports —
+8 ANTS items (1187..1194), one of which (ANTS-1194) turned out
+to be the structural root cause of three of the others.
+**Pass 2 (afternoon, `/indie-review` #3)** ran a scoped 4-lane
+review on the 8.2k-LoC `terminalgrid.cpp` + `terminalwidget.cpp`
+surface — the densest VT/render code in the repo — and shipped
+17/17 calibrated findings (ANTS-1195..1213) in one session:
+4 calibrated CRITICAL, 7 HIGH, 6 MEDIUM, INFO swarm. Headline
+patterns: doc-rot at scale (4 of 4 lanes flagged comments that
+survived a refactor and now lie about current code), and a
+recurring "missing soft-reset / partial parse" shape — ANTS-1194
+(scroll region didn't grow on resize), ANTS-1196 (DECSTR soft-
+reset handler missing entirely), ANTS-1197 (OSC 9;4 short-payload
+misclassified as a notification with body "4"). 4 new feature
+tests added (`decstr_soft_reset` 8 INVs, `osc9_progress_disambiguator`
+6 INVs, `styled_font_kerning_off` 3 INVs, `wide_char_resize`
+2 INVs) plus `scroll_region_growth_on_resize` 7 INVs from Pass 1
+and contract catch-up updates to `debuglog_perms` (post-ANTS-1190)
+and `pty_dtor_off_main_thread` (post-ANTS-1189). 141/141 ctests
+green.
+
+### Fixed
+
+- **ANTS-1187 — output piled into the upper rows of a maximised
+  tab; bottom rows stayed blank.** Layman: open a terminal at
+  the default 24 rows, maximise it to 60 rows, and new output
+  would only fill the top 24 — the bottom 36 stayed empty until
+  you typed something that scrolled. User report 2026-05-08
+  (Flask dev server). First diagnosed as a Flask DECSTBM bug,
+  then a paint-pipeline bug (ANTS-1193), then byte-captured and
+  exonerated both — Flask emitted no DECSTBM at all. Real fix
+  shipped under ANTS-1194 (below). The 1187 ticket itself landed
+  the **Reset Scroll Region** escape hatch (Tools menu) plus
+  `scrollRegionTop()` / `scrollRegionBottom()` accessors so a
+  user with a misbehaving TUI has a one-click recovery without
+  needing to know about `\e[r`.
+- **ANTS-1188 — Claude Code spinner duplicated into scrollback.**
+  Layman: while Claude Code was thinking, every spinner frame
+  left a copy in the scrollback above instead of overwriting in
+  place. Same root cause as ANTS-1187 — a too-small scroll
+  region clipped the in-place CR/LF redraw to the top of the
+  viewport. Closed by ANTS-1194.
+- **ANTS-1189 — `_int_free_chunk` SIGABRT on every app exit.**
+  Layman: closing Ants Terminal would print `free(): invalid
+  pointer` and dump core every single time, in front of three
+  separate users with identical fingerprints today. Root cause:
+  `Pty::~Pty` ran a detached `std::thread` for the SIGTERM →
+  SIGKILL escalation. The 0.7.0 VtStream refactor moved `~Pty`
+  itself onto the parse-worker thread, making the 0.7.33 detach-
+  for-GUI-responsiveness redundant — but the detached worker
+  outlived the destructor and raced main-thread Qt teardown via
+  glibc malloc arenas. Escalation now runs synchronously on the
+  parse worker (1.5 s budget, within `m_parseThread->wait(2000)`).
+  The post-SIGKILL reap is now also bounded — pre-fix
+  `waitpid(_, _, 0)` could hang on uninterruptible-sleep children
+  and trip Qt's "destroying a running QThread aborts" assertion,
+  worse than the detach race. Test rewritten with 12 invariants
+  on the synchronous-on-worker contract; verified fails 7/12
+  against pre-fix code.
+- **ANTS-1190 — Tools → Debug Mode → Clear Log silenced subsequent
+  writes.** Layman: clearing the debug log from the menu would
+  appear to work, but every category that wrote to the log
+  afterward (PTY / Network / Lua) silently dropped. Pre-fix
+  `DebugLog::clear()` truncated the file but didn't reopen the
+  category file handles, so subsequent appends went to a deleted
+  inode. Fix reopens the file post-clear. The `debuglog_perms`
+  feature test had its I2 invariant updated to lock the new
+  contract (post-fix slipped through yesterday's ship without the
+  full features sweep — caught and fixed under this section).
+- **ANTS-1192 — "Background tasks" status-bar button vanished
+  for projects whose path contained underscores.** Layman: open
+  a project at `/home/me/my_project` and the BG-tasks chip in
+  the status bar would silently disappear; switch to a project
+  with no underscores in the path and it returned. Closes the
+  ANTS-1052 regression. Root cause: `encodeProjectPath` (which
+  derives the `~/.claude/projects/<encoded-cwd>/` lookup key)
+  collapsed every other separator but left underscores intact,
+  so the on-disk transcript directory and the in-memory key
+  diverged. Now collapses underscores too, matching Claude Code's
+  own canonical encoding.
+- **ANTS-1193 — paint pipeline umbrella, mis-diagnosed.** No
+  user-visible change here — kept as a tombstone for traceability.
+  ANTS-1193 was opened as a presumed paint-pipeline bug to
+  explain the morning's #1 user report; byte capture and code
+  walk exonerated the pipeline. Real fix is ANTS-1194.
+- **ANTS-1194 — scroll region grows with the grid on resize.**
+  Layman: this is the actual fix for the morning's #1 bug
+  (output-piles-in-upper-rows). `TerminalGrid::resize()` only
+  *clamped* the scroll region; it never *widened* it on grow.
+  Tab opens at 24 rows → maximise to 60 → `m_scrollBottom` stays
+  at 23 (`clamp(23, 0, 59) = 23`) → new output piles into rows
+  0-23, bottom 36 stay empty. ANTS-1130's clamp was correct for
+  shrink (preserves explicit DECSTBM from tmux/mc/less) but
+  silently wrong for grow when no DECSTBM was ever set. Fix
+  captures `liveWasFullScreen` / `savedWasFullScreen` before
+  `m_rows` updates, then conditionally widens on full-screen and
+  clamps on explicit partial — matches xterm semantics (default
+  region tracks the screen, explicit DECSTBM is preserved). New
+  `scroll_region_growth_on_resize` feature test, 7 invariants
+  (default-grow, default-shrink, explicit-preserved-on-grow,
+  explicit-clamped-on-shrink-below-bottom, alt-default-grows,
+  alt-explicit-preserved, sequential grow/shrink); verified fails
+  5/7 against pre-fix. Closes ANTS-1187, ANTS-1193 (pipeline was
+  innocent), and likely ANTS-1188.
+- **ANTS-1196 — DECSTR (`CSI ! p`) soft-reset handler was
+  missing.** Layman: vim, neovim, mc, htop and other conformant
+  TUIs emit DECSTR on startup as a defensive recovery from
+  hostile prior shell state. Pre-fix Ants silently dropped the
+  sequence — same shape as ANTS-1187 (a stale scroll region
+  traps the user) but for the broader contract. Per xterm
+  ctlseqs / VT220 reference, DECSTR is a *subset* of RIS: it
+  resets scroll region (full screen), origin mode, autowrap,
+  cursor visibility, SGR and saved-cursor — but does NOT wipe
+  screen, scrollback, hyperlinks, OSC 133 prompts, integration
+  callbacks, the OSC 133 HMAC key, the kitty keyboard stack, or
+  alt-screen state. (`ESC c` / RIS keeps doing the hard reset.)
+  New `decstr_soft_reset` feature test, 8 INVs on the spec-
+  defined reset surface plus three "DECSTR is soft, NOT hard"
+  preservation invariants; fails 6/8 against pre-fix. Added
+  `originMode()` and `autoWrap()` accessors needed by the test.
+- **ANTS-1197 — OSC 9;4 progress short-payload misclassified.**
+  Layman: a ConEmu / Windows-Terminal-style `OSC 9;4` "remove
+  progress" sequence (the minimal form, payload literally `9;4`)
+  used to pop a desktop notification with body `"4"` instead of
+  clearing the progress indicator. Pre-fix disambiguator
+  required `payload.size() >= semi + 3` AND `payload[semi+2] ==
+  ';'`, so the 3-character minimal form fell through to the
+  notification path. New predicate accepts `9;4` (state=0,
+  percent=0 defaults) AND keeps rejecting `9;42` / `9;4Hello`.
+  6 INVs in `osc9_progress_disambiguator`; fails 3/6 pre-fix.
+  Open question logged in spec: a notification body literally
+  starting with `4;` (e.g. `9;4;30 PM meeting`) still
+  misclassifies as progress — fundamental wire-format ambiguity,
+  flagged for future stricter range-check.
+- **ANTS-1198 — bold / italic / bold-italic font setters left
+  kerning enabled.** Layman: configure a custom bold or italic
+  family in Settings and the matching style would slowly drift
+  off the cell grid (kerning + monospace = column drift,
+  per the existing CLAUDE.md note). `setBoldFontFamily` /
+  `setItalicFontFamily` / `setBoldItalicFontFamily` rebuilt the
+  per-style `QFont` but bypassed `updateFontMetrics`, inheriting
+  Qt's default kerning-enabled state. Three-line fix
+  (`setKerning(false)` on each); `styled_font_kerning_off`
+  source-grep test, 3 INVs.
+- **ANTS-1199 — synchronized output snapshot now re-captures
+  immediately on resize.** Layman: resize a terminal mid-frame
+  while a TUI was using DEC mode 2026 sync output and the user
+  could see the half-applied frame the BSU block was supposed
+  to hide, until the next batch arrived (could be hundreds of
+  ms during human-paced output). Pre-fix `recalcGridSize` cleared
+  the snapshot but waited for the next `onVtBatch` to re-capture.
+  Now re-captures immediately when `m_syncOutputActive`. Spec
+  ANTS-1148 §H1 had named this exact gap.
+- **ANTS-1200 — stuck-sync flicker loop on malformed BSU.**
+  Layman: a truncated DEC mode 2026 BSU sequence (no matching
+  ESU within 500 ms) used to put the terminal into a permanent
+  500-ms-flicker loop instead of recovering on the safety timer.
+  Pre-fix the safety timer dropped the local
+  `m_syncOutputActive` flag and cleared the snapshot — but the
+  *grid's* `m_synchronizedOutput` latch stayed set, so the next
+  batch's pre-scan re-armed the flag and restarted the timer.
+  New `TerminalGrid::forceClearSynchronizedOutput()` is now
+  called from the safety timer after `clearScreenSnapshot()`;
+  malformed BSU now escapes on first timer fire.
+- **ANTS-1201 — OSC 52 selection field plumbed to QClipboard
+  mode.** Layman: xterm-style apps that copy to the X11 primary
+  selection (middle-click paste) used to silently clobber the
+  system clipboard instead. Pre-fix the OSC 52 selection prefix
+  (`c` / `p` / `s` / `q` / `0-7` per xterm) was parsed and
+  discarded; every clipboard write landed on the system
+  clipboard. Now plumbed through the existing ` OSC52:`
+  sentinel envelope as ` OSC52:<selChar>:<bytes>`. Selection
+  collapse: `c` → system clipboard, `p` / `s` → primary; empty
+  / unknown defaults to `c` (modern xterm.js / kitty behaviour
+  — primary's middle-click paste is surprising when not
+  explicitly requested).
+- **ANTS-1202 — OSC 8 hyperlink hardening (3 sub-findings).**
+  Layman: three small but exploitable OSC 8 parsing gaps, all
+  closed: (a) reopen-without-close used the legacy single-row
+  span emission, silently re-introducing the 0.7.55 wrapped-
+  hyperlink bug for any wrapped link followed by another OSC 8
+  open without a close in between; (b) `id=` parser used naive
+  `find("id=")` which matched embedded `id=` inside a value
+  (`x=id=trick` produced `id="trick"`) — switched to a proper
+  per-key scan; (c) URI scheme allowlist was applied on open
+  only, defense-in-depth gap if any future path mutates
+  `m_hyperlinkUri` outside the open validator. Refactor
+  extracted `pushHyperlinkSpansForActive()` so close and
+  reopen-close paths share the multi-row emit + scheme re-check.
+- **ANTS-1203 — wide-char (CJK / fullwidth Latin / emoji)
+  cells survive a resize.** Layman: resize a terminal across
+  a wide-char cell boundary and the character used to split —
+  its lead glyph on one row, its continuation half on the
+  next — visible corruption. Pre-fix rewrap chunk loop ignored
+  `Cell::isWideChar` / `isWideCont` when splitting logical
+  lines. Fix: if the chunk would split a wide-char pair AND
+  the chunk doesn't end at total, decrement chunk by 1 to push
+  the lead into the next iteration with its continuation. New
+  `wide_char_resize` test, 2 INVs targeting the dangerous
+  mid-pair boundary; fails 4/4 pre-fix.
+- **ANTS-1209 — input-handler caps + IME cursor sync (3
+  sub-findings).** Layman: three independent input-side
+  hardening fixes. (a) **REP cap shrunk** from `m_cols *
+  m_rows` to `m_cols * 2` — a malicious payload
+  `\e[16000b\e[16000b...` could pin the parser thread on a
+  single byte for a 16,000× CPU multiplier; real REP use
+  cases (`tput rep`, less border drawing) need at most
+  `m_cols`, so `2 * m_cols` is generous without giving an
+  attacker a pin. (b) **OSC 133 marker validated before HMAC
+  verification**: with `m_osc133Key` set, every received
+  `OSC 133;X;ahmac=<hex>` used to fire a SHA-256 round even
+  for unknown markers — only A/B/C/D are spec'd, drop early.
+  (c) **`inputMethodQuery::ImCursorRectangle`** now uses
+  `effectiveCursorRow/Col` instead of the live grid cursor,
+  so during a sync-output BSU block the IME panel doesn't
+  jump anywhere mid-redraw.
+- **ANTS-1210 — `ECH` (`CSI X`) honours BCE and clears
+  non-bg attrs.** Layman: erase-character used to leave bold
+  / italic / underline / inverse active on the resulting
+  space, and could leave a stranded wide-char marker. Per
+  xterm, ECH should clear all non-bg/fg attrs and set bg via
+  the Background-Color Erase state — same shape as `clearRow`.
+  Now zeros `CellAttrs` first, then assigns default fg +
+  `eraseBg()`, and resets `isWideChar` / `isWideCont`.
+
+### Changed
+
+- **ANTS-1191 — `refreshTasksButton` diagnostic logging.**
+  Added `ANTS_LOG(Network, …)` instrumentation around the
+  Claude-tasks status-bar button refresh path so the next
+  user-reported "the chip should be visible but isn't" report
+  has a transcript to triage from. No user-visible behaviour
+  change. Pairs with the post-mortem of ANTS-1192.
+- **ANTS-1195 — zombie `m_fallbackFont` / `m_nerdFallbackFont`
+  removed.** Indie-review #3 Lane D Critical: the emoji/CJK
+  and Nerd Font fallback fonts were probed at construction,
+  resized on font-size change, but never consulted by any
+  render path (zero non-declaration grep hits). Today's
+  emoji/CJK/Powerline rendering relies entirely on Qt's
+  implicit FontConfig substitution. Decision: delete (vs
+  wire) — FontConfig substitution works on Linux/macOS and
+  the flag pattern (`m_hasFallbackFont` / `m_hasNerdFallback`)
+  was the wrong shape for any future explicit per-codepoint
+  route. Net delta: −34 lines of code that never affected any
+  render frame. Comment in the constructor names the deletion
+  + future-wiring guidance for any change that wants explicit
+  fallback.
+- **ANTS-1204 — `liveWasFullScreen` / `savedWasFullScreen`
+  rename + `m_altScrollBottom` default init.** Two Lane A
+  findings bundled. (a) The `primaryWasFullScreen` /
+  `altWasFullScreen` names introduced by ANTS-1194 read
+  backwards during alt-screen mode (the grid's
+  `m_scrollTop/Bottom` are the LIVE values for whichever
+  buffer is active; `m_altScroll*` are the SAVED values for
+  the OTHER buffer). Behaviorally correct but misled the
+  next reader — renamed to `live` / `saved` with explanatory
+  comment. (b) `m_altScrollBottom` defaulted to 0 in the
+  header until first alt-screen entry; symptom-free today
+  but asymmetric with the constructor's primary init and a
+  foot-gun for any future caller. Now initialised to
+  `m_rows - 1` in the ctor body alongside the primary slot.
+- **ANTS-1205 — `m_paintLayout.clearFormats()` discipline.**
+  The mutable `QTextLayout` member is reused across runs and
+  paints; `setText()` resets glyph state but not additional-
+  format ranges installed via `setFormats()`. No caller sets
+  formats today, so this is a no-op in practice — but any
+  future addition that calls `setFormats({...})` once would
+  leak that formatting into every subsequent run for the
+  lifetime of the widget. Bug shape is invisible to tests
+  and brutal to track down; one-line defensive
+  `clearFormats()` at the top of the runs loop with a
+  comment naming the contract.
+- **ANTS-1206 — doc-rot sweep on `terminalwidget.cpp`.** Two
+  stale comments cited the retired QOpenGLWidget+FBO
+  architecture as the reason for current code behaviour
+  (`paintEvent` background fill rationale at line 629; resize
+  base-class call rationale at line 1934). Updated to describe
+  the current `QWidget` backing-store + translucent-compositor
+  reasoning. The history comments at lines 80 / 89 (which
+  document the 0.7.4 refactor itself) stay — those are
+  deliberate institutional memory, not stale rationale.
+- **ANTS-1207 — per-frame allocator hygiene bundle.** Three
+  sub-findings: (a) **cached overlay/badge `QFont`s as
+  members** — pre-fix `paintEvent` constructed 4 fresh fonts
+  per frame (badge × 4pt-bold; cmd-mark labels at 2 sites;
+  quick-select labels; perf overlay), every one triggering a
+  FontConfig family lookup; now built once in
+  `updateFontMetrics()` alongside the styled variants and
+  reused (`m_badgeFont`, `m_smallFont`, `m_quickSelectFont`,
+  `m_perfFont`, all inheriting `setKerning(false)`); (b)
+  **ASCII fast-path** for `QString::fromUcs4` in the hot run
+  loop — >90% of TUI content is `<0x80`, where the
+  UTF-32→UTF-16 transcode is pure overhead; pre-allocated
+  `QString` + `QChar` copy is roughly 2-3× faster on ASCII
+  runs, falls through to `fromUcs4` only when a non-ASCII
+  codepoint is detected; (c) **`m_freeCellBuffers.clear()`
+  in `TerminalGrid::resize()` now guarded by `cols !=
+  oldCols`** — pre-fix cleared unconditionally, so a pure
+  rows-resize lost cached cell allocations for no reason.
+- **ANTS-1208 — paint re-entrancy audit (INFO close +
+  defensive contract).** Indie-review #3 Lane C H1 flagged a
+  plausible re-entrant paint during the `m_grid->processAction`
+  loop: if any installed callback synchronously pumped the Qt
+  event loop, a queued repaint could fire mid-batch and the
+  snapshot fallback (`cellAtGlobal` → live grid) would tear.
+  Audit walked all 8 installed callbacks (response, bell,
+  notify, progress, commandFinished, userVar, osc133Forgery,
+  lineCompletion) — none synchronously pump. Closes as INFO
+  with no code change beyond a defensive contract comment at
+  the top of `onVtBatch`: future callbacks that want
+  synchronous GUI dispatch (e.g. modal dialogs) MUST queue
+  via `QMetaObject::invokeMethod` with `Qt::QueuedConnection`.
+- **ANTS-1211 — `setLineWidth` fudge replaced + `setFontFamily`
+  order hazard documented.** (a) `tline.setLineWidth` in the
+  run loop used `runText.length() * m_cellWidth * 2`. UTF-16
+  length conflated with glyph cells (CJK is 1 unit / 2 cells;
+  emoji surrogate is 2 units / 1 cell), and the `* 2` was a
+  fudge to mask both directions. Replaced with
+  `qreal(INT_MAX)` — the correct semantic for monospace
+  cell-grid rendering ("do not break this run on width")
+  regardless of run length. (b) `setFontFamily` clobbers
+  per-style family overrides set via `setBoldFontFamily` /
+  `setItalicFontFamily` / `setBoldItalicFontFamily`.
+  Documented as an order hazard (callers that want both base
+  + per-style customisation must call `setFontFamily` FIRST,
+  then the per-style setters) rather than fixing the
+  behaviour — the propagate-to-all default matches the
+  "I picked one font for everything" user mental model.
+- **ANTS-1213 — DECRQSS doc-fix.** Comment at the bottom of
+  `handleCsi` claimed "DECRQSS (`DCS $q`) is not implemented
+  to prevent echoing attacker-controlled data" while
+  `handleDcs` IS implemented and replies to DECSTBM r / SGR m
+  / DECSCA " q / DECSCUSR SP q. Threat-model calibration
+  confirmed the implementation is safe (replies are terminal-
+  controlled — 4 fixed format strings, no attacker bytes
+  echoed back, so the CVE-2003-0063 echo-back class doesn't
+  apply); the comment was misleading, not the implementation.
+  Comment updated to match reality. The `CSI 20t/21t`
+  XTWINOPS portion of the original note stays — that one IS
+  still absent and the CVE rationale still holds.
+
 ## [0.7.78] — 2026-05-08
 
 **Theme:** independent-review sweep #2 — pre-0.8.0 audit + multi-

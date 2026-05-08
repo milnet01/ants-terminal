@@ -1,3 +1,58 @@
+ants-terminal (0.7.79-1) unstable; urgency=medium
+
+  * Two bug-fix passes back-to-back. Morning user-driven pass
+    chased 8 ANTS items (1187..1194) on scrollback / output-pile
+    / spinner-duplication / app-exit-crash reports — ANTS-1194
+    turned out to be the structural root cause of three of the
+    others. Afternoon /indie-review #3 ran a scoped 4-lane
+    review on the 8.2k-LoC terminalgrid.cpp + terminalwidget.cpp
+    surface and shipped 17/17 calibrated findings (1195..1213)
+    in one session. 141/141 ctests green.
+  * ANTS-1187/1188/1192/1194 — output no longer piles into the
+    upper rows of a maximised tab; Claude Code spinner no longer
+    duplicates into scrollback; "Background tasks" status-bar
+    chip now appears for projects whose path contains underscores.
+    Root cause for the first two: TerminalGrid::resize() only
+    clamped the scroll region; it never widened it on grow.
+  * ANTS-1189 — _int_free_chunk SIGABRT on every app exit
+    eliminated. ~Pty's detached SIGTERM/SIGKILL-escalation thread
+    raced main-thread Qt teardown via glibc malloc arenas; now
+    runs synchronously on the parse worker.
+  * ANTS-1190 — Tools → Debug Mode → Clear Log no longer
+    silences subsequent writes (file handles now reopened
+    post-clear).
+  * ANTS-1196 — DECSTR (CSI ! p) soft-reset handler added;
+    vim/neovim/mc/htop emit it on startup and Ants used to drop
+    it silently. ANTS-1197 — OSC 9;4 progress short-payload
+    ("9;4" remove-progress) no longer misclassifies as a
+    notification with body "4".
+  * ANTS-1201/1202/1203 — OSC 52 selection prefix (c/p/s) now
+    plumbed to QClipboard mode (primary-selection writes no
+    longer clobber the system clipboard); OSC 8 hyperlink
+    hardening (3 sub-findings: wrapped reopen, naive id= match,
+    scheme allowlist); CJK / fullwidth Latin / emoji cells
+    survive a resize across their cell boundary instead of
+    splitting lead/continuation across rows.
+  * ANTS-1199/1200 — synchronized-output snapshot re-captures
+    immediately on resize during a BSU block; stuck-sync
+    flicker loop on malformed BSU now escapes on first
+    safety-timer fire.
+  * ANTS-1207 — per-frame allocator hygiene bundle: overlay/badge
+    QFonts cached as members; ASCII fast-path for
+    QString::fromUcs4 in the hot run loop; m_freeCellBuffers no
+    longer cleared on pure rows-only resize.
+  * ANTS-1209 — input-handler caps: REP cap shrunk to m_cols * 2
+    (closes a 16,000x CPU-multiplier pin); OSC 133 marker
+    validated before HMAC verification; IME cursor rectangle uses
+    effectiveCursorRow/Col so the IME panel doesn't jump
+    mid-redraw during sync output.
+  * ANTS-1195 — zombie m_fallbackFont / m_nerdFallbackFont
+    members removed (probed but never consulted by any render
+    path; today's emoji/CJK/Powerline rendering relies on Qt's
+    implicit FontConfig substitution). Net delta: -34 lines.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 08 May 2026 14:00:00 +0000
+
 ants-terminal (0.7.78-1) unstable; urgency=medium
 
   * Independent-review sweep #2 — pre-0.8.0 audit + multi-agent
