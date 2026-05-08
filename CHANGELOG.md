@@ -12,6 +12,29 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **ANTS-1161 — bottom `Claude: <state>` status-bar widget showed
+  another tab's state.** Layman: with two Claude Code tabs open,
+  the bottom-of-window status text could read "Claude: bash" on
+  a tab whose Claude was actually thinking, because a sibling tab
+  running a Bash tool spammed its hook events into the singleton's
+  state. The per-tab dot indicator was already correct (it derives
+  state from each shell's own transcript). Root cause: the hook
+  server is one Unix socket shared across every Claude under any
+  tab, and `ClaudeIntegration::processHookEvent` mutated
+  `m_state` / `m_currentTool` and emitted `stateChanged` for every
+  inbound event regardless of `session_id`. Fix: gate every
+  state-mutating branch on the event's `session_id` matching the
+  basename of the focused tab's transcript path
+  (`m_transcriptPath`). PermissionRequest stays ungated — its slot
+  routes per-tab via `lastHookSessionId()`. Pre-poll tolerance
+  built into the gate so the bootstrap `SessionStart` (which fires
+  before `pollClaudeProcess` resolves the transcript) still wires
+  `m_activeSessionId`. New 4-invariant feature test
+  `claude_status_bar_per_tab` (verified fails I1 against pre-fix
+  code via the gate-neutralization repro).
+
 ## [0.7.79] — 2026-05-08
 
 **Theme:** two bug-fix passes back-to-back. **Pass 1 (morning,

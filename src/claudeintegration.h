@@ -194,6 +194,19 @@ public:
     // code too (the file-watcher path uses it directly).
     void parseTranscriptForState(const QString &path);
 
+    // Exposed for tests/features/claude_status_bar_per_tab/. Same pattern
+    // as parseTranscriptForState — drives the hook dispatch that
+    // onHookConnection feeds in production, so the per-tab session-id
+    // gate (ANTS-1161) can be exercised without standing up a real UDS.
+    void processHookEventForTest(const QJsonObject &event) {
+        processHookEvent(event);
+    }
+    // Exposed so the same test can seed a focused-tab transcript path
+    // without staging a real Claude process under /proc.
+    void setTranscriptPathForTest(const QString &path) {
+        m_transcriptPath = path;
+    }
+
     // Pure tail parser. Reads a ~32 KB (growing up to 4 MiB) suffix of the
     // transcript file and derives the Claude Code state the tail implies.
     // latchedPlanMode is the caller's current plan-mode state: plan mode
@@ -233,6 +246,18 @@ private:
     void processHookEvent(const QJsonObject &event);
     // parseTranscriptForState is declared above (public, for tests).
     void updateChangedFiles(const QJsonObject &event);
+    // ANTS-1161 — gate hook events on the focused tab's session.
+    // The hook server is one UDS shared across every Claude under any
+    // tab, so without this gate Tab B's PreToolUse would clobber the
+    // singleton's m_state/m_currentTool and the bottom Claude: <state>
+    // widget would paint Tab B's tool name on Tab A's focused row.
+    // Returns true when `sessionId` belongs to the focused tab —
+    // matches the basename of m_transcriptPath against `sessionId`
+    // (Claude Code stores transcripts as `<session-uuid>.jsonl`,
+    // mirroring ClaudeTabTracker::shellForSessionId). Tolerant of
+    // pre-poll state: empty sessionId or empty m_transcriptPath
+    // returns true so first-event behaviour is unchanged.
+    bool isFocusedTabSession(const QString &sessionId) const;
 
     pid_t m_shellPid = 0;
     ClaudeState m_state = ClaudeState::NotRunning;

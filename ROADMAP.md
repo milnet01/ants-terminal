@@ -5317,41 +5317,43 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Claude Code UX — bottom status-bar `Claude:` widget shows wrong tab's state (user report 2026-05-07)
 
-- 📋 [ANTS-1161] **Bottom-of-window status-bar `Claude: <state>`
-  widget appears to display another tab's state, not the focused
-  tab's.** User report 2026-05-07: focused tab was "Claude: Ants
-  Terminal" with Claude actively presenting a design (transcript
-  showed `· Presenting design… · 150 tokens · thought for 32s`
-  and a `Present design sections` task in_progress in the Task
-  List dialog), but the bottom status bar read `Claude: bash`.
-  User hypothesis: cross-tab pollution — the widget is reading
-  from another tab's session (likely the "Claude: MAME Curator"
-  tab, which was probably running a Bash tool_use at the time).
-  This is a divergence from the **per-tab dot indicator**
-  (ANTS-1118), which is correctly PID-keyed — the dot showed the
-  right state on the focused tab. The smoking gun is precisely
-  that divergence: the dot is correct, the bottom widget is
-  wrong, so the bottom widget's retarget on `onTabChanged` is
-  the suspect path.
-  Investigation steps before fix: (a) confirm reproduction with
-  a 2-tab repro (one running Bash, one thinking); (b) trace
-  which signal updates the bottom-widget label
-  (`ClaudeStatusBarController` per ANTS-1146); (c) verify
-  retarget on `onTabChanged` writes into the correct
-  per-tab-bound widget; (d) check whether the timer-driven
-  refresh path (`m_statusTimer`) reads from a singleton instead
-  of from the focused tab's Claude tracker; (e) look for shared
-  state accidentally reused across tabs.
-  Acceptance: bottom `Claude: <state>` widget always reflects
-  the focused tab's current Claude Code state, matching the
-  per-tab dot. Source-grep feature test for the widget's
-  retarget call in `onTabChanged`, mirroring
-  `claude_task_list` and `roadmap_status_bar_refresh`.
-  Note from user: do not fix immediately — user needs to reboot
-  before further work today.
+- ✅ [ANTS-1161] **Bottom-of-window status-bar `Claude: <state>`
+  widget displayed another tab's state.** Shipped 2026-05-08.
+  User report 2026-05-07: focused tab was "Claude: Ants
+  Terminal" with Claude actively presenting a design, but the
+  bottom status bar read `Claude: bash`. User hypothesis was
+  cross-tab pollution and was correct, but the suspect lane was
+  not — the issue was *not* in the widget retarget on
+  `onTabChanged`. Root cause was further upstream:
+  `ClaudeIntegration::processHookEvent` consumes the singleton
+  hook server's UDS — one socket shared across every Claude in
+  any tab — and was mutating `m_state` / `m_currentTool` and
+  emitting `stateChanged` for every inbound event regardless of
+  `session_id`. A sibling tab's `PreToolUse{tool_name:"Bash"}`
+  clobbered the focused tab's state. The dot stayed correct
+  because `ClaudeTabTracker` derives state per-shell from each
+  transcript independently, never reading the singleton.
+  **Fix:** gate every state-mutating branch on the event's
+  `session_id` matching the basename of `m_transcriptPath`
+  (Claude Code stores transcripts as `<session-uuid>.jsonl`, the
+  same idiom `ClaudeTabTracker::shellForSessionId` uses).
+  `PermissionRequest` stays ungated — its slot already routes
+  per-tab via `lastHookSessionId()`. Pre-poll tolerance baked
+  into `isFocusedTabSession`: empty session_id or empty
+  m_transcriptPath returns true so the bootstrap `SessionStart`
+  (which fires before `pollClaudeProcess` resolves the
+  transcript) still wires `m_activeSessionId`.
+  Verified fails-then-passes against pre-fix code via gate
+  neutralization (1/4 invariants fails when `if (!isFocused)
+  return;` is replaced with a no-op block).
   Kind: fix. Source: user-2026-05-07.
-  Lanes: claudestatuswidgets, MainWindow::onTabChanged,
-  claudeintegration.
+  Lanes: claudeintegration (the actual locus — singleton hook
+  dispatch). claudestatuswidgets, MainWindow::onTabChanged
+  examined and ruled out (retarget path is structurally fine;
+  it gets bypassed by the singleton hook stream).
+  Test: `tests/features/claude_status_bar_per_tab/` — 4
+  invariants (foreign-dropped, focused-honoured, perm-ungated,
+  pre-poll-tolerant).
 
 ### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
 

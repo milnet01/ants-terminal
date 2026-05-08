@@ -957,6 +957,18 @@ void ClaudeIntegration::onHookConnection() {
     }
 }
 
+bool ClaudeIntegration::isFocusedTabSession(const QString &sessionId) const {
+    // Tolerate pre-poll state: until pollClaudeProcess has resolved the
+    // focused tab's transcript path, accept any session_id rather than
+    // silently drop the bootstrap SessionStart that wires m_activeSessionId.
+    if (sessionId.isEmpty() || m_transcriptPath.isEmpty()) return true;
+    const int slash = m_transcriptPath.lastIndexOf('/');
+    const int dot = m_transcriptPath.lastIndexOf('.');
+    const int start = slash + 1;
+    const int end = (dot > slash) ? dot : m_transcriptPath.size();
+    return QStringView(m_transcriptPath).mid(start, end - start) == sessionId;
+}
+
 void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     QString hookName = event.value("hook_event_name").toString();
     QString toolName = event.value("tool_name").toString();
@@ -968,35 +980,50 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     // without this routing the UI would always flag the active tab.
     m_lastHookSessionId = event.value("session_id").toString();
 
+    // ANTS-1161 — pre-fix, sibling-tab hooks clobbered m_state and
+    // emitted stateChanged on the singleton, painting "Claude: bash"
+    // on a tab whose Claude was actually in a Thinking turn. Gate
+    // every state-mutating branch on the event belonging to the
+    // focused tab. PermissionRequest stays ungated because its slot
+    // routes via m_lastHookSessionId, not via the singleton state.
+    const bool isFocused = isFocusedTabSession(m_lastHookSessionId);
+
     if (hookName == "SessionStart") {
+        if (!isFocused) return;
         m_activeSessionId = event.value("session_id").toString();
         m_state = ClaudeState::Idle;
         emit sessionStarted(m_activeSessionId);
         emit stateChanged(m_state, "session started");
     } else if (hookName == "PreToolUse") {
+        if (!isFocused) return;
         m_state = ClaudeState::ToolUse;
         m_currentTool = toolName;
         emit toolStarted(toolName, toolInput.value("command").toString());
         emit stateChanged(m_state, toolName);
     } else if (hookName == "PostToolUse") {
+        if (!isFocused) return;
         m_state = ClaudeState::Thinking;
         emit toolFinished(toolName, true);
         emit stateChanged(m_state, "thinking");
         updateChangedFiles(event);
     } else if (hookName == "PostToolUseFailure") {
+        if (!isFocused) return;
         emit toolFinished(toolName, false);
     } else if (hookName == "Stop") {
+        if (!isFocused) return;
         m_state = ClaudeState::Idle;
         m_currentTool.clear();
         QString reason = event.value("stop_reason").toString();
         emit sessionStopped(reason);
         emit stateChanged(m_state, "idle");
     } else if (hookName == "PermissionRequest") {
+        // Ungated — slot consumes m_lastHookSessionId for per-tab routing.
         QString input = toolInput.value("command").toString();
         if (input.isEmpty())
             input = toolInput.value("file_path").toString();
         emit permissionRequested(toolName, input);
     } else if (hookName == "PreCompact") {
+        if (!isFocused) return;
         m_state = ClaudeState::Compacting;
         emit stateChanged(m_state, QStringLiteral("compacting"));
     }

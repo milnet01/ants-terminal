@@ -537,6 +537,32 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # claude_status_bar_per_tab — ANTS-1161 regression. The hook server
+    # is one UDS shared by every Claude under any tab, so a sibling
+    # tab's PreToolUse used to clobber the singleton's m_state and
+    # paint that tab's tool name on the focused tab's bottom Claude:
+    # <state> widget. The gate in processHookEvent now drops events
+    # whose session_id doesn't match m_transcriptPath's basename. See
+    # tests/features/claude_status_bar_per_tab/spec.md.
+    add_executable(test_claude_status_bar_per_tab
+        tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp
+        src/claudeintegration.cpp
+    )
+    target_link_libraries(test_claude_status_bar_per_tab PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Network
+        Qt6::Test
+    )
+    target_include_directories(test_claude_status_bar_per_tab PRIVATE src)
+    target_compile_options(test_claude_status_bar_per_tab PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME claude_status_bar_per_tab COMMAND test_claude_status_bar_per_tab)
+    set_tests_properties(claude_status_bar_per_tab PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # claude_plan_mode_detection — asserts that plan-mode toggle events
     # in the JSONL transcript are correctly read (field is `permissionMode`,
     # not `mode`) and that planModeChanged(bool) fires on transition.
