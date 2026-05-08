@@ -335,13 +335,13 @@ bool PluginManager::fireEvent(PluginEvent event, const QString &data) {
 }
 
 void PluginManager::setRecentOutput(const QString &output) {
-    for (auto *engine : m_engines.values()) {
+    for (auto *engine : std::as_const(m_engines)) {
         if (engine) engine->setRecentOutput(output);
     }
 }
 
 void PluginManager::setCwd(const QString &cwd) {
-    for (auto *engine : m_engines.values()) {
+    for (auto *engine : std::as_const(m_engines)) {
         if (engine) engine->setCwd(cwd);
     }
 }

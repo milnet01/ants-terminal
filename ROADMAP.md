@@ -5446,9 +5446,10 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Terminal rendering — server output only updates top half of window (user report 2026-05-07)
 
-- 🚧 [ANTS-1187] **Long-running server tab renders new output
+- ✅ [ANTS-1187] **Long-running server tab renders new output
   only into the upper half of the terminal; bottom half stays
-  blank.** User report 2026-05-07, narrowed 2026-05-08: ran a
+  blank.** Closed by ANTS-1194 (root cause: `TerminalGrid::resize()`
+  only clamped the scroll region, never grew it). Shipped 0.7.79. User report 2026-05-07, narrowed 2026-05-08: ran a
   Python web server (RetroDB / waitress, then narrowed to
   Flask specifically) in a tab; banner + startup logs print
   fine, but as the server keeps writing log lines they pile up
@@ -5931,6 +5932,46 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ---
 
+## 0.7.80 — post-0.7.79 user-feedback fixes (target: 2026-05)
+
+**Theme:** small high-signal user-experience fixes reported during
+the 0.7.79 ship session. Two notification/UI false-positives that
+made the desktop feel noisy in normal use.
+
+### 🐛 User-feedback fixes (2026-05-08)
+
+- ✅ [ANTS-1214] **Idle "Command Complete" notification fires on
+  every long-running command, including successful watchdog
+  ticks.** User report 2026-05-08: `notify-send "Command Complete
+  — Finished after 37s"` repeating from a system-resource
+  watchdog tab, breaking focus during normal work. Root cause:
+  `terminalwidget.cpp:checkIdleNotification()` fired for any
+  burst-then-idle pattern regardless of exit status. **Fix:**
+  gate on `m_grid->lastExitCode() != 0` (OSC 133 D exit-code).
+  Successful commands and shells without OSC 133 integration
+  stay silent; non-zero exits raise a `dialog-warning`-iconed
+  "Command Failed" notification with the exit code in the body.
+  **Layman:** Ants Terminal stops nagging you when commands
+  succeed; only failures interrupt your focus now.
+  Kind: fix. Source: user-2026-05-08.
+- ✅ [ANTS-1215] **Review Changes button stays active after every
+  push because of an untracked `.directory` file (KDE Dolphin
+  metadata).** User report 2026-05-08 with screenshot of a clean
+  pushed branch + sole `?? .directory` line in `git status`.
+  Root cause: `mainwindow.cpp:refreshReviewButton()` treated any
+  non-header `git status --porcelain=v1 -b` line as "dirty,"
+  including untracked (`??`) lines. Untracked files don't appear
+  in `git diff`, so clicking the button opened an empty diff
+  viewer. **Fix:** skip `??` lines in the dirty count. Common
+  false positives now silenced: `.directory`, IDE caches, swap
+  files, build artefacts that aren't gitignored. Once the user
+  `git add`s an untracked file it becomes `A ` and counts again.
+  **Layman:** the "Review Changes" button stops lighting up just
+  because of stray IDE/desktop-environment metadata files.
+  Kind: fix. Source: user-2026-05-08.
+
+---
+
 ## 0.7.79 — scoped indie-review #3 on TerminalGrid + TerminalWidget — shipped 2026-05-08
 
 **Theme:** post-ANTS-1194 sanity sweep on `src/terminalgrid.cpp` (3003 LoC)
@@ -6170,7 +6211,7 @@ screen mode. Comments survive but their truth conditions don't.
 
 ---
 
-## 0.7.78 — independent-review sweep #2 (target: 2026-05) — 2026-05-07
+## 0.7.78 — independent-review sweep #2 — shipped 2026-05-08
 
 **Theme:** fold-in of the 2026-05-07 multi-agent code review. 11
 subsystems reviewed by independent `general-purpose` subagents
@@ -6184,7 +6225,10 @@ analysis pass (cppcheck Qt-aware, clazy, gitleaks, semgrep,
 shellcheck, project's own grep-rule corpus + fixture coverage)
 returned 5 LOW Qt6-idiom-polish findings on top of a 96% noise
 floor — matches the ninth-audit calibration anchor (≤5
-actionable) almost exactly.
+actionable) almost exactly. **22/23 shipped 2026-05-08** in commit
+`efad292` (release `06bd078`); ANTS-1181 (mainwindow.cpp setupMenus
+1500-LoC carve) and ANTS-1186 (Qt6 idiom polish bundle) tracked
+forward to 0.7.80 and a follow-up session respectively.
 
 **Headline pattern**: ANTS-1163 (just-fixed: Task List dialog
 showed stale tasks across sessions) was a single instance of a
@@ -6200,7 +6244,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
-- 📋 **Dialog-staleness pattern recurs in 5+ sites (ANTS-1163
+- ✅ **Dialog-staleness pattern recurs in 5+ sites (ANTS-1163
   family).** Lanes 4, 6, 10 independently surfaced cached
   dialogs that don't reset state on re-show: `m_aiDialog`,
   `m_sshDialog`, `m_claudeDialog`, `m_claudeProjects`,
@@ -6213,7 +6257,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   (`claudeintegration.cpp:75-106`); SshDialog form fields
   persist across re-opens (`sshdialog.cpp:245-248`). All same
   shape as ANTS-1163. Bundled into ANTS-1168.
-- 📋 **Spec/code drift on documented invariants** — Lanes 1,
+- ✅ **Spec/code drift on documented invariants** — Lanes 1,
   5, 7, 8 each found a doc that disagrees with the code that
   ships. Audit pipeline order (`auditdialog.cpp:4009-4033` vs
   CLAUDE.md post-ANTS-1136 doc-fix); ANTS-1116 INV-6 message
@@ -6224,7 +6268,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   any more. Each is small individually; collectively the
   pattern signals that doc-drift is happening between minor
   revs without a reconciliation pass.
-- 📋 **Unbounded resource paths via untrusted input** —
+- ✅ **Unbounded resource paths via untrusted input** —
   Lanes 1, 2, 6, 8, 9, 11 each surfaced an untrusted-input
   surface lacking an explicit max-size + canonicalize-and-
   prefix-check. Kitty APC `c`/`r` unbounded
@@ -6238,7 +6282,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   setters take untrusted strings; main.cpp `--remote send-text`
   stdin no length cap. Bundled into ANTS-1169 (boundary-cap
   audit).
-- 📋 **`m_engines.values()` per-call allocation on hot
+- ✅ **`m_engines.values()` per-call allocation on hot
   paths** — independently flagged by static analysis (clazy)
   AND Lane 7 reviewer. Cross-confirmation upgrades confidence;
   rolled into ANTS-1185 (Qt6 idiom polish bundle) but kept on
@@ -6246,7 +6290,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### 🔒 Tier 1 — ship-this-week fixes (CRITICAL — security/data-loss/dead documented features)
 
-- 📋 **[ANTS-1164] [🔒 Security] PTY-write debug log leaks
+- ✅ **[ANTS-116&] [🔒 Security] PTY-write debug log leaks
   keystroke + paste payloads.** `ptyhandler.cpp:333` writes
   `data.left(60).toPercentEncoding()` when `ANTS_DEBUG=pty` or
   `=all` is set, with NO call to `SecretRedact::scrub()`. Short
@@ -6260,7 +6304,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   explicit "include-payloads" sub-flag.
   **Source:** indie-review 2026-05-07 (Lane 11 C-1).
   **Kind:** fix.
-- 📋 **[ANTS-1165] [🐛 Bug] `Ctrl+Shift+Up/Down` configured
+- ✅ **[ANTS-116&] [🐛 Bug] `Ctrl+Shift+Up/Down` configured
   bookmark shortcut silently dead.** `mainwindow.cpp:1678,1686`
   bind `next_bookmark`/`prev_bookmark` QShortcuts on the same
   chord that `mainwindow.cpp:1266,1271` advertise as
@@ -6275,7 +6319,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   startup.
   **Source:** indie-review 2026-05-07 (Lane 4 C-1).
   **Kind:** fix.
-- 📋 **[ANTS-1166] [🔒 Security] Kitty APC `a=d,d=a` wipes
+- ✅ **[ANTS-116&] [🔒 Security] Kitty APC `a=d,d=a` wipes
   Sixel + iTerm2 images cross-protocol.**
   `terminalgrid.cpp:2773-2777` — Kitty graphics protocol
   "delete all images" is supposed to clear only Kitty-protocol
@@ -6288,7 +6332,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   separate Kitty-only display vector.
   **Source:** indie-review 2026-05-07 (Lane 1 C-1).
   **Kind:** fix.
-- 📋 **[ANTS-1167] [🐛 Bug] `forkpty` F_SETFL return value
+- ✅ **[ANTS-116&] [🐛 Bug] `forkpty` F_SETFL return value
   ignored; silent fall-through to blocking master.**
   `ptyhandler.cpp:311-318` — the second `fcntl(F_SETFL, …|
   O_NONBLOCK)` return is unchecked. If F_GETFL fails the
@@ -6303,7 +6347,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### 🔒 Tier 1 — ship-this-week fixes (HIGH — composing with the criticals)
 
-- 📋 **[ANTS-1168] [🐛 Bug] ANTS-1163 dialog-staleness sweep
+- ✅ **[ANTS-116&] [🐛 Bug] ANTS-1163 dialog-staleness sweep
   across all cached dialogs.** Same pattern, ≥5 sites:
   (a) `mainwindow.cpp:1142-1163` `m_sshDialog` keeps form
   values across re-opens; (b) `mainwindow.cpp:1372-1389`
@@ -6332,7 +6376,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   **Source:** indie-review 2026-05-07 (Lane 4 H-1, Lane 6
   C-1+H-1+H-2, Lane 10 H-1). **Cross-cutting theme A**.
   **Kind:** fix.
-- 📋 **[ANTS-1169] [🔒 Security] Boundary-cap audit —
+- ✅ **[ANTS-116&] [🔒 Security] Boundary-cap audit —
   every untrusted-input crossing.** Eight sites surfaced
   by 6 reviewers; all share the same shape (untrusted input
   + missing max-size or canonicalize-and-prefix-check).
@@ -6365,7 +6409,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   Lane 2 H-3, Lane 6 H-3+H-4, Lane 8 H-3, Lane 9 H-3,
   Lane 11 main.cpp). **Cross-cutting theme C**.
   **Kind:** fix.
-- 📋 **[ANTS-1170] [🔒 Security] `ANTS_DEBUG` opt-in gate
+- ✅ **[ANTS-117&] [🔒 Security] `ANTS_DEBUG` opt-in gate
   + log rotation.** `main.cpp:195-199` reads the env
   unconditionally; an inherited `ANTS_DEBUG=all` from a CI
   image / `.envrc` / sourced helper silently turns on
@@ -6382,7 +6426,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### 🔒 Tier 2 — hardening sweep (HIGH/MEDIUM)
 
-- 📋 **[ANTS-1171] [🐛 Bug] Audit pipeline-order spec/code
+- ✅ **[ANTS-117&] [🐛 Bug] Audit pipeline-order spec/code
   drift.** `auditdialog.cpp:4009-4033` does
   `dedup → comment/string → mypy-stub-fold → cap`; CLAUDE.md
   (post-ANTS-1136 doc-fix) declares
@@ -6396,7 +6440,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   **Source:** indie-review 2026-05-07 (Lane 5 C-1; calibrated
   HIGH per single-user threat model).
   **Cross-cutting theme B**. **Kind:** fix.
-- 📋 **[ANTS-1172] [🔒 Security] Lua C-call wall-clock
+- ✅ **[ANTS-117&] [🔒 Security] Lua C-call wall-clock
   watchdog (un-defer ANTS-1143).** `luaengine.cpp:94-100`
   `LUA_MASKCOUNT` instruction-count timeout doesn't fire
   inside pure-C Lua calls (`string.find/match/gsub/rep`,
@@ -6410,7 +6454,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   **Source:** indie-review 2026-05-07 (Lane 7 C-1; calibrated
   HIGH — plugin trust model is "I trust this author", UI
   freeze not RCE). **Kind:** fix.
-- 📋 **[ANTS-1173] [🐛 Bug] Plugin `unloadAll` snapshot
+- ✅ **[ANTS-117&] [🐛 Bug] Plugin `unloadAll` snapshot
   before iteration.** `pluginmanager.cpp:50-58` doesn't
   snapshot `m_engines` before iterating, unlike `fireEvent`
   at line 323 which does. If an `unload` handler re-enters
@@ -6421,7 +6465,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   Three-line snapshot fix.
   **Source:** indie-review 2026-05-07 (Lane 7 H-2).
   **Kind:** fix.
-- 📋 **[ANTS-1174] [🐛 Bug] Mainwindow lifetime hygiene —
+- ✅ **[ANTS-117&] [🐛 Bug] Mainwindow lifetime hygiene —
   Connection leak + proxy-action heap leak.**
   (a) `mainwindow.cpp:2240,2258,2266`
   `std::make_shared<QMetaObject::Connection>` lambdas leak
@@ -6438,7 +6482,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   pass real menu QActions to `CommandPalette::setActions`.
   **Source:** indie-review 2026-05-07 (Lane 4 H-3+H-4).
   **Kind:** fix.
-- 📋 **[ANTS-1175] [🐛 Bug] PTY robustness — envp
+- ✅ **[ANTS-117&] [🐛 Bug] PTY robustness — envp
   truncation log + waitpid finished semantic.**
   (a) `ptyhandler.cpp:156-179` `kEnvpCap=512` silently
   truncates parent environ. Modern desktop sessions can
@@ -6456,7 +6500,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   "tab is dying."
   **Source:** indie-review 2026-05-07 (Lane 3 H-1+H-2).
   **Kind:** fix.
-- 📋 **[ANTS-1176] [🔒 Security] Remote-control
+- ✅ **[ANTS-117&] [🔒 Security] Remote-control
   observability + receive cap.**
   (a) `remotecontrol.cpp:223-505` no `ANTS_LOG` on any
   dispatched verb (`cmdSendText` / `cmdLaunch` /
@@ -6474,7 +6518,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   on `runClient`'s receive loop.
   **Source:** indie-review 2026-05-07 (Lane 8 H-2+H-3).
   **Kind:** fix.
-- 📋 **[ANTS-1177] [🐛 Bug] ANTS-1116 INV-6
+- ✅ **[ANTS-117&] [🐛 Bug] ANTS-1116 INV-6
   spec/code reconciliation.** `antshelper.cpp:77` emits
   `"drift script killed by signal"` (no N); ANTS-1116
   INV-6/INV-8 mandates `"drift script killed by signal N"`.
@@ -6484,7 +6528,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   disclaimer.
   **Source:** indie-review 2026-05-07 (Lane 8 H-1).
   **Cross-cutting theme B**. **Kind:** fix.
-- 📋 **[ANTS-1178] [🔒 Security] SettingsDialog regex
+- ✅ **[ANTS-117&] [🔒 Security] SettingsDialog regex
   validation + AI key ImhSensitiveData.**
   (a) `settingsdialog.cpp:982-1012` Highlights/Triggers
   regex strings pushed into config without
@@ -6501,7 +6545,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   predictive cache can capture keystrokes.
   **Source:** indie-review 2026-05-07 (Lane 10 H-2+H-3).
   **Kind:** fix.
-- 📋 **[ANTS-1179] [🐛 Bug] Config robustness — NaN guard,
+- ✅ **[ANTS-117&] [🐛 Bug] Config robustness — NaN guard,
   asymmetric validation, theme cache.**
   (a) `config.cpp:130` `QJsonDocument(m_data).toJson()`
   writes NaN/Infinity as `null` per RFC 8259. `setRawData`
@@ -6524,7 +6568,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### ⚡ / 🏗 Tier 3 — structural (after Tier 1/2 lands)
 
-- 📋 **[ANTS-1180] [⚡ Performance] Per-cell `fillRect`
+- ✅ **[ANTS-118&] [⚡ Performance] Per-cell `fillRect`
   coalescing in paintEvent.** `terminalwidget.cpp:806-811`
   inner per-cell loop calls `p.fillRect(...)` every cell
   whose bg differs from default; `N×cols` per frame for
@@ -6549,7 +6593,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   cleanly in this density.
   **Source:** indie-review 2026-05-07 (Lane 4 M-1).
   **Kind:** improve.
-- 📋 **[ANTS-1182] [⚡ Performance] Replace 13
+- ✅ **[ANTS-118&] [⚡ Performance] Replace 13
   `findChildren<TerminalWidget*>()` walks with a
   `QList<QPointer<TerminalWidget>>` member.**
   `mainwindow.cpp:1327, 1339, 1344, 1601, 1611, 1620, 1715,
@@ -6562,7 +6606,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   `cleanupEmptySplitters`.
   **Source:** indie-review 2026-05-07 (Lane 4 M-2).
   **Kind:** improve.
-- 📋 **[ANTS-1183] [🧹 Refactor] Schema versioning in
+- ✅ **[ANTS-118&] [🧹 Refactor] Schema versioning in
   `config.json` (`_schema: 1` + `migrate(int from, int
   to)`).** Today's flat-`QJsonObject` store has no rename/
   migrate hook. Future renames (e.g. `opacity` →
@@ -6570,7 +6614,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   pre-empts the next breaking change.
   **Source:** indie-review 2026-05-07 (Lane 9 M-1).
   **Kind:** improve.
-- 📋 **[ANTS-1184] [🔒 Security] Extend `SecretRedact`
+- ✅ **[ANTS-118&] [🔒 Security] Extend `SecretRedact`
   with Google API + GCP service-account JSON.**
   `secretredact.h:54-131` covers AWS, GitHub, OpenAI,
   Anthropic, Slack, Stripe, JWT, Bearer, PEM,
@@ -6579,7 +6623,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   JSON shape. Two regex lines.
   **Source:** indie-review 2026-05-07 (Lane 11 M-1).
   **Kind:** improve.
-- 📋 **[ANTS-1185] [🖥 Platform] Tab a11y — per-tab
+- ✅ **[ANTS-118&] [🖥 Platform] Tab a11y — per-tab
   Claude state dot exposed to AT-SPI.** `coloredtabbar.cpp:
   130-151` paints the per-tab Claude state dot purely
   visually; AT-SPI/Orca read tab labels verbatim and the
@@ -6592,26 +6636,24 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### 🧹 Tier 4 — Qt6 idiom polish (LOW from `/audit` static analysis)
 
-- 📋 **[ANTS-1186] [🧹 Cleanup] Qt6 idiom polish bundle —
-  5 LOW findings from cppcheck/clazy.** All Qt6
-  modern-idiom polish; bundled because they fit a single
-  small commit.
-  (a) `pluginmanager.cpp:50,332,338` — `m_engines.values()`
-  per-call alloc (cross-confirmed by Lane 7); use
-  `std::as_const(m_engines)` direct value-iteration. Hot
-  path on every PTY output flush.
-  (b) `mainwindow.cpp:4845,4884` — replace
-  `QDateTime::currentDateTime().toMSecsSinceEpoch()` with
-  `QDateTime::currentMSecsSinceEpoch()` (skips the
-  QDateTime construction).
-  (c) `featurecoverage.cpp:392` — `QDir projectDir(...)`
-  declared and never read; delete.
-  (d) `titlebar.h:19` — `QColor("#e74856")` → `QColor::
-  fromRgb(0xe74856)`.
-  (e) `claudebgtasksdialog.cpp:195`,
-  `dialogshowtracer.cpp:46`, `settingsdialog.cpp:1196,1434`
-  — collapse chained `.arg()` into multi-arg call (matches
-  the 2026-04-16 commit 89f7ea8 pattern in `auditdialog.cpp`).
+- ✅ **[ANTS-118&] [🧹 Cleanup] Qt6 idiom polish bundle.**
+  Sub-findings (a)–(d) shipped; (e) skipped after review —
+  the existing `arg(int).arg(int)` chains are the idiomatic
+  Qt6 form for multiple integers (variadic `arg(...)` only
+  collapses cleanly for QStrings).
+  (a) ✅ `pluginmanager.cpp:setRecentOutput`,`setCwd` —
+  `m_engines.values()` → `std::as_const(m_engines)` direct
+  value-iteration. (Snapshot sites in `unloadAll` and
+  `fireEvent` deliberately keep `m_engines.values()` per
+  ANTS-1173 UAF defense.)
+  (b) ✅ `mainwindow.cpp:4915,4955` —
+  `QDateTime::currentDateTime().toMSecsSinceEpoch()` →
+  `QDateTime::currentMSecsSinceEpoch()`.
+  (c) ✅ `featurecoverage.cpp:392` — unused `QDir projectDir`
+  deleted.
+  (d) ✅ `titlebar.h:19` — `QColor("#e74856")` →
+  `QColor::fromRgb(0xe74856)`.
+  (e) ⏸ chained `.arg()` left as-is — already idiomatic.
   **Source:** /audit 2026-05-07 (cppcheck + clazy).
   **Kind:** improve.
 

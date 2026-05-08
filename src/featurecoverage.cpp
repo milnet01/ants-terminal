@@ -389,7 +389,6 @@ QString runSpecDriftCheck(const QString &projectPath) {
 }
 
 QString runChangelogCoverageCheck(const QString &projectPath) {
-    QDir projectDir(projectPath);
     QFile clog(projectPath + "/CHANGELOG.md");
     if (!clog.open(QIODevice::ReadOnly)) return {};
     const QString clogText = QString::fromUtf8(clog.readAll());

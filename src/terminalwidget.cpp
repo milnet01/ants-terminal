@@ -2366,23 +2366,35 @@ void TerminalWidget::checkIdleNotification() {
         if (!m_hasFocus) {
             m_notifiedIdle = true;
 
-            // Try to get command info from OSC 133 prompt regions
-            QString body = "A command has finished in Ants Terminal";
+            // User feedback 2026-05-08: only notify on warnings/errors —
+            // a successful long-running command (e.g. an idle watchdog
+            // tick) should not interrupt focus. Gate on the OSC 133 D
+            // exit code: skip notification when the last command's exit
+            // status is 0 (success) or unknown (no shell integration —
+            // we'd be guessing). The shell that emitted OSC 133 D has
+            // populated `m_grid->lastExitCode()` at this point.
+            const int exitCode = m_grid ? m_grid->lastExitCode() : 0;
+            if (exitCode == 0) return;
+
+            QString body = QString("Command failed (exit %1)").arg(exitCode);
             qint64 elapsed = m_commandStartTime.isValid()
                 ? m_commandStartTime.elapsed() / 1000 : 0;
             if (elapsed > 0) {
                 int mins = static_cast<int>(elapsed / 60);
                 int secs = static_cast<int>(elapsed % 60);
                 if (mins > 0)
-                    body = QString("Finished after %1m %2s").arg(mins).arg(secs);
+                    body = QString("Failed after %1m %2s (exit %3)")
+                               .arg(mins).arg(secs).arg(exitCode);
                 else
-                    body = QString("Finished after %1s").arg(secs);
+                    body = QString("Failed after %1s (exit %2)")
+                               .arg(secs).arg(exitCode);
             }
 
             QProcess::startDetached("notify-send", {
                 "-a", "Ants Terminal",
-                "-i", "utilities-terminal",
-                "Command Complete",
+                "-i", "dialog-warning",
+                "-u", "normal",
+                "Command Failed",
                 body
             });
         }

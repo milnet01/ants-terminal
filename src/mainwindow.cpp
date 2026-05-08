@@ -4678,6 +4678,16 @@ void MainWindow::refreshReviewButton() {
                         // push), so we ignore it for the enabled state.
                         if (ln.contains("[ahead ") || ln.contains(", ahead "))
                             ahead = true;
+                    } else if (ln.startsWith("?? ")) {
+                        // User report 2026-05-08: untracked files (`??`)
+                        // shouldn't activate Review Changes — they don't
+                        // appear in `git diff`, so clicking the button
+                        // would open a diff viewer with nothing to show.
+                        // Common false-positive: KDE Dolphin's
+                        // `.directory` metadata, IDE caches, swap files.
+                        // Once the user `git add`s an untracked file it
+                        // becomes `A ` and counts here.
+                        continue;
                     } else {
                         dirty = true;
                     }
@@ -4912,8 +4922,7 @@ void MainWindow::refreshRepoVisibility() {
 
     // Cache hit (10 min TTL) → render immediately, skip the shell-out.
     constexpr qint64 kCacheTtlMs = 10 * 60 * 1000;
-    const qint64 nowMs =
-        QDateTime::currentDateTime().toMSecsSinceEpoch();
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     auto it = m_repoVisibilityCache.find(repoRoot);
     if (it != m_repoVisibilityCache.end() &&
             (nowMs - it->fetchedAt) < kCacheTtlMs) {
@@ -4952,7 +4961,7 @@ void MainWindow::refreshRepoVisibility() {
                 // hit-branch sees an empty string and hides.
                 self->m_repoVisibilityCache[repoRoot] = {
                     visibility,
-                    QDateTime::currentDateTime().toMSecsSinceEpoch()};
+                    QDateTime::currentMSecsSinceEpoch()};
                 // ANTS-1137 — clear in-flight on completion regardless
                 // of success/failure path.
                 self->m_repoVisibilityProbeInFlight.remove(repoRoot);
