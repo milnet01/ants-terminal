@@ -2331,6 +2331,10 @@ void TerminalGrid::resize(int rows, int cols) {
         (m_scrollTop == 0 && m_scrollBottom == m_rows - 1);
     const bool savedWasFullScreen =
         (m_altScrollTop == 0 && m_altScrollBottom == m_rows - 1);
+    // ANTS-1207 — m_cols updates mid-function, so the post-update
+    // pool-clear can't tell pure-rows-resize from cols-resize.
+    // Snapshot old cols here.
+    const int oldCols = m_cols;
 
     // A "logical line" is a join of all cells from one or more soft-wrapped
     // lines, plus a parallel combining map keyed by position-in-the-join.
@@ -2616,8 +2620,14 @@ void TerminalGrid::resize(int rows, int cols) {
         m_altScrollTop = std::clamp(m_altScrollTop, 0, m_rows - 1);
         m_altScrollBottom = std::clamp(m_altScrollBottom, m_altScrollTop, m_rows - 1);
     }
-    // Pool entries are sized to the old m_cols; invalidate after resize.
-    m_freeCellBuffers.clear();
+    // ANTS-1207 — pool entries are sized to old m_cols, so they only
+    // need invalidation when cols actually changes. Pre-fix cleared
+    // unconditionally; a pure rows-resize lost the pool's cached
+    // allocations for no reason. (m_cols was already updated above
+    // at line ~2589, so we compare to the snapshotted oldCols.)
+    if (cols != oldCols) {
+        m_freeCellBuffers.clear();
+    }
     m_cursorRow = std::clamp(m_cursorRow, 0, m_rows - 1);
     m_cursorCol = std::clamp(m_cursorCol, 0, m_cols - 1);
     // An OSC 8 hyperlink opened before resize holds a (row, col) pair that

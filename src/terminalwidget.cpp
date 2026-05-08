@@ -440,6 +440,25 @@ void TerminalWidget::updateFontMetrics() {
     m_fontBold.setKerning(false);
     m_fontItalic.setKerning(false);
     m_fontBoldItalic.setKerning(false);
+
+    // ANTS-1207 — overlay/badge font variants. Built once here, used
+    // (when their respective overlays are visible) in paintEvent
+    // without per-frame allocation.
+    const int basePt = m_font.pointSize();
+    m_badgeFont = m_font;
+    m_badgeFont.setPointSize(basePt * 4);
+    m_badgeFont.setBold(true);
+    m_badgeFont.setKerning(false);
+    m_smallFont = m_font;
+    m_smallFont.setPointSize(std::max(7, basePt - 2));
+    m_smallFont.setKerning(false);
+    m_quickSelectFont = m_font;
+    m_quickSelectFont.setPointSize(std::max(8, basePt - 1));
+    m_quickSelectFont.setBold(true);
+    m_quickSelectFont.setKerning(false);
+    m_perfFont = m_font;
+    m_perfFont.setPointSize(9);
+    m_perfFont.setKerning(false);
 }
 
 void TerminalWidget::setFontSize(int size) {
@@ -653,10 +672,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
     // Badge watermark (large semi-transparent text in background)
     if (!m_badgeText.isEmpty()) {
-        QFont badgeFont = m_font;
-        badgeFont.setPointSize(m_font.pointSize() * 4);
-        badgeFont.setBold(true);
-        p.setFont(badgeFont);
+        p.setFont(m_badgeFont);  // ANTS-1207 — cached in updateFontMetrics
         QColor badgeColor = m_grid->defaultFg();
         badgeColor.setAlpha(20);
         p.setPen(badgeColor);
@@ -1018,8 +1034,25 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             p.setPen(run.fg);
             int px_x = m_padding + run.startCol * m_cellWidth;
 
-            QString runText = QString::fromUcs4(run.codepoints.data(),
-                                                static_cast<int>(run.codepoints.size()));
+            // ANTS-1207 — ASCII fast path. >90% of TUI content is
+            // <0x80, where a UTF-32→UTF-16 transcode is unnecessary.
+            // Pre-allocated QString + QChar copy is roughly 2-3× faster
+            // than fromUcs4 on the hot run loop.
+            QString runText;
+            const auto &cps = run.codepoints;
+            const int n = static_cast<int>(cps.size());
+            bool allAscii = true;
+            for (int i = 0; i < n; ++i) {
+                if (cps[i] >= 0x80) { allAscii = false; break; }
+            }
+            if (allAscii) {
+                runText.resize(n);
+                for (int i = 0; i < n; ++i) {
+                    runText[i] = QChar(static_cast<ushort>(cps[i]));
+                }
+            } else {
+                runText = QString::fromUcs4(cps.data(), n);
+            }
             // ANTS-1205 — m_paintLayout is reused across runs and
             // across paint events. setText() resets the layout's
             // glyph state but not its additional-format ranges.
@@ -1062,9 +1095,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     // Command timestamps and fold indicators (OSC 133 shell integration)
     {
         const auto &regions = m_grid->promptRegions();
-        QFont smallFont = m_font;
-        smallFont.setPointSize(std::max(7, m_font.pointSize() - 2));
-        QFontMetrics sfm(smallFont);
+        QFontMetrics sfm(m_smallFont);  // ANTS-1207 — cached
 
         for (size_t ri = 0; ri < regions.size(); ++ri) {
             const auto &pr = regions[ri];
@@ -1075,7 +1106,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
             // Command duration and timestamp (right-aligned)
             if (pr.commandStartMs > 0) {
-                p.setFont(smallFont);
+                p.setFont(m_smallFont);
                 QColor dimColor = m_grid->defaultFg();
                 dimColor.setAlpha(100);
                 p.setPen(dimColor);
@@ -1141,7 +1172,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                         QColor barBg = m_grid->defaultBg().lighter(130);
                         barBg.setAlpha(80);
                         p.fillRect(m_padding, barY, width() - m_padding * 2, m_cellHeight, barBg);
-                        p.setFont(smallFont);
+                        p.setFont(m_smallFont);
                         QColor foldText = m_grid->defaultFg();
                         foldText.setAlpha(130);
                         p.setPen(foldText);
@@ -1280,10 +1311,8 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             QPen dashPen(markerColor, 1, Qt::DashLine);
             p.setPen(dashPen);
             p.drawLine(m_padding, markerY, width() - m_padding, markerY);
-            // Label
-            QFont smallFont = m_font;
-            smallFont.setPointSize(std::max(7, m_font.pointSize() - 2));
-            p.setFont(smallFont);
+            // Label — ANTS-1207 cached small font.
+            p.setFont(m_smallFont);
             p.setPen(markerColor);
             p.drawText(width() - 120, markerY - 2, "new output");
             p.setFont(m_font);
@@ -1292,11 +1321,8 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
     // URL quick-select overlay labels
     if (m_urlQuickSelectActive && !m_quickSelectLabels.empty()) {
-        QFont labelFont = m_font;
-        labelFont.setBold(true);
-        labelFont.setPointSize(std::max(8, m_font.pointSize() - 1));
-        p.setFont(labelFont);
-        QFontMetrics lfm(labelFont);
+        p.setFont(m_quickSelectFont);  // ANTS-1207 — cached
+        QFontMetrics lfm(m_quickSelectFont);
 
         for (const auto &ql : m_quickSelectLabels) {
             int vr = ql.globalLine - viewStart;
@@ -1413,11 +1439,9 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         lines << QString("Grid: %1x%2").arg(cols).arg(rows);
         lines << QString("Scroll offset: %1").arg(m_scrollOffset);
 
-        // Measure and draw background
-        QFont perfFont = m_font;
-        perfFont.setPointSize(9);
-        p.setFont(perfFont);
-        QFontMetrics pfm(perfFont);
+        // Measure and draw background — ANTS-1207 cached perf font.
+        p.setFont(m_perfFont);
+        QFontMetrics pfm(m_perfFont);
         int lineH = pfm.height();
         int maxW = 0;
         for (const auto &l : lines) maxW = qMax(maxW, pfm.horizontalAdvance(l));

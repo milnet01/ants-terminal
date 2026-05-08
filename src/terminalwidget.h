@@ -409,6 +409,16 @@ private:
     QFont m_fontBold;
     QFont m_fontItalic;
     QFont m_fontBoldItalic;
+    // ANTS-1207 — overlay/badge font variants cached so paintEvent
+    // doesn't construct a fresh QFont per frame. All four are
+    // recomputed in updateFontMetrics() alongside the styled
+    // variants. No-op when their respective overlays aren't visible
+    // (badge text empty, no command-mark labels, no quick-select
+    // active, perf overlay off).
+    QFont m_badgeFont;          // 4× pt-size, bold — watermark
+    QFont m_smallFont;          // pt-size - 2, min 7 — cmd marks
+    QFont m_quickSelectFont;    // pt-size - 1, min 8, bold — URL nav
+    QFont m_perfFont;           // 9pt — perf overlay
     int m_cellWidth = 0;
     int m_cellHeight = 0;
     int m_fontAscent = 0;
