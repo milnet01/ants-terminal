@@ -6026,11 +6026,13 @@ a modern terminal" release.
 
 ### 🎨 Features — multiplexing
 
-- 🚧 [ANTS-1063] **Remote-control protocol** (Kitty-style,
+- ✅ [ANTS-1063] **Remote-control protocol** (Kitty-style,
   [docs](https://sw.kovidgoyal.net/kitty/rc_protocol/)): JSON envelopes
   over a Unix socket. Commands: `launch`, `send-text`, `set-title`,
-  `select-window`, `get-text`, `ls`, `new-tab`. Auth via X25519 when
-  a password is set. Unlocks scripting, IDE integration, CI.
+  `select-window`, `get-text`, `ls`, `new-tab`. Unlocks scripting, IDE
+  integration, CI. **Initial command surface complete (7/7) as of 0.7.x.**
+  X25519 auth deferred to its own item (see [ANTS-1064] sub-bullet
+  below); the parent item is closed once the seven commands ship.
   - ✅ **First slice: socket + envelope + `ls`.** `src/remotecontrol.{h,cpp}`
     brings up a `QLocalServer` on `$ANTS_REMOTE_SOCKET` (or the XDG
     runtime default `$XDG_RUNTIME_DIR/ants-terminal.sock`). Each
@@ -6078,10 +6080,10 @@ a modern terminal" release.
     --remote-tab $idx ...`. `command` is required (rejects empty
     with a "use new-tab" hint); auto-appends `\n` so the command
     actually runs. Pinned by `tests/features/remote_control_launch/`.
-    **Initial command surface complete** — 7/7. Remaining work in
-    this item is the X25519 auth layer (currently 💭).
   - 💭 [ANTS-1064] **Auth layer.** X25519 shared-secret when `$ANTS_REMOTE_PASSWORD`
-    is set. Shipped after the command surface is complete.
+    is set. Tracked as its own item now that the parent (ANTS-1063)
+    is closed; ship when there's a concrete remote-untrusted-network
+    use case driving it.
   Kind: implement.
   Source: planned.
 - 📋 [ANTS-1065] **Headless mux server with codec RPC**. WezTerm's architecture
