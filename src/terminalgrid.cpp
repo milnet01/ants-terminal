@@ -774,11 +774,23 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         }
         break;
     case 'X': {
+        // ECH — Erase Character. xterm reference: clears N cells from
+        // cursor without moving cursor. Cells are erased to a SPACE
+        // with default attrs except for the BCE bg (Background-Color
+        // Erase). ANTS-1210 — pre-fix copied m_currentAttrs verbatim,
+        // leaving bold/italic/underline active on the resulting space.
+        // Match clearRow's pattern: zero attrs first, then set fg
+        // default + bg = eraseBg().
         int count = param(0);
+        const QColor bg = eraseBg();
         for (int i = 0; i < count && m_cursorCol + i < m_cols; ++i) {
             auto &c = cell(m_cursorRow, m_cursorCol + i);
             c.codepoint = ' ';
-            c.attrs = m_currentAttrs;
+            c.attrs = CellAttrs{};
+            c.attrs.fg = m_defaultFg;
+            c.attrs.bg = bg;
+            c.isWideChar = false;
+            c.isWideCont = false;
             m_screenLines[m_cursorRow].combining.erase(m_cursorCol + i);
         }
         break;
