@@ -1333,22 +1333,35 @@ void TerminalGrid::handleOsc(const std::string &payload) {
     }
     // OSC 9;4 — ConEmu / Microsoft Terminal progress reporting
     // Spec: https://learn.microsoft.com/en-us/windows/terminal/tutorials/progress-bar-sequences
-    // Payload: "9;4;<state>;<percent>"  (percent optional for state 0/3)
+    // Payload: "9;4" or "9;4;<state>" or "9;4;<state>;<percent>".
+    //
+    // ANTS-1197 — discriminator must accept the minimal "9;4" form
+    // (ConEmu state-0 / "remove progress"). Pre-fix required the
+    // trailing ";" + state byte (length >= semi+3 + payload[semi+2]
+    // == ';'), so a shell emitting `\e]9;4\e\\` to clear progress
+    // landed in the notification fall-through branch with body "4".
+    // The byte after `4` must be `;` OR end-of-payload — anything
+    // else (`9;42`, `9;4Hello`) is a notification.
     else if (oscNum == "9" && semi != std::string::npos &&
-             payload.size() >= semi + 3 &&
-             payload[semi + 1] == '4' && payload[semi + 2] == ';') {
-        std::string rest = payload.substr(semi + 3);
+             payload.size() >= semi + 2 &&
+             payload[semi + 1] == '4' &&
+             (payload.size() == semi + 2 || payload[semi + 2] == ';')) {
+        std::string rest = (payload.size() > semi + 2)
+                               ? payload.substr(semi + 3)
+                               : std::string{};
         size_t semi2 = rest.find(';');
         int stateNum = 0;
         int percent = 0;
-        try {
-            stateNum = std::stoi(semi2 == std::string::npos ? rest : rest.substr(0, semi2));
-            if (semi2 != std::string::npos) {
-                percent = std::stoi(rest.substr(semi2 + 1));
+        if (!rest.empty()) {
+            try {
+                stateNum = std::stoi(semi2 == std::string::npos ? rest : rest.substr(0, semi2));
+                if (semi2 != std::string::npos) {
+                    percent = std::stoi(rest.substr(semi2 + 1));
+                }
+            } catch (...) {
+                DBGLOG("OSC 9;4 progress parse failed: '%s'", rest.c_str());
+                return;  // malformed — ignore
             }
-        } catch (...) {
-            DBGLOG("OSC 9;4 progress parse failed: '%s'", rest.c_str());
-            return;  // malformed — ignore
         }
         if (stateNum < 0 || stateNum > 4) return;
         percent = std::clamp(percent, 0, 100);

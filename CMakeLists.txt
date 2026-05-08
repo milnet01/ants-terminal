@@ -442,6 +442,28 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
+    # osc9_progress_disambiguator — pins OSC 9 (notification) vs
+    # OSC 9;4 (ConEmu/MS-Terminal progress) discriminator. ANTS-1197
+    # from indie-review #3 — minimal `9;4` (state-0 / clear progress)
+    # was misclassified as notification with body "4".
+    add_executable(test_osc9_progress
+        tests/features/osc9_progress_disambiguator/test_osc9_progress.cpp
+        src/terminalgrid.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(test_osc9_progress PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_include_directories(test_osc9_progress PRIVATE src)
+    target_compile_options(test_osc9_progress PRIVATE
+        -Wall -Wextra -Wpedantic
+    )
+    add_test(NAME osc9_progress COMMAND test_osc9_progress)
+    set_tests_properties(osc9_progress PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 10)
+
     # sgr_attribute_reset — asserts every SGR set/reset pair (bold, italic,
     # underline, inverse, strikethrough) + SGR 0 full-reset correctly clear
     # the cell attribute on subsequent writes. See
