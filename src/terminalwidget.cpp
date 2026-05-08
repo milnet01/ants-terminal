@@ -625,9 +625,17 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     const QColor defaultBg = m_grid->defaultBg();
 
     // Per-pixel alpha for terminal background transparency (driven by Opacity setting).
-    // Must use CompositionMode_Source to REPLACE the FBO content rather than blend
-    // with it — QOpenGLWidget reuses its FBO across frames, so SourceOver would
-    // accumulate alpha toward 1.0 (opaque) over successive paints.
+    // CompositionMode_Source REPLACES the destination pixel rather than blending,
+    // which is the right semantic for the first-frame fill: the QWidget backing
+    // store hands us an undefined pixel buffer for the first paint of a region,
+    // and on translucent compositors (Wayland with KWin's blur, X11 with picom)
+    // SourceOver against undefined would mix unpredictable values into the alpha.
+    // Source guarantees `bgFill.alpha()` lands as-is. The trailing flip back to
+    // SourceOver lets every cell + glyph layer above this composite normally.
+    // ANTS-1206 — pre-fix comment claimed the rationale was "QOpenGLWidget
+    // reuses its FBO across frames"; that hasn't been true since 0.7.44 (GL
+    // path retired). Updated to describe the current QWidget backing-store +
+    // translucent-compositor reasoning.
     QColor bgFill = defaultBg;
     int effectiveAlpha = static_cast<int>(255 * m_windowOpacity);
     if (effectiveAlpha < 255)
@@ -1923,8 +1931,12 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
 }
 
 void TerminalWidget::resizeEvent(QResizeEvent *event) {
-    // QOpenGLWidget::resizeEvent recreates the internal FBO at the new size.
-    // Without this call, the FBO stays at its initial size and gets stretched.
+    // QWidget::resizeEvent reflows the backing-store at the new size.
+    // ANTS-1206 — pre-fix comment cited QOpenGLWidget FBO recreation
+    // as the reason for the explicit base-class call; that hasn't
+    // been true since 0.7.44 (GL path retired). The base-class call
+    // is still needed for QWidget's own resize bookkeeping (geometry
+    // hooks, child layout dispatch, accessibility size events).
     QWidget::resizeEvent(event);
     m_spanCacheDirty = true;
     recalcGridSize();
