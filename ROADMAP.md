@@ -6043,6 +6043,35 @@ a modern terminal" release.
     `newline_stream` to confirm which `scrollUp` sub-step
     dominates (row allocation? per-line combining-char table
     copy? pushBack on the scrollback `std::deque`?).
+  - ✅ **`perf record` profile, 2026-05-08.** Captured a 16 MB
+    `newline_stream` run with `perf record --call-graph=dwarf
+    -F 999`. Top hotspots:
+    - **41% in `TerminalGrid::takeBlankedCellsRow()`** — pulls
+      a row from the free pool and `std::fill`s it with a
+      blank Cell. The fill is the dominant cost.
+    - **24% in `std::__rotate`** (over `std::vector<TermLine>`
+      inside `scrollUp`).
+    - **3% in `handleAsciiPrintRun`** (the actual print path).
+
+    Together scroll-up consumes ~65% of newline_stream CPU.
+    **Tactical attempt at a quick win failed:** caching a
+    pre-built blank row template + `std::copy` from it added 3
+    QColor equality checks per call, which cost MORE than the
+    saved `Cell` construction + 2× QColor assignments — bench
+    went 6.46 → 5.46 MB/s. Reverted (no commit).
+
+    Conclusion: `std::fill` on the existing Cell layout is
+    already memory-bandwidth-bound (Cell ≈ 80 B × m_cols cells
+    × 700K scrolls = ~12 KB/scroll × 700K = ~8 GB of writes;
+    matches the observed ~620 ms wall time). **Further wins
+    require a data-layout change**, not micro-optimisation.
+    The right path is **ANTS-1060** (dynamic grid storage à la
+    Alacritty PR #1584): lazy-allocate row buffers, intern
+    empty rows to a shared sentinel, skip `std::fill` for rows
+    that are conceptually blank. Until that lands,
+    newline_stream throughput stays bandwidth-bound at ~6-8
+    MB/s on commodity hardware. Closed this perf-investigation
+    sub-item; bullet (b) is now resolved-by-design.
   - ✅ **Main-thread stall detector** (`DebugLog::Perf`, enabled
     via `ANTS_DEBUG=perf`). 200 ms heartbeat `QTimer` that
     records every drift > 100 ms as a main-thread stall. Added
