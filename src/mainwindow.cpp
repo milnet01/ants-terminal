@@ -1541,6 +1541,7 @@ void MainWindow::setupMenus() {
         {DebugLog::Signals,  "&Signal firings"},
         {DebugLog::Shell,    "S&hell integration (OSC 133 / HMAC)"},
         {DebugLog::Session,  "Sessi&on persistence"},
+        {DebugLog::Perf,     "Per&f (event-loop stalls, slow handlers)"},
     };
     for (const auto &entry : catList) {
         QAction *a = debugMenu->addAction(entry.second);
