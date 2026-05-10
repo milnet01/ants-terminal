@@ -9,6 +9,7 @@
 
 #include "claudeintegration.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 #include <QJsonObject>
 #include <QSignalSpy>
@@ -165,18 +166,20 @@ int runPrePollTolerance() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
 
-    int failures = 0;
-    failures += runForeignSessionIsDropped();
-    failures += runFocusedSessionIsHonoured();
-    failures += runPermissionRequestUngated();
-    failures += runPrePollTolerance();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d invariant(s) failed.\n", failures);
-        return 1;
-    }
-    return 0;
+TEST(ClaudeStatusBarPerTab, ForeignSessionIsDropped) {
+    ASSERT_EQ(runForeignSessionIsDropped(), 0);
 }
+
+TEST(ClaudeStatusBarPerTab, FocusedSessionIsHonoured) {
+    ASSERT_EQ(runFocusedSessionIsHonoured(), 0);
+}
+
+TEST(ClaudeStatusBarPerTab, PermissionRequestUngated) {
+    ASSERT_EQ(runPermissionRequestUngated(), 0);
+}
+
+TEST(ClaudeStatusBarPerTab, PrePollTolerance) {
+    ASSERT_EQ(runPrePollTolerance(), 0);
+}
+

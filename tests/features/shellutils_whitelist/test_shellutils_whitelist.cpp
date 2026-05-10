@@ -9,6 +9,7 @@
 
 #include "shellutils.h"
 
+#include <gtest/gtest.h>
 #include <QString>
 #include <cstdio>
 
@@ -27,7 +28,8 @@ int expectEq(const char *label, const QString &got, const char *expected) {
 
 }  // namespace
 
-int main() {
+TEST(ShellutilsWhitelist, Main) {
+
     int rc = 0;
 
     // INV-1: empty input
@@ -67,6 +69,6 @@ int main() {
     // INV-4: embedded single quote → POSIX 'X'\''Y' shape
     rc |= expectEq("INV-4", shellQuote(QStringLiteral("it's")), "'it'\\''s'");
 
-    if (rc == 0) std::fprintf(stdout, "shellutils_whitelist: all passed\n");
-    return rc;
+    if (rc) FAIL();
 }
+

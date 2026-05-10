@@ -7,6 +7,7 @@
 
 #include "secretredact.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 #include <QString>
 
@@ -80,9 +81,7 @@ std::string slurp(const char *path)
 
 } // namespace
 
-int main(int argc, char *argv[])
-{
-    QCoreApplication app(argc, argv);
+TEST(AiContextRedaction, Main) {
 
     // ─────────────────────────────────────────────────────────────
     // INV-1: SecretRedact::scrub exists with the documented signature.
@@ -387,9 +386,9 @@ int main(int argc, char *argv[])
     if (g_failures > 0) {
         std::fprintf(stderr, "\n%d invariant check(s) failed — see spec.md for context\n",
                      g_failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: ai_context_redaction — %zu positive + %zu negative + wiring grep\n",
                 positives.size(), negatives.size());
-    return 0;
 }
+

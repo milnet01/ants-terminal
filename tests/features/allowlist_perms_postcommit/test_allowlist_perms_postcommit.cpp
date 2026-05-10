@@ -16,6 +16,7 @@
 
 #include "claudeallowlist.h"
 
+#include <gtest/gtest.h>
 #include <QApplication>
 #include <QDir>
 #include <QFile>
@@ -147,16 +148,14 @@ void checkSourceBindings() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QApplication app(argc, argv);
+TEST(AllowlistPermsPostcommit, Main) {
 
     checkPermsAfterSave();
     checkSourceBindings();
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
 }
+

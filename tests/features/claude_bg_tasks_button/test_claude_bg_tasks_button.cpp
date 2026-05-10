@@ -2,6 +2,7 @@
 // See spec.md for the contract (INV-1 through INV-10).
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -60,7 +61,9 @@ static std::string functionBody(const std::string &src, const std::string &sig) 
                                                        : next - start);
 }
 
-int main() {
+TEST(ClaudeBgTasksButton, Main) {
+    int failures = 0;
+
     const std::string bgcpp = slurp(SRC_BGTASKS_CPP_PATH);
     const std::string bgh   = slurp(SRC_BGTASKS_H_PATH);
     const std::string dlgcpp = slurp(SRC_BGDIALOG_CPP_PATH);
@@ -71,7 +74,6 @@ int main() {
     const std::string cih    = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
     const std::string csw    = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
-    int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
         ++failures;
@@ -415,9 +417,9 @@ int main() {
     if (failures > 0) {
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: claude background-tasks button invariants present "
                 "(12/12)\n");
-    return 0;
 }
+

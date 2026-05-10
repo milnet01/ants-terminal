@@ -7,6 +7,7 @@
 // ~/.claude/settings.json.
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -34,13 +35,13 @@ static std::string slurp(const char *path)
     return ss.str();
 }
 
-int main()
-{
+TEST(ClaudeGitContextHook, Main) {
+    int failures = 0;
+
     const std::string sdH   = slurp(SRC_SETTINGSDIALOG_H);
     const std::string sdCpp = slurp(SRC_SETTINGSDIALOG_CPP);
     const std::string cpH   = slurp(SRC_CONFIGPATHS_H);
 
-    int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
         ++failures;
@@ -78,7 +79,7 @@ int main()
         fail("INV-5 (def): SettingsDialog::installClaudeGitContextHook() "
              "definition missing from settingsdialog.cpp");
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md\n", failures);
-        return 1;
+        FAIL();
     }
     // Span from the installer definition to the next top-level
     // `void SettingsDialog::` (or end of file). The script body alone
@@ -177,8 +178,8 @@ int main()
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: claude_git_context_hook installer invariants present\n");
-    return 0;
 }
+

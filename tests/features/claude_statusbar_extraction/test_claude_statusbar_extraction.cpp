@@ -14,6 +14,7 @@
 //   INV-8   two-sided LoC anchor + removed-function asserts
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -70,28 +71,29 @@ std::size_t lineCount(const std::string &text) {
 
 }  // namespace
 
-int main() {
+TEST(ClaudeStatusbarExtraction, Main) {
+
     const std::string mw      = slurp(SRC_MAINWINDOW_CPP_PATH);
     const std::string mwH     = slurp(SRC_MAINWINDOW_H_PATH);
     const std::string cswCpp  = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const std::string cswH    = slurp(SRC_CLAUDESTATUSWIDGETS_H_PATH);
 
-    if (mw.empty())  return fail("setup", "mainwindow.cpp not readable");
-    if (mwH.empty()) return fail("setup", "mainwindow.h not readable");
+    if (mw.empty())  { fail("setup", "mainwindow.cpp not readable"); FAIL(); }
+    if (mwH.empty()) { fail("setup", "mainwindow.h not readable"); FAIL(); }
 
     // INV-1 — class declared top-level, no namespace.
     if (cswH.empty())
-        return fail("INV-1",
-            "src/claudestatuswidgets.h not present — extraction not done");
+        { fail("INV-1",
+            "src/claudestatuswidgets.h not present — extraction not done"); FAIL(); }
     if (!contains(cswH, "class ClaudeStatusBarController : public QObject"))
-        return fail("INV-1",
+        { fail("INV-1",
             "claudestatuswidgets.h does not declare "
-            "`class ClaudeStatusBarController : public QObject`");
+            "`class ClaudeStatusBarController : public QObject`"); FAIL(); }
     if (contains(cswH, "namespace claudestatus"))
-        return fail("INV-1",
+        { fail("INV-1",
             "claudestatuswidgets.h still wraps the class in "
             "`namespace claudestatus` — spec mandates top-level "
-            "(matches ClaudeIntegration / ClaudeTabTracker / etc.)");
+            "(matches ClaudeIntegration / ClaudeTabTracker / etc.)"); FAIL(); }
 
     // INV-2a — 14 public-method signatures, byte-for-byte.
     static const char *kPublicMethods[] = {
@@ -117,7 +119,7 @@ int main() {
             std::fprintf(stderr,
                 "[INV-2a] FAIL: claudestatuswidgets.h missing method "
                 "signature `%s`\n", m);
-            return 1;
+            FAIL();
         }
     }
 
@@ -135,14 +137,14 @@ int main() {
             std::fprintf(stderr,
                 "[INV-2b] FAIL: claudestatuswidgets.h missing signal "
                 "signature `%s`\n", s);
-            return 1;
+            FAIL();
         }
     }
 
     // INV-3 — user-visible labels / tooltips byte-identical.
     if (cswCpp.empty())
-        return fail("INV-3",
-            "src/claudestatuswidgets.cpp not present — extraction not done");
+        { fail("INV-3",
+            "src/claudestatuswidgets.cpp not present — extraction not done"); FAIL(); }
     static const char *kUserStrings[] = {
         // Status-label texts (bounded vocabulary)
         "\"Claude: prompting\"",
@@ -188,15 +190,15 @@ int main() {
                 "[INV-3] FAIL: claudestatuswidgets.cpp missing "
                 "user-visible string `%s` — drive-by reformat broke a "
                 "label or tooltip\n", s);
-            return 1;
+            FAIL();
         }
     }
     // claudeAllowBtn object name asserted at least twice (dedup
     // findChildren walk AND new btnWidget construction).
     if (countOccurrences(cswCpp, "claudeAllowBtn") < 2) {
-        return fail("INV-3",
+        { fail("INV-3",
             "claudestatuswidgets.cpp must reference `claudeAllowBtn` "
-            "at least twice — dedup walk and new btnWidget construction");
+            "at least twice — dedup walk and new btnWidget construction"); FAIL(); }
     }
 
     // INV-4 — migrated members no longer referenced in mainwindow.cpp.
@@ -220,41 +222,41 @@ int main() {
                 "member `%s` — extraction incomplete (legacy callers "
                 "must use m_claudeStatusBarController accessor / "
                 "setter / signal instead)\n", m);
-            return 1;
+            FAIL();
         }
     }
 
     // INV-5 — controller member declared, setup renamed.
     if (!contains(mwH, "ClaudeStatusBarController *m_claudeStatusBarController"))
-        return fail("INV-5",
+        { fail("INV-5",
             "mainwindow.h does not declare member "
-            "`ClaudeStatusBarController *m_claudeStatusBarController`");
+            "`ClaudeStatusBarController *m_claudeStatusBarController`"); FAIL(); }
     if (contains(mw, "void MainWindow::setupClaudeIntegration("))
-        return fail("INV-5",
+        { fail("INV-5",
             "mainwindow.cpp still defines "
             "`void MainWindow::setupClaudeIntegration(` — spec mandates "
-            "rename to setupStatusBarChrome");
+            "rename to setupStatusBarChrome"); FAIL(); }
     if (!contains(mw, "void MainWindow::setupStatusBarChrome("))
-        return fail("INV-5",
+        { fail("INV-5",
             "mainwindow.cpp does not define "
-            "`void MainWindow::setupStatusBarChrome(` — rename incomplete");
+            "`void MainWindow::setupStatusBarChrome(` — rename incomplete"); FAIL(); }
 
     // INV-6 — three orphans retained in setupStatusBarChrome.
     // (We don't extract the function body to scope-check; presence
     // of all three constructs in the file is sufficient given INV-4
     // already proves the Claude-specific bulk left.)
     if (!contains(mw, "m_roadmapBtn = new QPushButton"))
-        return fail("INV-6",
+        { fail("INV-6",
             "mainwindow.cpp does not construct m_roadmapBtn "
-            "(`m_roadmapBtn = new QPushButton`)");
+            "(`m_roadmapBtn = new QPushButton`)"); FAIL(); }
     if (!contains(mw, "m_updateAvailableAction = new QAction"))
-        return fail("INV-6",
+        { fail("INV-6",
             "mainwindow.cpp does not construct m_updateAvailableAction "
-            "(`m_updateAvailableAction = new QAction`)");
+            "(`m_updateAvailableAction = new QAction`)"); FAIL(); }
     if (!contains(mw, "QTimer::singleShot(5000"))
-        return fail("INV-6",
+        { fail("INV-6",
             "mainwindow.cpp does not retain the 5 s startup "
-            "update-check `QTimer::singleShot(5000`");
+            "update-check `QTimer::singleShot(5000`"); FAIL(); }
 
     // INV-7 — exactly seven connect(m_claudeStatusBarController, …)
     // substrings AND exactly one PMF per signal.
@@ -263,10 +265,10 @@ int main() {
     const std::size_t connectCount =
         countOccurrences(mw, "connect(m_claudeStatusBarController,");
     if (connectCount != 7) {
-        return fail("INV-7",
+        { fail("INV-7",
             "mainwindow.cpp must contain exactly 7 "
             "`connect(m_claudeStatusBarController,` substrings; found " +
-            std::to_string(connectCount));
+            std::to_string(connectCount)); FAIL(); }
     }
     static const char *kSignalPmfs[] = {
         "&ClaudeStatusBarController::reviewClicked",
@@ -283,29 +285,29 @@ int main() {
             std::fprintf(stderr,
                 "[INV-7] FAIL: mainwindow.cpp must reference signal "
                 "PMF `%s` exactly once; found %zu\n", pmf, n);
-            return 1;
+            FAIL();
         }
     }
 
     // INV-8 — two-sided LoC anchor + removed-function asserts.
     const std::size_t cswCppLines = lineCount(cswCpp);
     if (cswCppLines < 480) {
-        return fail("INV-8",
+        { fail("INV-8",
             "claudestatuswidgets.cpp has only " +
             std::to_string(cswCppLines) +
             " lines; sanity floor is 480 (the carve-out should "
-            "produce ~510 LoC of body + ~50 LoC of skeleton)");
+            "produce ~510 LoC of body + ~50 LoC of skeleton)"); FAIL(); }
     }
     if (contains(mw, "void MainWindow::updateClaudeThemeColors("))
-        return fail("INV-8",
+        { fail("INV-8",
             "mainwindow.cpp still defines "
             "`void MainWindow::updateClaudeThemeColors(` — body must "
-            "have moved into ClaudeStatusBarController::applyTheme");
+            "have moved into ClaudeStatusBarController::applyTheme"); FAIL(); }
     if (contains(mw, "void MainWindow::applyClaudeStatusLabel("))
-        return fail("INV-8",
+        { fail("INV-8",
             "mainwindow.cpp still defines "
             "`void MainWindow::applyClaudeStatusLabel(` — body must "
-            "have moved into ClaudeStatusBarController::apply");
+            "have moved into ClaudeStatusBarController::apply"); FAIL(); }
     // Two call sites are expected: the initial theme apply in
     // setupStatusBarChrome's ctor sequence, and the central restyle
     // helper at the previous line 3143. Spec said "exactly one" but
@@ -313,12 +315,12 @@ int main() {
     const std::size_t applyThemeCalls =
         countOccurrences(mw, "m_claudeStatusBarController->applyTheme(");
     if (applyThemeCalls != 2) {
-        return fail("INV-8",
+        { fail("INV-8",
             "mainwindow.cpp must contain exactly two "
             "`m_claudeStatusBarController->applyTheme(` calls — one "
             "in setupStatusBarChrome (initial apply) and one in the "
             "central restyle helper; found " +
-            std::to_string(applyThemeCalls));
+            std::to_string(applyThemeCalls)); FAIL(); }
     }
 
     std::fprintf(stderr,
@@ -326,5 +328,7 @@ int main() {
         "(claudestatuswidgets.cpp = %zu LoC, "
         "%zu controller-connect sites in mainwindow.cpp).\n",
         cswCppLines, connectCount);
-    return 0;
+    return;
+
 }
+

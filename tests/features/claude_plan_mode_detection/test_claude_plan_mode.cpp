@@ -14,6 +14,7 @@
 
 #include "claudeintegration.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 #include <QFile>
 #include <QSignalSpy>
@@ -227,15 +228,12 @@ int runToggleFreeTailPreservesState() {
     return (preserved && emissionsOk) ? 0 : 1;
 }
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
 
-    int failures = runScenarios();
-    failures += runToggleFreeTailPreservesState();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d scenario(s) failed.\n", failures);
-        return 1;
-    }
-    return 0;
+TEST(ClaudePlanModeDetection, Scenarios) {
+    ASSERT_EQ(runScenarios(), 0);
 }
+
+TEST(ClaudePlanModeDetection, ToggleFreeTailPreservesState) {
+    ASSERT_EQ(runToggleFreeTailPreservesState(), 0);
+}
+

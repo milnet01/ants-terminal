@@ -34,7 +34,7 @@ working unchanged.
 |---|---|---|
 | `test_vt`      | vtparser + terminalgrid + themes  | shipped |
 | `test_chrome`  | mainwindow + tabs + palette + status bar + menu + dialogs hosted in chrome | shipped |
-| `test_claude`  | Claude integration                | Phase 4 (planned) |
+| `test_claude`  | Claude integration + allowlist + AI + SSH + shell-utils | shipped |
 | `test_audit`   | audit dialog + engine + hygiene   | Phase 5 (planned) |
 | `test_dialogs` | settings + roadmap + diff + ssh   | Phase 6 (planned) |
 | `test_lua`     | luaengine + pluginmanager         | Phase 6 (planned) |

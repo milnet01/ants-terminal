@@ -3,6 +3,7 @@
 
 #include "sshdialog.h"
 
+#include <gtest/gtest.h>
 #include <QDir>
 #include <QString>
 
@@ -15,7 +16,8 @@ static int failures = 0;
         if (!(cond)) { std::fprintf(stderr, "FAIL: %s\n", msg); ++failures; } \
     } while (0)
 
-int main() {
+TEST(SshControlMaster, Main) {
+
     // INV-1: default + explicit false produce zero Control* tokens.
     {
         SshBookmark bm;
@@ -114,8 +116,7 @@ int main() {
 
     if (failures) {
         std::fprintf(stderr, "ssh_control_master: %d assertion(s) failed\n", failures);
-        return 1;
+        FAIL();
     }
-    std::fprintf(stdout, "ssh_control_master: all invariants passed\n");
-    return 0;
 }
+

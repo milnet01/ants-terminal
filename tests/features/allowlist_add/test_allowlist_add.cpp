@@ -21,6 +21,7 @@
 
 #include "claudeallowlist.h"
 
+#include <gtest/gtest.h>
 #include <QApplication>
 #include <QDialog>
 #include <QFile>
@@ -458,24 +459,16 @@ int checkHookPathRetraction() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    // QApplication (not QCoreApplication) — §E uses QDialog + QMainWindow,
-    // which require the GUI app singleton. Rule-logic tests (§A/B/C) are
-    // GUI-independent but a QApplication covers them too (it IS-A
-    // QCoreApplication).
-    QApplication app(argc, argv);
-
+TEST(AllowlistAdd, Main) {
     int failures = 0;
+    // §A/B/C are GUI-independent; §D/E need a QApplication (provided
+    // by the bundle main).
     failures += checkNormalize();
     failures += checkGeneralize();
     failures += checkSubsume();
     failures += checkDialogActivation();
     failures += checkDialogShowSequence();
     failures += checkHookPathRetraction();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d case(s) failed.\n", failures);
-        return 1;
-    }
-    return 0;
+    if (failures) FAIL();
 }
+

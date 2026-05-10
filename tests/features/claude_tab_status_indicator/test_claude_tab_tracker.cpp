@@ -36,6 +36,7 @@
 // Exit 0 = all assertions hold.
 
 #include "claudeintegration.h"
+#include <gtest/gtest.h>
 #include "claudetabtracker.h"
 
 #include <QCoreApplication>
@@ -492,8 +493,7 @@ int checkProjectCwdScopedTranscript() {
 
 } // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+TEST(ClaudeTabStatusIndicator, Main) {
     int failures = 0;
 
     // INV-2 State mapping parity.
@@ -541,8 +541,8 @@ int main(int argc, char **argv) {
 
     if (failures) {
         std::fprintf(stderr, "\n%d check(s) failed\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("\nAll invariants hold.\n");
-    return 0;
 }
+

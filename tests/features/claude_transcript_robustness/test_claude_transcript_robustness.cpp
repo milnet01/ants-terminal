@@ -9,6 +9,7 @@
 
 #include "claudeintegration.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -179,9 +180,7 @@ int inv6LegacyCaseStillWorks() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-
+TEST(ClaudeTranscriptRobustness, Main) {
     int failures = 0;
     failures += inv1TailGrowsPastLargeEvent();
     failures += inv2TailGrowthBounded();
@@ -189,10 +188,6 @@ int main(int argc, char **argv) {
     failures += inv4IntermediateHyphenPreserved();
     failures += inv5MissingPathFallsBackToSeparator();
     failures += inv6LegacyCaseStillWorks();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d invariant(s) failed.\n", failures);
-        return 1;
-    }
-    return 0;
+    if (failures) FAIL();
 }
+

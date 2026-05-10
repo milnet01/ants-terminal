@@ -10,6 +10,7 @@
 
 #include "sshdialog.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 
 #include <cstdio>
@@ -171,15 +172,16 @@ void testEndToEnd() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
 
+TEST(SshExtraArgsSanitize, Sanitize) {
+    int before = g_failures;
     testSanitize();
-    testEndToEnd();
-
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", g_failures);
-        return 1;
-    }
-    return 0;
+    if (g_failures > before) FAIL();
 }
+
+TEST(SshExtraArgsSanitize, EndToEnd) {
+    int before = g_failures;
+    testEndToEnd();
+    if (g_failures > before) FAIL();
+}
+

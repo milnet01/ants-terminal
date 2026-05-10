@@ -7,6 +7,7 @@
 
 #include "claudetasklist.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 #include <QFile>
 #include <QSignalSpy>
@@ -31,6 +32,15 @@ void expect(bool ok, const char *label, const std::string &detail = {}) {
 }
 
 std::string readFile(const char *path) {
+    // ANTS-1217 Phase 4: bundles run from build/, so prefix with the
+    // CMake-baked source root if the path is relative.
+#ifdef ANTS_SOURCE_DIR
+    std::string fullpath;
+    if (path && path[0] != '/') {
+        fullpath = std::string(ANTS_SOURCE_DIR) + "/" + path;
+        path = fullpath.c_str();
+    }
+#endif
     std::ifstream f(path);
     if (!f) return {};
     std::stringstream ss;
@@ -361,28 +371,82 @@ void testInv13_dialogAntiRegressionWaylandFlake() {
 
 }  // namespace
 
-int main(int argc, char *argv[]) {
-    QCoreApplication app(argc, argv);
 
+TEST(ClaudeTaskList, Inv1TodoWriteSnapshot) {
+    int before = g_failures;
     testInv1_todoWriteSnapshot();
-    testInv2_mostRecentWins();
-    testInv3_taskCreatePairedResult();
-    testInv4_taskUpdateFlipsStatus();
-    testInv5_sidechainFiltered();
-    testInv6_subagentDispatchFiltered();
-    testInv7_setEmptyPathClears();
-    testInv8_setSamePathIdempotent();
-
-    testInv9_widgetHiddenOnEmpty();
-    testInv10_widgetLabelFormat();
-    testInv11_dialogRendersRows();
-    testInv12_dialogRebuildsOnTasksChanged();
-    testInv13_dialogAntiRegressionWaylandFlake();
-
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d FAILURE(S)\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nAll INVs PASS.\n");
-    return 0;
+    if (g_failures > before) FAIL();
 }
+
+TEST(ClaudeTaskList, Inv2MostRecentWins) {
+    int before = g_failures;
+    testInv2_mostRecentWins();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv3TaskCreatePairedResult) {
+    int before = g_failures;
+    testInv3_taskCreatePairedResult();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv4TaskUpdateFlipsStatus) {
+    int before = g_failures;
+    testInv4_taskUpdateFlipsStatus();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv5SidechainFiltered) {
+    int before = g_failures;
+    testInv5_sidechainFiltered();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv6SubagentDispatchFiltered) {
+    int before = g_failures;
+    testInv6_subagentDispatchFiltered();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv7SetEmptyPathClears) {
+    int before = g_failures;
+    testInv7_setEmptyPathClears();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv8SetSamePathIdempotent) {
+    int before = g_failures;
+    testInv8_setSamePathIdempotent();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv9WidgetHiddenOnEmpty) {
+    int before = g_failures;
+    testInv9_widgetHiddenOnEmpty();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv10WidgetLabelFormat) {
+    int before = g_failures;
+    testInv10_widgetLabelFormat();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv11DialogRendersRows) {
+    int before = g_failures;
+    testInv11_dialogRendersRows();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv12DialogRebuildsOnTasksChanged) {
+    int before = g_failures;
+    testInv12_dialogRebuildsOnTasksChanged();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Inv13DialogAntiRegressionWaylandFlake) {
+    int before = g_failures;
+    testInv13_dialogAntiRegressionWaylandFlake();
+    if (g_failures > before) FAIL();
+}
+

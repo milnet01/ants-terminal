@@ -7,6 +7,7 @@
 
 #include "sshdialog.h"
 
+#include <gtest/gtest.h>
 #include <QString>
 #include <QStringList>
 #include <cstdio>
@@ -68,19 +69,20 @@ bool check(const char *scenarioName, const SshBookmark &bm) {
 
 }  // namespace
 
-int main() {
+TEST(SshDashHostRejected, Main) {
+
     // Scenario 1 — plain host
     {
         SshBookmark bm;
         bm.host = "example.com";
-        if (!check("plain host", bm)) return 1;
+        if (!check("plain host", bm)) FAIL();
     }
     // Scenario 2 — user@host
     {
         SshBookmark bm;
         bm.host = "example.com";
         bm.user = "alice";
-        if (!check("user@host", bm)) return 1;
+        if (!check("user@host", bm)) FAIL();
     }
     // Scenario 3 — host + identity file + non-default port
     {
@@ -88,14 +90,14 @@ int main() {
         bm.host = "jump.example.com";
         bm.identityFile = "/home/alice/.ssh/id_ed25519";
         bm.port = 2222;
-        if (!check("host + identity + port", bm)) return 1;
+        if (!check("host + identity + port", bm)) FAIL();
     }
     // Scenario 4 — host + extraArgs
     {
         SshBookmark bm;
         bm.host = "example.com";
         bm.extraArgs = "-C -o StrictHostKeyChecking=accept-new";
-        if (!check("host + extraArgs", bm)) return 1;
+        if (!check("host + extraArgs", bm)) FAIL();
     }
     // Scenario 5 — the CVE-class malicious host value. The builder must
     // still emit `--` and the dash-prefixed host must land AFTER the
@@ -107,7 +109,7 @@ int main() {
         if (!cmd.contains(" -- ")) {
             fail("malicious host",
                  "generated command is missing the ` -- ` argv terminator", cmd);
-            return 1;
+            FAIL();
         }
         QStringList tokens = cmd.split(' ', Qt::SkipEmptyParts);
         int dashIdx = tokens.indexOf("--");
@@ -117,11 +119,11 @@ int main() {
                 fail("malicious host",
                      "attacker-controlled `-oProxyCommand=` token "
                      "appeared before `--`", cmd);
-                return 1;
+                FAIL();
             }
         }
     }
 
     std::printf("ssh_dash_host_rejected: 5 scenarios hold the `--` invariant\n");
-    return 0;
 }
+

@@ -12,6 +12,7 @@
 
 #include "claudeintegration.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -218,17 +219,16 @@ int runContextPercent() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
 
-    int failures = 0;
-    failures += runTranscriptScenarios();
-    failures += runTabSwitchStateReset();
-    failures += runContextPercent();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d scenario(s) failed.\n", failures);
-        return 1;
-    }
-    return 0;
+TEST(ClaudeStatusBar, TranscriptScenarios) {
+    ASSERT_EQ(runTranscriptScenarios(), 0);
 }
+
+TEST(ClaudeStatusBar, TabSwitchStateReset) {
+    ASSERT_EQ(runTabSwitchStateReset(), 0);
+}
+
+TEST(ClaudeStatusBar, ContextPercent) {
+    ASSERT_EQ(runContextPercent(), 0);
+}
+

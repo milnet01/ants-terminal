@@ -12,6 +12,7 @@
 
 #include "claudeintegration.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -360,25 +361,37 @@ void testWiring() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-
-    QTemporaryDir dir;
-    if (!dir.isValid()) die("cannot create QTemporaryDir");
-
+TEST(ClaudeSessionFreshness, ProcessStartTimeMs) {
+    int before = g_failures;
     testProcessStartTimeMs();
-    testLastEventTimestampMs(dir);
-
-    QTemporaryDir homeDir;
-    if (!homeDir.isValid()) die("cannot create homeDir");
-    testFilterAndPick(homeDir);
-    testWiring();
-    testEncodeProjectPath();
-
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\nANTS-1163: %d INV failure(s)\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nANTS-1163: all INVs PASS\n");
-    return 0;
+    if (g_failures > before) FAIL();
 }
+
+TEST(ClaudeSessionFreshness, LastEventTimestampMs) {
+    QTemporaryDir dir;
+    if (!dir.isValid()) FAIL() << "cannot create QTemporaryDir";
+    int before = g_failures;
+    testLastEventTimestampMs(dir);
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeSessionFreshness, FilterAndPick) {
+    QTemporaryDir home;
+    if (!home.isValid()) FAIL() << "cannot create QTemporaryDir";
+    int before = g_failures;
+    testFilterAndPick(home);
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeSessionFreshness, EncodeProjectPath) {
+    int before = g_failures;
+    testEncodeProjectPath();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeSessionFreshness, Wiring) {
+    int before = g_failures;
+    testWiring();
+    if (g_failures > before) FAIL();
+}
+

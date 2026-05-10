@@ -7,6 +7,7 @@
 
 #include "aidialog.h"
 
+#include <gtest/gtest.h>
 #include <QCoreApplication>
 
 #include <cstdio>
@@ -242,17 +243,28 @@ void testSourceInvariants() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
 
+TEST(AiInsertCommandSanitize, Extraction) {
+    int before = g_failures;
     testExtraction();
-    testSanitization();
-    testLengthCap();
-    testSourceInvariants();
-
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", g_failures);
-        return 1;
-    }
-    return 0;
+    if (g_failures > before) FAIL();
 }
+
+TEST(AiInsertCommandSanitize, Sanitization) {
+    int before = g_failures;
+    testSanitization();
+    if (g_failures > before) FAIL();
+}
+
+TEST(AiInsertCommandSanitize, LengthCap) {
+    int before = g_failures;
+    testLengthCap();
+    if (g_failures > before) FAIL();
+}
+
+TEST(AiInsertCommandSanitize, SourceInvariants) {
+    int before = g_failures;
+    testSourceInvariants();
+    if (g_failures > before) FAIL();
+}
+
