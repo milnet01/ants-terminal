@@ -192,10 +192,7 @@ Enable in Settings to save terminal scrollback on exit and restore it on next la
 
 ### Per-Pixel Background Transparency
 
-Two levels of transparency control:
-
-- **Window Opacity** (View > Opacity) -- affects the entire window including title bar
-- **Background Alpha** (View > Background Alpha) -- only the terminal background becomes transparent while text remains fully opaque. Works with KDE/KWin compositor blur.
+Set terminal-area transparency via **View → Opacity** (70 % – 100 %). Only the terminal grid becomes translucent; the menu bar, tabs, and status bar stay fully opaque so chrome remains readable. Works with KDE/KWin compositor blur.
 
 ### AI Assistant
 
@@ -256,8 +253,7 @@ ants.set_status("Custom status text")
 
 ### Background Opacity & Blur
 
-- **Opacity** -- adjustable from 70% to 100% via View menu (saved to config)
-- **Background Alpha** -- per-pixel transparency from 50% to 100%
+- **Opacity** -- adjustable from 70 % to 100 % via View menu (saved to config). Per-pixel transparency on the terminal area only; chrome paints opaque.
 - **Translucent background** -- works with KDE Plasma / KWin compositor
 - **Background blur** -- toggleable in Settings menu (requires compositor support)
 
@@ -478,7 +474,7 @@ The fastest path. Each tagged release ships an x86_64 AppImage on the
 [Releases page](https://github.com/milnet01/ants-terminal/releases/latest):
 
 ```bash
-# Download the latest AppImage (replace 0.7.58 with whatever the latest tag is):
+# Download the latest AppImage (the URL below uses 0.7.81 — bump to whatever the latest tag is):
 curl -L -o Ants_Terminal-x86_64.AppImage \
   https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.81-x86_64.AppImage
 chmod +x Ants_Terminal-x86_64.AppImage
@@ -586,7 +582,7 @@ tools/safe-build.sh build-workstation
 ### Tests
 
 ```bash
-cd build && ctest --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
 Runs `tests/audit_self_test.sh` (audit-rule grep regression tests

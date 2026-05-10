@@ -57,6 +57,32 @@ Listed only where behavior isn't obvious from the name.
   subagent for Claude Code; v1 surface is `drift-check`. ANTS-1116.
 - `luaengine` / `pluginmanager` — sandboxed Lua 5.4; plugins live in
   `~/.config/ants-terminal/plugins/`, gated by `ANTS_LUA_PLUGINS`.
+- `claudeintegration` — singleton owning the Claude Code hook
+  server (one UDS shared across every Claude under any tab),
+  `m_pollTimer` (2 s) for `pollClaudeProcess` PID detection,
+  `sessionPathForCwd` (project-scoped JSONL resolver with
+  process-start anchor + 24 h / 5 min liveness floor — ANTS-1163),
+  `processHookEvent` with the `isFocusedTabSession` gate (ANTS-1161
+  drops foreign-tab hook events from mutating singleton state).
+  Per-tab transcript binding via `m_transcriptPath`; PermissionRequest
+  routes through `m_lastHookSessionId` rather than the gate.
+- `claudestatuswidgets` — `ClaudeStatusBarController` owns the
+  bottom-bar Claude chips (review-changes, audit, bg-tasks, tasks,
+  context-bar, error, repo). `refreshTasksButton` /
+  `refreshBgTasksButton` fire on the 2 s status timer, call
+  `activeSessionPath(focusedCwd)`, push the path to `m_tasks` /
+  `m_bgTasks` only on change, and call `poll()` / `sweepLiveness()`
+  for atomic-rewrite watch-loss recovery. `resetForTabSwitch`
+  clears trackers synchronously on tab change.
+- `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers with
+  `QFileSystemWatcher` + `poll()` / `sweepLiveness()` mtime rescue
+  for the case Claude rewrites the transcript via tmpfile+rename
+  (which silently drops the watch). `setTranscriptPath` is
+  idempotent on same path, otherwise removes/re-adds watch and
+  calls `rescan()` synchronously. Parser: `TodoWrite` (snapshot
+  replace), `TaskCreate` + paired tool_result (incremental add),
+  `TaskUpdate` (status flip). `unfinishedCount() = pending only`
+  (ANTS-1221, post-1216 refinement).
 
 ## Data flow
 

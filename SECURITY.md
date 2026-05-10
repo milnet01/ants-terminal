@@ -159,6 +159,6 @@ say so in your report.
 
 ---
 
-*This policy will be revised as the project matures. Last updated for
-the 0.7.59 release (supported-versions table refreshed; the substantive
+*This policy will be revised as the project matures. Last reviewed for
+the 0.7.81 release (supported-versions table re-confirmed; the substantive
 disclosure policy is unchanged from 0.6.16).*

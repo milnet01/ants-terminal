@@ -137,7 +137,7 @@ Also wires a sanitizer CI job so ASan/UBSan runs on every push.
 (Per `docs/standards/commits.md` § 1.1: subject is `<ID>: <description>`
 where `<ID>` is the stable ANTS-NNNN per `docs/standards/roadmap-format.md`
 § 3.5.1, or a literal version string for release commits like
-`0.7.59:` only.)
+`0.7.81:` only.)
 
 ## Code style highlights
 

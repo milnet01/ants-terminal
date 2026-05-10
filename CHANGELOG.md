@@ -74,6 +74,22 @@ STATIC libraries, build-time guardrails (`ccache` /
 
 ### Fixed
 
+- **ANTS-1160 P2 — RoadMap status-bar button + GitHub repo-type
+  badge stayed hidden on launch until the user manually switched
+  tabs.** Both widgets refreshed only via `onTabChanged`; the
+  first call at startup saw `shellPid() == 0` and `shellCwd() == ""`
+  (the shell hadn't started yet), the widgets hid, and nothing
+  re-fired until a tab switch. Same shape as the
+  `refreshBgTasksButton` fix from 0.7.49. Fix: wire both
+  `refreshRoadmapButton` and `refreshRepoVisibility` to the 2 s
+  `m_statusTimer` alongside the existing review/bg-tasks/tasks
+  refreshes (`mainwindow.cpp:711-712`), so a stale-hidden state
+  recovers within one tick of `shellCwd()` resolving. New feature
+  test `tests/features/roadmap_status_bar_refresh/` locks both
+  widgets in via source-grep on the timer connections. This is
+  ANTS-1160 Phase 2 (status-bar bug fixes); the broader Roadmap
+  dialog redesign remains in progress (see ROADMAP § Roadmap
+  dialog redesign + format spec v2).
 - **ANTS-1161 — bottom `Claude: <state>` status-bar widget showed
   another tab's state.** Layman: with two Claude Code tabs open,
   the bottom-of-window status text could read "Claude: bash" on
@@ -364,8 +380,8 @@ green.
   system clipboard instead. Pre-fix the OSC 52 selection prefix
   (`c` / `p` / `s` / `q` / `0-7` per xterm) was parsed and
   discarded; every clipboard write landed on the system
-  clipboard. Now plumbed through the existing ` OSC52:`
-  sentinel envelope as ` OSC52:<selChar>:<bytes>`. Selection
+  clipboard. Now plumbed through the existing `OSC52:`
+  sentinel envelope as `OSC52:<selChar>:<bytes>`. Selection
   collapse: `c` → system clipboard, `p` / `s` → primary; empty
   / unknown defaults to `c` (modern xterm.js / kitty behaviour
   — primary's middle-click paste is surprising when not

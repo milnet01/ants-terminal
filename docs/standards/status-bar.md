@@ -38,13 +38,12 @@ three connection points), `refreshRoadmapButton` and
 `refreshRepoVisibility` (fixed via ANTS-1160 P2 to follow the
 same pattern).
 
-Failure mode this guards against: regression of v0.6.29-class
-"widget hidden on cold launch" bugs. The class shape recurred at
-v0.7.77 in two widgets simultaneously (RoadMap button + GitHub
-repo-type badge) plus a third architectural cousin (the
-ANTS-1158 Task List dialog, fixed via the
-`claudetasklist.cpp::poll()` mtime-gated rescue in commit
-`2f5d470`).
+Failure mode this guards against: regression of "widget hidden on
+cold launch" bugs (the class first surfaced and was fixed in
+v0.6.29). The class shape recurred at v0.7.77 in two widgets
+simultaneously (RoadMap button + GitHub repo-type badge) plus a
+third architectural cousin (the ANTS-1158 Task List dialog, fixed
+via the `claudetasklist.cpp::poll()` mtime-gated rescue).
 
 ## Action-category widget refresh contract
 

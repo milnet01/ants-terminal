@@ -5355,6 +5355,72 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   invariants (foreign-dropped, focused-honoured, perm-ungated,
   pre-poll-tolerant).
 
+### 🎨 Roadmap dialog redesign + format spec v2 (user request 2026-05-07)
+
+- 🚧 [ANTS-1160] **Roadmap dialog redesign + format spec v2 —
+  multi-phase initiative.** User report 2026-05-07: today's
+  Roadmap dialog renders the full Markdown source to HTML in a
+  `QTextBrowser`, leaving wall-of-text chrome (intro prose,
+  legend, theme groups, section headings) visible even when
+  filters reduce the actionable bullets to one or two; the
+  headlines are written for the implementer not the reader; and
+  there is no per-item collapse/expand. Plus two chrome-stability
+  regressions on launch (RoadMap status-bar button + GitHub
+  repo-type badge hidden until the user manually switches tabs).
+  Spec at `docs/specs/ANTS-1160.md` (cold-eyes round 3 folded);
+  plan at `docs/plans/ANTS-1160.md`. Six phases:
+  - **P1 — Format spec v2 + doc-tree alignment.** Bump
+    `roadmap-format.md` v1 → v2; add optional `Layman:` field;
+    universal `TASK-NNNN` IDs (legacy `ANTS-NNNN` preserved);
+    three new `Kind:` values; `<!-- ants-roadmap-format: 2 -->`
+    marker propagation. **Status: 📋 not yet shipped** — both
+    `roadmap-format.md` and `ROADMAP.md` still carry the v1
+    marker as of 0.7.81.
+  - **P2 — Status-bar widget refresh on launch (3 widgets, 1
+    commit).** Wire `refreshRoadmapButton` and
+    `refreshRepoVisibility` to the 2 s `m_statusTimer` so the
+    "first call before `shellPid()` resolves" branch self-heals
+    within one tick. Same fix shape applied to
+    `refreshBgTasksButton` previously. **Status: ✅ shipped
+    0.7.78** (commit `478c578`, criterion 9). Test:
+    `tests/features/roadmap_status_bar_refresh/`.
+  - **P3 — Parser surgery + IPC verbs (5 commits).** Extract
+    the markdown parser into a reusable `roadmap_parser` library;
+    add the Phase-1 IPC verbs (`roadmap-allocate-id`,
+    `roadmap-bump-counter`, `roadmap-archive`, `roadmap-validate`,
+    `roadmap-query` v2). **Status: 📋 not yet shipped.**
+  - **P4 — Dialog rewrite (multiple commits).** Replace the
+    `QTextBrowser` rendering with a `QListView` + custom
+    `QStyledItemDelegate` — one card per actionable bullet
+    (collapsed / open-Layman / open-Detail). Section headings
+    become collapsible row widgets. Filters compose via AND.
+    Persistence migrates from single-key `Config::roadmap*`
+    entries to a per-project TOML file at
+    `~/.config/ants-terminal/roadmap-state.toml` keyed by SHA-1
+    of the project path. **Status: 📋 not yet shipped.**
+  - **P5 — Cross-project rollout (sketch).** Roll the v2 format
+    out to other Ants App-Build projects.
+  - **P6 — IPC Phase 2 verbs (sketch).** `roadmap-edit`,
+    `roadmap-add-bullet`, schema-versioned writers.
+  Acceptance criteria (full set in spec §10): Current tab shows
+  ≤ 5 cards on a typical project; vibe-coder readability of
+  every actionable bullet's `Layman:` line; first-viewport paint
+  under 200 ms on a 250 KiB `ROADMAP.md`; 60 fps scroll on
+  1.5 MiB. Memory budget: dialog parse holds at most one
+  `RoadmapModel` per dialog instance (released on close); no
+  per-tab caching; per-project TOML file capped at 4 KiB
+  (one row per persisted UI state, bounded by ID count).
+  **Layman:** the Roadmap dialog is going to be redesigned so
+  it's readable at a glance — the whole thing renders one card
+  per item, with a one-sentence plain-English summary by default
+  and full technical detail on click. The bug where the RoadMap
+  button at the bottom of the window was hidden until you
+  switched tabs is already fixed (shipped in 0.7.78). The bigger
+  redesign is still in progress.
+  Kind: feature/fix. Source: user-2026-05-07.
+  Lanes: roadmapdialog, roadmapstatuswidgets, remotecontrol,
+  docs/standards/roadmap-format.md.
+
 ### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
 
 - 📋 [ANTS-1162] **First-class scaffolding inside Ants Terminal
@@ -6024,26 +6090,35 @@ made the desktop feel noisy in normal use.
   shows entries from prior compacted sessions ("Phase 2 — Add
   test_vt bundle…", "Phase 2 — Update tests/features/README.md",
   "Identify chrome-bundle test candidates…") that are no longer
-  active work. Root cause hypothesis:
-  `ClaudeTaskListTracker` retains tasks indefinitely once
-  observed via the Claude Code session-id hook; nothing prunes
-  on session boundary. Investigation needed:
-  (1) Where do tasks come from — TodoWrite events parsed live,
-      or a state file Claude Code maintains? If a file, do we
-      need its mtime/session-id to scope retention?
-  (2) Should "current" mean "current session_id" (per-tab) or
-      "active within last N hours" (rolling window)?
-  (3) Closed-session tasks: do they purge entirely, or migrate
-      to a History panel?
-  Likely scope: add a session-id column to the tracker and
-  filter the dialog model to the focused tab's session, mirroring
-  the per-tab Claude status work in ANTS-1161. Spec should
-  enumerate the visibility rule + a regression test that opens
-  a fresh tab and asserts the dialog is empty until tasks are
-  emitted on the new session.
+  active work. **2026-05-10 reproduction**: original framing
+  ("stale after `/compact`") is wrong-shaped — Claude Code
+  v2.1.138 compacts in place (same `session_id`, same JSONL,
+  appends `"isCompactSummary":true`); resolver and tracker
+  stayed correct under live test. The remaining session-id
+  transition surfaces are launch / "Continue previous coding
+  session" / `claude --resume <id>` — none directly reproduced
+  yet. Earlier root-cause hypothesis ("`ClaudeTaskListTracker`
+  retains tasks indefinitely") is also wrong: `rescan()`
+  replaces `m_tasks` atomically (`claudetasklist.cpp:124`),
+  and `setTranscriptPath` swaps watch + path + rescan
+  synchronously (`:47-55`). Wiring is correct under the
+  scenarios we *can* exercise.
+  **Spec**: `tests/features/claude_task_list_session_isolation/`
+  locks in the resolver→tracker wiring contract via source-grep
+  so any future drift is caught regardless of repro path.
+  Cross-references ANTS-1163 (resolver freshness) and ANTS-1158
+  (parser/tracker contract); owns only the wiring INVs.
+  **Re-open trigger**: when the user next sees stale tasks, the
+  existing `tasks/refresh:` debug log already carries
+  `prev-changed`, path basename, and counts — diagnose to
+  resolver / wiring / parser without further instrumentation.
   **Layman:** the Task List dialog keeps showing tasks from
   past chats with Claude — it should only show what's in the
-  current chat.
+  current chat. We confirmed the wiring is correct for the
+  flows we can test (`/compact` doesn't trigger the bug because
+  current Claude Code keeps the same session ID through it).
+  When the bug reappears we will know exactly which layer to
+  fix because the diagnostic log will name it.
   Kind: feature/fix. Source: user-2026-05-10.
 - 📋 [ANTS-1220] **Scrollback duplication while terminal was idle
   / user away — content re-rendered without input.** User report
@@ -7916,6 +7991,40 @@ contributors don't duplicate research.
   bookmarks across devices via a user-configurable git remote.
   Kind: implement.
   Source: planned.
+- 💭 [ANTS-1223] **Tasks-chip semantics during in-progress-only work
+  (revisit ANTS-1221).** User report 2026-05-10: in a Claude Code
+  session whose task list contained `2 completed + 1 in_progress
+  + 0 pending`, the Tasks chip stayed hidden because ANTS-1221
+  (shipped 0.7.81) flipped `unfinishedCount()` to count
+  `pending` only — "Claude is currently running it" is not
+  user-actionable, so the chip correctly hides. Side-effect:
+  during active multi-step work the chip can vanish mid-flight
+  (returning only when a task gets bumped back to pending),
+  reading as "no work happening" when in fact Claude is busy.
+  Three options to evaluate, ordered by invasiveness:
+  (a) **Keep current contract** (chip = pending only). Quiet,
+      but disappears during active work. No code change.
+  (b) **Revert toward ANTS-1216** (chip = pending +
+      in_progress). Re-introduces the original ANTS-1221
+      complaint — a single in-flight task keeps the chip lit at
+      "1/N" reading as actionable when it isn't.
+  (c) **Distinguish presentation** (chip = pending +
+      in_progress, but visually different — dimmed / italic /
+      different background — when only `in_progress` tasks
+      remain, so "Claude is working" is visible without reading
+      as "user must action"). New work; needs spec covering
+      theme palette, accessibility (colour ≠ only signal), and
+      the regression test that locks the visual diff in.
+  Decision deferred — option (c) is the strongest design
+  candidate but costs the most. Pick when next addressing
+  Claude-status-chip polish.
+  **Layman:** when Claude is working its way through a TODO
+  list, the Tasks button at the bottom-right of the window
+  disappears the moment everything left is "Claude is on it"
+  — even though work is happening. Decide whether to bring it
+  back, with a different look so it doesn't pretend to be
+  something *you* need to do.
+  Kind: design + fix. Source: user-2026-05-10.
 
 ### 🔒 Security
 
