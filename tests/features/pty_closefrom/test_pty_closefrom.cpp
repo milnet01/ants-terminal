@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_PTY_PATH
 #  error "SRC_PTY_PATH compile definition required"
 #endif
@@ -48,7 +50,7 @@ static std::string extractChildBranch(const std::string &src) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+static int runMain() {
     const std::string src = slurp(SRC_PTY_PATH);
     const std::string childBody = extractChildBranch(src);
     int failures = 0;
@@ -134,4 +136,8 @@ int main() {
     std::printf("OK: PTY child closes inherited FDs via close_range "
                 "with RLIMIT_NOFILE-bounded fallback\n");
     return 0;
+}
+
+TEST(PtyClosefrom, Main) {
+    if (runMain() != 0) FAIL();
 }

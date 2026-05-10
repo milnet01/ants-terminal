@@ -24,6 +24,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 std::string slurp(const char *path) {
@@ -58,8 +60,8 @@ bool writeScript(const QString &path, const QString &body) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     // INV-2: clean drift script → ok:true, clean:true, exit 0.
     {
@@ -191,4 +193,8 @@ int main(int argc, char **argv) {
 
     std::puts("OK local_subagent_framework: 8/8 invariants");
     return 0;
+}
+
+TEST(LocalSubagentFramework, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }

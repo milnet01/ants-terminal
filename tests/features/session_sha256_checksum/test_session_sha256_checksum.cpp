@@ -9,6 +9,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_SESSION_CPP_PATH
 #  error "SRC_SESSION_CPP_PATH compile definition required"
 #endif
@@ -80,7 +82,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+static int runMain() {
     const std::string cpp = slurp(SRC_SESSION_CPP_PATH);
     const std::string hdr = slurp(SRC_SESSION_H_PATH);
     int failures = 0;
@@ -165,4 +167,8 @@ int main() {
     }
     std::printf("OK: V4 envelope writes & verifies SHA-256 over payload\n");
     return 0;
+}
+
+TEST(SessionSha256Checksum, Main) {
+    if (runMain() != 0) FAIL();
 }

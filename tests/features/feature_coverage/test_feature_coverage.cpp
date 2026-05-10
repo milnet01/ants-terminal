@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <functional>
 
+
+#include <gtest/gtest.h>
 using FeatureCoverage::SpecToken;
 using FeatureCoverage::ChangelogBullet;
 
@@ -242,7 +244,7 @@ void testMatchEmptyTitleList() {
 
 } // namespace
 
-int main() {
+static int runMain() {
     testExtractEmpty();
     testExtractIdentifierShapes();
     testExtractShortTokensDropped();
@@ -270,4 +272,8 @@ int main() {
     }
     std::fprintf(stderr, "All feature-coverage tests passed.\n");
     return 0;
+}
+
+TEST(FeatureCoverage, Main) {
+    if (runMain() != 0) FAIL();
 }

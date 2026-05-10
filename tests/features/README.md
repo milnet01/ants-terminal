@@ -35,10 +35,10 @@ working unchanged.
 | `test_vt`      | vtparser + terminalgrid + themes  | shipped |
 | `test_chrome`  | mainwindow + tabs + palette + status bar + menu + dialogs hosted in chrome | shipped |
 | `test_claude`  | Claude integration + allowlist + AI + SSH + shell-utils | shipped |
-| `test_audit`   | audit dialog + engine + hygiene + rule-quality + command-trust | shipped |
-| `test_dialogs` | settings + roadmap + diff + ssh   | Phase 6 (planned) |
-| `test_lua`     | luaengine + pluginmanager         | Phase 6 (planned) |
-| `test_core`    | grep-style + helper-CLI tests     | Phase 6 (planned) |
+| `test_audit`   | audit dialog + engine + hygiene + rule-quality + command-trust + feature-coverage | shipped |
+| `test_dialogs` | settings + roadmap + diff (dialog subjects hosted by chrome) | shipped |
+| `test_lua`     | luaengine + pluginmanager (gated `LUA_FOUND`) | shipped |
+| `test_core`    | session + pty + remote-control + config + debuglog + threading + packaging | shipped |
 
 ### Suite-name convention
 

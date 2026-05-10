@@ -13,6 +13,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
@@ -47,7 +49,7 @@ int fail(const char *label, const char *why) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const std::string rcHdr = slurp(SRC_RC_HEADER);
     const std::string rcSrc = slurp(SRC_RC_CPP);
     const std::string mwHdr = slurp(SRC_MAINWINDOW_H);
@@ -116,4 +118,8 @@ int main() {
 
     std::puts("OK remote_control_tab_list: 7/7 invariants");
     return 0;
+}
+
+TEST(RemoteControlTabList, Main) {
+    if (runMain() != 0) FAIL();
 }

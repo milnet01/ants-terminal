@@ -24,6 +24,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 std::string slurp(const char *path) {
@@ -55,8 +57,8 @@ QString writeFile(const QString &dir, const QString &name,
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     const std::string source = slurp(ROADMAPDIALOG_CPP);
     const std::string header = slurp(ROADMAPDIALOG_H);
@@ -607,4 +609,8 @@ int main(int argc, char **argv) {
 
     std::fprintf(stderr, "OK — all archive INVs hold.\n");
     return 0;
+}
+
+TEST(RoadmapViewerArchive, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }

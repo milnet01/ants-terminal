@@ -15,6 +15,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_CLAUDEALLOWLIST_CPP_PATH
 #  error "SRC_CLAUDEALLOWLIST_CPP_PATH compile definition required"
 #endif
@@ -63,7 +65,7 @@ int countMatches(const std::string &h, const std::string &n) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const std::string allowlist = slurp(SRC_CLAUDEALLOWLIST_CPP_PATH);
     const std::string settings  = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
 
@@ -133,4 +135,8 @@ int main() {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(SettingsParseFailureMirror, Main) {
+    if (runMain() != 0) FAIL();
 }

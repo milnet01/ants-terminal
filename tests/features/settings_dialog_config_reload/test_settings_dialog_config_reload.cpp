@@ -18,6 +18,8 @@
 
 #include <cstdio>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 int g_failures = 0;
@@ -46,8 +48,8 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
     QFile f(path);
@@ -126,4 +128,8 @@ int main(int argc, char **argv) {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(SettingsDialogConfigReload, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }

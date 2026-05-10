@@ -14,6 +14,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_SECUREIO_H_PATH
 #  error "SRC_SECUREIO_H_PATH compile definition required"
 #endif
@@ -60,7 +62,7 @@ bool contains(const std::string &h, const std::string &n) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const std::string secureio  = slurp(SRC_SECUREIO_H_PATH);
     const std::string backup    = slurp(SRC_CONFIGBACKUP_H_PATH);
     const std::string config    = slurp(SRC_CONFIG_CPP_PATH);
@@ -117,4 +119,8 @@ int main() {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(SecureioConfigbackupSplit, Main) {
+    if (runMain() != 0) FAIL();
 }

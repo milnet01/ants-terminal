@@ -66,7 +66,12 @@ find_package(LayerShellQt CONFIG QUIET)
 #      compile + link invocations even if the user passes -j$(nproc).
 #      Belt-and-suspenders against future regressions: the architectural
 #      fix removes the cause of the OOM, this prevents the consequence.
-#      `compile_pool=nproc-2` leaves 2 cores headroom for the OS.
+#      Sized at `max(2, nproc/2)` after a 2026-05-10 stutter report on a
+#      12-core box: the previous `nproc-2` heuristic still over-subscribed
+#      RAM during link-heavy phases (each Qt-bloated cc1plus is 200-300 MiB
+#      and concurrent links are even heavier). `link_pool=1` serialises the
+#      bundle linker steps — link is the heaviest single process and the
+#      one most likely to swap.
 # ---------------------------------------------------------------------------
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
@@ -82,14 +87,17 @@ ProcessorCount(_ANTS_NPROC)
 if(_ANTS_NPROC LESS 4)
     set(_ANTS_COMPILE_CAP ${_ANTS_NPROC})
 else()
-    math(EXPR _ANTS_COMPILE_CAP "${_ANTS_NPROC} - 2")
+    math(EXPR _ANTS_COMPILE_CAP "${_ANTS_NPROC} / 2")
+    if(_ANTS_COMPILE_CAP LESS 2)
+        set(_ANTS_COMPILE_CAP 2)
+    endif()
 endif()
 set_property(GLOBAL APPEND PROPERTY JOB_POOLS
     compile_pool=${_ANTS_COMPILE_CAP}
-    link_pool=2)
+    link_pool=1)
 set(CMAKE_JOB_POOL_COMPILE compile_pool)
 set(CMAKE_JOB_POOL_LINK    link_pool)
-message(STATUS "Build job pools: compile=${_ANTS_COMPILE_CAP} link=2 (host nproc=${_ANTS_NPROC})")
+message(STATUS "Build job pools: compile=${_ANTS_COMPILE_CAP} link=1 (host nproc=${_ANTS_NPROC})")
 
 # ---------------------------------------------------------------------------
 # Shared compile-flag interface (ANTS-1217 Phase 1)
@@ -481,1028 +489,12 @@ if(ANTS_TESTS)
         LABELS "audit;fast"
         TIMEOUT 30)
 
-    add_executable(test_session_persistence_default
-        tests/features/session_persistence_default/test_session_persistence_default.cpp
-        src/config.cpp
-        src/debuglog.cpp  # 0.7.12: config.cpp logs load/save failures via ANTS_LOG
-    )
-    target_link_libraries(test_session_persistence_default PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_session_persistence_default PRIVATE src)
-    target_compile_options(test_session_persistence_default PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME session_persistence_default
-             COMMAND test_session_persistence_default)
-    set_tests_properties(session_persistence_default PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     add_test(NAME claude_git_context_script
              COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/claude_git_context_hook/test_script.sh")
     set_tests_properties(claude_git_context_script PROPERTIES
         LABELS "features;fast"
         TIMEOUT 30
         ENVIRONMENT "SRC_SETTINGSDIALOG_CPP=${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp")
-
-    add_executable(test_image_bomb_png_header_peek
-        tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
-    )
-    target_compile_definitions(test_image_bomb_png_header_peek PRIVATE
-        SRC_TERMINALGRID_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalgrid.cpp"
-        SRC_TERMINALGRID_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalgrid.h"
-    )
-    target_compile_options(test_image_bomb_png_header_peek PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME image_bomb_png_header_peek
-             COMMAND test_image_bomb_png_header_peek)
-    set_tests_properties(image_bomb_png_header_peek PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    add_executable(test_threaded_ptywrite_gating
-        tests/features/threaded_ptywrite_gating/test_threaded_ptywrite_gating.cpp
-    )
-    target_link_libraries(test_threaded_ptywrite_gating PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_threaded_ptywrite_gating PRIVATE src)
-    target_compile_options(test_threaded_ptywrite_gating PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_threaded_ptywrite_gating PRIVATE
-        SRC_TERMINALWIDGET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-    )
-    add_test(NAME threaded_ptywrite_gating
-             COMMAND test_threaded_ptywrite_gating)
-    set_tests_properties(threaded_ptywrite_gating PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # threaded_resize_synchronous — locks the source-level invariant that
-    # every invokeMethod(m_vtStream, "resize", ...) uses
-    # Qt::BlockingQueuedConnection. A silent regression to QueuedConnection
-    # would introduce a 1-frame flicker that only shows under load. Pure
-    # source-grep test; same pattern as shift_enter_bracketed_paste.
-    add_executable(test_threaded_resize_synchronous
-        tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
-    )
-    target_link_libraries(test_threaded_resize_synchronous PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_threaded_resize_synchronous PRIVATE src)
-    target_compile_options(test_threaded_resize_synchronous PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_threaded_resize_synchronous PRIVATE
-        SRC_TERMINALWIDGET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-        SRC_VTSTREAM_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/vtstream.h"
-    )
-    add_test(NAME threaded_resize_synchronous
-             COMMAND test_threaded_resize_synchronous)
-    set_tests_properties(threaded_resize_synchronous PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # pty_closefrom — 0.7.27 fix. Locks the post-fork close-inherited-FDs
-    # path: must use close_range(2) (Linux 5.9+) with a getrlimit-bounded
-    # fallback, not the prior hard-coded fd<1024 loop that leaked FDs on
-    # systemd / container default RLIMIT_NOFILE profiles. Source-grep
-    # test re-reads src/ptyhandler.cpp. See
-    # tests/features/pty_closefrom/spec.md.
-    add_executable(test_pty_closefrom
-        tests/features/pty_closefrom/test_pty_closefrom.cpp
-    )
-    target_compile_options(test_pty_closefrom PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_pty_closefrom PRIVATE
-        SRC_PTY_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.cpp"
-    )
-    add_test(NAME pty_closefrom COMMAND test_pty_closefrom)
-    set_tests_properties(pty_closefrom PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # pty_write_eagain_queue — 0.7.27 fix. Locks the EAGAIN-queue +
-    # write-side QSocketNotifier path that replaced the silent-drop
-    # break in Pty::write. Source-grep test against ptyhandler.{h,cpp}
-    # — see tests/features/pty_write_eagain_queue/spec.md.
-    add_executable(test_pty_write_eagain_queue
-        tests/features/pty_write_eagain_queue/test_pty_write_eagain_queue.cpp
-    )
-    target_compile_options(test_pty_write_eagain_queue PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_pty_write_eagain_queue PRIVATE
-        SRC_PTY_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.cpp"
-        SRC_PTY_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.h"
-    )
-    add_test(NAME pty_write_eagain_queue COMMAND test_pty_write_eagain_queue)
-    set_tests_properties(pty_write_eagain_queue PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # session_sha256_checksum — 0.7.30 fix. Locks the V4 envelope that
-    # wraps qCompress output with [SHEC magic][version][SHA-256][len].
-    # The hash must be computed at serialize time, recomputed at restore
-    # time, and a mismatch must short-circuit the restore. See
-    # tests/features/session_sha256_checksum/spec.md.
-    add_executable(test_session_sha256_checksum
-        tests/features/session_sha256_checksum/test_session_sha256_checksum.cpp
-    )
-    target_compile_options(test_session_sha256_checksum PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_session_sha256_checksum PRIVATE
-        SRC_SESSION_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.cpp"
-        SRC_SESSION_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.h"
-    )
-    add_test(NAME session_sha256_checksum
-        COMMAND test_session_sha256_checksum)
-    set_tests_properties(session_sha256_checksum PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # session_qcompress_length_guard — 0.7.30 fix. Locks the
-    # 4-byte big-endian uncompressed-length pre-flight that runs
-    # BEFORE qUncompress, so a crafted file claiming 500 MB doesn't
-    # trigger a 500 MB allocation that the post-hoc cap could only
-    # catch after the damage was done. See
-    # tests/features/session_qcompress_length_guard/spec.md.
-    add_executable(test_session_qcompress_length_guard
-        tests/features/session_qcompress_length_guard/test_session_qcompress_length_guard.cpp
-    )
-    target_compile_options(test_session_qcompress_length_guard PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_session_qcompress_length_guard PRIVATE
-        SRC_SESSION_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.cpp"
-        SRC_SESSION_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.h"
-    )
-    add_test(NAME session_qcompress_length_guard
-        COMMAND test_session_qcompress_length_guard)
-    set_tests_properties(session_qcompress_length_guard PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # session_cell_loop_stream_status — 0.7.30 fix. Locks the
-    # readCell `-> bool` return + `if (!readCell(...))` short-circuit
-    # at every call site, plus the per-codepoint status check inside
-    # readCombining's inner loop. Pre-fix, a truncated stream
-    # silently wrote uninitialized fg/bg/flags into the grid. See
-    # tests/features/session_cell_loop_stream_status/spec.md.
-    add_executable(test_session_cell_loop_stream_status
-        tests/features/session_cell_loop_stream_status/test_session_cell_loop_stream_status.cpp
-    )
-    target_compile_options(test_session_cell_loop_stream_status PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_session_cell_loop_stream_status PRIVATE
-        SRC_SESSION_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.cpp"
-    )
-    add_test(NAME session_cell_loop_stream_status
-        COMMAND test_session_cell_loop_stream_status)
-    set_tests_properties(session_cell_loop_stream_status PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # persistence_post_rename_chmod — 0.7.31 fix. Locks the
-    # belt-and-suspenders post-rename chmod at every save site that
-    # writes a file containing API keys / scrollback / bearer tokens.
-    # Pre-fix, fd-only chmod relied on rename(2) preserving perms,
-    # which fails on FAT/exFAT/SMB/NFS/copy-unlink fallback. See
-    # tests/features/persistence_post_rename_chmod/spec.md.
-    add_executable(test_persistence_post_rename_chmod
-        tests/features/persistence_post_rename_chmod/test_persistence_post_rename_chmod.cpp
-    )
-    target_compile_options(test_persistence_post_rename_chmod PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_persistence_post_rename_chmod PRIVATE
-        SRC_CONFIG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
-        SRC_SESSIONMANAGER_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.cpp"
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-    )
-    add_test(NAME persistence_post_rename_chmod
-        COMMAND test_persistence_post_rename_chmod)
-    set_tests_properties(persistence_post_rename_chmod PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # concurrent_writer_lock — 0.7.31 fix. Locks the ConfigWriteLock
-    # RAII guard around config.json + ~/.claude/settings.json saves.
-    # Two simultaneously-running Ants instances writing the same
-    # config previously raced on rename(2); the lock serializes them.
-    # See tests/features/concurrent_writer_lock/spec.md.
-    add_executable(test_concurrent_writer_lock
-        tests/features/concurrent_writer_lock/test_concurrent_writer_lock.cpp
-    )
-    target_compile_options(test_concurrent_writer_lock PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_concurrent_writer_lock PRIVATE
-        SRC_CONFIG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
-        SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeallowlist.cpp"
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-    )
-    target_include_directories(test_concurrent_writer_lock PRIVATE src)
-    target_link_libraries(test_concurrent_writer_lock PRIVATE Qt6::Core)
-    add_test(NAME concurrent_writer_lock
-        COMMAND test_concurrent_writer_lock)
-    set_tests_properties(concurrent_writer_lock PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 15)
-
-    # secureio_configbackup_split — 0.7.31 refactor. Locks the split
-    # of secureio.h into perms-only and configbackup.h owning rotation
-    # + ConfigWriteLock. Asserts no helper drifts back into the wrong
-    # header and every caller pulls the include it actually needs.
-    # See tests/features/secureio_configbackup_split/spec.md.
-    add_executable(test_secureio_configbackup_split
-        tests/features/secureio_configbackup_split/test_secureio_configbackup_split.cpp
-    )
-    target_compile_options(test_secureio_configbackup_split PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_secureio_configbackup_split PRIVATE
-        SRC_SECUREIO_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/secureio.h"
-        SRC_CONFIGBACKUP_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/configbackup.h"
-        SRC_CONFIG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
-        SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeallowlist.cpp"
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-    )
-    add_test(NAME secureio_configbackup_split
-        COMMAND test_secureio_configbackup_split)
-    set_tests_properties(secureio_configbackup_split PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # settings_dependency_gating — 0.7.32 fix. Locks the toggled→
-    # setEnabled wiring on the three master checkboxes (m_aiEnabled,
-    # m_autoColorScheme, m_quakeMode) plus the one-shot sync call so
-    # the initial widget state matches the loaded config without
-    # waiting for the user to toggle. See
-    # tests/features/settings_dependency_gating/spec.md.
-    add_executable(test_settings_dependency_gating
-        tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
-    )
-    target_compile_options(test_settings_dependency_gating PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_settings_dependency_gating PRIVATE
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-    )
-    add_test(NAME settings_dependency_gating
-        COMMAND test_settings_dependency_gating)
-    set_tests_properties(settings_dependency_gating PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # settings_profile_cancel_rollback — 0.7.32 fix. Locks the
-    # pending-state pair (m_pendingProfiles + m_pendingActiveProfile)
-    # and that Save/Delete/Load mutate ONLY pending state, never
-    # m_config directly. applySettings is the single commit point.
-    # See tests/features/settings_profile_cancel_rollback/spec.md.
-    add_executable(test_settings_profile_cancel_rollback
-        tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
-    )
-    target_compile_options(test_settings_profile_cancel_rollback PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_settings_profile_cancel_rollback PRIVATE
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-        SRC_SETTINGSDIALOG_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.h"
-    )
-    add_test(NAME settings_profile_cancel_rollback
-        COMMAND test_settings_profile_cancel_rollback)
-    set_tests_properties(settings_profile_cancel_rollback PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # settings_restore_defaults — 0.7.32 fix. Locks the
-    # "Restore Defaults (<TabName> tab)" buttons across General,
-    # Appearance, Terminal, AI tabs, and that the reset slots
-    # mutate widget state only (no direct m_config-> writes). See
-    # tests/features/settings_restore_defaults/spec.md.
-    add_executable(test_settings_restore_defaults
-        tests/features/settings_restore_defaults/test_settings_restore_defaults.cpp
-    )
-    target_compile_options(test_settings_restore_defaults PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_settings_restore_defaults PRIVATE
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-    )
-    add_test(NAME settings_restore_defaults
-        COMMAND test_settings_restore_defaults)
-    set_tests_properties(settings_restore_defaults PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # plugin_manifest_safety — 0.7.33 fix. Locks the 1 MiB manifest
-    # cap (OOM surface), QDir::NoSymLinks, canonical plugin root +
-    # per-entry canonical-containment check (symlink escape). See
-    # tests/features/plugin_manifest_safety/spec.md.
-    add_executable(test_plugin_manifest_safety
-        tests/features/plugin_manifest_safety/test_plugin_manifest_safety.cpp
-    )
-    target_compile_options(test_plugin_manifest_safety PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_plugin_manifest_safety PRIVATE
-        SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/pluginmanager.cpp"
-    )
-    add_test(NAME plugin_manifest_safety
-        COMMAND test_plugin_manifest_safety)
-    set_tests_properties(plugin_manifest_safety PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    add_executable(test_roadmap_viewer
-        tests/features/roadmap_viewer/test_roadmap_viewer.cpp
-        src/roadmapdialog.cpp
-        src/coloredtabbar.cpp
-        src/themes.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_roadmap_viewer PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_roadmap_viewer PRIVATE src)
-    target_compile_options(test_roadmap_viewer PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_roadmap_viewer PRIVATE
-        ROADMAPDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.h"
-        ROADMAPDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.cpp"
-        MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME roadmap_viewer COMMAND test_roadmap_viewer)
-    set_tests_properties(roadmap_viewer PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # roadmap_viewer_tabs — ANTS-1100 (0.7.59). Faceted preset tabs +
-    # search predicate (with `id:NNNN` shorthand) + larger default
-    # size + persisted geometry on RoadmapDialog. 12 invariants across
-    # filterFor / sortFor / presetMatching round-trips, descending-
-    # chronological section reorder, search filter, and source-greps
-    # for the tab strip + persistence wiring. Behavioural assertions
-    # link the renderer source so synthetic markdown can be driven
-    # through `RoadmapDialog::renderHtml(..., SortOrder, predicate)`
-    # without spinning a real dialog. See spec.md.
-    add_executable(test_roadmap_viewer_tabs
-        tests/features/roadmap_viewer_tabs/test_roadmap_viewer_tabs.cpp
-        src/roadmapdialog.cpp
-        src/coloredtabbar.cpp
-        src/themes.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_roadmap_viewer_tabs PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_roadmap_viewer_tabs PRIVATE src)
-    target_compile_options(test_roadmap_viewer_tabs PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_roadmap_viewer_tabs PRIVATE
-        ROADMAPDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.h"
-        ROADMAPDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.cpp"
-    )
-    add_test(NAME roadmap_viewer_tabs COMMAND test_roadmap_viewer_tabs)
-    set_tests_properties(roadmap_viewer_tabs PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # roadmap_viewer_archive — ANTS-1125 (0.7.61). Per-version
-    # archive load path: archiveDirFor() canonical-resolves the
-    # archive dir; loadMarkdown() concatenates `<MAJOR>.<MINOR>.md`
-    # archives in numeric descending order with thematic-break +
-    # HTML-comment sentinel separators; shouldLoadHistory() gates
-    # the load on Preset::History or non-empty search. 13 INVs span
-    # the static helpers (driven on real temp-dir layouts) and
-    # source-greps for the watcher hookup, the IPC-scope guard-rail,
-    # and the format-standard amendment. See spec.md.
-    add_executable(test_roadmap_viewer_archive
-        tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
-        src/roadmapdialog.cpp
-        src/coloredtabbar.cpp
-        src/themes.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_roadmap_viewer_archive PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_roadmap_viewer_archive PRIVATE src)
-    target_compile_options(test_roadmap_viewer_archive PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_roadmap_viewer_archive PRIVATE
-        ROADMAPDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.h"
-        ROADMAPDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.cpp"
-        ROADMAP_FORMAT_MD="${CMAKE_CURRENT_SOURCE_DIR}/docs/standards/roadmap-format.md"
-        SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src"
-        ROTATE_ROADMAP_SH="${CMAKE_CURRENT_SOURCE_DIR}/packaging/rotate-roadmap.sh"
-    )
-    add_test(NAME roadmap_viewer_archive COMMAND test_roadmap_viewer_archive)
-    set_tests_properties(roadmap_viewer_archive PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # diffviewer_extraction — ANTS-1145 (0.7.73). Locks the
-    # extraction of the Review Changes dialog from
-    # MainWindow::showDiffViewer (~430 LoC) into
-    # src/diffviewer.{cpp,h}. Pure carve-out, behaviour preserved.
-    # Source-grep harness asserts: diffviewer.{h,cpp} exist with
-    # the namespace + dialog markers, the post-extraction
-    # MainWindow::showDiffViewer body is ≤ 30 LoC and delegates,
-    # and mainwindow.cpp no longer carries the migrated markers.
-    add_executable(test_diffviewer_extraction
-        tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
-    )
-    target_compile_options(test_diffviewer_extraction PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_diffviewer_extraction PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_DIFFVIEWER_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.h"
-        SRC_DIFFVIEWER_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.cpp"
-    )
-    add_test(NAME diffviewer_extraction
-             COMMAND test_diffviewer_extraction)
-    set_tests_properties(diffviewer_extraction PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # roadmap_kind_facets — ANTS-1106 (0.7.64). Locks the
-    # Kind-faceted secondary filter in RoadmapDialog. Drives
-    # RoadmapDialog::renderHtml across four filter shapes (empty
-    # / single Kind / multi Kind / missing-Kind bullet under
-    # non-empty filter) and source-greps the dialog setup for
-    # the Kind row's QLabel + per-Kind checkbox objectNames.
-    add_executable(test_roadmap_kind_facets
-        tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
-        src/roadmapdialog.cpp
-        src/coloredtabbar.cpp
-        src/themes.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_roadmap_kind_facets PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_roadmap_kind_facets PRIVATE src)
-    target_compile_options(test_roadmap_kind_facets PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_roadmap_kind_facets PRIVATE
-        ROADMAPDIALOG_H="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.h"
-        ROADMAPDIALOG_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/roadmapdialog.cpp"
-    )
-    add_test(NAME roadmap_kind_facets
-             COMMAND test_roadmap_kind_facets -platform offscreen)
-    set_tests_properties(roadmap_kind_facets PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_roadmap_query — ANTS-1117 v1 (0.7.59). New IPC
-    # verb that surfaces the parsed ROADMAP.md as structured JSON
-    # to a Claude Code session over the existing remote-control
-    # transport. Behavioural test drives RoadmapDialog::parseBullets
-    # against synthetic markdown, plus source-grep INVs for the verb
-    # registration + cache fields. See spec.md.
-    add_executable(test_remote_control_roadmap_query
-        tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp
-        src/roadmapdialog.cpp
-        src/coloredtabbar.cpp
-        src/themes.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_remote_control_roadmap_query PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_remote_control_roadmap_query PRIVATE src)
-    target_compile_options(test_remote_control_roadmap_query PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_roadmap_query PRIVATE
-        SRC_RC_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.h"
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-    )
-    add_test(NAME remote_control_roadmap_query
-        COMMAND test_remote_control_roadmap_query)
-    set_tests_properties(remote_control_roadmap_query PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_tab_list — ANTS-1117 v1 (0.7.59). Source-grep
-    # harness for the new `tab-list` IPC verb: verifies dispatch
-    # registration, cmdTabList + tabsAsJson wiring, the six expected
-    # per-tab keys, and the ClaudeTabTracker integration for
-    # claude_running. See spec.md.
-    add_executable(test_remote_control_tab_list
-        tests/features/remote_control_tab_list/test_remote_control_tab_list.cpp
-    )
-    target_compile_options(test_remote_control_tab_list PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_tab_list PRIVATE
-        SRC_RC_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.h"
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME remote_control_tab_list
-        COMMAND test_remote_control_tab_list)
-    set_tests_properties(remote_control_tab_list PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # local_subagent_framework — ANTS-1116 v1 (0.7.59). Behavioural
-    # test of `AntsHelper::driftCheck` against synthetic tree
-    # fixtures (clean / drift / missing-script / bogus-root) plus a
-    # source-grep INV that the CMake `ANTS_ENABLE_HELPER_CLI` option
-    # gates the new `ants-helper` binary. See spec.md.
-    add_executable(test_local_subagent_framework
-        tests/features/local_subagent_framework/test_local_subagent_framework.cpp
-        src/antshelper.cpp
-    )
-    target_link_libraries(test_local_subagent_framework PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_local_subagent_framework PRIVATE src)
-    target_compile_options(test_local_subagent_framework PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_local_subagent_framework PRIVATE
-        SRC_CMAKELISTS="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-    )
-    add_test(NAME local_subagent_framework
-        COMMAND test_local_subagent_framework)
-    set_tests_properties(local_subagent_framework PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 15)
-
-    # settings_parse_failure_mirror — 0.7.31 test-coverage fill-in.
-    # Mirrors the existing config_parse_failure_guard test for the
-    # other two parse-failure refuse sites: ClaudeAllowlist::saveSettings
-    # and SettingsDialog's two Claude-hook installers. See
-    # tests/features/settings_parse_failure_mirror/spec.md.
-    add_executable(test_settings_parse_failure_mirror
-        tests/features/settings_parse_failure_mirror/test_settings_parse_failure_mirror.cpp
-    )
-    target_compile_options(test_settings_parse_failure_mirror PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_settings_parse_failure_mirror PRIVATE
-        SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/claudeallowlist.cpp"
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-    )
-    add_test(NAME settings_parse_failure_mirror
-        COMMAND test_settings_parse_failure_mirror)
-    set_tests_properties(settings_parse_failure_mirror PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # flatpak_host_shell — pins the FLATPAK_ID / /.flatpak-info
-    # detection + flatpak-spawn --host branch in ptyhandler.cpp. The
-    # branch can't be exercised headlessly (no sandbox on CI runners)
-    # so a source-grep test locks the argv shape: --host, --env= for
-    # every TERM var, --directory= gated on workDir.isEmpty(), -- before
-    # the shell path, _exit(127) on execvp failure, direct-exec path
-    # intact after the branch. See
-    # tests/features/flatpak_host_shell/spec.md.
-    add_executable(test_flatpak_host_shell
-        tests/features/flatpak_host_shell/test_flatpak_host_shell.cpp
-    )
-    target_compile_options(test_flatpak_host_shell PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_flatpak_host_shell PRIVATE
-        SRC_PTYHANDLER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.cpp"
-    )
-    add_test(NAME flatpak_host_shell
-             COMMAND test_flatpak_host_shell)
-    set_tests_properties(flatpak_host_shell PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # flatpak_lua_module — pins the Lua 5.4 archive module in the
-    # Flatpak manifest: module order (must precede ants-terminal),
-    # pinned sha256, -fPIC in MYCFLAGS, install to /app, readline-free
-    # build target, and the x-checker-data stanza that lets Flathub CI
-    # auto-refresh the tarball sha256. A regression that strips any of
-    # these silently produces a Flatpak build without plugin support —
-    # the exact shipping hazard H6.1 exists to prevent. See
-    # tests/features/flatpak_lua_module/spec.md.
-    add_executable(test_flatpak_lua_module
-        tests/features/flatpak_lua_module/test_flatpak_lua_module.cpp
-    )
-    target_compile_options(test_flatpak_lua_module PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_flatpak_lua_module PRIVATE
-        FLATPAK_MANIFEST_PATH="${CMAKE_CURRENT_SOURCE_DIR}/packaging/flatpak/org.ants.Terminal.yml"
-    )
-    add_test(NAME flatpak_lua_module
-             COMMAND test_flatpak_lua_module)
-    set_tests_properties(flatpak_lua_module PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # flathub_manifest_transform — exercises make-flathub-manifest.sh
-    # and pins the shape of its output: the dev manifest's `type: dir /
-    # path: ../..` is replaced with `type: git / url / tag: vX.Y.Z`,
-    # the Lua module survives byte-identical (including sha256 and
-    # x-checker-data), the generator auto-detects VERSION from
-    # CMakeLists.txt, and it rejects invalid VERSION arguments. A
-    # regression here silently ships a broken Flathub manifest on PR.
-    # See tests/features/flathub_manifest_transform/spec.md.
-    add_executable(test_flathub_manifest_transform
-        tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
-    )
-    target_compile_options(test_flathub_manifest_transform PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_flathub_manifest_transform PRIVATE
-        TRANSFORMER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh"
-    )
-    add_test(NAME flathub_manifest_transform
-             COMMAND test_flathub_manifest_transform)
-    set_tests_properties(flathub_manifest_transform PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # feature_coverage — locks the 0.7.x spec↔code drift + CHANGELOG↔test
-    # coverage lane parsers (identifier extraction + fuzzy title matching).
-    # Follow-on to the RetroDB 2026-04-21 audit-hygiene work — once scanner
-    # calibration was tightened, the next signal-loss frontier was specs
-    # referencing renamed code and CHANGELOG bullets without tests.
-    # Headless: pure text → list, no QtGui.
-    # See tests/features/feature_coverage/spec.md.
-    add_executable(test_feature_coverage
-        tests/features/feature_coverage/test_feature_coverage.cpp
-        src/featurecoverage.cpp
-    )
-    target_link_libraries(test_feature_coverage PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_feature_coverage PRIVATE src)
-    target_compile_options(test_feature_coverage PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME feature_coverage
-             COMMAND test_feature_coverage)
-    set_tests_properties(feature_coverage PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_ls — first slice of the 0.8.0 Kitty-style
-    # rc_protocol item. Pins the Unix-socket + JSON-envelope shape
-    # and the stable field names (`ok`, `tabs`, `index`, `title`,
-    # `cwd`, `active`) that rc_protocol clients will depend on.
-    # Source-grep test — no GUI, no socket — catches drift at
-    # source-edit time rather than waiting for an integration run.
-    # See tests/features/remote_control_ls/spec.md.
-    add_executable(test_remote_control_ls
-        tests/features/remote_control_ls/test_remote_control_ls.cpp
-    )
-    target_compile_options(test_remote_control_ls PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_ls PRIVATE
-        SRC_RC_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.h"
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-        SRC_CMAKELISTS="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-    )
-    add_test(NAME remote_control_ls COMMAND test_remote_control_ls)
-    set_tests_properties(remote_control_ls PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_send_text — second rc_protocol command. Locks
-    # the "text is required + string" contract, the isDouble-based
-    # tab disambiguation (so `--remote-tab 0` stays meaningful), the
-    # sendToPty call target, the MainWindow::terminalAtTab public
-    # accessor, and the stdin-read client ergonomic. Negative guard
-    # against a future regression that auto-appends `\n` to `text`
-    # (diverges from Kitty semantics and breaks binary-stream
-    # callers). See tests/features/remote_control_send_text/spec.md.
-    add_executable(test_remote_control_send_text
-        tests/features/remote_control_send_text/test_remote_control_send_text.cpp
-    )
-    target_compile_options(test_remote_control_send_text PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_send_text PRIVATE
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-    )
-    add_test(NAME remote_control_send_text COMMAND test_remote_control_send_text)
-    set_tests_properties(remote_control_send_text PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_opt_in — asserts the 0.7.12 /indie-review hardening:
-    # (A) behavioral — filterControlChars strips the dangerous C0 subset +
-    #     DEL while preserving HT / LF / CR and UTF-8 bytes >= 0x80;
-    # (B) behavioral — Config API round-trip for `remote_control_enabled`
-    #     (the key the gate reads). Replaces the 0.7.12 grep-for-getter-
-    #     name approach, which a rename would silently defeat.
-    # (C) structural — raw-bypass + filter calls inside cmdSendText, plus
-    #     a regex-based check that start() lives inside a conditional.
-    # Closes the local-UID keystroke-injection RCE chain. See
-    # tests/features/remote_control_opt_in/spec.md.
-    add_executable(test_remote_control_opt_in
-        tests/features/remote_control_opt_in/test_remote_control_opt_in.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_remote_control_opt_in PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_remote_control_opt_in PRIVATE src)
-    target_compile_options(test_remote_control_opt_in PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_opt_in PRIVATE
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME remote_control_opt_in COMMAND test_remote_control_opt_in)
-    set_tests_properties(remote_control_opt_in PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # config_parse_failure_guard — asserts the 0.7.12 /indie-review
-    # silent-data-loss fix in Config: on parse failure, the corrupt
-    # file is rotated aside and save() is suppressed so setters don't
-    # clobber the user's hand-fixable config. Also exercises the fresh-
-    # run + valid-file happy paths and the std::rename return check.
-    # See tests/features/config_parse_failure_guard/spec.md.
-    add_executable(test_config_parse_failure
-        tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_config_parse_failure PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_config_parse_failure PRIVATE src)
-    target_compile_options(test_config_parse_failure PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME config_parse_failure_guard COMMAND test_config_parse_failure)
-    set_tests_properties(config_parse_failure_guard PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # config_reload_loop_safety — locks the 0.7.50 fix for the inotify-
-    # driven config-reload loop. onConfigFileChanged used to call
-    # applyTheme -> setTheme -> save() unconditionally, which re-entered
-    # via inotify because Qt reads inotify events from the event loop
-    # *after* the slot returns (so blockSignals during the slot doesn't
-    # cover them). The test asserts the idempotent setter, the no-op
-    # applyTheme skip, the re-entrancy guard, and the absence of the
-    # failed 0.7.31 blockSignals attempt.
-    # See tests/features/config_reload_loop_safety/spec.md.
-    add_executable(test_config_reload_loop_safety
-        tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_config_reload_loop_safety PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_config_reload_loop_safety PRIVATE src)
-    target_compile_options(test_config_reload_loop_safety PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME config_reload_loop_safety
-        COMMAND test_config_reload_loop_safety
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    set_tests_properties(config_reload_loop_safety PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_new_tab — third rc_protocol command. Locks the
-    # cwd + command field forwarding, the 200 ms settle before the
-    # command write (matches onSshConnect — shells drop keystrokes
-    # if written before their init settles), the QPointer guard on
-    # the deferred lambda, and the non-const `int newTabForRemote(...)`
-    # signature that the dispatch layer depends on. See
-    # tests/features/remote_control_new_tab/spec.md.
-    add_executable(test_remote_control_new_tab
-        tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp
-    )
-    target_compile_options(test_remote_control_new_tab PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_new_tab PRIVATE
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-    )
-    add_test(NAME remote_control_new_tab COMMAND test_remote_control_new_tab)
-    set_tests_properties(remote_control_new_tab PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_select_window — fourth rc_protocol command.
-    # Locks the required-tab contract (no implicit default),
-    # isDouble-based validation, the delegation to
-    # MainWindow::selectTabForRemote, and the setFocus on the new
-    # active terminal (without it, follow-up send-text calls hit
-    # stale focus owners). See
-    # tests/features/remote_control_select_window/spec.md.
-    add_executable(test_remote_control_select_window
-        tests/features/remote_control_select_window/test_remote_control_select_window.cpp
-    )
-    target_compile_options(test_remote_control_select_window PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_select_window PRIVATE
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME remote_control_select_window
-             COMMAND test_remote_control_select_window)
-    set_tests_properties(remote_control_select_window PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_set_title — fifth rc_protocol command. Locks the
-    # title-pin mechanism: the per-shell titleChanged signal handler
-    # AND updateTabTitles both consult m_tabTitlePins, the tab-close
-    # path frees the pin entry, and clearing the pin via empty-title
-    # restores from shellTitle() when tabTitleFormat == "title".
-    # See tests/features/remote_control_set_title/spec.md.
-    add_executable(test_remote_control_set_title
-        tests/features/remote_control_set_title/test_remote_control_set_title.cpp
-    )
-    target_compile_options(test_remote_control_set_title PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_set_title PRIVATE
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME remote_control_set_title COMMAND test_remote_control_set_title)
-    set_tests_properties(remote_control_set_title PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_get_text — sixth rc_protocol command. Locks the
-    # reuse of TerminalWidget::recentOutput (so the AI dialog and
-    # rc_protocol can't drift apart), the 10 000-line response cap,
-    # the response field set (text + lines + bytes), and the
-    # client-side --remote-lines validation. See
-    # tests/features/remote_control_get_text/spec.md.
-    add_executable(test_remote_control_get_text
-        tests/features/remote_control_get_text/test_remote_control_get_text.cpp
-    )
-    target_compile_options(test_remote_control_get_text PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_get_text PRIVATE
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-    )
-    add_test(NAME remote_control_get_text COMMAND test_remote_control_get_text)
-    set_tests_properties(remote_control_get_text PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # remote_control_launch — seventh + final command in the initial
-    # rc_protocol surface. Locks the require-command contract, the
-    # auto-newline behaviour (the convenience differentiator from
-    # new-tab), the delegation into newTabForRemote (no parallel
-    # tab-creation logic), the sendToPty-not-writeCommand fix in
-    # newTabForRemote (so new-tab stays byte-faithful), and the
-    # shared client-CLI branch with new-tab. See
-    # tests/features/remote_control_launch/spec.md.
-    add_executable(test_remote_control_launch
-        tests/features/remote_control_launch/test_remote_control_launch.cpp
-    )
-    target_compile_options(test_remote_control_launch PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_remote_control_launch PRIVATE
-        SRC_RC_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAIN_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-    )
-    add_test(NAME remote_control_launch COMMAND test_remote_control_launch)
-    set_tests_properties(remote_control_launch PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # debuglog_perms — asserts ~/.local/share/ants-terminal/debug.log
-    # lands 0600 after the first DebugLog::setActive() call, even when
-    # the process umask is 0022. Covers fresh-open, clear+reopen, and
-    # narrowing of a pre-existing 0644 file left by a pre-fix build.
-    # See tests/features/debuglog_perms/spec.md.
-    add_executable(test_debuglog_perms
-        tests/features/debuglog_perms/test_debuglog_perms.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_debuglog_perms PRIVATE Qt6::Core)
-    target_include_directories(test_debuglog_perms PRIVATE src)
-    target_compile_options(test_debuglog_perms PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_debuglog_perms PRIVATE
-        SRC_DEBUGLOG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/debuglog.cpp"
-    )
-    add_test(NAME debuglog_perms COMMAND test_debuglog_perms)
-    set_tests_properties(debuglog_perms PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # settings_dialog_config_reload — asserts MainWindow::onConfigFileChanged
-    # invalidates the cached m_settingsDialog (close-if-visible +
-    # deleteLater + null) so a subsequent Preferences... open rebuilds
-    # from the freshly reloaded Config, instead of showing stale
-    # pre-edit widget values that would silently overwrite the external
-    # edit on Save. Source-grep only — MainWindow is too heavy to
-    # instantiate under a feature test. See
-    # tests/features/settings_dialog_config_reload/spec.md.
-    add_executable(test_settings_dialog_config_reload
-        tests/features/settings_dialog_config_reload/test_settings_dialog_config_reload.cpp
-    )
-    target_link_libraries(test_settings_dialog_config_reload PRIVATE Qt6::Core)
-    target_compile_options(test_settings_dialog_config_reload PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_settings_dialog_config_reload PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME settings_dialog_config_reload
-             COMMAND test_settings_dialog_config_reload)
-    set_tests_properties(settings_dialog_config_reload PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # lua_sandbox_hardening — asserts the Lua sandbox rejects bytecode
-    # via two independent gates (0x1b first-byte peek AND luaL_loadfilex
-    # "t" mode), that string.dump is stripped at sandbox-init time, and
-    # that LuaEngine::shutdown clears the instruction-count hook before
-    # lua_close to close the UAF window where __gc metamethods could
-    # observe a partially-finalized engine. Gated on LUA_FOUND because
-    # the test links against luaengine.cpp + the Lua C API. See
-    # tests/features/lua_sandbox_hardening/spec.md.
-    if(LUA_FOUND)
-        add_executable(test_lua_sandbox_hardening
-            tests/features/lua_sandbox_hardening/test_lua_sandbox_hardening.cpp
-            src/luaengine.cpp
-        )
-        target_link_libraries(test_lua_sandbox_hardening PRIVATE
-            Qt6::Core
-            ${LUA_LIBRARIES}
-        )
-        target_include_directories(test_lua_sandbox_hardening PRIVATE
-            src
-            ${LUA_INCLUDE_DIRS}
-        )
-        target_compile_options(test_lua_sandbox_hardening PRIVATE
-            -Wall -Wextra -Wpedantic
-        )
-        target_compile_definitions(test_lua_sandbox_hardening PRIVATE
-            ANTS_LUA_PLUGINS=1
-            SRC_LUAENGINE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/luaengine.cpp"
-        )
-        add_test(NAME lua_sandbox_hardening COMMAND test_lua_sandbox_hardening)
-        set_tests_properties(lua_sandbox_hardening PROPERTIES
-            LABELS "features;fast"
-            TIMEOUT 10)
-    endif()
 
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
@@ -1756,13 +748,15 @@ if(ANTS_TESTS)
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
 
-    # ANTS-1217 Phase 5 — test_audit bundle. 11 audit tests consolidated
+    # ANTS-1217 Phase 5 — test_audit bundle. Audit tests consolidated
     # behind one target. Most are pure source-grep (slurp + regex on
     # auditdialog.cpp / auditengine.cpp) and need only Qt6::Core; a few
     # exercise live AuditEngine / AuditHygiene / RuleQualityTracker /
-    # Config APIs and pull in those translation units via ants_audit_lib
-    # + ants_core_lib. ants_audit_lib transitively brings auditdialog.cpp
-    # (a QDialog), so the GUI bundle helper applies.
+    # FeatureCoverage / Config APIs and pull in those translation units
+    # via ants_audit_lib + ants_core_lib. ants_audit_lib transitively
+    # brings auditdialog.cpp (a QDialog), so the GUI bundle helper
+    # applies. Phase 6 added feature_coverage (its impl lives in
+    # ants_audit_lib so it logically belongs here).
     ants_add_gui_bundle(test_audit
         LIBS    ants_audit_lib ants_core_lib
         SOURCES tests/features/audit_command_rule_trust/test_audit_command_rule_trust.cpp
@@ -1775,7 +769,8 @@ if(ANTS_TESTS)
                 tests/features/audit_regex_dos_watchdog/test_audit_regex_dos_watchdog.cpp
                 tests/features/audit_rule_quality/test_audit_rule_quality.cpp
                 tests/features/audit_sarif_suppressions/test_audit_sarif_suppressions.cpp
-                tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp)
+                tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp
+                tests/features/feature_coverage/test_feature_coverage.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
@@ -1786,4 +781,128 @@ if(ANTS_TESTS)
         SRC_AUDIT_ENGINE_CPP="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         SRC_AUDIT_ENGINE_H="${CMAKE_SOURCE_DIR}/src/auditengine.h"
         SRC_AUDITDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp")
+
+    # ANTS-1217 Phase 6 — test_dialogs bundle. Subject: settingsdialog +
+    # roadmapdialog + diffviewer (the dialogs hosted by chrome). 11 tests
+    # spanning settings_*, roadmap_*, diffviewer_extraction, and
+    # remote_control_roadmap_query (which drives RoadmapDialog::parseBullets).
+    # Lib set mirrors test_chrome / test_claude (mainwindow.cpp cross-refs
+    # require the full chrome+claude+dialogs+audit set, --start-group
+    # resolves the cycle via the existing helper).
+    ants_add_gui_bundle(test_dialogs
+        LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
+                ants_claude_lib ants_dialogs_lib ants_audit_lib
+                $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
+                tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
+                tests/features/settings_restore_defaults/test_settings_restore_defaults.cpp
+                tests/features/settings_parse_failure_mirror/test_settings_parse_failure_mirror.cpp
+                tests/features/settings_dialog_config_reload/test_settings_dialog_config_reload.cpp
+                tests/features/roadmap_viewer/test_roadmap_viewer.cpp
+                tests/features/roadmap_viewer_tabs/test_roadmap_viewer_tabs.cpp
+                tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
+                tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
+                tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
+                tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp)
+    target_compile_definitions(test_dialogs PRIVATE
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
+        SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_DIFFVIEWER_H_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.h"
+        SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
+        ROADMAPDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapdialog.h"
+        ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
+        ROADMAP_FORMAT_MD="${CMAKE_SOURCE_DIR}/docs/standards/roadmap-format.md"
+        ROTATE_ROADMAP_SH="${CMAKE_SOURCE_DIR}/packaging/rotate-roadmap.sh"
+        SRC_DIR="${CMAKE_SOURCE_DIR}/src"
+        MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
+        MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
+        SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp")
+
+    # ANTS-1217 Phase 6 — test_lua bundle (gated on LUA_FOUND). Subject:
+    # luaengine + pluginmanager. lua_sandbox_hardening drives the live
+    # LuaEngine API; plugin_manifest_safety is a source-grep test on
+    # pluginmanager.cpp. Bundle links ants_lua_lib + ants_core_lib per
+    # the Phase 7 architecture.
+    if(LUA_FOUND)
+        ants_add_gui_bundle(test_lua
+            LIBS    ants_lua_lib ants_core_lib
+            SOURCES tests/features/lua_sandbox_hardening/test_lua_sandbox_hardening.cpp
+                    tests/features/plugin_manifest_safety/test_plugin_manifest_safety.cpp)
+        target_compile_definitions(test_lua PRIVATE
+            ANTS_LUA_PLUGINS=1
+            SRC_LUAENGINE_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp"
+            SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.cpp")
+    endif()
+
+    # ANTS-1217 Phase 6 — test_core bundle. Subject: core infrastructure —
+    # PTY, sessionmanager, config, debuglog, remote-control IPC verbs,
+    # threading invariants, packaging manifests, helper-CLI. 28 tests, all
+    # Qt::Core-only at runtime (the lib's transitive Widgets dep is unused).
+    # ants_core_lib supplies Config / DebugLog / SessionManager / RemoteControl
+    # symbols for behavioural tests; source-grep tests get their paths via
+    # the target_compile_definitions block below. local_subagent_framework
+    # links antshelper.cpp directly (gated source) when the helper-CLI is
+    # disabled, otherwise via ants_helper_lib so the .cpp compiles once.
+    ants_add_core_bundle(test_core
+        LIBS    ants_core_lib
+                $<$<BOOL:${ANTS_ENABLE_HELPER_CLI}>:ants_helper_lib>
+        SOURCES tests/features/session_persistence_default/test_session_persistence_default.cpp
+                tests/features/session_sha256_checksum/test_session_sha256_checksum.cpp
+                tests/features/session_qcompress_length_guard/test_session_qcompress_length_guard.cpp
+                tests/features/session_cell_loop_stream_status/test_session_cell_loop_stream_status.cpp
+                tests/features/pty_closefrom/test_pty_closefrom.cpp
+                tests/features/pty_write_eagain_queue/test_pty_write_eagain_queue.cpp
+                tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
+                tests/features/threaded_ptywrite_gating/test_threaded_ptywrite_gating.cpp
+                tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
+                tests/features/remote_control_tab_list/test_remote_control_tab_list.cpp
+                tests/features/remote_control_ls/test_remote_control_ls.cpp
+                tests/features/remote_control_send_text/test_remote_control_send_text.cpp
+                tests/features/remote_control_opt_in/test_remote_control_opt_in.cpp
+                tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp
+                tests/features/remote_control_select_window/test_remote_control_select_window.cpp
+                tests/features/remote_control_set_title/test_remote_control_set_title.cpp
+                tests/features/remote_control_get_text/test_remote_control_get_text.cpp
+                tests/features/remote_control_launch/test_remote_control_launch.cpp
+                tests/features/local_subagent_framework/test_local_subagent_framework.cpp
+                tests/features/flatpak_host_shell/test_flatpak_host_shell.cpp
+                tests/features/flatpak_lua_module/test_flatpak_lua_module.cpp
+                tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
+                tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
+                tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
+                tests/features/debuglog_perms/test_debuglog_perms.cpp
+                tests/features/persistence_post_rename_chmod/test_persistence_post_rename_chmod.cpp
+                tests/features/concurrent_writer_lock/test_concurrent_writer_lock.cpp
+                tests/features/secureio_configbackup_split/test_secureio_configbackup_split.cpp
+                $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
+    target_compile_definitions(test_core PRIVATE
+        SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
+        SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h"
+        SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_VTSTREAM_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.h"
+        SRC_PTY_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h"
+        SRC_PTYHANDLER_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_SESSION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.cpp"
+        SRC_SESSION_H_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.h"
+        SRC_SESSIONMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.cpp"
+        SRC_CONFIG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
+        SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_SECUREIO_H_PATH="${CMAKE_SOURCE_DIR}/src/secureio.h"
+        SRC_CONFIGBACKUP_H_PATH="${CMAKE_SOURCE_DIR}/src/configbackup.h"
+        SRC_DEBUGLOG_PATH="${CMAKE_SOURCE_DIR}/src/debuglog.cpp"
+        SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
+        SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
+        SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAIN_CPP="${CMAKE_SOURCE_DIR}/src/main.cpp"
+        SRC_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+        FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/org.ants.Terminal.yml"
+        TRANSFORMER_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh")
 endif()

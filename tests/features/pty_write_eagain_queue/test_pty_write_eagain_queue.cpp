@@ -9,6 +9,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_PTY_CPP_PATH
 #  error "SRC_PTY_CPP_PATH compile definition required"
 #endif
@@ -47,7 +49,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+static int runMain() {
     const std::string cpp = slurp(SRC_PTY_CPP_PATH);
     const std::string hdr = slurp(SRC_PTY_H_PATH);
     const std::string writeBody = extractFnBody(cpp, "Pty::write");
@@ -140,4 +142,8 @@ int main() {
     std::printf("OK: PTY write queues on EAGAIN and drains via "
                 "QSocketNotifier::Write\n");
     return 0;
+}
+
+TEST(PtyWriteEagainQueue, Main) {
+    if (runMain() != 0) FAIL();
 }

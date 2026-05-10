@@ -17,6 +17,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
 #endif
@@ -80,7 +82,7 @@ int meaningfulLoC(const std::string &body) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
     if (mw.empty()) return fail("setup", "mainwindow.cpp not readable");
 
@@ -208,4 +210,8 @@ int main() {
         "OK — DiffViewerDialog extraction INVs hold "
         "(showDiffViewer body shrunk to %d meaningful LoC).\n", loc);
     return 0;
+}
+
+TEST(DiffviewerExtraction, Main) {
+    if (runMain() != 0) FAIL();
 }

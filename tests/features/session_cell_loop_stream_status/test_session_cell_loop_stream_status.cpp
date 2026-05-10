@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_SESSION_CPP_PATH
 #  error "SRC_SESSION_CPP_PATH compile definition required"
 #endif
@@ -70,7 +72,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+static int runMain() {
     const std::string cpp = slurp(SRC_SESSION_CPP_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -201,4 +203,8 @@ int main() {
     }
     std::printf("OK: readCell + readCombining short-circuit on bad status\n");
     return 0;
+}
+
+TEST(SessionCellLoopStreamStatus, Main) {
+    if (runMain() != 0) FAIL();
 }

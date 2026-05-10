@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_SETTINGSDIALOG_CPP_PATH
 #  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
 #endif
@@ -87,7 +89,7 @@ std::string extractFnBody(const std::string &src, const std::string &fnName) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const std::string cpp = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
     const std::string hdr = slurp(SRC_SETTINGSDIALOG_H_PATH);
 
@@ -155,4 +157,8 @@ int main() {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(SettingsProfileCancelRollback, Main) {
+    if (runMain() != 0) FAIL();
 }

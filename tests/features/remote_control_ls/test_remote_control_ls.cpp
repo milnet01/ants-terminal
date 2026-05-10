@@ -7,6 +7,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
@@ -36,7 +38,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+static int runMain() {
     const std::string h   = slurp(SRC_RC_HEADER);
     const std::string rc  = slurp(SRC_RC_CPP);
     const std::string mwc = slurp(SRC_MAINWINDOW_CPP);
@@ -149,4 +151,8 @@ int main() {
     }
     std::printf("OK: remote-control `ls` invariants present\n");
     return 0;
+}
+
+TEST(RemoteControlLs, Main) {
+    if (runMain() != 0) FAIL();
 }

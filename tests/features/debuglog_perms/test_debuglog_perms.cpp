@@ -23,6 +23,8 @@
 
 #include <cstdio>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 int g_failures = 0;
@@ -156,8 +158,8 @@ void runSourceChecks() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     runRuntimeChecks();
     runSourceChecks();
@@ -168,4 +170,8 @@ int main(int argc, char **argv) {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(DebuglogPerms, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }

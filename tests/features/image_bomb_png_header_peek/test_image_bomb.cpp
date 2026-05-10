@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_TERMINALGRID_PATH
 #error "SRC_TERMINALGRID_PATH must be baked at compile time"
 #endif
@@ -49,7 +51,7 @@ int fail(const char *label, const std::string &detail) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const auto lines = readLines(SRC_TERMINALGRID_PATH);
     if (lines.empty())
         return fail("setup",
@@ -110,4 +112,8 @@ int main() {
                 "MAX_IMAGE_DIM defined and used\n",
                 loadCalls, loadCalls == 1 ? "" : "s");
     return 0;
+}
+
+TEST(ImageBombPngHeaderPeek, Main) {
+    if (runMain() != 0) FAIL();
 }

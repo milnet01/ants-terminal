@@ -16,6 +16,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_CONFIG_CPP_PATH
 #  error "SRC_CONFIG_CPP_PATH compile definition required"
 #endif
@@ -151,7 +153,7 @@ void checkSettingsDialog() {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     checkConfigCpp();
     checkSessionManager();
     checkSettingsDialog();
@@ -162,4 +164,8 @@ int main() {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(PersistencePostRenameChmod, Main) {
+    if (runMain() != 0) FAIL();
 }

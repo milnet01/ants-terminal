@@ -20,6 +20,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 std::string slurp(const char *path) {
@@ -66,8 +68,8 @@ constexpr unsigned kAllOn = 0x1F;  // ShowDone | Planned | InProgress | Consider
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     // INV-1: renderHtml signature gained the kindFilter parameter.
     {
@@ -174,4 +176,8 @@ int main(int argc, char **argv) {
     std::fprintf(stderr,
         "OK — roadmap Kind-facet filter INVs hold.\n");
     return 0;
+}
+
+TEST(RoadmapKindFacets, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }

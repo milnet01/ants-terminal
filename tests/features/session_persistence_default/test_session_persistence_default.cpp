@@ -32,6 +32,8 @@
 
 #include <cstdio>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 #define CHECK(cond, msg)                                                       \
@@ -118,7 +120,7 @@ int runExplicitOptIn(const QString &xdgHome) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     // Isolate Config's reads/writes from the real user config. Must
     // happen BEFORE any Config is constructed — Config's ctor calls
     // load() which resolves QStandardPaths::ConfigLocation once.
@@ -148,4 +150,8 @@ int main() {
     std::fprintf(stderr,
                  "session_persistence_default: %d failure(s)\n", failures);
     return 1;
+}
+
+TEST(SessionPersistenceDefault, Main) {
+    if (runMain() != 0) FAIL();
 }

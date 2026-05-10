@@ -12,6 +12,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_PLUGINMANAGER_CPP_PATH
 #  error "SRC_PLUGINMANAGER_CPP_PATH compile definition required"
 #endif
@@ -71,7 +73,7 @@ std::string extractFn(const std::string &src, const std::string &fnSig) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const std::string src = slurp(SRC_PLUGINMANAGER_CPP_PATH);
     const std::string body = extractFn(src,
         "void PluginManager::scanAndLoad(const QStringList &enabledList)");
@@ -119,4 +121,8 @@ int main() {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(PluginManifestSafety, Main) {
+    if (runMain() != 0) FAIL();
 }

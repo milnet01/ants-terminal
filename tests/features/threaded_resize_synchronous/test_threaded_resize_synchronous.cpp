@@ -11,6 +11,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_TERMINALWIDGET_PATH
 #error "SRC_TERMINALWIDGET_PATH compile definition required"
 #endif
@@ -28,7 +30,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+static int runMain() {
     int failures = 0;
 
     const std::string widget = slurp(SRC_TERMINALWIDGET_PATH);
@@ -115,4 +117,8 @@ int main() {
     }
     std::printf("threaded_resize_synchronous: OK\n");
     return 0;
+}
+
+TEST(ThreadedResizeSynchronous, Main) {
+    if (runMain() != 0) FAIL();
 }

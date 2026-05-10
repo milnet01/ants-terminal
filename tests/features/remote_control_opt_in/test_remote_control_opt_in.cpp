@@ -31,6 +31,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_RC_CPP
 #error "SRC_RC_CPP compile definition required"
 #endif
@@ -239,8 +241,8 @@ void testGateBehavioral() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     testFilter();
     testSourceInvariants();
@@ -251,4 +253,8 @@ int main(int argc, char **argv) {
         return 1;
     }
     return 0;
+}
+
+TEST(RemoteControlOptIn, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }

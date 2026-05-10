@@ -11,6 +11,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_SETTINGSDIALOG_CPP_PATH
 #  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
 #endif
@@ -80,7 +82,7 @@ std::string extractResetLambda(const std::string &src,
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const std::string src = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
 
     // I1 — every primary tab declares its Restore Defaults button.
@@ -158,4 +160,8 @@ int main() {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(SettingsRestoreDefaults, Main) {
+    if (runMain() != 0) FAIL();
 }

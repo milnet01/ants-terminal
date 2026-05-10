@@ -17,6 +17,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 std::string slurp(const char *path) {
@@ -38,8 +40,8 @@ int fail(const char *label, const char *why) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     const std::string rcSrc = slurp(SRC_RC_CPP);
     const std::string rcHdr = slurp(SRC_RC_HEADER);
@@ -165,4 +167,8 @@ int main(int argc, char **argv) {
 
     std::puts("OK remote_control_roadmap_query: 9/9 invariants");
     return 0;
+}
+
+TEST(RemoteControlRoadmapQuery, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }

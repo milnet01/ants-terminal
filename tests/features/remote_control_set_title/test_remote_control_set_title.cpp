@@ -6,6 +6,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_RC_CPP
 #error "SRC_RC_CPP compile definition required"
 #endif
@@ -26,7 +28,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+static int runMain() {
     const std::string rc  = slurp(SRC_RC_CPP);
     const std::string mwh = slurp(SRC_MAINWINDOW_H);
     const std::string mwc = slurp(SRC_MAINWINDOW_CPP);
@@ -115,4 +117,8 @@ int main() {
     }
     std::printf("OK: remote-control `set-title` invariants present\n");
     return 0;
+}
+
+TEST(RemoteControlSetTitle, Main) {
+    if (runMain() != 0) FAIL();
 }

@@ -14,6 +14,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_SETTINGSDIALOG_CPP_PATH
 #  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
 #endif
@@ -48,7 +50,7 @@ bool contains(const std::string &h, const std::string &n) {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     const std::string src = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
 
     // I1 — AI tab: master `m_aiEnabled` toggled-wired to
@@ -109,4 +111,8 @@ int main() {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(SettingsDependencyGating, Main) {
+    if (runMain() != 0) FAIL();
 }

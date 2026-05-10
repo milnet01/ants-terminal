@@ -27,6 +27,8 @@
 
 #include <QString>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_CONFIG_CPP_PATH
 #  error "SRC_CONFIG_CPP_PATH compile definition required"
 #endif
@@ -183,7 +185,7 @@ void sourceGrepTests() {
 
 }  // namespace
 
-int main() {
+static int runMain() {
     runtimeTests();
     sourceGrepTests();
 
@@ -193,4 +195,8 @@ int main() {
     }
     std::fprintf(stderr, "\nall invariants hold\n");
     return 0;
+}
+
+TEST(ConcurrentWriterLock, Main) {
+    if (runMain() != 0) FAIL();
 }

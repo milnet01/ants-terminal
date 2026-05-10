@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_TERMINALWIDGET_PATH
 #error "SRC_TERMINALWIDGET_PATH compile definition required"
 #endif
@@ -26,7 +28,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+static int runMain() {
     const std::string src = slurp(SRC_TERMINALWIDGET_PATH);
     int failures = 0;
 
@@ -121,4 +123,8 @@ int main() {
     }
     std::printf("threaded_ptywrite_gating: OK\n");
     return 0;
+}
+
+TEST(ThreadedPtywriteGating, Main) {
+    if (runMain() != 0) FAIL();
 }

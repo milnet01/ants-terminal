@@ -13,6 +13,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 #ifndef SRC_PTYHANDLER_PATH
 #error "SRC_PTYHANDLER_PATH compile definition required"
 #endif
@@ -27,7 +29,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+static int runMain() {
     const std::string src = slurp(SRC_PTYHANDLER_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -185,4 +187,8 @@ int main() {
     }
     std::fprintf(stdout, "flatpak_host_shell: all invariants passed\n");
     return 0;
+}
+
+TEST(FlatpakHostShell, Main) {
+    if (runMain() != 0) FAIL();
 }

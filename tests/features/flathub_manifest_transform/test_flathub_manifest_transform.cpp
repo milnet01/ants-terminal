@@ -12,6 +12,8 @@
 #include <string>
 #include <sys/wait.h>
 
+
+#include <gtest/gtest.h>
 #ifndef TRANSFORMER_PATH
 #error "TRANSFORMER_PATH compile definition required"
 #endif
@@ -43,7 +45,7 @@ static int runCaptureBoth(const std::string &cmd, std::string &out) {
     return WEXITSTATUS(status);
 }
 
-int main() {
+static int runMain() {
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
@@ -153,4 +155,8 @@ int main() {
     }
     std::fprintf(stdout, "flathub_manifest_transform: all invariants passed\n");
     return 0;
+}
+
+TEST(FlathubManifestTransform, Main) {
+    if (runMain() != 0) FAIL();
 }

@@ -27,6 +27,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 int g_failures = 0;
@@ -71,7 +73,7 @@ std::string extractBody(const std::string &source, const std::string &signature)
 }
 
 void testInv1_setThemeIdempotent_callShape() {
-    const std::string config = readFile("src/config.cpp");
+    const std::string config = readFile(SRC_CONFIG_CPP_PATH);
     expect(!config.empty(), "INV-1: src/config.cpp readable");
 
     const std::string body = extractBody(config, "void Config::setTheme(");
@@ -265,7 +267,7 @@ void testInv1c_storeIfChangedSemantics() {
 }
 
 void testInv2_onConfigFileChanged_skipsNoOpApplyTheme() {
-    const std::string source = readFile("src/mainwindow.cpp");
+    const std::string source = readFile(SRC_MAINWINDOW_CPP);
     expect(!source.empty(), "INV-2: src/mainwindow.cpp readable");
 
     const std::string body = extractBody(
@@ -291,12 +293,12 @@ void testInv2_onConfigFileChanged_skipsNoOpApplyTheme() {
 }
 
 void testInv3_reentrancyGuard() {
-    const std::string header = readFile("src/mainwindow.h");
+    const std::string header = readFile(SRC_MAINWINDOW_H);
     expect(!header.empty(), "INV-3: src/mainwindow.h readable");
     expect(contains(header, "bool m_inConfigReload"),
            "INV-3: m_inConfigReload member declared in mainwindow.h");
 
-    const std::string source = readFile("src/mainwindow.cpp");
+    const std::string source = readFile(SRC_MAINWINDOW_CPP);
     const std::string body = extractBody(
         source, "void MainWindow::onConfigFileChanged(");
     expect(!body.empty(), "INV-3: onConfigFileChanged body found");
@@ -314,7 +316,7 @@ void testInv3_reentrancyGuard() {
 }
 
 void testInv4_failedBlockSignalsRemoved() {
-    const std::string source = readFile("src/mainwindow.cpp");
+    const std::string source = readFile(SRC_MAINWINDOW_CPP);
     const std::string body = extractBody(
         source, "void MainWindow::onConfigFileChanged(");
     expect(!body.empty(), "INV-4: onConfigFileChanged body found");
@@ -327,8 +329,8 @@ void testInv4_failedBlockSignalsRemoved() {
 
 }  // namespace
 
-int main(int argc, char *argv[]) {
-    QCoreApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
     testInv1_setThemeIdempotent_callShape();
     testInv1_setThemeIdempotent_functional();
     testInv1b_setterShapesIdempotent();
@@ -337,4 +339,8 @@ int main(int argc, char *argv[]) {
     testInv3_reentrancyGuard();
     testInv4_failedBlockSignalsRemoved();
     return g_failures == 0 ? 0 : 1;
+}
+
+TEST(ConfigReloadLoopSafety, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }

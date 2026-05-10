@@ -43,6 +43,8 @@
 #include <sstream>
 #include <string>
 
+
+#include <gtest/gtest.h>
 namespace {
 
 std::string slurp(const char *path) {
@@ -68,8 +70,8 @@ bool qcontains(const QString &hay, const char *needle) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+static int runMain(int argc, char **argv) {
+    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     const std::string header = slurp(ROADMAPDIALOG_H);
     const std::string source = slurp(ROADMAPDIALOG_CPP);
@@ -291,4 +293,8 @@ int main(int argc, char **argv) {
 
     std::puts("OK roadmap_viewer: 14/14 invariants");
     return 0;
+}
+
+TEST(RoadmapViewer, Main) {
+    if (runMain(0, nullptr) != 0) FAIL();
 }
