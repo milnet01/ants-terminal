@@ -327,10 +327,14 @@ option(ANTS_SANITIZERS "Enable ASan+UBSan for debugging" OFF)
 if(ANTS_SANITIZERS)
     target_compile_options(ants_warnings INTERFACE
         -fsanitize=address,undefined -fno-omit-frame-pointer)
-    target_link_options(ants-terminal PRIVATE -fsanitize=address,undefined)
-    if(TARGET ants-helper)
-        target_link_options(ants-helper PRIVATE -fsanitize=address,undefined)
-    endif()
+    # Match link option to compile option: every consumer of ants_warnings
+    # (main exe + test bundles) needs the sanitizer runtime libs pulled in
+    # by the linker, otherwise STATIC-lib .o files instrumented with
+    # __asan_*/__ubsan_* calls fail to link with "undefined reference".
+    # Pre-1217 ANTS_SANITIZERS predated the STATIC-lib refactor; the
+    # global add_compile_options/add_link_options handled this implicitly.
+    target_link_options(ants_warnings INTERFACE
+        -fsanitize=address,undefined)
 endif()
 target_link_options(ants-terminal PRIVATE
     -Wl,-z,relro
