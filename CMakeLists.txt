@@ -49,65 +49,55 @@ endif()
 # ANTS_WAYLAND_LAYER_SHELL compile definition.
 find_package(LayerShellQt CONFIG QUIET)
 
-add_executable(ants-terminal
-    src/main.cpp
-    src/mainwindow.cpp
-    src/titlebar.cpp
-    src/terminalwidget.cpp
-    src/terminalgrid.cpp
-    src/vtparser.cpp
-    src/ptyhandler.cpp
-    src/vtstream.cpp
-    src/themes.cpp
-    src/config.cpp
-    src/commandpalette.cpp
-    src/coloredtabbar.cpp
-    src/sessionmanager.cpp
-    src/aidialog.cpp
-    src/sshdialog.cpp
-    src/settingsdialog.cpp
-    src/toggleswitch.cpp
-    src/aboutdialogs.cpp
-    src/auditdialog.cpp
-    src/auditengine.cpp
-    src/clipboardguard.cpp
-    src/audithygiene.cpp
-    src/featurecoverage.cpp
-    src/auditrulequality.cpp
-    src/kwinpositiontracker.cpp
-    src/claudeallowlist.cpp
-    src/claudebgtasks.cpp
-    src/claudebgtasksdialog.cpp
-    src/claudetasklist.cpp
-    src/claudetasklistdialog.cpp
-    src/roadmapdialog.cpp
-    src/claudeintegration.cpp
-    src/claudetabtracker.cpp
-    src/claudeprojects.cpp
-    src/claudetranscript.cpp
-    src/globalshortcutsportal.cpp
-    src/debuglog.cpp
-    src/dialogshowtracer.cpp
-    src/remotecontrol.cpp
-    src/diffviewer.cpp
-    src/claudestatuswidgets.cpp
-    src/themedstylesheet.cpp
-)
+# ---------------------------------------------------------------------------
+# Build-system infrastructure (ANTS-1217 Phase 1)
+# ---------------------------------------------------------------------------
+# Three knobs that compound the OOM-cure architecture (one main exe + a
+# small number of test bundles) with near-zero risk:
+#
+#   1. ccache as compiler launcher — re-configures and branch switches no
+#      longer recompile already-seen TUs; cc1plus is not invoked at all on
+#      a cache hit (zero RSS, zero time). CI runners are stateless so they
+#      don't benefit, but the workstation rebuild loop does.
+#   2. CMAKE_OPTIMIZE_DEPENDENCIES — when an internal STATIC library's
+#      interface (its public headers) didn't change, CMake skips re-linking
+#      dependents. Requires CMake ≥ 3.19; project mandates 3.20.
+#   3. JOB_POOLS (Ninja only — harmless under Make) — caps concurrent
+#      compile + link invocations even if the user passes -j$(nproc).
+#      Belt-and-suspenders against future regressions: the architectural
+#      fix removes the cause of the OOM, this prevents the consequence.
+#      `compile_pool=nproc-2` leaves 2 cores headroom for the OS.
+# ---------------------------------------------------------------------------
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    set(CMAKE_C_COMPILER_LAUNCHER   ${CCACHE_PROGRAM})
+    message(STATUS "ccache found at ${CCACHE_PROGRAM} — using as compiler launcher")
+endif()
 
-target_link_libraries(ants-terminal PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    Qt6::Network
-    Qt6::OpenGL
-    Qt6::OpenGLWidgets
-    Qt6::DBus
-    util
-)
+set(CMAKE_OPTIMIZE_DEPENDENCIES ON)
 
-target_include_directories(ants-terminal PRIVATE src)
+include(ProcessorCount)
+ProcessorCount(_ANTS_NPROC)
+if(_ANTS_NPROC LESS 4)
+    set(_ANTS_COMPILE_CAP ${_ANTS_NPROC})
+else()
+    math(EXPR _ANTS_COMPILE_CAP "${_ANTS_NPROC} - 2")
+endif()
+set_property(GLOBAL APPEND PROPERTY JOB_POOLS
+    compile_pool=${_ANTS_COMPILE_CAP}
+    link_pool=2)
+set(CMAKE_JOB_POOL_COMPILE compile_pool)
+set(CMAKE_JOB_POOL_LINK    link_pool)
+message(STATUS "Build job pools: compile=${_ANTS_COMPILE_CAP} link=2 (host nproc=${_ANTS_NPROC})")
 
-# Compiler warnings (required by STANDARDS.md)
+# ---------------------------------------------------------------------------
+# Shared compile-flag interface (ANTS-1217 Phase 1)
+# ---------------------------------------------------------------------------
+# INTERFACE library carrying the warning + hardening flag set so every
+# consumer (libs + main exe + test bundles) compiles with identical
+# flags. Single source of truth — flag drift breaks loudly at PCH-validation
+# time rather than silently producing different ABIs across libs/exe.
 #
 # -Wformat=2 upgrades -Wformat to include non-literal format strings, %n usage,
 # and missing-argument diagnostics — catches the same class of bug the audit
@@ -124,19 +114,191 @@ target_include_directories(ants-terminal PRIVATE src)
 # -Wconversion / -Wsign-conversion are noisy by nature; kept OFF for now to
 # avoid drowning real findings. Flip on individually when a quiet pass is
 # worth it (see ROADMAP: "Tighten narrowing conversions").
-target_compile_options(ants-terminal PRIVATE
+#
+# -gsplit-dwarf (Debug only) writes per-TU debug info to .dwo files instead
+# of embedding into .o. The linker no longer reads/relocates hundreds of MiB
+# of debug strings, cutting linker peak RSS 30–50%. Release builds keep the
+# standard format so distro debuginfo packaging is unchanged.
+add_library(ants_warnings INTERFACE)
+target_compile_options(ants_warnings INTERFACE
     -Wall -Wextra -Wpedantic
     -Wformat=2 -Wformat-security
     -Wshadow=local -Wnull-dereference
-)
-
-# Security hardening
-target_compile_options(ants-terminal PRIVATE
+    # Security hardening
     -fstack-protector-strong
     -fstack-clash-protection
     -fcf-protection
-    $<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3>
+    $<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE>
+    $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=3>
     -D_GLIBCXX_ASSERTIONS
+    # Smaller debug info on Debug builds → lower linker RSS
+    $<$<CONFIG:Debug>:-gsplit-dwarf>
+)
+
+# ---------------------------------------------------------------------------
+# Source libraries (ANTS-1217 Phase 1)
+# ---------------------------------------------------------------------------
+# Six mandatory + two conditional STATIC libraries. Each src/*.cpp compiles
+# ONCE for the whole build (was: 1× for ants-terminal + N× for tests that
+# linked it). The libs declare their Qt link surface PUBLIC so consumers
+# (the main exe and future test bundles) inherit transitively.
+#
+# Layering (PUBLIC = transitive, PRIVATE = lib-internal):
+#
+#   ants_core_lib    ← config / debuglog / IPC / session / PTY foundations
+#   ants_vt_lib      ← parser + grid + widget + themes (depends on core)
+#   ants_chrome_lib  ← mainwindow + tabbar + palette (depends on vt)
+#   ants_claude_lib  ← Claude Code integration (depends on chrome)
+#   ants_audit_lib   ← audit dialog + engine + hygiene (depends on core)
+#   ants_dialogs_lib ← settings/about/diff/ssh/etc. (depends on chrome)
+#   ants_lua_lib     ← only if LUA_FOUND
+#   ants_helper_lib  ← only if ANTS_ENABLE_HELPER_CLI
+add_library(ants_core_lib STATIC
+    src/config.cpp
+    src/debuglog.cpp
+    src/clipboardguard.cpp
+    src/remotecontrol.cpp
+    src/themedstylesheet.cpp
+    src/globalshortcutsportal.cpp
+    src/dialogshowtracer.cpp
+    src/kwinpositiontracker.cpp
+    src/sessionmanager.cpp
+    src/ptyhandler.cpp
+    src/vtstream.cpp
+)
+target_link_libraries(ants_core_lib
+    PUBLIC  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::DBus util
+    PRIVATE ants_warnings)
+target_include_directories(ants_core_lib PUBLIC src)
+set_target_properties(ants_core_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(ants_vt_lib STATIC
+    src/vtparser.cpp
+    src/terminalgrid.cpp
+    src/terminalwidget.cpp
+    src/themes.cpp
+)
+target_link_libraries(ants_vt_lib
+    PUBLIC  ants_core_lib Qt6::OpenGL Qt6::OpenGLWidgets
+    PRIVATE ants_warnings)
+set_target_properties(ants_vt_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(ants_chrome_lib STATIC
+    src/mainwindow.cpp
+    src/titlebar.cpp
+    src/coloredtabbar.cpp
+    src/commandpalette.cpp
+)
+target_link_libraries(ants_chrome_lib
+    PUBLIC  ants_vt_lib
+    PRIVATE ants_warnings)
+set_target_properties(ants_chrome_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(LayerShellQt_FOUND)
+    target_link_libraries(ants_chrome_lib PRIVATE LayerShellQt::Interface)
+    target_compile_definitions(ants_chrome_lib PRIVATE ANTS_WAYLAND_LAYER_SHELL=1)
+endif()
+# mainwindow.cpp gates Lua-related slots and members on ANTS_LUA_PLUGINS;
+# a handful of call sites also reference those symbols unconditionally
+# (e.g. rebuildCommandPalette() at line 411). Pre-1217 the define was
+# attached to the monolithic ants-terminal target so mainwindow.cpp
+# always saw it. Carry the same semantics forward by applying it to
+# the chrome lib when LUA_FOUND. mainwindow.cpp cleanup is out of
+# Phase 1 scope.
+if(LUA_FOUND)
+    target_compile_definitions(ants_chrome_lib PUBLIC ANTS_LUA_PLUGINS=1)
+endif()
+
+add_library(ants_claude_lib STATIC
+    src/claudeintegration.cpp
+    src/claudeallowlist.cpp
+    src/claudestatuswidgets.cpp
+    src/claudetabtracker.cpp
+    src/claudetranscript.cpp
+    src/claudeprojects.cpp
+    src/claudebgtasks.cpp
+    src/claudebgtasksdialog.cpp
+    src/claudetasklist.cpp
+    src/claudetasklistdialog.cpp
+)
+target_link_libraries(ants_claude_lib
+    PUBLIC  ants_chrome_lib
+    PRIVATE ants_warnings)
+set_target_properties(ants_claude_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(ants_audit_lib STATIC
+    src/auditdialog.cpp
+    src/auditengine.cpp
+    src/audithygiene.cpp
+    src/featurecoverage.cpp
+    src/auditrulequality.cpp
+)
+target_link_libraries(ants_audit_lib
+    PUBLIC  ants_core_lib
+    PRIVATE ants_warnings)
+set_target_properties(ants_audit_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(ants_dialogs_lib STATIC
+    src/settingsdialog.cpp
+    src/roadmapdialog.cpp
+    src/diffviewer.cpp
+    src/sshdialog.cpp
+    src/aidialog.cpp
+    src/aboutdialogs.cpp
+    src/toggleswitch.cpp
+)
+target_link_libraries(ants_dialogs_lib
+    PUBLIC  ants_chrome_lib
+    PRIVATE ants_warnings)
+set_target_properties(ants_dialogs_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+if(LUA_FOUND)
+    add_library(ants_lua_lib STATIC
+        src/luaengine.cpp
+        src/pluginmanager.cpp
+    )
+    target_link_libraries(ants_lua_lib
+        PUBLIC  ants_core_lib ${LUA_LIBRARIES}
+        PRIVATE ants_warnings)
+    target_include_directories(ants_lua_lib PUBLIC ${LUA_INCLUDE_DIRS})
+    target_compile_definitions(ants_lua_lib PUBLIC ANTS_LUA_PLUGINS=1)
+    set_target_properties(ants_lua_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    message(STATUS "Lua ${LUA_VERSION} found — plugin system enabled")
+else()
+    message(STATUS "Lua 5.4 not found — plugin system disabled")
+endif()
+
+if(LayerShellQt_FOUND)
+    message(STATUS "LayerShellQt found — Wayland-native Quake-mode enabled")
+else()
+    message(STATUS "LayerShellQt not found — Quake-mode on Wayland falls back to the Qt toplevel path")
+endif()
+
+# ---------------------------------------------------------------------------
+# Main executable (ANTS-1217 Phase 1)
+# ---------------------------------------------------------------------------
+# Just main.cpp — every other src/*.cpp is in a STATIC library above and is
+# reached transitively through target_link_libraries.
+add_executable(ants-terminal src/main.cpp)
+target_link_libraries(ants-terminal PRIVATE
+    ants_core_lib
+    ants_vt_lib
+    ants_chrome_lib
+    ants_claude_lib
+    ants_audit_lib
+    ants_dialogs_lib
+    $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+    ants_warnings
+)
+
+# Precompile Qt aggregate headers. Qt headers dominate per-TU compile cost
+# (~200-300 MiB working set in cc1plus) and are pulled in by nearly every
+# .cpp under src/. PCH cuts that 30-50%, which keeps the build under
+# RAM+swap on 32 GiB hosts as the source tree grows. Aggregate headers
+# (no individual classes) so the PCH stays valid across edits.
+target_precompile_headers(ants-terminal PRIVATE
+    <QtCore/QtCore>
+    <QtGui/QtGui>
+    <QtWidgets/QtWidgets>
 )
 
 # ANTS-1116 v1 — optional `ants-helper` CLI binary. Default OFF
@@ -145,22 +307,30 @@ option(ANTS_ENABLE_HELPER_CLI
     "Build the ants-helper local-subagent CLI binary (ANTS-1116 v1)"
     OFF)
 if(ANTS_ENABLE_HELPER_CLI)
-    add_executable(ants-helper
-        src/antshelpermain.cpp
-        src/antshelper.cpp
-    )
-    target_link_libraries(ants-helper PRIVATE Qt6::Core)
-    target_include_directories(ants-helper PRIVATE src)
-    target_compile_options(ants-helper PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
+    add_library(ants_helper_lib STATIC src/antshelper.cpp)
+    target_link_libraries(ants_helper_lib
+        PUBLIC  Qt6::Core
+        PRIVATE ants_warnings)
+    target_include_directories(ants_helper_lib PUBLIC src)
+    set_target_properties(ants_helper_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    add_executable(ants-helper src/antshelpermain.cpp)
+    target_link_libraries(ants-helper PRIVATE ants_helper_lib ants_warnings)
 endif()
 
-# Sanitizer support (development builds)
+# Sanitizer support (development builds). Applied via the shared
+# ants_warnings INTERFACE so every lib + the main exe pick it up
+# consistently. The link side still attaches to the executable directly
+# because INTERFACE link options on a chain of STATIC libs only reach
+# the final consumer.
 option(ANTS_SANITIZERS "Enable ASan+UBSan for debugging" OFF)
 if(ANTS_SANITIZERS)
-    target_compile_options(ants-terminal PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_compile_options(ants_warnings INTERFACE
+        -fsanitize=address,undefined -fno-omit-frame-pointer)
     target_link_options(ants-terminal PRIVATE -fsanitize=address,undefined)
+    if(TARGET ants-helper)
+        target_link_options(ants-helper PRIVATE -fsanitize=address,undefined)
+    endif()
 endif()
 target_link_options(ants-terminal PRIVATE
     -Wl,-z,relro
@@ -168,32 +338,6 @@ target_link_options(ants-terminal PRIVATE
     -Wl,-z,noexecstack
 )
 set_target_properties(ants-terminal PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-# Lua plugin system (optional)
-if(LUA_FOUND)
-    target_sources(ants-terminal PRIVATE
-        src/luaengine.cpp
-        src/pluginmanager.cpp
-    )
-    target_include_directories(ants-terminal PRIVATE ${LUA_INCLUDE_DIRS})
-    target_link_libraries(ants-terminal PRIVATE ${LUA_LIBRARIES})
-    target_compile_definitions(ants-terminal PRIVATE ANTS_LUA_PLUGINS=1)
-    message(STATUS "Lua ${LUA_VERSION} found — plugin system enabled")
-else()
-    message(STATUS "Lua 5.4 not found — plugin system disabled")
-endif()
-
-# LayerShellQt Wayland anchoring (optional). Added in 0.6.38 for the
-# Wayland-native Quake-mode roadmap item. Opt-in via the runtime platform
-# check in mainwindow.cpp — builds without it still ship a working Quake
-# mode on X11 (via _NET_WM_STATE_ABOVE) and a degraded one on Wayland.
-if(LayerShellQt_FOUND)
-    target_link_libraries(ants-terminal PRIVATE LayerShellQt::Interface)
-    target_compile_definitions(ants-terminal PRIVATE ANTS_WAYLAND_LAYER_SHELL=1)
-    message(STATUS "LayerShellQt found — Wayland-native Quake-mode enabled")
-else()
-    message(STATUS "LayerShellQt not found — Quake-mode on Wayland falls back to the Qt toplevel path")
-endif()
 
 include(GNUInstallDirs)
 
@@ -264,7 +408,14 @@ install(FILES packaging/shell-integration/ants-osc133.bash
 # fixture tree and asserts the expected match counts. Keeps the rule
 # regexes in sync with src/auditdialog.cpp; CI runs `ctest` after the
 # build to catch drift.
-option(ANTS_TESTS "Build tests (includes audit rule regression tests)" ON)
+#
+# Default OFF since 2026-05-09: each tests/features/<dir>/test_*.cpp is
+# its own add_executable with its own Qt MOC autogen + link step. With
+# 141 test targets, a default `cmake --build build` peaks above
+# RAM+swap on 32 GiB hosts and trips earlyoom (mid-build kills lose the
+# main exe link). CI and packaging pass `-DANTS_TESTS=ON` explicitly;
+# local dev opts in via reconfigure or a separate build-tests/ tree.
+option(ANTS_TESTS "Build tests (includes audit rule regression tests)" OFF)
 if(ANTS_TESTS)
     enable_testing()
     add_test(NAME audit_rule_fixtures

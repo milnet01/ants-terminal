@@ -160,12 +160,15 @@ int main() {
              "(missing QUIET means noisy warnings on distros without devel)");
     }
     // And when found, the LayerShellQt::Interface target must be linked
-    // to ants-terminal.
+    // somewhere in the chain that reaches mainwindow.cpp. Pre-ANTS-1217
+    // the link site was `ants-terminal`; since the STATIC-library
+    // refactor it is `ants_chrome_lib` (which owns mainwindow.cpp).
+    // Accept either to keep the contract robust to internal rearrangement.
     std::regex linkTarget(
-        R"(target_link_libraries\s*\(\s*ants-terminal\s+PRIVATE\s+LayerShellQt::Interface\s*\))");
+        R"(target_link_libraries\s*\(\s*(?:ants-terminal|ants_chrome_lib)\s+PRIVATE\s+LayerShellQt::Interface\s*\))");
     if (!std::regex_search(cmake, linkTarget)) {
         fail("CMakeLists.txt does not link LayerShellQt::Interface to "
-             "ants-terminal under if(LayerShellQt_FOUND)");
+             "ants-terminal or ants_chrome_lib under if(LayerShellQt_FOUND)");
     }
 
     if (failures) {
