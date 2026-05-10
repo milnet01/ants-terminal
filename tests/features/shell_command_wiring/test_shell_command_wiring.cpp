@@ -25,6 +25,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -182,18 +183,16 @@ void checkI4() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-
-    checkI1();
+TEST(ShellCommandWiring, Main) {    checkI1();
     checkI2();
     checkI3();
     checkI4();
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }
+

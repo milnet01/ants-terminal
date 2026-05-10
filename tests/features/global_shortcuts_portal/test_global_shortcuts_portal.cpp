@@ -7,6 +7,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_PORTAL_HEADER_PATH
 #error "SRC_PORTAL_HEADER_PATH compile definition required"
@@ -31,7 +32,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+TEST(GlobalShortcutsPortal, Main) {
     const std::string hdr   = slurp(SRC_PORTAL_HEADER_PATH);
     const std::string impl  = slurp(SRC_PORTAL_IMPL_PATH);
     const std::string mw    = slurp(SRC_MAINWINDOW_PATH);
@@ -145,8 +146,9 @@ int main() {
 
     if (failures) {
         std::fprintf(stderr, "\n%d assertion(s) failed\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("global_shortcuts_portal: OK\n");
-    return 0;
+    return;
 }
+

@@ -12,6 +12,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAINWINDOW_PATH
 #error "SRC_MAINWINDOW_PATH compile definition required"
@@ -47,7 +48,7 @@ static std::string extractBlockAfter(const std::string &src, const std::string &
     return src.substr(bracePos, i - bracePos);
 }
 
-int main() {
+TEST(FocusRedirectMenuGuard, Main) {
     const std::string mw = slurp(SRC_MAINWINDOW_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -67,7 +68,7 @@ int main() {
     if (outerBlock.empty()) {
         fail("mainwindow.cpp missing focusChanged connect() — the redirect handler "
              "has been removed or renamed; adjust this test if the refactor was intentional");
-        return failures ? 1 : 0;
+        if (failures) { FAIL(); } else { return; }
     }
 
     // INV-1: queue-time activePopupWidget guard. Present in the outer
@@ -75,7 +76,7 @@ int main() {
     auto singleShotPos = outerBlock.find("QTimer::singleShot");
     if (singleShotPos == std::string::npos) {
         fail("focusChanged lambda missing QTimer::singleShot fire-time block");
-        return failures ? 1 : 0;
+        if (failures) { FAIL(); } else { return; }
     }
     const std::string queueTimePart = outerBlock.substr(0, singleShotPos);
     const std::string fireTimePart  = outerBlock.substr(singleShotPos);
@@ -136,8 +137,9 @@ int main() {
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: all focus-redirect menu/popup guards present\n");
-    return 0;
+    return;
 }
+

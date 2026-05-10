@@ -7,6 +7,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_TERMINALWIDGET_HEADER_PATH
 #error "SRC_TERMINALWIDGET_HEADER_PATH compile definition required"
@@ -31,7 +32,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+TEST(Osc133LastCommand, Main) {
     const std::string hdr   = slurp(SRC_TERMINALWIDGET_HEADER_PATH);
     const std::string impl  = slurp(SRC_TERMINALWIDGET_IMPL_PATH);
     const std::string mw    = slurp(SRC_MAINWINDOW_PATH);
@@ -66,7 +67,8 @@ int main() {
     // match navigatePrompt's similar backwards loop.
     std::smatch copyBlock;
     std::regex copyMethodRegex(
-        R"(int\s+TerminalWidget::copyLastCommandOutput\s*\([\s\S]*?^\})",
+        R"(int\s+TerminalWidget::copyLastCommandOutput\s*\([\s\S]*?^\}
+)",
         std::regex::multiline);
     std::regex rerunMethodRegex(
         R"(int\s+TerminalWidget::rerunLastCommand\s*\([\s\S]*?^\})",
@@ -131,8 +133,8 @@ int main() {
 
     if (failures == 0) {
         std::fprintf(stdout, "OK: osc133_last_command invariants hold\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "osc133_last_command: %d failure(s)\n", failures);
-    return 1;
+    FAIL();
 }

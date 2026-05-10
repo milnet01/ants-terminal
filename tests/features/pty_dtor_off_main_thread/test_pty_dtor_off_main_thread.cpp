@@ -19,6 +19,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_PTYHANDLER_CPP_PATH
 #  error "SRC_PTYHANDLER_CPP_PATH compile definition required"
@@ -81,7 +82,7 @@ std::string extractDtor(const std::string &src) {
 
 }  // namespace
 
-int main() {
+TEST(PtyDtorOffMainThread, Main) {
     const std::string src = slurp(SRC_PTYHANDLER_CPP_PATH);
     const std::string dtor = extractDtor(src);
     expect(!dtor.empty(), "extract/dtor-body-found");
@@ -154,8 +155,9 @@ int main() {
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }
+

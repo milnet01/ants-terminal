@@ -11,6 +11,7 @@
 #include <QString>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -48,10 +49,7 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-
-    const QString configH = readFileOrFail(SRC_CONFIG_H_PATH);
+TEST(ConfirmCloseWithProcesses, Main) {    const QString configH = readFileOrFail(SRC_CONFIG_H_PATH);
     const QString configCpp = readFileOrFail(SRC_CONFIG_CPP_PATH);
     const QString mwCpp = readFileOrFail(SRC_MAINWINDOW_PATH);
     const QString sdH = readFileOrFail(SRC_SETTINGSDIALOG_H_PATH);
@@ -59,7 +57,7 @@ int main(int argc, char **argv) {
 
     if (configH.isEmpty() || configCpp.isEmpty() || mwCpp.isEmpty()
             || sdH.isEmpty() || sdCpp.isEmpty()) {
-        return 1;
+        FAIL();
     }
 
     // INV-1: declarations in config.h
@@ -186,8 +184,9 @@ int main(int argc, char **argv) {
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }
+

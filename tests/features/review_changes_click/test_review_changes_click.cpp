@@ -44,6 +44,7 @@
 #include <QTimer>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -60,7 +61,7 @@ int failures = 0;
 // parent produces an active dialog. This is the direct counterpart
 // of the showDiffViewer fix — we're asserting the API contract the
 // fix relies on.
-void testDialogBecomesActiveAfterRaiseActivate() {
+TEST(ReviewChangesClick, DialogBecomesActiveAfterRaiseActivate) {
     QMainWindow win;
     // Match the MainWindow flag at mainwindow.cpp:74 — Qt::FramelessWindowHint
     // is the environmental condition that makes raise/activate necessary
@@ -101,7 +102,7 @@ void testDialogBecomesActiveAfterRaiseActivate() {
 // captures a pointer to the background widget and, at firing time,
 // must consult QApplication::activeWindow() — if it's a QDialog other
 // than the background widget's own window, skip the refocus.
-void testQueuedRefocusSkippedWhenDialogActive() {
+TEST(ReviewChangesClick, QueuedRefocusSkippedWhenDialogActive) {
     QMainWindow win;
     win.setWindowFlag(Qt::FramelessWindowHint);
     win.resize(800, 600);
@@ -201,13 +202,14 @@ void testQueuedRefocusSkippedWhenDialogActive() {
 // and spinning up an entire MainWindow for a dialog visibility check
 // is disproportionate. The grep binds the test to the fix site
 // directly with minimal friction.
-void testShowDiffViewerCallsRaiseAndActivate() {
+TEST(ReviewChangesClick, ShowDiffViewerCallsRaiseAndActivate) {
     // ANTS-1145 (0.7.73): the dialog construction body lives in
     // src/diffviewer.cpp's `diffviewer::show(QWidget *, const
-    // QString &, const QString &)` after the carve-out. The CMake
-    // define `SRC_MAINWINDOW_PATH` is repointed at diffviewer.cpp
-    // — name preserved so the wiring noise stays small.
-    const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
+    // QString &, const QString &)` after the carve-out. ANTS-1217
+    // Phase 3 renamed the compile define to SRC_DIFFVIEWER_CPP_PATH
+    // so the test_chrome bundle can give SRC_MAINWINDOW_PATH its
+    // natural value.
+    const QString path = QStringLiteral(SRC_DIFFVIEWER_CPP_PATH);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         std::fprintf(stderr,
@@ -261,7 +263,7 @@ void testShowDiffViewerCallsRaiseAndActivate() {
 // queued refocus MUST still fire — we haven't broken the original
 // 0.6.26 behavior that returns focus to the terminal after a chrome
 // click.
-void testQueuedRefocusFiresWhenNoDialog() {
+TEST(ReviewChangesClick, QueuedRefocusFiresWhenNoDialog) {
     QMainWindow win;
     win.setWindowFlag(Qt::FramelessWindowHint);
     win.resize(800, 600);
@@ -301,18 +303,3 @@ void testQueuedRefocusFiresWhenNoDialog() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QApplication app(argc, argv);
-
-    testDialogBecomesActiveAfterRaiseActivate();
-    testShowDiffViewerCallsRaiseAndActivate();
-    testQueuedRefocusSkippedWhenDialogActive();
-    testQueuedRefocusFiresWhenNoDialog();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", failures);
-        return 1;
-    }
-    std::fprintf(stderr, "All Review Changes click invariants hold.\n");
-    return 0;
-}

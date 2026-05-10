@@ -13,6 +13,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAINWINDOW_PATH
 #error "SRC_MAINWINDOW_PATH compile definition required"
@@ -31,7 +32,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+TEST(WaylandQuakeMode, Main) {
     const std::string mw = slurp(SRC_MAINWINDOW_PATH);
     const std::string cmake = slurp(SRC_CMAKELISTS_PATH);
     int failures = 0;
@@ -173,8 +174,8 @@ int main() {
 
     if (failures) {
         std::fprintf(stderr, "\n%d assertion(s) failed\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("wayland_quake_mode: OK\n");
-    return 0;
+    return;
 }

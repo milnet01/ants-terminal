@@ -14,6 +14,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -48,7 +49,7 @@ void must(bool ok, const char *msg) {
 
 }  // namespace
 
-int main() {
+TEST(RoadmapStatusBarRefresh, Main) {
     const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
     const std::string sb = slurp(DOCS_STATUS_BAR_STANDARD_PATH);
 
@@ -131,5 +132,6 @@ int main() {
          "INV-5c: status-bar.md mentions singleShot(0)");
 
     std::cout << "PASS\n";
-    return 0;
+    return;
 }
+

@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -28,9 +29,8 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
+void fail(const char *label, const char *why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 // Extract the body of TerminalWidget::wheelEvent — from its
@@ -51,7 +51,7 @@ std::string functionBody(const std::string &src, const std::string &openSig) {
 
 }  // namespace
 
-int main() {
+TEST(ScrollSnapshotIntent, Main) {
     const std::string src = slurp(TERMINALWIDGET_CPP);
     if (src.empty()) return fail("setup", "terminalwidget.cpp not readable");
 
@@ -123,5 +123,6 @@ int main() {
 
     std::fprintf(stderr,
         "OK — scroll snapshot intent INVs hold.\n");
-    return 0;
+    return;
 }
+

@@ -20,6 +20,7 @@
 #include <QString>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -175,18 +176,16 @@ void checkI4I5() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-
-    checkI1();
+TEST(TabRenamePersist, Main) {    checkI1();
     checkI2();
     checkI3();
     checkI4I5();
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }
+

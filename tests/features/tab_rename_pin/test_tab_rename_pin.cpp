@@ -11,6 +11,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAINWINDOW_CPP
 #error "SRC_MAINWINDOW_CPP compile definition required"
@@ -60,7 +61,7 @@ static std::string extractBracedBody(const std::string &src, size_t openBracePos
     return {};
 }
 
-int main() {
+TEST(TabRenamePin, Main) {
     const std::string mw = slurp(SRC_MAINWINDOW_CPP);
 
     int failures = 0;
@@ -78,7 +79,7 @@ int main() {
         fail("INV-4a: context-menu action \"Rename Tab...\" missing — if it "
              "moved to a different wording, update this test + spec together");
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
 
     // Locate the editingFinished connect within the following ~3 KiB.
@@ -195,8 +196,8 @@ int main() {
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: tab_rename_pin invariants present\n");
-    return 0;
+    return;
 }

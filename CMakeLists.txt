@@ -670,170 +670,6 @@ if(ANTS_TESTS)
         TIMEOUT 10
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-    # shell_command_wiring — asserts the Settings → General shell picker
-    # actually takes effect: TerminalWidget::startShell carries a shell
-    # param, forwards it to VtStream::start (instead of hardcoded
-    # QString()), and every MainWindow production call site passes
-    # m_config.shellCommand(). Plus a Config round-trip for the
-    # serialization leg. Pure source-grep + Config round-trip; no PTY
-    # fork, no widget harness. See
-    # tests/features/shell_command_wiring/spec.md.
-    add_executable(test_shell_command_wiring
-        tests/features/shell_command_wiring/test_shell_command_wiring.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_shell_command_wiring PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_shell_command_wiring PRIVATE src)
-    target_compile_options(test_shell_command_wiring PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_shell_command_wiring PRIVATE
-        SRC_TERMINALWIDGET_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
-        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME shell_command_wiring COMMAND test_shell_command_wiring)
-    set_tests_properties(shell_command_wiring PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # tab_rename_persist — asserts the right-click "Rename Tab…" pin
-    # survives app restart. V3 session-file schema: pinnedTitle is
-    # appended after cwd; V2 files continue to load with the out-param
-    # left empty. MainWindow saveAllSessions threads the pin into
-    # saveSession; restoreSessions pulls it back and populates
-    # m_tabTitlePins so the titleChanged handler and updateTabTitles
-    # tick both honor it after restart. See
-    # tests/features/tab_rename_persist/spec.md.
-    add_executable(test_tab_rename_persist
-        tests/features/tab_rename_persist/test_tab_rename_persist.cpp
-        src/sessionmanager.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_tab_rename_persist PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_tab_rename_persist PRIVATE src)
-    target_compile_options(test_tab_rename_persist PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_tab_rename_persist PRIVATE
-        SRC_SESSIONMANAGER_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/sessionmanager.h"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME tab_rename_persist COMMAND test_tab_rename_persist)
-    set_tests_properties(tab_rename_persist PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # status_bar_elision — asserts ElidedLabel's elision policy:
-    # short text never elides, over-cap text does, and minimumSizeHint
-    # returns at least the full-text width (capped at maximumWidth) so
-    # QStatusBar's QBoxLayout can't squeeze a short-text chip down to
-    # "…". Guards the 0.6.29 regression fix for the git branch chip
-    # user-reported as rendering "…" instead of "main". ElidedLabel is
-    # header-only, so no src/*.cpp is linked — the test exercises the
-    # widget directly inside a QMainWindow+QStatusBar harness to
-    # reproduce the tight-layout squeeze. Needs Qt6::Widgets because
-    # we instantiate a real QMainWindow/QStatusBar. Runs under
-    # QT_QPA_PLATFORM=offscreen in CI so no display is required. See
-    # tests/features/status_bar_elision/spec.md.
-    add_executable(test_status_bar_elision
-        tests/features/status_bar_elision/test_status_bar_elision.cpp
-    )
-    target_link_libraries(test_status_bar_elision PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_status_bar_elision PRIVATE src)
-    target_compile_options(test_status_bar_elision PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME status_bar_elision COMMAND test_status_bar_elision)
-    set_tests_properties(status_bar_elision PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-
-    # review_changes_click — asserts the two API-level invariants that
-    # make the Review Changes status-bar button produce a visible
-    # dialog:
-    #   (A) QDialog on a frameless QMainWindow parent needs show() +
-    #       raise() + activateWindow() to reliably become the active
-    #       window — show() alone is WM-dependent and flaky on KWin.
-    #   (B) The focus-redirect lambda at mainwindow.cpp:~411 queues a
-    #       deferred setFocus() on the terminal when status-bar chrome
-    #       takes focus; the fire-time re-check must skip the refocus
-    #       when a QDialog has since become active, so the dialog's
-    #       input focus isn't stolen (which would re-raise the main
-    #       window over it on KWin).
-    # Regression test for user report "Review Changes button does
-    # nothing when I click it" — the button IS active and git DOES
-    # detect changes, but the dialog was created behind the main
-    # window. See tests/features/review_changes_click/spec.md.
-    # Pure API-level harness — no src/*.cpp linked; topology is
-    # reproduced with QMainWindow + QStatusBar + QDialog + QTimer.
-    add_executable(test_review_changes_click
-        tests/features/review_changes_click/test_review_changes_click.cpp
-    )
-    target_link_libraries(test_review_changes_click PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_review_changes_click PRIVATE src)
-    target_compile_options(test_review_changes_click PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    # Production-binding check: the test opens src/mainwindow.cpp at
-    # runtime to verify the dialog construction still calls raise() and
-    # activateWindow(). Bake the absolute source path in at compile
-    # time so the test runs correctly from the build directory.
-    # ANTS-1145 (0.7.73): repointed at src/diffviewer.cpp where the
-    # dialog body lives post-extraction; SRC_MAINWINDOW_PATH name
-    # kept so the test source's reference doesn't churn.
-    target_compile_definitions(test_review_changes_click PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.cpp"
-    )
-    add_test(NAME review_changes_click COMMAND test_review_changes_click)
-    set_tests_properties(review_changes_click PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-
-    # tab_color — asserts ColoredTabBar stores per-tab colours via
-    # QTabBar::tabData so they survive drag-reorder (moveTab) and
-    # auto-drop on removeTab. Guards the 0.6.23 fix for "right-click
-    # tab, choose colour, nothing happens" which was caused by
-    # stylesheet winning over setTabTextColor AND by index-keyed
-    # MainWindow storage going stale on reorder. See
-    # tests/features/tab_color/spec.md.
-    add_executable(test_tab_color
-        tests/features/tab_color/test_tab_color.cpp
-        src/coloredtabbar.cpp
-        src/config.cpp
-        src/debuglog.cpp  # 0.7.12: config.cpp logs load/save failures via ANTS_LOG
-    )
-    target_link_libraries(test_tab_color PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_tab_color PRIVATE src)
-    target_compile_options(test_tab_color PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME tab_color COMMAND test_tab_color)
-    set_tests_properties(tab_color PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # session_persistence_default — locks in the 0.6.43 fix that flipped
     # Config::sessionPersistence()'s default from false → true. Pre-fix,
     # fresh users (no `session_persistence` key in config.json) silently
@@ -1035,76 +871,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # shift_enter_bracketed_paste — locks the 0.6.30 fix for "tab freezes
-    # after Shift+Enter". The 0.6.26 regression used
-    #     QByteArray("\x1B[200~\n\x1B[201~", 8)
-    # — a 13-byte literal with a hand-coded length of 8, dropping the
-    # closing [201~ end-paste marker and wedging the shell in bracketed-
-    # paste mode. Fix switched to QByteArrayLiteral(...) so size is
-    # coupled to the literal.
-    #
-    # The test exercises two invariants: (A) the exact byte sequences
-    # for both the bracketed-paste and fallback paths, and (B) a
-    # source-level inspection of src/terminalwidget.cpp proving the
-    # Shift+Enter handler still uses the size-coupled literal form and
-    # gates on !(mods & ControlModifier). (B) is the direct regression
-    # guard for the specific bug class — no QByteArray(literal, <num>)
-    # forms may remain. Pure text + regex inspection; no TerminalWidget
-    # instantiation (that class is QOpenGLWidget + live PTY + GL
-    # renderer, far too heavy for a fast feature test).
-    # See tests/features/shift_enter_bracketed_paste/spec.md.
-    add_executable(test_shift_enter_bracketed_paste
-        tests/features/shift_enter_bracketed_paste/test_shift_enter.cpp
-    )
-    target_link_libraries(test_shift_enter_bracketed_paste PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_shift_enter_bracketed_paste PRIVATE src)
-    target_compile_options(test_shift_enter_bracketed_paste PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    # Bake the absolute source path in at compile time so the test can
-    # open src/terminalwidget.cpp from the build directory — matches
-    # the pattern used by allowlist_add and review_changes_click.
-    target_compile_definitions(test_shift_enter_bracketed_paste PRIVATE
-        SRC_TERMINALWIDGET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-    )
-    add_test(NAME shift_enter_bracketed_paste
-             COMMAND test_shift_enter_bracketed_paste)
-    set_tests_properties(shift_enter_bracketed_paste PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # review_changes_clickable — locks the user-reported click-does-nothing
-    # regression where refreshReviewButton's clean-repo branch left the
-    # status-bar button in the visible-but-disabled state. Qt's
-    # QAbstractButton swallows clicks on disabled buttons (no clicked()
-    # signal, so the 0.6.29 silent-return-with-flash guards in
-    # showDiffViewer never fire), and the global QPushButton:hover rule
-    # is not :enabled-gated, so the button still highlighted on hover —
-    # advertising itself as actionable while doing nothing. Source-grep
-    # against src/mainwindow.cpp; no MainWindow instantiation needed.
-    # See tests/features/review_changes_clickable/spec.md.
-    add_executable(test_review_changes_clickable
-        tests/features/review_changes_clickable/test_review_changes_clickable.cpp
-    )
-    target_link_libraries(test_review_changes_clickable PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_review_changes_clickable PRIVATE src)
-    target_compile_options(test_review_changes_clickable PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_review_changes_clickable PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.cpp"
-    )
-    add_test(NAME review_changes_clickable
-             COMMAND test_review_changes_clickable)
-    set_tests_properties(review_changes_clickable PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # ssh_control_master — locks the SSH ControlMaster auto-multiplexing
     # contract on SshBookmark::toSshCommand(bool). When controlMaster=true,
     # the built command must carry -o ControlMaster=auto / -o ControlPath=
@@ -1180,253 +946,6 @@ if(ANTS_TESTS)
     add_test(NAME threaded_resize_synchronous
              COMMAND test_threaded_resize_synchronous)
     set_tests_properties(threaded_resize_synchronous PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # wayland_quake_mode — locks the 0.6.38 Wayland-native Quake-mode
-    # invariants. Source-grep test (same pattern as
-    # threaded_resize_synchronous / shift_enter_bracketed_paste) asserting:
-    # (1) the <LayerShellQt/Window> include is guarded by
-    # ANTS_WAYLAND_LAYER_SHELL; (2) setupQuakeMode does a runtime
-    # platformName() dispatch and preserves the X11-path flags;
-    # (3) toggleQuakeVisibility skips the pos()-based animation on
-    # Wayland; (4) the constructor wires the quake_hotkey config key to a
-    # QShortcut invoking toggleQuakeVisibility (the config key was dead
-    # pre-0.6.38); (5) CMakeLists.txt uses find_package(LayerShellQt
-    # CONFIG QUIET) and links LayerShellQt::Interface when found.
-    # See tests/features/wayland_quake_mode/spec.md.
-    add_executable(test_wayland_quake_mode
-        tests/features/wayland_quake_mode/test_wayland_quake_mode.cpp
-    )
-    target_link_libraries(test_wayland_quake_mode PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_wayland_quake_mode PRIVATE src)
-    target_compile_options(test_wayland_quake_mode PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_wayland_quake_mode PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-    )
-    add_test(NAME wayland_quake_mode
-             COMMAND test_wayland_quake_mode)
-    set_tests_properties(wayland_quake_mode PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # global_shortcuts_portal — locks the 0.6.39 Freedesktop Portal
-    # GlobalShortcuts invariants. Source-grep test (same pattern as
-    # wayland_quake_mode) asserting: (1) MainWindow gates portal
-    # construction on isAvailable(); (2) canonical D-Bus service /
-    # path / interface / method literals appear verbatim in the impl;
-    # (3) MainWindow binds + matches the literal id "toggle-quake";
-    # (4) the 0.6.38 in-app QShortcut fallback stays wired; (5) both
-    # activation paths debounce via m_lastQuakeToggleMs; (6)
-    # CMakeLists.txt lists the source + keeps Qt6::DBus linked;
-    # (7) the header surfaces the expected public API.
-    # See tests/features/global_shortcuts_portal/spec.md.
-    add_executable(test_global_shortcuts_portal
-        tests/features/global_shortcuts_portal/test_global_shortcuts_portal.cpp
-    )
-    target_link_libraries(test_global_shortcuts_portal PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_global_shortcuts_portal PRIVATE src)
-    target_compile_options(test_global_shortcuts_portal PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_global_shortcuts_portal PRIVATE
-        SRC_PORTAL_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/globalshortcutsportal.h"
-        SRC_PORTAL_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/globalshortcutsportal.cpp"
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-    )
-    add_test(NAME global_shortcuts_portal
-             COMMAND test_global_shortcuts_portal)
-    set_tests_properties(global_shortcuts_portal PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # osc133_last_command — locks the 0.6.40 "copy last output / re-run
-    # last command" top-level actions. Source-grep style: verifies the
-    # two public API slots, the backwards-walk skip-in-progress-tail
-    # invariant, the deliberate outputTextAt choice over 100-line-capped
-    # lastCommandOutput, and the configurable keybindings with
-    # non-colliding defaults.
-    # See tests/features/osc133_last_command/spec.md.
-    add_executable(test_osc133_last_command
-        tests/features/osc133_last_command/test_osc133_last_command.cpp
-    )
-    target_link_libraries(test_osc133_last_command PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_osc133_last_command PRIVATE src)
-    target_compile_options(test_osc133_last_command PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_osc133_last_command PRIVATE
-        SRC_TERMINALWIDGET_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
-        SRC_TERMINALWIDGET_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-    )
-    add_test(NAME osc133_last_command
-             COMMAND test_osc133_last_command)
-    set_tests_properties(osc133_last_command PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # command_mark_gutter — locks the 0.6.41 gutter + portal-status UX.
-    # Source-grep: Config exposes show_command_marks (default true),
-    # TerminalWidget paints a scrollbar-adjacent gutter gated on the
-    # member + non-empty promptRegions(), three-state color branch
-    # (exit 0 / non-zero / in-progress), MainWindow propagates the
-    # toggle via applyConfigToTerminal, SettingsDialog surfaces both
-    # the checkbox and the portal-binding status label.
-    # See tests/features/command_mark_gutter/spec.md.
-    add_executable(test_command_mark_gutter
-        tests/features/command_mark_gutter/test_command_mark_gutter.cpp
-    )
-    target_link_libraries(test_command_mark_gutter PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_command_mark_gutter PRIVATE src)
-    target_compile_options(test_command_mark_gutter PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_command_mark_gutter PRIVATE
-        SRC_CONFIG_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.h"
-        SRC_CONFIG_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
-        SRC_TERMINALWIDGET_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
-        SRC_TERMINALWIDGET_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_SETTINGSDIALOG_HEADER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.h"
-        SRC_SETTINGSDIALOG_IMPL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-        SRC_CMAKELISTS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-    )
-    add_test(NAME command_mark_gutter
-             COMMAND test_command_mark_gutter)
-    set_tests_properties(command_mark_gutter PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # focus_redirect_menu_guard — locks the 2026-04-19 fix for the
-    # File/Edit/View menubar hover-flash. The focus-redirect lambda in
-    # mainwindow.cpp must early-return on popup-open AND when the cursor
-    # is over a QMenu/QMenuBar ancestor, at BOTH queue time and
-    # QTimer::singleShot fire time. Pure source grep.
-    # See tests/features/focus_redirect_menu_guard/spec.md.
-    add_executable(test_focus_redirect_menu_guard
-        tests/features/focus_redirect_menu_guard/test_focus_redirect_menu_guard.cpp
-    )
-    target_link_libraries(test_focus_redirect_menu_guard PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_focus_redirect_menu_guard PRIVATE src)
-    target_compile_options(test_focus_redirect_menu_guard PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_focus_redirect_menu_guard PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME focus_redirect_menu_guard
-             COMMAND test_focus_redirect_menu_guard)
-    set_tests_properties(focus_redirect_menu_guard PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # terminal_partial_update_mode — 0.7.4 follow-up. The dropdown-
-    # flicker root cause was QOpenGLWidget's default NoPartialUpdate
-    # mode cascading every terminal repaint into a full top-level
-    # repaint. Fix is a single setUpdateBehavior(PartialUpdate) call
-    # in the TerminalWidget constructor. See
-    # tests/features/terminal_partial_update_mode/spec.md.
-    add_executable(test_terminal_partial_update_mode
-        tests/features/terminal_partial_update_mode/test_terminal_partial_update_mode.cpp
-    )
-    target_compile_options(test_terminal_partial_update_mode PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_terminal_partial_update_mode PRIVATE
-        SRC_TERMINALWIDGET_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
-        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-    )
-    add_test(NAME terminal_partial_update_mode
-             COMMAND test_terminal_partial_update_mode)
-    set_tests_properties(terminal_partial_update_mode PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # menubar_hover_stylesheet — 0.7.4 / 0.7.25 / 0.7.26 fixes pinned.
-    # Pins that the menubar has an opaque background under a translucent-
-    # parent window AND that every hover pseudo-state is styled, so
-    # neither the hover flash nor the desktop-showing-through-menubar bug
-    # can re-emerge from drift. INV-8 (0.7.26) requires the m_menuBar to
-    # be an OpaqueMenuBar with a paintEvent fillRect — that's the only
-    # path Qt actually honors on KWin + Breeze + Qt 6 under
-    # WA_TranslucentBackground + WA_OpaquePaintEvent. See
-    # tests/features/menubar_hover_stylesheet/spec.md.
-    add_executable(test_menubar_hover_stylesheet
-        tests/features/menubar_hover_stylesheet/test_menubar_hover_stylesheet.cpp
-    )
-    target_compile_options(test_menubar_hover_stylesheet PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_menubar_hover_stylesheet PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_OPAQUEMENUBAR_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/opaquemenubar.h"
-        SRC_THEMEDSTYLESHEET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.cpp"
-    )
-    add_test(NAME menubar_hover_stylesheet
-             COMMAND test_menubar_hover_stylesheet)
-    set_tests_properties(menubar_hover_stylesheet PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # tabbar_statusbar_opaque — 0.7.36 fix. Same translucent-parent
-    # failure mode as menubar_hover_stylesheet INV-8 caught in two
-    # different bars: the tab bar's empty area (right of the last
-    # tab) and the entire status bar background were painting
-    # transparent under WA_TranslucentBackground. ColoredTabBar gained
-    # a setBackgroundFill + paintEvent fillRect, and a new header-only
-    # OpaqueStatusBar mirrors OpaqueMenuBar. See
-    # tests/features/tabbar_statusbar_opaque/spec.md.
-    add_executable(test_tabbar_statusbar_opaque
-        tests/features/tabbar_statusbar_opaque/test_tabbar_statusbar_opaque.cpp
-    )
-    target_compile_options(test_tabbar_statusbar_opaque PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_tabbar_statusbar_opaque PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_COLOREDTABBAR_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.cpp"
-        SRC_COLOREDTABBAR_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/coloredtabbar.h"
-        SRC_OPAQUESTATUSBAR_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/opaquestatusbar.h"
-    )
-    add_test(NAME tabbar_statusbar_opaque
-             COMMAND test_tabbar_statusbar_opaque)
-    set_tests_properties(tabbar_statusbar_opaque PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # sigpipe_ignore — 0.6.28 fix (bc97485). Locks the
-    # std::signal(SIGPIPE, SIG_IGN) call in main() that prevents a
-    # full-window crash when writing to a just-closed PTY. Source-grep
-    # test: re-read src/main.cpp and verify the call exists inside
-    # main() before the QApplication constructor, with <csignal>
-    # included. See tests/features/sigpipe_ignore/spec.md.
-    add_executable(test_sigpipe_ignore
-        tests/features/sigpipe_ignore/test_sigpipe_ignore.cpp
-    )
-    target_compile_options(test_sigpipe_ignore PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_sigpipe_ignore PRIVATE
-        SRC_MAIN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-    )
-    add_test(NAME sigpipe_ignore COMMAND test_sigpipe_ignore)
-    set_tests_properties(sigpipe_ignore PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -1800,64 +1319,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # pty_dtor_off_main_thread — 0.7.33 fix. Locks the destructor's
-    # detached std::thread for SIGTERM/SIGKILL escalation. Pre-fix
-    # window-close froze the GUI N×500ms when N split panes closed
-    # together. See tests/features/pty_dtor_off_main_thread/spec.md.
-    add_executable(test_pty_dtor_off_main_thread
-        tests/features/pty_dtor_off_main_thread/test_pty_dtor_off_main_thread.cpp
-    )
-    target_compile_options(test_pty_dtor_off_main_thread PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_pty_dtor_off_main_thread PRIVATE
-        SRC_PTYHANDLER_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/ptyhandler.cpp"
-    )
-    add_test(NAME pty_dtor_off_main_thread
-        COMMAND test_pty_dtor_off_main_thread)
-    set_tests_properties(pty_dtor_off_main_thread PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # styled_font_kerning_off — pins setKerning(false) discipline
-    # in setBold/Italic/BoldItalicFontFamily. ANTS-1198 from
-    # indie-review #3 — pre-fix setters bypassed updateFontMetrics()
-    # and inherited Qt-default kerning, drifting columns.
-    add_executable(test_styled_font_kerning_off
-        tests/features/styled_font_kerning_off/test_styled_font_kerning_off.cpp
-    )
-    target_compile_options(test_styled_font_kerning_off PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_styled_font_kerning_off PRIVATE
-        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-    )
-    add_test(NAME styled_font_kerning_off
-        COMMAND test_styled_font_kerning_off)
-    set_tests_properties(styled_font_kerning_off PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # portal_session_close — 0.7.33 fix. Locks the dtor + Session.Close
-    # async dispatch on the active portal session handle. Pre-fix the
-    # session leaked for the lifetime of xdg-desktop-portal. See
-    # tests/features/portal_session_close/spec.md.
-    add_executable(test_portal_session_close
-        tests/features/portal_session_close/test_portal_session_close.cpp
-    )
-    target_compile_options(test_portal_session_close PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_portal_session_close PRIVATE
-        SRC_PORTAL_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/globalshortcutsportal.h"
-        SRC_PORTAL_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/globalshortcutsportal.cpp"
-    )
-    add_test(NAME portal_session_close
-        COMMAND test_portal_session_close)
-    set_tests_properties(portal_session_close PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # plugin_manifest_safety — 0.7.33 fix. Locks the 1 MiB manifest
     # cap (OOM surface), QDir::NoSymLinks, canonical plugin root +
     # per-entry canonical-containment check (symlink escape). See
@@ -1874,79 +1335,6 @@ if(ANTS_TESTS)
     add_test(NAME plugin_manifest_safety
         COMMAND test_plugin_manifest_safety)
     set_tests_properties(plugin_manifest_safety PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # tab_close_button_visible — 0.7.32 user-feedback fix
-    # 2026-04-25: the tab × glyph was hover-only on Fusion / qt6ct /
-    # some Plasma colour schemes after the 0.6.27 platform-style
-    # fallback. Locks the explicit data-URI SVG `image: url(...)`
-    # rule and the URL-encoded `%23` arg-side splice that prevents
-    # Qt's CSS parser from truncating the data URI at the colour's
-    # `#`. See tests/features/tab_close_button_visible/spec.md.
-    add_executable(test_tab_close_button_visible
-        tests/features/tab_close_button_visible/test_tab_close_button_visible.cpp
-    )
-    target_compile_options(test_tab_close_button_visible PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_tab_close_button_visible PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.cpp"
-    )
-    add_test(NAME tab_close_button_visible
-        COMMAND test_tab_close_button_visible)
-    set_tests_properties(tab_close_button_visible PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # review_changes_branches — 0.7.32 fix. User feedback 2026-04-25:
-    # the Review Changes dialog only showed current-branch state.
-    # Locks the two new probes (for-each-ref + --branches --not
-    # --remotes), the matching ProbeState fields, the rendered
-    # sections, and the empty-state guard. See
-    # tests/features/review_changes_branches/spec.md.
-    add_executable(test_review_changes_branches
-        tests/features/review_changes_branches/test_review_changes_branches.cpp
-    )
-    target_compile_options(test_review_changes_branches PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    # ANTS-1145 (0.7.73): dialog body lives in src/diffviewer.cpp;
-    # SRC_MAINWINDOW_CPP_PATH define name preserved so the test
-    # source doesn't need to rename its include guard.
-    target_compile_definitions(test_review_changes_branches PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.cpp"
-    )
-    add_test(NAME review_changes_branches
-        COMMAND test_review_changes_branches)
-    set_tests_properties(review_changes_branches PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # review_changes_scroll_preserve — 0.7.37 fix. The 0.7.32 live-
-    # update path called setHtml unconditionally on every probe
-    # completion, snapping the QTextEdit scroll bar back to the top
-    # — on a long diff with active live updates the dialog became
-    # unscrollable. User report 2026-04-25. Locks the lastHtml cache,
-    # the skip-identical-render guard, and the
-    # capture-scroll-before-setHtml + restore-after pattern. See
-    # tests/features/review_changes_scroll_preserve/spec.md.
-    add_executable(test_review_changes_scroll_preserve
-        tests/features/review_changes_scroll_preserve/test_review_changes_scroll_preserve.cpp
-    )
-    target_compile_options(test_review_changes_scroll_preserve PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    # ANTS-1145 (0.7.73): dialog body lives in src/diffviewer.cpp;
-    # SRC_MAINWINDOW_CPP_PATH define name preserved so the test
-    # source doesn't need to rename its include guard.
-    target_compile_definitions(test_review_changes_scroll_preserve PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/diffviewer.cpp"
-    )
-    add_test(NAME review_changes_scroll_preserve
-        COMMAND test_review_changes_scroll_preserve)
-    set_tests_properties(review_changes_scroll_preserve PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -1978,25 +1366,6 @@ if(ANTS_TESTS)
     add_test(NAME claude_bg_tasks_button
         COMMAND test_claude_bg_tasks_button)
     set_tests_properties(claude_bg_tasks_button PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # github_status_bar — 0.7.45 feature. Two QLabel widgets on the
-    # status bar surfacing GitHub-derived context: a Public/Private
-    # repo-visibility badge and an "↗ Update vX.Y.Z available" link.
-    # Source-grep harness — same shape as claude_bg_tasks_button.
-    add_executable(test_github_status_bar
-        tests/features/github_status_bar/test_github_status_bar.cpp
-    )
-    target_link_libraries(test_github_status_bar PRIVATE Qt6::Core)
-    target_compile_definitions(test_github_status_bar PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAINWINDOW_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_RELEASE_WORKFLOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/.github/workflows/release.yml"
-    )
-    add_test(NAME github_status_bar
-        COMMAND test_github_status_bar)
-    set_tests_properties(github_status_bar PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -2052,102 +1421,6 @@ if(ANTS_TESTS)
     add_test(NAME claude_statusbar_extraction
         COMMAND test_claude_statusbar_extraction)
     set_tests_properties(claude_statusbar_extraction PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # roadmap_status_bar_refresh — ANTS-1160 P2 (0.7.78). Locks the
-    # invariant that refreshRoadmapButton and refreshRepoVisibility
-    # are wired to BOTH m_statusTimer AND the startup singleShot(0)
-    # lambda, in addition to onTabChanged. Source-grep only; no Qt
-    # link. Spec at tests/features/roadmap_status_bar_refresh/spec.md;
-    # design at docs/specs/ANTS-1160.md §9; plan at
-    # docs/plans/ANTS-1160.md P2.
-    add_executable(test_roadmap_status_bar_refresh
-        tests/features/roadmap_status_bar_refresh/test_roadmap_status_bar_refresh.cpp
-    )
-    target_compile_options(test_roadmap_status_bar_refresh PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_roadmap_status_bar_refresh PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        DOCS_STATUS_BAR_STANDARD_PATH="${CMAKE_CURRENT_SOURCE_DIR}/docs/standards/status-bar.md"
-    )
-    add_test(NAME roadmap_status_bar_refresh
-        COMMAND test_roadmap_status_bar_refresh)
-    set_tests_properties(roadmap_status_bar_refresh PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # sync_output_snapshot — ANTS-1148 (0.7.75). Locks the unified-
-    # snapshot fix for DEC mode 2026 (synchronized output): pre-scan
-    # in onVtBatch, capture-on-BSU, end-of-batch clear, safety-timer
-    # cleanup, frozen cursor row/col members, effectiveCursorRow/Col
-    # accessors used by paintEvent + blinkCursor while other readers
-    # stay live. Source-grep only; no Qt link. See
-    # tests/features/sync_output_snapshot/spec.md and
-    # docs/specs/ANTS-1148.md.
-    add_executable(test_sync_output_snapshot
-        tests/features/sync_output_snapshot/test_sync_output_snapshot.cpp
-    )
-    target_compile_options(test_sync_output_snapshot PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_sync_output_snapshot PRIVATE
-        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-        SRC_TERMINALWIDGET_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
-    )
-    add_test(NAME sync_output_snapshot
-        COMMAND test_sync_output_snapshot)
-    set_tests_properties(sync_output_snapshot PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # ui_state_persistence — ANTS-1150 (0.7.76). Hybrid round-trip
-    # (link Config) + source-grep (settingsdialog / roadmapdialog /
-    # auditdialog / mainwindow) test for the Phase 1 cohort:
-    # SettingsDialog last-active tab, RoadmapDialog active preset
-    # + Kind facets + 5 status checkboxes, AuditDialog severity-
-    # filter chips + show-new-only toggle. INV labels qualified
-    # ANTS-1150-INV-N. Sandboxes XDG_CONFIG_HOME via QTemporaryDir
-    # so the user's real config.json is untouched.
-    # See tests/features/ui_state_persistence/spec.md and
-    # docs/specs/ANTS-1150.md.
-    add_executable(test_ui_state_persistence
-        tests/features/ui_state_persistence/test_ui_state_persistence.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_ui_state_persistence PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_ui_state_persistence PRIVATE src)
-    target_compile_options(test_ui_state_persistence PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME ui_state_persistence
-        COMMAND test_ui_state_persistence
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    set_tests_properties(ui_state_persistence PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # crash_safe_session_persist — ANTS-1159. User report 2026-05-02:
-    # after a SIGSEGV, restart restored zero tabs because
-    # saveAllSessions was only wired to closeEvent. Pure source-grep
-    # wiring test (no link) — confirms the periodic timer + tab-event
-    # save hooks land. See tests/features/crash_safe_session_persist/
-    # spec.md and docs/specs/ANTS-1159.md.
-    add_executable(test_crash_safe_session_persist
-        tests/features/crash_safe_session_persist/test_crash_safe_session_persist.cpp
-    )
-    target_compile_options(test_crash_safe_session_persist PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME crash_safe_session_persist
-        COMMAND test_crash_safe_session_persist
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    set_tests_properties(crash_safe_session_persist PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -2320,128 +1593,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # kwin_position_tracker — ANTS-1045. KWinPositionTracker rename
-    # + KDE_FULL_SESSION / XDG_CURRENT_DESKTOP env-gate +
-    # QScopeGuard temp-file cleanup. Source-grep INVs (rename
-    # completeness, guard placement, scope-guard ordering, TOCTOU
-    # preservation, no hardcoded /tmp path regression) plus
-    # behavioural drives of the env-gate bail (INV-4b: unsetenv +
-    # temp-dir snapshot) and the failure-path cleanup (INV-5c:
-    # PATH=empty + bounded event-loop spin). See spec.md.
-    add_executable(test_kwin_position_tracker
-        tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp
-        src/kwinpositiontracker.cpp
-    )
-    target_link_libraries(test_kwin_position_tracker PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_kwin_position_tracker PRIVATE src)
-    target_compile_options(test_kwin_position_tracker PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_kwin_position_tracker PRIVATE
-        KWINPOS_H="${CMAKE_CURRENT_SOURCE_DIR}/src/kwinpositiontracker.h"
-        KWINPOS_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/kwinpositiontracker.cpp"
-        MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        CMAKELISTS_TXT="${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-        SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src"
-    )
-    add_test(NAME kwin_position_tracker
-             COMMAND test_kwin_position_tracker -platform offscreen)
-    set_tests_properties(kwin_position_tracker PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # dialog_close_focus_return — ANTS-1050. Auto-return focus to the
-    # active terminal when any dialog closes. Drives the pure-logic
-    # helper dialogfocus::shouldRefocusOnDialogClose against synthetic
-    # QDialog/QWidget instances + source-greps mainwindow.{h,cpp} for
-    # the qApp filter installation, the eventFilter Close-event
-    # branch, the deferred-dispatch primitive (singleShot or
-    # invokeMethod), the focusedTerminal() resolution, and the
-    # null-guard. See spec.md.
-    add_executable(test_dialog_close_focus_return
-        tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
-    )
-    target_link_libraries(test_dialog_close_focus_return PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_dialog_close_focus_return PRIVATE src)
-    target_compile_options(test_dialog_close_focus_return PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_dialog_close_focus_return PRIVATE
-        MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        DIALOGFOCUS_H="${CMAKE_CURRENT_SOURCE_DIR}/src/dialogfocus.h"
-    )
-    add_test(NAME dialog_close_focus_return
-             COMMAND test_dialog_close_focus_return -platform offscreen)
-    set_tests_properties(dialog_close_focus_return PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # dialog_pseudo_modal — ANTS-1051. Pseudo-modal blocking via
-    # the qApp eventFilter — mouse/key/wheel events landing outside
-    # any visible QDialog get swallowed. Drives the pure-logic
-    # helper dialogfocus::shouldSuppressEventForDialog over all
-    # six suppressed event types + non-suppressed types + stacked
-    # dialogs + the dialog-itself edge case + defensive nulls.
-    # Source-greps mainwindow.cpp for the eventFilter wiring and
-    # the shared-with-1050 contract. See spec.md.
-    add_executable(test_dialog_pseudo_modal
-        tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp
-    )
-    target_link_libraries(test_dialog_pseudo_modal PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_dialog_pseudo_modal PRIVATE src)
-    target_compile_options(test_dialog_pseudo_modal PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_dialog_pseudo_modal PRIVATE
-        DIALOGFOCUS_H="${CMAKE_CURRENT_SOURCE_DIR}/src/dialogfocus.h"
-        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME dialog_pseudo_modal
-             COMMAND test_dialog_pseudo_modal -platform offscreen)
-    set_tests_properties(dialog_pseudo_modal PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # scroll_snapshot_intent — ANTS-1118 (0.7.65). Locks the
-    # ANTS-1118 fix: smooth-scroll snapshot is captured on user
-    # scroll intent (wheelEvent: m_smoothScrollTarget > 0 from
-    # offset 0 with no existing snapshot), not on committed
-    # offset transition. Source-grep on terminalwidget.cpp.
-    # See spec.md for the root-cause analysis (indie-review L2
-    # fold-in 2026-05-01).
-    add_executable(test_scroll_snapshot_intent
-        tests/features/scroll_snapshot_intent/test_scroll_snapshot_intent.cpp
-    )
-    target_link_libraries(test_scroll_snapshot_intent PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_scroll_snapshot_intent PRIVATE src)
-    target_compile_options(test_scroll_snapshot_intent PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_scroll_snapshot_intent PRIVATE
-        TERMINALWIDGET_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-    )
-    add_test(NAME scroll_snapshot_intent
-             COMMAND test_scroll_snapshot_intent)
-    set_tests_properties(scroll_snapshot_intent PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # diffviewer_extraction — ANTS-1145 (0.7.73). Locks the
     # extraction of the Review Changes dialog from
     # MainWindow::showDiffViewer (~430 LoC) into
@@ -2497,92 +1648,6 @@ if(ANTS_TESTS)
     add_test(NAME roadmap_kind_facets
              COMMAND test_roadmap_kind_facets -platform offscreen)
     set_tests_properties(roadmap_kind_facets PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # clipboard_redaction — ANTS-1014 (0.7.63). Locks the
-    # clipboard-write redaction funnel (clipboardguard::sanitize +
-    # clipboardguard::writeText). Drives the pure sanitize over
-    # the three Source shapes (Trusted, UntrustedPty,
-    # UntrustedPlugin) for NUL-strip + 1 MiB cap behaviour, plus
-    # source-greps terminalwidget.cpp + mainwindow.cpp for the
-    # absence of raw QApplication::clipboard()->setText( and the
-    # presence of the two untrusted-source classifications. See
-    # spec.md.
-    add_executable(test_clipboard_redaction
-        tests/features/clipboard_redaction/test_clipboard_redaction.cpp
-    )
-    # Qt6::Gui is needed because clipboardguard.h's writeText signature
-    # uses QClipboard::Mode as a default arg. The test only drives the
-    # pure sanitize free function — but the header still needs the
-    # type to parse.
-    target_link_libraries(test_clipboard_redaction PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_clipboard_redaction PRIVATE src)
-    target_compile_options(test_clipboard_redaction PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_clipboard_redaction PRIVATE
-        CLIPBOARDGUARD_H="${CMAKE_CURRENT_SOURCE_DIR}/src/clipboardguard.h"
-        TERMINALWIDGET_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME clipboard_redaction
-             COMMAND test_clipboard_redaction)
-    set_tests_properties(clipboard_redaction PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # update_available_menubar — ANTS-1124 (0.7.62). Locks the
-    # migration of the update-available indicator from a status-bar
-    # QLabel to a top-level menu-bar QAction (sits to the right of
-    # &Help). Source-grep only — the change is a wiring swap, no
-    # new behavioural surface to drive. See spec.md.
-    add_executable(test_update_available_menubar
-        tests/features/update_available_menubar/test_update_available_menubar.cpp
-    )
-    target_link_libraries(test_update_available_menubar PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_update_available_menubar PRIVATE src)
-    target_compile_options(test_update_available_menubar PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_update_available_menubar PRIVATE
-        MAINWINDOW_H="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME update_available_menubar
-             COMMAND test_update_available_menubar)
-    set_tests_properties(update_available_menubar PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # status_bar_branch_chip — ANTS-1109 (0.7.62). Locks the
-    # branch-derived colour cue on the git-branch chip
-    # (green/main-master-trunk vs amber/feature) and the
-    # pure-helper branchchip::isPrimaryBranch. Drives the helper
-    # over six branch-name inputs + source-greps mainwindow.cpp
-    # for the consultation site and palette-index wiring. See
-    # spec.md.
-    add_executable(test_status_bar_branch_chip
-        tests/features/status_bar_branch_chip/test_status_bar_branch_chip.cpp
-    )
-    target_link_libraries(test_status_bar_branch_chip PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_status_bar_branch_chip PRIVATE src)
-    target_compile_options(test_status_bar_branch_chip PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_status_bar_branch_chip PRIVATE
-        MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME status_bar_branch_chip
-             COMMAND test_status_bar_branch_chip)
-    set_tests_properties(status_bar_branch_chip PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -2697,98 +1762,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 15)
 
-    # vtbatch_zero_copy — 0.7.40 perf bundle. Locks the shape of the
-    # worker→GUI batch signal so a refactor can't silently revert
-    # back to the deep-copy `const VtBatch &` form. Behavioural
-    # equivalence (the action stream identity across the thread hop)
-    # is covered by threaded_parse_equivalence; this test only
-    # source-greps the cross-thread signal carrier shape, the alias,
-    # the make_shared emit sites, and the pointer-deref receiver.
-    add_executable(test_vtbatch_zero_copy
-        tests/features/vtbatch_zero_copy/test_vtbatch_zero_copy.cpp
-    )
-    target_compile_options(test_vtbatch_zero_copy PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_vtbatch_zero_copy PRIVATE
-        VTSTREAM_H="${CMAKE_CURRENT_SOURCE_DIR}/src/vtstream.h"
-        VTSTREAM_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/vtstream.cpp"
-        TERMINALWIDGET_H="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.h"
-        TERMINALWIDGET_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-    )
-    add_test(NAME vtbatch_zero_copy COMMAND test_vtbatch_zero_copy)
-    set_tests_properties(vtbatch_zero_copy PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # a11y_chrome_names — 0.7.41 a11y bundle. ROADMAP § "Accessibility
-    # pass on chrome" (L1914) + § "AT-SPI introspection lane" (L1918).
-    # Verifies that every glyph-only chrome control (TitleBar's four
-    # window buttons + the CommandPalette's search input/result list)
-    # carries an explicit setAccessibleName / setAccessibleDescription,
-    # and acts as the introspection lane: walks the chrome widget tree
-    # and asserts every QAbstractButton + QLineEdit reachable has a
-    # non-empty accessibleName() OR a non-empty text(). A future
-    # contributor adding a glyph-only chrome button without a name
-    # breaks this test. Links titlebar.cpp + commandpalette.cpp source
-    # so we can drive their constructors directly under the offscreen
-    # Qt platform — no MainWindow link needed. See spec.md.
-    add_executable(test_a11y_chrome_names
-        tests/features/a11y_chrome_names/test_a11y_chrome_names.cpp
-        src/titlebar.cpp
-        src/commandpalette.cpp
-    )
-    target_link_libraries(test_a11y_chrome_names PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-    )
-    target_include_directories(test_a11y_chrome_names PRIVATE src)
-    target_compile_options(test_a11y_chrome_names PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_a11y_chrome_names PRIVATE
-        TITLEBAR_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/titlebar.cpp"
-        COMMANDPALETTE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/commandpalette.cpp"
-    )
-    set_target_properties(test_a11y_chrome_names PROPERTIES AUTOMOC ON)
-    add_test(NAME a11y_chrome_names COMMAND test_a11y_chrome_names)
-    set_tests_properties(a11y_chrome_names PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-
-    # command_palette_ghost_completion — 0.7.42. ROADMAP § "Command
-    # Palette ghost-completion (near-term, small scope)" (L2160). Pins
-    # the GhostLineEdit subclass + Tab-commit contract: empty/no-match/
-    # contains-only-match → empty ghost; case-insensitive prefix match
-    # → suffix preserves action-name casing; Tab commits ghost into
-    # input text and clears the ghost in the same dispatch cycle.
-    # Drives CommandPalette directly under the offscreen platform.
-    add_executable(test_command_palette_ghost_completion
-        tests/features/command_palette_ghost_completion/test_command_palette_ghost_completion.cpp
-        src/commandpalette.cpp
-    )
-    target_link_libraries(test_command_palette_ghost_completion PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        Qt6::Widgets
-        Qt6::Test
-    )
-    target_include_directories(test_command_palette_ghost_completion PRIVATE src)
-    target_compile_options(test_command_palette_ghost_completion PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_command_palette_ghost_completion PRIVATE
-        COMMANDPALETTE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/commandpalette.cpp"
-    )
-    set_target_properties(test_command_palette_ghost_completion PROPERTIES AUTOMOC ON)
-    add_test(NAME command_palette_ghost_completion COMMAND test_command_palette_ghost_completion)
-    set_tests_properties(command_palette_ghost_completion PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-
     # settings_parse_failure_mirror — 0.7.31 test-coverage fill-in.
     # Mirrors the existing config_parse_failure_guard test for the
     # other two parse-failure refuse sites: ClaudeAllowlist::saveSettings
@@ -2807,47 +1780,6 @@ if(ANTS_TESTS)
     add_test(NAME settings_parse_failure_mirror
         COMMAND test_settings_parse_failure_mirror)
     set_tests_properties(settings_parse_failure_mirror PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # no_anim_style — 0.7.5 fix. Locks the NoAnimStyle QProxyStyle that
-    # suppresses Fusion's style-driven QPropertyAnimation(geometry) cycle.
-    # Without this, `QApplication::setEffectEnabled(UI_AnimateMenu, false)`
-    # and `QMainWindow::setAnimated(false)` do NOT cover the 60 Hz
-    # QWidgetAnimator cycle that surfaced as dropdown-menu flicker on the
-    # 2026-04-20 user report. See tests/features/no_anim_style/spec.md.
-    add_executable(test_no_anim_style
-        tests/features/no_anim_style/test_no_anim_style.cpp
-    )
-    target_compile_options(test_no_anim_style PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_no_anim_style PRIVATE
-        SRC_MAIN_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-    )
-    add_test(NAME no_anim_style
-             COMMAND test_no_anim_style)
-    set_tests_properties(no_anim_style PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # paste_dialog_custom — 0.7.4 fix. Locks that confirmDangerousPaste
-    # uses a plain QDialog (not QMessageBox), completes the Wayland
-    # activation handshake synchronously via show()+raise()+activateWindow()
-    # before exec(), and keeps Cancel as the default button. See
-    # tests/features/paste_dialog_custom/spec.md.
-    add_executable(test_paste_dialog_custom
-        tests/features/paste_dialog_custom/test_paste_dialog_custom.cpp
-    )
-    target_compile_options(test_paste_dialog_custom PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_paste_dialog_custom PRIVATE
-        SRC_TERMINALWIDGET_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalwidget.cpp"
-    )
-    add_test(NAME paste_dialog_custom
-             COMMAND test_paste_dialog_custom)
-    set_tests_properties(paste_dialog_custom PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -3218,25 +2150,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # tab_rename_pin — right-click "Rename Tab…" must route through
-    # setTabTitleForRemote so the manual name populates m_tabTitlePins
-    # and survives the shell's OSC 0/2 writes. Before this fix, Claude
-    # Code's per-prompt title updates silently clobbered manual renames
-    # within seconds. See tests/features/tab_rename_pin/spec.md.
-    add_executable(test_tab_rename_pin
-        tests/features/tab_rename_pin/test_tab_rename_pin.cpp
-    )
-    target_compile_options(test_tab_rename_pin PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_tab_rename_pin PRIVATE
-        SRC_MAINWINDOW_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-    )
-    add_test(NAME tab_rename_pin COMMAND test_tab_rename_pin)
-    set_tests_properties(tab_rename_pin PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # remote_control_get_text — sixth rc_protocol command. Locks the
     # reuse of TerminalWidget::recentOutput (so the AI dialog and
     # rc_protocol can't drift apart), the 10 000-line response cap,
@@ -3352,56 +2265,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # confirm_close_with_processes — ANTS-1102. Tabs running non-shell
-    # descendants prompt before close; "Don't ask again" flips the
-    # config. Source-grep against config.{h,cpp}, mainwindow.cpp,
-    # settingsdialog.{h,cpp}.
-    add_executable(test_confirm_close_with_processes
-        tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
-    )
-    target_link_libraries(test_confirm_close_with_processes PRIVATE Qt6::Core)
-    target_compile_options(test_confirm_close_with_processes PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_confirm_close_with_processes PRIVATE
-        SRC_CONFIG_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.h"
-        SRC_CONFIG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_SETTINGSDIALOG_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.h"
-        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp"
-    )
-    add_test(NAME confirm_close_with_processes
-             COMMAND test_confirm_close_with_processes)
-    set_tests_properties(confirm_close_with_processes PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # help_about_menu — asserts MainWindow's Help menu carries an
-    # "About Ants Terminal..." action whose handler reads ANTS_VERSION
-    # (not a hardcoded literal) and renders as rich text with clickable
-    # links, plus an "About Qt..." action routing to QMessageBox::aboutQt.
-    # Source-grep only — MainWindow is too heavy for a widget harness.
-    # See tests/features/help_about_menu/spec.md.
-    add_executable(test_help_about_menu
-        tests/features/help_about_menu/test_help_about_menu.cpp
-    )
-    target_link_libraries(test_help_about_menu PRIVATE Qt6::Core)
-    target_compile_options(test_help_about_menu PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    # ANTS-1181: dialog factories carved to aboutdialogs.cpp; the test
-    # now reads both files to verify the same heap+show+raise+activate
-    # contract, the rich-text label invariants, and ANTS_VERSION usage —
-    # whichever file the implementation lives in.
-    target_compile_definitions(test_help_about_menu PRIVATE
-        SRC_MAINWINDOW_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_ABOUTDIALOGS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/aboutdialogs.cpp"
-    )
-    add_test(NAME help_about_menu COMMAND test_help_about_menu)
-    set_tests_properties(help_about_menu PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # lua_sandbox_hardening — asserts the Lua sandbox rejects bytecode
     # via two independent gates (0x1b first-byte peek AND luaL_loadfilex
     # "t" mode), that string.dump is stripped at sandbox-init time, and
@@ -3514,4 +2377,117 @@ if(ANTS_TESTS)
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
         SRC_THEMEDSTYLESHEET_H_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.h")
+
+    # ----------------------------------------------------------------------
+    # ANTS-1217 Phase 3 — test_chrome bundle.
+    # Subject: mainwindow + titlebar + coloredtabbar + commandpalette and
+    # everything bolted onto them (status bar, menu, focus-management,
+    # quake mode, portal integration, paste pipeline, review-changes UI).
+    # ----------------------------------------------------------------------
+    # mainwindow.cpp cross-references ClaudeIntegration / SshBookmark /
+    # ClaudeStatusBarController / ClaudeProjectsDialog — symbols that live
+    # in ants_claude_lib and ants_dialogs_lib. Linking those libs here
+    # makes the bundle's mainwindow.cpp resolution match ants-terminal's.
+    # ants_lua_lib also needed because mainwindow.cpp gates plugin glue
+    # behind ANTS_LUA_PLUGINS but a few unconditional references slip
+    # through (PluginManager construction); pulling the lib is harmless
+    # since it's STATIC and only adds the symbols actually referenced.
+    ants_add_gui_bundle(test_chrome
+        LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
+                ants_claude_lib ants_dialogs_lib ants_audit_lib
+                $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        SOURCES tests/features/tab_rename_persist/test_tab_rename_persist.cpp
+                tests/features/status_bar_elision/test_status_bar_elision.cpp
+                tests/features/review_changes_click/test_review_changes_click.cpp
+                tests/features/tab_color/test_tab_color.cpp
+                tests/features/shell_command_wiring/test_shell_command_wiring.cpp
+                tests/features/wayland_quake_mode/test_wayland_quake_mode.cpp
+                tests/features/global_shortcuts_portal/test_global_shortcuts_portal.cpp
+                tests/features/focus_redirect_menu_guard/test_focus_redirect_menu_guard.cpp
+                tests/features/menubar_hover_stylesheet/test_menubar_hover_stylesheet.cpp
+                tests/features/tabbar_statusbar_opaque/test_tabbar_statusbar_opaque.cpp
+                tests/features/tab_close_button_visible/test_tab_close_button_visible.cpp
+                tests/features/review_changes_branches/test_review_changes_branches.cpp
+                tests/features/review_changes_clickable/test_review_changes_clickable.cpp
+                tests/features/review_changes_scroll_preserve/test_review_changes_scroll_preserve.cpp
+                tests/features/github_status_bar/test_github_status_bar.cpp
+                tests/features/roadmap_status_bar_refresh/test_roadmap_status_bar_refresh.cpp
+                tests/features/ui_state_persistence/test_ui_state_persistence.cpp
+                tests/features/crash_safe_session_persist/test_crash_safe_session_persist.cpp
+                tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
+                tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp
+                tests/features/clipboard_redaction/test_clipboard_redaction.cpp
+                tests/features/update_available_menubar/test_update_available_menubar.cpp
+                tests/features/status_bar_branch_chip/test_status_bar_branch_chip.cpp
+                tests/features/a11y_chrome_names/test_a11y_chrome_names.cpp
+                tests/features/command_palette_ghost_completion/test_command_palette_ghost_completion.cpp
+                tests/features/no_anim_style/test_no_anim_style.cpp
+                tests/features/paste_dialog_custom/test_paste_dialog_custom.cpp
+                tests/features/tab_rename_pin/test_tab_rename_pin.cpp
+                tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
+                tests/features/help_about_menu/test_help_about_menu.cpp
+                tests/features/portal_session_close/test_portal_session_close.cpp
+                tests/features/styled_font_kerning_off/test_styled_font_kerning_off.cpp
+                tests/features/sigpipe_ignore/test_sigpipe_ignore.cpp
+                tests/features/pty_dtor_off_main_thread/test_pty_dtor_off_main_thread.cpp
+                tests/features/terminal_partial_update_mode/test_terminal_partial_update_mode.cpp
+                tests/features/command_mark_gutter/test_command_mark_gutter.cpp
+                tests/features/osc133_last_command/test_osc133_last_command.cpp
+                tests/features/scroll_snapshot_intent/test_scroll_snapshot_intent.cpp
+                tests/features/sync_output_snapshot/test_sync_output_snapshot.cpp
+                tests/features/vtbatch_zero_copy/test_vtbatch_zero_copy.cpp
+                tests/features/shift_enter_bracketed_paste/test_shift_enter.cpp
+                tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp)
+    # command_palette_ghost_completion uses QSignalSpy (Qt6::Test).
+    target_link_libraries(test_chrome PRIVATE Qt6::Test)
+    target_compile_definitions(test_chrome PRIVATE
+        SRC_MAIN_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp"
+        SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
+        MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
+        SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_TERMINALWIDGET_H_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.h"
+        SRC_TERMINALWIDGET_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.h"
+        SRC_TERMINALWIDGET_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        TERMINALWIDGET_CPP="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        TERMINALWIDGET_H="${CMAKE_SOURCE_DIR}/src/terminalwidget.h"
+        SRC_SESSIONMANAGER_H_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.h"
+        SRC_PORTAL_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.h"
+        SRC_PORTAL_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.cpp"
+        SRC_PORTAL_H_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.h"
+        SRC_PORTAL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.cpp"
+        SRC_CONFIG_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/config.h"
+        SRC_CONFIG_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
+        SRC_CONFIG_H_PATH="${CMAKE_SOURCE_DIR}/src/config.h"
+        SRC_CONFIG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
+        SRC_SETTINGSDIALOG_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_SETTINGSDIALOG_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        SRC_OPAQUEMENUBAR_PATH="${CMAKE_SOURCE_DIR}/src/opaquemenubar.h"
+        SRC_OPAQUESTATUSBAR_PATH="${CMAKE_SOURCE_DIR}/src/opaquestatusbar.h"
+        SRC_THEMEDSTYLESHEET_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
+        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
+        SRC_COLOREDTABBAR_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coloredtabbar.cpp"
+        SRC_COLOREDTABBAR_H_PATH="${CMAKE_SOURCE_DIR}/src/coloredtabbar.h"
+        TITLEBAR_CPP_PATH="${CMAKE_SOURCE_DIR}/src/titlebar.cpp"
+        COMMANDPALETTE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/commandpalette.cpp"
+        DIALOGFOCUS_H="${CMAKE_SOURCE_DIR}/src/dialogfocus.h"
+        CLIPBOARDGUARD_H="${CMAKE_SOURCE_DIR}/src/clipboardguard.h"
+        KWINPOS_CPP="${CMAKE_SOURCE_DIR}/src/kwinpositiontracker.cpp"
+        KWINPOS_H="${CMAKE_SOURCE_DIR}/src/kwinpositiontracker.h"
+        SRC_PTYHANDLER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
+        SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp"
+        SRC_RELEASE_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/release.yml"
+        DOCS_STATUS_BAR_STANDARD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/status-bar.md"
+        CMAKELISTS_TXT="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+        SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+        SRC_DIR="${CMAKE_SOURCE_DIR}/src"
+        VTSTREAM_H="${CMAKE_SOURCE_DIR}/src/vtstream.h"
+        VTSTREAM_CPP="${CMAKE_SOURCE_DIR}/src/vtstream.cpp")
 endif()

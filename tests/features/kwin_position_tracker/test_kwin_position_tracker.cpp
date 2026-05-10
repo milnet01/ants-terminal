@@ -21,6 +21,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -36,9 +37,8 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
+void fail(const char *label, const char *why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 // INV-1 carve-out: lines starting with `//` or ` *` may mention the
@@ -60,10 +60,7 @@ QStringList tempEntriesByGlob(const QString &glob) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QApplication app(argc, argv);
-
-    const std::string headerPath = KWINPOS_H;
+TEST(KwinPositionTracker, Main) {    const std::string headerPath = KWINPOS_H;
     const std::string sourcePath = KWINPOS_CPP;
     const std::string mainwinH   = MAINWINDOW_H;
     const std::string mainwinCpp = MAINWINDOW_CPP;
@@ -119,7 +116,7 @@ int main(int argc, char **argv) {
     leakHits += scanForOldName("mainwindow.h", mwH);
     leakHits += scanForOldName("mainwindow.cpp", mwCpp);
     leakHits += scanForOldName("CMakeLists.txt", cmake);
-    if (leakHits > 0) return 1;
+    if (leakHits > 0) FAIL();
 
     // INV-4: KWin-presence guard. ANTS-1142 (0.7.69) lifted the
     // KDE_FULL_SESSION / XDG_CURRENT_DESKTOP env-var checks out
@@ -222,7 +219,7 @@ int main(int argc, char **argv) {
                 std::fprintf(stderr,
                     "[INV-6] FAIL: hardcoded /tmp/kwin_pos_ants path in %s\n",
                     name.toUtf8().constData());
-                return 1;
+                FAIL();
             }
         }
     }
@@ -254,10 +251,11 @@ int main(int argc, char **argv) {
             std::fprintf(stderr,
                 "[INV-5c] FAIL: %lld new temp files left behind on failure path\n",
                 static_cast<long long>(after.size() - before.size()));
-            return 1;
+            FAIL();
         }
     }
 
     std::fprintf(stderr, "OK — KWinPositionTracker INVs hold.\n");
-    return 0;
+    return;
 }
+

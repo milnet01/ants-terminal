@@ -8,6 +8,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_TERMINALWIDGET_CPP_PATH
 #  error "SRC_TERMINALWIDGET_CPP_PATH compile definition required"
@@ -71,7 +72,7 @@ bool contains(const std::string &h, const std::string &n) {
 
 }  // namespace
 
-int main() {
+TEST(StyledFontKerningOff, Main) {
     const std::string src = slurp(SRC_TERMINALWIDGET_CPP_PATH);
 
     {
@@ -95,8 +96,9 @@ int main() {
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }
+

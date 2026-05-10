@@ -28,6 +28,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -56,9 +57,8 @@ bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
+void fail(const char *label, const char *why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 // Extract a function body from a translation unit by signature
@@ -76,10 +76,7 @@ std::string functionBody(const std::string &src, const std::string &sig) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-
-    const std::string h = slurp(SRC_MAINWINDOW_H_PATH);
+TEST(GithubStatusBar, Main) {    const std::string h = slurp(SRC_MAINWINDOW_H_PATH);
     const std::string s = slurp(SRC_MAINWINDOW_CPP_PATH);
     const std::string yml = slurp(SRC_RELEASE_WORKFLOW_PATH);
 
@@ -427,5 +424,6 @@ int main(int argc, char **argv) {
     }
 
     std::puts("OK github_status_bar: 17/17 invariants");
-    return 0;
+    return;
 }
+

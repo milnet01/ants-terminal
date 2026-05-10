@@ -16,6 +16,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -31,14 +32,13 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
+void fail(const char *label, const char *why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 }  // namespace
 
-int main() {
+TEST(ClipboardRedaction, Main) {
     // INV-1: helper shape exists in the header (we're including
     // it, so a structural check via behavioural drive is enough,
     // but also assert via slurp that the enum class and namespace
@@ -138,5 +138,6 @@ int main() {
 
     std::fprintf(stderr,
         "OK — clipboard redaction funnel INVs hold.\n");
-    return 0;
+    return;
 }
+

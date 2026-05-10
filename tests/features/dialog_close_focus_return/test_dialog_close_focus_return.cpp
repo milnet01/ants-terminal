@@ -22,6 +22,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -37,17 +38,13 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
+void fail(const char *label, const char *why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QApplication app(argc, argv);
-
-    const std::string source = slurp(MAINWINDOW_CPP);
+TEST(DialogCloseFocusReturn, Main) {    const std::string source = slurp(MAINWINDOW_CPP);
     const std::string focusHdr = slurp(DIALOGFOCUS_H);
     if (source.empty()) return fail("INV-1", "mainwindow.cpp not readable");
     if (focusHdr.empty()) return fail("INV-2", "dialogfocus.h not readable");
@@ -130,7 +127,7 @@ int main(int argc, char **argv) {
                     "[INV-2d] FAIL: event type %d should not refocus\n",
                     static_cast<int>(t));
                 delete dlg;
-                return 1;
+                FAIL();
             }
         }
         delete dlg;
@@ -204,6 +201,7 @@ int main(int argc, char **argv) {
             "eventFilter body missing Close-event branch");
 
     std::fprintf(stderr, "OK — dialog close focus-return INVs hold.\n");
-    return 0;
+    return;
 }
+
 

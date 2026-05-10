@@ -27,6 +27,7 @@
 
 #include "titlebar.h"
 #include "commandpalette.h"
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -117,11 +118,7 @@ void coverageSweep(QWidget *root, const char *rootLabel) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    QApplication app(argc, argv);
-
-    // T1-T4 — TitleBar chrome buttons.
+TEST(A11yChromeNames, Main) {    // T1-T4 — TitleBar chrome buttons.
     auto *bar = new TitleBar(nullptr);
     requireAccessibleName(bar, "centerBtn", "Center window");
     requireAccessibleName(bar, "minimizeBtn", "Minimize window");
@@ -214,8 +211,9 @@ int main(int argc, char **argv) {
 
     if (g_fails == 0) {
         std::printf("a11y_chrome_names: OK\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "a11y_chrome_names: %d failure(s)\n", g_fails);
-    return 1;
+    FAIL();
 }
+

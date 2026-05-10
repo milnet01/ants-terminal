@@ -9,9 +9,10 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef SRC_DIFFVIEWER_CPP_PATH
+#  error "SRC_DIFFVIEWER_CPP_PATH compile definition required"
 #endif
 
 namespace {
@@ -44,8 +45,8 @@ bool contains(const std::string &h, const std::string &n) {
 
 }  // namespace
 
-int main() {
-    const std::string src = slurp(SRC_MAINWINDOW_CPP_PATH);
+TEST(ReviewChangesBranches, Main) {
+    const std::string src = slurp(SRC_DIFFVIEWER_CPP_PATH);
 
     // I1 — ProbeState declares the new fields.
     expect(contains(src, "QString branches;"),
@@ -153,8 +154,9 @@ int main() {
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }
+

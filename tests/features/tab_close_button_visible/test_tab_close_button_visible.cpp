@@ -11,6 +11,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -54,7 +55,7 @@ bool contains(const std::string &h, const std::string &n) {
 
 }  // namespace
 
-int main() {
+TEST(TabCloseButtonVisible, Main) {
     // ANTS-1147 — the close-button QSS rules moved into
     // themedstylesheet.cpp. Source path of the QSS body is now
     // there; mainwindow.cpp no longer carries the data-URI SVG.
@@ -125,8 +126,8 @@ int main() {
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }

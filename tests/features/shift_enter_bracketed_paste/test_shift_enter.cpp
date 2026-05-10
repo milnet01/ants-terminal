@@ -34,6 +34,7 @@
 #include <QTextStream>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 
 // SRC_TERMINALWIDGET_PATH is normally supplied by the CMake build with the
 // absolute path to src/terminalwidget.cpp (see the add_executable block for
@@ -71,7 +72,7 @@ QByteArray referenceShiftEnterSequence(bool bracketedPaste) {
 }
 
 // spec §1: bracketed-paste sequence is exactly the expected 13 bytes.
-void testBracketedPasteSequence() {
+TEST(ShiftEnterBracketedPaste, BracketedPasteSequence) {
     const QByteArray seq = referenceShiftEnterSequence(true);
 
     CHECK(seq.size() == 13,
@@ -95,7 +96,7 @@ void testBracketedPasteSequence() {
 }
 
 // spec §2: non-bracketed-paste fallback is exactly \x16\n (2 bytes).
-void testFallbackSequence() {
+TEST(ShiftEnterBracketedPaste, FallbackSequence) {
     const QByteArray seq = referenceShiftEnterSequence(false);
 
     CHECK(seq.size() == 2,
@@ -110,7 +111,7 @@ void testFallbackSequence() {
 // the end-paste marker ESC [ 2 0 1 ~. This is the invariant the 0.6.26
 // truncation bug directly violated — an 8-byte truncation left the
 // sequence ending at `...~\nESC`, not `...ESC[201~`.
-void testEndPasteMarkerPresent() {
+TEST(ShiftEnterBracketedPaste, EndPasteMarkerPresent) {
     const QByteArray seq = referenceShiftEnterSequence(true);
     if (seq.size() < 6) {
         CHECK(false, "sequence too short to inspect tail");
@@ -150,7 +151,7 @@ QString readTerminalWidgetSource() {
 // length cannot drift from the literal contents. This is the direct
 // regression guard for the 0.6.26 bug, where a hand-coded length of 8
 // truncated a 13-byte literal.
-void testSourceUsesSizeCoupledLiteral() {
+TEST(ShiftEnterBracketedPaste, SourceUsesSizeCoupledLiteral) {
     const QString src = readTerminalWidgetSource();
     if (src.isEmpty()) return;
 
@@ -186,7 +187,7 @@ void testSourceUsesSizeCoupledLiteral() {
 
 // spec §3: the Shift+Enter handler must gate on !(mods & ControlModifier)
 // so Ctrl+Shift+Enter still reaches the earlier scratchpad handler.
-void testSourceGatesOutCtrlModifier() {
+TEST(ShiftEnterBracketedPaste, SourceGatesOutCtrlModifier) {
     const QString src = readTerminalWidgetSource();
     if (src.isEmpty()) return;
 
@@ -211,7 +212,7 @@ void testSourceGatesOutCtrlModifier() {
 // still exists earlier in keyPressEvent. If someone deletes it, the
 // !ControlModifier gate in the Shift+Enter handler has nothing to
 // defer to and the user loses the scratchpad shortcut silently.
-void testScratchpadHandlerExists() {
+TEST(ShiftEnterBracketedPaste, ScratchpadHandlerExists) {
     const QString src = readTerminalWidgetSource();
     if (src.isEmpty()) return;
 
@@ -235,7 +236,7 @@ void testScratchpadHandlerExists() {
 // evaluation means Ctrl+Shift+Enter would be intercepted by Shift+Enter
 // (if the Ctrl gate in the Shift+Enter handler were ever relaxed).
 // This is a belt-and-braces check for spec §3.
-void testScratchpadHandlerOrderedBeforeShiftEnter() {
+TEST(ShiftEnterBracketedPaste, ScratchpadHandlerOrderedBeforeShiftEnter) {
     const QString src = readTerminalWidgetSource();
     if (src.isEmpty()) return;
 
@@ -255,22 +256,3 @@ void testScratchpadHandlerOrderedBeforeShiftEnter() {
 
 }  // namespace
 
-int main() {
-    testBracketedPasteSequence();
-    testFallbackSequence();
-    testEndPasteMarkerPresent();
-    testSourceUsesSizeCoupledLiteral();
-    testSourceGatesOutCtrlModifier();
-    testScratchpadHandlerExists();
-    testScratchpadHandlerOrderedBeforeShiftEnter();
-
-    if (failures == 0) {
-        std::printf(
-            "shift_enter_bracketed_paste: behaviour + source-form "
-            "invariants hold\n");
-        return 0;
-    }
-    std::fprintf(stderr,
-        "shift_enter_bracketed_paste: %d failure(s)\n", failures);
-    return 1;
-}

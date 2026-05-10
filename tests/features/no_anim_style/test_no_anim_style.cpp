@@ -6,6 +6,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAIN_PATH
 #error "SRC_MAIN_PATH compile definition required"
@@ -21,7 +22,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+TEST(NoAnimStyle, Main) {
     const std::string m = slurp(SRC_MAIN_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -75,8 +76,9 @@ int main() {
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: NoAnimStyle invariants present\n");
-    return 0;
+    return;
 }
+

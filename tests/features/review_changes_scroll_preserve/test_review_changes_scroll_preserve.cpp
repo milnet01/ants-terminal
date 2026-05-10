@@ -6,9 +6,10 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef SRC_DIFFVIEWER_CPP_PATH
+#error "SRC_DIFFVIEWER_CPP_PATH compile definition required"
 #endif
 
 static std::string slurp(const char *path) {
@@ -25,7 +26,7 @@ static std::string slurp(const char *path) {
 // scoped to that function. ANTS-1145 (0.7.73): the dialog body
 // moved from MainWindow::showDiffViewer to a free
 // `diffviewer::show(QWidget *, const QString &, const QString &)`
-// in src/diffviewer.cpp. The CMake define `SRC_MAINWINDOW_CPP_PATH`
+// in src/diffviewer.cpp. The CMake define `SRC_DIFFVIEWER_CPP_PATH`
 // is repointed at that file — name preserved so the wiring noise
 // stays small. Function end is approximated by the next top-level
 // non-indented `}` followed by an empty line.
@@ -39,12 +40,12 @@ static std::string showDiffViewerBody(const std::string &src) {
                                                        : end - start);
 }
 
-int main() {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+TEST(ReviewChangesScrollPreserve, Main) {
+    const std::string mw = slurp(SRC_DIFFVIEWER_CPP_PATH);
     const std::string body = showDiffViewerBody(mw);
     if (body.empty()) {
         std::fprintf(stderr, "FAIL: cannot locate diffviewer::show\n");
-        return 1;
+        FAIL();
     }
 
     int failures = 0;
@@ -165,8 +166,8 @@ int main() {
     if (failures > 0) {
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: review-changes scroll-preservation invariants present\n");
-    return 0;
+    return;
 }

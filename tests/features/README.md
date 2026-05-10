@@ -33,7 +33,7 @@ working unchanged.
 | Bundle | Subsystem | Status |
 |---|---|---|
 | `test_vt`      | vtparser + terminalgrid + themes  | shipped |
-| `test_chrome`  | mainwindow + tabs + palette       | Phase 3 (planned) |
+| `test_chrome`  | mainwindow + tabs + palette + status bar + menu + dialogs hosted in chrome | shipped |
 | `test_claude`  | Claude integration                | Phase 4 (planned) |
 | `test_audit`   | audit dialog + engine + hygiene   | Phase 5 (planned) |
 | `test_dialogs` | settings + roadmap + diff + ssh   | Phase 6 (planned) |

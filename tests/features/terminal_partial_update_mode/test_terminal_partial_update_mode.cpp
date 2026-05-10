@@ -14,6 +14,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_TERMINALWIDGET_H_PATH
 #error "SRC_TERMINALWIDGET_H_PATH compile definition required"
@@ -32,7 +33,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+TEST(TerminalPartialUpdateMode, Main) {
     const std::string hdr = slurp(SRC_TERMINALWIDGET_H_PATH);
     const std::string src = slurp(SRC_TERMINALWIDGET_CPP_PATH);
     int failures = 0;
@@ -120,8 +121,9 @@ int main() {
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: TerminalWidget is plain QWidget (0.7.4 refactor)\n");
-    return 0;
+    return;
 }
+

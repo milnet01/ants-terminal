@@ -23,6 +23,7 @@
 #include <QWidget>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -212,15 +213,12 @@ int runPersistenceRoundTrip() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
+TEST(TabColor, Main) {
     // Force offscreen QPA so the test runs on CI without a display.
-    qputenv("QT_QPA_PLATFORM", "offscreen");
     // Redirect Config's QStandardPaths reads/writes to ~/.qttest/ so
     // the real user config is never touched. Must be called BEFORE any
     // Config instance is constructed (Config's ctor calls load()).
     QStandardPaths::setTestModeEnabled(true);
-    QApplication app(argc, argv);
-
     int failures = 0;
     failures += runRoundTrip();
     failures += runReorderSurvives();
@@ -229,8 +227,9 @@ int main(int argc, char **argv) {
 
     if (failures == 0) {
         std::printf("tab_color: round-trip + reorder + remove + persist pass\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "tab_color: %d failure(s)\n", failures);
-    return 1;
+    FAIL();
 }
+

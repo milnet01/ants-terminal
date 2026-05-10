@@ -7,6 +7,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAINWINDOW_PATH
 #error "SRC_MAINWINDOW_PATH compile definition required"
@@ -34,7 +35,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+TEST(TabbarStatusbarOpaque, Main) {
     const std::string mw   = slurp(SRC_MAINWINDOW_PATH);
     const std::string ctbC = slurp(SRC_COLOREDTABBAR_CPP_PATH);
     const std::string ctbH = slurp(SRC_COLOREDTABBAR_H_PATH);
@@ -135,8 +136,9 @@ int main() {
     if (failures > 0) {
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: tab bar + status bar opacity invariants present\n");
-    return 0;
+    return;
 }
+

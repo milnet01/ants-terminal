@@ -9,6 +9,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_PORTAL_H_PATH
 #  error "SRC_PORTAL_H_PATH compile definition required"
@@ -75,7 +76,7 @@ std::string extractDtor(const std::string &src) {
 
 }  // namespace
 
-int main() {
+TEST(PortalSessionClose, Main) {
     const std::string hdr = slurp(SRC_PORTAL_H_PATH);
     const std::string cpp = slurp(SRC_PORTAL_CPP_PATH);
 
@@ -111,8 +112,9 @@ int main() {
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }
+

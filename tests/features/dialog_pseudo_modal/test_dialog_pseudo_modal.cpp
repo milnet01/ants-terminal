@@ -24,6 +24,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -39,9 +40,8 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
+void fail(const char *label, const char *why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 // Build a synthetic event of the requested type using the smallest
@@ -70,10 +70,7 @@ QEvent *makeEvent(QEvent::Type t) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QApplication app(argc, argv);
-
-    const std::string focusHdr = slurp(DIALOGFOCUS_H);
+TEST(DialogPseudoModal, Main) {    const std::string focusHdr = slurp(DIALOGFOCUS_H);
     const std::string source = slurp(MAINWINDOW_CPP);
     if (focusHdr.empty() || source.empty())
         return fail("INV-1", "source files not readable");
@@ -114,7 +111,7 @@ int main(int argc, char **argv) {
                     static_cast<int>(t));
                 delete dlg;
                 delete outside;
-                return 1;
+                FAIL();
             }
         }
         delete outside;
@@ -178,7 +175,7 @@ int main(int argc, char **argv) {
                     static_cast<int>(t));
                 delete dlg;
                 delete outside;
-                return 1;
+                FAIL();
             }
         }
         delete outside;
@@ -255,5 +252,6 @@ int main(int argc, char **argv) {
     // assertion needed; this is documented for the spec reader.
 
     std::fprintf(stderr, "OK — pseudo-modal INVs hold.\n");
-    return 0;
+    return;
 }
+

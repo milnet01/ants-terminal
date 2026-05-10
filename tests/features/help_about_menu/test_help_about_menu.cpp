@@ -40,6 +40,7 @@
 #include <QString>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -57,10 +58,7 @@ void expect(bool cond, const char *label, const QString &detail = {}) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-
-    auto loadFile = [](const QString &path) -> QString {
+TEST(HelpAboutMenu, Main) {    auto loadFile = [](const QString &path) -> QString {
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
             std::fprintf(stderr,
@@ -78,10 +76,10 @@ int main(int argc, char **argv) {
     // moved to src/aboutdialogs.cpp post-ANTS-1181 — both files are
     // checked, and the dialog-body grep is scoped to aboutdialogs.cpp.
     const QString src = loadFile(QStringLiteral(SRC_MAINWINDOW_PATH));
-    if (src.isEmpty()) return 1;
+    if (src.isEmpty()) FAIL();
 
     const QString aboutSrc = loadFile(QStringLiteral(SRC_ABOUTDIALOGS_PATH));
-    if (aboutSrc.isEmpty()) return 1;
+    if (aboutSrc.isEmpty()) FAIL();
 
     // Invariant 1 — Help menu present, and it appears AFTER every other
     // m_menuBar->addMenu(...) call (so Qt places it last).
@@ -344,8 +342,8 @@ int main(int argc, char **argv) {
 
     if (g_failures) {
         std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
+        FAIL();
     }
     std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return;
 }

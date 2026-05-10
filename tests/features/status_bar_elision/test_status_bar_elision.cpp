@@ -20,6 +20,7 @@
 #include <QFontMetrics>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -34,7 +35,7 @@ int failures = 0;
 
 // Invariant 1 + 3: short text in a capped label must render in full and
 // its minimumSizeHint must allow the full-text render.
-void testShortTextUnderCap() {
+TEST(StatusBarElision, ShortTextUnderCap) {
     ElidedLabel lbl;
     lbl.setMaximumWidth(220);
     lbl.setElideMode(Qt::ElideRight);
@@ -64,7 +65,7 @@ void testShortTextUnderCap() {
 
 // Invariant 2 + 4: over-cap text must elide, tooltip must carry the
 // full string for hover.
-void testLongTextOverCap() {
+TEST(StatusBarElision, LongTextOverCap) {
     ElidedLabel lbl;
     lbl.setMaximumWidth(60);      // deliberately tiny cap
     lbl.setElideMode(Qt::ElideRight);
@@ -94,7 +95,7 @@ void testLongTextOverCap() {
 // Invariant 3 extension: in a real QStatusBar, addWidget() layout must
 // respect the minimumSizeHint so short text survives tight-space
 // squeeze. This exercises the actual regression vector.
-void testStatusBarLayoutDoesNotSqueeze() {
+TEST(StatusBarElision, StatusBarLayoutDoesNotSqueeze) {
     QMainWindow win;
     QStatusBar *bar = win.statusBar();
 
@@ -140,18 +141,3 @@ void testStatusBarLayoutDoesNotSqueeze() {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    // QApplication (not QCoreApplication) — QLabel/QFontMetrics needs GUI.
-    QApplication app(argc, argv);
-
-    testShortTextUnderCap();
-    testLongTextOverCap();
-    testStatusBarLayoutDoesNotSqueeze();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", failures);
-        return 1;
-    }
-    std::fprintf(stderr, "All ElidedLabel invariants hold.\n");
-    return 0;
-}

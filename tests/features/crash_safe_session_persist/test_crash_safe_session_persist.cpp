@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -48,7 +49,7 @@ std::string extractBody(const std::string &source, const std::string &sig) {
     return source.substr(sigPos, pos - sigPos);
 }
 
-void testInv1_timerMemberDeclaredAndInitialised() {
+TEST(CrashSafeSessionPersist, Inv1_timerMemberDeclaredAndInitialised) {
     const std::string h  = readFile("src/mainwindow.h");
     const std::string cp = readFile("src/mainwindow.cpp");
     if (h.empty() || cp.empty()) {
@@ -68,7 +69,7 @@ void testInv1_timerMemberDeclaredAndInitialised() {
            "ANTS-1159-INV-1: mainwindow.cpp configures m_sessionSaveTimer with 30000 ms");
 }
 
-void testInv2_timerConnectedToSaveAllSessions() {
+TEST(CrashSafeSessionPersist, Inv2_timerConnectedToSaveAllSessions) {
     const std::string cp = readFile("src/mainwindow.cpp");
     if (cp.empty()) { expect(false, "ANTS-1159-INV-2: read mainwindow.cpp"); return; }
 
@@ -96,7 +97,7 @@ void testInv2_timerConnectedToSaveAllSessions() {
            "ANTS-1159-INV-2: m_sessionSaveTimer::timeout connected to saveAllSessions");
 }
 
-void testInv3_saveTabOrderOnlyDeclaredAndDefined() {
+TEST(CrashSafeSessionPersist, Inv3_saveTabOrderOnlyDeclaredAndDefined) {
     const std::string h  = readFile("src/mainwindow.h");
     const std::string cp = readFile("src/mainwindow.cpp");
     if (h.empty() || cp.empty()) { expect(false, "ANTS-1159-INV-3: read mainwindow.{h,cpp}"); return; }
@@ -108,7 +109,7 @@ void testInv3_saveTabOrderOnlyDeclaredAndDefined() {
            "ANTS-1159-INV-3: saveTabOrderOnly defined in mainwindow.cpp");
 }
 
-void testInv4_calledFromNewTab() {
+TEST(CrashSafeSessionPersist, Inv4_calledFromNewTab) {
     const std::string cp = readFile("src/mainwindow.cpp");
     if (cp.empty()) { expect(false, "ANTS-1159-INV-4: read mainwindow.cpp"); return; }
 
@@ -118,7 +119,7 @@ void testInv4_calledFromNewTab() {
            "ANTS-1159-INV-4: newTab calls saveTabOrderOnly");
 }
 
-void testInv5_calledFromPerformTabClose() {
+TEST(CrashSafeSessionPersist, Inv5_calledFromPerformTabClose) {
     const std::string cp = readFile("src/mainwindow.cpp");
     if (cp.empty()) { expect(false, "ANTS-1159-INV-5: read mainwindow.cpp"); return; }
 
@@ -128,7 +129,7 @@ void testInv5_calledFromPerformTabClose() {
            "ANTS-1159-INV-5: performTabClose calls saveTabOrderOnly");
 }
 
-void testInv6_connectedToTabMoved() {
+TEST(CrashSafeSessionPersist, Inv6_connectedToTabMoved) {
     const std::string cp = readFile("src/mainwindow.cpp");
     if (cp.empty()) { expect(false, "ANTS-1159-INV-6: read mainwindow.cpp"); return; }
 
@@ -152,7 +153,7 @@ void testInv6_connectedToTabMoved() {
            "ANTS-1159-INV-6: tabMoved signal connected to saveTabOrderOnly");
 }
 
-void testInv7_closeEventStopsTimer() {
+TEST(CrashSafeSessionPersist, Inv7_closeEventStopsTimer) {
     const std::string cp = readFile("src/mainwindow.cpp");
     if (cp.empty()) { expect(false, "ANTS-1159-INV-7: read mainwindow.cpp"); return; }
 
@@ -174,7 +175,7 @@ void testInv7_closeEventStopsTimer() {
            "ANTS-1159-INV-7: closeEvent stops m_sessionSaveTimer before saveAllSessions");
 }
 
-void testInv8_closeEventStillSaves() {
+TEST(CrashSafeSessionPersist, Inv8_closeEventStillSaves) {
     const std::string cp = readFile("src/mainwindow.cpp");
     if (cp.empty()) { expect(false, "ANTS-1159-INV-8: read mainwindow.cpp"); return; }
 
@@ -183,7 +184,7 @@ void testInv8_closeEventStillSaves() {
            "ANTS-1159-INV-8: closeEvent still calls saveAllSessions (no regression)");
 }
 
-void testInv9_saveTabOrderOnlyShortCircuitGuards() {
+TEST(CrashSafeSessionPersist, Inv9_saveTabOrderOnlyShortCircuitGuards) {
     const std::string cp = readFile("src/mainwindow.cpp");
     if (cp.empty()) { expect(false, "ANTS-1159-INV-9: read mainwindow.cpp"); return; }
 
@@ -200,21 +201,3 @@ void testInv9_saveTabOrderOnlyShortCircuitGuards() {
 
 }  // namespace
 
-int main(int /*argc*/, char * /*argv*/[]) {
-    testInv1_timerMemberDeclaredAndInitialised();
-    testInv2_timerConnectedToSaveAllSessions();
-    testInv3_saveTabOrderOnlyDeclaredAndDefined();
-    testInv4_calledFromNewTab();
-    testInv5_calledFromPerformTabClose();
-    testInv6_connectedToTabMoved();
-    testInv7_closeEventStopsTimer();
-    testInv8_closeEventStillSaves();
-    testInv9_saveTabOrderOnlyShortCircuitGuards();
-
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d FAILURE(S)\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nAll INVs PASS.\n");
-    return 0;
-}

@@ -26,6 +26,7 @@
 #include <QRegularExpression>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 
 namespace {
 int failures = 0;
@@ -66,7 +67,7 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
 // Invariant 1 — refreshReviewButton's successful-probe branch uses
 // setEnabled + show (tri-state), NOT hide. The forbidden shape is the
 // 0.6.29-era "hide on clean" which we've retired.
-void testRefreshShowsDisabledOnClean() {
+TEST(ReviewChangesClickable, RefreshShowsDisabledOnClean) {
     const QString src = readSource(QStringLiteral(SRC_MAINWINDOW_PATH));
     if (src.isEmpty()) return;
 
@@ -94,7 +95,7 @@ void testRefreshShowsDisabledOnClean() {
 // hover, which is the exact misleading-UX bug that the 0.6.29 spec was
 // written to prevent. The tri-state policy is only safe because this
 // gate exists.
-void testHoverStylesheetEnabledGated() {
+TEST(ReviewChangesClickable, HoverStylesheetEnabledGated) {
     // ANTS-1147 — global QSS moved into
     // themedstylesheet::buildAppStylesheet. Read the new TU.
     const QString src = readSource(QStringLiteral(SRC_THEMEDSTYLESHEET_CPP_PATH));
@@ -131,7 +132,7 @@ void testHoverStylesheetEnabledGated() {
 // combo; accept any `git status` invocation with `-b` as a viable
 // spelling. Reject a bare `git diff --quiet HEAD` — that was the
 // 0.6.29-era probe which missed unpushed commits.
-void testProbeCoversAheadOfUpstream() {
+TEST(ReviewChangesClickable, ProbeCoversAheadOfUpstream) {
     const QString src = readSource(QStringLiteral(SRC_MAINWINDOW_PATH));
     if (src.isEmpty()) return;
 
@@ -161,15 +162,3 @@ void testProbeCoversAheadOfUpstream() {
 
 }  // namespace
 
-int main() {
-    testRefreshShowsDisabledOnClean();
-    testHoverStylesheetEnabledGated();
-    testProbeCoversAheadOfUpstream();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", failures);
-        return 1;
-    }
-    std::fprintf(stderr, "All Review Changes tri-state invariants hold.\n");
-    return 0;
-}

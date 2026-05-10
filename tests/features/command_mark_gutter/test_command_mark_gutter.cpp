@@ -6,6 +6,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_CONFIG_HEADER_PATH
 #error "SRC_CONFIG_HEADER_PATH compile definition required"
@@ -63,7 +64,7 @@ static std::string extractFunctionBody(const std::string &src, const std::string
     return src.substr(bracePos, i - bracePos);
 }
 
-int main() {
+TEST(CommandMarkGutter, Main) {
     const std::string cfgHdr = slurp(SRC_CONFIG_HEADER_PATH);
     const std::string cfgImp = slurp(SRC_CONFIG_IMPL_PATH);
     const std::string twHdr  = slurp(SRC_TERMINALWIDGET_HEADER_PATH);
@@ -163,8 +164,9 @@ int main() {
 
     if (failures == 0) {
         std::fprintf(stdout, "OK: command_mark_gutter invariants hold\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "command_mark_gutter: %d failure(s)\n", failures);
-    return 1;
+    FAIL();
 }
+

@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -40,14 +41,13 @@ int count(const std::string &hay, const char *needle) {
     return n;
 }
 
-int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
+void fail(const char *label, const char *why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 }  // namespace
 
-int main() {
+TEST(VtbatchZeroCopy, Main) {
     const std::string vtsHeader = slurp(VTSTREAM_H);
     const std::string vtsSource = slurp(VTSTREAM_CPP);
     const std::string twHeader = slurp(TERMINALWIDGET_H);
@@ -102,5 +102,6 @@ int main() {
         return fail("I6", "qRegisterMetaType<VtBatchPtr>() missing");
 
     std::puts("OK vtbatch_zero_copy: 5/5 invariants (I5 covered by threaded_parse_equivalence)");
-    return 0;
+    return;
 }
+

@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -26,14 +27,13 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
+void fail(const char *label, const char *why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 }  // namespace
 
-int main() {
+TEST(UpdateAvailableMenubar, Main) {
     const std::string header = slurp(MAINWINDOW_H);
     const std::string source = slurp(MAINWINDOW_CPP);
     if (header.empty()) return fail("setup", "mainwindow.h not readable");
@@ -130,5 +130,6 @@ int main() {
 
     std::fprintf(stderr,
         "OK — update-available menubar migration INVs hold.\n");
-    return 0;
+    return;
 }
+

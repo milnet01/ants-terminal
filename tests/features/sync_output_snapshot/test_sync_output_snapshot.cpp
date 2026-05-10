@@ -19,6 +19,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_TERMINALWIDGET_CPP_PATH
 #error "SRC_TERMINALWIDGET_CPP_PATH compile definition required"
@@ -52,9 +53,8 @@ std::size_t countOccurrences(const std::string &hay, const std::string &needle) 
     return count;
 }
 
-int fail(const char *label, const std::string &why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why.c_str());
-    return 1;
+void fail(const char *label, const std::string &why) {
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
 // Extract the body of a function from the source by searching for the
@@ -80,7 +80,7 @@ std::string functionBody(const std::string &src, const std::string &sig) {
 
 }  // namespace
 
-int main() {
+TEST(SyncOutputSnapshot, Main) {
     const std::string tw  = slurp(SRC_TERMINALWIDGET_CPP_PATH);
     const std::string twH = slurp(SRC_TERMINALWIDGET_H_PATH);
 
@@ -282,7 +282,7 @@ int main() {
             std::fprintf(stderr,
                 "[INV-9] FAIL: paintEvent expected ≥ 3 effectiveCursorRow/Col() "
                 "calls each, got row=%zu col=%zu\n", rowCalls, colCalls);
-            return 1;
+            FAIL();
         }
         if (contains(body, "m_grid->cursorRow()") ||
             contains(body, "m_grid->cursorCol()"))
@@ -315,5 +315,6 @@ int main() {
 
     std::fprintf(stderr,
         "OK — DEC mode 2026 sync output snapshot INVs hold.\n");
-    return 0;
+    return;
 }
+

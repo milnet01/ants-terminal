@@ -15,6 +15,7 @@
 #include <cstdlib>
 
 #include "commandpalette.h"
+#include <gtest/gtest.h>
 
 #ifndef COMMANDPALETTE_CPP_PATH
 #error "COMMANDPALETTE_CPP_PATH must be defined by CMake (full path to commandpalette.cpp)"
@@ -66,11 +67,7 @@ int countSubstr(const QString &haystack, const QString &needle) {
 
 } // namespace
 
-int main(int argc, char **argv) {
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    QApplication app(argc, argv);
-
-    // Three actions designed to exercise prefix / non-prefix / no-match:
+TEST(CommandPaletteGhostCompletion, Main) {    // Three actions designed to exercise prefix / non-prefix / no-match:
     //   "Index Review"  — prefix-matched by "ind", "INDEX"
     //   "Index Browse"  — second prefix-matched candidate (sanity)
     //   "Open File"     — `contains` "File" but does NOT start with it
@@ -86,7 +83,7 @@ int main(int argc, char **argv) {
     CHECK(input != nullptr, "I1: m_input is a GhostLineEdit findable by objectName");
     if (!input) {
         std::fprintf(stderr, "FATAL: cannot continue without m_input\n");
-        return 1;
+        FAIL();
     }
 
     // I2: empty filter → empty ghost.
@@ -172,8 +169,9 @@ int main(int argc, char **argv) {
 
     if (g_failures == 0) {
         std::fprintf(stderr, "OK: command_palette_ghost_completion (10 invariants)\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "FAIL: %d invariant(s) failed\n", g_failures);
-    return 1;
+    FAIL();
 }
+

@@ -6,6 +6,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_MAINWINDOW_PATH
 #error "SRC_MAINWINDOW_PATH compile definition required"
@@ -33,7 +34,7 @@ static std::string slurp(const char *path) {
     return ss.str();
 }
 
-int main() {
+TEST(MenubarHoverStylesheet, Main) {
     const std::string mw = slurp(SRC_MAINWINDOW_PATH);
     const std::string tss = slurp(SRC_THEMEDSTYLESHEET_PATH);
     int failures = 0;
@@ -185,8 +186,8 @@ int main() {
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: menubar hover stylesheet invariants present\n");
-    return 0;
+    return;
 }

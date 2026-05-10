@@ -6,6 +6,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <gtest/gtest.h>
 
 #ifndef SRC_TERMINALWIDGET_PATH
 #error "SRC_TERMINALWIDGET_PATH compile definition required"
@@ -39,7 +40,7 @@ static std::string extractBlockAfter(const std::string &src,
     return src.substr(bracePos, i - bracePos);
 }
 
-int main() {
+TEST(PasteDialogCustom, Main) {
     const std::string src = slurp(SRC_TERMINALWIDGET_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -51,7 +52,7 @@ int main() {
         src, "TerminalWidget::pasteToTerminal(const QByteArray");
     if (body.empty()) {
         fail("pasteToTerminal() body not found — signature changed?");
-        return 1;
+        FAIL();
     }
 
     // INV-1: a QDialog is heap-allocated with `new`, not a stack QDialog.
@@ -152,8 +153,8 @@ int main() {
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d invariant(s) failed — see spec.md for context\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("OK: paste-dialog async-pattern invariants present\n");
-    return 0;
+    return;
 }
