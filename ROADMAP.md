@@ -6045,6 +6045,80 @@ made the desktop feel noisy in normal use.
   past chats with Claude — it should only show what's in the
   current chat.
   Kind: feature/fix. Source: user-2026-05-10.
+- 📋 [ANTS-1220] **Scrollback duplication while terminal was idle
+  / user away — content re-rendered without input.** User report
+  2026-05-10 (screenshot: a Claude Code response with a horizontal
+  underscore band partway down, beneath which an *earlier* portion
+  of the same response begins replaying — content from before the
+  cutoff appears a second time below it). User was AFK; no scroll
+  input occurred. Reproduction is non-deterministic (single
+  occurrence so far on this branch). Investigation should
+  enumerate every code path that can write to the visible region
+  without a corresponding `vtparser` byte arriving from the PTY:
+  (1) **Soft-wrap reflow on resize** — if KWin emitted a spurious
+      geometry change (idle wakeup, screen-saver kick, layer-shell
+      Quake-mode toggle, monitor DPMS), `TerminalGrid::resize()`
+      reflows scrollback. A bug in the reflow loop could re-emit
+      cells visible above the cursor as new bottom-anchored lines.
+  (2) **OSC 133 prompt redraw** — bash's `PROMPT_COMMAND` or zsh
+      `zle reset-prompt` can fire on `SIGWINCH`. If the shell
+      reprints the last-N lines of "context" on resize, the
+      duplicate body would be from the shell, not the terminal.
+      Capture `pty_dump` (env `ANTS_PTY_DUMP=/tmp/pty.bin`) to
+      distinguish.
+  (3) **Claude Code stream replay** — if Claude Code's network
+      stream blipped and re-flushed buffered tokens, the duplicate
+      is upstream of Ants entirely. Confirm by reproducing in a
+      different terminal (alacritty / konsole) over the same
+      Claude Code session.
+  (4) **Sync-output (DECRQM 2026) drain race** — if a sync-output
+      buffer flush coincided with a partial-frame redraw,
+      `TerminalWidget::paintEvent` could paint a stale region
+      while the new content lands underneath.
+  Spec should: (a) capture a reliable repro (pty_dump + screenshot
+  pair), (b) bisect along the four hypotheses, (c) add a feature
+  test under `tests/features/scrollback_no_idle_replay/` asserting
+  that no PTY-silent interval produces grid mutations.
+  **Layman:** while you were away, your terminal showed part of
+  a message twice — once at the top and again further down — even
+  though nothing was being scrolled or re-printed. We need to
+  figure out which layer (shell, terminal, or Claude itself) is
+  re-emitting content on idle.
+  Kind: bug. Source: user-2026-05-10.
+- 📋 [ANTS-1221] **Tasks chip stays visible when only an
+  `in_progress` task remains (no `pending`) — refinement of
+  ANTS-1216 contract.** User report 2026-05-10 (screenshot:
+  Task List dialog says "41 tasks — 40 done, 1 running, 0
+  outstanding" but the chip still reads "☰ 1/41"). Root cause
+  is intentional per ANTS-1216's fix: `unfinishedCount()` counts
+  `pending + in_progress`, so a single in-flight task keeps the
+  chip on. The dialog header splits the same totals into
+  *running* (in-flight, Claude is on it) vs *outstanding*
+  (pending, awaiting attention). Reading both reasonably leaves
+  the user expecting the chip to disappear once nothing is
+  *outstanding* — the running task isn't theirs to action.
+  Two fixes to consider, both of which would close this:
+  (a) **Revise the contract**: chip counts `pending` only, not
+      `pending + in_progress`. The chip then tracks
+      "user-actionable work", and a long-running task no longer
+      keeps it lit. Reverses part of ANTS-1216's fix; the test
+      that locks ANTS-1216 in (`tests/features/tasks_chip_*`)
+      needs the same revision in lockstep.
+  (b) **Relabel the dialog header** so it matches the chip's
+      semantics: "X tasks — Y done, Z remaining" (no separate
+      "running" / "outstanding" split). The chip stays as-is;
+      the dialog's wording is what created the inconsistency.
+  Strong preference for (a) — the chip is meant to surface
+  attention-worthy state, and "Claude is currently working on it"
+  is the opposite of attention-worthy. Combine with ANTS-1218's
+  flip to `(total - pending)/total` and the chip displays a
+  monotone progress count that hides cleanly at 100%.
+  **Layman:** the Tasks button at the bottom-right is supposed
+  to disappear once everything is done. Right now if Claude is
+  still working on the last task, the button stays visible — but
+  there's nothing for *you* to do, so it shouldn't be there. The
+  chip should only count tasks waiting on you.
+  Kind: fix. Source: user-2026-05-10.
 
 ---
 
