@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+#include <gtest/gtest.h>
+
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
 #endif
@@ -47,7 +49,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+TEST(AuditIncrementalOutputDrain, Main) {
     const std::string cpp = slurp(SRC_AUDIT_CPP_PATH);
     const std::string hdr = slurp(SRC_AUDIT_H_PATH);
     int failures = 0;
@@ -171,8 +173,6 @@ int main() {
             "\n%d invariant(s) failed — see "
             "tests/features/audit_incremental_output_drain/spec.md for context\n",
             failures);
-        return 1;
+        FAIL();
     }
-    std::printf("OK: incremental drain wired with bounded buffer\n");
-    return 0;
 }

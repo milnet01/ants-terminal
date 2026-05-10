@@ -11,6 +11,8 @@
 #include <sstream>
 #include <string>
 
+#include <gtest/gtest.h>
+
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
 #endif
@@ -77,7 +79,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+TEST(AuditRegexDosWatchdog, Main) {
     // ANTS-1119 v1: applyFilter (which calls the catastrophic-regex
     // shape check + LIMIT_MATCH harden) lives in auditengine.cpp now.
     // Search both files so the watchdog INVs see the engine-side
@@ -222,8 +224,6 @@ int main() {
             "\n%d invariant(s) failed — see "
             "tests/features/audit_regex_dos_watchdog/spec.md for context\n",
             failures);
-        return 1;
+        FAIL();
     }
-    std::printf("OK: regex-DoS watchdog (shape + step-limit) wired in\n");
-    return 0;
 }

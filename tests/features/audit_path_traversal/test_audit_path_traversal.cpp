@@ -33,6 +33,8 @@
 #include <cstdio>
 #include <unistd.h>
 
+#include <gtest/gtest.h>
+
 namespace {
 
 int g_failures = 0;
@@ -238,18 +240,16 @@ void runSourceChecks() {
                           "sharing a name prefix could escape"));
 }
 
-}  // namespace
-
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-
+TEST(AuditPathTraversal, BehavioralChecks) {
+    int before = g_failures;
     runBehavioralChecks();
-    runSourceChecks();
-
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    if (g_failures > before) FAIL();
 }
+
+TEST(AuditPathTraversal, SourceChecks) {
+    int before = g_failures;
+    runSourceChecks();
+    if (g_failures > before) FAIL();
+}
+
+}  // namespace

@@ -10,6 +10,8 @@
 
 #include "auditengine.h"
 
+#include <gtest/gtest.h>
+
 #include <QCoreApplication>
 
 #include <cstdio>
@@ -32,9 +34,8 @@ bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int fail(const char *label, const char *why) {
+void fail(const char *label, const char *why) {
     std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
-    return 1;
 }
 
 // Reject any include line for a known QtGui/QtWidgets header.
@@ -53,28 +54,27 @@ bool hasGuiInclude(const std::string &src) {
 
 }  // namespace
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
+TEST(AuditEngineExtraction, Main) {
 
     const std::string engineHdr = slurp(SRC_AUDIT_ENGINE_H);
     const std::string engineSrc = slurp(SRC_AUDIT_ENGINE_CPP);
     const std::string dialogHdr = slurp(SRC_AUDIT_H);
     const std::string dialogSrc = slurp(SRC_AUDIT_CPP);
 
-    if (engineHdr.empty()) return fail("INV-1", "auditengine.h not readable");
-    if (engineSrc.empty()) return fail("INV-2", "auditengine.cpp not readable");
-    if (dialogHdr.empty()) return fail("INV-5", "auditdialog.h not readable");
-    if (dialogSrc.empty()) return fail("INV-6", "auditdialog.cpp not readable");
+    if (engineHdr.empty()) { fail("INV-1", "auditengine.h not readable"); FAIL(); return; }
+    if (engineSrc.empty()) { fail("INV-2", "auditengine.cpp not readable"); FAIL(); return; }
+    if (dialogHdr.empty()) { fail("INV-5", "auditdialog.h not readable"); FAIL(); return; }
+    if (dialogSrc.empty()) { fail("INV-6", "auditdialog.cpp not readable"); FAIL(); return; }
 
     // INV-1: auditengine.h includes only Qt6::Core headers.
     if (hasGuiInclude(engineHdr))
-        return fail("INV-1",
-                    "auditengine.h includes a Qt6::Gui or Qt6::Widgets header");
+        { fail("INV-1",
+                    "auditengine.h includes a Qt6::Gui or Qt6::Widgets header"); FAIL(); return; }
 
     // INV-2: auditengine.cpp includes only Qt6::Core headers.
     if (hasGuiInclude(engineSrc))
-        return fail("INV-2",
-                    "auditengine.cpp includes a Qt6::Gui or Qt6::Widgets header");
+        { fail("INV-2",
+                    "auditengine.cpp includes a Qt6::Gui or Qt6::Widgets header"); FAIL(); return; }
 
     // INV-3: data types are declared in auditengine.h.
     const char *types[] = {
@@ -87,13 +87,13 @@ int main(int argc, char **argv) {
     };
     for (const char *t : types) {
         if (!contains(engineHdr, t))
-            return fail("INV-3", t);
+            { fail("INV-3", t); FAIL(); return; }
     }
 
     // INV-4: free functions inside namespace AuditEngine.
     if (!contains(engineHdr, "namespace AuditEngine"))
-        return fail("INV-4",
-                    "auditengine.h missing namespace AuditEngine declaration");
+        { fail("INV-4",
+                    "auditengine.h missing namespace AuditEngine declaration"); FAIL(); return; }
     const char *funcs[] = {
         "FilterResult applyFilter",
         "QList<Finding> parseFindings",
@@ -101,30 +101,30 @@ int main(int argc, char **argv) {
     };
     for (const char *f : funcs) {
         if (!contains(engineHdr, f))
-            return fail("INV-4", f);
+            { fail("INV-4", f); FAIL(); return; }
     }
 
     // INV-5: auditdialog.h includes auditengine.h.
     if (!contains(dialogHdr, "#include \"auditengine.h\""))
-        return fail("INV-5",
-                    "auditdialog.h must #include auditengine.h");
+        { fail("INV-5",
+                    "auditdialog.h must #include auditengine.h"); FAIL(); return; }
 
     // INV-6: auditdialog.cpp no longer owns the moved bodies.
     if (contains(dialogSrc,
             "AuditDialog::FilterResult AuditDialog::applyFilter"))
-        return fail("INV-6",
+        { fail("INV-6",
                     "auditdialog.cpp still defines AuditDialog::applyFilter — "
-                    "should have moved to AuditEngine::applyFilter");
+                    "should have moved to AuditEngine::applyFilter"); FAIL(); return; }
     if (contains(dialogSrc,
             "QList<Finding> AuditDialog::parseFindings"))
-        return fail("INV-6",
+        { fail("INV-6",
                     "auditdialog.cpp still defines AuditDialog::parseFindings — "
-                    "should have moved to AuditEngine::parseFindings");
+                    "should have moved to AuditEngine::parseFindings"); FAIL(); return; }
     if (contains(dialogSrc,
             "void AuditDialog::capFindings"))
-        return fail("INV-6",
+        { fail("INV-6",
                     "auditdialog.cpp still defines AuditDialog::capFindings — "
-                    "should have moved to AuditEngine::capFindings");
+                    "should have moved to AuditEngine::capFindings"); FAIL(); return; }
 
     // INV-7: orchestration calls the engine.
     const char *callSites[] = {
@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
     };
     for (const char *c : callSites) {
         if (!contains(dialogSrc, c))
-            return fail("INV-7", c);
+            { fail("INV-7", c); FAIL(); return; }
     }
 
     // INV-8: capFindings behaviour.
@@ -149,10 +149,10 @@ int main(int argc, char **argv) {
         }
         AuditEngine::capFindings(r, 3);
         if (r.findings.size() != 3)
-            return fail("INV-8", "expected 3 findings retained after cap");
+            { fail("INV-8", "expected 3 findings retained after cap"); FAIL(); return; }
         if (r.omittedCount != 7)
-            return fail("INV-8",
-                        "expected omittedCount=7 (10 - 3 trimmed)");
+            { fail("INV-8",
+                        "expected omittedCount=7 (10 - 3 trimmed)"); FAIL(); return; }
     }
 
     // INV-9: parseFindings behaviour against a synthetic input.
@@ -168,22 +168,20 @@ int main(int argc, char **argv) {
             "src/foo.cpp:42:7: warning: bogus thing [-Wunused]");
         const auto findings = AuditEngine::parseFindings(body, check);
         if (findings.size() != 1)
-            return fail("INV-9", "expected exactly one finding");
+            { fail("INV-9", "expected exactly one finding"); FAIL(); return; }
         const Finding &f = findings.first();
         if (f.file != QStringLiteral("src/foo.cpp"))
-            return fail("INV-9", "expected file = src/foo.cpp");
+            { fail("INV-9", "expected file = src/foo.cpp"); FAIL(); return; }
         if (f.line != 42)
-            return fail("INV-9", "expected line = 42");
+            { fail("INV-9", "expected line = 42"); FAIL(); return; }
         if (f.dedupKey.size() != 24)
-            return fail("INV-9",
-                        "expected dedupKey to be 24 hex chars (96 bits)");
+            { fail("INV-9",
+                        "expected dedupKey to be 24 hex chars (96 bits)"); FAIL(); return; }
         // Hex character check.
         std::regex hexOnly(R"(^[0-9a-f]{24}$)");
         if (!std::regex_match(f.dedupKey.toStdString(), hexOnly))
-            return fail("INV-9",
-                        "dedupKey not lowercase 24-char hex");
+            { fail("INV-9",
+                        "dedupKey not lowercase 24-char hex"); FAIL(); return; }
     }
 
-    std::puts("OK audit_engine_extraction: 9/9 invariants");
-    return 0;
 }

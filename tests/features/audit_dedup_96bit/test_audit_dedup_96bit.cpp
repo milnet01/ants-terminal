@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+#include <gtest/gtest.h>
+
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
 #endif
@@ -82,7 +84,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+TEST(AuditDedup96Bit, Main) {
     // ANTS-1119 v1 split: computeDedup moved to auditengine.cpp; the
     // dialog still owns isSuppressed. Slurp both and search the union
     // for the engine-side INVs, the dialog-side for the helper.
@@ -193,8 +195,6 @@ int main() {
             "\n%d invariant(s) failed — see "
             "tests/features/audit_dedup_96bit/spec.md for context\n",
             failures);
-        return 1;
+        FAIL();
     }
-    std::printf("OK: dedup widened to 96 bits with backward-compat helper\n");
-    return 0;
 }

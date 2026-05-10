@@ -11,6 +11,8 @@
 
 #include <cstdio>
 
+#include <gtest/gtest.h>
+
 namespace {
 int failures = 0;
 
@@ -168,26 +170,23 @@ extend-ignore = ["S311", "S324"]
     expectList("bandit.extendIgnore", got, {"B311", "B324"});
 }
 
-} // namespace
-
-int main() {
-    testSemgrepMissingMarker();
-    testSemgrepEmpty();
-    testSemgrepHappyPath();
-    testSemgrepProseAndSeparatorsIgnored();
-    testSemgrepDedup();
-
-    testBanditNoRuffSection();
-    testBanditHappyPath();
-    testBanditToolRuffFallback();
-    testBanditPrefersLint();
-    testBanditStopsAtNextSection();
-    testBanditExtendIgnore();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d test(s) failed.\n", failures);
-        return 1;
+#define HYGIENE_TEST(NAME) \
+    TEST(AuditHygieneFeature, NAME) { \
+        int before = failures; \
+        test##NAME(); \
+        if (failures > before) FAIL(); \
     }
-    std::fprintf(stderr, "All audit-hygiene tests passed.\n");
-    return 0;
-}
+
+HYGIENE_TEST(SemgrepMissingMarker)
+HYGIENE_TEST(SemgrepEmpty)
+HYGIENE_TEST(SemgrepHappyPath)
+HYGIENE_TEST(SemgrepProseAndSeparatorsIgnored)
+HYGIENE_TEST(SemgrepDedup)
+HYGIENE_TEST(BanditNoRuffSection)
+HYGIENE_TEST(BanditHappyPath)
+HYGIENE_TEST(BanditToolRuffFallback)
+HYGIENE_TEST(BanditPrefersLint)
+HYGIENE_TEST(BanditStopsAtNextSection)
+HYGIENE_TEST(BanditExtendIgnore)
+
+} // namespace

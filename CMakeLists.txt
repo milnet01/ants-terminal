@@ -605,140 +605,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # audit_per_tool_timeout — 0.7.28 fix. Locks `int timeoutMs` field
-    # on AuditCheck, the per-check m_timeout->start() use site, the
-    # parameterised "Timed out (Ns)" warning, and at least one
-    # calibration override > 30 s for the slow-tool IDs (cppcheck,
-    # semgrep, osv_scanner, trufflehog, clang_tidy, clazy). See
-    # tests/features/audit_per_tool_timeout/spec.md.
-    add_executable(test_audit_per_tool_timeout
-        tests/features/audit_per_tool_timeout/test_audit_per_tool_timeout.cpp
-    )
-    target_compile_options(test_audit_per_tool_timeout PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_audit_per_tool_timeout PRIVATE
-        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
-        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
-        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.cpp"
-        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.h"
-    )
-    add_test(NAME audit_per_tool_timeout COMMAND test_audit_per_tool_timeout)
-    set_tests_properties(audit_per_tool_timeout PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # audit_incremental_output_drain — 0.7.28 fix. Locks the
-    # readyReadStandardOutput / readyReadStandardError drain wiring,
-    # the m_currentOutput / m_currentError buffers, the
-    # MAX_TOOL_OUTPUT_BYTES cap, the per-check buffer reset, and the
-    # kill-on-overflow path. See
-    # tests/features/audit_incremental_output_drain/spec.md.
-    add_executable(test_audit_incremental_output_drain
-        tests/features/audit_incremental_output_drain/test_audit_incremental_output_drain.cpp
-    )
-    target_compile_options(test_audit_incremental_output_drain PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_audit_incremental_output_drain PRIVATE
-        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
-        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
-    )
-    add_test(NAME audit_incremental_output_drain
-        COMMAND test_audit_incremental_output_drain)
-    set_tests_properties(audit_incremental_output_drain PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # audit_tool_crash_distinct — 0.7.28 fix. Locks the named
-    # exitCode / exitStatus parameters on onCheckFinished, the
-    # QProcess::CrashExit branch, the warning emission with a
-    # crash/exit message, and the Severity::Info demotion. See
-    # tests/features/audit_tool_crash_distinct/spec.md.
-    add_executable(test_audit_tool_crash_distinct
-        tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp
-    )
-    target_compile_options(test_audit_tool_crash_distinct PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_audit_tool_crash_distinct PRIVATE
-        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
-    )
-    add_test(NAME audit_tool_crash_distinct
-        COMMAND test_audit_tool_crash_distinct)
-    set_tests_properties(audit_tool_crash_distinct PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # audit_dedup_96bit — 0.7.29 fix. Locks computeDedup's widened
-    # 24-hex-char prefix (96 bits up from 64), the isSuppressed
-    # backward-compat helper that matches legacy 16-char keys, the
-    # render-pipeline use of the helper, and the
-    # m_suppressionReasons mirror update in saveSuppression. See
-    # tests/features/audit_dedup_96bit/spec.md.
-    add_executable(test_audit_dedup_96bit
-        tests/features/audit_dedup_96bit/test_audit_dedup_96bit.cpp
-    )
-    target_compile_options(test_audit_dedup_96bit PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_audit_dedup_96bit PRIVATE
-        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
-        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
-        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.cpp"
-        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.h"
-    )
-    add_test(NAME audit_dedup_96bit COMMAND test_audit_dedup_96bit)
-    set_tests_properties(audit_dedup_96bit PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # audit_regex_dos_watchdog — 0.7.29 fix. Locks the
-    # isCatastrophicRegex shape-rejection helper, its invocation at
-    # the dropIfMatches / loadAllowlist user-pattern entry points,
-    # the PCRE2 `(*LIMIT_MATCH=N)` step-budget cap, and the
-    # qWarning rejection path. See
-    # tests/features/audit_regex_dos_watchdog/spec.md.
-    add_executable(test_audit_regex_dos_watchdog
-        tests/features/audit_regex_dos_watchdog/test_audit_regex_dos_watchdog.cpp
-    )
-    target_compile_options(test_audit_regex_dos_watchdog PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_audit_regex_dos_watchdog PRIVATE
-        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
-        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
-        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.cpp"
-        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.h"
-    )
-    add_test(NAME audit_regex_dos_watchdog
-        COMMAND test_audit_regex_dos_watchdog)
-    set_tests_properties(audit_regex_dos_watchdog PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # audit_sarif_suppressions — 0.7.29 fix. Locks the
-    # m_suppressionReasons map declaration, its load/save
-    # population, the SARIF v2.1.0 §3.34 result.suppressions[]
-    # array emission, and removal of the suppress-and-skip
-    # filter from exportSarif. See
-    # tests/features/audit_sarif_suppressions/spec.md.
-    add_executable(test_audit_sarif_suppressions
-        tests/features/audit_sarif_suppressions/test_audit_sarif_suppressions.cpp
-    )
-    target_compile_options(test_audit_sarif_suppressions PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_audit_sarif_suppressions PRIVATE
-        SRC_AUDIT_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
-        SRC_AUDIT_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
-    )
-    add_test(NAME audit_sarif_suppressions
-        COMMAND test_audit_sarif_suppressions)
-    set_tests_properties(audit_sarif_suppressions PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # session_sha256_checksum — 0.7.30 fix. Locks the V4 envelope that
     # wraps qCompress output with [SHEC magic][version][SHA-256][len].
     # The hash must be computed at serialize time, recomputed at restore
@@ -1170,36 +1036,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # audit_engine_extraction — ANTS-1119 v1 (0.7.59). Locks the
-    # extraction of pure-data types + applyFilter / parseFindings /
-    # capFindings into a Qt6::Core-only `auditengine.{h,cpp}` module.
-    # Behavioural INVs drive `AuditEngine::capFindings` and
-    # `AuditEngine::parseFindings` directly; structural INVs grep
-    # both files for the GUI-include exclusion + the dialog
-    # forwarding pattern. See spec.md.
-    add_executable(test_audit_engine_extraction
-        tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
-        src/auditengine.cpp
-    )
-    target_link_libraries(test_audit_engine_extraction PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_audit_engine_extraction PRIVATE src)
-    target_compile_options(test_audit_engine_extraction PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_audit_engine_extraction PRIVATE
-        SRC_AUDIT_ENGINE_H="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.h"
-        SRC_AUDIT_ENGINE_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/auditengine.cpp"
-        SRC_AUDIT_H="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.h"
-        SRC_AUDIT_CPP="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
-    )
-    add_test(NAME audit_engine_extraction
-        COMMAND test_audit_engine_extraction)
-    set_tests_properties(audit_engine_extraction PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # local_subagent_framework — ANTS-1116 v1 (0.7.59). Behavioural
     # test of `AntsHelper::driftCheck` against synthetic tree
     # fixtures (clean / drift / missing-script / bogus-root) plus a
@@ -1312,50 +1148,6 @@ if(ANTS_TESTS)
     add_test(NAME flathub_manifest_transform
              COMMAND test_flathub_manifest_transform)
     set_tests_properties(flathub_manifest_transform PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # audit_rule_quality — locks the 0.6.31 self-learning data layer:
-    # per-rule fire/suppression aggregation, longest-common-substring
-    # tightening suggester, JSON persistence round-trip. Pure model code,
-    # no Qt GUI; same approach as osc133_hmac_verification.
-    # See tests/features/audit_rule_quality/spec.md.
-    add_executable(test_audit_rule_quality
-        tests/features/audit_rule_quality/test_audit_rule_quality.cpp
-        src/auditrulequality.cpp
-    )
-    target_link_libraries(test_audit_rule_quality PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_audit_rule_quality PRIVATE src)
-    target_compile_options(test_audit_rule_quality PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME audit_rule_quality
-             COMMAND test_audit_rule_quality)
-    set_tests_properties(audit_rule_quality PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # audit_hygiene — locks the 0.7.x external-tool calibration parsers
-    # (.semgrep.yml header → --exclude-rule, pyproject.toml S-codes →
-    # --skip B-codes). Origin: RetroDB audit-hygiene report 2026-04-21.
-    # Pure regex-on-text, so no QtGui / QApplication dependency.
-    # See tests/features/audit_hygiene/spec.md.
-    add_executable(test_audit_hygiene
-        tests/features/audit_hygiene/test_audit_hygiene.cpp
-        src/audithygiene.cpp
-    )
-    target_link_libraries(test_audit_hygiene PRIVATE
-        Qt6::Core
-    )
-    target_include_directories(test_audit_hygiene PRIVATE src)
-    target_compile_options(test_audit_hygiene PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME audit_hygiene
-             COMMAND test_audit_hygiene)
-    set_tests_properties(audit_hygiene PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -1517,32 +1309,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # audit_command_rule_trust — locks the per-project trust store for
-    # audit_rules.json rule packs carrying `command` fields. Before
-    # 0.7.13 trust was a single global bool, which over-granted after
-    # one opt-in. Now trust is keyed on (canonical projectPath, sha256
-    # of rule-pack bytes); any edit to the rule pack invalidates trust.
-    # A broken gate is silent RCE re-introduction, so this lives on the
-    # fast lane. See tests/features/audit_command_rule_trust/spec.md.
-    add_executable(test_audit_command_rule_trust
-        tests/features/audit_command_rule_trust/test_audit_command_rule_trust.cpp
-        src/config.cpp
-        src/debuglog.cpp
-    )
-    target_link_libraries(test_audit_command_rule_trust PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_audit_command_rule_trust PRIVATE src)
-    target_compile_options(test_audit_command_rule_trust PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME audit_command_rule_trust
-             COMMAND test_audit_command_rule_trust)
-    set_tests_properties(audit_command_rule_trust PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # remote_control_new_tab — third rc_protocol command. Locks the
     # cwd + command field forwarding, the 200 ms settle before the
     # command write (matches onSshConnect — shells drop keystrokes
@@ -1677,30 +1443,6 @@ if(ANTS_TESTS)
     )
     add_test(NAME debuglog_perms COMMAND test_debuglog_perms)
     set_tests_properties(debuglog_perms PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # audit_path_traversal — asserts AuditDialog enrichment sites
-    # (snippet preview, comment classifier, inline-suppress scan,
-    # AI-triage snippet fallbacks, dropIfContextContains) reject
-    # `f.file` values that escape the project root via ../ or
-    # symlinks. Behavioral test on a canonicalize+anchor reference
-    # reimpl (AuditDialog::resolveProjectPath is private on a heavy
-    # QDialog subclass) plus source-greps on auditdialog.cpp to
-    # confirm all call sites migrated. See
-    # tests/features/audit_path_traversal/spec.md.
-    add_executable(test_audit_path_traversal
-        tests/features/audit_path_traversal/test_audit_path_traversal.cpp
-    )
-    target_link_libraries(test_audit_path_traversal PRIVATE Qt6::Core)
-    target_compile_options(test_audit_path_traversal PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_audit_path_traversal PRIVATE
-        SRC_AUDITDIALOG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/auditdialog.cpp"
-    )
-    add_test(NAME audit_path_traversal COMMAND test_audit_path_traversal)
-    set_tests_properties(audit_path_traversal PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -2013,4 +1755,35 @@ if(ANTS_TESTS)
         SRC_BGDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
+
+    # ANTS-1217 Phase 5 — test_audit bundle. 11 audit tests consolidated
+    # behind one target. Most are pure source-grep (slurp + regex on
+    # auditdialog.cpp / auditengine.cpp) and need only Qt6::Core; a few
+    # exercise live AuditEngine / AuditHygiene / RuleQualityTracker /
+    # Config APIs and pull in those translation units via ants_audit_lib
+    # + ants_core_lib. ants_audit_lib transitively brings auditdialog.cpp
+    # (a QDialog), so the GUI bundle helper applies.
+    ants_add_gui_bundle(test_audit
+        LIBS    ants_audit_lib ants_core_lib
+        SOURCES tests/features/audit_command_rule_trust/test_audit_command_rule_trust.cpp
+                tests/features/audit_dedup_96bit/test_audit_dedup_96bit.cpp
+                tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
+                tests/features/audit_hygiene/test_audit_hygiene.cpp
+                tests/features/audit_incremental_output_drain/test_audit_incremental_output_drain.cpp
+                tests/features/audit_path_traversal/test_audit_path_traversal.cpp
+                tests/features/audit_per_tool_timeout/test_audit_per_tool_timeout.cpp
+                tests/features/audit_regex_dos_watchdog/test_audit_regex_dos_watchdog.cpp
+                tests/features/audit_rule_quality/test_audit_rule_quality.cpp
+                tests/features/audit_sarif_suppressions/test_audit_sarif_suppressions.cpp
+                tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp)
+    target_compile_definitions(test_audit PRIVATE
+        SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
+        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
+        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
+        SRC_AUDIT_CPP="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        SRC_AUDIT_H="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
+        SRC_AUDIT_ENGINE_CPP="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
+        SRC_AUDIT_ENGINE_H="${CMAKE_SOURCE_DIR}/src/auditengine.h"
+        SRC_AUDITDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp")
 endif()

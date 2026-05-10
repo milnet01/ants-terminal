@@ -15,6 +15,8 @@
 
 #include <cstdio>
 
+#include <gtest/gtest.h>
+
 namespace {
 
 int g_failures = 0;
@@ -133,19 +135,20 @@ void testPathCanonicalization() {
 
 }  // namespace
 
-int main(int argc, char *argv[]) {
-    QCoreApplication app(argc, argv);
-
+TEST(AuditCommandRuleTrust, RoundTripAndHashInvalidation) {
+    int before = g_failures;
     testRoundTripAndHashInvalidation();
-    testCrossProjectIsolation();
-    testPathCanonicalization();
+    if (g_failures > before) FAIL();
+}
 
-    if (g_failures == 0) {
-        std::fprintf(stderr, "\nAll invariants hold. Trust gate behavior "
-                             "matches spec.md.\n");
-        return 0;
-    }
-    std::fprintf(stderr, "\n%d invariant(s) failed — see above.\n",
-                 g_failures);
-    return 1;
+TEST(AuditCommandRuleTrust, CrossProjectIsolation) {
+    int before = g_failures;
+    testCrossProjectIsolation();
+    if (g_failures > before) FAIL();
+}
+
+TEST(AuditCommandRuleTrust, PathCanonicalization) {
+    int before = g_failures;
+    testPathCanonicalization();
+    if (g_failures > before) FAIL();
 }

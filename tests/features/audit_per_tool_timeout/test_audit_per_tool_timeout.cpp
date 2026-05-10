@@ -11,6 +11,8 @@
 #include <sstream>
 #include <string>
 
+#include <gtest/gtest.h>
+
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
 #endif
@@ -50,7 +52,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+TEST(AuditPerToolTimeout, Main) {
     // ANTS-1119 v1: AuditCheck struct moved to auditengine.h. Search
     // both headers / both sources for the per-check `timeoutMs` field
     // and the populateChecks bumps.
@@ -161,8 +163,6 @@ int main() {
             "\n%d invariant(s) failed — see "
             "tests/features/audit_per_tool_timeout/spec.md for context\n",
             failures);
-        return 1;
+        FAIL();
     }
-    std::printf("OK: per-tool timeoutMs declared, used, and calibrated\n");
-    return 0;
 }

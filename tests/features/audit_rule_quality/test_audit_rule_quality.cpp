@@ -13,6 +13,8 @@
 
 #include <cstdio>
 
+#include <gtest/gtest.h>
+
 namespace {
 int failures = 0;
 
@@ -152,19 +154,17 @@ void testPersistenceRoundTrip() {
     CHECK_EQ(rows[0].fpRate30d, 50, "round-trip: 1/2 = 50% FP rate");
 }
 
-}  // namespace
-
-int main() {
-    testFireAndSuppressionAggregation();
-    testSuggestTighteningFindsCommonShape();
-    testSuggestTighteningEmptyForFewSamples();
-    testSuggestTighteningRejectsPureIdentifier();
-    testPersistenceRoundTrip();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", failures);
-        return 1;
+#define RQ_TEST(NAME) \
+    TEST(AuditRuleQuality, NAME) { \
+        int before = failures; \
+        test##NAME(); \
+        if (failures > before) FAIL(); \
     }
-    std::fprintf(stderr, "All RuleQualityTracker invariants hold.\n");
-    return 0;
-}
+
+RQ_TEST(FireAndSuppressionAggregation)
+RQ_TEST(SuggestTighteningFindsCommonShape)
+RQ_TEST(SuggestTighteningEmptyForFewSamples)
+RQ_TEST(SuggestTighteningRejectsPureIdentifier)
+RQ_TEST(PersistenceRoundTrip)
+
+}  // namespace

@@ -11,6 +11,8 @@
 #include <sstream>
 #include <string>
 
+#include <gtest/gtest.h>
+
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
 #endif
@@ -77,7 +79,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+TEST(AuditSarifSuppressions, Main) {
     const std::string cpp = slurp(SRC_AUDIT_CPP_PATH);
     const std::string hdr = slurp(SRC_AUDIT_H_PATH);
     int failures = 0;
@@ -167,8 +169,6 @@ int main() {
             "\n%d invariant(s) failed — see "
             "tests/features/audit_sarif_suppressions/spec.md for context\n",
             failures);
-        return 1;
+        FAIL();
     }
-    std::printf("OK: SARIF suppressions[] array surfaced + reasons map wired\n");
-    return 0;
 }

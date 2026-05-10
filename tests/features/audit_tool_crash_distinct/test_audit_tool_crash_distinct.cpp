@@ -9,6 +9,8 @@
 #include <sstream>
 #include <string>
 
+#include <gtest/gtest.h>
+
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
 #endif
@@ -43,7 +45,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
     return src.substr(start, i - start - 1);
 }
 
-int main() {
+TEST(AuditToolCrashDistinct, Main) {
     const std::string cpp = slurp(SRC_AUDIT_CPP_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -154,8 +156,6 @@ int main() {
             "\n%d invariant(s) failed — see "
             "tests/features/audit_tool_crash_distinct/spec.md for context\n",
             failures);
-        return 1;
+        FAIL();
     }
-    std::printf("OK: tool-crash branch produces a distinct Info warning\n");
-    return 0;
 }
