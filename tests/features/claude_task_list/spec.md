@@ -27,12 +27,19 @@ INV labels qualified `ANTS-1158-INV-N`. Full statements in
 
 ### Follow-on INVs (post-ANTS-1158 contract refinements)
 
+**Status:** 1218-INV-1/2 ✅ shipped 0.7.80; 1221-INV-1/2 ✅ shipped 0.7.81; 1224-INV-1/2/3 🚧 pending implementation (ANTS-1219+1224+1225 bundle, 2026-05-10).
+
 | #            | Lane   | Statement |
 |--------------|--------|-----------|
 | 1221-INV-1   | parser | `unfinishedCount()` counts `pending` only — `in_progress` is excluded. (Pre-fix counted `pending + in_progress`; user report 2026-05-10.) |
 | 1221-INV-2   | parser | A list of all-`in_progress` tasks yields `unfinishedCount() == 0` so the chip's existing `unfinished <= 0` hide branch fires. |
 | 1218-INV-1   | wiring | `m_tasksBtn` setText numerator is `total - unfinished` (chip counts up; X/Y reads as completed/total like every other progress display in the app). |
 | 1218-INV-2   | parser | Walking through pending → in_progress → completed transitions, the chip's displayed numerator (`total - unfinished`) is non-decreasing. Locks in monotone progress display. |
+| 1224-INV-1   | parser | A top-level `isCompactSummary == true` event is a state-reset checkpoint — `parseTranscript` MUST clear `out`, `idxByToolUseId`, and `sawTodoWrite` upon encountering it, then `continue` to the next line. The checkpoint event itself does NOT contribute task entries (the reset-then-continue happens before the `type==assistant` / `type==user` dispatch, so its content is never inspected for `tool_use` / `tool_result` blocks). The state at end-of-file therefore reflects only TodoWrite/TaskCreate/TaskUpdate events strictly *after* the last such event. (User report 2026-05-10: post-`/compact` + `/exit` + `claude --resume`, the chip showed pre-compact tasks because the parser ignored the checkpoint.) |
+| 1224-INV-2   | parser | The INV-1 reset is applied for *each* `isCompactSummary` event encountered during the file walk. If N checkpoints occur in one transcript, the final state reflects only the events after checkpoint N — multi-compaction sessions converge to "state after the final checkpoint" by induction over INV-1. |
+| 1224-INV-3   | parser | Sidechain compact-summary events (theoretical: `isSidechain==true` AND `isCompactSummary==true`) are filtered by the existing INV-5 sidechain skip *before* the checkpoint reset would fire — i.e., the implementation MUST place the `isCompactSummary` check *after* the sidechain filter. Defensive ordering against a hypothetical future Claude Code version that emits such events; no observed instances in current Claude Code. |
+
+**Memory note (1224 follow-on):** the three clears (`out.clear()`, `idxByToolUseId.clear()`, `sawTodoWrite = false`) are intra-call within `parseTranscript` — no persistent state added. The cleared containers are exactly the ones the parser already owns; the INV-9 envelope of the spec is unchanged.
 
 INV-1 through INV-8 are link-based: the test instantiates a
 `ClaudeTaskListTracker`, points it at a temp-file JSONL fixture

@@ -99,7 +99,6 @@ void sweepKwinScriptOrphansOnce();
 #include <QPropertyAnimation>
 #include <QEasingCurve>
 #include <QCursor>
-#include <memory>
 #include <QGuiApplication>
 #include <QStyleHints>
 #include <QInputDialog>
@@ -695,6 +694,10 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // only to tab-switch + hook fileChanged, which left the button hidden
     // on boot in a dirty repo and during hookless workflows.
     m_statusTimer = new QTimer(this);
+    // ANTS-1219-INV-2: 2 s cadence is the upper bound on how long a
+    // resolver-result swap can go un-propagated to the task-list
+    // tracker. Any change here re-shapes the chip's freshness
+    // contract — adjust the spec INV alongside.
     m_statusTimer->setInterval(2000);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateStatusBar);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::updateTabTitles);
@@ -721,6 +724,9 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // file) but only meaningful when the focused tab has a Claude
     // session. The refresh function self-gates on transcript
     // presence.
+    // ANTS-1219-INV-2: status-timer → refreshTasksButton connect.
+    // Pairs with the 2 s setInterval above to bound resolver-swap
+    // propagation latency.
     connect(m_statusTimer, &QTimer::timeout,
             m_claudeStatusBarController,
             &ClaudeStatusBarController::refreshTasksButton);
@@ -3974,6 +3980,9 @@ void MainWindow::refreshStatusBarForActiveTab() {
         // ANTS-1146 — single atomic reset covers the five state
         // booleans, three widget hides, and bg-tasks transcript path
         // clear that this block used to enumerate inline.
+        // ANTS-1219-INV-4: tab-change call site for resetForTabSwitch.
+        // Removing this re-introduces cross-tab task bleed (old tab's
+        // path stays bound after switch).
         if (m_claudeStatusBarController)
             m_claudeStatusBarController->resetForTabSwitch();
         if (m_roadmapBtn) m_roadmapBtn->hide();

@@ -211,12 +211,19 @@ pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
 }
 
 void ClaudeIntegration::pollClaudeProcess() {
+    // ANTS-1225-INV-4: gate the whole function on a valid focused-tab
+    // shell PID. Without this, findClaudeChildPid(0) would walk
+    // /proc/0/task/0/children which is meaningless.
     if (m_shellPid <= 0) return;
 
     const pid_t foundPid = findClaudeChildPid(m_shellPid);
     const bool found = foundPid > 0;
 
     if (!found) {
+        // ANTS-1225-INV-3: when no Claude is running under the focused
+        // shell, clear m_claudePid + m_transcriptPath and announce
+        // NotRunning. This branch coexists with INV-1 — the != gate
+        // below does NOT subsume the not-found case.
         m_claudePid = 0;
         m_transcriptPath.clear();
         if (m_state != ClaudeState::NotRunning) {
@@ -226,8 +233,14 @@ void ClaudeIntegration::pollClaudeProcess() {
         return;
     }
 
-    if (m_claudePid == 0) {
-        // Newly detected Claude process
+    // ANTS-1225-INV-1: rebind on either initial detection (m_claudePid==0)
+    // OR live PID replacement (m_claudePid set to a stale dead PID after
+    // /exit + claude --resume completed within the 2 s poll window).
+    // Pre-1225 this gate was `m_claudePid == 0`, missing the replacement
+    // case — the status indicator would stay hidden until tab-switch
+    // because setShellPid (line 88) zeroes m_claudePid as a side effect.
+    if (m_claudePid != foundPid) {
+        // Newly detected Claude process (or replacement of a dead one).
         m_claudePid = foundPid;
 
         // ANTS-1168: scope to the focused tab's project rather than
@@ -246,6 +259,10 @@ void ClaudeIntegration::pollClaudeProcess() {
             sessionPathForCwd(projectCwd, procStartMs, nowMs);
 
         if (!scoped.isEmpty()) {
+            // ANTS-1225-INV-2: rebind sequence — watcher swap, then
+            // seed state from the new transcript tail. Order matters:
+            // addPath before parseTranscriptForState so the watcher is
+            // armed before the first parse.
             m_transcriptPath = scoped;
 
             // Swap watch to the new transcript. Signal hookup happens
@@ -260,7 +277,10 @@ void ClaudeIntegration::pollClaudeProcess() {
             parseTranscriptForState(m_transcriptPath);
         }
 
-        // Set initial Idle state, then let transcript parse refine it
+        // Set initial Idle state, then let transcript parse refine it.
+        // ANTS-1225-INV-2: the m_state != Idle guard is mandatory —
+        // removing it makes the status indicator flap on every poll
+        // when steady-state Idle.
         if (m_state != ClaudeState::Idle) {
             m_state = ClaudeState::Idle;
             emit stateChanged(m_state, "idle");

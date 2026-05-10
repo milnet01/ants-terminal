@@ -108,6 +108,12 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_statusBar->addPermanentWidget(m_tasksBtn);
     connect(m_tasksBtn, &QPushButton::clicked,
             this, &ClaudeStatusBarController::tasksClicked);
+    // ANTS-1219-INV-5: tracker → controller feedback connect. A
+    // parser-driven content change (file appended on disk →
+    // QFileSystemWatcher::fileChanged → rescan → tasksChanged) re-runs
+    // refreshTasksButton on the same thread (Qt::AutoConnection,
+    // direct delivery) so the chip text follows tracker state without
+    // an event-loop gap.
     connect(m_tasks, &ClaudeTaskListTracker::tasksChanged,
             this, &ClaudeStatusBarController::refreshTasksButton);
 
@@ -503,6 +509,10 @@ void ClaudeStatusBarController::resetForTabSwitch() {
     if (m_bgTasksBtn)  m_bgTasksBtn->hide();
     if (m_bgTasks)     m_bgTasks->setTranscriptPath(QString());
     if (m_tasksBtn)    m_tasksBtn->hide();
+    // ANTS-1219-INV-4: tab-switch reset clears the tracker's bound
+    // path synchronously so a stale path from the prior tab cannot
+    // contribute tasks under the newly-focused tab. The next
+    // refreshTasksButton tick re-binds via INV-1.
     if (m_tasks)       m_tasks->setTranscriptPath(QString());
     apply();
 }
@@ -661,16 +671,22 @@ void ClaudeStatusBarController::refreshTasksButton() {
     if (focused) cwd = focused->shellCwd();
     const bool focusedTabPresent = (focused != nullptr);
     QString path;
+    // ANTS-1219-INV-1: refresh wiring — resolver result becomes the
+    // tracker's bound source path on every change. Empty path (no
+    // live Claude / freshness floor rejected all candidates) is
+    // pushed through identically and clears the tracker, satisfying
+    // ANTS-1219-INV-3.
     if (m_integration) path = m_integration->activeSessionPath(cwd);
     const QString prevPath = m_tasks->transcriptPath();
     if (path != prevPath)
         m_tasks->setTranscriptPath(path);
 
-    // Polling rescue: QFileSystemWatcher silently drops its watch on
-    // atomic rewrite (Claude writes the JSONL via tmpfile+rename),
-    // so fileChanged stops firing and the dialog freezes. poll()
-    // mtime-checks and only rescans on real change. Same shape as
-    // ClaudeBgTaskTracker::sweepLiveness on the bg-tasks side.
+    // ANTS-1219-INV-6: polling rescue — QFileSystemWatcher silently
+    // drops its watch on atomic rewrite (Claude writes the JSONL via
+    // tmpfile+rename), so fileChanged stops firing and the dialog
+    // freezes. poll() mtime-checks m_transcriptPath and only rescans
+    // on real change. Same shape as ClaudeBgTaskTracker::sweepLiveness
+    // on the bg-tasks side.
     m_tasks->poll();
 
     const int total      = m_tasks->totalCount();
@@ -702,6 +718,9 @@ void ClaudeStatusBarController::refreshTasksButton() {
                  total, unfinished, inProgress, pending, done, branch);
     }
 
+    // ANTS-1219-INV-3: hide branch covers the empty-resolver case
+    // (path was "", tracker cleared, total/unfinished both 0). Also
+    // the "all done" case from ANTS-1216 below.
     if (total <= 0 || unfinished <= 0) {
         // Hide on every empty case (no transcript, no plan events,
         // empty plan list) AND on the "all done" case. ANTS-1216 user

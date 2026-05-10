@@ -6224,6 +6224,73 @@ made the desktop feel noisy in normal use.
   bug we can tell at a glance which exact build they're running —
   date, debug-or-release, git commit, and which compiler made it.
   Kind: feature. Source: user-2026-05-10.
+- 📋 [ANTS-1224] **Task List parser ignores `isCompactSummary`
+  checkpoint — pre-compact tasks survive into post-relaunch
+  state.** Live reproduction 2026-05-10 in session `94218f91-…`:
+  user `/compact`'d, `/exit`'d, then "Continue previous coding
+  session" — Tasks chip shows 5 stale tasks created before the
+  compact, dialog renders the same five. Root cause localized to
+  `src/claudetasklist.cpp::parseTranscript` (line 162-291): the
+  loop walks every event but never observes
+  `isCompactSummary:true`, so a TaskCreate from the pre-compact
+  phase with no terminal TaskUpdate after relaunch counts as a
+  phantom task. Spec §4 of ANTS-1219 originally listed
+  `isCompactSummary` as out-of-scope ("filtered, no-op") — that
+  was a misread; the parser correctly *parses* the event as
+  zero-tool-uses but doesn't use it as a state-reset.
+  **Fix shape (1-line, single point)**: inside the per-line loop
+  right after the sidechain filter, if `isCompactSummary==true`
+  → `out.clear(); idxByToolUseId.clear(); sawTodoWrite = false;
+  continue;`. Multiple checkpoints converge on "state after the
+  final one" by induction. Memory budget: zero new state. Build
+  cost: zero new exes (test fixture into existing `test_claude`
+  bundle).
+  **Spec**: amended `tests/features/claude_task_list/spec.md`
+  with three follow-on INVs (1224-INV-1/2/3); amended
+  `tests/features/claude_task_list_session_isolation/spec.md`
+  §4 to reference the new INVs.
+  **Layman:** when Claude compacts the conversation and you
+  relaunch, your old todos shouldn't follow you. The fix
+  teaches the task-list parser to recognise the "compaction
+  happened" marker as a checkpoint and reset.
+  Kind: fix. Source: user-2026-05-10.
+- 📋 [ANTS-1225] **Claude status indicator stays hidden after
+  `/compact` + `/exit` + `claude --resume` until tab-switch.**
+  Live reproduction 2026-05-10, same session as ANTS-1224.
+  After resuming Claude in the same shell tab, the bottom-bar
+  Claude status label (`m_statusLabel` — "Claude: idle/thinking/
+  ..." chip) doesn't appear. Tab-switch and back unblocks it.
+  Root cause localized to `src/claudeintegration.cpp::pollClaudeProcess`
+  (line 213-280): the gate `if (m_claudePid == 0)` at line 229
+  only enters the "newly detected" rebind branch when no prior
+  Claude was tracked. When a prior Claude exits and a new one
+  spawns *within the 2 s poll window*, no poll observes a
+  `found==false` interim, so `m_claudePid` retains the stale
+  dead PID — subsequent polls see the new Claude but skip the
+  rebind branch (since `m_claudePid != 0`). Tab-switch fixes it
+  because `setShellPid` zeroes `m_claudePid` (line 88), which
+  lets the next poll's `m_claudePid == 0` gate fire.
+  Diagnostic signature in the debug log: `procStartMs=0` for
+  every `sessionPathForCwd/result:` line — the resolver cannot
+  use the process-start anchor (ANTS-1163-INV-2) because
+  `processStartTimeMs(stale_dead_pid)` returns 0; falls back to
+  recency-only mode and still picks the right JSONL, which is
+  why the *tasks chip* keeps working while the *status indicator*
+  is broken — they diverge here.
+  **Fix shape (1-line)**: change the gate to
+  `if (m_claudePid != foundPid)` — handles initial detection
+  AND live PID replacement uniformly. Memory budget: zero new
+  state.
+  **Spec**: `tests/features/claude_pid_replacement/spec.md`
+  (4 INVs + 3 negative INVs + memory budget + pre-fix
+  verification + re-open conditions). Source-grep test wired
+  into existing `test_claude` bundle per ANTS-1217.
+  **Layman:** the "Claude is thinking…" status next to the
+  bottom-right of the window should appear as soon as Claude
+  starts running. After a relaunch it sometimes stays hidden
+  until you change tabs and back; the fix makes the detector
+  re-check whenever the running Claude's PID changes.
+  Kind: fix. Source: user-2026-05-10.
 
 ---
 

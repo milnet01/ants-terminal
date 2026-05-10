@@ -77,7 +77,7 @@ one decomposes into INV violations elsewhere in the contract.
 - **Parser correctness.** Whether `parseTranscript` extracts the right task entries from a given JSONL is owned by `claude_task_list` (ANTS-1158). This spec does not exercise the parser; it asserts only the wiring around it.
 - **Background-tasks chip** (ANTS-1053). The same wiring shape applies with `ClaudeBgTaskTracker` substituted (`claudestatuswidgets.cpp:573-645`). A sibling spec — `claude_bg_tasks_session_isolation` — would mirror this one. Bundling deferred until this spec lands.
 - **`/resume <id>` re-opening the same historical JSONL.** No transition occurs (resolver returns the same path it would resolve cold). This spec's swap invariants are vacuously satisfied.
-- **`isCompactSummary` events.** Filtered out by `parseTranscript` because they carry no `TodoWrite` / `TaskCreate` / `TaskUpdate` `tool_use` — already covered by ANTS-1158-INV-5/6.
+- **`isCompactSummary` checkpoint semantics.** Once the ANTS-1224 fix lands, `parseTranscript` will treat `isCompactSummary:true` events as state-reset checkpoints so post-`/compact` + relaunch (via `claude --resume` or "Continue previous coding session") doesn't carry pre-compact tasks into the visible state. Owned by `claude_task_list` (`ANTS-1224-INV-1..3`, recorded in `tests/features/claude_task_list/spec.md` under that spec's "Follow-on INVs" table — the `1224-` prefix scopes them to this fix bundle while keeping them in the parent spec's contract surface). The original draft of *this* spec wrongly listed `isCompactSummary` as "filtered out" — that was a misread of `ANTS-1158-INV-5`/`INV-6`, which only filter sidechain and subagent-dispatch events. The checkpoint contract is downstream of the wiring asserted here; the wiring tests do not re-instantiate it.
 - **Per-tab Claude PID resolution under multi-tab Claude.** `ClaudeIntegration::m_claudePid` is singleton-scoped; if two tabs each run Claude, `processStartTimeMs(m_claudePid)` inside `activeSessionPath` uses whichever PID was last detected. That's an ANTS-1161/1168 boundary concern, not this spec's surface.
 
 ## 5. Acceptance
@@ -102,6 +102,8 @@ Test shape (source-grep, no GUI, no QTemporaryDir):
 6. **INV-6 — poll-rescue call**: grep `src/claudestatuswidgets.cpp` for `m_tasks->poll()` inside `refreshTasksButton`.
 
 INV labels embedded as `// ANTS-1219-INV-N` comments next to each asserted string in source so the grep is intentional, not coincidental — same pattern `claude_session_freshness` uses for INV-9/INV-10.
+
+The parser-side checkpoint contract (`ANTS-1224-INV-1..3`) is NOT exercised here — that surface is owned by `tests/features/claude_task_list/` (link-based parser tests against fixture JSONLs). A pass through this spec's six steps is necessary but not sufficient for ANTS-1219 closure; the parser-side test must also pass.
 
 Test slot: `tests/features/claude_task_list_session_isolation/test_claude_task_list_session_isolation.cpp`. Wired into the existing `test_claude` bundle per ANTS-1217 — no new standalone executable, no new CMake target visible at top-level.
 

@@ -512,6 +512,129 @@ void testAnts1218Inv2_chipNumeratorMonotone() {
            "ANTS-1218-INV-2: numerator never exceeds total");
 }
 
+// Build an `isCompactSummary:true` event line. Always type==user in
+// current Claude Code; carries the rolled-up summary text. Parser must
+// treat it as a state-reset checkpoint — events before contribute zero
+// task entries to the post-checkpoint state.
+QString compactSummaryEvent() {
+    return QStringLiteral(
+        R"({"type":"user","isSidechain":false,"isCompactSummary":true,"message":{"role":"user","content":"compacted summary text"}})");
+}
+
+void testAnts1224Inv1_compactSummaryResetsState() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1224-INV-1 setup"); return; }
+
+    // Pre-compact: TodoWrite with 2 tasks. Then isCompactSummary
+    // checkpoint. Then post-compact: TodoWrite with 1 different task.
+    // Expected: state reflects only the post-checkpoint TodoWrite.
+    const QString p = writeFixture(dir, "fix1224a.jsonl", {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"Pre-compact A","status":"pending","activeForm":"Doing A"},)"
+            R"({"content":"Pre-compact B","status":"pending","activeForm":"Doing B"})"
+            R"(]})",
+            QStringLiteral("toolu_pre")),
+        compactSummaryEvent(),
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"Post-compact only","status":"in_progress","activeForm":"Doing post"})"
+            R"(]})",
+            QStringLiteral("toolu_post")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1224-INV-1: post-checkpoint TodoWrite is the surviving state",
+           "got " + std::to_string(tasks.size()));
+    if (tasks.size() == 1) {
+        expect(tasks[0].subject.contains(QStringLiteral("Post-compact only")),
+               "ANTS-1224-INV-1: surviving entry is from after the checkpoint");
+    }
+}
+
+void testAnts1224Inv1b_compactSummaryClearsTaskCreates() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1224-INV-1b setup"); return; }
+
+    // The user's actual repro: TaskCreate before /compact, no terminal
+    // TaskUpdate, then isCompactSummary, then nothing. Pre-fix: chip
+    // shows the pre-compact tasks. Post-fix: zero tasks.
+    const QString p = writeFixture(dir, "fix1224b.jsonl", {
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Test the chip","description":"x","activeForm":"x"})",
+            QStringLiteral("toolu_t1")),
+        userToolResult(QStringLiteral("toolu_t1"),
+            QStringLiteral("Task #1 created successfully: Test the chip")),
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Run /compact","description":"x","activeForm":"x"})",
+            QStringLiteral("toolu_t2")),
+        userToolResult(QStringLiteral("toolu_t2"),
+            QStringLiteral("Task #2 created successfully: Run /compact")),
+        compactSummaryEvent(),
+        // No post-compact task events.
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.isEmpty(),
+           "ANTS-1224-INV-1: TaskCreate events before isCompactSummary contribute "
+           "zero post-checkpoint state",
+           "got " + std::to_string(tasks.size()));
+}
+
+void testAnts1224Inv2_multipleCheckpointsConverge() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1224-INV-2 setup"); return; }
+
+    // Two checkpoints. State at EOF must reflect only events after the
+    // second one.
+    const QString p = writeFixture(dir, "fix1224c.jsonl", {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[{"content":"Phase 1","status":"pending","activeForm":"P1"}]})",
+            QStringLiteral("toolu_p1")),
+        compactSummaryEvent(),
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[{"content":"Phase 2","status":"pending","activeForm":"P2"}]})",
+            QStringLiteral("toolu_p2")),
+        compactSummaryEvent(),
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[{"content":"Phase 3","status":"in_progress","activeForm":"P3"}]})",
+            QStringLiteral("toolu_p3")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1224-INV-2: state after the FINAL checkpoint",
+           "got " + std::to_string(tasks.size()));
+    if (tasks.size() == 1) {
+        expect(tasks[0].subject.contains(QStringLiteral("Phase 3")),
+               "ANTS-1224-INV-2: surviving entry is from after the final checkpoint");
+    }
+}
+
+void testAnts1224Inv3_sidechainCheckpointFilteredFirst() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1224-INV-3 setup"); return; }
+
+    // A theoretical sidechain compact-summary event MUST be filtered by
+    // INV-5 before INV-1 fires — so a parent TodoWrite preceding it
+    // survives. Defensive ordering against future Claude Code versions.
+    const QString sidechainCheckpoint = QStringLiteral(
+        R"({"type":"user","isSidechain":true,"isCompactSummary":true,"message":{"role":"user","content":"side"}})");
+    const QString p = writeFixture(dir, "fix1224d.jsonl", {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[{"content":"Parent","status":"pending","activeForm":"P"}]})",
+            QStringLiteral("toolu_parent")),
+        sidechainCheckpoint,  // filtered by INV-5; must NOT clear state
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1224-INV-3: sidechain isCompactSummary does NOT reset state "
+           "(INV-5 sidechain filter fires first)",
+           "got " + std::to_string(tasks.size()));
+}
+
 void testInv13_dialogAntiRegressionWaylandFlake() {
     const std::string dlg = readFile("src/claudetasklistdialog.cpp");
     const std::string dlgh = readFile("src/claudetasklistdialog.h");
@@ -632,6 +755,30 @@ TEST(ClaudeTaskList, Ants1221Inv2AllRunningHidesChip) {
 TEST(ClaudeTaskList, Ants1218Inv1ChipFormatCountsUp) {
     int before = g_failures;
     testAnts1218Inv1_chipFormatCountsUp();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1224Inv1CompactSummaryResetsState) {
+    int before = g_failures;
+    testAnts1224Inv1_compactSummaryResetsState();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1224Inv1bCompactSummaryClearsTaskCreates) {
+    int before = g_failures;
+    testAnts1224Inv1b_compactSummaryClearsTaskCreates();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1224Inv2MultipleCheckpointsConverge) {
+    int before = g_failures;
+    testAnts1224Inv2_multipleCheckpointsConverge();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1224Inv3SidechainCheckpointFilteredFirst) {
+    int before = g_failures;
+    testAnts1224Inv3_sidechainCheckpointFilteredFirst();
     if (g_failures > before) FAIL();
 }
 

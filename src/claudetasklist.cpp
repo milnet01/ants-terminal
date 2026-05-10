@@ -191,6 +191,20 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
         // never count toward the parent's plan.
         if (ev.value(QStringLiteral("isSidechain")).toBool()) continue;
 
+        // ANTS-1224-INV-1/2/3: isCompactSummary is a state-reset
+        // checkpoint. Without this, post-/compact + relaunch leaves
+        // pre-compact TaskCreate/TodoWrite contributions visible in
+        // the chip and dialog. Reset BEFORE the type-dispatch so the
+        // checkpoint event itself contributes zero task entries; the
+        // sidechain filter above has already short-circuited any
+        // hypothetical isSidechain+isCompactSummary combination.
+        if (ev.value(QStringLiteral("isCompactSummary")).toBool()) {
+            out.clear();
+            idxByToolUseId.clear();
+            sawTodoWrite = false;
+            continue;
+        }
+
         const QString type = ev.value(QStringLiteral("type")).toString();
 
         if (type == QLatin1String("assistant")) {
