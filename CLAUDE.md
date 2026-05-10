@@ -66,8 +66,14 @@ Reverse (DA/CPR/DSR): `TerminalGrid → ResponseCallback → PTY`
 ## Build & test
 
 ```bash
-mkdir build && cd build && cmake .. && make -j$(nproc) && ctest --output-on-failure
+cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --output-on-failure
 ```
+
+Use Ninja, not Make: the `JOB_POOLS` cap in `CMakeLists.txt`
+(`compile_pool=max(2, nproc/2)` + `link_pool=1`) only applies under
+Ninja. Make ignores the pool and runs whatever `-j` you give it,
+which on a workstation with several Qt-bloated cc1plus jobs in flight
+is the path that earlyoom-reaped binaries in 0.7.x.
 
 Optional audit deps probe with `which <tool>` and self-disable if
 absent (clazy, semgrep, osv-scanner, trufflehog, hadolint, checkov,

@@ -540,10 +540,13 @@ sudo pacman -S qt6-base cmake gcc lua
 ```bash
 git clone https://github.com/milnet01/ants-terminal.git
 cd ants-terminal
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
+cmake -G Ninja -B build
+cmake --build build
 ```
+
+Ninja is preferred: the in-tree `JOB_POOLS` cap (compile = max(2, nproc/2),
+link = 1) applies only under Ninja. Building with `make -j$(nproc)`
+bypasses the cap and can OOM on Qt-heavy translation units.
 
 ### Run
 
@@ -1016,7 +1019,7 @@ Before contributing, please read [`CONTRIBUTING.md`](CONTRIBUTING.md) (build + P
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Build and test: `mkdir build && cd build && cmake .. && make -j$(nproc)`
+4. Build and test: `cmake -G Ninja -B build && cmake --build build` (Ninja honours the in-tree job-pool cap; plain Make does not)
 5. Submit a pull request
 
 ---
