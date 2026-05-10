@@ -418,249 +418,57 @@ install(FILES packaging/shell-integration/ants-osc133.bash
 option(ANTS_TESTS "Build tests (includes audit rule regression tests)" OFF)
 if(ANTS_TESTS)
     enable_testing()
+
+    # ---- ANTS-1217 Phase 2 — GoogleTest plumbing ----
+    # System pkg first (Tumbleweed gtest-devel, Ubuntu 24.04 libgtest-dev).
+    # Floor 1.13 — DISCOVERY_MODE PRE_TEST semantics.
+    # FetchContent fallback only fires on hosts without a usable system pkg.
+    find_package(GTest 1.13 QUIET)
+    if(NOT GTest_FOUND)
+        message(STATUS "System GTest >=1.13 not found — falling back to FetchContent v1.15.2")
+        include(FetchContent)
+        FetchContent_Declare(googletest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG        v1.15.2)
+        set(BUILD_GMOCK    OFF CACHE BOOL "" FORCE)
+        set(INSTALL_GTEST  OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(googletest)
+    else()
+        message(STATUS "GTest ${GTest_VERSION} found — using system package")
+    endif()
+    include(GoogleTest)
+
+    # GUI bundle helper — bundles share PCH from ants-terminal so the per-TU
+    # Qt cost only pays once across the whole tests-on build. The Qt6::Widgets
+    # link surface comes through transitively from each ants_*_lib (PUBLIC).
+    function(ants_add_gui_bundle name)
+        cmake_parse_arguments(B "" "" "LIBS;SOURCES" ${ARGN})
+        add_executable(${name} tests/bundle_main_gui.cpp ${B_SOURCES})
+        target_link_libraries(${name} PRIVATE
+            ${B_LIBS} ants_warnings GTest::gtest)
+        target_precompile_headers(${name} REUSE_FROM ants-terminal)
+        gtest_discover_tests(${name}
+            DISCOVERY_MODE PRE_TEST
+            PROPERTIES LABELS "features;fast" TIMEOUT 10)
+    endfunction()
+
+    # Core-only bundle helper — Qt::Core only, no Widgets. PCH not reused
+    # from ants-terminal (different INTERFACE flag set without Widgets).
+    function(ants_add_core_bundle name)
+        cmake_parse_arguments(B "" "" "LIBS;SOURCES" ${ARGN})
+        add_executable(${name} tests/bundle_main_core.cpp ${B_SOURCES})
+        target_link_libraries(${name} PRIVATE
+            ${B_LIBS} ants_warnings GTest::gtest Qt6::Core)
+        gtest_discover_tests(${name}
+            DISCOVERY_MODE PRE_TEST
+            PROPERTIES LABELS "features;fast" TIMEOUT 10)
+    endfunction()
+
     add_test(NAME audit_rule_fixtures
              COMMAND bash ${CMAKE_SOURCE_DIR}/tests/audit_self_test.sh)
     set_tests_properties(audit_rule_fixtures PROPERTIES
         LABELS "audit;fast"
         TIMEOUT 30)
-
-    # -----------------------------------------------------------------------
-    # Feature-conformance tests (tests/features/). See tests/features/README.md
-    # for the design rationale. Each test is a standalone executable that
-    # links against the minimum set of src/*.cpp objects needed to exercise
-    # its feature — NOT the full ants-terminal target (which needs PTY, X11,
-    # OpenGL, etc.). Keeps the tests GUI-free and fast enough for CI.
-    # -----------------------------------------------------------------------
-
-    # scrollback_redraw — asserts main-screen CSI 2J repaint doesn't double
-    # scrollback. Would have caught both the pre-0.6.21 regression AND the
-    # incomplete 0.6.21 fix (which covered scrolled-up users but not the
-    # bottom-of-screen case). See tests/features/scrollback_redraw/spec.md.
-    add_executable(test_scrollback_redraw
-        tests/features/scrollback_redraw/test_redraw.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_scrollback_redraw PRIVATE
-        Qt6::Core
-        Qt6::Gui      # QColor, QImage, transitively required by terminalgrid.h
-    )
-    target_include_directories(test_scrollback_redraw PRIVATE src)
-    target_compile_options(test_scrollback_redraw PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME scrollback_redraw COMMAND test_scrollback_redraw)
-    set_tests_properties(scrollback_redraw PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # viewport_stable — asserts that a user scrolled up in history does
-    # not see their viewport shift when streaming content arrives. Sibling
-    # to scrollback_redraw but covers a different invariant: the
-    # redraw test checks "scrollback must not double" (user-at-bottom
-    # concern); this test checks "viewport content must not change under
-    # the scrolled-up user" (user-scrolled-up concern). Both must hold
-    # simultaneously after the 0.6.25 fix. See spec.md §Viewport-stable.
-    add_executable(test_viewport_stable
-        tests/features/scrollback_redraw/test_viewport_stable.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_viewport_stable PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_viewport_stable PRIVATE src)
-    target_compile_options(test_viewport_stable PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME viewport_stable COMMAND test_viewport_stable)
-    set_tests_properties(viewport_stable PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # scrollback_frozen_view — locks the 0.6.33 frozen-view invariant.
-    # When the user scrolls up, the viewport content is frozen — even
-    # screen rows the viewport overlaps stay pinned. Complements
-    # viewport_stable (deep-scroll) with the partial-overlap case.
-    # See tests/features/scrollback_frozen_view/spec.md.
-    add_executable(test_scrollback_frozen_view
-        tests/features/scrollback_frozen_view/test_frozen_view.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_scrollback_frozen_view PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_scrollback_frozen_view PRIVATE src)
-    target_compile_definitions(test_scrollback_frozen_view PRIVATE
-        SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp")
-    target_compile_options(test_scrollback_frozen_view PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME scrollback_frozen_view COMMAND test_scrollback_frozen_view)
-    set_tests_properties(scrollback_frozen_view PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # scroll_region_rotate — locks the observable behavior of scrollUp /
-    # scrollDown (row motion inside [scrollTop, scrollBottom], outside-
-    # region invariance, main-screen scrollback push, alt-screen no push,
-    # hyperlink tracking, count>regionHeight clamp). Guards the 0.7.9
-    # erase/insert -> std::rotate refactor against silent regression.
-    # See tests/features/scroll_region_rotate/spec.md.
-    add_executable(test_scroll_region_rotate
-        tests/features/scroll_region_rotate/test_scroll_region_rotate.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_scroll_region_rotate PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_scroll_region_rotate PRIVATE src)
-    target_compile_options(test_scroll_region_rotate PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME scroll_region_rotate COMMAND test_scroll_region_rotate)
-    set_tests_properties(scroll_region_rotate PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # scroll_region_leak_after_apps — pins DECSTBM reset paths
-    # (CSI r / RIS) plus the alt-screen save/restore so a TUI exit
-    # can't leak the alt's scroll region onto main. Driven by user
-    # report ANTS-1187 (long-running server tab rendered only into
-    # upper half).
-    add_executable(test_scroll_region_leak
-        tests/features/scroll_region_leak_after_apps/test_scroll_region_leak.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_scroll_region_leak PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_scroll_region_leak PRIVATE src)
-    target_compile_options(test_scroll_region_leak PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME scroll_region_leak COMMAND test_scroll_region_leak)
-    set_tests_properties(scroll_region_leak PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # scroll_region_growth_on_resize — pins the "default scroll
-    # region grows / shrinks with the grid on resize" contract
-    # that ANTS-1130's clamp-only path silently broke. Driven by
-    # user report 2026-05-08 (output piles into upper rows after
-    # window-grow). Closes ANTS-1187 / ANTS-1193 / ANTS-1194.
-    add_executable(test_scroll_region_growth
-        tests/features/scroll_region_growth_on_resize/test_scroll_region_growth.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_scroll_region_growth PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_scroll_region_growth PRIVATE src)
-    target_compile_options(test_scroll_region_growth PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME scroll_region_growth COMMAND test_scroll_region_growth)
-    set_tests_properties(scroll_region_growth PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # decstr_soft_reset — pins DECSTR (CSI ! p) soft-reset semantics
-    # per xterm ctlseqs / VT220 reference. ANTS-1196 from indie-review #3.
-    add_executable(test_decstr_soft_reset
-        tests/features/decstr_soft_reset/test_decstr_soft_reset.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_decstr_soft_reset PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_decstr_soft_reset PRIVATE src)
-    target_compile_options(test_decstr_soft_reset PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME decstr_soft_reset COMMAND test_decstr_soft_reset)
-    set_tests_properties(decstr_soft_reset PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # osc9_progress_disambiguator — pins OSC 9 (notification) vs
-    # OSC 9;4 (ConEmu/MS-Terminal progress) discriminator. ANTS-1197
-    # from indie-review #3 — minimal `9;4` (state-0 / clear progress)
-    # was misclassified as notification with body "4".
-    add_executable(test_osc9_progress
-        tests/features/osc9_progress_disambiguator/test_osc9_progress.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_osc9_progress PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_osc9_progress PRIVATE src)
-    target_compile_options(test_osc9_progress PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME osc9_progress COMMAND test_osc9_progress)
-    set_tests_properties(osc9_progress PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # wide_char_resize — pins rewrap's wide-char boundary respect.
-    # ANTS-1203 from indie-review #3 — pre-fix chunk loop split a
-    # wide-char lead from its continuation when the wrap point landed
-    # mid-pair, producing visually-corrupt scrollback under CJK / emoji.
-    add_executable(test_wide_char_resize
-        tests/features/wide_char_resize/test_wide_char_resize.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_wide_char_resize PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_wide_char_resize PRIVATE src)
-    target_compile_options(test_wide_char_resize PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME wide_char_resize COMMAND test_wide_char_resize)
-    set_tests_properties(wide_char_resize PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # sgr_attribute_reset — asserts every SGR set/reset pair (bold, italic,
-    # underline, inverse, strikethrough) + SGR 0 full-reset correctly clear
-    # the cell attribute on subsequent writes. See
-    # tests/features/sgr_attribute_reset/spec.md. Guards against the
-    # 0.6.22 visual-artifact class where decorative SGR attrs leaked
-    # across Claude Code's TUI task-list items.
-    add_executable(test_sgr_attribute_reset
-        tests/features/sgr_attribute_reset/test_sgr_reset.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_sgr_attribute_reset PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_sgr_attribute_reset PRIVATE src)
-    target_compile_options(test_sgr_attribute_reset PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME sgr_attribute_reset COMMAND test_sgr_attribute_reset)
-    set_tests_properties(sgr_attribute_reset PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
 
     # claude_status_bar — asserts the Claude Code status-bar contract:
     # transcript → ClaudeState mapping covers every documented last-event
@@ -1051,145 +859,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # vtparser_simd_scan — asserts that VtParser's SIMD fast-path (0.7.0
-    # performance work, scans 16 bytes at a time for the next non-printable-
-    # ASCII byte via SSE2/NEON) emits an action stream byte-identical to the
-    # scalar path for every feed strategy: single-shot, byte-by-byte, and
-    # pseudo-random chunking. Guards against the scan boundary diverging
-    # from scalar semantics at any offset mod 16. See
-    # tests/features/vtparser_simd_scan/spec.md.
-    add_executable(test_vtparser_simd_scan
-        tests/features/vtparser_simd_scan/test_vtparser_simd.cpp
-        src/vtparser.cpp
-    )
-    target_include_directories(test_vtparser_simd_scan PRIVATE src)
-    target_compile_options(test_vtparser_simd_scan PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME vtparser_simd_scan COMMAND test_vtparser_simd_scan)
-    set_tests_properties(vtparser_simd_scan PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # vt_osc_esc_discard — locks the 0.7.53 fix for ESC inside OSC /
-    # DCS / APC / IgnoreString state. Pre-fix, the parser transitioned
-    # to Escape state on a mid-string ESC and dispatched the trailing
-    # byte as a fresh ESC sequence (RIS / IND / DECSC / ...), giving a
-    # hostile remote shell an RCE-adjacent trigger via OSC payloads.
-    # 0.7.53 added OscStringEsc / DcsStringEsc / ApcStringEsc /
-    # IgnoreStringEsc peek-states that consume the trailing byte and
-    # return to Ground. See tests/features/vt_osc_esc_discard/spec.md.
-    add_executable(test_vt_osc_esc_discard
-        tests/features/vt_osc_esc_discard/test_vt_osc_esc_discard.cpp
-        src/vtparser.cpp
-    )
-    target_include_directories(test_vt_osc_esc_discard PRIVATE src)
-    target_compile_options(test_vt_osc_esc_discard PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME vt_osc_esc_discard COMMAND test_vt_osc_esc_discard)
-    set_tests_properties(vt_osc_esc_discard PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # vtparser_print_run_coalesce — asserts that the 0.7.17 Print-run
-    # coalescing (SIMD scan emits one VtAction::Print per safe-ASCII run
-    # + TerminalGrid::handleAsciiPrintRun batches per-row writes)
-    # produces grid state byte-identical to feeding the same bytes
-    # one at a time through the scalar handlePrint path. Locks the
-    # fast-path semantic equivalence that vtparser_simd_scan cannot
-    # observe (that test is action-stream level, this one is grid
-    # state). See tests/features/vtparser_print_run_coalesce/spec.md.
-    add_executable(test_vtparser_print_run_coalesce
-        tests/features/vtparser_print_run_coalesce/test_print_run_coalesce.cpp
-        src/vtparser.cpp
-        src/terminalgrid.cpp
-    )
-    target_include_directories(test_vtparser_print_run_coalesce PRIVATE src)
-    target_link_libraries(test_vtparser_print_run_coalesce PRIVATE
-        Qt6::Core Qt6::Gui
-    )
-    target_compile_options(test_vtparser_print_run_coalesce PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME vtparser_print_run_coalesce COMMAND test_vtparser_print_run_coalesce)
-    set_tests_properties(vtparser_print_run_coalesce PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # combining_on_resize — asserts that TerminalGrid::resize preserves the
-    # per-line combining-char side table on both main screen and alt
-    # screen, and cleanly evicts combining entries whose column falls
-    # outside the new width. Regression test for the 0.6.28 fix; before
-    # it, every window resize wiped accents/ZWJ/diacritics because the
-    # simple-copy path walked cells only. See spec.md.
-    add_executable(test_combining_on_resize
-        tests/features/combining_on_resize/test_combining.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_combining_on_resize PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_combining_on_resize PRIVATE src)
-    target_compile_options(test_combining_on_resize PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME combining_on_resize COMMAND test_combining_on_resize)
-    set_tests_properties(combining_on_resize PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # osc8_insert_delete_lines — regression guard for the 0.7.7 fix that
-    # runs the same erase/insert pattern against m_screenHyperlinks during
-    # CSI L / CSI M as the main cell vector, so OSC 8 spans stay anchored
-    # to the cells that contain the clickable text. Pre-fix, a single
-    # Insert Line shifted the underline visually but left the clickable
-    # rectangle on the old row.
-    add_executable(test_osc8_insert_delete_lines
-        tests/features/osc8_insert_delete_lines/test_osc8_linerange.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_osc8_insert_delete_lines PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_osc8_insert_delete_lines PRIVATE src)
-    target_compile_options(test_osc8_insert_delete_lines PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME osc8_insert_delete_lines COMMAND test_osc8_insert_delete_lines)
-    set_tests_properties(osc8_insert_delete_lines PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # hyperlink_resize_clamp — regression guard for the 0.7.7 clamp added
-    # to m_hyperlinkStartRow / m_hyperlinkStartCol in TerminalGrid::resize.
-    # Pre-fix, a shrink resize that left the open hyperlink's start row
-    # out-of-range caused the subsequent OSC 8 close to silently drop the
-    # span (the existing upper-bound guard at handleOsc swallowed it).
-    # Post-fix, the start coordinates clamp at resize time so the span
-    # commits on the clamped row.
-    add_executable(test_hyperlink_resize_clamp
-        tests/features/hyperlink_resize_clamp/test_hyperlink_resize_clamp.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_hyperlink_resize_clamp PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_hyperlink_resize_clamp PRIVATE src)
-    target_compile_options(test_hyperlink_resize_clamp PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME hyperlink_resize_clamp COMMAND test_hyperlink_resize_clamp)
-    set_tests_properties(hyperlink_resize_clamp PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # ssh_dash_host_rejected — regression guard for the 0.7.7 CVE-2017-
     # 1000117-class fix. SshBookmark::toSshCommand must emit `--` before
     # the host argument, so OpenSSH will never parse a host value that
@@ -1436,38 +1105,6 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 10)
 
-    # osc133_hmac_verification — locks the 0.7.0 OSC 133 HMAC verifier
-    # invariants. Untrusted in-terminal processes can otherwise emit OSC
-    # 133 markers and forge prompt regions / exit codes / the
-    # command_finished plugin event. With $ANTS_OSC133_KEY set, every
-    # marker must carry a matching ahmac= param computed as
-    # HMAC-SHA256(key, "<marker>|<promptId>[|<exitCode>]"). Test exercises
-    # verifier OFF (legacy permissive), verifier ON + valid HMAC,
-    # verifier ON + missing/wrong/promptId-mismatch/exit-mismatch HMAC,
-    # plus a source-grep guard on the env-var name.
-    # See tests/features/osc133_hmac_verification/spec.md.
-    add_executable(test_osc133_hmac_verification
-        tests/features/osc133_hmac_verification/test_osc133_hmac.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_osc133_hmac_verification PRIVATE
-        Qt6::Core
-        Qt6::Gui  # QColor / QImage transitively required by terminalgrid.h
-    )
-    target_include_directories(test_osc133_hmac_verification PRIVATE src)
-    target_compile_options(test_osc133_hmac_verification PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_osc133_hmac_verification PRIVATE
-        SRC_TERMINALGRID_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalgrid.cpp"
-    )
-    add_test(NAME osc133_hmac_verification
-             COMMAND test_osc133_hmac_verification)
-    set_tests_properties(osc133_hmac_verification PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # ssh_control_master — locks the SSH ControlMaster auto-multiplexing
     # contract on SshBookmark::toSshCommand(bool). When controlMaster=true,
     # the built command must carry -o ControlMaster=auto / -o ControlPath=
@@ -1494,48 +1131,6 @@ if(ANTS_TESTS)
     add_test(NAME ssh_control_master
              COMMAND test_ssh_control_master)
     set_tests_properties(ssh_control_master PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # threaded_parse_equivalence — locks the 0.7.0 worker-thread invariant
-    # that moving PTY read + VT parse off the GUI thread preserves action-
-    # stream identity. 11 fixtures × 6 chunking strategies (whole, byte-by-
-    # byte, 16 KB worker-flush cadence, 7-byte, 3-byte, two pseudo-random
-    # seeds). See tests/features/threaded_parse_equivalence/spec.md.
-    add_executable(test_threaded_parse_equivalence
-        tests/features/threaded_parse_equivalence/test_threaded_parse_equivalence.cpp
-        src/vtparser.cpp
-    )
-    target_include_directories(test_threaded_parse_equivalence PRIVATE src)
-    target_compile_options(test_threaded_parse_equivalence PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME threaded_parse_equivalence
-             COMMAND test_threaded_parse_equivalence)
-    set_tests_properties(threaded_parse_equivalence PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # threaded_response_ordering — locks the contract that TerminalGrid's
-    # ResponseCallback fires in parse order across DA1/CPR/DA2/mode-996/
-    # DSR. End-to-end write order across the 0.7.0 worker boundary follows
-    # from this + Qt's QueuedConnection FIFO guarantee. See spec.md.
-    add_executable(test_threaded_response_ordering
-        tests/features/threaded_response_ordering/test_threaded_response_ordering.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_threaded_response_ordering PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_threaded_response_ordering PRIVATE src)
-    target_compile_options(test_threaded_response_ordering PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME threaded_response_ordering
-             COMMAND test_threaded_response_ordering)
-    set_tests_properties(threaded_response_ordering PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -1814,105 +1409,6 @@ if(ANTS_TESTS)
     set_tests_properties(tabbar_statusbar_opaque PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
-
-    # ris_preserves_callbacks — 0.7.17 fix. Locks the RIS (ESC c) handler
-    # in TerminalGrid::handleEsc, which previously preserved only
-    # responseCallback + bellCallback on reset — silently wiping
-    # notifyCallback, progressCallback, lineCompletionCallback,
-    # commandFinishedCallback, userVarCallback, and osc133ForgeryCallback
-    # (plus the osc133Key HMAC enforcement config). Any `tput reset` /
-    # `reset(1)` from the running shell killed shell-integration,
-    # plugin, and security hooks. See spec.md.
-    add_executable(test_ris_preserves_callbacks
-        tests/features/ris_preserves_callbacks/test_ris_preserves_callbacks.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_ris_preserves_callbacks PRIVATE
-        Qt6::Core
-        Qt6::Gui  # QColor / QImage transitively required by terminalgrid.h
-    )
-    target_include_directories(test_ris_preserves_callbacks PRIVATE src)
-    target_compile_options(test_ris_preserves_callbacks PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME ris_preserves_callbacks COMMAND test_ris_preserves_callbacks)
-    set_tests_properties(ris_preserves_callbacks PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # bce_scroll_erase — 0.7.23 fix. Locks xterm-compatible Background
-    # Color Erase across every scroll/erase path: clearRow, insertLines,
-    # deleteLines, scrollUp/Down, deleteChars, insertBlanks, and the
-    # LF-past-scroll-bottom auto-scroll. Previously takeBlankedCellsRow()
-    # hardcoded m_defaultBg, so `\e[44mCSI L` (vim/less/tmux paint path)
-    # left default-bg gaps instead of blue. See spec.md.
-    add_executable(test_bce_scroll_erase
-        tests/features/bce_scroll_erase/test_bce_scroll_erase.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_bce_scroll_erase PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_bce_scroll_erase PRIVATE src)
-    target_compile_options(test_bce_scroll_erase PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME bce_scroll_erase COMMAND test_bce_scroll_erase)
-    set_tests_properties(bce_scroll_erase PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # wide_char_overwrite_mate — 0.7.24 fix. Locks the invariant that
-    # overwriting part of a wide-char pair (CJK / wide emoji) cleans up
-    # the stranded mate on the opposite side. Previously handlePrint and
-    # handleAsciiPrintRun left dangling isWideChar / isWideCont flags when
-    # a narrow write landed on one half of a pair, corrupting render and
-    # selection. See spec.md.
-    add_executable(test_wide_char_overwrite
-        tests/features/wide_char_overwrite_mate/test_wide_char_overwrite.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_wide_char_overwrite PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_wide_char_overwrite PRIVATE src)
-    target_compile_options(test_wide_char_overwrite PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME wide_char_overwrite_mate COMMAND test_wide_char_overwrite)
-    set_tests_properties(wide_char_overwrite_mate PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # osc8_apc_memory_caps — 0.7.25 hardening. Locks the bounded-growth
-    # caps on OSC 8 URIs (MAX_OSC8_URI_BYTES = 2 KiB) and the Kitty APC
-    # chunk-accumulation buffer (MAX_KITTY_CHUNK_BYTES = 32 MiB).
-    # Previously both accumulators were capped only by the VT parser's
-    # per-envelope 10 MB ceiling, letting hostile output wedge tens of
-    # GB into per-row hyperlink spans or the staging buffer before any
-    # downstream guard ran. See spec.md.
-    add_executable(test_osc8_apc_memory_caps
-        tests/features/osc8_apc_memory_caps/test_osc8_apc_memory_caps.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_osc8_apc_memory_caps PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_osc8_apc_memory_caps PRIVATE src)
-    target_compile_options(test_osc8_apc_memory_caps PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME osc8_apc_memory_caps COMMAND test_osc8_apc_memory_caps)
-    set_tests_properties(osc8_apc_memory_caps PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 20)
 
     # sigpipe_ignore — 0.6.28 fix (bc97485). Locks the
     # std::signal(SIGPIPE, SIG_IGN) call in main() that prevents a
@@ -2579,35 +2075,6 @@ if(ANTS_TESTS)
     add_test(NAME roadmap_status_bar_refresh
         COMMAND test_roadmap_status_bar_refresh)
     set_tests_properties(roadmap_status_bar_refresh PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # themedstylesheet_extraction — ANTS-1147 (0.7.74). Hybrid harness:
-    # source-grep for INVs 1-7, unit-level helper calls for INV-8.
-    # Links src/themedstylesheet.cpp + src/themes.cpp directly so
-    # INV-8 can exercise the pure helpers without instantiating any
-    # QWidget. See tests/features/themedstylesheet_extraction/spec.md
-    # and docs/specs/ANTS-1147.md.
-    add_executable(test_themedstylesheet_extraction
-        tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
-        src/themedstylesheet.cpp
-        src/themes.cpp
-    )
-    target_link_libraries(test_themedstylesheet_extraction PRIVATE
-        Qt6::Core Qt6::Gui)
-    target_include_directories(test_themedstylesheet_extraction PRIVATE src)
-    target_compile_options(test_themedstylesheet_extraction PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_themedstylesheet_extraction PRIVATE
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAINWINDOW_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/mainwindow.h"
-        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.cpp"
-        SRC_THEMEDSTYLESHEET_H_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/themedstylesheet.h"
-    )
-    add_test(NAME themedstylesheet_extraction
-        COMMAND test_themedstylesheet_extraction)
-    set_tests_properties(themedstylesheet_extraction PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -3322,33 +2789,6 @@ if(ANTS_TESTS)
         TIMEOUT 10
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-    # origin_mode_correctness — 0.7.34 fix. Locks DECOM (origin mode)
-    # CUP/HVP/VPA row translation, DECSTBM origin-aware home, and
-    # DECSC saving DECOM + DECAWM (with DECRC restoring them). Prior
-    # to 0.7.34 every CUP under origin mode jumped to absolute rows
-    # and DECSC silently lost the flags — tmux/screen save-restore
-    # round-trips broke. See spec.md.
-    add_executable(test_origin_mode
-        tests/features/origin_mode_correctness/test_origin_mode.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_origin_mode PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_origin_mode PRIVATE src)
-    target_compile_options(test_origin_mode PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    target_compile_definitions(test_origin_mode PRIVATE
-        SRC_TERMINALGRID_CPP_PATH="${CMAKE_CURRENT_SOURCE_DIR}/src/terminalgrid.cpp"
-    )
-    add_test(NAME origin_mode_correctness COMMAND test_origin_mode)
-    set_tests_properties(origin_mode_correctness PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
     # settings_parse_failure_mirror — 0.7.31 test-coverage fill-in.
     # Mirrors the existing config_parse_failure_guard test for the
     # other two parse-failure refuse sites: ClaudeAllowlist::saveSettings
@@ -3545,51 +2985,6 @@ if(ANTS_TESTS)
     add_test(NAME feature_coverage
              COMMAND test_feature_coverage)
     set_tests_properties(feature_coverage PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # osc_color_query — locks the OSC 10/11/12 query-form response shape
-    # (16-bit-per-channel `rgb:RRRR/GGGG/BBBB`, xterm convention) and the
-    # "set form is silently dropped" theme-injection guard. See
-    # tests/features/osc_color_query/spec.md. Added in 0.7.0.
-    add_executable(test_osc_color_query
-        tests/features/osc_color_query/test_osc_color_query.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_osc_color_query PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_osc_color_query PRIVATE src)
-    target_compile_options(test_osc_color_query PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME osc_color_query COMMAND test_osc_color_query)
-    set_tests_properties(osc_color_query PROPERTIES
-        LABELS "features;fast"
-        TIMEOUT 10)
-
-    # decrqss — locks DECRQSS (DCS $ q Pt ST) response shapes for the
-    # four supported request types (r, m, SP q, invalid) plus the
-    # regression guard that Sixel traffic still routes to the Sixel
-    # handler rather than being eaten by the DECRQSS branch. See
-    # tests/features/decrqss/spec.md. Added in 0.7.0.
-    add_executable(test_decrqss
-        tests/features/decrqss/test_decrqss.cpp
-        src/terminalgrid.cpp
-        src/vtparser.cpp
-    )
-    target_link_libraries(test_decrqss PRIVATE
-        Qt6::Core
-        Qt6::Gui
-    )
-    target_include_directories(test_decrqss PRIVATE src)
-    target_compile_options(test_decrqss PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
-    add_test(NAME decrqss COMMAND test_decrqss)
-    set_tests_properties(decrqss PROPERTIES
         LABELS "features;fast"
         TIMEOUT 10)
 
@@ -4068,4 +3463,55 @@ if(ANTS_TESTS)
     set_tests_properties(vt_throughput PROPERTIES
         LABELS "perf"
         TIMEOUT 60)
+
+    # ----------------------------------------------------------------------
+    # ANTS-1217 Phase 2 — test_vt bundle.
+    # 27 standalone test executables for vtparser/terminalgrid/themes
+    # invariants consolidated into one GoogleTest bundle. Each migrated
+    # test_*.cpp registers via TEST(SuiteName, ...) blocks under a
+    # directory-derived Suite (see tests/features/README.md §Bundles).
+    # gtest_discover_tests turns each TEST() block into a separate ctest
+    # entry, so ctest -L features keeps working unchanged.
+    # ----------------------------------------------------------------------
+    ants_add_gui_bundle(test_vt
+        LIBS    ants_vt_lib ants_core_lib
+        SOURCES tests/features/scrollback_redraw/test_redraw.cpp
+                tests/features/scrollback_redraw/test_viewport_stable.cpp
+                tests/features/scrollback_frozen_view/test_frozen_view.cpp
+                tests/features/scroll_region_rotate/test_scroll_region_rotate.cpp
+                tests/features/scroll_region_leak_after_apps/test_scroll_region_leak.cpp
+                tests/features/scroll_region_growth_on_resize/test_scroll_region_growth.cpp
+                tests/features/decstr_soft_reset/test_decstr_soft_reset.cpp
+                tests/features/osc9_progress_disambiguator/test_osc9_progress.cpp
+                tests/features/wide_char_resize/test_wide_char_resize.cpp
+                tests/features/sgr_attribute_reset/test_sgr_reset.cpp
+                tests/features/vtparser_simd_scan/test_vtparser_simd.cpp
+                tests/features/vt_osc_esc_discard/test_vt_osc_esc_discard.cpp
+                tests/features/vtparser_print_run_coalesce/test_print_run_coalesce.cpp
+                tests/features/combining_on_resize/test_combining.cpp
+                tests/features/osc8_insert_delete_lines/test_osc8_linerange.cpp
+                tests/features/hyperlink_resize_clamp/test_hyperlink_resize_clamp.cpp
+                tests/features/osc133_hmac_verification/test_osc133_hmac.cpp
+                tests/features/threaded_parse_equivalence/test_threaded_parse_equivalence.cpp
+                tests/features/threaded_response_ordering/test_threaded_response_ordering.cpp
+                tests/features/ris_preserves_callbacks/test_ris_preserves_callbacks.cpp
+                tests/features/bce_scroll_erase/test_bce_scroll_erase.cpp
+                tests/features/wide_char_overwrite_mate/test_wide_char_overwrite.cpp
+                tests/features/osc8_apc_memory_caps/test_osc8_apc_memory_caps.cpp
+                tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
+                tests/features/origin_mode_correctness/test_origin_mode.cpp
+                tests/features/osc_color_query/test_osc_color_query.cpp
+                tests/features/decrqss/test_decrqss.cpp)
+    # scrollback_frozen_view test reads terminalwidget.cpp source via grep —
+    # the path must be passed as a compile definition same as the standalone
+    # had it. Apply target-wide so any future bundle source can reuse.
+    target_compile_definitions(test_vt PRIVATE
+        SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
+        SRC_TERMINALGRID_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
+        SRC_VTPARSER_PATH="${CMAKE_SOURCE_DIR}/src/vtparser.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
+        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
+        SRC_THEMEDSTYLESHEET_H_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.h")
 endif()

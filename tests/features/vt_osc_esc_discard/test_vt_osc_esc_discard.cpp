@@ -13,19 +13,17 @@
 #include "vtparser.h"
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 #include <vector>
 
 namespace {
 
-int g_failures = 0;
-
 void expect(bool ok, const char *label, const char *detail = "") {
-    std::fprintf(stderr, "[%-72s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 (detail && *detail) ? " — " : "",
-                 detail ? detail : "");
-    if (!ok) ++g_failures;
+    if (!ok) {
+        ADD_FAILURE() << label << (detail && *detail ? " — " : "")
+                      << (detail ? detail : "");
+    }
 }
 
 std::vector<VtAction> collectActions(const std::string &bytes) {
@@ -48,7 +46,7 @@ const VtAction *findByType(const std::vector<VtAction> &v, VtAction::Type t) {
 
 // INV-1 — OSC string with ESC + X (X != backslash) discards X.
 // Tries multiple X values to cover the RCE-adjacent escape selectors.
-void testInv1_oscEscX_discardsX() {
+TEST(VtOscEscDiscard, oscEscX_discardsX) {
     struct Case { const char *name; char escByte; };
     Case cases[] = {
         {"INV-1: OSC + ESC c (would-be RIS) — c discarded", 'c'},
@@ -89,7 +87,7 @@ void testInv1_oscEscX_discardsX() {
 // INV-2 — `ESC \` (legitimate ST) goes through the same path. The
 // `\` is consumed and the parser returns to Ground; no garbage
 // printed and no escape dispatched.
-void testInv2_oscEscBackslash_isStLikeOther() {
+TEST(VtOscEscDiscard, oscEscBackslash_isStLikeOther) {
     const std::string stream = "\x1B]52;c;dGVzdA==\x1B\\";
     const auto actions = collectActions(stream);
     const int oscEnds = countByType(actions, VtAction::OscEnd);
@@ -116,7 +114,7 @@ void testInv2_oscEscBackslash_isStLikeOther() {
 // returns to Ground silently (and the test for that is "no
 // EscDispatch" + parser ready to accept new input, indirectly
 // asserted via INV-1 family).
-void testInv3_dcsEscX_discardsX() {
+TEST(VtOscEscDiscard, dcsEscX_discardsX) {
     // ESC P 1;2|payload ESC c — DCS sequence ending in ESC c.
     // Note: split the string so `\x1B` doesn't gobble the trailing
     // 'c' as a hex digit (out-of-range warning + wrong byte stream).
@@ -135,7 +133,7 @@ void testInv3_dcsEscX_discardsX() {
 // body still accumulate into the dispatched payload. Defensively
 // tests that the new OscStringEsc state didn't accidentally swallow
 // the OscString-side accumulation.
-void testInv4_oscBodyStillAccumulates() {
+TEST(VtOscEscDiscard, oscBodyStillAccumulates) {
     const std::string body =
         "8;;https://example.com/very/long/url?query=foo&bar=baz";
     const std::string stream = "\x1B]" + body + "\x07";
@@ -156,7 +154,7 @@ void testInv4_oscBodyStillAccumulates() {
 // strand us in OscStringEsc forever (or worse, in an undefined
 // state); test by feeding plain printable text after the discard
 // and asserting it Prints.
-void testInv5_parserReturnsToGroundAfterEscDiscard() {
+TEST(VtOscEscDiscard, parserReturnsToGroundAfterEscDiscard) {
     // Note the explicit `\x1B` `c` split — `"\x1Bc"` would parse as
     // a single hex literal `\x1Bc` (out-of-range warning) rather than
     // the two-byte ESC + 'c' sequence we want. Same trick used below.
@@ -198,11 +196,4 @@ void testInv5_parserReturnsToGroundAfterEscDiscard() {
 
 }  // namespace
 
-int main() {
-    testInv1_oscEscX_discardsX();
-    testInv2_oscEscBackslash_isStLikeOther();
-    testInv3_dcsEscX_discardsX();
-    testInv4_oscBodyStillAccumulates();
-    testInv5_parserReturnsToGroundAfterEscDiscard();
-    return g_failures == 0 ? 0 : 1;
-}
+

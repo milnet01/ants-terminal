@@ -19,8 +19,54 @@ This complements, rather than replaces, the unit-style shell tests in
 tests/features/
   <feature-name>/
     spec.md                 # human contract — reviewed like code
-    test_<feature>.cpp      # exec — links against src/<relevant>.cpp
+    test_<feature>.cpp      # GoogleTest TEST() blocks under one Suite
 ```
+
+## Bundles (ANTS-1217)
+
+Test binaries are consolidated by subsystem to bound build-time RAM.
+Each `test_*.cpp` registers `TEST(SuiteName, FeatureName)` blocks against
+shared bundle binaries; `gtest_discover_tests` turns each TEST block into
+its own ctest entry, so `ctest -L features` and parallel `ctest -j` keep
+working unchanged.
+
+| Bundle | Subsystem | Status |
+|---|---|---|
+| `test_vt`      | vtparser + terminalgrid + themes  | shipped |
+| `test_chrome`  | mainwindow + tabs + palette       | Phase 3 (planned) |
+| `test_claude`  | Claude integration                | Phase 4 (planned) |
+| `test_audit`   | audit dialog + engine + hygiene   | Phase 5 (planned) |
+| `test_dialogs` | settings + roadmap + diff + ssh   | Phase 6 (planned) |
+| `test_lua`     | luaengine + pluginmanager         | Phase 6 (planned) |
+| `test_core`    | grep-style + helper-CLI tests     | Phase 6 (planned) |
+
+### Suite-name convention
+
+**Each subdirectory owns a unique Suite name** derived from the directory
+name in CamelCase: `scrollback_redraw → ScrollbackRedraw`,
+`decstr_soft_reset → DecstrSoftReset`. Within a Suite, the TEST name is
+the assertion topic (`OriginMode`, `AutoWrap`, `ScrollRegion`, …).
+
+Two test files in the same directory share a Suite — give their TEST
+names a disambiguating prefix (`test_redraw.cpp` uses
+`IdenticalRepaint2J`, `DivergedRepaint2J`, …; `test_viewport_stable.cpp`
+prefixes its TEST names with `ViewportStable…`).
+
+### ctest filter syntax
+
+```bash
+# Run all tests in the vt bundle:
+ctest --test-dir build -L features -R 'ScrollbackRedraw|DecstrSoftReset|VtparserSimdScan'
+
+# Run a single TEST block:
+ctest --test-dir build -R 'DecstrSoftReset\.OriginMode'
+
+# Run all tests in one Suite (one subdir's worth):
+ctest --test-dir build -R 'DecstrSoftReset\.'
+```
+
+Note the literal dot escaped (`\.`) — ctest treats the argument as a
+regex and unescaped `.` matches any character.
 
 ## Why this matters
 
@@ -46,11 +92,15 @@ reported against three prior releases.
    reviewable by humans. Include motivation, scope, and what's *out*
    of scope.
 3. Write `test_<feature>.cpp`: exercise the feature through its real
-   public API. Assert invariants. Exit 0 on pass, non-zero on fail.
-   Print enough context on failure that a reader can diagnose without
-   reproducing.
-4. Wire into `CMakeLists.txt` as an `add_executable` + `add_test`
-   with label `features`.
+   public API. Use `TEST(SuiteName, ...)` blocks (Suite name = the
+   directory name in CamelCase). Assert invariants with `EXPECT_*` /
+   `ASSERT_*`. Stream extra context via `<<` on failure.
+4. Add the source path to the appropriate bundle's `SOURCES` list in
+   `CMakeLists.txt` — `test_vt` for vtparser/terminalgrid features,
+   `test_chrome` for mainwindow/tabs, etc. Do **not** add a new
+   `add_executable` unless the test legitimately needs process
+   isolation (death tests, signal handlers — see Risks in
+   `docs/specs/ANTS-1217.md`).
 5. Run `ctest -L features` and confirm it passes.
 6. Run it against the pre-fix code (temporarily revert the fix) to
    confirm it *would* have caught the bug. If it doesn't fail

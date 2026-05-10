@@ -27,11 +27,13 @@
 //       scrollOffset = min(scrollOffset + added, grid.scrollbackSize());
 //   }
 //
-// Exit 0 = invariant holds. Non-zero = regression.
+// ANTS-1217 Phase 2: migrated to GoogleTest TEST() blocks under Suite
+// ScrollbackRedraw (sibling to test_redraw.cpp).
 
 #include "terminalgrid.h"
 #include "vtparser.h"
 
+#include <gtest/gtest.h>
 #include <cstdio>
 #include <cstdint>
 #include <string>
@@ -185,44 +187,34 @@ int runScenario(const char *scenarioName,
 
 }  // namespace
 
-int main() {
-    int failures = 0;
+// Scenario matrix: scrollOffset varies from "barely scrolled up" to "scrolled
+// far into history." Without a pre-stream clear, the 0.6.21 pause fires:
+// paused=true, pushes skipped, no anchor advance. Before the 0.6.25 fix, ALL
+// offsets failed; after the fix, all must pass.
+TEST(ScrollbackRedraw, ViewportStablePauseOnlyOffset1) {
+    EXPECT_EQ(0, runScenario("pause-only/offset-1", 1, ""));
+}
+TEST(ScrollbackRedraw, ViewportStablePauseOnlyOffset12) {
+    EXPECT_EQ(0, runScenario("pause-only/offset-12", 12, ""));
+}
+TEST(ScrollbackRedraw, ViewportStablePauseOnlyOffset50) {
+    EXPECT_EQ(0, runScenario("pause-only/offset-50", 50, ""));
+}
+TEST(ScrollbackRedraw, ViewportStablePauseOnlyOffset120) {
+    EXPECT_EQ(0, runScenario("pause-only/offset-120", 120, ""));
+}
 
-    // Scenario matrix: scrollOffset varies from "barely scrolled up" to
-    // "scrolled far into history." The bug's *symptom* is most severe at
-    // small offsets (viewport overlaps the screen), but the user's
-    // *reported* scenario is deeper scrolling (viewport fully in
-    // scrollback, where the broken code still shifted content because
-    // the push counter was frozen and the anchor couldn't advance).
-    //
-    // Without a pre-stream clear, the 0.6.21 pause fires: paused=true,
-    // pushes skipped, no anchor advance. Before the 0.6.25 fix, ALL
-    // offsets failed; after the fix, all must pass.
-    failures += runScenario("pause-only/offset-1",   1,   "");
-    failures += runScenario("pause-only/offset-12",  12,  "");
-    failures += runScenario("pause-only/offset-50",  50,  "");  // > rows
-    failures += runScenario("pause-only/offset-120", 120, "");  // deep
+// With a pre-stream clear, the 0.6.22/0.6.24 suppression window arms too.
+// Deep-scroll users (viewport entirely in scrollback) must stay stable;
+// shallow scrolls are inherently unstable because the clear wipes on-screen
+// content the user was reading — only deep-scroll cases asserted here.
+TEST(ScrollbackRedraw, ViewportStableCsi0jClearOffset50) {
+    EXPECT_EQ(0, runScenario("csi-0J-clear/offset-50", 50, "\x1b[H\x1b[0J"));
+}
+TEST(ScrollbackRedraw, ViewportStableCsi0jClearOffset120) {
+    EXPECT_EQ(0, runScenario("csi-0J-clear/offset-120", 120, "\x1b[H\x1b[0J"));
+}
 
-    // With a pre-stream clear, the 0.6.22/0.6.24 suppression window arms
-    // too. The fix allows pushes when paused=true, even inside the
-    // window — so deep-scroll users (viewport entirely in scrollback) are
-    // stable. Shallow scrolls (viewport overlapping screen) remain
-    // inherently unstable because the clear itself wipes on-screen
-    // content the user was reading — no push mechanism can recover that
-    // content. We assert only the deep-scroll cases here.
-    failures += runScenario("csi-0J-clear/offset-50",  50,  "\x1b[H\x1b[0J");
-    failures += runScenario("csi-0J-clear/offset-120", 120, "\x1b[H\x1b[0J");
-
-    // Control: tiny offset, no clear — purely the pause path. Must pass.
-    failures += runScenario("control/offset-24-fully-in-scrollback",
-                            24, "");
-
-    if (failures > 0) {
-        std::fprintf(stderr,
-                     "\n%d scenario(s) failed — viewport shifted while "
-                     "user was scrolled up. See spec.md §Viewport-stable.\n",
-                     failures);
-        return 1;
-    }
-    return 0;
+TEST(ScrollbackRedraw, ViewportStableControlOffset24) {
+    EXPECT_EQ(0, runScenario("control/offset-24-fully-in-scrollback", 24, ""));
 }

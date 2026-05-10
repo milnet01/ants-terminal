@@ -9,26 +9,25 @@
 #include <QByteArray>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
 
-int failures = 0;
-
+// ANTS-1217 Phase 2: macros redirected to ADD_FAILURE_AT.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        std::fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, msg);   \
-        ++failures;                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
     }                                                                        \
 } while (0)
 
 #define CHECK_EQ(actual, expected, msg) do {                                 \
-    if ((actual) != (expected)) {                                            \
-        std::fprintf(stderr, "FAIL %s:%d  %s (actual=%lld expected=%lld)\n", \
-                     __FILE__, __LINE__, msg,                                \
-                     static_cast<long long>(actual),                         \
-                     static_cast<long long>(expected));                      \
-        ++failures;                                                          \
+    auto _a = (actual);                                                      \
+    auto _e = (expected);                                                    \
+    if (_a != _e) {                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << msg                           \
+            << " (actual=" << static_cast<long long>(_a)                    \
+            << " expected=" << static_cast<long long>(_e) << ")";           \
     }                                                                        \
 } while (0)
 
@@ -91,7 +90,8 @@ void triggerForgery(TerminalGrid &grid, VtParser &parser) {
 
 } // namespace
 
-int main() {
+TEST(RisPreservesCallbacks, Main) {
+
     TerminalGrid grid(24, 80);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
 
@@ -171,13 +171,5 @@ int main() {
           "INV-5 forgery count grows post-RIS (cooldown-throttled)");
     CHECK(grid.osc133ForgeryCount() >= 1,
           "INV-5 osc133ForgeryCount() >= 1 post-RIS");
-
-    if (failures == 0) {
-        std::printf("ris_preserves_callbacks: all invariants hold "
-                    "(7 non-forgery callbacks + forgery + osc133Key "
-                    "survive RIS)\n");
-        return 0;
-    }
-    std::fprintf(stderr, "\nris_preserves_callbacks: %d failure(s)\n", failures);
-    return 1;
 }
+

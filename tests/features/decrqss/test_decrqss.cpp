@@ -11,6 +11,7 @@
 #include "vtparser.h"
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
@@ -51,13 +52,10 @@ void printEscaped(FILE *f, const std::string &s) {
     }
 }
 
-int fail(const char *what, const std::string &got, const std::string &expected) {
-    std::fprintf(stderr, "FAIL: %s\n  got:      \"", what);
-    printEscaped(stderr, got);
-    std::fprintf(stderr, "\"\n  expected: \"");
-    printEscaped(stderr, expected);
-    std::fprintf(stderr, "\"\n");
-    return 1;
+void fail(const char *what, const std::string &got, const std::string &expected){
+    ADD_FAILURE() << what
+                  << "  got:      \"" << got << "\""
+                  << "  expected: \"" << expected << "\"";
 }
 
 int failContains(const char *what, const std::string &got, const std::string &needle) {
@@ -71,7 +69,8 @@ int failContains(const char *what, const std::string &got, const std::string &ne
 
 }  // namespace
 
-int main() {
+TEST(Decrqss, Main) {
+
     int failures = 0;
 
     // ------------------------------------------------------------------
@@ -83,7 +82,7 @@ int main() {
         p.dcs("$qr");
         const std::string expected = "\x1BP1$r1;24r\x1B\\";
         if (p.capture != expected)
-            failures += fail("INV-1 $qr DECSTBM response (fresh grid 24-row)",
+            fail("INV-1 $qr DECSTBM response (fresh grid 24-row)",
                              p.capture, expected);
     }
 
@@ -95,7 +94,7 @@ int main() {
         p.dcs("$qm");
         const std::string expected = "\x1BP1$r0m\x1B\\";
         if (p.capture != expected)
-            failures += fail("INV-2 $qm SGR response (default attrs)",
+            fail("INV-2 $qm SGR response (default attrs)",
                              p.capture, expected);
     }
 
@@ -110,7 +109,7 @@ int main() {
         p.dcs("$qm");
         const std::string expected = "\x1BP1$r0;1m\x1B\\";
         if (p.capture != expected)
-            failures += fail("INV-3 $qm with bold set (after CSI 1 m)",
+            fail("INV-3 $qm with bold set (after CSI 1 m)",
                              p.capture, expected);
     }
     {
@@ -120,7 +119,7 @@ int main() {
         p.dcs("$qm");
         const std::string expected = "\x1BP1$r0;1;3;4m\x1B\\";
         if (p.capture != expected)
-            failures += fail("INV-3 $qm with bold+italic+underline combined",
+            fail("INV-3 $qm with bold+italic+underline combined",
                              p.capture, expected);
     }
 
@@ -133,7 +132,7 @@ int main() {
         p.dcs("$q q");
         const std::string expected = "\x1BP1$r0 q\x1B\\";
         if (p.capture != expected)
-            failures += fail("INV-4 $q q DECSCUSR fresh grid (BlinkBlock=0)",
+            fail("INV-4 $q q DECSCUSR fresh grid (BlinkBlock=0)",
                              p.capture, expected);
     }
 
@@ -145,7 +144,7 @@ int main() {
         p.dcs("$qX");
         const std::string expected = "\x1BP0$r\x1B\\";
         if (p.capture != expected)
-            failures += fail("INV-5 $qX unknown setting invalid-reply",
+            fail("INV-5 $qX unknown setting invalid-reply",
                              p.capture, expected);
     }
     {
@@ -153,7 +152,7 @@ int main() {
         p.dcs("$qfoo");
         const std::string expected = "\x1BP0$r\x1B\\";
         if (p.capture != expected)
-            failures += fail("INV-5 $qfoo unknown setting invalid-reply",
+            fail("INV-5 $qfoo unknown setting invalid-reply",
                              p.capture, expected);
     }
 
@@ -177,7 +176,7 @@ int main() {
         // Extra safety: assert we didn't emit the invalid-reply bytes.
         const std::string invalidReply = "\x1BP0$r\x1B\\";
         if (p.capture == invalidReply) {
-            failures += fail("INV-6 Sixel payload must not emit invalid-reply",
+            fail("INV-6 Sixel payload must not emit invalid-reply",
                              p.capture, "(empty or non-DECRQSS output)");
         }
     }
@@ -199,7 +198,7 @@ int main() {
         Probe p;
         p.dcs("$qr");
         if (!structuralOk(p.capture)) {
-            failures += fail("structural: $qr reply must start \\eP1$r and end \\e\\\\",
+            fail("structural: $qr reply must start \\eP1$r and end \\e\\\\",
                              p.capture,
                              "\\x1BP1$r...\\x1B\\\\");
         }
@@ -210,8 +209,10 @@ int main() {
 
     if (failures == 0) {
         std::fprintf(stdout, "OK: decrqss invariants hold\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "\ndecrqss: %d failure(s)\n", failures);
-    return 1;
+    FAIL();
+
 }
+

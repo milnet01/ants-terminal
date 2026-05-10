@@ -10,21 +10,19 @@
 #include "vtparser.h"
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
 
-int g_failures = 0;
-
+#undef EXPECT
 #define EXPECT(cond, ...) do {                                  \
     if (!(cond)) {                                              \
-        std::fprintf(stderr, "FAIL [%s:%d] ", __FILE__, __LINE__); \
-        std::fprintf(stderr, __VA_ARGS__);                      \
-        std::fprintf(stderr, "\n");                             \
-        ++g_failures;                                           \
+        char _ants_msg[512];                                    \
+        std::snprintf(_ants_msg, sizeof(_ants_msg), __VA_ARGS__); \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << _ants_msg;        \
     }                                                           \
 } while (0)
-
 struct ProgressCapture {
     bool fired = false;
     ProgressState state = ProgressState::None;
@@ -64,7 +62,7 @@ struct Harness {
 }  // namespace
 
 // INV-1 — OSC 9 ; 4 ST (no body, length 3) → progress state 0.
-static void testInv1_MinimalClearProgress() {
+TEST(Osc9ProgressDisambiguator, MinimalClearProgress) {
     Harness h;
     h.feed("\x1b]9;4\x1b\\");
     EXPECT(h.prog.fired,
@@ -82,7 +80,7 @@ static void testInv1_MinimalClearProgress() {
 }
 
 // INV-2 — OSC 9 ; 4 ; 0 ST → progress state 0 (explicit form).
-static void testInv2_ExplicitClearProgress() {
+TEST(Osc9ProgressDisambiguator, ExplicitClearProgress) {
     Harness h;
     h.feed("\x1b]9;4;0\x1b\\");
     EXPECT(h.prog.fired, "INV-2: progress not fired for `9;4;0`");
@@ -93,7 +91,7 @@ static void testInv2_ExplicitClearProgress() {
 }
 
 // INV-3 — OSC 9 ; 4 ; 1 ; 42 ST → progress state 1, percent 42.
-static void testInv3_FullProgress() {
+TEST(Osc9ProgressDisambiguator, FullProgress) {
     Harness h;
     h.feed("\x1b]9;4;1;42\x1b\\");
     EXPECT(h.prog.fired, "INV-3: progress not fired for `9;4;1;42`");
@@ -105,7 +103,7 @@ static void testInv3_FullProgress() {
 }
 
 // INV-4 — OSC 9 ; 42 ST → notification body "42", NOT progress.
-static void testInv4_TwoDigitNotification() {
+TEST(Osc9ProgressDisambiguator, TwoDigitNotification) {
     Harness h;
     h.feed("\x1b]9;42\x1b\\");
     EXPECT(h.notif.fired, "INV-4: notification not fired for `9;42`");
@@ -119,7 +117,7 @@ static void testInv4_TwoDigitNotification() {
 }
 
 // INV-5 — OSC 9 ; Hello ST → notification body "Hello".
-static void testInv5_StringNotification() {
+TEST(Osc9ProgressDisambiguator, StringNotification) {
     Harness h;
     h.feed("\x1b]9;Hello\x1b\\");
     EXPECT(h.notif.fired, "INV-5: notification not fired");
@@ -134,7 +132,7 @@ static void testInv5_StringNotification() {
 // Disambiguator rule: byte after `4` must be `;` or end-of-payload
 // for progress. `4Hello` starts with `4` but the next byte is `H`,
 // so this is a notification body.
-static void testInv6_FourPrefixedNotification() {
+TEST(Osc9ProgressDisambiguator, FourPrefixedNotification) {
     Harness h;
     h.feed("\x1b]9;4Hello\x1b\\");
     EXPECT(h.notif.fired, "INV-6: notification not fired for `9;4Hello`");
@@ -147,18 +145,4 @@ static void testInv6_FourPrefixedNotification() {
            static_cast<int>(h.prog.state), h.prog.percent);
 }
 
-int main() {
-    testInv1_MinimalClearProgress();
-    testInv2_ExplicitClearProgress();
-    testInv3_FullProgress();
-    testInv4_TwoDigitNotification();
-    testInv5_StringNotification();
-    testInv6_FourPrefixedNotification();
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall 6 invariants hold\n");
-    return 0;
-}

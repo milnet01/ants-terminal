@@ -11,6 +11,7 @@
 #include "vtparser.h"
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <regex>
 #include <string>
 
@@ -38,19 +39,10 @@ struct Probe {
     void clear() { capture.clear(); }
 };
 
-int fail(const char *what, const std::string &got, const std::string &expected) {
-    std::fprintf(stderr, "FAIL: %s\n  got:      \"", what);
-    for (unsigned char c : got) {
-        if (c >= 0x20 && c < 0x7F) std::fputc(c, stderr);
-        else std::fprintf(stderr, "\\x%02x", c);
-    }
-    std::fprintf(stderr, "\"\n  expected: \"");
-    for (unsigned char c : expected) {
-        if (c >= 0x20 && c < 0x7F) std::fputc(c, stderr);
-        else std::fprintf(stderr, "\\x%02x", c);
-    }
-    std::fprintf(stderr, "\"\n");
-    return 1;
+void fail(const char *what, const std::string &got, const std::string &expected){
+    ADD_FAILURE() << what
+                  << "  got: '" << got << "'"
+                  << "  expected: '" << expected << "'";
 }
 
 std::string fmtExpected(const char *oscNum, const QColor &c) {
@@ -66,7 +58,8 @@ std::string fmtExpected(const char *oscNum, const QColor &c) {
 
 }  // namespace
 
-int main() {
+TEST(OscColorQuery, Main) {
+
     int failures = 0;
 
     const QColor fg(0x12, 0x34, 0x56);
@@ -82,7 +75,7 @@ int main() {
         p.osc("10;?");
         const std::string expected = fmtExpected("10", fg);
         if (p.capture != expected)
-            failures += fail("INV-1 OSC 10;? response shape", p.capture, expected);
+            fail("INV-1 OSC 10;? response shape", p.capture, expected);
     }
 
     // ------------------------------------------------------------------
@@ -95,7 +88,7 @@ int main() {
         p.osc("11;?");
         const std::string expected = fmtExpected("11", bg);
         if (p.capture != expected)
-            failures += fail("INV-2 OSC 11;? response shape", p.capture, expected);
+            fail("INV-2 OSC 11;? response shape", p.capture, expected);
     }
 
     // ------------------------------------------------------------------
@@ -109,7 +102,7 @@ int main() {
         p.osc("12;?");
         const std::string expected = fmtExpected("12", fg);
         if (p.capture != expected)
-            failures += fail("INV-3 OSC 12;? cursor fallback to fg", p.capture, expected);
+            fail("INV-3 OSC 12;? cursor fallback to fg", p.capture, expected);
     }
 
     // ------------------------------------------------------------------
@@ -123,7 +116,7 @@ int main() {
         p.grid.setDefaultBg(bg);
         p.osc("10;#ff0000");
         if (!p.capture.empty())
-            failures += fail("INV-4 OSC 10 set `#ff0000` must not respond",
+            fail("INV-4 OSC 10 set `#ff0000` must not respond",
                              p.capture, "");
     }
     {
@@ -132,7 +125,7 @@ int main() {
         p.grid.setDefaultBg(bg);
         p.osc("11;rgb:ff/00/00");
         if (!p.capture.empty())
-            failures += fail("INV-4 OSC 11 set `rgb:ff/00/00` must not respond",
+            fail("INV-4 OSC 11 set `rgb:ff/00/00` must not respond",
                              p.capture, "");
     }
     {
@@ -141,7 +134,7 @@ int main() {
         p.grid.setDefaultBg(bg);
         p.osc("12;#123456");
         if (!p.capture.empty())
-            failures += fail("INV-4 OSC 12 set `#123456` must not respond",
+            fail("INV-4 OSC 12 set `#123456` must not respond",
                              p.capture, "");
     }
 
@@ -155,7 +148,7 @@ int main() {
         p.grid.setDefaultBg(bg);
         p.osc("13;?");
         if (!p.capture.empty())
-            failures += fail("INV-5 OSC 13;? must not respond via 10/11/12 branch",
+            fail("INV-5 OSC 13;? must not respond via 10/11/12 branch",
                              p.capture, "");
     }
     {
@@ -164,7 +157,7 @@ int main() {
         p.grid.setDefaultBg(bg);
         p.osc("14;?");
         if (!p.capture.empty())
-            failures += fail("INV-5 OSC 14;? must not respond via 10/11/12 branch",
+            fail("INV-5 OSC 14;? must not respond via 10/11/12 branch",
                              p.capture, "");
     }
 
@@ -181,7 +174,7 @@ int main() {
         std::smatch m;
         std::regex re(R"(\x1B\]10;rgb:([0-9a-f]{4})/([0-9a-f]{4})/([0-9a-f]{4})\x1B\\)");
         if (!std::regex_match(p.capture, m, re)) {
-            failures += fail("INV-1 16-bit regex shape",
+            fail("INV-1 16-bit regex shape",
                              p.capture,
                              "\\x1B]10;rgb:NNNN/NNNN/NNNN\\x1B\\\\");
         } else {
@@ -192,15 +185,17 @@ int main() {
                 std::fprintf(stderr,
                              "FAIL: 16-bit channels must replicate 8-bit low byte; got %s/%s/%s\n",
                              m[1].str().c_str(), m[2].str().c_str(), m[3].str().c_str());
-                ++failures;
+                ADD_FAILURE();
             }
         }
     }
 
     if (failures == 0) {
         std::fprintf(stdout, "OK: osc_color_query invariants hold\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "\nosc_color_query: %d failure(s)\n", failures);
-    return 1;
+    FAIL();
+
 }
+

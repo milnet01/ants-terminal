@@ -25,25 +25,25 @@
 #include <QString>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <cstring>
 
 namespace {
-int failures = 0;
-
+// ANTS-1217 Phase 2: macros redirected to ADD_FAILURE_AT so existing
+// CHECK / CHECK_EQ call-sites work unchanged inside TEST() blocks.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        std::fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, msg);  \
-        ++failures;                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
     }                                                                        \
 } while (0)
 
 #define CHECK_EQ(actual, expected, msg) do {                                 \
-    if ((actual) != (expected)) {                                            \
-        std::fprintf(stderr, "FAIL %s:%d  %s (actual=%lld expected=%lld)\n", \
-                     __FILE__, __LINE__, msg,                                \
-                     static_cast<long long>(actual),                         \
-                     static_cast<long long>(expected));                      \
-        ++failures;                                                          \
+    auto _a = (actual);                                                      \
+    auto _e = (expected);                                                    \
+    if (_a != _e) {                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << msg                           \
+            << " (actual=" << static_cast<long long>(_a)                    \
+            << " expected=" << static_cast<long long>(_e) << ")";           \
     }                                                                        \
 } while (0)
 
@@ -99,7 +99,7 @@ void feed(TerminalGrid &grid, const QByteArray &bytes) {
 }
 
 // --- Test 1 — verifier OFF: legacy OSC 133 forms still work. ---------
-void testVerifierOffPermissive() {
+TEST(Osc133HmacVerification, VerifierOffPermissive) {
     TerminalGrid grid(24, 80);
     
 
@@ -134,7 +134,7 @@ void testVerifierOffPermissive() {
 }
 
 // --- Test 2 — verifier ON: canonical valid markers accepted. ---------
-void testVerifierOnAcceptsCorrect() {
+TEST(Osc133HmacVerification, VerifierOnAcceptsCorrect) {
     TerminalGrid grid(24, 80);
     
     const QByteArray key("test-key-32-bytes-of-arbitrary-data!");
@@ -180,7 +180,7 @@ void testVerifierOnAcceptsCorrect() {
 }
 
 // --- Test 3 — verifier ON: forged / missing / mismatched markers dropped. ---
-void testVerifierOnRejectsForged() {
+TEST(Osc133HmacVerification, VerifierOnRejectsForged) {
     TerminalGrid grid(24, 80);
     
     const QByteArray key("another-test-key-32-byte-secret-1234");
@@ -236,13 +236,10 @@ void testVerifierOnRejectsForged() {
 }
 
 // --- Test 4 — production binding: ANTS_OSC133_KEY is the only env knob. ---
-void testEnvKnobIsTheOnlyKnob() {
+TEST(Osc133HmacVerification, EnvKnobIsTheOnlyKnob) {
     QFile f(QStringLiteral(SRC_TERMINALGRID_PATH));
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr, "FAIL: cannot open %s\n", qUtf8Printable(f.fileName()));
-        ++failures;
-        return;
-    }
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text))
+        << "cannot open " << qUtf8Printable(f.fileName());
     const QString src = QString::fromUtf8(f.readAll());
 
     // The constructor must read ANTS_OSC133_KEY exactly once via getenv.
@@ -268,16 +265,4 @@ void testEnvKnobIsTheOnlyKnob() {
 
 }  // namespace
 
-int main() {
-    testVerifierOffPermissive();
-    testVerifierOnAcceptsCorrect();
-    testVerifierOnRejectsForged();
-    testEnvKnobIsTheOnlyKnob();
 
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", failures);
-        return 1;
-    }
-    std::fprintf(stderr, "All OSC 133 HMAC verification invariants hold.\n");
-    return 0;
-}

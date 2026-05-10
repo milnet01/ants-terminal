@@ -11,6 +11,7 @@
 #include <QByteArray>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 #include <vector>
 
@@ -78,7 +79,8 @@ static bool compareResponses(const std::vector<std::string> &got,
 
 }  // namespace
 
-int main() {
+TEST(ThreadedResponseOrdering, Main) {
+
     // Stream the grid processes from left to right. Each sequence
     // triggers exactly one response via TerminalGrid's CSI dispatch.
     // Order of the input is the order we expect responses to fire.
@@ -110,9 +112,11 @@ int main() {
 
     if (failures) {
         std::fprintf(stderr, "\n%d assertion(s) failed\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("threaded_response_ordering: OK (%zu responses across 3 feed strategies)\n",
                 expected.size());
-    return 0;
+    return;
+
 }
+

@@ -15,6 +15,7 @@
                       // app binary inherits the user's locale via QCore-
                       // Application; test executables must opt in manually.
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
@@ -44,14 +45,15 @@ bool hasCombiningAt(const std::unordered_map<int, std::vector<uint32_t>> &m,
     return false;
 }
 
-int fail(const char *label, const char *detail) {
+void fail(const char *label, const char *detail){
     std::fprintf(stderr, "FAIL [%s]: %s\n", label, detail);
-    return 1;
+    ADD_FAILURE() << label << ": " << detail;
 }
 
 }  // namespace
 
-int main() {
+TEST(CombiningOnResize, Main) {
+
     std::setlocale(LC_CTYPE, "");  // adopt user locale for wcwidth()
 
     // --- I1: main-screen preservation across widening resize ---
@@ -111,11 +113,13 @@ int main() {
             if (kv.first >= 2) {
                 std::fprintf(stderr, "FAIL [I3 residue]: combining map still "
                             "contains col=%d after resize to cols=2\n", kv.first);
-                return 1;
+                FAIL();
             }
         }
     }
 
     std::printf("combining_on_resize: 3 invariants held across 3 scenarios\n");
-    return 0;
+    return;
+
 }
+

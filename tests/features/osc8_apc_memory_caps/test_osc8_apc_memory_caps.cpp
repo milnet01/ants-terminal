@@ -7,18 +7,17 @@
 #include "vtparser.h"
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
-
-int g_failures = 0;
 
 void fail(const char *label, const char *detail = "") {
     std::fprintf(stderr, "FAIL %-44s %s%s\n",
                  label,
                  (detail && *detail) ? "— " : "",
                  detail ? detail : "");
-    ++g_failures;
+    ADD_FAILURE();
 }
 
 void feed(VtParser &parser, const std::string &bytes) {
@@ -58,7 +57,7 @@ std::string apcEnv(const std::string &params, const std::string &data) {
     return s;
 }
 
-void testOsc8HappyPath() {
+TEST(Osc8ApcMemoryCaps, Osc8HappyPath) {
     TerminalGrid grid(24, 80);
     VtParser parser = makeParser(grid);
     // INV-OSC8-A: short URI below cap. Open, print "X", close. Row 0
@@ -77,7 +76,7 @@ void testOsc8HappyPath() {
     }
 }
 
-void testOsc8OversizedDropped() {
+TEST(Osc8ApcMemoryCaps, Osc8OversizedDropped) {
     TerminalGrid grid(24, 80);
     VtParser parser = makeParser(grid);
     // INV-OSC8-B + INV-OSC8-C: URI well above cap. Same shape as happy
@@ -104,7 +103,7 @@ void testOsc8OversizedDropped() {
     }
 }
 
-void testOsc8AtCapAccepted() {
+TEST(Osc8ApcMemoryCaps, Osc8AtCapAccepted) {
     TerminalGrid grid(24, 80);
     VtParser parser = makeParser(grid);
     // Exactly-at-cap URI must still be accepted — the cap is the first
@@ -120,7 +119,7 @@ void testOsc8AtCapAccepted() {
     }
 }
 
-void testApcSingleFrameNotAffected() {
+TEST(Osc8ApcMemoryCaps, ApcSingleFrameNotAffected) {
     TerminalGrid grid(24, 80);
     VtParser parser = makeParser(grid);
     // INV-APC-A: a single `m=0` APC frame below the cap should leave
@@ -135,7 +134,7 @@ void testApcSingleFrameNotAffected() {
     }
 }
 
-void testApcOverflowDropped() {
+TEST(Osc8ApcMemoryCaps, ApcOverflowDropped) {
     TerminalGrid grid(24, 80);
     VtParser parser = makeParser(grid);
     // INV-APC-B: chain enough `m=1` frames to exceed MAX_KITTY_CHUNK_BYTES.
@@ -179,17 +178,4 @@ void testApcOverflowDropped() {
 
 }  // namespace
 
-int main() {
-    testOsc8HappyPath();
-    testOsc8OversizedDropped();
-    testOsc8AtCapAccepted();
-    testApcSingleFrameNotAffected();
-    testApcOverflowDropped();
 
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "All assertions passed.\n");
-    return 0;
-}

@@ -8,6 +8,7 @@
 #include "vtparser.h"
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -26,10 +27,9 @@ struct Harness {
     int col() const { return grid.cursorCol(); }
 };
 
-int g_failures = 0;
 void fail(const char *label, const char *detail) {
     std::fprintf(stderr, "FAIL [%s]: %s\n", label, detail);
-    ++g_failures;
+    ADD_FAILURE();
 }
 
 void expectPos(const char *label, Harness &h, int wantRow, int wantCol) {
@@ -52,7 +52,8 @@ std::string readFile(const char *path) {
 
 }  // namespace
 
-int main() {
+TEST(OriginModeCorrectness, Main) {
+
     // ---------- I1: DECOM off, CUP absolute (sanity baseline) ----------
     {
         Harness h;
@@ -244,5 +245,7 @@ int main() {
         }
     }
 
-    return g_failures == 0 ? 0 : 1;
+    return;
+
 }
+

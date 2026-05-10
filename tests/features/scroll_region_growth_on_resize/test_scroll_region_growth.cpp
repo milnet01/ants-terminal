@@ -13,18 +13,17 @@
 #include "vtparser.h"
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
 
-int g_failures = 0;
-
+#undef EXPECT
 #define EXPECT(cond, ...) do {                                  \
     if (!(cond)) {                                              \
-        std::fprintf(stderr, "FAIL [%s:%d] ", __FILE__, __LINE__); \
-        std::fprintf(stderr, __VA_ARGS__);                      \
-        std::fprintf(stderr, "\n");                             \
-        ++g_failures;                                           \
+        char _ants_msg[512];                                    \
+        std::snprintf(_ants_msg, sizeof(_ants_msg), __VA_ARGS__); \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << _ants_msg;        \
     }                                                           \
 } while (0)
 
@@ -45,7 +44,7 @@ void enterAltScreen(VtParser &parser) {
 }  // namespace
 
 // ----- INV-1 — implicit (full-screen) primary region grows on resize.
-static void testInv1_DefaultPrimaryGrows() {
+TEST(ScrollRegionGrowthOnResize, DefaultPrimaryGrows) {
     TerminalGrid grid(24, 80);
     EXPECT(grid.scrollTop() == 0 && grid.scrollBottom() == 23,
            "INV-1 setup: scrollTop=%d scrollBottom=%d, expected 0/23",
@@ -60,7 +59,7 @@ static void testInv1_DefaultPrimaryGrows() {
 }
 
 // ----- INV-2 — implicit (full-screen) primary region shrinks on resize.
-static void testInv2_DefaultPrimaryShrinks() {
+TEST(ScrollRegionGrowthOnResize, DefaultPrimaryShrinks) {
     TerminalGrid grid(60, 80);
     grid.resize(24, 80);
     EXPECT(grid.scrollTop() == 0,
@@ -71,7 +70,7 @@ static void testInv2_DefaultPrimaryShrinks() {
 }
 
 // ----- INV-3 — explicit DECSTBM preserved on grow (NOT auto-widened).
-static void testInv3_ExplicitPreservedOnGrow() {
+TEST(ScrollRegionGrowthOnResize, ExplicitPreservedOnGrow) {
     TerminalGrid grid(24, 80);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
     setRegion(parser,4, 14);  // DECSTBM 5;15
@@ -89,7 +88,7 @@ static void testInv3_ExplicitPreservedOnGrow() {
 }
 
 // ----- INV-4 — explicit DECSTBM clamped on shrink below bottom.
-static void testInv4_ExplicitClampedOnShrinkBelowBottom() {
+TEST(ScrollRegionGrowthOnResize, ExplicitClampedOnShrinkBelowBottom) {
     TerminalGrid grid(60, 80);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
     setRegion(parser,4, 54);  // DECSTBM 5;55
@@ -110,7 +109,7 @@ static void testInv4_ExplicitClampedOnShrinkBelowBottom() {
 //
 // Inside alt mode, m_scrollTop/m_scrollBottom track the alt region
 // (defaults to full-screen). Resize must widen those, same as primary.
-static void testInv5_AltDefaultGrows() {
+TEST(ScrollRegionGrowthOnResize, AltDefaultGrows) {
     TerminalGrid grid(24, 80);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
     enterAltScreen(parser);
@@ -126,7 +125,7 @@ static void testInv5_AltDefaultGrows() {
 }
 
 // ----- INV-6 — alt explicit DECSTBM preserved on grow.
-static void testInv6_AltExplicitPreservedOnGrow() {
+TEST(ScrollRegionGrowthOnResize, AltExplicitPreservedOnGrow) {
     TerminalGrid grid(24, 80);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
     enterAltScreen(parser);
@@ -139,7 +138,7 @@ static void testInv6_AltExplicitPreservedOnGrow() {
 }
 
 // ----- INV-7 — sequential grow / shrink stays consistent.
-static void testInv7_GrowShrinkSequence() {
+TEST(ScrollRegionGrowthOnResize, GrowShrinkSequence) {
     TerminalGrid grid(24, 80);
     grid.resize(60, 80);
     EXPECT(grid.scrollBottom() == 59,
@@ -159,19 +158,4 @@ static void testInv7_GrowShrinkSequence() {
            grid.scrollBottom());
 }
 
-int main() {
-    testInv1_DefaultPrimaryGrows();
-    testInv2_DefaultPrimaryShrinks();
-    testInv3_ExplicitPreservedOnGrow();
-    testInv4_ExplicitClampedOnShrinkBelowBottom();
-    testInv5_AltDefaultGrows();
-    testInv6_AltExplicitPreservedOnGrow();
-    testInv7_GrowShrinkSequence();
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall 7 invariants hold\n");
-    return 0;
-}

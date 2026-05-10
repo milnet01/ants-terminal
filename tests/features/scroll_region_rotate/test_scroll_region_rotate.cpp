@@ -6,11 +6,14 @@
 // via their CSI dispatchers (CSI N S = scrollUp, CSI N T = scrollDown,
 // CSI top;bottom r = DECSTBM setScrollRegion).
 //
-// Exit 0 = invariants hold. Non-zero = regression.
+// ANTS-1217 Phase 2: migrated to GoogleTest TEST() blocks under Suite
+// ScrollRegionRotate. EXPECT() macro retained but redirected to
+// ADD_FAILURE_AT so existing call-sites work unchanged.
 
 #include "terminalgrid.h"
 #include "vtparser.h"
 
+#include <gtest/gtest.h>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -20,15 +23,13 @@ namespace {
 constexpr int kRows = 10;
 constexpr int kCols = 16;
 
-int g_failures = 0;
-
-#define EXPECT(cond, ...) do {                                \
-    if (!(cond)) {                                            \
-        std::fprintf(stderr, "FAIL [%s:%d] ", __FILE__, __LINE__); \
-        std::fprintf(stderr, __VA_ARGS__);                    \
-        std::fprintf(stderr, "\n");                           \
-        ++g_failures;                                         \
-    }                                                         \
+#undef EXPECT
+#define EXPECT(cond, ...) do {                                  \
+    if (!(cond)) {                                              \
+        char _ants_msg[512];                                    \
+        std::snprintf(_ants_msg, sizeof(_ants_msg), __VA_ARGS__); \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << _ants_msg;        \
+    }                                                           \
 } while (0)
 
 struct Harness {
@@ -78,8 +79,10 @@ bool rowIsBlank(const TerminalGrid &g, int row) {
     return true;
 }
 
+}  // namespace
+
 // ----- I1 / I3 — scrollUp inside a partial region, rows outside untouched.
-void testPartialRegionScrollUp() {
+TEST(ScrollRegionRotate, PartialRegionScrollUp) {
     Harness h;
     h.labelRows();
     h.setRegion(3, 7);
@@ -105,7 +108,7 @@ void testPartialRegionScrollUp() {
 }
 
 // ----- I2 / I3 — scrollDown inside a partial region.
-void testPartialRegionScrollDown() {
+TEST(ScrollRegionRotate, PartialRegionScrollDown) {
     Harness h;
     h.labelRows();
     h.setRegion(3, 7);
@@ -127,7 +130,7 @@ void testPartialRegionScrollDown() {
 }
 
 // ----- I4 — main screen, scrollTop==0 pushes to scrollback.
-void testMainScreenScrollUpPushesScrollback() {
+TEST(ScrollRegionRotate, MainScreenScrollUpPushesScrollback) {
     Harness h;
     h.labelRows();
     // Default scroll region covers the full screen (top 0).
@@ -159,7 +162,7 @@ void testMainScreenScrollUpPushesScrollback() {
 }
 
 // ----- I6 — alt screen scrollUp must not push to scrollback.
-void testAltScreenScrollUpNoScrollback() {
+TEST(ScrollRegionRotate, AltScreenScrollUpNoScrollback) {
     Harness h;
     h.labelRows();
     h.feed("\x1b[?1049h");  // enter alt screen
@@ -177,7 +180,7 @@ void testAltScreenScrollUpNoScrollback() {
 }
 
 // ----- I7 — hyperlinks follow their row.
-void testHyperlinksFollowRow() {
+TEST(ScrollRegionRotate, HyperlinksFollowRow) {
     Harness h;
     h.labelRows();
     h.grid.addRowHyperlink(5, 0, 3, QStringLiteral("https://example.com/a"));
@@ -211,7 +214,7 @@ void testHyperlinksFollowRow() {
 }
 
 // ----- I8 — count > regionHeight is clamped (whole region blank).
-void testCountOverflowClamped() {
+TEST(ScrollRegionRotate, CountOverflowClamped) {
     {
         Harness h;
         h.labelRows();
@@ -250,20 +253,3 @@ void testCountOverflowClamped() {
     }
 }
 
-}  // namespace
-
-int main() {
-    testPartialRegionScrollUp();
-    testPartialRegionScrollDown();
-    testMainScreenScrollUpPushesScrollback();
-    testAltScreenScrollUpNoScrollback();
-    testHyperlinksFollowRow();
-    testCountOverflowClamped();
-
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "All scroll-region rotate invariants hold.\n");
-    return 0;
-}

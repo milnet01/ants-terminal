@@ -11,6 +11,7 @@
 
 #include <clocale>
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
@@ -50,14 +51,15 @@ bool rowHasUri(const TerminalGrid &g, int row, const std::string &url) {
     return false;
 }
 
-int fail(const char *label, const char *detail) {
+void fail(const char *label, const char *detail){
     std::fprintf(stderr, "FAIL [%s]: %s\n", label, detail);
-    return 1;
+    ADD_FAILURE() << label << ": " << detail;
 }
 
 }  // namespace
 
-int main() {
+TEST(Osc8InsertDeleteLines, Main) {
+
     std::setlocale(LC_CTYPE, "");
 
     // --- I1: CSI L (Insert Line) shifts spans downward ---
@@ -125,5 +127,7 @@ int main() {
     }
 
     std::printf("osc8_insert_delete_lines: 4 invariants held\n");
-    return 0;
+    return;
+
 }
+

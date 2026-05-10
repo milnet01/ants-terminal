@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
 #include <random>
@@ -247,7 +248,8 @@ static std::vector<Fixture> buildFixtures() {
 
 }  // namespace
 
-int main() {
+TEST(ThreadedParseEquivalence, Main) {
+
     const auto fixtures = buildFixtures();
     int failures = 0;
 
@@ -280,9 +282,11 @@ int main() {
 
     if (failures) {
         std::fprintf(stderr, "\n%d assertion(s) failed\n", failures);
-        return 1;
+        FAIL();
     }
     std::printf("threaded_parse_equivalence: %zu fixtures passed\n",
                 fixtures.size());
-    return 0;
+    return;
+
 }
+

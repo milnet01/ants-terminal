@@ -1,17 +1,17 @@
 // Feature-conformance test for spec.md — asserts that a main-screen
 // CSI 2J + repaint does not grow scrollback by more than rows + slack.
 //
-// Links against src/terminalgrid.cpp and src/vtparser.cpp directly (see
-// CMakeLists.txt — this is a white-box test in the sense that it builds
-// against the same source objects the application does, but it exercises
-// them only through public API, so the test survives refactors that
-// don't change the public behavior).
+// Links against ants_vt_lib (terminalgrid + vtparser) — white-box test
+// in the sense that it builds against the same source objects the
+// application does, but exercises them only through public API.
 //
-// Exit 0 = invariant holds. Non-zero = regression.
+// ANTS-1217 Phase 2: migrated to GoogleTest TEST() blocks under Suite
+// ScrollbackRedraw.
 
 #include "terminalgrid.h"
 #include "vtparser.h"
 
+#include <gtest/gtest.h>
 #include <cstdio>
 #include <string>
 
@@ -127,7 +127,7 @@ int runInkOverflowScenario() {
                      "phase1=%d phase2=%d (Ink CSI 3J was treated as "
                      "user clear-scrollback instead of frame-reset).\n",
                      sbAfterPhase1, sbAfterPhase2);
-        failures++;
+        ADD_FAILURE();
     }
     // Invariant (b): no duplication — growth stays bounded.
     if (growth > threshold) {
@@ -136,7 +136,7 @@ int runInkOverflowScenario() {
                      "lines across the Ink repaint (threshold %d) — the "
                      "replay duplicated into scrollback.\n",
                      growth, threshold);
-        failures++;
+        ADD_FAILURE();
     }
     if (failures == 0) {
         std::fprintf(stderr,
@@ -224,24 +224,28 @@ int runStandaloneMode3Scenario() {
     return 0;
 }
 
-int main() {
-    // Canonical + equivalent-effect variants. Claude Code uses CSI 2J + CSI H
-    // (the first two); some TUIs and older terminals use CSI H + CSI 0J
-    // (move home, erase to end — same post-state as CSI 2J from home).
-    // CSI 1J from the bottom-right corner produces the same post-state too,
-    // though in practice no TUI emits that pattern — guarded for correctness.
-    int failures = 0;
-    failures += runScenario("identical-repaint-2J",   "\x1b[2J\x1b[H",         /*identical=*/true);
-    failures += runScenario("diverged-repaint-2J",    "\x1b[2J\x1b[H",         /*identical=*/false);
-    failures += runScenario("identical-repaint-0J",   "\x1b[H\x1b[0J",         /*identical=*/true);
-    failures += runScenario("identical-repaint-1J",   "\x1b[24;80H\x1b[1J\x1b[H", /*identical=*/true);
-    failures += runInkOverflowScenario();
-    failures += runStandaloneMode3Scenario();
-    failures += runUserClearScenario();
-
-    if (failures > 0) {
-        std::fprintf(stderr, "\n%d scenario(s) failed.\n", failures);
-        return 1;
-    }
-    return 0;
+// Canonical + equivalent-effect variants. Claude Code uses CSI 2J + CSI H;
+// some TUIs use CSI H + CSI 0J (same post-state). CSI 1J from bottom-right
+// produces the same post-state — guarded for correctness even though no
+// real TUI emits that pattern.
+TEST(ScrollbackRedraw, IdenticalRepaint2J) {
+    EXPECT_EQ(0, runScenario("identical-repaint-2J", "\x1b[2J\x1b[H", /*identical=*/true));
+}
+TEST(ScrollbackRedraw, DivergedRepaint2J) {
+    EXPECT_EQ(0, runScenario("diverged-repaint-2J", "\x1b[2J\x1b[H", /*identical=*/false));
+}
+TEST(ScrollbackRedraw, IdenticalRepaint0J) {
+    EXPECT_EQ(0, runScenario("identical-repaint-0J", "\x1b[H\x1b[0J", /*identical=*/true));
+}
+TEST(ScrollbackRedraw, IdenticalRepaint1J) {
+    EXPECT_EQ(0, runScenario("identical-repaint-1J", "\x1b[24;80H\x1b[1J\x1b[H", /*identical=*/true));
+}
+TEST(ScrollbackRedraw, InkOverflowRepaint) {
+    EXPECT_EQ(0, runInkOverflowScenario());
+}
+TEST(ScrollbackRedraw, StandaloneMode3J) {
+    EXPECT_EQ(0, runStandaloneMode3Scenario());
+}
+TEST(ScrollbackRedraw, UserClear) {
+    EXPECT_EQ(0, runUserClearScenario());
 }

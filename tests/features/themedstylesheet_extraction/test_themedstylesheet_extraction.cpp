@@ -8,6 +8,7 @@
 // directly without instantiating any QWidget.
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -49,9 +50,8 @@ bool containsQ(const QString &hay, const char *needle) {
     return hay.contains(QString::fromUtf8(needle));
 }
 
-int fail(const char *label, const std::string &why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why.c_str());
-    return 1;
+void fail(const char *label, const std::string &why) {
+    ADD_FAILURE() << "[" << label << "] " << why;
 }
 
 std::size_t lineCount(const std::string &text) {
@@ -62,20 +62,21 @@ std::size_t lineCount(const std::string &text) {
 
 }  // namespace
 
-int main() {
+TEST(ThemedstylesheetExtraction, Main) {
+
     const std::string mw     = slurp(SRC_MAINWINDOW_CPP_PATH);
     const std::string mwH    = slurp(SRC_MAINWINDOW_H_PATH);
     const std::string tssCpp = slurp(SRC_THEMEDSTYLESHEET_CPP_PATH);
     const std::string tssH   = slurp(SRC_THEMEDSTYLESHEET_H_PATH);
 
-    if (mw.empty())  return fail("setup", "mainwindow.cpp not readable");
-    if (mwH.empty()) return fail("setup", "mainwindow.h not readable");
+    if (mw.empty())  { fail("setup", "mainwindow.cpp not readable"); return; }
+    if (mwH.empty()) { fail("setup", "mainwindow.h not readable"); return; }
 
     // INV-1 — six public-helper signatures byte-for-byte.
     if (tssH.empty())
-        return fail("INV-1", "src/themedstylesheet.h not present — extraction not done");
+        { fail("INV-1", "src/themedstylesheet.h not present — extraction not done"); return; }
     if (!contains(tssH, "namespace themedstylesheet"))
-        return fail("INV-1", "themedstylesheet.h missing `namespace themedstylesheet`");
+        { fail("INV-1", "themedstylesheet.h missing `namespace themedstylesheet`"); return; }
     static const char *kSignatures[] = {
         "QString buildAppStylesheet(const Theme &theme);",
         "QString buildMenuBarStylesheet(const Theme &theme);",
@@ -86,13 +87,13 @@ int main() {
     };
     for (const char *sig : kSignatures) {
         if (!contains(tssH, sig))
-            return fail("INV-1", std::string("themedstylesheet.h missing signature `") + sig + "`");
+            { fail("INV-1", std::string("themedstylesheet.h missing signature `") + sig + "`"); return; }
     }
 
     // INV-2 — migrated QSS selectors byte-for-byte in the new TU.
     // (QProgressBar::chunk excluded — non-distinctive vs claudestatuswidgets.cpp.)
     if (tssCpp.empty())
-        return fail("INV-2", "src/themedstylesheet.cpp not present — extraction not done");
+        { fail("INV-2", "src/themedstylesheet.cpp not present — extraction not done"); return; }
     static const char *kQssMarkers[] = {
         "QMainWindow {",
         "QMenuBar::item:hover",
@@ -112,7 +113,7 @@ int main() {
     };
     for (const char *m : kQssMarkers) {
         if (!contains(tssCpp, m))
-            return fail("INV-2", std::string("themedstylesheet.cpp missing QSS marker `") + m + "`");
+            { fail("INV-2", std::string("themedstylesheet.cpp missing QSS marker `") + m + "`"); return; }
     }
 
     // INV-3 — distinctive QSS markers no longer present in mainwindow.cpp.
@@ -123,7 +124,7 @@ int main() {
     };
     for (const char *m : kRemovedFromMw) {
         if (contains(mw, m))
-            return fail("INV-3", std::string("mainwindow.cpp still contains migrated QSS marker `") + m + "`");
+            { fail("INV-3", std::string("mainwindow.cpp still contains migrated QSS marker `") + m + "`"); return; }
     }
 
     // INV-4 — applyTheme calls each of the six helpers.
@@ -137,7 +138,7 @@ int main() {
     };
     for (const char *c : kHelperCalls) {
         if (!contains(mw, c))
-            return fail("INV-4", std::string("mainwindow.cpp missing call to `") + c + "`");
+            { fail("INV-4", std::string("mainwindow.cpp missing call to `") + c + "`"); return; }
     }
 
     // INV-5 — refreshRepoVisibility reuses buildChipStylesheet. The
@@ -145,12 +146,12 @@ int main() {
     {
         const auto sigPos = mw.find("void MainWindow::refreshRepoVisibility(");
         if (sigPos == std::string::npos)
-            return fail("INV-5", "mainwindow.cpp missing MainWindow::refreshRepoVisibility");
+            { fail("INV-5", "mainwindow.cpp missing MainWindow::refreshRepoVisibility"); return; }
         const auto nextDef = mw.find("\nvoid MainWindow::", sigPos + 1);
         const std::string body = mw.substr(sigPos,
             nextDef == std::string::npos ? std::string::npos : nextDef - sigPos);
         if (!contains(body, "themedstylesheet::buildChipStylesheet("))
-            return fail("INV-5", "refreshRepoVisibility no longer reuses buildChipStylesheet");
+            { fail("INV-5", "refreshRepoVisibility no longer reuses buildChipStylesheet"); return; }
     }
 
     // INV-6 — cache-and-compare guard locked in.
@@ -165,29 +166,29 @@ int main() {
     };
     for (const char *m : kCacheMembers) {
         if (!contains(mwH, m))
-            return fail("INV-6", std::string("mainwindow.h missing cache member `") + m + "`");
+            { fail("INV-6", std::string("mainwindow.h missing cache member `") + m + "`"); return; }
     }
     {
         const auto sigPos = mw.find("void MainWindow::updateStatusBar(");
         if (sigPos == std::string::npos)
-            return fail("INV-6", "mainwindow.cpp missing MainWindow::updateStatusBar");
+            { fail("INV-6", "mainwindow.cpp missing MainWindow::updateStatusBar"); return; }
         const auto nextDef = mw.find("\nvoid MainWindow::", sigPos + 1);
         const std::string body = mw.substr(sigPos,
             nextDef == std::string::npos ? std::string::npos : nextDef - sigPos);
         if (!contains(body, "themedstylesheet::buildChipStylesheet("))
-            return fail("INV-6", "updateStatusBar does not call themedstylesheet::buildChipStylesheet");
+            { fail("INV-6", "updateStatusBar does not call themedstylesheet::buildChipStylesheet"); return; }
         if (!contains(body, "newQss != m_lastBranchChipQss"))
-            return fail("INV-6", "updateStatusBar missing string-comparison guard `newQss != m_lastBranchChipQss`");
+            { fail("INV-6", "updateStatusBar missing string-comparison guard `newQss != m_lastBranchChipQss`"); return; }
         if (!contains(body, "m_lastBranchChipValid = true"))
-            return fail("INV-6", "updateStatusBar missing `m_lastBranchChipValid = true` post-update");
+            { fail("INV-6", "updateStatusBar missing `m_lastBranchChipValid = true` post-update"); return; }
     }
 
     // INV-7 — two-sided LoC anchor.
     const std::size_t tssLoc = lineCount(tssCpp);
     if (tssLoc < 200)
-        return fail("INV-7",
+        { fail("INV-7",
             "themedstylesheet.cpp has only " + std::to_string(tssLoc) +
-            " lines; sanity floor is 200");
+            " lines; sanity floor is 200"); return; }
 
     // INV-8 — unit-level helper tests. Direct calls into the
     // pure functions; assert structural substrings.
@@ -195,34 +196,33 @@ int main() {
     {
         const QString app = themedstylesheet::buildAppStylesheet(theme);
         if (!containsQ(app, "QMainWindow { background-color:"))
-            return fail("INV-8", "buildAppStylesheet missing QMainWindow rule");
+            { fail("INV-8", "buildAppStylesheet missing QMainWindow rule"); return; }
         if (!containsQ(app, "QPushButton:hover:enabled"))
-            return fail("INV-8", "buildAppStylesheet missing QPushButton:hover:enabled rule");
+            { fail("INV-8", "buildAppStylesheet missing QPushButton:hover:enabled rule"); return; }
         if (!containsQ(app, "data:image/svg+xml;utf8"))
-            return fail("INV-8", "buildAppStylesheet missing tab-close SVG data URI");
+            { fail("INV-8", "buildAppStylesheet missing tab-close SVG data URI"); return; }
     }
     {
         const QString chip4 =
             themedstylesheet::buildChipStylesheet(theme, QColor("#00ff00"), 4);
         if (!containsQ(chip4, "color: #00ff00"))
-            return fail("INV-8", "buildChipStylesheet didn't render fgColor `#00ff00`");
+            { fail("INV-8", "buildChipStylesheet didn't render fgColor `#00ff00`"); return; }
         if (!containsQ(chip4, "margin: 2px 6px 2px 4px"))
-            return fail("INV-8", "buildChipStylesheet didn't render leftMarginPx=4");
+            { fail("INV-8", "buildChipStylesheet didn't render leftMarginPx=4"); return; }
         if (!containsQ(chip4, "border-radius: 3px"))
-            return fail("INV-8", "buildChipStylesheet missing border-radius");
+            { fail("INV-8", "buildChipStylesheet missing border-radius"); return; }
         if (!containsQ(chip4, "font-weight: 600"))
-            return fail("INV-8", "buildChipStylesheet missing font-weight: 600");
+            { fail("INV-8", "buildChipStylesheet missing font-weight: 600"); return; }
     }
     {
         const QString chip0 =
             themedstylesheet::buildChipStylesheet(theme, QColor("#ff0000"), 0);
         if (!containsQ(chip0, "margin: 2px 6px 2px 0"))
-            return fail("INV-8", "buildChipStylesheet didn't render leftMarginPx=0 (visibility-badge variant)");
+            { fail("INV-8", "buildChipStylesheet didn't render leftMarginPx=0 (visibility-badge variant)"); return; }
     }
 
     std::fprintf(stderr,
         "OK — themedstylesheet extraction INVs hold "
         "(themedstylesheet.cpp = %zu LoC).\n",
         tssLoc);
-    return 0;
 }

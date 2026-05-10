@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -127,7 +128,8 @@ int runCase(const std::string &caseName, const std::string &input,
 
 } // namespace
 
-int main() {
+TEST(VtparserPrintRunCoalesce, Main) {
+
     int failures = 0;
 
     // INV-1: 4 KiB ASCII run.
@@ -202,8 +204,10 @@ int main() {
     if (failures == 0) {
         std::printf("vtparser_print_run_coalesce: all invariants hold "
                     "(bulk feed ≡ byte-by-byte feed)\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "vtparser_print_run_coalesce: %d failure(s)\n", failures);
-    return 1;
+    FAIL();
+
 }
+

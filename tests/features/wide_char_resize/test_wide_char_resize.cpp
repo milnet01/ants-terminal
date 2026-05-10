@@ -11,22 +11,20 @@
 
 #include <clocale>
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <cstdlib>
 #include <string>
 
 namespace {
 
-int g_failures = 0;
-
+#undef EXPECT
 #define EXPECT(cond, ...) do {                                  \
     if (!(cond)) {                                              \
-        std::fprintf(stderr, "FAIL [%s:%d] ", __FILE__, __LINE__); \
-        std::fprintf(stderr, __VA_ARGS__);                      \
-        std::fprintf(stderr, "\n");                             \
-        ++g_failures;                                           \
+        char _ants_msg[512];                                    \
+        std::snprintf(_ants_msg, sizeof(_ants_msg), __VA_ARGS__); \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << _ants_msg;        \
     }                                                           \
 } while (0)
-
 struct Harness {
     TerminalGrid grid;
     VtParser parser;
@@ -90,7 +88,7 @@ Orphans scanScrollbackForOrphans(const TerminalGrid &grid) {
 // at cell 18 (lead of the 10th wide-char, with cont at cell 19) —
 // the dangerous boundary. Pre-fix would orphan the cell-18 lead on
 // line 0 and the cell-19 cont on line 1.
-static void testInv1_TwentyCellRowResizeTo19() {
+TEST(WideCharResize, TwentyCellRowResizeTo19) {
     Harness h(24, 20);
     // 10 × U+4F60 ("you") = 10 wide chars = 20 cells.
     // U+4F60 in UTF-8: 0xE4 0xBD 0xA0 (3 bytes per char).
@@ -132,7 +130,7 @@ static void testInv1_TwentyCellRowResizeTo19() {
 // 5 CJK at 10 cols. Resize to 9 cols. Pre-fix would put 4 wide
 // chars + an orphan lead on line 0 (cells 0..8), and orphan cont +
 // nothing else on line 1 (cell 0 is cont, no lead).
-static void testInv2_TenCellRowResizeTo9() {
+TEST(WideCharResize, TenCellRowResizeTo9) {
     Harness h(24, 10);
     std::string cjk;
     for (int i = 0; i < 5; ++i) cjk += "\xe4\xbd\xa0";  // 5 × U+4F60
@@ -156,26 +154,4 @@ static void testInv2_TenCellRowResizeTo9() {
            "INV-2: %d orphan conts after resize", o.orphanContCount);
 }
 
-int main() {
-    // wcwidth() depends on LC_CTYPE; without a UTF-8 locale CJK code
-    // points return width 1 instead of 2 and wide-char detection
-    // never fires. The main app gets a UTF-8 locale via QApplication
-    // initialization; this standalone test must set it explicitly.
-    if (!std::setlocale(LC_CTYPE, "C.UTF-8") &&
-        !std::setlocale(LC_CTYPE, "en_US.UTF-8") &&
-        !std::setlocale(LC_CTYPE, "")) {
-        std::fprintf(stderr,
-                     "skip: cannot set a UTF-8 locale; wcwidth would "
-                     "return 1 for CJK and the test would be vacuous\n");
-        return 0;  // skip vs. fail — environment limitation, not a bug
-    }
-    testInv1_TwentyCellRowResizeTo19();
-    testInv2_TenCellRowResizeTo9();
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall 2 invariants hold\n");
-    return 0;
-}

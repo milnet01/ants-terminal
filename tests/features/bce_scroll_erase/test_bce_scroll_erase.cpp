@@ -9,16 +9,16 @@
 #include <QColor>
 
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
 
-int failures = 0;
-
+static int failures = 0;  // unused stub for legacy diagnostics; gtest tracks failures itself
+// ANTS-1217 Phase 2: CHECK redirected to ADD_FAILURE_AT.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        std::fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, msg);   \
-        ++failures;                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
     }                                                                        \
 } while (0)
 
@@ -63,7 +63,7 @@ void testInsertLines(const QColor &blue) {
                 std::fprintf(stderr, "FAIL IL: row %d col %d bg=%s expected %s\n",
                              r, c, bgStr(grid.cellAt(r, c).attrs.bg).c_str(),
                              bgStr(blue).c_str());
-                ++failures;
+                ADD_FAILURE();
                 return;
             }
         }
@@ -82,7 +82,7 @@ void testDeleteLines(const QColor &blue) {
                 std::fprintf(stderr, "FAIL DL: row %d col %d bg=%s expected %s\n",
                              r, c, bgStr(grid.cellAt(r, c).attrs.bg).c_str(),
                              bgStr(blue).c_str());
-                ++failures;
+                ADD_FAILURE();
                 return;
             }
         }
@@ -99,7 +99,7 @@ void testScrollUp(const QColor &blue) {
             std::fprintf(stderr, "FAIL SU: col %d bg=%s expected %s\n",
                          c, bgStr(grid.cellAt(23, c).attrs.bg).c_str(),
                          bgStr(blue).c_str());
-            ++failures;
+            ADD_FAILURE();
             return;
         }
     }
@@ -115,7 +115,7 @@ void testScrollDown(const QColor &blue) {
             std::fprintf(stderr, "FAIL SD: col %d bg=%s expected %s\n",
                          c, bgStr(grid.cellAt(0, c).attrs.bg).c_str(),
                          bgStr(blue).c_str());
-            ++failures;
+            ADD_FAILURE();
             return;
         }
     }
@@ -134,7 +134,7 @@ void testDeleteChars(const QColor &blue) {
             std::fprintf(stderr, "FAIL DCH: col %d bg=%s expected %s\n",
                          c, bgStr(grid.cellAt(0, c).attrs.bg).c_str(),
                          bgStr(blue).c_str());
-            ++failures;
+            ADD_FAILURE();
             return;
         }
     }
@@ -149,7 +149,7 @@ void testInsertBlanks(const QColor &blue) {
             std::fprintf(stderr, "FAIL ICH: col %d bg=%s expected %s\n",
                          c, bgStr(grid.cellAt(0, c).attrs.bg).c_str(),
                          bgStr(blue).c_str());
-            ++failures;
+            ADD_FAILURE();
             return;
         }
     }
@@ -165,7 +165,7 @@ void testEraseDisplay2(const QColor &blue) {
                 std::fprintf(stderr, "FAIL ED2: r=%d c=%d bg=%s expected %s\n",
                              r, c, bgStr(grid.cellAt(r, c).attrs.bg).c_str(),
                              bgStr(blue).c_str());
-                ++failures;
+                ADD_FAILURE();
                 return;
             }
         }
@@ -182,7 +182,7 @@ void testEraseLine0(const QColor &blue) {
             std::fprintf(stderr, "FAIL EL0: col %d bg=%s expected %s\n",
                          c, bgStr(grid.cellAt(4, c).attrs.bg).c_str(),
                          bgStr(blue).c_str());
-            ++failures;
+            ADD_FAILURE();
             return;
         }
     }
@@ -199,7 +199,7 @@ void testLfScroll(const QColor &blue, const QColor &defaultBg) {
             std::fprintf(stderr, "FAIL LF-scroll: col %d bg=%s expected %s\n",
                          c, bgStr(grid.cellAt(23, c).attrs.bg).c_str(),
                          bgStr(blue).c_str());
-            ++failures;
+            ADD_FAILURE();
             return;
         }
     }
@@ -215,13 +215,14 @@ void testSgrResetBeforeErase(const QColor &defaultBg) {
         std::fprintf(stderr, "FAIL SGR-reset: bg=%s expected %s\n",
                      bgStr(grid.cellAt(0, 0).attrs.bg).c_str(),
                      bgStr(defaultBg).c_str());
-        ++failures;
+        ADD_FAILURE();
     }
 }
 
 } // namespace
 
-int main() {
+TEST(BceScrollErase, Main) {
+
     TerminalGrid probe(4, 4);
     VtParser probeParser = makeParser(probe);
     const QColor blue = blueFromSgr44(probe, probeParser);
@@ -244,8 +245,10 @@ int main() {
 
     if (failures == 0) {
         std::fprintf(stderr, "PASS bce_scroll_erase (10 subcases)\n");
-        return 0;
+        return;
     }
     std::fprintf(stderr, "bce_scroll_erase: %d failure(s)\n", failures);
-    return 1;
+    FAIL();
+
 }
+

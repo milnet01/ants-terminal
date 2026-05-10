@@ -7,6 +7,7 @@
 
 #include <clocale>   // wcwidth() needs a UTF-8 locale to return 2 for CJK
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
@@ -30,10 +31,9 @@ struct Harness {
     }
 };
 
-int g_failures = 0;
 void fail(const char *label, const char *detail) {
     std::fprintf(stderr, "FAIL [%s]: %s\n", label, detail);
-    ++g_failures;
+    ADD_FAILURE();
 }
 
 // Sanity: did wcwidth actually give us width=2 under the test locale?
@@ -49,14 +49,15 @@ bool wideCharPremiseHolds() {
 
 }  // namespace
 
-int main() {
+TEST(WideCharOverwriteMate, Main) {
+
     std::setlocale(LC_CTYPE, "");
 
     if (!wideCharPremiseHolds()) {
         std::fprintf(stderr,
                      "SKIP: wcwidth(U+4E2D) != 2 under current locale — "
                      "wide-char overwrite test cannot run meaningfully.\n");
-        return 0;  // don't fail CI on a pure environment issue
+        return;  // don't fail CI on a pure environment issue
     }
 
     // --- INV-1: narrow over right-half — left-half must stop claiming wide ---
@@ -159,5 +160,7 @@ int main() {
                  "wide continuation at col 1 was disturbed");
     }
 
-    return g_failures == 0 ? 0 : 1;
+    return;
+
 }
+

@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
 #include <random>
@@ -276,7 +277,8 @@ std::vector<Case> buildCorpus() {
 
 } // namespace
 
-int main() {
+TEST(VtparserSimdScan, Main) {
+
     int failures = 0;
     auto cases = buildCorpus();
 
@@ -295,7 +297,7 @@ int main() {
             const auto chunked = parseChunked(c.input, seed);
             if (!streamsEqual(reference, chunked, c.name,
                               "chunked/seed=" + std::to_string(seed))) {
-                ++failures;
+                ADD_FAILURE();
             }
         }
     }
@@ -303,8 +305,10 @@ int main() {
     if (failures == 0) {
         std::printf("vtparser_simd_scan: all %zu cases pass across 4 feed strategies\n",
                     cases.size());
-        return 0;
+        return;
     }
     std::fprintf(stderr, "vtparser_simd_scan: %d divergence(s)\n", failures);
-    return 1;
+    FAIL();
+
 }
+

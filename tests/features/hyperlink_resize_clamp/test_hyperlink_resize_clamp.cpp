@@ -12,6 +12,7 @@
 
 #include <clocale>
 #include <cstdio>
+#include <gtest/gtest.h>
 #include <string>
 
 namespace {
@@ -30,9 +31,9 @@ std::string cup(int row, int col) {
     return buf;
 }
 
-int fail(const char *label, const char *detail) {
+void fail(const char *label, const char *detail){
     std::fprintf(stderr, "FAIL [%s]: %s\n", label, detail);
-    return 1;
+    ADD_FAILURE() << label << ": " << detail;
 }
 
 // Scan the first `rows` rows of the grid's hyperlink table for any
@@ -50,7 +51,8 @@ int findUriRow(const TerminalGrid &g, int rows, const std::string &needle) {
 
 }  // namespace
 
-int main() {
+TEST(HyperlinkResizeClamp, Main) {
+
     std::setlocale(LC_CTYPE, "");
 
     // Scenario: open hyperlink at (20, 50), shrink grid to (5, 10),
@@ -95,5 +97,7 @@ int main() {
     }
 
     std::printf("hyperlink_resize_clamp: shrink clamp + no-op resize both hold\n");
-    return 0;
+    return;
+
 }
+

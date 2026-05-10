@@ -14,11 +14,13 @@
 // Direct assertions via TerminalGrid::scrollTop() / scrollBottom() /
 // altScreenActive() (added in the same change as this test).
 //
-// Exit 0 = invariants hold. Non-zero = regression.
+// ANTS-1217 Phase 2: migrated to GoogleTest TEST() blocks under Suite
+// ScrollRegionLeakAfterApps.
 
 #include "terminalgrid.h"
 #include "vtparser.h"
 
+#include <gtest/gtest.h>
 #include <cstdio>
 #include <string>
 
@@ -27,14 +29,12 @@ namespace {
 constexpr int kRows = 20;
 constexpr int kCols = 16;
 
-int g_failures = 0;
-
+#undef EXPECT
 #define EXPECT(cond, ...) do {                                  \
     if (!(cond)) {                                              \
-        std::fprintf(stderr, "FAIL [%s:%d] ", __FILE__, __LINE__); \
-        std::fprintf(stderr, __VA_ARGS__);                      \
-        std::fprintf(stderr, "\n");                             \
-        ++g_failures;                                           \
+        char _ants_msg[512];                                    \
+        std::snprintf(_ants_msg, sizeof(_ants_msg), __VA_ARGS__); \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << _ants_msg;        \
     }                                                           \
 } while (0)
 
@@ -60,8 +60,7 @@ struct Harness {
 } // namespace
 
 // ----- INV-1 — DECSTBM is recorded by the grid.
-// Direct: setRegion(5, 15) → scrollTop()==5, scrollBottom()==15.
-static void testInv1_DecstbmRecorded() {
+TEST(ScrollRegionLeakAfterApps, DecstbmRecorded) {
     Harness h;
     h.setRegion(5, 15);
     EXPECT(h.grid.scrollTop() == 5,
@@ -71,7 +70,7 @@ static void testInv1_DecstbmRecorded() {
 }
 
 // ----- INV-2 — `CSI r` (no params) resets to full screen.
-static void testInv2_CsiRReset() {
+TEST(ScrollRegionLeakAfterApps, CsiRReset) {
     Harness h;
     h.setRegion(5, 15);
     h.resetRegion();
@@ -84,7 +83,7 @@ static void testInv2_CsiRReset() {
 }
 
 // ----- INV-3 — RIS (`ESC c`) resets to full screen.
-static void testInv3_RisReset() {
+TEST(ScrollRegionLeakAfterApps, RisReset) {
     Harness h;
     h.setRegion(5, 15);
     h.ris();
@@ -101,7 +100,7 @@ static void testInv3_RisReset() {
 // Start from full-screen main region. Enter alt-screen. Set DECSTBM
 // in alt to [0, 4]. Exit alt-screen. Main scroll region must be the
 // pre-entry full-screen [0, kRows-1], NOT the alt's [0, 4].
-static void testInv4_AltDecstbmDoesNotLeak() {
+TEST(ScrollRegionLeakAfterApps, AltDecstbmDoesNotLeak) {
     Harness h;
     EXPECT(h.grid.scrollTop() == 0 && h.grid.scrollBottom() == kRows - 1,
            "INV-4 setup: pre-entry main region not full-screen");
@@ -132,7 +131,7 @@ static void testInv4_AltDecstbmDoesNotLeak() {
 // Set main region to [3, 12] BEFORE alt entry. Enter alt, set alt
 // region to [0, 4], exit alt. Main must be back to [3, 12] — its
 // pre-entry value, not full-screen and not alt's [0, 4].
-static void testInv5_MainPreEntryRegionPreserved() {
+TEST(ScrollRegionLeakAfterApps, MainPreEntryRegionPreserved) {
     Harness h;
     h.setRegion(3, 12);
     EXPECT(h.grid.scrollTop() == 3 && h.grid.scrollBottom() == 12,
@@ -157,7 +156,7 @@ static void testInv5_MainPreEntryRegionPreserved() {
 // Behavioural assertion that ties the user's report to the test:
 // after setRegion(0, 9) (top half only) + reset via CSI r, the
 // cursor + grid must allow plain printing to reach kRows-1.
-static void testInv6_BottomRowReachableAfterReset() {
+TEST(ScrollRegionLeakAfterApps, BottomRowReachableAfterReset) {
     Harness h;
     h.setRegion(0, 9);
     h.resetRegion();
@@ -175,7 +174,7 @@ static void testInv6_BottomRowReachableAfterReset() {
 // region AND the alt-screen saved scroll region to full-screen,
 // so an exit-from-alt that follows the menu click doesn't
 // re-leak a stale narrowed bound.
-static void testInv7_ResetScrollRegionEscapeHatch() {
+TEST(ScrollRegionLeakAfterApps, ResetScrollRegionEscapeHatch) {
     Harness h;
     h.setRegion(5, 10);            // narrow main
     h.enterAltScreen();
@@ -205,19 +204,3 @@ static void testInv7_ResetScrollRegionEscapeHatch() {
            h.grid.scrollTop(), h.grid.scrollBottom(), kRows - 1);
 }
 
-int main() {
-    testInv1_DecstbmRecorded();
-    testInv2_CsiRReset();
-    testInv3_RisReset();
-    testInv4_AltDecstbmDoesNotLeak();
-    testInv5_MainPreEntryRegionPreserved();
-    testInv6_BottomRowReachableAfterReset();
-    testInv7_ResetScrollRegionEscapeHatch();
-
-    if (g_failures > 0) {
-        std::fprintf(stderr, "scroll_region_leak: %d failure(s)\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "scroll_region_leak: ok\n");
-    return 0;
-}
