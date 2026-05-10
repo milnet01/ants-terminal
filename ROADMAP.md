@@ -5993,6 +5993,58 @@ made the desktop feel noisy in normal use.
   **Layman:** the "Review Changes" button stops lighting up just
   because of stray IDE/desktop-environment metadata files.
   Kind: fix. Source: user-2026-05-08.
+- 📋 [ANTS-1218] **Tasks chip "X/Y" semantics are inverted —
+  reads as completed-of-total but is actually remaining-of-total.**
+  User report 2026-05-10 (screenshot): Task List dialog showed
+  "30 tasks — 24 done, 1 running, 5 outstanding" while the chip
+  read "☰ 6/30". X/Y is universally read as "X done out of Y"
+  (progress bar / GitHub PR checks / pytest summary), so a user
+  glancing at the chip mis-reads it as "we've completed 6"
+  instead of "6 left." Two reasonable fixes:
+  (a) flip the count to `(total − unfinished)/total` so it reads
+      "24/30" — counts up like every other progress display, OR
+  (b) keep remaining count but drop the slash: "☰ 6 left" /
+      "☰ 6 to-do".
+  Recommended (a) for symmetry with every other counter widget
+  in the app. `ClaudeStatusBarController::refreshTasksButton`
+  in `src/claudestatuswidgets.cpp` is the format site;
+  `ClaudeTaskListTracker::unfinishedCount()` already computes
+  the open subset, so the fix is `total - unfinishedCount()` /
+  `total`. Spec: list both options + acceptance test asserting
+  the chip reads X≤Y where X monotonically rises as tasks
+  complete.
+  **Layman:** the Tasks button at bottom-right shows "6/30"
+  meaning "6 left to do," but most people read X/Y as
+  "6 done out of 30." Flipping it to count up matches how
+  progress is shown everywhere else.
+  Kind: fix. Source: user-2026-05-10.
+- 📋 [ANTS-1219] **Task List dialog accumulates stale tasks
+  across sessions instead of showing only current.** User
+  report 2026-05-10 (same screenshot as ANTS-1218): dialog
+  shows entries from prior compacted sessions ("Phase 2 — Add
+  test_vt bundle…", "Phase 2 — Update tests/features/README.md",
+  "Identify chrome-bundle test candidates…") that are no longer
+  active work. Root cause hypothesis:
+  `ClaudeTaskListTracker` retains tasks indefinitely once
+  observed via the Claude Code session-id hook; nothing prunes
+  on session boundary. Investigation needed:
+  (1) Where do tasks come from — TodoWrite events parsed live,
+      or a state file Claude Code maintains? If a file, do we
+      need its mtime/session-id to scope retention?
+  (2) Should "current" mean "current session_id" (per-tab) or
+      "active within last N hours" (rolling window)?
+  (3) Closed-session tasks: do they purge entirely, or migrate
+      to a History panel?
+  Likely scope: add a session-id column to the tracker and
+  filter the dialog model to the focused tab's session, mirroring
+  the per-tab Claude status work in ANTS-1161. Spec should
+  enumerate the visibility rule + a regression test that opens
+  a fresh tab and asserts the dialog is empty until tasks are
+  emitted on the new session.
+  **Layman:** the Task List dialog keeps showing tasks from
+  past chats with Claude — it should only show what's in the
+  current chat.
+  Kind: feature/fix. Source: user-2026-05-10.
 
 ---
 
