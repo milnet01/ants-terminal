@@ -66,12 +66,14 @@ find_package(LayerShellQt CONFIG QUIET)
 #      compile + link invocations even if the user passes -j$(nproc).
 #      Belt-and-suspenders against future regressions: the architectural
 #      fix removes the cause of the OOM, this prevents the consequence.
-#      Sized at `max(2, nproc/2)` after a 2026-05-10 stutter report on a
-#      12-core box: the previous `nproc-2` heuristic still over-subscribed
-#      RAM during link-heavy phases (each Qt-bloated cc1plus is 200-300 MiB
-#      and concurrent links are even heavier). `link_pool=1` serialises the
-#      bundle linker steps — link is the heaviest single process and the
-#      one most likely to swap.
+#      Sized at `max(2, nproc/4)` after a second 2026-05-10 stutter
+#      report on a 12-core box: `nproc/2` (= 6 jobs) was still pegging
+#      enough cores to starve the desktop session's UI thread. `nproc/4`
+#      (= 3 jobs on a 12-core / 4 jobs on a 16-core) leaves 9+ cores free
+#      for everything outside the build. Each Qt-bloated cc1plus is
+#      200-300 MiB and concurrent links are even heavier; `link_pool=1`
+#      serialises the bundle linker steps — link is the heaviest single
+#      process and the one most likely to swap.
 # ---------------------------------------------------------------------------
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
@@ -87,7 +89,7 @@ ProcessorCount(_ANTS_NPROC)
 if(_ANTS_NPROC LESS 4)
     set(_ANTS_COMPILE_CAP ${_ANTS_NPROC})
 else()
-    math(EXPR _ANTS_COMPILE_CAP "${_ANTS_NPROC} / 2")
+    math(EXPR _ANTS_COMPILE_CAP "${_ANTS_NPROC} / 4")
     if(_ANTS_COMPILE_CAP LESS 2)
         set(_ANTS_COMPILE_CAP 2)
     endif()
@@ -421,13 +423,15 @@ install(FILES packaging/shell-integration/ants-osc133.bash
 # regexes in sync with src/auditdialog.cpp; CI runs `ctest` after the
 # build to catch drift.
 #
-# Default OFF since 2026-05-09: each tests/features/<dir>/test_*.cpp is
-# its own add_executable with its own Qt MOC autogen + link step. With
-# 141 test targets, a default `cmake --build build` peaks above
-# RAM+swap on 32 GiB hosts and trips earlyoom (mid-build kills lose the
-# main exe link). CI and packaging pass `-DANTS_TESTS=ON` explicitly;
-# local dev opts in via reconfigure or a separate build-tests/ tree.
-option(ANTS_TESTS "Build tests (includes audit rule regression tests)" OFF)
+# Default ON since 2026-05-10 (ANTS-1217 Phase 7): the per-test
+# add_executable sprawl that originally forced this OFF was drained by
+# Phases 2–6 — 141 standalone test binaries → 7–9 GoogleTest bundle
+# binaries with `gtest_discover_tests`. Combined with the
+# `compile_pool=max(2, nproc/4)` JOB_POOLS cap below, a default
+# `cmake -B build && cmake --build build` no longer trips earlyoom on
+# 32 GiB hosts. Pass `-DANTS_TESTS=OFF` to opt out (e.g. for a fast
+# main-exe-only iteration).
+option(ANTS_TESTS "Build tests (includes audit rule regression tests)" ON)
 if(ANTS_TESTS)
     enable_testing()
 

@@ -1,0 +1,80 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Default (Release + Ninja)",
+            "description": "Release build with Ninja; honours the in-tree compile/link JOB_POOLS cap so plain `cmake --build build --parallel` is safe on 32 GiB hosts.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "workstation",
+            "displayName": "Workstation (constrained hardware)",
+            "description": "Release build hard-capped at -j3 for 8–16 GiB workstations or laptops where even the in-tree JOB_POOLS heuristic (max(2, nproc/4)) feels too aggressive — for instance, a Qt+terminal session running concurrently with the build. Pair with `cmake --build --preset=workstation`.",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/build-workstation"
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug + ASan/UBSan",
+            "description": "Debug build with -gsplit-dwarf and the AddressSanitizer + UndefinedBehaviorSanitizer toggle (ANTS_SANITIZERS=ON). Drops `-O2` cost from test bundles and surfaces use-after-free / signed-overflow / null-deref at runtime.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-asan",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ANTS_SANITIZERS": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "default",
+            "configurePreset": "default"
+        },
+        {
+            "name": "workstation",
+            "configurePreset": "workstation",
+            "jobs": 3
+        },
+        {
+            "name": "debug",
+            "configurePreset": "debug"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "default",
+            "configurePreset": "default",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "workstation",
+            "configurePreset": "workstation",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "environment": {
+                "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+                "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+            }
+        }
+    ]
+}

@@ -37,7 +37,7 @@ jobs:
             liblua5.4-dev cppcheck
 
       - name: Configure (Release + warnings-as-warnings)
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DANTS_TESTS=ON
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --parallel
@@ -129,7 +129,7 @@ jobs:
             liblua5.4-dev
 
       - name: Configure (Debug + ASan/UBSan)
-        run: cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DANTS_SANITIZERS=ON -DANTS_TESTS=ON
+        run: cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DANTS_SANITIZERS=ON
 
       - name: Build
         run: cmake --build build-asan --parallel

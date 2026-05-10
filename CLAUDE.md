@@ -69,11 +69,57 @@ Reverse (DA/CPR/DSR): `TerminalGrid → ResponseCallback → PTY`
 cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --output-on-failure
 ```
 
+Tests are built by default (`ANTS_TESTS=ON` since ANTS-1217 Phase 7,
+2026-05-10). Pass `-DANTS_TESTS=OFF` for a fast main-exe-only iteration.
+
 Use Ninja, not Make: the `JOB_POOLS` cap in `CMakeLists.txt`
-(`compile_pool=max(2, nproc/2)` + `link_pool=1`) only applies under
+(`compile_pool=max(2, nproc/4)` + `link_pool=1`) only applies under
 Ninja. Make ignores the pool and runs whatever `-j` you give it,
 which on a workstation with several Qt-bloated cc1plus jobs in flight
 is the path that earlyoom-reaped binaries in 0.7.x.
+
+**Token-frugal build invocations** (for AI assistants reading the
+output):
+
+```bash
+cmake --build build --quiet 2>&1 | tail -20
+ctest --test-dir build --output-on-failure 2>&1 | tail -20
+```
+
+This keeps a 10k-line build log out of the assistant's context window
+while preserving the tail where compile/link failures actually surface.
+
+### CMake presets
+
+`CMakePresets.json` ships three presets:
+
+| Preset | Use |
+|---|---|
+| `default` | Release + Ninja in `build/`. Honours the in-tree JOB_POOLS cap. |
+| `workstation` | Release in `build-workstation/` hard-capped at `-j3` for constrained hardware *or* when the build is competing with a heavy desktop session. Pair with `cmake --build --preset=workstation`. |
+| `debug` | Debug + ASan/UBSan in `build-asan/` with sanitizer env vars wired into `ctest --preset=debug`. |
+
+```bash
+cmake --preset=default    && cmake --build --preset=default    && ctest --preset=default
+cmake --preset=workstation && cmake --build --preset=workstation && ctest --preset=workstation
+cmake --preset=debug      && cmake --build --preset=debug      && ctest --preset=debug
+```
+
+### Last-resort backstop: `tools/safe-build.sh`
+
+Layer 3 of the ANTS-1217 build-OOM guardrails. Wraps `cmake --build`
+in a systemd-user scope with `MemoryMax=24G` + `MemorySwapMax=8G`, so
+if a future regression ever reintroduces the cc1plus over-parallelism
+that triggered the 2026-05-09 incident, the kernel kills the *build*
+instead of the active session. Layer 1 (in-tree JOB_POOLS) and Layer 2
+(`workstation` preset) should make this unnecessary; reach for it only
+after kernel updates or new Qt major releases.
+
+```bash
+tools/safe-build.sh                 # builds ./build with defaults
+tools/safe-build.sh build-asan      # builds ./build-asan
+tools/safe-build.sh build -j$(nproc)  # passes extra flags through
+```
 
 Optional audit deps probe with `which <tool>` and self-disable if
 absent (clazy, semgrep, osv-scanner, trufflehog, hadolint, checkov,

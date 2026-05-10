@@ -544,9 +544,38 @@ cmake -G Ninja -B build
 cmake --build build
 ```
 
-Ninja is preferred: the in-tree `JOB_POOLS` cap (compile = max(2, nproc/2),
+Ninja is preferred: the in-tree `JOB_POOLS` cap (compile = max(2, nproc/4),
 link = 1) applies only under Ninja. Building with `make -j$(nproc)`
 bypasses the cap and can OOM on Qt-heavy translation units.
+
+Tests are built by default. To skip them for a faster main-exe-only
+iteration: `cmake -G Ninja -B build -DANTS_TESTS=OFF`.
+
+#### Constrained hardware: workstation preset
+
+For 8–16 GiB hosts (laptops, modest workstations) — or any time the
+build is competing with a heavy desktop session — the `JOB_POOLS`
+heuristic of `nproc/4` concurrent compiles can still feel stuttery.
+`CMakePresets.json` ships a `workstation` preset hard-capped at `-j3`:
+
+```bash
+cmake --preset=workstation
+cmake --build --preset=workstation
+ctest --preset=workstation
+```
+
+#### Last-resort: memory-bounded build
+
+If after a kernel update or new Qt major release a `cmake --build`
+ever oversubscribes again, `tools/safe-build.sh` wraps the build in a
+systemd-user scope with `MemoryMax=24G` + `MemorySwapMax=8G`. The
+kernel kills the *build* if the cap is exceeded, not the active
+session.
+
+```bash
+tools/safe-build.sh                 # builds ./build with defaults
+tools/safe-build.sh build-workstation
+```
 
 ### Run
 
@@ -560,11 +589,13 @@ bypasses the cap and can OOM on Qt-heavy translation units.
 cd build && ctest --output-on-failure
 ```
 
-Runs `tests/audit_self_test.sh`, which asserts each audit rule's grep
-pattern matches exactly the expected lines in its fixture `bad.*` and
-nothing in its `good.*`. Takes ~40 ms. Extend by adding a new
-`tests/audit_fixtures/<rule-id>/` directory and a `run_rule` entry in
-the shell script.
+Runs `tests/audit_self_test.sh` (audit-rule grep regression tests
+against `tests/audit_fixtures/`) plus the GoogleTest feature-bundle
+suites — `test_vt`, `test_chrome`, `test_claude`, `test_audit`,
+`test_dialogs`, `test_lua`, `test_core` — registered as individual
+ctest entries by `gtest_discover_tests`. Total ≈ 281 entries. Use
+`ctest -L features` to limit to the bundle entries; `ctest -R 'Suite\.Name'`
+filters to a single TEST block.
 
 ### Install System-wide
 
