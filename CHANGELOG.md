@@ -12,6 +12,22 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.80] — 2026-05-10
+
+**Theme:** post-0.7.79 follow-ups + small high-signal user-feedback
+fixes plus a build-OOM cure. Three notification/UI false-positives
+that made the desktop feel noisy in normal use; a per-tab `Claude:
+<state>` widget bug that mis-attributed state across tabs; two
+refactors carried over from the 0.7.78 indie-review #2 sweep that
+finally land here (setupMenus per-menu carve-out and the Tier 4
+Qt6 idiom polish); and ANTS-1217 — `src/*.cpp` refactored into
+STATIC libraries, build-time guardrails (`ccache` /
+`CMAKE_OPTIMIZE_DEPENDENCIES` / `JOB_POOLS` cap / Debug
+`-gsplit-dwarf`) so a `cmake --build build -j$(nproc)` cannot OOM a
+32 GiB host any more. Full `ANTS_TESTS=ON` build now peaks at
+526 MiB RSS (was >32 GiB OOM). 144/144 ctests green; 1/1 new
+`claude_status_bar_per_tab` feature test green.
+
 ### Fixed
 
 - **ANTS-1161 — bottom `Claude: <state>` status-bar widget showed
@@ -27,13 +43,108 @@ for security-relevant changes.
   inbound event regardless of `session_id`. Fix: gate every
   state-mutating branch on the event's `session_id` matching the
   basename of the focused tab's transcript path
-  (`m_transcriptPath`). PermissionRequest stays ungated — its slot
-  routes per-tab via `lastHookSessionId()`. Pre-poll tolerance
+  (`m_transcriptPath`). `PermissionRequest` stays ungated — its
+  slot routes per-tab via `lastHookSessionId()`. Pre-poll tolerance
   built into the gate so the bootstrap `SessionStart` (which fires
   before `pollClaudeProcess` resolves the transcript) still wires
   `m_activeSessionId`. New 4-invariant feature test
   `claude_status_bar_per_tab` (verified fails I1 against pre-fix
   code via the gate-neutralization repro).
+- **ANTS-1214 — idle "Command Complete" notification fired on
+  every long-running command, including successful watchdog
+  ticks.** User report 2026-05-08: `notify-send` repeating from
+  a system-resource watchdog tab, breaking focus during normal
+  work. Root cause: `terminalwidget.cpp:checkIdleNotification()`
+  fired for any burst-then-idle pattern regardless of exit
+  status. Fix: gate on `m_grid->lastExitCode() != 0` (OSC 133 D
+  exit-code). Successful commands and shells without OSC 133
+  integration stay silent; non-zero exits raise a
+  `dialog-warning`-iconed "Command Failed" notification with the
+  exit code in the body.
+- **ANTS-1215 — Review Changes button stayed active after every
+  push because of an untracked `.directory` (KDE Dolphin
+  metadata).** Root cause: `mainwindow.cpp:refreshReviewButton()`
+  treated any non-header `git status --porcelain=v1 -b` line as
+  "dirty," including untracked (`??`) lines. Untracked files
+  don't appear in `git diff`, so clicking the button opened an
+  empty diff viewer. Fix: skip `??` lines in the dirty count.
+  Common false positives now silenced: `.directory`, IDE caches,
+  swap files, build artefacts that aren't gitignored. Once the
+  user `git add`s an untracked file it becomes `A ` and counts
+  again.
+- **ANTS-1216 — Tasks chip stayed visible after every task is done
+  + miscount of "deleted" tasks as unfinished.** User report
+  2026-05-08: Task List dialog showed "27 done, 0 running, 0
+  outstanding" but the status-bar chip still read "☰ 1/28" and
+  hadn't dimmed. Two stacked bugs: (1)
+  `ClaudeTaskListTracker::unfinishedCount()` used
+  `status != "completed"`, so a `deleted` task counted as
+  unfinished — the chip showed "1" when the dialog showed zero.
+  Header-stated contract was "pending + in_progress";
+  implementation drifted. Fix: count only `pending` +
+  `in_progress`. (2) `refreshTasksButton` only hid the chip when
+  `total <= 0`, so a fully-done task list kept the chip visible
+  at "☰ 0/N", reading as actionable chrome. Fix: also hide when
+  `unfinished <= 0`.
+
+### Changed
+
+- **ANTS-1181 — `setupMenus` 947-LoC monolith carved into seven
+  per-menu helpers + About dialogs moved to their own TU.** Phase
+  A (in-place): `setupMenus()` is now an orchestrator of
+  `setupFileMenu`, `setupEditMenu`, `setupViewMenu`,
+  `setupSplitMenu`, `setupToolsMenu`, `setupSettingsMenu`,
+  `setupHelpMenu`. Phase B (partial): `About-Ants` and `About-Qt`
+  carved to `src/aboutdialogs.{cpp,h}` as namespaced free
+  functions (`AboutDialogs::showAboutAnts(parent)` /
+  `showAboutQt(parent)`) sharing an internal `makeAboutDialog`
+  helper. The Wayland modal-exec workaround comment (QTBUG-79126
+  / QTBUG-90005) survives in the new TU verbatim. Deferred
+  (re-evaluate when surrounding pressure increases):
+  `showSnippetsDialog` and `checkForUpdates` stay on `MainWindow`
+  — both have tight coupling that would force threading
+  `Config&` + terminal-getter callbacks through free-function
+  signatures for marginal win.
+- **ANTS-1186 — Qt6 idiom polish, 4 of 5 sub-findings.** (a)
+  `pluginmanager.cpp` `setRecentOutput` / `setCwd`:
+  `m_engines.values()` → `std::as_const(m_engines)` direct
+  value-iteration; snapshot sites in `unloadAll`/`fireEvent`
+  intentionally keep `.values()` per ANTS-1173 UAF defense. (b)
+  `mainwindow.cpp:4915,4955`:
+  `currentDateTime().toMSecsSinceEpoch()` →
+  `currentMSecsSinceEpoch()`. (c) `featurecoverage.cpp:392`:
+  unused `QDir projectDir` deleted. (d) `titlebar.h:19`:
+  `QColor("#e74856")` → `QColor::fromRgb(0xe74856)`. (e) Chained
+  `.arg(int).arg(int)` left as-is — idiomatic for ints.
+- **ANTS-1217 — build-OOM cure: STATIC-library refactor + build-time
+  guardrails (Phase 0 + Phase 1).** Pre-fix: `tests/features/` had
+  grown to 141 standalone `add_executable(test_*)` blocks, each
+  carrying its own MOC autogen and its own copy of the `src/*.cpp`
+  files it linked. `src/mainwindow.cpp` was compiled 42 times
+  per build. Default `cmake --build build -j$(nproc)` peaked above
+  RAM+swap on a 32 GiB host and tripped earlyoom — losing the
+  linker mid-write. Phase 0: flipped `ANTS_TESTS` default to `OFF`,
+  added Qt aggregate-header PCH (`<QtCore/QtCore>`, `<QtGui/QtGui>`,
+  `<QtWidgets/QtWidgets>`) on the main exe. Phase 1: refactored
+  `src/*.cpp` into 6 mandatory + 2 conditional STATIC libraries
+  (`ants_core_lib` / `ants_vt_lib` / `ants_chrome_lib` /
+  `ants_claude_lib` / `ants_audit_lib` / `ants_dialogs_lib` +
+  `ants_lua_lib` if `LUA_FOUND` + `ants_helper_lib` if
+  `ANTS_ENABLE_HELPER_CLI`); each `src/*.cpp` now compiles **once**
+  for the whole build. Layered three belt-and-suspenders
+  optimizations: (i) `ccache` as `CMAKE_CXX_COMPILER_LAUNCHER`
+  (cache hits skip cc1plus entirely); (ii)
+  `CMAKE_OPTIMIZE_DEPENDENCIES=ON` (Ninja skips relinking dependents
+  whose lib interface didn't change); (iii) `JOB_POOLS` cap
+  (`compile_pool=nproc-2`, `link_pool=2`) so a future regression
+  cannot OOM the host even on a naked `-j$(nproc)`. Plus
+  `-gsplit-dwarf` on Debug builds — linker no longer relocates
+  hundreds of MiB of debug strings. Phase 1 verified on the
+  32 GiB host: full `ANTS_TESTS=ON` build at **526 MiB peak RSS in
+  1m36s wall** (was >32 GiB OOM); 144/144 ctests green. Spec at
+  `docs/specs/ANTS-1217.md`; Phases 2–7 (test-bundle consolidation
+  via GoogleTest + workstation preset + `tools/safe-build.sh`)
+  pending.
 
 ## [0.7.79] — 2026-05-08
 

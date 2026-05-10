@@ -1,3 +1,75 @@
+ants-terminal (0.7.80-1) unstable; urgency=medium
+
+  * Post-0.7.79 follow-ups + small high-signal user-feedback
+    fixes plus a build-OOM cure. Three notification/UI
+    false-positives, a per-tab Claude: <state> widget bug, two
+    refactors carried over from the 0.7.78 indie-review #2 sweep,
+    and ANTS-1217 — src/*.cpp refactored into STATIC libraries plus
+    build-time guardrails so cmake --build -j$(nproc) cannot OOM
+    a 32 GiB host any more. Full ANTS_TESTS=ON build now peaks at
+    526 MiB RSS (was >32 GiB OOM). 144/144 ctests green; 1/1 new
+    claude_status_bar_per_tab feature test green.
+  * ANTS-1161 — bottom-of-window Claude: <state> status-bar
+    widget no longer shows another tab's state. Root cause: the
+    singleton hook server's UDS is shared across every Claude
+    under any tab, and ClaudeIntegration::processHookEvent
+    mutated state and emitted stateChanged for every inbound
+    event regardless of session_id. Fix: gate every
+    state-mutating branch on the event's session_id matching the
+    basename of the focused tab's transcript path. New
+    4-invariant feature test claude_status_bar_per_tab.
+  * ANTS-1214 — idle "Command Complete" notification no longer
+    fires on every long-running command. checkIdleNotification
+    now gates on m_grid->lastExitCode() != 0 (OSC 133 D exit
+    code); successful commands and shells without OSC 133
+    integration stay silent. Non-zero exits raise a "Command
+    Failed" dialog-warning notification with the exit code.
+  * ANTS-1215 — Review Changes button no longer stays active
+    after every push because of an untracked `.directory`
+    (KDE Dolphin metadata). refreshReviewButton now skips `??`
+    lines in the dirty count; untracked files don't appear in
+    `git diff` anyway, so the button shouldn't enable for them.
+    Common false positives now silenced: .directory, IDE caches,
+    swap files.
+  * ANTS-1216 — bottom-right Tasks chip no longer lingers at
+    "0/N" when every task is done, and a `deleted` task no
+    longer counts as unfinished. Header-stated contract was
+    "pending + in_progress"; implementation drifted. Fix:
+    count-only-pending-and-in-progress + also hide the chip when
+    unfinished count is zero.
+  * ANTS-1181 — the 947-line setupMenus() in mainwindow.cpp is
+    now an orchestrator of seven per-menu helpers
+    (setupFileMenu through setupHelpMenu); About-Ants /
+    About-Qt dialog bodies carved to their own translation unit
+    (src/aboutdialogs.{cpp,h}) as namespaced free functions.
+  * ANTS-1186 — Qt6 idiom polish (4 of 5 sub-findings):
+    std::as_const(m_engines) direct value-iteration where
+    appropriate; currentMSecsSinceEpoch() in place of
+    currentDateTime().toMSecsSinceEpoch(); dead QDir projectDir
+    removed; QColor::fromRgb(0xe74856) in place of
+    QColor("#e74856").
+  * ANTS-1217 — build-OOM cure (Phase 0 + Phase 1). Pre-fix:
+    tests/features/ had grown to 141 standalone add_executable
+    blocks each with its own MOC + its own copy of src/*.cpp;
+    src/mainwindow.cpp was compiled 42 times per build, and a
+    default cmake --build -j$(nproc) peaked above RAM+swap on a
+    32 GiB host — earlyoom reaped the linker mid-write.
+    Phase 0: ANTS_TESTS default flipped to OFF, Qt aggregate-header
+    PCH added on the main exe. Phase 1: src/*.cpp refactored into
+    six mandatory + two conditional STATIC libraries so each
+    src/*.cpp now compiles **once** for the whole build. Layered
+    three belt-and-suspenders optimizations: ccache as compiler
+    launcher, CMAKE_OPTIMIZE_DEPENDENCIES=ON, and a JOB_POOLS cap
+    (compile_pool=nproc-2, link_pool=2) so a future regression
+    cannot OOM the host even on a naked -j$(nproc). Plus
+    -gsplit-dwarf on Debug builds. Verified on the 32 GiB host:
+    full ANTS_TESTS=ON build now peaks at 526 MiB RSS in 1m36s
+    wall (was >32 GiB OOM); 144/144 ctests green. Phases 2–7
+    (test-bundle consolidation via GoogleTest + workstation
+    preset + safe-build.sh) pending — see docs/specs/ANTS-1217.md.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 10 May 2026 12:00:00 +0200
+
 ants-terminal (0.7.79-1) unstable; urgency=medium
 
   * Two bug-fix passes back-to-back. Morning user-driven pass
