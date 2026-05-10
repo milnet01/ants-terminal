@@ -21,23 +21,19 @@ Listed only where behavior isn't obvious from the name.
   undercurl, per-pixel bg alpha. (The dormant glyph-atlas
   `GlRenderer` was retired in 0.7.44.)
 - `ptyhandler` — forkpty + QSocketNotifier.
-- `auditdialog` — static-analysis panel. Pipeline (ANTS-1136
-  doc-fix 2026-05-01 + ANTS-1171 doc-fix 2026-05-07: order
-  corrected to match `handleCheckOutput` reality):
+- `auditdialog` — static-analysis panel. Pipeline (matches
+  `handleCheckOutput` order):
   `OutputFilter → parseFindings → mark .audit_suppress → drop
    generated-file → drop/shift path_rules → drop allowlist →
    drop inline-suppress → drop non-recent → dedup →
    comment/string filter → mypy-stub fold → cap →
    enrichment (snippet ±3, git blame, confidence 0-100) →
-   trend → render + SARIF v2.1.0 / HTML`. (`.audit_suppress`
-   *marks* `f.suppressed=true` so SARIF `result.suppressions[]`
-   § 3.34 can surface them; it doesn't drop. Dedup runs after
-   the drop steps so we don't double-count work on findings that
-   would have been dropped anyway. Comment/string + mypy-fold
-   run before cap deliberately — capping first would surface
-   junk findings that real ones get pushed out behind. The
-   incremental compute cost is bounded by per-check find counts
-   below the cap.)
+   trend → render + SARIF v2.1.0 / HTML`.
+  Rationale: `.audit_suppress` *marks* `f.suppressed=true` so SARIF
+  `result.suppressions[]` § 3.34 surfaces them (doesn't drop). Dedup
+  runs after drop steps to avoid double-counting on findings that
+  would have been dropped anyway. Comment/string + mypy-fold run
+  before cap so junk doesn't push real findings out.
   Recognizes foreign suppression markers (NOLINT, cppcheck-suppress,
   noqa, nosec, nosemgrep, #gitleaks:allow, eslint-disable-*,
   pylint: disable) plus native `// ants-audit: disable[=rule]`.
@@ -122,10 +118,9 @@ Four shareable v1 standards at `docs/standards/`:
   (✅ 🚧 📋 💭), theme emojis, position-is-priority, `Kind:` /
   `Source:` taxonomy, fold-in subsections.
 
-These five files are byte-identical to the `/start-app` template at
-`~/.claude/skills/app-workflow/templates/docs/standards/` so projects
-scaffolded by the skill share one source of truth. This codebase
-predates the skills and follows the standards directly.
+These files are byte-identical to `/start-app`'s template at
+`~/.claude/skills/app-workflow/templates/docs/standards/`; this
+codebase predates the skill and follows them directly.
 
 ADRs live at `docs/decisions/` (Michael Nygard format); per-feature
 specs at `docs/specs/`; per-phase outcomes at `docs/journal/`.
@@ -171,15 +166,12 @@ the same commit when `luaengine` / `pluginmanager` change the
   with no upstream config.
 - Audit test harness is shell-based against fixture dirs — no C++
   unit framework, no link-time coupling to `auditdialog`.
-- Confidence score (0-100): floor +10 (any signal at all),
-  `severity×15`, +20 cross-tool corroboration (sets the
-  `highConfidence` flag — still live as the ★ tag in the summary
-  table and SARIF property), +10 external AST tool, −5 if source
-  is grep AND message length < 30 chars, −20 test path. AI-triage
-  verdicts cap the score: `FALSE_POSITIVE` clamps ≤ 30,
-  `TRUE_POSITIVE` floors ≥ 80. (ANTS-1136 doc-fix 2026-05-01:
-  full formula spelled out; pre-fix line omitted floor / grep-
-  short / AI caps.)
+- Confidence score (0-100): floor +10 (any signal), `severity×15`,
+  +20 cross-tool corroboration (sets `highConfidence` → ★ tag in
+  summary table + SARIF property), +10 external AST tool, −5 if
+  grep source AND message length < 30 chars, −20 test path.
+  AI-triage caps: `FALSE_POSITIVE` clamps ≤ 30, `TRUE_POSITIVE`
+  floors ≥ 80.
 - SARIF exports include `contextRegion` (±3 lines) + `properties.blame`
   per sarif-tools convention. Generated files (`moc_*`, `ui_*`,
   `qrc_*`, `*.pb.cc/.h`, `/generated/`, `_generated.*`) auto-skipped.

@@ -23,7 +23,7 @@
 
 set -u
 
-PROJECT_ROOT="/mnt/Storage/Scripts/Linux/Ants"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 file=$(jq -r '.tool_input.file_path // .tool_response.filePath // empty' 2>/dev/null)
 case "$file" in
