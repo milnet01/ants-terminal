@@ -55,18 +55,19 @@ void ClaudeTaskListTracker::setTranscriptPath(const QString &path) {
 }
 
 int ClaudeTaskListTracker::unfinishedCount() const {
-    // ANTS-1216 — match the header contract: pending + in_progress.
-    // Pre-fix used `!= "completed"`, which over-counted "deleted"
-    // tasks. User repro 2026-05-08: 27 completed + 1 deleted left
-    // unfinishedCount=1, so the status-bar Tasks chip read "☰ 1/28"
-    // and stayed visible even though the dialog header (which sums
-    // done + running + outstanding) showed 0 outstanding.
-    int n = 0;
-    for (const auto &t : m_tasks) {
-        if (t.status == QStringLiteral("pending") ||
-            t.status == QStringLiteral("in_progress")) ++n;
-    }
-    return n;
+    // ANTS-1221 — pending only. The chip surfaces user-actionable
+    // work, and "Claude is currently running it" is not actionable
+    // by the user. ANTS-1216 originally widened this to
+    // `pending + in_progress` to match the dialog's "outstanding"
+    // wording, but the user reported (2026-05-10 screenshot:
+    // "41 tasks — 40 done, 1 running, 0 outstanding" → chip read
+    // "☰ 1/41") that the chip kept lingering on a single in-flight
+    // task with nothing left for them to action. Splitting the
+    // contract: chip = pending; dialog header still splits running
+    // from outstanding. Pairs with ANTS-1218 (chip numerator flipped
+    // to `total - unfinished`, so the chip counts up and hides
+    // cleanly at 100% via the existing `unfinished <= 0` branch).
+    return pendingCount();
 }
 
 int ClaudeTaskListTracker::inProgressCount() const {

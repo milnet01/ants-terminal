@@ -713,7 +713,15 @@ void ClaudeStatusBarController::refreshTasksButton() {
         m_tasksBtn->hide();
         return;
     }
-    m_tasksBtn->setText(QStringLiteral("☰ %1/%2").arg(unfinished).arg(total));
+    // ANTS-1218: chip counts UP (completed-or-running of total), not
+    // down. X/Y is universally read as "X done of Y" (progress bars,
+    // GitHub PR checks, pytest summary). Pre-fix `arg(unfinished)`
+    // displayed remaining-of-total which most users mis-read as
+    // completed-of-total. Numerator is `total - unfinished` where
+    // (post-1221) unfinished counts pending only — so the chip
+    // shows done + running + any non-pending statuses, hides cleanly
+    // at 100% via the `unfinished <= 0` early-return above.
+    m_tasksBtn->setText(QStringLiteral("☰ %1/%2").arg(total - unfinished).arg(total));
     m_tasksBtn->setToolTip(
         tr("Claude Code task list — %1 task%2 (%3 done, %4 running, "
            "%5 outstanding). Click to view.")

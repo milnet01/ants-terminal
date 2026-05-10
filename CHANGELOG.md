@@ -12,6 +12,50 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.81] — 2026-05-10
+
+**Theme:** small follow-ups to the 0.7.80 user-feedback batch — a
+two-fix bundle that finishes the Tasks-chip semantics arc started in
+ANTS-1216, plus a long-requested About-dialog enhancement that
+surfaces enough build context to triage bug reports without a
+"what build are you on?" round-trip.
+
+### Added
+
+- **ANTS-1222 — Help → About Ants Terminal… now shows a Build line.**
+  Layman: the About box used to list only the version and the Qt
+  runtime; bug reports often needed a follow-up "what build are you
+  on?" round-trip. The dialog now also displays a `Build:` line with
+  the build date, build type (Release/Debug/RelWithDebInfo), short
+  git commit (or `unknown` for tarball builds), and the compiler
+  used (GCC or Clang with version). Implementation: a CMake
+  `configure_file()` block at the top of `CMakeLists.txt` writes
+  `build/generated/build_info.h` at configure time; the compiler ID
+  is detected at compile time inside `aboutdialogs.cpp` so it
+  reflects the actual toolchain (env-var overrides, distcc, distro
+  alternative chains) rather than what CMake found. Reconfigure
+  (`cmake build/`) to refresh the SHA between commits. Source:
+  user-2026-05-10. ([ANTS-1222])
+
+### Changed
+
+- **ANTS-1218 + ANTS-1221 — Tasks chip now shows progress count and
+  hides at 100%.** Layman: the bottom-right `☰ X/Y` chip used to mean
+  "X tasks left out of Y" (counted *down*) and stayed lit while a
+  single in-flight Claude task remained. It now means "X done out
+  of Y" (counts *up*, like every other progress display in the app)
+  and disappears as soon as nothing is *waiting on you*. Two bundled
+  changes: (1) `ClaudeTaskListTracker::unfinishedCount()` now counts
+  only `pending` tasks — a task Claude is actively working on is
+  Claude's problem, not yours, so it no longer keeps the chip
+  visible. (2) The chip's numerator is now `total - unfinished`
+  instead of `unfinished`, so X/Y reads like a GitHub-PR-checks
+  progress bar. Pre-existing `unfinished <= 0` hide branch (from
+  ANTS-1216) still fires — combined effect: chip cleanly hides at
+  100%, monotonically increases as tasks complete, and never
+  surfaces a single in-flight task as actionable. Source:
+  user-2026-05-10. ([ANTS-1218], [ANTS-1221])
+
 ## [0.7.80] — 2026-05-10
 
 **Theme:** post-0.7.79 follow-ups + small high-signal user-feedback

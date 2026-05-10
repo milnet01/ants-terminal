@@ -50,7 +50,7 @@ public:
 
     // Counts for the status-bar chip.
     int totalCount() const { return m_tasks.size(); }
-    int unfinishedCount() const;     // pending + in_progress
+    int unfinishedCount() const;     // ANTS-1221: pending only — running tasks are not user-actionable
     int inProgressCount() const;
     int pendingCount() const;
     int completedCount() const;

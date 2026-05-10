@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.80 (2026-05-10). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.81 (2026-05-10). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -5993,7 +5993,7 @@ made the desktop feel noisy in normal use.
   **Layman:** the "Review Changes" button stops lighting up just
   because of stray IDE/desktop-environment metadata files.
   Kind: fix. Source: user-2026-05-08.
-- 📋 [ANTS-1218] **Tasks chip "X/Y" semantics are inverted —
+- ✅ [ANTS-1218] **Tasks chip "X/Y" semantics are inverted —
   reads as completed-of-total but is actually remaining-of-total.**
   User report 2026-05-10 (screenshot): Task List dialog showed
   "30 tasks — 24 done, 1 running, 5 outstanding" while the chip
@@ -6085,7 +6085,7 @@ made the desktop feel noisy in normal use.
   figure out which layer (shell, terminal, or Claude itself) is
   re-emitting content on idle.
   Kind: bug. Source: user-2026-05-10.
-- 📋 [ANTS-1221] **Tasks chip stays visible when only an
+- ✅ [ANTS-1221] **Tasks chip stays visible when only an
   `in_progress` task remains (no `pending`) — refinement of
   ANTS-1216 contract.** User report 2026-05-10 (screenshot:
   Task List dialog says "41 tasks — 40 done, 1 running, 0
@@ -6119,6 +6119,36 @@ made the desktop feel noisy in normal use.
   there's nothing for *you* to do, so it shouldn't be there. The
   chip should only count tasks waiting on you.
   Kind: fix. Source: user-2026-05-10.
+- ✅ [ANTS-1222] **Show build metadata in Help → About Ants
+  Terminal….** User request 2026-05-10: the About dialog currently
+  surfaces only `Version` (from `ANTS_VERSION`) and `Qt runtime`
+  (with optional `Lua: 5.4`). Distro maintainers and bug reporters
+  routinely need the build context behind a binary — what was
+  configured, when, and from which source revision — to triage
+  "works for me / breaks for me" mismatches. Add a `Build:` block
+  beneath `Qt runtime:` showing at minimum: build date
+  (`__DATE__`/`__TIME__` is fine; `SOURCE_DATE_EPOCH`-respecting if
+  H11 reproducible-builds work has landed), `CMAKE_BUILD_TYPE`
+  (Release/Debug/RelWithDebInfo), short git commit
+  (`git rev-parse --short HEAD` baked in via CMake at configure
+  time, or `unknown` for tarball builds), and compiler id/version
+  (`__GNUC__`/`__clang_major__`). Implementation site:
+  `src/aboutdialogs.cpp:showAboutAnts()` — extend the HTML body
+  with a `<b>Build:</b>` line. Surface plumbing: extend
+  `CMakeLists.txt` with a `configure_file()` step writing a
+  `build_info.h` (date, build type, commit, compiler), included
+  by `aboutdialogs.cpp`. Fall back gracefully when git is missing
+  or the source tree is a tarball. Spec considerations: keep the
+  body short (one line, no wall-of-text); make the commit hash
+  selectable so users can copy it into bug reports; pair with a
+  feature test under `tests/features/about_dialog_build_info/`
+  asserting the dialog renders all four fields and degrades
+  cleanly when `BUILD_COMMIT` is `unknown`.
+  **Layman:** the About box currently shows the version number
+  and not much else. Add a "Build:" line so when someone files a
+  bug we can tell at a glance which exact build they're running —
+  date, debug-or-release, git commit, and which compiler made it.
+  Kind: feature. Source: user-2026-05-10.
 
 ---
 

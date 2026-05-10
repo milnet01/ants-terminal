@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.81" date="2026-05-10">
+      <description>
+        <p>Two small follow-ups to the 0.7.80 user-feedback batch — finishing the Tasks-chip semantics arc and a long-requested About-dialog enhancement that surfaces enough build context to triage bug reports without a "what build are you on?" round-trip.</p>
+        <ul>
+          <li><em>Added:</em> <code>ANTS-1222</code> — <code>Help → About Ants Terminal…</code> now shows a <code>Build:</code> line with the build date, build type (Release/Debug/RelWithDebInfo), short git commit (or <code>unknown</code> for tarball builds), and the compiler used (GCC or Clang with version). Makes it easier to file precise bug reports without a back-and-forth.</li>
+          <li><em>Changed:</em> <code>ANTS-1218</code> + <code>ANTS-1221</code> — the bottom-right Tasks chip now counts <em>up</em> ("done out of total", like a GitHub PR-checks progress bar) instead of down, and disappears as soon as nothing is waiting on you. A task Claude is actively working on no longer keeps the chip lit — only pending tasks count as unfinished, so the chip cleanly hides at 100%.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.80" date="2026-05-10">
       <description>
         <p>Post-0.7.79 follow-ups + small high-signal user-feedback fixes plus a build-OOM cure. Three notification/UI false-positives that made the desktop feel noisy in normal use, a per-tab <code>Claude: &lt;state&gt;</code> widget bug that mis-attributed state across tabs, two refactors carried over from the 0.7.78 indie-review #2 sweep that finally land here, and ANTS-1217 — <code>src/*.cpp</code> refactored into STATIC libraries plus build-time guardrails so a default <code>cmake --build -j$(nproc)</code> cannot OOM a 32 GiB host any more. Full <code>ANTS_TESTS=ON</code> build now peaks at 526 MiB RSS (was &gt;32 GiB OOM). 144/144 ctests green; 1/1 new <code>claude_status_bar_per_tab</code> feature test green.</p>

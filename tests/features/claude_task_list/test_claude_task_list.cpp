@@ -345,6 +345,173 @@ void testInv12_dialogRebuildsOnTasksChanged() {
            "ANTS-1158-INV-12: dialog connects tracker tasksChanged to rebuild slot");
 }
 
+// ----- ANTS-1221: unfinishedCount excludes in_progress -----
+//
+// Pre-fix contract: `unfinishedCount() = pending + in_progress`.
+// User repro 2026-05-10 (screenshot): "41 tasks — 40 done, 1 running,
+// 0 outstanding" but chip read "☰ 1/41". A single in_flight task kept
+// the chip lit even though *the user* had nothing to action.
+// Fix-a (chosen): `unfinishedCount()` counts `pending` only — chip
+// surfaces user-actionable work, not Claude's in-flight work.
+void testAnts1221Inv1_unfinishedExcludesInProgress() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1221-INV-1 setup"); return; }
+
+    // Mixed-status fixture: 1 completed + 1 in_progress + 2 pending.
+    const QString p = writeFixture(dir, "fix_1221.jsonl", {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"Done","status":"completed","activeForm":"Doing done"},)"
+            R"({"content":"Working","status":"in_progress","activeForm":"Working"},)"
+            R"({"content":"Todo A","status":"pending","activeForm":"Doing A"},)"
+            R"({"content":"Todo B","status":"pending","activeForm":"Doing B"})"
+            R"(]})"),
+    });
+
+    ClaudeTaskListTracker tracker;
+    tracker.setTranscriptPath(p);
+
+    expect(tracker.totalCount() == 4,
+           "ANTS-1221-INV-1: tracker sees all 4 tasks",
+           "got total=" + std::to_string(tracker.totalCount()));
+    expect(tracker.pendingCount() == 2,
+           "ANTS-1221-INV-1: pendingCount counts only pending entries",
+           "got pending=" + std::to_string(tracker.pendingCount()));
+    expect(tracker.inProgressCount() == 1,
+           "ANTS-1221-INV-1: inProgressCount counts only in_progress entries",
+           "got in_progress=" + std::to_string(tracker.inProgressCount()));
+    expect(tracker.unfinishedCount() == tracker.pendingCount(),
+           "ANTS-1221-INV-1: unfinishedCount() == pendingCount() — running excluded",
+           "got unfinished=" + std::to_string(tracker.unfinishedCount()) +
+           " pending=" + std::to_string(tracker.pendingCount()));
+}
+
+// All-running fixture: chip should hide. With pre-fix
+// `unfinished = pending + in_progress`, a 0-pending/N-running list
+// kept the chip visible at "☰ N/N". Post-fix `unfinished = 0` →
+// `refreshTasksButton` hides via the `unfinished <= 0` branch.
+void testAnts1221Inv2_allRunningHidesChip() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1221-INV-2 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix_1221_running.jsonl", {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"Working A","status":"in_progress","activeForm":"A"},)"
+            R"({"content":"Working B","status":"in_progress","activeForm":"B"})"
+            R"(]})"),
+    });
+
+    ClaudeTaskListTracker tracker;
+    tracker.setTranscriptPath(p);
+
+    expect(tracker.totalCount() == 2,
+           "ANTS-1221-INV-2: tracker sees both running tasks");
+    expect(tracker.unfinishedCount() == 0,
+           "ANTS-1221-INV-2: all-running list yields unfinishedCount == 0 "
+           "(chip hides via `unfinished <= 0` branch)",
+           "got unfinished=" + std::to_string(tracker.unfinishedCount()));
+}
+
+// ----- ANTS-1218: chip X/Y reads completed-of-total, not remaining-of-total -----
+//
+// Pre-fix format: `"☰ %1/%2".arg(unfinished).arg(total)` — chip
+// counted *down* (e.g. "☰ 6/30" meant "6 left out of 30"), but X/Y
+// is universally read as "X done of Y" (progress bars, GitHub
+// checks, pytest summary). Post-fix: `arg(total - unfinished).arg(total)`
+// counts *up* and hides cleanly at 100% via the `unfinished <= 0`
+// branch already in place.
+void testAnts1218Inv1_chipFormatCountsUp() {
+    const std::string csw = readFile("src/claudestatuswidgets.cpp");
+    if (csw.empty()) {
+        expect(false, "ANTS-1218-INV-1 read claudestatuswidgets.cpp");
+        return;
+    }
+    const auto pos = csw.find("m_tasksBtn->setText");
+    bool ok = false;
+    if (pos != std::string::npos) {
+        const auto end = std::min(pos + 400, csw.size());
+        const std::string near = csw.substr(pos, end - pos);
+        // Numerator must be `total - unfinished` (with or without
+        // surrounding spaces / parens). Reject the pre-fix shape where
+        // `unfinished` is the first arg without a subtraction.
+        const bool hasFlippedNumerator =
+            contains(near, "total - unfinished") ||
+            contains(near, "total-unfinished") ||
+            contains(near, "(total - unfinished)") ||
+            contains(near, "(total-unfinished)");
+        ok = hasFlippedNumerator && contains(near, "arg(total)");
+    }
+    expect(ok,
+           "ANTS-1218-INV-1: chip numerator is `total - unfinished` "
+           "(counts up; hides at 100% via existing unfinished<=0 branch)");
+}
+
+// Behavioural cross-check: simulate the chip's arithmetic against
+// three fixture states walking from "all pending" → "one running" →
+// "one done". The displayed numerator must monotonically rise.
+//
+// Memory note: one tracker re-pointed three times, not three trackers.
+// Each ClaudeTaskListTracker owns a QFileSystemWatcher (one inotify
+// watch); three trackers would mean three concurrent watches for a
+// purely sequential check.
+void testAnts1218Inv2_chipNumeratorMonotone() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1218-INV-2 setup"); return; }
+
+    // State A: 3 pending, 0 running, 0 done → numerator = 0
+    const QString pA = writeFixture(dir, QStringLiteral("a.jsonl"), {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"X","status":"pending","activeForm":"X"},)"
+            R"({"content":"Y","status":"pending","activeForm":"Y"},)"
+            R"({"content":"Z","status":"pending","activeForm":"Z"})"
+            R"(]})"),
+    });
+    // State B: 2 pending, 1 running, 0 done → numerator = 1 (post-1221:
+    // running counts toward the "not user-actionable" half)
+    const QString pB = writeFixture(dir, QStringLiteral("b.jsonl"), {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"X","status":"in_progress","activeForm":"X"},)"
+            R"({"content":"Y","status":"pending","activeForm":"Y"},)"
+            R"({"content":"Z","status":"pending","activeForm":"Z"})"
+            R"(]})"),
+    });
+    // State C: 2 pending, 0 running, 1 done → numerator = 1
+    const QString pC = writeFixture(dir, QStringLiteral("c.jsonl"), {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"X","status":"completed","activeForm":"X"},)"
+            R"({"content":"Y","status":"pending","activeForm":"Y"},)"
+            R"({"content":"Z","status":"pending","activeForm":"Z"})"
+            R"(]})"),
+    });
+
+    ClaudeTaskListTracker tracker;
+    tracker.setTranscriptPath(pA);
+    const int totalA = tracker.totalCount();
+    const int nA = totalA - tracker.unfinishedCount();
+    tracker.setTranscriptPath(pB);
+    const int totalB = tracker.totalCount();
+    const int nB = totalB - tracker.unfinishedCount();
+    tracker.setTranscriptPath(pC);
+    const int totalC = tracker.totalCount();
+    const int nC = totalC - tracker.unfinishedCount();
+
+    expect(nA == 0,
+           "ANTS-1218-INV-2: 3 pending → numerator 0",
+           "got " + std::to_string(nA));
+    expect(nB >= nA,
+           "ANTS-1218-INV-2: pending → in_progress is non-decreasing",
+           "A=" + std::to_string(nA) + " B=" + std::to_string(nB));
+    expect(nC >= nB,
+           "ANTS-1218-INV-2: pending → completed is non-decreasing",
+           "B=" + std::to_string(nB) + " C=" + std::to_string(nC));
+    expect(nA <= totalA && nB <= totalB && nC <= totalC,
+           "ANTS-1218-INV-2: numerator never exceeds total");
+}
+
 void testInv13_dialogAntiRegressionWaylandFlake() {
     const std::string dlg = readFile("src/claudetasklistdialog.cpp");
     const std::string dlgh = readFile("src/claudetasklistdialog.h");
@@ -447,6 +614,30 @@ TEST(ClaudeTaskList, Inv12DialogRebuildsOnTasksChanged) {
 TEST(ClaudeTaskList, Inv13DialogAntiRegressionWaylandFlake) {
     int before = g_failures;
     testInv13_dialogAntiRegressionWaylandFlake();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1221Inv1UnfinishedExcludesInProgress) {
+    int before = g_failures;
+    testAnts1221Inv1_unfinishedExcludesInProgress();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1221Inv2AllRunningHidesChip) {
+    int before = g_failures;
+    testAnts1221Inv2_allRunningHidesChip();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1218Inv1ChipFormatCountsUp) {
+    int before = g_failures;
+    testAnts1218Inv1_chipFormatCountsUp();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1218Inv2ChipNumeratorMonotone) {
+    int before = g_failures;
+    testAnts1218Inv2_chipNumeratorMonotone();
     if (g_failures > before) FAIL();
 }
 

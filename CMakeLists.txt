@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.80 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.81 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,6 +11,50 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # (setApplicationVersion) and auditdialog.cpp (SARIF driver.version, UI badge).
 # Bump in PROJECT() above; every caller picks up the new value on rebuild.
 add_compile_definitions(ANTS_VERSION="${PROJECT_VERSION}")
+
+# ---------------------------------------------------------------------------
+# Build metadata for Help → About (ANTS-1222)
+# ---------------------------------------------------------------------------
+# Configure-time bake: date, build type, short git SHA. Surfaced via
+# the generated `build_info.h` (see cmake/build_info.h.in). Only
+# `aboutdialogs.cpp` includes this header, so a SHA change recompiles
+# one TU rather than every TU (vs add_compile_definitions which would
+# invalidate ccache for the whole project on every commit).
+#
+# Reconfigure to refresh between commits — `cmake build/` re-runs the
+# git rev-parse step and rewrites the header. The compiler ID/version
+# is detected at COMPILE time inside aboutdialogs.cpp via __GNUC__ /
+# __clang_major__, so no CMake plumbing for that.
+if(DEFINED ENV{SOURCE_DATE_EPOCH})
+    string(TIMESTAMP ANTS_BUILD_DATE "%Y-%m-%d" UTC)
+else()
+    string(TIMESTAMP ANTS_BUILD_DATE "%Y-%m-%d")
+endif()
+
+set(ANTS_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
+if(NOT ANTS_BUILD_TYPE)
+    set(ANTS_BUILD_TYPE "Unknown")
+endif()
+
+set(ANTS_BUILD_COMMIT "unknown")
+find_program(GIT_EXECUTABLE git)
+if(GIT_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE _git_sha_raw
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _git_sha_result
+        ERROR_QUIET)
+    if(_git_sha_result EQUAL 0 AND _git_sha_raw)
+        set(ANTS_BUILD_COMMIT "${_git_sha_raw}")
+    endif()
+endif()
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/build_info.h.in"
+    "${CMAKE_BINARY_DIR}/generated/build_info.h"
+    @ONLY)
 
 # Default build type if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -259,6 +303,11 @@ add_library(ants_dialogs_lib STATIC
 target_link_libraries(ants_dialogs_lib
     PUBLIC  ants_chrome_lib
     PRIVATE ants_warnings)
+# ANTS-1222: aboutdialogs.cpp includes the configure-time-generated
+# build_info.h. Header lives in build/generated/ and is regenerated
+# on every `cmake build/` reconfigure (see top-of-file block).
+target_include_directories(ants_dialogs_lib
+    PRIVATE "${CMAKE_BINARY_DIR}/generated")
 set_target_properties(ants_dialogs_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(LUA_FOUND)

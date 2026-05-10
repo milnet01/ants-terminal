@@ -20,10 +20,19 @@ INV labels qualified `ANTS-1158-INV-N`. Full statements in
 | 7  | parser | `setTranscriptPath("")` clears state and emits `tasksChanged()` once. |
 | 8  | parser | Re-set with same path is idempotent (no second emit). |
 | 9  | wiring | Status-bar widget is hidden on empty list, shown when ≥ 1 task. |
-| 10 | wiring | Widget label format is `<unfinished>/<total>`. |
+| 10 | wiring | Widget label is a `%1/%2` format (post-ANTS-1218 the args are `total - unfinished` / `total`; INV is intentionally permissive — see ANTS-1218-INV-1 for the tight check). |
 | 11 | wiring | Dialog renders one row per task in parser-emitted order. |
 | 12 | wiring | Dialog rebuilds on `tasksChanged()`. |
 | 13 | wiring | Dialog source has neither `setModal(true)` nor `QDialogButtonBox`. |
+
+### Follow-on INVs (post-ANTS-1158 contract refinements)
+
+| #            | Lane   | Statement |
+|--------------|--------|-----------|
+| 1221-INV-1   | parser | `unfinishedCount()` counts `pending` only — `in_progress` is excluded. (Pre-fix counted `pending + in_progress`; user report 2026-05-10.) |
+| 1221-INV-2   | parser | A list of all-`in_progress` tasks yields `unfinishedCount() == 0` so the chip's existing `unfinished <= 0` hide branch fires. |
+| 1218-INV-1   | wiring | `m_tasksBtn` setText numerator is `total - unfinished` (chip counts up; X/Y reads as completed/total like every other progress display in the app). |
+| 1218-INV-2   | parser | Walking through pending → in_progress → completed transitions, the chip's displayed numerator (`total - unfinished`) is non-decreasing. Locks in monotone progress display. |
 
 INV-1 through INV-8 are link-based: the test instantiates a
 `ClaudeTaskListTracker`, points it at a temp-file JSONL fixture

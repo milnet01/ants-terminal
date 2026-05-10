@@ -1,3 +1,32 @@
+ants-terminal (0.7.81-1) unstable; urgency=medium
+
+  * Small follow-ups to the 0.7.80 user-feedback batch — a two-fix
+    bundle that finishes the Tasks-chip semantics arc started in
+    ANTS-1216, plus a long-requested About-dialog enhancement that
+    surfaces enough build context to triage bug reports without a
+    "what build are you on?" round-trip.
+  * ANTS-1222 — Help → About Ants Terminal… now shows a Build line
+    with the build date, build type (Release/Debug/RelWithDebInfo),
+    short git commit (or `unknown` for tarball builds), and the
+    compiler used (GCC or Clang with version). Implementation: a
+    CMake configure_file() block writes build/generated/build_info.h
+    at configure time; the compiler ID is detected at compile time
+    inside aboutdialogs.cpp so it reflects the actual toolchain
+    rather than what CMake found.
+  * ANTS-1218 + ANTS-1221 — Tasks chip now counts up
+    ("done out of total", like a GitHub PR-checks progress bar)
+    instead of down, and disappears as soon as nothing is waiting
+    on you. ClaudeTaskListTracker::unfinishedCount() now counts only
+    pending tasks — a task Claude is actively working on no longer
+    keeps the chip lit. The chip's numerator flipped from
+    `unfinished` to `total - unfinished`. Pre-existing
+    `unfinished <= 0` hide branch (from ANTS-1216) still fires;
+    combined effect: chip cleanly hides at 100%, monotonically
+    increases as tasks complete, never surfaces a single in-flight
+    task as actionable.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Sun, 10 May 2026 18:00:00 +0200
+
 ants-terminal (0.7.80-1) unstable; urgency=medium
 
   * Post-0.7.79 follow-ups + small high-signal user-feedback

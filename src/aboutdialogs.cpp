@@ -1,6 +1,7 @@
 // ANTS-1181 — see aboutdialogs.h for rationale.
 
 #include "aboutdialogs.h"
+#include "build_info.h"  // ANTS-1222: configure-time build metadata
 
 #include <QApplication>
 #include <QDialog>
@@ -68,6 +69,23 @@ QDialog *makeAboutDialog(QWidget *parent,
     return dlg;
 }
 
+// ANTS-1222: compile-time compiler-id detection. Reflects whatever
+// toolchain actually built this TU, not what CMake found at configure
+// — the two can differ (env-var overrides, distcc, distro alternative
+// chains). Order matters: __clang__ defines __GNUC__ too on most
+// platforms, so the Clang branch must come first.
+QString compilerInfo() {
+#if defined(__clang__)
+    return QStringLiteral("Clang %1.%2.%3")
+        .arg(__clang_major__).arg(__clang_minor__).arg(__clang_patchlevel__);
+#elif defined(__GNUC__)
+    return QStringLiteral("GCC %1.%2.%3")
+        .arg(__GNUC__).arg(__GNUC_MINOR__).arg(__GNUC_PATCHLEVEL__);
+#else
+    return QStringLiteral("(unknown compiler)");
+#endif
+}
+
 }  // namespace
 
 namespace AboutDialogs {
@@ -82,15 +100,26 @@ void showAboutAnts(QWidget *parent) {
     // what PluginManager advertises.
     luaLine = QStringLiteral("<br/><b>Lua:</b> 5.4");
 #endif
+    // ANTS-1222: build-info line — date / build type / short SHA /
+    // compiler. Surfaces just enough context that bug-report triage
+    // doesn't need a follow-up "what build are you on?". Order chosen
+    // to lead with what changes most often (date/SHA) and tail with
+    // toolchain (rarely surprises).
+    const QString buildLine = QStringLiteral(
+        "<br/><b>Build:</b> %1 (%2) · commit %3 · %4")
+        .arg(QString::fromLatin1(ANTS_BUILD_DATE),
+             QString::fromLatin1(ANTS_BUILD_TYPE),
+             QString::fromLatin1(ANTS_BUILD_COMMIT),
+             compilerInfo());
     const QString body = QStringLiteral(
         "<h3>Ants Terminal</h3>"
         "<p><b>Version:</b> %1<br/>"
-        "<b>Qt runtime:</b> %2%3</p>"
+        "<b>Qt runtime:</b> %2%3%4</p>"
         "<p>A modern, themeable terminal emulator with GPU "
         "rendering and Lua plugins. MIT-licensed.</p>"
         "<p><a href=\"https://github.com/milnet01/ants-terminal\">"
         "https://github.com/milnet01/ants-terminal</a></p>")
-        .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine);
+        .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine, buildLine);
 
     auto *dlg = makeAboutDialog(parent,
                                 QStringLiteral("About Ants Terminal"),
