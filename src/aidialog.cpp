@@ -1,4 +1,5 @@
 #include "aidialog.h"
+#include "dialogchrome.h"
 #include "secretredact.h"
 
 #include <QJsonDocument>
@@ -27,7 +28,11 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
     setMinimumSize(500, 400);
     resize(600, 500);
 
-    auto *layout = new QVBoxLayout(this);
+    // ANTS-1242 — frameless + theme-aware TitleBar.
+    auto chrome = DialogChrome::install(this);
+    QWidget *content = chrome.contentArea;
+
+    auto *layout = new QVBoxLayout(content);
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(6);
 

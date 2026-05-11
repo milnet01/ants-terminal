@@ -1,5 +1,6 @@
 #include "sshdialog.h"
 
+#include "dialogchrome.h"
 #include "shellutils.h"
 
 #include <QDir>
@@ -158,7 +159,11 @@ SshDialog::SshDialog(QWidget *parent) : QDialog(parent) {
     setMinimumSize(600, 400);
     resize(700, 450);
 
-    auto *mainLayout = new QVBoxLayout(this);
+    // ANTS-1242 — frameless + theme-aware TitleBar.
+    auto chrome = DialogChrome::install(this);
+    QWidget *content = chrome.contentArea;
+
+    auto *mainLayout = new QVBoxLayout(content);
 
     // Quick connect bar
     auto *quickLayout = new QHBoxLayout();

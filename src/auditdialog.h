@@ -474,6 +474,10 @@ private:
     QList<QPushButton*> m_sevPills;        // one per Severity
     QPushButton        *m_confidenceSortBtn = nullptr;
     QWidget            *m_filterBar = nullptr;
+    // ANTS-1242 — content widget inside the custom title-bar chrome.
+    // buildUI() lays out into this rather than the dialog itself so
+    // the bar isn't pushed off the top by subsequent addWidget calls.
+    QWidget            *m_contentArea = nullptr;
     QString             m_textFilter;                          // lowercased
     QSet<int>           m_activeSeverities = {0, 1, 2, 3, 4};  // all on by default
     bool                m_sortByConfidence = false;

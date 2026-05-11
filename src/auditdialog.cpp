@@ -1,5 +1,6 @@
 #include "auditdialog.h"
 #include "audithygiene.h"
+#include "dialogchrome.h"
 #include "featurecoverage.h"
 #include "secureio.h"
 #include "toggleswitch.h"
@@ -136,6 +137,11 @@ AuditDialog::AuditDialog(const QString &projectPath,
     setWindowTitle(QStringLiteral("Project Audit — ants-audit v") + ANTS_VERSION);
     setMinimumSize(900, 600);
     resize(1050, 750);
+
+    // ANTS-1242 — frameless + theme-aware TitleBar.
+    auto chrome = DialogChrome::install(this,
+                                        m_config ? m_config->theme() : QString());
+    m_contentArea = chrome.contentArea;
 
     m_process = new QProcess(this);
     m_process->setWorkingDirectory(m_projectPath);
@@ -3128,7 +3134,7 @@ void AuditDialog::showRuleQualityDialog() {
 // ---------------------------------------------------------------------------
 
 void AuditDialog::buildUI() {
-    auto *root = new QVBoxLayout(this);
+    auto *root = new QVBoxLayout(m_contentArea);
     root->setSpacing(8);
 
     m_pathLabel = new QLabel(this);

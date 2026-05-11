@@ -1,6 +1,7 @@
 #include "claudeprojects.h"
 #include "claudeintegration.h"
 #include "config.h"
+#include "dialogchrome.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -23,7 +24,11 @@ ClaudeProjectsDialog::ClaudeProjectsDialog(ClaudeIntegration *integration,
     setMinimumSize(900, 600);
     resize(1050, 700);
 
-    auto *mainLayout = new QVBoxLayout(this);
+    // ANTS-1242 — frameless + theme-aware TitleBar.
+    auto chrome = DialogChrome::install(this);
+    QWidget *content = chrome.contentArea;
+
+    auto *mainLayout = new QVBoxLayout(content);
 
     // -- Top bar: Project directory management --
     auto *dirRow = new QHBoxLayout();

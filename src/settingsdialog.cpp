@@ -3,6 +3,7 @@
 #include "config.h"
 #include "configbackup.h"
 #include "configpaths.h"
+#include "dialogchrome.h"
 #include "globalshortcutsportal.h"
 #include "secureio.h"
 #include "themes.h"
@@ -31,7 +32,14 @@ SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
     setMinimumSize(700, 550);
     resize(800, 600);
 
-    auto *mainLayout = new QVBoxLayout(this);
+    // ANTS-1242 — frameless + theme-aware TitleBar. m_config is
+    // available so we can pull the persisted theme name directly
+    // rather than relying on the module-cached active theme.
+    auto chrome = DialogChrome::install(this,
+                                        m_config ? m_config->theme() : QString());
+    QWidget *content = chrome.contentArea;
+
+    auto *mainLayout = new QVBoxLayout(content);
 
     m_tabs = new QTabWidget(this);
 

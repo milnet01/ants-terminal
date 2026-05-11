@@ -240,6 +240,7 @@ set_target_properties(ants_vt_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(ants_chrome_lib STATIC
     src/mainwindow.cpp
     src/titlebar.cpp
+    src/dialogchrome.cpp
     src/coloredtabbar.cpp
     src/commandpalette.cpp
 )

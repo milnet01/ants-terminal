@@ -1,6 +1,7 @@
 #include "claudebgtasksdialog.h"
 
 #include "claudebgtasks.h"
+#include "dialogchrome.h"
 #include "themes.h"
 
 #include <QDir>
@@ -115,7 +116,11 @@ ClaudeBgTasksDialog::ClaudeBgTasksDialog(ClaudeBgTaskTracker *tracker,
     resize(900, 600);
     setAttribute(Qt::WA_DeleteOnClose);
 
-    auto *layout = new QVBoxLayout(this);
+    // ANTS-1242 — frameless + theme-aware TitleBar.
+    auto chrome = DialogChrome::install(this, m_themeName);
+    QWidget *content = chrome.contentArea;
+
+    auto *layout = new QVBoxLayout(content);
     auto *viewer = new QTextEdit(this);
     viewer->setReadOnly(true);
     viewer->setFont(QFont(QStringLiteral("Monospace"), 10));

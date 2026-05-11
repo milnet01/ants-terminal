@@ -324,6 +324,12 @@ private:
     QPointer<QTextBrowser> m_viewer;
     QPointer<QListWidget> m_toc;
     QPointer<QTabBar> m_tabs;
+    // ANTS-1242 — custom frameless title bar so the dialog's chrome
+    // honours the active theme. KWin draws the standard title bar
+    // from the system colour scheme and ignores Qt's QPalette, so a
+    // plain QDialog title bar always looked grey against a navy /
+    // dracula bgPrimary. Reuses the main-window TitleBar widget.
+    QPointer<class TitleBar> m_titleBar;
     QPointer<QLineEdit> m_searchBox;
     QPointer<QCheckBox> m_filterDone;
     QPointer<QCheckBox> m_filterPlanned;

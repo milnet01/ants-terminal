@@ -2,7 +2,9 @@
 
 #include "coloredtabbar.h"     // for ClaudeTabIndicator::color (ToolUse yellow)
 #include "config.h"
+#include "dialogchrome.h"      // ANTS-1242 — frameless dialog chrome
 #include "themes.h"
+#include "titlebar.h"
 
 #include <QByteArray>
 #include <QCheckBox>
@@ -19,6 +21,7 @@
 #include <QClipboard>
 #include <QListWidget>
 #include <QMenu>
+#include <QPalette>
 #include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -362,6 +365,30 @@ static QString slugifyHeading(const QString &heading) {
     return out;
 }
 
+// ANTS-1239 — heading slugs must be unique across the document so
+// per-section expand state and bullet grouping don't collapse three
+// "### Performance" h3s into one entry. Same walk-order rule applies
+// to parseBullets and renderCardsHtml, so both maintain their own
+// `seen` set and call this helper as they encounter each heading;
+// because both walk the same sourceText in the same order, they
+// agree on which Nth occurrence of "performance" maps to
+// "performance" vs "performance-2" vs "performance-3".
+static QString uniqueSlug(QSet<QString> &seen, const QString &heading) {
+    const QString base = slugifyHeading(heading);
+    if (base.isEmpty()) return base;
+    if (!seen.contains(base)) {
+        seen.insert(base);
+        return base;
+    }
+    int n = 2;
+    QString candidate;
+    do {
+        candidate = base + QStringLiteral("-") + QString::number(n++);
+    } while (seen.contains(candidate));
+    seen.insert(candidate);
+    return candidate;
+}
+
 QVector<RoadmapDialog::BulletRecord>
 RoadmapDialog::parseBullets(const QString &markdownText) {
     QVector<BulletRecord> out;
@@ -385,7 +412,13 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
 
     const QStringList lines = markdownText.split('\n');
     QString currentSectionHeading;
+    QString currentSectionSlug;
     int currentSectionLevel = 0;
+    // ANTS-1239 — seen-set for unique heading slugs. Mirror the
+    // renderCardsHtml walk: both call uniqueSlug() in the same
+    // document order, so the Nth "Performance" h3 here gets the same
+    // slug as the Nth "Performance" h3 in the renderer.
+    QSet<QString> seenSlugs;
     int i = 0;
     while (i < lines.size()) {
         const QString &raw = lines[i];
@@ -397,6 +430,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         if (level == 2 || level == 3) {
             currentSectionHeading = headingText;
             currentSectionLevel = level;
+            currentSectionSlug = uniqueSlug(seenSlugs, headingText);
             ++i;
             continue;
         }
@@ -431,7 +465,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         rec.sectionHeading = currentSectionHeading;
         rec.sectionLevel = currentSectionLevel;
         if (!currentSectionHeading.isEmpty()) {
-            rec.sectionSlug = slugifyHeading(currentSectionHeading);
+            rec.sectionSlug = currentSectionSlug;
         }
 
         // Collect the bullet body — first line + subsequent indented
@@ -981,8 +1015,15 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         "code{background:%3;padding:0 4px;border-radius:3px;font-size:12px;}"
         "a{color:%2;text-decoration:none;}"
         "a:hover{text-decoration:underline;}"
-        ".rm-section-toggle{font-weight:normal;font-size:13px;padding-right:12px;padding-left:4px;}"
-        ".rm-section-title{color:inherit;text-decoration:none;}"
+        // ANTS-1239 — Qt's text engine paints <a> foreground with the
+        // widget's QPalette::Link role, ignoring the generic `a{color:}`
+        // rule above and not propagating through `color:inherit`. We
+        // also set QPalette::Link on the QTextBrowser at construction
+        // (see RoadmapDialog ctor), but emit explicit class colors here
+        // as belt-and-braces so dark-theme section headers stay legible
+        // even if a future Qt regression flips the palette path again.
+        ".rm-section-toggle{color:%2;font-weight:normal;font-size:13px;padding-right:12px;padding-left:4px;}"
+        ".rm-section-title{color:%2;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
         ".rm-section-counts{font-weight:normal;font-size:11px;color:%6;padding-right:10px;}"
         ".rm-parent{font-weight:normal;font-size:11px;color:%6;padding-left:8px;}"
@@ -992,9 +1033,25 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         ".rm-kind{font-size:11px;color:%6;padding-right:6px;}"
         ".rm-summary{font-size:13px;}"
         ".rm-toggle{font-size:12px;color:%6;padding-left:12px;padding-right:4px;}"
-        ".rm-meta{font-size:10px;color:%6;padding-top:1px;}"
-        ".rm-id{font-family:monospace;padding-right:6px;}"
-        ".rm-body{padding-top:4px;padding-left:20px;border-top:1px dotted %5;margin-top:2px;font-size:13px;}"
+        // ANTS-1241 — id + shipped-date are now inline on the
+        // summary row (after the summary text, before the toggle).
+        // Bumping rm-id from the old 10 px to 12 px makes the
+        // number scannable at a glance; the previous `<div
+        // class="rm-meta">` wrapper triggered the same Qt nested-
+        // block QPalette::Base frame issue that broke rm-body in
+        // ANTS-1240, painting a darker band under the ID on dark
+        // themes. Inline spans paint over the card's bgSecondary
+        // without that frame.
+        ".rm-id{font-family:monospace;font-size:12px;color:%6;padding-left:8px;}"
+        ".rm-date{font-size:11px;color:%6;padding-left:6px;}"
+        // ANTS-1240 — body paragraphs are emitted directly inside the
+        // card (no wrapping <div>) so Qt's text engine doesn't paint
+        // an inner block frame with `QPalette::Base`, which broke the
+        // visual continuity with the card's bgSecondary on dark
+        // themes. `rm-body-first` carries the divider + extra top
+        // padding; `rm-body-line` is plain indent only.
+        ".rm-body-first{padding-top:4px;padding-left:20px;border-top:1px dotted %5;margin-top:2px;font-size:13px;}"
+        ".rm-body-line{padding-left:20px;font-size:13px;}"
         "table{border-collapse:collapse;}"
         "td,th{border:1px solid %5;padding:2px 6px;font-size:12px;}"
         "</style></head><body>")
@@ -1011,6 +1068,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     bool sectionVisible = true;   // section header emitted?
     bool sectionExpanded = false; // user has opened this section?
     int headingIdx = 0;
+    // ANTS-1239 — must run in lockstep with parseBullets above so that
+    // bySection[slug] keys match the slugs computed here. uniqueSlug
+    // is called for *every* h2/h3 encountered (including the skipped
+    // "Table of Contents" h2) so the counter advances identically in
+    // both walks.
+    QSet<QString> seenSlugs;
 
     auto emitSectionHeader = [&](int level, const QString &text,
                                  const QString &slug,
@@ -1089,16 +1152,16 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         }
         html += QStringLiteral("<span class=\"rm-summary\">%1</span>")
                     .arg(htmlEscape(summary));
-        html += QStringLiteral(
-            "<a class=\"rm-toggle\" href=\"ants://%1/%2\">[%3]</a>")
-            .arg(verb, rec.id, chevron);
-        // Row 2 (meta)
+        // ANTS-1241 — id + shipped date inline on the summary row
+        // (was a separate `<div class="rm-meta">` below the row,
+        // which painted a different bg under dark themes for the
+        // same reason ANTS-1240 hit on rm-body). Larger 12 px font
+        // so the number is scannable at a glance.
         const QString hashedId = rec.id.startsWith(QStringLiteral("ANTS-"))
             ? QStringLiteral("#") + rec.id.mid(5)
             : QStringLiteral("#") + rec.id;
-        html += QStringLiteral(
-            "<div class=\"rm-meta\"><span class=\"rm-id\">%1</span>")
-            .arg(htmlEscape(hashedId));
+        html += QStringLiteral("<span class=\"rm-id\">%1</span>")
+                    .arg(htmlEscape(hashedId));
         if (rec.status == QStringLiteral("✅")) {
             const QString date = opts.shippedDates.value(rec.id);
             if (!date.isEmpty()) {
@@ -1106,17 +1169,30 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                     "<span class=\"rm-date\">· %1</span>").arg(date);
             }
         }
-        html += QStringLiteral("</div>");
-        // Body (expanded only)
+        html += QStringLiteral(
+            "<a class=\"rm-toggle\" href=\"ants://%1/%2\">[%3]</a>")
+            .arg(verb, rec.id, chevron);
+        // Body (expanded only). ANTS-1240 — no `<div class="rm-body">`
+        // wrapper: Qt's text engine renders nested <div> blocks with
+        // their own QPalette::Base background frame, so the body
+        // showed a different colour than the parent card. Emitting
+        // <p> elements directly into the card lets each paragraph
+        // paint over the card's bgSecondary, preserving the visual
+        // continuity. First non-empty <p> carries `rm-body-first`
+        // (dotted divider + padding-top); subsequent lines carry
+        // `rm-body-line` (indent only).
         if (expanded) {
-            html += QStringLiteral("<div class=\"rm-body\">");
             const QStringList bodyLines = rec.body.split('\n');
+            bool firstP = true;
             for (int bi = 0; bi < bodyLines.size(); ++bi) {
                 if (bodyLines[bi].trimmed().isEmpty()) continue;
-                html += QStringLiteral("<p>%1</p>")
-                            .arg(applyInline(bodyLines[bi]));
+                const QString cls = firstP
+                    ? QStringLiteral("rm-body-first")
+                    : QStringLiteral("rm-body-line");
+                html += QStringLiteral("<p class=\"%1\">%2</p>")
+                            .arg(cls, applyInline(bodyLines[bi]));
+                firstP = false;
             }
-            html += QStringLiteral("</div>");
         }
         html += QStringLiteral("</div>");  // rm-card
     };
@@ -1153,17 +1229,21 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (level == 2 || level == 3) {
             if (level == 2) {
                 currentH2Text = hText;
+            }
+            // ANTS-1239 — compute the slug *before* the TOC skip so
+            // seenSlugs advances in lockstep with parseBullets (which
+            // has no TOC skip).
+            const QString slug = uniqueSlug(seenSlugs, hText);
+            if (level == 2 &&
+                hText.compare(QStringLiteral("Table of Contents"),
+                              Qt::CaseInsensitive) == 0) {
                 // Skip the "Table of Contents" h2 — the QListWidget nav
                 // pane is the canonical TOC; rendering it inline is
                 // duplicate noise.
-                if (hText.compare(QStringLiteral("Table of Contents"),
-                                  Qt::CaseInsensitive) == 0) {
-                    sectionVisible = false;
-                    sectionExpanded = false;
-                    continue;
-                }
+                sectionVisible = false;
+                sectionExpanded = false;
+                continue;
             }
-            const QString slug = slugifyHeading(hText);
             currentSlug = slug;
             sectionExpanded = opts.expandedSections.contains(slug);
             const SectionCounts c = countsBySection.value(slug);
@@ -1269,6 +1349,16 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     resize(1200, 800);
     setMinimumSize(720, 480);
 
+    // ANTS-1242 — frameless + custom TitleBar so the dialog's chrome
+    // honours the active theme (KWin draws the standard title bar
+    // from the system colour scheme and ignores Qt's QPalette). The
+    // shared helper installs the bar, wires the close/min/max
+    // signals, and gives back a content QWidget to use as the
+    // parent for the rest of the ctor's layouts.
+    auto chrome = DialogChrome::install(this, m_themeName);
+    m_titleBar = chrome.titleBar;
+    QWidget *content = chrome.contentArea;
+
     // Find a sibling CHANGELOG.md (case-insensitive) for the
     // current-work signal set.
     const QDir dir = QFileInfo(roadmapPath).absoluteDir();
@@ -1280,7 +1370,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         }
     }
 
-    auto *root = new QVBoxLayout(this);
+    auto *root = new QVBoxLayout(content);
 
     // ANTS-1100 INV-7: tab bar is the first widget in the layout.
     m_tabs = new QTabBar(this);
@@ -1393,6 +1483,59 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // stray markdown link can't replace the document.
     m_viewer->setOpenLinks(false);
     m_viewer->setOpenExternalLinks(false);
+    // ANTS-1239 / ANTS-1240 — apply the active terminal theme to the
+    // dialog's palette so the Roadmap window blends with the rest of
+    // the app instead of falling through to Qt's default dark palette.
+    //
+    // - The dialog itself gets Window/WindowText/Base/Text from the
+    //   theme so checkboxes, tabs, labels, splitter, and search box
+    //   all inherit the right colours.
+    // - m_viewer (QTextBrowser) gets Base/Text/Link/LinkVisited. Qt's
+    //   text engine paints <a> foreground using `QPalette::Link`,
+    //   *not* the CSS `color` property — on Qt 6's default palette
+    //   that role is near-black against most dark themes (user report
+    //   2026-05-11). Setting Link/LinkVisited to textPrimary keeps the
+    //   section-header chevron + title links legible. Base = bgPrimary
+    //   so the area around the cards matches the terminal background
+    //   instead of Qt's generic dark gray.
+    // - m_toc (QListWidget) gets Base/Text + Highlight/HighlightedText
+    //   so the sidebar matches and the selection indicator stays
+    //   visible on every theme.
+    {
+        const Theme &th = Themes::byName(m_themeName);
+
+        QPalette dp = palette();
+        dp.setColor(QPalette::Window, th.bgPrimary);
+        dp.setColor(QPalette::WindowText, th.textPrimary);
+        dp.setColor(QPalette::Base, th.bgPrimary);
+        dp.setColor(QPalette::AlternateBase, th.bgSecondary);
+        dp.setColor(QPalette::Text, th.textPrimary);
+        dp.setColor(QPalette::ButtonText, th.textPrimary);
+        dp.setColor(QPalette::Button, th.bgSecondary);
+        setPalette(dp);
+        setAutoFillBackground(true);
+
+        QPalette vp = m_viewer->palette();
+        vp.setColor(QPalette::Base, th.bgPrimary);
+        vp.setColor(QPalette::Text, th.textPrimary);
+        vp.setColor(QPalette::Link, th.textPrimary);
+        vp.setColor(QPalette::LinkVisited, th.textPrimary);
+        m_viewer->setPalette(vp);
+
+        QPalette tp = m_toc->palette();
+        tp.setColor(QPalette::Base, th.bgPrimary);
+        tp.setColor(QPalette::Text, th.textPrimary);
+        tp.setColor(QPalette::Highlight, th.accent);
+        tp.setColor(QPalette::HighlightedText, th.bgPrimary);
+        m_toc->setPalette(tp);
+
+        // ANTS-1242 — the frameless TitleBar paints itself from the
+        // active theme rather than KWin's system colour scheme.
+        if (m_titleBar) {
+            m_titleBar->setThemeColors(th.bgSecondary, th.textPrimary,
+                                       th.accent, th.border);
+        }
+    }
     // ANTS-1154: card / section toggle anchors use the `ants://` URL
     // scheme. The handler dispatches by URL verb and mutates the
     // relevant Config state set.

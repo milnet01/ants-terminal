@@ -1,5 +1,6 @@
 #include "claudetranscript.h"
 #include "claudeintegration.h"
+#include "dialogchrome.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -19,7 +20,11 @@ ClaudeTranscriptDialog::ClaudeTranscriptDialog(ClaudeIntegration *integration,
     setMinimumSize(700, 500);
     resize(800, 600);
 
-    auto *layout = new QVBoxLayout(this);
+    // ANTS-1242 — frameless + theme-aware TitleBar.
+    auto chrome = DialogChrome::install(this);
+    QWidget *content = chrome.contentArea;
+
+    auto *layout = new QVBoxLayout(content);
 
     // Session selector row
     auto *topRow = new QHBoxLayout();

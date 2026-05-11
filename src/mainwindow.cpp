@@ -6,6 +6,7 @@
 #include "terminalwidget.h"
 #include "titlebar.h"
 #include "commandpalette.h"
+#include "dialogchrome.h"
 #include "aidialog.h"
 #include "sshdialog.h"
 #include "settingsdialog.h"
@@ -2860,6 +2861,11 @@ void MainWindow::applyTheme(const QString &name) {
         return;
     m_currentTheme = name;
     m_config.setTheme(name);
+    // ANTS-1242 — broadcast the new theme to the DialogChrome
+    // helper so any subsequently-opened dialog can theme its
+    // custom frameless title bar without the call site needing
+    // to plumb the name through.
+    DialogChrome::setActiveTheme(name);
 
     // Update theme checkmark
     if (m_themeGroup) {

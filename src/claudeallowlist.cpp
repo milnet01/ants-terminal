@@ -2,6 +2,7 @@
 
 #include "configbackup.h"
 #include "debuglog.h"
+#include "dialogchrome.h"
 #include "secureio.h"
 
 #include <QVBoxLayout>
@@ -37,7 +38,11 @@ ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) 
     setMinimumSize(550, 400);
     resize(650, 500);
 
-    auto *mainLayout = new QVBoxLayout(this);
+    // ANTS-1242 — frameless + theme-aware TitleBar.
+    auto chrome = DialogChrome::install(this);
+    QWidget *content = chrome.contentArea;
+
+    auto *mainLayout = new QVBoxLayout(content);
 
     // Info label
     auto *infoLabel = new QLabel(

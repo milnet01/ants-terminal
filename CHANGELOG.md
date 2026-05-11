@@ -12,6 +12,110 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **ANTS-1242 — Theme-aware frameless title bar on every dialog.**
+  Fourth-pass user feedback after ANTS-1241 (2026-05-11): the
+  Roadmap dialog's window-manager-drawn title bar still showed as
+  the system grey, not the active terminal theme — because KWin
+  (and GNOME / Wayland) paints server-side window decorations
+  from the system colour scheme and ignores the application's
+  `QPalette`. The main terminal window already worked around this
+  by going frameless (`Qt::FramelessWindowHint`) and drawing its
+  own `TitleBar` widget; dialogs did not. Fixed by introducing a
+  shared `DialogChrome` helper (`src/dialogchrome.{h,cpp}`) that
+  any dialog ctor can invoke with one line:
+  `auto chrome = DialogChrome::install(this, themeName);` — it
+  sets the frameless flag, prepends a themed `TitleBar` widget,
+  wires close / minimize / maximize signals, and returns a
+  content `QWidget` to use as the layout parent for the rest of
+  the ctor. Applied to all ten QDialog subclasses:
+  `RoadmapDialog`, `AuditDialog`, `SettingsDialog`, `SshDialog`,
+  `AiDialog`, `ClaudeAllowlistDialog`, `ClaudeTranscriptDialog`,
+  `ClaudeProjectsDialog`, `ClaudeBgTasksDialog`, and
+  `ClaudeTaskListDialog`. `MainWindow::applyTheme` now also calls
+  `DialogChrome::setActiveTheme(name)` so dialogs that don't
+  receive a theme name still pick up the current one. Live-theme
+  refresh is preserved on the dialogs that previously supported
+  it (Roadmap, bg tasks, task list) — the helper's
+  `applyTheme(dlg, bar, name)` re-styles both the dialog palette
+  and the title bar.
+- **ANTS-1241 — RoadmapDialog v2: inline `#NNNN` on summary row +
+  larger ID font.** Third-pass user feedback after ANTS-1240
+  (2026-05-11): the card's `#NNNN` (and shipped date) were
+  emitted on a separate `<div class="rm-meta">` row below the
+  summary line, which (a) hit the same Qt nested-block
+  `QPalette::Base` frame issue that ANTS-1240 fixed on the
+  expanded body — painting a darker band under the ID on dark
+  themes — and (b) was visually noisy. Fixed by emitting the
+  hashed ID and shipped date as inline `<span>` children of the
+  card div, on the summary row immediately before the
+  `rm-toggle` anchor. CSS `.rm-id` font bumped from the old
+  10 px meta size to 12 px so the number is scannable at a
+  glance. The `.rm-meta` CSS rule is gone. Regression-locked by
+  spec INV-17 in `tests/features/roadmap_dialog_cards/spec.md`.
+- **ANTS-1240 — RoadmapDialog v2: theme palette + expanded-body
+  background frame.** Second-pass user feedback after the
+  ANTS-1239 link-colour fix (2026-05-11):
+  - **Dialog doesn't pick up the active theme.** Only the
+    `QTextBrowser`'s `QPalette::Link` / `LinkVisited` were
+    themed in ANTS-1239; the QDialog window, the `QListWidget`
+    TOC sidebar, and the viewer's `Base` / `Text` roles all
+    fell through to Qt's default dark palette. So the dialog
+    looked greyer than the rest of the app (e.g. against the
+    Tokyo Night / Dracula / One Dark navy backgrounds). Fixed
+    by applying `bgPrimary` to `QPalette::Window` / `Base`
+    on all three widgets, `textPrimary` to
+    `WindowText`/`Text`, and `accent` to the TOC's
+    `Highlight` so the selection indicator stays visible.
+  - **Expanded body has a different background colour from
+    the card.** Qt's text engine renders nested `<div>`
+    block elements with their own `QPalette::Base` background
+    frame — it does not visually inherit from the parent
+    `<div>`'s `background` CSS. So the renderer's
+    `<div class="rm-body">` wrapper inside each
+    `<div class="rm-card">` painted `bgPrimary` over the
+    card's `bgSecondary` background, creating a visible
+    colour break at the divider. Fixed by emitting body
+    `<p>` paragraphs directly as children of the card (no
+    wrapping div) — `<p>` doesn't create a separate
+    background frame, so each paragraph paints over the
+    card's `bgSecondary` and the visual continuity is
+    restored. First body paragraph carries
+    `class="rm-body-first"` (dotted divider + extra
+    padding-top); subsequent lines carry
+    `class="rm-body-line"` (indent only). Regression-locked
+    by spec INV-15 + INV-16 in
+    `tests/features/roadmap_dialog_cards/spec.md`.
+- **ANTS-1239 — RoadmapDialog v2: duplicate heading slugs + black
+  `<a>` text on dark themes.** Two bugs surfaced by user
+  test-drive of 0.7.83's card renderer:
+  - **Slug collision.** Three `### Performance` h3s (under 0.7.0,
+    0.8.0, and Beyond 1.0) all slugged to `performance`, so
+    expanding one expanded all three, and `bySection["performance"]`
+    pooled bullets from every Performance section into a single
+    bucket. Fixed by tracking a `seen` set across each walk and
+    appending `-2`, `-3`, … to repeat slugs (`uniqueSlug` helper).
+    Both `parseBullets` and `renderCardsHtml` walk the same
+    `sourceText` in the same order, so their slug sequences agree
+    and `bySection[slug]` keys match the URLs emitted into the
+    click anchors. Same fix covers other duplicate h3s in the
+    file (`Platform`, `Cross-cutting themes`, `Security`,
+    `Tier 2 — hardening sweep`, …).
+  - **Black section titles on dark themes.** Qt's text engine
+    paints `<a>` foreground using the widget's `QPalette::Link`
+    role, ignoring the inline `<style>` block's `a{color:…}` rule
+    and not propagating through `color:inherit`. On Qt 6's default
+    palette that role renders as near-black on most dark themes,
+    so the chevron + heading text in each section header
+    disappeared. Fixed by setting `QPalette::Link` /
+    `QPalette::LinkVisited` on the `QTextBrowser` to the active
+    theme's `textPrimary`, plus emitting explicit
+    `color:<textPrimary>` on `.rm-section-toggle` /
+    `.rm-section-title` (replacing the prior `color:inherit`) as
+    belt-and-braces. Regression-locked by spec INV-13/14 in
+    `tests/features/roadmap_dialog_cards/spec.md`.
+
 ## [0.7.83] — 2026-05-11
 
 ### Theme

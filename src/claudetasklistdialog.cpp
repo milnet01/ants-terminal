@@ -1,6 +1,7 @@
 #include "claudetasklistdialog.h"
 
 #include "claudetasklist.h"
+#include "dialogchrome.h"
 #include "themes.h"
 
 #include <QHBoxLayout>
@@ -46,7 +47,11 @@ ClaudeTaskListDialog::ClaudeTaskListDialog(ClaudeTaskListTracker *tracker,
     resize(700, 480);
     setAttribute(Qt::WA_DeleteOnClose);
 
-    auto *layout = new QVBoxLayout(this);
+    // ANTS-1242 — frameless + theme-aware TitleBar.
+    auto chrome = DialogChrome::install(this, m_themeName);
+    QWidget *content = chrome.contentArea;
+
+    auto *layout = new QVBoxLayout(content);
 
     auto *header = new QLabel(this);
     header->setObjectName(QStringLiteral("taskListHeader"));
