@@ -8552,6 +8552,67 @@ contributors don't duplicate research.
 > bullets), and the boundary arithmetic for every humanAge ladder
 > step. Loop 4 returned 0 verified findings — clean pass signal.
 
+### 📝 Cold-eyes 2026-05-12 (ANTS-1238 spec)
+
+> Docs reviewed: 1 (`docs/specs/ANTS-1238.md`). Loops to clean: 4.
+> Findings fixed: ~50 across 4 loops (3 CRITICAL, 18 HIGH,
+> 19 MEDIUM, ~10 LOW). Two agent-claims dismissed after
+> verification (font-size count of 17 — re-grep returned 19;
+> line-number-drift concern — acceptable per the verification-
+> log snapshot pattern).
+
+- **INV-2 sentinel collisions — caught twice.** First draft used
+  `font-size:11px` as compact-only — collides with cozy h4 + meta
+  classes. Loop 1 fix to `font-size:14px` — caught at loop 2 to
+  collide with Comfortable's h3 + code/.rm-toggle/.rm-id/td/th
+  rows (14px appears across three rows in Comfortable). Final
+  sentinels 9 / 16 / 18 px verified by full set-difference
+  analysis over the § 2.f tier table.
+- **`CardRenderOptions{ .density = … }` doesn't compile.** Loop
+  3 caught that `CardRenderOptions` has a user-provided default
+  ctor at `src/roadmapdialog.h:183`, so the designated-init form
+  is not valid aggregate-init. Fixed by switching INV-1 + test
+  5.a to member-assignment (`CardRenderOptions opts;
+  opts.density = Density::Cozy;`) throughout.
+- **`parseBullets(markdown, /*filter*/0)` wrong signature.** Loop
+  2 caught the second arg doesn't exist (`parseBullets` is single-
+  arg). Test 5.e rewritten to strip the `<style>...</style>` block
+  via regex and compare the rest across the three density renders,
+  asserting density influences only the CSS.
+- **`m_geometry` fictional member.** Loop 2 caught the § 8 mockup
+  end-note referenced a `m_geometry` member that doesn't exist.
+  Replaced with the real `Config::roadmapDialogGeometry()`
+  reference + a note about Qt's `QHBoxLayout` compressing the
+  stretch first under narrow windows.
+- **Failure-mode enumeration.** Loop 2 surfaced four undefined
+  paths: config-write fail (full disk / EACCES / serialise
+  error), null `m_config` at combo construction, two parallel
+  instances racing the config write, and `indexToDensity(-1)`
+  from a `QComboBox` model clear. Each got a paragraph in § 3.h
+  plus INV-9 / test 5.g for the persistence-failure path.
+- **Render-time budget cited wrong baseline.** Loop 2 noted that
+  ANTS-1234's "~0.3 ms per render" was actually the marginal
+  cost of its four `contains()` calls in `emitCard`, not the
+  total render time. Restated § 7 against marginal cost (one
+  extra `QString::arg` chain, sub-microsecond) rather than
+  inheriting a misread baseline.
+- **`kKinds` line drift.** Loop 2 caught the § 3.b "near `kKinds`
+  at `:53`" — actually `kKinds` is at `:108`; `:53` is
+  `kStatusLabels`. Fixed and § 11 verification log now anchors
+  all three file-scope tables.
+- **§ 5 sub-section letter gap.** Loop 3 caught the 5.c → 5.e jump
+  (no 5.d). Re-lettered to 5.a-5.h sequential.
+- **"15 distinct font-size literals" → "19 declarations across 5
+  values".** Loop 1 caught the first-draft "15" was wrong;
+  `grep -oE` confirms 19 occurrences across 5 unique values
+  (10/11/12/13/16). Loop 2 had an agent claim 17 — re-grep
+  dismissed; the agent's range may have excluded a line.
+
+> Reviewers verified every source-file:line citation (some 35+
+> across the spec), the 9 invariants' testability, set-difference
+> analysis over the tier table, and the failure-mode contracts.
+> Loop 4 returned 0 verified findings — clean pass signal.
+
 ### 📝 Cold-eyes 2026-05-12 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~37 live docs (~33k lines).
@@ -8776,13 +8837,23 @@ contributors don't duplicate research.
   touched, so you can see what's been sitting too long.
   Kind: implement.
   Source: research-2026-05-11.
-- 💭 [ANTS-1238] **Density toggle (compact / cozy /
+- 🚧 [ANTS-1238] **Density toggle (compact / cozy /
   comfortable)**. Material 3 + Linear + GitHub all expose a
-  density selector. Driven by CSS class on the dialog root:
-  `compact` 10/11/12px, `cozy` (current default) 12/13/14px,
-  `comfortable` 14/15/16px with more vertical padding. Persist
-  via sixth `Config::roadmap*` key. Pairs with the system font
-  scaling for users at any zoom level.
+  density selector. Spec at `docs/specs/ANTS-1238.md`
+  (cold-eyes-clean after 4 loops + ~50 verified findings fixed —
+  audit trail in the 2026-05-12 cold-eyes block above). Driven
+  by CSS class values selected at `renderCardsHtml` time:
+  `compact` (9/10/11/14 px tier), `cozy` (current default, 10/11/12/13/16 px),
+  `comfortable` (12/13/14/15/18 px) with proportional vertical
+  padding. Persists via new `roadmap_density` Config key,
+  graceful fallback to `"cozy"` on missing/invalid. New
+  `QComboBox` in the filterRow trailing edge (after the existing
+  `addStretch(1)`). Tests under `tests/features/roadmap_density/`
+  lock the 9 invariants (INV-1: cozy default byte-equal to
+  pre-1238 baseline; INV-2: tier-unique sentinels 9/16/18 px
+  scoped to renderCardsHtml; INV-9: silent persistence-failure
+  contract). No keyboard shortcut in v1; the cheatsheet
+  (ANTS-1236) doesn't gain a row.
   **Layman:** pick how spaced-out you want the Roadmap dialog
   to feel — tight on a laptop, roomy on a big monitor.
   Kind: implement.
