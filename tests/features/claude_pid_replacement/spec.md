@@ -49,10 +49,10 @@ INV-N anchor comments embedded in `claudeintegration.cpp` next to each load-bear
 
 **Anchors are mandatory, not optional**, because the load-bearing strings in this spec are NOT unique within `claudeintegration.cpp`:
 
-- `emit stateChanged(m_state, "idle")` appears at **two** sites (line 266 in `pollClaudeProcess`'s rebind branch — the INV-2 site — and line 1018 inside another emission path).
-- `parseTranscriptForState(m_transcriptPath)` appears at **three** sites (line 37 in the constructor's initial seed, line 260 in the rebind branch — the INV-2 site — and line 277 in the 10-tick backstop re-parse).
+- `emit stateChanged(m_state, "idle")` appears at **two** sites (line 286 in `pollClaudeProcess`'s rebind branch — the INV-2 site — and line 1038 inside another emission path).
+- `parseTranscriptForState(m_transcriptPath)` appears at **three** sites (line 37 in the constructor's initial seed, line 277 in the rebind branch — the INV-2 site — and line 297 in the 10-tick backstop re-parse).
 
-Without `// ANTS-1225-INV-N` anchors next to the INV-2 site, the source-grep test could match the wrong location and silently green-light a refactor that broke the rebind branch. The implementer MUST place the anchor comment on the same line as (or the line immediately preceding) each load-bearing string at lines 229, 255-260, 220-224, and 214 of the post-fix file.
+Without `// ANTS-1225-INV-N` anchors next to the INV-2 site, the source-grep test could match the wrong location and silently green-light a refactor that broke the rebind branch. The anchor comments now sit on the same line as (or the line immediately preceding) each load-bearing string at lines 236, 262/281, 223, and 214 of the post-fix file.
 
 Test slot: `tests/features/claude_pid_replacement/test_claude_pid_replacement.cpp`. Wired into the existing `test_claude` bundle per ANTS-1217 — no new standalone executable, no new CMake target.
 

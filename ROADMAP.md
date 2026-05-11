@@ -5375,7 +5375,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
     three new `Kind:` values; `<!-- ants-roadmap-format: 2 -->`
     marker propagation. **Status: 📋 not yet shipped** — both
     `roadmap-format.md` and `ROADMAP.md` still carry the v1
-    marker as of 0.7.81.
+    marker as of 0.7.82.
   - **P2 — Status-bar widget refresh on launch (3 widgets, 1
     commit).** Wire `refreshRoadmapButton` and
     `refreshRepoVisibility` to the 2 s `m_statusTimer` so the

@@ -27,7 +27,7 @@ INV labels qualified `ANTS-1158-INV-N`. Full statements in
 
 ### Follow-on INVs (post-ANTS-1158 contract refinements)
 
-**Status:** 1218-INV-1/2 ✅ shipped 0.7.80; 1221-INV-1/2 ✅ shipped 0.7.81; 1224-INV-1/2/3 🚧 pending implementation (ANTS-1219+1224+1225 bundle, 2026-05-10).
+**Status:** 1218-INV-1/2 ✅ shipped 0.7.80; 1221-INV-1/2 ✅ shipped 0.7.81; 1224-INV-1/2/3 ✅ shipped 0.7.82 (ANTS-1219+1224+1225 bundle, 2026-05-11).
 
 | #            | Lane   | Statement |
 |--------------|--------|-----------|

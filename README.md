@@ -474,7 +474,7 @@ The fastest path. Each tagged release ships an x86_64 AppImage on the
 [Releases page](https://github.com/milnet01/ants-terminal/releases/latest):
 
 ```bash
-# Download the latest AppImage (the URL below uses 0.7.81 — bump to whatever the latest tag is):
+# Download the latest AppImage (the URL below uses 0.7.82 — bump to whatever the latest tag is):
 curl -L -o Ants_Terminal-x86_64.AppImage \
   https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.82-x86_64.AppImage
 chmod +x Ants_Terminal-x86_64.AppImage
