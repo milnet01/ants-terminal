@@ -9,6 +9,7 @@
 
 #include <QByteArray>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QDir>
@@ -119,6 +120,96 @@ constexpr KindEntry kKinds[] = {
     {"research",   "roadmap-filter-kind-research",   "🔬 research"},
     {"ux",         "roadmap-filter-kind-ux",         "🎨 ux"},
 };
+
+// ANTS-1238 — per-density-tier CSS px values + vertical-padding
+// scale, looked up by renderCardsHtml when building the embedded
+// `<style>` block. Cozy column preserves pre-1238 byte-equal
+// rendering (INV-1); Compact / Comfortable are -2 / +2 shifts on
+// the body / heading / code groups, with a 9 px floor on the
+// meta tier (INV-8). Spec: docs/specs/ANTS-1238.md § 2.f.
+//
+// Field naming mirrors the spec: bodyPx covers `body`,
+// `.rm-summary`, `.rm-state`, `.rm-section-toggle`,
+// `.rm-body-first`, `.rm-body-line` (all at the same value per
+// tier). h1Px..h4Px cover the four heading levels. codePx
+// covers `code`, `.rm-toggle`, `.rm-id`, `td`, `th`. metaPx
+// covers `.rm-kind`, `.rm-section-counts`, `.rm-parent`,
+// `.rm-date`. labelPx is `.rm-state-label` (one step below
+// metaPx, with the floor applying first). Vertical padding
+// scales: pMargin is `p` `margin:Npx 0`; hMarginTop /
+// hMarginBottom are h1-h4 `margin:Tpx 0 Bpx 0`; cardPaddingY /
+// cardPaddingX are `.rm-card` `padding:Ypx Xpx`; cardMargin
+// is `.rm-card` `margin:Npx 0`; bodyFirstPaddingTop /
+// bodyFirstMarginTop are `.rm-body-first` top spacing.
+struct DensityTier {
+    int bodyPx;
+    int h1Px, h2Px, h3Px, h4Px;
+    int codePx;
+    int metaPx;
+    int labelPx;
+    int pMargin;
+    int hMarginTop, hMarginBottom;
+    int cardPaddingY, cardPaddingX;
+    int cardMargin;
+    int bodyFirstPaddingTop;
+    int bodyFirstMarginTop;
+};
+constexpr DensityTier kDensityTable[3] = {
+    // Compact: -2 px tier with 9 px floor on label + meta groups.
+    {/*bodyPx*/11, /*h1Px*/14, /*h2Px*/11, /*h3Px*/10, /*h4Px*/10,
+     /*codePx*/10, /*metaPx*/9, /*labelPx*/9,
+     /*pMargin*/1, /*hMarginTop*/2, /*hMarginBottom*/1,
+     /*cardPaddingY*/2, /*cardPaddingX*/6, /*cardMargin*/1,
+     /*bodyFirstPaddingTop*/2, /*bodyFirstMarginTop*/1},
+    // Cozy: current default. Byte-equal to pre-1238 renderer.
+    {/*bodyPx*/13, /*h1Px*/16, /*h2Px*/13, /*h3Px*/12, /*h4Px*/11,
+     /*codePx*/12, /*metaPx*/11, /*labelPx*/10,
+     /*pMargin*/3, /*hMarginTop*/4, /*hMarginBottom*/2,
+     /*cardPaddingY*/4, /*cardPaddingX*/8, /*cardMargin*/2,
+     /*bodyFirstPaddingTop*/4, /*bodyFirstMarginTop*/2},
+    // Comfortable: +2 px tier, more vertical headroom.
+    {/*bodyPx*/15, /*h1Px*/18, /*h2Px*/15, /*h3Px*/14, /*h4Px*/13,
+     /*codePx*/14, /*metaPx*/13, /*labelPx*/12,
+     /*pMargin*/5, /*hMarginTop*/6, /*hMarginBottom*/4,
+     /*cardPaddingY*/6, /*cardPaddingX*/12, /*cardMargin*/4,
+     /*bodyFirstPaddingTop*/6, /*bodyFirstMarginTop*/3},
+};
+static_assert(std::size(kDensityTable) == 3,
+              "kDensityTable must keep one row per Density enum value.");
+
+QString densityToString(RoadmapDialog::Density d) {
+    switch (d) {
+        case RoadmapDialog::Density::Compact:     return QStringLiteral("compact");
+        case RoadmapDialog::Density::Cozy:        return QStringLiteral("cozy");
+        case RoadmapDialog::Density::Comfortable: return QStringLiteral("comfortable");
+    }
+    return QStringLiteral("cozy");
+}
+
+RoadmapDialog::Density densityFromString(const QString &s) {
+    if (s == QStringLiteral("compact"))     return RoadmapDialog::Density::Compact;
+    if (s == QStringLiteral("comfortable")) return RoadmapDialog::Density::Comfortable;
+    // Includes "cozy" + any unknown/empty value — INV-4 fallback.
+    return RoadmapDialog::Density::Cozy;
+}
+
+int densityToIndex(RoadmapDialog::Density d) {
+    return static_cast<int>(d);
+}
+
+// ANTS-1238 § 3.a — bounds-clamps out-of-range indices to Cozy.
+// QComboBox::currentIndexChanged can fire with -1 when its model
+// is cleared; defensive clamp avoids out-of-bounds access on
+// kDensityTable.
+RoadmapDialog::Density indexToDensity(int idx) {
+    if (idx == 0) return RoadmapDialog::Density::Compact;
+    if (idx == 2) return RoadmapDialog::Density::Comfortable;
+    return RoadmapDialog::Density::Cozy;
+}
+
+const DensityTier &tierFor(RoadmapDialog::Density d) {
+    return kDensityTable[static_cast<int>(d)];
+}
 
 // 1..4 if `raw` is a Markdown ATX heading, else 0. On a hit, `text`
 // receives the heading content with the `# ` prefix stripped. Walk
@@ -1049,14 +1140,21 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // Build the HTML.
     QString html;
     html.reserve(sourceText.size() * 2);
+    // ANTS-1238 — density-tier lookup. Cozy reproduces the
+    // pre-1238 px values byte-for-byte (INV-1); Compact /
+    // Comfortable shift the body / heading / code / meta groups
+    // and the vertical-padding scale. Inline-spacing constants
+    // (e.g. `rm-state padding-right:6px`, `rm-id padding-left:8px`)
+    // stay fixed across all tiers per spec § 2.f.
+    const DensityTier &t = tierFor(opts.density);
     html += QStringLiteral(
         "<html><head><style>"
-        "body{font-family:sans-serif;color:%1;font-size:13px;}"
-        "p{margin:3px 0;}"
-        "h1,h2,h3,h4{color:%2;font-weight:bold;margin:4px 0 2px 0;}"
-        "h1{font-size:16px;} h2{font-size:13px;}"
-        "h3{font-size:12px;} h4{font-size:11px;}"
-        "code{background:%3;padding:0 4px;border-radius:3px;font-size:12px;}"
+        "body{font-family:sans-serif;color:%1;font-size:%7px;}"
+        "p{margin:%8px 0;}"
+        "h1,h2,h3,h4{color:%2;font-weight:bold;margin:%9px 0 %10px 0;}"
+        "h1{font-size:%11px;} h2{font-size:%12px;}"
+        "h3{font-size:%13px;} h4{font-size:%14px;}"
+        "code{background:%3;padding:0 4px;border-radius:3px;font-size:%15px;}"
         "a{color:%2;text-decoration:none;}"
         "a:hover{text-decoration:underline;}"
         // ANTS-1239 — Qt's text engine paints <a> foreground with the
@@ -1066,18 +1164,18 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // (see RoadmapDialog ctor), but emit explicit class colors here
         // as belt-and-braces so dark-theme section headers stay legible
         // even if a future Qt regression flips the palette path again.
-        ".rm-section-toggle{color:%2;font-weight:normal;font-size:13px;padding-right:12px;padding-left:4px;}"
+        ".rm-section-toggle{color:%2;font-weight:normal;font-size:%7px;padding-right:12px;padding-left:4px;}"
         ".rm-section-title{color:%2;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
-        ".rm-section-counts{font-weight:normal;font-size:11px;color:%6;padding-right:10px;white-space:nowrap;}"
-        ".rm-parent{font-weight:normal;font-size:11px;color:%6;padding-left:8px;}"
-        ".rm-card{margin:2px 0;padding:4px 8px;border-left:3px solid %5;background:%3;}"
+        ".rm-section-counts{font-weight:normal;font-size:%16px;color:%6;padding-right:10px;white-space:nowrap;}"
+        ".rm-parent{font-weight:normal;font-size:%16px;color:%6;padding-left:8px;}"
+        ".rm-card{margin:%17px 0;padding:%18px %19px;border-left:3px solid %5;background:%3;}"
         ".rm-card.rm-current{border-left-color:%4;background:rgba(229,194,74,0.08);}"
-        ".rm-state{font-size:13px;padding-right:6px;}"
-        ".rm-state-label{font-size:10px;color:%6;padding-right:6px;}"
-        ".rm-kind{font-size:11px;color:%6;padding-right:6px;}"
-        ".rm-summary{font-size:13px;}"
-        ".rm-toggle{font-size:12px;color:%6;padding-left:12px;padding-right:4px;}"
+        ".rm-state{font-size:%7px;padding-right:6px;}"
+        ".rm-state-label{font-size:%20px;color:%6;padding-right:6px;}"
+        ".rm-kind{font-size:%16px;color:%6;padding-right:6px;}"
+        ".rm-summary{font-size:%7px;}"
+        ".rm-toggle{font-size:%15px;color:%6;padding-left:12px;padding-right:4px;}"
         // ANTS-1241 — id + shipped-date are now inline on the
         // summary row (after the summary text, before the toggle).
         // Bumping rm-id from the old 10 px to 12 px makes the
@@ -1087,25 +1185,46 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // ANTS-1240, painting a darker band under the ID on dark
         // themes. Inline spans paint over the card's bgSecondary
         // without that frame.
-        ".rm-id{font-family:monospace;font-size:12px;color:%6;padding-left:8px;}"
-        ".rm-date{font-size:11px;color:%6;padding-left:6px;}"
+        ".rm-id{font-family:monospace;font-size:%15px;color:%6;padding-left:8px;}"
+        ".rm-date{font-size:%16px;color:%6;padding-left:6px;}"
         // ANTS-1240 — body paragraphs are emitted directly inside the
         // card (no wrapping <div>) so Qt's text engine doesn't paint
         // an inner block frame with `QPalette::Base`, which broke the
         // visual continuity with the card's bgSecondary on dark
         // themes. `rm-body-first` carries the divider + extra top
         // padding; `rm-body-line` is plain indent only.
-        ".rm-body-first{padding-top:4px;padding-left:20px;border-top:1px dotted %5;margin-top:2px;font-size:13px;}"
-        ".rm-body-line{padding-left:20px;font-size:13px;}"
+        ".rm-body-first{padding-top:%21px;padding-left:20px;border-top:1px dotted %5;margin-top:%22px;font-size:%7px;}"
+        ".rm-body-line{padding-left:20px;font-size:%7px;}"
         "table{border-collapse:collapse;}"
-        "td,th{border:1px solid %5;padding:2px 6px;font-size:12px;}"
+        "td,th{border:1px solid %5;padding:2px 6px;font-size:%15px;}"
         "</style></head><body>")
         .arg(th.textPrimary.name(),         // %1
              th.textPrimary.name(),         // %2
              th.bgSecondary.name(),         // %3
              currentColor,                  // %4
              th.border.name(),              // %5
-             th.textSecondary.name());      // %6
+             th.textSecondary.name())       // %6
+        // Density-tier px values. Order maps the %N number → field
+        // by hand so a future tier reorder doesn't silently swap two
+        // CSS rules. Use QString::number to ensure no locale
+        // surprises (QString::arg(int) is locale-aware in some Qt
+        // setups; QString::number defaults to base 10 + C locale).
+        .arg(QString::number(t.bodyPx),              // %7
+             QString::number(t.pMargin),             // %8
+             QString::number(t.hMarginTop),          // %9
+             QString::number(t.hMarginBottom),       // %10
+             QString::number(t.h1Px),                // %11
+             QString::number(t.h2Px),                // %12
+             QString::number(t.h3Px),                // %13
+             QString::number(t.h4Px),                // %14
+             QString::number(t.codePx))              // %15
+        .arg(QString::number(t.metaPx),              // %16
+             QString::number(t.cardMargin),          // %17
+             QString::number(t.cardPaddingY),        // %18
+             QString::number(t.cardPaddingX),        // %19
+             QString::number(t.labelPx),             // %20
+             QString::number(t.bodyFirstPaddingTop), // %21
+             QString::number(t.bodyFirstMarginTop)); // %22
 
     const QStringList lines = sourceText.split('\n');
     QString currentSlug;
@@ -1673,6 +1792,38 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     filterRow->addWidget(m_filterConsidered);
     filterRow->addWidget(m_filterCurrent);
     filterRow->addStretch(1);
+    // ANTS-1238 — density combo at trailing edge of filterRow.
+    // Order matches the Density enum (Compact=0, Cozy=1,
+    // Comfortable=2). m_density is the live source of truth;
+    // currentIndex is set from m_density. Combo signal flips
+    // m_density, persists to Config (when present), triggers
+    // rebuild(). Spec: docs/specs/ANTS-1238.md § 3.b.
+    //
+    // Config is optional (matches the existing `if (m_config)`
+    // guard pattern in this ctor — tests construct RoadmapDialog
+    // with cfg=nullptr). When null, m_density stays at its default
+    // Cozy initialiser and combo changes don't persist.
+    if (m_config) {
+        m_density = densityFromString(m_config->roadmapDensity());
+    }
+    m_densityCombo = new QComboBox(this);
+    m_densityCombo->setObjectName(QStringLiteral("roadmap-density-combo"));
+    m_densityCombo->addItem(tr("Compact"));      // index 0
+    m_densityCombo->addItem(tr("Cozy"));         // index 1 (default)
+    m_densityCombo->addItem(tr("Comfortable"));  // index 2
+    m_densityCombo->setCurrentIndex(densityToIndex(m_density));
+    m_densityCombo->setAccessibleName(tr("Roadmap card density"));
+    connect(m_densityCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) {
+                m_density = indexToDensity(idx);
+                if (m_config) {
+                    m_config->setRoadmapDensity(densityToString(m_density));
+                }
+                if (m_lastHtml) m_lastHtml->clear();  // bust dedup cache
+                rebuild();
+            });
+    filterRow->addWidget(m_densityCombo.data());
     root->addLayout(filterRow);
 
     // ANTS-1106 — Kind-faceted secondary filter. Empty by default
@@ -2499,6 +2650,7 @@ void RoadmapDialog::rebuild() {
     opts.tableSections = m_tableSections;
     opts.shippedDates = m_shippedDates;
     opts.lastTouchDates = m_lastTouchDates;
+    opts.density = m_density;  // ANTS-1238
     const QString html = renderCardsHtml(markdown, filter, signals_, m_themeName,
                                          m_sortOrder, predicate, m_kindFilter,
                                          opts);

@@ -47,6 +47,7 @@
 
 class Config;
 class QCheckBox;
+class QComboBox;
 class QLineEdit;
 class QListWidget;
 class QTabBar;
@@ -107,6 +108,16 @@ public:
     enum class SortOrder {
         Document,                 // top-to-bottom as authored
         DescendingChronological,  // top-level `## ` sections reversed
+    };
+
+    // ANTS-1238: card-density tier. Selects the per-CSS-class px
+    // values + vertical-padding scale that `renderCardsHtml` emits.
+    // Cozy preserves the pre-1238 byte-equal output. Spec:
+    // docs/specs/ANTS-1238.md § 2.f.
+    enum class Density {
+        Compact,      // 9/10/11/14 px tier; -2 px vs cozy w/ 9 floor
+        Cozy,         // 10/11/12/13/16 px — current default
+        Comfortable,  // 12/13/14/15/18 px tier; +2 px vs cozy
     };
 
     // Pure helpers — preset → mask + preset → sort. `presetMatching`
@@ -180,7 +191,14 @@ public:
         // 🚧 cards only.
         QHash<QString, qint64> lastTouchDates;
 
-        CardRenderOptions() : activePreset(Preset::Full) {}
+        // ANTS-1238 — selects the per-CSS-class px values
+        // emitted by renderCardsHtml. Default-constructed
+        // CardRenderOptions{} preserves the pre-1238 byte-equal
+        // cozy output (INV-1).
+        Density density;
+
+        CardRenderOptions() : activePreset(Preset::Full),
+                              density(Density::Cozy) {}
     };
 
     // ANTS-1154 — new card-style renderer. Walks `markdownText` and
@@ -439,6 +457,12 @@ private:
     // first refresh.
     QHash<QString, qint64> m_lastTouchDates;
     qint64 m_lastTouchDatesMtime = -1;
+    // ANTS-1238 — selected card-density tier. Default Cozy preserves
+    // pre-1238 byte-equal rendering (INV-1). Loaded from
+    // Config::roadmapDensity() in the ctor; written back on every
+    // QComboBox::currentIndexChanged from the density combo.
+    Density m_density = Density::Cozy;
+    QPointer<QComboBox> m_densityCombo;
     // ANTS-1236 — lazily-constructed cheatsheet overlay. Held by
     // QPointer so the parent's child-destruction sets us back to
     // null on close. INV-6 contract: reuse the same instance across

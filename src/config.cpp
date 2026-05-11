@@ -471,6 +471,32 @@ void Config::setRoadmapScrollAnchors(const QJsonObject &anchors) {
     save();
 }
 
+// ANTS-1238 — density tier selector. INV-4: unknown / missing /
+// non-string JSON value → "cozy" fallback.
+QString Config::roadmapDensity() const {
+    const QString name = m_data.value("roadmap_density").toString("cozy");
+    if (name == QStringLiteral("compact") ||
+        name == QStringLiteral("cozy") ||
+        name == QStringLiteral("comfortable")) {
+        return name;
+    }
+    return QStringLiteral("cozy");
+}
+
+void Config::setRoadmapDensity(const QString &name) {
+    // Mirror getter's known-set validation. Unknown values are
+    // silently dropped on write — same pattern as
+    // setRoadmapActivePreset (ANTS-1179).
+    static const QSet<QString> kKnown = {
+        QStringLiteral("compact"),
+        QStringLiteral("cozy"),
+        QStringLiteral("comfortable"),
+    };
+    if (!kKnown.contains(name)) return;
+    if (!storeIfChanged("roadmap_density", name)) return;
+    save();
+}
+
 QJsonObject Config::auditSeverityFilters() const {
     return m_data.value("audit_severity_filters").toObject();
 }

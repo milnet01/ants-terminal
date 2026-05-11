@@ -863,6 +863,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_shortcuts_cheatsheet/test_roadmap_shortcuts_cheatsheet.cpp
                 tests/features/roadmap_search_keybinds/test_roadmap_search_keybinds.cpp
                 tests/features/roadmap_inprogress_age/test_roadmap_inprogress_age.cpp
+                tests/features/roadmap_density/test_roadmap_density.cpp
                 tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp)
     target_compile_definitions(test_dialogs PRIVATE

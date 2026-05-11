@@ -99,6 +99,13 @@ public:
     QJsonObject roadmapScrollAnchors() const;
     void setRoadmapScrollAnchors(const QJsonObject &anchors);
 
+    // ANTS-1238 — RoadmapDialog density tier. Values: "compact" /
+    // "cozy" / "comfortable". Unknown / missing / non-string-JSON
+    // → "cozy" (graceful fallback — spec INV-4). Persistence-write
+    // failure is silent — see ANTS-1238 § 3.h.
+    QString roadmapDensity() const;
+    void setRoadmapDensity(const QString &name);
+
     // AuditDialog severity-filter pills. JSON shape:
     //   { "blocker", "critical", "major", "minor", "info" }
     // each value bool. Empty/missing → all 5 on.

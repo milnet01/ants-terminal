@@ -460,7 +460,12 @@ static int runMain(int argc, char **argv) {
         const std::string src = slurp(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("BodyFrame", "roadmapdialog.cpp not readable");
-        if (!contains(src, ".rm-body-first{padding-top:4px;"))
+        // ANTS-1238 parameterised the per-tier px values, so the
+        // padding-top literal now reads `%21px` (cozy tier maps to
+        // 4 via kDensityTable). Match the CSS rule prefix only;
+        // the cozy `4px` value is locked by the renderer's tier
+        // test (tests/features/roadmap_density/).
+        if (!contains(src, ".rm-body-first{padding-top:"))
             return fail("BodyFrame",
                 ".rm-body-first CSS rule missing in renderer");
         if (!contains(src, ".rm-body-line{padding-left:20px;"))
@@ -522,10 +527,17 @@ static int runMain(int argc, char **argv) {
         const std::string src = slurp(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("IdInline", "roadmapdialog.cpp not readable");
-        if (!contains(src, ".rm-id{font-family:monospace;font-size:12px;"))
+        // ANTS-1238 — `.rm-id` font-size was parameterised; the cozy
+        // value (12px) is locked by the renderer-tier test
+        // (tests/features/roadmap_density/, INV-1). Here we only
+        // assert the rule exists with the monospace font-family and
+        // a parameterised font-size placeholder pointing at the
+        // codePx tier slot.
+        if (!contains(src, ".rm-id{font-family:monospace;font-size:%15px;"))
             return fail("IdInline",
-                ".rm-id CSS rule must declare font-size:12px (was 10px on "
-                "the old meta row)");
+                ".rm-id CSS rule must declare font-family:monospace + "
+                "font-size:%15px (codePx tier slot — cozy value 12px "
+                "lives in kDensityTable)");
         // Old meta wrapper rule MUST NOT regress.
         if (contains(src, ".rm-meta{font-size:10px"))
             return fail("IdInline",
@@ -665,10 +677,14 @@ static int runMain(int argc, char **argv) {
             return fail("FilterA11y",
                 "m_filterDone visible label must be \"✅ Shipped\"");
         // INV-23: CSS rule for rm-state-label + nowrap on section counts.
-        if (!contains(src, ".rm-state-label{font-size:10px;color:%6;"))
+        // ANTS-1238 — `.rm-state-label` font-size was parameterised
+        // to the labelPx tier slot (%20); cozy value (10px) lives in
+        // kDensityTable and is locked by tests/features/roadmap_density/.
+        if (!contains(src, ".rm-state-label{font-size:%20px;color:%6;"))
             return fail("CssRule",
                 ".rm-state-label CSS rule missing or wrong "
-                "(must declare font-size:10px; color:%6;)");
+                "(must declare font-size:%20px [labelPx tier slot — "
+                "cozy 10px lives in kDensityTable]; color:%6;)");
         if (!contains(src, "white-space:nowrap"))
             return fail("CssRule",
                 ".rm-section-counts must include white-space:nowrap "
