@@ -12,9 +12,13 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QJsonObject>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
+#include <QApplication>
+#include <QClipboard>
 #include <QListWidget>
+#include <QMenu>
 #include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -336,25 +340,66 @@ QStringList RoadmapDialog::collectCurrentBullets() const {
     return out;
 }
 
+// ANTS-1154-INV-5: slugify a heading string for section-tracking.
+// Lowercase, non-alphanumeric runs collapse to `-`, leading/trailing
+// dashes trimmed. Stable across heading reorders so persisted
+// expand-state survives section moves.
+static QString slugifyHeading(const QString &heading) {
+    QString out;
+    out.reserve(heading.size());
+    bool prevDash = true;  // skip leading dashes
+    for (QChar c : heading) {
+        const QChar n = c.toLower();
+        if (n.isLetterOrNumber()) {
+            out.append(n);
+            prevDash = false;
+        } else if (!prevDash) {
+            out.append('-');
+            prevDash = true;
+        }
+    }
+    while (out.endsWith('-')) out.chop(1);
+    return out;
+}
+
 QVector<RoadmapDialog::BulletRecord>
 RoadmapDialog::parseBullets(const QString &markdownText) {
     QVector<BulletRecord> out;
     static const QRegularExpression rxId(QStringLiteral("\\[ANTS-(\\d+)\\]"));
     static const QRegularExpression rxBold(QStringLiteral("\\*\\*([^*]+)\\*\\*"));
     // MultilineOption so `^` anchors at the start of any line within
-    // the bullet body — Kind: / Lanes: live as continuation lines, not
-    // at the start of the string.
+    // the bullet body — Kind: / Lanes: / Layman: live as continuation
+    // lines, not at the start of the string.
     static const QRegularExpression rxKind(
         QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
     static const QRegularExpression rxLanes(
         QStringLiteral("^\\s*Lanes:\\s*(.+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
+    // ANTS-1154-INV-4: optional Layman: line — case-insensitive label,
+    // takes the rest of the line up to a period or newline.
+    static const QRegularExpression rxLayman(
+        QStringLiteral("^\\s*Layman:\\s*(.+?)\\s*[\\.\\n]"),
+        QRegularExpression::MultilineOption |
+        QRegularExpression::CaseInsensitiveOption);
 
     const QStringList lines = markdownText.split('\n');
+    QString currentSectionHeading;
+    int currentSectionLevel = 0;
     int i = 0;
     while (i < lines.size()) {
         const QString &raw = lines[i];
+        // ANTS-1154-INV-5: track the most recent ## or ### heading so
+        // each bullet can be attributed to its owning section without
+        // a second walk.
+        QString headingText;
+        const int level = headingLevel(raw, &headingText);
+        if (level == 2 || level == 3) {
+            currentSectionHeading = headingText;
+            currentSectionLevel = level;
+            ++i;
+            continue;
+        }
         // Top-level bullet: `^- ` or `^* ` (two-space indent is a
         // continuation, not a bullet — same rule as renderHtml).
         const bool isBullet = raw.startsWith(QStringLiteral("- ")) ||
@@ -383,6 +428,11 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
 
         BulletRecord rec;
         rec.status = status;
+        rec.sectionHeading = currentSectionHeading;
+        rec.sectionLevel = currentSectionLevel;
+        if (!currentSectionHeading.isEmpty()) {
+            rec.sectionSlug = slugifyHeading(currentSectionHeading);
+        }
 
         // Collect the bullet body — first line + subsequent indented
         // continuation lines until a blank line or another top-level
@@ -430,6 +480,12 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
                 if (!trimmed.isEmpty()) rec.lanes.append(trimmed);
             }
         }
+        // ANTS-1154-INV-4
+        const auto laymanMatch = rxLayman.match(body);
+        if (laymanMatch.hasMatch()) {
+            rec.layman = laymanMatch.captured(1).trimmed();
+        }
+        rec.body = body;
 
         out.append(rec);
     }
@@ -775,6 +831,429 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
     return html;
 }
 
+// ANTS-1154 v2 — card-style renderer. Built alongside renderHtml
+// (not as a replacement) so existing call sites and the
+// `tests/features/roadmap_viewer*` test suites keep passing. The
+// dialog's `rebuild()` switches to this renderer; everything else
+// (tests, future IPC consumers) keeps the original markdown-to-HTML
+// path.
+//
+// Implementation shape:
+//   1. Reorder sections if SortOrder::DescendingChronological.
+//   2. Pre-walk the source to build a per-section bullet list +
+//      visible-count summary under the current filter.
+//   3. Main walk emits headings (with count chips + collapse anchor)
+//      and, when a section is expanded, the bullets inside it as
+//      cards. Prose and section intros emit only on Preset::Full.
+//   4. Cards lay out as:
+//        row 1: state icon · kind chip · summary · expand toggle
+//        row 2: id chip · shipped date (muted)
+//        row 3+ (expanded only): body prose
+QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
+                                       unsigned filter,
+                                       const QStringList &currentBullets,
+                                       const QString &themeName,
+                                       SortOrder sortOrder,
+                                       const QString &searchPredicate,
+                                       const QSet<QString> &kindFilter,
+                                       const CardRenderOptions &opts) {
+    const QString sourceText =
+        (sortOrder == SortOrder::DescendingChronological)
+            ? reverseTopLevelSections(markdownText)
+            : markdownText;
+    const int idShorthand = parseIdShorthand(searchPredicate);
+    const QString idMarker =
+        idShorthand >= 0
+            ? QStringLiteral("[ANTS-%1]").arg(idShorthand)
+            : QString();
+    const QString plainSearch =
+        (idShorthand >= 0) ? QString() : searchPredicate.trimmed();
+
+    const Theme &th = Themes::byName(themeName);
+    const QString currentColor =
+        ClaudeTabIndicator::color(ClaudeTabIndicator::Glyph::ToolUse).name();
+    const bool wantDone = (filter & ShowDone) != 0;
+    const bool wantPlanned = (filter & ShowPlanned) != 0;
+    const bool wantInProgress = (filter & ShowInProgress) != 0;
+    const bool wantConsidered = (filter & ShowConsidered) != 0;
+    const bool wantCurrent = (filter & ShowCurrent) != 0;
+
+    QStringList signalsFuzzy;
+    signalsFuzzy.reserve(currentBullets.size());
+    for (const QString &s : currentBullets) {
+        const QString f = fuzzy(s);
+        if (f.size() >= 6) signalsFuzzy.append(f);
+    }
+    auto isCurrent = [&](const QString &bulletBody) {
+        if (signalsFuzzy.isEmpty()) return false;
+        const QString fHay = fuzzy(bulletPayload(bulletBody));
+        if (fHay.size() < 6) return false;
+        for (const QString &s : signalsFuzzy) {
+            if (fHay.contains(s) || s.contains(fHay)) return true;
+        }
+        return false;
+    };
+
+    // Kind emoji map — mirrors the kKinds table in the file-scope
+    // anonymous namespace, but indexed by Kind value for O(1) lookup
+    // during card emission.
+    auto kindGlyph = [](const QString &k) -> QString {
+        if (k == QStringLiteral("implement")) return QStringLiteral("✨");
+        if (k == QStringLiteral("fix")) return QStringLiteral("🐛");
+        if (k == QStringLiteral("audit-fix")) return QStringLiteral("🔍");
+        if (k == QStringLiteral("review-fix")) return QStringLiteral("🔁");
+        if (k == QStringLiteral("doc")) return QStringLiteral("📚");
+        if (k == QStringLiteral("doc-fix")) return QStringLiteral("📝");
+        if (k == QStringLiteral("refactor")) return QStringLiteral("🏗");
+        if (k == QStringLiteral("test")) return QStringLiteral("🧪");
+        if (k == QStringLiteral("chore")) return QStringLiteral("🧹");
+        if (k == QStringLiteral("release")) return QStringLiteral("🚢");
+        if (k == QStringLiteral("research")) return QStringLiteral("🔬");
+        if (k == QStringLiteral("ux")) return QStringLiteral("🎨");
+        return QString();
+    };
+
+    // Parse all bullets once so we can group by section and compute
+    // count chips per section header. parseBullets sets sectionSlug,
+    // status, kind, id, headline, layman, body for each record.
+    const QVector<BulletRecord> allBullets = parseBullets(sourceText);
+
+    auto passesFilter = [&](const BulletRecord &rec) -> bool {
+        // Status filter
+        bool statusOk = false;
+        if (rec.status == QStringLiteral("✅") && wantDone) statusOk = true;
+        else if (rec.status == QStringLiteral("📋") && wantPlanned) statusOk = true;
+        else if (rec.status == QStringLiteral("🚧") && wantInProgress) statusOk = true;
+        else if (rec.status == QStringLiteral("💭") && wantConsidered) statusOk = true;
+        // Current signal: rec is "current" if its body matches a
+        // CHANGELOG/[Unreleased] or recent-commit fuzzy hit.
+        const bool isCur = wantCurrent && isCurrent(rec.body);
+        if (!statusOk && !isCur) return false;
+
+        // Kind filter
+        if (!kindFilter.isEmpty()) {
+            if (rec.kind.isEmpty() || !kindFilter.contains(rec.kind))
+                return false;
+        }
+
+        // Search predicate
+        if (!idMarker.isEmpty()) {
+            if (!rec.body.contains(idMarker)) return false;
+        }
+        if (!plainSearch.isEmpty()) {
+            QString hay = rec.id + QStringLiteral(" ") + rec.headline
+                        + QStringLiteral(" ") + rec.layman
+                        + QStringLiteral(" ") + rec.body;
+            if (!hay.contains(plainSearch, Qt::CaseInsensitive)) return false;
+        }
+        return true;
+    };
+
+    // Group bullets by sectionSlug + count per status.
+    QHash<QString, QVector<const BulletRecord *>> bySection;
+    struct SectionCounts {
+        int done = 0, planned = 0, inProgress = 0, considered = 0;
+        int visible = 0;
+    };
+    QHash<QString, SectionCounts> countsBySection;
+    for (const BulletRecord &rec : allBullets) {
+        const QString slug = rec.sectionSlug;
+        if (!passesFilter(rec)) continue;
+        bySection[slug].append(&rec);
+        SectionCounts &c = countsBySection[slug];
+        c.visible++;
+        if (rec.status == QStringLiteral("✅")) c.done++;
+        else if (rec.status == QStringLiteral("📋")) c.planned++;
+        else if (rec.status == QStringLiteral("🚧")) c.inProgress++;
+        else if (rec.status == QStringLiteral("💭")) c.considered++;
+    }
+
+    // Build the HTML.
+    QString html;
+    html.reserve(sourceText.size() * 2);
+    html += QStringLiteral(
+        "<html><head><style>"
+        "body{font-family:sans-serif;color:%1;font-size:13px;}"
+        "p{margin:3px 0;}"
+        "h1,h2,h3,h4{color:%2;font-weight:bold;margin:4px 0 2px 0;}"
+        "h1{font-size:16px;} h2{font-size:13px;}"
+        "h3{font-size:12px;} h4{font-size:11px;}"
+        "code{background:%3;padding:0 4px;border-radius:3px;font-size:12px;}"
+        "a{color:%2;text-decoration:none;}"
+        "a:hover{text-decoration:underline;}"
+        ".rm-section-toggle{font-weight:normal;font-size:13px;padding-right:12px;padding-left:4px;}"
+        ".rm-section-title{color:inherit;text-decoration:none;}"
+        ".rm-section-title:hover{text-decoration:underline;}"
+        ".rm-section-counts{font-weight:normal;font-size:11px;color:%6;padding-right:10px;}"
+        ".rm-parent{font-weight:normal;font-size:11px;color:%6;padding-left:8px;}"
+        ".rm-card{margin:2px 0;padding:4px 8px;border-left:3px solid %5;background:%3;}"
+        ".rm-card.rm-current{border-left-color:%4;background:rgba(229,194,74,0.08);}"
+        ".rm-state{font-size:13px;padding-right:6px;}"
+        ".rm-kind{font-size:11px;color:%6;padding-right:6px;}"
+        ".rm-summary{font-size:13px;}"
+        ".rm-toggle{font-size:12px;color:%6;padding-left:12px;padding-right:4px;}"
+        ".rm-meta{font-size:10px;color:%6;padding-top:1px;}"
+        ".rm-id{font-family:monospace;padding-right:6px;}"
+        ".rm-body{padding-top:4px;padding-left:20px;border-top:1px dotted %5;margin-top:2px;font-size:13px;}"
+        "table{border-collapse:collapse;}"
+        "td,th{border:1px solid %5;padding:2px 6px;font-size:12px;}"
+        "</style></head><body>")
+        .arg(th.textPrimary.name(),         // %1
+             th.textPrimary.name(),         // %2
+             th.bgSecondary.name(),         // %3
+             currentColor,                  // %4
+             th.border.name(),              // %5
+             th.textSecondary.name());      // %6
+
+    const QStringList lines = sourceText.split('\n');
+    QString currentSlug;
+    QString currentH2Text;        // most recent h2 (parent for h3 breadcrumb)
+    bool sectionVisible = true;   // section header emitted?
+    bool sectionExpanded = false; // user has opened this section?
+    int headingIdx = 0;
+
+    auto emitSectionHeader = [&](int level, const QString &text,
+                                 const QString &slug,
+                                 const SectionCounts &c,
+                                 const QString &parentH2 = QString()) {
+        const QString anchor = tocAnchorAt(headingIdx++);
+        html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
+        const QString chevron = sectionExpanded
+            ? QStringLiteral("▾") : QStringLiteral("▸");
+        const QString verb = sectionExpanded
+            ? QStringLiteral("collapse-section")
+            : QStringLiteral("expand-section");
+        html += QStringLiteral("<h%1>").arg(level);
+        html += QStringLiteral(
+            "<a class=\"rm-section-toggle\" href=\"ants://%1/%2\">%3</a>")
+            .arg(verb, slug, chevron);
+        // ANTS-1154 — section status counts lead the title so a partially-
+        // sighted scan reads "4 done / 1 in-progress" before parsing the
+        // section name.
+        QString chips;
+        if (c.done > 0) chips += QStringLiteral("✅ %1 ").arg(c.done);
+        if (c.inProgress > 0) chips += QStringLiteral("🚧 %1 ").arg(c.inProgress);
+        if (c.planned > 0) chips += QStringLiteral("📋 %1 ").arg(c.planned);
+        if (c.considered > 0) chips += QStringLiteral("💭 %1 ").arg(c.considered);
+        if (!chips.isEmpty()) {
+            html += QStringLiteral(
+                "<span class=\"rm-section-counts\">%1</span>")
+                .arg(chips.trimmed());
+        }
+        // Title is also a toggle target — clicking the heading text
+        // toggles expand/collapse, not just the chevron. Same href as
+        // the chevron above. A11y win for low-precision pointing.
+        html += QStringLiteral(
+            "<a class=\"rm-section-title\" href=\"ants://%1/%2\">%3</a>")
+            .arg(verb, slug, applyInline(text));
+        // Parent-h2 breadcrumb on h3 headers — disambiguates orphan
+        // sub-sections (e.g. three different "Performance" h3s) when
+        // their parent h2 was suppressed on non-Full tabs.
+        if (level == 3 && !parentH2.isEmpty()) {
+            html += QStringLiteral(
+                "<a class=\"rm-section-title\" href=\"ants://%1/%2\">"
+                "<span class=\"rm-parent\">· %3</span></a>")
+                .arg(verb, slug, htmlEscape(parentH2));
+        }
+        html += QStringLiteral("</h%1>").arg(level);
+    };
+
+    auto emitCard = [&](const BulletRecord &rec) {
+        const bool expanded = opts.expandedItems.contains(rec.id);
+        const QString verb = expanded
+            ? QStringLiteral("collapse")
+            : QStringLiteral("expand");
+        const QString chevron = expanded
+            ? QStringLiteral("▴") : QStringLiteral("▾");
+        // ANTS-1154-INV-1
+        html += QStringLiteral("<div class=\"rm-card%1\" id=\"rm-%2\">")
+                    .arg(isCurrent(rec.body) ? QStringLiteral(" rm-current") : QString(),
+                         rec.id);
+        // Row 1
+        html += QStringLiteral("<span class=\"rm-state\">%1</span>")
+                    .arg(rec.status);
+        if (!rec.kind.isEmpty()) {
+            const QString glyph = kindGlyph(rec.kind);
+            html += QStringLiteral("<span class=\"rm-kind\">%1 %2</span>")
+                        .arg(glyph, rec.kind);
+        }
+        // Summary: layman if set, else headline with leading "ANTS-NNNN — " stripped
+        QString summary = rec.layman;
+        if (summary.isEmpty()) {
+            summary = rec.headline;
+            // Strip leading ANTS-NNNN — token (the ID is shown
+            // separately on the meta row).
+            static const QRegularExpression rxLeadId(
+                QStringLiteral("^ANTS-\\d+\\s*[—-]\\s*"));
+            summary.remove(rxLeadId);
+        }
+        html += QStringLiteral("<span class=\"rm-summary\">%1</span>")
+                    .arg(htmlEscape(summary));
+        html += QStringLiteral(
+            "<a class=\"rm-toggle\" href=\"ants://%1/%2\">[%3]</a>")
+            .arg(verb, rec.id, chevron);
+        // Row 2 (meta)
+        const QString hashedId = rec.id.startsWith(QStringLiteral("ANTS-"))
+            ? QStringLiteral("#") + rec.id.mid(5)
+            : QStringLiteral("#") + rec.id;
+        html += QStringLiteral(
+            "<div class=\"rm-meta\"><span class=\"rm-id\">%1</span>")
+            .arg(htmlEscape(hashedId));
+        if (rec.status == QStringLiteral("✅")) {
+            const QString date = opts.shippedDates.value(rec.id);
+            if (!date.isEmpty()) {
+                html += QStringLiteral(
+                    "<span class=\"rm-date\">· %1</span>").arg(date);
+            }
+        }
+        html += QStringLiteral("</div>");
+        // Body (expanded only)
+        if (expanded) {
+            html += QStringLiteral("<div class=\"rm-body\">");
+            const QStringList bodyLines = rec.body.split('\n');
+            for (int bi = 0; bi < bodyLines.size(); ++bi) {
+                if (bodyLines[bi].trimmed().isEmpty()) continue;
+                html += QStringLiteral("<p>%1</p>")
+                            .arg(applyInline(bodyLines[bi]));
+            }
+            html += QStringLiteral("</div>");
+        }
+        html += QStringLiteral("</div>");  // rm-card
+    };
+
+    auto skipBulletBlockAt = [&](int i) -> int {
+        // Skip the bullet's continuation lines so the outer walk
+        // doesn't re-emit them as prose.
+        int j = i + 1;
+        while (j < lines.size()) {
+            const QString &cont = lines[j];
+            if (cont.trimmed().isEmpty()) break;
+            if (cont.startsWith(QStringLiteral("- ")) ||
+                cont.startsWith(QStringLiteral("* "))) break;
+            if (cont.startsWith(QStringLiteral("  "))) { ++j; continue; }
+            break;
+        }
+        return j - 1;
+    };
+
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &raw = lines[i];
+
+        QString hText;
+        const int level = headingLevel(raw, &hText);
+
+        if (level == 1) {
+            // File title — emit only on Full (large heading).
+            const QString anchor = tocAnchorAt(headingIdx++);
+            html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
+            html += QStringLiteral("<h1>") + applyInline(hText)
+                  + QStringLiteral("</h1>");
+            continue;
+        }
+        if (level == 2 || level == 3) {
+            if (level == 2) {
+                currentH2Text = hText;
+                // Skip the "Table of Contents" h2 — the QListWidget nav
+                // pane is the canonical TOC; rendering it inline is
+                // duplicate noise.
+                if (hText.compare(QStringLiteral("Table of Contents"),
+                                  Qt::CaseInsensitive) == 0) {
+                    sectionVisible = false;
+                    sectionExpanded = false;
+                    continue;
+                }
+            }
+            const QString slug = slugifyHeading(hText);
+            currentSlug = slug;
+            sectionExpanded = opts.expandedSections.contains(slug);
+            const SectionCounts c = countsBySection.value(slug);
+            // INV-12: on non-Full, suppress sections with 0 visible bullets.
+            sectionVisible = (opts.activePreset == Preset::Full) || c.visible > 0;
+            if (sectionVisible) {
+                emitSectionHeader(level, hText, slug, c,
+                                  level == 3 ? currentH2Text : QString());
+                // If expanded, emit its bullets as cards.
+                if (sectionExpanded) {
+                    const QVector<const BulletRecord *> &bullets = bySection.value(slug);
+                    for (const BulletRecord *rec : bullets) {
+                        emitCard(*rec);
+                    }
+                }
+            }
+            continue;
+        }
+        if (level == 4) {
+            if (opts.activePreset == Preset::Full && sectionVisible
+                && sectionExpanded) {
+                const QString anchor = tocAnchorAt(headingIdx++);
+                html += QStringLiteral("<a name=\"%1\"></a>").arg(anchor);
+                html += QStringLiteral("<h4>") + applyInline(hText)
+                      + QStringLiteral("</h4>");
+            }
+            continue;
+        }
+
+        // Top-level bullet — handled above via bySection map when its
+        // section emits. Skip the line + its continuation here so the
+        // outer walk doesn't double-emit it as prose.
+        const bool isBullet = raw.startsWith(QStringLiteral("- ")) ||
+                              raw.startsWith(QStringLiteral("* "));
+        if (isBullet) {
+            i = skipBulletBlockAt(i);
+            continue;
+        }
+
+        // Prose / narration / section-intros. INV-11.
+        if (opts.activePreset != Preset::Full) continue;
+        if (!sectionVisible || !sectionExpanded) continue;
+        if (raw.trimmed().isEmpty()) continue;
+        html += QStringLiteral("<p>") + applyInline(raw)
+              + QStringLiteral("</p>");
+    }
+
+    html += QStringLiteral("</body></html>");
+    return html;
+}
+
+// ANTS-1154 — Walk CHANGELOG.md and build an ANTS-NNNN → date map.
+// Section heading shape (Keep-a-Changelog convention):
+//   ## [0.7.82] — 2026-05-11
+//   ## [Unreleased]
+// Every ANTS-NNNN token in the section body inherits that date. The
+// [Unreleased] block has no date; its IDs map to an empty string and
+// thus the card emits no date row (graceful for in-flight ✅).
+QHash<QString, QString>
+RoadmapDialog::parseShippedDates(const QString &changelogPath) {
+    QHash<QString, QString> out;
+    QFile f(changelogPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
+    static const QRegularExpression rxHeading(
+        QStringLiteral("^##\\s*\\[([^\\]]+)\\]\\s*(?:[—-]\\s*(\\d{4}-\\d{2}-\\d{2}))?"));
+    static const QRegularExpression rxId(
+        QStringLiteral("\\bANTS-(\\d+)\\b"));
+    QString currentDate;
+    while (!f.atEnd()) {
+        const QString line = QString::fromUtf8(f.readLine()).trimmed();
+        const auto hm = rxHeading.match(line);
+        if (hm.hasMatch()) {
+            currentDate = hm.captured(2);  // empty if [Unreleased]
+            continue;
+        }
+        if (currentDate.isEmpty()) continue;
+        // Match all ANTS-NNNN tokens in the line.
+        auto it = rxId.globalMatch(line);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            const QString id = QStringLiteral("ANTS-") + m.captured(1);
+            // First-wins: keep the earliest shipped date for any ID
+            // that appears in multiple versions (e.g. a follow-on
+            // patch references the original).
+            if (!out.contains(id)) out.insert(id, currentDate);
+        }
+    }
+    return out;
+}
+
 RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                              const QString &themeName,
                              QWidget *parent,
@@ -914,6 +1393,18 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // stray markdown link can't replace the document.
     m_viewer->setOpenLinks(false);
     m_viewer->setOpenExternalLinks(false);
+    // ANTS-1154: card / section toggle anchors use the `ants://` URL
+    // scheme. The handler dispatches by URL verb and mutates the
+    // relevant Config state set.
+    connect(m_viewer, &QTextBrowser::anchorClicked,
+            this, &RoadmapDialog::handleAnchorClicked);
+    // Custom context menu — the auto-generated one parents its popup
+    // to the QTextBrowser, which on Wayland (frameless translucent
+    // parent stack on this build) makes Copy a no-op and traps the
+    // popup so outside-clicks don't dismiss it. See QTBUG-79126.
+    m_viewer->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_viewer, &QWidget::customContextMenuRequested,
+            this, &RoadmapDialog::showViewerContextMenu);
     splitter->addWidget(m_viewer);
 
     splitter->setStretchFactor(0, 0);
@@ -948,6 +1439,53 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // QPushButton route (no role-based dispatch) is what bg-tasks /
     // settings dialogs use successfully on this stack.
     auto *btnRow = new QHBoxLayout;
+    // ANTS-1154 — Refresh button: force a re-read + rebuild. Bound to
+    // F5 via QShortcut below. Live updates already fire on file
+    // changes via QFileSystemWatcher, so this is the safety net for
+    // cases where the watcher misses a change (atomic-rename, NFS).
+    auto *refreshBtn = new QPushButton(tr("Refresh"), this);
+    refreshBtn->setObjectName(QStringLiteral("roadmap-refresh-button"));
+    refreshBtn->setShortcut(QKeySequence(Qt::Key_F5));
+    connect(refreshBtn, &QPushButton::clicked, this, [this]() {
+        if (m_lastHtml) m_lastHtml->clear();  // bust the dedup cache
+        refreshShippedDatesIfStale();
+        rebuild();
+    });
+    btnRow->addWidget(refreshBtn);
+    // ANTS-1154 — Reset View button: clear active-tab expand state
+    // and search, restore filter checkboxes to the active preset's
+    // default. Does not change the active tab (INV-15). Asks for
+    // confirmation via a small inline label change rather than a
+    // modal — partially sighted users do better without surprise
+    // modals.
+    auto *resetBtn = new QPushButton(tr("Reset View"), this);
+    resetBtn->setObjectName(QStringLiteral("roadmap-reset-button"));
+    connect(resetBtn, &QPushButton::clicked, this, [this, resetBtn]() {
+        // First click: warn. Second click: do it.
+        const QString armed = tr("Reset View (click again to confirm)");
+        if (resetBtn->text() != armed) {
+            resetBtn->setText(armed);
+            QTimer::singleShot(3000, resetBtn, [resetBtn]() {
+                resetBtn->setText(tr("Reset View"));
+            });
+            return;
+        }
+        resetBtn->setText(tr("Reset View"));
+        m_expandedItems.clear();
+        m_expandedSections.clear();
+        m_tableSections.clear();
+        if (m_searchBox) m_searchBox->clear();
+        m_kindFilter.clear();
+        for (auto it = m_kindCheckboxes.constBegin();
+                  it != m_kindCheckboxes.constEnd(); ++it) {
+            QSignalBlocker block(it.value());
+            it.value()->setChecked(false);
+        }
+        // Re-apply current preset's default status mask + sort. Same
+        // path as a tab click, but without changing the tab.
+        applyPreset(m_activePreset);
+    });
+    btnRow->addWidget(resetBtn);
     btnRow->addStretch();
     auto *closeBtn = new QPushButton(tr("Close"), this);
     closeBtn->setObjectName(QStringLiteral("roadmap-close-button"));
@@ -1063,7 +1601,16 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         // re-renders with the restored filter, even if a watcher
         // fire raced ahead.
         if (m_lastHtml) m_lastHtml->clear();
+
+        // ANTS-1154: restore card / section / table expand state.
+        const QStringList exItems = m_config->roadmapExpandedItems();
+        m_expandedItems = QSet<QString>(exItems.begin(), exItems.end());
+        const QStringList exSecs = m_config->roadmapExpandedSections();
+        m_expandedSections = QSet<QString>(exSecs.begin(), exSecs.end());
+        const QStringList tabSecs = m_config->roadmapTableSections();
+        m_tableSections = QSet<QString>(tabSecs.begin(), tabSecs.end());
     }
+    refreshShippedDatesIfStale();
 
     // (2) Persisted preset.
     Preset persisted = Preset::Full;
@@ -1115,8 +1662,87 @@ void RoadmapDialog::closeEvent(QCloseEvent *event) {
         const QByteArray bytes = saveGeometry();
         m_config->setRoadmapDialogGeometry(
             QString::fromLatin1(bytes.toBase64()));
+        // ANTS-1154 — persist card / section / table state on close.
+        m_config->setRoadmapExpandedItems(
+            QStringList(m_expandedItems.begin(), m_expandedItems.end()));
+        m_config->setRoadmapExpandedSections(
+            QStringList(m_expandedSections.begin(), m_expandedSections.end()));
+        m_config->setRoadmapTableSections(
+            QStringList(m_tableSections.begin(), m_tableSections.end()));
     }
     QDialog::closeEvent(event);
+}
+
+// ANTS-1154 — anchorClicked handler for `ants://` URLs emitted by
+// renderCardsHtml. Dispatches by verb: expand / collapse toggle a
+void RoadmapDialog::showViewerContextMenu(const QPoint &pos) {
+    if (!m_viewer) return;
+    // Parent the menu to the dialog top-level (not m_viewer) so the
+    // Wayland xdg_popup attaches to the dialog's surface, which has a
+    // stable role. Parenting to m_viewer can produce a popup whose
+    // surface the compositor never grants input to.
+    auto *menu = new QMenu(this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    const bool hasSelection = m_viewer->textCursor().hasSelection();
+    auto *copyAct = menu->addAction(tr("Copy"));
+    copyAct->setEnabled(hasSelection);
+    copyAct->setShortcut(QKeySequence::Copy);
+    connect(copyAct, &QAction::triggered, this, [this]() {
+        if (m_viewer) m_viewer->copy();
+    });
+    auto *selectAllAct = menu->addAction(tr("Select All"));
+    selectAllAct->setShortcut(QKeySequence::SelectAll);
+    connect(selectAllAct, &QAction::triggered, this, [this]() {
+        if (m_viewer) m_viewer->selectAll();
+    });
+    menu->popup(m_viewer->viewport()->mapToGlobal(pos));
+}
+
+// card's ID in m_expandedItems; expand-section / collapse-section
+// toggle a section's slug in m_expandedSections; table toggles a
+// section's slug in m_tableSections. Each mutation triggers a
+// rebuild so the new state renders immediately.
+void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
+    if (link.scheme() != QLatin1String("ants")) {
+        // Internal-anchor jumps (`#roadmap-toc-N`) come through here
+        // too because setOpenLinks(false) routes ALL anchor clicks
+        // to this signal. Pass them to scrollToAnchor.
+        if (m_viewer && !link.fragment().isEmpty()) {
+            m_viewer->scrollToAnchor(link.fragment());
+        }
+        return;
+    }
+    const QString verb = link.host();
+    // QUrl strips the leading `/` of the path — `ants://expand/ANTS-1145`
+    // gives host="expand", path="/ANTS-1145".
+    QString target = link.path();
+    if (target.startsWith('/')) target.remove(0, 1);
+    if (target.isEmpty()) return;
+
+    if (verb == QLatin1String("expand")) {
+        m_expandedItems.insert(target);
+    } else if (verb == QLatin1String("collapse")) {
+        m_expandedItems.remove(target);
+    } else if (verb == QLatin1String("expand-section")) {
+        m_expandedSections.insert(target);
+    } else if (verb == QLatin1String("collapse-section")) {
+        m_expandedSections.remove(target);
+    } else if (verb == QLatin1String("table")) {
+        if (m_tableSections.contains(target)) m_tableSections.remove(target);
+        else m_tableSections.insert(target);
+    } else {
+        return;  // unknown verb
+    }
+    scheduleRebuild();
+}
+
+void RoadmapDialog::refreshShippedDatesIfStale() {
+    if (m_changelogPath.isEmpty()) return;
+    const QFileInfo fi(m_changelogPath);
+    const qint64 mtime = fi.lastModified().toMSecsSinceEpoch();
+    if (mtime == m_shippedDatesMtime && !m_shippedDates.isEmpty()) return;
+    m_shippedDates = parseShippedDates(m_changelogPath);
+    m_shippedDatesMtime = mtime;
 }
 
 void RoadmapDialog::applyPreset(Preset p) {
@@ -1390,8 +2016,18 @@ void RoadmapDialog::rebuild() {
 
     const QStringList signals_ = collectCurrentBullets();
     const QString predicate = m_searchBox ? m_searchBox->text() : QString();
-    const QString html = renderHtml(markdown, filter, signals_, m_themeName,
-                                    m_sortOrder, predicate, m_kindFilter);
+    // ANTS-1154: refresh the shipped-date cache if CHANGELOG.md has
+    // changed since the last render. Cheap stat-only check.
+    refreshShippedDatesIfStale();
+    CardRenderOptions opts;
+    opts.activePreset = m_activePreset;
+    opts.expandedItems = m_expandedItems;
+    opts.expandedSections = m_expandedSections;
+    opts.tableSections = m_tableSections;
+    opts.shippedDates = m_shippedDates;
+    const QString html = renderCardsHtml(markdown, filter, signals_, m_themeName,
+                                         m_sortOrder, predicate, m_kindFilter,
+                                         opts);
 
     if (m_lastHtml && *m_lastHtml == html) return;  // skip identical re-render
 

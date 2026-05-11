@@ -402,6 +402,75 @@ void Config::setRoadmapStatusFilters(const QJsonObject &filters) {
     save();
 }
 
+// ANTS-1154 v2 card-renderer state. Three string-set keys for
+// per-item / per-section expand state and table-mode toggles.
+// Stored as JSON arrays of strings for diffability — the dialog
+// reads them into QSet<QString> at open and writes them sorted
+// at close, same pattern as roadmap_kind_filters.
+
+static QStringList readStringList(const QJsonObject &data,
+                                  const char *key) {
+    const QJsonArray arr = data.value(QLatin1String(key)).toArray();
+    QStringList out;
+    out.reserve(arr.size());
+    for (const QJsonValue &v : arr) {
+        const QString s = v.toString();
+        if (!s.isEmpty()) out.append(s);
+    }
+    return out;
+}
+
+QStringList Config::roadmapExpandedItems() const {
+    return readStringList(m_data, "roadmap_expanded_items");
+}
+
+void Config::setRoadmapExpandedItems(const QStringList &ids) {
+    QStringList sorted = ids;
+    sorted.removeDuplicates();
+    sorted.sort();
+    QJsonArray arr;
+    for (const QString &s : sorted) arr.append(s);
+    if (!storeIfChanged("roadmap_expanded_items", arr)) return;
+    save();
+}
+
+QStringList Config::roadmapExpandedSections() const {
+    return readStringList(m_data, "roadmap_expanded_sections");
+}
+
+void Config::setRoadmapExpandedSections(const QStringList &slugs) {
+    QStringList sorted = slugs;
+    sorted.removeDuplicates();
+    sorted.sort();
+    QJsonArray arr;
+    for (const QString &s : sorted) arr.append(s);
+    if (!storeIfChanged("roadmap_expanded_sections", arr)) return;
+    save();
+}
+
+QStringList Config::roadmapTableSections() const {
+    return readStringList(m_data, "roadmap_table_sections");
+}
+
+void Config::setRoadmapTableSections(const QStringList &slugs) {
+    QStringList sorted = slugs;
+    sorted.removeDuplicates();
+    sorted.sort();
+    QJsonArray arr;
+    for (const QString &s : sorted) arr.append(s);
+    if (!storeIfChanged("roadmap_table_sections", arr)) return;
+    save();
+}
+
+QJsonObject Config::roadmapScrollAnchors() const {
+    return m_data.value("roadmap_scroll_anchors").toObject();
+}
+
+void Config::setRoadmapScrollAnchors(const QJsonObject &anchors) {
+    if (!storeIfChanged("roadmap_scroll_anchors", anchors)) return;
+    save();
+}
+
 QJsonObject Config::auditSeverityFilters() const {
     return m_data.value("audit_severity_filters").toObject();
 }

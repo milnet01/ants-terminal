@@ -5373,9 +5373,15 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
     `roadmap-format.md` v1 → v2; add optional `Layman:` field;
     universal `TASK-NNNN` IDs (legacy `ANTS-NNNN` preserved);
     three new `Kind:` values; `<!-- ants-roadmap-format: 2 -->`
-    marker propagation. **Status: 📋 not yet shipped** — both
-    `roadmap-format.md` and `ROADMAP.md` still carry the v1
-    marker as of 0.7.82.
+    marker propagation. **Status: 🟡 partially shipped via
+    ANTS-1154 (2026-05-11)** — the optional `Layman:` line landed
+    additively on v1 (no pragma bump). Deferred for lack of an
+    immediate consumer: universal `TASK-NNNN` IDs (the user
+    confirmed `ANTS-NNNN` stays the project prefix; cross-project
+    rollout in P5 is the only context that needs `TASK-NNNN`),
+    the three new `Kind:` values, and the v2 format-pragma bump.
+    See §1156 sub-(2) for the open spin-out path; this P1 entry
+    closes against ANTS-1154 for the layman portion only.
   - **P2 — Status-bar widget refresh on launch (3 widgets, 1
     commit).** Wire `refreshRoadmapButton` and
     `refreshRepoVisibility` to the 2 s `m_statusTimer` so the
@@ -5388,35 +5394,53 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
     the markdown parser into a reusable `roadmap_parser` library;
     add the Phase-1 IPC verbs (`roadmap-allocate-id`,
     `roadmap-bump-counter`, `roadmap-archive`, `roadmap-validate`,
-    `roadmap-query` v2). **Status: 📋 not yet shipped.**
-  - **P4 — Dialog rewrite (multiple commits).** Replace the
-    `QTextBrowser` rendering with a `QListView` + custom
-    `QStyledItemDelegate` — one card per actionable bullet
-    (collapsed / open-Layman / open-Detail). Section headings
-    become collapsible row widgets. Filters compose via AND.
-    Persistence migrates from single-key `Config::roadmap*`
-    entries to a per-project TOML file at
-    `~/.config/ants-terminal/roadmap-state.toml` keyed by SHA-1
-    of the project path. **Status: 📋 not yet shipped.**
+    `roadmap-query` v2). **Status: 📋 not yet shipped.** Unchanged
+    by ANTS-1154 — the parser stays inline in `roadmapdialog.cpp`
+    and the new IPC verbs aren't implemented. P3 is the natural
+    follow-on once a Claude-side consumer needs the verbs (e.g.
+    an MCP `roadmap` capability per §1156 sub-(4)).
+  - **P4 — Dialog rewrite (multiple commits).** **Status: ✅
+    shipped 2026-05-11 via ANTS-1154** — the user-facing goals
+    (one card per actionable bullet, collapsed/open states,
+    collapsible section headings, AND-composed filters) all
+    landed, but via a different mechanism than this entry
+    originally proposed: HTML cards inside the existing
+    `QTextBrowser` (driven by `renderCardsHtml` + the
+    `ants://expand/<id>` URL scheme handled by
+    `anchorClicked`), not a `QListView` + custom
+    `QStyledItemDelegate`. The user explicitly chose
+    augmentation over rewrite on 2026-05-11. Persistence uses
+    four `Config::roadmap*` keys (expanded items / expanded
+    sections / table sections / scroll anchors) rather than a
+    per-project TOML file — same robustness properties (atomic
+    write via Qt's existing `Config::save` path) without
+    introducing a new disk format. The scroll-anchor capture +
+    restore wiring is the one piece of P4's "Persistence
+    migrates" sub-bullet not yet wired (the Config key is
+    reserved). Test: `tests/features/roadmap_dialog_cards/`.
   - **P5 — Cross-project rollout (sketch).** Roll the v2 format
-    out to other Ants App-Build projects.
+    out to other Ants App-Build projects. Unchanged.
   - **P6 — IPC Phase 2 verbs (sketch).** `roadmap-edit`,
-    `roadmap-add-bullet`, schema-versioned writers.
+    `roadmap-add-bullet`, schema-versioned writers. Unchanged.
   Acceptance criteria (full set in spec §10): Current tab shows
   ≤ 5 cards on a typical project; vibe-coder readability of
   every actionable bullet's `Layman:` line; first-viewport paint
   under 200 ms on a 250 KiB `ROADMAP.md`; 60 fps scroll on
-  1.5 MiB. Memory budget: dialog parse holds at most one
-  `RoadmapModel` per dialog instance (released on close); no
-  per-tab caching; per-project TOML file capped at 4 KiB
-  (one row per persisted UI state, bounded by ID count).
-  **Layman:** the Roadmap dialog is going to be redesigned so
-  it's readable at a glance — the whole thing renders one card
-  per item, with a one-sentence plain-English summary by default
-  and full technical detail on click. The bug where the RoadMap
-  button at the bottom of the window was hidden until you
-  switched tabs is already fixed (shipped in 0.7.78). The bigger
-  redesign is still in progress.
+  1.5 MiB. The first two criteria are met by ANTS-1154 (subject
+  to user verification on relaunch); the latency / fps criteria
+  are inherited from the underlying `QTextBrowser` widget which
+  ANTS-1154 kept in place.
+  Memory budget: dialog parse holds at most one parsed-bullet
+  list per render (released on rebuild); no per-tab caching; the
+  four Config keys hold ID/slug sets capped by document size
+  (~64 KiB total per §6.1 of `docs/specs/ANTS-1154.md`).
+  **Layman:** the Roadmap dialog redesign is mostly done — the
+  RoadMap-button-hidden bug (P2) was fixed in 0.7.78, and the
+  big card-style redesign (P4) shipped via ANTS-1154 in the
+  working tree on 2026-05-11. What's left: a deeper parser
+  carve-out + new IPC verbs (P3) for future Claude integration,
+  and the cross-project rollout (P5, P6) once we want other
+  projects on the same shape.
   Kind: feature/fix. Source: user-2026-05-07.
   Lanes: roadmapdialog, roadmapstatuswidgets, remotecontrol,
   docs/standards/roadmap-format.md.
@@ -7641,8 +7665,9 @@ here.)
   incrementally; capability 5 follows once (2-4) ship with one
   project's worth of data; capability 6 is the integration with
   ANTS-1117's existing `roadmap-query` / `roadmap-status` IPC
-  verbs and ANTS-1154's tagged-text v2 (so the fold-in chain
-  is grep-able by tag).
+  verbs. (Original cross-reference to ANTS-1154's tagged-text v2
+  is retired — see §1156 sub-(2): the v2 format work was deferred
+  out of 1154's narrowed scope and is now an open spin-out.)
 
   **Cross-references** to other roadmap items:
 
@@ -7651,12 +7676,15 @@ here.)
     findings into the roadmap. 1157 is the consumer side: read
     the audit history *back out* of the roadmap once the
     automation lands.
-  - **ANTS-1154** (Tagged-text format v2) — `<!-- kind:audit-fix
-    -->` / `<!-- kind:review-fix -->` tags become the
-    machine-readable bridge between ROADMAP.md entries and the
-    audit-history fingerprints; this lets capability 6's
-    fold-in-chain rendering be a deterministic parse, not a
-    prose-shape inference.
+  - **Future tagged-text v2** (deferred out of ANTS-1154's
+    narrowed scope — see §1156 sub-(2)) — once tags like
+    `<!-- kind:audit-fix -->` / `<!-- kind:review-fix -->` land,
+    they become the machine-readable bridge between ROADMAP.md
+    entries and the audit-history fingerprints; this lets
+    capability 6's fold-in-chain rendering be a deterministic
+    parse, not a prose-shape inference. Until then, capability 6
+    can rely on the existing `Kind:` line metadata which
+    `parseBullets` already extracts.
 
   **Out of scope** (for this bullet — spin off as children if
   decisions land): centralized hosted dashboard (DefectDojo-as-
@@ -7705,17 +7733,21 @@ here.)
     "~150 KiB" but doesn't define rotation cadence — once per
     release? once per major? on demand?).
 
-  **(2) Tagging the different kinds of roadmap items** — already
-  covered by **ANTS-1154** (tagged-text v2: `<!-- kind:* -->`
-  comments on every bullet, `<!-- header:* -->` on headers,
-  `<!-- prose -->` on prose-only paragraphs, format-version
-  pragma). No duplication needed; this sub-question's answer is
-  "1154's spec is the contract."
+  **(2) Tagging the different kinds of roadmap items** — open.
+  Originally folded under ANTS-1154 (tagged-text v2:
+  `<!-- kind:* -->` / `<!-- header:* -->` / `<!-- prose -->`
+  comments + format-version pragma bump). ANTS-1154's scope was
+  narrowed to presentation-only on 2026-05-11; the format-v2 work
+  is now an open spin-out from this sub-question. Until/unless a
+  consumer needs richer machine-readable tags than the existing
+  `Kind:` / `Lanes:` / `Source:` / `Layman:` lines (which
+  `parseBullets` already extracts), no work is pending. Spin out
+  as a child item if a consumer surfaces.
 
   **(3) Ants Terminal ↔ roadmap integration** — partially
-  covered by **ANTS-1154** (RoadmapDialog tab filtering on tags)
-  and the existing `roadmap-query` IPC verb (ANTS-1117). Open
-  questions:
+  covered by **ANTS-1154** (RoadmapDialog v2 card-style rendering
+  + strict tab-relevance) and the existing `roadmap-query` IPC
+  verb (ANTS-1117). Open questions:
 
     a. *Per-tab roadmap context* — should the Roadmap button
        only surface when the active tab's cwd contains a
@@ -7765,15 +7797,19 @@ here.)
        roadmap, query bullets by status/kind/theme, propose
        new bullets?
 
-  **(5) Display** — covered by **ANTS-1154** (RoadmapDialog
-  tab filtering on tags) + the existing summary-table renderer
-  (ANTS-1139, shipped 0.7.70). Sub-question worth keeping in
-  scope here:
+  **(5) Display** — covered by **ANTS-1154** (RoadmapDialog v2
+  card-style rendering + collapsible sections + strict
+  tab-relevance, 2026-05-11) + the existing summary-table
+  renderer (ANTS-1139, shipped 0.7.70). Sub-question worth
+  keeping in scope here:
 
-    a. *Reading mode* — RoadmapDialog today is a single rich-
-       text panel; consider a two-pane layout (ToC on left,
-       content on right) for navigability when 6000 lines is
-       the steady-state. Cheap to prototype.
+    a. *Reading mode* — the two-pane layout (ToC on left,
+       content on right) ships today (ANTS-1100, expanded by
+       ANTS-1154). Future: scroll-position persistence per tab
+       (Config key `roadmapScrollAnchors` is reserved but the
+       capture/restore wiring is deferred); same-Kind compact-
+       table-mode toggle per section (Config key
+       `roadmapTableSections` is reserved; UI toggle deferred).
 
   **(6) Numbering standards** — already documented in
   `docs/standards/roadmap-format.md` § 3.5.1. No change needed.
@@ -7789,9 +7825,11 @@ here.)
   longer than the spec's example shows (≈30-50 LoC of body
   vs. the spec's 3-4-line example). Either tighten the
   written bullets or update § 3.5 to acknowledge that
-  longer-form bullets are the steady state. Spin out as a
-  child doc-fix item once 1154's tagging migration is done
-  (so we tag-then-tighten instead of tighten-then-retag).
+  longer-form bullets are the steady state. Note: § 3.5 was
+  amended on 2026-05-11 to document the optional `Layman:` line
+  that ANTS-1154's card renderer surfaces; future bullets should
+  add `Layman:` lines proactively so vibe-coder readers don't
+  parse the technical headline first.
 
   **Deliverables (each spun out as a child item once decided):**
 
@@ -7806,10 +7844,13 @@ here.)
   - `1156-F`: § 3.5 writing-standards refresh against actual
     bullet length.
 
-  Out of scope (but related): **ANTS-1154** (format v2 tagging
-  + RoadmapDialog filter implementation) lands first; this
-  bullet's child items consume v2 tags. Sequence: **1154 →
-  1156's child spin-outs → 1156-{A..F} as deliverable items**.
+  Out of scope (but related): **ANTS-1154** (RoadmapDialog v2
+  card-style rendering, in working tree as of 2026-05-11) covers
+  the display lane. The original "format v2 tagging" portion of
+  1154's charter was deferred — see sub-(2) above for how the
+  v2-format spin-out is now scoped under §1156, not §1154.
+  Sequence: **1156's child spin-outs → 1156-{A..F} as
+  deliverable items** (1154 no longer gates this chain).
 
   Lanes: docs (standards), mainwindow (RoadmapDialog),
   remotecontrol (roadmap-query/-status verbs),
@@ -7817,77 +7858,75 @@ here.)
   Kind: research.
   Source: user-2026-05-02.
 
-- 📋 [ANTS-1154] **Tagged-text roadmap format v2 + RoadmapDialog
-  tab filtering on tags.** Today the RoadmapDialog tabs (Full /
-  History / Current / Next / Far Future / Custom) re-walk the
-  whole markdown and infer scope from prose-shape heuristics
-  (status emoji, bullet vs paragraph, position-in-document).
-  That works but the dialog has to over-show: a "Next" tab filter
-  for `📋` bullets still drags along surrounding section headers,
-  prose intros, and embedded prose-only paragraphs that aren't
-  actionable items. Two fixes, one bundle:
+- 🚧 [ANTS-1154] **RoadmapDialog v2 — card-style rendering with
+  layman summaries, collapsible sections, and strict tab-relevance.**
+  Layman: the roadmap dialog now shows each item as a scannable
+  card with a big state icon, type chip, and one-sentence summary
+  instead of a wall of prose — so you can see at a glance what's
+  done, what's in progress, and what's next.
 
-  1. **Roadmap-format v2 spec change** in
-     `docs/standards/roadmap-format.md`. Carry-overs from v1
-     (stable IDs, status / theme emojis, position-is-priority,
-     `Kind:` / `Source:` lines, fold-in subsections) all stay.
-     What v2 adds:
+  Live in working tree as of 2026-05-11 (uncommitted, pre-bump).
+  Source: user 2026-05-02 (original) + 2026-05-11 reframe ("I just
+  see a wall of text and couldn't tell you where we are at a
+  glance"). Replaces the original 3-part charter (format-v2 +
+  dialog + migration) with a presentation-only delivery; see the
+  **Deferred** note below.
 
-     - **Standard summary table format.** The H-bundle table at
-       `## Distribution-adoption overview` is the canonical
-       shape — `| ID | Description | Status | Target release |`
-       — and v2 promotes it to a first-class roadmap section
-       type. Any roadmap section may open with a summary table
-       that is the source-of-truth; the per-item bullets below
-       are the elaboration. Both the dialog and consumers like
-       remote-control's `roadmap-query` IPC verb learn to read
-       the table.
-     - **Explicit machine-readable tags on every line** so the
-       dialog doesn't have to infer. Header lines carry their
-       semantic role (`<!-- header:section-intro -->`,
-       `<!-- header:summary-table -->`,
-       `<!-- header:fold-in -->`); actionable bullets carry
-       their `Kind` as a tag attribute (`<!-- kind:fix -->`,
-       `<!-- kind:refactor -->`, `<!-- kind:doc -->`,
-       `<!-- kind:audit-fix -->`, `<!-- kind:review-fix -->`,
-       `<!-- kind:test -->`, `<!-- kind:chore -->`,
-       `<!-- kind:release -->`, `<!-- kind:research -->`,
-       `<!-- kind:ux -->`, `<!-- kind:implement -->`); prose-only
-       paragraphs carry `<!-- prose -->`. Tags live in HTML
-       comments so they render invisibly in the markdown but
-       are trivially grep-able / parser-extractable.
-     - **Format-version pragma at the top.** `<!--
-       ants-roadmap-format: 2 -->` (mirrors the existing v1
-       pragma already at line 1). The dialog and IPC verb
-       gracefully degrade against v1 docs.
+  **What shipped** (presentation only — the data layer is
+  unchanged, all existing tests stay green):
 
-  2. **RoadmapDialog implementation.** `parseBullets` and
-     `renderHtml` learn to read the v2 tags; tab filtering
-     becomes "match on tag" instead of "infer from prose
-     shape". Per-tab budget shrinks: `Next` shows only
-     `kind:*` bullets with `📋` status; `Current` shows only
-     bullets with `🚧` or matching the [Unreleased] / last-5-
-     commit signal; the prose intros and section-intro headers
-     are emitted only on `Full roadmap` and `Custom`. The
-     summary-table renderer (already shipped in 0.7.70 per
-     ANTS-1139's `<table>` work) becomes the default render
-     for any section opening with a v2 summary table.
+  1. **Card-style rendering.** `renderCardsHtml` wraps each
+     top-level status-emoji bullet in `<div class="rm-card">` with
+     state icon (✅/🚧/📋/💭) + type chip (`⚙ implement`, `🐛 fix`,
+     etc., 12-Kind taxonomy) + summary + meta row (`#NNNN` id +
+     shipped date from CHANGELOG). Per-item expand/collapse swaps
+     the body prose in place via `ants://expand/<id>` anchor URLs.
+  2. **Optional `Layman:` line** in any bullet body — when present,
+     shown on the card face instead of the bold headline. Absent →
+     headline fallback. Additive to `roadmap-format.md` v1; no
+     pragma bump.
+  3. **Collapsible sections** with status count chips (`✅ 4 ·
+     🚧 2 · 📋 5`). Collapsed by default; per-section state
+     persists via `Config::roadmapExpandedSections`.
+  4. **Strict tab-relevance.** History / Current / Next / Far Future
+     show only matching cards — prose intros and non-status bullets
+     are stripped. Empty sections (zero visible cards under the
+     active filter) are suppressed entirely.
+  5. **State persistence** across dialog close/open: 4 new Config
+     keys (`roadmapExpandedItems`, `roadmapExpandedSections`,
+     `roadmapTableSections`, `roadmapScrollAnchors`).
+  6. **Footer buttons.** Refresh (F5) and Reset View (two-click
+     confirm) added next to Close.
+  7. **CHANGELOG date resolver.** `parseShippedDates` walks
+     CHANGELOG.md release blocks, maps `[ANTS-NNNN]` tokens to
+     `YYYY-MM-DD`. ✅ cards show the date on their meta row.
 
-  3. **One-shot migration of ROADMAP.md.** Walk the doc top to
-     bottom, tag every header + bullet + prose paragraph in
-     place. ~190 actionable items + ~60 headers + ~40 prose
-     paragraphs. Mechanical but voluminous — likely a single
-     scripted pass with manual review per section.
+  **Deferred** (was part of the original charter, now intentionally
+  out of scope for this delivery):
 
-  Spec stub: `docs/specs/ANTS-1154.md` (write before
-  implementation per the strict App-Build loop). Tests:
-  `tests/features/roadmap_format_v2/` source-greps the new tags
-  on a fixture markdown corpus and verifies the dialog's tab-
-  filter helpers return the right subsets. The existing
-  `roadmap_kind_facets` test (ANTS-1106) becomes a regression
-  guard that the v2 tag-based filtering matches the v1 prose-
-  inference results on a representative sample.
-  Kind: refactor. Source: user-2026-05-02.
+  - **Roadmap-format v2 spec change** (`<!-- kind:* -->` /
+    `<!-- prose -->` markers + format-version pragma bump) —
+    not needed for the presentation work. If/when a future
+    consumer needs machine-readable tags beyond what `parseBullets`
+    already extracts, spin out as a new bullet under §1156 sub-(2).
+  - **One-shot migration of ROADMAP.md to v2 tags** — vacated by
+    the above.
+  - **Standard summary-table section type** — the existing
+    `<table>` renderer (ANTS-1139, shipped 0.7.70) already handles
+    this; no new work needed. Per-section table-mode toggle has
+    Config-key hooks in place but the UI wiring is left for a
+    follow-up.
+  - **Scroll-position persistence per tab** — `roadmapScrollAnchors`
+    Config key is reserved; capture-on-close + restore-on-open is
+    left as a follow-up.
+
+  Spec: `docs/specs/ANTS-1154.md`. Tests:
+  `tests/features/roadmap_dialog_cards/` (wired into existing
+  `test_dialogs` bundle per ANTS-1217 — no new add_executable).
+  Existing `roadmap_viewer*` / `roadmap_kind_facets` /
+  `remote_control_roadmap_query` tests stay green (the public
+  `renderHtml` static is untouched; cards are a sibling renderer).
+  Kind: implement. Source: user-2026-05-02 + user-2026-05-11.
 
 ---
 

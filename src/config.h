@@ -67,6 +67,38 @@ public:
     QJsonObject roadmapStatusFilters() const;
     void setRoadmapStatusFilters(const QJsonObject &filters);
 
+    // ANTS-1154 v2 card-renderer state. Each set stores the IDs /
+    // slugs the user has manually toggled to "expanded" or
+    // "table-view". Restored on dialog open; updated on close.
+    //
+    // - roadmap_expanded_items: ANTS-NNNN ids of cards the user
+    //   has opened. Missing → all cards start collapsed.
+    // - roadmap_expanded_sections: slugified ## / ### heading
+    //   text (lowercase, non-alnum → `-`). Missing → all sections
+    //   start collapsed.
+    // - roadmap_table_sections: section slugs toggled to compact
+    //   table view. Missing → card-stack view (default).
+    QStringList roadmapExpandedItems() const;
+    void setRoadmapExpandedItems(const QStringList &ids);
+
+    QStringList roadmapExpandedSections() const;
+    void setRoadmapExpandedSections(const QStringList &slugs);
+
+    QStringList roadmapTableSections() const;
+    void setRoadmapTableSections(const QStringList &slugs);
+
+    // RoadmapDialog per-tab scroll anchor. JSON shape:
+    //   {
+    //     "full": { "section": "0-7-82", "id": "ANTS-1145", "offset_px": 14 },
+    //     "history": { ... },
+    //     ...
+    //   }
+    // Restored on open: if `id` still exists, scroll its top - offset_px
+    // to viewport top; else scroll to section; else top. Missing/empty
+    // → scroll to top.
+    QJsonObject roadmapScrollAnchors() const;
+    void setRoadmapScrollAnchors(const QJsonObject &anchors);
+
     // AuditDialog severity-filter pills. JSON shape:
     //   { "blocker", "critical", "major", "minor", "info" }
     // each value bool. Empty/missing → all 5 on.

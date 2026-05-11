@@ -12,6 +12,41 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **ANTS-1154 — RoadmapDialog v2: card-style rendering.** Layman:
+  the Roadmap dialog now shows each item as a scannable card with
+  a big state icon (✅/🚧/📋/💭), a type chip (`⚙ implement`, `🐛
+  fix`, etc.), a one-sentence summary, and a meta row carrying the
+  ID and the shipped date — instead of a wall of prose. Sections
+  start collapsed with a status count chip (`✅ 4 · 🚧 2 · 📋 5`);
+  click a section header to expand it. Non-Full tabs (History /
+  Current / Next / Far Future) now strip prose intros and empty
+  sections so you only see cards relevant to that tab. Per-item
+  expand state + per-section expand state persist via four new
+  `Config` keys. New optional `Layman:` line in any roadmap bullet
+  body — when present, shown on the card face instead of the bold
+  headline. Two new footer buttons: **Refresh** (F5) and **Reset
+  View** (two-click confirm). Shipped scope is presentation-only;
+  the original "tagged-text format v2" portion of the charter was
+  deferred (see §1156 sub-(2) in ROADMAP for the spin-out). All
+  existing `roadmap_viewer*` / `roadmap_kind_facets` /
+  `remote_control_roadmap_query` tests stay green — `renderHtml` /
+  `parseBullets` were extended additively, not replaced; the new
+  card renderer is a sibling helper named `renderCardsHtml`. New
+  feature test `roadmap_dialog_cards` wired into the existing
+  `test_dialogs` bundle (no new add_executable per ANTS-1217).
+  Source: user-2026-05-02 (original) + user-2026-05-11 (reframe).
+  ([ANTS-1154])
+
+### Changed
+
+- **`docs/standards/roadmap-format.md` §3.5** now documents the
+  optional `Layman: <one-sentence>.` line. Additive on v1 — older
+  parsers ignore it. No format-version pragma bump. Authors add
+  `Layman:` lines opportunistically as they touch bullets; the
+  bold headline remains the fallback when absent. ([ANTS-1154])
+
 ## [0.7.82] — 2026-05-11
 
 **Theme:** live-repro fix bundle from the 2026-05-10 session — two

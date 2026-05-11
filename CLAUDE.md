@@ -74,6 +74,18 @@ Listed only where behavior isn't obvious from the name.
   `m_bgTasks` only on change, and call `poll()` / `sweepLiveness()`
   for atomic-rewrite watch-loss recovery. `resetForTabSwitch`
   clears trackers synchronously on tab change.
+- `roadmapdialog` — ROADMAP.md viewer. Two renderers coexist:
+  `renderHtml` (the v1 markdown→HTML helper, kept for tests + the
+  `roadmap-query` IPC verb consumers) and `renderCardsHtml` (the v2
+  card-style renderer the dialog now uses). v2 wraps each
+  status-emoji bullet as a `<div class="rm-card">` with state icon +
+  Kind chip + summary + meta row; section headers (`##`/`###`) emit
+  collapse anchors using the `ants://expand-section/<slug>` URL
+  scheme handled by `handleAnchorClicked`. Per-item / per-section
+  expand state persists via four `Config::roadmap*` keys.
+  `parseShippedDates` resolves `[ANTS-NNNN]` → CHANGELOG release
+  date for ✅ cards. Tab-relevance gating drops prose narration on
+  non-Full presets (INV-11/12). Spec: `docs/specs/ANTS-1154.md`.
 - `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers with
   `QFileSystemWatcher` + `poll()` / `sweepLiveness()` mtime rescue
   for the case Claude rewrites the transcript via tmpfile+rename

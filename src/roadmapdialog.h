@@ -139,6 +139,65 @@ public:
                               const QString &searchPredicate = QString(),
                               const QSet<QString> &kindFilter = {});
 
+    // ANTS-1154 v2 card-renderer state, packed into one struct so the
+    // new `renderCardsHtml` signature stays manageable. Default-
+    // constructed values produce a "first open, no persisted state"
+    // render — all sections collapsed, no expanded cards, no table
+    // sections, no shipped-date cache. Declared as a forward-friendly
+    // nested type without default member initializers (clang's nested-
+    // class rules forbid initializing `Preset activePreset = Preset::Full`
+    // inline before the enclosing class definition closes — set the
+    // value at construction or via explicit assignment instead).
+    struct CardRenderOptions {
+        Preset activePreset;
+        QSet<QString> expandedItems;
+        QSet<QString> expandedSections;
+        QSet<QString> tableSections;
+        // ANTS-NNNN → shipped date (parsed from CHANGELOG ## [X.Y.Z] —
+        // YYYY-MM-DD blocks). Populated by the dialog before render;
+        // renderCardsHtml just looks up.
+        QHash<QString, QString> shippedDates;
+
+        CardRenderOptions() : activePreset(Preset::Full) {}
+    };
+
+    // ANTS-1154 — new card-style renderer. Walks `markdownText` and
+    // emits an HTML document where each top-level status-emoji bullet
+    // becomes a `<div class="rm-card" id="rm-ANTS-NNNN">` block with
+    // state icon, type chip, layman/headline summary, and meta row
+    // (ID + shipped date for ✅ items). Section headings (`##`/`###`)
+    // emit collapsible headers with `<span class="rm-section-counts">`
+    // chips. Click-to-toggle anchors use the `ants://expand/` /
+    // `ants://collapse/` / `ants://expand-section/` /
+    // `ants://collapse-section/` / `ants://table/` URL schemes,
+    // handled by the dialog's anchorClicked slot.
+    //
+    // Tab-relevance: on every preset except `Full`, prose narration
+    // bullets (no status emoji) and section-intro paragraphs are
+    // dropped (INV-11); section headers with zero visible bullets
+    // under the active filter are suppressed (INV-12).
+    //
+    // Defaults preserve the parser's existing filter/search/Kind
+    // semantics — pass identical arguments to renderCardsHtml as
+    // renderHtml plus a CardRenderOptions value.
+    static QString renderCardsHtml(const QString &markdownText,
+                                   unsigned filter,
+                                   const QStringList &currentBullets,
+                                   const QString &themeName,
+                                   SortOrder sortOrder = SortOrder::Document,
+                                   const QString &searchPredicate = QString(),
+                                   const QSet<QString> &kindFilter = {},
+                                   const CardRenderOptions &opts = {});
+
+    // ANTS-1154 — build the `shippedDates` map from a CHANGELOG.md
+    // file by walking `^## [X.Y.Z] — YYYY-MM-DD` headings and
+    // attributing every `[ANTS-NNNN]` token in the section body to
+    // that date. Returns empty map on read failure (graceful — cards
+    // just don't show a date row). Cache-keyed by file mtime is the
+    // caller's responsibility.
+    static QHash<QString, QString>
+    parseShippedDates(const QString &changelogPath);
+
     // Heading entry surfaced in the TOC sidebar. `level` is 1..4,
     // `text` is the raw heading text post-`#` strip (no inline
     // expansion), `anchor` is the same name renderHtml emits.
@@ -164,6 +223,14 @@ public:
         QString headline;    // first **bold** chunk after the emoji (≤ 120 chars)
         QString kind;        // value from `Kind:` line; "" if absent
         QStringList lanes;   // values from `Lanes:` line; [] if absent
+        // ANTS-1154 v2 card-renderer extensions. Additive — older
+        // callers that only inspect id/status/headline/kind/lanes
+        // see no behaviour change.
+        QString layman;      // value from `Layman:` line; "" if absent
+        QString body;        // full bullet body (post-emoji, pre-continuation-join)
+        QString sectionHeading;  // text of the most recent ## or ### heading
+        int sectionLevel = 0;    // 2 for `##`, 3 for `###`, 0 if no section
+        QString sectionSlug;     // sectionHeading → lowercase, non-alnum→`-`
     };
 
     // Pure helper: parse `markdownText` into top-level status-emoji
@@ -209,12 +276,27 @@ protected:
 
 private slots:
     void rebuild();
+    // ANTS-1154: handle clicks on the card / section toggle anchors
+    // emitted by renderCardsHtml. URL scheme `ants://<verb>/<slug>`
+    // where verb is one of {expand, collapse, expand-section,
+    // collapse-section, table}.
+    void handleAnchorClicked(const QUrl &link);
+    // ANTS-1154 — custom context menu on the QTextBrowser. The default
+    // context menu Qt provides parents the popup to the viewer widget,
+    // which on Wayland (+ frameless translucent parent on this stack)
+    // can desync — the popup shows but Copy is a no-op and outside-
+    // clicks don't dismiss it. Same family of bugs as QTBUG-79126. We
+    // build the menu ourselves parented to the dialog top-level.
+    void showViewerContextMenu(const QPoint &pos);
 
 private:
     void scheduleRebuild();
     void applyPreset(Preset p);
     void onCheckboxToggled();
     QStringList collectCurrentBullets() const;
+    // ANTS-1154 — refresh m_shippedDates from m_changelogPath when its
+    // mtime has changed since the last call. No-op if path empty.
+    void refreshShippedDatesIfStale();
 
     // ANTS-1150: persist the active preset to Config. Called from
     // BOTH applyPreset (named-preset path) and onCheckboxToggled
@@ -267,4 +349,12 @@ private:
     Preset m_activePreset = Preset::Full;
     bool m_suppressCheckboxSignal = false;
     bool m_suppressTabSignal = false;
+    // ANTS-1154 v2 card-renderer in-memory state. Loaded from Config
+    // in the ctor, mutated by handleAnchorClicked, persisted back to
+    // Config in closeEvent.
+    QSet<QString> m_expandedItems;
+    QSet<QString> m_expandedSections;
+    QSet<QString> m_tableSections;
+    QHash<QString, QString> m_shippedDates;
+    qint64 m_shippedDatesMtime = -1;
 };

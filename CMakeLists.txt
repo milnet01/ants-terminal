@@ -857,6 +857,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_viewer_tabs/test_roadmap_viewer_tabs.cpp
                 tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
                 tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
+                tests/features/roadmap_dialog_cards/test_roadmap_dialog_cards.cpp
                 tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp)
     target_compile_definitions(test_dialogs PRIVATE

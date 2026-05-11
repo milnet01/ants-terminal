@@ -134,6 +134,13 @@ Optional pieces:
 - **`Source: <source>`** — declares where the item came from,
   when the section heading doesn't already make that clear. See
   §3.5.3.
+- **`Layman: <one-sentence summary>.`** — a non-technical
+  one-line summary, written for a vibe-coder / non-programmer
+  reader. When present, the Ants Roadmap dialog (ANTS-1154)
+  shows this on the card face instead of the bold headline; the
+  headline still appears when the card is expanded. Falls back
+  to the bold headline if absent. Sits after the body prose,
+  before `Kind:` / `Lanes:` / `Source:`. Case-insensitive label.
 - **Sub-bullets** — for parametrised work (e.g. "implement for X
   / Y / Z").
 
