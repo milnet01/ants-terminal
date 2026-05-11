@@ -8311,6 +8311,73 @@ contributors don't duplicate research.
   Kind: spike.
   Source: user-2026-05-11.
 
+### 🎨 Roadmap dialog v2 follow-ups (post-ANTS-1154)
+
+> Surfaced by the 2026-05-11 research synthesis on roadmap-presentation
+> best practices (~25 sources: NN/g, Linear, GitHub Projects,
+> ProductPlan, Aha!, Carbon, Material 3, WCAG, etc.). Items 1234–1236
+> are the high-value additions; 1237–1238 are medium-value polish.
+
+- 💭 [ANTS-1234] **In-dialog text search box** (`/` to focus, Esc
+  to clear). With stable `[ANTS-NNNN]` IDs, jumping to a
+  specific item is currently O(scroll). Linear, GitHub
+  Projects, ProductPlan all expose live filtering. Filter
+  semantics: substring match on ID + headline + Layman line +
+  body, highlight match in card face, auto-expand sections
+  containing matches. Persist last query per tab via a fifth
+  `Config::roadmap*` key.
+  **Layman:** type a few letters to jump straight to the item
+  you're thinking of, instead of scrolling.
+  Kind: implement.
+  Source: research-2026-05-11.
+- 💭 [ANTS-1235] **`aria-label` on status emoji glyphs**.
+  Screen readers currently announce "✅" as "white heavy check
+  mark" (Pope.tech / W3C H86). Wrap each status emoji in
+  `<span aria-label="Shipped">…</span>` (or the Qt
+  `setAccessibleName` equivalent on the rendered cell) so the
+  spoken label reads "Shipped" / "In progress" / "Planned" /
+  "Considered". Same treatment for theme emojis (Performance,
+  Plugins, etc.). Low effort, high impact for the
+  partially-sighted / screen-reader path.
+  **Layman:** make sure screen readers say "Shipped" instead
+  of "white heavy check mark" when they hit a ✅.
+  Kind: implement.
+  Source: research-2026-05-11.
+- 💭 [ANTS-1236] **Keyboard-shortcut cheatsheet** (`?` opens an
+  overlay). Linear, GitHub, and most modern tools expose
+  shortcuts via a `?` panel. Inside the Roadmap dialog,
+  surface: `/` search, `j`/`k` next/prev item, `Enter`
+  expand/collapse current, `Esc` close dialog, `F5` refresh,
+  number keys to jump tabs. Cheap to add once we own the
+  keypress handler — feeds the partially-sighted /
+  keyboard-first workflow.
+  **Layman:** press `?` inside the Roadmap dialog and see a
+  list of every keyboard shortcut.
+  Kind: implement.
+  Source: research-2026-05-11.
+- 💭 [ANTS-1237] **"Updated N days ago" line on 🚧 cards**.
+  GitHub Projects shows this by default; surfaces stalls
+  without re-reading prose. Derive from git blame on the
+  bullet line (cached via the existing `parseShippedDates`
+  mtime mechanism) — last touch date for the matching `[ANTS-NNNN]`
+  ID. Render only on 🚧 cards (✅ already shows shipped date;
+  📋/💭 don't need it).
+  **Layman:** in-progress items show "started X days ago" so
+  you can see what's been sitting too long.
+  Kind: implement.
+  Source: research-2026-05-11.
+- 💭 [ANTS-1238] **Density toggle (compact / cozy /
+  comfortable)**. Material 3 + Linear + GitHub all expose a
+  density selector. Driven by CSS class on the dialog root:
+  `compact` 10/11/12px, `cozy` (current default) 12/13/14px,
+  `comfortable` 14/15/16px with more vertical padding. Persist
+  via sixth `Config::roadmap*` key. Pairs with the system font
+  scaling for users at any zoom level.
+  **Layman:** pick how spaced-out you want the Roadmap dialog
+  to feel — tight on a laptop, roomy on a big monitor.
+  Kind: implement.
+  Source: research-2026-05-11.
+
 ---
 
 ## How to propose a roadmap item
