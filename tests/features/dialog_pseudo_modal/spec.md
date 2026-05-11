@@ -167,6 +167,22 @@ Source-grep + pure-helper drive (no MainWindow instantiation).
   Asserted by behavioural drive: `shouldSuppressEventForDialog
   (dialog, mouseEvent)` returns `false`.
 
+- **INV-2i** Active popup widget. A `Qt::Popup` window (QComboBox
+  dropdown, QMenu, color picker, etc.) is its own top-level
+  widget; `QWidget::isAncestorOf` stops walking at window
+  boundaries, so a click inside a popup opened FROM a dialog
+  would otherwise read as "outside the dialog tree" and get
+  suppressed. The helper must short-circuit via
+  `QApplication::activePopupWidget()` — if a popup is active and
+  `target` is the popup OR an ancestor descendant of it, return
+  `false`. Asserted by **source-grep**, not behavioural drive:
+  the offscreen QPA platform does NOT promote `Qt::Popup` widgets
+  (bare or via `QMenu::popup()`) to `activePopupWidget()`, so a
+  positive behavioural assertion silently no-ops on CI. Source-grep
+  matches the pattern INV-1 uses for the helper signature.
+  Regression guard for the 0.7.85 RoadmapDialog density combo bug
+  where popup clicks were being eaten by the pseudo-modal blocker.
+
 - **INV-3** Mouse/key events handled in `MainWindow::eventFilter`
   via the helper. Asserted by source-grep that `eventFilter`'s
   body references both `dialogfocus::shouldSuppressEventForDialog`

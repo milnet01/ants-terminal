@@ -75,6 +75,22 @@ inline bool shouldSuppressEventForDialog(QObject *watched, QEvent *event) {
     auto *target = qobject_cast<QWidget *>(watched);
     if (!target) return false;
 
+    // ANTS-1238 — a Qt::Popup window (QComboBox dropdown,
+    // QMenu context menu, color-picker popup, ...) is its own
+    // top-level widget. QWidget::isAncestorOf stops walking at
+    // window boundaries, so the popup's contents read as "outside"
+    // any visible dialog's tree even when the popup was opened
+    // FROM inside that dialog. Without this short-circuit, clicks
+    // on combo items / menu items inside a dialog were being
+    // swallowed by the pseudo-modal blocker. The popup tree is
+    // transient and always belongs to whatever widget invoked it,
+    // so allowing its events through is safe.
+    if (QWidget *popup = QApplication::activePopupWidget()) {
+        if (target == popup || popup->isAncestorOf(target)) {
+            return false;
+        }
+    }
+
     // Walk top-level widgets once and count visible dialogs;
     // also check whether `target` is inside any of them.
     bool anyDialogVisible = false;

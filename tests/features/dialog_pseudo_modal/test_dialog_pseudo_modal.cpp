@@ -214,6 +214,28 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = slurp(DIALOGFOCU
                 "stacked: click outside both dialogs should suppress");
     }
 
+    // INV-2i: structural — the activePopupWidget() short-circuit
+    // must exist in dialogfocus.h so combo dropdowns / menus opened
+    // from inside a dialog aren't eaten by the pseudo-modal blocker.
+    // Behavioural drive isn't viable: the offscreen QPA platform
+    // doesn't promote Qt::Popup widgets (bare or via QMenu::popup())
+    // to QApplication::activePopupWidget(), so a positive behavioural
+    // assertion would silently no-op on CI. Source-grep matches the
+    // pattern INV-1 uses for the helper signature.
+    if (!contains(focusHdr, "activePopupWidget"))
+        return fail("INV-2i",
+            "dialogfocus.h missing QApplication::activePopupWidget() "
+            "short-circuit — combo dropdown clicks will be eaten by "
+            "the pseudo-modal blocker (regression of the 0.7.85 "
+            "RoadmapDialog density combo bug)");
+    if (!contains(focusHdr, "popup->isAncestorOf(target)") &&
+        !contains(focusHdr, "popup->isAncestorOf("))
+        return fail("INV-2i",
+            "dialogfocus.h has activePopupWidget() reference but no "
+            "ancestor check on the popup tree — popup descendants "
+            "(QListView items inside a combo dropdown) won't be "
+            "matched without the isAncestorOf walk");
+
     // INV-2g: defensive null checks.
     {
         QEvent *ev = makeEvent(QEvent::MouseButtonPress);
