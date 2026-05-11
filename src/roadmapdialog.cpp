@@ -64,12 +64,13 @@ static_assert(std::size(kStatusLabels) == 4,
 // feature test source-greps these literal byte sequences (INV-1 / INV-2
 // / INV-5 / INV-8 — see docs/specs/ANTS-1236.md § 4).
 //
-// Adding a shortcut: bump the row count below + the test's exact-9
+// Adding a shortcut: bump the row count below + the test's exact-10
 // assertions in tests/features/roadmap_shortcuts_cheatsheet/ in the
 // same commit. The static_assert guards against silent drift.
 struct ShortcutRow { const char *keys; const char *action; };
 constexpr ShortcutRow kRoadmapShortcuts[] = {
     {"?",              QT_TR_NOOP("Show this cheatsheet")},
+    {"/",              QT_TR_NOOP("Focus search box")},
     {"Esc",            QT_TR_NOOP("Close dialog")},
     {"F5",             QT_TR_NOOP("Refresh from disk")},
     {"Ctrl+C",         QT_TR_NOOP("Copy selection")},
@@ -79,9 +80,9 @@ constexpr ShortcutRow kRoadmapShortcuts[] = {
     {"Home End",       QT_TR_NOOP("Jump to top / bottom")},
     {"Tab Shift+Tab",  QT_TR_NOOP("Move focus to next / previous control")},
 };
-static_assert(std::size(kRoadmapShortcuts) == 9,
-              "ANTS-1236 INV-1: cheatsheet row count must match the test's "
-              "exact-9 assertion. Bump both in lock-step when adding a new "
+static_assert(std::size(kRoadmapShortcuts) == 10,
+              "ANTS-1234/1236 INV-1: cheatsheet row count must match the test's "
+              "exact-10 assertion. Bump both in lock-step when adding a new "
               "shortcut.");
 
 QString htmlEscape(QString s) {
@@ -1171,7 +1172,24 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     };
 
     auto emitCard = [&](const BulletRecord &rec) {
-        const bool expanded = opts.expandedItems.contains(rec.id);
+        // ANTS-1234 — auto-expand cards whose match lives in body-only
+        // (continuation prose) so the matched substring is visible
+        // without a manual expand click. Render-time only: never
+        // mutates m_expandedItems (INV-5/INV-8 in docs/specs/ANTS-1234.md).
+        // Guard: only fires when the predicate matches body but NOT
+        // any of id / headline / layman — those are already visible
+        // on the collapsed card so expansion would be redundant.
+        const bool predicateOnlyInBody =
+            !plainSearch.isEmpty() &&
+            rec.body.contains(plainSearch, Qt::CaseInsensitive) &&
+            !rec.id.contains(plainSearch, Qt::CaseInsensitive) &&
+            !rec.headline.contains(plainSearch, Qt::CaseInsensitive) &&
+            !rec.layman.contains(plainSearch, Qt::CaseInsensitive);
+        const bool idJumpToThisCard =
+            !idMarker.isEmpty() && rec.body.contains(idMarker);
+        const bool expanded = opts.expandedItems.contains(rec.id)
+                              || predicateOnlyInBody
+                              || idJumpToThisCard;
         const QString verb = expanded
             ? QStringLiteral("collapse")
             : QStringLiteral("expand");
@@ -1483,6 +1501,11 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     m_searchBox->setPlaceholderText(
         tr("Substring match (or id:NNNN to jump to a specific ID)"));
     m_searchBox->setClearButtonEnabled(true);
+    // ANTS-1234 — install the dialog itself as an event filter on the
+    // search box so Esc clears + blurs the box instead of closing the
+    // dialog (eventFilter override below). Without this filter, the
+    // unhandled Esc would bubble to QDialog::reject.
+    m_searchBox->installEventFilter(this);
     searchRow->addWidget(searchLabel);
     searchRow->addWidget(m_searchBox, 1);
     root->addLayout(searchRow);
@@ -1926,6 +1949,18 @@ void RoadmapDialog::closeEvent(QCloseEvent *event) {
 // AltGr+something on Polish layouts, dead-key sequences, etc. still
 // resolve to "?" at the text() level even where Qt omits Key_Question.
 void RoadmapDialog::keyPressEvent(QKeyEvent *event) {
+    // ANTS-1234 — `/` focuses the search box (Linear / GitHub / Notion
+    // convention). Layout-robust via event->text() so AltGr / dead-key
+    // routes still hit it. Gated on !m_searchBox->hasFocus() so the
+    // user can type `/` into the predicate itself (URLs, paths, etc.).
+    if (event
+        && event->text() == QLatin1String("/")
+        && !(event->modifiers() & Qt::ControlModifier)
+        && !(m_searchBox && m_searchBox->hasFocus())) {
+        focusSearchBox();
+        event->accept();
+        return;
+    }
     if (event
         && event->text() == QLatin1String("?")
         && !(event->modifiers() & Qt::ControlModifier)
@@ -1940,6 +1975,30 @@ void RoadmapDialog::keyPressEvent(QKeyEvent *event) {
         return;
     }
     QDialog::keyPressEvent(event);
+}
+
+// ANTS-1234 — focus the search box and select any pre-existing text
+// so the next keystroke replaces it. Called from keyPressEvent on `/`.
+void RoadmapDialog::focusSearchBox() {
+    if (!m_searchBox) return;
+    m_searchBox->setFocus(Qt::ShortcutFocusReason);
+    m_searchBox->selectAll();
+}
+
+// ANTS-1234 — Esc handler for the search box. Consumes the event so
+// QDialog::reject doesn't fire on a focused-search Esc. For every
+// other key, falls through to QDialog::eventFilter so the QLineEdit
+// receives PgUp / F5 / typing characters normally.
+bool RoadmapDialog::eventFilter(QObject *obj, QEvent *event) {
+    if (obj == m_searchBox && event->type() == QEvent::KeyPress) {
+        auto *ke = static_cast<QKeyEvent *>(event);
+        if (ke->key() == Qt::Key_Escape) {
+            m_searchBox->clear();
+            m_searchBox->clearFocus();
+            return true;
+        }
+    }
+    return QDialog::eventFilter(obj, event);
 }
 
 // ANTS-1154 — anchorClicked handler for `ants://` URLs emitted by

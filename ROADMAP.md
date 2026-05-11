@@ -8413,6 +8413,62 @@ contributors don't duplicate research.
   Kind: spike.
   Source: user-2026-05-11.
 
+### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
+
+> Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
+> Findings fixed: ~25 (1 HIGH, ~10 MEDIUM, ~14 LOW/INFO across
+> spec accuracy, cross-doc lockstep, RAM accounting, edge cases).
+
+- **Lockstep enumeration.** First-draft §3.c only named the
+  `static_assert` + "test" as touch sites for the 9 → 10 row
+  bump. Reviewer surfaced that the lockstep actually spans 5
+  files: the cpp `static_assert`, the cheatsheet test cpp
+  (5 sites with comment-vs-load-bearing split), the cheatsheet
+  test spec.md (L16/L36), the ANTS-1236.md spec (L26/L254/L288/
+  L310/L324/L348), and the CHANGELOG [Unreleased] block (L24/L32).
+  §3.c now enumerates every site with bump direction.
+- **INV-9 wording — INV-1/5/8 → INV-1/INV-8.** Cross-doc reviewer
+  caught that ANTS-1236-INV-5 in both `tests/features/.../spec.md`
+  and `docs/specs/ANTS-1236.md` is dynamic via
+  `std::size(kRoadmapShortcuts)` — no `9` literal to bump.
+- **Headline-truncation edge case.** Spec claimed `rec.headline`
+  is a substring of `rec.body`, but `roadmapdialog.cpp:540`
+  truncates >120-char headlines and appends `…`. INV-6 now uses
+  "matches the *visible* summary text" wording and §2.d.3
+  acknowledges the edge case as a feature (surfaces full hit).
+- **§6 math fix.** First-draft said "+3 contains() per card";
+  actual implementation runs +4 (body, id, headline, layman).
+  Bumped to 800 calls / 200 cards / ~0.3 ms — still well below
+  the 120 ms debounce.
+- **§3.b numbering.** Header said "Three discrete edits" but
+  listed four. Bumped to "Four".
+- **§5 test 5 wrong literal.** First draft asserted a "body div"
+  but `renderCardsHtml` emits `<p class="rm-body-first">` (no
+  wrapping div — removed by ANTS-1240). Tests 6/7 now assert
+  `rm-body-first` class presence.
+- **§5 test 9 ordering coupling.** First draft was a standalone
+  no-mutation test that depended on tests 5/7 running first.
+  Folded into tests 6 and 8 as additional assertions so each
+  triggering test verifies the no-mutation contract directly.
+- **§9 ROADMAP-bullet scope reconciliation.** ROADMAP L8565
+  bullet promised highlighting + section-level auto-expand +
+  persistence. Spec scopes down to card-level auto-expand only;
+  §9 now acknowledges the bullet's wider items as deferred
+  follow-ons (suggested ANTS-1244/45/46).
+- **Layout-robust test API.** Test 2 first drafted with
+  `QKeyEvent(...)` + `sendEvent(...)`; reviewer flagged focus
+  precondition + Qt6 API surface. Now leaves dispatch API choice
+  to test author (lists `sendEvent` and `QTest::sendKeyEvent` as
+  options) and documents the focus precondition.
+- **CHANGELOG insertion shape.** First-draft instruction was
+  "extend list to include `{"/", "Focus search box"}`" but
+  CHANGELOG carries comma-separated bare keys, not pair objects.
+  §3.c now specifies bare-key insertion in the inline list at L24-25.
+
+> Reviewers verified all ~30 source-file:line citations against
+> current code. Two off-by-one slips caught (`emitCard` L1174 →
+> L1173; CMakeLists range L849-863 → L849/L866).
+
 ### 📝 Cold-eyes 2026-05-12 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~37 live docs (~33k lines).
@@ -8562,14 +8618,23 @@ contributors don't duplicate research.
 > ProductPlan, Aha!, Carbon, Material 3, WCAG, etc.). Items 1234–1236
 > are the high-value additions; 1237–1238 are medium-value polish.
 
-- 💭 [ANTS-1234] **In-dialog text search box** (`/` to focus, Esc
+- ✅ [ANTS-1234] **In-dialog text search box** (`/` to focus, Esc
   to clear). With stable `[ANTS-NNNN]` IDs, jumping to a
   specific item is currently O(scroll). Linear, GitHub
   Projects, ProductPlan all expose live filtering. Filter
-  semantics: substring match on ID + headline + Layman line +
-  body, highlight match in card face, auto-expand sections
-  containing matches. Persist last query per tab via a fifth
-  `Config::roadmap*` key.
+  semantics shipped: `/`-focus (layout-robust via
+  `event->text() == "/"`); Esc-clear via dialog-side
+  `eventFilter` on `m_searchBox` that consumes the event so
+  `QDialog::reject` doesn't fire; substring match on
+  id+headline+layman+body (already shipped pre-1234); body-only
+  auto-expand so a match in continuation prose surfaces the
+  card body for that render (never mutates `m_expandedItems`).
+  Deferred to follow-on entries: per-substring highlighting
+  inside the body (HTML span injection risk), section-level
+  auto-expand (would explode the list shape on dense queries),
+  and per-tab query persistence (cross-session — separate
+  concern). Spec at `docs/specs/ANTS-1234.md` (cold-eyes-clean
+  after 7 loops + ~25 findings fixed).
   **Layman:** type a few letters to jump straight to the item
   you're thinking of, instead of scrolling.
   Kind: implement.

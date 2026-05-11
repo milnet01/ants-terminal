@@ -79,19 +79,21 @@ QString writeRoadmap(const QTemporaryDir &dir, const QString &markdown) {
 }  // namespace
 
 static int runMain() {
-    // INV-1 / INV-2 / INV-8: data table has exactly 9 rows in the
-    // canonical order documented in the spec.
+    // INV-1 / INV-2 / INV-8: data table has exactly 10 rows in the
+    // canonical order documented in the spec (ANTS-1234 added `/`
+    // after `?` on 2026-05-11).
     {
         const auto rows = roadmapShortcutRows();
-        if (rows.size() != 9) {
+        if (rows.size() != 10) {
             std::fprintf(stderr, "got rows.size() = %d\n", int(rows.size()));
             return fail("INV-1/INV-8",
-                "roadmapShortcutRows() must return exactly 9 rows; a "
+                "roadmapShortcutRows() must return exactly 10 rows; a "
                 "shortcut addition without bumping the test is a build "
                 "failure (the source-of-truth contract).");
         }
         const QStringList expectedKeys = {
             QStringLiteral("?"),
+            QStringLiteral("/"),
             QStringLiteral("Esc"),
             QStringLiteral("F5"),
             QStringLiteral("Ctrl+C"),
@@ -128,7 +130,7 @@ static int runMain() {
         if (!contains(src, "constexpr ShortcutRow kRoadmapShortcuts[]"))
             return fail("INV-1",
                 "kRoadmapShortcuts file-scope table missing");
-        if (!contains(src, "static_assert(std::size(kRoadmapShortcuts) == 9"))
+        if (!contains(src, "static_assert(std::size(kRoadmapShortcuts) == 10"))
             return fail("INV-1",
                 "static_assert on kRoadmapShortcuts count missing — a "
                 "new shortcut could land silently without updating "
@@ -229,7 +231,7 @@ static int runMain() {
         }
     }
 
-    // INV-5: cheatsheet QTableWidget shape — 2 columns, 9 rows, row 0
+    // INV-5: cheatsheet QTableWidget shape — 2 columns, 10 rows, row 0
     // contains `?` + the localised "Show this cheatsheet" string.
     {
         auto *cheat = dialog.findChild<RoadmapShortcutsDialog *>();

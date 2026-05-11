@@ -296,7 +296,13 @@ protected:
     // user can type `?` into the substring filter. Layout-robust:
     // matches `event->text() == "?"` rather than Key_Question so
     // AltGr-on-Polish / dead-key sequences still hit it.
+    // ANTS-1234 — extends the override to also handle `/` (focus
+    // search box) by the same layout-robust path.
     void keyPressEvent(QKeyEvent *event) override;
+    // ANTS-1234 — installed as event filter on m_searchBox so Esc on
+    // the focused search predicate clears + blurs instead of bubbling
+    // to QDialog::reject. Falls through for every non-Escape key.
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
     void rebuild();
@@ -317,6 +323,10 @@ private:
     void scheduleRebuild();
     void applyPreset(Preset p);
     void onCheckboxToggled();
+    // ANTS-1234 — focus m_searchBox and select any pre-existing text
+    // (so the next keystroke replaces it). Called from keyPressEvent
+    // when `/` arrives without the search box already focused.
+    void focusSearchBox();
     QStringList collectCurrentBullets() const;
     // ANTS-1154 — refresh m_shippedDates from m_changelogPath when its
     // mtime has changed since the last call. No-op if path empty.

@@ -13,7 +13,8 @@ These mirror `docs/specs/ANTS-1236.md` § 4. The IDs are qualified
 once two specs share a test directory tree.
 
 - **ANTS-1236-INV-1.** The data table `kRoadmapShortcuts` lives in
-  `src/roadmapdialog.cpp` and has exactly 9 rows at ship.
+  `src/roadmapdialog.cpp` and has exactly 10 rows at ship (bumped
+  from 9 by ANTS-1234 on 2026-05-11 when `/` was added).
 - **ANTS-1236-INV-2.** `roadmapShortcutRows()` returns one entry per
   `kRoadmapShortcuts` row, in declaration order, with the keys column
   rendered as `QString::fromUtf8(row.keys)` and the action column
@@ -33,7 +34,7 @@ once two specs share a test directory tree.
 - **ANTS-1236-INV-7.** `setWindowTitle(tr("Roadmap Keyboard
   Shortcuts"))` is set so screen readers announce the dialog by name.
 - **ANTS-1236-INV-8.** The feature test asserts
-  `roadmapShortcutRows().size() == 9` (exact match). A future
+  `roadmapShortcutRows().size() == 10` (exact match). A future
   shortcut addition that doesn't bump both the data table AND this
   test count fails the suite.
 

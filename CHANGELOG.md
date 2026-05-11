@@ -14,6 +14,38 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1234 — Roadmap dialog `/`-focus + Esc-clear + body-only
+  auto-expand.** Three keyboard-first ergonomics additions to the
+  Roadmap dialog's existing substring search box. (1) Pressing `/`
+  anywhere in the dialog focuses the search box and select-alls
+  any existing predicate so the next keystroke replaces it
+  (Linear / GitHub / Notion / VS Code / Slack convention).
+  Layout-robust via `event->text() == "/"`; gated on
+  `!m_searchBox->hasFocus()` so the user can still type `/` into
+  the predicate (URLs, path tokens). (2) Pressing Esc while the
+  search box has focus clears the predicate and removes focus —
+  one press undoes a search, a second press closes the dialog as
+  before. Implemented via `installEventFilter(this)` on the
+  search box + a dialog-side `eventFilter` override that consumes
+  the Escape KeyPress before it can reach `QDialog::reject`. For
+  every non-Escape key, the filter falls through so the QLineEdit
+  receives PgUp / F5 / typing characters normally. (3) Cards
+  whose match lives *only* in the body continuation prose (not in
+  ID / headline / Layman) auto-expand for that render so the
+  matched substring is visible in context. Render-time only;
+  `m_expandedItems` is never mutated, so clearing the search
+  reverts every auto-expanded card to its prior user-driven
+  state. The `id:NNNN` jump shortcut also auto-expands the
+  matched card. The cheatsheet (ANTS-1236) gains a `/` row in
+  lockstep — `kRoadmapShortcuts[]` bumps 9 → 10 rows and the
+  `static_assert` + test assertions all move 9 → 10 in the same
+  commit. Cost: +4 case-insensitive `QString::contains` calls per
+  card per render (~0.3 ms on 200 cards, well below the 120 ms
+  search debounce). Regression-locked by ANTS-1234-INV-1..9 in
+  `tests/features/roadmap_search_keybinds/spec.md`. Spec:
+  `docs/specs/ANTS-1234.md` (cold-eyes-clean after 7 loops + ~25
+  findings fixed).
+
 - **ANTS-1236 — Keyboard-shortcut cheatsheet in the Roadmap dialog.**
   Press `?` inside the Roadmap dialog to open a sub-dialog listing
   every keyboard shortcut it ships today. Mechanism: a file-scope
@@ -21,18 +53,19 @@ for security-relevant changes.
   single source of truth; `roadmapShortcutRows()` exports it to
   `RoadmapShortcutsDialog` (`src/roadmapshortcutsdialog.{h,cpp}`),
   which renders a two-column `QTableWidget` (`Shortcut` / `Action`).
-  9 shortcuts at ship: `?`, `Esc`, `F5`, `Ctrl+C`, `Ctrl+A`, `↑ ↓`,
-  `PgUp PgDn`, `Home End`, `Tab Shift+Tab`. The trigger uses
-  `event->text() == "?"` (layout-robust — AltGr / dead-key paths on
-  non-US layouts still hit it) and gates on `!m_searchBox->hasFocus()`
-  so the user can still type `?` into the substring filter. The
-  overlay is lazy + reused (one instance via `QPointer`), inherits
-  the active terminal theme through `DialogChrome`, and announces
-  via `setWindowTitle(tr("Roadmap Keyboard Shortcuts"))`. The
-  `static_assert(std::size(kRoadmapShortcuts) == 9, …)` guard locks
-  the row count to the test's exact-9 assertion so adding a future
-  shortcut must bump the test in lockstep. Regression-locked by
-  ANTS-1236-INV-1..8 in
+  10 shortcuts at ship after ANTS-1234 added `/`: `?`, `/`, `Esc`,
+  `F5`, `Ctrl+C`, `Ctrl+A`, `↑ ↓`, `PgUp PgDn`, `Home End`,
+  `Tab Shift+Tab`. The trigger uses `event->text() == "?"`
+  (layout-robust — AltGr / dead-key paths on non-US layouts still
+  hit it) and gates on `!m_searchBox->hasFocus()` so the user can
+  still type `?` into the substring filter. The overlay is lazy +
+  reused (one instance via `QPointer`), inherits the active
+  terminal theme through `DialogChrome`, and announces via
+  `setWindowTitle(tr("Roadmap Keyboard Shortcuts"))`. The
+  `static_assert(std::size(kRoadmapShortcuts) == 10, …)` guard
+  locks the row count to the test's exact-10 assertion so adding a
+  future shortcut must bump the test in lockstep. Regression-locked
+  by ANTS-1236-INV-1..8 in
   `tests/features/roadmap_shortcuts_cheatsheet/spec.md`. Spec:
   `docs/specs/ANTS-1236.md` (cold-eyes-clean after 7 loops + ~27
   findings fixed).
