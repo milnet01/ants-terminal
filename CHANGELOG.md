@@ -14,6 +14,29 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1236 — Keyboard-shortcut cheatsheet in the Roadmap dialog.**
+  Press `?` inside the Roadmap dialog to open a sub-dialog listing
+  every keyboard shortcut it ships today. Mechanism: a file-scope
+  `kRoadmapShortcuts[]` data table in `src/roadmapdialog.cpp` is the
+  single source of truth; `roadmapShortcutRows()` exports it to
+  `RoadmapShortcutsDialog` (`src/roadmapshortcutsdialog.{h,cpp}`),
+  which renders a two-column `QTableWidget` (`Shortcut` / `Action`).
+  9 shortcuts at ship: `?`, `Esc`, `F5`, `Ctrl+C`, `Ctrl+A`, `↑ ↓`,
+  `PgUp PgDn`, `Home End`, `Tab Shift+Tab`. The trigger uses
+  `event->text() == "?"` (layout-robust — AltGr / dead-key paths on
+  non-US layouts still hit it) and gates on `!m_searchBox->hasFocus()`
+  so the user can still type `?` into the substring filter. The
+  overlay is lazy + reused (one instance via `QPointer`), inherits
+  the active terminal theme through `DialogChrome`, and announces
+  via `setWindowTitle(tr("Roadmap Keyboard Shortcuts"))`. The
+  `static_assert(std::size(kRoadmapShortcuts) == 9, …)` guard locks
+  the row count to the test's exact-9 assertion so adding a future
+  shortcut must bump the test in lockstep. Regression-locked by
+  ANTS-1236-INV-1..8 in
+  `tests/features/roadmap_shortcuts_cheatsheet/spec.md`. Spec:
+  `docs/specs/ANTS-1236.md` (cold-eyes-clean after 7 loops + ~27
+  findings fixed).
+
 - **ANTS-1235 — Accessible status / theme glyph labels in the
   Roadmap dialog.** Screen readers (Orca / NVDA / VoiceOver)
   announce "✅" as "white heavy check mark" by default — useless

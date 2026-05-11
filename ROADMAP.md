@@ -8595,7 +8595,7 @@ contributors don't duplicate research.
   in progress" instead of "white heavy check mark 47 …".
   Kind: implement.
   Source: research-2026-05-11.
-- 📋 [ANTS-1236] **Keyboard-shortcut cheatsheet** (`?` opens an
+- ✅ [ANTS-1236] **Keyboard-shortcut cheatsheet** (`?` opens an
   overlay). Spec at `docs/specs/ANTS-1236.md` (cold-eyes-clean
   after 7 loops + ~27 findings fixed — audit trail in the
   2026-05-12 cold-eyes block above). Mechanism: file-scope

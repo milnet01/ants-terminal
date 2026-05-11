@@ -35,6 +35,7 @@
 #include <QDialog>
 #include <QFileSystemWatcher>
 #include <QHash>
+#include <QPair>
 #include <QPointer>
 #include <QSet>
 #include <QString>
@@ -50,6 +51,15 @@ class QLineEdit;
 class QListWidget;
 class QTabBar;
 class QTextBrowser;
+class RoadmapShortcutsDialog;
+
+// ANTS-1236 — accessor for the file-scope `kRoadmapShortcuts[]` table
+// living in `roadmapdialog.cpp`. Returns one (keys, action) pair per
+// row in declaration order. The action column is resolved through
+// `RoadmapDialog::tr()` so a future translation pass works; the keys
+// column is pass-through (key glyphs are layout-invariant). See spec
+// `docs/specs/ANTS-1236.md` § 3.c.
+QVector<QPair<QString, QString>> roadmapShortcutRows();
 
 class RoadmapDialog : public QDialog {
     Q_OBJECT
@@ -281,6 +291,12 @@ public:
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    // ANTS-1236 — open / toggle the keyboard-shortcut cheatsheet on
+    // `?` (Shift+/), gated by §3.d's search-box-focus guard so the
+    // user can type `?` into the substring filter. Layout-robust:
+    // matches `event->text() == "?"` rather than Key_Question so
+    // AltGr-on-Polish / dead-key sequences still hit it.
+    void keyPressEvent(QKeyEvent *event) override;
 
 private slots:
     void rebuild();
@@ -371,4 +387,9 @@ private:
     QSet<QString> m_tableSections;
     QHash<QString, QString> m_shippedDates;
     qint64 m_shippedDatesMtime = -1;
+    // ANTS-1236 — lazily-constructed cheatsheet overlay. Held by
+    // QPointer so the parent's child-destruction sets us back to
+    // null on close. INV-6 contract: reuse the same instance across
+    // re-opens.
+    QPointer<RoadmapShortcutsDialog> m_shortcutsDialog;
 };

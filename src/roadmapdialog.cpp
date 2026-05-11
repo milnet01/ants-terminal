@@ -3,6 +3,7 @@
 #include "coloredtabbar.h"     // for ClaudeTabIndicator::color (ToolUse yellow)
 #include "config.h"
 #include "dialogchrome.h"      // ANTS-1242 — frameless dialog chrome
+#include "roadmapshortcutsdialog.h"  // ANTS-1236 — `?` cheatsheet overlay
 #include "themes.h"
 #include "titlebar.h"
 
@@ -14,6 +15,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
@@ -55,6 +57,32 @@ constexpr StatusLabel kStatusLabels[] = {
 };
 static_assert(std::size(kStatusLabels) == 4,
               "Add a label here when introducing a new status emoji.");
+
+// ANTS-1236 — file-scope cheatsheet data table. Single source of truth
+// for the Roadmap dialog's keyboard surface; the cheatsheet sub-dialog
+// reads through `roadmapShortcutRows()` (defined below) and the
+// feature test source-greps these literal byte sequences (INV-1 / INV-2
+// / INV-5 / INV-8 — see docs/specs/ANTS-1236.md § 4).
+//
+// Adding a shortcut: bump the row count below + the test's exact-9
+// assertions in tests/features/roadmap_shortcuts_cheatsheet/ in the
+// same commit. The static_assert guards against silent drift.
+struct ShortcutRow { const char *keys; const char *action; };
+constexpr ShortcutRow kRoadmapShortcuts[] = {
+    {"?",              QT_TR_NOOP("Show this cheatsheet")},
+    {"Esc",            QT_TR_NOOP("Close dialog")},
+    {"F5",             QT_TR_NOOP("Refresh from disk")},
+    {"Ctrl+C",         QT_TR_NOOP("Copy selection")},
+    {"Ctrl+A",         QT_TR_NOOP("Select all")},
+    {"↑ ↓",            QT_TR_NOOP("Scroll one line")},
+    {"PgUp PgDn",      QT_TR_NOOP("Scroll one page")},
+    {"Home End",       QT_TR_NOOP("Jump to top / bottom")},
+    {"Tab Shift+Tab",  QT_TR_NOOP("Move focus to next / previous control")},
+};
+static_assert(std::size(kRoadmapShortcuts) == 9,
+              "ANTS-1236 INV-1: cheatsheet row count must match the test's "
+              "exact-9 assertion. Bump both in lock-step when adding a new "
+              "shortcut.");
 
 QString htmlEscape(QString s) {
     s.replace('&', QStringLiteral("&amp;"));
@@ -1347,6 +1375,22 @@ QString RoadmapDialog::statusAccessibleLabel(const QString &emoji) {
     return {};
 }
 
+// ANTS-1236 — render the file-scope `kRoadmapShortcuts` table into the
+// two-column shape the cheatsheet sub-dialog consumes. Resolves the
+// action column through `RoadmapDialog::tr()` (qualified because the
+// strings were extracted with QT_TR_NOOP in this TU and so belong to
+// this translation context, not the sub-dialog's); the keys column is
+// pass-through. See spec § 3.c / INV-2.
+QVector<QPair<QString, QString>> roadmapShortcutRows() {
+    QVector<QPair<QString, QString>> out;
+    out.reserve(std::size(kRoadmapShortcuts));
+    for (const auto &row : kRoadmapShortcuts) {
+        out.append({QString::fromUtf8(row.keys),
+                    RoadmapDialog::tr(row.action)});
+    }
+    return out;
+}
+
 QHash<QString, QString>
 RoadmapDialog::parseShippedDates(const QString &changelogPath) {
     QHash<QString, QString> out;
@@ -1868,6 +1912,34 @@ void RoadmapDialog::closeEvent(QCloseEvent *event) {
             QStringList(m_tableSections.begin(), m_tableSections.end()));
     }
     QDialog::closeEvent(event);
+}
+
+// ANTS-1236 — Roadmap dialog keyboard cheatsheet trigger. `?` opens
+// `RoadmapShortcutsDialog` (lazy + reused via QPointer per INV-6);
+// pressing `?` again on the cheatsheet itself closes it. The
+// search-box-focus guard (INV-4) lets the user type `?` into the
+// substring filter — when the QLineEdit owns focus its own
+// keyPressEvent runs first and consumes the event, so the guard is
+// belt-and-braces for the case where focus has logically escaped.
+//
+// Layout-robust match via `event->text()` rather than `Key_Question` —
+// AltGr+something on Polish layouts, dead-key sequences, etc. still
+// resolve to "?" at the text() level even where Qt omits Key_Question.
+void RoadmapDialog::keyPressEvent(QKeyEvent *event) {
+    if (event
+        && event->text() == QLatin1String("?")
+        && !(event->modifiers() & Qt::ControlModifier)
+        && !(m_searchBox && m_searchBox->hasFocus())) {
+        if (!m_shortcutsDialog) {
+            m_shortcutsDialog = new RoadmapShortcutsDialog(m_themeName, this);
+        }
+        m_shortcutsDialog->show();
+        m_shortcutsDialog->raise();
+        m_shortcutsDialog->activateWindow();
+        event->accept();
+        return;
+    }
+    QDialog::keyPressEvent(event);
 }
 
 // ANTS-1154 — anchorClicked handler for `ants://` URLs emitted by

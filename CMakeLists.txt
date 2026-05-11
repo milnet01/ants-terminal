@@ -295,6 +295,7 @@ set_target_properties(ants_audit_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(ants_dialogs_lib STATIC
     src/settingsdialog.cpp
     src/roadmapdialog.cpp
+    src/roadmapshortcutsdialog.cpp
     src/diffviewer.cpp
     src/sshdialog.cpp
     src/aidialog.cpp
@@ -859,6 +860,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
                 tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
                 tests/features/roadmap_dialog_cards/test_roadmap_dialog_cards.cpp
+                tests/features/roadmap_shortcuts_cheatsheet/test_roadmap_shortcuts_cheatsheet.cpp
                 tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp)
     target_compile_definitions(test_dialogs PRIVATE
@@ -877,7 +879,13 @@ if(ANTS_TESTS)
         MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
-        SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp")
+        SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        ROADMAPSHORTCUTSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.cpp"
+        ROADMAPSHORTCUTSDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.h")
+    # ANTS-1236 — Qt6::Test for QTest::keyClick used by
+    # roadmap_shortcuts_cheatsheet. Mirrors the test_chrome / test_claude
+    # bundles that also pull Qt6::Test in.
+    target_link_libraries(test_dialogs PRIVATE Qt6::Test)
 
     # ANTS-1217 Phase 6 — test_lua bundle (gated on LUA_FOUND). Subject:
     # luaengine + pluginmanager. lua_sandbox_hardening drives the live
