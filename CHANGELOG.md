@@ -12,6 +12,17 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.83] — 2026-05-11
+
+### Theme
+
+RoadmapDialog v2 ships — card-style rendering for glance-friendly
+scanning of what's done, in-progress, and outstanding. Live-iterated
+visual polish (status counts lead section titles, parent-h2
+breadcrumb on h3 sections, Table-of-Contents h2 suppressed inside
+the content pane, section headings + chevron both clickable) plus a
+Wayland Copy-from-roadmap fix.
+
 ### Added
 
 - **ANTS-1154 — RoadmapDialog v2: card-style rendering.** Layman:
@@ -19,18 +30,25 @@ for security-relevant changes.
   a big state icon (✅/🚧/📋/💭), a type chip (`⚙ implement`, `🐛
   fix`, etc.), a one-sentence summary, and a meta row carrying the
   ID and the shipped date — instead of a wall of prose. Sections
-  start collapsed with a status count chip (`✅ 4 · 🚧 2 · 📋 5`);
-  click a section header to expand it. Non-Full tabs (History /
+  start collapsed with status-count chips leading the title (`✅ 4
+  🚧 1 Performance`) so a partially-sighted scan reads the counts
+  before parsing the name. Click the chevron **or** the heading
+  text itself to expand/collapse. Non-Full tabs (History /
   Current / Next / Far Future) now strip prose intros and empty
-  sections so you only see cards relevant to that tab. Per-item
-  expand state + per-section expand state persist via four new
-  `Config` keys. New optional `Layman:` line in any roadmap bullet
-  body — when present, shown on the card face instead of the bold
-  headline. Two new footer buttons: **Refresh** (F5) and **Reset
-  View** (two-click confirm). Shipped scope is presentation-only;
-  the original "tagged-text format v2" portion of the charter was
-  deferred (see §1156 sub-(2) in ROADMAP for the spin-out). All
-  existing `roadmap_viewer*` / `roadmap_kind_facets` /
+  sections so you only see cards relevant to that tab. h3
+  sub-sections show their parent h2 as a breadcrumb (`Performance ·
+  0.7.0 — shell integration`) to disambiguate orphan headings that
+  recur under multiple releases. The Table of Contents h2 is
+  suppressed inside the content pane — the QListWidget sidebar
+  already serves that role. Per-item + per-section expand state
+  persist via four new `Config::roadmap*` keys. New optional
+  `Layman:` line in any roadmap bullet body — when present, shown
+  on the card face instead of the bold headline. Two new footer
+  buttons: **Refresh** (F5) and **Reset View** (two-click confirm).
+  Shipped scope is presentation-only; the original "tagged-text
+  format v2" portion of the charter was deferred (see §1156
+  sub-(2) in ROADMAP for the spin-out). All existing
+  `roadmap_viewer*` / `roadmap_kind_facets` /
   `remote_control_roadmap_query` tests stay green — `renderHtml` /
   `parseBullets` were extended additively, not replaced; the new
   card renderer is a sibling helper named `renderCardsHtml`. New
@@ -46,6 +64,18 @@ for security-relevant changes.
   parsers ignore it. No format-version pragma bump. Authors add
   `Layman:` lines opportunistically as they touch bullets; the
   bold headline remains the fallback when absent. ([ANTS-1154])
+
+### Fixed
+
+- **RoadmapDialog Copy on Wayland.** The QTextBrowser's automatic
+  context menu was a no-op on Wayland: right-click → menu appears,
+  Copy does nothing, outside-click can't dismiss it. Same
+  QTBUG-79126 family that bit `QDialogButtonBox::Close` in 0.7.49
+  — the auto-popup attaches to a surface the compositor never
+  grants input to. Switched to `Qt::CustomContextMenu` with a
+  dialog-parented `QMenu` so the popup attaches to a stable xdg
+  surface; Copy + Select All now work and outside-click dismisses.
+  ([ANTS-1154])
 
 ## [0.7.82] — 2026-05-11
 

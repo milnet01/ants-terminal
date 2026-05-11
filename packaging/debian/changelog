@@ -1,3 +1,30 @@
+ants-terminal (0.7.83-1) unstable; urgency=medium
+
+  * RoadmapDialog v2 ships — card-style rendering with glance-friendly
+    scanning of what's done, in-progress, and outstanding. Live-iterated
+    visual polish plus a Wayland Copy-from-roadmap fix.
+  * ANTS-1154 — RoadmapDialog v2 now shows each roadmap item as a scannable
+    card with a state icon (✅/🚧/📋/💭), type chip (⚙ implement, 🐛 fix,
+    etc.), one-sentence summary, and meta row with ID and shipped date.
+    Sections start collapsed with status-count chips (✅ 4 🚧 1) in titles;
+    click the chevron or heading text to expand/collapse.
+  * Non-Full tabs (History/Current/Next/Far Future) now strip prose intros
+    and empty sections, showing only cards relevant to that view. h3
+    sub-sections show their parent h2 breadcrumb to disambiguate recurring
+    headings across releases.
+  * Per-item and per-section expand state persists via four new Config keys.
+    Table of Contents h2 suppressed inside the content pane (QListWidget
+    sidebar already serves that role). New footer buttons: Refresh (F5) and
+    Reset View (two-click confirm).
+  * RoadmapDialog Copy on Wayland now works — switched from QTextBrowser's
+    auto-context menu to Qt::CustomContextMenu with a stable xdg surface
+    attachment, following the QTBUG-79126 fix pattern from 0.7.49.
+  * New optional `Layman:` line in roadmap bullets — when present, shown on
+    card face instead of the bold headline. Additive on v1 format; existing
+    parsers continue to work unchanged.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 11 May 2026 12:04:08 +0000
+
 ants-terminal (0.7.82-1) unstable; urgency=medium
 
   * Live-repro fix bundle — two real bugs surfaced during Claude

@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.82 (2026-05-11). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.83 (2026-05-11). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -8226,6 +8226,90 @@ contributors don't duplicate research.
   ($250/mo with logo + priority issue triage).
   Kind: chore.
   Source: planned.
+
+### 🧹 Code quality & maintenance (rolling)
+
+- 💭 [ANTS-1227] **Performance scan**. Survey `src/` for hot paths
+  with measurable wins: paint-cycle cost in `terminalwidget`,
+  scrollback reflow on resize in `terminalgrid`, VT-parser state
+  transitions in `vtparser`, audit pipeline stages in
+  `auditdialog` / `auditengine`. Output: a ranked list of (call
+  site → expected gain → effort) tuples. Use `perf` /
+  `callgrind` / Qt's `QElapsedTimer` against real workloads
+  (vim/htop/large `cat`/Claude sessions). No code lands from
+  this item — feeds new `[ANTS-NNNN]` implement items per
+  finding.
+  **Layman:** spend a focused session looking for code that
+  could be made faster, list the wins by size, then implement
+  them one by one as separate roadmap items.
+  Kind: spike.
+  Source: user-2026-05-11.
+- 💭 [ANTS-1228] **Refactoring scan**. Survey `src/` for places
+  where structure is fighting the code: oversized files
+  (`terminalgrid.cpp`, `terminalwidget.cpp`, `mainwindow.cpp`),
+  duplicated logic between renderers (`renderHtml` vs
+  `renderCardsHtml` shared helpers), tangled lifetimes,
+  signal/slot chains that bypass owners. Output: a list of
+  proposed boundary changes with cost/benefit. No drive-by
+  refactors — each finding lands as its own implement item if
+  accepted.
+  **Layman:** look at the code organization, find spots where
+  splitting/merging modules would make the project easier to
+  read and change, list them — then decide which to do.
+  Kind: spike.
+  Source: user-2026-05-11.
+- 💭 [ANTS-1229] **Optimisation scan**. Distinct from ANTS-1227
+  (which finds hot paths). This one looks for *wasted work*
+  independent of profiler hotness: per-frame allocations that
+  could be pooled, `QString` copies that could be
+  `QStringView`, repeated parses that could be cached, sync I/O
+  that could batch. Cross-references the audit pack — cppcheck
+  / clazy already flag some.
+  **Layman:** look for places where the code does extra work
+  that nobody asked for — copies it doesn't need, re-parses of
+  things it already knows, that kind of thing.
+  Kind: spike.
+  Source: user-2026-05-11.
+- 💭 [ANTS-1230] **Code cleanup scan**. Dead helpers, unused
+  includes, stale `// TODO` / `// FIXME` markers older than 6
+  months, unused config keys, retired feature flags still
+  carrying default values, header-only declarations with no
+  callers. Cross-check against `clazy --check=unused-non-trivial-variable`
+  and `cppcheck --enable=unusedFunction`. Output: a deletion
+  PR per category; doesn't touch behaviour.
+  **Layman:** find code that was once useful but no longer is
+  — old TODOs, helpers nobody calls, options that don't do
+  anything — and delete it.
+  Kind: chore.
+  Source: user-2026-05-11.
+- 💭 [ANTS-1231] **Accessibility audit**. Cross-cuts ANTS-1227–1230
+  but warrants its own scan. Survey the UI for: font-size
+  scaling (some chrome already uses 11–13px; under high DPI or
+  large system font, does it remain readable?), keyboard-only
+  navigation (every dialog reachable / dismissable without a
+  mouse?), screen-reader hints (Qt's `setAccessibleName` /
+  `setAccessibleDescription` coverage), color-contrast on the
+  ANSI palette + chrome themes, focus-ring visibility. Author
+  has a partially-sighted bias — this is overdue.
+  **Layman:** check every panel and dialog can be used
+  comfortably with large fonts, by keyboard alone, and by a
+  screen reader.
+  Kind: spike.
+  Source: user-2026-05-11.
+- 💭 [ANTS-1232] **Test coverage gap analysis**. List every
+  user-visible invariant (cross-reference `tests/features/*/spec.md`
+  + the audit-rule fixtures + the `INV-N` anchors across all
+  specs) and grade each: ✅ has feature test / 🟡 partial / ❌
+  uncovered. Output: a triaged list of "needs a regression
+  test" items, prioritised by blast-radius. Pairs naturally
+  with ANTS-1227–1230 — refactoring is safer when coverage is
+  known.
+  **Layman:** make a list of every behaviour the app promises,
+  check which ones have a test that catches regressions, and
+  write the missing tests for the most important uncovered
+  ones first.
+  Kind: spike.
+  Source: user-2026-05-11.
 
 ---
 
