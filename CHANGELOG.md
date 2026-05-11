@@ -12,6 +12,36 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **ANTS-1235 — Accessible status / theme glyph labels in the
+  Roadmap dialog.** Screen readers (Orca / NVDA / VoiceOver)
+  announce "✅" as "white heavy check mark" by default — useless
+  as a scan cue on a several-hundred-bullet roadmap. The fix
+  emits a short, lowercase text label inline alongside each
+  status emoji on every card: `<span class="rm-state">✅</span>
+  <span class="rm-state-label">shipped</span>` and friends.
+  Section-header count chips gain trailing words too —
+  `✅ 47 shipped · 🚧 2 in progress · 📋 3 planned · 💭 8 considered`
+  in place of the prior bare `✅ 47 🚧 2 …`. Filter checkboxes
+  get `setAccessibleName()` setters ("Show shipped items"
+  etc.) so Orca speaks the verb-led form instead of the visible
+  label. The visible `✅ Done` checkbox label is renamed
+  `✅ Shipped` for vocabulary consistency with the rest of the
+  roadmap-format standards (§3.3 accepts both terms). Theme
+  glyphs (🎨/⚡/🔌/🖥/🔒/🧰/📚/📦/🐛/🔍/🧹) stay unlabelled
+  because the heading text they prefix already labels them.
+  Verified mechanism: HTML `aria-label` is dead on arrival in
+  Qt 6 QTextBrowser (parser strips unknown attributes;
+  `QAccessibleTextInterface` only reads `toPlainText()`), so
+  any a11y solution must put the label in the rendered text.
+  `docs/standards/documentation.md` gains a new *Accessibility*
+  section documenting the Qt 6 a11y path so future contributors
+  don't repeat the aria-label investigation. Regression-locked
+  by INV-18..24 in `tests/features/roadmap_dialog_cards/spec.md`
+  (302/302 tests pass). Spec: `docs/specs/ANTS-1235.md`. Cold-
+  eyes audit trail: `ROADMAP.md ### 📝 Cold-eyes 2026-05-11`.
+
 ### Fixed
 
 - **ANTS-1242 — Theme-aware frameless title bar on every dialog.**

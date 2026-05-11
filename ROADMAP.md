@@ -8412,6 +8412,30 @@ contributors don't duplicate research.
   Kind: spike.
   Source: user-2026-05-11.
 
+### 📝 Cold-eyes 2026-05-11
+
+> Docs reviewed: 1 (`docs/specs/ANTS-1235.md`). Loops to clean: 3.
+> Findings fixed: 12 (4 HIGH, 4 MEDIUM, 4 LOW).
+
+- Line-citation accuracy: `qaccessible.h` cite split into class
+  (`:122`) and method (`:138`); `roadmapdialog.cpp:1402-1411` widened
+  to `:1402-1416` so `m_filterCurrent` falls inside the cited range.
+- Cross-doc accuracy: theme-glyph enumeration expanded from 7 to
+  the full 11 per `docs/standards/roadmap-format.md` §3.4; "Done →
+  shipped historic drift" framing softened to "§3.3 accepts both";
+  `docs/standards/documentation.md` correctly described as
+  needing a new *Accessibility* section, not an empty one to fill;
+  "Markdown" section reference corrected to "Markdown style".
+- Internal arithmetic: per-card markup recount (~30 → ~48 chars,
+  ~15 KB → ~24 KB at 500 cards); LoC tally widened (~25 → ~29
+  with per-section breakdown).
+- Implementation detail: `chips.trimmed()` won't strip the
+  trailing ` · ` separator; spec now prescribes `chips.chop(3)`.
+- Internal-API: `Filter::ShowDone` enum value kept; only the
+  user-visible string is renamed `Done` → `Shipped`.
+- Spec status: now names the ROADMAP advancement trigger
+  (`💭 → 📋` or `🚧` on sign-off).
+
 ### 🎨 Roadmap dialog v2 follow-ups (post-ANTS-1154)
 
 > Surfaced by the 2026-05-11 research synthesis on roadmap-presentation
@@ -8431,17 +8455,25 @@ contributors don't duplicate research.
   you're thinking of, instead of scrolling.
   Kind: implement.
   Source: research-2026-05-11.
-- 💭 [ANTS-1235] **`aria-label` on status emoji glyphs**.
-  Screen readers currently announce "✅" as "white heavy check
-  mark" (Pope.tech / W3C H86). Wrap each status emoji in
-  `<span aria-label="Shipped">…</span>` (or the Qt
-  `setAccessibleName` equivalent on the rendered cell) so the
-  spoken label reads "Shipped" / "In progress" / "Planned" /
-  "Considered". Same treatment for theme emojis (Performance,
-  Plugins, etc.). Low effort, high impact for the
-  partially-sighted / screen-reader path.
-  **Layman:** make sure screen readers say "Shipped" instead
-  of "white heavy check mark" when they hit a ✅.
+- 🚧 [ANTS-1235] **Accessible status / theme glyph labels.**
+  Screen readers (Orca / NVDA / VoiceOver) announce "✅" as
+  "white heavy check mark" by default — useless as a scan cue
+  on a several-hundred-bullet roadmap. Verified mechanism (per
+  `docs/specs/ANTS-1235.md`): HTML `aria-label` is dead on
+  arrival in Qt 6 `QTextBrowser` (parser strips unknown
+  attributes; `QAccessibleTextInterface` only reads
+  `toPlainText()`). Fix is visible compact text labels inline
+  alongside the emoji — `<span class="rm-state-label">shipped</span>`
+  on cards, `47 shipped · 2 in progress · …` on section count
+  chips. Filter checkboxes get `setAccessibleName()` setters
+  ("Show shipped items" etc.); visible `✅ Done` label is also
+  renamed `✅ Shipped` for vocabulary consistency with the rest
+  of the roadmap-format standard (§3.3 accepts both). Theme
+  glyphs stay unlabelled — the heading text already labels them.
+  **Layman:** when a screen reader hits a ✅ in the Roadmap
+  dialog it now says "shipped" instead of "white heavy check
+  mark", and the section-header counts read as "47 shipped, 2
+  in progress" instead of "white heavy check mark 47 …".
   Kind: implement.
   Source: research-2026-05-11.
 - 💭 [ANTS-1236] **Keyboard-shortcut cheatsheet** (`?` opens an

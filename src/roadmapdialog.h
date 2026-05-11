@@ -198,6 +198,14 @@ public:
     static QHash<QString, QString>
     parseShippedDates(const QString &changelogPath);
 
+    // ANTS-1235 — return the screen-reader-readable label
+    // ("shipped" / "in progress" / "planned" / "considered") for one
+    // of the four status emoji constants. Returns an empty QString
+    // if `emoji` is not a recognised status glyph. Lookup is a
+    // four-entry linear scan over the file-scope `kStatusLabels`
+    // table; tr()-resolved at call time so future translations work.
+    static QString statusAccessibleLabel(const QString &emoji);
+
     // Heading entry surfaced in the TOC sidebar. `level` is 1..4,
     // `text` is the raw heading text post-`#` strip (no inline
     // expansion), `anchor` is the same name renderHtml emits.

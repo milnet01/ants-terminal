@@ -12,6 +12,7 @@
 #include <QSet>
 #include <QString>
 #include <QTemporaryFile>
+#include <QTextDocument>
 
 #include <cstdio>
 #include <fstream>
@@ -535,6 +536,143 @@ static int runMain(int argc, char **argv) {
         if (contains(src, "<div class=\\\"rm-meta\\\">"))
             return fail("IdInline",
                 "renderer still emits <div class=\"rm-meta\"> wrapper");
+    }
+
+    // ANTS-1235 — INV-18..24: every status emoji gets a screen-
+    // reader-readable text label so Orca / NVDA announce "shipped"
+    // instead of "white heavy check mark". Test the rendered HTML
+    // for the rm-state-label spans, the chip-text labels in the
+    // section count row, the source-grep guards for the lookup
+    // table and CSS, and the plain-text projection via
+    // QTextDocument (the surface Qt's accessibility layer reads).
+    {
+        RD::CardRenderOptions opts;
+        opts.activePreset = RD::Preset::Full;
+        opts.expandedSections.insert(QStringLiteral("features"));
+        opts.expandedSections.insert(QStringLiteral("considered"));
+        const QString html = RD::renderCardsHtml(
+            fixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
+            RD::SortOrder::Document, QString(), {}, opts);
+        const std::string h = html.toStdString();
+
+        // INV-18: each rm-state span is immediately followed by an
+        // rm-state-label span carrying the right lowercase word.
+        struct Expect { const char *emoji; const char *label; };
+        const Expect cases[] = {
+            {"✅", "shipped"},
+            {"🚧", "in progress"},
+            {"📋", "planned"},
+            {"💭", "considered"},
+        };
+        for (const auto &c : cases) {
+            const std::string needle =
+                std::string("<span class=\"rm-state\">") + c.emoji
+                + "</span><span class=\"rm-state-label\">" + c.label
+                + "</span>";
+            if (!contains(h, needle))
+                return fail("StateLabel",
+                    (std::string("expected ") + needle + " not in rendered HTML").c_str());
+        }
+
+        // INV-21: rm-state-label appears exactly once per card —
+        // never on section headings or anywhere else. Fixture has
+        // 4 cards (ANTS-9001..9004); count of rm-state-label spans
+        // must be 4.
+        std::string::size_type pos = 0;
+        int labelCount = 0;
+        const std::string token = "<span class=\"rm-state-label\">";
+        while ((pos = h.find(token, pos)) != std::string::npos) {
+            ++labelCount; pos += token.size();
+        }
+        if (labelCount != 4)
+            return fail("StateLabel",
+                (std::string("expected 4 rm-state-label spans (one per card), got ")
+                 + std::to_string(labelCount)).c_str());
+
+        // INV-20: section count chips emit trailing text words. The
+        // fixture's "Features" section has 1 ✅, 1 🚧, 1 📋 — chips
+        // text must contain all three labels (and NOT a trailing
+        // ` · `).
+        if (!contains(h, "✅ 1 shipped"))
+            return fail("ChipText",
+                "section counts must include `✅ 1 shipped`");
+        if (!contains(h, "🚧 1 in progress"))
+            return fail("ChipText",
+                "section counts must include `🚧 1 in progress`");
+        if (!contains(h, "📋 1 planned"))
+            return fail("ChipText",
+                "section counts must include `📋 1 planned`");
+        // Trailing separator must be stripped — the LAST chip in
+        // any given count span must not end with ` · `. The chip
+        // span is closed by </span>, so search for `· </span>`.
+        if (contains(h, " · </span>"))
+            return fail("ChipText",
+                "section count span ends with ` · </span>` — "
+                "chips.chop(3) didn't strip the trailing separator");
+
+        // INV-24: plain-text projection of the rendered HTML
+        // contains the four label words in document order.
+        // QTextDocument is what Qt's QAccessibleTextInterface
+        // surfaces to AT-SPI / IAccessible2.
+        QTextDocument doc;
+        doc.setHtml(html);
+        const QString plain = doc.toPlainText();
+        const auto posShipped = plain.indexOf(QStringLiteral("shipped"));
+        const auto posInProg  = plain.indexOf(QStringLiteral("in progress"));
+        const auto posPlanned = plain.indexOf(QStringLiteral("planned"));
+        const auto posConsid  = plain.indexOf(QStringLiteral("considered"));
+        if (posShipped < 0 || posInProg < 0 ||
+            posPlanned < 0 || posConsid < 0)
+            return fail("PlainText",
+                "QTextDocument.toPlainText() missing one of the "
+                "four status labels — Qt accessibility surface "
+                "won't see them either");
+    }
+
+    // INV-19 + INV-22 + INV-23: source-grep guards.
+    {
+        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        if (src.empty())
+            return fail("StateLabel", "roadmapdialog.cpp not readable");
+        // INV-19: kStatusLabels table + static_assert.
+        if (!contains(src, "constexpr StatusLabel kStatusLabels[]"))
+            return fail("StateLabel",
+                "kStatusLabels file-scope table missing");
+        if (!contains(src, "static_assert(std::size(kStatusLabels) == 4"))
+            return fail("StateLabel",
+                "static_assert on kStatusLabels count missing — "
+                "a fifth status emoji could land without a label");
+        // INV-22: filter accessibleName setters + visible label rename.
+        if (!contains(src, "setAccessibleName(tr(\"Show shipped items\"))"))
+            return fail("FilterA11y",
+                "m_filterDone->setAccessibleName(\"Show shipped items\") missing");
+        if (!contains(src, "setAccessibleName(tr(\"Show planned items\"))"))
+            return fail("FilterA11y",
+                "m_filterPlanned->setAccessibleName(\"Show planned items\") missing");
+        if (!contains(src, "setAccessibleName(tr(\"Show in-progress items\"))"))
+            return fail("FilterA11y",
+                "m_filterInProgress->setAccessibleName(\"Show in-progress items\") missing");
+        if (!contains(src, "setAccessibleName(tr(\"Show considered items\"))"))
+            return fail("FilterA11y",
+                "m_filterConsidered->setAccessibleName(\"Show considered items\") missing");
+        // Visible label rename: ✅ Done → ✅ Shipped.
+        if (contains(src, "tr(\"\\xe2\\x9c\\x85 Done\")") ||
+            contains(src, "tr(\"✅ Done\")"))
+            return fail("FilterA11y",
+                "m_filterDone still labelled \"✅ Done\" — should "
+                "be \"✅ Shipped\" per ANTS-1235");
+        if (!contains(src, "tr(\"✅ Shipped\")"))
+            return fail("FilterA11y",
+                "m_filterDone visible label must be \"✅ Shipped\"");
+        // INV-23: CSS rule for rm-state-label + nowrap on section counts.
+        if (!contains(src, ".rm-state-label{font-size:10px;color:%6;"))
+            return fail("CssRule",
+                ".rm-state-label CSS rule missing or wrong "
+                "(must declare font-size:10px; color:%6;)");
+        if (!contains(src, "white-space:nowrap"))
+            return fail("CssRule",
+                ".rm-section-counts must include white-space:nowrap "
+                "to prevent the labelled chip line from wrapping");
     }
 
     std::fprintf(stderr, "OK — RoadmapDialog v2 card INVs hold.\n");

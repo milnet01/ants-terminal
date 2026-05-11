@@ -158,7 +158,41 @@ docstrings.
   the screenshot. Don't pile up `_old` / `_v2` versions.
 
 
-## 7. Markdown style
+## 7. Accessibility
+
+User-visible status and category labels reach screen readers
+(Orca / NVDA / VoiceOver) only via the text that the application
+stores in its document model — **not** via HTML metadata.
+
+- For Qt 6 `QTextBrowser` / `QTextDocument` content, the
+  accessibility surface is the rendered plain text returned by
+  `QAccessibleTextInterface::text(int, int)` — which is the
+  document's `toPlainText()`. HTML `aria-*`, `alt`, `role`,
+  `title` attributes are stripped by Qt's HTML parser and never
+  reach AT-SPI / IAccessible2.
+- `QTextCharFormat` / `QTextFormat` have no per-fragment
+  accessible-name property, and `QTextImageFormat::setName`
+  applies only to image fragments. There is no Qt-level escape
+  hatch for text-fragment accessibility metadata in
+  QTextDocument.
+- Therefore: **render the labels you want spoken.** If a
+  decorative emoji ("✅") would otherwise be announced as its
+  CLDR name ("white heavy check mark"), emit a short text label
+  inline alongside it (`<span>shipped</span>`) so the
+  plain-text projection carries the right word.
+- For QWidget subclasses (QLabel, QPushButton, QCheckBox, …),
+  `setAccessibleName()` is the right path — screen readers speak
+  the accessibleName in preference to the visible text. Pair
+  with `setAccessibleDescription()` for longer context that
+  shouldn't go on the visible label.
+- Reference implementations in this codebase:
+  `src/claudestatuswidgets.cpp` (status-bar chips),
+  `src/commandpalette.cpp` (palette search box), and
+  `src/roadmapdialog.cpp` (Roadmap card status labels and filter
+  checkboxes, per ANTS-1235).
+
+
+## 8. Markdown style
 
 - ATX headings (`# `, `## `, `### `) — never setext (`====`).
 - One blank line before/after headings.
@@ -173,7 +207,7 @@ docstrings.
   flags.
 
 
-## 8. Doc reviews
+## 9. Doc reviews
 
 Schedule periodic doc reviews independent from code reviews —
 the two drift independently. A doc review surfaces:
@@ -190,7 +224,7 @@ Findings from a doc review fold into the ROADMAP under
 `### 📚 Documentation review fold-in (YYYY-MM-DD)` per [`roadmap-format.md` § 3.8](roadmap-format.md).
 
 
-## 9. Anti-patterns
+## 10. Anti-patterns
 
 - ❌ Lorem ipsum or placeholder text in committed docs.
 - ❌ Screenshots that show the previous version's UI.

@@ -42,6 +42,20 @@ constexpr const char *kEmojiPlanned     = "📋";
 constexpr const char *kEmojiInProgress  = "🚧";
 constexpr const char *kEmojiConsidered  = "💭";
 
+// ANTS-1235 — screen-reader-readable label for each status emoji.
+// QT_TR_NOOP marks the label strings for lupdate extraction; the
+// runtime translation happens at RoadmapDialog::statusAccessibleLabel
+// lookup time via the RoadmapDialog tr() context.
+struct StatusLabel { const char *emoji; const char *label; };
+constexpr StatusLabel kStatusLabels[] = {
+    {kEmojiDone,       QT_TR_NOOP("shipped")},
+    {kEmojiInProgress, QT_TR_NOOP("in progress")},
+    {kEmojiPlanned,    QT_TR_NOOP("planned")},
+    {kEmojiConsidered, QT_TR_NOOP("considered")},
+};
+static_assert(std::size(kStatusLabels) == 4,
+              "Add a label here when introducing a new status emoji.");
+
 QString htmlEscape(QString s) {
     s.replace('&', QStringLiteral("&amp;"));
     s.replace('<', QStringLiteral("&lt;"));
@@ -1025,11 +1039,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         ".rm-section-toggle{color:%2;font-weight:normal;font-size:13px;padding-right:12px;padding-left:4px;}"
         ".rm-section-title{color:%2;text-decoration:none;}"
         ".rm-section-title:hover{text-decoration:underline;}"
-        ".rm-section-counts{font-weight:normal;font-size:11px;color:%6;padding-right:10px;}"
+        ".rm-section-counts{font-weight:normal;font-size:11px;color:%6;padding-right:10px;white-space:nowrap;}"
         ".rm-parent{font-weight:normal;font-size:11px;color:%6;padding-left:8px;}"
         ".rm-card{margin:2px 0;padding:4px 8px;border-left:3px solid %5;background:%3;}"
         ".rm-card.rm-current{border-left-color:%4;background:rgba(229,194,74,0.08);}"
         ".rm-state{font-size:13px;padding-right:6px;}"
+        ".rm-state-label{font-size:10px;color:%6;padding-right:6px;}"
         ".rm-kind{font-size:11px;color:%6;padding-right:6px;}"
         ".rm-summary{font-size:13px;}"
         ".rm-toggle{font-size:12px;color:%6;padding-left:12px;padding-right:4px;}"
@@ -1093,15 +1108,21 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // ANTS-1154 — section status counts lead the title so a partially-
         // sighted scan reads "4 done / 1 in-progress" before parsing the
         // section name.
+        // ANTS-1235 — every chip carries a trailing text label
+        // (`47 shipped`, `2 in progress`, …) so a screen reader
+        // doesn't announce "white heavy check mark 47 construction
+        // sign 2 …". `.trimmed()` only strips ASCII whitespace, so
+        // an explicit chop strips the trailing " · " separator.
         QString chips;
-        if (c.done > 0) chips += QStringLiteral("✅ %1 ").arg(c.done);
-        if (c.inProgress > 0) chips += QStringLiteral("🚧 %1 ").arg(c.inProgress);
-        if (c.planned > 0) chips += QStringLiteral("📋 %1 ").arg(c.planned);
-        if (c.considered > 0) chips += QStringLiteral("💭 %1 ").arg(c.considered);
+        if (c.done > 0)       chips += QStringLiteral("✅ %1 shipped · ").arg(c.done);
+        if (c.inProgress > 0) chips += QStringLiteral("🚧 %1 in progress · ").arg(c.inProgress);
+        if (c.planned > 0)    chips += QStringLiteral("📋 %1 planned · ").arg(c.planned);
+        if (c.considered > 0) chips += QStringLiteral("💭 %1 considered · ").arg(c.considered);
+        if (chips.endsWith(QStringLiteral(" · "))) chips.chop(3);
         if (!chips.isEmpty()) {
             html += QStringLiteral(
                 "<span class=\"rm-section-counts\">%1</span>")
-                .arg(chips.trimmed());
+                .arg(chips);
         }
         // Title is also a toggle target — clicking the heading text
         // toggles expand/collapse, not just the chevron. Same href as
@@ -1135,6 +1156,15 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // Row 1
         html += QStringLiteral("<span class=\"rm-state\">%1</span>")
                     .arg(rec.status);
+        // ANTS-1235 — screen-reader label next to the status glyph.
+        // Empty for non-status bullets (rec.status is empty in that
+        // case, so statusAccessibleLabel returns empty); skip the
+        // span entirely rather than emitting an empty one.
+        const QString stateLabel = statusAccessibleLabel(rec.status);
+        if (!stateLabel.isEmpty()) {
+            html += QStringLiteral("<span class=\"rm-state-label\">%1</span>")
+                        .arg(htmlEscape(stateLabel));
+        }
         if (!rec.kind.isEmpty()) {
             const QString glyph = kindGlyph(rec.kind);
             html += QStringLiteral("<span class=\"rm-kind\">%1 %2</span>")
@@ -1302,6 +1332,21 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 // Every ANTS-NNNN token in the section body inherits that date. The
 // [Unreleased] block has no date; its IDs map to an empty string and
 // thus the card emits no date row (graceful for in-flight ✅).
+// ANTS-1235 — screen-reader-readable label for a status emoji.
+// File-scope `kStatusLabels` is the source of truth; this method
+// looks the emoji up and resolves the label through RoadmapDialog's
+// tr() context (so a future translation pass works).
+QString RoadmapDialog::statusAccessibleLabel(const QString &emoji) {
+    // kStatusLabels::emoji is a UTF-8 multi-byte const char * (the
+    // status emojis are outside the Latin1 range), so QLatin1String
+    // would mis-decode it. Compare via fromUtf8.
+    for (const auto &row : kStatusLabels) {
+        if (emoji == QString::fromUtf8(row.emoji))
+            return tr(row.label);
+    }
+    return {};
+}
+
 QHash<QString, QString>
 RoadmapDialog::parseShippedDates(const QString &changelogPath) {
     QHash<QString, QString> out;
@@ -1399,20 +1444,29 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     root->addLayout(searchRow);
 
     auto *filterRow = new QHBoxLayout();
-    m_filterDone = new QCheckBox(tr("✅ Done"), this);
+    // ANTS-1235 — visible label is "Shipped" (not "Done") to align
+    // with the rest of the roadmap-format vocabulary; accessibleName
+    // is what Orca / NVDA speak, kept terse and verb-led.
+    m_filterDone = new QCheckBox(tr("✅ Shipped"), this);
     m_filterDone->setObjectName(QStringLiteral("roadmap-filter-done"));
+    m_filterDone->setAccessibleName(tr("Show shipped items"));
     m_filterDone->setChecked(true);
     m_filterPlanned = new QCheckBox(tr("📋 Planned"), this);
     m_filterPlanned->setObjectName(QStringLiteral("roadmap-filter-planned"));
+    m_filterPlanned->setAccessibleName(tr("Show planned items"));
     m_filterPlanned->setChecked(true);
     m_filterInProgress = new QCheckBox(tr("🚧 In progress"), this);
     m_filterInProgress->setObjectName(QStringLiteral("roadmap-filter-in-progress"));
+    m_filterInProgress->setAccessibleName(tr("Show in-progress items"));
     m_filterInProgress->setChecked(true);
     m_filterConsidered = new QCheckBox(tr("💭 Considered"), this);
     m_filterConsidered->setObjectName(QStringLiteral("roadmap-filter-considered"));
+    m_filterConsidered->setAccessibleName(tr("Show considered items"));
     m_filterConsidered->setChecked(true);
     m_filterCurrent = new QCheckBox(tr("Currently being tackled"), this);
     m_filterCurrent->setObjectName(QStringLiteral("roadmap-filter-current"));
+    m_filterCurrent->setAccessibleName(
+        tr("Show only items currently being worked on"));
     m_filterCurrent->setChecked(true);
     filterRow->addWidget(m_filterDone);
     filterRow->addWidget(m_filterPlanned);
