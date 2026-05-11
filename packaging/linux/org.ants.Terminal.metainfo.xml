@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.84" date="2026-05-11">
+      <description>
+        <p>RoadmapDialog v2 finishing pass — keyboard ergonomics, accessibility, freshness signals, and theme polish across every dialog.</p>
+        <ul>
+          <li><em>Added:</em> <code>ANTS-1234</code> — Press <code>/</code> anywhere in the Roadmap dialog to focus the search box (Linear / GitHub / Notion convention). Press <em>Esc</em> while the search box has focus to clear the predicate; press <em>Esc</em> again to close the dialog. Cards whose match lives only in body continuation prose auto-expand for that render so the matched substring is visible in context — without mutating the user's persistent expand state.</li>
+          <li><em>Added:</em> <code>ANTS-1236</code> — Press <code>?</code> inside the Roadmap dialog for a sub-dialog cheatsheet listing every keyboard shortcut (10 at ship: <code>?</code>, <code>/</code>, <em>Esc</em>, <em>F5</em>, <em>Ctrl+C</em>, <em>Ctrl+A</em>, and the standard navigation keys). Source-of-truth lives in <code>kRoadmapShortcuts[]</code> with a <code>static_assert</code> row-count guard so future shortcuts can't drift from the test.</li>
+          <li><em>Added:</em> <code>ANTS-1237</code> — In-progress (🚧) cards now show <em>"Updated N days ago"</em> inline with the ID chip, derived from <code>git blame</code> on the bullet block. Ladder: <em>today</em> / <em>yesterday</em> / <em>Nd ago</em> / <em>Nw ago</em> / <em>Nmo ago</em> / <em>Ny ago</em>. Graceful degradation on non-git checkouts (no "Updated" line emitted).</li>
+          <li><em>Added:</em> <code>ANTS-1235</code> — Accessibility pass for screen readers (Orca / NVDA / VoiceOver). Status emojis now render alongside a short text label (<code>shipped</code> / <code>in progress</code> / <code>planned</code> / <code>considered</code>) so readers no longer announce "white heavy check mark"; filter checkboxes get verb-led <code>setAccessibleName</code> labels; section-header count chips gain trailing words ("47 shipped" instead of bare "47").</li>
+          <li><em>Fixed:</em> <code>ANTS-1239..1242</code> — Theme polish bundle following ANTS-1154's card renderer landing: duplicate-heading slugs now disambiguated via <code>uniqueSlug</code> walker; dark-theme link colours fixed via <code>QPalette::Link</code> override; expanded-body background frame matches card colour; <code>#NNNN</code> ID + shipped date inlined with the summary row; every dialog now uses a theme-aware frameless title bar (<code>DialogChrome</code>) so the chrome stops painting in the system grey on KWin / GNOME / Wayland.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.83" date="2026-05-11">
       <description>
         <p>RoadmapDialog v2 ships — card-style rendering for glance-friendly scanning of what's done, in-progress, and outstanding. Live-iterated visual polish plus a Wayland Copy fix.</p>

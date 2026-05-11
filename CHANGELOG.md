@@ -12,6 +12,15 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.84] — 2026-05-11
+
+**Theme:** RoadmapDialog v2 finishing pass — keyboard ergonomics
+(`/`-focus, Esc-clear, `?`-cheatsheet), accessibility (status and
+theme glyph labels for screen readers), and a freshness signal
+("Updated N days ago" on in-progress cards). Plus theme-aware
+frameless title bars + dark-theme link fixes across every
+dialog.
+
 ### Added
 
 - **ANTS-1237 — "Updated N days ago" line on 🚧 cards in the

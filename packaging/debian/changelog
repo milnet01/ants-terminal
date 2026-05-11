@@ -1,3 +1,40 @@
+ants-terminal (0.7.84-1) unstable; urgency=medium
+
+  * RoadmapDialog v2 finishing pass — keyboard ergonomics,
+    accessibility, freshness signals, and theme polish across every
+    dialog.
+  * ANTS-1234 — Press / anywhere in the Roadmap dialog to focus the
+    search box (Linear / GitHub / Notion convention). Press Esc while
+    the search box has focus to clear the predicate; press Esc again
+    to close the dialog. Cards whose match lives only in body
+    continuation prose auto-expand for that render so the matched
+    substring is visible — without mutating persistent expand state.
+  * ANTS-1236 — Press ? inside the Roadmap dialog for a sub-dialog
+    cheatsheet listing every keyboard shortcut (10 at ship: ?, /,
+    Esc, F5, Ctrl+C, Ctrl+A, and the standard navigation keys).
+    Source-of-truth lives in kRoadmapShortcuts[] with a static_assert
+    row-count guard so future shortcuts can't drift from the test.
+  * ANTS-1237 — In-progress (🚧) cards now show "Updated N days ago"
+    inline with the ID chip, derived from git blame on the bullet
+    block. Ladder: today / yesterday / Nd ago / Nw ago / Nmo ago /
+    Ny ago. Graceful degradation on non-git checkouts.
+  * ANTS-1235 — Accessibility pass for screen readers (Orca / NVDA /
+    VoiceOver). Status emojis now render alongside a short text label
+    (shipped / in progress / planned / considered) so readers no
+    longer announce "white heavy check mark"; filter checkboxes get
+    verb-led setAccessibleName labels; section-header count chips
+    gain trailing words ("47 shipped" instead of bare "47").
+  * ANTS-1239..1242 — Theme polish bundle following ANTS-1154's card
+    renderer landing: duplicate-heading slugs now disambiguated via
+    uniqueSlug walker; dark-theme link colours fixed via
+    QPalette::Link override; expanded-body background frame matches
+    card colour; #NNNN ID + shipped date inlined with the summary
+    row; every dialog now uses a theme-aware frameless title bar
+    (DialogChrome) so the chrome stops painting in the system grey
+    on KWin / GNOME / Wayland.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 11 May 2026 19:13:44 +0200
+
 ants-terminal (0.7.83-1) unstable; urgency=medium
 
   * RoadmapDialog v2 ships — card-style rendering with glance-friendly
