@@ -1,3 +1,4 @@
+<!-- ants-status-bar-standards: 1 -->
 # Ants Terminal status-bar standard
 
 Project-local convention for status-bar widgets in Ants Terminal.

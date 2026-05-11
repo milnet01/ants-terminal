@@ -133,7 +133,7 @@ When the cursor sits on a bracket character -- `(`, `)`, `[`, `]`, `{`, or `}` -
 
 ### Line Bookmarks
 
-Toggle bookmarks on any line with **Ctrl+Shift+B**. Navigate between bookmarks with **Ctrl+Shift+N** (next) and **Ctrl+Shift+K** (previous). Bookmarks are shown as colored dots in the left gutter.
+Toggle bookmarks on any line with **Ctrl+Shift+B**. Navigate between bookmarks with **Ctrl+Alt+Down** (next) and **Ctrl+Alt+Up** (previous). Bookmarks are shown as colored dots in the left gutter.
 
 ### Prompt Navigation (OSC 133)
 
@@ -192,7 +192,7 @@ Enable in Settings to save terminal scrollback on exit and restore it on next la
 
 ### Per-Pixel Background Transparency
 
-Set terminal-area transparency via **View → Opacity** (70 % – 100 %). Only the terminal grid becomes translucent; the menu bar, tabs, and status bar stay fully opaque so chrome remains readable. Works with KDE/KWin compositor blur.
+Set terminal-area transparency via **View → Opacity** (UI clamps to 70 % – 100 %; the underlying `opacity` config key accepts 0.1–1.0 if edited directly). Only the terminal grid becomes translucent; the menu bar, tabs, and status bar stay fully opaque so chrome remains readable. Works with KDE/KWin compositor blur.
 
 ### AI Assistant
 
@@ -667,7 +667,7 @@ the one distros ship.
 | Shift+Home/End | Scroll to top/bottom |
 | Ctrl+Shift+Up/Down | Jump to prev/next prompt (OSC 133) |
 | Ctrl+Shift+B | Toggle line bookmark |
-| Ctrl+Shift+N/K | Next/previous bookmark |
+| Ctrl+Alt+Down / Ctrl+Alt+Up | Next/previous bookmark |
 
 ### Search
 
@@ -693,9 +693,22 @@ the one distros ship.
 |----------|--------|
 | Ctrl+Shift+T | New tab |
 | Ctrl+Shift+W | Close tab |
+| Ctrl+Shift+Z | Undo close tab |
+| Ctrl+PgDown / Ctrl+PgUp | Next / previous tab |
 | Ctrl+Shift+E | Split horizontal |
 | Ctrl+Shift+O | Split vertical |
 | Ctrl+Shift+X | Close focused pane |
+| Ctrl+Shift+I | Broadcast input across panes |
+
+### Productivity
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Shift+Alt+C | Rich copy (with ANSI formatting) |
+| Ctrl+Alt+O | Copy last command output |
+| Ctrl+Alt+R | Rerun last command |
+| Ctrl+, | Preferences |
+| Ctrl+Shift+F12 | Performance dialog |
 
 ### Tools
 
@@ -758,7 +771,7 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
 
 | Component | File | Responsibility |
 |-----------|------|----------------|
-| **Pty** | `ptyhandler.h/cpp` | Spawns shell via `forkpty()`, non-blocking I/O, PTY resize |
+| **Pty** | `ptyhandler.h/cpp` | Spawns shell via `forkpty()`, `QSocketNotifier`-driven I/O, PTY resize |
 | **VtParser** | `vtparser.h/cpp` | DEC VT100/xterm state machine, UTF-8 decoding, emits VtActions |
 | **TerminalGrid** | `terminalgrid.h/cpp` | Cell buffer, scrollback, cursor, ANSI colors, alt screen, Sixel/Kitty |
 | **TerminalWidget** | `terminalwidget.h/cpp` | QPainter+QTextLayout rendering, input, selection, search, URLs |
@@ -770,13 +783,13 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
 | **PluginManager** | `pluginmanager.h/cpp` | Plugin discovery, loading, lifecycle |
 | **CommandPalette** | `commandpalette.h/cpp` | Searchable action overlay (Ctrl+Shift+P) |
 | **TitleBar** | `titlebar.h/cpp` | Custom frameless title bar with drag support |
-| **XcbPositionTracker** | `xcbpositiontracker.h/cpp` | Window position tracking via KWin scripting |
+| **KwinPositionTracker** | `kwinpositiontracker.h/cpp` | Window position tracking via KWin D-Bus (renamed from XcbPositionTracker in ANTS-1045) |
 | **ClaudeIntegration** | `claudeintegration.h/cpp` | Claude Code process detection, status, hooks |
 | **ClaudeProjects** | `claudeprojects.h/cpp` | Project/session browser and resume dialog |
 | **ClaudeAllowlist** | `claudeallowlist.h/cpp` | Permission rule editor for Claude settings |
 | **ClaudeTranscript** | `claudetranscript.h/cpp` | Session transcript viewer |
 | **AuditDialog** | `auditdialog.h/cpp` | Static analysis panel, SARIF/HTML export, baseline diff, trend tracking |
-| **Themes** | `themes.h/cpp` | 7 color themes with ANSI palette overrides |
+| **Themes** | `themes.h/cpp` | 11 built-in themes with ANSI palette overrides |
 | **Config** | `config.h/cpp` | JSON config persistence (0600 perms) |
 
 ---
@@ -1015,13 +1028,13 @@ ants-terminal/
     ├── terminalgrid.h/cpp      # Cell grid, scrollback, VtAction processing
     ├── vtparser.h/cpp          # VT100/xterm state machine, UTF-8 decoder
     ├── ptyhandler.h/cpp        # PTY via forkpty(), QSocketNotifier I/O
-    ├── themes.h/cpp            # 7 color themes with ANSI palettes
+    ├── themes.h/cpp            # 11 built-in themes with ANSI palettes
     ├── config.h/cpp            # JSON config persistence (0600 perms)
     ├── commandpalette.h/cpp    # Searchable command palette overlay
     ├── sessionmanager.h/cpp    # Session save/restore
     ├── aidialog.h/cpp          # AI assistant (OpenAI API)
     ├── sshdialog.h/cpp         # SSH bookmark manager
-    ├── xcbpositiontracker.h/cpp # KWin window position tracking
+    ├── kwinpositiontracker.h/cpp # KWin D-Bus window position tracking
     ├── claudeintegration.h/cpp # Claude Code status, hooks, MCP
     ├── claudeprojects.h/cpp    # Claude Code project/session browser
     ├── claudeallowlist.h/cpp   # Claude Code permission editor

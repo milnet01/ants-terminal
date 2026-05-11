@@ -110,10 +110,10 @@ The high-level rules:
 
 - `ROADMAP.md` is the single place to track unshipped work;
   shipped work moves to `CHANGELOG.md`.
-- `ROADMAP.md` uses status emojis (✅🚧📋💭), theme emojis,
-  and stable per-bullet IDs (`<project>-NNNN` from
-  `.roadmap-counter`) plus phase IDs (`P##`, `FP##`, `DS##`,
-  `DOC##`, `R##`).
+- `ROADMAP.md` uses status emojis (✅🚧📋💭), theme emojis, and
+  stable per-bullet IDs (`<project>-NNNN` from
+  `.roadmap-counter`) plus phase IDs (`P##` — the canonical
+  prefix; see `roadmap-format.md` § 3.2 for the full list).
 - `CHANGELOG.md` follows
   [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
   an `[Unreleased]` block at the top.

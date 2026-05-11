@@ -208,12 +208,22 @@ Four shareable v1 standards at `docs/standards/`:
   (✅ 🚧 📋 💭), theme emojis, position-is-priority, `Kind:` /
   `Source:` taxonomy, fold-in subsections.
 
-These files are byte-identical to `/start-app`'s template at
-`~/.claude/skills/app-workflow/templates/docs/standards/`; this
-codebase predates the skill and follows them directly.
+`coding.md`, `commits.md`, and `testing.md` are byte-identical to
+`/start-app`'s template at
+`~/.claude/skills/app-workflow/templates/docs/standards/`. The
+remaining two carry project-specific additions on top of the
+template: `documentation.md` adds § 7 Accessibility (ANTS-1235);
+`roadmap-format.md` adds the `Layman:` field (§ 3.5) and the
+§ 3.9 archive-rotation block. Project-local additions: `status-bar.md`
+documents this codebase's status-bar widget convention — not
+shareable, not in the template.
 
 ADRs live at `docs/decisions/` (Michael Nygard format); per-feature
 specs at `docs/specs/`; per-phase outcomes at `docs/journal/`.
+`docs/plans/` is a deprecated location — shipped plans should
+migrate to `docs/journal/`, in-flight design notes belong in
+`docs/specs/`. Existing `docs/plans/*` are kept as historical
+records only.
 
 ## Versioning & release files
 

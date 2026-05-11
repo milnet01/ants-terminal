@@ -372,17 +372,21 @@ The plugin Lua environment has the following libraries **removed** before
 - `setmetatable`, `getmetatable` — no metatable modification
 - `collectgarbage` — no GC manipulation
 
-**C-call timeout caveat (ANTS-1143).** The instruction-count hook
-(`lua_sethook(LUA_MASKCOUNT, …)`) fires every 10 M VM steps and is
-the primary defence against runaway plugins. It does **not** fire
-inside pure-C Lua calls (e.g. `string.find` regex backtracking on
-a pathological pattern, `table.sort` with a comparator chain that
-recurses through user-controlled data, `string.gsub` on
-attacker-controlled input). A plugin that funnels untrusted user
-input into one of these C calls can spin in C land beyond the
-budget. Plugin authors: don't feed unsanitised user input directly
-into `string.find` / `string.match` / `string.gsub` regex; bound
-the input size first.
+**C-call timeout caveat (ANTS-1143 + ANTS-1172).** The watchdog
+is wired as `lua_sethook(LUA_MASKCOUNT | LUA_MASKLINE, 100000)` —
+a 100 000-instruction slice combined with a per-Lua-source-line
+hook — and is checked against a 1500 ms wall-clock budget started
+at each `loadScript` / `fireEvent`. The line-hook closes the
+historical 10 M instruction-only gap by firing at every Lua
+source line. **However**, neither the count nor the line hook
+fires inside pure-C Lua calls (e.g. `string.find` regex
+backtracking on a pathological pattern, `table.sort` with a
+comparator chain that recurses through user-controlled data,
+`string.gsub` on attacker-controlled input). A plugin that
+funnels untrusted user input into one of these C calls can spin
+in C land beyond the budget. Plugin authors: don't feed
+unsanitised user input directly into `string.find` /
+`string.match` / `string.gsub` regex; bound the input size first.
 
 Available: `string`, `table`, `math`, `utf8`, plus the stripped-down
 `_G`. `print()` is typically redirected to `ants.log`; don't rely on
@@ -409,31 +413,35 @@ abuse):
 
 The runtime enforces two hard limits per plugin VM:
 
-- **Instruction budget:** the count-mode hook fires every 10,000,000
-  VM instructions, enforced via `lua_sethook(LUA_MASKCOUNT, …)` at
-  engine init. The counter accumulates across **all** event handlers
-  in the same VM — when the hook fires, it calls `luaL_error` with a
-  "Script execution timeout exceeded" message and unwinds the current
-  pcall. Practical consequence: a single long-running handler that
-  exceeds 10 M instructions aborts; a chain of handlers that together
-  accumulate past 10 M aborts whichever one the hook happens to land
-  inside. Your plugin is not unloaded — the next event starts
-  counting from wherever the hook last fired. Don't rely on "each
-  handler gets a fresh 10 M budget"; the real contract is
-  "≥10 M instructions anywhere in the VM aborts the current pcall".
-- **Heap budget:** 10 MB total Lua heap, enforced by a custom allocator.
-  On exceed, allocations return `NULL`; Lua treats this as out-of-memory
-  and typically propagates the error up the call stack. The plugin is
-  not unloaded, but the allocation fails.
+- **Wall-clock pcall budget:** each `loadScript` / `fireEvent`
+  starts a 1500 ms (`kPcallBudgetMs`) deadline. The watchdog hook
+  (`lua_sethook(LUA_MASKCOUNT | LUA_MASKLINE, 100000)` — i.e.
+  every 100 000 VM instructions AND every Lua source line) checks
+  the wall clock on each fire and calls `luaL_error("Script
+  wall-clock budget exceeded")` past the deadline, unwinding the
+  current pcall. The line-hook closes the historical
+  instruction-count-only gap so a plugin executing few-but-slow
+  Lua source lines still gets pre-empted. Design budget: a single
+  handler that runs longer than 1.5 s aborts; the next event
+  starts a fresh budget. Pure-C calls don't trigger either hook
+  variant (see the caveat above).
+- **Heap budget:** 10 MB total Lua heap, enforced by a custom
+  allocator (`MAX_LUA_MEMORY` in `luaengine.h`). On exceed,
+  allocations return `NULL`; Lua treats this as out-of-memory and
+  typically propagates the error up the call stack. The plugin
+  is not unloaded, but the allocation fails.
 
 **Author implications:**
 
-- Don't accumulate unbounded state (e.g. appending every output line to
-  a table). Use ring buffers or bounded caches.
-- Don't loop over `ants.get_output(very_large_N)` — each call copies.
-- Recursive patterns that hit the instruction budget unwind the current
-  pcall; a subsequent event fires afterwards but the accumulated
-  counter is shared, so a tight-loop plugin can starve sibling handlers.
+- Don't accumulate unbounded state (e.g. appending every output
+  line to a table). Use ring buffers or bounded caches.
+- Don't loop over `ants.get_output(very_large_N)` — each call
+  copies.
+- Design handlers to return in well under 1.5 s. If you need
+  longer work, break it across events or pre-compute outside the
+  handler. A handler that hits the wall-clock budget unwinds the
+  current pcall; subsequent events still fire (new VM-wide
+  budget) but the user sees a `luaL_error` trace.
 
 ## Versioning & Compatibility
 
@@ -444,7 +452,7 @@ happen only in **major** releases (`0.x → 1.0`).
 Plugin authors are encouraged to declare their minimum supported
 terminal version in `manifest.json` (field name **reserved** for a
 future `"api_version"` / `"requires"` block — see Roadmap). Until that
-lands, check `ants._version` (also reserved, not yet present):
+lands, check `ants._version` (available since 0.6.0):
 
 ```lua
 -- forward-compat idiom (won't break on older terminals, just skips)

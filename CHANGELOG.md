@@ -148,14 +148,13 @@ for security-relevant changes.
 
 ## [0.7.83] — 2026-05-11
 
-### Theme
-
-RoadmapDialog v2 ships — card-style rendering for glance-friendly
-scanning of what's done, in-progress, and outstanding. Live-iterated
-visual polish (status counts lead section titles, parent-h2
-breadcrumb on h3 sections, Table-of-Contents h2 suppressed inside
-the content pane, section headings + chevron both clickable) plus a
-Wayland Copy-from-roadmap fix.
+**Theme:** RoadmapDialog v2 ships — card-style rendering for
+glance-friendly scanning of what's done, in-progress, and
+outstanding. Live-iterated visual polish (status counts lead
+section titles, parent-h2 breadcrumb on h3 sections,
+Table-of-Contents h2 suppressed inside the content pane, section
+headings + chevron both clickable) plus a Wayland Copy-from-roadmap
+fix.
 
 ### Added
 

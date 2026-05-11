@@ -1,7 +1,7 @@
 # ADR-0002: Cold-eyes review of the Claude-Code companion bundle
 
-- **Status:** Proposed
-- **Date:** 2026-04-30
+- **Status:** Accepted (decisions 1-9 all observable in code/ROADMAP/CHANGELOG as of 0.7.59 onward)
+- **Date:** 2026-04-30 (proposed); accepted in effect 2026-04-30 with the 0.7.59 ship
 - **Deciders:** Project lead, Claude
 - **Related:** ROADMAP.md ANTS-1110, ANTS-1111, ANTS-1112, ANTS-1113,
   ANTS-1114, ANTS-1116, ANTS-1117, ANTS-1056

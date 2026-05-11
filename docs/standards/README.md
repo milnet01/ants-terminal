@@ -17,6 +17,13 @@ Sub-spec extracted from `documentation.md` for token efficiency:
 |----------|--------|
 | [roadmap-format.md](roadmap-format.md) | Detailed `ROADMAP.md` and `CHANGELOG.md` format spec — file-header marker, status / theme emojis, stable IDs (`PROJ-NNNN`), insertion semantics, `Kind:` / `Source:` taxonomy, current-work signaling, fold-in subsections, anti-patterns. Read when authoring either file or any tooling that consumes them. |
 
+Project-local standards (not part of the shareable `/start-app`
+template):
+
+| Standard | Covers |
+|----------|--------|
+| [status-bar.md](status-bar.md) | Status-bar widget convention specific to this codebase's `MainWindow` + `ClaudeStatusBarController` architecture. |
+
 ## How they fit together
 
 The four standards plus `ROADMAP.md` form a closed loop:

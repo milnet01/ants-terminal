@@ -7959,14 +7959,15 @@ here.)
   Kind: research.
   Source: user-2026-05-02.
 
-- 🚧 [ANTS-1154] **RoadmapDialog v2 — card-style rendering with
+- ✅ [ANTS-1154] **RoadmapDialog v2 — card-style rendering with
   layman summaries, collapsible sections, and strict tab-relevance.**
   Layman: the roadmap dialog now shows each item as a scannable
   card with a big state icon, type chip, and one-sentence summary
   instead of a wall of prose — so you can see at a glance what's
   done, what's in progress, and what's next.
 
-  Live in working tree as of 2026-05-11 (uncommitted, pre-bump).
+  Shipped 2026-05-11 in 0.7.83 (commit `b6c4971`) +
+  ANTS-1239/1240/1241/1242 follow-ups in `c05cc1c`.
   Source: user 2026-05-02 (original) + 2026-05-11 reframe ("I just
   see a wall of text and couldn't tell you where we are at a
   glance"). Replaces the original 3-part charter (format-v2 +
@@ -8412,6 +8413,124 @@ contributors don't duplicate research.
   Kind: spike.
   Source: user-2026-05-11.
 
+### 📝 Cold-eyes 2026-05-12 (full doc-tree sweep)
+
+> Docs reviewed: 9 lanes covering ~37 live docs (~33k lines).
+> Loops: 1 dispatch + Phase-3 verification + Phase-4 fix.
+> Findings surfaced: ~119 (5 CRITICAL, 27 HIGH, 34 MEDIUM, 53 LOW).
+> Findings fixed in this pass: 40+ (the highest-impact accuracy
+> + currency drift); the rest deferred and surfaced below.
+
+- **Spec status sweep** (15 specs). Stale `Status:` fields on
+  ANTS-1014/1106/1116/1117/1118/1119/1124/1145/1146/1147/1148/
+  1150/1154/1158/1159 — all flipped from "Implementing
+  (pre-0.7.x)" / "Draft (awaiting user sign-off)" / "🚧 In
+  working tree" to `✅ Shipped YYYY-MM-DD in 0.7.NN`. ANTS-1120
+  remains 📋 (genuinely planned).
+- **ANTS-1146 INV-1 contradiction** — spec required
+  `namespace claudestatus { … }` while §Fix prose required
+  file-scope (no namespace, matching codebase convention). Flipped
+  INV-1 to the file-scope assertion + negative grep on the
+  namespace token.
+- **ANTS-1148 self-retracted INV-10** — the mid-spec retraction
+  paragraph removed; replaced with a "considered and dropped"
+  note explaining the trade-off.
+- **ANTS-1158 chip-label inversion** — spec §6 said
+  `<unfinished>/<total>`, code emits `<done>/<total>` since
+  ANTS-1221 narrowed `unfinishedCount()` to pending-only. Added
+  a status-line amendment naming the divergence.
+- **ANTS-1154 + ANTS-1236 ROADMAP advancement.** ANTS-1154 was
+  🚧 but shipped in 0.7.83 — flipped to ✅. ANTS-1236 was 💭 but
+  spec is cold-eyes-clean — flipped to 📋.
+- **PLUGINS.md watchdog (CRITICAL)** — doc claimed instruction
+  budget was 10,000,000 + MASKCOUNT only. Code is
+  `MASKCOUNT | MASKLINE` at 100 000-instruction slice + a 1500 ms
+  wall-clock `kPcallBudgetMs`. Plugin authors were being told to
+  design to a budget that's 6500× too generous. Resource-Limits
+  and Sandbox-Boundaries sections both rewritten.
+- **PLUGINS.md `ants._version`** — Versioning section said "also
+  reserved, not yet present"; the symbol has shipped since
+  0.6.0. Corrected.
+- **ADR-0002 status** — was "Proposed" since 2026-04-30 with all
+  9 decisions observable in code/ROADMAP/CHANGELOG. Flipped to
+  Accepted.
+- **CLAUDE.md byte-identical claim** — false for documentation.md
+  (added § 7 Accessibility) and roadmap-format.md (added
+  `Layman:` field + § 3.9 archive). Now lists which three of the
+  five files are byte-identical and what the other two add.
+- **documentation.md § 3** — referenced undefined phase-ID
+  prefixes (`FP##`, `DS##`, `DOC##`, `R##`). Trimmed to `P##`
+  (the only one defined in roadmap-format.md).
+- **roadmap-format.md § 3.4 + § 3.8** — added `📝 Cold-eyes`
+  theme emoji + fold-in pattern documenting the cold-eyes audit
+  trail subsection convention that this very block uses.
+- **README.md** — `xcbpositiontracker` → `kwinpositiontracker`
+  (renamed under ANTS-1045); `7 color themes` → `11 built-in
+  themes` (twice); `Ctrl+Shift+N/K` bookmark shortcut →
+  `Ctrl+Alt+Up/Down` (ANTS-1165 retune) and the matching prose;
+  +8 missing default shortcuts added to the shortcut tables
+  (Ctrl+Shift+Z, Ctrl+PgUp/Dn, Ctrl+Shift+I, Ctrl+Shift+Alt+C,
+  Ctrl+Alt+O, Ctrl+Alt+R, Ctrl+, , Ctrl+Shift+F12); opacity range
+  reconciled (UI 70–100 % vs config 0.1–1.0); Pty I/O described
+  as `QSocketNotifier`-driven (matches CLAUDE.md).
+- **CHANGELOG.md** — 0.7.83 `### Theme` heading demoted to bold
+  paragraph lead to match the convention used by 0.7.79–0.7.82
+  and not break Keep-a-Changelog parsers.
+- **SECURITY.md** — last-reviewed stamp generalised to "0.7.x
+  line" so it doesn't go stale on every patch release.
+- **status-bar.md** — added missing `<!-- ants-status-bar-standards: 1 -->`
+  version marker; surfaced as a project-local standard in
+  `docs/standards/README.md`.
+- **ANTS-1217 reconciliation** — architectural sections still
+  cite `-j6` workstation cap + `link_pool=2`; shipped values
+  are `-j3` + `link_pool=1` (Phase 6 retune). Added a
+  top-of-spec reconciliation note rather than rewriting the
+  history.
+- **ANTS-1235 § 7 forward-reference** — said
+  documentation.md § 7 didn't exist yet; that section shipped
+  with ANTS-1235 itself. Rewrote to past tense.
+- **CLAUDE.md** — added a note that `docs/plans/` is deprecated
+  (CLAUDE.md previously only named decisions / specs / journal as
+  canonical doc-tree locations).
+
+
+> Docs reviewed: 1 (`docs/specs/ANTS-1236.md`). Loops to clean: 7.
+> Findings fixed: ~27 (10 HIGH, 8 MEDIUM, 9 LOW).
+
+- Accuracy: build-wiring rewritten — `ANTS_SOURCES` /
+  `ROADMAP_RENDERER_OBJS` are fabricated names; real targets are
+  `ants_dialogs_lib` (line 295) and the `test_dialogs`
+  `ants_add_gui_bundle` (line 848). Line numbers themselves
+  dropped from the spec as drift-bait.
+- Key-event mechanism: `Qt::Key_Question` match rejected for
+  layout fragility; spec now uses
+  `event->text() == QLatin1String("?")` end-to-end (both parent
+  dialog and sub-dialog cheatsheet). § 8 names the fallback
+  (`QShortcut(QKeySequence::HelpContents)` + invariant bump) on
+  reported layout failures.
+- Translation pipeline: `QT_TR_NOOP` removed from key glyphs
+  (`?`, `↑`, `Ctrl+C` are universal — the convention used by
+  `QKeySequence::toString(PortableText)`); kept on action prose
+  only. INV-2 / INV-5 spell out the qualified `RoadmapDialog::tr`
+  call so the cross-TU translation-context trap is named.
+- Invariant ownership split: INV-1 owns the literal row count
+  (9), INV-5 owns the structural relation
+  (`std::size(kRoadmapShortcuts)`), INV-8 owns the test
+  assertion (`== 9`, exact). Removed the prior "minimum 9"
+  loophole that would silently allow drift.
+- Surface canonicalisation: `Tab` and `Shift+Tab` merged into one
+  cheatsheet row (`"Tab Shift+Tab"`) so the table stays at 9
+  rows and matches the §1 surface enumeration.
+- Cross-spec cohesion: §7 explicit qualified-anchor MUST
+  (`ANTS-1236-INV-N`) so the new sibling spec.md doesn't
+  conflict with `roadmap_dialog_cards/spec.md`'s
+  `ANTS-1154-INV-N` precedent.
+- Null-safety: `m_searchBox->hasFocus()` widened to
+  `(m_searchBox && m_searchBox->hasFocus())` since the member is
+  a `QPointer<QLineEdit>`.
+- Memory budget reframed as order-of-magnitude with valgrind
+  verification note (was unsourced 40 KiB claim).
+
 ### 📝 Cold-eyes 2026-05-11
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1235.md`). Loops to clean: 3.
@@ -8476,14 +8595,18 @@ contributors don't duplicate research.
   in progress" instead of "white heavy check mark 47 …".
   Kind: implement.
   Source: research-2026-05-11.
-- 💭 [ANTS-1236] **Keyboard-shortcut cheatsheet** (`?` opens an
-  overlay). Linear, GitHub, and most modern tools expose
-  shortcuts via a `?` panel. Inside the Roadmap dialog,
-  surface: `/` search, `j`/`k` next/prev item, `Enter`
-  expand/collapse current, `Esc` close dialog, `F5` refresh,
-  number keys to jump tabs. Cheap to add once we own the
-  keypress handler — feeds the partially-sighted /
-  keyboard-first workflow.
+- 📋 [ANTS-1236] **Keyboard-shortcut cheatsheet** (`?` opens an
+  overlay). Spec at `docs/specs/ANTS-1236.md` (cold-eyes-clean
+  after 7 loops + ~27 findings fixed — audit trail in the
+  2026-05-12 cold-eyes block above). Mechanism: file-scope
+  `kRoadmapShortcuts[]` data table + `RoadmapShortcutsDialog`
+  sub-dialog driven by a `QTableWidget`. `?` opens via
+  `event->text() == "?"` (layout-robust); the same test toggles
+  the overlay closed. Documents the 9 currently-shipped
+  shortcuts (`?`, `Esc`, `F5`, `Ctrl+C`, `Ctrl+A`, scroll +
+  focus keys). Future navigation shortcuts (`j`/`k`/`Enter`/
+  number-key tab jumps) are out of scope; each becomes its own
+  bullet that adds a row to the table.
   **Layman:** press `?` inside the Roadmap dialog and see a
   list of every keyboard shortcut.
   Kind: implement.

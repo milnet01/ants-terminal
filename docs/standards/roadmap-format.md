@@ -96,6 +96,7 @@ Theme emoji prefixes the level-3 (`###`) section heading:
 | 🐛 | Bug fixes / regressions |
 | 🔍 | Audit / review findings fold-in |
 | 🧹 | Cleanup / debt — dead code, stale comments, drift, deferred housekeeping |
+| 📝 | Cold-eyes documentation review fold-in (spec / ADR / README sweeps) |
 
 Projects MAY introduce additional theme emojis; the viewer's
 filter panel surfaces any emoji it sees in any `###` heading.
@@ -384,6 +385,17 @@ the "behavioural" findings the user opted to defer.
   list grew but spec.md unchanged.** Kind: test. Lanes: tests.
 - 📋 [ANTS-0541] **`README.md § Plugins` references removed
   `ants.fs.read`.** Kind: doc-fix. Lanes: docs.
+
+### 📝 Cold-eyes 2026-04-30
+
+> Docs reviewed: N. Loops to clean: L. Findings fixed: F.
+
+- Flat bullets, no tier grouping (every finding was already
+  fixed in-place by the cold-eyes orchestrator — this subsection
+  is the audit trail, not a backlog).
+- Use the `📝 Cold-eyes <YYYY-MM-DD>` heading (no parenthesised
+  date suffix; the date is in the heading itself). The blockquote
+  line gives reviewers a one-line summary.
 ```
 
 Conventions for any findings fold-in:

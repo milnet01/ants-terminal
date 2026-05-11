@@ -160,5 +160,6 @@ say so in your report.
 ---
 
 *This policy will be revised as the project matures. Last reviewed for
-the 0.7.81 release (supported-versions table re-confirmed; the substantive
-disclosure policy is unchanged from 0.6.16).*
+the 0.7.x line (most recent re-confirmation: 0.7.83, 2026-05-11 —
+supported-versions table holds; the substantive disclosure policy is
+unchanged from 0.6.16).*
