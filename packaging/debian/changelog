@@ -1,3 +1,23 @@
+ants-terminal (0.7.82-1) unstable; urgency=medium
+
+  * Live-repro fix bundle — two real bugs surfaced during Claude
+    Code session continuation after /compact, plus session-isolation
+    wiring locked in via source-grep spec to prevent future regressions.
+  * ANTS-1224 — Task List parser now respects the isCompactSummary
+    checkpoint, eliminating phantom pre-compact tasks that persisted
+    after claude --resume. Clarified state-reset semantics with four
+    new test cases in the existing test_claude bundle.
+  * ANTS-1225 — Claude status indicator no longer stays hidden after
+    /compact + /exit + resume when a new Claude process replaces the
+    stale one inside the 2-second poll window. Gate now catches both
+    initial detection and live PID replacement uniformly.
+  * ANTS-1219 — Task List session-isolation wiring contract locked in
+    via source-grep spec (tests/features/claude_task_list_session_isolation/).
+    Six // ANTS-1219-INV-N anchors prevent future drift in the resolver
+    → tracker rebind path.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Mon, 11 May 2026 12:00:00 +0200
+
 ants-terminal (0.7.81-1) unstable; urgency=medium
 
   * Small follow-ups to the 0.7.80 user-feedback batch — a two-fix

@@ -103,6 +103,16 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.82" date="2026-05-11">
+      <description>
+        <p>Live-repro fix bundle — two real bugs surfaced during Claude Code session continuation after <code>/compact</code>, plus session-isolation wiring locked in via source-grep spec to prevent future regressions.</p>
+        <ul>
+          <li><em>Fixed:</em> <code>ANTS-1224</code> — Task List parser now respects the <code>isCompactSummary</code> checkpoint, eliminating phantom pre-compact tasks that persisted after <code>claude --resume</code>. Clarified state-reset semantics with four new test cases in the existing <code>test_claude</code> bundle.</li>
+          <li><em>Fixed:</em> <code>ANTS-1225</code> — Claude status indicator no longer stays hidden after <code>/compact</code> + <code>/exit</code> + resume when a new Claude process replaces the stale one inside the 2-second poll window. Gate now catches both initial detection and live PID replacement uniformly.</li>
+          <li><em>Fixed:</em> <code>ANTS-1219</code> — Task List session-isolation wiring contract locked in via source-grep spec (<code>tests/features/claude_task_list_session_isolation/</code>). Six <code>// ANTS-1219-INV-N</code> anchors prevent future drift in the resolver <code>→</code> tracker rebind path.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.81" date="2026-05-10">
       <description>
         <p>Two small follow-ups to the 0.7.80 user-feedback batch — finishing the Tasks-chip semantics arc and a long-requested About-dialog enhancement that surfaces enough build context to triage bug reports without a "what build are you on?" round-trip.</p>

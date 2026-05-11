@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.81 (2026-05-10). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.82 (2026-05-11). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -6084,7 +6084,7 @@ made the desktop feel noisy in normal use.
   "6 done out of 30." Flipping it to count up matches how
   progress is shown everywhere else.
   Kind: fix. Source: user-2026-05-10.
-- 📋 [ANTS-1219] **Task List dialog accumulates stale tasks
+- ✅ [ANTS-1219] **Task List dialog accumulates stale tasks
   across sessions instead of showing only current.** User
   report 2026-05-10 (same screenshot as ANTS-1218): dialog
   shows entries from prior compacted sessions ("Phase 2 — Add
@@ -6224,7 +6224,7 @@ made the desktop feel noisy in normal use.
   bug we can tell at a glance which exact build they're running —
   date, debug-or-release, git commit, and which compiler made it.
   Kind: feature. Source: user-2026-05-10.
-- 📋 [ANTS-1224] **Task List parser ignores `isCompactSummary`
+- ✅ [ANTS-1224] **Task List parser ignores `isCompactSummary`
   checkpoint — pre-compact tasks survive into post-relaunch
   state.** Live reproduction 2026-05-10 in session `94218f91-…`:
   user `/compact`'d, `/exit`'d, then "Continue previous coding
@@ -6254,7 +6254,7 @@ made the desktop feel noisy in normal use.
   teaches the task-list parser to recognise the "compaction
   happened" marker as a checkpoint and reset.
   Kind: fix. Source: user-2026-05-10.
-- 📋 [ANTS-1225] **Claude status indicator stays hidden after
+- ✅ [ANTS-1225] **Claude status indicator stays hidden after
   `/compact` + `/exit` + `claude --resume` until tab-switch.**
   Live reproduction 2026-05-10, same session as ANTS-1224.
   After resuming Claude in the same shell tab, the bottom-bar
@@ -8092,6 +8092,63 @@ contributors don't duplicate research.
   back, with a different look so it doesn't pretend to be
   something *you* need to do.
   Kind: design + fix. Source: user-2026-05-10.
+- 💭 [ANTS-1226] **Automatic Claude Code model switcher driven by
+  observed work complexity.** User request 2026-05-11 (far-off
+  scope). Idea: Ants Terminal already parses every Claude Code
+  JSONL transcript for the Tasks chip / bg-tasks chip / per-tab
+  status; that data stream is enough to score session complexity
+  in real time (tool diversity, plan length, file-write fan-out,
+  failure rate, prompt token length, presence of plan/review
+  keywords) and recommend or auto-apply a model tier
+  (Haiku-cheap / Sonnet-default / Opus-heavy). Saves spend on
+  trivial turns and routes hard turns to the right capacity.
+  Two architectural shapes to evaluate before designing:
+  (a) **Recommender chip** (passive): bottom-bar widget surfaces
+      "Suggest → Opus" / "Suggest → Haiku" based on a rolling
+      score over the last N turns; user clicks to enact. Zero risk
+      of dropping into a cheap model right before something
+      critical; opt-in by construction. Lowest implementation
+      cost — bolted onto the existing `claudestatuswidgets`
+      controller, reuses `ClaudeIntegration` transcript parsing.
+  (b) **Auto-switch via hook** (active): Claude Code's
+      `UserPromptSubmit` hook fires before each turn; Ants writes
+      a model-override hint the next turn picks up. Higher
+      friction tolerance (the model flickers); depends on whether
+      Claude Code's hook contract exposes a *stable* model-
+      override surface or whether we'd have to drive it by
+      writing `/model <name>` into the PTY (invasive — races
+      against user typing) or by mutating `~/.claude/settings.json`
+      mid-session (also invasive).
+  Big unknowns to research before any design synthesis:
+  (i) does Claude Code's hook API let a hook influence the next
+      turn's model? If not, what mechanism does — slash-command
+      injection, env-var, settings.json mutation, future MCP verb?
+  (ii) prompt-cache TTL is 5 minutes (Anthropic prompt-cache spec);
+      a mid-session swap likely costs the cached prefix on the
+      first turn after the swap. How often is "too often"? What's
+      the dampening / debounce policy that avoids flicker?
+  (iii) what's the labelled corpus to calibrate the complexity
+      classifier? Past Ants×Claude transcripts are the obvious
+      choice but need explicit user opt-in for that data.
+  (iv) UX: does the user trust the auto-switch, or does the
+      recommender (shape A) need to graduate slowly toward shape
+      B as the heuristic earns trust?
+  Memory budget (preliminary, must be re-checked at design): the
+  rolling score is a single `int64` per tab; the classifier's
+  feature vector is bounded by `last_N_turns × ~10 floats`
+  (single-digit KB). No new persistent state required if the
+  rolling window is reset per session.
+  Per the user's design-then-implement workflow, when this comes
+  up the right next move is a multi-model synthesis on the spec
+  first (ChatGPT/Claude/DeepSeek/Gemini/Grok) — same shape as
+  ANTS-1154 / ANTS-1160 — before any code lands.
+  **Layman:** Claude Code has multiple models — Haiku is fast and
+  cheap, Sonnet is the default, Opus is the most capable but
+  costs more. Ants Terminal could watch what kind of work is
+  happening and either suggest or automatically pick the right
+  model — saving you money on small jobs and giving you the big
+  brain when you need it.
+  Kind: design + implement. Source: user-2026-05-11.
 
 ### 🔒 Security
 

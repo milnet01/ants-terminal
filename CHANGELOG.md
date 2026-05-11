@@ -12,6 +12,75 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.82] — 2026-05-11
+
+**Theme:** live-repro fix bundle from the 2026-05-10 session — two
+real bugs surfaced when the user `/compact`'d a Claude Code session,
+`/exit`'d, then "Continue previous coding session"'d back in. The
+Tasks chip kept showing five stale pre-compact tasks (ANTS-1224, a
+parser miss on the `isCompactSummary` checkpoint) and the bottom-bar
+`Claude:` status chip stayed hidden until a tab-switch (ANTS-1225, a
+PID-replacement gate too narrow to catch a Claude exit + respawn
+inside the 2-second poll window). Plus the session-isolation wiring
+lock-in (ANTS-1219) — source-grep contract that catches future drift
+in the resolver → tracker rebind path before the user does.
+
+### Fixed
+
+- **ANTS-1224 — Task List parser ignored `isCompactSummary`
+  checkpoint, so pre-compact tasks survived into post-`claude --resume`
+  state.** Layman: after you `/compact`'d a Claude session, exited,
+  and chose "Continue previous coding session", the Tasks chip kept
+  showing the todos from before the compact — a phantom list of work
+  Claude already considered closed. Root cause: `parseTranscript`
+  walked every JSONL event but never observed the `isCompactSummary:
+  true` checkpoint, so any `TaskCreate` with no terminal `TaskUpdate`
+  from the pre-compact phase counted forever. Fix: inside the per-line
+  loop right after the sidechain filter, treat `isCompactSummary:true`
+  as a state-reset — clear `out`, `idxByToolUseId`, and `sawTodoWrite`
+  before the type-dispatch, so the checkpoint event itself contributes
+  zero entries. Multiple checkpoints converge on "state after the
+  final one" by induction. Zero new persistent state; all four new
+  test cases wired into the existing `test_claude` bundle (no fresh
+  exe, mindful of the ANTS-1217 build-OOM guardrails). Source:
+  user-2026-05-10 live reproduction. ([ANTS-1224])
+- **ANTS-1225 — Claude status indicator stayed hidden after
+  `/compact` + `/exit` + "Continue previous coding session" until a
+  tab-switch nudged it.** Layman: the bottom-bar `Claude: <state>`
+  chip disappeared whenever a new Claude process replaced the one
+  that just exited inside the 2-second poll window, and only came
+  back when you switched tabs and back. Root cause:
+  `pollClaudeProcess` rebound the transcript only when
+  `m_claudePid == 0`, which catches first-launch but not live PID
+  replacement — between two polls a Claude could exit and a new one
+  spawn, leaving `m_claudePid` holding the stale dead PID and the
+  rebind branch never firing. Tab-switching worked by accident
+  because `setShellPid` zeroes `m_claudePid` as a side-effect. Fix:
+  generalise the gate to `m_claudePid != foundPid`, which catches
+  both initial detection and live replacement uniformly. Diagnostic
+  signature in the debug log (`procStartMs=0` for every
+  `sessionPathForCwd/result:` line on the stale PID) explains why
+  the *tasks chip* kept working while the *status indicator* was
+  broken — the freshness resolver degrades to recency-only mode and
+  still finds the right JSONL, but `m_claudePid` correctness is what
+  the status indicator depends on. Zero new persistent state. Source:
+  user-2026-05-10 live reproduction, same session as ANTS-1224.
+  ([ANTS-1225])
+- **ANTS-1219 — Task List session-isolation wiring locked in via
+  source-grep spec.** Layman: the original "stale tasks after a
+  Claude session change" report turned out to be three different
+  bugs in a trenchcoat. ANTS-1224 and ANTS-1225 above fix the two
+  surfaces that actually reproduced; this entry locks in the wiring
+  contract for the underlying flow (resolver → tracker rebind →
+  status emission) so any future drift in `mainwindow.cpp` /
+  `claudestatuswidgets.cpp` surfaces as a red build rather than a
+  user-visible regression. New
+  `tests/features/claude_task_list_session_isolation/` (source-grep,
+  no GUI, wired into the existing `test_claude` bundle) anchors six
+  `// ANTS-1219-INV-N` comments to load-bearing call sites — same
+  shape as the ANTS-1161 per-tab gate test that locked in the
+  session-id discriminant. Source: user-2026-05-10. ([ANTS-1219])
+
 ## [0.7.81] — 2026-05-10
 
 **Theme:** small follow-ups to the 0.7.80 user-feedback batch — a
