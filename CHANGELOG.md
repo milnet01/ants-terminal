@@ -14,6 +14,39 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1237 — "Updated N days ago" line on 🚧 cards in the
+  Roadmap dialog.** Surfaces stall signal at-a-glance: every 🚧
+  in-progress card now shows when its bullet block was last
+  touched, mirroring GitHub Projects / Linear / Jira's default
+  "last activity" affordance. Derived from one
+  `git blame --line-porcelain` call against ROADMAP.md (cached
+  by mtime via the same pattern as `parseShippedDates`), then
+  MAX(author-time) over each `- 🚧 [ANTS-NNNN]` bullet's line +
+  its 2-space-indented continuation lines. Renders as
+  `<span class="rm-date">· Updated <X></span>` inline with the
+  ID chip, where `<X>` is one of: `today` / `yesterday` /
+  `Nd ago` (2-13d) / `Nw ago` (2-8w) / `Nmo ago` (2-12mo) /
+  `Ny ago` (≥1y). Reuses the existing `.rm-date` CSS class —
+  no new style rule. Status-gated (✅ already shows shipped
+  date; 📋/💭 don't need it). Graceful degradation on non-git
+  checkouts: `git blame` failure → empty hash → no "Updated"
+  line, mirroring the ✅-card path when shipped date is absent.
+  ID mentions outside the bullet block (e.g. audit-trail prose
+  in another card's body) do NOT contribute to MAX — the walker
+  only enters block-mode at lines matching
+  `^- 🚧 \[ANTS-NNNN\]`. Cost: ~175 ms blame call on first
+  dialog open per session against the current 8723-line
+  ROADMAP, cached thereafter; ~4 MB transient peak for the
+  porcelain output (verified by `wc -c`); ~1 KiB persistent
+  per dialog at realistic 5-15 🚧 bullet counts. Regression-
+  locked by ANTS-1237-INV-1..8 in
+  `tests/features/roadmap_inprogress_age/spec.md` (renderer-
+  layer + parser-layer test split; parser tests early-skip with
+  `GTEST_SKIP()` when `git` is not on PATH). Spec:
+  `docs/specs/ANTS-1237.md` (cold-eyes-clean after 4 loops + ~40
+  verified findings fixed; full audit trail at `ROADMAP.md`
+  `### 📝 Cold-eyes 2026-05-11 (ANTS-1237 spec)`).
+
 - **ANTS-1234 — Roadmap dialog `/`-focus + Esc-clear + body-only
   auto-expand.** Three keyboard-first ergonomics additions to the
   Roadmap dialog's existing substring search box. (1) Pressing `/`

@@ -8469,6 +8469,84 @@ contributors don't duplicate research.
 > current code. Two off-by-one slips caught (`emitCard` L1174 →
 > L1173; CMakeLists range L849-863 → L849/L866).
 
+### 📝 Cold-eyes 2026-05-11 (ANTS-1237 spec)
+
+> Docs reviewed: 1 (`docs/specs/ANTS-1237.md`). Loops to clean: 4.
+> Findings fixed: ~40 (2 CRITICAL, 4 HIGH, ~8 MEDIUM, ~26 LOW
+> across linkage, memory accounting, test fidelity, cross-doc
+> currency).
+
+- **CRITICAL — `humanAge` linkage.** First-draft placed the helper
+  inside the anonymous namespace at `roadmapdialog.cpp:165`,
+  while INV-4 test plan promised to reach it via forward decl
+  matching `roadmapShortcutRows()`. Anonymous-namespace symbols
+  have internal linkage — the analogy was broken. Moved
+  `humanAge` outside the anon namespace at `:1402` adjacent to
+  `roadmapShortcutRows()`, added a sibling forward-declaration
+  at `roadmapdialog.h:65`.
+- **CRITICAL — INV-5 test called private method.** First-draft
+  mirrored `refreshShippedDatesIfStale()` (private at
+  `roadmapdialog.h:333`), but the INV-5 feature test needs to
+  drive refresh directly. Promoted `refreshLastTouchDatesIfStale`
+  to public (idempotent + cheap when mtime unchanged).
+- **CRITICAL — Test 7 epoch arithmetic.** Earlier draft used
+  1735689600 / 1738368000 as the expected timestamps for
+  `2026-01-01T00:00:00Z` / `2026-02-01T00:00:00Z`. Those are the
+  2025 epochs — caught in loop 3 by direct `date -d ... +%s`
+  verification. Now uses the correct 1767225600 / 1769904000
+  with a `date -u -d ... +%s` verifier comment.
+- **HIGH — Memory budget overstated 25×.** First-draft claimed
+  `git blame --line-porcelain` output is "~110 MiB transient
+  peak" (extrapolating "13 KB per source line"). Actual measured
+  output: 4.2 MB (113,238 porcelain lines × ~37 B/line). Budget
+  paragraph rewritten with `wc -c` evidence.
+- **HIGH — Test 7 git recipe.** First-draft used `git commit
+  --amend` to produce two distinct timestamps — but amend
+  rewrites one commit, not two. Replaced with two separate
+  `GIT_AUTHOR_DATE` + `GIT_COMMITTER_DATE`-pinned commits +
+  concrete shell snippet showing both invocations.
+- **HIGH — Block-walk paragraph rules.** First-draft listed
+  "heading" as a block terminator but the implementation only
+  checks `startsWith("- ")`/`startsWith("* ")`/`!startsWith("  ")`.
+  Spec now explicitly covers all four terminators (blank line,
+  top-level bullet, non-indented line, EOF) and documents the
+  single-paragraph contract + multi-paragraph regress
+  (§ 8.6 re-open).
+- **HIGH — Test 4 boundary coverage.** First-draft asserted only
+  the "just-at" side of each humanAge transition (`2d ago`,
+  `2w ago`, etc.), leaving the lower-side edges (13d-at-13×86400,
+  8w-at-59×86400, 12mo-at-364×86400) untested. Expanded test 4
+  to a 14-row table covering both sides of every transition +
+  the negative-age clamp.
+- **MEDIUM — INV-4 example off-by-one.** "13d ago at 13×86400 − 1"
+  evaluates to `d = 12`, giving "12d ago", not "13d ago". Fixed
+  the example.
+- **MEDIUM — refreshShippedDates uses ms-precision mtime.**
+  First-draft pseudocode used `toSecsSinceEpoch()` while the
+  cited reference function uses `toMSecsSinceEpoch()`. Mirrored
+  to ms — sub-second mtime bumps now trigger refresh consistently.
+- **MEDIUM — Bullet Layman drift.** ROADMAP bullet at L8686-8687
+  said "started X days ago" but the chosen mechanism is "Updated".
+  Spec § 3.d now flags the Layman fix as part of the ship commit
+  (this commit), avoiding a future doc-fix bullet.
+- **MEDIUM — rm-updated vs rm-date inconsistency.** § 2.f.6 example
+  HTML used `rm-updated` while § 3.b.5 / INV-1 / acceptance used
+  `rm-date`. Aligned to `rm-date` (reuses the existing CSS class
+  with the "Updated " prefix carrying the semantic distinction).
+- **§ 2 letter order.** Loop-1 added a § 2.f rejected alternative
+  ("manual `Updated:` field") after the Chosen § 2.e, breaking
+  the alphabetic-rejected-then-Chosen convention. Re-lettered to
+  2.a..2.e Rejected, 2.f Chosen; all § 2.e.* references updated
+  to § 2.f.*.
+- **Test isolation.** Parser tests early-skip with `GTEST_SKIP()`
+  when `git` is not on PATH so renderer-layer INVs still run on
+  minimal CI images.
+
+> Reviewers verified every source-file:line citation, the
+> measured benchmarks (~175 ms blame, 4.2 MB output, 8 active 🚧
+> bullets), and the boundary arithmetic for every humanAge ladder
+> step. Loop 4 returned 0 verified findings — clean pass signal.
+
 ### 📝 Cold-eyes 2026-05-12 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~37 live docs (~33k lines).
@@ -8676,15 +8754,21 @@ contributors don't duplicate research.
   list of every keyboard shortcut.
   Kind: implement.
   Source: research-2026-05-11.
-- 💭 [ANTS-1237] **"Updated N days ago" line on 🚧 cards**.
+- ✅ [ANTS-1237] **"Updated N days ago" line on 🚧 cards**.
   GitHub Projects shows this by default; surfaces stalls
-  without re-reading prose. Derive from git blame on the
-  bullet line (cached via the existing `parseShippedDates`
-  mtime mechanism) — last touch date for the matching `[ANTS-NNNN]`
-  ID. Render only on 🚧 cards (✅ already shows shipped date;
-  📋/💭 don't need it).
-  **Layman:** in-progress items show "started X days ago" so
-  you can see what's been sitting too long.
+  without re-reading prose. Derive from `git blame
+  --line-porcelain` on the bullet block (one call per ROADMAP.md
+  mtime change; cached the same way as `parseShippedDates`) —
+  MAX(author-time) over the matching `[ANTS-NNNN]` bullet's line
+  + its 2-space-indented continuation lines. Render only on 🚧
+  cards (✅ already shows shipped date; 📋/💭 don't need it).
+  Human-readable ladder: `today` / `yesterday` / `Nd ago` /
+  `Nw ago` / `Nmo ago` / `Ny ago`. Graceful degradation on
+  non-git checkouts (installed system copies show no "Updated"
+  line). Spec: `docs/specs/ANTS-1237.md` (cold-eyes-clean after
+  4 loops, ~40 verified findings fixed).
+  **Layman:** in-progress items show when each card was last
+  touched, so you can see what's been sitting too long.
   Kind: implement.
   Source: research-2026-05-11.
 - 💭 [ANTS-1238] **Density toggle (compact / cozy /

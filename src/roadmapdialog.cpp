@@ -10,6 +10,7 @@
 #include <QByteArray>
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -1244,6 +1245,21 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                 html += QStringLiteral(
                     "<span class=\"rm-date\">· %1</span>").arg(date);
             }
+        } else if (rec.status == QStringLiteral("🚧")) {
+            // ANTS-1237 — "Updated Nd ago" on 🚧 cards. Reuses
+            // .rm-date CSS for visual consistency; the "Updated "
+            // prefix carries the semantic distinction. Span only
+            // emitted when lastTouchDates has an entry — graceful
+            // degradation on non-git checkouts.
+            const auto it = opts.lastTouchDates.constFind(rec.id);
+            if (it != opts.lastTouchDates.constEnd()) {
+                const qint64 nowSec =
+                    QDateTime::currentSecsSinceEpoch();
+                const qint64 age = nowSec - *it;
+                html += QStringLiteral(
+                    "<span class=\"rm-date\">· %1</span>")
+                    .arg(tr("Updated %1").arg(humanAge(age)));
+            }
         }
         html += QStringLiteral(
             "<a class=\"rm-toggle\" href=\"ants://%1/%2\">[%3]</a>")
@@ -1409,6 +1425,23 @@ QVector<QPair<QString, QString>> roadmapShortcutRows() {
     return out;
 }
 
+// ANTS-1237 — render an age in seconds as one of the ladder strings
+// documented in spec § 2.f.5. External linkage (NOT in the anonymous
+// namespace) so the feature test reaches it via the forward
+// declaration in roadmapdialog.h. Guard against negative ages
+// (clock skew where a freshly-committed bullet's author-time
+// exceeds now by a few seconds).
+QString humanAge(qint64 ageSeconds) {
+    if (ageSeconds < 0) ageSeconds = 0;
+    const qint64 d = ageSeconds / 86400;
+    if (d < 1)   return RoadmapDialog::tr("today");
+    if (d < 2)   return RoadmapDialog::tr("yesterday");
+    if (d < 14)  return RoadmapDialog::tr("%1d ago").arg(d);
+    if (d < 60)  return RoadmapDialog::tr("%1w ago").arg(d / 7);
+    if (d < 365) return RoadmapDialog::tr("%1mo ago").arg(d / 30);
+    return RoadmapDialog::tr("%1y ago").arg(d / 365);
+}
+
 QHash<QString, QString>
 RoadmapDialog::parseShippedDates(const QString &changelogPath) {
     QHash<QString, QString> out;
@@ -1437,6 +1470,105 @@ RoadmapDialog::parseShippedDates(const QString &changelogPath) {
             // patch references the original).
             if (!out.contains(id)) out.insert(id, currentDate);
         }
+    }
+    return out;
+}
+
+QHash<QString, qint64>
+RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
+    QHash<QString, qint64> out;
+    const QFileInfo fi(roadmapPath);
+    if (!fi.exists()) return out;
+
+    // One blame call. --line-porcelain repeats header fields
+    // (incl. author-time) for every source line — easy to index by
+    // line number. QProcess pipes already suppress git's stderr
+    // progress, so no --no-progress needed.
+    QProcess git;
+    git.setWorkingDirectory(fi.absolutePath());
+    git.start(QStringLiteral("git"),
+              {QStringLiteral("blame"),
+               QStringLiteral("--line-porcelain"),
+               QStringLiteral("--"),
+               fi.fileName()});
+    if (!git.waitForStarted(2000)) return out;
+    if (!git.waitForFinished(30000)) {
+        git.kill();
+        return out;
+    }
+    if (git.exitStatus() != QProcess::NormalExit
+        || git.exitCode() != 0) {
+        // Not a git repo, file not tracked, etc. — graceful.
+        return out;
+    }
+    const QByteArray blameOut = git.readAllStandardOutput();
+
+    // Build a 1-indexed vector of author-times per source line.
+    QVector<qint64> lineAuthorTime;
+    lineAuthorTime.append(0);  // placeholder so index 1 == line 1
+    qint64 currentAuthorTime = 0;
+    int currentSourceLine = 0;
+    // Porcelain format: lines starting with a 40-char hex hash
+    // begin a record. Header lines `author-time NNNN` follow.
+    // Content line begins with TAB.
+    for (const QByteArray &raw : blameOut.split('\n')) {
+        if (raw.startsWith('\t')) {
+            // Content line — assign the current author-time to
+            // the recorded final-line number.
+            while (lineAuthorTime.size() <= currentSourceLine)
+                lineAuthorTime.append(0);
+            if (currentSourceLine > 0)
+                lineAuthorTime[currentSourceLine] = currentAuthorTime;
+            continue;
+        }
+        if (raw.size() >= 41 && raw.at(40) == ' ') {
+            // Hash header: "<hash> <orig> <final> [count]"
+            const QList<QByteArray> parts = raw.split(' ');
+            if (parts.size() >= 3) {
+                currentSourceLine = parts.at(2).toInt();
+            }
+            continue;
+        }
+        if (raw.startsWith("author-time ")) {
+            currentAuthorTime =
+                QByteArray(raw.mid(12)).trimmed().toLongLong();
+        }
+    }
+
+    // Walk the markdown, identify each `- 🚧 [ANTS-NNNN]` bullet,
+    // take MAX over its block (the bullet line + every contiguous
+    // 2-space-indented continuation line until blank or next-bullet
+    // or EOF). See spec § 3.b.2.
+    QFile f(roadmapPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
+    const QByteArray body = f.readAll();
+    f.close();
+    const QList<QByteArray> mdLines = body.split('\n');
+    static const QRegularExpression rxInProgress(
+        QStringLiteral("^- 🚧 \\[(ANTS-\\d+)\\]"));
+    for (int i = 0; i < mdLines.size(); ++i) {
+        const QString line = QString::fromUtf8(mdLines.at(i));
+        const auto m = rxInProgress.match(line);
+        if (!m.hasMatch()) continue;
+        const QString id = m.captured(1);
+        qint64 maxTime = 0;
+        int j = i;
+        while (j < mdLines.size()) {
+            const QString cont = QString::fromUtf8(mdLines.at(j));
+            if (j > i) {
+                if (cont.trimmed().isEmpty()) break;
+                if (cont.startsWith(QStringLiteral("- "))
+                    || cont.startsWith(QStringLiteral("* "))) break;
+                if (!cont.startsWith(QStringLiteral("  "))) break;
+            }
+            const int lineNo = j + 1;  // 1-indexed
+            if (lineNo < lineAuthorTime.size()) {
+                const qint64 t = lineAuthorTime.at(lineNo);
+                if (t > maxTime) maxTime = t;
+            }
+            ++j;
+        }
+        if (maxTime > 0) out.insert(id, maxTime);
     }
     return out;
 }
@@ -1713,6 +1845,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     connect(refreshBtn, &QPushButton::clicked, this, [this]() {
         if (m_lastHtml) m_lastHtml->clear();  // bust the dedup cache
         refreshShippedDatesIfStale();
+        refreshLastTouchDatesIfStale();  // ANTS-1237
         rebuild();
     });
     btnRow->addWidget(refreshBtn);
@@ -1875,6 +2008,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         m_tableSections = QSet<QString>(tabSecs.begin(), tabSecs.end());
     }
     refreshShippedDatesIfStale();
+    refreshLastTouchDatesIfStale();  // ANTS-1237
 
     // (2) Persisted preset.
     Preset persisted = Preset::Full;
@@ -2071,6 +2205,16 @@ void RoadmapDialog::refreshShippedDatesIfStale() {
     if (mtime == m_shippedDatesMtime && !m_shippedDates.isEmpty()) return;
     m_shippedDates = parseShippedDates(m_changelogPath);
     m_shippedDatesMtime = mtime;
+}
+
+void RoadmapDialog::refreshLastTouchDatesIfStale() {
+    if (m_roadmapPath.isEmpty()) return;
+    const qint64 mtime = QFileInfo(m_roadmapPath).lastModified()
+                             .toMSecsSinceEpoch();
+    if (mtime == m_lastTouchDatesMtime
+        && !m_lastTouchDates.isEmpty()) return;
+    m_lastTouchDates = parseLastTouchDates(m_roadmapPath);
+    m_lastTouchDatesMtime = mtime;
 }
 
 void RoadmapDialog::applyPreset(Preset p) {
@@ -2347,12 +2491,14 @@ void RoadmapDialog::rebuild() {
     // ANTS-1154: refresh the shipped-date cache if CHANGELOG.md has
     // changed since the last render. Cheap stat-only check.
     refreshShippedDatesIfStale();
+    refreshLastTouchDatesIfStale();  // ANTS-1237
     CardRenderOptions opts;
     opts.activePreset = m_activePreset;
     opts.expandedItems = m_expandedItems;
     opts.expandedSections = m_expandedSections;
     opts.tableSections = m_tableSections;
     opts.shippedDates = m_shippedDates;
+    opts.lastTouchDates = m_lastTouchDates;
     const QString html = renderCardsHtml(markdown, filter, signals_, m_themeName,
                                          m_sortOrder, predicate, m_kindFilter,
                                          opts);

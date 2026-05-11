@@ -61,6 +61,12 @@ class RoadmapShortcutsDialog;
 // `docs/specs/ANTS-1236.md` § 3.c.
 QVector<QPair<QString, QString>> roadmapShortcutRows();
 
+// ANTS-1237 — render an age in seconds as a "today" / "yesterday" /
+// "Nd ago" / "Nw ago" / "Nmo ago" / "Ny ago" string. Lives at file
+// scope in `roadmapdialog.cpp` (outside the anonymous namespace) so
+// the feature test can link against it. See spec § 2.f.5.
+QString humanAge(qint64 ageSeconds);
+
 class RoadmapDialog : public QDialog {
     Q_OBJECT
 
@@ -167,6 +173,12 @@ public:
         // YYYY-MM-DD blocks). Populated by the dialog before render;
         // renderCardsHtml just looks up.
         QHash<QString, QString> shippedDates;
+        // ANTS-1237 — ANTS-NNNN → Unix author-time of the most
+        // recent touch to that bullet's block in ROADMAP.md, per
+        // `git blame`. Populated by the dialog before render;
+        // renderCardsHtml renders the human-readable string on
+        // 🚧 cards only.
+        QHash<QString, qint64> lastTouchDates;
 
         CardRenderOptions() : activePreset(Preset::Full) {}
     };
@@ -207,6 +219,30 @@ public:
     // caller's responsibility.
     static QHash<QString, QString>
     parseShippedDates(const QString &changelogPath);
+
+    // ANTS-1237 — return ANTS-NNNN → MAX(author-time) over the
+    // bullet's block (the `- 🚧 [ANTS-NNNN]` line + every
+    // continuation line until blank/next-bullet/EOF). Spawns
+    // `git blame --line-porcelain` once in roadmapPath's dir;
+    // returns an empty hash on any failure (not a git repo, file
+    // not tracked, git not on PATH, file does not exist, empty
+    // blame output). See spec `docs/specs/ANTS-1237.md` § 3.b.2.
+    static QHash<QString, qint64>
+    parseLastTouchDates(const QString &roadmapPath);
+
+    // ANTS-1237 — refresh m_lastTouchDates from m_roadmapPath when
+    // its mtime has changed since the last call. Public (diverges
+    // from `refreshShippedDatesIfStale` which is private) so the
+    // feature test can drive it directly. Idempotent and cheap
+    // when mtime is unchanged. See spec § 3.a.3.
+    void refreshLastTouchDatesIfStale();
+
+    // ANTS-1237 INV-5 test hook — returns the file mtime
+    // (ms-resolution) that last triggered a parseLastTouchDates
+    // refresh. -1 before the first refresh.
+    qint64 lastTouchDatesMtime() const noexcept {
+        return m_lastTouchDatesMtime;
+    }
 
     // ANTS-1235 — return the screen-reader-readable label
     // ("shipped" / "in progress" / "planned" / "considered") for one
@@ -397,6 +433,12 @@ private:
     QSet<QString> m_tableSections;
     QHash<QString, QString> m_shippedDates;
     qint64 m_shippedDatesMtime = -1;
+    // ANTS-1237 — last-touch (git author-time) per ANTS-NNNN.
+    // Refreshed by refreshLastTouchDatesIfStale() when m_roadmapPath
+    // mtime changes. Default-constructed empty; mtime -1 before
+    // first refresh.
+    QHash<QString, qint64> m_lastTouchDates;
+    qint64 m_lastTouchDatesMtime = -1;
     // ANTS-1236 — lazily-constructed cheatsheet overlay. Held by
     // QPointer so the parent's child-destruction sets us back to
     // null on close. INV-6 contract: reuse the same instance across
