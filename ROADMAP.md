@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.84 (2026-05-11) (2026-05-11). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.84 (2026-05-11). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -6024,11 +6024,16 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ---
 
-## 0.7.80 — post-0.7.79 user-feedback fixes (target: 2026-05)
+## 0.7.80–0.7.84 — post-0.7.79 user-feedback rolling sweep — shipped 2026-05-10 → 2026-05-11
 
-**Theme:** small high-signal user-experience fixes reported during
-the 0.7.79 ship session. Two notification/UI false-positives that
-made the desktop feel noisy in normal use.
+**Theme:** rolling sweep of small high-signal user-experience fixes
+reported during and after the 0.7.79 ship session. Notification +
+UI false-positives that made the desktop feel noisy, Tasks-chip /
+Claude-status visibility, About-dialog metadata, and four passes of
+RoadmapDialog v2 theme polish landed across 0.7.80, 0.7.81, 0.7.82,
+and 0.7.84. ANTS-1220 (scrollback duplication while idle) is the
+only item still pending capture — see the bullet for the capture
+protocol.
 
 ### 🐛 User-feedback fixes (2026-05-08)
 
@@ -6315,7 +6320,7 @@ made the desktop feel noisy in normal use.
   until you change tabs and back; the fix makes the detector
   re-check whenever the running Claude's PID changes.
   Kind: fix. Source: user-2026-05-10.
-- 🚧 [ANTS-1242] **Theme-aware frameless title bar on every dialog.**
+- ✅ [ANTS-1242] **Theme-aware frameless title bar on every dialog.**
   Fourth-pass user feedback after ANTS-1241 (2026-05-11): even
   after the Roadmap dialog's content + body adopted the active
   theme, the window's title bar was still drawn by KWin in the
@@ -6338,7 +6343,7 @@ made the desktop feel noisy in normal use.
   rest of the app, instead of being drawn in your desktop's
   default grey.
   Kind: fix. Source: user-2026-05-11.
-- 🚧 [ANTS-1241] **RoadmapDialog v2: inline `#NNNN` on summary row +
+- ✅ [ANTS-1241] **RoadmapDialog v2: inline `#NNNN` on summary row +
   larger ID font.** Third-pass user feedback after ANTS-1240
   (2026-05-11): the card's `#NNNN` (and shipped date) were emitted
   on a separate `<div class="rm-meta">` row below the summary line,
@@ -6359,7 +6364,7 @@ made the desktop feel noisy in normal use.
   colour mismatch on the ID row that came from the same Qt
   rendering quirk we hit yesterday on the expanded body.
   Kind: fix. Source: user-2026-05-11.
-- 🚧 [ANTS-1240] **RoadmapDialog v2: theme palette + expanded-body
+- ✅ [ANTS-1240] **RoadmapDialog v2: theme palette + expanded-body
   background frame.** Second-pass user feedback after the ANTS-1239
   link-colour fix (2026-05-11). (1) Only `QPalette::Link` /
   `LinkVisited` were themed; the QDialog window, the `QListWidget`
@@ -6388,7 +6393,7 @@ made the desktop feel noisy in normal use.
   background colour as the card itself — no more visible colour
   break inside an opened card.
   Kind: fix. Source: user-2026-05-11.
-- 🚧 [ANTS-1239] **RoadmapDialog v2: duplicate heading slugs + black
+- ✅ [ANTS-1239] **RoadmapDialog v2: duplicate heading slugs + black
   `<a>` text on dark themes.** Two bugs surfaced by user test-drive
   of 0.7.83's card renderer (2026-05-11). (1) Three `### Performance`
   h3s (under 0.7.0, 0.8.0, Beyond 1.0) all slugged to `performance`,
@@ -8717,7 +8722,7 @@ contributors don't duplicate research.
   you're thinking of, instead of scrolling.
   Kind: implement.
   Source: research-2026-05-11.
-- 🚧 [ANTS-1235] **Accessible status / theme glyph labels.**
+- ✅ [ANTS-1235] **Accessible status / theme glyph labels.**
   Screen readers (Orca / NVDA / VoiceOver) announce "✅" as
   "white heavy check mark" by default — useless as a scan cue
   on a several-hundred-bullet roadmap. Verified mechanism (per
