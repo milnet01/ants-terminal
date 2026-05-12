@@ -777,7 +777,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp
                 tests/features/tasks_chip_done_over_total/test_tasks_chip_done_over_total.cpp
                 tests/features/mcp_roadmap_status_filter/test_mcp_roadmap_status_filter.cpp
-                tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp)
+                tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp
+                tests/features/mcp_workspace_search/test_mcp_workspace_search.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

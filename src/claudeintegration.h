@@ -189,6 +189,12 @@ public:
     void setTabListProvider(std::function<QString()> provider);
     void setGetTextProvider(std::function<QString(int,int)> provider);
 
+    // ANTS-1248: workspace_search provider — ripgrep-backed code
+    // search. Full-QJsonObject signature (matches the cmdGetText
+    // widening idiom from ANTS-1244) so future schema additions
+    // don't require new setter overloads.
+    void setWorkspaceSearchProvider(std::function<QString(const QJsonObject&)> provider);
+
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
     QString sessionSummary(const QString &transcriptPath) const;
@@ -317,6 +323,8 @@ private:
     std::function<QString(const QString&)> m_roadmapQueryProvider;
     std::function<QString()> m_tabListProvider;
     std::function<QString(int,int)> m_getTextProvider;
+    // ANTS-1248: workspace_search provider — full-QJsonObject shape.
+    std::function<QString(const QJsonObject&)> m_workspaceSearchProvider;
 
     // Session tracking
     QString m_activeSessionId;

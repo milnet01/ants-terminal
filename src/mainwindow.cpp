@@ -3638,6 +3638,15 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdGetText(req).toJson(QJsonDocument::Compact));
         });
+    // ANTS-1248: workspace_search provider. Same idiom as the
+    // ANTS-1244 trio — full QJsonObject passes through to the verb
+    // body (argument validation lives there).
+    m_claudeIntegration->setWorkspaceSearchProvider(
+        [this](const QJsonObject &req) -> QString {
+            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+            return QString::fromUtf8(
+                m_remoteControl->cmdWorkspaceSearch(req).toJson(QJsonDocument::Compact));
+        });
 
     // Start hook server
     m_claudeIntegration->startHookServer();

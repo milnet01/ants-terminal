@@ -1118,6 +1118,14 @@ void ClaudeIntegration::setGetTextProvider(std::function<QString(int,int)> provi
     m_getTextProvider = std::move(provider);
 }
 
+// ANTS-1248: workspace_search provider setter — ripgrep-backed code
+// search. Full-QJsonObject signature so the schema (pattern, regex,
+// lane, glob, max_results, context, case) can grow without changing
+// the function type.
+void ClaudeIntegration::setWorkspaceSearchProvider(std::function<QString(const QJsonObject&)> provider) {
+    m_workspaceSearchProvider = std::move(provider);
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -1302,6 +1310,67 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(getTextTool);
 
+                // ANTS-1248: workspace_search — ripgrep wrapper. The
+                // schema declares all 7 spec args and marks `pattern`
+                // as required. The description names the alternative
+                // bash idiom + token-saving headline so Claude prefers
+                // this over Bash/Read for code searches.
+                QJsonObject wsTool;
+                wsTool["name"] = "workspace_search";
+                wsTool["description"] = QStringLiteral(
+                    "Search the project for code matching a literal "
+                    "string or regex. Returns {ok, matches:[{file, "
+                    "line, text}], truncated, elapsed_ms}. Prefer this "
+                    "over `Bash grep -r ...` — typically saves 250-4500 "
+                    "tokens per query and avoids round-trips for "
+                    "no-match cases. Args: pattern (required), regex "
+                    "(false), lane (subdir under project root), glob, "
+                    "max_results (default 50, cap 500), context, case "
+                    "(smart/sensitive/insensitive).");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject patternProp;  patternProp["type"]  = "string";
+                                              patternProp["description"] =
+                        QStringLiteral("Literal string (default) or "
+                                        "regex if `regex=true`.");
+                    QJsonObject regexProp;    regexProp["type"]    = "boolean";
+                                              regexProp["default"] = false;
+                    QJsonObject laneProp;     laneProp["type"]     = "string";
+                                              laneProp["description"] =
+                        QStringLiteral("Subdir under repo root (e.g. \"src\"). "
+                                        "Empty = whole repo.");
+                    QJsonObject globProp;     globProp["type"]     = "string";
+                                              globProp["description"] =
+                        QStringLiteral("Ripgrep --glob filter (e.g. \"*.cpp\").");
+                    QJsonObject maxProp;      maxProp["type"]      = "integer";
+                                              maxProp["default"]   = 50;
+                                              maxProp["maximum"]   = 500;
+                    QJsonObject ctxProp;      ctxProp["type"]      = "integer";
+                                              ctxProp["default"]   = 0;
+                    QJsonObject caseProp;     caseProp["type"]     = "string";
+                    QJsonArray caseEnum;
+                    caseEnum.append("smart");
+                    caseEnum.append("sensitive");
+                    caseEnum.append("insensitive");
+                    caseProp["enum"]    = caseEnum;
+                    caseProp["default"] = "smart";
+                    props["pattern"]     = patternProp;
+                    props["regex"]       = regexProp;
+                    props["lane"]        = laneProp;
+                    props["glob"]        = globProp;
+                    props["max_results"] = maxProp;
+                    props["context"]     = ctxProp;
+                    props["case"]        = caseProp;
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("pattern");
+                    schema["required"] = required;
+                    wsTool["inputSchema"] = schema;
+                }
+                tools.append(wsTool);
+
                 result["tools"] = tools;
                 haveResult = true;
             } else if (method == "tools/call") {
@@ -1377,6 +1446,15 @@ void ClaudeIntegration::onMcpConnection() {
                     int tab   = tabVal.isDouble()   ? tabVal.toInt()   : -1;
                     int lines = linesVal.isDouble() ? linesVal.toInt() :  0;
                     result["content"] = makeTextContent(m_getTextProvider(tab, lines));
+                    toolHandled = true;
+                } else if (toolName == "workspace_search" && m_workspaceSearchProvider) {
+                    // ANTS-1248: forward the full `arguments` object
+                    // through to the provider, which delegates to
+                    // RemoteControl::cmdWorkspaceSearch. Argument
+                    // validation lives in the verb body — keeps the
+                    // wire boundary thin (same pattern as roadmap_query).
+                    QJsonObject args = params.value("arguments").toObject();
+                    result["content"] = makeTextContent(m_workspaceSearchProvider(args));
                     toolHandled = true;
                 }
 

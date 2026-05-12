@@ -8,12 +8,14 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <algorithm>
 #include <QJsonArray>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QTabWidget>
 
@@ -225,6 +227,10 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
         // status=active` (if a future --remote-status flag lands)
         // reaches the filter.
         return cmdRoadmapQuery(req);
+    }
+    if (cmd == QLatin1String("workspace-search")) {
+        // ANTS-1248-INV-4: IPC dispatch entry for the ripgrep wrapper.
+        return cmdWorkspaceSearch(req);
     }
     QJsonObject e;
     e["ok"] = false;
@@ -626,6 +632,257 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     out["count"] = filtered.size();
     // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
     out["filter"] = filter;
+    return QJsonDocument(out);
+}
+
+// ANTS-1248: workspace_search — structured ripgrep wrapper for MCP +
+// IPC. Replaces `Bash grep -rn 'pattern' src/` with a server-clamped
+// {matches[], truncated, elapsed_ms} envelope. ~6-15 K tokens saved
+// per typical "investigate a bug" session.
+//
+// Process model: QProcess::start("rg", argv) — argv-only, no shell
+// interpolation (INV-3). Hard wall-clock budget enforced via
+// waitForFinished(kWorkspaceSearchHardKillMs) then SIGTERM, then
+// waitForFinished(kWorkspaceSearchKillGraceMs) then SIGKILL (INV-5).
+// Stderr capped at 4 KiB and surfaced only in the ok:false branch
+// to avoid path enumeration on the ok:true path (INV-8).
+namespace {
+constexpr int kWorkspaceSearchHardKillMs   = 2000;  // ANTS-1248-INV-5
+constexpr int kWorkspaceSearchKillGraceMs  =  200;  // ANTS-1248-INV-5
+constexpr int kWorkspaceSearchMaxResultsCap = 500;  // ANTS-1248-INV-4
+constexpr int kWorkspaceSearchMaxColumns    = 500;
+constexpr int kWorkspaceSearchStderrCapBytes = 4096; // ANTS-1248-INV-8
+constexpr int kWorkspaceSearchGlobBytesCap   =  256; // ANTS-1248-INV-9
+
+QJsonObject wsErr(const char *code, const QString &message) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = message;
+    o["code"]  = QString::fromLatin1(code);
+    return o;
+}
+
+bool hasControlOrBackslash(const QString &s) {
+    for (QChar c : s) {
+        if (c.unicode() < 0x20 || c == QLatin1Char('\\')) return true;
+    }
+    return false;
+}
+}  // namespace
+
+QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
+    QElapsedTimer wall;
+    wall.start();
+
+    // ANTS-1248-INV-1: empty/missing pattern → bad_pattern, no fork.
+    const QString pattern = req.value("pattern").toString();
+    if (pattern.isEmpty()) {
+        return QJsonDocument(wsErr("bad_pattern",
+            QStringLiteral("workspace-search: missing or empty \"pattern\"")));
+    }
+
+    // Server resolves the project root from QCoreApplication::applicationDirPath()
+    // is wrong — that's the build dir. The remote-control + MCP path
+    // semantically targets the *focused tab's CWD*, but ripgrep's
+    // working dir for the search is determined by `lane`. Default
+    // (`lane=""`) is the focused tab's shellCwd; explicit `lane` is
+    // resolved relative to that root and must canonicalise back inside.
+    QString rootCwd;
+    if (auto *t = m_main->currentTerminal()) {
+        rootCwd = t->shellCwd();
+    }
+    if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
+    const QFileInfo rootInfo(rootCwd);
+    const QString rootCanonical = rootInfo.canonicalFilePath();
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(wsErr("bad_lane",
+            QStringLiteral("workspace-search: project root \"%1\" does not exist").arg(rootCwd)));
+    }
+
+    // ANTS-1248-INV-2: lane validation — NFC normalise, reject control
+    // chars + backslash, then canonical-path-startswith the root.
+    // Symlink-resolving canonicalFilePath() (not lexical cleanPath())
+    // closes the parent-traversal vector; ripgrep is invoked without
+    // -L to bound the post-resolve symlink TOCTOU window.
+    QString laneArg = req.value("lane").toString().normalized(QString::NormalizationForm_C);
+    QString laneAbs = rootCanonical;
+    if (!laneArg.isEmpty()) {
+        if (hasControlOrBackslash(laneArg)) {
+            return QJsonDocument(wsErr("bad_lane",
+                QStringLiteral("workspace-search: \"lane\" contains control or backslash characters")));
+        }
+        const QString joined = QDir(rootCanonical).filePath(laneArg);
+        const QString resolved = QFileInfo(joined).canonicalFilePath();
+        if (resolved.isEmpty() ||
+            !(resolved == rootCanonical ||
+              resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
+            return QJsonDocument(wsErr("bad_lane",
+                QStringLiteral("workspace-search: \"lane\" escapes project root or does not exist")));
+        }
+        laneAbs = resolved;
+    }
+
+    // ANTS-1248-INV-9: glob validation — NFC normalise, 256-byte cap,
+    // reject `..` substrings.
+    QString glob = req.value("glob").toString().normalized(QString::NormalizationForm_C);
+    if (!glob.isEmpty()) {
+        if (glob.toUtf8().size() > kWorkspaceSearchGlobBytesCap) {
+            return QJsonDocument(wsErr("bad_glob",
+                QStringLiteral("workspace-search: \"glob\" exceeds 256 bytes")));
+        }
+        if (glob.contains(QStringLiteral(".."))) {
+            return QJsonDocument(wsErr("bad_glob",
+                QStringLiteral("workspace-search: \"glob\" contains \"..\" segments")));
+        }
+    }
+
+    // ANTS-1248-INV-4: server-side max_results clamp at 500.
+    int maxResults = 50;
+    const QJsonValue maxVal = req.value("max_results");
+    if (maxVal.isDouble()) {
+        const int requested = maxVal.toInt();
+        if (requested > 0) {
+            maxResults = std::min(requested, kWorkspaceSearchMaxResultsCap);
+        }
+    }
+
+    int context = 0;
+    const QJsonValue ctxVal = req.value("context");
+    if (ctxVal.isDouble()) {
+        const int requested = ctxVal.toInt();
+        if (requested > 0) context = std::min(requested, 10);
+    }
+
+    const bool isRegex = req.value("regex").toBool(false);
+    const QString caseMode = req.value("case").toString(QStringLiteral("smart"));
+
+    // ANTS-1248-INV-3: shell-less argv. Every flag is a separate
+    // QString in the argv list — QProcess does not invoke a shell.
+    // Two-argument start() overload (QString program, QStringList args).
+    QStringList argv;
+    argv << QStringLiteral("--json")
+         << QStringLiteral("--no-heading")
+         << QStringLiteral("--line-number")
+         << QStringLiteral("--max-columns") << QString::number(kWorkspaceSearchMaxColumns)
+         << QStringLiteral("--threads")     << QStringLiteral("1");
+    if (caseMode == QLatin1String("smart"))           argv << QStringLiteral("--smart-case");
+    else if (caseMode == QLatin1String("insensitive")) argv << QStringLiteral("--ignore-case");
+    else if (caseMode == QLatin1String("sensitive"))   argv << QStringLiteral("--case-sensitive");
+    if (!isRegex) argv << QStringLiteral("--fixed-strings");
+    if (context > 0) argv << QStringLiteral("--context") << QString::number(context);
+    if (!glob.isEmpty()) argv << QStringLiteral("--glob") << glob;
+    argv << QStringLiteral("--") << pattern << laneAbs;
+
+    QProcess rg;
+    rg.setWorkingDirectory(rootCanonical);
+    rg.setProcessChannelMode(QProcess::SeparateChannels);
+    // ANTS-1248-INV-3: QProcess::start(QString, QStringList) — argv
+    // form. No shell, no single-string overload.
+    rg.start(QStringLiteral("rg"), argv);
+    if (!rg.waitForStarted(500)) {
+        return QJsonDocument(wsErr("rg_failed",
+            QStringLiteral("workspace-search: rg failed to start (is ripgrep installed?)")));
+    }
+
+    // ANTS-1248-INV-5: 2 s hard kill via kWorkspaceSearchHardKillMs
+    // (waitForFinished returns false on timeout). On timeout we
+    // terminate(), then grant 200 ms grace, then kill().
+    const bool finished = rg.waitForFinished(kWorkspaceSearchHardKillMs);
+    bool hardKilled = false;
+    if (!finished) {
+        hardKilled = true;
+        rg.terminate();
+        if (!rg.waitForFinished(kWorkspaceSearchKillGraceMs)) {
+            rg.kill();
+            rg.waitForFinished(kWorkspaceSearchKillGraceMs);
+        }
+    }
+
+    // ANTS-1248-INV-8: stderr cap. Read up to 4 KiB; emit only on
+    // the error branch to avoid path-enumeration leaks on success.
+    QByteArray stderrTail = rg.readAllStandardError();
+    if (stderrTail.size() > kWorkspaceSearchStderrCapBytes) {
+        stderrTail.truncate(kWorkspaceSearchStderrCapBytes);
+    }
+
+    const QByteArray stdoutBytes = rg.readAllStandardOutput();
+
+    // rg --json emits one event per line. We want type=="match" events.
+    // Each match event has data.path.text, data.line_number, and
+    // data.lines.text. NDJSON-style parse: split on '\n', QJsonDocument
+    // per line.
+    QJsonArray matches;
+    int seenMatchEvents = 0;
+    bool truncated = false;
+    const QList<QByteArray> lines = stdoutBytes.split('\n');
+    for (const QByteArray &line : lines) {
+        if (line.isEmpty()) continue;
+        QJsonParseError perr{};
+        const QJsonDocument doc = QJsonDocument::fromJson(line, &perr);
+        if (perr.error != QJsonParseError::NoError || !doc.isObject()) continue;
+        const QJsonObject ev = doc.object();
+        if (ev.value("type").toString() != QLatin1String("match")) continue;
+        ++seenMatchEvents;
+        if (matches.size() >= maxResults) { truncated = true; continue; }
+
+        const QJsonObject data = ev.value("data").toObject();
+        QString path = data.value("path").toObject().value("text").toString();
+        // Trim absolute prefix back to project-relative if possible —
+        // callers want stable, short paths.
+        if (path.startsWith(rootCanonical + QLatin1Char('/'))) {
+            path = path.mid(rootCanonical.size() + 1);
+        }
+        const int lineNo = data.value("line_number").toInt();
+        QString text = data.value("lines").toObject().value("text").toString();
+        // Strip a single trailing newline that rg includes in `lines.text`.
+        if (text.endsWith(QLatin1Char('\n'))) text.chop(1);
+
+        QJsonObject m;
+        m["file"] = path;
+        m["line"] = lineNo;
+        m["text"] = text;
+        matches.append(m);
+    }
+
+    if (rg.exitStatus() != QProcess::NormalExit && !hardKilled) {
+        QJsonObject o = wsErr("rg_failed",
+            QStringLiteral("workspace-search: rg crashed (exit status not normal)"));
+        if (!stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(stderrTail);
+        return QJsonDocument(o);
+    }
+    // rg exit codes: 0 = matches found, 1 = no matches (still ok),
+    // 2 = error. Anything ≥ 2 (or hard-kill) is treated as failure
+    // only when no matches were parsed.
+    if (rg.exitCode() >= 2 && matches.isEmpty() && !hardKilled) {
+        QJsonObject o = wsErr("rg_failed",
+            QStringLiteral("workspace-search: rg returned non-zero exit code %1")
+                .arg(rg.exitCode()));
+        if (!stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(stderrTail);
+        return QJsonDocument(o);
+    }
+    if (hardKilled && matches.isEmpty()) {
+        // No partial results — surface the hard kill rather than
+        // pretending the search finished cleanly.
+        return QJsonDocument(wsErr("rg_failed",
+            QStringLiteral("workspace-search: rg exceeded 2 s wall budget, hard-killed")));
+    }
+    // ANTS-1248-INV-4: post-cap detection — truncated iff we either
+    // saw more match events than max_results, or the hard kill cut
+    // us off mid-stream.
+    if (seenMatchEvents > matches.size() || hardKilled) truncated = true;
+
+    QJsonObject out;
+    out["ok"]         = true;
+    out["pattern"]    = pattern;
+    out["matches"]    = matches;
+    out["truncated"]  = truncated;
+    out["elapsed_ms"] = static_cast<int>(wall.elapsed());
+    // ANTS-1248-INV-6: stateless — no cache, no member-state mutation.
+    // ANTS-1248-INV-10: reachability gated by the existing UDS +
+    // MCP-socket trust model (SO_PEERCRED UID + 0700 + S_ISSOCK).
+    // Nothing extra to do here.
+    // ANTS-1248-INV-7: tools/list schema declared in claudeintegration.cpp
+    // (this body's contract; the schema lives at the wire boundary).
     return QJsonDocument(out);
 }
 

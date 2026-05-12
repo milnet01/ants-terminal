@@ -121,6 +121,14 @@ public:
     QJsonDocument cmdTabList();
     QJsonDocument cmdGetText(const QJsonObject &req);
 
+    // ANTS-1248: ripgrep wrapper. Public for the same reason as the
+    // ANTS-1244 trio — MCP server lambda in MainWindow delegates here
+    // so the body is reused across IPC + MCP transports. Argv-only
+    // QProcess::start (no shell), 2 s hard-kill via constant
+    // kWorkspaceSearchHardKillMs + 200 ms grace, server-clamped to
+    // 500 results. See docs/specs/ANTS-1248.md.
+    QJsonDocument cmdWorkspaceSearch(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

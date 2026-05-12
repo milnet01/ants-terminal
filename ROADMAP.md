@@ -5572,16 +5572,29 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   it does. Kind: fix. Source: integration-bug-2026-05-12.
   Lanes: claudeintegration, tests/features.
 
-- 📋 [ANTS-1248] **`workspace_search` MCP tool** (ripgrep wrapper,
-  spec ship-ready). Replaces typical `Bash grep -r ... src/`
+- ✅ [ANTS-1248] **`workspace_search` MCP tool — ripgrep wrapper.**
+  Shipped 2026-05-12. Replaces typical `Bash grep -r ... src/`
   pattern with structured `{matches[], truncated, elapsed_ms}`
-  return. Top-N capped (default 50, max 500), shell-less argv,
-  4 KiB stderr cap, NFC-normalised lane + canonical-startswith
-  guard, 2-tier kill (2 s + 200 ms grace). Token saving:
-  ~250-4 400 tokens per call depending on pattern; estimated
-  ~6-15 K per typical bug-investigation session. Schema cost:
-  ~150 tokens permanent. Spec: `docs/specs/ANTS-1248.md`.
-  Kind: feature. Source: user-2026-05-12. Lanes: remotecontrol,
+  return. Top-N capped (default 50, max 500), shell-less argv
+  (`QProcess::start("rg", QStringList...)` — no shell), 4 KiB
+  stderr cap (only surfaced on `ok:false`), NFC-normalised
+  `lane` / `glob` + canonical-`startsWith` guard against
+  parent-traversal, 2-tier kill (2 s → `terminate()` → 200 ms
+  grace → `kill()`). Token saving: ~250–4 400 tokens per call
+  depending on pattern; estimated ~6–15 K per typical
+  bug-investigation session. Schema cost: ~150 tokens permanent.
+  Locked by feature test `mcp_workspace_search/` (10 invariants —
+  decl, INV-anchor coverage, shell-lessness, IPC route, MCP
+  tools/list schema, dispatch wire, header decl + member,
+  provider lambda, ripgrep flags, 2-tier kill). Spec:
+  `docs/specs/ANTS-1248.md`. **Layman:** Claude can now ask
+  Ants for a code search in one structured call instead of
+  shelling out to grep — the response is a compact list of
+  `{file, line, text}` records, capped so a 10 000-hit pattern
+  doesn't blow the response budget, and the search itself can
+  never spawn a shell. Roughly one full ROADMAP-sized payload
+  saved per bug-investigation session. Kind: feature.
+  Source: user-2026-05-12. Lanes: remotecontrol,
   claudeintegration, mainwindow.
 
 - 📋 [ANTS-1249] **`file_outline` MCP tool.** Returns sections /

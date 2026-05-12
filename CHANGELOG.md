@@ -12,6 +12,30 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **ANTS-1248 — `workspace_search` MCP tool (ripgrep wrapper).**
+  Replaces typical `Bash grep -r ... src/` patterns with a
+  structured `{ok, matches:[{file,line,text}], truncated,
+  elapsed_ms}` envelope. Shell-less argv (`QProcess::start("rg",
+  QStringList...)` — never `bash -c`, never a single-string
+  overload). Server clamps `max_results` at 500 (default 50);
+  `lane` and `glob` NFC-normalised and rejected if they contain
+  control chars / backslash / `..` segments / parent-traversal
+  past the project root (canonical-`startsWith` check via
+  `QFileInfo::canonicalFilePath()`); 4 KiB stderr cap surfaced
+  only on `ok:false`; 2-tier hard kill (2 s `terminate()` then
+  200 ms grace → `kill()`) so a catastrophic regex can't outlive
+  the wall budget. Estimated saving ~6–15 K tokens per typical
+  bug-investigation session at ~150 permanent schema tokens.
+  Locked by feature test `mcp_workspace_search/` whose 10
+  invariants cover decl, INV anchors, shell-lessness, IPC route,
+  tools/list schema (with `required: ["pattern"]`), tools/call
+  dispatch, header decl + member, provider lambda, the literal
+  ripgrep flags (`--json`, `--no-heading`, `--line-number`,
+  `--max-columns`, `--threads`), and the 2-tier kill wiring.
+  Spec: `docs/specs/ANTS-1248.md`.
+
 ## [0.7.86] — 2026-05-12
 
 **Theme:** MCP integration end-to-end — Claude Code sessions inside
