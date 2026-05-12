@@ -5516,6 +5516,38 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: feature. Source: user-2026-05-12.
   Lanes: remotecontrol, claudeintegration, mainwindow.
 
+- ✅ [ANTS-1255] **MCP stdio bridge — `tools/mcp-bridge.py`.**
+  Shipped 2026-05-12. Unblocks the entire MCP pack
+  (ANTS-1244 / 1247 / upcoming 1248+) on the consumer side. The
+  Ants in-process MCP server exposes JSON-RPC over a `QLocalServer`
+  Unix socket (`/tmp/ants-terminal-mcp-<PID>`); Claude Code's MCP
+  client speaks stdio. Without a bridge, every server-side tool
+  registered since ANTS-1244 was unreachable from a Claude Code
+  session — server-correct, wire-disconnected. ~100-line Python 3
+  stdlib script (no deps): reads line-delimited JSON-RPC from
+  stdin, opens one fresh `AF_UNIX` socket per request (server is
+  one-shot by design, claudeintegration.cpp:1150-1397), forwards
+  the request, reads the reply until EOF, writes to stdout.
+  Notifications (no `id`) — including `notifications/initialized`
+  — are forwarded but no response is awaited (matches the server's
+  notification-disconnect contract at claudeintegration.cpp:1383).
+  Socket selection: `$ANTS_MCP_SOCKET` env-var override wins,
+  otherwise newest-mtime `/tmp/ants-terminal-mcp-*` socket (filtered
+  to `S_ISSOCK`). 2 s connect timeout, 5 s read timeout, 10 MiB
+  reply ceiling matching the server's. Register once per machine:
+  `claude mcp add ants -- /path/to/tools/mcp-bridge.py`. End-to-end
+  smoke verified: MCP `initialize` handshake → 9 tools listed →
+  `roadmap_query status="active"` → `bad_status` error path → clean
+  exit on stdin close. Surfaced during ANTS-1247 smoke-test attempt
+  when the missing wire was discovered. **Layman:** the previous
+  three "let Claude see the roadmap" features all built the right
+  door but forgot the doorknob. This is the doorknob. Until now,
+  every MCP tool we shipped only worked when poked manually with
+  a socket script — Claude Code couldn't reach them. With this
+  bridge registered, every future MCP tool ships into Claude Code
+  automatically. Kind: feature. Source: integration-gap-2026-05-12.
+  Lanes: tools.
+
 - 📋 [ANTS-1248] **`workspace_search` MCP tool** (ripgrep wrapper,
   spec ship-ready). Replaces typical `Bash grep -r ... src/`
   pattern with structured `{matches[], truncated, elapsed_ms}`

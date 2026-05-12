@@ -14,6 +14,22 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1255 — MCP stdio bridge (`tools/mcp-bridge.py`).** Unblocks
+  the entire MCP pack on the consumer side. The Ants in-process MCP
+  server exposes JSON-RPC over a `QLocalServer` Unix socket; Claude
+  Code's MCP client speaks stdio. Until now, every server-side tool
+  registered since ANTS-1244 was unreachable from a Claude Code
+  session. ~100-line Python 3 stdlib script reads line-delimited
+  JSON-RPC from stdin, opens one `AF_UNIX` connection per request
+  (server is one-shot by design), forwards the request, writes the
+  reply to stdout. Notifications (no `id`) are forwarded without
+  awaiting a response. Socket selection: `$ANTS_MCP_SOCKET` override
+  or newest-mtime `/tmp/ants-terminal-mcp-*`. Register with
+  `claude mcp add ants -- /path/to/tools/mcp-bridge.py` once per
+  machine. End-to-end verified: `initialize` handshake → 9 tools
+  listed → `roadmap_query status="active"` → `bad_status` error
+  path → clean exit on stdin close.
+
 - **ANTS-1247 — `status` filter on `roadmap_query` MCP tool /
   IPC verb.** Optional `status` argument (`"all"` default,
   `"active"` = 📋+🚧, `"shipped"` = ✅; case-insensitive) on the
