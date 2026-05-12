@@ -1106,7 +1106,7 @@ void ClaudeIntegration::setEnvironmentProvider(std::function<QString()> provider
     m_envProvider = std::move(provider);
 }
 
-void ClaudeIntegration::setRoadmapQueryProvider(std::function<QString()> provider) {
+void ClaudeIntegration::setRoadmapQueryProvider(std::function<QString(const QString&)> provider) {
     m_roadmapQueryProvider = std::move(provider);
 }
 
@@ -1223,14 +1223,40 @@ void ClaudeIntegration::onMcpConnection() {
                 // as MCP tools so a Claude session in an Ants tab can
                 // query terminal state via tool-call rather than
                 // `Bash`/`Read`. See docs/specs/ANTS-1244.md.
+                //
+                // ANTS-1247-INV-8: `status` filter declared in inputSchema
+                // with enum [all|active|shipped] + description citing
+                // token counts so Claude prefers `active` for planning
+                // queries (~10× smaller payload).
                 QJsonObject roadmapTool;
                 roadmapTool["name"] = "roadmap_query";
                 roadmapTool["description"] = QStringLiteral(
                     "Query the active tab's ROADMAP.md as structured "
                     "bullets. Each bullet: {id, status, headline, kind, "
-                    "lanes}. Envelope: {ok:true, bullets:[…], path, count} "
-                    "on success or {ok:false, error, code} when the "
-                    "active tab's project has no ROADMAP.md.");
+                    "lanes}. Optional `status` filter — \"active\" "
+                    "(📋+🚧, ~1.7 K tokens — recommended for planning "
+                    "queries) / \"shipped\" (✅ only) / \"all\" (default, "
+                    "~12 K tokens). Envelope: {ok, bullets, path, count, "
+                    "filter} on success or {ok:false, error, code} on "
+                    "error.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject statusProp;
+                    statusProp["type"] = "string";
+                    QJsonArray statusEnum;
+                    statusEnum.append("all");
+                    statusEnum.append("active");
+                    statusEnum.append("shipped");
+                    statusProp["enum"] = statusEnum;
+                    statusProp["description"] = QStringLiteral(
+                        "Filter by lifecycle. \"active\" = planned + "
+                        "in-progress (~7× smaller payload).");
+                    props["status"] = statusProp;
+                    schema["properties"] = props;
+                    roadmapTool["inputSchema"] = schema;
+                }
                 tools.append(roadmapTool);
 
                 QJsonObject tabListTool;
@@ -1312,7 +1338,15 @@ void ClaudeIntegration::onMcpConnection() {
                     result["content"] = makeTextContent(m_envProvider());
                     toolHandled = true;
                 } else if (toolName == "roadmap_query" && m_roadmapQueryProvider) {
-                    result["content"] = makeTextContent(m_roadmapQueryProvider());
+                    // ANTS-1247-INV-9: extract `arguments.status` and
+                    // forward verbatim. Case-folding lives inside
+                    // cmdRoadmapQuery — dispatcher passes through.
+                    QJsonObject args = params.value("arguments").toObject();
+                    const QJsonValue statusVal = args.value("status");
+                    const QString status = statusVal.isString()
+                                              ? statusVal.toString()
+                                              : QString();
+                    result["content"] = makeTextContent(m_roadmapQueryProvider(status));
                     toolHandled = true;
                 } else if (toolName == "tab_list" && m_tabListProvider) {
                     result["content"] = makeTextContent(m_tabListProvider());

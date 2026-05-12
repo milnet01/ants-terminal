@@ -12,6 +12,20 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **ANTS-1247 — `status` filter on `roadmap_query` MCP tool /
+  IPC verb.** Optional `status` argument (`"all"` default,
+  `"active"` = 📋+🚧, `"shipped"` = ✅; case-insensitive) on the
+  `roadmap_query` MCP tool. On this repo at ship time: `"active"`
+  returns 57 of 399 bullets (~1.75 K tokens vs ~12 K), a ~7× saving
+  per "what's next" query. Provider lambda widened to thread the
+  filter through; cache continues to hold the full unfiltered array
+  (filter runs post-cache). Pack-mate with ANTS-1248..1252
+  (spec-only) and ANTS-1253/1254 (planned follow-ups). Cold-eyes
+  pass 2 converged across 4 lanes (performance / token reduction /
+  security / optimisation) over 4 loops — final pass clean.
+
 ## [0.7.85] — 2026-05-12
 
 **Theme:** Roadmap dialog density toggle (compact / cozy /

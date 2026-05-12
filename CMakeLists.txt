@@ -775,7 +775,8 @@ if(ANTS_TESTS)
                 tests/features/claude_task_list_session_isolation/test_claude_task_list_session_isolation.cpp
                 tests/features/claude_pid_replacement/test_claude_pid_replacement.cpp
                 tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp
-                tests/features/tasks_chip_done_over_total/test_tasks_chip_done_over_total.cpp)
+                tests/features/tasks_chip_done_over_total/test_tasks_chip_done_over_total.cpp
+                tests/features/mcp_roadmap_status_filter/test_mcp_roadmap_status_filter.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -806,6 +807,7 @@ if(ANTS_TESTS)
         SRC_BGDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
+        SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
 
     # ANTS-1217 Phase 5 — test_audit bundle. Audit tests consolidated

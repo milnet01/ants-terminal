@@ -113,7 +113,11 @@ public:
     // bodies. Provider lambdas in MainWindow::setupClaudeMcpProviders
     // call these on the existing m_remoteControl instance, sharing
     // the roadmap-query cache (INV-7 in the spec).
-    QJsonDocument cmdRoadmapQuery();
+    //
+    // ANTS-1247: cmdRoadmapQuery accepts an optional `status` filter
+    // in `req`. Zero-arg-equivalent (empty req) is back-compat with
+    // ANTS-1244 callers — returns the full unfiltered array.
+    QJsonDocument cmdRoadmapQuery(const QJsonObject &req = {});
     QJsonDocument cmdTabList();
     QJsonDocument cmdGetText(const QJsonObject &req);
 

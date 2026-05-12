@@ -5484,6 +5484,117 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 💸 MCP token-reduction surface — wire 3 existing IPC verbs as MCP tools (user request 2026-05-12)
 
+- ✅ [ANTS-1247] **`status` filter on `roadmap_query` (MCP + IPC).**
+  Shipped 2026-05-12. Adds an optional `status` argument
+  ("all" / "active" / "shipped", case-insensitive) to the
+  `roadmap_query` MCP tool and the underlying `cmdRoadmapQuery`
+  IPC verb. Filter walks the cached full bullet array post-cache
+  (no re-parse, sub-millisecond). On this repo at spec time: 399
+  total bullets, 57 active (📋+🚧) — `status:"active"` returns
+  ~7 KiB / ~1.75 K tokens vs the ~12 K-token full payload (≈ 7×
+  reduction; ~10.4 K saving per "what's next" query, on top of
+  ANTS-1244's ~110 K). Provider signature `setRoadmapQueryProvider`
+  widened to `std::function<QString(const QString&)>` to thread the
+  filter through; case-folding lives inside the verb so the
+  dispatcher passes verbatim. Error-message hygiene (64-byte
+  verbatim cap + control-byte → `?` replacement) closes
+  S1247-1. Cold-eyes pass 2 ran 4 lanes (performance / token
+  reduction / security / optimisation) over 6 specs across 4
+  loops; final convergence was clean (0 CRITICAL / 0 HIGH
+  unresolved). Cold-eyes pass converted **two collapse decisions**
+  picked by user — ANTS-1250 (`git_state`) and ANTS-1251
+  (`subsystem`) now ship as single tools with `op` discriminators,
+  saving ~240 permanent schema tokens. Spec: `docs/specs/ANTS-1247.md`.
+  Test: `tests/features/mcp_roadmap_status_filter/` — 12 INV
+  checks (10 anchor INVs + 1 provider-widen + 1 back-compat).
+  Pre-existing `mcp_extra_tools` test updated to track the
+  widened provider signature. **Layman:** the "show me the
+  roadmap" tool now lets Claude ask for *just the active items*
+  (planned + in-progress) instead of every shipped item too.
+  Active is ~7× smaller, so when Claude wants to know "what's
+  next" it stops paying for the 311 ✅ items it doesn't need.
+  Kind: feature. Source: user-2026-05-12.
+  Lanes: remotecontrol, claudeintegration, mainwindow.
+
+- 📋 [ANTS-1248] **`workspace_search` MCP tool** (ripgrep wrapper,
+  spec ship-ready). Replaces typical `Bash grep -r ... src/`
+  pattern with structured `{matches[], truncated, elapsed_ms}`
+  return. Top-N capped (default 50, max 500), shell-less argv,
+  4 KiB stderr cap, NFC-normalised lane + canonical-startswith
+  guard, 2-tier kill (2 s + 200 ms grace). Token saving:
+  ~250-4 400 tokens per call depending on pattern; estimated
+  ~6-15 K per typical bug-investigation session. Schema cost:
+  ~150 tokens permanent. Spec: `docs/specs/ANTS-1248.md`.
+  Kind: feature. Source: user-2026-05-12. Lanes: remotecontrol,
+  claudeintegration, mainwindow.
+
+- 📋 [ANTS-1249] **`file_outline` MCP tool.** Returns sections /
+  function decls for a long file instead of full content. 5K-line
+  C++ files compress 13-39× (e.g. `auditdialog.cpp` 67 K tokens →
+  ~2 K). Per-line cap 1024 B, possessive regex quantifiers,
+  PCRE2 JIT bounded backtracking, 2 KiB header-doc cap. Token
+  saving: ~22-25 K net per orientation pass. Schema cost: ~120
+  tokens permanent. Spec: `docs/specs/ANTS-1249.md`. Kind: feature.
+  Source: user-2026-05-12. Lanes: new (fileoutline), remotecontrol,
+  claudeintegration, mainwindow.
+
+- 📋 [ANTS-1250] **`git_state` MCP tool (consolidated; status /
+  log / diff via `op` discriminator).** Cold-eyes decision: collapsed
+  three originally-proposed verbs into one to save ~240 permanent
+  schema tokens. Strict rev-range regex (rejects leading `-`
+  flag-injection), `--` argv separator + `./` prefix per
+  `coding.md`, 4 KiB stderr cap, 5 s + 200 ms 2-tier kill. Per-call
+  saving: ~14-300 tokens; permanent-schema win from collapse: ~240
+  tokens/session start. Spec: `docs/specs/ANTS-1250.md`. Kind: feature.
+  Source: user-2026-05-12. Lanes: new (gitwrap), remotecontrol,
+  claudeintegration, mainwindow.
+
+- 📋 [ANTS-1251] **`subsystem` MCP tool (consolidated; map / files /
+  recent_changes via `op`).** Pre-parsed CLAUDE.md Module map +
+  per-lane file resolution + per-lane git history. Lane validation
+  precedes any filesystem call (closes S1251-1). mtime-only cache
+  (no 100 ms TTL — concurrent `/indie-review` reviewers all hit warm).
+  Composes `cmdGitState` for `recent_changes`. **Blocked by ANTS-1250.**
+  Token saving: ~24 K per `/indie-review` run. Spec:
+  `docs/specs/ANTS-1251.md`. Kind: feature. Source: user-2026-05-12.
+  Lanes: new (subsystemmap), remotecontrol, claudeintegration, mainwindow.
+
+- 📋 [ANTS-1252] **Token-saving hook pack** (5 hooks +
+  `tools/install-hooks.sh`). SessionStart preamble (≤ 500 B),
+  PreToolUse Bash veto (redirects `grep src/`/`git status`/etc. to
+  MCP tools via trailing `# ants-bypass` comment-form override),
+  PreToolUse Read veto on huge ROADMAP, Stop drift-check
+  (side-effect-only, `flock` guarded), PreCompact snapshot
+  (regex-validated `sessionId`). Hardened install: `lstat` symlink
+  abort, validate-before-rename, sentinel-key fence (not text-fence
+  — `jq` strips comments). Per-project gate via `.ants-project`
+  marker (UX gate, NOT security boundary — same-UID write is
+  already game over; documented). Token saving: ~30-100 K/week
+  depending on ship order. Spec: `docs/specs/ANTS-1252.md`. Kind:
+  feature. Source: user-2026-05-12. Lanes: new (hooks/,
+  tools/install-hooks.sh).
+
+- 📋 [ANTS-1253] **Consolidate MCP-tool provider registry**
+  (post-1247-1252 follow-up sweep). After 1247-1252 land,
+  `claudeintegration.h` holds ~16 `setXProvider`/`m_xProvider`
+  pairs (Rule-of-Three exceeded after the third tool). Replace
+  with `std::map<QString, std::function<QString(const QJsonObject&)>>
+  m_toolProviders` + single `registerToolProvider(name, fn)`.
+  Net: one setter, one member, uniform dispatch. Estimated impl
+  cost: ~120 LoC delta, mostly mechanical. Out of scope for any
+  of 1247-1252 to keep them surgical. Spec to be written when
+  scheduled. Kind: refactor. Source: cold-eyes pass 2 finding,
+  2026-05-12. Lanes: claudeintegration, mainwindow.
+
+- 📋 [ANTS-1254] **`last_audit_summary` MCP tool.** Returns compact
+  audit-state summary (counts by severity + top-5 findings + SARIF
+  path) instead of the multi-K-token HTML report. Saving: ~5-15 K
+  per audit consultation. Schema cost: ~80 tokens permanent. Stub
+  spec at `docs/specs/ANTS-1254.md`; surfaced by cold-eyes pass 3
+  as a missed candidate in the ANTS-1247..1252 pack. Kind: feature.
+  Source: cold-eyes-2026-05-12. Lanes: auditengine, remotecontrol,
+  claudeintegration, mainwindow.
+
 - ✅ [ANTS-1244] **Surface `roadmap_query`, `tab_list`, `get_text`
   as MCP tools so Claude Code sessions in Ants tabs query terminal
   state via tool-call instead of `Bash`/`Read`.** Shipped

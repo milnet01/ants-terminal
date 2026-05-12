@@ -3613,11 +3613,16 @@ void MainWindow::setupClaudeMcpProviders() {
     // ANTS-1244 — surface read-only remote-control verbs as MCP
     // tools. Each lambda delegates to the existing RemoteControl
     // cmd handler so the two transports share logic + cache.
-    m_claudeIntegration->setRoadmapQueryProvider([this]() -> QString {
-        if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
-        return QString::fromUtf8(
-            m_remoteControl->cmdRoadmapQuery().toJson(QJsonDocument::Compact));
-    });
+    // ANTS-1247: provider widened to thread status filter through to
+    // cmdRoadmapQuery. Empty string → "all" via the verb's default.
+    m_claudeIntegration->setRoadmapQueryProvider(
+        [this](const QString &status) -> QString {
+            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+            QJsonObject req;
+            if (!status.isEmpty()) req["status"] = status;
+            return QString::fromUtf8(
+                m_remoteControl->cmdRoadmapQuery(req).toJson(QJsonDocument::Compact));
+        });
     m_claudeIntegration->setTabListProvider([this]() -> QString {
         if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
         return QString::fromUtf8(

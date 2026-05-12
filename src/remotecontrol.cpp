@@ -221,7 +221,10 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
         return cmdTabList();
     }
     if (cmd == QLatin1String("roadmap-query")) {
-        return cmdRoadmapQuery();
+        // ANTS-1247: thread `req` through so `--remote roadmap-query
+        // status=active` (if a future --remote-status flag lands)
+        // reaches the filter.
+        return cmdRoadmapQuery(req);
     }
     QJsonObject e;
     e["ok"] = false;
@@ -516,8 +519,36 @@ QJsonDocument RemoteControl::cmdTabList() {
 // (cached on mtime; INV-10 rate-limit) into a structured bullet
 // stream for Claude. Returns the unified `{ok, error, code}` shape
 // when no roadmap is loaded for the active tab.
-QJsonDocument RemoteControl::cmdRoadmapQuery() {
+//
+// ANTS-1247: accepts optional `req.status` filter
+// ("all"/"active"/"shipped", case-insensitive). The cache continues
+// to hold the FULL unfiltered array; filtering happens at response
+// build time over the cached entries (sub-ms walk).
+QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-1247-INV-1
     QJsonObject out;
+
+    // ANTS-1247-INV-4: case-insensitive status parse; canonicalise
+    // to lowercase. Anchor: filter parse.
+    QString filter = req.value(QStringLiteral("status")).toString().toLower();
+    if (filter.isEmpty()) filter = QStringLiteral("all");
+
+    // ANTS-1247-INV-5: unknown status → bad_status, cache untouched.
+    // ANTS-1247-INV-11: <verbatim> echo capped at 64 bytes; bytes
+    // < 0x20 replaced with '?' to prevent ANSI/control passthrough.
+    if (filter != QLatin1String("all") &&
+        filter != QLatin1String("active") &&
+        filter != QLatin1String("shipped")) {
+        QString verbatim = req.value(QStringLiteral("status")).toString();
+        if (verbatim.size() > 64) verbatim.truncate(64);
+        for (int i = 0; i < verbatim.size(); ++i) {
+            if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
+        }
+        out["ok"] = false;
+        out["error"] = QStringLiteral("unknown status filter: %1").arg(verbatim);
+        out["code"] = QStringLiteral("bad_status");
+        return QJsonDocument(out);
+    }
+
     const QString path = m_main->roadmapPathForRemote();
     if (path.isEmpty()) {
         out["ok"] = false;
@@ -534,6 +565,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery() {
     // mtime resolution on some filesystems), force a refresh after
     // kRoadmapCacheTtlMs so an in-place edit within the same tick is
     // still picked up within the spec's "≤ 100 ms" budget.
+    // ANTS-1247-INV-6: filter never invalidates the cache; the
+    // TTL/mtime check is preserved exactly.
     const bool fresh = (m_roadmapCachePath == path) &&
                        (m_roadmapCacheMtimeMs == mtime) &&
                        (mtime != 0) &&
@@ -567,10 +600,32 @@ QJsonDocument RemoteControl::cmdRoadmapQuery() {
         m_roadmapCacheBullets = arr;
     }
 
+    // ANTS-1247-INV-2/3: filter the cached array post-cache.
+    // "active" → 📋+🚧 (planned + in-progress);
+    // "shipped" → ✅ only; "all" → pass-through. Anchor: filter switch.
+    QJsonArray filtered;
+    if (filter == QLatin1String("all")) {
+        filtered = m_roadmapCacheBullets;
+    } else {
+        const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
+        const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
+        const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");     // ✅
+        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+            const QString s = v.toObject().value(QStringLiteral("status")).toString();
+            const bool keep =
+                (filter == QLatin1String("active")  && (s == plannedEmoji || s == progressEmoji)) ||
+                (filter == QLatin1String("shipped") && (s == doneEmoji));
+            if (keep) filtered.append(v);
+        }
+    }
+
     out["ok"] = true;
-    out["bullets"] = m_roadmapCacheBullets;
+    out["bullets"] = filtered;
     out["path"] = path;
-    out["count"] = m_roadmapCacheBullets.size();
+    // ANTS-1247-INV-10: count is post-filter bullets.size().
+    out["count"] = filtered.size();
+    // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
+    out["filter"] = filter;
     return QJsonDocument(out);
 }
 

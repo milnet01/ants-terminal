@@ -90,9 +90,11 @@ static int runMain() {
 
     // INV-3 — claudeintegration.h declares the 3 new setters with the
     // expected `std::function` signatures.
+    // ANTS-1247: setRoadmapQueryProvider widened to accept a `const
+    // QString&` status filter.
     inv(3, contains(ciHdr,
-            "setRoadmapQueryProvider(std::function<QString()>"),
-        "setRoadmapQueryProvider not declared with std::function<QString()>");
+            "setRoadmapQueryProvider(std::function<QString(const QString&)>"),
+        "setRoadmapQueryProvider not declared with std::function<QString(const QString&)> (ANTS-1247 widen)");
     inv(3, contains(ciHdr,
             "setTabListProvider(std::function<QString()>"),
         "setTabListProvider not declared with std::function<QString()>");

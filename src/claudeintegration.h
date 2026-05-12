@@ -182,7 +182,10 @@ public:
     // response as a string; the dispatcher wraps it in a text
     // content block. `setGetTextProvider`'s `tab=-1` means "active
     // tab", `lines=0` means "default 100" — see spec § 2.d.
-    void setRoadmapQueryProvider(std::function<QString()> provider);
+    // ANTS-1247: widened to thread an optional status filter
+    // ("all"/"active"/"shipped") to cmdRoadmapQuery. Empty string =
+    // "all" (back-compat).
+    void setRoadmapQueryProvider(std::function<QString(const QString&)> provider);
     void setTabListProvider(std::function<QString()> provider);
     void setGetTextProvider(std::function<QString(int,int)> provider);
 
@@ -310,7 +313,8 @@ private:
     std::function<QString()> m_gitStatusProvider;
     std::function<QString()> m_envProvider;
     // ANTS-1244 — delegate-into-RemoteControl providers.
-    std::function<QString()> m_roadmapQueryProvider;
+    // ANTS-1247: m_roadmapQueryProvider widened to accept status filter.
+    std::function<QString(const QString&)> m_roadmapQueryProvider;
     std::function<QString()> m_tabListProvider;
     std::function<QString(int,int)> m_getTextProvider;
 
