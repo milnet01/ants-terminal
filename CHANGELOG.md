@@ -12,6 +12,18 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.85] — 2026-05-12
+
+**Theme:** Roadmap dialog density toggle (compact / cozy /
+comfortable) — Material 3 / Linear / GitHub-style density
+selector that persists across sessions. Plus a regression fix
+that surfaces while building it: `Qt::Popup` widgets (combo
+dropdowns, menus, color pickers) opened from inside a dialog
+were being eaten by the ANTS-1051 pseudo-modal blocker. The
+fix is one short-circuit in `dialogfocus::shouldSuppressEvent
+ForDialog` and benefits every dialog that hosts a popup, not
+just the new density combo.
+
 ### Added
 
 - **ANTS-1238 — Roadmap dialog density toggle (compact / cozy /

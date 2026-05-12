@@ -103,6 +103,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.85" date="2026-05-12">
+      <description>
+        <p>Roadmap dialog density toggle (compact / cozy / comfortable) — Material 3 / Linear / GitHub-style density selector that persists across sessions. Plus a regression fix: <code>Qt::Popup</code> widgets (combo dropdowns, menus, color pickers) opened from inside a dialog were being eaten by the pseudo-modal blocker.</p>
+        <ul>
+          <li><em>Added:</em> <code>ANTS-1238</code> — Roadmap dialog gains a density selector (compact / cozy / comfortable) matching Material 3, Linear, and GitHub conventions. A new <code>QComboBox</code> at the trailing edge of the filterRow offers three options with proportional tier sizing and padding. Selection drives a CSS class on <code>renderCardsHtml</code>'s root; sizes/padding are defined in <code>STYLE_COMPACT</code> / <code>STYLE_COZY</code> / <code>STYLE_COMFORTABLE</code>. Persists via <code>roadmap_density</code> <code>Config</code> key with graceful fallback to <code>&quot;cozy&quot;</code> (byte-equal to pre-1238 baseline, locked by INV-1). Regression locked by ANTS-1238-INV-1..9 in <code>tests/features/roadmap_density/spec.md</code>.</li>
+          <li><em>Fixed:</em> <code>Qt::Popup</code> events were swallowed by the pseudo-modal blocker. <code>QWidget::isAncestorOf</code> stops at window boundaries, so popup descendants opened from inside a dialog read as outside the dialog's tree. One-block short-circuit at the top of <code>dialogfocus::shouldSuppressEventForDialog</code>: if <code>QApplication::activePopupWidget()</code> is non-null and target is either that popup or its descendant, return <code>false</code> immediately. Regression-locked by INV-2i in <code>tests/features/dialog_pseudo_modal/spec.md</code> via source-grep (offscreen QPA platform doesn't promote <code>Qt::Popup</code> to <code>activePopupWidget()</code>). Benefits every dialog hosting combo / menu / color picker — Settings, AuditDialog, etc.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.84" date="2026-05-11">
       <description>
         <p>RoadmapDialog v2 finishing pass — keyboard ergonomics, accessibility, freshness signals, and theme polish across every dialog.</p>

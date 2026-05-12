@@ -1,3 +1,34 @@
+ants-terminal (0.7.85-1) unstable; urgency=medium
+
+  * Roadmap dialog density toggle (compact / cozy / comfortable) —
+    Material 3 / Linear / GitHub-style density selector that persists
+    across sessions. Plus a regression fix: Qt::Popup widgets (combo
+    dropdowns, menus, color pickers) opened from inside a dialog were
+    being eaten by the pseudo-modal blocker.
+  * ANTS-1238 — Roadmap dialog gains a density selector (compact / cozy
+    / comfortable) matching Material 3, Linear, and GitHub conventions.
+    A new QComboBox at the trailing edge of the filterRow offers three
+    options with proportional tier sizing and padding. Selection drives a
+    CSS class on renderCardsHtml's root; sizes/padding are defined in
+    STYLE_COMPACT / STYLE_COZY / STYLE_COMFORTABLE. Persists via
+    roadmap_density Config key with graceful fallback to "cozy"
+    (byte-equal to pre-1238 baseline, locked by INV-1). Regression
+    locked by ANTS-1238-INV-1..9 in
+    tests/features/roadmap_density/spec.md.
+  * ANTS-1051 — Qt::Popup events were swallowed by the pseudo-modal
+    blocker. QWidget::isAncestorOf stops at window boundaries, so popup
+    descendants opened from inside a dialog read as outside the dialog's
+    tree. One-block short-circuit at the top of
+    dialogfocus::shouldSuppressEventForDialog: if
+    QApplication::activePopupWidget() is non-null and target is either
+    that popup or its descendant, return false immediately.
+    Regression-locked by INV-2i in tests/features/dialog_pseudo_modal/
+    spec.md via source-grep (offscreen QPA platform doesn't promote
+    Qt::Popup to activePopupWidget()). Benefits every dialog hosting
+    combo / menu / color picker — Settings, AuditDialog, etc.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 12 May 2026 14:30:00 +0200
+
 ants-terminal (0.7.84-1) unstable; urgency=medium
 
   * RoadmapDialog v2 finishing pass — keyboard ergonomics,
