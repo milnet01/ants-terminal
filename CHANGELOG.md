@@ -14,6 +14,38 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1251 — `subsystem` MCP tool (consolidated; map / files /
+  recent_changes via `op` discriminator).** Pre-parses the project's
+  `CLAUDE.md` `## Module map (src/)` H2 into a `lanes[]` array and
+  serves per-lane chunks so `/indie-review` reviewers don't each
+  re-read the file. Three ops: `map` returns `[{name, summary}, …]`,
+  `files` returns the lexicographically-sorted `src/<lane>*` glob,
+  `recent_changes` returns merged-by-sha git log entries across
+  every file in the lane. Cache is mtime-only on `CLAUDE.md` (no
+  wall-clock TTL — concurrent reviewers share warm cache). Defensive
+  parser drops bullets that don't match the `` `name` — summary ``
+  shape and splits multi-name bullets like `` `a` / `b` `` into one
+  Lane each. Hardening: lane membership check **precedes** any
+  filesystem call (closes cold-eyes S1251-1 path-traversal vector);
+  per-result canonical-`startsWith` re-check on resolved files
+  (defence in depth against malicious symlinks inside `src/`).
+  Composes `cmdGitState({op:"log", path:<file>})` per lane file for
+  the `recent_changes` op — no duplicated git plumbing. Distinct
+  error codes `bad_op` (input enum) and `unknown_lane` (with
+  `lanes:[…]` echoed in the response so the caller can recover).
+  Single setter / member / provider-lambda triple on
+  `ClaudeIntegration` + `MainWindow`. Locked by feature test
+  `mcp_subsystem/` (12 invariants — decl, INV anchors, IPC dispatch,
+  MCP `tools/list` schema with `op` enum + `op` in `required[]`,
+  MCP `tools/call` dispatch, header surface, mainwindow lambda,
+  op-switch literals, error-code surfacing, cmdGitState composition,
+  parser surface, CMake wiring, and the ≥ 15-lane CLAUDE.md parser
+  floor). Token math: ~24 K saved per `/indie-review` run (6
+  reviewers × ~3.5 K → ~250 each); permanent schema cost ~115
+  tokens. Side-effect: `mcp_workspace_search` test INV-3c now uses
+  a word-boundary regex (`\bsystem\(`) instead of substring match
+  so `cmdSubsystem(` is not false-flagged as a shell escape.
+
 - **ANTS-1250 — `git_state` MCP tool (consolidated; status / log /
   diff via `op` discriminator).** Replaces multiple Bash calls to
   `git status`, `git log`, `git diff` with a single structured tool.

@@ -5644,13 +5644,23 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-2026-05-12. Lanes: new (gitwrap), remotecontrol,
   claudeintegration, mainwindow.
 
-- 📋 [ANTS-1251] **`subsystem` MCP tool (consolidated; map / files /
-  recent_changes via `op`).** Pre-parsed CLAUDE.md Module map +
-  per-lane file resolution + per-lane git history. Lane validation
-  precedes any filesystem call (closes S1251-1). mtime-only cache
-  (no 100 ms TTL — concurrent `/indie-review` reviewers all hit warm).
-  Composes `cmdGitState` for `recent_changes`. **Blocked by ANTS-1250.**
-  Token saving: ~24 K per `/indie-review` run. Spec:
+- ✅ [ANTS-1251] **`subsystem` MCP tool (consolidated; map / files /
+  recent_changes via `op`)** — shipped 2026-05-12. Pre-parses the
+  project's `CLAUDE.md` Module map into `lanes[]` keyed on mtime
+  (no wall-clock TTL, INV-2 — concurrent `/indie-review` reviewers
+  share warm cache). New `subsystemmap.{h,cpp}` with a defensive
+  parser (drops bullets that aren't `` `name` — summary `` shape,
+  splits multi-name `` `a` / `b` `` bullets into one Lane each).
+  `op:"map"` returns the parsed lanes; `op:"files"` resolves
+  `src/<lane>*` after a membership check (INV-1) + canonical-
+  startswith re-check (INV-4); `op:"recent_changes"` composes
+  `cmdGitState({op:"log", path:<file>})` per lane file and merges
+  by sha (INV-5). Single tool, single setter / member / lambda
+  triple. Locked by feature test `mcp_subsystem/` (12 invariants
+  spanning decl, INV anchors, IPC dispatch, MCP wiring, op-switch,
+  cmdGitState composition, parser surface, CMake wiring, and the
+  ≥ 15-lane CLAUDE.md parser floor). Token saving: ~24 K per
+  `/indie-review` run; permanent schema cost ~115 tokens. Spec:
   `docs/specs/ANTS-1251.md`. Kind: feature. Source: user-2026-05-12.
   Lanes: new (subsystemmap), remotecontrol, claudeintegration, mainwindow.
 

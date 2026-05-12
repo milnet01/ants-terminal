@@ -214,6 +214,7 @@ add_library(ants_core_lib STATIC
     src/remotecontrol.cpp
     src/fileoutline.cpp
     src/gitwrap.cpp
+    src/subsystemmap.cpp
     src/themedstylesheet.cpp
     src/globalshortcutsportal.cpp
     src/dialogshowtracer.cpp
@@ -782,7 +783,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp
                 tests/features/mcp_workspace_search/test_mcp_workspace_search.cpp
                 tests/features/mcp_file_outline/test_mcp_file_outline.cpp
-                tests/features/mcp_git_state/test_mcp_git_state.cpp)
+                tests/features/mcp_git_state/test_mcp_git_state.cpp
+                tests/features/mcp_subsystem/test_mcp_subsystem.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -816,6 +818,9 @@ if(ANTS_TESTS)
         SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
         SRC_GITWRAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.cpp"
         SRC_GITWRAP_H_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.h"
+        SRC_SUBSYSTEMMAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.cpp"
+        SRC_SUBSYSTEMMAP_H_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.h"
+        ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
         CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
 

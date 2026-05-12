@@ -3,6 +3,7 @@
 #include "gitwrap.h"
 #include "mainwindow.h"
 #include "roadmapdialog.h"
+#include "subsystemmap.h"
 #include "terminalwidget.h"
 #include "debuglog.h"
 #include "secureio.h"
@@ -243,6 +244,11 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
         // ANTS-1250: IPC dispatch entry for the consolidated git tool.
         // Inner op-switch lives in cmdGitState.
         return cmdGitState(req);
+    }
+    if (cmd == QLatin1String("subsystem")) {
+        // ANTS-1251: IPC dispatch entry for the consolidated subsystem
+        // tool. Inner op-switch lives in cmdSubsystem.
+        return cmdSubsystem(req);
     }
     QJsonObject e;
     e["ok"] = false;
@@ -1525,4 +1531,203 @@ int RemoteControl::runClient(const QString &command,
     QJsonDocument doc = QJsonDocument::fromJson(resp);
     if (doc.isObject() && doc.object().value("ok").toBool()) return 0;
     return 2;
+}
+
+// =====================================================================
+// ANTS-1251 — subsystem (consolidated; map / files / recent_changes)
+// =====================================================================
+
+namespace {
+
+QJsonObject subsystemErr(const QString &code, const QString &message) {
+    QJsonObject o;
+    o["ok"]      = false;
+    o["code"]    = code;
+    o["error"]   = message;
+    return o;
+}
+
+// Locate `CLAUDE.md` for the focused tab's project: walk up from the
+// shellCwd looking for a file named CLAUDE.md; stop at filesystem root.
+// Returns absolute path or empty string.
+QString findClaudeMdForRoot(const QString &startDir) {
+    if (startDir.isEmpty()) return {};
+    QDir d(startDir);
+    while (true) {
+        const QString candidate = d.filePath(QStringLiteral("CLAUDE.md"));
+        if (QFileInfo::exists(candidate)) {
+            return QFileInfo(candidate).canonicalFilePath();
+        }
+        if (!d.cdUp()) break;
+    }
+    return {};
+}
+
+QJsonObject lanesAsJson(const QVector<SubsystemMap::Lane> &lanes) {
+    QJsonObject root;
+    QJsonArray arr;
+    for (const auto &l : lanes) {
+        QJsonObject o;
+        o["name"]    = l.name;
+        o["summary"] = l.summary;
+        arr.append(o);
+    }
+    root["lanes"] = arr;
+    return root;
+}
+
+QJsonArray laneNamesArray(const QVector<SubsystemMap::Lane> &lanes) {
+    QJsonArray arr;
+    for (const auto &l : lanes) arr.append(l.name);
+    return arr;
+}
+
+bool laneIsKnown(const QString &name, const QVector<SubsystemMap::Lane> &lanes) {
+    for (const auto &l : lanes) {
+        if (l.name == name) return true;
+    }
+    return false;
+}
+
+// ANTS-1251-INV-4: enumerate `src/<lane>*` files; canonical-startswith
+// re-check each result against project root before yielding it.
+QStringList resolveLaneFiles(const QString &lane, const QString &rootCanonical) {
+    QStringList out;
+    if (rootCanonical.isEmpty()) return out;
+    QDir srcDir(QDir(rootCanonical).filePath(QStringLiteral("src")));
+    if (!srcDir.exists()) return out;
+    const QStringList filters{ lane + QStringLiteral("*") };
+    const QFileInfoList entries = srcDir.entryInfoList(
+        filters, QDir::Files | QDir::NoSymLinks);
+    for (const QFileInfo &fi : entries) {
+        const QString resolved = fi.canonicalFilePath();
+        if (resolved.isEmpty()) continue;
+        // Defence in depth — even though `lane` came from a trusted
+        // CLAUDE.md membership check, a malicious symlink inside src/
+        // could redirect outside root.
+        if (!(resolved == rootCanonical ||
+              resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
+            continue;
+        }
+        // Emit repo-relative paths.
+        QString rel = resolved;
+        rel.remove(0, rootCanonical.size());
+        if (rel.startsWith(QLatin1Char('/'))) rel.remove(0, 1);
+        out.push_back(rel);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
+    const QString op = req.value("op").toString();
+    if (op != QLatin1String("map") &&
+        op != QLatin1String("files") &&
+        op != QLatin1String("recent_changes")) {
+        return QJsonDocument(subsystemErr("bad_op",
+            QStringLiteral("subsystem: \"op\" must be one of "
+                           "{map, files, recent_changes}, got \"%1\"").arg(op)));
+    }
+
+    const QString rootCanonical = resolveRootCanonical(m_main);
+    const QString claudeMdPath  = findClaudeMdForRoot(rootCanonical);
+    // Note: cachedLanes returns empty when the file is missing; that
+    // collapses to an empty `lanes[]` for op:"map" (INV-7) and a
+    // unknown_lane error for the other ops.
+    const QVector<SubsystemMap::Lane> lanes =
+        SubsystemMap::cachedLanes(claudeMdPath);
+
+    if (op == QLatin1String("map")) {
+        QJsonObject ok;
+        ok["ok"]     = true;
+        ok["op"]     = "map";
+        ok["source"] = "CLAUDE.md";
+        ok["lanes"]  = lanesAsJson(lanes).value("lanes");
+        return QJsonDocument(ok);
+    }
+
+    // ANTS-1251-INV-1: lane validation precedes any filesystem call.
+    const QString lane = req.value("lane").toString();
+    if (lane.isEmpty() || !laneIsKnown(lane, lanes)) {
+        QJsonObject err = subsystemErr("unknown_lane",
+            QStringLiteral("subsystem: \"lane\" \"%1\" is not in the "
+                           "parsed Module map").arg(lane));
+        err["lanes"] = laneNamesArray(lanes);
+        return QJsonDocument(err);
+    }
+
+    if (op == QLatin1String("files")) {
+        // ANTS-1251-INV-4 inside resolveLaneFiles.
+        const QStringList files = resolveLaneFiles(lane, rootCanonical);
+        QJsonObject ok;
+        ok["ok"]   = true;
+        ok["op"]   = "files";
+        ok["lane"] = lane;
+        QJsonArray arr;
+        for (const QString &f : files) arr.append(f);
+        ok["files"] = arr;
+        return QJsonDocument(ok);
+    }
+
+    // op == "recent_changes"
+    // ANTS-1251-INV-5: compose cmdGitState({op:"log", ...}) per file
+    // resolved for the lane; merge by sha; keep top n by date.
+    int n = 10;
+    if (req.contains("n") && req.value("n").isDouble()) {
+        n = req.value("n").toInt();
+    }
+    if (n < 1)   n = 1;
+    if (n > 100) n = 100;
+
+    const QStringList files = resolveLaneFiles(lane, rootCanonical);
+    if (files.isEmpty()) {
+        QJsonObject ok;
+        ok["ok"]      = true;
+        ok["op"]      = "recent_changes";
+        ok["lane"]    = lane;
+        ok["commits"] = QJsonArray{};
+        return QJsonDocument(ok);
+    }
+
+    // sha → commit object; preserve insertion order for tie-breaks.
+    QHash<QString, QJsonObject>           bySha;
+    QVector<QString>                      shaOrder;
+    for (const QString &f : files) {
+        QJsonObject sub;
+        sub["op"]   = "log";
+        sub["n"]    = n;
+        sub["path"] = f;
+        const QJsonObject r = cmdGitState(sub).object();
+        if (!r.value("ok").toBool()) continue;
+        const QJsonArray commits = r.value("commits").toArray();
+        for (const QJsonValue &v : commits) {
+            const QJsonObject c = v.toObject();
+            const QString sha = c.value("sha").toString();
+            if (sha.isEmpty() || bySha.contains(sha)) continue;
+            bySha.insert(sha, c);
+            shaOrder.push_back(sha);
+        }
+    }
+
+    // Sort merged commits by date desc, fall back to insertion order
+    // when dates tie.
+    std::sort(shaOrder.begin(), shaOrder.end(),
+              [&](const QString &a, const QString &b) {
+                  return bySha.value(a).value("date").toString() >
+                         bySha.value(b).value("date").toString();
+              });
+    if (shaOrder.size() > n) shaOrder.resize(n);
+
+    QJsonArray commits;
+    for (const QString &sha : shaOrder) commits.append(bySha.value(sha));
+
+    QJsonObject ok;
+    ok["ok"]      = true;
+    ok["op"]      = "recent_changes";
+    ok["lane"]    = lane;
+    ok["commits"] = commits;
+    return QJsonDocument(ok);
+    // ANTS-1251-INV-6: reachability gate inherits from UDS + MCP socket.
 }

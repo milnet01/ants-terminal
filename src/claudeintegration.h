@@ -203,6 +203,10 @@ public:
     // log / diff via op discriminator). Same full-QJsonObject shape.
     void setGitStateProvider(std::function<QString(const QJsonObject&)> provider);
 
+    // ANTS-1251: subsystem provider — consolidated lane tool (map /
+    // files / recent_changes via op discriminator). Same shape.
+    void setSubsystemProvider(std::function<QString(const QJsonObject&)> provider);
+
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
     QString sessionSummary(const QString &transcriptPath) const;
@@ -337,6 +341,8 @@ private:
     std::function<QString(const QJsonObject&)> m_fileOutlineProvider;
     // ANTS-1250: git_state provider — full-QJsonObject shape.
     std::function<QString(const QJsonObject&)> m_gitStateProvider;
+    // ANTS-1251: subsystem provider — full-QJsonObject shape.
+    std::function<QString(const QJsonObject&)> m_subsystemProvider;
 
     // Session tracking
     QString m_activeSessionId;

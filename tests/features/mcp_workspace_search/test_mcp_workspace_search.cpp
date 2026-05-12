@@ -98,10 +98,16 @@ TEST(McpWorkspaceSearch, WiringContract) {
            "INV-3b",
            "remotecontrol.cpp contains '/bin/sh' — shell-less argv "
            "violated");
-    expect(!contains(rcCpp, "system("),
-           "INV-3c",
-           "remotecontrol.cpp contains 'system(' — shell-less argv "
-           "violated");
+    // Word-boundary regex so substrings inside identifiers (e.g.
+    // `cmdSubsystem(` from ANTS-1251) are not false-flagged. We only
+    // want to catch a bare call to ::system or std::system.
+    {
+        std::regex sysCall(R"(\bsystem\()");
+        expect(!std::regex_search(rcCpp, sysCall),
+               "INV-3c",
+               "remotecontrol.cpp contains a bare 'system(' call — "
+               "shell-less argv violated");
+    }
     expect(!contains(rcCpp, "popen("),
            "INV-3d",
            "remotecontrol.cpp contains 'popen(' — shell-less argv "

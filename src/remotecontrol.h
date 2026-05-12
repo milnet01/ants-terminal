@@ -143,6 +143,14 @@ public:
     // See docs/specs/ANTS-1250.md.
     QJsonDocument cmdGitState(const QJsonObject &req);
 
+    // ANTS-1251: subsystem — single tool, dispatches on `op` field
+    // (map / files / recent_changes). Parses the project's CLAUDE.md
+    // Module map, returns per-lane file lists, and (via cmdGitState
+    // composition) per-lane git history. Public so the MCP provider
+    // lambda in MainWindow delegates here.
+    // See docs/specs/ANTS-1251.md.
+    QJsonDocument cmdSubsystem(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

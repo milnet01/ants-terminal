@@ -1137,6 +1137,11 @@ void ClaudeIntegration::setGitStateProvider(std::function<QString(const QJsonObj
     m_gitStateProvider = std::move(provider);
 }
 
+// ANTS-1251: subsystem provider setter — consolidated lane tool.
+void ClaudeIntegration::setSubsystemProvider(std::function<QString(const QJsonObject&)> provider) {
+    m_subsystemProvider = std::move(provider);
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -1487,6 +1492,50 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(gsTool);
 
+                // ANTS-1251: subsystem — single tool, dispatches on
+                // `op` (map / files / recent_changes). Pre-parses the
+                // CLAUDE.md Module map and serves per-lane chunks so
+                // /indie-review reviewers don't each re-read the file.
+                QJsonObject ssTool;
+                ssTool["name"] = "subsystem";
+                ssTool["description"] = QStringLiteral(
+                    "Query the project's subsystem (lane) map parsed "
+                    "from CLAUDE.md. Three ops: map (all lanes), "
+                    "files (per-lane file list), recent_changes "
+                    "(per-lane git log). Required: op. lane required "
+                    "for files / recent_changes. n: recent_changes "
+                    "only (default 10, cap 100). Saves ~24 K tokens "
+                    "per /indie-review run.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject opProp;     opProp["type"]    = "string";
+                    QJsonArray opEnum;
+                    opEnum.append("map");
+                    opEnum.append("files");
+                    opEnum.append("recent_changes");
+                    opProp["enum"]    = opEnum;
+                    QJsonObject laneProp;   laneProp["type"]  = "string";
+                                            laneProp["description"] =
+                        QStringLiteral("required for files / recent_changes");
+                    QJsonObject nProp;      nProp["type"]     = "integer";
+                                            nProp["default"]  = 10;
+                                            nProp["minimum"]  = 1;
+                                            nProp["maximum"]  = 100;
+                                            nProp["description"] =
+                        QStringLiteral("recent_changes only");
+                    props["op"]   = opProp;
+                    props["lane"] = laneProp;
+                    props["n"]    = nProp;
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("op");
+                    schema["required"] = required;
+                    ssTool["inputSchema"] = schema;
+                }
+                tools.append(ssTool);
+
                 result["tools"] = tools;
                 haveResult = true;
             } else if (method == "tools/call") {
@@ -1585,6 +1634,14 @@ void ClaudeIntegration::onMcpConnection() {
                     // lives in the verb body.
                     QJsonObject args = params.value("arguments").toObject();
                     result["content"] = makeTextContent(m_gitStateProvider(args));
+                    toolHandled = true;
+                } else if (toolName == "subsystem" && m_subsystemProvider) {
+                    // ANTS-1251: consolidated subsystem tool — op
+                    // dispatch happens inside cmdSubsystem. Lane
+                    // membership check (INV-1) precedes any filesystem
+                    // call in the verb body.
+                    QJsonObject args = params.value("arguments").toObject();
+                    result["content"] = makeTextContent(m_subsystemProvider(args));
                     toolHandled = true;
                 }
 
