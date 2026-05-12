@@ -1,3 +1,44 @@
+ants-terminal (0.7.86-1) unstable; urgency=medium
+
+  * MCP integration end-to-end — Claude Code sessions inside Ants tabs
+    can now call the in-process MCP server. Three internal remote-control
+    verbs (roadmap_query, tab_list, get_text) are promoted to MCP tools;
+    a Python stdio bridge (tools/mcp-bridge.py) connects Claude Code's
+    stdio MCP client to the Ants QLocalServer Unix socket; and a Zod-
+    compliance fix repairs the silent zero-tools failure that the bridge
+    surfaced on its first probe.
+  * ANTS-1244 — roadmap_query / tab_list / get_text wired as MCP tools so
+    Claude Code sessions inside Ants tabs can query terminal state via
+    tool-call rather than Bash / Read. ~110 K tokens saved per session
+    that previously Read the full ROADMAP.md (482 KiB → ~13 K of
+    structured JSON for 397 bullets). Locked by 7-invariant source-grep
+    test mcp_extra_tools/. Spec converged across 7 cold-eyes loops.
+  * ANTS-1247 — Optional status argument on the roadmap_query MCP tool
+    ("all" default, "active" = 📋+🚧, "shipped" = ✅; case-insensitive).
+    "active" returns 57 of 399 bullets (~1.75 K tokens vs ~12 K), a ~7×
+    saving per "what's next" query.
+  * ANTS-1255 — MCP stdio bridge (tools/mcp-bridge.py). ~100-line Python
+    3 stdlib script reads line-delimited JSON-RPC from stdin, opens one
+    AF_UNIX connection per request, forwards the request, writes the
+    reply to stdout. Register once per machine with
+    `claude mcp add ants -- /path/to/tools/mcp-bridge.py`.
+  * ANTS-1246 — Tasks chip now reads `☰ <completed>/<total>` and stays
+    visible iff `0 < done < total`, closing the visibility hole left by
+    ANTS-1221's pending-only predicate. Mode B batch-reset: when a new
+    TaskCreate arrives and every task in `out` is completed, the prior
+    batch is cleared before appending so a fresh batch doesn't show
+    stale completed entries. Partial batches preserved.
+  * ANTS-1256 — MCP tools/list inputSchema compliance. The six zero-arg
+    MCP tools (get_cwd, get_session_info, get_last_command,
+    get_git_status, get_environment, tab_list) were emitted without an
+    inputSchema field; Claude Code's Zod validator rejected the entire
+    response, registering zero tools. Fix: a shared emptySchema sentinel
+    (type = "object") on each zero-arg tool. Locked by feature test
+    mcp_tools_list_schema/ pinning `tools.append()` ↔ `["inputSchema"] =`
+    count parity inside the tools/list block.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 12 May 2026 15:30:00 +0200
+
 ants-terminal (0.7.85-1) unstable; urgency=medium
 
   * Roadmap dialog density toggle (compact / cozy / comfortable) —

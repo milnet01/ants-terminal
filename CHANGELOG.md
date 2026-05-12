@@ -12,7 +12,46 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.86] — 2026-05-12
+
+**Theme:** MCP integration end-to-end — Claude Code sessions inside
+Ants tabs can now call the in-process MCP server. Three internal
+remote-control verbs (`roadmap_query`, `tab_list`, `get_text`) are
+promoted to MCP tools; a Python stdio bridge (`tools/mcp-bridge.py`)
+connects Claude Code's stdio MCP client to the Ants `QLocalServer`
+Unix socket; and a Zod-compliance fix repairs the silent
+zero-tools failure that the bridge surfaced on its first probe.
+Plus a Tasks chip semantics tidy-up and an optional `status` filter
+on `roadmap_query` that cuts typical "what's next" queries by ~7×.
+
 ### Added
+
+- **ANTS-1244 — `roadmap_query` / `tab_list` / `get_text` as MCP
+  tools.** Wires three existing `RemoteControl` IPC verbs as MCP
+  tools so Claude Code sessions inside Ants tabs can query terminal
+  state via tool-call rather than `Bash` / `Read`. The handlers
+  (`cmdRoadmapQuery`, `cmdTabList`, `cmdGetText`) are promoted to
+  public on `RemoteControl`; `MainWindow` lambdas in
+  `setupClaudeMcpProviders` delegate directly, sharing the existing
+  roadmap-query mtime cache. Token saving per
+  session-with-roadmap-need: ~110 K tokens (a 120 K `Read` of the
+  482 KiB ROADMAP.md → ~13 K of structured JSON for 397
+  status-emoji bullets at ~133 B/bullet measured). Per-call saving
+  on `tab_list` / `get_text`: 30–100 tokens of bash-glue Claude no
+  longer composes. Locked by 7-invariant source-grep test
+  `mcp_extra_tools/`. Spec converged across 7 cold-eyes loops.
+
+- **ANTS-1247 — `status` filter on `roadmap_query` MCP tool /
+  IPC verb.** Optional `status` argument (`"all"` default,
+  `"active"` = 📋+🚧, `"shipped"` = ✅; case-insensitive) on the
+  `roadmap_query` MCP tool. On this repo at ship time: `"active"`
+  returns 57 of 399 bullets (~1.75 K tokens vs ~12 K), a ~7× saving
+  per "what's next" query. Provider lambda widened to thread the
+  filter through; cache continues to hold the full unfiltered array
+  (filter runs post-cache). Pack-mate with ANTS-1248..1252
+  (spec-only) and ANTS-1253/1254 (planned follow-ups). Cold-eyes
+  pass 2 converged across 4 lanes (performance / token reduction /
+  security / optimisation) over 4 loops — final pass clean.
 
 - **ANTS-1255 — MCP stdio bridge (`tools/mcp-bridge.py`).** Unblocks
   the entire MCP pack on the consumer side. The Ants in-process MCP
@@ -30,17 +69,41 @@ for security-relevant changes.
   listed → `roadmap_query status="active"` → `bad_status` error
   path → clean exit on stdin close.
 
-- **ANTS-1247 — `status` filter on `roadmap_query` MCP tool /
-  IPC verb.** Optional `status` argument (`"all"` default,
-  `"active"` = 📋+🚧, `"shipped"` = ✅; case-insensitive) on the
-  `roadmap_query` MCP tool. On this repo at ship time: `"active"`
-  returns 57 of 399 bullets (~1.75 K tokens vs ~12 K), a ~7× saving
-  per "what's next" query. Provider lambda widened to thread the
-  filter through; cache continues to hold the full unfiltered array
-  (filter runs post-cache). Pack-mate with ANTS-1248..1252
-  (spec-only) and ANTS-1253/1254 (planned follow-ups). Cold-eyes
-  pass 2 converged across 4 lanes (performance / token reduction /
-  security / optimisation) over 4 loops — final pass clean.
+### Fixed
+
+- **ANTS-1246 — Tasks chip progress semantics + Mode B batch reset.**
+  Two coordinated fixes for the same user-visible symptom (the
+  bottom-right Tasks chip showing wrong or no info during an active
+  Claude task list). (1) Chip now reads `☰ <completed>/<total>` and
+  stays visible iff `0 < done < total`, closing the visibility hole
+  left by ANTS-1221's pending-only predicate — visible end-to-end
+  through every active run, hides cleanly at 100 %. (2) The
+  TaskCreate path in `ClaudeTaskListTracker::parseTranscript`
+  (Mode B) piled up completed tasks forever; now, when a new
+  TaskCreate arrives and every task in `out` is `completed`, the
+  prior batch is cleared before appending. Mode A (TodoWrite
+  snapshot) was already correct. Partial batches (any
+  pending/in_progress) are preserved. Locked by 4-INV
+  `tasks_chip_done_over_total/` and 3 new behavioural cases in
+  `claude_task_list/`. Spec: `docs/specs/ANTS-1246.md` (2 cold-eyes
+  loops, clean pass).
+
+- **ANTS-1256 — MCP `tools/list` `inputSchema` compliance.** The six
+  zero-arg MCP tools (`get_cwd`, `get_session_info`,
+  `get_last_command`, `get_git_status`, `get_environment`,
+  `tab_list`) were emitted without an `inputSchema` field. Claude
+  Code's MCP client validates `tools/list` with Zod and rejects the
+  **entire** response when any entry omits the field — the
+  connection reports "Connected" but registers zero tools. Surfaced
+  2026-05-12 on the first probe through the ANTS-1255 bridge: the
+  log read `tools[1].inputSchema expected object, received
+  undefined` for indices 2/3/4/5/7 as well. Fix: a shared
+  `QJsonObject emptySchema; emptySchema["type"] = "object";`
+  sentinel, assigned to each zero-arg tool's `inputSchema`. Locked
+  by feature test `mcp_tools_list_schema/` whose third invariant
+  pins `tools.append() == ["inputSchema"] =` count parity inside
+  the `tools/list` block — so any future tool addition that omits
+  the field breaks CI before it reaches a user.
 
 ## [0.7.85] — 2026-05-12
 
