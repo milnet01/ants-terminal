@@ -5548,6 +5548,30 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   automatically. Kind: feature. Source: integration-gap-2026-05-12.
   Lanes: tools.
 
+- ✅ [ANTS-1256] **MCP `tools/list` `inputSchema` compliance —
+  zero-arg tools.** Shipped 2026-05-12. The six zero-arg MCP tools
+  (`get_cwd`, `get_session_info`, `get_last_command`,
+  `get_git_status`, `get_environment`, `tab_list`) were emitted
+  without an `inputSchema` field. Claude Code's MCP client uses Zod
+  to validate `tools/list` strictly and rejects the **entire**
+  response when any entry omits the field — the connection reports
+  "Connected" but registers zero tools. Symptom surfaced 2026-05-12
+  immediately after ANTS-1255 bridge landed: `mcp-logs-ants/
+  2026-05-12T11-37-32-003Z.jsonl` line 4 — `tools[1].inputSchema
+  expected object, received undefined` (and the same for indices
+  2/3/4/5/7). Fix: shared `QJsonObject emptySchema; emptySchema
+  ["type"] = "object";` sentinel, assigned to each zero-arg tool's
+  `inputSchema`. Locked by feature test
+  `tests/features/mcp_tools_list_schema/` (three invariants —
+  emptySchema construction, per-tool assignment for all six,
+  `tools.append() == [\"inputSchema\"] =` count parity inside the
+  `tools/list` block) so any future tool addition that omits the
+  field breaks CI before it reaches a user. **Layman:** the
+  doorknob from ANTS-1255 was installed, but the door's hinge
+  alignment was off — Claude Code refused to open it at all. Now
+  it does. Kind: fix. Source: integration-bug-2026-05-12.
+  Lanes: claudeintegration, tests/features.
+
 - 📋 [ANTS-1248] **`workspace_search` MCP tool** (ripgrep wrapper,
   spec ship-ready). Replaces typical `Bash grep -r ... src/`
   pattern with structured `{matches[], truncated, elapsed_ms}`

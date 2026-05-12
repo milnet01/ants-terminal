@@ -1194,29 +1194,42 @@ void ClaudeIntegration::onMcpConnection() {
                 scrollbackTool["inputSchema"] = schema;
                 tools.append(scrollbackTool);
 
+                // MCP spec requires every tool to declare an inputSchema
+                // (even zero-arg tools — empty object schema). Claude
+                // Code's Zod validator rejects the whole tools/list
+                // response if any entry omits it, silently registering
+                // zero tools.
+                QJsonObject emptySchema;
+                emptySchema["type"] = "object";
+
                 QJsonObject cwdTool;
                 cwdTool["name"] = "get_cwd";
                 cwdTool["description"] = "Get the terminal's current working directory";
+                cwdTool["inputSchema"] = emptySchema;
                 tools.append(cwdTool);
 
                 QJsonObject sessionTool;
                 sessionTool["name"] = "get_session_info";
                 sessionTool["description"] = "Get terminal session metadata";
+                sessionTool["inputSchema"] = emptySchema;
                 tools.append(sessionTool);
 
                 QJsonObject lastCmdTool;
                 lastCmdTool["name"] = "get_last_command";
                 lastCmdTool["description"] = "Get the last command's exit code and output (via shell integration)";
+                lastCmdTool["inputSchema"] = emptySchema;
                 tools.append(lastCmdTool);
 
                 QJsonObject gitTool;
                 gitTool["name"] = "get_git_status";
                 gitTool["description"] = "Get git branch, status, and recent commits for the terminal's CWD";
+                gitTool["inputSchema"] = emptySchema;
                 tools.append(gitTool);
 
                 QJsonObject envTool;
                 envTool["name"] = "get_environment";
                 envTool["description"] = "Get shell environment info (PATH, virtualenv, key env vars)";
+                envTool["inputSchema"] = emptySchema;
                 tools.append(envTool);
 
                 // ANTS-1244 — surface 3 existing remote-control verbs
@@ -1265,6 +1278,7 @@ void ClaudeIntegration::onMcpConnection() {
                     "List all open terminal tabs in this Ants instance. "
                     "Each tab: {index, title, cwd, shell_pid, "
                     "claude_running, color}. Envelope: {ok:true, tabs:[…]}.");
+                tabListTool["inputSchema"] = emptySchema;
                 tools.append(tabListTool);
 
                 QJsonObject getTextTool;
