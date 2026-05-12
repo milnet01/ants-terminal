@@ -5622,14 +5622,25 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   question. Kind: feature. Source: user-2026-05-12. Lanes: new
   (fileoutline), remotecontrol, claudeintegration, mainwindow.
 
-- 📋 [ANTS-1250] **`git_state` MCP tool (consolidated; status /
-  log / diff via `op` discriminator).** Cold-eyes decision: collapsed
-  three originally-proposed verbs into one to save ~240 permanent
-  schema tokens. Strict rev-range regex (rejects leading `-`
-  flag-injection), `--` argv separator + `./` prefix per
+- ✅ [ANTS-1250] **`git_state` MCP tool (consolidated; status /
+  log / diff via `op` discriminator).** Shipped 2026-05-12. Cold-eyes
+  decision: collapsed three originally-proposed verbs into one to
+  save ~240 permanent schema tokens. Strict rev-range regex (rejects
+  leading `-` flag-injection), `--` argv separator + `./` prefix per
   `coding.md`, 4 KiB stderr cap, 5 s + 200 ms 2-tier kill. Per-call
   saving: ~14-300 tokens; permanent-schema win from collapse: ~240
-  tokens/session start. Spec: `docs/specs/ANTS-1250.md`. Kind: feature.
+  tokens/session start. Implementation: `gitwrap.{h,cpp}` (~70 LoC)
+  shell-less synchronous helper; `cmdGitState` (~340 LoC across 3
+  op-runners + dispatch) in `remotecontrol.cpp`; ~80 LoC of MCP
+  wiring (tools/list entry, tools/call dispatch, setter, member,
+  provider lambda); 13-INV source-grep harness at
+  `tests/features/mcp_git_state/`. Status `op` parses
+  `--porcelain=v1 -b` (branch / upstream / ahead / behind / files
+  with index+worktree letters / untracked); log `op` parses
+  unit-separator-framed `--pretty=format:` to extract sha / subject
+  / date (+ optional 1 KiB-capped body), with n+1 probe to detect
+  truncation; diff `op` parses `--numstat` for added / removed /
+  totals. Spec: `docs/specs/ANTS-1250.md`. Kind: feature.
   Source: user-2026-05-12. Lanes: new (gitwrap), remotecontrol,
   claudeintegration, mainwindow.
 

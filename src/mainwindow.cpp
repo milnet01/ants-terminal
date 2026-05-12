@@ -3654,6 +3654,13 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdFileOutline(req).toJson(QJsonDocument::Compact));
         });
+    // ANTS-1250: git_state provider — same delegation shape.
+    m_claudeIntegration->setGitStateProvider(
+        [this](const QJsonObject &req) -> QString {
+            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+            return QString::fromUtf8(
+                m_remoteControl->cmdGitState(req).toJson(QJsonDocument::Compact));
+        });
 
     // Start hook server
     m_claudeIntegration->startHookServer();

@@ -199,6 +199,10 @@ public:
     // returns header_doc + symbols[]. Same full-QJsonObject shape.
     void setFileOutlineProvider(std::function<QString(const QJsonObject&)> provider);
 
+    // ANTS-1250: git_state provider — consolidated git tool (status /
+    // log / diff via op discriminator). Same full-QJsonObject shape.
+    void setGitStateProvider(std::function<QString(const QJsonObject&)> provider);
+
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
     QString sessionSummary(const QString &transcriptPath) const;
@@ -331,6 +335,8 @@ private:
     std::function<QString(const QJsonObject&)> m_workspaceSearchProvider;
     // ANTS-1249: file_outline provider — full-QJsonObject shape.
     std::function<QString(const QJsonObject&)> m_fileOutlineProvider;
+    // ANTS-1250: git_state provider — full-QJsonObject shape.
+    std::function<QString(const QJsonObject&)> m_gitStateProvider;
 
     // Session tracking
     QString m_activeSessionId;

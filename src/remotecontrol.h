@@ -135,6 +135,14 @@ public:
     // See docs/specs/ANTS-1249.md.
     QJsonDocument cmdFileOutline(const QJsonObject &req);
 
+    // ANTS-1250: git_state — single tool, dispatches on `op` field
+    // (status / log / diff). Wraps gitwrap.cpp's shell-less QProcess
+    // helper. Argv-only, --separator + ./ prefix on -leading paths,
+    // strict regex on the diff range (rejects leading -). Public so
+    // the MCP provider lambda in MainWindow delegates here.
+    // See docs/specs/ANTS-1250.md.
+    QJsonDocument cmdGitState(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

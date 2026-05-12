@@ -1,5 +1,6 @@
 #include "remotecontrol.h"
 #include "fileoutline.h"
+#include "gitwrap.h"
 #include "mainwindow.h"
 #include "roadmapdialog.h"
 #include "terminalwidget.h"
@@ -17,6 +18,7 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTabWidget>
 
@@ -236,6 +238,11 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("file-outline")) {
         // ANTS-1249: IPC dispatch entry for the file outline scanner.
         return cmdFileOutline(req);
+    }
+    if (cmd == QLatin1String("git-state")) {
+        // ANTS-1250: IPC dispatch entry for the consolidated git tool.
+        // Inner op-switch lives in cmdGitState.
+        return cmdGitState(req);
     }
     QJsonObject e;
     e["ok"] = false;
@@ -981,6 +988,480 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     // ANTS-1249-INV-10: reachability gate — UDS / MCP socket
     // SO_PEERCRED UID match (same as ANTS-1248). Nothing extra here.
     return QJsonDocument(result);
+}
+
+// ANTS-1250: git_state — single tool collapsing status / log / diff
+// behind an `op` discriminator. Saves ~240 permanent schema tokens
+// vs three separate tools (cold-eyes pass 2). All git invocations go
+// through gitwrap (shell-less argv, 5 s + 200 ms kill, 4 KiB stderr
+// cap). Argv-injection guards: strict regex on `range`, `--`
+// separator before user-derived positional args, `./` prefix on
+// `-`-leading paths.
+namespace {
+constexpr int kGitLogMaxN          = 100;   // ANTS-1250-INV-3
+constexpr int kGitLogBodyCapBytes  = 1024;  // ANTS-1250-INV-3
+
+QJsonObject gitErr(const char *code, const QString &message,
+                   const QByteArray &stderrTail = {}) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = message;
+    o["code"]  = QString::fromLatin1(code);
+    if (!stderrTail.isEmpty()) {
+        o["stderr"] = QString::fromUtf8(stderrTail);
+    }
+    return o;
+}
+
+// ANTS-1250-INV-4: stricter range regex — first char of each
+// rev-component MUST NOT be `-` (closes leading-flag injection).
+// Subsequent chars allow `-` so `HEAD~3..HEAD-1` style is still valid.
+bool isValidRange(const QString &range) {
+    static const QRegularExpression re(
+        QStringLiteral(
+            R"(^[a-zA-Z0-9._/^~][a-zA-Z0-9._/^~\-]*)"
+            R"((\.\.\.?[a-zA-Z0-9._/^~][a-zA-Z0-9._/^~\-]*)?$)"));
+    const auto m = re.match(range);
+    return m.hasMatch() && m.capturedLength(0) == range.size();
+}
+
+// Project root resolution mirrors cmdWorkspaceSearch / cmdFileOutline:
+// focused tab's shellCwd, fall back to QDir::current. Empty string
+// returned when canonicalisation fails (caller maps to bad_path or
+// not_git_repo depending on context).
+QString resolveRootCanonical(MainWindow *main) {
+    QString rootCwd;
+    if (auto *t = main->currentTerminal()) {
+        rootCwd = t->shellCwd();
+    }
+    if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
+    return QFileInfo(rootCwd).canonicalFilePath();
+}
+
+// ANTS-1250-INV-8: per-call path validation. Empty path → empty
+// QString returned (caller treats absence as "no path filter"). On
+// rejection returns nullopt-equivalent: bad=true and err contains
+// the error envelope.
+struct PathCheck {
+    bool        bad = false;
+    QJsonObject err;        // populated when bad
+    QString     argvForm;   // path as it should appear in argv (./ prefix when starts with -)
+};
+
+PathCheck validatePath(const QString &rawPath, const QString &rootCanonical) {
+    PathCheck pc;
+    if (rawPath.isEmpty()) return pc;
+    const QString nfc = rawPath.normalized(QString::NormalizationForm_C);
+    if (hasControlOrBackslash(nfc)) {
+        pc.bad = true;
+        pc.err = gitErr("bad_path",
+            QStringLiteral("git_state: \"path\" contains control or "
+                           "backslash characters"));
+        return pc;
+    }
+    QString joined;
+    if (QFileInfo(nfc).isAbsolute()) {
+        joined = nfc;
+    } else {
+        joined = QDir(rootCanonical).filePath(nfc);
+    }
+    const QString resolved = QFileInfo(joined).canonicalFilePath();
+    // We do NOT require the path to exist (git log/diff for a deleted
+    // file is meaningful). But if it DOES resolve, it must canonicalise
+    // back inside root. If it does NOT resolve, fall back to a lexical
+    // root-prefix check on the joined path so a non-existent path
+    // outside root still gets rejected.
+    if (!resolved.isEmpty()) {
+        if (!(resolved == rootCanonical ||
+              resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
+            pc.bad = true;
+            pc.err = gitErr("bad_path",
+                QStringLiteral("git_state: \"path\" escapes project root"));
+            return pc;
+        }
+    } else {
+        const QString cleaned = QDir::cleanPath(joined);
+        if (!(cleaned == rootCanonical ||
+              cleaned.startsWith(rootCanonical + QLatin1Char('/')))) {
+            pc.bad = true;
+            pc.err = gitErr("bad_path",
+                QStringLiteral("git_state: \"path\" escapes project root"));
+            return pc;
+        }
+    }
+    // Use the user-supplied form (relative or absolute) verbatim for
+    // argv. ANTS-1250-INV-5: prefix `./` so a leading `-` cannot be
+    // misread by git as a flag.
+    QString form = nfc;
+    if (form.startsWith(QLatin1Char('-'))) {
+        form = QStringLiteral("./") + form;
+    }
+    pc.argvForm = form;
+    return pc;
+}
+
+// Status header line: `## branch...origin/branch [ahead 1, behind 2]`
+// or `## branch` for an untracked branch.
+void parseStatusHeader(const QString &headerLine, QJsonObject &out) {
+    // Strip leading "## ".
+    QString rest = headerLine;
+    if (rest.startsWith(QStringLiteral("## "))) rest = rest.mid(3);
+    // Split off the bracketed ahead/behind suffix if present.
+    int aheadN = 0;
+    int behindN = 0;
+    int bracket = rest.indexOf(QLatin1Char('['));
+    if (bracket >= 0) {
+        const int close = rest.indexOf(QLatin1Char(']'), bracket);
+        if (close > bracket) {
+            const QString inside = rest.mid(bracket + 1, close - bracket - 1);
+            // tokens: "ahead N", "behind N", or "ahead N, behind N"
+            const QStringList parts = inside.split(QLatin1Char(','),
+                                                   Qt::SkipEmptyParts);
+            for (const QString &raw : parts) {
+                const QString t = raw.trimmed();
+                if (t.startsWith(QStringLiteral("ahead "))) {
+                    aheadN = QStringView{t}.mid(6).toInt();
+                } else if (t.startsWith(QStringLiteral("behind "))) {
+                    behindN = QStringView{t}.mid(7).toInt();
+                }
+            }
+            rest.truncate(bracket);
+            rest = rest.trimmed();
+        }
+    }
+    // rest is now "branch" or "branch...upstream" or "branch...upstream"
+    // or just "HEAD (no branch)" for detached.
+    QString branch  = rest;
+    QString upstream;
+    const int dots = rest.indexOf(QStringLiteral("..."));
+    if (dots >= 0) {
+        branch   = rest.left(dots);
+        upstream = rest.mid(dots + 3);
+    }
+    out["branch"]   = branch;
+    out["upstream"] = upstream;
+    out["ahead"]    = aheadN;
+    out["behind"]   = behindN;
+}
+
+QJsonObject runStatusOp(MainWindow *main) {
+    const QString rootCanonical = resolveRootCanonical(main);
+    if (rootCanonical.isEmpty()) {
+        return gitErr("bad_path",
+            QStringLiteral("git_state: project root does not exist"));
+    }
+    QStringList argv;
+    argv << QStringLiteral("status")
+         << QStringLiteral("--porcelain=v1")
+         << QStringLiteral("-b");
+    GitWrap::Result g = GitWrap::run(rootCanonical, argv);
+    if (!g.started) {
+        return gitErr("git_missing",
+            QStringLiteral("git_state: git binary not found on PATH"));
+    }
+    if (g.hardKilled) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git status exceeded 5 s wall budget"),
+            g.stderrTail);
+    }
+    if (g.crashed) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git status crashed"),
+            g.stderrTail);
+    }
+    if (g.exitCode != 0) {
+        // ANTS-1250-INV-11: not-a-git-repo → distinct code.
+        const QString s = QString::fromUtf8(g.stderrTail);
+        if (s.contains(QStringLiteral("not a git repository"),
+                       Qt::CaseInsensitive)) {
+            return gitErr("not_git_repo",
+                QStringLiteral("git_state: not a git repository"));
+        }
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git status exit %1").arg(g.exitCode),
+            g.stderrTail);
+    }
+
+    QJsonObject out;
+    out["ok"]   = true;
+    out["op"]   = QStringLiteral("status");
+    QJsonArray files;
+    QJsonArray untracked;
+    const QList<QByteArray> lines = g.stdoutBytes.split('\n');
+    for (const QByteArray &lineBytes : lines) {
+        if (lineBytes.isEmpty()) continue;
+        const QString line = QString::fromUtf8(lineBytes);
+        if (line.startsWith(QStringLiteral("## "))) {
+            parseStatusHeader(line, out);
+            continue;
+        }
+        // porcelain v1 format: "XY path"
+        if (line.size() < 3) continue;
+        const QString xy   = line.left(2);
+        const QString path = line.mid(3);
+        if (xy == QStringLiteral("??")) {
+            untracked.append(path);
+            continue;
+        }
+        QJsonObject f;
+        f["path"]     = path;
+        f["index"]    = QString(xy.at(0));
+        f["worktree"] = QString(xy.at(1));
+        files.append(f);
+    }
+    // Backstop fields if header missing (e.g. detached HEAD without
+    // -b output — porcelain emits at least the branch line, but be safe).
+    if (!out.contains("branch"))   out["branch"]   = QString();
+    if (!out.contains("upstream")) out["upstream"] = QString();
+    if (!out.contains("ahead"))    out["ahead"]    = 0;
+    if (!out.contains("behind"))   out["behind"]   = 0;
+    out["files"]     = files;
+    out["untracked"] = untracked;
+    return out;
+}
+
+QJsonObject runLogOp(MainWindow *main, const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(main);
+    if (rootCanonical.isEmpty()) {
+        return gitErr("bad_path",
+            QStringLiteral("git_state: project root does not exist"));
+    }
+    // ANTS-1250-INV-3: server-clamp n to [1, 100].
+    int n = 10;
+    const QJsonValue nVal = req.value("n");
+    if (nVal.isDouble()) {
+        const int requested = nVal.toInt();
+        if (requested > 0) n = std::min(requested, kGitLogMaxN);
+    }
+    const bool wantBody = req.value("body").toBool(false);
+
+    PathCheck pc = validatePath(req.value("path").toString(), rootCanonical);
+    if (pc.bad) return pc.err;
+
+    // Format: SHA<US>SUBJECT<US>DATE(<US>BODY)?<RS>
+    // Use 0x1f (US) between fields, 0x1e (RS) between commits.
+    const QChar US(0x1f);
+    const QChar RS(0x1e);
+    const QString fmtNoBody = QStringLiteral("%h\x1f%s\x1f%cs");
+    const QString fmtWith   = QStringLiteral("%h\x1f%s\x1f%cs\x1f%b");
+
+    QStringList argv;
+    argv << QStringLiteral("log")
+         << QStringLiteral("--no-color")
+         << QStringLiteral("-z")  // null-terminate per commit (we use RS)
+         ;
+    // -z emits NUL between commits. Override the inter-commit separator
+    // by adding %x1e at end of format and splitting on RS.
+    const QString fmt = (wantBody ? fmtWith : fmtNoBody) + QChar(0x1e);
+    argv << QStringLiteral("--pretty=format:") + fmt;
+    // Fetch n+1 to detect truncation (INV-3).
+    argv << QStringLiteral("-n") << QString::number(n + 1);
+    // ANTS-1250-INV-5: argv -- separator before user-derived path.
+    argv << QStringLiteral("--");
+    if (!pc.argvForm.isEmpty()) argv << pc.argvForm;
+
+    GitWrap::Result g = GitWrap::run(rootCanonical, argv);
+    if (!g.started) {
+        return gitErr("git_missing",
+            QStringLiteral("git_state: git binary not found on PATH"));
+    }
+    if (g.hardKilled) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git log exceeded 5 s wall budget"),
+            g.stderrTail);
+    }
+    if (g.crashed) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git log crashed"),
+            g.stderrTail);
+    }
+    if (g.exitCode != 0) {
+        const QString s = QString::fromUtf8(g.stderrTail);
+        if (s.contains(QStringLiteral("not a git repository"),
+                       Qt::CaseInsensitive)) {
+            return gitErr("not_git_repo",
+                QStringLiteral("git_state: not a git repository"));
+        }
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git log exit %1").arg(g.exitCode),
+            g.stderrTail);
+    }
+
+    // Parse: split on 0x1e, then per record split on 0x1f.
+    const QString stdoutAll = QString::fromUtf8(g.stdoutBytes);
+    const QStringList rawCommits = stdoutAll.split(RS, Qt::SkipEmptyParts);
+    QJsonArray commits;
+    for (const QString &rec : rawCommits) {
+        // Trim leading NUL that -z inserts between records.
+        QString r = rec;
+        while (!r.isEmpty() && r.at(0) == QLatin1Char('\0')) r = r.mid(1);
+        if (r.isEmpty()) continue;
+        const QStringList fields = r.split(US);
+        if (fields.size() < 3) continue;
+        QJsonObject c;
+        c["sha"]     = fields.value(0);
+        c["subject"] = fields.value(1);
+        c["date"]    = fields.value(2);
+        if (wantBody && fields.size() >= 4) {
+            QString body = fields.value(3);
+            // Strip trailing NUL (-z emits one between records that ends
+            // up after the body in the final field of all but the last).
+            while (!body.isEmpty() && body.endsWith(QLatin1Char('\0'))) {
+                body.chop(1);
+            }
+            const QByteArray b = body.toUtf8();
+            if (b.size() > kGitLogBodyCapBytes) {
+                body = QString::fromUtf8(b.left(kGitLogBodyCapBytes - 1)) +
+                       QChar(0x2026);  // ellipsis
+            }
+            c["body"] = body;
+        }
+        commits.append(c);
+    }
+    bool truncated = false;
+    if (commits.size() > n) {
+        truncated = true;
+        // Drop the n+1th probe commit.
+        while (commits.size() > n) commits.removeLast();
+    }
+    QJsonObject out;
+    out["ok"]        = true;
+    out["op"]        = QStringLiteral("log");
+    out["commits"]   = commits;
+    out["truncated"] = truncated;
+    return out;
+}
+
+QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(main);
+    if (rootCanonical.isEmpty()) {
+        return gitErr("bad_path",
+            QStringLiteral("git_state: project root does not exist"));
+    }
+    const QString range = req.value("range").toString();
+    if (range.isEmpty()) {
+        return gitErr("bad_range",
+            QStringLiteral("git_state: \"range\" required for op:diff"));
+    }
+    // ANTS-1250-INV-4: strict regex; first char excludes `-`.
+    if (!isValidRange(range)) {
+        return gitErr("bad_range",
+            QStringLiteral("git_state: \"range\" failed validation"));
+    }
+    PathCheck pc = validatePath(req.value("path").toString(), rootCanonical);
+    if (pc.bad) return pc.err;
+
+    QStringList argv;
+    argv << QStringLiteral("diff")
+         << QStringLiteral("--no-color")
+         << QStringLiteral("--numstat")
+         << range
+         << QStringLiteral("--");
+    if (!pc.argvForm.isEmpty()) argv << pc.argvForm;
+
+    GitWrap::Result g = GitWrap::run(rootCanonical, argv);
+    if (!g.started) {
+        return gitErr("git_missing",
+            QStringLiteral("git_state: git binary not found on PATH"));
+    }
+    if (g.hardKilled) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git diff exceeded 5 s wall budget"),
+            g.stderrTail);
+    }
+    if (g.crashed) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git diff crashed"),
+            g.stderrTail);
+    }
+    if (g.exitCode != 0) {
+        const QString s = QString::fromUtf8(g.stderrTail);
+        if (s.contains(QStringLiteral("not a git repository"),
+                       Qt::CaseInsensitive)) {
+            return gitErr("not_git_repo",
+                QStringLiteral("git_state: not a git repository"));
+        }
+        if (s.contains(QStringLiteral("unknown revision"),
+                       Qt::CaseInsensitive) ||
+            s.contains(QStringLiteral("bad revision"),
+                       Qt::CaseInsensitive)) {
+            return gitErr("bad_range",
+                QStringLiteral("git_state: range refers to unknown revision"),
+                g.stderrTail);
+        }
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git diff exit %1").arg(g.exitCode),
+            g.stderrTail);
+    }
+
+    QJsonArray files;
+    int totalAdded   = 0;
+    int totalRemoved = 0;
+    const QList<QByteArray> lines = g.stdoutBytes.split('\n');
+    for (const QByteArray &lineBytes : lines) {
+        if (lineBytes.isEmpty()) continue;
+        const QString line = QString::fromUtf8(lineBytes);
+        // numstat format: "<added>\t<removed>\t<path>"
+        // Binary files appear as "-\t-\t<path>".
+        const QStringList parts = line.split(QLatin1Char('\t'));
+        if (parts.size() < 3) continue;
+        bool addOk = false;
+        bool remOk = false;
+        const int added   = parts.at(0).toInt(&addOk);
+        const int removed = parts.at(1).toInt(&remOk);
+        QJsonObject f;
+        f["path"] = parts.mid(2).join(QLatin1Char('\t'));
+        if (addOk) {
+            f["added"]    = added;
+            totalAdded   += added;
+        } else {
+            f["added"]    = QJsonValue();  // null for binary
+        }
+        if (remOk) {
+            f["removed"]  = removed;
+            totalRemoved += removed;
+        } else {
+            f["removed"]  = QJsonValue();
+        }
+        files.append(f);
+    }
+    QJsonObject totals;
+    totals["added"]   = totalAdded;
+    totals["removed"] = totalRemoved;
+    totals["files"]   = files.size();
+
+    QJsonObject out;
+    out["ok"]     = true;
+    out["op"]     = QStringLiteral("diff");
+    out["range"]  = range;
+    out["files"]  = files;
+    out["totals"] = totals;
+    return out;
+}
+}  // namespace
+
+QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
+    // ANTS-1250-INV-1: dispatch on op ∈ {status, log, diff}.
+    const QString op = req.value("op").toString();
+    if (op == QLatin1String("status")) {
+        return QJsonDocument(runStatusOp(m_main));
+    }
+    if (op == QLatin1String("log")) {
+        return QJsonDocument(runLogOp(m_main, req));
+    }
+    if (op == QLatin1String("diff")) {
+        return QJsonDocument(runDiffOp(m_main, req));
+    }
+    return QJsonDocument(gitErr("bad_op",
+        QStringLiteral("git_state: \"op\" must be one of "
+                       "{status, log, diff}, got \"%1\"").arg(op)));
+    // ANTS-1250-INV-2: parseStatusHeader handles `## branch...upstream
+    //                  [ahead N, behind M]`.
+    // ANTS-1250-INV-7: stderr cap enforced inside GitWrap::run.
+    // ANTS-1250-INV-9: gitwrap.started=false → git_missing.
+    // ANTS-1250-INV-10: non-zero exit → git_failed with stderr.
+    // ANTS-1250-INV-13: reachability gate inherits from UDS + MCP socket
+    //                  (SO_PEERCRED UID + 0700 + S_ISSOCK).
 }
 
 // Client — runs in the --remote invocation of the binary. No Qt

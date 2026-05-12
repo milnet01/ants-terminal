@@ -1132,6 +1132,11 @@ void ClaudeIntegration::setFileOutlineProvider(std::function<QString(const QJson
     m_fileOutlineProvider = std::move(provider);
 }
 
+// ANTS-1250: git_state provider setter — consolidated git tool.
+void ClaudeIntegration::setGitStateProvider(std::function<QString(const QJsonObject&)> provider) {
+    m_gitStateProvider = std::move(provider);
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -1427,6 +1432,61 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(foTool);
 
+                // ANTS-1250: git_state — single tool, dispatches on
+                // `op` (status / log / diff). Collapsed from three
+                // separate tools to save ~240 permanent schema tokens
+                // per session-start (cold-eyes pass 2).
+                QJsonObject gsTool;
+                gsTool["name"] = "git_state";
+                gsTool["description"] = QStringLiteral(
+                    "Query git repo state (status / log / diff) as "
+                    "structured JSON. Replaces multiple Bash "
+                    "invocations of `git status` / `git log` / "
+                    "`git diff`. Required: op (\"status\" / \"log\" / "
+                    "\"diff\"). Op-specific: n (log only, default 10, "
+                    "cap 100), path (log/diff filter), range (diff "
+                    "only, e.g. HEAD~5..HEAD), body (log only, "
+                    "include commit body). Saves ~14-300 tokens per "
+                    "call vs Bash.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject opProp;     opProp["type"]    = "string";
+                    QJsonArray opEnum;
+                    opEnum.append("status");
+                    opEnum.append("log");
+                    opEnum.append("diff");
+                    opProp["enum"]    = opEnum;
+                    QJsonObject nProp;      nProp["type"]     = "integer";
+                                            nProp["default"]  = 10;
+                                            nProp["minimum"]  = 1;
+                                            nProp["maximum"]  = 100;
+                                            nProp["description"] =
+                        QStringLiteral("log only");
+                    QJsonObject pathProp;   pathProp["type"]  = "string";
+                                            pathProp["description"] =
+                        QStringLiteral("log/diff: filter to repo-relative path");
+                    QJsonObject rangeProp;  rangeProp["type"] = "string";
+                                            rangeProp["description"] =
+                        QStringLiteral("diff: e.g. HEAD~5..HEAD");
+                    QJsonObject bodyProp;   bodyProp["type"]  = "boolean";
+                                            bodyProp["default"] = false;
+                                            bodyProp["description"] =
+                        QStringLiteral("log: include commit body");
+                    props["op"]    = opProp;
+                    props["n"]     = nProp;
+                    props["path"]  = pathProp;
+                    props["range"] = rangeProp;
+                    props["body"]  = bodyProp;
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("op");
+                    schema["required"] = required;
+                    gsTool["inputSchema"] = schema;
+                }
+                tools.append(gsTool);
+
                 result["tools"] = tools;
                 haveResult = true;
             } else if (method == "tools/call") {
@@ -1517,6 +1577,14 @@ void ClaudeIntegration::onMcpConnection() {
                     // does the path-escape guard and scanner work.
                     QJsonObject args = params.value("arguments").toObject();
                     result["content"] = makeTextContent(m_fileOutlineProvider(args));
+                    toolHandled = true;
+                } else if (toolName == "git_state" && m_gitStateProvider) {
+                    // ANTS-1250: consolidated git tool — op dispatch
+                    // happens inside cmdGitState. Argument validation
+                    // (op enum, range regex, path canonicalisation)
+                    // lives in the verb body.
+                    QJsonObject args = params.value("arguments").toObject();
+                    result["content"] = makeTextContent(m_gitStateProvider(args));
                     toolHandled = true;
                 }
 

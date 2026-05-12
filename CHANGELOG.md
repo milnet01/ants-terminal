@@ -14,6 +14,36 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1250 — `git_state` MCP tool (consolidated; status / log /
+  diff via `op` discriminator).** Replaces multiple Bash calls to
+  `git status`, `git log`, `git diff` with a single structured tool.
+  Cold-eyes pass 2 collapsed three originally-proposed verbs into
+  one to save ~240 permanent schema tokens per session start; per-
+  call savings are ~14–300 tokens depending on op. Status returns
+  `{branch, upstream, ahead, behind, files:[{path,index,worktree}],
+  untracked[]}` parsed from `--porcelain=v1 -b`. Log returns
+  `{commits:[{sha,subject,date,body?}], truncated}` parsed from
+  unit-separator-framed `--pretty=format:`, with `n+1` probe to
+  detect truncation and per-body 1 KiB cap when `body:true`. Diff
+  returns `{files:[{path,added,removed}], totals}` parsed from
+  `--numstat`, with binary files surfaced as `null` added/removed.
+  Hardening: shell-less `QProcess::start("git", QStringList...)`
+  via the new `gitwrap.{h,cpp}` synchronous helper (5 s `terminate`
+  + 200 ms grace → `kill`, 4 KiB stderr cap); strict regex on
+  `range` excludes leading `-` from any rev-component (closes
+  cold-eyes S1250-1 flag-injection); `--` argv separator before
+  every user-derived positional arg, with `./` prefix on
+  `-`-leading paths; canonical-`startsWith` path-escape guard for
+  `path` mirroring ANTS-1248's `lane` check; distinct error codes
+  `bad_op`, `bad_range`, `bad_path`, `git_failed`, `git_missing`,
+  `not_git_repo`. Locked by feature test `mcp_git_state/` (13
+  invariants spanning decl, INV anchors, shell-lessness in
+  `gitwrap.cpp`, IPC route, tools/list schema with `op` enum +
+  `required:["op"]`, tools/call dispatch, header decl + member,
+  provider lambda, op-dispatch chain, the stricter regex literal,
+  the 2-tier kill constants, and CMake wiring). Spec:
+  `docs/specs/ANTS-1250.md`.
+
 - **ANTS-1249 — `file_outline` MCP tool.** Returns a compact
   `{header_doc, symbols:[{line, kind, name, signature}],
   total_lines, total_bytes}` envelope for a single file instead
