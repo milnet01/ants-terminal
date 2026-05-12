@@ -386,13 +386,21 @@ void testAnts1221Inv1_unfinishedExcludesInProgress() {
            " pending=" + std::to_string(tracker.pendingCount()));
 }
 
-// All-running fixture: chip should hide. With pre-fix
-// `unfinished = pending + in_progress`, a 0-pending/N-running list
-// kept the chip visible at "☰ N/N". Post-fix `unfinished = 0` →
-// `refreshTasksButton` hides via the `unfinished <= 0` branch.
-void testAnts1221Inv2_allRunningHidesChip() {
+// All-running fixture. The contract evolved across three IDs:
+// • ANTS-1221 (pending-only counter, 2026-05-10): an all-running
+//   list yielded `unfinished == 0`, so the chip *hid* — that was
+//   the resolution for "running keeps me out of the user's
+//   actionable count" but it left the user unable to see progress
+//   when only running tasks remained.
+// • ANTS-1246 (progress counter, 2026-05-12): chip now reads
+//   `done/total` and shows iff `0 < done < total`. An all-running
+//   list has `done == 0 < total`, so the chip *stays visible* at
+//   "☰ 0/N" — closing the residual hole. The tracker's
+//   `pendingCount()` is still 0 (preserved for tooltip detail),
+//   but it no longer drives visibility.
+void testAnts1221Inv2_allRunningChipStaysVisible() {
     QTemporaryDir dir;
-    if (!dir.isValid()) { expect(false, "ANTS-1221-INV-2 setup"); return; }
+    if (!dir.isValid()) { expect(false, "ANTS-1221/1246 setup"); return; }
 
     const QString p = writeFixture(dir, "fix_1221_running.jsonl", {
         assistantToolUse(QStringLiteral("TodoWrite"),
@@ -406,21 +414,34 @@ void testAnts1221Inv2_allRunningHidesChip() {
     tracker.setTranscriptPath(p);
 
     expect(tracker.totalCount() == 2,
-           "ANTS-1221-INV-2: tracker sees both running tasks");
-    expect(tracker.unfinishedCount() == 0,
-           "ANTS-1221-INV-2: all-running list yields unfinishedCount == 0 "
-           "(chip hides via `unfinished <= 0` branch)",
-           "got unfinished=" + std::to_string(tracker.unfinishedCount()));
+           "ANTS-1221/1246: tracker sees both running tasks");
+    expect(tracker.pendingCount() == 0,
+           "ANTS-1221/1246: all-running list has no pending tasks",
+           "got pending=" + std::to_string(tracker.pendingCount()));
+    expect(tracker.completedCount() == 0,
+           "ANTS-1246: all-running list has 0 completed (chip shows ☰ 0/N, "
+           "stays visible — closes the hole left by 1221's pending-only "
+           "visibility predicate)",
+           "got done=" + std::to_string(tracker.completedCount()) +
+           " total=" + std::to_string(tracker.totalCount()));
 }
 
-// ----- ANTS-1218: chip X/Y reads completed-of-total, not remaining-of-total -----
+// ----- ANTS-1218 / ANTS-1246: chip X/Y reads done-of-total -----
 //
-// Pre-fix format: `"☰ %1/%2".arg(unfinished).arg(total)` — chip
-// counted *down* (e.g. "☰ 6/30" meant "6 left out of 30"), but X/Y
-// is universally read as "X done of Y" (progress bars, GitHub
-// checks, pytest summary). Post-fix: `arg(total - unfinished).arg(total)`
-// counts *up* and hides cleanly at 100% via the `unfinished <= 0`
-// branch already in place.
+// Contract history:
+// • Pre-1218: `arg(unfinished).arg(total)` — chip counted DOWN
+//   ("☰ 6/30" = "6 left of 30"), but X/Y is universally read
+//   as "X done of Y".
+// • ANTS-1218 (2026-05-08): switched to `arg(total - unfinished).arg(total)`
+//   — counted UP. With ANTS-1221 making unfinished = pending only,
+//   the numerator effectively meant `done + in_progress`.
+// • ANTS-1246 (2026-05-12): switched to `arg(done).arg(total)` —
+//   pure progress counter. In_progress no longer rolls into the
+//   numerator; chip stays visible the whole run.
+//
+// This test now pins the ANTS-1246 numerator. ANTS-1218's
+// "counts up not down" intent is preserved a fortiori (going
+// 0 → 1 → … → N done is monotone-up).
 void testAnts1218Inv1_chipFormatCountsUp() {
     const std::string csw = readFile("src/claudestatuswidgets.cpp");
     if (csw.empty()) {
@@ -432,19 +453,15 @@ void testAnts1218Inv1_chipFormatCountsUp() {
     if (pos != std::string::npos) {
         const auto end = std::min(pos + 400, csw.size());
         const std::string near = csw.substr(pos, end - pos);
-        // Numerator must be `total - unfinished` (with or without
-        // surrounding spaces / parens). Reject the pre-fix shape where
-        // `unfinished` is the first arg without a subtraction.
-        const bool hasFlippedNumerator =
-            contains(near, "total - unfinished") ||
-            contains(near, "total-unfinished") ||
-            contains(near, "(total - unfinished)") ||
-            contains(near, "(total-unfinished)");
-        ok = hasFlippedNumerator && contains(near, "arg(total)");
+        // ANTS-1246: numerator must be `done`. Reject the legacy
+        // `total - unfinished` form (which dropped in_progress into
+        // the numerator and hid the chip when only in_progress
+        // remained — the bug ANTS-1246 closes).
+        ok = contains(near, "arg(done)") && contains(near, "arg(total)");
     }
     expect(ok,
-           "ANTS-1218-INV-1: chip numerator is `total - unfinished` "
-           "(counts up; hides at 100% via existing unfinished<=0 branch)");
+           "ANTS-1218/1246-INV-1: chip numerator is `done` "
+           "(arg(done).arg(total)) — pure progress counter");
 }
 
 // Behavioural cross-check: simulate the chip's arithmetic against
@@ -488,28 +505,34 @@ void testAnts1218Inv2_chipNumeratorMonotone() {
             R"(]})"),
     });
 
+    // ANTS-1246: numerator is `completedCount()` (pure progress).
+    // Pre-1246 used `totalCount() - unfinishedCount()` (= done +
+    // in_progress under post-1221). Walking pending → in_progress
+    // no longer bumps the chip; only completion does.
     ClaudeTaskListTracker tracker;
     tracker.setTranscriptPath(pA);
     const int totalA = tracker.totalCount();
-    const int nA = totalA - tracker.unfinishedCount();
+    const int nA = tracker.completedCount();
     tracker.setTranscriptPath(pB);
     const int totalB = tracker.totalCount();
-    const int nB = totalB - tracker.unfinishedCount();
+    const int nB = tracker.completedCount();
     tracker.setTranscriptPath(pC);
     const int totalC = tracker.totalCount();
-    const int nC = totalC - tracker.unfinishedCount();
+    const int nC = tracker.completedCount();
 
     expect(nA == 0,
-           "ANTS-1218-INV-2: 3 pending → numerator 0",
+           "ANTS-1218/1246-INV-2: 3 pending → numerator 0 (no done)",
            "got " + std::to_string(nA));
-    expect(nB >= nA,
-           "ANTS-1218-INV-2: pending → in_progress is non-decreasing",
+    expect(nB == nA,
+           "ANTS-1246-INV-2: pending → in_progress does NOT change the "
+           "numerator (was nA+1 under pre-1246; now stays nA because "
+           "only completed counts)",
            "A=" + std::to_string(nA) + " B=" + std::to_string(nB));
-    expect(nC >= nB,
-           "ANTS-1218-INV-2: pending → completed is non-decreasing",
+    expect(nC > nB,
+           "ANTS-1218/1246-INV-2: pending → completed bumps the numerator",
            "B=" + std::to_string(nB) + " C=" + std::to_string(nC));
     expect(nA <= totalA && nB <= totalB && nC <= totalC,
-           "ANTS-1218-INV-2: numerator never exceeds total");
+           "ANTS-1218/1246-INV-2: numerator never exceeds total");
 }
 
 // Build an `isCompactSummary:true` event line. Always type==user in
@@ -659,6 +682,108 @@ void testInv13_dialogAntiRegressionWaylandFlake() {
            "(QTBUG-79126 click-drop on Wayland)");
 }
 
+// ANTS-1246-INV-6: batch-reset on TaskCreate after all-completed.
+// Synthetic transcript: [TaskCreate A, tool_result id=7, TaskUpdate
+// A→completed, TaskCreate B]. Pre-fix Mode B would yield
+// totalCount() == 2 (A and B both kept). Post-fix the all-completed
+// prior batch is dropped when B's TaskCreate arrives → totalCount() == 1.
+void testAnts1246Inv6_batchResetAfterAllCompleted() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1246-INV-6 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix1246a.jsonl", {
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Old A","description":"d","activeForm":"A"})",
+            QStringLiteral("toolu_a")),
+        userToolResult(QStringLiteral("toolu_a"),
+            QStringLiteral("Task #7 created successfully: Old A")),
+        assistantToolUse(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"7","status":"completed"})",
+            QStringLiteral("toolu_au")),
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"New B","description":"d","activeForm":"B"})",
+            QStringLiteral("toolu_b")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1246-INV-6: batch-reset dropped the all-completed "
+           "prior batch (expected just B)",
+           "got " + std::to_string(tasks.size()) + " task(s)");
+    if (tasks.size() == 1) {
+        expect(tasks[0].subject == QStringLiteral("New B"),
+               "ANTS-1246-INV-6: surviving task is B (the new batch), "
+               "not A (old completed)");
+        expect(tasks[0].status == QStringLiteral("pending"),
+               "ANTS-1246-INV-6: surviving task is in pending status "
+               "(fresh, not stale-completed)");
+    }
+}
+
+// ANTS-1246-INV-7: partial batch is preserved — if any prior task
+// is pending/in_progress, a new TaskCreate appends without clearing.
+// Sequence: A pending, B pending, B→completed, C pending →
+// totalCount() == 3 (A pending, B completed, C pending).
+void testAnts1246Inv7_partialBatchPreserved() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1246-INV-7 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix1246b.jsonl", {
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"A","description":"d","activeForm":"A"})",
+            QStringLiteral("toolu_a")),
+        userToolResult(QStringLiteral("toolu_a"),
+            QStringLiteral("Task #1 created successfully: A")),
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"B","description":"d","activeForm":"B"})",
+            QStringLiteral("toolu_b")),
+        userToolResult(QStringLiteral("toolu_b"),
+            QStringLiteral("Task #2 created successfully: B")),
+        assistantToolUse(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"2","status":"completed"})",
+            QStringLiteral("toolu_bu")),
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"C","description":"d","activeForm":"C"})",
+            QStringLiteral("toolu_c")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 3,
+           "ANTS-1246-INV-7: partial batch preserved — A pending blocks "
+           "the reset; expected 3 tasks",
+           "got " + std::to_string(tasks.size()));
+}
+
+// ANTS-1246-INV-8: TodoWrite (Mode A) snapshot-replace path unchanged
+// by this spec. Two TodoWrites in sequence: the second wins, the
+// first's tasks are dropped (existing behavior, regression-pinned).
+void testAnts1246Inv8_modeASnapshotUnchanged() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1246-INV-8 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix1246c.jsonl", {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"Old 1","status":"completed","activeForm":"1"},)"
+            R"({"content":"Old 2","status":"completed","activeForm":"2"})"
+            R"(]})"),
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"New","status":"pending","activeForm":"N"})"
+            R"(]})"),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1246-INV-8: TodoWrite Mode A snapshot-replace still "
+           "drops prior batch — Mode A path unchanged");
+    if (tasks.size() == 1) {
+        expect(tasks[0].subject == QStringLiteral("New") ||
+               tasks[0].subject.contains(QStringLiteral("New")),
+               "ANTS-1246-INV-8: surviving task is the new TodoWrite's content");
+    }
+}
+
 }  // namespace
 
 
@@ -746,9 +871,9 @@ TEST(ClaudeTaskList, Ants1221Inv1UnfinishedExcludesInProgress) {
     if (g_failures > before) FAIL();
 }
 
-TEST(ClaudeTaskList, Ants1221Inv2AllRunningHidesChip) {
+TEST(ClaudeTaskList, Ants1221Inv2AllRunningChipStaysVisible) {
     int before = g_failures;
-    testAnts1221Inv2_allRunningHidesChip();
+    testAnts1221Inv2_allRunningChipStaysVisible();
     if (g_failures > before) FAIL();
 }
 
@@ -779,6 +904,24 @@ TEST(ClaudeTaskList, Ants1224Inv2MultipleCheckpointsConverge) {
 TEST(ClaudeTaskList, Ants1224Inv3SidechainCheckpointFilteredFirst) {
     int before = g_failures;
     testAnts1224Inv3_sidechainCheckpointFilteredFirst();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1246Inv6BatchResetAfterAllCompleted) {
+    int before = g_failures;
+    testAnts1246Inv6_batchResetAfterAllCompleted();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1246Inv7PartialBatchPreserved) {
+    int before = g_failures;
+    testAnts1246Inv7_partialBatchPreserved();
+    if (g_failures > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1246Inv8ModeASnapshotUnchanged) {
+    int before = g_failures;
+    testAnts1246Inv8_modeASnapshotUnchanged();
     if (g_failures > before) FAIL();
 }
 

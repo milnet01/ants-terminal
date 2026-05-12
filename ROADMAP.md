@@ -5445,6 +5445,43 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Lanes: roadmapdialog, roadmapstatuswidgets, remotecontrol,
   docs/standards/roadmap-format.md.
 
+### 🔢 Tasks chip — progress semantics (user feedback 2026-05-12)
+
+- ✅ [ANTS-1246] **Tasks chip — progress semantics + Mode B
+  batch reset.** Shipped 2026-05-12. Two coordinated fixes for
+  the same user-visible symptom (chip showing wrong / no info
+  during an active Claude task list):
+  (1) Chip text switches to `☰ <completed>/<total>`, visible
+  iff `0 < done < total`, hides at 100 % completion. Closes the
+  visibility hole left by ANTS-1221's pending-only predicate —
+  chip now stays visible end-to-end through every active run.
+  (2) `ClaudeTaskListTracker::parseTranscript` Mode B
+  (TaskCreate path) now batch-resets: a `TaskCreate` that
+  arrives when every task in `out` is `completed` clears the
+  prior batch before appending. Brings Mode B to parity with
+  Mode A (TodoWrite, already snapshot-replaces). Without this,
+  Mode B sessions piled up completed tasks forever — second
+  user report 2026-05-12 was a 13/15 chip whose 11 completed
+  entries were stale work from a finished prior batch.
+  Spec: `docs/specs/ANTS-1246.md` (2 cold-eyes loops, clean
+  pass). Test: T5/T6/T7 behavioural in `claude_task_list/` +
+  `tasks_chip_done_over_total/` source-grep + 4 pre-existing
+  ANTS-1218/1221 tests updated to track the new contract.
+  Surface: ~24 LoC across `claudestatuswidgets.cpp` (chip
+  text + hide gate + comment refresh) and `claudetasklist.cpp`
+  (batch-reset insert at `TaskCreate` branch).
+  **Layman:** the chip in the bottom bar that shows task-list
+  progress was misbehaving two ways at once. First it
+  disappeared too early (when only "Claude is working on it"
+  tasks remained). Then once we fixed that, it started showing
+  inflated numbers (13/15 when the current batch was only 4)
+  because completed tasks from earlier in the conversation
+  never got cleared out. Both fixed: chip stays visible the
+  whole way through, and starts fresh whenever a new task
+  batch begins.
+  Kind: fix. Source: user-2026-05-12.
+  Lanes: claudestatuswidgets, claudetasklist.
+
 ### 💸 MCP token-reduction surface — wire 3 existing IPC verbs as MCP tools (user request 2026-05-12)
 
 - ✅ [ANTS-1244] **Surface `roadmap_query`, `tab_list`, `get_text`

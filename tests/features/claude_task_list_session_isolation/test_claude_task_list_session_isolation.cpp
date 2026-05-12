@@ -126,14 +126,20 @@ void testInv3HideBranch(const std::string &widgets) {
     // INV-3: empty-resolver propagation. INV-1's setTranscriptPath
     // push handles empty `path` identically (the parser-side ANTS-1158
     // INV-7 clears m_tasks). The visible side is the chip hide branch
-    // — `total <= 0 || unfinished <= 0` at claudestatuswidgets.cpp:705
-    // — which fires when the cleared tracker reports both as 0.
+    // at claudestatuswidgets.cpp's refreshTasksButton — which fires
+    // when the cleared tracker reports total == 0 (empty-resolver
+    // case) OR when every task is completed (ANTS-1216 / ANTS-1246
+    // "all done" hide). ANTS-1246 (2026-05-12) updated the all-done
+    // predicate from `unfinished <= 0` to `done >= total`, so the
+    // chip stays visible through every in-progress run and only
+    // hides at 100 % completion.
     const std::string sig =
         "void ClaudeStatusBarController::refreshTasksButton(";
     expect(bodyContains(widgets, sig, "// ANTS-1219-INV-3"),
            "ANTS-1219-INV-3: anchor comment present in refreshTasksButton");
-    expect(bodyContains(widgets, sig, "unfinished <= 0"),
-           "ANTS-1219-INV-3: chip hide branch (unfinished <= 0) present");
+    expect(bodyContains(widgets, sig, "done >= total"),
+           "ANTS-1219-INV-3 / ANTS-1246: chip hide branch uses "
+           "`done >= total` predicate (was `unfinished <= 0` pre-1246)");
 }
 
 void testInv4TabSwitchReset(const std::string &widgets,

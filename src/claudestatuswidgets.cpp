@@ -718,29 +718,30 @@ void ClaudeStatusBarController::refreshTasksButton() {
                  total, unfinished, inProgress, pending, done, branch);
     }
 
-    // ANTS-1219-INV-3: hide branch covers the empty-resolver case
-    // (path was "", tracker cleared, total/unfinished both 0). Also
-    // the "all done" case from ANTS-1216 below.
-    if (total <= 0 || unfinished <= 0) {
-        // Hide on every empty case (no transcript, no plan events,
-        // empty plan list) AND on the "all done" case. ANTS-1216 user
-        // report 2026-05-08: a tab whose tasks are all completed kept
-        // the chip visible at "☰ 0/N", which read as actionable
-        // chrome when there was nothing left to do. The chip's
-        // purpose is to surface outstanding work; an all-done state
-        // is just noise.
+    // ANTS-1219-INV-3 / ANTS-1216 / ANTS-1246: hide branch covers
+    // (a) the empty-resolver case (path was "", tracker cleared,
+    // total == 0) and (b) the "all done" case (every task in
+    // status `completed`). ANTS-1216 user report 2026-05-08: a tab
+    // whose tasks are all completed kept the chip visible at
+    // "☰ N/N", which read as actionable chrome when there was
+    // nothing left to do. ANTS-1246 (2026-05-12) refined the
+    // visibility predicate: the chip's purpose is now pure
+    // *progress*, visible end-to-end from 0/N to N/N; an all-done
+    // state hides because the user already sees the completed
+    // list in the dialog. The "is Claude doing something?" signal
+    // is carried separately by the Claude: <state> widget.
+    if (total <= 0 || done >= total) {
         m_tasksBtn->hide();
         return;
     }
-    // ANTS-1218: chip counts UP (completed-or-running of total), not
-    // down. X/Y is universally read as "X done of Y" (progress bars,
-    // GitHub PR checks, pytest summary). Pre-fix `arg(unfinished)`
-    // displayed remaining-of-total which most users mis-read as
-    // completed-of-total. Numerator is `total - unfinished` where
-    // (post-1221) unfinished counts pending only — so the chip
-    // shows done + running + any non-pending statuses, hides cleanly
-    // at 100% via the `unfinished <= 0` early-return above.
-    m_tasksBtn->setText(QStringLiteral("☰ %1/%2").arg(total - unfinished).arg(total));
+    // ANTS-1218 / ANTS-1246: chip reads `☰ <done>/<total>` —
+    // pure completion progress. Numerator was previously
+    // `total - unfinished` (= done + in_progress under post-1221
+    // semantics), which kept the chip hidden when only in_progress
+    // tasks remained (no pending), surprising the user mid-run.
+    // ANTS-1246 switches to `done` so the chip is visible during
+    // the entire active task list and hides only on completion.
+    m_tasksBtn->setText(QStringLiteral("☰ %1/%2").arg(done).arg(total));
     m_tasksBtn->setToolTip(
         tr("Claude Code task list — %1 task%2 (%3 done, %4 running, "
            "%5 outstanding). Click to view.")

@@ -244,6 +244,28 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
 
                 if (name == QLatin1String("TaskCreate")) {
                     if (sawTodoWrite) continue;  // Mode A wins
+                    // ANTS-1246 batch-reset (2026-05-12 user report):
+                    // a TaskCreate event that follows a fully-completed
+                    // prior batch starts a fresh logical batch. Without
+                    // this, completed work piles up forever in Mode B —
+                    // user opens the Tasks dialog mid-session and sees
+                    // 15 entries when the current logical batch is 4.
+                    // TodoWrite (Mode A) already clears on snapshot at
+                    // line 234; this brings TaskCreate to parity.
+                    if (!out.isEmpty()) {
+                        bool allCompleted = true;
+                        for (const auto &existing : out) {
+                            if (existing.status
+                                != QLatin1String("completed")) {
+                                allCompleted = false;
+                                break;
+                            }
+                        }
+                        if (allCompleted) {
+                            out.clear();
+                            idxByToolUseId.clear();
+                        }
+                    }
                     ClaudeTask t;
                     t.subject =
                         input.value(QStringLiteral("subject")).toString();

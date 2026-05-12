@@ -774,7 +774,8 @@ if(ANTS_TESTS)
                 tests/features/claude_session_freshness/test_claude_session_freshness.cpp
                 tests/features/claude_task_list_session_isolation/test_claude_task_list_session_isolation.cpp
                 tests/features/claude_pid_replacement/test_claude_pid_replacement.cpp
-                tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp)
+                tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp
+                tests/features/tasks_chip_done_over_total/test_tasks_chip_done_over_total.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
