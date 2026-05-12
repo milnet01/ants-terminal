@@ -14,6 +14,43 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1252 — Token-saving hook pack.** Five bash hooks plus
+  `tools/install-hooks.sh` that nudge Claude Code toward cheaper
+  MCP tool calls. SessionStart preamble emits a ≤ 500 B
+  branch/ahead/last-commit summary (cap enforced via `head -c`).
+  PreToolUse(Bash) veto blocks `grep -r src/`, `git status`,
+  `cat ROADMAP.md | grep` etc. with reasons capped at 200 bytes,
+  redirecting to `mcp__ants__workspace_search` /
+  `mcp__ants__get_git_status` / `mcp__ants__roadmap_query`. Per-
+  command escape hatch: trailing `# ants-bypass` comment, stripped
+  before pattern match (INV-12 — never appears in the emitted
+  reason text). PreToolUse(Read) veto blocks full reads of
+  `ROADMAP.md` > 50 KiB; bypassed cleanly via `offset`/`limit`
+  args. Stop hook backgrounds an `ants-helper drift-check` under
+  `flock` (INV-11) with a sane-toplevel marker write (INV-9).
+  PreCompact hook walks the transcript JSONL and writes the most
+  recent TodoWrite snapshot to
+  `~/.cache/ants-terminal/precompact_<sessionId>.json` only if
+  `sessionId` matches `^[a-zA-Z0-9_-]{1,64}$` (INV-2). Per-project
+  gate via committed `.ants-project` marker — non-ants sessions
+  exit silently in sub-millisecond stat ascent (no `git rev-parse`
+  fork). Install-hooks hardening: `lstat` symlink abort (INV-5),
+  `cp --no-dereference` backup, sentinel-key fence
+  `ants_hooks_pack_v1` rather than text-fence comments (INV-6 —
+  `jq` strips JSON comments), tmpfile + `jq empty` validate-
+  before-rename (INV-8), idempotent re-install, `--dry-run` and
+  `--uninstall` flags. Token saving: ~30-100 K/week depending on
+  which siblings shipped first (calibrated in spec § 5).
+  Conformance harness at `tests/features/hook_pack/test_hooks.sh`
+  (shell-driven per `audit_self_test.sh` pattern, no C++ link)
+  covers INV-1/2/3/4/7/9/10/12 + bash-veto behaviour + read-
+  roadmap-veto behaviour + install round-trip + symlink abort —
+  36 assertions, all green; INV-6/8/11 deferred to manual smoke
+  with documented rationale. Spec: `docs/specs/ANTS-1252.md`.
+  Cold-eyes review on `tests/features/hook_pack/spec.md` returned
+  7 findings (1 HIGH on source-vs-runtime semantics for INV-12,
+  2 MEDIUM on doc-code drift, 4 LOW); all fixed inline.
+
 - **ANTS-1251 — `subsystem` MCP tool (consolidated; map / files /
   recent_changes via `op` discriminator).** Pre-parses the project's
   `CLAUDE.md` `## Module map (src/)` H2 into a `lanes[]` array and

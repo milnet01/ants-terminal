@@ -554,6 +554,13 @@ if(ANTS_TESTS)
         TIMEOUT 30
         ENVIRONMENT "SRC_SETTINGSDIALOG_CPP=${CMAKE_CURRENT_SOURCE_DIR}/src/settingsdialog.cpp")
 
+    # ANTS-1252 — token-saving hook pack conformance (shell harness).
+    add_test(NAME hook_pack
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/hook_pack/test_hooks.sh")
+    set_tests_properties(hook_pack PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 30)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only

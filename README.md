@@ -412,6 +412,8 @@ Existing hooks you have configured (e.g. `UserPromptSubmit`) are preserved -- th
 
 **Slash Command Shortcuts** -- Quick menu entries for sending `/compact`, `/clear`, `/cost`, `/help`, and `/status` to a running Claude session.
 
+**Token-saving hook pack** (ANTS-1252) -- Optional bash hook pack that nudges Claude toward cheaper MCP tool calls. Install via `tools/install-hooks.sh` from a checkout (writes into `~/.claude/settings.json` under sentinel key `ants_hooks_pack_v1` and copies the scripts to `~/.claude/hooks/`). Five hooks: a SessionStart preamble (≤ 500 B summary of branch/ahead/last commit), a PreToolUse Bash veto that redirects `grep -r src/` / `git status` / `cat ROADMAP.md | grep` to the matching MCP tool (escape per command via trailing `# ants-bypass` comment), a PreToolUse Read veto on full reads of large `ROADMAP.md` (use `mcp__ants__roadmap_query` instead), a Stop drift-check launcher (side-effect-only, `flock`-guarded), and a PreCompact todo-snapshot writer for smoother resume. Per-project gate via committed `.ants-project` marker -- the hooks fire silently in non-ants sessions. Uninstall: `tools/install-hooks.sh --uninstall`.
+
 **Project Directory Management** -- Configure directories where new Claude Code projects can be created. Start new projects in any managed directory directly from the Projects dialog.
 
 ### Configurable Keybindings

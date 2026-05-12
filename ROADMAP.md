@@ -5664,20 +5664,35 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   `docs/specs/ANTS-1251.md`. Kind: feature. Source: user-2026-05-12.
   Lanes: new (subsystemmap), remotecontrol, claudeintegration, mainwindow.
 
-- 📋 [ANTS-1252] **Token-saving hook pack** (5 hooks +
-  `tools/install-hooks.sh`). SessionStart preamble (≤ 500 B),
-  PreToolUse Bash veto (redirects `grep src/`/`git status`/etc. to
-  MCP tools via trailing `# ants-bypass` comment-form override),
-  PreToolUse Read veto on huge ROADMAP, Stop drift-check
-  (side-effect-only, `flock` guarded), PreCompact snapshot
-  (regex-validated `sessionId`). Hardened install: `lstat` symlink
-  abort, validate-before-rename, sentinel-key fence (not text-fence
-  — `jq` strips comments). Per-project gate via `.ants-project`
-  marker (UX gate, NOT security boundary — same-UID write is
-  already game over; documented). Token saving: ~30-100 K/week
-  depending on ship order. Spec: `docs/specs/ANTS-1252.md`. Kind:
-  feature. Source: user-2026-05-12. Lanes: new (hooks/,
-  tools/install-hooks.sh).
+- ✅ [ANTS-1252] **Token-saving hook pack** (shipped 2026-05-12)
+  — 5 bash hooks + `tools/install-hooks.sh` plus shell-driven
+  conformance harness at `tests/features/hook_pack/`. SessionStart
+  preamble emits ≤ 500 B branch/ahead/last summary; PreToolUse
+  Bash veto blocks `grep -r src/`, `git status`, `cat ROADMAP.md
+  | grep` with reasons ≤ 200 B (override via trailing
+  `# ants-bypass` comment, stripped before pattern match per
+  INV-12); PreToolUse Read veto on full reads of `ROADMAP.md`
+  > 50 KiB (offset/limit bypasses); Stop drift-check launcher
+  (`flock` guarded, ants-helper drift-check backend, marker
+  written only inside sane project root); PreCompact snapshot
+  to `~/.cache/ants-terminal/precompact_<sessionId>.json`
+  (sessionId regex-validated `^[a-zA-Z0-9_-]{1,64}$` per INV-2).
+  Install hardening: lstat symlink abort (INV-5), `cp
+  --no-dereference` backup, sentinel-key fence not text-fence
+  (INV-6 — `jq` strips comments), tmpfile + `jq empty` validate-
+  before-rename (INV-8), idempotent re-run, `--dry-run` and
+  `--uninstall` flags. Per-project gate via committed
+  `.ants-project` marker — non-ants sessions exit silently
+  sub-millisecond (INV-9). Test harness covers INV-1/2/3/4/7/9/10/12
+  + behavioural cases + install round-trip + symlink abort, with
+  documented coverage gaps (INV-6/8/11) deferred to manual smoke.
+  Cold-eyes pass on test spec.md surfaced 7 findings (1 HIGH on
+  source-vs-runtime semantics for INV-12, 2 MEDIUM on doc-code
+  drift, 4 LOW); all fixed inline before commit. Token saving:
+  ~30-100 K/week depending on which siblings shipped first
+  (calibrated in spec § 5). Spec: `docs/specs/ANTS-1252.md`.
+  Kind: feature. Source: user-2026-05-12. Lanes: new (hooks/,
+  tools/install-hooks.sh, tests/features/hook_pack/).
 
 - 📋 [ANTS-1253] **Consolidate MCP-tool provider registry**
   (post-1247-1252 follow-up sweep). After 1247-1252 land,
