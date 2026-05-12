@@ -177,6 +177,15 @@ public:
     void setGitStatusProvider(std::function<QString()> provider);
     void setEnvironmentProvider(std::function<QString()> provider);
 
+    // ANTS-1244: surface the read-only remote-control verbs as MCP
+    // tools. Each provider returns the IPC verb's compact-JSON
+    // response as a string; the dispatcher wraps it in a text
+    // content block. `setGetTextProvider`'s `tab=-1` means "active
+    // tab", `lines=0` means "default 100" — see spec § 2.d.
+    void setRoadmapQueryProvider(std::function<QString()> provider);
+    void setTabListProvider(std::function<QString()> provider);
+    void setGetTextProvider(std::function<QString(int,int)> provider);
+
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
     QString sessionSummary(const QString &transcriptPath) const;
@@ -300,6 +309,10 @@ private:
     std::function<QPair<int,QString>()> m_lastCommandProvider;
     std::function<QString()> m_gitStatusProvider;
     std::function<QString()> m_envProvider;
+    // ANTS-1244 — delegate-into-RemoteControl providers.
+    std::function<QString()> m_roadmapQueryProvider;
+    std::function<QString()> m_tabListProvider;
+    std::function<QString(int,int)> m_getTextProvider;
 
     // Session tracking
     QString m_activeSessionId;

@@ -3610,6 +3610,30 @@ void MainWindow::setupClaudeMcpProviders() {
         return filtered.join("\n");
     });
 
+    // ANTS-1244 — surface read-only remote-control verbs as MCP
+    // tools. Each lambda delegates to the existing RemoteControl
+    // cmd handler so the two transports share logic + cache.
+    m_claudeIntegration->setRoadmapQueryProvider([this]() -> QString {
+        if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+        return QString::fromUtf8(
+            m_remoteControl->cmdRoadmapQuery().toJson(QJsonDocument::Compact));
+    });
+    m_claudeIntegration->setTabListProvider([this]() -> QString {
+        if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+        return QString::fromUtf8(
+            m_remoteControl->cmdTabList().toJson(QJsonDocument::Compact));
+    });
+    m_claudeIntegration->setGetTextProvider(
+        // tab < 0 → omit (active tab); lines <= 0 → omit (default 100).
+        [this](int tab, int lines) -> QString {
+            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+            QJsonObject req;
+            if (tab   >= 0) req["tab"]   = tab;
+            if (lines >  0) req["lines"] = lines;
+            return QString::fromUtf8(
+                m_remoteControl->cmdGetText(req).toJson(QJsonDocument::Compact));
+        });
+
     // Start hook server
     m_claudeIntegration->startHookServer();
 }

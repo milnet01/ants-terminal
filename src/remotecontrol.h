@@ -108,6 +108,15 @@ public:
         return out;
     }
 
+    // ANTS-1244: read-only verbs promoted to public so the MCP server
+    // in ClaudeIntegration can delegate to them without duplicating
+    // bodies. Provider lambdas in MainWindow::setupClaudeMcpProviders
+    // call these on the existing m_remoteControl instance, sharing
+    // the roadmap-query cache (INV-7 in the spec).
+    QJsonDocument cmdRoadmapQuery();
+    QJsonDocument cmdTabList();
+    QJsonDocument cmdGetText(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 
@@ -118,11 +127,7 @@ private:
     QJsonDocument cmdNewTab(const QJsonObject &req);
     QJsonDocument cmdSelectWindow(const QJsonObject &req);
     QJsonDocument cmdSetTitle(const QJsonObject &req);
-    QJsonDocument cmdGetText(const QJsonObject &req);
     QJsonDocument cmdLaunch(const QJsonObject &req);
-    // ANTS-1117 v1 (read-only verbs).
-    QJsonDocument cmdTabList();
-    QJsonDocument cmdRoadmapQuery();
 
     // Cached parse of `m_main->roadmapPathForRemote()` content. Refreshed
     // on `roadmap-query` when EITHER the mtime advances OR the wall-clock

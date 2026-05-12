@@ -5445,6 +5445,114 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Lanes: roadmapdialog, roadmapstatuswidgets, remotecontrol,
   docs/standards/roadmap-format.md.
 
+### 💸 MCP token-reduction surface — wire 3 existing IPC verbs as MCP tools (user request 2026-05-12)
+
+- ✅ [ANTS-1244] **Surface `roadmap_query`, `tab_list`, `get_text`
+  as MCP tools so Claude Code sessions in Ants tabs query terminal
+  state via tool-call instead of `Bash`/`Read`.** Shipped
+  2026-05-12. Implementation came in under spec estimate
+  (~75 LoC total: 8 LoC promoting RemoteControl handlers to
+  public, 12 LoC adding setter decls + members + setter bodies,
+  ~45 LoC of tools/list registrations + tools/call dispatch cases
+  in ClaudeIntegration, 24 LoC of provider lambdas in
+  MainWindow::setupClaudeMcpProviders). Test:
+  `tests/features/mcp_extra_tools/` (7 invariants, source-grep
+  harness in test_claude bundle). 7-loop cold-eyes pass on the
+  spec converged the token-saving math from a claimed ~119 K to
+  the verified ~110 K saving on the roadmap path (397 bullets ×
+  ~133 B/bullet measured = ~52 KiB / ~13 K tokens versus
+  120 K Read cost). Status-filter follow-up flagged for ANTS-1246. User priority
+  2026-05-12: token-reduction work. Today the in-process MCP server
+  at `claudeintegration.cpp:1054-1292` exposes 6 tools (scrollback,
+  cwd, session-info, last-command, git-status, environment) but
+  none of the read-only IPC verbs the `remotecontrol` socket has
+  carried since ANTS-1117. Cleanest win: promote the 3 cmd handlers
+  to public, add 3 setters + 3 dispatch cases (~70 LoC mechanical
+  wiring on top of already-tested logic). Token math (measured):
+  the active project's `Read ROADMAP.md` costs ~123 K tokens today
+  (482 KiB / 8 947 lines); the MCP `roadmap_query` returns ~13 K
+  tokens (397 bullets × ~133 B/bullet compact JSON). Saving on
+  sessions-with-roadmap-need: **~110 K tokens**. Per-call saving
+  on `tab_list` / `get_text` is the bash-glue Claude doesn't have
+  to compose (~30-100 tokens/call). Out of scope: a `status` filter
+  parameter that would cut typical `roadmap_query` payload another
+  ~7× (13 K → 1.9 K) — flagged for follow-up. Spec:
+  `docs/specs/ANTS-1244.md` (7-loop cold-eyes pass, ship-ready).
+  **Layman:** today every Claude session that wants to know
+  what's on the project's roadmap has to read the entire ROADMAP.md
+  file (huge, ~123 K tokens). This change exposes the parsed
+  roadmap as a small structured tool call (~13 K tokens) and
+  similarly trims the cost of asking "what's in tab 3 right now"
+  and "what tabs are open."
+  Memory budget: zero new allocations beyond 3 std::function
+  slots (~72 B total) on ClaudeIntegration.
+  Kind: feature. Source: user-2026-05-12.
+  Lanes: claudeintegration, remotecontrol, mainwindow.
+
+### 📊 Claude Code token-usage tracking + reports (user request 2026-05-12)
+
+- 📋 [ANTS-1245] **Track Claude Code token usage per session and
+  expose daily / weekly / monthly reports with graphs.** User ask
+  2026-05-12: *"I would like token usage tracked and I should be
+  able to pull a daily, weekly and monthly report please with
+  graphs as well please."* Not blocking; design phase only.
+  Proposed scope (locked at design phase, before code):
+  1. **Capture surface.** Claude Code's JSONL transcripts already
+     contain per-turn input/output token counts in the `usage`
+     field of every assistant message. The existing
+     `ClaudeIntegration::parseTranscriptTail` walks transcripts
+     for state inference — extend it to also accumulate
+     `(input_tokens, cache_creation_input_tokens,
+     cache_read_input_tokens, output_tokens)` keyed by session
+     ID + day.
+  2. **Storage.** SQLite database at
+     `~/.local/share/ants-terminal/token_usage.db` with a single
+     `usage(session_id, project_path, ts, model, input, output,
+     cache_create, cache_read)` table. Per-row size ≈ 80 B; even
+     a year of heavy use (~50 K turns) is < 5 MiB. Index on `ts`
+     + `(project_path, ts)` for the report queries.
+  3. **Report dialog.** New Tools → Token Usage menu item; opens
+     a dialog with three tabs (Daily / Weekly / Monthly). Each
+     tab shows: total in/out/cache, top 5 projects by usage,
+     line graph over the period (QtCharts — already a system
+     dep). Period selector + project filter dropdown.
+  4. **Cost estimate.** Multiply token counts by hard-coded
+     per-model rates (Sonnet/Opus/Haiku) sourced from the
+     Anthropic pricing page; show $ alongside token totals.
+     Rate table baked into the binary, refreshable via Settings
+     when prices change.
+  5. **CSV export.** Per-report "Export…" button writes the
+     underlying rows to CSV. Avoids forcing users into the
+     dialog to extract data.
+  Cross-references:
+    - ANTS-1146 — `ClaudeIntegration` transcript parsing,
+      already runs every 2 s for state inference; extending it
+      for token capture costs one extra `usage` field lookup
+      per parsed message.
+    - ANTS-1158 — JSONL transcript surface; this work piggy-
+      backs on the same file watcher (no new filesystem watch
+      load).
+    - ANTS-1244 — MCP token-saving spec; the report dialog
+      should also show *avoided* tokens (the bash-via-`Read`
+      cost the MCP tools dodged) so the user can see the
+      cumulative win from the new MCP surface.
+  Memory budget: in-process ring of the last 7 days' rows held
+  for the Daily tab's hot path (~10 K rows max ≈ 800 KiB); the
+  rest read on-demand from SQLite. QtCharts widget allocates
+  one `QLineSeries` per period, freed on dialog close.
+  Out of scope for V1: cost-cap alerts (Settings → "warn me
+  past $X/day"); per-skill / per-tool breakdown (requires
+  parsing tool_use blocks, not just `usage`); cloud-side billing
+  comparison; multi-machine aggregation.
+  **Layman:** keep a running tally of how many tokens (and
+  $) every Claude Code session in this terminal has used,
+  rolled up by day / week / month with a line graph. So when
+  the cost shows up at the end of the month you know which
+  project burned it.
+  Kind: feature. Source: user-2026-05-12.
+  Lanes: new (tokenusagetracker, tokenusagedialog), claudeintegration
+  (extend parseTranscriptTail), mainwindow (menu wire).
+
 ### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
 
 - 📋 [ANTS-1162] **First-class scaffolding inside Ants Terminal

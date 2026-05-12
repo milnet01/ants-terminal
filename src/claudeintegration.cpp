@@ -1106,6 +1106,18 @@ void ClaudeIntegration::setEnvironmentProvider(std::function<QString()> provider
     m_envProvider = std::move(provider);
 }
 
+void ClaudeIntegration::setRoadmapQueryProvider(std::function<QString()> provider) {
+    m_roadmapQueryProvider = std::move(provider);
+}
+
+void ClaudeIntegration::setTabListProvider(std::function<QString()> provider) {
+    m_tabListProvider = std::move(provider);
+}
+
+void ClaudeIntegration::setGetTextProvider(std::function<QString(int,int)> provider) {
+    m_getTextProvider = std::move(provider);
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -1207,6 +1219,49 @@ void ClaudeIntegration::onMcpConnection() {
                 envTool["description"] = "Get shell environment info (PATH, virtualenv, key env vars)";
                 tools.append(envTool);
 
+                // ANTS-1244 — surface 3 existing remote-control verbs
+                // as MCP tools so a Claude session in an Ants tab can
+                // query terminal state via tool-call rather than
+                // `Bash`/`Read`. See docs/specs/ANTS-1244.md.
+                QJsonObject roadmapTool;
+                roadmapTool["name"] = "roadmap_query";
+                roadmapTool["description"] = QStringLiteral(
+                    "Query the active tab's ROADMAP.md as structured "
+                    "bullets. Each bullet: {id, status, headline, kind, "
+                    "lanes}. Envelope: {ok:true, bullets:[…], path, count} "
+                    "on success or {ok:false, error, code} when the "
+                    "active tab's project has no ROADMAP.md.");
+                tools.append(roadmapTool);
+
+                QJsonObject tabListTool;
+                tabListTool["name"] = "tab_list";
+                tabListTool["description"] = QStringLiteral(
+                    "List all open terminal tabs in this Ants instance. "
+                    "Each tab: {index, title, cwd, shell_pid, "
+                    "claude_running, color}. Envelope: {ok:true, tabs:[…]}.");
+                tools.append(tabListTool);
+
+                QJsonObject getTextTool;
+                getTextTool["name"] = "get_text";
+                getTextTool["description"] = QStringLiteral(
+                    "Read trailing scrollback lines from a tab. Optional "
+                    "`tab` (default = active tab) and `lines` (default 100, "
+                    "capped at 10000). Returns {ok, text, lines, bytes} or "
+                    "{ok:false, error} when the tab index is out of range.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject tabProp;   tabProp["type"]   = "integer";
+                    QJsonObject linesProp; linesProp["type"] = "integer";
+                                           linesProp["default"] = 100;
+                    props["tab"]   = tabProp;
+                    props["lines"] = linesProp;
+                    schema["properties"] = props;
+                    getTextTool["inputSchema"] = schema;
+                }
+                tools.append(getTextTool);
+
                 result["tools"] = tools;
                 haveResult = true;
             } else if (method == "tools/call") {
@@ -1255,6 +1310,25 @@ void ClaudeIntegration::onMcpConnection() {
                     toolHandled = true;
                 } else if (toolName == "get_environment" && m_envProvider) {
                     result["content"] = makeTextContent(m_envProvider());
+                    toolHandled = true;
+                } else if (toolName == "roadmap_query" && m_roadmapQueryProvider) {
+                    result["content"] = makeTextContent(m_roadmapQueryProvider());
+                    toolHandled = true;
+                } else if (toolName == "tab_list" && m_tabListProvider) {
+                    result["content"] = makeTextContent(m_tabListProvider());
+                    toolHandled = true;
+                } else if (toolName == "get_text" && m_getTextProvider) {
+                    // ANTS-1244 INV-9 — tab=0 is a valid index distinct
+                    // from "tab omitted", so use isDouble() to gate the
+                    // extraction (matches the IPC verb at
+                    // remotecontrol.cpp:347). tab<0 = active tab,
+                    // lines<=0 = default 100.
+                    QJsonObject args = params.value("arguments").toObject();
+                    const QJsonValue tabVal   = args.value("tab");
+                    const QJsonValue linesVal = args.value("lines");
+                    int tab   = tabVal.isDouble()   ? tabVal.toInt()   : -1;
+                    int lines = linesVal.isDouble() ? linesVal.toInt() :  0;
+                    result["content"] = makeTextContent(m_getTextProvider(tab, lines));
                     toolHandled = true;
                 }
 
