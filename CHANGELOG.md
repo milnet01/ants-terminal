@@ -14,6 +14,26 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1249 — `file_outline` MCP tool.** Returns a compact
+  `{header_doc, symbols:[{line, kind, name, signature}],
+  total_lines, total_bytes}` envelope for a single file instead
+  of a full Read. ~13-39× compression on typical C++ source
+  (e.g. `auditdialog.cpp` 67 K tokens → ~2 K). New
+  `src/fileoutline.{h,cpp}` translation unit hosts a 6-regex
+  scanner (C++ member / type / free-func / Qt-marker + Python +
+  Markdown headings). Each regex is a `static const
+  QRegularExpression` with `.optimize()` invoked at first use,
+  so the JIT compiles once per process. Possessive quantifiers
+  + per-line 1024-byte cap bound the worst case against
+  catastrophic backtracking. Header-doc capped at 2 KiB.
+  `path` argument is canonicalised + NFC-normalised + checked
+  against the project root via `startsWith` (same security
+  posture as ANTS-1248's `lane`). Locked by feature test
+  `mcp_file_outline/` (10 invariants: wiring + runtime floor of
+  ≥ 8 symbols against the in-tree `auditdialog.cpp` to catch
+  regex-set regressions, plus not-found path). Spec:
+  `docs/specs/ANTS-1249.md`.
+
 - **ANTS-1248 — `workspace_search` MCP tool (ripgrep wrapper).**
   Replaces typical `Bash grep -r ... src/` patterns with a
   structured `{ok, matches:[{file,line,text}], truncated,

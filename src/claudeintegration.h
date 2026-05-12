@@ -195,6 +195,10 @@ public:
     // don't require new setter overloads.
     void setWorkspaceSearchProvider(std::function<QString(const QJsonObject&)> provider);
 
+    // ANTS-1249: file_outline provider — regex scanner over a file,
+    // returns header_doc + symbols[]. Same full-QJsonObject shape.
+    void setFileOutlineProvider(std::function<QString(const QJsonObject&)> provider);
+
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
     QString sessionSummary(const QString &transcriptPath) const;
@@ -325,6 +329,8 @@ private:
     std::function<QString(int,int)> m_getTextProvider;
     // ANTS-1248: workspace_search provider — full-QJsonObject shape.
     std::function<QString(const QJsonObject&)> m_workspaceSearchProvider;
+    // ANTS-1249: file_outline provider — full-QJsonObject shape.
+    std::function<QString(const QJsonObject&)> m_fileOutlineProvider;
 
     // Session tracking
     QString m_activeSessionId;

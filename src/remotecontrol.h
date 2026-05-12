@@ -129,6 +129,12 @@ public:
     // 500 results. See docs/specs/ANTS-1248.md.
     QJsonDocument cmdWorkspaceSearch(const QJsonObject &req);
 
+    // ANTS-1249: file outline (regex scanner over a file, returns
+    // header_doc + symbols[] for cpp / py / md / unknown). Shares
+    // the pathInRepoRoot helper with cmdWorkspaceSearch.
+    // See docs/specs/ANTS-1249.md.
+    QJsonDocument cmdFileOutline(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

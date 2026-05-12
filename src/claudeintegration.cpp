@@ -1126,6 +1126,12 @@ void ClaudeIntegration::setWorkspaceSearchProvider(std::function<QString(const Q
     m_workspaceSearchProvider = std::move(provider);
 }
 
+// ANTS-1249: file_outline provider setter — regex-scanner outline
+// for a single file. Same full-QJsonObject shape as workspace_search.
+void ClaudeIntegration::setFileOutlineProvider(std::function<QString(const QJsonObject&)> provider) {
+    m_fileOutlineProvider = std::move(provider);
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -1371,6 +1377,56 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(wsTool);
 
+                // ANTS-1249: file_outline — regex-scanner outline for
+                // a single file. ~13-39× compression on a typical
+                // source file vs full Read. Schema declares `path`
+                // required + 3 optional knobs.
+                QJsonObject foTool;
+                foTool["name"] = "file_outline";
+                foTool["description"] = QStringLiteral(
+                    "Return a structured outline of a file — header "
+                    "comment + per-symbol {line, kind, name, "
+                    "signature}. Prefer this over a full Read when "
+                    "you only need to know what's IN a file (where "
+                    "to grep, which class lives in what file). "
+                    "Languages: cpp / py / md (auto-picked by "
+                    "extension); other types still report "
+                    "total_lines/total_bytes for orientation. "
+                    "Typically 13-39× smaller than a full Read.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject pathProp;     pathProp["type"]     = "string";
+                                              pathProp["description"] =
+                        QStringLiteral("Repo-relative or absolute path. "
+                                       "Must resolve under project root.");
+                    QJsonObject modeProp;     modeProp["type"]     = "string";
+                    QJsonArray modeEnum;
+                    modeEnum.append("auto");
+                    modeEnum.append("cpp");
+                    modeEnum.append("py");
+                    modeEnum.append("md");
+                    modeEnum.append("json");
+                    modeProp["enum"]    = modeEnum;
+                    modeProp["default"] = "auto";
+                    QJsonObject hdrProp;      hdrProp["type"]      = "boolean";
+                                              hdrProp["default"]   = true;
+                    QJsonObject maxSymProp;   maxSymProp["type"]   = "integer";
+                                              maxSymProp["default"] = 200;
+                                              maxSymProp["maximum"] = 1000;
+                    props["path"]                 = pathProp;
+                    props["mode"]                 = modeProp;
+                    props["include_doc_comment"]  = hdrProp;
+                    props["max_symbols"]          = maxSymProp;
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("path");
+                    schema["required"] = required;
+                    foTool["inputSchema"] = schema;
+                }
+                tools.append(foTool);
+
                 result["tools"] = tools;
                 haveResult = true;
             } else if (method == "tools/call") {
@@ -1455,6 +1511,12 @@ void ClaudeIntegration::onMcpConnection() {
                     // wire boundary thin (same pattern as roadmap_query).
                     QJsonObject args = params.value("arguments").toObject();
                     result["content"] = makeTextContent(m_workspaceSearchProvider(args));
+                    toolHandled = true;
+                } else if (toolName == "file_outline" && m_fileOutlineProvider) {
+                    // ANTS-1249: same delegation idiom — verb body
+                    // does the path-escape guard and scanner work.
+                    QJsonObject args = params.value("arguments").toObject();
+                    result["content"] = makeTextContent(m_fileOutlineProvider(args));
                     toolHandled = true;
                 }
 

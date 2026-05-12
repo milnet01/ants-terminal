@@ -5597,15 +5597,30 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-2026-05-12. Lanes: remotecontrol,
   claudeintegration, mainwindow.
 
-- 📋 [ANTS-1249] **`file_outline` MCP tool.** Returns sections /
-  function decls for a long file instead of full content. 5K-line
-  C++ files compress 13-39× (e.g. `auditdialog.cpp` 67 K tokens →
-  ~2 K). Per-line cap 1024 B, possessive regex quantifiers,
-  PCRE2 JIT bounded backtracking, 2 KiB header-doc cap. Token
-  saving: ~22-25 K net per orientation pass. Schema cost: ~120
-  tokens permanent. Spec: `docs/specs/ANTS-1249.md`. Kind: feature.
-  Source: user-2026-05-12. Lanes: new (fileoutline), remotecontrol,
-  claudeintegration, mainwindow.
+- ✅ [ANTS-1249] **`file_outline` MCP tool.** Shipped 2026-05-12.
+  Returns sections / function decls for a long file instead of
+  full content. 5K-line C++ files compress 13-39× (e.g.
+  `auditdialog.cpp` 67 K tokens → ~2 K). Per-line cap 1024 B,
+  possessive regex quantifiers, PCRE2 JIT bounded backtracking,
+  2 KiB header-doc cap. Six static regex builders (`rxCppMember`,
+  `rxCppType`, `rxCppFunc`, `rxCppQt`, `rxPy`, `rxMdHeading`)
+  each `static const QRegularExpression` with `.optimize()` called
+  once at first use; no per-call compile. New `src/fileoutline.{h,cpp}`
+  translation unit (regex scanner) keeps the path-escape guard +
+  IPC dispatch glue in `remotecontrol.cpp` thin. Token saving:
+  ~22-25 K net per orientation pass. Schema cost: ~120 tokens
+  permanent. Locked by feature test `mcp_file_outline/` — 10
+  invariants: wiring (decl/anchors/dispatch/schema/provider/lambda)
+  + runtime floor (≥ 8 symbols on the in-tree `auditdialog.cpp`)
+  + not-found path. Spec: `docs/specs/ANTS-1249.md`.
+  **Layman:** Claude can now ask "what's in this file" and get
+  back a one-page list of every function and class with its line
+  number, instead of reading the whole 5 000-line source twice
+  (once to orient, once to find the right line). A single
+  outline call costs ~1 K tokens against a 30 K full Read —
+  about an order of magnitude saving on every "where does X live"
+  question. Kind: feature. Source: user-2026-05-12. Lanes: new
+  (fileoutline), remotecontrol, claudeintegration, mainwindow.
 
 - 📋 [ANTS-1250] **`git_state` MCP tool (consolidated; status /
   log / diff via `op` discriminator).** Cold-eyes decision: collapsed

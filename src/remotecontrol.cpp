@@ -1,4 +1,5 @@
 #include "remotecontrol.h"
+#include "fileoutline.h"
 #include "mainwindow.h"
 #include "roadmapdialog.h"
 #include "terminalwidget.h"
@@ -231,6 +232,10 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("workspace-search")) {
         // ANTS-1248-INV-4: IPC dispatch entry for the ripgrep wrapper.
         return cmdWorkspaceSearch(req);
+    }
+    if (cmd == QLatin1String("file-outline")) {
+        // ANTS-1249: IPC dispatch entry for the file outline scanner.
+        return cmdFileOutline(req);
     }
     QJsonObject e;
     e["ok"] = false;
@@ -884,6 +889,98 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // ANTS-1248-INV-7: tools/list schema declared in claudeintegration.cpp
     // (this body's contract; the schema lives at the wire boundary).
     return QJsonDocument(out);
+}
+
+// ANTS-1249: file_outline — structured file outline (header_doc +
+// symbols[]). Replaces a full Read of a 5 000-line file with a ~1 K
+// token orientation envelope. Path-escape guarded by canonical-path
+// startswith (mirrors ANTS-1248's lane check). The regex-scanner
+// work itself lives in fileoutline.cpp — this body validates input,
+// resolves the path, and delegates.
+QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
+    // ANTS-1249-INV-2: empty path → bad_path; non-existent path
+    // returns not_found (set further down by FileOutline::compute).
+    const QString rawPath = req.value("path").toString();
+    if (rawPath.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: missing or empty \"path\"");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+
+    // ANTS-1249-INV-1: path canonicalisation + project-root guard.
+    // Same logic as ANTS-1248's lane check (canonicalFilePath +
+    // startsWith). ANTS-1253 will consolidate these into a shared
+    // helper.
+    QString rootCwd;
+    if (auto *t = m_main->currentTerminal()) {
+        rootCwd = t->shellCwd();
+    }
+    if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
+    const QString rootCanonical = QFileInfo(rootCwd).canonicalFilePath();
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: project root \"%1\" does not exist").arg(rootCwd);
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+
+    // NFC + reject control / backslash before canonicalising.
+    const QString nfc = rawPath.normalized(QString::NormalizationForm_C);
+    if (hasControlOrBackslash(nfc)) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: \"path\" contains control or backslash characters");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+
+    QString joined;
+    if (QFileInfo(nfc).isAbsolute()) {
+        joined = nfc;
+    } else {
+        joined = QDir(rootCanonical).filePath(nfc);
+    }
+    const QString resolved = QFileInfo(joined).canonicalFilePath();
+    if (resolved.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: \"%1\" does not exist").arg(rawPath);
+        o["code"]  = QStringLiteral("not_found");
+        return QJsonDocument(o);
+    }
+    if (!(resolved == rootCanonical ||
+          resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: \"path\" escapes project root");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+
+    // ANTS-1249: mode + flags. Delegate to fileoutline.cpp for the
+    // actual scan.
+    const FileOutline::Mode mode = FileOutline::parseMode(
+        req.value("mode").toString());
+    const bool includeDoc = req.value("include_doc_comment").toBool(true);
+    int maxSymbols = req.value("max_symbols").toInt(200);
+
+    QJsonObject result = FileOutline::compute(resolved, mode,
+                                              includeDoc, maxSymbols);
+
+    // Reframe the path back to project-relative so callers get stable
+    // paths regardless of where the binary was launched.
+    if (result.value("ok").toBool()) {
+        QString abs = result.value("path").toString();
+        if (abs.startsWith(rootCanonical + QLatin1Char('/'))) {
+            result["path"] = abs.mid(rootCanonical.size() + 1);
+        }
+    }
+    // ANTS-1249-INV-10: reachability gate — UDS / MCP socket
+    // SO_PEERCRED UID match (same as ANTS-1248). Nothing extra here.
+    return QJsonDocument(result);
 }
 
 // Client — runs in the --remote invocation of the binary. No Qt

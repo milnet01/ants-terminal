@@ -3647,6 +3647,13 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdWorkspaceSearch(req).toJson(QJsonDocument::Compact));
         });
+    // ANTS-1249: file_outline provider — same delegation shape.
+    m_claudeIntegration->setFileOutlineProvider(
+        [this](const QJsonObject &req) -> QString {
+            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+            return QString::fromUtf8(
+                m_remoteControl->cmdFileOutline(req).toJson(QJsonDocument::Compact));
+        });
 
     // Start hook server
     m_claudeIntegration->startHookServer();
