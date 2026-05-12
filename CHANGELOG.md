@@ -12,6 +12,56 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **ANTS-1238 — Roadmap dialog density toggle (compact / cozy /
+  comfortable).** Material 3 / Linear / GitHub all expose a density
+  selector; the Roadmap dialog gains one to match. A new
+  `QComboBox` lives at the trailing edge of the filterRow (after
+  the existing `addStretch(1)`) with three options: compact
+  (9/10/11/14 px text tier, proportional padding), cozy (the
+  pre-1238 baseline — 10/11/12/13/16 px), and comfortable
+  (12/13/14/15/18 px). Selection drives a CSS class on
+  `renderCardsHtml`'s root container; per-tier sizes/padding are
+  defined in `STYLE_COMPACT` / `STYLE_COZY` / `STYLE_COMFORTABLE`.
+  Persists via a new `roadmap_density` `Config` key, with graceful
+  fallback to `"cozy"` on missing/invalid value and silent
+  best-effort on persistence-write failure (matches the existing
+  Config write convention). The default is `cozy`, byte-equal to
+  the pre-1238 baseline render — INV-1 in the spec's test bundle
+  locks that. Regression-locked by ANTS-1238-INV-1..9 in
+  `tests/features/roadmap_density/spec.md` (tier-unique sentinels
+  9/16/18 px scoped to `renderCardsHtml`; combo present and wired;
+  Config getter/setter round-trip; persistence-failure contract).
+  No keyboard shortcut in v1 — the `?`-cheatsheet (ANTS-1236)
+  doesn't gain a row. Spec: `docs/specs/ANTS-1238.md`
+  (cold-eyes-clean after 4 loops + ~50 verified findings fixed;
+  full audit trail at `ROADMAP.md`
+  `### 📝 Cold-eyes 2026-05-12 (ANTS-1238 spec)`).
+
+### Fixed
+
+- **ANTS-1051 — `Qt::Popup` events were swallowed by the
+  pseudo-modal blocker.** Surfaced by the ANTS-1238 density combo:
+  clicking an option in the dropdown popup did nothing — the
+  popup didn't even close. Root cause: a `Qt::Popup` window
+  (QComboBox dropdown, QMenu context menu, color-picker popup, …)
+  is its own top-level widget, and `QWidget::isAncestorOf` stops
+  walking at window boundaries — so popup descendants opened FROM
+  inside a dialog read as "outside the dialog's tree" and the
+  pseudo-modal blocker (ANTS-1051) ate every mouse event on them.
+  Fix is a one-block short-circuit at the top of
+  `dialogfocus::shouldSuppressEventForDialog`: if
+  `QApplication::activePopupWidget()` is non-null and `target` is
+  either that popup or a descendant of it, return `false`
+  immediately. Regression-locked by a new INV-2i in
+  `tests/features/dialog_pseudo_modal/spec.md` —
+  source-grep-asserted rather than behaviourally driven because
+  the offscreen QPA platform doesn't promote `Qt::Popup` widgets
+  to `activePopupWidget()`. Affects every dialog that hosts a
+  combo / menu / color picker, not just the Roadmap density combo
+  — Settings, AuditDialog, etc. all benefit transparently.
+
 ## [0.7.84] — 2026-05-11
 
 **Theme:** RoadmapDialog v2 finishing pass — keyboard ergonomics

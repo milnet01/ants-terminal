@@ -8837,7 +8837,7 @@ contributors don't duplicate research.
   touched, so you can see what's been sitting too long.
   Kind: implement.
   Source: research-2026-05-11.
-- 🚧 [ANTS-1238] **Density toggle (compact / cozy /
+- ✅ [ANTS-1238] **Density toggle (compact / cozy /
   comfortable)**. Material 3 + Linear + GitHub all expose a
   density selector. Spec at `docs/specs/ANTS-1238.md`
   (cold-eyes-clean after 4 loops + ~50 verified findings fixed —
