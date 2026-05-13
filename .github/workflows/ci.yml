@@ -22,7 +22,13 @@ permissions:
 jobs:
   build-test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Bumped 15→25 (2026-05-13) as the test corpus crossed the prior
+    # cap. Reference: ANTS-1248 finished in 13m38s; ANTS-1254 build
+    # cancelled at 15m24s with 269/275 TUs done, so realistic floor is
+    # ~17m. 25 leaves headroom for two more feature-test packs without
+    # another bump. Runner is the GitHub-hosted ubuntu-24.04 (4 vCPU /
+    # 16 GiB) with the in-tree JOB_POOLS cap limiting compile to -j2.
+    timeout-minutes: 25
     steps:
       - name: Check out source
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
