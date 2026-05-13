@@ -159,6 +159,17 @@ public:
     // AuditEngine::summariseSarif. See docs/specs/ANTS-1254.md.
     QJsonDocument cmdLastAuditSummary(const QJsonObject &req);
 
+    // ANTS-1112 — five `indie_review_*` MCP tools. All resolve the
+    // active project via the focused TerminalWidget's shellCwd
+    // (matches git_state / subsystem / last_audit_summary). Pure
+    // delegation to IndieReviewEngine + (for cmdIndieReviewFoldIn)
+    // RoadmapFoldIn helpers. See docs/specs/ANTS-1112.md.
+    QJsonDocument cmdIndieReviewPartition(const QJsonObject &req);
+    QJsonDocument cmdIndieReviewBrief(const QJsonObject &req);
+    QJsonDocument cmdIndieReviewCorroborate(const QJsonObject &req);
+    QJsonDocument cmdIndieReviewSynthesisPrompt(const QJsonObject &req);
+    QJsonDocument cmdIndieReviewFoldIn(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

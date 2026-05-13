@@ -1,3 +1,21 @@
+ants-terminal (0.7.89-1) unstable; urgency=medium
+
+  * ANTS-1112 v1 — fold /indie-review orchestration into Ants. Five
+    new MCP tools backed by IndieReviewEngine namespace save ~20-50 K
+    orchestrator tokens per run; Qt dialog deferred to ANTS-1258 v2.
+  * IndieReviewEngine helper — six pure functions: derivePartition,
+    assembleBrief, extractFileLineCitations, corroboratedFindings,
+    synthesisPrompt, templateIndieReviewFoldInBlock,
+    assembleThreatModelExtras. Qt::Core only. 13 test cases locked.
+  * Five new MCP tools via registerToolProvider registry: indie_review_partition,
+    indie_review_brief, indie_review_corroborate,
+    indie_review_synthesis_prompt, indie_review_fold_in. UID-scoped
+    0700-perms IPC trust model; schemas with additionalProperties: false.
+    5 test cases locked.
+  * ANTS-1258 (new ROADMAP item) — ANTS-1112 v2: Qt IndieReviewDialog
+    for in-app indie review without Claude orchestration.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 13 May 2026 14:50:33 +0200
 ants-terminal (0.7.88-1) unstable; urgency=medium
 
   * ANTS-1111 v1 — fold audit triage into the Project Audit tool's

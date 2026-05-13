@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.88 (2026-05-13). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.89 (2026-05-13). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -3284,14 +3284,49 @@ minor tag (next: pre-0.8.0).
   Lanes: AuditDialog, audithygiene, featurecoverage, docs
   (audit-allowlist.md / .json).
 
-- 📋 [ANTS-1112] **Fold `/indie-review` orchestration into
-  Ants Terminal — Claude does only the judgment.** User ask
-  2026-04-30: "incorporate /indie-review as well,
-  comprehensive but minimising false positives and token
-  usage." The multi-agent independent review is currently
-  100 % LLM-driven (one Claude Code subagent per subsystem).
-  Most of the per-lane work is mechanical orchestration —
-  ANTS-1112 lifts that out of Claude.
+- ✅ [ANTS-1112] **Fold `/indie-review` orchestration into
+  Ants Terminal — Claude does only the judgment.**
+  *Shipped 2026-05-13 in 0.7.89 (v1: engine + 5 MCP tools
+  `indie_review_partition` / `indie_review_brief` /
+  `indie_review_corroborate` / `indie_review_synthesis_prompt` /
+  `indie_review_fold_in`; UI dialog deferred to ANTS-1258).*
+  *See [`docs/specs/ANTS-1112.md`](docs/specs/ANTS-1112.md) and
+  [ADR-0003](docs/decisions/0003-cc-fold-relax-gate-and-draw-boundary.md).*
+
+- 📋 [ANTS-1258] **ANTS-1112 v2 — Qt dialog for in-app indie
+  review.** v1 (0.7.89) shipped the engine layer + 5 MCP tools
+  that lift the mechanical halves of /indie-review into Ants;
+  per-lane judgment + dispatch still live in Claude. v2 wraps
+  the engine in a `IndieReviewDialog` for users who want to run
+  indie review without Claude orchestration:
+
+  1. **Tabbed per-lane panel** — one tab per lane from
+     `IndieReviewEngine::derivePartition`, with the assembled
+     brief on the left + a results pane on the right.
+  2. **"Dispatch" button** — sends each lane's brief to the
+     user's chosen LLM endpoint via `aidialog`, in parallel
+     (bounded process pool). Captures verbatim per-lane
+     reports.
+  3. **Corroboration view** — tab showing the
+     `corroboratedFindings` table (≥ 2-lane cites), with
+     per-finding context excerpts.
+  4. **"Synthesise" button** — sends the synthesis prompt
+     (from `IndieReviewEngine::synthesisPrompt`) via aidialog
+     for the optional cross-cutting LLM call.
+  5. **"Fold actionable into ROADMAP" button** — orchestrates
+     `RoadmapFoldIn::allocateIds` →
+     `templateIndieReviewFoldInBlock` →
+     `RoadmapFoldIn::insertBlock` (same pattern as ANTS-1257).
+
+  Spec: `docs/specs/ANTS-1112.md` § 1.1 for the v1/v2 split
+  rationale.
+  Estimated v2 LoC: ~500-800 across new
+  `indiereviewdialog.{h,cpp}` + 1 menu entry on MainWindow + 2
+  new feature tests (`indie_review_dispatch_ui`,
+  `indie_review_fold_in_ui`).
+  Kind: implement.
+  Source: user-2026-04-30 (carried forward from ANTS-1112 spec).
+  Lanes: new (indiereviewdialog), MainWindow, aidialog.
 
   Mechanical halves (Ants):
 

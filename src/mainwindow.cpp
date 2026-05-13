@@ -3688,6 +3688,42 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdLastAuditSummary(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
+    // the active project via the focused TerminalWidget's shellCwd
+    // (matches the convention used by git_state / subsystem /
+    // last_audit_summary). All five delegate to RemoteControl's
+    // cmdIndieReview* methods, mirroring the ANTS-1253 registry shape.
+    m_claudeIntegration->registerToolProvider("indie_review_partition",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdIndieReviewPartition(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("indie_review_brief",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdIndieReviewBrief(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("indie_review_corroborate",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdIndieReviewCorroborate(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("indie_review_synthesis_prompt",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdIndieReviewSynthesisPrompt(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("indie_review_fold_in",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdIndieReviewFoldIn(args).toJson(QJsonDocument::Compact));
+        });
+
     // Start hook server
     m_claudeIntegration->startHookServer();
 }

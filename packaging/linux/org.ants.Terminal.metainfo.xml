@@ -103,6 +103,16 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.89" date="2026-05-13">
+      <description>
+        <p>ANTS-1112 v1 — indie-review engine: mechanical orchestration pieces (partition, brief assembly, cross-lane corroboration, synthesis-prompt templating, ROADMAP fold-in) lift into Ants as 5 new MCP tools backed by <code>IndieReviewEngine</code> namespace. Per-lane review judgment + dispatch remain in Claude subagent calls. Estimated per-run saving: ~20–50 K orchestrator tokens. Qt dialog deferred to ANTS-1258 v2.</p>
+        <ul>
+          <li><em>Added:</em> <code>IndieReviewEngine</code> helper (<code>src/indiereviewengine.{h,cpp}</code>, Qt::Core only) — six pure functions: <code>derivePartition</code> (lane file-lists via Module map), <code>assembleBrief</code> (per-lane narrative + source + standards), <code>extractFileLineCitations</code> (path-safe regex citations), <code>corroboratedFindings</code> (cross-lane ≥2-tool corroboration), <code>synthesisPrompt</code> (optional cross-cutting synthesis), <code>templateIndieReviewFoldInBlock</code> (ROADMAP section template), <code>assembleThreatModelExtras</code> (CLAUDE.md+SECURITY.md+.semgrep.yml concatenation). Locked by <code>tests/features/indie_review_engine/</code> (13 tests).</li>
+          <li><em>Added:</em> 5 new MCP tools via <code>registerToolProvider</code> (ANTS-1253): <code>indie_review_partition</code> (lane list), <code>indie_review_brief</code> (per-lane brief), <code>indie_review_corroborate</code> (cross-lane findings), <code>indie_review_synthesis_prompt</code> (synthesis template), <code>indie_review_fold_in</code> (atomically inserts fold-in block into ROADMAP.md). UID-scoped 0700-perms trust model; <code>additionalProperties: false</code> schemas. Locked by <code>tests/features/mcp_indie_review_tools/</code> (5 tests).</li>
+          <li><em>Added:</em> <code>ANTS-1258</code> (new ROADMAP item) — ANTS-1112 v2: Qt <code>IndieReviewDialog</code> wrapping the v1 engine for in-app indie review without Claude orchestration. Spec § 1.1 of <code>docs/specs/ANTS-1112.md</code> documents the v1/v2 split.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.88" date="2026-05-13">
       <description>
         <p>ANTS-1111 v1 — audit engine foundation for AI triage. Five core pieces lift out of the LLM round-trip: cross-tool corroboration severity-tier shift, framework auto-detect, ROADMAP fold-in helper, inline-suppress alias, and rule-quality tracking. UI affordances (fold button, allow button, baseline pill) deferred to v2. ~750 LoC engine + 33 test cases, ship-ready.</p>

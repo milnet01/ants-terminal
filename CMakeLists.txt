@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.88 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.89 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -214,6 +214,7 @@ add_library(ants_core_lib STATIC
     src/remotecontrol.cpp
     src/fileoutline.cpp
     src/gitwrap.cpp
+    src/indiereviewengine.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
     src/themedstylesheet.cpp
@@ -794,7 +795,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
                 tests/features/mcp_subsystem/test_mcp_subsystem.cpp
                 tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp
-                tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp)
+                tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp
+                tests/features/mcp_indie_review_tools/test_mcp_indie_review_tools.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -865,7 +867,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp
                 tests/features/audit_corroboration_shift/test_audit_corroboration_shift.cpp
                 tests/features/audit_drop_alias/test_audit_drop_alias.cpp
-                tests/features/audit_framework_detect/test_audit_framework_detect.cpp)
+                tests/features/audit_framework_detect/test_audit_framework_detect.cpp
+                tests/features/indie_review_engine/test_indie_review_engine.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

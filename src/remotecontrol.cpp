@@ -1,8 +1,10 @@
 #include "remotecontrol.h"
 #include "fileoutline.h"
 #include "gitwrap.h"
+#include "indiereviewengine.h"
 #include "mainwindow.h"
 #include "roadmapdialog.h"
+#include "roadmapfoldin.h"
 #include "subsystemmap.h"
 #include "terminalwidget.h"
 #include "debuglog.h"
@@ -1864,4 +1866,223 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     m_auditSummaryCache       = std::move(*parsed);
 
     return QJsonDocument(buildLasEnvelope(m_auditSummaryCache));
+}
+
+// ----- ANTS-1112 — five `indie_review_*` MCP-tool handlers ---------
+
+namespace {
+
+QJsonObject irErr(const QString &code, const QString &message) {
+    QJsonObject o;
+    o["ok"]      = false;
+    o["error"]   = message;
+    o["code"]    = code;
+    return o;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &) {
+    if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
+        QStringLiteral("indie_review_partition: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("indie_review_partition: no focused project")));
+
+    const auto lanes = IndieReviewEngine::derivePartition(root);
+    QJsonArray arr;
+    for (const auto &l : lanes) {
+        QJsonObject o;
+        o["name"]    = l.name;
+        o["summary"] = l.summary;
+        QJsonArray sps;
+        for (const QString &sp : l.sourcePaths) sps.append(sp);
+        o["sourcePaths"] = sps;
+        arr.append(o);
+    }
+    QJsonObject env;
+    env["ok"]    = true;
+    env["lanes"] = arr;
+    // Project-relative path to the partition source (CLAUDE.md or override).
+    if (QFileInfo(root + QStringLiteral("/.indie-review/partition.json")).exists()) {
+        env["path"] = QStringLiteral(".indie-review/partition.json");
+    } else {
+        env["path"] = QStringLiteral("CLAUDE.md");
+    }
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdIndieReviewBrief(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
+        QStringLiteral("indie_review_brief: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("indie_review_brief: no focused project")));
+
+    const QString laneName = req.value(QStringLiteral("lane")).toString().trimmed();
+    if (laneName.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("indie_review_brief: lane required")));
+
+    const auto lanes = IndieReviewEngine::derivePartition(root);
+    const IndieReviewEngine::Lane *match = nullptr;
+    for (const auto &l : lanes) {
+        if (l.name == laneName) { match = &l; break; }
+    }
+    if (!match) return QJsonDocument(irErr(
+        QStringLiteral("not_found"),
+        QStringLiteral("indie_review_brief: no such lane")));
+
+    const QString brief = IndieReviewEngine::assembleBrief(root, *match);
+    QJsonObject env;
+    env["ok"]           = true;
+    env["lane"]         = laneName;
+    env["brief"]        = brief;
+    env["source_count"] = match->sourcePaths.size();
+    env["byte_count"]   = brief.toUtf8().size();
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
+        QStringLiteral("indie_review_corroborate: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("indie_review_corroborate: no focused project")));
+
+    const QJsonObject reportsObj = req.value(QStringLiteral("reports")).toObject();
+    if (reportsObj.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("indie_review_corroborate: reports object required")));
+
+    QHash<QString, QString> reports;
+    qint64 totalIn = 0;
+    for (auto it = reportsObj.constBegin(); it != reportsObj.constEnd(); ++it) {
+        const QString r = it.value().toString();
+        reports.insert(it.key(), r);
+        totalIn += r.toUtf8().size();
+    }
+
+    int minLanes = req.value(QStringLiteral("min_lanes")).toInt(2);
+    if (minLanes < 1) minLanes = 1;
+
+    const auto found = IndieReviewEngine::corroboratedFindings(
+        root, reports, minLanes);
+    QJsonArray arr;
+    for (const auto &f : found) {
+        QJsonObject o;
+        o["file"] = f.file;
+        o["line"] = f.line;
+        QJsonArray lns;
+        for (const QString &ln : f.citingLanes) lns.append(ln);
+        o["citing_lanes"] = lns;
+        QJsonArray ctxs;
+        for (const QString &c : f.contexts) ctxs.append(c);
+        o["contexts"] = ctxs;
+        arr.append(o);
+    }
+
+    QJsonObject env;
+    env["ok"]                 = true;
+    env["findings"]           = arr;
+    env["total_input_bytes"]  = totalIn;
+    env["total_findings"]     = arr.size();
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdIndieReviewSynthesisPrompt(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
+        QStringLiteral("indie_review_synthesis_prompt: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("indie_review_synthesis_prompt: no focused project")));
+
+    const QJsonObject reportsObj = req.value(QStringLiteral("reports")).toObject();
+    if (reportsObj.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("indie_review_synthesis_prompt: reports object required")));
+
+    QHash<QString, QString> reports;
+    for (auto it = reportsObj.constBegin(); it != reportsObj.constEnd(); ++it) {
+        reports.insert(it.key(), it.value().toString());
+    }
+
+    const bool incExtras = req.value(QStringLiteral("include_threat_model_extras"))
+                              .toBool(true);
+    const QString extras = incExtras
+        ? IndieReviewEngine::assembleThreatModelExtras(root)
+        : QString();
+
+    const QString prompt = IndieReviewEngine::synthesisPrompt(reports, extras);
+    QJsonObject env;
+    env["ok"]         = true;
+    env["prompt"]     = prompt;
+    env["byte_count"] = prompt.toUtf8().size();
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
+        QStringLiteral("indie_review_fold_in: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("indie_review_fold_in: no focused project")));
+
+    const QJsonArray actArr = req.value(QStringLiteral("actionable")).toArray();
+    if (actArr.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("indie_review_fold_in: actionable array required")));
+
+    QList<IndieReviewEngine::CorroboratedFinding> actionable;
+    for (const auto &v : actArr) {
+        const auto o = v.toObject();
+        IndieReviewEngine::CorroboratedFinding f;
+        f.file = o.value(QStringLiteral("file")).toString();
+        f.line = o.value(QStringLiteral("line")).toInt(-1);
+        for (const auto &lv :
+             o.value(QStringLiteral("citing_lanes")).toArray()) {
+            f.citingLanes << lv.toString();
+        }
+        if (f.file.isEmpty()) continue;
+        actionable.append(f);
+    }
+    if (actionable.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("indie_review_fold_in: no valid actionable entries")));
+
+    QString dateIso = req.value(QStringLiteral("date_iso")).toString();
+    if (dateIso.isEmpty()) {
+        dateIso = QDate::currentDate().toString(Qt::ISODate);
+    }
+
+    const auto ids = RoadmapFoldIn::allocateIds(root, actionable.size());
+    if (ids.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("counter_failed"),
+        QStringLiteral("indie_review_fold_in: could not allocate IDs")));
+
+    const QString block = IndieReviewEngine::templateIndieReviewFoldInBlock(
+        actionable, ids, dateIso);
+
+    QString heading = req.value(QStringLiteral("release_block_heading")).toString();
+    if (heading.isEmpty()) heading = RoadmapFoldIn::findActiveReleaseHeading(root);
+
+    bool written = false;
+    if (!heading.isEmpty()) {
+        written = RoadmapFoldIn::insertBlock(root, heading, block);
+    }
+
+    QJsonObject env;
+    env["ok"]            = true;
+    env["block"]         = block;
+    QJsonArray idsArr;
+    for (int id : ids) idsArr.append(id);
+    env["allocated_ids"] = idsArr;
+    env["written"]       = written;
+    if (!heading.isEmpty()) env["release_block_heading"] = heading;
+    return QJsonDocument(env);
 }

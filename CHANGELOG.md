@@ -12,6 +12,68 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.89] — 2026-05-13
+
+**Theme:** ANTS-1112 v1 — fold `/indie-review` orchestration into
+Ants. The mechanical halves of the multi-agent independent review
+(partition, brief assembly, cross-lane corroboration, synthesis-prompt
+templating, ROADMAP fold-in) lift out of orchestrator context as 5
+new MCP tools backed by a `IndieReviewEngine` namespace; per-lane
+review judgment + dispatch continue to live in Claude subagent
+calls. Estimated saving per /indie-review run: ~20-50 K orchestrator
+tokens. Qt dialog deferred to ANTS-1258 v2.
+
+### Added
+
+- **ANTS-1112 — `IndieReviewEngine` helper** (`src/indiereviewengine.{h,cpp}`,
+  Qt::Core only). Six pure functions:
+  - `derivePartition(projectPath)` — reads CLAUDE.md `## Module map
+    (src/)` via the existing `SubsystemMap::cachedLanes` helper, walks
+    `src/` to compute per-lane source-file lists; honours
+    `<projectPath>/.indie-review/partition.json` override when present.
+  - `assembleBrief(projectPath, lane)` — verbatim brief text for one
+    lane: header + source bodies + ROADMAP slice + standards links.
+    Pure file IO bounded to `projectPath`.
+  - `extractFileLineCitations(projectPath, report)` — regex pass over
+    a single review report; rejects paths that escape `projectPath`
+    (defense against fabricated cites).
+  - `corroboratedFindings(projectPath, reports, minLanes=2)` —
+    cross-lane corroboration; `(file, -1)` (file-level) and
+    `(file, 42)` (line-level) are distinct keys (intentional).
+  - `synthesisPrompt(reports, threatModelExtras)` — pure string
+    templating of the optional cross-cutting synthesis prompt.
+  - `templateIndieReviewFoldInBlock(actionable, ids, dateIso)` —
+    `### 🔍 Indie-review fold-in (DATE)` block per
+    `roadmap-format.md` § 3.8 + § 3.5.3.
+  - `assembleThreatModelExtras(projectPath)` — MCP-handler helper
+    that concatenates CLAUDE.md / SECURITY.md / .semgrep.yml under
+    `=== <header> ===` markers.
+  Locked by `tests/features/indie_review_engine/` (13 tests).
+
+- **ANTS-1112 — 5 new MCP tools** registered via the consolidated
+  `registerToolProvider` registry from ANTS-1253:
+  - `indie_review_partition` — returns lane list (no input).
+  - `indie_review_brief` — returns the assembled brief for one lane
+    (input: `lane`).
+  - `indie_review_corroborate` — returns cross-lane corroborated
+    findings (input: `reports` map, optional `min_lanes`).
+  - `indie_review_synthesis_prompt` — returns the rendered synthesis
+    prompt (input: `reports`, optional `include_threat_model_extras`).
+  - `indie_review_fold_in` — allocates IDs via
+    `RoadmapFoldIn::allocateIds`, renders the
+    `### 🔍 Indie-review fold-in (DATE)` block, and atomically
+    inserts it into ROADMAP.md when `findActiveReleaseHeading`
+    succeeds (input: `actionable` array, optional `date_iso`,
+    optional `release_block_heading`).
+  All 5 follow the existing UID-scoped 0700-perms IPC trust model;
+  schemas use `additionalProperties: false`. Locked by
+  `tests/features/mcp_indie_review_tools/` (5 tests).
+
+- **ANTS-1258** (new ROADMAP item) — ANTS-1112 v2: Qt
+  `IndieReviewDialog` that wraps the v1 engine for users who want
+  in-app indie review without Claude orchestration. Spec § 1.1 of
+  `docs/specs/ANTS-1112.md` documents the v1/v2 split rationale.
+
 ## [0.7.88] — 2026-05-13
 
 **Theme:** ANTS-1111 v1 — fold `/audit` triage into the Project

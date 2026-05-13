@@ -1532,6 +1532,158 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(lasTool);
 
+                // ANTS-1112 — five `indie_review_*` tools that lift the
+                // mechanical halves of /indie-review out of orchestrator
+                // context. Engine: src/indiereviewengine.{h,cpp}.
+                {
+                    QJsonObject t;
+                    t["name"] = "indie_review_partition";
+                    t["description"] = QStringLiteral(
+                        "Return the subsystem (lane) partition for "
+                        "indie-review. Reads CLAUDE.md `## Module map "
+                        "(src/)` (or the `.indie-review/partition.json` "
+                        "override if present) and computes per-lane "
+                        "source-file lists. Saves N file-walk passes "
+                        "the orchestrator would otherwise do.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["properties"] = QJsonObject{};
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "indie_review_brief";
+                    t["description"] = QStringLiteral(
+                        "Return the verbatim brief text for one lane: "
+                        "header + source bodies + ROADMAP slice + "
+                        "standards links. Pure file IO (no LLM). One "
+                        "call per lane saves ~3-15 K orchestrator "
+                        "tokens vs assembling the brief in main "
+                        "context. Required: lane (string).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject laneProp;
+                    laneProp["type"] = "string";
+                    laneProp["description"] = QStringLiteral(
+                        "Lane name as returned by indie_review_partition.");
+                    QJsonObject props;
+                    props["lane"] = laneProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("lane");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "indie_review_corroborate";
+                    t["description"] = QStringLiteral(
+                        "Cross-lane corroboration filter. Input: a map "
+                        "of {lane: report_text}. Returns findings cited "
+                        "by >= min_lanes distinct lanes at the same "
+                        "(file, line). Pure regex pass; no LLM. "
+                        "Required: reports (object). Optional: "
+                        "min_lanes (default 2).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject reportsProp;
+                    reportsProp["type"] = "object";
+                    reportsProp["description"] = QStringLiteral(
+                        "Map of {lane_name: report_markdown}.");
+                    QJsonObject minLanesProp;
+                    minLanesProp["type"]    = "integer";
+                    minLanesProp["default"] = 2;
+                    minLanesProp["minimum"] = 1;
+                    minLanesProp["description"] = QStringLiteral(
+                        "Minimum distinct lanes citing a (file, line) "
+                        "for it to count as corroborated.");
+                    QJsonObject props;
+                    props["reports"]   = reportsProp;
+                    props["min_lanes"] = minLanesProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("reports");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "indie_review_synthesis_prompt";
+                    t["description"] = QStringLiteral(
+                        "Render the synthesis-prompt template for the "
+                        "optional cross-cutting LLM call. Combines "
+                        "per-lane reports + threat-model extras "
+                        "(CLAUDE.md + SECURITY.md + .semgrep.yml). "
+                        "Caller dispatches the prompt. Required: "
+                        "reports (object). Optional: "
+                        "include_threat_model_extras (default true).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject reportsProp;
+                    reportsProp["type"] = "object";
+                    QJsonObject incProp;
+                    incProp["type"]    = "boolean";
+                    incProp["default"] = true;
+                    QJsonObject props;
+                    props["reports"]                    = reportsProp;
+                    props["include_threat_model_extras"] = incProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("reports");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "indie_review_fold_in";
+                    t["description"] = QStringLiteral(
+                        "Render an `### 🔍 Indie-review fold-in (DATE)` "
+                        "ROADMAP block from a list of corroborated "
+                        "findings. Allocates IDs from .roadmap-counter "
+                        "(via RoadmapFoldIn::allocateIds) and, if a "
+                        "release-block heading is found via "
+                        "findActiveReleaseHeading, atomically inserts "
+                        "the block into ROADMAP.md. Required: "
+                        "actionable (array).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject actProp;
+                    actProp["type"] = "array";
+                    actProp["description"] = QStringLiteral(
+                        "Array of {file, line, citing_lanes[]} "
+                        "objects describing the corroborated set.");
+                    QJsonObject dateProp;
+                    dateProp["type"] = "string";
+                    dateProp["description"] = QStringLiteral(
+                        "ISO date for the heading + Source. Defaults "
+                        "to today.");
+                    QJsonObject hdrProp;
+                    hdrProp["type"] = "string";
+                    hdrProp["description"] = QStringLiteral(
+                        "Optional explicit `## ` heading to insert "
+                        "after; defaults to "
+                        "RoadmapFoldIn::findActiveReleaseHeading.");
+                    QJsonObject props;
+                    props["actionable"]             = actProp;
+                    props["date_iso"]               = dateProp;
+                    props["release_block_heading"]  = hdrProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("actionable");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 result["tools"] = tools;
                 haveResult = true;
             } else if (method == "tools/call") {
