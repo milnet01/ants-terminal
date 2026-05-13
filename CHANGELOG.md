@@ -12,6 +12,16 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.87] — 2026-05-13
+
+**Theme:** MCP token-reduction pack — five new MCP tools
+(`workspace_search`, `file_outline`, `git_state`, `subsystem`,
+`last_audit_summary`) collapse common `Bash`/`Read` patterns into
+structured envelopes, plus a token-saving hook pack and a
+provider-registry consolidation that makes the next tool a one-line
+add. Cumulative session saving on a typical `/indie-review` +
+`/audit` workflow: ~50-100 K tokens.
+
 ### Changed
 
 - **ANTS-1253 — Consolidate MCP-tool provider registry.** Replaces

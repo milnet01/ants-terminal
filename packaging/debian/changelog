@@ -1,3 +1,32 @@
+ants-terminal (0.7.87-1) unstable; urgency=medium
+
+  * MCP token-reduction pack — five new MCP tools (workspace_search,
+    file_outline, git_state, subsystem, last_audit_summary) collapse
+    common Bash/Read patterns into structured envelopes, plus a
+    token-saving hook pack and a provider-registry consolidation that
+    makes the next MCP tool a one-line add. Cumulative session saving
+    on a typical /indie-review + /audit workflow: ~50-100 K tokens.
+  * ANTS-1248 — workspace_search MCP tool: shell-less ripgrep wrapper
+    returning {ok, matches:[{file,line,text}], truncated, elapsed_ms}.
+  * ANTS-1249 — file_outline MCP tool: per-file {header_doc, symbols[]}
+    envelope. ~13-39× compression on typical C++ source.
+  * ANTS-1250 — git_state MCP tool: status/log/diff under one op
+    discriminator, shell-less QProcess via gitwrap.{h,cpp}.
+  * ANTS-1251 — subsystem MCP tool: pre-parses CLAUDE.md Module map
+    into per-lane chunks. ~24 K tokens saved per /indie-review run.
+  * ANTS-1252 — Token-saving hook pack: 5 bash hooks + install-hooks.sh.
+    PreToolUse(Bash) veto redirects grep -r / git status / cat ROADMAP
+    to MCP tools. ~30-100 K tokens/week.
+  * ANTS-1253 — Consolidated MCP-tool provider registry: 12
+    setX/m_xProvider pairs -> one registerToolProvider + std::map.
+    -157 LoC; no behaviour change.
+  * ANTS-1254 — last_audit_summary MCP tool: opens latest
+    .audit_cache/audit-*.sarif, returns counts + top_findings[] sorted
+    by level / confidence / file / line. ~5-15 K tokens saved per
+    audit consultation.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 13 May 2026 11:47:51 +0200
+
 ants-terminal (0.7.86-1) unstable; urgency=medium
 
   * MCP integration end-to-end — Claude Code sessions inside Ants tabs
