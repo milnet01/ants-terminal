@@ -5711,14 +5711,29 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   refactor. Source: cold-eyes pass 2 finding, 2026-05-12.
   Lanes: claudeintegration, mainwindow.
 
-- 📋 [ANTS-1254] **`last_audit_summary` MCP tool.** Returns compact
-  audit-state summary (counts by severity + top-5 findings + SARIF
-  path) instead of the multi-K-token HTML report. Saving: ~5-15 K
-  per audit consultation. Schema cost: ~80 tokens permanent. Stub
-  spec at `docs/specs/ANTS-1254.md`; surfaced by cold-eyes pass 3
-  as a missed candidate in the ANTS-1247..1252 pack. Kind: feature.
-  Source: cold-eyes-2026-05-12. Lanes: auditengine, remotecontrol,
-  claudeintegration, mainwindow.
+- ✅ [ANTS-1254] **`last_audit_summary` MCP tool.** Shipped
+  2026-05-13. Read-only tool: opens latest
+  `.audit_cache/audit-*.sarif` (lex-max filename — second-precision
+  timestamps sortable as bytes), returns compact summary with
+  `counts` (error/warning/note/suppressed) + `top_findings[]` sorted
+  by SARIF level desc → confidence desc → file asc → line asc.
+  Default `top_n=5`, `severity_floor="warning"`; server-clamps to
+  `[0, 50]`. **Saving: ~5-15 K tokens per audit consultation.**
+  Schema cost: ~80 tokens permanent. New `AuditEngine::summariseSarif`
+  pure parser + `RemoteControl::cmdLastAuditSummary` with single-
+  entry mtime-keyed cache (`(path, mtime, topN, floor)` 4-tuple).
+  Severity resolved from `runs[0].tool.driver.rules[].properties.severity`
+  with foreign-SARIF level fallback (`error→CRITICAL,
+  warning→MAJOR, note→INFO`). `html_path` derived via extension
+  swap, falling back to lex-max sibling within ±60 s of the SARIF
+  timestamp. Lands on the post-1253 registry (one
+  `registerToolProvider` call, no per-tool setter). Spec:
+  `docs/specs/ANTS-1254.md` (5-loop cold-eyes pass — ~25 verified
+  findings fixed; loop trail at § 11). New regression test:
+  `tests/features/mcp_last_audit_summary/` (10 INVs, pre-fix red
+  via stash → engine symbol absent fails build). 353/353 ctest
+  green. Kind: feature. Source: cold-eyes-2026-05-12. Lanes:
+  auditengine, remotecontrol, claudeintegration, mainwindow.
 
 - ✅ [ANTS-1244] **Surface `roadmap_query`, `tab_list`, `get_text`
   as MCP tools so Claude Code sessions in Ants tabs query terminal

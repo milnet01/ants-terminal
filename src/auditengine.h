@@ -22,6 +22,7 @@
 #include <QStringList>
 
 #include <functional>
+#include <optional>
 
 class ToggleSwitch;  // Forward decl only — declared here for the
                      // AuditCheck.toggle pointer field. The widget
@@ -179,5 +180,45 @@ bool isCatastrophicRegex(const QString &pattern);
 // engine's `applyFilter` path and the dialog's `audit_rules.json`
 // ingest go through this function.
 QString hardenUserRegex(const QString &pattern);
+
+// ANTS-1254 — wire-shape view of a single SARIF finding for the
+// last_audit_summary MCP tool. Distinct from `Finding` (the audit
+// dialog's in-memory parse target) because the wire needs the
+// SARIF `level` string AND the resolved 5-level severity string,
+// neither of which `Finding` carries (it has only the `Severity`
+// enum).
+struct AuditSummaryFinding {
+    QString level;            // "error" / "warning" / "note"
+    QString severity;         // BLOCKER/CRITICAL/MAJOR/MINOR/INFO
+    QString ruleId;
+    QString file;             // SARIF artifactLocation.uri (as-is; INV-7)
+    int     line           = 0;
+    QString message;
+    int     confidence     = -1;
+    bool    highConfidence = false;
+};
+
+struct AuditSummary {
+    QString sarifPath;
+    QString htmlPath;         // "" if no sibling within ±60 s
+    QString runAtIso;         // empty if SARIF lacks invocations
+    int     countError      = 0;
+    int     countWarning    = 0;
+    int     countNote       = 0;
+    int     countSuppressed = 0;
+    QList<AuditSummaryFinding> topFindings;
+};
+
+// ANTS-1254 — read SARIF at `sarifPath`, return compact summary.
+// Caller decides path discovery + caching. Pure parser: no Qt6::Widgets,
+// no I/O outside the read.
+//   `topN`       — server-clamped by caller (this fn trusts the input).
+//   `levelFloor` ∈ {"error","warning","note"} (caller-validated).
+// Returns nullopt on read or parse failure (caller distinguishes by
+// checking QFile::exists() before calling).
+std::optional<AuditSummary> summariseSarif(
+    const QString &sarifPath,
+    int topN,
+    const QString &levelFloor);
 
 }  // namespace AuditEngine

@@ -137,16 +137,18 @@ TEST(McpProviderRegistry, Inv6RegistryReferencedFromDispatch) {
     if (g_failures) FAIL();
 }
 
-TEST(McpProviderRegistry, Inv7TwelveRegisterCalls) {
+TEST(McpProviderRegistry, Inv7AtLeastTwelveRegisterCalls) {
     // Spec § 10 step 4 verifier — narrow regex matches the call form
     // (m_claudeIntegration->registerToolProvider("…") and won't drift
-    // on future docstring mentions of the function name.
+    // on future docstring mentions of the function name. ANTS-1253
+    // landed with 12 calls; subsequent tools (ANTS-1254 +) add new
+    // calls, so the floor is "at least 12".
     const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
     std::regex callRe(R"(->registerToolProvider\(\")");
     const size_t n = countMatches(mw, callRe);
-    expect(n == 12, "INV-7",
+    expect(n >= 12, "INV-7",
            ("mainwindow.cpp has " + std::to_string(n) +
-            " ->registerToolProvider(\" call sites; expected exactly 12")
+            " ->registerToolProvider(\" call sites; expected ≥ 12")
                .c_str());
     if (g_failures) FAIL();
 }

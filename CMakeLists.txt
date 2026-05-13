@@ -792,7 +792,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_file_outline/test_mcp_file_outline.cpp
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
                 tests/features/mcp_subsystem/test_mcp_subsystem.cpp
-                tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp)
+                tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp
+                tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -828,6 +829,11 @@ if(ANTS_TESTS)
         SRC_GITWRAP_H_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.h"
         SRC_SUBSYSTEMMAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.cpp"
         SRC_SUBSYSTEMMAP_H_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.h"
+        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
+        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
+        SRC_REMOTECONTROL_H_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
+        FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
+        FIXTURE_EMPTY_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_empty.sarif"
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
         CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")

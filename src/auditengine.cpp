@@ -1,14 +1,20 @@
 #include "auditengine.h"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QRegularExpression>
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace AuditEngine {
 
@@ -268,6 +274,182 @@ void capFindings(CheckResult &r, int cap) {
     if (cap <= 0 || r.findings.size() <= cap) return;
     r.omittedCount = r.findings.size() - cap;
     r.findings.erase(r.findings.begin() + cap, r.findings.end());
+}
+
+// ANTS-1254 — last_audit_summary helpers + parser.
+
+namespace {
+
+// SARIF level → ordinal (per spec § 2.0). Absent / unknown → 1
+// (treated as "warning" — INV-3).
+int levelOrdinal(const QString &level) {
+    if (level == QStringLiteral("error")) return 2;
+    if (level == QStringLiteral("note"))  return 0;
+    return 1;  // warning + default
+}
+
+// Foreign-SARIF fallback when the rule index doesn't carry severity
+// (per spec § 3.1 step 4). Maps level → 3 of the 5 internal labels;
+// BLOCKER/MINOR are unreachable from foreign SARIF by design.
+QString severityFromLevel(const QString &level) {
+    if (level == QStringLiteral("error")) return QStringLiteral("CRITICAL");
+    if (level == QStringLiteral("note"))  return QStringLiteral("INFO");
+    return QStringLiteral("MAJOR");
+}
+
+}  // namespace
+
+std::optional<AuditSummary> summariseSarif(
+    const QString &sarifPath,
+    int topN,
+    const QString &levelFloor) {
+    QFile f(sarifPath);
+    if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
+    const QByteArray bytes = f.readAll();
+    f.close();
+
+    QJsonParseError pe{};
+    const QJsonDocument doc = QJsonDocument::fromJson(bytes, &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+        return std::nullopt;
+    }
+    const QJsonObject root = doc.object();
+    const QJsonArray runs = root.value(QStringLiteral("runs")).toArray();
+    if (runs.isEmpty()) return std::nullopt;  // INV-10 → not_audited
+
+    const QJsonObject run = runs.first().toObject();
+
+    AuditSummary s;
+    s.sarifPath = sarifPath;
+
+    // INV-1 single-run; ignore runs[1..]. invocations[0].startTimeUtc.
+    const QJsonArray invocations = run.value(QStringLiteral("invocations")).toArray();
+    if (!invocations.isEmpty()) {
+        s.runAtIso = invocations.first().toObject()
+                         .value(QStringLiteral("startTimeUtc")).toString();
+    }
+
+    // Spec § 3.1 step 3 — build rule index keyed by id → severity string.
+    QHash<QString, QString> ruleSeverity;
+    const QJsonObject tool = run.value(QStringLiteral("tool")).toObject();
+    const QJsonObject driver = tool.value(QStringLiteral("driver")).toObject();
+    const QJsonArray rules = driver.value(QStringLiteral("rules")).toArray();
+    for (const QJsonValue &rv : rules) {
+        const QJsonObject ro = rv.toObject();
+        const QString id = ro.value(QStringLiteral("id")).toString();
+        if (id.isEmpty()) continue;
+        const QString sev = ro.value(QStringLiteral("properties")).toObject()
+                              .value(QStringLiteral("severity")).toString();
+        if (!sev.isEmpty()) ruleSeverity.insert(id, sev);
+    }
+
+    const int floorOrd = levelOrdinal(levelFloor);
+
+    // Spec § 3.1 step 4 — walk results, count, filter, build pool.
+    QList<AuditSummaryFinding> pool;
+    const QJsonArray results = run.value(QStringLiteral("results")).toArray();
+    pool.reserve(results.size());
+    for (const QJsonValue &rv : results) {
+        const QJsonObject res = rv.toObject();
+        const QString level = res.value(QStringLiteral("level")).toString(
+            QStringLiteral("warning"));
+
+        const int ord = levelOrdinal(level);
+        if (ord == 2) ++s.countError;
+        else if (ord == 0) ++s.countNote;
+        else ++s.countWarning;
+
+        const QJsonArray suppressions = res.value(
+            QStringLiteral("suppressions")).toArray();
+        if (!suppressions.isEmpty()) ++s.countSuppressed;
+
+        if (ord < floorOrd) continue;
+
+        AuditSummaryFinding asf;
+        asf.level   = level;
+        asf.ruleId  = res.value(QStringLiteral("ruleId")).toString();
+        asf.message = res.value(QStringLiteral("message")).toObject()
+                          .value(QStringLiteral("text")).toString();
+
+        const QJsonArray locs = res.value(QStringLiteral("locations")).toArray();
+        if (!locs.isEmpty()) {
+            const QJsonObject phys = locs.first().toObject()
+                .value(QStringLiteral("physicalLocation")).toObject();
+            asf.file = phys.value(QStringLiteral("artifactLocation")).toObject()
+                           .value(QStringLiteral("uri")).toString();
+            asf.line = phys.value(QStringLiteral("region")).toObject()
+                           .value(QStringLiteral("startLine")).toInt(0);
+        }
+
+        const QJsonObject props = res.value(QStringLiteral("properties")).toObject();
+        if (props.contains(QStringLiteral("confidence"))) {
+            asf.confidence = props.value(QStringLiteral("confidence")).toInt(-1);
+        }
+        asf.highConfidence = props.value(
+            QStringLiteral("highConfidence")).toBool(false);
+
+        // Resolve severity via rule index, fall back to level map.
+        const auto it = ruleSeverity.constFind(asf.ruleId);
+        asf.severity = (it != ruleSeverity.constEnd())
+                           ? it.value() : severityFromLevel(level);
+
+        pool.append(std::move(asf));
+    }
+
+    // Spec § 3.1 step 5 — sort: level desc → confidence desc →
+    // file asc → line asc.
+    std::sort(pool.begin(), pool.end(),
+              [](const AuditSummaryFinding &a,
+                 const AuditSummaryFinding &b) {
+                  const int la = levelOrdinal(a.level);
+                  const int lb = levelOrdinal(b.level);
+                  if (la != lb) return la > lb;
+                  if (a.confidence != b.confidence)
+                      return a.confidence > b.confidence;
+                  if (a.file != b.file) return a.file < b.file;
+                  return a.line < b.line;
+              });
+
+    // Spec § 3.1 step 6 — clamp.
+    if (topN < 0) topN = 0;
+    if (pool.size() > topN) pool.erase(pool.begin() + topN, pool.end());
+    s.topFindings = std::move(pool);
+
+    // Spec § 3.1 step 8 — derive htmlPath.
+    QFileInfo sarifInfo(sarifPath);
+    QString htmlCandidate = sarifInfo.absoluteFilePath();
+    htmlCandidate.chop(6);  // strip ".sarif"
+    htmlCandidate.append(QStringLiteral(".html"));
+    if (QFile::exists(htmlCandidate)) {
+        s.htmlPath = htmlCandidate;
+    } else {
+        // Fallback (a) failed; lex-max audit-*.html within ±60 s.
+        // Filename pattern: audit-YYYYMMDD-HHmmss.{sarif,html}.
+        const QString sarifBase = sarifInfo.completeBaseName();  // "audit-YYYYMMDD-HHmmss"
+        QDateTime sarifStamp;
+        if (sarifBase.startsWith(QStringLiteral("audit-")) && sarifBase.size() == 21) {
+            sarifStamp = QDateTime::fromString(
+                sarifBase.mid(6), QStringLiteral("yyyyMMdd-HHmmss"));
+        }
+        if (sarifStamp.isValid()) {
+            QDir cacheDir = sarifInfo.absoluteDir();
+            const QStringList htmls = cacheDir.entryList(
+                QStringList{QStringLiteral("audit-*.html")},
+                QDir::Files, QDir::Name | QDir::Reversed);
+            for (const QString &name : htmls) {
+                if (name.size() != 26) continue;  // "audit-YYYYMMDD-HHmmss.html"
+                const QDateTime stamp = QDateTime::fromString(
+                    name.mid(6, 15), QStringLiteral("yyyyMMdd-HHmmss"));
+                if (!stamp.isValid()) continue;
+                if (std::abs(sarifStamp.secsTo(stamp)) <= 60) {
+                    s.htmlPath = cacheDir.absoluteFilePath(name);
+                    break;
+                }
+            }
+        }
+    }
+
+    return s;
 }
 
 }  // namespace AuditEngine

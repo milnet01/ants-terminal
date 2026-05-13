@@ -6,6 +6,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include "auditengine.h"  // ANTS-1254 — AuditSummary value member below
+
 class QLocalServer;
 class QLocalSocket;
 class MainWindow;
@@ -151,6 +153,12 @@ public:
     // See docs/specs/ANTS-1251.md.
     QJsonDocument cmdSubsystem(const QJsonObject &req);
 
+    // ANTS-1254: last_audit_summary — opens latest .audit_cache/audit-*.sarif
+    // and returns compact summary (counts + top_findings). Single-entry
+    // mtime-keyed cache; SARIF parsing delegated to
+    // AuditEngine::summariseSarif. See docs/specs/ANTS-1254.md.
+    QJsonDocument cmdLastAuditSummary(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 
@@ -177,4 +185,12 @@ private:
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent
+
+    // ANTS-1254 — single-entry summary cache. Keyed on
+    // (path, mtime, topN, floor) per spec INV-2.
+    mutable QString  m_auditSummaryPath;
+    mutable qint64   m_auditSummaryMtimeMs    = 0;
+    mutable AuditEngine::AuditSummary m_auditSummaryCache;
+    mutable int      m_auditSummaryCachedTopN = -1;
+    mutable QString  m_auditSummaryCachedFloor;
 };

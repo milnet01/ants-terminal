@@ -1490,6 +1490,48 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(ssTool);
 
+                // ANTS-1254: last_audit_summary — opens the latest
+                // .audit_cache/audit-*.sarif and returns counts +
+                // top_findings. ~5-15 K tokens → ~250 saved per fire.
+                QJsonObject lasTool;
+                lasTool["name"] = "last_audit_summary";
+                lasTool["description"] = QStringLiteral(
+                    "Read the latest audit-*.sarif under "
+                    "{cwd}/.audit_cache and return a compact summary: "
+                    "counts (error/warning/note/suppressed) plus "
+                    "top_findings (sorted by level desc, confidence "
+                    "desc, file asc, line asc). Saves ~5-15 K tokens "
+                    "vs reading the HTML report. Returns "
+                    "{ok:false, code:\"not_audited\"} if no SARIF.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject topNProp;
+                    topNProp["type"]    = "integer";
+                    topNProp["default"] = 5;
+                    topNProp["minimum"] = 0;
+                    topNProp["maximum"] = 50;
+                    topNProp["description"] = QStringLiteral(
+                        "Cap on top_findings[]. Server-clamp [0, 50].");
+                    QJsonObject floorProp;
+                    floorProp["type"]    = "string";
+                    floorProp["default"] = "warning";
+                    QJsonArray floorEnum;
+                    floorEnum.append("error");
+                    floorEnum.append("warning");
+                    floorEnum.append("note");
+                    floorProp["enum"]    = floorEnum;
+                    floorProp["description"] = QStringLiteral(
+                        "SARIF level floor for top_findings[]. "
+                        "Findings below this are still counted.");
+                    props["top_n"]          = topNProp;
+                    props["severity_floor"] = floorProp;
+                    schema["properties"]    = props;
+                    lasTool["inputSchema"] = schema;
+                }
+                tools.append(lasTool);
+
                 result["tools"] = tools;
                 haveResult = true;
             } else if (method == "tools/call") {

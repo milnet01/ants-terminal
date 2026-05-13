@@ -1,0 +1,100 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ants-audit",
+          "version": "0.7.x",
+          "rules": [
+            {
+              "id": "rule-blocker",
+              "name": "Blocker rule",
+              "properties": {"severity": "BLOCKER"}
+            },
+            {
+              "id": "rule-major",
+              "name": "Major rule",
+              "properties": {"severity": "MAJOR"}
+            },
+            {
+              "id": "rule-minor",
+              "name": "Minor rule",
+              "properties": {"severity": "MINOR"}
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "rule-blocker",
+          "level": "error",
+          "message": {"text": "BLOCKER finding"},
+          "locations": [{
+            "physicalLocation": {
+              "artifactLocation": {"uri": "src/a.cpp"},
+              "region": {"startLine": 10}
+            }
+          }],
+          "properties": {"confidence": 90, "highConfidence": true}
+        },
+        {
+          "ruleId": "rule-major",
+          "level": "warning",
+          "message": {"text": "Major finding A"},
+          "locations": [{
+            "physicalLocation": {
+              "artifactLocation": {"uri": "src/b.cpp"},
+              "region": {"startLine": 20}
+            }
+          }],
+          "properties": {"confidence": 50}
+        },
+        {
+          "ruleId": "rule-major",
+          "level": "warning",
+          "message": {"text": "Major finding B (lower confidence)"},
+          "locations": [{
+            "physicalLocation": {
+              "artifactLocation": {"uri": "src/a.cpp"},
+              "region": {"startLine": 5}
+            }
+          }],
+          "properties": {"confidence": 20}
+        },
+        {
+          "ruleId": "rule-minor",
+          "level": "note",
+          "message": {"text": "Note finding"},
+          "locations": [{
+            "physicalLocation": {
+              "artifactLocation": {"uri": "src/c.cpp"},
+              "region": {"startLine": 1}
+            }
+          }],
+          "properties": {"confidence": 10}
+        },
+        {
+          "ruleId": "rule-major",
+          "level": "warning",
+          "message": {"text": "Suppressed major"},
+          "locations": [{
+            "physicalLocation": {
+              "artifactLocation": {"uri": "src/d.cpp"},
+              "region": {"startLine": 99}
+            }
+          }],
+          "properties": {"confidence": 70},
+          "suppressions": [{"kind": "external", "state": "accepted"}]
+        }
+      ],
+      "invocations": [
+        {
+          "workingDirectory": {"uri": "/tmp/fake"},
+          "startTimeUtc": "2026-05-13T12:00:00Z"
+        }
+      ]
+    }
+  ]
+}

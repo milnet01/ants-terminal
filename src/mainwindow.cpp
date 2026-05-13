@@ -3681,6 +3681,12 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdSubsystem(args).toJson(QJsonDocument::Compact));
         });
+    m_claudeIntegration->registerToolProvider("last_audit_summary",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdLastAuditSummary(args).toJson(QJsonDocument::Compact));
+        });
 
     // Start hook server
     m_claudeIntegration->startHookServer();

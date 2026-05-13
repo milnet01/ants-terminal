@@ -1731,3 +1731,137 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
     return QJsonDocument(ok);
     // ANTS-1251-INV-6: reachability gate inherits from UDS + MCP socket.
 }
+
+// ============================================================
+// ANTS-1254 — last_audit_summary
+// ============================================================
+//
+// Reads the lex-max audit-*.sarif under {projectRoot}/.audit_cache,
+// returns counts + top_findings. Single-entry mtime-keyed cache.
+// Reachability gate inherits from UDS + MCP socket (INV-5).
+
+namespace {
+
+QJsonObject lasErr(const QString &code, const QString &msg) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["code"]  = code;
+    o["error"] = msg;
+    return o;
+}
+
+QJsonObject auditSummaryFindingAsJson(
+    const AuditEngine::AuditSummaryFinding &f) {
+    QJsonObject o;
+    o["level"]          = f.level;
+    o["severity"]       = f.severity;
+    o["ruleId"]         = f.ruleId;
+    o["file"]           = f.file;
+    o["line"]           = f.line;
+    o["message"]        = f.message;
+    o["confidence"]     = f.confidence;
+    o["highConfidence"] = f.highConfidence;
+    return o;
+}
+
+QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
+    QJsonObject ok;
+    ok["ok"]         = true;
+    ok["run_at"]     = s.runAtIso;
+    ok["sarif_path"] = s.sarifPath;
+    ok["html_path"]  = s.htmlPath;
+
+    QJsonObject counts;
+    counts["error"]      = s.countError;
+    counts["warning"]    = s.countWarning;
+    counts["note"]       = s.countNote;
+    counts["suppressed"] = s.countSuppressed;
+    ok["counts"] = counts;
+
+    QJsonArray top;
+    for (const auto &f : s.topFindings) top.append(auditSummaryFindingAsJson(f));
+    ok["top_findings"] = top;
+
+    return ok;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
+    // INV-8: severity_floor validation runs before disk scanning.
+    QString floor = QStringLiteral("warning");
+    if (req.contains(QStringLiteral("severity_floor"))) {
+        floor = req.value(QStringLiteral("severity_floor")).toString();
+    }
+    if (floor != QLatin1String("error") &&
+        floor != QLatin1String("warning") &&
+        floor != QLatin1String("note")) {
+        return QJsonDocument(lasErr(QStringLiteral("bad_severity_floor"),
+            QStringLiteral("last_audit_summary: \"severity_floor\" "
+                           "must be one of {error, warning, note}")));
+    }
+
+    // top_n default 5, server-clamp [0, 50].
+    int topN = 5;
+    if (req.contains(QStringLiteral("top_n")) &&
+        req.value(QStringLiteral("top_n")).isDouble()) {
+        topN = req.value(QStringLiteral("top_n")).toInt();
+    }
+    if (topN < 0)  topN = 0;
+    if (topN > 50) topN = 50;
+
+    // Discover latest SARIF in {projectRoot}/.audit_cache.
+    const QString rootCanonical = resolveRootCanonical(m_main);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(lasErr(QStringLiteral("not_audited"),
+            QStringLiteral("last_audit_summary: project root unresolved")));
+    }
+    QDir cacheDir(rootCanonical + QStringLiteral("/.audit_cache"));
+    if (!cacheDir.exists()) {
+        return QJsonDocument(lasErr(QStringLiteral("not_audited"),
+            QStringLiteral("last_audit_summary: no .audit_cache directory")));
+    }
+    const QStringList sarifNames = cacheDir.entryList(
+        QStringList{QStringLiteral("audit-*.sarif")},
+        QDir::Files, QDir::Name | QDir::Reversed);
+    if (sarifNames.isEmpty()) {
+        return QJsonDocument(lasErr(QStringLiteral("not_audited"),
+            QStringLiteral("last_audit_summary: no audit-*.sarif found")));
+    }
+    const QString sarifPath = cacheDir.absoluteFilePath(sarifNames.first());
+
+    // Cache key: (path, mtime, topN, floor).
+    const qint64 mtimeMs = QFileInfo(sarifPath).lastModified().toMSecsSinceEpoch();
+    const bool hit = (sarifPath == m_auditSummaryPath
+                      && mtimeMs == m_auditSummaryMtimeMs
+                      && topN    == m_auditSummaryCachedTopN
+                      && floor   == m_auditSummaryCachedFloor);
+    if (hit) {
+        return QJsonDocument(buildLasEnvelope(m_auditSummaryCache));
+    }
+
+    // Cache miss — parse.
+    auto parsed = AuditEngine::summariseSarif(sarifPath, topN, floor);
+    if (!parsed) {
+        // Discovery succeeded; failure must be open() or parse.
+        QFile f(sarifPath);
+        if (!f.open(QIODevice::ReadOnly)) {
+            return QJsonDocument(lasErr(QStringLiteral("read_failed"),
+                QStringLiteral("last_audit_summary: cannot read SARIF")));
+        }
+        f.close();
+        // INV-10: empty runs[] is treated as not_audited (the user has
+        // nothing to consult).
+        return QJsonDocument(lasErr(QStringLiteral("parse_failed"),
+            QStringLiteral("last_audit_summary: SARIF malformed or "
+                           "missing runs[]")));
+    }
+
+    m_auditSummaryPath        = sarifPath;
+    m_auditSummaryMtimeMs     = mtimeMs;
+    m_auditSummaryCachedTopN  = topN;
+    m_auditSummaryCachedFloor = floor;
+    m_auditSummaryCache       = std::move(*parsed);
+
+    return QJsonDocument(buildLasEnvelope(m_auditSummaryCache));
+}

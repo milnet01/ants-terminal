@@ -38,6 +38,34 @@ for security-relevant changes.
 
 ### Added
 
+- **ANTS-1254 — `last_audit_summary` MCP tool.** New read-only tool
+  that opens the latest `.audit_cache/audit-*.sarif` and returns a
+  compact summary: `counts` (error/warning/note/suppressed) plus
+  `top_findings[]` sorted by SARIF level desc → confidence desc →
+  file asc → line asc. Default `top_n=5`, `severity_floor="warning"`;
+  server-clamps `top_n` to `[0, 50]`. **Saves ~5-15 K tokens** per
+  audit consultation vs reading the HTML report (which today's flow
+  uses). Backed by the new `AuditEngine::summariseSarif(path, topN,
+  levelFloor)` pure parser + `RemoteControl::cmdLastAuditSummary`
+  with a single-entry mtime-keyed cache (`(path, mtime, topN, floor)`
+  4-tuple). Latest-SARIF discovery uses lex-max filename
+  (`audit-YYYYMMDD-HHmmss.sarif` is sortable at second granularity);
+  `html_path` derives via extension swap, falling back to lex-max
+  `audit-*.html` within ±60 s of the SARIF timestamp (the SARIF and
+  HTML export buttons each call `QDateTime::currentDateTime()`
+  independently). Severity resolution: rule-index lookup
+  (`runs[0].tool.driver.rules[].properties.severity`) with fallback
+  for foreign SARIF (`error→CRITICAL, warning→MAJOR, note→INFO`).
+  Per-tab gate inherits from `resolveRootCanonical(MainWindow*)`.
+  Lands on the post-1253 registry (one `registerToolProvider` call
+  in `setupClaudeMcpProviders`, no per-tool setter). Spec:
+  `docs/specs/ANTS-1254.md` (5-loop cold-eyes pass, ship-ready).
+  New regression test: `tests/features/mcp_last_audit_summary/`
+  (10 invariants — 6 parser-side against committed
+  `fixture_min.sarif` + `fixture_empty.sarif`; 4 wiring-side via
+  source-grep). Pre-fix red verified — `summariseSarif` symbol
+  absent from stashed engine fails build.
+
 - **ANTS-1252 — Token-saving hook pack.** Five bash hooks plus
   `tools/install-hooks.sh` that nudge Claude Code toward cheaper
   MCP tool calls. SessionStart preamble emits a ≤ 500 B
