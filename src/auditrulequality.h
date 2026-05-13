@@ -77,6 +77,15 @@ public:
     };
     QVector<RuleStats> report() const;
 
+    // ANTS-1111 — return the set of rule IDs whose 30-day false-positive
+    // rate is at or above `fpThreshold` (percent), provided they have at
+    // least `minSamples` fires in that window. Min-samples gate prevents
+    // a rule that fired twice and was suppressed once from being
+    // labelled noisy at 50 %. Used by AuditEngine::applyCorroborationShift
+    // to decide which single-tool findings get demoted by one severity
+    // tier.
+    QStringList noisyRuleIds(int fpThreshold = 50, int minSamples = 5) const;
+
     // Heuristic tightening suggester. Looks at the last `maxSamples`
     // suppressed lines for `ruleId` and returns a candidate substring
     // that, if added to the rule's `dropIfContains`, would have

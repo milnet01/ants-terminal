@@ -12,6 +12,100 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.88] — 2026-05-13
+
+**Theme:** ANTS-1111 v1 — fold `/audit` triage into the Project
+Audit tool's engine layer. Five mechanical pieces lift out of the
+LLM round-trip: cross-tool corroboration severity-tier shift,
+framework auto-detect, ROADMAP fold-in helper, the
+`// audit: drop[=rule]` inline-suppress alias, and the
+`RuleQualityTracker::noisyRuleIds` accessor that feeds the shift.
+UI affordances (Fold-into-ROADMAP button, per-finding Allow
+button, Since-baseline pill) deferred to ANTS-1257 v2.
+Cumulative payload: ~750 LoC engine + ~33 new test cases, all
+green. Foundation ships ahead of ANTS-1112 / 1113 (which reuse
+`RoadmapFoldIn`).
+
+### Added
+
+- **ANTS-1111 — `RoadmapFoldIn` helper** (`src/roadmapfoldin.{h,cpp}`,
+  Qt::Core only). Three operations: `allocateIds(projectPath, n)`
+  reserves N consecutive IDs from `.roadmap-counter` under
+  `::flock(LOCK_EX|LOCK_NB)` (5 s budget; adopts the
+  `configbackup.h` pattern); `insertBlock(projectPath, heading,
+  block)` performs an atomic insert immediately after a named
+  `## ` heading via QSaveFile, preserving original file
+  permissions; `findActiveReleaseHeading(projectPath)` returns the
+  first `(target: …)`-marked heading, falling back to the first
+  shipped release block. Returns false on heading-not-found —
+  caller is responsible for creating the heading first.
+  Locked by `tests/features/roadmap_fold_in/` (12 tests).
+
+- **ANTS-1111 — `AuditEngine::applyCorroborationShift`**
+  (`src/auditengine.cpp`). Severity-tier promotion when ≥ 2
+  distinct CheckIds cite the same `(file, line)` (clamped to
+  Blocker); demotion when a single-tool finding's checkId is in
+  `noisyRules` (clamped to Info). Wired into
+  `AuditDialog::renderResults` after the enrichment pass; the
+  `noisyRules` set comes from the new
+  `RuleQualityTracker::noisyRuleIds(fpThreshold=50, minSamples=5)`
+  accessor (`src/auditrulequality.{h,cpp}`). Locked by
+  `tests/features/audit_corroboration_shift/` (8 tests).
+
+- **ANTS-1111 — `AuditEngine::templateRoadmapFoldInBlock`**
+  (`src/auditengine.cpp`). Pure-string templating of a
+  `### 🔍 Audit fold-in (DATE)` subsection per
+  `roadmap-format.md` § 3.8 (subsection shape) + § 3.5
+  (per-bullet fields). Caller pre-allocates IDs via
+  `RoadmapFoldIn::allocateIds`. Empty input → empty string.
+  Covered by `tests/features/roadmap_fold_in/Inv5TemplateShape`.
+
+- **ANTS-1111 — `AuditHygiene::detectProjectFrameworks`**
+  (`src/audithygiene.{h,cpp}`). Probes the project root for 7
+  framework markers (flask, django, react, vue, qt6, rust, go) by
+  reading `requirements.txt` / `pyproject.toml` / `package.json` /
+  `CMakeLists.txt` / `Cargo.toml` / `go.mod` / `manage.py`.
+  Companion `semgrepRulePacks(QStringList)` maps recognised
+  frameworks to `{"--config", "p/<fw>"}` argv pairs. Pure-IO,
+  bounded to `projectPath`. Wiring into the live `runNextCheck`
+  semgrep invocation deferred to ANTS-1257. Locked by
+  `tests/features/audit_framework_detect/` (10 tests).
+
+- **ANTS-1111 — `// audit: drop[=rule]` inline-suppress alias.**
+  Shorter ergonomic form of the existing `// ants-audit: disable`
+  token. Same parser code (`auditdialog.cpp:2055`); same
+  semantics (bare form suppresses every rule on the line; `=rule`
+  suffix targets one). Both forms coexist indefinitely. The
+  generic `audit:` prefix is confined by the verb constraint
+  (`\s*drop`) plus the existing rule-list parser
+  (`auditdialog.cpp:2083-2107`); collision-prevention covered in
+  spec § 2.6 + INV-12. Locked by
+  `tests/features/audit_drop_alias/` (2 tests).
+
+### Changed
+
+- **ANTS-1111 — Widened-allowlist documentation.** The pre-existing
+  `.audit_allowlist.json` filter (`AuditDialog::allowlisted()`,
+  `auditdialog.cpp:3991`) was already cross-detector — the call
+  site lives in the main per-finding loop and matches by exact
+  checkId equality, so any detector's rule (`clazy-X`,
+  `cppcheck-Y`, etc.) can be allowlisted. The doc-comment at
+  `auditdialog.h:101-110` now documents this widened scope (was
+  previously labelled grep-rule only). No behaviour change.
+
+- **ADR-0003**
+  (`docs/decisions/0003-cc-fold-relax-gate-and-draw-boundary.md`)
+  — relaxes the ADR-0002 dec 8 gate (ANTS-1120 measurement no
+  longer pre-requisite for the CC-fold bullets), draws the
+  ANTS-1108 ↔ ANTS-1111 / 1113 per-surface boundary, and
+  enumerates pre-existing scaffolding so the subsequent ANTS-1112
+  / 1113 specs don't re-invent it.
+
+- **ANTS-1257** (new ROADMAP item) — ANTS-1111 v2: UI affordances
+  (Fold-into-ROADMAP button, per-finding Allow button,
+  Since-baseline pill, semgrep wiring). Spec § 12 of
+  `docs/specs/ANTS-1111.md` documents the v1/v2 split rationale.
+
 ## [0.7.87] — 2026-05-13
 
 **Theme:** MCP token-reduction pack — five new MCP tools

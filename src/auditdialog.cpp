@@ -2052,7 +2052,7 @@ bool AuditDialog::commentSuppresses(const QString &commentText, const QString &r
     // The "bare" forms (no rule list) — any of these suppresses everything.
     // Matched conservatively: must be a whole word with `\b` semantics.
     static const QRegularExpression reBare(
-        R"(\b(?:ants-audit:\s*disable(?:-next-line|-file)?|nolint(?:nextline)?|cppcheck-suppress|noqa|nosec|nosemgrep|gitleaks:allow|eslint-disable(?:-line|-next-line)?|pylint:\s*disable)\b)",
+        R"(\b(?:ants-audit:\s*disable(?:-next-line|-file)?|audit:\s*drop(?:-next-line|-file)?|nolint(?:nextline)?|cppcheck-suppress|noqa|nosec|nosemgrep|gitleaks:allow|eslint-disable(?:-line|-next-line)?|pylint:\s*disable)\b)",
         QRegularExpression::CaseInsensitiveOption);
     const auto bareMatch = reBare.match(body);
     if (!bareMatch.hasMatch()) return false;
@@ -4144,6 +4144,20 @@ void AuditDialog::renderResults() {
     for (auto &r : m_completedResults)
         for (Finding &f : r.findings)
             f.confidence = computeConfidence(f);
+
+    // ANTS-1111 — severity-tier shift on cross-tool corroboration.
+    // Two-tier promotion (>=2 distinct tools at the same file:line)
+    // and one-tier demotion (single-tool finding from a known-noisy
+    // rule). Runs after enrichment so coverageCount is settled.
+    {
+        QSet<QString> noisy;
+        if (m_qualityTracker) {
+            const QStringList ids = m_qualityTracker->noisyRuleIds();
+            for (const QString &id : ids) noisy.insert(id);
+        }
+        for (auto &r : m_completedResults)
+            AuditEngine::applyCorroborationShift(r.findings, noisy);
+    }
 
     // Populate key→finding lookup for the anchor click handler. Done after
     // correlation so the lookup reflects the highConfidence flag.

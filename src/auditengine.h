@@ -18,6 +18,7 @@
 
 #include <QHash>
 #include <QList>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -220,5 +221,35 @@ std::optional<AuditSummary> summariseSarif(
     const QString &sarifPath,
     int topN,
     const QString &levelFloor);
+
+// ANTS-1111 — severity-tier shift on cross-tool corroboration. In-place
+// mutation of `findings[].severity`:
+//   coverageCount(f) = number of distinct CheckIds whose findings cite
+//                      the same (f.file, f.line) pair.
+//   shift = +1 if coverageCount >= 2     (clamp to Blocker)
+//   shift = -1 if coverageCount == 1 AND f.checkId in noisyRules
+//                                        (clamp to Info)
+//   shift =  0 otherwise
+// The +20 confidence-score bump in computeConfidence is unchanged —
+// this complements rather than replaces it.
+void applyCorroborationShift(QList<Finding> &findings,
+                             const QSet<QString> &noisyRules);
+
+// ANTS-1111 — render a single ROADMAP fold-in subsection block, ready
+// to splice into ROADMAP.md by RoadmapFoldIn::insertBlock. Subsection
+// shape per roadmap-format.md § 3.8; per-bullet fields per § 3.5.
+//   `actionable`     — findings the user confirmed as actionable.
+//   `allocatedIds`   — pre-allocated `[ANTS-N]` IDs (size must equal
+//                      actionable.size()).
+//   `dateIso`        — YYYY-MM-DD for the heading + Source line.
+// Output begins with `### 🔍 Audit fold-in (DATE)`; each finding maps
+// to one bullet `- 📋 [ANTS-N] **MESSAGE.** at FILE:LINE (rule).
+//   Kind: audit-fix.
+//   Source: audit-DATE.
+//   Lanes: <derived from finding.file>.`
+// Empty input -> empty string.
+QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
+                                   const QList<int> &allocatedIds,
+                                   const QString &dateIso);
 
 }  // namespace AuditEngine

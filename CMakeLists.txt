@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ants-terminal VERSION 0.7.87 LANGUAGES CXX)
+project(ants-terminal VERSION 0.7.88 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -214,6 +214,7 @@ add_library(ants_core_lib STATIC
     src/remotecontrol.cpp
     src/fileoutline.cpp
     src/gitwrap.cpp
+    src/roadmapfoldin.cpp
     src/subsystemmap.cpp
     src/themedstylesheet.cpp
     src/globalshortcutsportal.cpp
@@ -860,7 +861,11 @@ if(ANTS_TESTS)
                 tests/features/audit_rule_quality/test_audit_rule_quality.cpp
                 tests/features/audit_sarif_suppressions/test_audit_sarif_suppressions.cpp
                 tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp
-                tests/features/feature_coverage/test_feature_coverage.cpp)
+                tests/features/feature_coverage/test_feature_coverage.cpp
+                tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp
+                tests/features/audit_corroboration_shift/test_audit_corroboration_shift.cpp
+                tests/features/audit_drop_alias/test_audit_drop_alias.cpp
+                tests/features/audit_framework_detect/test_audit_framework_detect.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

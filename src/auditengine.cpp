@@ -452,4 +452,119 @@ std::optional<AuditSummary> summariseSarif(
     return s;
 }
 
+// ANTS-1111 — severity-tier shift on cross-tool corroboration.
+void applyCorroborationShift(QList<Finding> &findings,
+                             const QSet<QString> &noisyRules) {
+    if (findings.isEmpty()) return;
+
+    // Build (file:line) → set<checkId> coverage map.
+    QHash<QString, QSet<QString>> coverage;
+    coverage.reserve(findings.size());
+    for (const Finding &f : findings) {
+        if (f.file.isEmpty() || f.line <= 0) continue;
+        const QString key = f.file + QChar(':') + QString::number(f.line);
+        coverage[key].insert(f.checkId);
+    }
+
+    auto clamp = [](int v) {
+        if (v < int(Severity::Info)) return int(Severity::Info);
+        if (v > int(Severity::Blocker)) return int(Severity::Blocker);
+        return v;
+    };
+
+    for (Finding &f : findings) {
+        if (f.file.isEmpty() || f.line <= 0) continue;
+        const QString key = f.file + QChar(':') + QString::number(f.line);
+        const int distinct = coverage.value(key).size();
+        int shift = 0;
+        if (distinct >= 2) {
+            shift = +1;
+        } else if (distinct == 1 && noisyRules.contains(f.checkId)) {
+            shift = -1;
+        }
+        if (shift != 0) {
+            f.severity = static_cast<Severity>(
+                clamp(int(f.severity) + shift));
+        }
+    }
+}
+
+// ANTS-1111 — render a fold-in subsection block per
+// roadmap-format.md § 3.8 + § 3.5.
+QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
+                                   const QList<int> &allocatedIds,
+                                   const QString &dateIso) {
+    if (actionable.isEmpty() || actionable.size() != allocatedIds.size()) {
+        return {};
+    }
+
+    auto laneFromPath = [](const QString &p) -> QString {
+        if (p.startsWith(QStringLiteral("src/"))) {
+            // src/foo/bar.cpp -> foo
+            const int slash = p.indexOf('/', 4);
+            if (slash > 4) return p.mid(4, slash - 4);
+            // src/foo.cpp -> foo (basename without ext)
+            QString rest = p.mid(4);
+            const int dot = rest.lastIndexOf('.');
+            if (dot > 0) rest.truncate(dot);
+            return rest;
+        }
+        if (p.startsWith(QStringLiteral("tests/"))) return QStringLiteral("tests");
+        if (p.startsWith(QStringLiteral("docs/"))) return QStringLiteral("docs");
+        if (p.startsWith(QStringLiteral("packaging/"))) return QStringLiteral("packaging");
+        return QStringLiteral("misc");
+    };
+
+    auto themeFromMessage = [](const QString &m) -> QString {
+        // First sentence (up to '.') trimmed; cap at 80 chars.
+        const int dot = m.indexOf('.');
+        QString first = (dot > 0) ? m.left(dot) : m;
+        first = first.trimmed();
+        if (first.size() > 80) first = first.left(77) + QStringLiteral("...");
+        return first;
+    };
+
+    QString out;
+    out.reserve(256 + actionable.size() * 200);
+    out += QStringLiteral("### 🔍 Audit fold-in (");
+    out += dateIso;
+    out += QStringLiteral(")\n\n");
+
+    for (int i = 0; i < actionable.size(); ++i) {
+        const Finding &f = actionable.at(i);
+        const int id = allocatedIds.at(i);
+        const QString theme = themeFromMessage(f.message);
+        const QString lane = laneFromPath(f.file);
+
+        out += QStringLiteral("- 📋 [ANTS-");
+        out += QString::number(id);
+        out += QStringLiteral("] **");
+        out += theme;
+        out += QStringLiteral(".**\n");
+        if (!f.file.isEmpty() && f.line > 0) {
+            out += QStringLiteral("  At `");
+            out += f.file;
+            out += QChar(':');
+            out += QString::number(f.line);
+            out += QStringLiteral("` (rule `");
+            out += f.checkId;
+            out += QStringLiteral("`).\n");
+        } else if (!f.checkId.isEmpty()) {
+            out += QStringLiteral("  Rule `");
+            out += f.checkId;
+            out += QStringLiteral("`.\n");
+        }
+        out += QStringLiteral("  Kind: audit-fix.\n");
+        out += QStringLiteral("  Source: audit-");
+        out += dateIso;
+        out += QStringLiteral(".\n");
+        out += QStringLiteral("  Lanes: ");
+        out += lane;
+        out += QStringLiteral(".\n");
+        if (i + 1 < actionable.size()) out += QChar('\n');
+    }
+
+    return out;
+}
+
 }  // namespace AuditEngine

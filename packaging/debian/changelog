@@ -1,3 +1,33 @@
+ants-terminal (0.7.88-1) unstable; urgency=medium
+
+  * ANTS-1111 v1 — fold audit triage into the Project Audit tool's
+    engine layer with five mechanical pieces: cross-tool corroboration
+    severity-tier shift, framework auto-detect, ROADMAP fold-in helper,
+    inline-suppress alias, and rule-quality tracking. ~750 LoC engine
+    + 33 new test cases. Foundation for ANTS-1112/1113.
+  * RoadmapFoldIn helper — three operations: allocateIds (reserve N
+    consecutive IDs from .roadmap-counter under flock), insertBlock
+    (atomic insert after a heading via QSaveFile), findActiveReleaseHeading.
+    12 test cases locked.
+  * AuditEngine::applyCorroborationShift — severity-tier promotion when
+    ≥2 distinct tools cite the same (file, line); demotion for noisy
+    rules. Wired into renderResults after enrichment. 8 tests locked.
+  * AuditEngine::templateRoadmapFoldInBlock — pure-string templating of
+    audit fold-in subsection per roadmap-format.md spec.
+  * AuditHygiene::detectProjectFrameworks — probes project root for 7
+    framework markers (flask, django, react, vue, qt6, rust, go) via
+    config files. Maps frameworks to semgrep rule packs. 10 tests.
+  * Inline-suppress alias — shorter "// audit: drop[=rule]" ergonomic
+    form of existing "// ants-audit: disable". Same parser, same
+    semantics; both coexist indefinitely. 2 tests.
+  * Widened-allowlist documentation — .audit_allowlist.json already
+    cross-detector; doc-comment at auditdialog.h now clarifies scope.
+  * ADR-0003 — relaxes pre-requisite gate, draws ANTS-1108 ↔
+    ANTS-1111/1113 boundary, enumerates pre-existing scaffolding.
+  * ANTS-1257 (new ROADMAP item) — ANTS-1111 v2 UI affordances deferred.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 13 May 2026 13:50:51 +0200
+
 ants-terminal (0.7.87-1) unstable; urgency=medium
 
   * MCP token-reduction pack — five new MCP tools (workspace_search,

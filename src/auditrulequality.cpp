@@ -90,6 +90,20 @@ QVector<RuleQualityTracker::RuleStats> RuleQualityTracker::report() const {
     return out;
 }
 
+// ANTS-1111 — caller of AuditEngine::applyCorroborationShift uses
+// this to know which checkIds are "noisy" (≥ fpThreshold % FP rate
+// over 30 days, with at least minSamples fires in that window).
+QStringList RuleQualityTracker::noisyRuleIds(int fpThreshold, int minSamples) const {
+    QStringList out;
+    const QVector<RuleStats> rows = report();
+    for (const RuleStats &s : rows) {
+        if (s.fires30d < minSamples) continue;
+        if (s.fpRate30d < fpThreshold) continue;
+        out << s.ruleId;
+    }
+    return out;
+}
+
 namespace {
 // Longest common substring of two strings. O(n*m) DP — good enough for
 // the small samples we feed it (≤ N suppression lines, each ≤ a few

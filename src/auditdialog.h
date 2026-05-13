@@ -97,9 +97,13 @@ private:
     QString semgrepExcludeFlags() const;
     QString banditSkipFlags() const;
 
-    // Project-local grep-rule allowlist (`.audit_allowlist.json`). Post-
-    // filters custom grep-rule findings: if a finding's (rule, file, line-body)
-    // matches any allowlist entry, it is dropped. Schema:
+    // Project-local cross-detector allowlist (`.audit_allowlist.json`).
+    // Originally grep-rule-only (0.6.x); ANTS-1111 documented the
+    // already-widened behaviour — `allowlisted()` is called from the
+    // main per-check finding loop (auditdialog.cpp:3991) so any
+    // detector's findings are filtered. The matcher keys on
+    // `Finding::checkId` exact-equality, so an entry with `"rule":
+    // "clazy-X"` matches that clazy rule's findings, etc. Schema:
     //   { "version": 1,
     //     "allowlist": [ { "rule": "id", "path_glob": "glob",
     //                      "line_regex": "regex", "reason": "..." } ] }

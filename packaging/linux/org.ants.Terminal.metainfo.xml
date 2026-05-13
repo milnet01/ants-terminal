@@ -103,6 +103,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.88" date="2026-05-13">
+      <description>
+        <p>ANTS-1111 v1 — audit engine foundation for AI triage. Five core pieces lift out of the LLM round-trip: cross-tool corroboration severity-tier shift, framework auto-detect, ROADMAP fold-in helper, inline-suppress alias, and rule-quality tracking. UI affordances (fold button, allow button, baseline pill) deferred to v2. ~750 LoC engine + 33 test cases, ship-ready.</p>
+        <ul>
+          <li><em>Added:</em> <code>RoadmapFoldIn</code> helper — atomic ID allocation from <code>.roadmap-counter</code> via <code>flock</code>, insertion after named headings, active-release discovery. Three operations: <code>allocateIds</code>, <code>insertBlock</code>, <code>findActiveReleaseHeading</code>. Qt::Core only; locked by 12 tests.</li>
+          <li><em>Added:</em> <code>AuditEngine::applyCorroborationShift</code> — severity promotion (≥2 distinct tools citing same line → Blocker) and demotion (noisy single-tool rules → Info). Wired post-enrichment; backed by new <code>RuleQualityTracker::noisyRuleIds</code> accessor (fpThreshold=50, minSamples=5). 8 test cases.</li>
+          <li><em>Added:</em> <code>AuditEngine::templateRoadmapFoldInBlock</code> — pure-string templating of audit fold-in subsections per <code>roadmap-format.md</code> § 3.5/3.8. Caller pre-allocates IDs; empty input returns empty string.</li>
+          <li><em>Added:</em> <code>AuditHygiene::detectProjectFrameworks</code> — probes for 7 frameworks (flask, django, react, vue, qt6, rust, go) via <code>requirements.txt</code>/<code>pyproject.toml</code>/<code>package.json</code>/<code>CMakeLists.txt</code>/<code>Cargo.toml</code>/<code>go.mod</code>/<code>manage.py</code>. Maps to semgrep rule packs; wiring into live invocations deferred to ANTS-1257. 10 tests.</li>
+          <li><em>Added:</em> <code>// audit: drop[=rule]</code> inline-suppress alias — shorter form of <code>// ants-audit: disable</code>; bare form suppresses every rule on line, <code>=rule</code> suffix targets one. Both forms coexist indefinitely; collision-prevention by verb constraint + rule-list parser. 2 tests.</li>
+          <li><em>Changed:</em> Widened <code>.audit_allowlist.json</code> documentation — cross-detector scope already existed but was mislabeled grep-only. Doc-comment updated; no behaviour change.</li>
+          <li><em>Changed:</em> New ADR-0003 relaxing ANTS-1120 pre-requisite gate and drawing ANTS-1108 ↔ ANTS-1111/1113 boundary. ANTS-1257 roadmap item adds v2 UI affordances (Fold button, Allow button, Since-baseline pill, semgrep wiring).</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.87" date="2026-05-13">
       <description>
         <p>MCP token-reduction pack — five new MCP tools (<code>workspace_search</code>, <code>file_outline</code>, <code>git_state</code>, <code>subsystem</code>, <code>last_audit_summary</code>) collapse common <code>Bash</code>/<code>Read</code> patterns into structured envelopes, plus a token-saving hook pack and a provider-registry consolidation that makes the next MCP tool a one-line add. Cumulative session saving on a typical <code>/indie-review</code> + <code>/audit</code> workflow: ~50-100 K tokens.</p>

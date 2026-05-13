@@ -2,6 +2,9 @@
 
 #include "audithygiene.h"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QRegularExpression>
 
 namespace AuditHygiene {
@@ -95,6 +98,86 @@ QStringList parseBanditSkipCodes(const QString &text) {
     }
     bCodes.removeDuplicates();
     return bCodes;
+}
+
+// ----- ANTS-1111 framework auto-detect -----------------------------------
+
+namespace {
+
+QString slurpIfExists(const QString &absPath) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    return QString::fromUtf8(f.readAll());
+}
+
+bool fileExists(const QString &absPath) {
+    return QFileInfo::exists(absPath);
+}
+
+} // namespace
+
+QStringList detectProjectFrameworks(const QString &projectPath) {
+    QStringList out;
+    const QDir root(projectPath);
+
+    const QString reqs       = slurpIfExists(root.filePath("requirements.txt"));
+    const QString pyproj     = slurpIfExists(root.filePath("pyproject.toml"));
+    const QString pkgJson    = slurpIfExists(root.filePath("package.json"));
+    const QString cmakeLists = slurpIfExists(root.filePath("CMakeLists.txt"));
+    const QString cargoToml  = slurpIfExists(root.filePath("Cargo.toml"));
+    const QString goMod      = slurpIfExists(root.filePath("go.mod"));
+    const bool hasManagePy   = fileExists(root.filePath("manage.py"));
+
+    auto pyHas = [&](const QString &needle) {
+        const QRegularExpression re(
+            QStringLiteral("(?im)^[\\s'\"]*") + QRegularExpression::escape(needle)
+                + QStringLiteral("[\\s\\[<>=!~]"));
+        return re.match(reqs).hasMatch() || re.match(pyproj).hasMatch();
+    };
+
+    if (pyHas(QStringLiteral("flask"))) out << QStringLiteral("flask");
+    if (hasManagePy || pyHas(QStringLiteral("django"))) {
+        out << QStringLiteral("django");
+    }
+
+    if (!pkgJson.isEmpty()) {
+        // Cheap dependency-name probe: look for `"react"` or `"vue"`
+        // followed by `:` inside any dependencies-shaped block.
+        if (QRegularExpression(QStringLiteral("\"react(?:-dom)?\"\\s*:"))
+                .match(pkgJson).hasMatch()) {
+            out << QStringLiteral("react");
+        }
+        if (QRegularExpression(QStringLiteral("\"vue\"\\s*:"))
+                .match(pkgJson).hasMatch()) {
+            out << QStringLiteral("vue");
+        }
+    }
+
+    if (!cmakeLists.isEmpty()
+        && (cmakeLists.contains(QStringLiteral("Qt6::"))
+            || cmakeLists.contains(QStringLiteral("find_package(Qt6")))) {
+        out << QStringLiteral("qt6");
+    }
+
+    if (!cargoToml.isEmpty()) out << QStringLiteral("rust");
+    if (!goMod.isEmpty())     out << QStringLiteral("go");
+
+    out.removeDuplicates();
+    return out;
+}
+
+QStringList semgrepRulePacks(const QStringList &frameworks) {
+    QStringList args;
+    for (const QString &fw : frameworks) {
+        if (fw == QStringLiteral("flask")
+            || fw == QStringLiteral("django")
+            || fw == QStringLiteral("react")
+            || fw == QStringLiteral("vue")) {
+            args << QStringLiteral("--config")
+                 << QStringLiteral("p/") + fw;
+        }
+    }
+    return args;
 }
 
 } // namespace AuditHygiene

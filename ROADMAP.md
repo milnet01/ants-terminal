@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.87 (2026-05-13). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.88 (2026-05-13). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -3168,8 +3168,46 @@ minor tag (next: pre-0.8.0).
   Kind: research. Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-skill bullet.
 
-- 📋 [ANTS-1111] **Fold `/audit` triage into the Project Audit
+- ✅ [ANTS-1111] **Fold `/audit` triage into the Project Audit
   tool — eliminate the LLM round-trip on the noise floor.**
+  *Shipped 2026-05-13 in 0.7.88 (v1: engine + foundation +
+  alias + framework detect; UI affordances deferred to ANTS-1257).
+  See [`docs/specs/ANTS-1111.md`](docs/specs/ANTS-1111.md) and
+  [ADR-0003](docs/decisions/0003-cc-fold-relax-gate-and-draw-boundary.md).*
+
+- 📋 [ANTS-1257] **ANTS-1111 v2 — UI affordances on top of the
+  engine layer.** Shipped engine layer in 0.7.88 (ANTS-1111 v1)
+  exposes `RoadmapFoldIn`, `AuditEngine::applyCorroborationShift`,
+  `AuditEngine::templateRoadmapFoldInBlock`,
+  `AuditHygiene::detectProjectFrameworks` /
+  `semgrepRulePacks`, and the `// audit: drop` alias. v2 wires
+  these into the AuditDialog UI:
+
+  1. **"Fold actionable into ROADMAP" footer button** —
+     orchestrates `findActiveReleaseHeading()` →
+     `templateRoadmapFoldInBlock()` → `allocateIds()` →
+     `insertBlock()`. Confirmation modal lists the actionable
+     findings + IDs to be allocated; user can edit the target
+     heading before commit. INV-14 covers this orchestration.
+  2. **"Allow this finding" per-finding anchor URL** — appends
+     to `.audit_allowlist.json` via QSaveFile with a one-line
+     `reason` prompt. INV-13 covers the file-write contract.
+  3. **"Since baseline" filter pill** — combines
+     `m_showNewOnly` + `m_recentLinesOnly` (both already
+     implemented) into one toggle. INV-11 covers the combined
+     filter behaviour.
+  4. **Wire `audithygiene::semgrepRulePacks`** into the semgrep
+     invocation at `runNextCheck()` so the framework-detect
+     output actually feeds the scanner.
+
+  Spec: [`docs/specs/ANTS-1111.md`](docs/specs/ANTS-1111.md) §12
+  for the v1/v2 split rationale. Estimated v2 LoC: ~300-400
+  across `auditdialog.cpp` (3 button slots + 1 modal) plus 3
+  new feature tests (`audit_fold_into_roadmap_ui`,
+  `audit_allow_widening_ui`, `audit_since_baseline`).
+  Kind: implement.
+  Source: user-2026-04-30 (carried forward from ANTS-1111 spec).
+  Lanes: AuditDialog, audithygiene.
   User ask 2026-04-30: "incorporate /audit into the Project
   Audit tool, comprehensive but minimising false positives
   and token usage." Today the Project Audit tool runs every
