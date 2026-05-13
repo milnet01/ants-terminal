@@ -49,6 +49,11 @@ void ClaudeTaskListTracker::setTranscriptPath(const QString &path) {
     if (!m_transcriptPath.isEmpty())
         m_watcher.removePath(m_transcriptPath);
     m_transcriptPath = path;
+    // Reset the poll() mtime shortcircuit — if the user rebinds the
+    // same project shortly after a clear (tab-switch round trip) and
+    // the file mtime hasn't ticked, poll() would otherwise skip the
+    // legitimate rescan.
+    m_lastRescanMtimeMs = 0;
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
     rescan();

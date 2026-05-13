@@ -201,6 +201,18 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
 
         if (!QFile::exists(initLua)) continue;
 
+        // Reject a symlinked init.lua. The plugin directory is already
+        // canonicalised, but a symlink at init.lua itself could point
+        // at /etc/passwd, ~/.ssh/id_rsa, or any other file the user can
+        // read; parsing fails harmlessly, but Lua's error string would
+        // leak the file's first line via lua_tostring(err) when the
+        // parse fails.
+        if (QFileInfo(initLua).isSymLink()) {
+            qWarning("Plugin %s: init.lua is a symlink — rejected",
+                     qUtf8Printable(pluginDirName));
+            continue;
+        }
+
         PluginInfo info;
         info.path = canonicalPlugin;
         info.name = pluginDirName;

@@ -632,7 +632,6 @@ private:
     QElapsedTimer m_perfFrameTimer;
     int m_perfFrameCount = 0;
     double m_perfFps = 0.0;
-    qint64 m_perfLastPaintUs = 0;
 
     // Scrollbar
     QScrollBar *m_scrollBar = nullptr;

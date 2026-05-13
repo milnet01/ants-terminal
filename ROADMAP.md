@@ -4690,6 +4690,304 @@ minor tag (next: pre-0.8.0).
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 
+### 🔍 Indie-review fold-in (2026-05-13)
+
+14-lane multi-agent indie-review on 2026-05-13 (3 CRIT + 53 HIGH + 64
+MED + ~75 LOW). Mechanical / security / correctness items landed
+inline in the same session (see CHANGELOG 0.7.91 once released).
+This block tracks the substantial follow-ups deferred for their
+own design + test cycles.
+
+#### 🔒 Tier 1 — security & data-loss
+
+- 📋 [ANTS-1260] **Hook payload schema validation (claudeintegration).**
+  `src/claudeintegration.cpp:1018`. SO_PEERCRED proves same UID but
+  NOT that the peer is THIS tab's Claude child. A same-UID browser
+  plugin, language server, or other binary can forge a hook
+  `session_id` matching the focused tab's transcript basename
+  (enumerated from `~/.claude/projects/`). Fix: cross-check
+  `session_id` against `ClaudeTabTracker::shellForSessionId(...)
+  != 0`, or correlate the SO_PEERCRED pid with
+  `findClaudeChildPid(m_shellPid)`. Pairs with the cold-start
+  fallthrough fix that already shipped this session.
+  **Layman:** make sure hook messages actually come from the
+  Claude process we expect, not from any other program running
+  as the same user.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU
+  (remotecontrol).** `src/remotecontrol.cpp:82`. The XDG-runtime-dir
+  path is 0700 and safe; the `/tmp` fallback in `defaultSocketPath`
+  lives in shared `/tmp`, so a same-UID attacker can race the
+  `safeToUnlinkLocalSocket` → `removeServer` → `listen` window.
+  `lstat(S_ISSOCK)` narrows the danger to "swap one socket for
+  another of the same UID" but doesn't close it. Fix: probe whether
+  the `/tmp` fallback is ever reached on supported platforms — if
+  not (XDG_RUNTIME_DIR is set on every modern systemd distro),
+  remove it entirely and fail-closed instead.
+  **Layman:** drop a never-actually-used fallback that's the only
+  weak point in the remote-control socket's permissions story.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1274] **ripgrep `--glob` `!` prefix + gitignore-style escape
+  (remotecontrol).** `src/remotecontrol.cpp:748`. `workspace-search`
+  forwards `glob` as a single argv to `rg --glob` with only a `..`
+  substring filter + 256-byte cap. Leading `!` flips the meaning
+  (negation), and ripgrep's gitignore-style globs differ from POSIX
+  in ways that resurrect excluded trees. Fix: bound to a small
+  allowlist of safe meta (`*`, `?`, `[…]`, `/`) and reject leading
+  `!`.
+  **Layman:** stop callers from passing a glob that secretly
+  un-excludes `.git/` or other ignored directories.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1275] **Preamble prose hidden on every preset
+  (roadmapdialog).** `src/roadmapdialog.cpp:1497`. `renderCardsHtml`
+  initialises `sectionVisible=true`, `sectionExpanded=false`; preamble
+  prose before the first `## ` is gated on `sectionExpanded` and
+  silently dropped — including on the Full preset where R23 / §4.1
+  requires it. Compare `renderHtml` line 992-995, which emits prose
+  unconditionally.
+  **Layman:** the Full roadmap view is supposed to show the intro
+  paragraph at the top of the document, but currently doesn't.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1276] **Anchor-target slug not validated (roadmapdialog).**
+  `src/roadmapdialog.cpp:2318`. `handleAnchorClicked` parses the
+  `ants://` URL and inserts `target` into `m_expandedItems` /
+  `m_expandedSections` / `m_tableSections` without validation. A
+  malicious markdown file with `<a href="ants://expand/' OR 1=1 --">`
+  injects arbitrary strings (htmlEscape only strips `& < >`)
+  serialised to Config on disk. Fix: validate `target` against the
+  known ID / slug shape before insertion.
+  **Layman:** stop the roadmap viewer from saving garbage strings
+  into your settings when a markdown file has weird anchor URLs.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+#### 🔒 Tier 2 — correctness & hardening
+
+- 📋 [ANTS-1266] **`bool truncated` field on `VtAction` (vtparser).**
+  `src/vtparser.cpp:196`. `appendUtf8` silently drops bytes past the
+  10 MiB OSC/DCS/APC cap; consumers (terminalgrid OSC 52 clipboard,
+  OSC 133 shell-integration) can't distinguish a truncated payload
+  from a complete one. Same pattern at line 339 for CSI param count
+  >32. Add a `bool truncated` (or `TruncationReason` enum) field on
+  `VtAction` and propagate; update OSC 52 / OSC 133 / Sixel
+  consumers to refuse silently-truncated payloads.
+  **Layman:** when the parser has to drop bytes from a hostile
+  giant escape sequence, the downstream code should be told —
+  right now it silently accepts a corrupt result.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1261] **Extract `ClaudeTranscriptWalker` (claude-trackers).**
+  `src/claudetasklist.cpp:100` + `src/claudebgtasks.cpp:170`. Two
+  trackers with byte-similar `parseTranscript` (16 MiB cap, leading
+  partial-line discard, line walk, `isSidechain` / `isCompactSummary`
+  gating, watch-lifecycle) and growing drift. Rule of Three is past
+  due. Extract a shared `ClaudeTranscriptWalker` helper; each
+  subclass plugs in the per-event-type handlers.
+  **Layman:** the two task-list trackers have ended up as
+  copy-paste twins that keep diverging — fold the shared logic
+  back into one base so future fixes apply to both.
+  Kind: refactor.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1268] **Convert Lua `_G` strip to allowlist (lua-plugins).**
+  `src/luaengine.cpp:223`. The `dangerous[]` array is a denylist —
+  fragile against new globals added in future Lua 5.4 patch
+  releases. `warn` was added in 5.4 and is harmless; the precedent
+  matters. Enumerate `_G`, allowlist the names PLUGINS.md
+  documents, nil everything else. ~6 lines of table-iteration.
+  **Layman:** when Lua adds new built-ins in future versions,
+  the sandbox should keep them out by default instead of needing
+  manual updates each time.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1269] **`isCatastrophicRegex` overpromise — alternation +
+  backreferences (auditengine + auditdialog).** `src/auditengine.cpp:25`.
+  Header docstring claims to catch "alternation under a quantifier
+  `(a|b)+`" plus backreference patterns; the regex
+  `\([^()]*[+*][^()]*\)[?*+]` only catches nested quantifiers like
+  `(.+)+`. LIMIT_MATCH=100000 backstops the worst case so the
+  consequence is wasted CPU not unbounded DoS, but the contract is
+  dishonest. Either tighten implementation (`|\([^()]*\|[^()]*\)[?*+]`)
+  or downgrade the docstring to match what's shipped.
+  **Layman:** the "detect dangerous regex" helper claims more
+  than it actually checks — fix the code or fix the docstring.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1270] **Per-language `lineIsCode` (auditdialog).**
+  `src/auditdialog.cpp:1866`. The comment/string filter only
+  recognises `//`, `/* */`, `'`, `"` — applied across Python,
+  shell, Lua sources too. A `# TODO: hard-coded "10.0.0.1"` in
+  `script.py` doesn't enter comment state (no `#` handling), so
+  the IP/secret/TODO finding survives. Python triple-quoted
+  strings (`"""..."""`) are also misparsed. Dispatch on file
+  extension; add Python `#`, shell `#`, Lua `--`/`[[]]`.
+  **Layman:** the audit pipeline thinks `// foo` is a comment
+  but treats `# foo` as code on Python and shell files, so it
+  raises false alarms on legitimate comments.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1271] **Path-rule glob normalisation vs absolute paths
+  (auditdialog).** `src/auditdialog.cpp:2216`. `globToRegex("tests/
+  audit_fixtures/**")` emits `^tests/audit_fixtures/.*$`. Scanners
+  emitting absolute paths (clang-tidy, semgrep, mypy on cross-cwd
+  inputs) produce `Finding::file == "/home/user/proj/tests/…"`;
+  the path rule silently no-ops. Either normalise `Finding::file`
+  to project-relative before `applyPathRules`, or document that
+  globs must carry the project prefix.
+  **Layman:** the "ignore this directory" rules in audit_rules.json
+  don't match when the scanner reports full paths instead of
+  relative ones.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1272] **Wire or delete `detectProjectFrameworks`
+  (audit-support).** `src/audithygiene.cpp:119`. `detectProjectFrameworks`
+  + `semgrepRulePacks` ship as binary weight + green tests but
+  have ZERO production callers. The function is exercised only by
+  `tests/features/audit_framework_detect/`; framework auto-detection
+  never influences a real semgrep invocation. Either wire into
+  `AuditDialog::semgrepExcludeFlags()` (the originally-stated
+  purpose), or delete the surface + test.
+  **Layman:** the audit pipeline has a "detect Flask / Django /
+  React" feature that's never actually consulted — turn it on or
+  remove it.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+#### ⚡ Tier 3 — perf / refactor / a11y
+
+- 📋 [ANTS-1262] **Move `computeConfidence` to `AuditEngine`
+  (auditengine + auditdialog).** `src/auditdialog.cpp:2351`. The
+  confidence-score formula lives in the dialog despite being pure
+  data-transform with no widget dependency. Non-GUI consumers
+  (ants-helper, MCP `last_audit_summary`, future CI runners) either
+  re-implement (drift risk) or drag in `Qt6::Widgets` (defeats the
+  ANTS-1119 extraction). 35-line move.
+  **Layman:** move the audit-confidence calculation out of the
+  GUI so non-GUI tools can compute it without dragging the whole
+  widget toolkit in.
+  Kind: refactor.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1263] **Delete dead `renderHtml` v1 + retest
+  (roadmapdialog).** `src/roadmapdialog.cpp:684`. CLAUDE.md claims
+  `renderHtml` is "kept for tests + the `roadmap-query` IPC verb
+  consumers" — but `grep -rn renderHtml src/` returns ZERO non-test
+  callers (`remotecontrol.cpp:611` uses `parseBullets`, not
+  `renderHtml`). 318 lines of duplicated rendering logic kept only
+  for tests. Either delete + rewrite `roadmap_viewer*` /
+  `roadmap_kind_facets` tests against `renderCardsHtml`, or rename
+  `renderHtmlForTests` and amend CLAUDE.md.
+  **Layman:** roadmap dialog has two renderers — the older one is
+  no longer used by anything except its own tests; delete or
+  rename so future readers stop hunting for callers.
+  Kind: refactor.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1264] **Implement INV-13 scroll-position persistence
+  (roadmapdialog).** `src/roadmapdialog.cpp:2206`. Spec ANTS-1154
+  §3.5 / §4.5 (INV-13) requires the dialog to write the topmost
+  visible card's `(sectionSlug, idIfAny, offsetPx)` to
+  `Config::roadmapScrollAnchor[activeTab]` on close. The Config
+  accessor exists (`config.h:99`) but `closeEvent` never writes it
+  and the dialog never reads/restores. Either ship the
+  implementation or remove the dead Config API + amend the spec.
+  **Layman:** the Roadmap dialog is supposed to remember where
+  you scrolled to when you close + reopen — that's promised in
+  the spec but unimplemented.
+  Kind: implement.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1265] **Image-budget COW dedup (terminalgrid).**
+  `src/terminalgrid.cpp:767`. `recomputeImageBudget()` sums
+  `m_inlineImages` and `m_kittyImages` `sizeInBytes()`
+  independently; the "conservative direction" comment in the
+  header is wrong — when a Kitty `T` action stores AND displays
+  the same image (both containers hold COW copies sharing the
+  buffer), the recompute double-counts. After a recompute,
+  `m_imageBudget.used` may exceed actual physical use by 2× and
+  stay there, rejecting legitimate subsequent transfers. Verify
+  by inspecting `terminalgrid.cpp:3104-3148`, then dedup by
+  `img.constBits()` or release-on-displacement.
+  **Layman:** the per-tab image memory budget can silently
+  double-count when an image is shown twice, blocking new
+  images that would fit.
+  Kind: review-fix.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1267] **Hoist per-row `vector<TextRun>` (terminalwidget).**
+  `src/terminalwidget.cpp:775-1003`. `paintEvent` allocates
+  `std::vector<TextRun>` per row, every frame, plus per-run
+  `std::vector<char32_t>` codepoint buffers. On a 60 fps repaint
+  over ~50 rows that's hundreds of allocations/frame after the
+  ANTS-1149 layout-reuse optimisation. Hoist to widget members,
+  recycle via `clear()` per row. Measure perf-overlay delta first
+  to confirm the savings before churning the file.
+  **Layman:** the terminal redraw allocates fresh memory for
+  every row every frame — recycling those buffers should be
+  measurably faster on heavy Claude output.
+  Kind: optimize.
+  Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1277] **Keyboard nav + aria-expanded on collapsible
+  cards (roadmapdialog).** `src/roadmapdialog.cpp:1888`. The dialog
+  binds `/`, `?`, `Esc`, `F5`, `Ctrl+C/A`, arrows, `PgUp/Dn`,
+  `Home/End`, `Tab` — but there is NO keyboard path to expand a
+  focused card or section, defeating R20 + R23 (partially-sighted
+  scan-friendliness) for non-mouse users. Section toggles
+  (`ants://expand-section/`) render as `▾`/`▸` links with no
+  `aria-expanded`, no `role="button"` — QTextDocument ignores
+  aria-* attrs but emitting them is free and lifts QAccessible
+  output.
+  **Layman:** screen reader / keyboard-only users can't expand
+  Roadmap cards without a mouse, and the chevrons don't announce
+  open/closed state.
+  Kind: accessibility.
+  Source: indie-review-2026-05-13.
+
+#### 🧰 Tooling — surfaced during this fold-in
+
+- 📋 [ANTS-1278] **`indie_review_fold_in` MCP renderer emits
+  placeholder bullets + duplicate `Lanes:` line.** Surfaced
+  while folding this 2026-05-13 sweep into ROADMAP. The MCP tool
+  `mcp__ants__indie_review_fold_in` correctly allocates IDs,
+  bumps `.roadmap-counter`, and atomically inserts after the
+  active release heading — but every bullet body is literally
+  `Cited by N lanes at \`<file>:<line>\`.` with no description,
+  no Layman line, no Kind hint, and the `Lanes:` row appears
+  twice per card. Callers have to overwrite the body via
+  `Edit` after insert, which is precisely the manual step the
+  MCP exists to avoid. **Fix:** (a) extend the
+  `IndieReviewActionable` schema with `title`, `description`,
+  `layman`, `kind` optional fields; (b) when present, render
+  them in the standard roadmap-card shape; when absent, render
+  an obvious placeholder like `**TODO: describe this finding.**`
+  so callers can't accidentally ship a stub; (c) drop the
+  duplicated `Lanes:` row in `RoadmapFoldIn::renderBlock`.
+  See `src/roadmapfoldin.cpp` (renderer) +
+  `src/indiereviewengine.cpp` (MCP tool) + the rendered output
+  in this very block (ANTS-1260…1277 cards as inserted before
+  manual rewrite) for the reference reproducer.
+  **Layman:** the "add findings to ROADMAP" MCP tool produces
+  placeholder bullets that need to be rewritten by hand —
+  defeats the point of the tool. Give it real fields and a
+  loud TODO placeholder.
+  Kind: tooling.
+  Source: indie-review-2026-05-13.
+
+
 **Theme:** fold-in of the 2026-05-01 multi-agent code review. 11
 subsystems reviewed by independent `general-purpose` subagents (each
 briefed only with source paths + contract docs + external standards

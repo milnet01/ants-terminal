@@ -89,6 +89,7 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     // Claude Code transcript.
     m_bgTasks = new ClaudeBgTaskTracker(this);
     m_bgTasksBtn = new QPushButton(tr("Background Tasks"), m_statusBar);
+    m_bgTasksBtn->setAccessibleName(tr("Background tasks"));
     m_bgTasksBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_bgTasksBtn->hide();
     m_statusBar->addPermanentWidget(m_bgTasksBtn);
@@ -101,8 +102,13 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     // contract. Hidden until the focused tab's transcript reports
     // ≥ 1 plan row. Label shape "<unfinished>/<total>", e.g. 3/5.
     m_tasks = new ClaudeTaskListTracker(this);
-    m_tasksBtn = new QPushButton(QStringLiteral("☰ 0/0"), m_statusBar);
+    // Empty initial label — the hide() below + ANTS-1246 hide predicate
+    // (total <= 0 || done >= total) mean the chip is never shown before
+    // the first refreshTasksButton tick. Constructing with "☰ 0/0" was
+    // internally inconsistent with that hide contract.
+    m_tasksBtn = new QPushButton(QString(), m_statusBar);
     m_tasksBtn->setObjectName(QStringLiteral("claudeTasksBtn"));
+    m_tasksBtn->setAccessibleName(tr("Task list"));
     m_tasksBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_tasksBtn->hide();
     m_statusBar->addPermanentWidget(m_tasksBtn);
@@ -121,6 +127,7 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     // commandFailed terminal signal, auto-hides after the timeout the
     // caller passes to setError().
     m_errorLabel = new QLabel(m_statusBar);
+    m_errorLabel->setAccessibleName(tr("Last command error"));
     // Styled dynamically by applyTheme()
     m_errorLabel->hide();
     m_statusBar->addPermanentWidget(m_errorLabel);
@@ -492,10 +499,22 @@ void ClaudeStatusBarController::setError(const QString &text,
     m_errorLabel->setText(text);
     m_errorLabel->setToolTip(tooltip);
     m_errorLabel->show();
-    QTimer::singleShot(autoHideMs, m_errorLabel, &QWidget::hide);
+    // Cancel any prior auto-hide; without this a second setError() in
+    // the first's window would inherit the prior singleShot and hide
+    // the new message early.
+    if (!m_errorHideTimer) {
+        m_errorHideTimer = new QTimer(this);
+        m_errorHideTimer->setSingleShot(true);
+        connect(m_errorHideTimer, &QTimer::timeout,
+                m_errorLabel, &QWidget::hide);
+    }
+    m_errorHideTimer->stop();
+    // autoHideMs <= 0 means "sticky" — leave shown until clearError().
+    if (autoHideMs > 0) m_errorHideTimer->start(autoHideMs);
 }
 
 void ClaudeStatusBarController::clearError() {
+    if (m_errorHideTimer) m_errorHideTimer->stop();
     if (m_errorLabel) m_errorLabel->hide();
 }
 
@@ -504,6 +523,7 @@ void ClaudeStatusBarController::resetForTabSwitch() {
     m_lastDetail.clear();
     m_planMode = false;
     m_auditing = false;
+    m_promptActive = false;
     if (m_reviewBtn)   m_reviewBtn->hide();
     if (m_contextBar)  m_contextBar->hide();
     if (m_bgTasksBtn)  m_bgTasksBtn->hide();
@@ -612,6 +632,11 @@ void ClaudeStatusBarController::refreshBgTasksButton() {
     // 2 s timer tick. The QFileSystemWatcher continues to drive full
     // rescan() on transcript-changed (Claude appended JSONL).
     if (!path.isEmpty() && path == prevPath) {
+        // poll() handles QFileSystemWatcher's silent drop on
+        // tmpfile+rename (mirror of foreground tracker), then
+        // sweepLiveness() flips finished flags by stat'ing output
+        // files. Both are cheap when nothing changed.
+        m_bgTasks->poll();
         m_bgTasks->sweepLiveness();
     }
 

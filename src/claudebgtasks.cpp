@@ -37,6 +37,9 @@ void ClaudeBgTaskTracker::setTranscriptPath(const QString &path) {
     if (!m_transcriptPath.isEmpty())
         m_watcher.removePath(m_transcriptPath);
     m_transcriptPath = path;
+    // Mirror claudetasklist: reset poll() mtime shortcircuit so a
+    // path re-bind always reparses.
+    m_lastRescanMtimeMs = 0;
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
     rescan();
@@ -107,6 +110,29 @@ void ClaudeBgTaskTracker::rescan() {
     }
     m_tasks = std::move(next);
     if (!same) emit tasksChanged();
+
+    // Track rescanned file's mtime so poll() can short-circuit when
+    // nothing has changed between ticks.
+    if (!m_transcriptPath.isEmpty()) {
+        const QFileInfo fi(m_transcriptPath);
+        if (fi.exists())
+            m_lastRescanMtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    }
+}
+
+void ClaudeBgTaskTracker::poll() {
+    if (m_transcriptPath.isEmpty()) return;
+    const QFileInfo fi(m_transcriptPath);
+    if (!fi.exists()) return;
+    // File missing at bind time may now exist — re-add watch + reparse.
+    if (!m_watcher.files().contains(m_transcriptPath)) {
+        m_watcher.addPath(m_transcriptPath);
+        rescan();
+        return;
+    }
+    const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    if (mtimeMs == m_lastRescanMtimeMs) return;
+    rescan();
 }
 
 // Pure parser. Walks the transcript line by line, accumulating a map of
@@ -165,6 +191,19 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
         const QJsonDocument doc = QJsonDocument::fromJson(rawLine);
         if (!doc.isObject()) continue;
         const QJsonObject ev = doc.object();
+        // Drop sidechain (subagent) events — bg-task launches inside a
+        // subagent's inline conversation must not inflate the parent
+        // session's running count. Mirrors claudetasklist.cpp's filter
+        // (ANTS-1158 sidechain rationale).
+        if (ev.value(QStringLiteral("isSidechain")).toBool()) continue;
+        // ANTS-1224 parity: a /compact summary resets in-memory state
+        // so post-compact event stream rebuilds from a clean slate.
+        if (ev.value(QStringLiteral("isCompactSummary")).toBool()) {
+            out.clear();
+            idxByToolUseId.clear();
+            idxByBgId.clear();
+            continue;
+        }
         const QString type = ev.value(QStringLiteral("type")).toString();
 
         if (type == QLatin1String("assistant")) {

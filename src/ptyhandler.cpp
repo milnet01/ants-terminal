@@ -59,6 +59,11 @@ Pty::~Pty() {
             // its own wait at 2 s. The worker thread blocks here,
             // never the GUI thread.
             ::kill(m_childPid, SIGTERM);
+            // SIGCONT alongside SIGTERM: if the shell is stopped (Ctrl-Z'd
+            // job or its own process group suspended), SIGTERM won't be
+            // delivered until it resumes — leading to the full 500 ms +
+            // SIGKILL escalation on every tab-close that hit a stop.
+            ::kill(m_childPid, SIGCONT);
             for (int i = 0; i < 50; ++i) {
                 if (::waitpid(m_childPid, &status, WNOHANG) != 0) break;
                 ::usleep(10000);  // 10 ms × 50 = 500 ms total
@@ -212,6 +217,26 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     }
 
     if (m_childPid == 0) {
+        // Reset signal mask + dispositions to defaults. Qt installs
+        // handlers for SIGCHLD/SIGPIPE/SIGUSR2/...; glib & dbus add more.
+        // POSIX § 2.4 keeps ignored dispositions (e.g. SIGPIPE=SIG_IGN)
+        // across exec, which is the classic "pipeline under child shell
+        // silently hangs" failure mode. Both calls are async-signal-safe.
+        {
+            sigset_t empty;
+            ::sigemptyset(&empty);
+            ::sigprocmask(SIG_SETMASK, &empty, nullptr);
+            const int kResetSigs[] = {
+                SIGPIPE, SIGCHLD, SIGHUP, SIGINT, SIGQUIT, SIGTERM,
+                SIGTSTP, SIGTTIN, SIGTTOU, SIGUSR1, SIGUSR2, SIGALRM,
+            };
+            for (int s : kResetSigs) {
+                struct sigaction sa{};
+                sa.sa_handler = SIG_DFL;
+                ::sigemptyset(&sa.sa_mask);
+                ::sigaction(s, &sa, nullptr);
+            }
+        }
         // Child process — close inherited file descriptors (CWE-403)
         // Prevents leaking parent's sockets/FDs (AI network, plugins,
         // D-Bus, X11/Wayland, remote-control IPC) into the user's shell.

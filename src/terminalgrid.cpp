@@ -356,6 +356,8 @@ void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
         bool rowHasCombining = !line.combining.empty();
         for (int k = 0; k < span; ++k) {
             Cell &c = cells[startCol + k];
+            Q_ASSERT(static_cast<unsigned char>(data[i + k]) >= 0x20 &&
+                     static_cast<unsigned char>(data[i + k]) <= 0x7E);
             c.codepoint = static_cast<uint8_t>(data[i + k]);
             c.attrs = attrs;
             c.isWideChar = false;
@@ -666,6 +668,15 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         // 0.6.22 — alt-screen doesn't touch scrollback; make sure
                         // a stale redraw window doesn't leak across the boundary.
                         m_csiClearRedrawActive = false;
+                        // Drop any half-staged Kitty `m=1` chunked
+                        // image transfer. Otherwise a subsequent
+                        // legitimate APC `m=0` from a different
+                        // sender prepends our stale bytes and
+                        // produces a poisoned image attributed to
+                        // the new sender.
+                        m_kittyChunkBuffer.clear();
+                        m_kittyChunkBuffer.shrink_to_fit();
+                        m_kittyChunkId = 0;
                         markAllScreenDirty();
                         m_altCursorRow = m_cursorRow;
                         m_altCursorCol = m_cursorCol;
@@ -1082,7 +1093,17 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                         if (tokenEnd == std::string::npos) tokenEnd = params.size();
                         const std::string token = params.substr(tokenStart, tokenEnd - tokenStart);
                         if (token.size() > 3 && token.compare(0, 3, "id=") == 0) {
-                            m_hyperlinkId = token.substr(3);
+                            // Bound the id field. URI is capped at
+                            // MAX_OSC8_URI_BYTES; the id used to be
+                            // uncapped and would scale to 10 MB × N
+                            // rows of scrollback via the per-row
+                            // hyperlink span. xterm spec doesn't
+                            // mandate an id length, but 256 bytes
+                            // covers every legitimate use.
+                            constexpr size_t kMaxOsc8IdBytes = 256;
+                            std::string id = token.substr(3);
+                            if (id.size() <= kMaxOsc8IdBytes)
+                                m_hyperlinkId = std::move(id);
                             break;
                         }
                         tokenStart = tokenEnd + 1;
@@ -2308,6 +2329,14 @@ void TerminalGrid::clearScreenContent() {
 void TerminalGrid::resize(int rows, int cols) {
     if (rows == m_rows && cols == m_cols) return;
 
+    // Drop any half-staged Kitty m=1 chunked transfer — the chunk
+    // sequence is keyed to the grid dimensions in the sender's
+    // mental model; mixing pre/post-resize chunks risks producing
+    // a poisoned image attributed to the new dimensions.
+    m_kittyChunkBuffer.clear();
+    m_kittyChunkBuffer.shrink_to_fit();
+    m_kittyChunkId = 0;
+
     // ANTS-1194 — capture "scroll region was at full screen" before any
     // mutation. If yes, the resize must EXPAND/contract the region with
     // the grid (the user's mental model: "no scroll region set"). If no,
@@ -2652,6 +2681,14 @@ void TerminalGrid::resize(int rows, int cols) {
 void TerminalGrid::handleDcs(const std::string &payload) {
     if (payload.empty()) return;
 
+    // The vt-parser caps individual DCS bodies at 10 MiB. Sixel's
+    // first pass walks every byte of the payload (no per-pass cycle
+    // budget), so a 10 MiB payload of valid sixel bytes pins the
+    // parse thread for ~10 M iterations. Cap the upper end at 4 MiB
+    // — well above any realistic terminal Sixel transfer.
+    constexpr size_t kMaxSixelBytes = 4u * 1024u * 1024u;
+    if (payload.size() > kMaxSixelBytes) return;
+
     // DECRQSS — Request Status String: DCS $ q Pt ST
     //
     // Apps (neovim, tmux, kitty's kitten, libvterm-based TUIs) probe the
@@ -2965,6 +3002,7 @@ void TerminalGrid::handleApc(const std::string &payload) {
     }
     std::string fullData = m_kittyChunkBuffer + data_str;
     m_kittyChunkBuffer.clear();
+    m_kittyChunkBuffer.shrink_to_fit();
     if (imageId == 0 && m_kittyChunkId != 0) imageId = m_kittyChunkId;
     m_kittyChunkId = 0;
 

@@ -1333,8 +1333,11 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         }
         if (!rec.kind.isEmpty()) {
             const QString glyph = kindGlyph(rec.kind);
+            // CWE-79: rec.kind is captured from user-supplied ROADMAP.md
+            // by rxKind ([^\.\n]+?), which admits <, >, &, ". Escape
+            // before emitting into HTML.
             html += QStringLiteral("<span class=\"rm-kind\">%1 %2</span>")
-                        .arg(glyph, rec.kind);
+                        .arg(glyph, htmlEscape(rec.kind));
         }
         // Summary: layman if set, else headline with leading "ANTS-NNNN — " stripped
         QString summary = rec.layman;

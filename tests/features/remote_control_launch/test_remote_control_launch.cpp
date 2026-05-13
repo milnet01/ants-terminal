@@ -51,10 +51,11 @@ static int runMain() {
     if (lPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdLaunch definition missing");
     } else {
-        // Window expanded to 3000 chars in 0.7.52 — cmdLaunch body
-        // grew when filterControlChars was added on the command-bytes
-        // path (2026-04-27 indie-review HIGH).
-        std::string body = rc.substr(lPos, 3000);
+        // Window expanded to 3500 chars in 2026-05-13 — cmdLaunch body
+        // grew when cwd validation (CWE-22 hardening) was added.
+        // 0.7.52 had bumped it from the original to 3000 when
+        // filterControlChars landed.
+        std::string body = rc.substr(lPos, 3500);
         if (body.find("isString()") == std::string::npos) {
             fail("INV-2b: cmdLaunch must validate `command` via isString()");
         }

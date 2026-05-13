@@ -129,8 +129,12 @@ void RemoteControl::onNewConnection() {
         if (fd >= 0) {
             struct ucred cred{};
             socklen_t len = sizeof(cred);
-            if (::getsockopt(static_cast<int>(fd), SOL_SOCKET,
-                             SO_PEERCRED, &cred, &len) != 0 ||
+            const int gscRet = ::getsockopt(static_cast<int>(fd), SOL_SOCKET,
+                                            SO_PEERCRED, &cred, &len);
+            // If getsockopt failed OR returned a truncated struct, treat
+            // as a hostile peer rather than logging cred.uid==0 (which
+            // would surface as a fake "root tried to connect" alarm).
+            if (gscRet != 0 || len != sizeof(cred) ||
                 cred.uid != ::getuid()) {
                 ANTS_LOG(DebugLog::Network,
                     "remote-control: peer UID mismatch "
@@ -491,6 +495,25 @@ QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
     const QString filteredCommand = QString::fromUtf8(payload);
 
     const QString cwd = req.value("cwd").toString();
+    // Indie-review 2026-05-13: reject control bytes / backslashes in
+    // `cwd` (CWE-22 / CWE-78 parity with workspace-search, file-outline,
+    // git_state). Same-UID trust model holds today, but the verb is the
+    // seam Claude Code (and any future MCP) crosses with user-supplied
+    // input. Validate at the boundary, not the kernel.
+    auto cwdHasControl = [](const QString &s) {
+        for (QChar c : s)
+            if (c.unicode() < 0x20 || c == QLatin1Char('\\')) return true;
+        return false;
+    };
+    if (!cwd.isEmpty() && cwdHasControl(
+            cwd.normalized(QString::NormalizationForm_C))) {
+        QJsonObject errOut;
+        errOut["ok"] = false;
+        errOut["error"] = QStringLiteral(
+            "launch: cwd contains control or backslash characters");
+        errOut["code"] = QStringLiteral("bad_cwd");
+        return QJsonDocument(errOut);
+    }
     const int idx = m_main->newTabForRemote(cwd, filteredCommand);
     out["ok"] = true;
     out["index"] = idx;
@@ -527,6 +550,21 @@ QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
         filteredCommand = QString::fromUtf8(payload);
     }
 
+    // Indie-review 2026-05-13: cwd hardening (mirror cmdLaunch).
+    auto cwdHasControl = [](const QString &s) {
+        for (QChar c : s)
+            if (c.unicode() < 0x20 || c == QLatin1Char('\\')) return true;
+        return false;
+    };
+    if (!cwd.isEmpty() && cwdHasControl(
+            cwd.normalized(QString::NormalizationForm_C))) {
+        QJsonObject errOut;
+        errOut["ok"] = false;
+        errOut["error"] = QStringLiteral(
+            "new-tab: cwd contains control or backslash characters");
+        errOut["code"] = QStringLiteral("bad_cwd");
+        return QJsonDocument(errOut);
+    }
     const int idx = m_main->newTabForRemote(cwd, filteredCommand);
     out["ok"] = true;
     out["index"] = idx;

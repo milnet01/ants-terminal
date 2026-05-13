@@ -39,9 +39,13 @@ static std::size_t scanSafeAsciiRun(const std::uint8_t *data, std::size_t len) n
     // outside is either < -96 (C0 controls) or > -2 (0x7F + all high-bit
     // bytes). Two signed cmpgt + or + movemask flags any interesting byte
     // in a 16-byte chunk.
+    // Signed boundary constants for the [0x20..0x7E] safe-ASCII range after
+    // XOR-with-0x80: 0x20-0x80 = -96, 0x7E-0x80 = -2.
+    constexpr char kSafeMinSigned = -96;
+    constexpr char kSafeMaxSigned = -2;
     const __m128i kSignFlip = _mm_set1_epi8(static_cast<char>(0x80));
-    const __m128i kLowBound = _mm_set1_epi8(static_cast<char>(-96));  // 0x20 - 0x80
-    const __m128i kHighBound = _mm_set1_epi8(static_cast<char>(-2));  // 0x7E - 0x80
+    const __m128i kLowBound = _mm_set1_epi8(kSafeMinSigned);
+    const __m128i kHighBound = _mm_set1_epi8(kSafeMaxSigned);
     while (i + 16 <= len) {
         __m128i b = _mm_loadu_si128(reinterpret_cast<const __m128i *>(data + i));
         __m128i s = _mm_xor_si128(b, kSignFlip);
@@ -148,6 +152,16 @@ void VtParser::feedByte(uint8_t byte) {
 
     if (byte < 0x80) {
         flushCodepoint(byte);
+    } else if (byte <= 0x9F) {
+        // 8-bit C1 controls (0x80-0x9F). UTF-8 encodes these as a 2-byte
+        // sequence (0xC2 0x80..0xC2 0x9F), so raw 0x80-0x9F here means
+        // either a legacy 8-bit-C1-aware producer or a malformed UTF-8
+        // stream. ECMA-48 § 5.3 and the Williams VT500 state machine
+        // treat C1 bytes as first-class controls; route them through
+        // processChar() rather than substituting U+FFFD. This lets the
+        // CsiEntry / OscString / DcsString string-terminator branches
+        // for 0x9C reach their handlers (previously dead code).
+        processChar(byte);
     } else if ((byte & 0xE0) == 0xC0) {
         m_utf8Accum = byte & 0x1F;
         m_utf8Remaining = 1;
@@ -251,6 +265,27 @@ void VtParser::processChar(uint32_t ch) {
             m_callback(a);
         } else if (ch == 0x7F) {
             // DEL — ignore
+        } else if (ch >= 0x80 && ch <= 0x9F) {
+            // 8-bit C1 controls (ECMA-48 § 5.3). These are the dual of
+            // the ESC-prefixed two-byte forms: 0x9B == CSI (ESC [),
+            // 0x9D == OSC (ESC ]), 0x90 == DCS (ESC P), 0x9F == APC
+            // (ESC _), 0x9E == PM (ESC ^), 0x98 == SOS (ESC X).
+            switch (ch) {
+            case 0x9B: transition(CsiEntry); break;
+            case 0x9D: m_oscString.clear(); transition(OscString); break;
+            case 0x90: m_dcsString.clear(); transition(DcsString); break;
+            case 0x9F: m_apcString.clear(); transition(ApcString); break;
+            case 0x98:
+            case 0x9E: transition(IgnoreString); break;
+            default: {
+                // Other C1 controls (IND/NEL/HTS/RI/SS2/SS3) — Execute
+                VtAction a;
+                a.type = VtAction::Execute;
+                a.controlChar = static_cast<char>(ch);
+                m_callback(a);
+                break;
+            }
+            }
         } else {
             // Printable character
             VtAction a;

@@ -26,6 +26,11 @@ void *LuaEngine::luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
         free(ptr);
         return nullptr;
     }
+    // Per Lua 5.4 manual: when ptr == NULL, `osize` encodes the OBJECT TYPE
+    // being allocated (LUA_TSTRING/TABLE/etc., a small int 0..8), not a
+    // byte count. Treating it as bytes drifts m_luaMemUsage downward on
+    // every fresh allocation, silently letting plugins exceed MAX_LUA_MEMORY.
+    if (ptr == nullptr) osize = 0;
     // Check memory limit on allocate/realloc
     size_t newTotal = engine->m_luaMemUsage - osize + nsize;
     if (newTotal > MAX_LUA_MEMORY) {
@@ -420,10 +425,20 @@ int LuaEngine::lua_ants_on(lua_State *L) {
         PluginEvent event;
         if (!eventFromString(eventName, event))
             return luaL_error(L, "unknown event: %s", eventName);
+        // Per-event handler cap. A plugin that called ants.on(event, fn)
+        // in a loop would grow this list until the heap cap fired —
+        // a real cap here surfaces the bug directly. 64 handlers per
+        // event is far above any legitimate plugin's needs.
+        constexpr int kMaxHandlersPerEvent = 64;
+        auto &handlers = engine->m_handlers[event];
+        if (handlers.size() >= kMaxHandlersPerEvent) {
+            return luaL_error(L, "ants.on: too many handlers for event %s "
+                              "(cap %d)", eventName, kMaxHandlersPerEvent);
+        }
         // Store function reference in registry
         lua_pushvalue(L, 2);
         int ref = luaL_ref(L, LUA_REGISTRYINDEX);
-        engine->m_handlers[event].push_back(ref);
+        handlers.push_back(ref);
     }
     return 0;
 }

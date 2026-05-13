@@ -16,10 +16,10 @@ Listed only where behavior isn't obvious from the name.
   Sixel/Kitty-APC/iTerm2 images, DA/CPR/DSR response callback,
   per-line `combining` side-table for zero-cost non-combining lines,
   soft-wrap reflow on resize.
-- `terminalwidget` (QOpenGLWidget) — QPainter + QTextLayout renderer
-  with HarfBuzz ligatures. SGR mouse, focus reporting, sync output,
-  undercurl, per-pixel bg alpha. (The dormant glyph-atlas
-  `GlRenderer` was retired in 0.7.44.)
+- `terminalwidget` (QWidget — was QOpenGLWidget pre-0.7.4; the dormant
+  glyph-atlas `GlRenderer` was retired in 0.7.44) — QPainter +
+  QTextLayout renderer with HarfBuzz ligatures. SGR mouse, focus
+  reporting, sync output, undercurl, per-pixel bg alpha.
 - `ptyhandler` — forkpty + QSocketNotifier.
 - `auditdialog` — static-analysis panel. Pipeline (matches
   `handleCheckOutput` order):
@@ -47,8 +47,10 @@ Listed only where behavior isn't obvious from the name.
   (`.semgrep.yml` header → `--exclude-rule`; `pyproject.toml` ruff S-codes
   → bandit `--skip B<nnn>`).
 - `featurecoverage` — in-process audit lanes via `AuditCheck::inProcessRunner`
-  (no QProcess). Three: `spec_code_drift`, `changelog_test_coverage`,
-  `test_health`.
+  (no QProcess). Two in-process: `spec_code_drift`,
+  `changelog_test_coverage`. Plus `test_health`, which is implemented
+  shell-side (`auditdialog.cpp` recursive grep) — listed alongside for
+  topical grouping; not routed through `inProcessRunner`.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
   `get-text`, `launch`, `tab-list`, `roadmap-query`. Trust model:
@@ -89,12 +91,16 @@ Listed only where behavior isn't obvious from the name.
 - `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers with
   `QFileSystemWatcher` + `poll()` / `sweepLiveness()` mtime rescue
   for the case Claude rewrites the transcript via tmpfile+rename
-  (which silently drops the watch). `setTranscriptPath` is
-  idempotent on same path, otherwise removes/re-adds watch and
-  calls `rescan()` synchronously. Parser: `TodoWrite` (snapshot
-  replace), `TaskCreate` + paired tool_result (incremental add),
-  `TaskUpdate` (status flip). `unfinishedCount() = pending only`
-  (ANTS-1221, post-1216 refinement).
+  (which silently drops the watch). **Both** trackers now expose a
+  `poll()` that rebinds the watch when the file appears or its
+  mtime advanced; bg-tasks gained parity in 2026-05-13. Parser:
+  `TodoWrite` (snapshot replace), `TaskCreate` + paired tool_result
+  (incremental add), `TaskUpdate` (status flip). The chip itself
+  reads `done/total` (ANTS-1246); `unfinishedCount() = pending
+  only` (ANTS-1221) is retained as a diagnostic accessor.
+  `claudebgtasks::parseTranscript` filters `isSidechain`
+  (subagent inline turns) and resets state on `isCompactSummary`,
+  matching the foreground tracker.
 
 ## Data flow
 

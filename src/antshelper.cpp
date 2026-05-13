@@ -45,7 +45,24 @@ QJsonObject driftCheck(const QJsonObject & /*request*/,
             QStringLiteral("missing_repo_root"));
     }
 
-    const QString script = QDir(repoRoot).absoluteFilePath(
+    // Reject obviously hostile --repo-root inputs. Threat model: Claude
+    // Code (or any caller piping JSON over stdin) supplies the path —
+    // not a co-UID local attacker. Refuse traversal substrings and
+    // control bytes (NUL); canonicalise so the script lookup runs on
+    // the resolved real path rather than whatever symlink chain the
+    // caller supplied. Do NOT require a `.git` directory — INV-5 (bogus
+    // repo root) doesn't restrict the helper to git checkouts; tests
+    // pass tmpdirs with no VCS.
+    if (repoRoot.contains(QStringLiteral("..")) || repoRoot.contains(QChar('\0'))) {
+        setExit(1);
+        return errorObj(
+            QStringLiteral("repoRoot contains traversal or control bytes"),
+            QStringLiteral("invalid_repo_root"));
+    }
+    const QString canonicalRoot = QFileInfo(repoRoot).canonicalFilePath();
+    const QString resolvedRoot = canonicalRoot.isEmpty() ? repoRoot : canonicalRoot;
+
+    const QString script = QDir(resolvedRoot).absoluteFilePath(
         QStringLiteral("packaging/check-version-drift.sh"));
     if (!QFileInfo::exists(script)) {
         setExit(1);
@@ -55,7 +72,7 @@ QJsonObject driftCheck(const QJsonObject & /*request*/,
     }
 
     QProcess proc;
-    proc.setWorkingDirectory(repoRoot);
+    proc.setWorkingDirectory(resolvedRoot);
     proc.setProgram(QStringLiteral("bash"));
     proc.setArguments({script});
     proc.start();
@@ -67,7 +84,18 @@ QJsonObject driftCheck(const QJsonObject & /*request*/,
             QStringLiteral("bash unavailable"),
             QStringLiteral("missing_bash"));
     }
-    proc.waitForFinished(60000);
+    if (!proc.waitForFinished(60000)) {
+        // Hung script: kill and surface the timeout. Without this branch
+        // QProcess::exitStatus() returns NormalExit + exitCode() returns 0
+        // for a still-running process — the worst possible failure mode
+        // for a drift-detector (silent false-clean).
+        proc.kill();
+        proc.waitForFinished(1000);
+        setExit(1);
+        return errorObj(
+            QStringLiteral("drift script timed out after 60s"),
+            QStringLiteral("script_timeout"));
+    }
 
     if (proc.exitStatus() != QProcess::NormalExit) {
         setExit(1);

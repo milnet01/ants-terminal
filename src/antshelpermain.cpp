@@ -22,6 +22,8 @@
 #include <QStringList>
 #include <QTextStream>
 
+#include <unistd.h>
+
 namespace {
 
 void writeStderr(const QString &msg) {
@@ -54,6 +56,13 @@ QJsonObject parseRequest(const QString &raw, QString *errMsg) {
 }
 
 QString readStdin(bool *opened = nullptr) {
+    // If stdin is a TTY (interactive run, no pipe), reading would block
+    // until the user hits Ctrl-D. The helper's INV-10 contract treats
+    // "no piped input" the same as "empty {} input", so short-circuit.
+    if (::isatty(fileno(stdin))) {
+        if (opened) *opened = false;
+        return {};
+    }
     QFile f;
     const bool ok = f.open(stdin, QIODevice::ReadOnly);
     if (opened) *opened = ok;

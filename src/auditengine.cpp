@@ -102,8 +102,13 @@ QString sourceForCheck(const QString &checkId) {
 
 QString computeDedup(const QString &file, int line,
                      const QString &checkId, const QString &title) {
+    // Single-arg chain — the two-arg overload .arg(checkId, title)
+    // substitutes %3 and %4 simultaneously, but if `file` ever contains
+    // a literal "%3"/"%4" substring (legal in filesystems) those would
+    // be matched as placeholders. Chained single-arg calls walk
+    // left-to-right and skip already-substituted regions.
     const QString raw = QString("%1:%2:%3:%4")
-                           .arg(file).arg(line).arg(checkId, title);
+                           .arg(file).arg(line).arg(checkId).arg(title);
     return QString::fromLatin1(
         QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Sha256)
             .toHex().left(24));

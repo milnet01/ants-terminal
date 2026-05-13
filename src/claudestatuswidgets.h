@@ -24,6 +24,7 @@ class QPushButton;
 class QLabel;
 class QProgressBar;
 class QTabWidget;
+class QTimer;
 class ClaudeTabTracker;
 class ColoredTabBar;
 class ClaudeBgTaskTracker;
@@ -124,6 +125,11 @@ private:
     QProgressBar        *m_contextBar = nullptr;
     QPushButton         *m_reviewBtn = nullptr;
     QLabel              *m_errorLabel = nullptr;
+    // Owned auto-hide timer for m_errorLabel. Without an owned timer,
+    // a second setError() during the first's window would leave the
+    // first QTimer::singleShot in flight, hiding the second message
+    // ~early. Cancellable on re-entry.
+    QTimer              *m_errorHideTimer = nullptr;
     ClaudeBgTaskTracker *m_bgTasks = nullptr;
     QPushButton         *m_bgTasksBtn = nullptr;
 

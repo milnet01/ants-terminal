@@ -5104,7 +5104,8 @@ QString AuditDialog::exportSarif() const {
                 res["locations"] = locs;
             }
             QJsonObject partialFp;
-            partialFp["primaryLocationLineHash"] = f.dedupKey;
+            // SARIF v2.1.0 § 3.27.13 convention: <name>/<version>.
+            partialFp["primaryLocationLineHash/v1"] = f.dedupKey;
             res["partialFingerprints"] = partialFp;
 
             QJsonObject props{

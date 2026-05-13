@@ -33,7 +33,6 @@
 #include <QDir>
 #include <QDateTime>
 #include <QFileInfo>
-#include <QSurfaceFormat>
 #include <QFileDialog>
 #include <QTextStream>
 #include <QJsonObject>
@@ -1441,7 +1440,10 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
         QStringList lines;
         lines << QString("FPS: %1").arg(m_perfFps, 0, 'f', 1);
-        lines << QString("Paint: %1 us").arg(m_perfLastPaintUs);
+        // Indie-review 2026-05-13: m_perfLastPaintUs is read here but
+        // NEVER written anywhere — the overlay always showed "Paint: 0
+        // us". Removed rather than back-fill the timer because per-
+        // paint timing belongs in a real perf scope, not the overlay.
         lines << QString("Scrollback: %1").arg(m_grid->scrollbackSize());
         lines << QString("Grid: %1x%2").arg(cols).arg(rows);
         lines << QString("Scroll offset: %1").arg(m_scrollOffset);
@@ -3467,15 +3469,13 @@ void TerminalWidget::invalidateSpanCaches() const {
             anyDirty = true;
         }
     }
-    // If the grid grew via scrollback, entries there are still valid, but
-    // globalLine indexing for screen entries has shifted — drop those.
-    if (anyDirty) {
-        for (int r = 0; r < rows; ++r) {
-            int gl = scrollbackSize + r;
-            m_urlSpanCache.erase(gl);
-            m_hlSpanCache.erase(gl);
-        }
-    }
+    // (Indie-review 2026-05-13: the historical second sweep over
+    // [0, rows) that re-erased the same scrollbackSize+r keys is
+    // gone — scrollbackSize was captured once at the top of this
+    // function, so the second loop hit the identical key set and
+    // did nothing. Real scrollback-shift handling lives below in
+    // the m_lastScrollbackPushed check.)
+    (void)anyDirty;
     // ANTS-1134 — when scrollback grows (push count increased
     // since last paint), every existing scrollback-line entry is
     // potentially mis-keyed: the same globalLine integer now
@@ -3938,6 +3938,11 @@ void TerminalWidget::searchPrev() {
 }
 
 bool TerminalWidget::isCellSearchMatch(int globalLine, int col) const {
+    // Indie-review 2026-05-13: early-return on the empty-matches case
+    // (no search active) — called twice per cell per frame; without
+    // the short-circuit the binary-search probe runs ~16,000 times per
+    // frame at 60 fps with nothing to find.
+    if (m_searchMatches.empty()) return false;
     // m_searchMatches is populated in ascending globalLine order (see
     // updateSearchMatches), so lower_bound on globalLine finds the first
     // match at or after this line. Previous impl scanned from index 0 on

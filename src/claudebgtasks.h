@@ -84,8 +84,16 @@ public slots:
     // every tick — this slot replaces that hot path.
     void sweepLiveness();
 
+    // Watch-loss recovery mirror of ClaudeTaskListTracker::poll(). Qt's
+    // QFileSystemWatcher silently drops the path on tmpfile+rename, so
+    // the 2 s status-timer cycles a cheap mtime check; reparses only
+    // when mtime advanced. Also re-adds the watcher when the file has
+    // (re-)appeared. Cheap on the steady-state no-change case.
+    void poll();
+
 private:
     QString m_transcriptPath;
     QFileSystemWatcher m_watcher;
     QList<ClaudeBackgroundTask> m_tasks;
+    qint64 m_lastRescanMtimeMs = 0;
 };

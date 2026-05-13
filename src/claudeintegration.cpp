@@ -1,6 +1,7 @@
 #include "claudeintegration.h"
 
 #include "configpaths.h"
+#include "debuglog.h"
 #include "secureio.h"
 
 #include <QDateTime>
@@ -226,6 +227,11 @@ void ClaudeIntegration::pollClaudeProcess() {
         // below does NOT subsume the not-found case.
         m_claudePid = 0;
         m_transcriptPath.clear();
+        // Indie-review 2026-05-13: prune the plan-mode cache for this
+        // shell-pid. Linux PID reuse is fast; a tab that crashed before
+        // closeTab ran would otherwise poison a future tab assigned the
+        // same shell pid with the dead tab's plan-mode flag.
+        m_planModeByPid.remove(m_shellPid);
         if (m_state != ClaudeState::NotRunning) {
             m_state = ClaudeState::NotRunning;
             emit stateChanged(m_state, m_currentTool);
@@ -498,8 +504,19 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
     QJsonArray entries;
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return entries;
-    // Skip excessively large transcripts to prevent memory exhaustion
-    if (file.size() > 100 * 1024 * 1024) return entries;
+    // Skip excessively large transcripts to prevent memory exhaustion.
+    // Surface the cap-hit so a "transcript empty / status frozen"
+    // bug report is debuggable from logs (env-gated to avoid spam).
+    constexpr qint64 kMaxTranscriptBytes = 100ll * 1024 * 1024;
+    if (file.size() > kMaxTranscriptBytes) {
+        ANTS_LOG(DebugLog::Claude,
+                 "loadTranscript: %s exceeds %lld-byte cap (size=%lld); "
+                 "returning empty",
+                 path.toUtf8().constData(),
+                 static_cast<long long>(kMaxTranscriptBytes),
+                 static_cast<long long>(file.size()));
+        return entries;
+    }
 
     while (!file.atEnd()) {
         QByteArray line = file.readLine().trimmed();
@@ -1007,6 +1024,28 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     // focused tab. PermissionRequest stays ungated because its slot
     // routes via m_lastHookSessionId, not via the singleton state.
     const bool isFocused = isFocusedTabSession(m_lastHookSessionId);
+
+    // Indie-review 2026-05-13: cold-start tightening. During the 1-3s
+    // window between setShellPid()'s synchronous m_transcriptPath
+    // clear and the next pollClaudeProcess tick, isFocusedTabSession
+    // returns true for ANY incoming event. PreToolUse/PostToolUse/Stop
+    // from a sibling tab's still-running Claude would mutate state
+    // and emit stateChanged on the singleton. Only SessionStart needs
+    // the cold-start fallthrough (it bootstraps m_activeSessionId);
+    // every other state-mutating hook should drop silently until poll
+    // resolves the transcript path.
+    const bool coldStart = m_transcriptPath.isEmpty();
+    const bool isStateMutatingHook = hookName != "SessionStart" &&
+                                     hookName != "PermissionRequest";
+    if (coldStart && isStateMutatingHook) {
+        if (DebugLog::enabled(DebugLog::Claude)) {
+            ANTS_LOG(DebugLog::Claude,
+                     "hook-drop (cold-start): session=%s hook=%s",
+                     m_lastHookSessionId.toUtf8().constData(),
+                     hookName.toUtf8().constData());
+        }
+        return;
+    }
 
     if (hookName == "SessionStart") {
         if (!isFocused) return;
