@@ -12,6 +12,231 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.91] — 2026-05-13
+
+**Theme:** indie-review fold-in. The 2026-05-13 multi-agent /audit
++ /indie-review sweep across 14 subsystems surfaced 3 CRITICAL, 53
+HIGH, 64 MEDIUM, ~75 LOW findings. This release lands the mechanical,
+security, and correctness items inline; 30 substantial follow-ups
+(refactors, multi-file API changes, planning-required items) are
+folded into ROADMAP as ANTS-1260…ANTS-1317. All 422 tests passing.
+
+### Security
+
+- **vtparser — 8-bit C1 controls now routed.** Raw 0x80-0x9F bytes
+  in the PTY stream were being silently mis-decoded as malformed
+  UTF-8 → U+FFFD, which made the `ST` (0x9C) terminator branches in
+  `OscString` / `DcsString` / `ApcString` / `IgnoreString` dead code.
+  ECMA-48 § 5.3 / Williams VT500 state machine treat C1 as
+  first-class controls. Fixed at `vtparser.cpp:feedByte` — bytes in
+  `[0x80, 0x9F]` route through `processChar(byte)` directly, plus a
+  Ground-state dispatch table for 0x9B (CSI), 0x9D (OSC), 0x90 (DCS),
+  0x9F (APC), 0x98/0x9E (Ignore). Other C1 emit `Execute`.
+
+- **lua-plugins — heap cap silently bypassed.** Lua 5.4 manual:
+  when `ptr == NULL`, the allocator's `osize` parameter encodes the
+  *object type* (0..8 small int), not byte count. The custom
+  allocator treated it as a byte count, drifting `m_luaMemUsage`
+  downward unboundedly on every fresh allocation — a plugin could
+  silently exceed the documented 10 MB cap. Fixed at
+  `luaengine.cpp:luaAlloc` (zero `osize` when `ptr == nullptr`).
+
+- **roadmapdialog — HTML injection (CWE-79).** `rec.kind` was
+  emitted unescaped into the rendered card HTML; `rxKind` admits
+  `<`, `>`, `&`, `"`, so a hostile ROADMAP.md bullet like
+  `Kind: <img src=x onerror=…>` rendered as raw HTML in
+  QTextBrowser. Fixed at `roadmapdialog.cpp:1337` —
+  `htmlEscape(rec.kind)` before emission.
+
+- **claudeintegration — cold-start hook gate tightened.** During the
+  1–3 s window after a tab switch (while `m_transcriptPath` was
+  empty), foreign-tab `PreToolUse` / `PostToolUse` / `Stop` events
+  passed the focus gate and mutated singleton state — exactly the
+  ANTS-1161 symptom returning transiently. Now only `SessionStart`
+  + `PermissionRequest` land while the path is empty; other
+  state-mutating hooks drop with a diagnostic log
+  (`DebugLog::Claude`).
+
+- **ptyhandler — child signal mask + dispositions reset before
+  exec.** Qt / glib / dbus install handlers for SIGCHLD / SIGPIPE /
+  SIGUSR2 etc. POSIX § 2.4 keeps `SIGPIPE=SIG_IGN` across exec, so
+  child shells inherited the parent's mask and pipelines silently
+  hung. `~Pty` also now sends `SIGCONT` alongside `SIGTERM` so a
+  stopped child doesn't burn the full 500 ms escalation budget.
+
+- **remotecontrol — `cwd` validation on `cmdLaunch` + `cmdNewTab`
+  (CWE-22 parity).** Other path-bearing verbs (`workspace-search`,
+  `file-outline`, `git_state`) validated their `path` parameter
+  against control-bytes / backslashes; `launch` and `new-tab`
+  did not. Same-UID model holds today, but the verb is the seam
+  Claude Code (and any future MCP) crosses with user-supplied
+  input — validate at the boundary, not the kernel.
+
+- **remotecontrol — `getsockopt(SO_PEERCRED)` `len` check.** On
+  `getsockopt` failure with a zero-initialised `cred`, the
+  disconnect log read "peer UID 0" — a phantom "root tried to
+  connect" alarm. Now checks `len == sizeof(cred)` before reading
+  `cred.uid`.
+
+- **antshelper — `--repo-root` traversal hardening.** Rejects
+  `..` substrings + NUL bytes; canonicalises before script lookup
+  so a planted `packaging/check-version-drift.sh` at an attacker-
+  controlled path can't pose as a project root.
+
+- **lua-plugins — `init.lua` symlink rejection.** Plugin directory
+  was already canonicalised; the `init.lua` file inside wasn't
+  symlink-checked. A symlink to `/etc/passwd` or `~/.ssh/id_rsa`
+  would surface the file's first line in `lua_tostring(err)` when
+  the parser failed. Rejected at `pluginmanager.cpp:202` with a
+  `qWarning`.
+
+- **terminalgrid — Kitty chunk buffer flush on alt-screen + resize.**
+  An attacker `m=1` chunked image transfer + alt-screen flip → stale
+  bytes prepended to the next legitimate APC `m=0` from a different
+  sender → poisoned image attributed to new sender. Fixed at the
+  alt-enter site + at the top of `TerminalGrid::resize`.
+
+- **terminalgrid — OSC 8 `id=` length cap (256 bytes).** URI was
+  capped at `MAX_OSC8_URI_BYTES = 2048`; the id was uncapped. With
+  the parser's 10 MiB per-OSC cap, a hostile `id=<10MB>` sequence
+  scaled to ~800 MiB across 80 rows of scrollback.
+
+- **terminalgrid — Sixel first-pass payload cap (4 MiB).** The vt
+  parser caps DCS bodies at 10 MiB, but Sixel's first-pass iterator
+  walks every byte to compute width/height with no cycle budget. A
+  10 MiB payload of valid sixel bytes pinned the parse thread for
+  ~10 M iterations.
+
+### Added
+
+- **`claudebgtasks::poll()`** — watch-loss recovery mirror of
+  `claudetasklist::poll()`. Re-adds the `QFileSystemWatcher` when
+  the transcript path (re-)appears + mtime-shortcircuits to skip
+  reparse when nothing changed. Closes the documented CLAUDE.md
+  claim that both trackers had `poll()` parity (only foreground
+  did pre-0.7.91). Wired into
+  `ClaudeStatusBarController::refreshBgTasksButton`.
+
+- **`claudebgtasks::parseTranscript` — `isSidechain` +
+  `isCompactSummary` filters.** Foreground tracker already filtered
+  these (ANTS-1158 sidechain rationale + ANTS-1224 compact-summary
+  state reset); bg-tasks did not, so subagent-launched background
+  tasks silently inflated the parent session's running count, and
+  post-/compact resume left pre-compact bg entries lingering.
+
+- **`m_errorHideTimer` owned member on `ClaudeStatusBarController`**
+  — replaces the prior `QTimer::singleShot` pattern in `setError`.
+  Re-entry now cancels the prior auto-hide instead of inheriting it
+  (rapid back-to-back errors no longer flash and disappear). Sticky
+  errors via `autoHideMs <= 0`.
+
+- **Accessibility — `setAccessibleName` on three previously-silent
+  status-bar chips.** `m_bgTasksBtn`, `m_tasksBtn`, `m_errorLabel`
+  now expose Orca-readable labels per `docs/standards/documentation.md
+  § 7`. The remaining a11y gaps (keyboard-nav to expand cards,
+  `aria-expanded` on collapse anchors) are tracked as ANTS-1277.
+
+- **vtparser — `kSafeMinSigned` / `kSafeMaxSigned` named constants**
+  for the SSE2 safe-ASCII scan boundary (`-96` / `-2` were magic
+  numbers).
+
+- **`Q_ASSERT` in `handleAsciiPrintRun`** verifying the
+  `[0x20, 0x7E]` precondition the SIMD scanner establishes.
+
+### Changed
+
+- **CLAUDE.md — three doc-drift fixes.** `terminalwidget` is
+  `QWidget` (has been since 0.7.4), not `QOpenGLWidget`.
+  `featurecoverage` lists 2 in-process lanes + 1 shell-based
+  (`test_health` runs via `QProcess`, not `inProcessRunner`).
+  `claudetasklist` / `claudebgtasks` bullet now reflects ANTS-1246
+  `done/total` chip semantics + the new bg-tasks `poll()`.
+
+- **SARIF `partialFingerprints` key** bumped to
+  `primaryLocationLineHash/v1` (SARIF v2.1.0 § 3.27.13 versioning
+  convention).
+
+- **`computeDedup` chained single-arg `.arg()`** — closes a
+  `%n`-placeholder collision vector if a file path contains a
+  literal `"%3"` / `"%4"` substring (legal on filesystems).
+
+- **terminalwidget — dead `#include <QSurfaceFormat>` removed**
+  (no `QSurfaceFormat` reference left in the file).
+
+- **terminalwidget — dead duplicate loop in `invalidateSpanCaches`
+  removed** (lines 3472-3478 re-erased the exact key set the
+  previous loop had just erased; was a no-op).
+
+- **terminalwidget — unused `m_perfLastPaintUs` member + the
+  overlay line that read it dropped.** The member was never written;
+  the overlay always showed `Paint: 0 us`.
+
+- **terminalwidget — `isCellSearchMatch` early-returns on empty
+  `m_searchMatches`.** Called twice per cell per frame; ~16,000
+  wasted comparator invocations/frame at 60 fps when no search
+  active.
+
+- **`luaengine::lua_ants_on` — per-event handler cap of 64.** A
+  plugin calling `ants.on(event, fn)` in a loop would otherwise
+  grow the handler list until the heap cap fired.
+
+- **CI — `build-asan` job timeout 20 → 30 min.** Mirrors the
+  earlier 421e32d `build-test` 15 → 25 bump shape; ASan is
+  2-3× slower than the release build, and the 0.7.91 sweep
+  pushed it past the prior cap.
+
+- **`ROADMAP.md` — 30 follow-up cards** allocated ANTS-1260…
+  ANTS-1317 across five themes: indie-review deferred items
+  (1260…1277), MCP renderer bug (1278), MCP orchestration
+  consolidation (1279…1288), skill displacement + context
+  discipline + security hardening + namespacing (1289…1298),
+  general Claude Code workflow MCPs (1299…1312), and visibility /
+  Anthropic-discoverability (1313…1317). `.roadmap-counter`:
+  1259 → 1317.
+
+### Fixed
+
+- **antshelper — silent false-clean on hung script.**
+  `proc.waitForFinished(60000)` return value was ignored;
+  Qt's `exitStatus()` returns `NormalExit` + `exitCode()` returns
+  0 by default on a still-running process. A hung drift script
+  was reported as `{ok:true, clean:true}` exit 0. Now branches
+  on the timeout: kills the process and returns
+  `{ok:false, error:"drift script timed out after 60s",
+  code:"script_timeout"}` with exit 1.
+
+- **antshelper — `isatty(0)` short-circuit on `readStdin`.**
+  Interactive runs no longer block until Ctrl-D when stdin is
+  a TTY.
+
+- **claudeintegration — `m_planModeByPid` PID-reuse leak.** Cache
+  was only pruned on explicit `closeTab`. Linux PID-reuse is fast;
+  an abnormally-exiting shell left a stale entry that poisoned the
+  next tab assigned the same PID. Now also pruned on the
+  NotRunning transition in `pollClaudeProcess`.
+
+- **claudetasklist + claudebgtasks — `m_lastRescanMtimeMs` reset on
+  path change.** A re-bind to the same path shortly after a clear
+  could short-circuit `poll()` on a matched mtime, skipping the
+  legitimate rescan.
+
+- **claudestatuswidgets — `m_promptActive` now cleared in
+  `resetForTabSwitch`** (was the only render-state flag left out).
+
+- **claudestatuswidgets — empty initial label on `m_tasksBtn`.** The
+  prior `"☰ 0/0"` literal contradicted the ANTS-1246 hide predicate
+  (`total <= 0 || done >= total`). The chip is hidden until first
+  refresh anyway, but the latent inconsistency is gone.
+
+- **claudeintegration — `qWarning` on the 100 MiB transcript cap.**
+  Previously returned an empty `QJsonArray` silently; "transcript
+  empty / status frozen" reports now have a logging breadcrumb.
+
+- **tests — `remote_control_launch` test window 3000 → 3500 chars**
+  to admit the new `cwd` validation block in `cmdLaunch`.
+
+[0.7.92]: https://github.com/milnet01/ants-terminal/compare/v0.7.91...HEAD
+
 ## [0.7.90] — 2026-05-13
 
 **Theme:** ANTS-1113 v1 — fold `/debt-sweep` mechanical scan into

@@ -1,3 +1,43 @@
+ants-terminal (0.7.91-1) unstable; urgency=medium
+
+  * Indie-review fold-in + multi-agent audit sweep. The 2026-05-13
+    /audit + /indie-review pass across 14 subsystems surfaced 3
+    CRITICAL, 53 HIGH, 64 MEDIUM, ~75 LOW findings. This release lands
+    the mechanical, security, and correctness items inline; 30
+    substantial follow-ups (refactors, multi-file API changes,
+    planning-required items) folded into ROADMAP as ANTS-1260…ANTS-1317.
+    All 422 tests passing.
+  * Security — 11 fixes across vtparser, lua plugins, roadmapdialog,
+    claudeintegration, ptyhandler, remotecontrol, antshelper,
+    terminalgrid. Hardened: C1 control routing (0x80-0x9F), heap cap
+    enforcement, HTML injection (CWE-79), hook gate logic (ANTS-1161
+    recurrence), signal mask inheritance, path traversal (CWE-22), socket
+    peer-credential check, plugin symlink rejection, image buffer flush,
+    OSC 8 id length, Sixel payload cycles.
+  * Added claudebgtasks::poll() watch-loss recovery (parity with
+    foreground tracker), isSidechain + isCompactSummary parse filters,
+    m_errorHideTimer re-entry handling on status-bar errors, accessibility
+    labels on three previously-silent chips, vtparser named constants
+    (kSafeMinSigned/kSafeMaxSigned).
+  * Changed CLAUDE.md doc-drift (terminalwidget is QWidget, featurecoverage
+    lists correct lane counts, claudetasklist reflects ANTS-1246 done/total
+    semantics). SARIF partialFingerprints → primaryLocationLineHash/v1.
+    Removed dead code: QSurfaceFormat include, invalidateSpanCaches
+    duplicate loop, m_perfLastPaintUs member. Optimised isCellSearchMatch
+    on empty m_searchMatches, lua_ants_on event cap (64), CI build-asan
+    timeout (20 → 30 min).
+  * Fixed antshelper hung-script false-clean (waitForFinished return
+    check, SIGKILL on timeout), readStdin isatty(0) short-circuit,
+    claudeintegration m_planModeByPid leak (also prune on NotRunning),
+    claudetasklist/claudebgtasks m_lastRescanMtimeMs reset on path change,
+    claudestatuswidgets m_promptActive reset in resetForTabSwitch, empty
+    initial label on m_tasksBtn, transcript 100 MiB cap logging.
+  * Test coverage — remote_control_launch window 3000 → 3500 chars for
+    new cwd validation block. 30 ROADMAP follow-ups (ANTS-1260…1317)
+    across indie-review deferred, MCP renderer, orchestration, skills,
+    and discoverability themes.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 13 May 2026 19:30:00 +0200
 ants-terminal (0.7.90-1) unstable; urgency=medium
 
   * ANTS-1113 v1 — fold /debt-sweep mechanical scan into Ants. Four

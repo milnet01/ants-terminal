@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.91" date="2026-05-13">
+      <description>
+        <p>Multi-agent /audit + /indie-review sweep across 14 subsystems. 3 CRITICAL, 53 HIGH, 64 MEDIUM, ~75 LOW findings audited. This release lands security, correctness, and mechanical items inline; 30 follow-ups (refactors, multi-file changes) defer to ROADMAP ANTS-1260…ANTS-1317. All 422 tests passing.</p>
+        <ul>
+          <li><em>Security:</em> Fixed 12 findings across <code>vtparser</code> (8-bit C1 control routing), <code>luaengine</code> (heap cap bypass), <code>roadmapdialog</code> (HTML injection CWE-79), <code>claudeintegration</code> (hook gate re-entry), <code>ptyhandler</code> (signal mask reset), <code>remotecontrol</code> (path validation + socket credential check), <code>antshelper</code> (traversal hardening), <code>pluginmanager</code> (symlink rejection), and <code>terminalgrid</code> (image chunk flushing, OSC 8 id cap, Sixel payload limits).</li>
+          <li><em>Added:</em> <code>claudebgtasks::poll()</code> with watch-loss recovery and mtime optimization. New <code>parseTranscript</code> filters (<code>isSidechain</code>, <code>isCompactSummary</code>) for background task tracking parity with foreground. <code>m_errorHideTimer</code> on <code>ClaudeStatusBarController</code> replaces singleShot pattern. Status-bar accessibility labels (<code>setAccessibleName</code>) on three previously-silent chips per ANTS-1235.</li>
+          <li><em>Changed:</em> CLAUDE.md doc-drift fixes (terminalwidget type correction, featurecoverage lane accounting, claudetasklist/claudebgtasks ANTS-1246 semantics). SARIF <code>partialFingerprints</code> → <code>primaryLocationLineHash/v1</code> per v2.1.0 spec. Removed dead code: <code>#include</code>, duplicate loop in <code>invalidateSpanCaches</code>, unused performance member. Optimization: <code>isCellSearchMatch</code> early-return on empty matches; <code>lua_ants_on</code> handler cap 64; CI ASan timeout 20 → 30 min.</li>
+        </ul>
+      </description>
+    </release>
+
     <release version="0.7.90" date="2026-05-13">
       <description>
         <p>ANTS-1113 v1 — debt-sweep engine: fold mechanical drift scan into Ants. The four canonical post-feature drift categories (code drift, test coverage, doc drift, packaging drift) lift out of the file-reading subagent into 4 new MCP tools backed by <code>DebtSweepEngine</code> namespace; per-finding triage continues in optional Claude calls. Estimated saving per /debt-sweep run: ~15-40 K orchestrator tokens. Qt "Debt Sweep" tab deferred to ANTS-1259 v2.</p>
