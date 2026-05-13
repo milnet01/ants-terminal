@@ -1,4 +1,5 @@
 #include "remotecontrol.h"
+#include "debtsweepengine.h"
 #include "fileoutline.h"
 #include "gitwrap.h"
 #include "indiereviewengine.h"
@@ -2084,5 +2085,220 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
     env["allocated_ids"] = idsArr;
     env["written"]       = written;
     if (!heading.isEmpty()) env["release_block_heading"] = heading;
+    return QJsonDocument(env);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-1113 — debt_sweep_* MCP tools
+// ---------------------------------------------------------------------------
+
+namespace {
+
+QJsonObject dsErr(const QString &code, const QString &msg) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = msg;
+    o["code"]  = code;
+    return o;
+}
+
+QJsonObject dsFindingToJson(const DebtSweepEngine::Finding &f) {
+    QJsonObject o;
+    o["category"]      = f.category;
+    o["detector_id"]   = f.detectorId;
+    o["file"]          = f.file;
+    o["line"]          = f.line;
+    o["message"]       = f.message;
+    o["suggested_fix"] = f.suggestedFix;
+    o["auto_fixable"]  = f.autoFixable;
+    return o;
+}
+
+DebtSweepEngine::Finding dsJsonToFinding(const QJsonObject &o) {
+    DebtSweepEngine::Finding f;
+    f.category    = o.value(QStringLiteral("category")).toString();
+    f.detectorId  = o.value(QStringLiteral("detector_id")).toString();
+    f.file        = o.value(QStringLiteral("file")).toString();
+    f.line        = o.value(QStringLiteral("line")).toInt(-1);
+    f.message     = o.value(QStringLiteral("message")).toString();
+    f.suggestedFix = o.value(QStringLiteral("suggested_fix")).toString();
+    f.autoFixable = o.value(QStringLiteral("auto_fixable")).toBool(false);
+    return f;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
+        QStringLiteral("debt_sweep_scan: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(dsErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("debt_sweep_scan: no focused project")));
+
+    DebtSweepEngine::ScanOptions opt;
+    opt.sinceRef = req.value(QStringLiteral("since")).toString();
+    if (req.contains(QStringLiteral("categories"))) {
+        QSet<QString> wanted;
+        for (const auto &v : req.value(QStringLiteral("categories")).toArray())
+            wanted.insert(v.toString());
+        opt.includeCodeDrift     = wanted.contains(QStringLiteral("code_drift"));
+        opt.includeTestCoverage  = wanted.contains(QStringLiteral("test_coverage"));
+        opt.includeDocDrift      = wanted.contains(QStringLiteral("doc_drift"));
+        opt.includePackagingDrift = wanted.contains(QStringLiteral("packaging_drift"));
+    }
+
+    const auto findings = DebtSweepEngine::scanAll(root, opt);
+
+    QJsonArray arr;
+    QJsonObject by;
+    by["code_drift"]       = 0;
+    by["test_coverage"]    = 0;
+    by["doc_drift"]        = 0;
+    by["packaging_drift"]  = 0;
+    for (const auto &f : findings) {
+        arr.append(dsFindingToJson(f));
+        by[f.category] = by.value(f.category).toInt() + 1;
+    }
+
+    QJsonObject env;
+    env["ok"]              = true;
+    env["findings"]        = arr;
+    env["total_findings"]  = arr.size();
+    env["by_category"]     = by;
+    // Resolve since for response transparency.
+    QString sinceRes = opt.sinceRef;
+    if (sinceRes.isEmpty()) {
+        QProcess p;
+        p.setWorkingDirectory(root);
+        p.start(QStringLiteral("git"),
+                {QStringLiteral("describe"), QStringLiteral("--tags"),
+                 QStringLiteral("--abbrev=0")});
+        if (p.waitForStarted(2000) && p.waitForFinished(5000)
+            && p.exitStatus() == QProcess::NormalExit) {
+            sinceRes = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+        }
+        if (sinceRes.isEmpty()) sinceRes = QStringLiteral("HEAD~10");
+    }
+    env["since_resolved"]  = sinceRes;
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdDebtSweepApplyFix(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
+        QStringLiteral("debt_sweep_apply_fix: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(dsErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("debt_sweep_apply_fix: no focused project")));
+
+    const QString detectorId = req.value(QStringLiteral("detector_id")).toString();
+    const QString file       = req.value(QStringLiteral("file")).toString();
+    const int     line       = req.value(QStringLiteral("line")).toInt(-1);
+    if (detectorId.isEmpty() || file.isEmpty() || line < 1) {
+        return QJsonDocument(dsErr(QStringLiteral("bad_args"),
+            QStringLiteral("debt_sweep_apply_fix: detector_id+file+line required")));
+    }
+
+    // Re-synthesise a Finding from the triple. The engine re-validates
+    // every claim in §3.9, so this is safe.
+    DebtSweepEngine::Finding f;
+    f.detectorId  = detectorId;
+    f.file        = file;
+    f.line        = line;
+    // applyMechanicalFix's first guard is `!autoFixable` — for the v1
+    // detector that ever sets this, the input must claim autoFixable
+    // too. Default false here trips the not_fixable path; callers
+    // pass `auto_fixable: true` to opt in.
+    f.autoFixable = req.value(QStringLiteral("auto_fixable")).toBool(true);
+
+    const auto v = DebtSweepEngine::applyMechanicalFix(root, f);
+
+    QJsonObject env;
+    // ok=false ONLY on hard io_error; recognised no-ops (file_changed,
+    // not_fixable) are ok=true with applied=false.
+    const bool hardErr = (v.errorCode == QStringLiteral("io_error"));
+    env["ok"]      = !hardErr;
+    env["applied"] = v.applied;
+    if (!v.errorCode.isEmpty()) env["error_code"] = v.errorCode;
+    if (!v.errorMessage.isEmpty()) env["error"] = v.errorMessage;
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
+        QStringLiteral("debt_sweep_defer: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(dsErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("debt_sweep_defer: no focused project")));
+
+    const QJsonArray defArr = req.value(QStringLiteral("deferred")).toArray();
+    if (defArr.isEmpty()) return QJsonDocument(dsErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("debt_sweep_defer: deferred array required")));
+
+    QList<DebtSweepEngine::Finding> deferred;
+    for (const auto &v : defArr) {
+        const auto o = v.toObject();
+        const auto f = dsJsonToFinding(o);
+        if (f.file.isEmpty()) continue;
+        deferred.append(f);
+    }
+    if (deferred.isEmpty()) return QJsonDocument(dsErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("debt_sweep_defer: no valid deferred entries")));
+
+    QString dateIso = req.value(QStringLiteral("date_iso")).toString();
+    if (dateIso.isEmpty()) {
+        dateIso = QDate::currentDate().toString(Qt::ISODate);
+    }
+
+    const auto ids = RoadmapFoldIn::allocateIds(root, deferred.size());
+    if (ids.isEmpty()) return QJsonDocument(dsErr(
+        QStringLiteral("counter_failed"),
+        QStringLiteral("debt_sweep_defer: could not allocate IDs")));
+
+    const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
+        deferred, ids, dateIso);
+
+    QString heading = req.value(QStringLiteral("release_block_heading")).toString();
+    if (heading.isEmpty()) heading = RoadmapFoldIn::findActiveReleaseHeading(root);
+
+    bool written = false;
+    if (!heading.isEmpty()) {
+        written = RoadmapFoldIn::insertBlock(root, heading, block);
+    }
+
+    QJsonObject env;
+    env["ok"]            = true;
+    env["block"]         = block;
+    QJsonArray idsArr;
+    for (int id : ids) idsArr.append(id);
+    env["allocated_ids"] = idsArr;
+    env["written"]       = written;
+    if (!heading.isEmpty()) env["release_block_heading"] = heading;
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdDebtSweepTriagePrompt(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
+        QStringLiteral("debt_sweep_triage_prompt: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(dsErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("debt_sweep_triage_prompt: no focused project")));
+
+    const QJsonArray fArr = req.value(QStringLiteral("findings")).toArray();
+    QList<DebtSweepEngine::Finding> llmShaped;
+    for (const auto &v : fArr) {
+        llmShaped.append(dsJsonToFinding(v.toObject()));
+    }
+
+    const QString prompt = DebtSweepEngine::triagePrompt(llmShaped);
+    QJsonObject env;
+    env["ok"]         = true;
+    env["prompt"]     = prompt;
+    env["byte_count"] = prompt.toUtf8().size();
     return QJsonDocument(env);
 }

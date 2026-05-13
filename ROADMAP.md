@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.89 (2026-05-13). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.90 (2026-05-13). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -3406,7 +3406,7 @@ minor tag (next: pre-0.8.0).
   Lanes: AuditDialog, aidialog, MainWindow, docs
   (indie-review-partition.md), tests/features.
 
-- 📋 [ANTS-1113] **Fold `/debt-sweep` into the Project Audit
+- ✅ [ANTS-1113] **Fold `/debt-sweep` into the Project Audit
   tool — four mechanical categories.** User ask 2026-04-30:
   "incorporate /debt-sweep too, comprehensive but minimising
   false positives and token usage." The skill originally scanned
@@ -3465,13 +3465,36 @@ minor tag (next: pre-0.8.0).
   Ants-Terminal-managed projects. The skill itself stays
   available for projects without Ants Terminal as a fallback.
 
-  Locked by `tests/features/debt_sweep_native/` (each
-  category's detector is its own test fixture: a synthetic
-  bad/good corpus per category, assert N findings on bad,
-  zero on good).
+  v1 (0.7.90, 2026-05-13) shipped the engine + 4 MCP tools
+  (`debt_sweep_scan`, `_apply_fix`, `_defer`, `_triage_prompt`)
+  + the `FeatureCoverage::buildProjectSourceBlob` /
+  `existsInSource` / `specStopwords` helper extraction. AuditDialog
+  tab + per-finding Fix/Defer/Allow buttons + Triage-with-AI
+  button + README CLI flag drift detector deferred to ANTS-1259 v2.
+  Spec: [docs/specs/ANTS-1113.md](docs/specs/ANTS-1113.md).
+  Locked by `tests/features/debt_sweep_engine/` (13 tests) +
+  `tests/features/mcp_debt_sweep_tools/` (5 tests).
   Kind: implement.
   Source: user-2026-04-30.
-  Lanes: AuditDialog, audithygiene, featurecoverage, docs.
+  Lanes: featurecoverage (helper extraction), debtsweepengine (new),
+  remotecontrol (4 cmdDebtSweep* methods), claudeintegration (4 tools/list
+  entries), mainwindow (4 registerToolProvider lambdas), docs (spec).
+
+- 📋 [ANTS-1259] **ANTS-1113 v2 — Qt "Debt Sweep" tab in the
+  Project Audit dialog.** Per `docs/specs/ANTS-1113.md` § 1.1
+  v1/v2 split. v1 (0.7.90) shipped the engine + MCP surface;
+  v2 wraps it in a tabbed Audit-dialog panel showing findings
+  grouped by category (code_drift, test_coverage, doc_drift,
+  packaging_drift), with **Fix inline** / **Defer to ROADMAP** /
+  **Allow** buttons per finding. Adds a "Triage with AI" button
+  that dispatches `debt_sweep_triage_prompt` output through
+  aidialog. Adds the README CLI flag drift detector (deferred from
+  v1 because it requires running the project's main binary, which
+  the Qt::Core engine can't do without shelling out — needs the
+  PtyHandler shim).
+  Kind: implement.
+  Source: spec-ANTS-1113-v2.
+  Lanes: auditdialog, debtsweepengine, aidialog, ptyhandler.
 
 - 💭 [ANTS-1114] **Wishlist retired — re-shaped per
   [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**

@@ -1683,6 +1683,131 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1113 — debt_sweep_* (4 tools).
+                {
+                    QJsonObject t;
+                    t["name"] = "debt_sweep_scan";
+                    t["description"] = QStringLiteral(
+                        "Run the four-category mechanical debt-sweep scan "
+                        "(code_drift, test_coverage, doc_drift, "
+                        "packaging_drift) and return findings as JSON. "
+                        "Replaces the file-reading subagent in the "
+                        "/debt-sweep skill for Ants-managed projects. "
+                        "Optional: since (git ref, default = most-recent "
+                        "tag or HEAD~10), categories (subset of the four).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject sinceProp;
+                    sinceProp["type"] = "string";
+                    sinceProp["description"] = QStringLiteral(
+                        "Git ref to scope diffs against. Empty = auto.");
+                    QJsonObject catProp;
+                    catProp["type"] = "array";
+                    catProp["description"] = QStringLiteral(
+                        "Subset of {code_drift, test_coverage, "
+                        "doc_drift, packaging_drift}. Omit for all.");
+                    QJsonObject props;
+                    props["since"]      = sinceProp;
+                    props["categories"] = catProp;
+                    schema["properties"] = props;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "debt_sweep_apply_fix";
+                    t["description"] = QStringLiteral(
+                        "Apply ONE mechanical fix in-place. Caller passes "
+                        "the {detector_id, file, line} triple from a "
+                        "prior debt_sweep_scan. Engine re-validates the "
+                        "marker is still on the line before mutating. "
+                        "Returns {ok, applied, error_code?, error?}; "
+                        "ok=true with applied=false signals a recognised "
+                        "no-op (file_changed / not_fixable).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject didProp; didProp["type"] = "string";
+                    QJsonObject fProp;   fProp["type"]   = "string";
+                    QJsonObject lProp;   lProp["type"]   = "integer";
+                    QJsonObject aProp;   aProp["type"]   = "boolean";
+                    aProp["description"] = QStringLiteral(
+                        "Caller asserts the finding was auto_fixable in "
+                        "the prior scan. Defaults to true.");
+                    QJsonObject props;
+                    props["detector_id"]  = didProp;
+                    props["file"]         = fProp;
+                    props["line"]         = lProp;
+                    props["auto_fixable"] = aProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("detector_id");
+                    req.append("file");
+                    req.append("line");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "debt_sweep_defer";
+                    t["description"] = QStringLiteral(
+                        "Render an `### 🧹 Debt-sweep fold-in (DATE)` "
+                        "ROADMAP block from a list of deferred findings. "
+                        "Allocates IDs from .roadmap-counter and, if a "
+                        "release-block heading is found, atomically "
+                        "inserts the block into ROADMAP.md. Required: "
+                        "deferred (array).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject dProp; dProp["type"] = "array";
+                    dProp["description"] = QStringLiteral(
+                        "Array of Finding-shaped objects ({category, "
+                        "detector_id, file, line, message}).");
+                    QJsonObject dateProp; dateProp["type"] = "string";
+                    dateProp["description"] = QStringLiteral(
+                        "ISO date YYYY-MM-DD. Defaults to today.");
+                    QJsonObject hdrProp; hdrProp["type"] = "string";
+                    hdrProp["description"] = QStringLiteral(
+                        "Optional explicit `## ` heading. Defaults to "
+                        "RoadmapFoldIn::findActiveReleaseHeading.");
+                    QJsonObject props;
+                    props["deferred"]              = dProp;
+                    props["date_iso"]              = dateProp;
+                    props["release_block_heading"] = hdrProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("deferred");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "debt_sweep_triage_prompt";
+                    t["description"] = QStringLiteral(
+                        "Render an LLM triage prompt for the LLM-shaped "
+                        "(non-mechanical) subset of findings. Caller "
+                        "filters the scan output and passes only the "
+                        "judgment-required entries. Pure string "
+                        "templating — no LLM call inside Ants.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject fProp; fProp["type"] = "array";
+                    fProp["description"] = QStringLiteral(
+                        "Array of Finding-shaped objects.");
+                    QJsonObject props;
+                    props["findings"] = fProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("findings");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
 
                 result["tools"] = tools;
                 haveResult = true;

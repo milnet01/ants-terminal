@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.90" date="2026-05-13">
+      <description>
+        <p>ANTS-1113 v1 — debt-sweep engine: fold mechanical drift scan into Ants. The four canonical post-feature drift categories (code drift, test coverage, doc drift, packaging drift) lift out of the file-reading subagent into 4 new MCP tools backed by <code>DebtSweepEngine</code> namespace; per-finding triage continues in optional Claude calls. Estimated saving per /debt-sweep run: ~15-40 K orchestrator tokens. Qt "Debt Sweep" tab deferred to ANTS-1259 v2.</p>
+        <ul>
+          <li><em>Added:</em> <code>DebtSweepEngine</code> helper (<code>src/debtsweepengine.{h,cpp}</code>, Qt::Core only) — 11 pure functions: <code>detectStaleTypeComments</code>, <code>detectAddedTodos</code>, <code>detectOrphanQUnused</code>, <code>detectMissingInvariantTests</code>, <code>detectRoadmapShippedWithoutCommit</code>, <code>detectChangelogStaleBullets</code>, <code>runPackagingDrift</code>, <code>scanAll</code>, <code>applyMechanicalFix</code>, <code>templateDebtSweepFoldInBlock</code>, <code>triagePrompt</code>. Locked by <code>tests/features/debt_sweep_engine/</code> (13 tests).</li>
+          <li><em>Added:</em> 4 new MCP tools via <code>registerToolProvider</code> (ANTS-1253): <code>debt_sweep_scan</code>, <code>debt_sweep_apply_fix</code>, <code>debt_sweep_defer</code>, <code>debt_sweep_triage_prompt</code>. All follow UID-scoped 0700-perms IPC trust model; schemas use <code>additionalProperties: false</code>. Locked by <code>tests/features/mcp_debt_sweep_tools/</code> (5 tests).</li>
+          <li><em>Changed:</em> <code>FeatureCoverage</code> — lifted three internal helpers to public surface: <code>buildProjectSourceBlob</code>, <code>existsInSource</code>, <code>specStopwords</code>. Enables <code>DebtSweepEngine</code> reuse without duplicating extension lists.</li>
+          <li><em>Added:</em> <code>ANTS-1259</code> (new ROADMAP item) — ANTS-1113 v2: Qt "Debt Sweep" tab + per-finding Fix/Defer/Allow buttons + AI triage. Spec § 1.1 of <code>docs/specs/ANTS-1113.md</code> documents v1/v2 split.</li>
+        </ul>
+      </description>
+    </release>
+
     <release version="0.7.89" date="2026-05-13">
       <description>
         <p>ANTS-1112 v1 — indie-review engine: mechanical orchestration pieces (partition, brief assembly, cross-lane corroboration, synthesis-prompt templating, ROADMAP fold-in) lift into Ants as 5 new MCP tools backed by <code>IndieReviewEngine</code> namespace. Per-lane review judgment + dispatch remain in Claude subagent calls. Estimated per-run saving: ~20–50 K orchestrator tokens. Qt dialog deferred to ANTS-1258 v2.</p>

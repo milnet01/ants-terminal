@@ -12,6 +12,116 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.90] — 2026-05-13
+
+**Theme:** ANTS-1113 v1 — fold `/debt-sweep` mechanical scan into
+Ants. The four canonical post-feature drift categories (code drift,
+test coverage, doc drift, packaging drift) lift out of the
+file-reading subagent into 4 new MCP tools backed by a
+`DebtSweepEngine` namespace; per-finding triage continues to live in
+optional Claude calls. Estimated saving per /debt-sweep run: ~15-40 K
+orchestrator tokens (subagent never opens 95% of the project files;
+findings come back as pre-classified JSON instead of free-form prose).
+Qt "Debt Sweep" tab deferred to ANTS-1259 v2.
+
+### Added
+
+- **ANTS-1113 — `DebtSweepEngine` helper** (`src/debtsweepengine.{h,cpp}`,
+  Qt::Core only). Per-detector pure functions:
+  - `detectStaleTypeComments(projectPath, opt)` — code drift (a):
+    walks `git diff <since>..HEAD --name-only` for `*.cpp/h/py/js/ts/tsx`,
+    extracts comments, flags leading-cap CamelCase tokens (≥4 chars,
+    `\b([A-Z][A-Za-z0-9_]{3,})\b`) absent from the project source blob.
+  - `detectAddedTodos(projectPath, opt)` — code drift (c): unified=0
+    diff parser flags TODO / FIXME / XXX / HACK markers added in scope.
+  - `detectOrphanQUnused(projectPath, opt)` — code drift (d): per-file
+    pass over `git ls-files '*.cpp' '*.h'` finds `Q_UNUSED(x)` /
+    `(void)x;` markers wrapping a variable not declared anywhere in
+    the same file. The only v1 detector that sets `autoFixable=true`.
+  - `detectMissingInvariantTests(projectPath, opt)` — test coverage:
+    parses `\bINV-([0-9][0-9a-zA-Z]*)\b` from each
+    `tests/features/*/spec.md` (covers `INV-7` and `INV-8b`); reports
+    invariants not mentioned in any sibling `test_*.{cpp,py,js,go,rs}`.
+  - `detectRoadmapShippedWithoutCommit(projectPath, opt)` — doc drift
+    (a): reads ROADMAP, runs `git log --all --format=%s` once, flags
+    ✅ items whose stable ID is unmentioned.
+  - `detectChangelogStaleBullets(projectPath, opt)` — doc drift (b):
+    parses CHANGELOG `[Unreleased]` block, flags bullets citing files
+    not in `git diff <since>..HEAD`.
+  - `runPackagingDrift(projectPath, opt)` — packaging drift: wraps
+    the existing `packaging/check-version-drift.sh`; parses stdout
+    into `Finding` structs.
+  - `scanAll(projectPath, opt)` — convenience: runs every enabled
+    detector in canonical category order.
+  - `applyMechanicalFix(projectPath, finding)` — applies one mechanical
+    edit; returns `ApplyVerdict {applied, errorCode, errorMessage}` so
+    MCP handlers can disambiguate `file_changed` / `not_fixable` /
+    `io_error` no-ops without inspecting `QFile` errno state.
+  - `templateDebtSweepFoldInBlock(deferred, ids, dateIso)` —
+    `### 🧹 Debt-sweep fold-in (DATE)` block per
+    `roadmap-format.md` § 3.8 + § 3.5.3. `<dateIso>` byte-identical
+    between heading and per-bullet `Source:` line (locked by INV-10).
+  - `triagePrompt(llmShaped)` — pure string templating of the LLM
+    triage prompt for the judgment-required subset.
+  Locked by `tests/features/debt_sweep_engine/` (13 tests).
+
+- **ANTS-1113 — 4 new MCP tools** registered via the consolidated
+  `registerToolProvider` registry from ANTS-1253:
+  - `debt_sweep_scan` — runs the four-category scan; returns
+    `{findings, total_findings, by_category, since_resolved}` (input:
+    optional `since`, optional `categories` subset).
+  - `debt_sweep_apply_fix` — applies one mechanical fix in-place;
+    `ok=true` even on recognised no-ops (`file_changed` /
+    `not_fixable`); `ok=false` only on `io_error`. Re-grep guard in
+    `applyMechanicalFix` § 3.9 makes the operation idempotent against
+    re-application (locked by INV-13a).
+  - `debt_sweep_defer` — allocates IDs via `RoadmapFoldIn::allocateIds`,
+    renders the fold-in block, and atomically inserts it into
+    ROADMAP.md when `findActiveReleaseHeading` succeeds. Eager ID
+    allocation (no rollback on `written:false`) — same trade-off as
+    ANTS-1111 § 2.5; envelope returns the allocated IDs so the caller
+    can splice manually.
+  - `debt_sweep_triage_prompt` — emits the LLM triage prompt for a
+    caller-filtered subset of findings.
+  All 4 follow the existing UID-scoped 0700-perms IPC trust model;
+  schemas use `additionalProperties: false`. Locked by
+  `tests/features/mcp_debt_sweep_tools/` (5 tests).
+
+- **ANTS-1259** (new ROADMAP item) — ANTS-1113 v2: AuditDialog
+  "Debt Sweep" tab + per-finding Fix / Defer / Allow buttons +
+  Triage with AI button (aidialog dispatch). Adds README CLI flag
+  drift detector (needs binary execution). Spec § 1.1 of
+  `docs/specs/ANTS-1113.md` documents the v1/v2 split rationale.
+
+### Changed
+
+- **`featurecoverage.{h,cpp}`** — three internal helpers lifted to
+  `FeatureCoverage::` public surface so `DebtSweepEngine` can reuse
+  them without copying the extension list, skip-dir set, or
+  containment-check fallback chain:
+  - `buildProjectSourceBlob(projectPath)` — concatenates every source/
+    config/doc file in the project tree (per the canonical extension
+    list) into one UTF-8 blob; skips build dirs + `spec.md` files.
+  - `existsInSource(blob, token)` — substring containment +
+    `::` and `.` tail-fallbacks (with the same identifier-shape
+    guards `runSpecDriftCheck` had inline).
+  - `specStopwords()` — public accessor for the existing internal
+    `kSpecStopwords` set.
+  `runSpecDriftCheck` is rewired to call them; behaviour unchanged.
+
+### Tests
+
+- **`tests/features/debt_sweep_engine/`** (13 tests) — engine pure-fn
+  invariants (INV-3, INV-4, INV-9, INV-10, INV-11, INV-13a, INV-13b
+  + scanAll include-flag honouring).
+- **`tests/features/mcp_debt_sweep_tools/`** (5 tests) — source-grep
+  verification of the wiring layers (tools/list, registerToolProvider,
+  remotecontrol.h declarations, remotecontrol.cpp definitions, schema
+  `additionalProperties:false`).
+- **`tests/features/mcp_indie_review_tools/test_mcp_indie_review_tools.cpp`** —
+  `AllSchemasUseAdditionalPropertiesFalse` region boundary tightened
+  so it doesn't drift when new tool blocks land after it.
+
 ## [0.7.89] — 2026-05-13
 
 **Theme:** ANTS-1112 v1 — fold `/indie-review` orchestration into

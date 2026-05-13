@@ -1,3 +1,36 @@
+ants-terminal (0.7.90-1) unstable; urgency=medium
+
+  * ANTS-1113 v1 — fold /debt-sweep mechanical scan into Ants. Four
+    canonical post-feature drift categories (code drift, test coverage,
+    doc drift, packaging drift) lift out of the file-reading subagent
+    into 4 new MCP tools backed by DebtSweepEngine namespace save ~15-40
+    K orchestrator tokens per run; Qt "Debt Sweep" tab deferred to
+    ANTS-1259 v2.
+  * DebtSweepEngine helper (src/debtsweepengine.{h,cpp}, Qt::Core only).
+    Twelve pure functions: detectStaleTypeComments, detectAddedTodos,
+    detectOrphanQUnused, detectMissingInvariantTests,
+    detectRoadmapShippedWithoutCommit, detectChangelogStaleBullets,
+    runPackagingDrift, scanAll, applyMechanicalFix,
+    templateDebtSweepFoldInBlock, triagePrompt. 13 test cases locked.
+  * Four new MCP tools via registerToolProvider registry: debt_sweep_scan,
+    debt_sweep_apply_fix, debt_sweep_defer, debt_sweep_triage_prompt.
+    UID-scoped 0700-perms IPC trust model; schemas with
+    additionalProperties: false. 5 test cases locked.
+  * featurecoverage.{h,cpp} — three internal helpers lifted to
+    FeatureCoverage:: public surface (buildProjectSourceBlob,
+    existsInSource, specStopwords) so DebtSweepEngine can reuse them
+    without code duplication. runSpecDriftCheck rewired; behaviour
+    unchanged.
+  * Test coverage — mcp_debt_sweep_tools (5 tests) source-grep
+    verification of wiring layers; mcp_indie_review_tools region
+    boundary tightened; debt_sweep_engine (13 tests) engine pure-fn
+    invariants.
+  * ANTS-1259 (new ROADMAP item) — ANTS-1113 v2: AuditDialog "Debt
+    Sweep" tab + per-finding Fix / Defer / Allow buttons + Triage with
+    AI. Adds README CLI flag drift detector (needs binary execution).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 13 May 2026 17:51:01 +0200
+
 ants-terminal (0.7.89-1) unstable; urgency=medium
 
   * ANTS-1112 v1 — fold /indie-review orchestration into Ants. Five

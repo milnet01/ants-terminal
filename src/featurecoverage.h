@@ -21,6 +21,7 @@
 #pragma once
 
 #include <QList>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -100,6 +101,42 @@ QList<QString> extractBacktickTokens(const QString &s);
 // release-note claim.
 bool bulletMatchesAnyTitle(const QString &bulletText,
                            const QStringList &specTitles);
+
+// ---------------------------------------------------------------------------
+// Reusable project-walk helpers (ANTS-1113 v1).
+//
+// Lifted out of runSpecDriftCheck so DebtSweepEngine and other
+// downstream callers (audit-rule writers, future MCP tools) can reuse
+// the same blob-builder + identifier-existence check without copying
+// the extension list, skip-dir set, or fallback rules.
+//
+// Pure Qt::Core; safe to call from any thread that owns its own QFile
+// handles. No caching layer — caller decides whether to memoise.
+// ---------------------------------------------------------------------------
+
+// Concatenate every source/config/doc file in the project tree (per the
+// canonical extension list) into one UTF-8 blob, separated by newlines.
+// Skips: build dirs (.git, .svn, build, build-*, dist, node_modules,
+// __pycache__, .venv, venv, .audit_cache, .pytest_cache, .mypy_cache,
+// .tox, target, .claude, vendor, third_party, external, .ccls-cache),
+// `spec.md` files (would self-match every spec token), and any file not
+// matching the extension list. Returns the empty string if projectPath
+// doesn't exist or contains no matching files.
+QString buildProjectSourceBlob(const QString &projectPath);
+
+// Does `token` appear anywhere in `blob`? Substring containment first;
+// then `::` and `.` tail-fallbacks (so `Class::method` and `module.func`
+// resolve to the trailing identifier alone when the compound form
+// isn't present in the blob). The `.` fallback only applies when the
+// tail is identifier-shaped (≥4 alpha chars) — prevents matching file
+// extensions like `*.cpp` → `cpp`.
+bool existsInSource(const QString &blob, const QString &token);
+
+// Public accessor for the existing internal `kSpecStopwords` set
+// (shared with extractSpecTokens). Lets DebtSweepEngine drop the same
+// stop-words from its bare-comment-token detector without re-declaring
+// the literal list.
+const QSet<QString> &specStopwords();
 
 // ---------------------------------------------------------------------------
 // File-I/O runners — compose the pure parsers above with on-disk project

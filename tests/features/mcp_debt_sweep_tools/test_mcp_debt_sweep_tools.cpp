@@ -1,6 +1,7 @@
-// Feature-conformance test for ANTS-1112 MCP wiring. Source-grep
-// approach: read claudeintegration.cpp + mainwindow.cpp + remotecontrol.h/.cpp
-// and verify all 5 tool names are registered in each layer.
+// Feature-conformance test for ANTS-1113 MCP wiring. Source-grep
+// approach mirrors mcp_indie_review_tools: read claudeintegration.cpp
+// + mainwindow.cpp + remotecontrol.h/.cpp and verify all 4 tool
+// names are registered in each layer.
 
 #include <gtest/gtest.h>
 
@@ -31,25 +32,23 @@ std::string slurp(const char *p) {
     return ss.str();
 }
 
-constexpr const char *kToolNames[5] = {
-    "indie_review_partition",
-    "indie_review_brief",
-    "indie_review_corroborate",
-    "indie_review_synthesis_prompt",
-    "indie_review_fold_in",
+constexpr const char *kToolNames[4] = {
+    "debt_sweep_scan",
+    "debt_sweep_apply_fix",
+    "debt_sweep_defer",
+    "debt_sweep_triage_prompt",
 };
 
-constexpr const char *kCmdMethods[5] = {
-    "cmdIndieReviewPartition",
-    "cmdIndieReviewBrief",
-    "cmdIndieReviewCorroborate",
-    "cmdIndieReviewSynthesisPrompt",
-    "cmdIndieReviewFoldIn",
+constexpr const char *kCmdMethods[4] = {
+    "cmdDebtSweepScan",
+    "cmdDebtSweepApplyFix",
+    "cmdDebtSweepDefer",
+    "cmdDebtSweepTriagePrompt",
 };
 
 }  // namespace
 
-TEST(McpIndieReviewTools, Inv9AllToolNamesInToolsList) {
+TEST(McpDebtSweepTools, Inv12aAllToolNamesInToolsList) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     for (const char *name : kToolNames) {
@@ -59,7 +58,7 @@ TEST(McpIndieReviewTools, Inv9AllToolNamesInToolsList) {
     }
 }
 
-TEST(McpIndieReviewTools, AllProvidersRegisteredInMainWindow) {
+TEST(McpDebtSweepTools, Inv12bAllProvidersRegisteredInMainWindow) {
     const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     for (const char *name : kToolNames) {
@@ -71,7 +70,7 @@ TEST(McpIndieReviewTools, AllProvidersRegisteredInMainWindow) {
     }
 }
 
-TEST(McpIndieReviewTools, AllCmdMethodsDeclaredInHeader) {
+TEST(McpDebtSweepTools, Inv12cAllCmdMethodsDeclaredInHeader) {
     const std::string rch = slurp(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(rch.empty());
     for (const char *m : kCmdMethods) {
@@ -80,7 +79,7 @@ TEST(McpIndieReviewTools, AllCmdMethodsDeclaredInHeader) {
     }
 }
 
-TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
+TEST(McpDebtSweepTools, Inv12dAllCmdMethodsDefinedInCpp) {
     const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     for (const char *m : kCmdMethods) {
@@ -91,24 +90,17 @@ TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
     }
 }
 
-TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
-    // Defensive: every new tool's inputSchema sets additionalProperties=false
-    // so unknown keys are rejected. Region scoped to JUST the indie_review_*
-    // block — start at indie_review_partition, end at the next non-indie
-    // tool block (currently debt_sweep_scan, ANTS-1113).
+TEST(McpDebtSweepTools, Inv12eAllSchemasUseAdditionalPropertiesFalse) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
-    const auto block_start = ci.find("\"indie_review_partition\"");
+    // Region: from the first debt_sweep_* tool name to the next
+    // `result["tools"] = tools;` afterwards.
+    const auto block_start = ci.find("debt_sweep_scan");
     ASSERT_NE(block_start, std::string::npos);
-    // End: the next ANTS-NNNN comment after fold_in marks the next
-    // tool series. Falls back to `result["tools"] = tools;` when no
-    // subsequent block exists.
-    const auto fold_in_pos = ci.find("\"indie_review_fold_in\"", block_start);
-    ASSERT_NE(fold_in_pos, std::string::npos);
-    auto block_end = ci.find("// ANTS-1113", fold_in_pos);
-    if (block_end == std::string::npos) {
-        block_end = ci.find("result[\"tools\"] = tools;", fold_in_pos);
-    }
+    const auto last_block_pos = ci.find("debt_sweep_triage_prompt");
+    ASSERT_NE(last_block_pos, std::string::npos);
+    const auto block_end = ci.find("result[\"tools\"] = tools;",
+                                   last_block_pos);
     ASSERT_NE(block_end, std::string::npos);
     const std::string region = ci.substr(block_start, block_end - block_start);
     int count = 0;
@@ -117,5 +109,5 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
         ++count;
         ++pos;
     }
-    EXPECT_EQ(count, 5) << "expected 5 additionalProperties=false (one per tool)";
+    EXPECT_EQ(count, 4) << "expected 4 additionalProperties=false (one per tool)";
 }

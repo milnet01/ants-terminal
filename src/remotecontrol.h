@@ -170,6 +170,15 @@ public:
     QJsonDocument cmdIndieReviewSynthesisPrompt(const QJsonObject &req);
     QJsonDocument cmdIndieReviewFoldIn(const QJsonObject &req);
 
+    // ANTS-1113 — four `debt_sweep_*` MCP tools. Same project-path
+    // resolution as `indie_review_*`. Pure delegation to
+    // DebtSweepEngine + (for cmdDebtSweepDefer) RoadmapFoldIn helpers.
+    // See docs/specs/ANTS-1113.md.
+    QJsonDocument cmdDebtSweepScan(const QJsonObject &req);
+    QJsonDocument cmdDebtSweepApplyFix(const QJsonObject &req);
+    QJsonDocument cmdDebtSweepDefer(const QJsonObject &req);
+    QJsonDocument cmdDebtSweepTriagePrompt(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

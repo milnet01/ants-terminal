@@ -3724,6 +3724,32 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdIndieReviewFoldIn(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1113 — debt_sweep_* (4 tools).
+    m_claudeIntegration->registerToolProvider("debt_sweep_scan",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdDebtSweepScan(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("debt_sweep_apply_fix",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdDebtSweepApplyFix(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("debt_sweep_defer",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdDebtSweepDefer(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("debt_sweep_triage_prompt",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdDebtSweepTriagePrompt(args).toJson(QJsonDocument::Compact));
+        });
+
     // Start hook server
     m_claudeIntegration->startHookServer();
 }

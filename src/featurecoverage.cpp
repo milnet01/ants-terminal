@@ -19,6 +19,10 @@ namespace {
 // never usefully "drift" — either language keywords/types (exist in
 // every C++ file), trivial literals, or generic meta-words. Keeping the
 // list tight: the goal is to avoid *false positives*, not to classify.
+//
+// File-local accessor preserved as `stopwords()`; the public accessor
+// `FeatureCoverage::specStopwords()` (defined at end of file) wraps it
+// so downstream callers (DebtSweepEngine) consume one canonical set.
 const QSet<QString> &stopwords() {
     static const QSet<QString> kSpecStopwords = {
         "true",    "false",   "null",     "nullptr",  "NULL",
@@ -247,15 +251,7 @@ bool bulletMatchesAnyTitle(const QString &bulletText,
 // File-I/O runners
 // ---------------------------------------------------------------------------
 
-QString runSpecDriftCheck(const QString &projectPath) {
-    // Bail cleanly when the project doesn't use the convention. The audit
-    // framework treats empty output as "no findings" — the whole lane
-    // becomes a silent no-op, which is what we want for projects without
-    // a tests/features/ corpus or without a src/ tree.
-    QDir projectDir(projectPath);
-    if (!projectDir.exists("src")) return {};
-    if (!projectDir.exists("tests/features")) return {};
-
+QString buildProjectSourceBlob(const QString &projectPath) {
     // Build the existence index ONCE. The blob spans the WHOLE project
     // tree (minus build/VCS/cache dirs) — not just src/ — so spec
     // references to filenames (`remotecontrol.cpp`), package names
@@ -266,105 +262,123 @@ QString runSpecDriftCheck(const QString &projectPath) {
     // than per-token grep: O(N) per lookup instead of O(files × tokens),
     // and correct for scoped names like `RemoteControl::dispatch` that
     // word-boundary grep fails on (the `::` breaks \b).
+    static const QStringList kExts = {
+        // Source code
+        "*.cpp", "*.h", "*.c", "*.hpp", "*.cc", "*.cxx", "*.hxx",
+        "*.py", "*.js", "*.ts", "*.tsx", "*.jsx",
+        "*.go", "*.rs", "*.lua", "*.java", "*.kt",
+        "*.qml", "*.sh", "*.bash", "*.zsh", "*.ps1",
+        // Build / config / docs — carries filenames, package names,
+        // CMake targets, JSON/YAML keys that specs routinely cite.
+        "*.txt",        // CMakeLists.txt, requirements.txt
+        "*.md",         // CHANGELOG.md, README.md, ROADMAP.md, PLUGINS.md
+        "*.json",       // flathub manifests, VSCode launch
+        "*.yml", "*.yaml",
+        "*.toml",       // pyproject.toml, Cargo.toml
+        "*.ini", "*.cfg",
+        "*.xml",        // AppStream metainfo, .desktop-style
+        "*.cmake",
+        "*.in",         // CMake .in templates
+        "*.pro", "*.pri",
+    };
+    // Excluded top-level dirs — build artifacts and VCS/IDE noise
+    // that dilute the index without adding signal. Keep the list
+    // in sync with kFindExcl / kGrepExcl from auditdialog.cpp.
+    static const QSet<QString> kSkipTopDirs = {
+        ".git", ".svn", ".hg", "build", "dist", "node_modules",
+        ".cache", ".audit_cache", ".pytest_cache", ".mypy_cache",
+        ".tox", ".venv", "venv", "target", ".claude", "__pycache__",
+        "vendor", "third_party", "external", ".ccls-cache",
+    };
     QString sourceBlob;
-    {
-        static const QStringList kExts = {
-            // Source code
-            "*.cpp", "*.h", "*.c", "*.hpp", "*.cc", "*.cxx", "*.hxx",
-            "*.py", "*.js", "*.ts", "*.tsx", "*.jsx",
-            "*.go", "*.rs", "*.lua", "*.java", "*.kt",
-            "*.qml", "*.sh", "*.bash", "*.zsh", "*.ps1",
-            // Build / config / docs — carries filenames, package names,
-            // CMake targets, JSON/YAML keys that specs routinely cite.
-            "*.txt",        // CMakeLists.txt, requirements.txt
-            "*.md",         // CHANGELOG.md, README.md, ROADMAP.md, PLUGINS.md
-            "*.json",       // flathub manifests, VSCode launch
-            "*.yml", "*.yaml",
-            "*.toml",       // pyproject.toml, Cargo.toml
-            "*.ini", "*.cfg",
-            "*.xml",        // AppStream metainfo, .desktop-style
-            "*.cmake",
-            "*.in",         // CMake .in templates
-            "*.pro", "*.pri",
-        };
-        // Excluded top-level dirs — build artifacts and VCS/IDE noise
-        // that dilute the index without adding signal. Keep the list
-        // in sync with kFindExcl / kGrepExcl from auditdialog.cpp.
-        static const QSet<QString> kSkipTopDirs = {
-            ".git", ".svn", ".hg", "build", "dist", "node_modules",
-            ".cache", ".audit_cache", ".pytest_cache", ".mypy_cache",
-            ".tox", ".venv", "venv", "target", ".claude", "__pycache__",
-            "vendor", "third_party", "external", ".ccls-cache",
-        };
-        // Walk the project tree manually so we can skip heavy dirs
-        // without relying on QDirIterator's limited filtering.
-        std::function<void(const QString &)> walk = [&](const QString &dir) {
-            QDir d(dir);
-            const QFileInfoList entries = d.entryInfoList(
-                QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
-            for (const QFileInfo &fi : entries) {
-                if (fi.isDir()) {
-                    if (kSkipTopDirs.contains(fi.fileName())) continue;
-                    // Also skip build-* variants (build-debug, build-ci, …).
-                    if (fi.fileName().startsWith("build-")) continue;
-                    walk(fi.filePath());
-                    continue;
-                }
-                // File — check extension matches.
-                const QString name = fi.fileName();
-                // Exclude spec.md files themselves — they're the *source*
-                // of the tokens we're looking up, so including them in
-                // the blob would make every spec token match itself and
-                // silently neuter the whole lane.
-                if (name == "spec.md") continue;
-                bool match = false;
-                for (const QString &pat : kExts) {
-                    // pat is "*.ext"; compare suffix.
-                    if (pat.size() > 1 && name.endsWith(pat.mid(1),
-                                                        Qt::CaseInsensitive)) {
-                        match = true;
-                        break;
-                    }
-                }
-                if (!match) continue;
-                QFile f(fi.filePath());
-                if (f.open(QIODevice::ReadOnly)) {
-                    sourceBlob += QString::fromUtf8(f.readAll());
-                    sourceBlob += '\n';
+    // Walk the project tree manually so we can skip heavy dirs
+    // without relying on QDirIterator's limited filtering.
+    std::function<void(const QString &)> walk = [&](const QString &dir) {
+        QDir d(dir);
+        const QFileInfoList entries = d.entryInfoList(
+            QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
+        for (const QFileInfo &fi : entries) {
+            if (fi.isDir()) {
+                if (kSkipTopDirs.contains(fi.fileName())) continue;
+                // Also skip build-* variants (build-debug, build-ci, …).
+                if (fi.fileName().startsWith("build-")) continue;
+                walk(fi.filePath());
+                continue;
+            }
+            // File — check extension matches.
+            const QString name = fi.fileName();
+            // Exclude spec.md files themselves — they're the *source*
+            // of the tokens we're looking up, so including them in
+            // the blob would make every spec token match itself and
+            // silently neuter the whole lane.
+            if (name == "spec.md") continue;
+            bool match = false;
+            for (const QString &pat : kExts) {
+                // pat is "*.ext"; compare suffix.
+                if (pat.size() > 1 && name.endsWith(pat.mid(1),
+                                                    Qt::CaseInsensitive)) {
+                    match = true;
+                    break;
                 }
             }
-        };
-        walk(projectPath);
+            if (!match) continue;
+            QFile f(fi.filePath());
+            if (f.open(QIODevice::ReadOnly)) {
+                sourceBlob += QString::fromUtf8(f.readAll());
+                sourceBlob += '\n';
+            }
+        }
+    };
+    walk(projectPath);
+    return sourceBlob;
+}
+
+bool existsInSource(const QString &blob, const QString &token) {
+    if (blob.contains(token, Qt::CaseSensitive)) return true;
+    // Scoped fallback — `ClassName::method` and `file.cpp::member`
+    // are documentation shorthand. The compound string rarely
+    // appears literally (the declaration puts the class at the
+    // file/class header and the member further down), so fall
+    // back to looking for the last path component alone. Same
+    // treatment for `.`-separated compounds (`module.func`).
+    const int scopeIdx = token.lastIndexOf(QStringLiteral("::"));
+    if (scopeIdx > 0) {
+        const QString tail = token.mid(scopeIdx + 2);
+        if (tail.size() >= 3 && blob.contains(tail, Qt::CaseSensitive))
+            return true;
     }
+    const int dotIdx = token.lastIndexOf('.');
+    if (dotIdx > 0 && dotIdx < token.size() - 1) {
+        const QString tail = token.mid(dotIdx + 1);
+        // Only use this fallback when the tail is still
+        // identifier-shaped (4+ alpha chars) — otherwise we'd
+        // match file extensions (`*.cpp` → `cpp`) and get false
+        // non-drift passes on literal filename tokens.
+        if (tail.size() >= 4 && tail[0].isLetter() &&
+            blob.contains(tail, Qt::CaseSensitive))
+            return true;
+    }
+    return false;
+}
+
+const QSet<QString> &specStopwords() {
+    return stopwords();
+}
+
+QString runSpecDriftCheck(const QString &projectPath) {
+    // Bail cleanly when the project doesn't use the convention. The audit
+    // framework treats empty output as "no findings" — the whole lane
+    // becomes a silent no-op, which is what we want for projects without
+    // a tests/features/ corpus or without a src/ tree.
+    QDir projectDir(projectPath);
+    if (!projectDir.exists("src")) return {};
+    if (!projectDir.exists("tests/features")) return {};
+
+    const QString sourceBlob = buildProjectSourceBlob(projectPath);
     if (sourceBlob.isEmpty()) return {};
 
-    auto existsInSource = [&sourceBlob](const QString &tok) {
-        if (sourceBlob.contains(tok, Qt::CaseSensitive)) return true;
-        // Scoped fallback — `ClassName::method` and `file.cpp::member`
-        // are documentation shorthand. The compound string rarely
-        // appears literally (the declaration puts the class at the
-        // file/class header and the member further down), so fall
-        // back to looking for the last path component alone. Same
-        // treatment for `.`-separated compounds (`module.func`).
-        const int scopeIdx = tok.lastIndexOf(QStringLiteral("::"));
-        if (scopeIdx > 0) {
-            const QString tail = tok.mid(scopeIdx + 2);
-            if (tail.size() >= 3 &&
-                sourceBlob.contains(tail, Qt::CaseSensitive))
-                return true;
-        }
-        const int dotIdx = tok.lastIndexOf('.');
-        if (dotIdx > 0 && dotIdx < tok.size() - 1) {
-            const QString tail = tok.mid(dotIdx + 1);
-            // Only use this fallback when the tail is still
-            // identifier-shaped (4+ alpha chars) — otherwise we'd
-            // match file extensions (`*.cpp` → `cpp`) and get false
-            // non-drift passes on literal filename tokens.
-            if (tail.size() >= 4 && tail[0].isLetter() &&
-                sourceBlob.contains(tail, Qt::CaseSensitive))
-                return true;
-        }
-        return false;
+    auto resolves = [&sourceBlob](const QString &tok) {
+        return existsInSource(sourceBlob, tok);
     };
 
     QString out;
@@ -378,7 +392,7 @@ QString runSpecDriftCheck(const QString &projectPath) {
         const QString specText = QString::fromUtf8(specFile.readAll());
         specFile.close();
 
-        const QList<SpecToken> drift = findDriftTokens(specText, existsInSource);
+        const QList<SpecToken> drift = findDriftTokens(specText, resolves);
         const QString relPath = projectDir.relativeFilePath(specPath);
         for (const SpecToken &d : drift) {
             out += QString("%1:%2: spec references `%3` but no match in src/\n")
