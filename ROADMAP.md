@@ -5694,17 +5694,22 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: feature. Source: user-2026-05-12. Lanes: new (hooks/,
   tools/install-hooks.sh, tests/features/hook_pack/).
 
-- 📋 [ANTS-1253] **Consolidate MCP-tool provider registry**
-  (post-1247-1252 follow-up sweep). After 1247-1252 land,
-  `claudeintegration.h` holds ~16 `setXProvider`/`m_xProvider`
-  pairs (Rule-of-Three exceeded after the third tool). Replace
-  with `std::map<QString, std::function<QString(const QJsonObject&)>>
-  m_toolProviders` + single `registerToolProvider(name, fn)`.
-  Net: one setter, one member, uniform dispatch. Estimated impl
-  cost: ~120 LoC delta, mostly mechanical. Out of scope for any
-  of 1247-1252 to keep them surgical. Spec to be written when
-  scheduled. Kind: refactor. Source: cold-eyes pass 2 finding,
-  2026-05-12. Lanes: claudeintegration, mainwindow.
+- ✅ [ANTS-1253] **Consolidate MCP-tool provider registry.**
+  Shipped 2026-05-13. Replaced 12 per-tool
+  `setXProvider`/`m_xProvider` pairs (verified count was 12, not
+  the spec's pre-cold-eyes ~16 estimate) with a single
+  `registerToolProvider(QString, ToolHandler)` surface backed by
+  `std::map<QString, ToolHandler> m_toolProviders`, where
+  `ToolHandler = std::function<QString(const QJsonObject&)>`. The
+  `get_session_info` tool stays inline as the documented carve-out
+  (reads `ClaudeIntegration`'s own state). 5-loop cold-eyes pass
+  on the spec converged 25 verified findings (count cascade,
+  `<map>` include mandate, build-cost recompile fan-out,
+  schema-vs-registry binding INV-8 added). Source delta: −157 LoC.
+  Test: `tests/features/mcp_provider_registry/` (10 invariants,
+  pre-fix red verified). Spec: `docs/specs/ANTS-1253.md`. Kind:
+  refactor. Source: cold-eyes pass 2 finding, 2026-05-12.
+  Lanes: claudeintegration, mainwindow.
 
 - 📋 [ANTS-1254] **`last_audit_summary` MCP tool.** Returns compact
   audit-state summary (counts by severity + top-5 findings + SARIF

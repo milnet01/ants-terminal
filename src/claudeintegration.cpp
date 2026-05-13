@@ -1086,60 +1086,14 @@ void ClaudeIntegration::stopMcpServer() {
     }
 }
 
-void ClaudeIntegration::setScrollbackProvider(std::function<QString(int)> provider) {
-    m_scrollbackProvider = std::move(provider);
-}
-
-void ClaudeIntegration::setCwdProvider(std::function<QString()> provider) {
-    m_cwdProvider = std::move(provider);
-}
-
-void ClaudeIntegration::setLastCommandProvider(std::function<QPair<int,QString>()> provider) {
-    m_lastCommandProvider = std::move(provider);
-}
-
-void ClaudeIntegration::setGitStatusProvider(std::function<QString()> provider) {
-    m_gitStatusProvider = std::move(provider);
-}
-
-void ClaudeIntegration::setEnvironmentProvider(std::function<QString()> provider) {
-    m_envProvider = std::move(provider);
-}
-
-void ClaudeIntegration::setRoadmapQueryProvider(std::function<QString(const QString&)> provider) {
-    m_roadmapQueryProvider = std::move(provider);
-}
-
-void ClaudeIntegration::setTabListProvider(std::function<QString()> provider) {
-    m_tabListProvider = std::move(provider);
-}
-
-void ClaudeIntegration::setGetTextProvider(std::function<QString(int,int)> provider) {
-    m_getTextProvider = std::move(provider);
-}
-
-// ANTS-1248: workspace_search provider setter — ripgrep-backed code
-// search. Full-QJsonObject signature so the schema (pattern, regex,
-// lane, glob, max_results, context, case) can grow without changing
-// the function type.
-void ClaudeIntegration::setWorkspaceSearchProvider(std::function<QString(const QJsonObject&)> provider) {
-    m_workspaceSearchProvider = std::move(provider);
-}
-
-// ANTS-1249: file_outline provider setter — regex-scanner outline
-// for a single file. Same full-QJsonObject shape as workspace_search.
-void ClaudeIntegration::setFileOutlineProvider(std::function<QString(const QJsonObject&)> provider) {
-    m_fileOutlineProvider = std::move(provider);
-}
-
-// ANTS-1250: git_state provider setter — consolidated git tool.
-void ClaudeIntegration::setGitStateProvider(std::function<QString(const QJsonObject&)> provider) {
-    m_gitStateProvider = std::move(provider);
-}
-
-// ANTS-1251: subsystem provider setter — consolidated lane tool.
-void ClaudeIntegration::setSubsystemProvider(std::function<QString(const QJsonObject&)> provider) {
-    m_subsystemProvider = std::move(provider);
+// ANTS-1253: single tool-provider registrar. Replaces the 12 per-tool
+// setXProvider bodies that ANTS-1244..1251 each added. Each handler
+// receives the JSON-RPC `arguments` object and returns the tool's
+// response as a JSON string; the dispatcher in onMcpConnection wraps
+// it into a text content block.
+void ClaudeIntegration::registerToolProvider(
+    const QString &name, ToolHandler handler) {
+    m_toolProviders[name] = std::move(handler);
 }
 
 void ClaudeIntegration::onMcpConnection() {
@@ -1552,15 +1506,13 @@ void ClaudeIntegration::onMcpConnection() {
                 };
 
                 bool toolHandled = false;
-                if (toolName == "get_scrollback" && m_scrollbackProvider) {
-                    int lines = params.value("arguments").toObject()
-                                     .value("lines").toInt(50);
-                    result["content"] = makeTextContent(m_scrollbackProvider(lines));
-                    toolHandled = true;
-                } else if (toolName == "get_cwd" && m_cwdProvider) {
-                    result["content"] = makeTextContent(m_cwdProvider());
-                    toolHandled = true;
-                } else if (toolName == "get_session_info") {
+                // ANTS-1253: get_session_info stays inline — it reads
+                // ClaudeIntegration's own private state (m_state,
+                // m_currentTool, m_contextPercent, m_changedFiles,
+                // m_activeSessionId) rather than delegating to an
+                // external provider. All 12 outward-delegate tools
+                // dispatch via the registry below.
+                if (toolName == "get_session_info") {
                     QJsonObject info;
                     info["state"] = static_cast<int>(m_state);
                     info["current_tool"] = m_currentTool;
@@ -1570,78 +1522,10 @@ void ClaudeIntegration::onMcpConnection() {
                     result["content"] = makeTextContent(
                         QJsonDocument(info).toJson(QJsonDocument::Compact));
                     toolHandled = true;
-                } else if (toolName == "get_last_command" && m_lastCommandProvider) {
-                    auto [exitCode, output] = m_lastCommandProvider();
-                    QJsonObject info;
-                    info["exit_code"] = exitCode;
-                    info["output"] = output;
-                    info["failed"] = (exitCode != 0);
-                    result["content"] = makeTextContent(
-                        QJsonDocument(info).toJson(QJsonDocument::Compact));
-                    toolHandled = true;
-                } else if (toolName == "get_git_status" && m_gitStatusProvider) {
-                    result["content"] = makeTextContent(m_gitStatusProvider());
-                    toolHandled = true;
-                } else if (toolName == "get_environment" && m_envProvider) {
-                    result["content"] = makeTextContent(m_envProvider());
-                    toolHandled = true;
-                } else if (toolName == "roadmap_query" && m_roadmapQueryProvider) {
-                    // ANTS-1247-INV-9: extract `arguments.status` and
-                    // forward verbatim. Case-folding lives inside
-                    // cmdRoadmapQuery — dispatcher passes through.
+                } else if (auto it = m_toolProviders.find(toolName);
+                           it != m_toolProviders.end()) {
                     QJsonObject args = params.value("arguments").toObject();
-                    const QJsonValue statusVal = args.value("status");
-                    const QString status = statusVal.isString()
-                                              ? statusVal.toString()
-                                              : QString();
-                    result["content"] = makeTextContent(m_roadmapQueryProvider(status));
-                    toolHandled = true;
-                } else if (toolName == "tab_list" && m_tabListProvider) {
-                    result["content"] = makeTextContent(m_tabListProvider());
-                    toolHandled = true;
-                } else if (toolName == "get_text" && m_getTextProvider) {
-                    // ANTS-1244 INV-9 — tab=0 is a valid index distinct
-                    // from "tab omitted", so use isDouble() to gate the
-                    // extraction (matches the IPC verb at
-                    // remotecontrol.cpp:347). tab<0 = active tab,
-                    // lines<=0 = default 100.
-                    QJsonObject args = params.value("arguments").toObject();
-                    const QJsonValue tabVal   = args.value("tab");
-                    const QJsonValue linesVal = args.value("lines");
-                    int tab   = tabVal.isDouble()   ? tabVal.toInt()   : -1;
-                    int lines = linesVal.isDouble() ? linesVal.toInt() :  0;
-                    result["content"] = makeTextContent(m_getTextProvider(tab, lines));
-                    toolHandled = true;
-                } else if (toolName == "workspace_search" && m_workspaceSearchProvider) {
-                    // ANTS-1248: forward the full `arguments` object
-                    // through to the provider, which delegates to
-                    // RemoteControl::cmdWorkspaceSearch. Argument
-                    // validation lives in the verb body — keeps the
-                    // wire boundary thin (same pattern as roadmap_query).
-                    QJsonObject args = params.value("arguments").toObject();
-                    result["content"] = makeTextContent(m_workspaceSearchProvider(args));
-                    toolHandled = true;
-                } else if (toolName == "file_outline" && m_fileOutlineProvider) {
-                    // ANTS-1249: same delegation idiom — verb body
-                    // does the path-escape guard and scanner work.
-                    QJsonObject args = params.value("arguments").toObject();
-                    result["content"] = makeTextContent(m_fileOutlineProvider(args));
-                    toolHandled = true;
-                } else if (toolName == "git_state" && m_gitStateProvider) {
-                    // ANTS-1250: consolidated git tool — op dispatch
-                    // happens inside cmdGitState. Argument validation
-                    // (op enum, range regex, path canonicalisation)
-                    // lives in the verb body.
-                    QJsonObject args = params.value("arguments").toObject();
-                    result["content"] = makeTextContent(m_gitStateProvider(args));
-                    toolHandled = true;
-                } else if (toolName == "subsystem" && m_subsystemProvider) {
-                    // ANTS-1251: consolidated subsystem tool — op
-                    // dispatch happens inside cmdSubsystem. Lane
-                    // membership check (INV-1) precedes any filesystem
-                    // call in the verb body.
-                    QJsonObject args = params.value("arguments").toObject();
-                    result["content"] = makeTextContent(m_subsystemProvider(args));
+                    result["content"] = makeTextContent(it->second(args));
                     toolHandled = true;
                 }
 

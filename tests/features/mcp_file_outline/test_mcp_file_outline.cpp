@@ -160,25 +160,25 @@ TEST(McpFileOutline, WiringContract) {
                "file_outline inputSchema does not declare [\"path\"] as required");
     }
 
-    // INV-6 — tools/call dispatcher has the new else-if clause.
-    std::regex toolCallRe(
-        R"(toolName\s*==\s*"file_outline"\s*&&\s*m_fileOutlineProvider)");
-    expect(std::regex_search(ciCpp, toolCallRe),
+    // INV-6 — tools/list schema declares the file_outline tool.
+    // ANTS-1253 collapsed the per-tool dispatch into a registry lookup.
+    std::regex schemaRe(R"("name"\]\s*=\s*"file_outline")");
+    expect(std::regex_search(ciCpp, schemaRe),
            "INV-6",
-           "claudeintegration.cpp missing tools/call dispatch clause for file_outline");
+           "claudeintegration.cpp missing tools/list schema entry for file_outline");
 
-    // INV-7 — header decl + member.
-    expect(contains(ciHdr, "setFileOutlineProvider"),
+    // INV-7 — header has the single registry surface (ANTS-1253).
+    expect(contains(ciHdr, "registerToolProvider(const QString &name"),
            "INV-7a",
-           "claudeintegration.h missing setFileOutlineProvider declaration");
-    expect(contains(ciHdr, "m_fileOutlineProvider"),
+           "claudeintegration.h missing registerToolProvider declaration (ANTS-1253)");
+    expect(contains(ciHdr, "m_toolProviders"),
            "INV-7b",
-           "claudeintegration.h missing m_fileOutlineProvider member field");
+           "claudeintegration.h missing m_toolProviders registry member (ANTS-1253)");
 
-    // INV-8 — mainwindow.cpp wires the provider.
-    expect(contains(mwCpp, "setFileOutlineProvider"),
+    // INV-8 — mainwindow.cpp registers file_outline via the registry.
+    expect(contains(mwCpp, "registerToolProvider(\"file_outline\""),
            "INV-8a",
-           "mainwindow.cpp does not call setFileOutlineProvider in setupClaudeMcpProviders");
+           "mainwindow.cpp does not register file_outline in setupClaudeMcpProviders (ANTS-1253)");
     expect(contains(mwCpp, "cmdFileOutline"),
            "INV-8b",
            "mainwindow.cpp does not delegate the provider lambda to cmdFileOutline");

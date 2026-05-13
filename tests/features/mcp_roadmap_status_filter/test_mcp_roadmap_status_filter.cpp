@@ -129,13 +129,16 @@ TEST(mcp_roadmap_status_filter, Inv8McpInputSchema) {
 }
 
 TEST(mcp_roadmap_status_filter, Inv9McpDispatchExtractsStatus) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    expect(contains(ci, "ANTS-1247-INV-9"),
-           "INV-9 anchor comment present in claudeintegration.cpp");
-    expect(contains(ci, "args.value(\"status\")"),
-           "INV-9: dispatch extracts arguments.status");
-    expect(contains(ci, "statusVal.isString()"),
-           "INV-9: dispatch gates on isString()");
+    // Post-ANTS-1253: the per-tool dispatch extraction moved from
+    // claudeintegration.cpp into the registerToolProvider lambda
+    // body in mainwindow.cpp. INV-9 is now asserted there.
+    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    expect(contains(mw, "registerToolProvider(\"roadmap_query\""),
+           "ANTS-1253: roadmap_query registered via registerToolProvider");
+    expect(contains(mw, "args.value(\"status\")"),
+           "INV-9: roadmap_query lambda extracts args.status");
+    expect(contains(mw, "statusVal.isString()"),
+           "INV-9: roadmap_query lambda gates on isString()");
     if (g_failures) FAIL();
 }
 
@@ -161,12 +164,12 @@ TEST(mcp_roadmap_status_filter, Inv11ErrorMessageHygiene) {
 
 TEST(mcp_roadmap_status_filter, ProviderLambdaWidened) {
     const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
-    // The MainWindow provider lambda must thread `status` through to
-    // cmdRoadmapQuery(req).
-    expect(contains(mw, "setRoadmapQueryProvider("),
-           "MainWindow calls setRoadmapQueryProvider");
-    expect(contains(mw, "[this](const QString &status)"),
-           "Provider lambda accepts `const QString &status`");
+    // The roadmap_query lambda registered via registerToolProvider
+    // (ANTS-1253) must thread `status` through to cmdRoadmapQuery(req).
+    expect(contains(mw, "registerToolProvider(\"roadmap_query\""),
+           "MainWindow registers roadmap_query (ANTS-1253)");
+    expect(contains(mw, "args.value(\"status\")"),
+           "Provider lambda extracts args.status (ANTS-1253 widened sig)");
     expect(contains(mw, "req[\"status\"] = status"),
            "Provider lambda forwards status to req[\"status\"]");
     expect(contains(mw, "cmdRoadmapQuery(req)"),

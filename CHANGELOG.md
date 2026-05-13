@@ -12,6 +12,30 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **ANTS-1253 — Consolidate MCP-tool provider registry.** Replaces
+  the 12 per-tool `setXProvider`/`m_xProvider` setter+member pairs
+  in `ClaudeIntegration` (each added by ANTS-1244 / 1247-1251) with
+  a single `registerToolProvider(QString name, ToolHandler handler)`
+  surface backed by `std::map<QString, ToolHandler> m_toolProviders`,
+  where `ToolHandler = std::function<QString(const QJsonObject&)>`.
+  The 92-line `tools/call` `else if (toolName == "X" && m_XProvider)`
+  chain in `claudeintegration.cpp` collapses to one inline branch
+  for `get_session_info` (the documented carve-out — it reads
+  `ClaudeIntegration`'s own state, not an external delegate) plus a
+  single `m_toolProviders.find(toolName)` lookup. `MainWindow::setupClaudeMcpProviders`
+  now makes 12 `registerToolProvider("name", lambda)` calls; each
+  lambda absorbs the dispatcher-side argument extraction + result
+  formatting that previously lived in the per-tool dispatch case.
+  No behaviour change. Source delta: −157 LoC across
+  `claudeintegration.{h,cpp}` + `mainwindow.cpp`. Spec:
+  `docs/specs/ANTS-1253.md` (5-loop cold-eyes pass, ship-ready).
+  New regression test: `tests/features/mcp_provider_registry/`
+  (10 invariants source-greped, pre-fix red verified — 9/10 fail
+  against the unrefactored tree; INV-10 carve-out preservation
+  passes both sides).
+
 ### Added
 
 - **ANTS-1252 — Token-saving hook pack.** Five bash hooks plus

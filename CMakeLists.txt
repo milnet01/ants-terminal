@@ -791,7 +791,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_workspace_search/test_mcp_workspace_search.cpp
                 tests/features/mcp_file_outline/test_mcp_file_outline.cpp
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
-                tests/features/mcp_subsystem/test_mcp_subsystem.cpp)
+                tests/features/mcp_subsystem/test_mcp_subsystem.cpp
+                tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

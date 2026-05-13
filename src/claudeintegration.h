@@ -11,6 +11,9 @@
 #include <QLocalSocket>
 #include <QDateTime>
 
+#include <functional>
+#include <map>
+
 class TerminalWidget;
 
 // Metadata for a single Claude Code session
@@ -171,41 +174,16 @@ public:
     // MCP server for terminal capabilities
     bool startMcpServer(const QString &socketPath);
     void stopMcpServer();
-    void setScrollbackProvider(std::function<QString(int)> provider);
-    void setCwdProvider(std::function<QString()> provider);
-    void setLastCommandProvider(std::function<QPair<int,QString>()> provider);
-    void setGitStatusProvider(std::function<QString()> provider);
-    void setEnvironmentProvider(std::function<QString()> provider);
 
-    // ANTS-1244: surface the read-only remote-control verbs as MCP
-    // tools. Each provider returns the IPC verb's compact-JSON
-    // response as a string; the dispatcher wraps it in a text
-    // content block. `setGetTextProvider`'s `tab=-1` means "active
-    // tab", `lines=0` means "default 100" — see spec § 2.d.
-    // ANTS-1247: widened to thread an optional status filter
-    // ("all"/"active"/"shipped") to cmdRoadmapQuery. Empty string =
-    // "all" (back-compat).
-    void setRoadmapQueryProvider(std::function<QString(const QString&)> provider);
-    void setTabListProvider(std::function<QString()> provider);
-    void setGetTextProvider(std::function<QString(int,int)> provider);
-
-    // ANTS-1248: workspace_search provider — ripgrep-backed code
-    // search. Full-QJsonObject signature (matches the cmdGetText
-    // widening idiom from ANTS-1244) so future schema additions
-    // don't require new setter overloads.
-    void setWorkspaceSearchProvider(std::function<QString(const QJsonObject&)> provider);
-
-    // ANTS-1249: file_outline provider — regex scanner over a file,
-    // returns header_doc + symbols[]. Same full-QJsonObject shape.
-    void setFileOutlineProvider(std::function<QString(const QJsonObject&)> provider);
-
-    // ANTS-1250: git_state provider — consolidated git tool (status /
-    // log / diff via op discriminator). Same full-QJsonObject shape.
-    void setGitStateProvider(std::function<QString(const QJsonObject&)> provider);
-
-    // ANTS-1251: subsystem provider — consolidated lane tool (map /
-    // files / recent_changes via op discriminator). Same shape.
-    void setSubsystemProvider(std::function<QString(const QJsonObject&)> provider);
+    // ANTS-1253: single tool-provider registry. Each handler receives
+    // the JSON-RPC `arguments` object and returns the tool's response
+    // as a JSON string (the dispatcher wraps it into a text content
+    // block). Absorbs the per-tool setter/member triples that
+    // ANTS-1244..1251 each added (12 setters → 1 registrar). The
+    // `get_session_info` tool stays inline in the dispatcher — it
+    // reads ClaudeIntegration's own state, not an external delegate.
+    using ToolHandler = std::function<QString(const QJsonObject &args)>;
+    void registerToolProvider(const QString &name, ToolHandler handler);
 
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
@@ -325,24 +303,9 @@ private:
 
     // MCP server
     QLocalServer *m_mcpServer = nullptr;
-    std::function<QString(int)> m_scrollbackProvider;
-    std::function<QString()> m_cwdProvider;
-    std::function<QPair<int,QString>()> m_lastCommandProvider;
-    std::function<QString()> m_gitStatusProvider;
-    std::function<QString()> m_envProvider;
-    // ANTS-1244 — delegate-into-RemoteControl providers.
-    // ANTS-1247: m_roadmapQueryProvider widened to accept status filter.
-    std::function<QString(const QString&)> m_roadmapQueryProvider;
-    std::function<QString()> m_tabListProvider;
-    std::function<QString(int,int)> m_getTextProvider;
-    // ANTS-1248: workspace_search provider — full-QJsonObject shape.
-    std::function<QString(const QJsonObject&)> m_workspaceSearchProvider;
-    // ANTS-1249: file_outline provider — full-QJsonObject shape.
-    std::function<QString(const QJsonObject&)> m_fileOutlineProvider;
-    // ANTS-1250: git_state provider — full-QJsonObject shape.
-    std::function<QString(const QJsonObject&)> m_gitStateProvider;
-    // ANTS-1251: subsystem provider — full-QJsonObject shape.
-    std::function<QString(const QJsonObject&)> m_subsystemProvider;
+    // ANTS-1253: per-tool providers consolidated into a single
+    // name-keyed registry. See registerToolProvider() above.
+    std::map<QString, ToolHandler> m_toolProviders;
 
     // Session tracking
     QString m_activeSessionId;

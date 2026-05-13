@@ -173,42 +173,39 @@ TEST(McpWorkspaceSearch, WiringContract) {
                "[\"pattern\"] as required");
     }
 
-    // INV-6 — tools/call dispatcher has the new else-if clause.
-    std::regex toolCallRe(
-        R"(toolName\s*==\s*"workspace_search"\s*&&\s*m_workspaceSearchProvider)");
-    expect(std::regex_search(ciCpp, toolCallRe),
+    // INV-6 — tools/list schema declares the workspace_search tool.
+    // ANTS-1253 collapsed the per-tool dispatch into a single registry
+    // lookup, so we re-anchor the wiring check to the schema entry.
+    std::regex schemaRe(R"("name"\]\s*=\s*"workspace_search")");
+    expect(std::regex_search(ciCpp, schemaRe),
            "INV-6",
-           "claudeintegration.cpp missing tools/call dispatch clause "
-           "`toolName == \"workspace_search\" && m_workspaceSearchProvider`");
+           "claudeintegration.cpp missing tools/list schema entry "
+           "naming \"workspace_search\"");
 
-    // INV-7 — header declares setter + member with the
-    // full-QJsonObject signature (matches cmdGetText idiom).
-    expect(contains(ciHdr,
-                    "setWorkspaceSearchProvider"),
+    // INV-7 — header declares the single registry surface (ANTS-1253).
+    // Per-tool setters / members no longer exist.
+    expect(contains(ciHdr, "registerToolProvider(const QString &name"),
            "INV-7a",
-           "claudeintegration.h missing setWorkspaceSearchProvider "
-           "declaration");
-    // Member field — m_workspaceSearchProvider with std::function<...
-    // const QJsonObject&...> signature.
-    expect(contains(ciHdr, "m_workspaceSearchProvider"),
+           "claudeintegration.h missing registerToolProvider "
+           "declaration (ANTS-1253)");
+    expect(contains(ciHdr, "m_toolProviders"),
            "INV-7b",
-           "claudeintegration.h missing m_workspaceSearchProvider "
-           "member field");
-    std::regex sigRe(
-        R"(std::function\s*<\s*QString\s*\(\s*const\s+QJsonObject\s*&)");
-    expect(std::regex_search(ciHdr, sigRe),
+           "claudeintegration.h missing m_toolProviders registry "
+           "member (ANTS-1253)");
+    std::regex toolHandlerRe(
+        R"(using\s+ToolHandler\s*=\s*std::function\s*<\s*QString\s*\(\s*const\s+QJsonObject\s*&)");
+    expect(std::regex_search(ciHdr, toolHandlerRe),
            "INV-7c",
-           "claudeintegration.h does not declare a "
-           "std::function<QString(const QJsonObject&)> — required "
-           "for the workspace_search provider signature");
+           "claudeintegration.h does not declare ToolHandler as "
+           "std::function<QString(const QJsonObject&)> — required for "
+           "the workspace_search provider signature");
 
-    // INV-8 — mainwindow.cpp wires the provider with the same
-    // remote-control delegation idiom (and same `remote-control
-    // unavailable` fallback).
-    expect(contains(mwCpp, "setWorkspaceSearchProvider"),
+    // INV-8 — mainwindow.cpp registers workspace_search via the
+    // ANTS-1253 registry and the lambda delegates to cmdWorkspaceSearch.
+    expect(contains(mwCpp, "registerToolProvider(\"workspace_search\""),
            "INV-8a",
-           "mainwindow.cpp does not call setWorkspaceSearchProvider "
-           "in setupClaudeMcpProviders");
+           "mainwindow.cpp does not register workspace_search "
+           "in setupClaudeMcpProviders (ANTS-1253)");
     expect(contains(mwCpp, "cmdWorkspaceSearch"),
            "INV-8b",
            "mainwindow.cpp does not delegate the provider lambda to "

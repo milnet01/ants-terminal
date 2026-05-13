@@ -3551,122 +3551,135 @@ void MainWindow::setupClaudeMcpProviders() {
     QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
                         QString::number(QApplication::applicationPid());
     m_claudeIntegration->startMcpServer(mcpSocket);
-    m_claudeIntegration->setScrollbackProvider([this](int lines) -> QString {
-        if (auto *t = focusedTerminal()) return t->recentOutput(lines);
-        return {};
-    });
-    m_claudeIntegration->setCwdProvider([this]() -> QString {
-        if (auto *t = focusedTerminal()) return t->shellCwd();
-        return QDir::currentPath();
-    });
-    m_claudeIntegration->setLastCommandProvider([this]() -> QPair<int,QString> {
-        if (auto *t = focusedTerminal())
-            return {t->lastExitCode(), t->lastCommandOutput()};
-        return {0, {}};
-    });
-    m_claudeIntegration->setGitStatusProvider([this]() -> QString {
-        auto *t = focusedTerminal();
-        if (!t) return {};
-        QString cwd = t->shellCwd();
-        if (cwd.isEmpty()) return {};
-        // Run git status + branch + recent log
-        QProcess git;
-        git.setWorkingDirectory(cwd);
-        git.setProgram("git");
-        QStringList result;
-        // Branch
-        git.setArguments({"rev-parse", "--abbrev-ref", "HEAD"});
-        git.start(); git.waitForFinished(2000);
-        result << "Branch: " + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
-        // Status
-        git.setArguments({"status", "--porcelain", "-sb"});
-        git.start(); git.waitForFinished(2000);
-        result << "Status:\n" + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
-        // Recent commits
-        git.setArguments({"log", "--oneline", "-5"});
-        git.start(); git.waitForFinished(2000);
-        result << "Recent commits:\n" + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
-        return result.join("\n\n");
-    });
-    m_claudeIntegration->setEnvironmentProvider([this]() -> QString {
-        auto *t = focusedTerminal();
-        if (!t) return {};
-        // Read key env vars from /proc/PID/environ
-        pid_t pid = t->shellPid();
-        if (pid <= 0) return {};
-        QFile envFile(QString("/proc/%1/environ").arg(pid));
-        if (!envFile.open(QIODevice::ReadOnly)) return {};
-        QByteArray raw = envFile.readAll();
-        QStringList vars = QString::fromUtf8(raw).split('\0', Qt::SkipEmptyParts);
-        // Filter to useful vars
-        QStringList filtered;
-        QStringList keys = {"PATH", "VIRTUAL_ENV", "CONDA_DEFAULT_ENV", "NODE_ENV",
-                           "SHELL", "EDITOR", "LANG", "HOME", "USER", "TERM", "COLORTERM"};
-        for (const QString &v : vars) {
-            for (const QString &k : keys) {
-                if (v.startsWith(k + "=")) { filtered << v; break; }
-            }
-        }
-        return filtered.join("\n");
-    });
+    // ANTS-1253: 12 tool handlers registered on the single-registry
+    // ClaudeIntegration::registerToolProvider surface. Each handler
+    // takes the JSON-RPC `arguments` object (extracts what it needs,
+    // ignoring the rest) and returns the tool's response as a JSON
+    // string. `get_session_info` is intentionally not registered —
+    // it reads ClaudeIntegration's own state and is dispatched
+    // inline (see claudeintegration.cpp processTools).
+    static constexpr const char *kRcUnavailable =
+        "{\"ok\":false,\"error\":\"remote-control unavailable\"}";
 
-    // ANTS-1244 — surface read-only remote-control verbs as MCP
-    // tools. Each lambda delegates to the existing RemoteControl
-    // cmd handler so the two transports share logic + cache.
-    // ANTS-1247: provider widened to thread status filter through to
-    // cmdRoadmapQuery. Empty string → "all" via the verb's default.
-    m_claudeIntegration->setRoadmapQueryProvider(
-        [this](const QString &status) -> QString {
-            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+    m_claudeIntegration->registerToolProvider("get_scrollback",
+        [this](const QJsonObject &args) -> QString {
+            const int lines = args.value("lines").toInt(50);
+            if (auto *t = focusedTerminal()) return t->recentOutput(lines);
+            return {};
+        });
+    m_claudeIntegration->registerToolProvider("get_cwd",
+        [this](const QJsonObject &) -> QString {
+            if (auto *t = focusedTerminal()) return t->shellCwd();
+            return QDir::currentPath();
+        });
+    m_claudeIntegration->registerToolProvider("get_last_command",
+        [this](const QJsonObject &) -> QString {
+            auto *t = focusedTerminal();
+            const int   exitCode = t ? t->lastExitCode()      : 0;
+            const QString output = t ? t->lastCommandOutput() : QString();
+            QJsonObject info;
+            info["exit_code"] = exitCode;
+            info["output"]    = output;
+            info["failed"]    = (exitCode != 0);
+            return QString::fromUtf8(
+                QJsonDocument(info).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("get_git_status",
+        [this](const QJsonObject &) -> QString {
+            auto *t = focusedTerminal();
+            if (!t) return {};
+            QString cwd = t->shellCwd();
+            if (cwd.isEmpty()) return {};
+            QProcess git;
+            git.setWorkingDirectory(cwd);
+            git.setProgram("git");
+            QStringList result;
+            git.setArguments({"rev-parse", "--abbrev-ref", "HEAD"});
+            git.start(); git.waitForFinished(2000);
+            result << "Branch: " + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+            git.setArguments({"status", "--porcelain", "-sb"});
+            git.start(); git.waitForFinished(2000);
+            result << "Status:\n" + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+            git.setArguments({"log", "--oneline", "-5"});
+            git.start(); git.waitForFinished(2000);
+            result << "Recent commits:\n" + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+            return result.join("\n\n");
+        });
+    m_claudeIntegration->registerToolProvider("get_environment",
+        [this](const QJsonObject &) -> QString {
+            auto *t = focusedTerminal();
+            if (!t) return {};
+            pid_t pid = t->shellPid();
+            if (pid <= 0) return {};
+            QFile envFile(QString("/proc/%1/environ").arg(pid));
+            if (!envFile.open(QIODevice::ReadOnly)) return {};
+            QByteArray raw = envFile.readAll();
+            QStringList vars = QString::fromUtf8(raw).split('\0', Qt::SkipEmptyParts);
+            QStringList filtered;
+            QStringList keys = {"PATH", "VIRTUAL_ENV", "CONDA_DEFAULT_ENV", "NODE_ENV",
+                               "SHELL", "EDITOR", "LANG", "HOME", "USER", "TERM", "COLORTERM"};
+            for (const QString &v : vars) {
+                for (const QString &k : keys) {
+                    if (v.startsWith(k + "=")) { filtered << v; break; }
+                }
+            }
+            return filtered.join("\n");
+        });
+
+    // ANTS-1244 surface — the next 7 tools delegate to RemoteControl
+    // cmd handlers so the IPC and MCP transports share verb logic.
+    // ANTS-1247: roadmap_query threads the status filter through.
+    m_claudeIntegration->registerToolProvider("roadmap_query",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            const QJsonValue statusVal = args.value("status");
+            const QString status = statusVal.isString() ? statusVal.toString() : QString();
             QJsonObject req;
             if (!status.isEmpty()) req["status"] = status;
             return QString::fromUtf8(
                 m_remoteControl->cmdRoadmapQuery(req).toJson(QJsonDocument::Compact));
         });
-    m_claudeIntegration->setTabListProvider([this]() -> QString {
-        if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
-        return QString::fromUtf8(
-            m_remoteControl->cmdTabList().toJson(QJsonDocument::Compact));
-    });
-    m_claudeIntegration->setGetTextProvider(
-        // tab < 0 → omit (active tab); lines <= 0 → omit (default 100).
-        [this](int tab, int lines) -> QString {
-            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+    m_claudeIntegration->registerToolProvider("tab_list",
+        [this](const QJsonObject &) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdTabList().toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("get_text",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            // ANTS-1244 INV-9 — tab=0 is a valid index distinct from
+            // "tab omitted"; gate via isDouble(). Same shape for lines
+            // (matches the IPC verb at remotecontrol.cpp:347).
             QJsonObject req;
-            if (tab   >= 0) req["tab"]   = tab;
-            if (lines >  0) req["lines"] = lines;
+            if (args.value("tab").isDouble())   req["tab"]   = args.value("tab").toInt();
+            if (args.value("lines").isDouble()) req["lines"] = args.value("lines").toInt();
             return QString::fromUtf8(
                 m_remoteControl->cmdGetText(req).toJson(QJsonDocument::Compact));
         });
-    // ANTS-1248: workspace_search provider. Same idiom as the
-    // ANTS-1244 trio — full QJsonObject passes through to the verb
-    // body (argument validation lives there).
-    m_claudeIntegration->setWorkspaceSearchProvider(
-        [this](const QJsonObject &req) -> QString {
-            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+    m_claudeIntegration->registerToolProvider("workspace_search",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             return QString::fromUtf8(
-                m_remoteControl->cmdWorkspaceSearch(req).toJson(QJsonDocument::Compact));
+                m_remoteControl->cmdWorkspaceSearch(args).toJson(QJsonDocument::Compact));
         });
-    // ANTS-1249: file_outline provider — same delegation shape.
-    m_claudeIntegration->setFileOutlineProvider(
-        [this](const QJsonObject &req) -> QString {
-            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+    m_claudeIntegration->registerToolProvider("file_outline",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             return QString::fromUtf8(
-                m_remoteControl->cmdFileOutline(req).toJson(QJsonDocument::Compact));
+                m_remoteControl->cmdFileOutline(args).toJson(QJsonDocument::Compact));
         });
-    // ANTS-1250: git_state provider — same delegation shape.
-    m_claudeIntegration->setGitStateProvider(
-        [this](const QJsonObject &req) -> QString {
-            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+    m_claudeIntegration->registerToolProvider("git_state",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             return QString::fromUtf8(
-                m_remoteControl->cmdGitState(req).toJson(QJsonDocument::Compact));
+                m_remoteControl->cmdGitState(args).toJson(QJsonDocument::Compact));
         });
-    // ANTS-1251: subsystem provider — same delegation shape.
-    m_claudeIntegration->setSubsystemProvider(
-        [this](const QJsonObject &req) -> QString {
-            if (!m_remoteControl) return QStringLiteral("{\"ok\":false,\"error\":\"remote-control unavailable\"}");
+    m_claudeIntegration->registerToolProvider("subsystem",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             return QString::fromUtf8(
-                m_remoteControl->cmdSubsystem(req).toJson(QJsonDocument::Compact));
+                m_remoteControl->cmdSubsystem(args).toJson(QJsonDocument::Compact));
         });
 
     // Start hook server

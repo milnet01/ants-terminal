@@ -72,43 +72,34 @@ static int runMain() {
     inv(1, contains(ciCpp, "\"get_text\""),
         "tools/list missing \"get_text\" name registration");
 
-    // INV-2 — tools/call dispatcher has new else-if clauses for each
-    // new tool. Allow either order; check that each tool name appears
-    // in a `toolName == "..."` comparison.
-    std::regex routeRq(
-        R"(toolName\s*==\s*"roadmap_query")");
-    std::regex routeTl(
-        R"(toolName\s*==\s*"tab_list")");
-    std::regex routeGt(
-        R"(toolName\s*==\s*"get_text")");
-    inv(2, std::regex_search(ciCpp, routeRq),
-        "tools/call missing `toolName == \"roadmap_query\"` clause");
-    inv(2, std::regex_search(ciCpp, routeTl),
-        "tools/call missing `toolName == \"tab_list\"` clause");
-    inv(2, std::regex_search(ciCpp, routeGt),
-        "tools/call missing `toolName == \"get_text\"` clause");
+    // INV-2 — each new tool has a tools/list schema entry naming it.
+    // ANTS-1253 collapsed the per-tool `toolName == "..."` dispatch
+    // clauses into a single `m_toolProviders.find(toolName)` lookup,
+    // so we re-anchor the tool-name check to the schema-builder line
+    // (e.g. `roadmapTool["name"] = "roadmap_query"`).
+    std::regex schemaRq(R"("name"\]\s*=\s*"roadmap_query")");
+    std::regex schemaTl(R"("name"\]\s*=\s*"tab_list")");
+    std::regex schemaGt(R"("name"\]\s*=\s*"get_text")");
+    inv(2, std::regex_search(ciCpp, schemaRq),
+        "tools/list schema missing roadmap_query name entry");
+    inv(2, std::regex_search(ciCpp, schemaTl),
+        "tools/list schema missing tab_list name entry");
+    inv(2, std::regex_search(ciCpp, schemaGt),
+        "tools/list schema missing get_text name entry");
 
-    // INV-3 — claudeintegration.h declares the 3 new setters with the
-    // expected `std::function` signatures.
-    // ANTS-1247: setRoadmapQueryProvider widened to accept a `const
-    // QString&` status filter.
+    // INV-3 — claudeintegration.h declares the single registry surface
+    // (ANTS-1253). The per-tool setters / members no longer exist —
+    // they collapsed into registerToolProvider + m_toolProviders.
     inv(3, contains(ciHdr,
-            "setRoadmapQueryProvider(std::function<QString(const QString&)>"),
-        "setRoadmapQueryProvider not declared with std::function<QString(const QString&)> (ANTS-1247 widen)");
+            "registerToolProvider(const QString &name, ToolHandler"),
+        "registerToolProvider not declared with (QString, ToolHandler) signature (ANTS-1253)");
     inv(3, contains(ciHdr,
-            "setTabListProvider(std::function<QString()>"),
-        "setTabListProvider not declared with std::function<QString()>");
-    inv(3, contains(ciHdr,
-            "setGetTextProvider(std::function<QString(int"),
-        "setGetTextProvider not declared with std::function<QString(int,…)> shape");
+            "using ToolHandler ="),
+        "claudeintegration.h missing ToolHandler type alias (ANTS-1253)");
 
-    // INV-4 — matching private member variables exist.
-    inv(4, contains(ciHdr, "m_roadmapQueryProvider"),
-        "claudeintegration.h missing m_roadmapQueryProvider member");
-    inv(4, contains(ciHdr, "m_tabListProvider"),
-        "claudeintegration.h missing m_tabListProvider member");
-    inv(4, contains(ciHdr, "m_getTextProvider"),
-        "claudeintegration.h missing m_getTextProvider member");
+    // INV-4 — single registry member exists.
+    inv(4, contains(ciHdr, "m_toolProviders"),
+        "claudeintegration.h missing m_toolProviders registry member (ANTS-1253)");
 
     // INV-5 — remotecontrol.h promotes the 3 cmd handlers to public.
     // We need to find each handler's declaration AFTER a `public:` and
@@ -145,49 +136,41 @@ static int runMain() {
     inv(5, isInPublicSection("cmdGetText"),
         "remotecontrol.h: cmdGetText not in a public: section");
 
-    // INV-6 — setupClaudeMcpProviders calls each of the 3 setters and
-    // the surrounding lambdas refer to m_remoteControl. We don't pin
-    // the exact lambda body — just that the setter calls + the
-    // m_remoteControl token both appear in setupClaudeMcpProviders.
+    // INV-6 — setupClaudeMcpProviders registers each tool and the
+    // surrounding lambdas refer to m_remoteControl. Post-ANTS-1253
+    // setters became `registerToolProvider("<name>", …)` calls.
     size_t setupPos = mwCpp.find("setupClaudeMcpProviders()");
     inv(6, setupPos != std::string::npos,
         "mainwindow.cpp: setupClaudeMcpProviders() definition not found");
     if (setupPos != std::string::npos) {
-        // Bound the search to the function body — heuristic: from
-        // the opening brace to the matching close. Cap at 8 KB to
-        // keep the search local.
         size_t braceOpen = mwCpp.find('{', setupPos);
         std::string body = (braceOpen == std::string::npos)
             ? std::string()
-            : mwCpp.substr(braceOpen, 8 * 1024);
-        inv(6, contains(body, "setRoadmapQueryProvider("),
-            "setupClaudeMcpProviders does not call setRoadmapQueryProvider");
-        inv(6, contains(body, "setTabListProvider("),
-            "setupClaudeMcpProviders does not call setTabListProvider");
-        inv(6, contains(body, "setGetTextProvider("),
-            "setupClaudeMcpProviders does not call setGetTextProvider");
+            : mwCpp.substr(braceOpen, 16 * 1024);
+        inv(6, contains(body, "registerToolProvider(\"roadmap_query\""),
+            "setupClaudeMcpProviders does not register roadmap_query");
+        inv(6, contains(body, "registerToolProvider(\"tab_list\""),
+            "setupClaudeMcpProviders does not register tab_list");
+        inv(6, contains(body, "registerToolProvider(\"get_text\""),
+            "setupClaudeMcpProviders does not register get_text");
         inv(6, contains(body, "m_remoteControl"),
             "setupClaudeMcpProviders lambdas do not reference m_remoteControl");
     }
 
-    // INV-7 — the get_text dispatch case uses isDouble() to
-    // distinguish "argument absent" from "argument present and 0",
-    // mirroring the IPC verb (remotecontrol.cpp:347) and satisfying
-    // spec INV-9.
-    //
-    // We bound the search to the few hundred bytes after the
-    // `toolName == "get_text"` line — the case body is short.
-    size_t gtPos = ciCpp.find("toolName == \"get_text\"");
-    if (gtPos == std::string::npos)
-        gtPos = ciCpp.find("toolName==\"get_text\"");
+    // INV-7 — the get_text registration uses isDouble() to distinguish
+    // "argument absent" from "argument present and 0", mirroring the
+    // IPC verb (remotecontrol.cpp:347) and satisfying spec INV-9.
+    // Post-ANTS-1253 the gate lives in mainwindow.cpp's get_text
+    // lambda body, not in claudeintegration.cpp's dispatcher.
+    size_t gtPos = mwCpp.find("registerToolProvider(\"get_text\"");
     if (gtPos == std::string::npos) {
         ++failures;
         std::fprintf(stderr,
-            "[INV-7] FAIL: get_text dispatch clause not findable for isDouble() check\n");
+            "[INV-7] FAIL: get_text registration not findable for isDouble() check\n");
     } else {
-        std::string block = ciCpp.substr(gtPos, 800);
+        std::string block = mwCpp.substr(gtPos, 800);
         inv(7, contains(block, "isDouble()"),
-            "get_text dispatcher does not use isDouble() to gate "
+            "get_text lambda does not use isDouble() to gate "
             "tab/lines extraction (spec INV-9)");
     }
 

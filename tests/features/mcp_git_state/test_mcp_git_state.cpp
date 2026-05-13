@@ -158,30 +158,26 @@ TEST(McpGitState, WiringContract) {
                "{status,log,diff} + op in required[]");
     }
 
-    // INV-7 — tools/call dispatcher has the new else-if clause.
-    std::regex toolCallRe(
-        R"(toolName\s*==\s*"git_state"\s*&&\s*m_gitStateProvider)");
-    expect(std::regex_search(ciCpp, toolCallRe),
+    // INV-7 — tools/list schema declares the git_state tool.
+    // ANTS-1253 collapsed the per-tool dispatch into a registry lookup.
+    std::regex schemaRe(R"("name"\]\s*=\s*"git_state")");
+    expect(std::regex_search(ciCpp, schemaRe),
            "INV-7",
-           "claudeintegration.cpp missing tools/call dispatch clause "
-           "`toolName == \"git_state\" && m_gitStateProvider`");
+           "claudeintegration.cpp missing tools/list schema entry for git_state");
 
-    // INV-8 — header declares setter + member with the
-    // full-QJsonObject signature (matches workspace_search / file_outline
-    // idiom).
-    expect(contains(ciHdr, "setGitStateProvider"),
+    // INV-8 — header has the single registry surface (ANTS-1253).
+    expect(contains(ciHdr, "registerToolProvider(const QString &name"),
            "INV-8a",
-           "claudeintegration.h missing setGitStateProvider declaration");
-    expect(contains(ciHdr, "m_gitStateProvider"),
+           "claudeintegration.h missing registerToolProvider declaration (ANTS-1253)");
+    expect(contains(ciHdr, "m_toolProviders"),
            "INV-8b",
-           "claudeintegration.h missing m_gitStateProvider member");
+           "claudeintegration.h missing m_toolProviders registry member (ANTS-1253)");
 
-    // INV-9 — mainwindow.cpp wires the provider with the same
-    // remote-control delegation idiom.
-    expect(contains(mwCpp, "setGitStateProvider"),
+    // INV-9 — mainwindow.cpp registers git_state via the registry.
+    expect(contains(mwCpp, "registerToolProvider(\"git_state\""),
            "INV-9a",
-           "mainwindow.cpp does not call setGitStateProvider in "
-           "setupClaudeMcpProviders");
+           "mainwindow.cpp does not register git_state in "
+           "setupClaudeMcpProviders (ANTS-1253)");
     expect(contains(mwCpp, "cmdGitState"),
            "INV-9b",
            "mainwindow.cpp does not delegate the provider lambda to "

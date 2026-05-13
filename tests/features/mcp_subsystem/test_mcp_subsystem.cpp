@@ -141,27 +141,26 @@ TEST(McpSubsystem, WiringContract) {
                "{map, files, recent_changes} + op in required[]");
     }
 
-    // INV-5 — tools/call dispatcher has the new else-if clause.
-    std::regex toolCallRe(
-        R"(toolName\s*==\s*"subsystem"\s*&&\s*m_subsystemProvider)");
-    expect(std::regex_search(ciCpp, toolCallRe),
+    // INV-5 — tools/list schema declares the subsystem tool.
+    // ANTS-1253 collapsed the per-tool dispatch into a registry lookup.
+    std::regex schemaRe(R"("name"\]\s*=\s*"subsystem")");
+    expect(std::regex_search(ciCpp, schemaRe),
            "INV-5",
-           "claudeintegration.cpp missing tools/call dispatch clause "
-           "`toolName == \"subsystem\" && m_subsystemProvider`");
+           "claudeintegration.cpp missing tools/list schema entry for subsystem");
 
-    // INV-6 — header declares setter + member.
-    expect(contains(ciHdr, "setSubsystemProvider"),
+    // INV-6 — header has the single registry surface (ANTS-1253).
+    expect(contains(ciHdr, "registerToolProvider(const QString &name"),
            "INV-6a",
-           "claudeintegration.h missing setSubsystemProvider declaration");
-    expect(contains(ciHdr, "m_subsystemProvider"),
+           "claudeintegration.h missing registerToolProvider declaration (ANTS-1253)");
+    expect(contains(ciHdr, "m_toolProviders"),
            "INV-6b",
-           "claudeintegration.h missing m_subsystemProvider member");
+           "claudeintegration.h missing m_toolProviders registry member (ANTS-1253)");
 
-    // INV-7 — mainwindow.cpp wires the provider with delegation idiom.
-    expect(contains(mwCpp, "setSubsystemProvider"),
+    // INV-7 — mainwindow.cpp registers subsystem via the registry.
+    expect(contains(mwCpp, "registerToolProvider(\"subsystem\""),
            "INV-7a",
-           "mainwindow.cpp does not call setSubsystemProvider in "
-           "setupClaudeMcpProviders");
+           "mainwindow.cpp does not register subsystem in "
+           "setupClaudeMcpProviders (ANTS-1253)");
     expect(contains(mwCpp, "cmdSubsystem"),
            "INV-7b",
            "mainwindow.cpp does not delegate the provider lambda to "
