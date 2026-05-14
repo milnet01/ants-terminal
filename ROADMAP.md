@@ -5153,7 +5153,7 @@ The items below identify the next batch of leverage.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1284] **`token_usage` MCP telemetry tool.** Reports
+- ✅ [ANTS-1284] **`token_usage` MCP telemetry tool.** Reports
   per-tool token-savings for the current session: which MCP
   calls fired, what their reply sizes were, and a delta vs the
   estimated cost of doing the same work via Bash + Read. Lets
@@ -5167,6 +5167,20 @@ The items below identify the next batch of leverage.
   optimising further.
   Kind: implement.
   Source: indie-review-2026-05-13.
+  Shipped 2026-05-14: `TokenUsageEngine::Tracker` in
+  `ants_core_lib` (in-process `QHash<QString, ToolCounter>`,
+  ~96 B/entry, ≤ 7 KiB total). Dispatch instrumentation in
+  `claudeintegration.cpp:1992` (refactored to hoist `args` +
+  `responseText` so a single `recordCall` covers both the inline
+  `get_session_info` path and registered providers); reset wired
+  to MCP `initialize` at line 1188. Static per-tool baseline
+  table ships with 3 calibrated entries (`roadmap_query=594000`,
+  `verify_changes=8192`, `plan_template=8192`); unknown tools
+  default to baseline 0 (counted but no savings claim).
+  `RemoteControl::cmdTokenUsage` + provider lambda follow the
+  ANTS-1289/1290 layering; spec `docs/specs/ANTS-1284.md`. 17
+  new feature tests (11 engine + 6 MCP-layer); ctest 466 → 483
+  green.
 
 - 📋 [ANTS-1288] **`indie_review_partition` suggests lane merges.**
   Two lanes (`luaengine`+`pluginmanager`, `claudetasklist`+

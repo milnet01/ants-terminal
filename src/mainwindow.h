@@ -116,6 +116,12 @@ public:
     TerminalWidget *currentTerminal() const;
     TerminalWidget *focusedTerminal() const;
 
+    // ANTS-1284 — exposed to RemoteControl::cmdTokenUsage so the MCP
+    // tool can read the per-tool dispatch tracker on
+    // m_claudeIntegration. Non-owning pointer; may be null if the
+    // Claude integration subsystem was never constructed.
+    ClaudeIntegration *claudeIntegration() const { return m_claudeIntegration; }
+
     // `tabListForRemote()` returns one JSON object per tab with
     // `index`, `title`, `cwd`, `active` (used by the `ls` command).
     QJsonArray tabListForRemote() const;

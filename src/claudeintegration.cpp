@@ -1185,6 +1185,9 @@ void ClaudeIntegration::onMcpConnection() {
             bool haveResult = false;
 
             if (method == "initialize") {
+                // ANTS-1284 — reset per-tool dispatch counters on
+                // session-start handshake. See docs/specs/ANTS-1284.md.
+                m_tokenUsage.reset();
                 QJsonObject caps;
                 caps["tools"] = QJsonObject();
                 QJsonObject serverInfo;
@@ -1986,6 +1989,40 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1284 — token_usage
+                {
+                    QJsonObject t;
+                    t["name"] = "token_usage";
+                    t["description"] = QStringLiteral(
+                        "Reports per-tool token-saving telemetry for "
+                        "this MCP server's current session. Returns "
+                        "{since, calls:[...], total_saved, "
+                        "tools_called}; calls sorted by "
+                        "est_tokens_saved descending. Pure read by "
+                        "default; pass reset:true to read-and-clear "
+                        "in one round-trip. No required args.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject resetProp;
+                    resetProp["type"] = "boolean";
+                    resetProp["description"] = QStringLiteral(
+                        "If true, clears all counters AFTER building "
+                        "the report. Default false.");
+                    QJsonObject zeroProp;
+                    zeroProp["type"] = "boolean";
+                    zeroProp["description"] = QStringLiteral(
+                        "If true, include tools with "
+                        "est_tokens_saved == 0 in calls[]. Default "
+                        "false.");
+                    QJsonObject props;
+                    props["reset"]        = resetProp;
+                    props["include_zero"] = zeroProp;
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray();
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
 
                 result["tools"] = tools;
                 haveResult = true;
@@ -2002,6 +2039,11 @@ void ClaudeIntegration::onMcpConnection() {
                     return arr;
                 };
 
+                // ANTS-1284 — hoist args + responseText out of the
+                // branches so a single recordCall covers both the
+                // inline get_session_info path and registered providers.
+                const QJsonObject argsObj = params.value("arguments").toObject();
+                QString responseText;
                 bool toolHandled = false;
                 // ANTS-1253: get_session_info stays inline — it reads
                 // ClaudeIntegration's own private state (m_state,
@@ -2016,17 +2058,22 @@ void ClaudeIntegration::onMcpConnection() {
                     info["context_percent"] = m_contextPercent;
                     info["changed_files"] = QJsonArray::fromStringList(m_changedFiles);
                     info["session_id"] = m_activeSessionId;
-                    result["content"] = makeTextContent(
+                    responseText = QString::fromUtf8(
                         QJsonDocument(info).toJson(QJsonDocument::Compact));
                     toolHandled = true;
                 } else if (auto it = m_toolProviders.find(toolName);
                            it != m_toolProviders.end()) {
-                    QJsonObject args = params.value("arguments").toObject();
-                    result["content"] = makeTextContent(it->second(args));
+                    responseText = it->second(argsObj);
                     toolHandled = true;
                 }
 
                 if (toolHandled) {
+                    result["content"] = makeTextContent(responseText);
+                    // ANTS-1284 — record dispatch for token_usage report.
+                    const qint64 argBytes = QJsonDocument(argsObj)
+                        .toJson(QJsonDocument::Compact).size();
+                    const qint64 outBytes = responseText.toUtf8().size();
+                    m_tokenUsage.recordCall(toolName, argBytes, outBytes);
                     haveResult = true;
                 } else {
                     // JSON-RPC application error: tool not found or provider missing.

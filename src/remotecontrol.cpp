@@ -2,9 +2,11 @@
 #include "debtsweepengine.h"
 #include "fileoutline.h"
 #include "gitwrap.h"
+#include "claudeintegration.h"
 #include "indiereviewengine.h"
 #include "mainwindow.h"
 #include "plantemplateengine.h"
+#include "tokenusageengine.h"
 #include "roadmapdialog.h"
 #include "roadmapfoldin.h"
 #include "subsystemmap.h"
@@ -15,6 +17,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QTimeZone>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -2573,5 +2576,72 @@ QJsonDocument RemoteControl::cmdPlanTemplate(const QJsonObject &req) {
     env["saved"]          = r.saved;
     env["task_count"]     = r.taskCount;
     env["conventions"]    = ptConventions();
+    return QJsonDocument(env);
+}
+
+// =============================================================
+// ANTS-1284 — token_usage
+// =============================================================
+//
+// Reads the in-process TokenUsageEngine::Tracker on
+// ClaudeIntegration; returns the per-tool dispatch report
+// (sorted by est_tokens_saved desc) + total_saved. Optional
+// reset:true clears counters AFTER building the snapshot, so a
+// caller can read-and-clear in one round-trip.
+// See docs/specs/ANTS-1284.md.
+
+namespace {
+
+QJsonDocument tuErr(const QString &code, const QString &message) {
+    QJsonObject env;
+    env["ok"]      = false;
+    env["error"]   = code;
+    env["message"] = message;
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req) {
+    if (!m_main) {
+        return tuErr(QStringLiteral("no_main"),
+                     QStringLiteral("token_usage: no main window"));
+    }
+    auto *ci = m_main->claudeIntegration();
+    if (!ci) {
+        return tuErr(QStringLiteral("no_claude_integration"),
+                     QStringLiteral("token_usage: claude integration unavailable"));
+    }
+
+    const bool wantsReset  = req.value(QStringLiteral("reset")).toBool(false);
+    const bool includeZero = req.value(QStringLiteral("include_zero")).toBool(false);
+
+    // Snapshot first; reset (if requested) only AFTER the snapshot
+    // exists in the response — INV-9 (read-and-clear atomicity).
+    const TokenUsageEngine::Snapshot snap = ci->tokenUsageReport(includeZero);
+    if (wantsReset) {
+        ci->resetTokenUsage();
+    }
+
+    QJsonObject env;
+    env["ok"] = true;
+    env["since"] = QDateTime::fromMSecsSinceEpoch(snap.sinceUnixMs, QTimeZone::utc())
+                       .toString(Qt::ISODate);
+    env["since_unix_ms"] = static_cast<qint64>(snap.sinceUnixMs);
+    env["tools_called"]  = snap.toolsCalled;
+    env["total_saved"]   = static_cast<qint64>(snap.totalSaved);
+    env["reset_performed"] = wantsReset;
+
+    QJsonArray calls;
+    for (const auto &r : snap.calls) {
+        QJsonObject c;
+        c["tool"]              = r.tool;
+        c["n_calls"]           = r.nCalls;
+        c["bytes_in"]          = static_cast<qint64>(r.bytesIn);
+        c["bytes_out"]         = static_cast<qint64>(r.bytesOut);
+        c["est_tokens_saved"]  = static_cast<qint64>(r.estTokensSaved);
+        calls.append(c);
+    }
+    env["calls"] = calls;
     return QJsonDocument(env);
 }

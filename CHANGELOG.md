@@ -14,6 +14,36 @@ for security-relevant changes.
 
 ### Added
 
+- **`mcp__ants__token_usage` MCP telemetry tool — measure per-tool
+  dispatch savings in-process (ANTS-1284).** New MCP tool reports
+  per-tool token-saving telemetry for the current session:
+  `{since, calls:[{tool, n_calls, bytes_in, bytes_out,
+  est_tokens_saved}], total_saved, tools_called}`. Engine
+  (`TokenUsageEngine::Tracker`, Qt6::Core only, in `ants_core_lib`)
+  is an in-process `QHash<QString, ToolCounter>` instrumented at
+  the existing dispatch site in `claudeintegration.cpp` — single
+  `recordCall` covers both the inline `get_session_info` path and
+  the 24 registered providers via a small refactor that hoists
+  `args` + `responseText` out of the branches. Reset wired to MCP
+  `initialize` (Claude Code session start); optional `reset:true`
+  arg clears counters after building the snapshot for read-and-
+  clear in one round-trip. `est_tokens_saved` math:
+  `max(0, baseline*n_calls - bytes_in - bytes_out) / 4` (chars-
+  per-token heuristic; documented as order-of-magnitude, not
+  billing-grade). Static per-tool baseline table ships with 3
+  calibrated entries (`roadmap_query=594000`, `verify_changes=
+  8192`, `plan_template=8192`); unknown tools default to 0
+  baseline. Calls list sorted by `est_tokens_saved` descending
+  (tiebreak by tool name asc); `include_zero:false` (default)
+  drops zero-saved tools from `calls[]` but they still count in
+  `tools_called` + `total_saved`. RAM bound ≤ ~7 KiB across an
+  unbounded session; per-call instrumentation overhead < 6 µs
+  (dominated by the `QString::toUtf8()` wire-byte capture).
+  No persistence — pairs with ANTS-1245 (full-session Tools →
+  Token Usage dialog) but measures a different metric (MCP-tool
+  displacement vs Claude's total session spend). Spec:
+  `docs/specs/ANTS-1284.md`. 17 new feature tests (11 engine + 6
+  MCP-layer); ctest 466 → 483 green.
 - **`mcp__ants__plan_template` MCP tool — host the `writing-plans`
   skill's template emission (ANTS-1290).** New MCP tool emits an
   Ants-conventional implementation-plan skeleton (header, N task

@@ -190,6 +190,12 @@ public:
     // docs/specs/ANTS-1290.md.
     QJsonDocument cmdPlanTemplate(const QJsonObject &req);
 
+    // ANTS-1284 — token_usage. Reads ClaudeIntegration's
+    // TokenUsageEngine::Tracker via m_main->claudeIntegration()
+    // and returns the per-tool dispatch report. See
+    // docs/specs/ANTS-1284.md.
+    QJsonDocument cmdTokenUsage(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

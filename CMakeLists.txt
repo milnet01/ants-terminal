@@ -225,6 +225,7 @@ add_library(ants_core_lib STATIC
     src/debtsweepengine.cpp
     src/verifyengine.cpp
     src/plantemplateengine.cpp
+    src/tokenusageengine.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
     src/themedstylesheet.cpp
@@ -819,7 +820,8 @@ if(ANTS_TESTS)
                 tests/features/indie_review_corroborate_dir/test_indie_review_corroborate_dir.cpp
                 tests/features/mcp_debt_sweep_tools/test_mcp_debt_sweep_tools.cpp
                 tests/features/mcp_verify_changes_tool/test_mcp_verify_changes_tool.cpp
-                tests/features/mcp_plan_template_tool/test_mcp_plan_template_tool.cpp)
+                tests/features/mcp_plan_template_tool/test_mcp_plan_template_tool.cpp
+                tests/features/mcp_token_usage_tool/test_mcp_token_usage_tool.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -894,7 +896,8 @@ if(ANTS_TESTS)
                 tests/features/indie_review_engine/test_indie_review_engine.cpp
                 tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp
                 tests/features/verify_changes_engine/test_verify_changes_engine.cpp
-                tests/features/plan_template_engine/test_plan_template_engine.cpp)
+                tests/features/plan_template_engine/test_plan_template_engine.cpp
+                tests/features/token_usage_engine/test_token_usage_engine.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

@@ -11,6 +11,8 @@
 #include <QLocalSocket>
 #include <QDateTime>
 
+#include "tokenusageengine.h"
+
 #include <functional>
 #include <map>
 
@@ -185,6 +187,22 @@ public:
     using ToolHandler = std::function<QString(const QJsonObject &args)>;
     void registerToolProvider(const QString &name, ToolHandler handler);
 
+    // ANTS-1284 — in-process MCP dispatch counter. recordCall is
+    // invoked from the dispatch site (private member access);
+    // reset/buildReport are exposed for RemoteControl::cmdTokenUsage
+    // and for tests. Reset additionally fires on MCP `initialize`
+    // (Claude Code session start) — wired in onMcpConnection.
+    TokenUsageEngine::Snapshot tokenUsageReport(bool includeZero) const {
+        return m_tokenUsage.buildReport(includeZero);
+    }
+    void resetTokenUsage() { m_tokenUsage.reset(); }
+    // Test-only convenience: drive recordCall without the full MCP
+    // dispatch path. Mirrors processHookEventForTest's pattern.
+    void recordTokenUsageForTest(const QString &toolName,
+                                 qint64 bytesIn, qint64 bytesOut) {
+        m_tokenUsage.recordCall(toolName, bytesIn, bytesOut);
+    }
+
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
     QString sessionSummary(const QString &transcriptPath) const;
@@ -306,6 +324,10 @@ private:
     // ANTS-1253: per-tool providers consolidated into a single
     // name-keyed registry. See registerToolProvider() above.
     std::map<QString, ToolHandler> m_toolProviders;
+
+    // ANTS-1284 — per-tool MCP dispatch byte counters. Resets on
+    // MCP `initialize` and on explicit token_usage(reset:true).
+    TokenUsageEngine::Tracker m_tokenUsage;
 
     // Session tracking
     QString m_activeSessionId;
