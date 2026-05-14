@@ -252,6 +252,17 @@ void LuaEngine::sandboxEnvironment() {
         lua_setfield(m_state, -2, "dump");
     }
     lua_pop(m_state, 1);
+
+    // Indie-review-2026-05-14 lane-6 M-3: redirect `print` to ants.log.
+    // PLUGINS.md § Sandbox Boundaries says "print() is typically
+    // redirected to ants.log" — but pre-fix nothing actually
+    // overrode the base-lib `print`, so plugin output went to the
+    // host process's stdout (terminal-emulator stdout or systemd
+    // journal). Information-disclosure surface is small but the doc
+    // contract was wrong. Override with the same C function ants.log
+    // uses so plugin print() flows into the structured log.
+    lua_pushcfunction(m_state, lua_ants_log);
+    lua_setglobal(m_state, "print");
 }
 
 bool LuaEngine::loadScript(const QString &path) {
