@@ -2663,10 +2663,23 @@ void TerminalGrid::resize(int rows, int cols) {
     // may now lie outside the new grid. Without clamp, the terminal either
     // silently drops the span (safe) or attaches it to a row whose content
     // no longer matches the clickable text (visual-correctness bug when the
-    // grid grows back). Close the active hyperlink on any resize — matches
-    // xterm's behaviour and avoids the stale-coordinate class of bugs.
-    m_hyperlinkStartRow = std::clamp(m_hyperlinkStartRow, 0, m_rows - 1);
-    m_hyperlinkStartCol = std::clamp(m_hyperlinkStartCol, 0, m_cols - 1);
+    // grid grows back).
+    //
+    // Indie-review-2026-05-14 lane-1 H2: the comment used to claim "close
+    // the active hyperlink on any resize" but the code only clamped the
+    // start coords — never reset m_hyperlinkActive / m_hyperlinkUri /
+    // m_hyperlinkId. The clamp itself reintroduces the stale-coordinate
+    // bug it was supposed to prevent, because a shrink that dropped
+    // startRow into scrollback would then pull it up to a different row
+    // on the new screen. Close the active hyperlink for real here —
+    // matches xterm's behaviour.
+    if (m_hyperlinkActive) {
+        m_hyperlinkActive  = false;
+        m_hyperlinkUri.clear();
+        m_hyperlinkId.clear();
+        m_hyperlinkStartRow = 0;
+        m_hyperlinkStartCol = 0;
+    }
     m_screenHyperlinks.resize(m_rows);
 
     // Reinitialize tab stops for new width

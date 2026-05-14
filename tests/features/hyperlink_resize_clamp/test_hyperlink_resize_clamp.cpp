@@ -1,9 +1,10 @@
 // Feature-conformance test for spec.md — asserts an open-but-uncommitted
-// OSC 8 hyperlink survives a shrink resize. Pre-0.7.7, the stored
-// start row/col were not clamped; after the resize the row index
-// became out-of-range, and the close guard at handleOsc silently
-// dropped the span. Post-fix, the coordinates are clamped on resize
-// so the span commits at a valid row.
+// OSC 8 hyperlink is RESET (closed) by a resize, not clamped to a
+// stale row. Pre-indie-review-2026-05-14 lane-1 H2, the resize clamped
+// m_hyperlinkStartRow/Col to the new bounds, which (a) didn't match
+// the comment claiming "close the active hyperlink on any resize"
+// and (b) reintroduced the stale-coordinate bug — a shrink pulled
+// startRow into a row the text was never on.
 //
 // Exit 0 = invariants hold. Non-zero = regression.
 
@@ -31,14 +32,8 @@ std::string cup(int row, int col) {
     return buf;
 }
 
-void fail(const char *label, const char *detail){
-    std::fprintf(stderr, "FAIL [%s]: %s\n", label, detail);
-    ADD_FAILURE() << label << ": " << detail;
-}
-
-// Scan the first `rows` rows of the grid's hyperlink table for any
-// span whose URI contains `needle`. Returns the row it was found on,
-// or -1 if absent.
+// Scan every row of the grid's hyperlink table for any span whose URI
+// contains `needle`. Returns the row it was found on, or -1 if absent.
 int findUriRow(const TerminalGrid &g, int rows, const std::string &needle) {
     for (int r = 0; r < rows; ++r) {
         const auto &spans = g.screenHyperlinks(r);
@@ -52,52 +47,50 @@ int findUriRow(const TerminalGrid &g, int rows, const std::string &needle) {
 }  // namespace
 
 TEST(HyperlinkResizeClamp, Main) {
-
     std::setlocale(LC_CTYPE, "");
 
-    // Scenario: open hyperlink at (20, 50), shrink grid to (5, 10),
-    // close hyperlink. Post-fix: span must land on a row in [0, 4].
+    // I1/I2 — Scenario: open hyperlink at (20, 50), shrink grid to
+    // (5, 10), then close hyperlink. Post-fix: the resize closes the
+    // in-progress hyperlink, so the subsequent close sequence is a
+    // no-op and no span lands in the new grid for that URL.
     {
         Harness h;
         h.feed(cup(20, 50));
-        // Open OSC 8 but do NOT close yet. BEL terminator — ST (ESC \)
-        // can interact oddly when the following feed is also an OSC.
-        h.feed("\033]8;;https://clamped.example/\x07");
+        h.feed("\033]8;;https://reset.example/\x07");
         h.feed("text");
-        // Shrink: 20 > 4 so m_hyperlinkStartRow must clamp.
         h.grid.resize(5, 10);
-        // Now close the hyperlink.
         h.feed("\033]8;;\x07");
 
-        int row = findUriRow(h.grid, 5, "clamped.example");
-        if (row < 0)
-            return fail("I1/I2 shrink",
-                        "closed hyperlink did not land on any valid row — "
-                        "pre-0.7.7 drop behaviour still live?");
-        if (row > 4)
-            return fail("I1/I2 shrink",
-                        "hyperlink row index exceeds new grid height");
+        const int row = findUriRow(h.grid, 5, "reset.example");
+        EXPECT_EQ(row, -1)
+            << "I1/I2: resize did not close the open OSC 8 hyperlink "
+               "(stale span attached to row " << row << ")";
     }
 
-    // Scenario: identical setup but shrink that keeps the open row
-    // in range — the clamp must still not throw, and the span must
-    // commit on its original row.
+    // I3 — A fresh OSC 8 sequence after the resize works normally.
+    // Build a 24x80 grid, shrink to 10x40 with an open hyperlink, then
+    // emit a complete OSC 8 open+text+close on row 2 of the new grid.
     {
         Harness h;
-        h.feed(cup(3, 5));
-        h.feed("\033]8;;https://inrange.example/\x07");
-        h.feed("text");
-        h.grid.resize(10, 20);  // cursor row 3 stays valid
+        h.feed(cup(20, 50));
+        h.feed("\033]8;;https://orphan.example/\x07");
+        h.feed("garbage");
+        h.grid.resize(10, 40);                 // closes the orphan
+        h.feed(cup(2, 0));                     // row 2 (0-indexed)
+        h.feed("\033]8;;https://fresh.example/\x07");
+        h.feed("ok");
         h.feed("\033]8;;\x07");
-        int row = findUriRow(h.grid, 10, "inrange.example");
-        if (row != 3)
-            return fail("I3 no-op resize",
-                        "hyperlink moved off its original row after a "
-                        "resize that didn't require clamping");
+
+        const int orphanRow = findUriRow(h.grid, 10, "orphan.example");
+        EXPECT_EQ(orphanRow, -1)
+            << "I1: pre-resize orphan hyperlink leaked into post-resize grid "
+               "(found on row " << orphanRow << ")";
+
+        const int freshRow = findUriRow(h.grid, 10, "fresh.example");
+        EXPECT_EQ(freshRow, 2)
+            << "I3: fresh OSC 8 sequence after resize did not commit "
+               "on its expected row (got " << freshRow << ", want 2)";
     }
 
-    std::printf("hyperlink_resize_clamp: shrink clamp + no-op resize both hold\n");
-    return;
-
+    std::printf("hyperlink_resize_clamp: resize closes the open span; fresh OSC 8 works\n");
 }
-

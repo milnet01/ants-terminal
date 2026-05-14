@@ -1,4 +1,4 @@
-# Feature contract — active OSC 8 hyperlink clamps across resize
+# Feature contract — active OSC 8 hyperlink reset on resize
 
 ## Motivation
 
@@ -10,41 +10,57 @@ committed to `m_screenHyperlinks` once the close sequence arrives.
 
 If a resize arrives in the open-but-uncommitted window, the stored
 start coordinates may now point at a row / column that no longer
-exists. Without a clamp, a subsequent grow-back could attach the
-span to a row whose content no longer matches the clickable text.
-The 0.7.7 fix added `std::clamp` on both fields inside
-`TerminalGrid::resize`, matching the existing clamps on cursor
-row/col.
+exists.
+
+**History.** The 0.7.7 fix attempted to handle this with a `std::clamp`
+on both fields inside `TerminalGrid::resize` — but the clamp itself
+reintroduced the stale-coordinate bug: after a shrink that dropped
+`m_hyperlinkStartRow` into scrollback, the clamp pulled it up to a
+different row on the new screen, so the next OSC 8 close emitted a
+span over rows the user never marked. The accompanying comment
+explicitly claimed "Close the active hyperlink on any resize — matches
+xterm's behaviour" — but the code only clamped.
+
+**Indie-review-2026-05-14 lane-1 H2 fix.** The implementation now does
+what the comment always promised: a resize closes the in-progress
+hyperlink (resets `m_hyperlinkActive=false`, clears `m_hyperlinkUri`
+/ `m_hyperlinkId`, zeroes the start coords). A subsequent OSC 8
+close sequence is a no-op (there is nothing open to close); a fresh
+OSC 8 open after resize works normally.
 
 ## Invariants
 
-**I1 — After a shrink resize, the active-hyperlink start row does
-not exceed the new maximum row index.** Equivalent: the next span
-commit lands on a valid row, not at the pre-resize (now-out-of-
-range) row.
+**I1 — A resize during an open OSC 8 sequence closes the hyperlink.**
+After `resize(...)`, `m_hyperlinkActive == false`,
+`m_hyperlinkUri.isEmpty()`, `m_hyperlinkId.isEmpty()`, and
+`m_hyperlinkStartRow == m_hyperlinkStartCol == 0`. Observable via
+`screenHyperlinks(r)` — no span gets committed for the open-but-
+uncommitted URL when the subsequent close arrives after the resize.
 
-**I2 — After a shrink resize, the active-hyperlink start column
-does not exceed the new maximum column index.**
+**I2 — The reset does not throw or crash for any combination of
+pre-resize coordinates and new dimensions.** Resize is called on
+every window-size change; it must tolerate the open case as a
+no-op-from-a-correctness-standpoint (the user-visible effect is the
+hyperlink is closed silently — matches xterm).
 
-**I3 — The clamp does not throw or crash when the start coordinates
-were legal pre-resize.** The clamp runs on every resize; it must
-tolerate no-op cases.
-
-**I4 — A subsequent OSC 8 close after shrink resize commits the
-span on a valid row, not at the stale pre-resize row.**
+**I3 — A fresh OSC 8 sequence after the resize works normally.**
+The reset clears state but does not poison the parser; emitting a
+new `OSC 8 ;; url ST` → text → `OSC 8 ;; ST` sequence post-resize
+must commit a valid span on the new screen.
 
 ## Scope
 
 In scope: runtime exercise of `TerminalGrid::resize` on a grid
 holding an open OSC 8 hyperlink. Observation is indirect: the test
-closes the hyperlink after resize and asserts the committed span
-appears on a valid row (0..m_rows-1).
+verifies the open hyperlink is dropped after resize, and that a
+subsequent OSC 8 sequence post-resize commits cleanly.
 
 Out of scope:
 - The case where the hyperlink was already committed before resize
   — that span lives in `m_screenHyperlinks`, which `resize()`
   already handles by `.resize(m_rows)`.
-- Widening resizes — clamps on grow are no-ops by definition.
+- Widening resizes — same reset behaviour as shrinks; the test
+  exercises the shrink path because it's the historically buggy one.
 
 ## Test execution
 
@@ -55,10 +71,10 @@ Out of scope:
    without the closing `OSC 8 ;; ST`).
 3. Call `resize(5, 10)` — shrink that makes (20, 50) invalid.
 4. Close the hyperlink with `OSC 8 ;; ST`.
-5. Scan every valid row in the resized grid; assert the link's URI
-   appears on exactly one row whose index is in `[0, 4]` and whose
-   column value is in `[0, 9]`. Any row outside that range, or a
-   throw during any of the above steps, is a failure.
+5. Assert no span with the URL appears in the resized grid (the
+   open hyperlink was reset by the resize; the close is a no-op).
+6. Then emit a fresh `OSC 8 ;; url ST` → text → close sequence on
+   row 2 of the new grid; assert the span lands on row 2.
 
-Exit 0 on success; non-zero with the violating row/col printed
+Exit 0 on success; non-zero with the violating state printed
 otherwise.
