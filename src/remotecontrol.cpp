@@ -2367,11 +2367,24 @@ QJsonDocument RemoteControl::cmdDebtSweepApplyFix(const QJsonObject &req) {
         QStringLiteral("file"));
     if (check.bad) return QJsonDocument(check.err);
 
+    // Indie-review-2026-05-14 lane-2 H1: pass the canonical resolved
+    // form (project-relative) to the engine, not the raw user input.
+    // The engine concatenates `projectPath + "/" + finding.file`; if
+    // we pass the raw form, a symlink in the path that swaps between
+    // validatePath's canonicalisation and the engine's QFile::open()
+    // creates a TOCTOU window. The canonical resolved form has all
+    // symlinks already followed, closing that window.
+    QString safeFile = file;
+    if (!check.resolved.isEmpty() &&
+        check.resolved.startsWith(root + QLatin1Char('/'))) {
+        safeFile = check.resolved.mid(root.size() + 1);
+    }
+
     // Re-synthesise a Finding from the triple. The engine re-validates
     // every claim in §3.9, so this is safe.
     DebtSweepEngine::Finding f;
     f.detectorId  = detectorId;
-    f.file        = file;
+    f.file        = safeFile;
     f.line        = line;
     // applyMechanicalFix's first guard is `!autoFixable` — for the v1
     // detector that ever sets this, the input must claim autoFixable
