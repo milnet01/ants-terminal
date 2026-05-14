@@ -1599,14 +1599,19 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
         case 55: break;
 
         // Underline color: CSI 58;2;r;g;b m or CSI 58;5;idx m
+        //
+        // Indie-review-2026-05-14 lane-1 H4: route the 2-introducer
+        // branch through parseRGBColor so the ITU/ECMA-48 colon form
+        // (CSI 58:2::r:g:b m — empty-colorspace slot) parses
+        // correctly. Pre-fix, the 58 branch read params[i+2..i+4]
+        // directly with no colonSep awareness, so an emitter using
+        // the colon form got r=0, g=R, b=G (missing B and producing a
+        // wrong color). Neovim and Kitty docs canonicalise this form
+        // for underline color same as fg/bg.
         case 58:
             if (i + 1 < params.size()) {
-                if (params[i + 1] == 2 && i + 4 < params.size()) {
-                    int r = std::clamp(params[i + 2], 0, 255);
-                    int g = std::clamp(params[i + 3], 0, 255);
-                    int b = std::clamp(params[i + 4], 0, 255);
-                    m_currentAttrs.underlineColor = QColor(r, g, b);
-                    i += 4;
+                if (params[i + 1] == 2) {
+                    m_currentAttrs.underlineColor = parseRGBColor(params, colonSep, i);
                 } else if (params[i + 1] == 5 && i + 2 < params.size()) {
                     int idx = params[i + 2];
                     if (idx >= 0 && idx < 256)
