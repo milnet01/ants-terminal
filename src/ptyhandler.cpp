@@ -254,8 +254,13 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             fdsClosed = true;
 #endif
         if (!fdsClosed) {
+            // ANTS-1295 indie-review L2-M5: when rlim_cur == RLIM_INFINITY
+            // we still need an effective cap — the previous code fell
+            // through to maxFd=1024, silently leaking the FDs ≥ 1024
+            // exactly like the regression this code block exists to
+            // prevent. Treat RLIM_INFINITY as "use the 65536 ceiling."
             struct rlimit rl{};
-            int maxFd = 1024;
+            int maxFd = 65536;
             if (::getrlimit(RLIMIT_NOFILE, &rl) == 0 &&
                 rl.rlim_cur != RLIM_INFINITY) {
                 rlim_t cur = rl.rlim_cur;
@@ -264,6 +269,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
                 // hundreds of thousands.
                 if (cur > 65536) cur = 65536;
                 if (cur > 1024) maxFd = static_cast<int>(cur);
+                else            maxFd = 1024;
             }
             for (int fd = 3; fd < maxFd; ++fd)
                 ::close(fd);
