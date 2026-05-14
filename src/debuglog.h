@@ -80,13 +80,16 @@ private:
 
 // Single-point macro so sites are zero-cost when the category is off.
 // Usage: ANTS_LOG(DebugLog::Paint, "widget=%s rect=%dx%d", cls, w, h);
+// ANTS-1367: __VA_OPT__ is the C++20 conforming way to swallow the
+// trailing comma when __VA_ARGS__ is empty; the older GNU `, ##__VA_ARGS__`
+// triggers -Wgnu-zero-variadic-macro-arguments.
 #define ANTS_LOG(cat, fmt, ...) \
     do { \
         if (DebugLog::enabled(cat)) { \
-            DebugLog::write(cat, QString::asprintf(fmt, ##__VA_ARGS__)); \
+            DebugLog::write(cat, QString::asprintf(fmt __VA_OPT__(,) __VA_ARGS__)); \
         } \
     } while (0)
 
 // Convenience: log a message always (ignores category filter).
 #define ANTS_LOG_ALWAYS(fmt, ...) \
-    DebugLog::write(DebugLog::None, QString::asprintf(fmt, ##__VA_ARGS__))
+    DebugLog::write(DebugLog::None, QString::asprintf(fmt __VA_OPT__(,) __VA_ARGS__))

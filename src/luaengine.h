@@ -4,8 +4,6 @@
 #include <QStringList>
 #include <QObject>
 #include <QHash>
-#include <functional>
-#include <string>
 #include <vector>
 
 // Forward declare Lua state + activation record

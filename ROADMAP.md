@@ -4915,29 +4915,6 @@ class; the deferrals below cover the rest.
 
 #### 🧹 Debt-sweep fold-in (2026-05-14, build warnings)
 
-- 📋 [ANTS-1373] **Compiler/clangd warnings surfaced during ANTS-1332
-  build but unrelated to the change.** Three items observed running
-  `cmake --build build` on the test_lua bundle 2026-05-14:
-  (a) `luaengine.h:7` and `:8` — `clangd: included header functional
-  is not used directly` and `included header string is not used
-  directly` (`unused-includes` lint). (b) `tests/features/
-  lua_sandbox_hardening/test_lua_sandbox_hardening.cpp:192` —
-  `unused parameter 'argc'` + `'argv'` on `runMain(int argc, char
-  **argv)` (parameters kept from pre-bundle_main_gui era; the
-  bundle's `main` owns argc/argv now). (c) `cc1plus: warning:
-  cmake_pch.hxx.gch: created and used with different settings of
-  -fpic` repeated on every test-bundle target — the
-  `ants-terminal` PCH was built without `-fPIC` but the test
-  bundles set it; either rebuild PCH per-target or scope the PCH
-  to `-fPIC` consumers. Fix all three under one debt-sweep commit;
-  none affect correctness, but they all add noise to every build
-  log and erode signal-to-noise for future warnings.
-  **Layman:** clean up three classes of harmless-but-noisy
-  compiler warnings that show up on every build so real warnings
-  stand out.
-  Kind: chore.
-  Source: build-2026-05-14.
-
 - 📋 [ANTS-1374] **Expand the tab title-background colour palette
   + picker.** The current `tab_color_sequence` config key
   (`config.cpp:1019–1027`) accepts an ordered JSON array of
@@ -5334,28 +5311,6 @@ indie-review finding.
   the stream instead of after parsing the whole thing.
   Kind: perf.
   Source: indie-review-2026-05-14 (lane-1 L2).
-
-- 📋 [ANTS-1367] **`__VA_OPT__` for C++20 conformance.** Build
-  emits `[-Wgnu-zero-variadic-macro-arguments]` warning on
-  `terminalgrid.cpp:18` (variadic-macro `,` token-paste GNU
-  extension). C++20 has `__VA_OPT__(,)` as the conforming
-  replacement. Single-macro change in `debuglog.h`.
-  **Layman:** swap a GNU-only macro idiom for the standard
-  C++20 equivalent so future compiler updates don't break it.
-  Kind: refactor.
-  Source: indie-review-2026-05-14 (build-warning).
-
-- 📋 [ANTS-1368] **PCH `-fpic` mismatch warning.** Build emits
-  `cmake_pch.hxx.gch: created and used with different settings
-  of -fpic` repeatedly. PCH is generated without `-fpic` but
-  consumed by a `POSITION_INDEPENDENT_CODE` target. Rebuild
-  PCH with `target_compile_options(... PRIVATE -fPIC)` or
-  drop the PCH for libraries that need PIC.
-  **Layman:** fix a recurring build warning about precompiled
-  headers being incompatible with how some libraries are
-  built.
-  Kind: refactor.
-  Source: indie-review-2026-05-14 (build-warning).
 
 - 📋 [ANTS-1369] **Project `.gitleaks.toml` allowlist persisted.**
   `/audit` on 2026-05-14 produced 25 gitleaks findings, all
@@ -6348,24 +6303,6 @@ template / mutate this state atomically" → movable. If it's
   it then.
   Kind: bugfix.
   Source: asan-2026-05-14.
-
-- 📋 [ANTS-1325] **clangd `unused-includes` follow-up — two
-  false-positive warnings in mainwindow.{cpp,h}.** Tracked rather
-  than fixed in the ANTS-1324 commit because they're out of lane
-  (per CLAUDE.md §11). (a) `mainwindow.h:6 — themes.h is not used
-  directly` — needs verification (a forward-declared themes type
-  may make the include genuinely removable, or it may be transitive
-  through another header). (b) `mainwindow.cpp:117 — csignal is not
-  used directly` — false positive, `::kill(pid, 0)` is called at
-  `mainwindow.cpp:3646` from the ANTS-1322 stale-socket sweep;
-  technically POSIX `kill(2)` is declared in `<signal.h>` (which
-  `<csignal>` transitively pulls in on glibc) — clangd is reading
-  the standard literally. Resolution either way: replace `<csignal>`
-  with `<signal.h>` to satisfy clangd, or annotate the include as
-  `// IWYU pragma: keep`. Both warnings predate ANTS-1324 — flagged
-  during that build, not introduced by it.
-  Kind: chore.
-  Source: clangd-2026-05-14.
 
 - ✅ [ANTS-1321] **Stylesheet `%3` / `%6` placeholder reuse — CSS
   vs SVG-data-URI context collision** (shipped 2026-05-14).

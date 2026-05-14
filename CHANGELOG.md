@@ -467,6 +467,32 @@ hostile-content findings.
 
 ### Changed
 
+- **Build-warning debt sweep (ANTS-1373 + ANTS-1367 + ANTS-1368 +
+  ANTS-1325).** Cleared the four warning classes that fired on every
+  build, dropping `cmake --build build` to a zero-warning floor.
+  (a) `luaengine.h` dropped unused `<functional>` and `<string>`
+  includes (clangd `unused-includes`). (b) `runMain(int argc,
+  char **argv)` signatures across `lua_sandbox_hardening`,
+  `debuglog_perms`, and `settings_dialog_config_reload` tests
+  collapsed to `runMain()` since `bundle_main` owns argc/argv —
+  killed three `-Wunused-parameter` warnings. (c) PCH `-fpic`
+  mismatch + the follow-on `QT_OPENGL_LIB not defined`
+  `-Winvalid-pch` warnings on every test-bundle TU resolved by
+  dropping `target_precompile_headers REUSE_FROM ants-terminal`
+  from `ants_add_gui_bundle` — the PCH was being rejected either
+  way (different define set), so test bundles now compile Qt
+  aggregate headers cold without per-TU rejection noise. The
+  main `ants-terminal` PCH is untouched. (d) `debuglog.h` macros
+  swapped GNU `, ##__VA_ARGS__` for C++20-conforming
+  `__VA_OPT__(,)` (ANTS-1367 — kills
+  `-Wgnu-zero-variadic-macro-arguments`). (e) `mainwindow.h`
+  dropped unused `#include "themes.h"` (moved to `mainwindow.cpp`
+  where `Themes::` is actually called); `mainwindow.cpp` swapped
+  `<csignal>` → `<signal.h>` so clangd no longer flags it as
+  "not used directly" (ANTS-1325). ANTS-1368 was a duplicate of
+  ANTS-1373(c) and is closed by the same fix. All 584 tests
+  still pass.
+
 - **Tasks dialog rows get 3 px vertical spacing (ANTS-1329).**
   Follow-up to ANTS-1328 word-wrap. Wrapped multi-line subjects
   were visually running together without separation. Added

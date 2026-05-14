@@ -3,7 +3,6 @@
 #include "config.h"
 #include "claudeintegration.h"  // for ClaudeState (member-typed in ANTS-1146 controller; comments below also reference it)
 #include "elidedlabel.h"        // ElidedLabel — status-bar text slots
-#include "themes.h"
 
 #include <QMainWindow>
 #include <QTabWidget>

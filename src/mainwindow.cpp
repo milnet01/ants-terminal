@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "themes.h"             // ANTS-1325: include directly where Themes:: is called
 
 #include "coloredtabbar.h"
 #include "opaquemenubar.h"
@@ -114,7 +115,10 @@ void sweepKwinScriptOrphansOnce();
 #include <QWindow>
 
 // POSIX kill(2) used by ANTS-1322 stale-MCP-socket sweep at startup.
-#include <csignal>
+// ANTS-1325: <signal.h> directly — clangd's unused-includes lint reads the
+// standard literally and doesn't recognise that ::kill is reachable via
+// <csignal> on glibc.
+#include <signal.h>
 #include <cerrno>
 
 // ANTS-1323: configure-time build-date / build-time macros for the

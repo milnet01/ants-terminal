@@ -48,9 +48,9 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
 
 }  // namespace
 
-static int runMain(int argc, char **argv) {
-    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
-
+static int runMain() {
+    // QCoreApplication is owned by bundle_main (ANTS-1217); this helper
+    // takes no argc/argv since it doesn't need to forward to Qt.
     const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -131,5 +131,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(SettingsDialogConfigReload, Main) {
-    if (runMain(0, nullptr) != 0) FAIL();
+    if (runMain() != 0) FAIL();
 }

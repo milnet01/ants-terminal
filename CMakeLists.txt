@@ -548,7 +548,14 @@ if(ANTS_TESTS)
         target_link_libraries(${name} PRIVATE
             -Wl,--start-group ${B_LIBS} -Wl,--end-group
             ants_warnings GTest::gtest)
-        target_precompile_headers(${name} REUSE_FROM ants-terminal)
+        # ANTS-1373/1368: do NOT REUSE_FROM ants-terminal's PCH. The PCH
+        # is generated with the main exe's full flag set (PIC +
+        # QT_OPENGL_LIB define from the OpenGLWidgets link). Test bundles
+        # don't link OpenGLWidgets and don't need PIC, so cc1plus rejects
+        # the PCH on every bundle TU with `-Winvalid-pch`. The bundles
+        # are only ~4 TUs each, so cold-compiling Qt aggregate headers
+        # without PCH is a noise-free no-op vs. emitting one warning per
+        # TU per build. Keep ants-terminal's own PCH (where it pays off).
         gtest_discover_tests(${name}
             DISCOVERY_MODE PRE_TEST
             PROPERTIES LABELS "features;fast" TIMEOUT 10)

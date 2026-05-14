@@ -158,9 +158,9 @@ void runSourceChecks() {
 
 }  // namespace
 
-static int runMain(int argc, char **argv) {
-    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
-
+static int runMain() {
+    // QCoreApplication is owned by bundle_main (ANTS-1217); this helper
+    // takes no argc/argv since it doesn't need to forward to Qt.
     runRuntimeChecks();
     runSourceChecks();
 
@@ -173,5 +173,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(DebuglogPerms, Main) {
-    if (runMain(0, nullptr) != 0) FAIL();
+    if (runMain() != 0) FAIL();
 }
