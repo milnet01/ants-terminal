@@ -25,6 +25,52 @@ QString roadmapPath(const QString &projectPath) {
     return QDir(projectPath).filePath(QStringLiteral("ROADMAP.md"));
 }
 
+// ANTS-1342: returns true iff resolving counterPath_ (or, if it doesn't
+// yet exist, its parent dir) stays inside projectPath's canonical
+// form. Catches:
+//   - .roadmap-counter is itself a symlink pointing outside the project
+//   - the project root or any path component is a symlink to a
+//     directory shared with another project (the 2026-05-14 ME-3
+//     scenario where two projects collide on a shared counter)
+bool counterStaysInProject(const QString &projectPath,
+                           const QString &counterPath_) {
+    const QString canonProject =
+        QFileInfo(projectPath).canonicalFilePath();
+    if (canonProject.isEmpty()) return false;
+
+    QString canonCounter = QFileInfo(counterPath_).canonicalFilePath();
+    if (canonCounter.isEmpty()) {
+        // File doesn't exist yet — canonicalise its parent dir and
+        // synthesise the canonical form it WOULD take.
+        QFileInfo cfi(counterPath_);
+        const QString parentCanon =
+            QFileInfo(cfi.absolutePath()).canonicalFilePath();
+        if (parentCanon.isEmpty()) return false;
+        // FS-root edge case: if parentCanon == "/", direct
+        // concatenation yields "//.roadmap-counter". Strip trailing
+        // slash before the join.
+        const QString joinable = parentCanon.endsWith(QChar('/'))
+            ? parentCanon.left(parentCanon.size() - 1)
+            : parentCanon;
+        canonCounter = joinable + QChar('/') + cfi.fileName();
+    }
+    return canonCounter ==
+        canonProject + QStringLiteral("/.roadmap-counter");
+}
+
+// ANTS-1342 sibling: same guard for ROADMAP.md. The file MUST exist
+// (insertBlock is meaningless on a non-existent ROADMAP.md), so the
+// "doesn't exist yet" branch above doesn't apply here.
+bool roadmapStaysInProject(const QString &projectPath,
+                           const QString &roadmapPath_) {
+    const QString canonProject =
+        QFileInfo(projectPath).canonicalFilePath();
+    if (canonProject.isEmpty()) return false;
+    const QString canon = QFileInfo(roadmapPath_).canonicalFilePath();
+    if (canon.isEmpty()) return false;
+    return canon == canonProject + QStringLiteral("/ROADMAP.md");
+}
+
 // Acquire ::flock(LOCK_EX|LOCK_NB) on `path`, polling 50 ms × 100
 // (5 s budget). Returns the open fd on success, -1 on timeout / open
 // failure. Caller MUST close + flock(LOCK_UN).
@@ -51,6 +97,11 @@ void unlockAndClose(int fd) {
 QList<int> allocateIds(const QString &projectPath, int n) {
     if (n <= 0) return {};
     const QString path = counterPath(projectPath);
+
+    // ANTS-1342: refuse if the counter path escapes the project root
+    // via symlink. Catches the shared-counter-via-symlink case before
+    // any flock / read / write happens.
+    if (!counterStaysInProject(projectPath, path)) return {};
 
     int fd = lockExclusive(path);
     if (fd < 0) return {};
@@ -124,6 +175,10 @@ bool insertBlock(const QString &projectPath,
     if (releaseBlockHeading.isEmpty() || block.isEmpty()) return false;
 
     const QString path = roadmapPath(projectPath);
+    // ANTS-1342: refuse if ROADMAP.md escapes the project root via
+    // symlink. Same threat shape as the counter case above.
+    if (!roadmapStaysInProject(projectPath, path)) return false;
+
     QFileInfo srcInfo(path);
     QFile::Permissions origPerms = srcInfo.permissions();
 

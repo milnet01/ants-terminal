@@ -4877,20 +4877,6 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1342] **`RoadmapFoldIn::allocateIds` counter path
-  not anchored (lane-5 ME-3).** `roadmapfoldin.cpp:51–92` opens
-  `<projectPath>/.roadmap-counter` with `flock` + `QSaveFile`,
-  but does NOT canonicalise the path. If the project root is a
-  symlink whose target is shared between two projects, the
-  counter is shared too — ID allocation collides across
-  projects. Fix: canonical-check the counter path inside the
-  project root before flock.
-  **Layman:** two projects sharing a symlinked counter file
-  would both allocate the same ANTS-NNNN IDs and overwrite
-  each other's fold-ins. Anchor the counter path.
-  Kind: security.
-  Source: indie-review-2026-05-14.
-
 - 📋 [ANTS-1375] **Per-tab Claude state dot regression — dots
   missing on tabs with active CC sessions (v0.7.91).** Confirmed
   by user screenshot 2026-05-14: 5 tabs labelled "Claude: …"
@@ -4926,38 +4912,6 @@ class; the deferrals below cover the rest.
   pipeline is silently failing.
   Kind: fix.
   Source: user-report-2026-05-14.
-
-- 📋 [ANTS-1372] **MCP fold-in / debt-sweep mutating verbs write
-  to the focused-tab project, not the calling session's
-  project.** Observed 2026-05-14: a Claude Code session running
-  inside MAME Curator (with an Ants Terminal window having a tab
-  focused on the Ants Terminal repo) invoked an Ants MCP
-  fold-in / debt-sweep verb. The server resolved "active
-  project" to the focused tab's cwd rather than the calling
-  session's cwd. The verb bumped `.roadmap-counter` 1371 → 1436
-  in the Ants Terminal repo and appended 65 ROADMAP bullets
-  (referencing MAME Curator paths like `src/mame_curator/...`,
-  `tests/filter/*.py`) under § 0.7.65. Reverted manually in the
-  Ants Terminal repo; the MAME Curator session is re-folding to
-  its own ROADMAP. Pairs with [ANTS-1342] which covers the
-  symlinked-counter case; this is the focused-tab-vs-caller-cwd
-  case. Fix: every mutating MCP verb that touches
-  `.roadmap-counter`, ROADMAP.md, CHANGELOG.md, or files inside
-  a project root MUST resolve "project root" from the calling
-  session's cwd (already exposed via `mcp__ants__get_cwd`), not
-  from the focused tab. If they disagree, refuse with
-  `{ok:false, code:"cwd_mismatch", error:"<verb>: calling
-  session cwd does not match focused tab cwd"}` and surface to
-  the user. Audit verbs: `debt_sweep_apply_fix`,
-  `indie_review_fold_in`, `cold_eyes_fold_in`, and any future
-  fold-in tools introduced by the App-Build workflow.
-  **Layman:** a Claude Code session in project A can
-  accidentally mutate project B's files (ROADMAP / counter /
-  fix-pass writes) when the Ants window has a tab focused on
-  project B. Pin every write to the caller's project, not the
-  focused tab's.
-  Kind: security.
-  Source: incident-2026-05-14.
 
 #### 🧹 Debt-sweep fold-in (2026-05-14, build warnings)
 

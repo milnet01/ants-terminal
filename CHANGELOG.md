@@ -166,6 +166,39 @@ hostile-content findings.
 
 ### Security
 
+- **Caller-cwd gate on mutating MCP fold-in verbs (ANTS-1372 + ANTS-1342).**
+  The Ants Terminal MCP socket at
+  `$XDG_RUNTIME_DIR/ants-terminal/control.sock` is shared by every
+  Claude Code session on the machine. The seven mutating verbs
+  previously resolved "project root" from the focused tab's
+  `shellCwd`, so a Claude session running in project A could silently
+  mutate project B's files when the user had a tab focused on B.
+  Observed 2026-05-14: a MAME Curator session triggered an
+  `indie_review_fold_in` call that bumped the **Ants Terminal**
+  repo's `.roadmap-counter` 1371 → 1436 and appended 65 unrelated
+  bullets to its ROADMAP. New required `caller_cwd` argument on
+  `indie_review_fold_in`, `debt_sweep_apply_fix`, `debt_sweep_defer`,
+  `cold_eyes_fold_in`, `session_memory` (set/delete only),
+  `verify_changes`, and `plan_template`; the gate compares
+  canonicalised forms and refuses with `{ok:false, error:"...",
+  code:"cwd_mismatch"}` on mismatch (plus `cwd_missing`, `cwd_bad`,
+  `no_project` for caller-side errors). Each `cwd_mismatch` refusal
+  emits one `qWarning("[ANTS-1372] ...")` line for incident response.
+  `session_memory`'s legacy optional `cwd` argument is removed for
+  set/delete — it was a second escape route where a caller could
+  write to any path they specified; get/list keep it as a legitimate
+  cross-project read path. Bundled with **ANTS-1342**: the same
+  commit canonicalises `.roadmap-counter` and `ROADMAP.md` paths
+  inside `RoadmapFoldIn::allocateIds` / `insertBlock` so two
+  projects sharing a symlinked counter (or ROADMAP) refuse before
+  flock + write. 15 new tests in
+  `tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp` cover
+  R1-R3 (counter-symlink escape), Roadmap symlink escape,
+  G1-G5 + envelope (gate verdicts), and S1-S5 (source-grep wiring).
+  Spec: `docs/specs/ANTS-1372.md`. Pairs with [ANTS-1295] — same
+  defense-in-depth philosophy, applied to project-root resolution
+  rather than path-arg anchoring.
+
 - **Per-tool cwd-anchor enforcement on path-accepting MCP tools
   (ANTS-1295).** Promoted the ANTS-1250 `validatePath` helper out
   of `remotecontrol.cpp`'s anonymous namespace into a new

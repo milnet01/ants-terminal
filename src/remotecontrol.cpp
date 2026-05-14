@@ -8,6 +8,7 @@
 #include "mainwindow.h"
 #include "pathvalidation.h"
 #include "plantemplateengine.h"
+#include "remotecontrolgate.h"
 #include "sessionmemoryengine.h"
 #include "tokenusageengine.h"
 #include "roadmapdialog.h"
@@ -2185,10 +2186,12 @@ QJsonDocument RemoteControl::cmdIndieReviewSynthesisPrompt(const QJsonObject &re
 QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_fold_in: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
-    if (root.isEmpty()) return QJsonDocument(irErr(
-        QStringLiteral("no_project"),
-        QStringLiteral("indie_review_fold_in: no focused project")));
+    // ANTS-1372: gate on caller_cwd matching focused tab.
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("indie_review_fold_in"));
+    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
+    const QString root = gate.focused;
 
     const QJsonArray actArr = req.value(QStringLiteral("actionable")).toArray();
     if (actArr.isEmpty()) return QJsonDocument(irErr(
@@ -2343,10 +2346,12 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdDebtSweepApplyFix(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
         QStringLiteral("debt_sweep_apply_fix: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
-    if (root.isEmpty()) return QJsonDocument(dsErr(
-        QStringLiteral("no_project"),
-        QStringLiteral("debt_sweep_apply_fix: no focused project")));
+    // ANTS-1372: gate on caller_cwd matching focused tab.
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("debt_sweep_apply_fix"));
+    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
+    const QString root = gate.focused;
 
     const QString detectorId = req.value(QStringLiteral("detector_id")).toString();
     const QString file       = req.value(QStringLiteral("file")).toString();
@@ -2408,10 +2413,12 @@ QJsonDocument RemoteControl::cmdDebtSweepApplyFix(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
         QStringLiteral("debt_sweep_defer: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
-    if (root.isEmpty()) return QJsonDocument(dsErr(
-        QStringLiteral("no_project"),
-        QStringLiteral("debt_sweep_defer: no focused project")));
+    // ANTS-1372: gate on caller_cwd matching focused tab.
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("debt_sweep_defer"));
+    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
+    const QString root = gate.focused;
 
     const QJsonArray defArr = req.value(QStringLiteral("deferred")).toArray();
     if (defArr.isEmpty()) return QJsonDocument(dsErr(
@@ -2532,10 +2539,14 @@ QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
 QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(vcErr(QStringLiteral("no_window"),
         QStringLiteral("verify_changes: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
-    if (root.isEmpty()) return QJsonDocument(vcErr(
-        QStringLiteral("no_project"),
-        QStringLiteral("verify_changes: no focused project")));
+    // ANTS-1372: gate on caller_cwd matching focused tab (refuses
+    // before the cwd_unreachable check so cross-project intent never
+    // gets to the build-spawn path).
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("verify_changes"));
+    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
+    const QString root = gate.focused;
     const QFileInfo rootInfo(root);
     if (!rootInfo.isDir()) return QJsonDocument(vcErr(
         QStringLiteral("cwd_unreachable"),
@@ -2622,10 +2633,14 @@ QJsonObject ptConventions() {
 QJsonDocument RemoteControl::cmdPlanTemplate(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(ptErr(QStringLiteral("no_window"),
         QStringLiteral("plan_template: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
-    if (root.isEmpty()) return QJsonDocument(ptErr(
-        QStringLiteral("no_project"),
-        QStringLiteral("plan_template: no focused project")));
+    // ANTS-1372: gate on caller_cwd matching focused tab. Dry-run
+    // mode still reads the project counter to derive an ANTS-NNNN id,
+    // so the gate is unconditional (not save-only).
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("plan_template"));
+    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
+    const QString root = gate.focused;
 
     PlanTemplateEngine::PlanOptions opts;
     opts.featureName   = req.value(QStringLiteral("feature_name")).toString();
@@ -2943,10 +2958,12 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_fold_in: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
-    if (root.isEmpty()) return QJsonDocument(ceErr(
-        QStringLiteral("no_project"),
-        QStringLiteral("cold_eyes_fold_in: no focused project")));
+    // ANTS-1372: gate on caller_cwd matching focused tab.
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("cold_eyes_fold_in"));
+    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
+    const QString root = gate.focused;
 
     const QJsonArray actArr =
         req.value(QStringLiteral("actionable")).toArray();
@@ -3048,19 +3065,9 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
         QStringLiteral("session_memory: no MainWindow"),
         QString(), QString()));
 
-    // INV-13 — cwd argument optional; default = focused project root.
-    QString cwd = req.value(QStringLiteral("cwd")).toString();
-    if (cwd.isEmpty()) cwd = resolveRootCanonical(m_main);
-    if (cwd.isEmpty()) return QJsonDocument(smErr(
-        QStringLiteral("no_project"),
-        QStringLiteral("session_memory: cwd is empty and no focused project"),
-        QString(), QString()));
-    cwd = QFileInfo(cwd).canonicalFilePath();
-    if (cwd.isEmpty()) return QJsonDocument(smErr(
-        QStringLiteral("no_project"),
-        QStringLiteral("session_memory: cwd does not canonicalise"),
-        QString(), QString()));
-
+    // Parse op early — get/list are read-only and skip the ANTS-1372
+    // caller-cwd gate; set/delete mutate the project session-memory
+    // store and require the gate.
     const QString opRaw = req.value(QStringLiteral("op")).toString();
     SessionMemoryEngine::Op op = SessionMemoryEngine::Op::Get;
     if (!SessionMemoryEngine::parseOp(opRaw, &op)) {
@@ -3069,6 +3076,41 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
             QStringLiteral("session_memory: op must be one of "
                            "\"get\", \"set\", \"delete\", \"list\""),
             QString(), opRaw));
+    }
+
+    QString cwd;
+    const bool mutates = (op == SessionMemoryEngine::Op::Set ||
+                          op == SessionMemoryEngine::Op::Delete);
+    if (mutates) {
+        // ANTS-1372: set/delete must pass caller_cwd; the legacy
+        // optional `cwd` arg is removed (it was a second escape route
+        // — callers could write to any path they specified).
+        const auto gate = RcGate::checkCallerCwd(
+            resolveRootCanonical(m_main), req,
+            QStringLiteral("session_memory"));
+        if (!gate.ok) {
+            // Materialise via smErr to keep the existing 4-field
+            // shape (path/extra come back empty for gate refusals).
+            return QJsonDocument(smErr(gate.errorCode, gate.error,
+                                       opRaw, QString()));
+        }
+        cwd = gate.focused;
+    } else {
+        // get/list: read-only — keep the legacy default-to-focused
+        // resolution. The optional `cwd` arg still works for cross-
+        // project READS, which is the legitimate "survey project B
+        // from project A" use case (see ANTS-1372 spec INV-7).
+        cwd = req.value(QStringLiteral("cwd")).toString();
+        if (cwd.isEmpty()) cwd = resolveRootCanonical(m_main);
+        if (cwd.isEmpty()) return QJsonDocument(smErr(
+            QStringLiteral("no_project"),
+            QStringLiteral("session_memory: cwd is empty and no focused project"),
+            opRaw, QString()));
+        cwd = QFileInfo(cwd).canonicalFilePath();
+        if (cwd.isEmpty()) return QJsonDocument(smErr(
+            QStringLiteral("no_project"),
+            QStringLiteral("session_memory: cwd does not canonicalise"),
+            opRaw, QString()));
     }
 
     const QString    key   = req.value(QStringLiteral("key")).toString();

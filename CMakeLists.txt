@@ -220,6 +220,7 @@ add_library(ants_core_lib STATIC
     src/clipboardguard.cpp
     src/pathvalidation.cpp
     src/remotecontrol.cpp
+    src/remotecontrolgate.cpp
     src/fileoutline.cpp
     src/gitwrap.cpp
     src/indiereviewengine.cpp
@@ -921,7 +922,11 @@ if(ANTS_TESTS)
         SRC_AUDIT_H="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
         SRC_AUDIT_ENGINE_CPP="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         SRC_AUDIT_ENGINE_H="${CMAKE_SOURCE_DIR}/src/auditengine.h"
-        SRC_AUDITDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp")
+        SRC_AUDITDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        # ANTS-1372 source-grep tests: roadmap_fold_in needs visibility
+        # into remotecontrol.cpp + roadmapfoldin.cpp for S1-S5.
+        SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        SRC_ROADMAPFOLDIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapfoldin.cpp")
 
     # ANTS-1217 Phase 6 — test_dialogs bundle. Subject: settingsdialog +
     # roadmapdialog + diffviewer (the dialogs hosted by chrome). 11 tests
