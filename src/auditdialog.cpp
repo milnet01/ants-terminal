@@ -5139,7 +5139,15 @@ QString AuditDialog::exportSarif() const {
             // outside the source artifact; state "accepted" mirrors the
             // dialog's no-review-workflow semantics. Justification is
             // the user's free-text reason from the JSONL entry.
-            if (f.suppressed) {
+            // Indie-review-2026-05-14 lane-4 H1+H2: live `isSuppressed`
+            // lookup, not the stale `f.suppressed` cached at parse-time.
+            // A user who clicks "suppress" mid-session and immediately
+            // exports SARIF would otherwise lose the result.suppressions[]
+            // record for the just-suppressed finding (the cached flag
+            // hasn't been refreshed; the parser only re-runs on next
+            // audit). HTML export at :5199 already calls isSuppressed
+            // live — this brings SARIF into parity.
+            if (isSuppressed(f.dedupKey)) {
                 QJsonObject sup;
                 sup["kind"]  = "external";
                 sup["state"] = "accepted";
