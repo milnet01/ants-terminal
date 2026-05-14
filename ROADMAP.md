@@ -460,8 +460,10 @@ for the rotation contract.
   Priority: after the current token-saving / Claude-Code-
   integration sprint.
 
-- 📋 [ANTS-1331] **Menu-bar "Sponsors" entry → opens GitHub
-  Sponsors page.** User request 2026-05-14. Add a top-level
+- 📋 [ANTS-1371] **Menu-bar "Sponsors" entry → opens GitHub
+  Sponsors page.** User request 2026-05-14. (Renumbered from
+  ANTS-1331 on 2026-05-14 to resolve a pre-existing duplicate
+  with ROADMAP.md:6644 "Prev/next prompt-history navigation.") Add a top-level
   menu item after "Help" in `MainWindow`'s menu bar that opens
   `https://github.com/sponsors/milnet01` via
   `QDesktopServices::openUrl()`. Single action, no submenu —
@@ -4741,6 +4743,605 @@ minor tag (next: pre-0.8.0).
   replace it. 121 tests pass.
   Kind: fix. Source: user-2026-04-30 (two reports, same
   class). Lanes: MainWindow.
+
+---
+
+## 0.7.92 — indie-review #4 + Ants MCP roadmap pass (target: 2026-05-21)
+
+### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
+
+6-lane indie-review on 2026-05-14 immediately after ANTS-1294
+(MCP output sanitisation) and ANTS-1295 (per-tool cwd-anchor)
+shipped. 17 verified findings folded in inline (see CHANGELOG
+[Unreleased] § "Indie-review fold-in (2026-05-14)" — those land
+in 0.7.92). This block tracks the residual deferrals that need
+their own design + test cycle.
+
+Cross-cutting theme observed across lanes: "comment promises A,
+code does B" defense-in-depth gaps clustered around the recent
+security work — the contracts were correct, the implementation
+was one step short. ANTS-1294/1295 fixed two facets of this
+class; the deferrals below cover the rest.
+
+#### 🔒 Tier 1 — security & data-loss
+
+- 📋 [ANTS-1332] **Lua sandbox pcall-nesting wall-clock evasion
+  (lane-6 H-1).** `LuaEngine`'s instruction-count hook calls
+  `luaL_error` once the 1.5 s wall-clock budget is breached, but
+  `luaL_error` longjmps to the nearest `pcall`. A malicious plugin
+  running `pcall(function() while true do pcall(function() …
+  end) end end)` catches each timeout error inside the inner
+  pcall, letting each level of nesting consume another budget
+  window. With Lua's default ~200-deep pcall stack the plugin can
+  stall the UI thread for ~5 minutes before C stack pressure
+  forces an escape. Fix: once `m_timedOut` is set, treat the
+  deadline as terminal — store an `m_kill` flag the hook checks
+  and call `luaL_error` unconditionally every fire, OR force
+  `m_pcallDeadlineMs = INT64_MIN` after the first miss so every
+  subsequent hook fires `luaL_error` instantly (inner pcall still
+  swallows, but plugin gets ~0 useful work per nested catch).
+  Pair with a regression test that exercises 100-deep pcall
+  nesting + asserts wall-clock budget held.
+  **Layman:** stop a misbehaving Lua plugin from holding the UI
+  thread for minutes by abusing nested error-handlers to
+  swallow the timeout signal.
+  Kind: security.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1333] **`m_scrollbackHyperlinks` not lockstep with
+  `m_scrollback` on reflow (lane-1 H1).** `TerminalGrid::resize`
+  pushes `m_scrollback` rows during width-change reflow at
+  `terminalgrid.cpp:2547` but never updates
+  `m_scrollbackHyperlinks` in lockstep. Wide reflow at
+  `:2453–2523` rebuilds `m_scrollback` from logical lines but
+  ignores `m_scrollbackHyperlinks` entirely. After any width-
+  change resize, the two deques are out of length-sync; every
+  previously-clickable URL in scrollback is now mapped to a
+  different row (bounded-safe by the defensive scheme re-check,
+  but visually broken). Contract: `scrollUp()` keeps
+  `m_screenHyperlinks[srcRow]` paired with the cells; reflow
+  must extend the same invariant.
+  **Layman:** after resizing the window, links previously
+  visible in scrollback stop being clickable. Re-attach the
+  hyperlink table to the scrollback rows when reflow runs.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1334] **Combining marks on wide-char right-edge
+  attach to continuation cell (lane-1 H3).**
+  `terminalgrid.cpp:386–399`. After writing a wide char at
+  `cursorCol = cols-2`, the lead lands at `cols-2`, the
+  continuation at `cols-1`, and `m_wrapNext = true`. A subsequent
+  zero-width combiner takes the `m_wrapNext` branch and writes
+  `combining[cols-1]` — the continuation cell. The renderer
+  looks combiners up by the lead column, so the diacritic is
+  invisible. Fix: when `targetCol` points to an `isWideCont`
+  cell, decrement once. Common with CJK at right-edge
+  positioning; non-English regression for any reasonable column
+  count.
+  **Layman:** Chinese / Japanese / Korean diacritic marks
+  become invisible when the underlying character sits at the
+  right edge of the terminal.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1335] **C1 8-bit control bytes pass through
+  `filterControlChars` (lane-2 M2).** `remotecontrol.cpp:335`
+  → `sendToPty` writes user-controlled bytes verbatim after C0
+  strip. C1 (U+0080..U+009F) bytes are explicitly NOT stripped
+  at the byte level (header comment says "stripping C1 is the
+  AI-dialog layer's job"), but the rc-socket path bypasses that
+  layer. A hostile JSON payload containing the UTF-8 encoding
+  of U+009B (`0xC2 0x9B` — CSI introducer) or U+009D / U+009F
+  (OSC / APC) reaches the PTY and is honoured by xterm-class
+  parsers. Verify whether Ants's own `vtparser` honours 8-bit
+  C1 — if yes, this is exploitable for OSC 52 / cursor
+  reprogramming / progress notification spoofing. Fix: strip
+  the UTF-8 encoding of U+0080..U+009F in `filterControlChars`
+  for the non-raw send-text / launch / new-tab paths.
+  **Layman:** an attacker who can craft a JSON message to the
+  Ants control socket could embed terminal-escape sequences
+  that reach the shell verbatim — close the byte-level filter.
+  Kind: security.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1336] **`session_memory` `cwd` arg cross-project
+  tenancy bypass (lane-5 HI-1).** `remotecontrol.cpp:3039–3049`
+  accepts a user-supplied `cwd` arg, canonicalises it, but does
+  NOT anchor against the focused tab's project root. A Claude
+  session in project A can read/write project B's
+  `session_memory` by passing `cwd="/path/to/B"`. Hash file
+  lives in `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`,
+  so the file targeted is whatever sha256 the attacker chooses.
+  Fix: either remove the `cwd` arg (force focused-tab cwd) or
+  run it through `PathValidation::validatePath` against
+  `resolveRootCanonical(m_main)`.
+  **Layman:** an MCP session inside project A can read project
+  B's saved key-value notes by lying about the project path —
+  anchor the cwd argument to the focused project.
+  Kind: security.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1337] **`verify_changes` arbitrary shell from
+  `.ants/verify.json` — hostile-clone vector (lane-5 HI-2).**
+  `verifyengine.cpp:290–291` runs `gc.command` from
+  `.ants/verify.json` against `/bin/sh -c` with the user's UID.
+  The threat model in ANTS-1294 § 1 explicitly addresses hostile
+  cloned repos as a content-trust boundary; the same threat
+  applies to executable config. User clones an untrusted repo,
+  fires `mcp__ants__verify_changes` from a Claude session
+  inside it, arbitrary shell runs. Fix: refuse to honour
+  `.ants/verify.json` unless `git rev-parse HEAD` is signed /
+  whitelisted, OR surface a permission prompt the first time a
+  new `.ants/verify.json` SHA is encountered (persisted in
+  `~/.config/ants-terminal/verify-trust.json`).
+  **Layman:** opening a hostile cloned repo and running the
+  `verify_changes` MCP tool runs arbitrary shell from that
+  repo — gate it behind first-run trust confirmation.
+  Kind: security.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1338] **`sessionPathForCwd` PID-reuse defense
+  (lane-3 H2).** Linux PID reuse on a busy system recycles
+  within seconds. The two-layer freshness filter
+  (`processStartTimeMs`-anchored at `claudeintegration.cpp:421`)
+  trusts the live PID is a Claude Code process. Caller
+  `pollClaudeProcess:220` reasserts via `findClaudeChildPid`,
+  but the public static `sessionPathForCwd` is reachable from
+  `activeSessionPath:476` without that assertion. Fix: either
+  bake the argv-based recheck into `sessionPathForCwd`, or
+  document the caller's contract loudly. Wrong-transcript
+  surfacing is the entire reason ANTS-1163 exists; PID reuse
+  is the residual gap.
+  **Layman:** after Claude crashes and a different program
+  inherits its PID, the session-path lookup can still find
+  the dead Claude's transcript — add a process-identity
+  recheck on every lookup.
+  Kind: security.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1342] **`RoadmapFoldIn::allocateIds` counter path
+  not anchored (lane-5 ME-3).** `roadmapfoldin.cpp:51–92` opens
+  `<projectPath>/.roadmap-counter` with `flock` + `QSaveFile`,
+  but does NOT canonicalise the path. If the project root is a
+  symlink whose target is shared between two projects, the
+  counter is shared too — ID allocation collides across
+  projects. Fix: canonical-check the counter path inside the
+  project root before flock.
+  **Layman:** two projects sharing a symlinked counter file
+  would both allocate the same ANTS-NNNN IDs and overwrite
+  each other's fold-ins. Anchor the counter path.
+  Kind: security.
+  Source: indie-review-2026-05-14.
+
+#### 🔒 Tier 2 — hardening sweep
+
+- 📋 [ANTS-1339] **`applyFilter` line-split materialisation on
+  64 MB tool output (lane-4 M3).** `auditengine.cpp:148`
+  materialises `raw.split('\n')` up-front. The upstream
+  `MAX_TOOL_OUTPUT_BYTES = 64 * 1024 * 1024` cap means a
+  pathological tool emitting 64 MB of single-character lines
+  allocates ~64M QString headers (~1.5–2 GB peak) before
+  `maxLines` truncates. The `f.maxLines` cap (default 100) only
+  applies to the kept output. Stream line-by-line with
+  `indexOf('\n')` + slice and bail at `keptCount >= maxLines`.
+  Amplification factor ~30×; real-world tools don't hit this
+  but the 64 MB cap is the only backstop.
+  **Layman:** a misbehaving lint tool that dumps 64 MB of
+  garbage briefly allocates ~2 GB of memory before being
+  truncated; stream the trim instead.
+  Kind: perf.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1340] **`cmdSubsystem` synchronous per-file git
+  invocation blocks GUI (lane-2 M7).** `remotecontrol.cpp:1797–
+  1812` invokes `cmdGitState({op:"log", path: f})` for each
+  file in a lane. Each call spawns a git process with a 5 s
+  wall-budget. For a 20-file lane the worst case is 20 × 5 s
+  = 100 s blocking the GUI thread. On a wedged repo this is a
+  multi-minute hang. Fix: aggregate-batch (one `git log --
+  file1 file2 …`) or parallel-spawn with a shared deadline.
+  **Layman:** querying the "subsystem" MCP tool can freeze
+  the UI for over a minute on a slow git operation; batch the
+  git calls instead of looping serially.
+  Kind: perf.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1341] **`claudetasklist` Mode B `in_progress` leak
+  accumulates forever (lane-3 H3).** The Mode B batch-reset at
+  `claudetasklist.cpp:262–275` triggers only when all tasks are
+  `completed`. If Claude marks a task `in_progress` and never
+  flips it to `completed` (transcript-replay bug or partial
+  network failure), the parser sees a live `in_progress` and
+  refuses to reset on the next `TaskCreate`. Forever-stuck
+  tasks pile up across sessions. Fix: add a time-based
+  secondary reset (e.g. `in_progress` for > 24 h with no
+  status events → consider it abandoned).
+  **Layman:** Claude tasks that get stuck in "in progress"
+  pile up across sessions until the dialog is reloaded; add
+  a time-based cleanup so old stuck tasks expire.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1343] **`consolidateMypyStubHints` `findingCount`
+  clobber (lane-4 M2).** `auditdialog.cpp:2702` sets
+  `r.findingCount = kept.size() + r.omittedCount;` to reflect
+  the N→1 collapse, but `:4039` unconditionally overwrites
+  `r.findingCount = r.findings.size() + r.omittedCount;` — the
+  collapsed count is lost. UI labels show post-collapse list
+  size, not the original raw count. Fix: gate `:4039` on
+  whether a consolidator already authored the count.
+  **Layman:** the audit dialog shows a misleading
+  "N findings" count after the mypy-stub consolidation step
+  collapses several into one; preserve the pre-collapse count.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1344] **`extractCitedCodePaths` 64 KiB scan cap
+  silently truncates reports (lane-5 ME-4).**
+  `indiereviewengine.cpp:301–303`. Spec INV-8 documents
+  `kMaxScanBytes = 64 * 1024`. A subagent that emits a 200 KiB
+  review report loses 70 % of its citations. Surface a
+  `truncated: true` flag in the MCP response envelope when
+  scope < report size so the caller knows to fetch the rest.
+  **Layman:** when a big code review report gets trimmed for
+  parsing, the MCP response doesn't say so — surface the
+  truncation in the envelope.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1345] **Cold-eyes `derivePartition` mtime-gameable
+  (lane-5 ME-5).** `coldeyesengine.cpp:206–220` picks the top
+  `kMaxSpecLanes` specs by `lastModified`. `touch
+  docs/specs/ANTS-1234.md` rearranges the partition. Low-
+  impact (the partition isn't security-critical) but a future
+  CI workflow that touches files would deterministically break
+  partition stability. Fix: tiebreak on path-lexicographic
+  order when mtimes are within 1 s.
+  **Layman:** an unrelated file `touch` reorders the cold-
+  eyes review partition; make the order deterministic.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1346] **`roadmap_query` section cache unbounded
+  growth (lane-5 ME-1).** `remotecontrol.cpp:756`. The cache
+  is keyed on section slug; the slug set is implicitly bounded
+  by ROADMAP heading count, but only wiped when `mtime`
+  changes. On a stable ROADMAP, the cache grows monotonically
+  across the session up to the heading count. Plus
+  `sliceSection` returns whatever lies between two headings —
+  on a malformed / un-anchored ROADMAP that could be hundreds
+  of KB per slug. Fix: explicit per-slug size cap + LRU
+  eviction at 64 slugs.
+  **Layman:** the roadmap-query MCP tool's cache can grow
+  large on huge roadmaps; add an LRU cap.
+  Kind: perf.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1347] **`cmdLaunch` / `cmdNewTab` `cwd` arg not
+  validatePath'd (lane-2 M3).** `remotecontrol.cpp:506–525,
+  562–576`. Only `hasControlOrBackslash` is checked. Same-UID
+  trust permits any reachable directory — `/etc`, `/var/log`,
+  etc. Not an escape but a sidestep of the project-root anchor
+  philosophy. Fix: explicitly document "cwd is unanchored by
+  design" with a comment naming the trust assumption, OR run
+  through `PathValidation::validatePath` against the focused
+  project root with an "allow absolute outside root" flag.
+  **Layman:** the MCP launch tool can chdir to anywhere on the
+  filesystem — either document why that's safe or anchor it
+  like every other path arg.
+  Kind: security.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1348] **`cmdGetText` no server-side byte cap
+  (lane-2 M4).** `remotecontrol.cpp:415` caps at 10 000 lines
+  but not bytes. A 10 000-line scrollback of 4 KB lines yields
+  a 40 MB JSON document; client-side 1 MiB cap then truncates
+  the response mid-stream and reports a "socket hijack." Fix:
+  add a server-side byte cap (default 1 MiB matching client)
+  and surface `truncated: true` properly.
+  **Layman:** asking for a lot of scrolled-back terminal text
+  can produce a response too big for the receiver to read,
+  causing a confusing error; cap it server-side instead.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+- 📋 [ANTS-1349] **Pty `EAGAIN` silent drop > 4 MB (lane-2
+  M6).** `ptyhandler.cpp:427–433`. The current EAGAIN branch
+  drops bytes (with only a debug log) when the pending-write
+  buffer would exceed 4 MB. Same outcome as the pre-fix
+  regression the comment warns against; only the control flow
+  differs. Fix: either bubble up the failure as a signal /
+  exception so callers know, OR explicitly document the lossy
+  contract in the header.
+  **Layman:** when the terminal is being written to faster
+  than it can absorb, data over 4 MB is silently dropped —
+  either tell the caller or document the loss.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+#### 🐛 Tier 3 — small fixes & cleanup
+
+- 📋 [ANTS-1350] **Roadmap dialog tab order + compact font
+  size (lane-6 L-1, L-2).** No explicit `setTabOrder` —
+  current order is creation-order-incidental and will shuffle
+  silently when a widget is inserted. Compact density emits 9
+  px font in `.rm-state-label` / `.rm-kind` / `.rm-section-
+  counts` — below WCAG 2.2 readable minimum.
+  **Layman:** make the keyboard tab-order in the roadmap
+  dialog deterministic, and lift the compact-density font
+  above the WCAG minimum.
+  Kind: fix.
+  Source: indie-review-2026-05-14.
+
+### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
+
+The full audit / indie-review / debt-sweep cycle on 2026-05-14
+exposed structural gaps in the MCP surface that the per-finding
+fixes don't address. Roadmapped here as their own design tasks.
+
+- 📋 [ANTS-1351] **MCP `audit_run` orchestrator tool.** Run the
+  full external-tool pipeline (cppcheck / clazy / semgrep /
+  gitleaks / trivy / shellcheck / ruff / bandit / mypy) inside
+  the server, return a structured JSON envelope. Avoids per-
+  Claude shell orchestration (the 2026-05-14 sweep had to
+  background-launch each tool manually + parse output by hand).
+  Pairs with `last_audit_summary` which returns the in-process
+  AuditDialog's cached result; this is the *trigger*-side
+  companion. Body: `{tools:[...], scope:"<since-tag|files>",
+  cap_per_tool_seconds:60, suppressions:auto}` → returns
+  `{by_tool:{cppcheck:{count, samples[]}, …}, total_actionable,
+  raw_findings, noise_rate_pct, sarif:"path"}`.
+  **Layman:** add an MCP tool that runs the whole audit
+  pipeline in one call instead of needing Claude to shell out
+  each linter manually.
+  Kind: implement.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1352] **MCP `indie_review_dispatch` orchestrator.**
+  The existing `indie_review_partition` / `_brief` /
+  `_corroborate` / `_synthesis_prompt` / `_fold_in` tools are
+  individual steps; missing the orchestrator that takes a
+  partition + brief and dispatches the lanes in parallel.
+  Pre-2026-05-14, the orchestration ran in Claude with N
+  Agent calls. Server-side dispatch (using the Anthropic API
+  with the project's billing account) would be cheaper and
+  produce structured reports the corroborate step can ingest
+  directly without intermediate save/load.
+  **Layman:** add an MCP tool that runs the full multi-agent
+  indie-review without Claude having to manually fire each
+  reviewer one at a time.
+  Kind: implement.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1353] **`docs/standards/mcp-error-codes.md` —
+  central code taxonomy.** Every MCP tool emits a `code` field
+  on error (`bad_path`, `bad_args`, `bad_pattern`, `bad_glob`,
+  `no_project`, `no_window`, `not_found`, `cap_exceeded`,
+  `io_error`, `no_remote_control`, …). The set has grown ad-
+  hoc. Document every code, when it's emitted, and the
+  recommended client recovery action. Cross-link from each
+  tool's docstring. Helps third-party MCP-bridge clients
+  dispatch correctly.
+  **Layman:** write down all the error-code strings the MCP
+  tools can emit, so people writing client tooling know what
+  to handle.
+  Kind: doc.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1354] **MCP tool descriptor `version` field.** No
+  per-tool version today. If the wrap format (ANTS-1294)
+  evolves to v2 or a tool changes its response schema,
+  consumers can't tell which version they're talking to. Add a
+  `version: "1.0"` field to each `tools/list` entry; bump on
+  incompatible changes; document the SemVer-of-tools policy.
+  **Layman:** let the MCP tool list say what version each
+  tool is so Claude Code can detect mismatched expectations.
+  Kind: refactor.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1355] **`token_usage` v2 — break out wrap overhead
+  + latency (lane-3 follow-up).** Today `token_usage` reports
+  `bytes_out` for the wrapped payload (ANTS-1294 INV-8). Split
+  this into `bytes_wrap_overhead` + `bytes_payload` so users
+  can see the wrap cost (~30–40 B/call). Add per-tool latency
+  distribution (`p50_ms`, `p95_ms`, `max_ms`) and error-rate
+  counter. Lets the assistant pick the cheapest equivalent
+  tool when several exist.
+  **Layman:** make the token-usage telemetry show how much
+  of each response is the wrapping overhead vs the actual
+  content, plus how fast each tool runs.
+  Kind: refactor.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1356] **MCP per-tool rate-limit / quota.** No cap
+  on call rate. A misbehaving Claude session could fire
+  `get_scrollback` in a tight loop. Wall-clock idle timer
+  (5 s) catches dead-air, not floods. Add a per-tool per-
+  session call-rate cap (e.g. 60/min for cheap reads, 10/min
+  for expensive operations like `audit_run` or
+  `cold_eyes_brief`). Returns
+  `{code:"rate_limited", retry_after_ms}`.
+  **Layman:** prevent a runaway Claude from hammering one
+  MCP tool in a tight loop by rate-limiting per tool.
+  Kind: security.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1357] **MCP idempotent-read response cache.**
+  `get_cwd`, `last_audit_summary`, `get_environment`,
+  `tab_list` are idempotent reads with stable results across
+  the same session-tick. Cache by `(tool, args_sha256)` for
+  100 ms (matches the existing `roadmap_query` TTL pattern).
+  Saves both compute and token round-trips when the assistant
+  retries the same query.
+  **Layman:** cache repeated identical MCP calls for a short
+  window so Claude doesn't re-pay for the same answer.
+  Kind: perf.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1358] **`debt_sweep` detector expansion.** Today
+  only `orphan_q_unused` is mechanical-fixable. Add at least:
+  `stale_todo` (TODO/FIXME older than N commits), `unused_include`
+  (cppcheck-driven), `dead_branch_after_return` (clazy-driven),
+  `obsolete_qstring_arg` (Qt6 conversion lints). Each ships
+  with a deterministic auto-fix table + a Finding triple
+  (detector_id + file + line).
+  **Layman:** the debt-sweep tool currently only knows how to
+  fix one kind of leftover; teach it the others.
+  Kind: refactor.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1359] **`mcp__ants__verify_changes` build-cache.**
+  Repeated `verify_changes` calls within the same session re-
+  run cmake/ctest from scratch even when no source files
+  changed since the last run. Cache by `(file_set_mtime,
+  command)`; invalidate on `git status -s` delta. Halves the
+  cost of multi-turn refactor → verify loops.
+  **Layman:** stop re-running the full build + tests on every
+  Claude turn when nothing relevant changed.
+  Kind: perf.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1360] **MCP debug-log tap (`mcp_trace` tool).** No
+  way to inspect raw request/response pairs from inside the
+  app — `DebugLog::Claude` writes to stderr only. Add a ring
+  buffer (last N=200 calls) accessible via
+  `mcp__ants__mcp_trace { since:int, limit:int }`. Helps
+  third-party tooling debug Ants MCP integration.
+  **Layman:** let developers inspect the last N MCP calls the
+  server saw, for debugging integrations.
+  Kind: refactor.
+  Source: indie-review-2026-05-14 (self-observed).
+
+### ⚡ Other improvements (performance, security, optimisations)
+
+Items surfaced by the audit cycle that aren't tied to a single
+indie-review finding.
+
+- 📋 [ANTS-1361] **Locale-independent grapheme width via
+  vendored Unicode table.** `wcwidth(static_cast<wchar_t>(cp))`
+  at `terminalgrid.cpp:385` is glibc-dependent: lags Unicode by
+  1–2 versions, `LANG=C` renders CJK single-width, emoji ZWJ
+  sequences disagree across libc versions. Project standards
+  reference "Unicode 15+ grapheme cluster boundaries (UAX #29)"
+  which `wcwidth` does not deliver. Vendor a width table (e.g.
+  the wcwidth.js / wcwidth-cjk dataset) with a cold-path
+  fallback for assigned-but-untabled codepoints.
+  **Layman:** stop letting the system locale determine how
+  wide a character is — ship our own width table so display
+  is stable across distros.
+  Kind: perf / fix.
+  Source: indie-review-2026-05-14 (lane-1 M4).
+
+- 📋 [ANTS-1362] **Cell-buffer free pool cap tuning.**
+  `m_freeCellBuffers` cap is 4 (`terminalgrid.cpp` — lane-1
+  open question). A scrollUp burst of > 4 rows in a frame
+  pays one fresh `vector<Cell>(cols)` per row past 4. Measure
+  the typical burst size during a `clear` / `dmesg` scroll
+  storm and right-size (likely 8–16). Trivial change, real
+  perf gain on first scrollback frame after a clear.
+  **Layman:** tune the small cache the terminal uses when
+  scrolling so it doesn't allocate on every line during a
+  fast scroll.
+  Kind: perf.
+  Source: indie-review-2026-05-14 (lane-1 open question).
+
+- 📋 [ANTS-1363] **Status-bar refresh pauses on
+  window-unfocus.** The 2 s timer in
+  `ClaudeStatusBarController::refresh*` fires regardless of
+  whether the Ants window is focused. On laptops, an
+  unfocused Ants tab in a background workspace pays per-tick
+  CPU for invisible UI. Pause the timer on `focusOut` /
+  resume on `focusIn`. Battery + scheduler-wakeup win.
+  **Layman:** stop the status bar from polling when the
+  window isn't visible — saves battery on laptops.
+  Kind: perf.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1364] **`session_memory` `serializedSize` caching.**
+  Every `Set` op re-serialises the whole QJsonObject to bytes
+  just to measure. Cache the size + apply a per-key delta on
+  insert/replace/delete. Saves O(n) on every write.
+  **Layman:** stop recomputing the whole memory store's size
+  on every save.
+  Kind: perf.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1365] **`/tmp` socket-squat hardening.**
+  `defaultSocketPath` falls back to `/tmp/ants-terminal-<uid>.sock`
+  when `XDG_RUNTIME_DIR` is unset (`remotecontrol.cpp:70–71`).
+  `/tmp` is world-writable; a same-UID misbehaving process can
+  pre-create the path as a regular file or symlink, blocking
+  Ants from starting. Wrap the `/tmp` path in a per-user
+  0700 subdir (`/tmp/ants-<uid>/sock`) created with
+  `mkdir(…, 0700)` + `lstat` confirmation pre-bind.
+  **Layman:** harden the rare fallback socket location so a
+  same-UID rogue process can't DOS the Ants startup.
+  Kind: security.
+  Source: indie-review-2026-05-14 (lane-2 M1).
+
+- 📋 [ANTS-1366] **Sixel pre-budget at raster `Pv;Ph`.**
+  Sixel image path walks the entire payload to compute
+  `imgWidth/imgHeight` before deciding on the dimension cap
+  (`terminalgrid.cpp:2750–2806`). A 4 MB payload that just
+  fits the cap walks all 4 MB once before reject. Pre-budget
+  at the raster `Pv;Ph` header (which is emitted near the
+  start of the Sixel stream) — reject early if declared
+  dimensions exceed `MAX_IMAGE_DIM`.
+  **Layman:** reject too-big Sixel images at the start of
+  the stream instead of after parsing the whole thing.
+  Kind: perf.
+  Source: indie-review-2026-05-14 (lane-1 L2).
+
+- 📋 [ANTS-1367] **`__VA_OPT__` for C++20 conformance.** Build
+  emits `[-Wgnu-zero-variadic-macro-arguments]` warning on
+  `terminalgrid.cpp:18` (variadic-macro `,` token-paste GNU
+  extension). C++20 has `__VA_OPT__(,)` as the conforming
+  replacement. Single-macro change in `debuglog.h`.
+  **Layman:** swap a GNU-only macro idiom for the standard
+  C++20 equivalent so future compiler updates don't break it.
+  Kind: refactor.
+  Source: indie-review-2026-05-14 (build-warning).
+
+- 📋 [ANTS-1368] **PCH `-fpic` mismatch warning.** Build emits
+  `cmake_pch.hxx.gch: created and used with different settings
+  of -fpic` repeatedly. PCH is generated without `-fpic` but
+  consumed by a `POSITION_INDEPENDENT_CODE` target. Rebuild
+  PCH with `target_compile_options(... PRIVATE -fPIC)` or
+  drop the PCH for libraries that need PIC.
+  **Layman:** fix a recurring build warning about precompiled
+  headers being incompatible with how some libraries are
+  built.
+  Kind: refactor.
+  Source: indie-review-2026-05-14 (build-warning).
+
+- 📋 [ANTS-1369] **Project `.gitleaks.toml` allowlist persisted.**
+  `/audit` on 2026-05-14 produced 25 gitleaks findings, all
+  false positives in `tests/audit_fixtures/secrets_scan/bad.cpp`
+  (fixture deliberately containing test-secret patterns) and
+  `docs/AUTOMATED_AUDIT_REPORT_*.json` (historical reports
+  recording past gitleaks output). Persist these as a
+  `.gitleaks.toml` allowlist so future audits don't re-surface
+  the noise. Matches the project's existing audit-hygiene
+  philosophy ("read existing project configs rather than
+  adding new suppression files" — CLAUDE.md).
+  **Layman:** add a project-level gitleaks config so the
+  intentional-test-secret fixtures stop being flagged on
+  every audit.
+  Kind: refactor.
+  Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1370] **`m_engines.insert` duplicate-key guard
+  (lane-6 L-4).** Even after the ANTS-1370 (lane-6 C-1) name-
+  spoofing fix, two plugin directories with the same
+  canonical name across symlink shenanigans could still
+  collide silently on `m_engines.insert`. Add an explicit
+  `if (m_engines.contains(info.name)) { warn; continue; }`
+  guard in `loadPlugin`.
+  **Layman:** belt-and-braces guard so two plugin directories
+  with the same name never silently overwrite each other.
+  Kind: security.
+  Source: indie-review-2026-05-14 (lane-6 L-4).
 
 ---
 
