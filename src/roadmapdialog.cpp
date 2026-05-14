@@ -1701,6 +1701,10 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     auto *searchLabel = new QLabel(tr("Search:"), this);
     m_searchBox = new QLineEdit(this);
     m_searchBox->setObjectName(QStringLiteral("roadmap-search-box"));
+    // Indie-review-2026-05-14 lane-6 M-4: placeholderText is not
+    // guaranteed to map to AT-SPI Name; set the accessible name
+    // explicitly so Orca/NVDA announce the search box.
+    m_searchBox->setAccessibleName(tr("Roadmap search"));
     m_searchBox->setPlaceholderText(
         tr("Substring match (or id:NNNN to jump to a specific ID)"));
     m_searchBox->setClearButtonEnabled(true);
@@ -1827,6 +1831,8 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
 
     m_toc = new QListWidget(splitter);
     m_toc->setObjectName(QStringLiteral("roadmap-toc"));
+    // Indie-review-2026-05-14 lane-6 M-4: name the TOC + viewer.
+    m_toc->setAccessibleName(tr("Roadmap table of contents"));
     m_toc->setUniformItemSizes(false);
     m_toc->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_toc->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -1834,6 +1840,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     splitter->addWidget(m_toc);
 
     m_viewer = new QTextBrowser(splitter);
+    m_viewer->setAccessibleName(tr("Roadmap content"));
     m_viewer->setReadOnly(true);
     // Internal anchors only — disable navigation on `<a href>` so a
     // stray markdown link can't replace the document.
