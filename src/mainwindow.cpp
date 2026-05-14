@@ -3665,8 +3665,12 @@ void MainWindow::setupClaudeMcpProviders() {
     // string. `get_session_info` is intentionally not registered —
     // it reads ClaudeIntegration's own state and is dispatched
     // inline (see claudeintegration.cpp processTools).
+    // Indie-review-2026-05-14 lane-5 HI-3: every other envelope in the
+    // codebase carries a `code` field so callers can dispatch on it
+    // programmatically. This was the one outlier.
     static constexpr const char *kRcUnavailable =
-        "{\"ok\":false,\"error\":\"remote-control unavailable\"}";
+        "{\"ok\":false,\"error\":\"remote-control unavailable\","
+        "\"code\":\"no_remote_control\"}";
 
     m_claudeIntegration->registerToolProvider("get_scrollback",
         [this](const QJsonObject &args) -> QString {
