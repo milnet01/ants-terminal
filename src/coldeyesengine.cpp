@@ -65,7 +65,21 @@ QList<Lane> readPartitionOverride(const QString &projectPath) {
         for (const auto &dv :
              o.value(QStringLiteral("doc_paths")).toArray()) {
             const QString d = dv.toString();
-            if (!d.isEmpty()) l.docPaths << d;
+            if (d.isEmpty()) continue;
+            // Indie-review-2026-05-14 lane-5 CR-1: anchor each
+            // doc_paths entry inside projectPath. A hostile clone's
+            // .cold-eyes/partition.json with doc_paths=["../../etc/passwd"]
+            // would otherwise be slurped on the cold_eyes_brief code
+            // path (extractCitedCodePaths) AND echoed back in the MCP
+            // response — a real disclosure vector. ANTS-1295's MCP-
+            // layer chokepoint doesn't cover this read because the
+            // path doesn't come from the MCP arg; it comes from disk.
+            // Reject absolute paths outright; canonicalise relative
+            // entries and require they resolve inside the project.
+            if (QFileInfo(d).isAbsolute()) continue;
+            const QString joined = projectPath + QChar('/') + d;
+            if (!isInsideProject(projectPath, joined)) continue;
+            l.docPaths << d;
         }
         out << l;
     }
