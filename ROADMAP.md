@@ -5225,19 +5225,31 @@ The items below identify the next batch of leverage.
   Kind: optimize.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1287] **Roadmap-query indexed parser cache.** ROADMAP.md
-  is 9000+ lines and growing. `roadmapDialog::parseBullets` walks
-  the file linearly per call; the 100 ms TTL cache in
-  `remotecontrol`'s `roadmap-query` verb only memoises the
-  PARSED result, not the section-heading index. For partial
-  queries (e.g. "give me the 0.8.0 block"), an index of
-  `{heading_text → {line_start, line_end}}` built once per
-  mtime change saves a full reparse. Pairs with the existing
-  ANTS-1125 history-archive rotation (smaller current file
-  helps too).
-  **Layman:** the roadmap dialog parses the whole 9000-line
-  file every query — keep an index of section start/end
-  lines so partial queries don't re-walk.
+- ✅ [ANTS-1287] **Roadmap-query indexed parser cache.** Shipped
+  2026-05-14. Added `RoadmapIndex` engine (Qt6::Core-only;
+  `src/roadmapindex.{h,cpp}`) producing a `{slug → {lineStart,
+  lineEnd, level}}` index of every `##`/`###` heading in
+  ROADMAP.md, plus a `sliceSection` helper. `roadmap_query`
+  gained an optional `section` slug arg — when present, the
+  verb slices the file by the section's exclusive line range
+  and reparses only that slice (heading-only walk instead of
+  full 9000-line `parseBullets` pass). Adds two cache members
+  on `RemoteControl` (`m_roadmapIndex`,
+  `m_roadmapSectionCache`), both keyed by the same path/mtime
+  as the existing bullet cache. Section mode preserves all
+  ANTS-1247 status-filter semantics; bad slug returns
+  `code=bad_section` with INV-11-parity hygiene. Migrated the
+  three roadmap-dialog file-local statics
+  (`headingLevel` / `slugifyHeading` / `uniqueSlug`) into the
+  engine so the index and `parseBullets` share a single slug
+  source of truth (INV-4). 15 new tests (8 engine + 7 MCP
+  wiring). 496/496 features green; zero regression vs
+  pre-1287 baseline. RAM budget ≤ ~50 KiB in the typical
+  case (149-entry index plus per-slug `QJsonArray` for any
+  section ever queried).
+  **Layman:** Claude can now ask for one section of the
+  roadmap and the terminal parses only that block, not the
+  whole 10K-line file.
   Kind: optimize.
   Source: indie-review-2026-05-13.
 

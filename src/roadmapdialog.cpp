@@ -3,6 +3,7 @@
 #include "coloredtabbar.h"     // for ClaudeTabIndicator::color (ToolUse yellow)
 #include "config.h"
 #include "dialogchrome.h"      // ANTS-1242 — frameless dialog chrome
+#include "roadmapindex.h"      // ANTS-1287 — canonical home for heading/slug helpers
 #include "roadmapshortcutsdialog.h"  // ANTS-1236 — `?` cheatsheet overlay
 #include "themes.h"
 #include "titlebar.h"
@@ -211,29 +212,9 @@ const DensityTier &tierFor(RoadmapDialog::Density d) {
     return kDensityTable[static_cast<int>(d)];
 }
 
-// 1..4 if `raw` is a Markdown ATX heading, else 0. On a hit, `text`
-// receives the heading content with the `# ` prefix stripped. Walk
-// shape is shared between extractToc and renderHtml so the indices
-// line up — anchor `roadmap-toc-N` refers to the N-th hit.
-int headingLevel(const QString &raw, QString *text) {
-    if (raw.startsWith(QStringLiteral("#### "))) {
-        if (text) *text = raw.mid(5);
-        return 4;
-    }
-    if (raw.startsWith(QStringLiteral("### "))) {
-        if (text) *text = raw.mid(4);
-        return 3;
-    }
-    if (raw.startsWith(QStringLiteral("## "))) {
-        if (text) *text = raw.mid(3);
-        return 2;
-    }
-    if (raw.startsWith(QStringLiteral("# "))) {
-        if (text) *text = raw.mid(2);
-        return 1;
-    }
-    return 0;
-}
+// ANTS-1287: headingLevel moved to RoadmapIndex namespace. The
+// using-declaration is at file scope (after the anonymous namespace
+// closes) — see just before parseBullets.
 
 QString tocAnchorAt(int index) {
     return QStringLiteral("roadmap-toc-%1").arg(index);
@@ -482,47 +463,15 @@ QStringList RoadmapDialog::collectCurrentBullets() const {
 // Lowercase, non-alphanumeric runs collapse to `-`, leading/trailing
 // dashes trimmed. Stable across heading reorders so persisted
 // expand-state survives section moves.
-static QString slugifyHeading(const QString &heading) {
-    QString out;
-    out.reserve(heading.size());
-    bool prevDash = true;  // skip leading dashes
-    for (QChar c : heading) {
-        const QChar n = c.toLower();
-        if (n.isLetterOrNumber()) {
-            out.append(n);
-            prevDash = false;
-        } else if (!prevDash) {
-            out.append('-');
-            prevDash = true;
-        }
-    }
-    while (out.endsWith('-')) out.chop(1);
-    return out;
-}
-
-// ANTS-1239 — heading slugs must be unique across the document so
-// per-section expand state and bullet grouping don't collapse three
-// "### Performance" h3s into one entry. Same walk-order rule applies
-// to parseBullets and renderCardsHtml, so both maintain their own
-// `seen` set and call this helper as they encounter each heading;
-// because both walk the same sourceText in the same order, they
-// agree on which Nth occurrence of "performance" maps to
-// "performance" vs "performance-2" vs "performance-3".
-static QString uniqueSlug(QSet<QString> &seen, const QString &heading) {
-    const QString base = slugifyHeading(heading);
-    if (base.isEmpty()) return base;
-    if (!seen.contains(base)) {
-        seen.insert(base);
-        return base;
-    }
-    int n = 2;
-    QString candidate;
-    do {
-        candidate = base + QStringLiteral("-") + QString::number(n++);
-    } while (seen.contains(candidate));
-    seen.insert(candidate);
-    return candidate;
-}
+// ANTS-1287: headingLevel + slugifyHeading + uniqueSlug moved to
+// RoadmapIndex. File-scope using-declarations preserve the unqualified
+// call surface for parseBullets, extractToc, renderCardsHtml.
+// slugifyHeading is not called directly from this file (uniqueSlug
+// wraps it inside the engine), but is kept here for symmetry and so
+// any future direct caller resolves to the canonical engine version.
+// See docs/specs/ANTS-1287.md § 7.
+using RoadmapIndex::headingLevel;
+using RoadmapIndex::uniqueSlug;
 
 QVector<RoadmapDialog::BulletRecord>
 RoadmapDialog::parseBullets(const QString &markdownText) {

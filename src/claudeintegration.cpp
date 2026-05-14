@@ -1263,15 +1263,21 @@ void ClaudeIntegration::onMcpConnection() {
                 // queries (~10× smaller payload).
                 QJsonObject roadmapTool;
                 roadmapTool["name"] = "roadmap_query";
+                // ANTS-1287 — `section` arg added. Description cites
+                // the partial-query saving so Claude prefers section
+                // slices when only one block is needed.
                 roadmapTool["description"] = QStringLiteral(
                     "Query the active tab's ROADMAP.md as structured "
                     "bullets. Each bullet: {id, status, headline, kind, "
                     "lanes}. Optional `status` filter — \"active\" "
                     "(📋+🚧, ~1.7 K tokens — recommended for planning "
                     "queries) / \"shipped\" (✅ only) / \"all\" (default, "
-                    "~12 K tokens). Envelope: {ok, bullets, path, count, "
-                    "filter} on success or {ok:false, error, code} on "
-                    "error.");
+                    "~12 K tokens). Optional `section` slug — returns "
+                    "only bullets within that ## or ### heading "
+                    "(e.g. \"performance\", \"080\"); response carries "
+                    "`section` echo. Envelope: {ok, bullets, path, "
+                    "count, filter, section?} on success or "
+                    "{ok:false, error, code} on error.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1287,6 +1293,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "Filter by lifecycle. \"active\" = planned + "
                         "in-progress (~7× smaller payload).");
                     props["status"] = statusProp;
+                    // ANTS-1287 — `section` slug (optional). Unknown
+                    // slug → ok:false with code=bad_section.
+                    QJsonObject sectionProp;
+                    sectionProp["type"] = "string";
+                    sectionProp["description"] = QStringLiteral(
+                        "Slug of a ## or ### heading (e.g. "
+                        "\"performance-2\"). Returns only bullets "
+                        "within that section; saves a full reparse "
+                        "for partial queries. Unknown slug → "
+                        "code=bad_section.");
+                    props["section"] = sectionProp;
                     schema["properties"] = props;
                     roadmapTool["inputSchema"] = schema;
                 }

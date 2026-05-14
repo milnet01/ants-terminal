@@ -7,6 +7,7 @@
 #include <QJsonObject>
 
 #include "auditengine.h"  // ANTS-1254 — AuditSummary value member below
+#include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
 
 class QLocalServer;
 class QLocalSocket;
@@ -218,6 +219,11 @@ private:
     mutable qint64 m_roadmapCacheMtimeMs = 0;
     mutable qint64 m_roadmapCacheStampMs = 0;  // epoch ms of last refresh
     mutable QJsonArray m_roadmapCacheBullets;
+    // ANTS-1287 — heading index + section-slice bullet cache. Shares
+    // (path, mtime, stamp) keys with the bullets cache; cleared on
+    // mtime advance or TTL expiry. See docs/specs/ANTS-1287.md § 2.3.
+    mutable QVector<RoadmapIndex::Section> m_roadmapIndex;
+    mutable QHash<QString, QJsonArray>     m_roadmapSectionCache;
     static constexpr qint64 kRoadmapCacheTtlMs = 100;
 
     QLocalServer *m_server = nullptr;

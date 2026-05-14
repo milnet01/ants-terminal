@@ -3741,8 +3741,13 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             const QJsonValue statusVal = args.value("status");
             const QString status = statusVal.isString() ? statusVal.toString() : QString();
+            // ANTS-1287 — optional `section` slug. isString() gate
+            // matches the ANTS-1247 INV-9 pattern for `status`.
+            const QJsonValue sectionVal = args.value("section");
+            const QString section = sectionVal.isString() ? sectionVal.toString() : QString();
             QJsonObject req;
             if (!status.isEmpty()) req["status"] = status;
+            if (!section.isEmpty()) req["section"] = section;
             return QString::fromUtf8(
                 m_remoteControl->cmdRoadmapQuery(req).toJson(QJsonDocument::Compact));
         });

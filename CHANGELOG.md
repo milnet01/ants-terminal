@@ -14,6 +14,36 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap-query indexed parser cache — partial-section queries
+  skip the full `parseBullets` walk (ANTS-1287).** `roadmap_query`
+  gained an optional `section` slug argument. When present, a
+  new heading-index (`RoadmapIndex::buildIndex`, Qt6::Core only,
+  in `ants_core_lib`) walks heading lines only — four
+  `startsWith` checks per line, no per-bullet allocations, no
+  regex passes — to record `{slug, headingText, level,
+  lineStart, lineEnd}` per `##`/`###` heading. The verb slices
+  the file by `[lineStart, lineEnd)` and reparses only that
+  slice via `RoadmapDialog::parseBullets`, replacing a 10K-line
+  pass with a (k-line) pass where k ≪ N for a typical theme
+  block. Two new cache members on `RemoteControl`:
+  `m_roadmapIndex` and `m_roadmapSectionCache`, both keyed by
+  the same path/mtime/stamp triple as the existing bullet
+  cache (cleared together on mtime advance or 100 ms TTL
+  expiry). Section mode preserves all ANTS-1247 status-filter
+  semantics; bad slug → `code=bad_section` with INV-11-parity
+  hygiene (64-byte cap + `< 0x20 → '?'` substitution).
+  Per-bullet `section_slug` is overwritten to the requested
+  slug post-parse (INV-7) so slice-local `uniqueSlug` state
+  cannot diverge from the full-doc slug rules. Refactor side:
+  migrated the three file-local statics in `roadmapdialog.cpp`
+  (`headingLevel`, `slugifyHeading`, `uniqueSlug`) into the
+  `RoadmapIndex` namespace so the index and `parseBullets`
+  share a single source of truth (INV-4). RAM ~12 KiB for
+  the index + on-demand `QJsonArray` per slug ever queried
+  (worst case ~+200-300 KiB). MCP tool description updated to
+  surface the new arg. Spec: `docs/specs/ANTS-1287.md`. 15 new
+  feature tests (8 engine ENG-1..ENG-7 + uniqueness walk + 7
+  MCP wiring REG-1..REG-7); ctest 481 → 496 green.
 - **`mcp__ants__token_usage` MCP telemetry tool — measure per-tool
   dispatch savings in-process (ANTS-1284).** New MCP tool reports
   per-tool token-saving telemetry for the current session:

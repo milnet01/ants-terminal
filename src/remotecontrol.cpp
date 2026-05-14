@@ -620,6 +620,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         return QJsonDocument(out);
     }
 
+    // ANTS-1287-INV-1: optional `section` slug. Empty/missing → full-file
+    // path (existing behaviour, INV-6).
+    const QString section = req.value(QStringLiteral("section")).toString();
+
     const QString path = m_main->roadmapPathForRemote();
     if (path.isEmpty()) {
         out["ok"] = false;
@@ -638,6 +642,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // still picked up within the spec's "≤ 100 ms" budget.
     // ANTS-1247-INV-6: filter never invalidates the cache; the
     // TTL/mtime check is preserved exactly.
+    // ANTS-1287-INV-5/8: section index + section-bullet cache share
+    // the same freshness predicate.
     const bool fresh = (m_roadmapCachePath == path) &&
                        (m_roadmapCacheMtimeMs == mtime) &&
                        (mtime != 0) &&
@@ -652,23 +658,148 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             return QJsonDocument(out);
         }
         const QString markdown = QString::fromUtf8(f.readAll());
-        const auto bullets = RoadmapDialog::parseBullets(markdown);
-        QJsonArray arr;
-        for (const auto &b : bullets) {
-            QJsonObject o;
-            o["id"] = b.id;
-            o["status"] = b.status;
-            o["headline"] = b.headline;
-            o["kind"] = b.kind;
-            QJsonArray lanes;
-            for (const QString &l : b.lanes) lanes.append(l);
-            o["lanes"] = lanes;
-            arr.append(o);
-        }
+        // ANTS-1287-INV-5: stale cache → wipe both bullet caches AND
+        // the heading index. Both regenerate lazily below.
+        m_roadmapIndex.clear();
+        m_roadmapSectionCache.clear();
         m_roadmapCachePath = path;
         m_roadmapCacheMtimeMs = mtime;
         m_roadmapCacheStampMs = nowMs;
-        m_roadmapCacheBullets = arr;
+
+        if (section.isEmpty()) {  // ANTS-1287-INV-6 — full-file path
+            const auto bullets = RoadmapDialog::parseBullets(markdown);
+            QJsonArray arr;
+            for (const auto &b : bullets) {
+                QJsonObject o;
+                o["id"] = b.id;
+                o["status"] = b.status;
+                o["headline"] = b.headline;
+                o["kind"] = b.kind;
+                QJsonArray lanes;
+                for (const QString &l : b.lanes) lanes.append(l);
+                o["lanes"] = lanes;
+                arr.append(o);
+            }
+            m_roadmapCacheBullets = arr;
+        } else {
+            // ANTS-1287-INV-9 — section mode does not pre-fill the
+            // full bullets cache; that path is taken lazily on the
+            // next no-section call. Build the index once.
+            m_roadmapCacheBullets = QJsonArray();
+            m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
+        }
+    }
+
+    // ANTS-1287 — section branch.
+    if (!section.isEmpty()) {
+        // INV-9: ensure we have an index even on a cache HIT taken
+        // earlier in section-less mode (and vice versa).
+        if (m_roadmapIndex.isEmpty()) {
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                out["ok"] = false;
+                out["error"] = QStringLiteral(
+                    "could not open %1 for reading").arg(path);
+                out["code"] = QStringLiteral("read_failed");
+                return QJsonDocument(out);
+            }
+            const QString markdown = QString::fromUtf8(f.readAll());
+            m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
+        }
+        const auto *sec = RoadmapIndex::findBySlug(m_roadmapIndex, section);
+        if (!sec) {
+            // ANTS-1287-INV-10 — bad_section, hygiene parity with INV-11.
+            QString verbatim = section;
+            if (verbatim.size() > 64) verbatim.truncate(64);
+            for (int i = 0; i < verbatim.size(); ++i) {
+                if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
+            }
+            out["ok"] = false;
+            out["error"] = QStringLiteral("unknown section: %1").arg(verbatim);
+            out["code"] = QStringLiteral("bad_section");
+            return QJsonDocument(out);
+        }
+
+        QJsonArray sectionBullets;
+        if (m_roadmapSectionCache.contains(sec->slug)) {
+            sectionBullets = m_roadmapSectionCache.value(sec->slug);
+        } else {
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                out["ok"] = false;
+                out["error"] = QStringLiteral(
+                    "could not open %1 for reading").arg(path);
+                out["code"] = QStringLiteral("read_failed");
+                return QJsonDocument(out);
+            }
+            const QString markdown = QString::fromUtf8(f.readAll());
+            const QString slice = RoadmapIndex::sliceSection(markdown, *sec);
+            const auto bullets = RoadmapDialog::parseBullets(slice);
+            for (const auto &b : bullets) {
+                QJsonObject o;
+                o["id"] = b.id;
+                o["status"] = b.status;
+                o["headline"] = b.headline;
+                o["kind"] = b.kind;
+                QJsonArray lanes;
+                for (const QString &l : b.lanes) lanes.append(l);
+                o["lanes"] = lanes;
+                // ANTS-1287-INV-7 — overwrite sectionSlug so all
+                // bullets in section-mode carry the requested slug,
+                // regardless of slice-local uniqueSlug state.
+                o["section_slug"] = sec->slug;
+                sectionBullets.append(o);
+            }
+            m_roadmapSectionCache.insert(sec->slug, sectionBullets);
+        }
+
+        // ANTS-1287-INV-8: status filter applies post-section.
+        QJsonArray filtered;
+        if (filter == QLatin1String("all")) {
+            filtered = sectionBullets;
+        } else {
+            const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B");
+            const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7");
+            const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");
+            for (const auto &v : std::as_const(sectionBullets)) {
+                const QString s = v.toObject().value(QStringLiteral("status")).toString();
+                const bool keep =
+                    (filter == QLatin1String("active")  && (s == plannedEmoji || s == progressEmoji)) ||
+                    (filter == QLatin1String("shipped") && (s == doneEmoji));
+                if (keep) filtered.append(v);
+            }
+        }
+        out["ok"] = true;
+        out["bullets"] = filtered;
+        out["path"] = path;
+        out["count"] = filtered.size();
+        out["filter"] = filter;
+        out["section"] = sec->slug;
+        return QJsonDocument(out);
+    }
+
+    // Full-file path may need to fill the bullets cache lazily if
+    // an earlier hit took the section path.
+    if (m_roadmapCacheBullets.isEmpty() && (m_roadmapCachePath == path) &&
+        (m_roadmapCacheMtimeMs == mtime)) {
+        QFile f(path);
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QString markdown = QString::fromUtf8(f.readAll());
+            const auto bullets = RoadmapDialog::parseBullets(markdown);
+            QJsonArray arr;
+            for (const auto &b : bullets) {
+                QJsonObject o;
+                o["id"] = b.id;
+                o["status"] = b.status;
+                o["headline"] = b.headline;
+                o["kind"] = b.kind;
+                QJsonArray lanes;
+                for (const QString &l : b.lanes) lanes.append(l);
+                o["lanes"] = lanes;
+                arr.append(o);
+            }
+            m_roadmapCacheBullets = arr;
+        }
     }
 
     // ANTS-1247-INV-2/3: filter the cached array post-cache.
