@@ -106,7 +106,13 @@ static const QStringList &knownPermissions() {
 }
 
 static void parseManifestInto(PluginInfo &info, const QJsonObject &obj) {
-    info.name = obj["name"].toString(info.name);
+    // Indie-review-2026-05-14 lane-6 C-1: do NOT let the manifest
+    // override `info.name`. The on-disk directory name is the safe
+    // primary key — it gates the grant store, the engine registry,
+    // and the permission prompt. A spoofed manifest name would let an
+    // attacker plugin inherit another plugin's grants. The optional
+    // human-readable form lives in `displayName` instead.
+    info.displayName = obj["name"].toString(info.name);
     info.description = obj["description"].toString();
     info.version = obj["version"].toString("0.1.0");
     info.author = obj["author"].toString();

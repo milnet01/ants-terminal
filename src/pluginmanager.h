@@ -12,7 +12,8 @@
 class QFileSystemWatcher;
 
 struct PluginInfo {
-    QString name;
+    QString name;          // On-disk directory name — primary key (security-critical)
+    QString displayName;   // Human-readable label from manifest "name" field (ANTS-1295 indie-review C-1)
     QString description;
     QString version;
     QString author;
