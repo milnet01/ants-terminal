@@ -3913,6 +3913,14 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdColdEyesFoldIn(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1283 — session_memory KV.
+    m_claudeIntegration->registerToolProvider("session_memory",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdSessionMemory(args).toJson(QJsonDocument::Compact));
+        });
+
     // Start hook server
     m_claudeIntegration->startHookServer();
 }

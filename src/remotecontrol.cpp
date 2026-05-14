@@ -7,6 +7,7 @@
 #include "indiereviewengine.h"
 #include "mainwindow.h"
 #include "plantemplateengine.h"
+#include "sessionmemoryengine.h"
 #include "tokenusageengine.h"
 #include "roadmapdialog.h"
 #include "roadmapfoldin.h"
@@ -3040,5 +3041,124 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     env["allocated_ids"] = idsArr;
     env["written"]       = written;
     if (!heading.isEmpty()) env["release_block_heading"] = heading;
+    return QJsonDocument(env);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-1283 — session_memory MCP tool
+// ---------------------------------------------------------------------------
+//
+// Per-cwd key-value persistence backed by
+// ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json. Pure delegation to
+// SessionMemoryEngine::execute. INV-12 echo hygiene applied to every
+// user-supplied string echoed in error responses. See
+// docs/specs/ANTS-1283.md.
+
+namespace {
+
+QString smSanitiseEcho(const QString &raw) {
+    QString verbatim = raw;
+    verbatim.truncate(64);
+    QString out;
+    out.reserve(verbatim.size());
+    for (int i = 0; i < verbatim.size(); ++i) {
+        out.append(verbatim.at(i).unicode() < 0x20 ? QChar('?')
+                                                  : verbatim.at(i));
+    }
+    return out;
+}
+
+QJsonObject smErr(const QString &code, const QString &msg,
+                  const QString &opStr, const QString &keyEcho) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["code"]  = code;
+    o["error"] = msg;
+    if (!opStr.isEmpty())   o["op"]   = opStr;
+    if (!keyEcho.isEmpty()) o["echo"] = smSanitiseEcho(keyEcho);
+    return o;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(smErr(
+        QStringLiteral("no_window"),
+        QStringLiteral("session_memory: no MainWindow"),
+        QString(), QString()));
+
+    // INV-13 — cwd argument optional; default = focused project root.
+    QString cwd = req.value(QStringLiteral("cwd")).toString();
+    if (cwd.isEmpty()) cwd = resolveRootCanonical(m_main);
+    if (cwd.isEmpty()) return QJsonDocument(smErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("session_memory: cwd is empty and no focused project"),
+        QString(), QString()));
+    cwd = QFileInfo(cwd).canonicalFilePath();
+    if (cwd.isEmpty()) return QJsonDocument(smErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("session_memory: cwd does not canonicalise"),
+        QString(), QString()));
+
+    const QString opRaw = req.value(QStringLiteral("op")).toString();
+    SessionMemoryEngine::Op op = SessionMemoryEngine::Op::Get;
+    if (!SessionMemoryEngine::parseOp(opRaw, &op)) {
+        return QJsonDocument(smErr(
+            QStringLiteral("bad_op"),
+            QStringLiteral("session_memory: op must be one of "
+                           "\"get\", \"set\", \"delete\", \"list\""),
+            QString(), opRaw));
+    }
+
+    const QString    key   = req.value(QStringLiteral("key")).toString();
+    const QJsonValue value = req.value(QStringLiteral("value"));
+
+    // INV-9 — handler-side check for required key/value past schema.
+    const bool needsKey = (op != SessionMemoryEngine::Op::List);
+    if (needsKey && key.isEmpty()) {
+        return QJsonDocument(smErr(
+            QStringLiteral("bad_key"),
+            QStringLiteral("session_memory: key required for get/set/delete"),
+            opRaw, key));
+    }
+    if (op == SessionMemoryEngine::Op::Set && value.isUndefined()) {
+        return QJsonDocument(smErr(
+            QStringLiteral("bad_value"),
+            QStringLiteral("session_memory: value required for set"),
+            opRaw, key));
+    }
+
+    const SessionMemoryEngine::OpResult r =
+        SessionMemoryEngine::execute(cwd, op, key, value);
+
+    if (!r.ok) {
+        QJsonObject env = smErr(r.code, r.error, r.op, r.key);
+        if (!r.path.isEmpty()) env["path"] = r.path;
+        return QJsonDocument(env);
+    }
+
+    QJsonObject env;
+    env["ok"]          = true;
+    env["op"]          = r.op;
+    env["path"]        = r.path;
+    env["total_bytes"] = static_cast<qint64>(r.totalBytes);
+    switch (op) {
+        case SessionMemoryEngine::Op::Get:
+            env["key"]   = r.key;
+            env["found"] = r.found;
+            if (r.found) env["value"] = r.value;
+            break;
+        case SessionMemoryEngine::Op::Set:
+            env["key"]           = r.key;
+            env["bytes_written"] = static_cast<qint64>(r.bytesWritten);
+            break;
+        case SessionMemoryEngine::Op::Delete:
+            env["key"]   = r.key;
+            env["found"] = r.found;
+            break;
+        case SessionMemoryEngine::Op::List:
+            env["keys"] = r.keys;
+            break;
+    }
     return QJsonDocument(env);
 }

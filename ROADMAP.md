@@ -5137,19 +5137,24 @@ The items below identify the next batch of leverage.
 
 #### 🔌 MCP ergonomics — caller polish
 
-- 📋 [ANTS-1283] **MCP session memory KV (per-cwd persistence).** A
-  small key-value store the MCP server backs to
-  `~/.cache/ants-terminal/mcp-state/<cwd-hash>.json`. Values
-  include "last audit timestamp", "last partition snapshot",
-  "files we know are zombie-free", "claude-code subagent
-  binary path on this machine", etc. Lets cross-session
-  knowledge persist without re-deriving. Read/write via
-  `mcp__ants__session_memory op=(get|set|list) key=... value=...`.
-  Bounded by a 100 KiB-per-cwd cap to avoid drift becoming a
-  privacy/disk concern.
-  **Layman:** give the MCP a small notepad it remembers across
-  Claude sessions so it doesn't have to re-do detection /
-  caching work every time.
+- ✅ [ANTS-1283] **MCP session memory KV (per-cwd persistence).**
+  Shipped 2026-05-14. Engine `src/sessionmemoryengine.{h,cpp}` in
+  `ants_core_lib` (Qt6::Core only). New MCP tool
+  `mcp__ants__session_memory` with `op = get / set / delete /
+  list`, backed by `~/.cache/ants-terminal/mcp-state/`
+  `<cwd-hash>.json` (16-hex SHA-256 of canonical cwd, mode 0700
+  dir / 0600 file, atomic `QSaveFile` writes). 100 KiB total
+  cap per cwd (INV-2) + 16 KiB per-value cap (INV-8) +
+  `^[A-Za-z0-9._-]{1,64}$` key validation (INV-7). `list`
+  returns keys-only (INV-5) — values never re-leak over the
+  wire. Corrupt-on-disk stores treated as empty (INV-11) so
+  hand-edit accidents don't lose other keys. Handler-side
+  enforcement of required `key` / `value` past schema-only
+  `required:["op"]` (INV-9). Spec: `docs/specs/ANTS-1283.md`
+  (cold-eyes loops 1 + 2 CLEAN). 16 new feature tests
+  (10 engine ENG-1..ENG-10 + 6 MCP wiring REG-1..REG-6).
+  Pairs with ANTS-1286 (audit tool-detection cache backend)
+  and the deferred caching pieces of ANTS-1289.
   Kind: implement.
   Source: indie-review-2026-05-13.
 

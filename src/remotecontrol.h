@@ -207,6 +207,12 @@ public:
     QJsonDocument cmdColdEyesCrossDocDiff(const QJsonObject &req);
     QJsonDocument cmdColdEyesFoldIn(const QJsonObject &req);
 
+    // ANTS-1283 — session_memory KV. Per-cwd key-value persistence to
+    // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json. Pure
+    // delegation to SessionMemoryEngine::execute. See
+    // docs/specs/ANTS-1283.md.
+    QJsonDocument cmdSessionMemory(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

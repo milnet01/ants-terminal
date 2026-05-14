@@ -227,6 +227,7 @@ add_library(ants_core_lib STATIC
     src/verifyengine.cpp
     src/plantemplateengine.cpp
     src/tokenusageengine.cpp
+    src/sessionmemoryengine.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
@@ -825,7 +826,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_plan_template_tool/test_mcp_plan_template_tool.cpp
                 tests/features/mcp_token_usage_tool/test_mcp_token_usage_tool.cpp
                 tests/features/mcp_roadmap_section_slice/test_mcp_roadmap_section_slice.cpp
-                tests/features/mcp_cold_eyes/test_mcp_cold_eyes.cpp)
+                tests/features/mcp_cold_eyes/test_mcp_cold_eyes.cpp
+                tests/features/mcp_session_memory/test_mcp_session_memory.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -903,7 +905,8 @@ if(ANTS_TESTS)
                 tests/features/plan_template_engine/test_plan_template_engine.cpp
                 tests/features/token_usage_engine/test_token_usage_engine.cpp
                 tests/features/roadmap_index_engine/test_roadmap_index_engine.cpp
-                tests/features/cold_eyes_engine/test_cold_eyes_engine.cpp)
+                tests/features/cold_eyes_engine/test_cold_eyes_engine.cpp
+                tests/features/session_memory_engine/test_session_memory_engine.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

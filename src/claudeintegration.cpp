@@ -2188,6 +2188,65 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1283 — session_memory KV. Per-cwd key-value
+                // persistence backed by
+                // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json.
+                // Pure delegation to SessionMemoryEngine::execute.
+                {
+                    QJsonObject t;
+                    t["name"] = "session_memory";
+                    t["description"] = QStringLiteral(
+                        "Per-cwd key-value store the MCP server backs "
+                        "to ~/.cache/ants-terminal/mcp-state/"
+                        "<cwd-hash>.json. Use for cross-session "
+                        "caches: last audit timestamp, partition "
+                        "snapshots, tool-detection results. 100 KiB "
+                        "cap per cwd; 16 KiB cap per value. Required: "
+                        "op (\"get\"/\"set\"/\"delete\"/\"list\"). "
+                        "key required for get/set/delete; value "
+                        "required for set. See "
+                        "docs/specs/ANTS-1283.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject opProp;
+                    opProp["type"] = "string";
+                    QJsonArray   opEnum;
+                    opEnum.append(QStringLiteral("get"));
+                    opEnum.append(QStringLiteral("set"));
+                    opEnum.append(QStringLiteral("delete"));
+                    opEnum.append(QStringLiteral("list"));
+                    opProp["enum"] = opEnum;
+                    opProp["description"] = QStringLiteral(
+                        "Operation: get / set / delete / list.");
+                    QJsonObject keyProp;
+                    keyProp["type"] = "string";
+                    keyProp["description"] = QStringLiteral(
+                        "Key, ^[A-Za-z0-9._-]{1,64}$. Required for "
+                        "get/set/delete.");
+                    QJsonObject valProp;
+                    // No type constraint — any JSON value accepted.
+                    valProp["description"] = QStringLiteral(
+                        "Any JSON value (≤ 16 KiB serialised). "
+                        "Required for set.");
+                    QJsonObject cwdProp;
+                    cwdProp["type"] = "string";
+                    cwdProp["description"] = QStringLiteral(
+                        "Optional cwd override (default = focused "
+                        "project root). Treated as a hash input, "
+                        "not a permission check.");
+                    QJsonObject props;
+                    props["op"]    = opProp;
+                    props["key"]   = keyProp;
+                    props["value"] = valProp;
+                    props["cwd"]   = cwdProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("op"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
 
                 result["tools"] = tools;
                 haveResult = true;

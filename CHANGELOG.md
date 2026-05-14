@@ -14,6 +14,32 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_memory` MCP key-value store — per-cwd persistence
+  across Claude Code sessions (ANTS-1283).** New
+  `mcp__ants__session_memory` tool with `op = get / set / delete /
+  list`, backed by `~/.cache/ants-terminal/mcp-state/<cwd-hash>.json`
+  (16-hex SHA-256 of the canonical cwd, mode 0700 dir / 0600 file).
+  Lets the assistant cache "last audit timestamp", "tool-detection
+  results", and similar facts without re-deriving them every
+  session. Values can be any JSON type; flat schema (callers use
+  `.`/`_` for grouping in keys). Bounded by a 100 KiB total cap per
+  cwd (INV-2) and a 16 KiB per-value cap (INV-8); `set` past either
+  returns `cap_exceeded` / `bad_value`. Writes are atomic via
+  `QSaveFile` (temp + rename); corrupt stores load as empty
+  (INV-11) so a hand-edit mistake doesn't lose other keys. Keys
+  validated against `^[A-Za-z0-9._-]{1,64}$` (INV-7) — rejects
+  path-traversal and control chars up front. `list` returns
+  `[{key, bytes}, ...]` with no inline values (INV-5) — a "give me
+  a listing" call can't accidentally return 100 KiB of caller state
+  back through the wire. Engine
+  `src/sessionmemoryengine.{h,cpp}` lives in `ants_core_lib`
+  (Qt6::Core only); RemoteControl handler delegates entirely to
+  `SessionMemoryEngine::execute`. Pairs with ANTS-1286 (audit
+  tool-detection cache backend) and the deferred "did anything
+  change?" caching of ANTS-1289. Spec: `docs/specs/ANTS-1283.md`
+  (cold-eyes loops 1 + 2 CLEAN). 16 new feature tests (10 engine
+  ENG-1..ENG-10 + 6 MCP wiring REG-1..REG-6).
+
 - **`/cold-eyes` MCP fold-in — mechanical doc-walk + cross-doc
   diff server-side (ANTS-1319).** Mirror to ANTS-1112 / ANTS-1113
   fold-in pattern. Four new MCP tools host the mechanical phases
