@@ -363,8 +363,9 @@ The plugin Lua environment has the following libraries **removed** before
 - `string.dump` — no Lua bytecode emission (Lua 5.4 has no
   bytecode verifier; bytecode-load attacks are the
   CVE-2014-5461 class). The runtime nils this in
-  `LuaEngine::stripDangerousGlobals` even though `load` /
-  `loadstring` are also gone — defence in depth.
+  `LuaEngine::sandboxEnvironment` even though `load` is already
+  gone — defence in depth. (Lua 5.4 removed `loadstring`
+  entirely; it's not present on the runtime to remove.)
 - `require`, `package` — no module imports
 - `debug` — no stack/frame introspection
 - `coroutine` — no coroutines (a prior sandbox-escape vector)
