@@ -23,11 +23,21 @@ namespace AuditEngine {
 // engine's anonymous-namespace local + AuditDialog's static. The
 // shapes detected drifted between them. Single definition now.)
 bool isCatastrophicRegex(const QString &pattern) {
-    // Matches the dialog's pre-unification shape — broader than
-    // the engine-local version (catches `(a+b)*` plus `(a|b)+`).
-    static const QRegularExpression nested(
+    // Shape A — quantifier-under-quantifier inside a group:
+    // `(.+)+`, `(a*)+`, `(a+b)*`, etc.
+    static const QRegularExpression nestedQuant(
         QStringLiteral(R"(\([^()]*[+*][^()]*\)[?*+])"));
-    return nested.match(pattern).hasMatch();
+    // Indie-review-2026-05-14 lane-4 M4 — Shape B —
+    // alternation-under-quantifier inside a group: `(a|b)+`,
+    // `(a|aa)*`, `(x|y|z)+`. The pre-fix detector advertised in
+    // its comment that it catches these too, but the regex above
+    // requires `[+*]` inside the parens — alternation alone
+    // wouldn't match. PCRE2's LIMIT_MATCH was the only guard.
+    // Now the conservative detector matches its docstring.
+    static const QRegularExpression altQuant(
+        QStringLiteral(R"(\([^()]*\|[^()]*\)[?*+])"));
+    return nestedQuant.match(pattern).hasMatch()
+           || altQuant.match(pattern).hasMatch();
 }
 
 // Wrap a user-supplied regex with PCRE2's inline LIMIT_MATCH so a
