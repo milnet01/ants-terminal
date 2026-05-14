@@ -12,6 +12,135 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔍 Indie-review fold-in (2026-05-14)
+
+Six-lane independent code review across the full src/ tree;
+17 verified findings folded in below. Cross-cutting theme: a
+recurring "comment promises A, code does B" defense-in-depth gap
+across the recent security work — the comment-level contract was
+correct, the implementation was one step short. All fixes shipped
+as their own per-finding commits so the institutional memory of
+why each was caught is preserved in `git log`. Threat-model
+calibration: project is single-user same-UID, but the hostile-
+clone trust boundary documented in ANTS-1294 / ANTS-1295 escalates
+hostile-content findings.
+
+#### 🔒 Tier 1 — security + correctness
+
+- **Plugin-manifest name spoofing closed (lane-6 C-1).**
+  `parseManifestInto` previously let the manifest's `name` field
+  overwrite the on-disk directory name; the same field then keyed
+  the grant store, the engine registry, and the permission prompt.
+  A plugin shipping a manifest named "trusted-plugin" would have
+  inherited any grants the user gave the legitimate trusted-plugin
+  AND silently evicted that plugin's engine pointer. Pinned
+  `info.name = pluginDirName`; manifest "name" now lives in
+  `PluginInfo::displayName` for UI use only.
+- **Cold-eyes `doc_paths` cwd anchor (lane-5 CR-1).** Pre-fix, a
+  hostile clone's `.cold-eyes/partition.json` with
+  `doc_paths=["../../../etc/passwd"]` was slurped on the
+  `cold_eyes_brief` path AND echoed back in the MCP response.
+  Outside the ANTS-1295 MCP-layer chokepoint because the path
+  comes from a disk-resident config, not the MCP arg. Added the
+  engine-level `isInsideProject` anchor on read.
+- **`cmdDebtSweepApplyFix` TOCTOU closed (lane-2 H1).** After
+  `validatePath` approved the `file` arg, the handler passed the
+  raw user input to `DebtSweepEngine::applyMechanicalFix`, leaving
+  a symlink-swap window between canonicalisation and the engine's
+  `QFile::open()`. Now passes a project-relative form derived from
+  `check.resolved` so the engine opens the canonical target.
+- **PTY FD-close `RLIM_INFINITY` fall-through (lane-2 M5).**
+  Pre-fix, when `getrlimit` returned `RLIM_INFINITY` the close-loop
+  fell through to `maxFd=1024`, silently leaking FDs ≥ 1024 into
+  the forked child — the exact regression ANTS-1217 added the
+  fallback to prevent. Linux containers / systemd-user services
+  ship with `RLIM_INFINITY` legitimately. Treat it as "use the
+  documented 65536 ceiling."
+- **OSC 8 close-on-resize matches its comment (lane-1 H2).**
+  Pre-fix, `TerminalGrid::resize` had a comment claiming "close
+  the active hyperlink on any resize" but the code only clamped
+  the start coords — and the clamp itself reintroduced the
+  stale-coordinate bug the comment warned against. Now actually
+  closes (resets `m_hyperlinkActive` / `m_hyperlinkUri` /
+  `m_hyperlinkId` / start coords). Spec + test updated to match.
+- **`session_memory` distinct-key count cap (lane-5 HI-4).** Byte
+  caps didn't bound the QJsonObject member count; a 100k×1-byte
+  store would dominate List-op sort cost. Added `kMaxStoreKeys=1024`.
+- **`wrapMcpData` toolName escaping + case-insensitive close-tag
+  variants (lane-3 M1, lane-5 ME-2).** Defense-in-depth: escape
+  `< > " &` in the `tool=` attribute (today the registry guarantees
+  the name matches `^[a-z][a-z0-9_]+$`, but the helper is
+  public-static and reachable from any future caller). Neutralise
+  `</ANTS_MCP_DATA>` / `</ ants_mcp_data >` etc. variants alongside
+  the strict-case form — some assistant tokenisers normalise case
+  + whitespace before pattern matching.
+- **`processHookEvent` session-id order (lane-3 M3).** Pre-fix,
+  `m_lastHookSessionId` was set before the cold-start drop check,
+  so a dropped sibling-tab event still leaked its session-id into
+  the singleton's routing field; a `PermissionRequest` arriving
+  in the same window could route to the wrong tab. Commit
+  `m_lastHookSessionId` only after the drop check passes.
+- **Hook-server idle timer pinned as non-restartable (lane-3 H1).**
+  Load-bearing comment forbidding `idleTimer->start()` inside
+  `readyRead` — the 5 s cap is the only wall-clock bound on a
+  hook RPC; a peer dribbling 1 byte every 4.9 s with
+  restart-on-read would hold the connection indefinitely.
+  Comment-only fix; no behaviour change.
+
+#### 🔒 Tier 2 — hardening + correctness
+
+- **`kRcUnavailable` envelope `code` field (lane-5 HI-3).** The
+  ~25 MCP tools that fall through to this envelope when remote-
+  control isn't initialised now emit
+  `{"ok":false,"error":"remote-control unavailable","code":"no_remote_control"}`
+  — matches the uniform envelope shape every other tool uses.
+- **SARIF live `isSuppressed` lookup (lane-4 H1 + H2).** Pre-fix,
+  `exportSarif` read the cached `f.suppressed` flag stamped at
+  parse-time; HTML/UI paths already use the live `isSuppressed`
+  lookup. A user clicking "suppress" mid-session and immediately
+  exporting SARIF lost the `result.suppressions[]` record. Brings
+  SARIF into parity. Closes the H2 mypy-stub-hint case too (same
+  emit loop).
+- **`isCatastrophicRegex` alternation-under-quantifier (lane-4 M4).**
+  Pre-fix detector advertised in its comment that it catches
+  `(a|b)+` shapes — but the regex required `[+*]` inside the
+  parens, so alternation alone didn't match. Now matches both
+  `(a*)+` and `(a|b)+` shapes upfront instead of relying on the
+  PCRE2 `LIMIT_MATCH` step-cap alone.
+- **SGR 58 ITU colon-form (lane-1 H4).** Routed the 2-introducer
+  branch through `parseRGBColor` so `CSI 58:2::r:g:b m` (Neovim/
+  Kitty underline-color canonical form with empty-colorspace slot)
+  parses correctly. Pre-fix it produced r=0, g=R, b=G — missing
+  blue, wrong color.
+- **Roadmap URL handler scheme tightening (lane-6 H-2).**
+  `handleAnchorClicked`'s non-ants branch now only treats the link
+  as an internal-anchor jump when scheme + host are both empty.
+  `setOpenLinks(false)` already drops external URLs today, but
+  the design accepted attacker-controlled fragment strings from a
+  hostile cloned ROADMAP.md — a future-proofing fix.
+
+#### ⚡ Tier 3 — quality + maintainability
+
+- **Plugin stale-grant filter on manifest shrink (lane-6 M-2).**
+  If a plugin shrunk its requested permissions between sessions,
+  the no-prompt branch still granted the old (larger) set
+  verbatim. Filter `granted = saved ∩ info.permissions` — symmetric
+  with the prompt branch (which has done this since the
+  2026-04-27 indie-review).
+- **Lua `print()` redirected to `ants.log` (lane-6 M-3).** PLUGINS.md
+  claimed `print()` was routed to `ants.log` — but nothing actually
+  overrode the base-lib `print`, so plugin output went to host
+  stdout (terminal stdout or systemd journal). Override the `print`
+  global; doc claim now accurate.
+- **Roadmap dialog AT-SPI names (lane-6 M-4).** Added
+  `setAccessibleName` on `m_searchBox`, `m_toc`, and `m_viewer`.
+  Pre-fix, Orca/NVDA landed on an unnamed read-only document when
+  tabbing through. Per `docs/standards/documentation.md § 7
+  Accessibility`.
+- **PLUGINS.md sandbox doc drift (lane-6 M-1).** Function name
+  `stripDangerousGlobals` → `sandboxEnvironment`; removed the
+  misleading `loadstring` reference (Lua 5.4 has no `loadstring`).
+
 ### Security
 
 - **Per-tool cwd-anchor enforcement on path-accepting MCP tools
