@@ -2279,7 +2279,20 @@ void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
         // Internal-anchor jumps (`#roadmap-toc-N`) come through here
         // too because setOpenLinks(false) routes ALL anchor clicks
         // to this signal. Pass them to scrollToAnchor.
-        if (m_viewer && !link.fragment().isEmpty()) {
+        //
+        // Indie-review-2026-05-14 lane-6 H-2: only treat the link as
+        // an internal-anchor jump when it really is one — scheme +
+        // host both empty, fragment non-empty. A hostile ROADMAP.md
+        // shipping `[click](https://attacker.example/#evil)` would
+        // otherwise feed an attacker-controlled fragment string into
+        // scrollToAnchor. scrollToAnchor is safe today (no JS / no
+        // IO) but accepting arbitrary external schemes silently
+        // turns this handler into an attack surface the moment a
+        // future maintainer extends it (e.g. logging or opening the
+        // link "for convenience").
+        const bool isInternalAnchor = link.scheme().isEmpty()
+                                       && link.host().isEmpty();
+        if (m_viewer && isInternalAnchor && !link.fragment().isEmpty()) {
             m_viewer->scrollToAnchor(link.fragment());
         }
         return;
