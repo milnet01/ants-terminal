@@ -91,20 +91,28 @@ TEST(McpOutputSanitisation, CloseTagStripMultiple) {
         << "three embedded close tags must all be neutralised";
 }
 
-// INV-5 — case-sensitive replacement; variants left intact.
-TEST(McpOutputSanitisation, CaseSensitive) {
+// INV-5 (post-indie-review-2026-05-14 lane-5 ME-2) — case/whitespace
+// variants of the close tag are ALSO neutralised, because some
+// assistant tokenisers normalise case/whitespace before pattern
+// matching. The strict-case sentinel is no longer the only line of
+// defence. Variants are replaced with the same `<ants_mcp_data_escaped/>`
+// sentinel as the literal form.
+TEST(McpOutputSanitisation, CaseAndWhitespaceVariantsNeutralised) {
     const QString wrapped = ClaudeIntegration::wrapMcpData(
         QStringLiteral("get_text"),
         QStringLiteral("upper</ANTS_MCP_DATA>spaced</ ants_mcp_data >"
                        "padded</ants_mcp_data >tail"));
 
-    // No replacement: variants stay in the payload.
-    EXPECT_TRUE(wrapped.contains(QStringLiteral("</ANTS_MCP_DATA>")));
-    EXPECT_TRUE(wrapped.contains(QStringLiteral("</ ants_mcp_data >")));
-    EXPECT_TRUE(wrapped.contains(QStringLiteral("</ants_mcp_data >")));
-    EXPECT_EQ(wrapped.count(QStringLiteral("<ants_mcp_data_escaped/>")), 0);
+    // Three variants → three sentinels. The variants themselves are
+    // gone (replaced) from the payload body.
+    EXPECT_FALSE(wrapped.contains(QStringLiteral("</ANTS_MCP_DATA>")));
+    EXPECT_FALSE(wrapped.contains(QStringLiteral("</ ants_mcp_data >")));
+    // The literal `</ants_mcp_data >` may overlap with the close-tag
+    // detection — make sure the wrap still has exactly one terminator.
+    EXPECT_EQ(wrapped.count(QStringLiteral("<ants_mcp_data_escaped/>")), 3);
     // The wrap itself still terminates cleanly with the exact tag.
     EXPECT_TRUE(wrapped.endsWith(QStringLiteral("</ants_mcp_data>")));
+    EXPECT_EQ(wrapped.count(QStringLiteral("</ants_mcp_data>")), 1);
 }
 
 // INV-4 — payload with no close-tag substring round-trips intact.

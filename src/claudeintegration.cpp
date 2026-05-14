@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QProcessEnvironment>
 #include <QSaveFile>
@@ -1015,7 +1016,13 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     // the correct per-shell tracker entry by session. The hook server
     // is a single UDS shared across every Claude under any tab, so
     // without this routing the UI would always flag the active tab.
-    m_lastHookSessionId = event.value("session_id").toString();
+    //
+    // Indie-review-2026-05-14 lane-3 M3: read the incoming session_id
+    // into a local first; only commit to m_lastHookSessionId AFTER the
+    // cold-start drop check. Pre-fix, a dropped sibling-tab event still
+    // mutated the singleton's last-seen-session, so a PermissionRequest
+    // arriving in the same window could route to the wrong tab.
+    const QString incomingSessionId = event.value("session_id").toString();
 
     // ANTS-1161 — pre-fix, sibling-tab hooks clobbered m_state and
     // emitted stateChanged on the singleton, painting "Claude: bash"
@@ -1023,7 +1030,7 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     // every state-mutating branch on the event belonging to the
     // focused tab. PermissionRequest stays ungated because its slot
     // routes via m_lastHookSessionId, not via the singleton state.
-    const bool isFocused = isFocusedTabSession(m_lastHookSessionId);
+    const bool isFocused = isFocusedTabSession(incomingSessionId);
 
     // Indie-review 2026-05-13: cold-start tightening. During the 1-3s
     // window between setShellPid()'s synchronous m_transcriptPath
@@ -1041,11 +1048,14 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
         if (DebugLog::enabled(DebugLog::Claude)) {
             ANTS_LOG(DebugLog::Claude,
                      "hook-drop (cold-start): session=%s hook=%s",
-                     m_lastHookSessionId.toUtf8().constData(),
+                     incomingSessionId.toUtf8().constData(),
                      hookName.toUtf8().constData());
         }
-        return;
+        return;  // Drop without leaking session-id into routing field.
     }
+
+    // The event passed the cold-start gate; commit to last-seen.
+    m_lastHookSessionId = incomingSessionId;
 
     if (hookName == "SessionStart") {
         if (!isFocused) return;
@@ -2358,8 +2368,28 @@ QString ClaudeIntegration::wrapMcpData(const QString &toolName,
     QString sanitised = payload;
     sanitised.replace(QStringLiteral("</ants_mcp_data>"),
                       QStringLiteral("<ants_mcp_data_escaped/>"));
+    // Indie-review-2026-05-14 lane-5 ME-2: case/whitespace variants
+    // (e.g. `</ANTS_MCP_DATA>`, `</ ants_mcp_data >`) — some assistant
+    // tokenisers normalise tag casing and whitespace before pattern
+    // matching, so the strict-case sentinel from above isn't enough.
+    // QRegularExpression i-flag + tolerant whitespace.
+    static const QRegularExpression closeTagVariantRe(
+        QStringLiteral(R"(</\s*ants_mcp_data\s*>)"),
+        QRegularExpression::CaseInsensitiveOption);
+    sanitised.replace(closeTagVariantRe,
+                      QStringLiteral("<ants_mcp_data_escaped/>"));
+    // Indie-review-2026-05-14 lane-3 M1: defensive escaping of the
+    // tool-name attribute. The current registry guarantees the name
+    // matches `^[a-z][a-z0-9_]+$` so this is paranoia today, but the
+    // helper is public-static and reachable from any future caller;
+    // a `"` / `>` / `<` / `&` slipping through would break the wrap.
+    QString safeTool = toolName;
+    safeTool.replace(QLatin1Char('&'),  QStringLiteral("&amp;"));
+    safeTool.replace(QLatin1Char('<'),  QStringLiteral("&lt;"));
+    safeTool.replace(QLatin1Char('>'),  QStringLiteral("&gt;"));
+    safeTool.replace(QLatin1Char('"'),  QStringLiteral("&quot;"));
     return QStringLiteral("<ants_mcp_data tool=\"%1\">%2</ants_mcp_data>")
-        .arg(toolName, sanitised);
+        .arg(safeTool, sanitised);
 }
 
 // --- Project / Session Discovery ---
