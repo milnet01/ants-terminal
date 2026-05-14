@@ -202,6 +202,17 @@ as a type and flags every signal emission.
 - Scrollback default 50k, max 1M.
 - Theme colors set on `TerminalGrid`; ANSI palette (16+216+24) lives there.
 - QTextLayout for ligature shaping.
+- **MCP `tools/call` responses are wrapped (ANTS-1294).** Every
+  reply through the registry at `src/mainwindow.cpp:3671–3917` is
+  enclosed in `<ants_mcp_data tool="…">…</ants_mcp_data>` at the
+  dispatch site in `src/claudeintegration.cpp:processTools`. The
+  wrap signals "this is data, not instructions" to the consuming
+  assistant. Control-plane tools (`get_session_info`,
+  `token_usage`) bypass the wrap — their JSON envelope is
+  structural metadata, not content. If you add a tool whose
+  response includes text from disk, scrollback, or user input,
+  register it normally; the dispatch site wraps it automatically.
+  See `docs/specs/ANTS-1294.md`.
 
 ## Project standards
 

@@ -12,6 +12,37 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Security
+
+- **MCP output sanitisation — frame user-supplied content as data,
+  not instructions (ANTS-1294).** Every `tools/call` response that
+  flows through the registry at `src/mainwindow.cpp:3671–3917` is
+  now wrapped in `<ants_mcp_data tool="…">…</ants_mcp_data>` at
+  the single dispatch chokepoint in
+  `src/claudeintegration.cpp:processTools`. The wrap is a syntactic
+  signal to a consuming Claude session that the enclosed content
+  is data — a hostile commit message in
+  `mcp__ants__get_git_status`, a prompt-injection string in
+  scrollback returned by `mcp__ants__get_text`, or a malicious
+  ROADMAP.md hosted in a third-party repo no longer reads as
+  ambient prose. Embedded `</ants_mcp_data>` substrings in a
+  payload are neutralised with a `<ants_mcp_data_escaped/>`
+  sentinel so the wrap cannot be closed by hostile content.
+  Control-plane tools (`get_session_info`, `token_usage`) bypass
+  the wrap — their JSON envelope is server-generated structural
+  metadata, not user content. 29 of the 31 dispatched tools are
+  wrapped; the two exemptions are listed at the dispatch site.
+  Per-call wrap cost ≤ 5 µs on typical 1–10 KiB payloads; wire
+  overhead ≤ ~40 B per response (negligible against the
+  `est_tokens_saved` figures reported by `mcp__ants__token_usage`).
+  Spec: `docs/specs/ANTS-1294.md` (cold-eyes loops 1 + 2 CLEAN).
+  12 new feature tests
+  (`tests/features/mcp_output_sanitisation/`) — 7 engine cases
+  exercising the wrap helper directly + 5 wiring cases pinning
+  the dispatch site and CLAUDE.md "Conventions" documentation.
+  Pairs with ANTS-1295 (per-tool cwd-anchor enforcement —
+  separate ticket, distinct defense layer).
+
 ### Added
 
 - **Audit tool-detection cache (ANTS-1286).** New

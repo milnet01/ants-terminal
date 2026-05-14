@@ -2292,11 +2292,24 @@ void ClaudeIntegration::onMcpConnection() {
                 }
 
                 if (toolHandled) {
-                    result["content"] = makeTextContent(responseText);
+                    // ANTS-1294 — frame user-supplied content as data,
+                    // not instructions. Control-plane tools (server-
+                    // generated state) skip the wrap so a caller can
+                    // syntactically distinguish structural metadata
+                    // from content. See docs/specs/ANTS-1294.md.
+                    const bool isControlPlane =
+                        (toolName == QStringLiteral("get_session_info") ||
+                         toolName == QStringLiteral("token_usage"));
+                    const QString wrapped = isControlPlane
+                        ? responseText
+                        : wrapMcpData(toolName, responseText);
+                    result["content"] = makeTextContent(wrapped);
                     // ANTS-1284 — record dispatch for token_usage report.
+                    // Byte counts measure the wrapped payload (what
+                    // actually crosses the wire).
                     const qint64 argBytes = QJsonDocument(argsObj)
                         .toJson(QJsonDocument::Compact).size();
-                    const qint64 outBytes = responseText.toUtf8().size();
+                    const qint64 outBytes = wrapped.toUtf8().size();
                     m_tokenUsage.recordCall(toolName, argBytes, outBytes);
                     haveResult = true;
                 } else {
@@ -2329,6 +2342,24 @@ void ClaudeIntegration::onMcpConnection() {
         });
         connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
     }
+}
+
+// --- ANTS-1294 — MCP output sanitisation ---
+
+QString ClaudeIntegration::wrapMcpData(const QString &toolName,
+                                       const QString &payload) {
+    // Neutralise close-tag breakout: a hostile commit message / file
+    // line / scrollback chunk that contains the literal substring
+    // </ants_mcp_data> would otherwise close the outer wrap and let
+    // anything that follows be interpreted by the consuming assistant
+    // as outside-the-wrap prose. Replace with a self-closing sentinel
+    // of an unused tag name — visibly modified (a reviewer can tell
+    // sanitisation happened) but inert.
+    QString sanitised = payload;
+    sanitised.replace(QStringLiteral("</ants_mcp_data>"),
+                      QStringLiteral("<ants_mcp_data_escaped/>"));
+    return QStringLiteral("<ants_mcp_data tool=\"%1\">%2</ants_mcp_data>")
+        .arg(toolName, sanitised);
 }
 
 // --- Project / Session Discovery ---

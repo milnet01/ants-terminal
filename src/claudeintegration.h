@@ -203,6 +203,15 @@ public:
         m_tokenUsage.recordCall(toolName, bytesIn, bytesOut);
     }
 
+    // ANTS-1294 — frame user-supplied MCP content as data. Wraps a
+    // tools/call response payload in <ants_mcp_data tool="..."> so
+    // a consuming model can syntactically distinguish "data the
+    // server returned" from "instructions from the user". Embedded
+    // </ants_mcp_data> close tags in the payload are replaced with
+    // a sentinel to neutralise breakout. See docs/specs/ANTS-1294.md.
+    static QString wrapMcpData(const QString &toolName,
+                               const QString &payload);
+
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
     QString sessionSummary(const QString &transcriptPath) const;

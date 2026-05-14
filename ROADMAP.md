@@ -5416,7 +5416,7 @@ template / mutate this state atomically" → movable. If it's
 
 #### 🔒 MCP — security hardening (token-economy adjacent)
 
-- 📋 [ANTS-1294] **MCP output sanitisation — frame user-supplied
+- ✅ [ANTS-1294] **MCP output sanitisation — frame user-supplied
   text as data, not instructions.** Multiple MCP tools return
   text that originates from untrusted sources: `get_text` from
   PTY scrollback, `roadmap_query` from ROADMAP.md, `git_state`
