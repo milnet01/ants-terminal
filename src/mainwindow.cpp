@@ -3886,6 +3886,33 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdTokenUsage(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1319 — cold_eyes_* (4 tools). Mirror to indie_review fold-in
+    // pattern; each handler delegates to RemoteControl::cmdColdEyes*.
+    m_claudeIntegration->registerToolProvider("cold_eyes_partition",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdColdEyesPartition(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("cold_eyes_brief",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdColdEyesBrief(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("cold_eyes_cross_doc_diff",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdColdEyesCrossDocDiff(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("cold_eyes_fold_in",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdColdEyesFoldIn(args).toJson(QJsonDocument::Compact));
+        });
+
     // Start hook server
     m_claudeIntegration->startHookServer();
 }

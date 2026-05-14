@@ -1,4 +1,5 @@
 #include "remotecontrol.h"
+#include "coldeyesengine.h"
 #include "debtsweepengine.h"
 #include "fileoutline.h"
 #include "gitwrap.h"
@@ -2774,5 +2775,270 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req) {
         calls.append(c);
     }
     env["calls"] = calls;
+    return QJsonDocument(env);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-1319 — cold_eyes_* MCP tools
+// ---------------------------------------------------------------------------
+
+namespace {
+
+QJsonObject ceErr(const QString &code, const QString &msg) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = msg;
+    o["code"]  = code;
+    return o;
+}
+
+// ANTS-1319 INV-11: cap user-supplied echo at 64 bytes + substitute
+// control characters with '?'. Matches the cmdRoadmapQuery hygiene
+// block used for the bad_section error code.
+QString ceSanitiseEcho(const QString &raw) {
+    QString verbatim = raw;
+    verbatim.truncate(64);
+    QString out;
+    out.reserve(verbatim.size());
+    for (int i = 0; i < verbatim.size(); ++i) {
+        out.append(verbatim.at(i).unicode() < 0x20 ? QChar('?')
+                                                  : verbatim.at(i));
+    }
+    return out;
+}
+
+QJsonObject ceFindingToJson(
+    const IndieReviewEngine::CorroboratedFinding &f) {
+    QJsonObject o;
+    o["file"] = f.file;
+    o["line"] = f.line;
+    QJsonArray lns;
+    for (const QString &ln : f.citingLanes) lns.append(ln);
+    o["citing_lanes"] = lns;
+    QJsonArray ctxs;
+    for (const QString &c : f.contexts) ctxs.append(c);
+    o["contexts"] = ctxs;
+    return o;
+}
+
+QJsonArray ceLaneArrayToJson(const QList<ColdEyesEngine::Lane> &lanes) {
+    QJsonArray arr;
+    for (const auto &l : lanes) {
+        QJsonObject o;
+        o["name"]    = l.name;
+        o["summary"] = l.summary;
+        QJsonArray dps;
+        for (const QString &p : l.docPaths) dps.append(p);
+        o["doc_paths"] = dps;
+        arr.append(o);
+    }
+    return arr;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(ceErr(
+        QStringLiteral("no_window"),
+        QStringLiteral("cold_eyes_partition: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("cold_eyes_partition: no focused project")));
+
+    const QString scopeRaw = req.value(QStringLiteral("scope")).toString();
+    ColdEyesEngine::Scope scope = ColdEyesEngine::Scope::Default;
+    if (!ColdEyesEngine::parseScope(scopeRaw, &scope)) {
+        QJsonObject err = ceErr(
+            QStringLiteral("bad_scope"),
+            QStringLiteral("cold_eyes_partition: scope must be one of "
+                           "\"default\", \"docs_only\", \"contracts_only\""));
+        err["echo"] = ceSanitiseEcho(scopeRaw);
+        return QJsonDocument(err);
+    }
+
+    // INV-12 mtime-cache (5 s TTL). Cache hit needs path+scope match
+    // AND stamp within TTL. Miss → regenerate.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_coldEyesCachePath != root || m_coldEyesCacheScope != scope
+        || now - m_coldEyesCacheStampMs > kColdEyesCacheTtlMs) {
+        m_coldEyesCache       = ColdEyesEngine::derivePartition(root, scope);
+        m_coldEyesCachePath   = root;
+        m_coldEyesCacheScope  = scope;
+        m_coldEyesCacheStampMs = now;
+    }
+
+    QJsonObject env;
+    env["ok"]            = true;
+    env["lanes"]         = ceLaneArrayToJson(m_coldEyesCache.lanes);
+    env["path"]          = m_coldEyesCache.overridePath;
+    env["scope"]         = !scopeRaw.isEmpty() ? scopeRaw
+                                              : QStringLiteral("default");
+    env["scoped_count"]  = m_coldEyesCache.scopedCount;
+    env["truncated"]     = m_coldEyesCache.truncated;
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(ceErr(
+        QStringLiteral("no_window"),
+        QStringLiteral("cold_eyes_brief: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("cold_eyes_brief: no focused project")));
+
+    const QString laneNameRaw = req.value(QStringLiteral("lane")).toString();
+    const QString laneName    = laneNameRaw.trimmed();
+    if (laneName.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("cold_eyes_brief: lane required")));
+
+    // Reuse the partition cache (INV-12). On miss, regenerate with
+    // Default scope — the caller wants a specific lane and didn't pass
+    // a scope arg here, so Default is the right baseline.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_coldEyesCachePath != root
+        || m_coldEyesCacheScope != ColdEyesEngine::Scope::Default
+        || now - m_coldEyesCacheStampMs > kColdEyesCacheTtlMs) {
+        m_coldEyesCache       = ColdEyesEngine::derivePartition(
+            root, ColdEyesEngine::Scope::Default);
+        m_coldEyesCachePath   = root;
+        m_coldEyesCacheScope  = ColdEyesEngine::Scope::Default;
+        m_coldEyesCacheStampMs = now;
+    }
+
+    const ColdEyesEngine::Lane *match = nullptr;
+    for (const auto &l : m_coldEyesCache.lanes) {
+        if (l.name == laneName) { match = &l; break; }
+    }
+    if (!match) {
+        QJsonObject err = ceErr(
+            QStringLiteral("not_found"),
+            QStringLiteral("cold_eyes_brief: no such lane"));
+        err["echo"] = ceSanitiseEcho(laneNameRaw);
+        return QJsonDocument(err);
+    }
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(root, *match);
+
+    QJsonArray dps;
+    for (const QString &p : m.docPaths) dps.append(p);
+    QJsonArray xref;
+    for (const QString &p : m.crossReferenceDocs) xref.append(p);
+    QJsonArray code;
+    for (const QString &p : m.citedCodePaths) code.append(p);
+
+    QJsonObject env;
+    env["ok"]                    = true;
+    env["lane"]                  = laneName;
+    env["brief"]                 = m.brief;
+    env["doc_paths"]             = dps;
+    env["cross_reference_docs"]  = xref;
+    env["cited_code_paths"]      = code;
+    env["byte_count"]            = m.brief.toUtf8().size();
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdColdEyesCrossDocDiff(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(ceErr(
+        QStringLiteral("no_window"),
+        QStringLiteral("cold_eyes_cross_doc_diff: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("cold_eyes_cross_doc_diff: no focused project")));
+
+    const QString reportsDirRaw =
+        req.value(QStringLiteral("reports_dir")).toString();
+    const QString reportsDir = reportsDirRaw.trimmed();
+    if (reportsDir.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("cold_eyes_cross_doc_diff: reports_dir must be a "
+                       "non-empty project-relative path")));
+
+    int minLanes = req.value(QStringLiteral("min_lanes")).toInt(2);
+    if (minLanes < 1) minLanes = 1;
+
+    int reportsRead = 0;
+    const auto findings = ColdEyesEngine::crossDocDiffFromDir(
+        root, reportsDir, minLanes, &reportsRead);
+
+    QJsonArray arr;
+    for (const auto &f : findings) arr.append(ceFindingToJson(f));
+
+    QJsonObject env;
+    env["ok"]              = true;
+    env["findings"]        = arr;
+    env["total_findings"]  = arr.size();
+    env["reports_read"]    = reportsRead;
+    env["reports_dir"]     = reportsDir;
+    env["min_lanes"]       = minLanes;
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(ceErr(
+        QStringLiteral("no_window"),
+        QStringLiteral("cold_eyes_fold_in: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("cold_eyes_fold_in: no focused project")));
+
+    const QJsonArray actArr =
+        req.value(QStringLiteral("actionable")).toArray();
+    if (actArr.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("cold_eyes_fold_in: actionable array required")));
+
+    QList<IndieReviewEngine::CorroboratedFinding> actionable;
+    for (const auto &v : actArr) {
+        const auto o = v.toObject();
+        IndieReviewEngine::CorroboratedFinding f;
+        f.file = o.value(QStringLiteral("file")).toString();
+        f.line = o.value(QStringLiteral("line")).toInt(-1);
+        for (const auto &lv :
+             o.value(QStringLiteral("citing_lanes")).toArray()) {
+            f.citingLanes << lv.toString();
+        }
+        if (f.file.isEmpty()) continue;
+        actionable.append(f);
+    }
+    if (actionable.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("bad_args"),
+        QStringLiteral("cold_eyes_fold_in: no valid actionable entries")));
+
+    QString dateIso = req.value(QStringLiteral("date_iso")).toString();
+    if (dateIso.isEmpty()) {
+        dateIso = QDate::currentDate().toString(Qt::ISODate);
+    }
+
+    const auto ids = RoadmapFoldIn::allocateIds(root, actionable.size());
+    if (ids.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("counter_failed"),
+        QStringLiteral("cold_eyes_fold_in: could not allocate IDs")));
+
+    const QString block = ColdEyesEngine::templateColdEyesFoldInBlock(
+        actionable, ids, dateIso);
+
+    QString heading = req.value(QStringLiteral("release_block_heading"))
+                          .toString();
+    if (heading.isEmpty()) heading =
+        RoadmapFoldIn::findActiveReleaseHeading(root);
+
+    bool written = false;
+    if (!heading.isEmpty()) {
+        written = RoadmapFoldIn::insertBlock(root, heading, block);
+    }
+
+    QJsonObject env;
+    env["ok"]            = true;
+    env["block"]         = block;
+    QJsonArray idsArr;
+    for (int id : ids) idsArr.append(id);
+    env["allocated_ids"] = idsArr;
+    env["written"]       = written;
+    if (!heading.isEmpty()) env["release_block_heading"] = heading;
     return QJsonDocument(env);
 }

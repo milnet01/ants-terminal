@@ -5255,7 +5255,7 @@ The items below identify the next batch of leverage.
 
 #### 🔌 MCP — skill displacement (moving workflow tokens server-side)
 
-- 📋 [ANTS-1319] **`/cold-eyes` MCP fold-in — mechanical doc-walk
+- ✅ [ANTS-1319] **`/cold-eyes` MCP fold-in — mechanical doc-walk
   + cross-doc diff server-side.** Mirror to ANTS-1112 (folded
   `/indie-review`) and ANTS-1113 (folded `/debt-sweep`). The
   `superpowers:cold-eyes` skill today drives Claude through a
@@ -5269,14 +5269,22 @@ The items below identify the next batch of leverage.
   glossary), diff for contradictions/dangling references,
   render fold-in markdown. The *judgment* pieces (which
   contradiction is real vs. expected; what the spec SHOULD say)
-  stay Claude-side. New MCP tools: `cold_eyes_partition`,
-  `cold_eyes_brief lane=X` (returns manifest per ANTS-1281
-  shape — paths not bodies), `cold_eyes_cross_doc_diff
-  reports_dir=...` (per ANTS-1282 shape — disk input),
-  `cold_eyes_fold_in actionable=[...]`. Expected token savings:
-  ~50-100K orchestrator tokens per `/cold-eyes` run (currently
-  burns the whole CLAUDE.md + ROADMAP + specs trail across N
-  agents through the parent each pass). Spec when scheduled.
+  stay Claude-side.
+  **Shipped 2026-05-14:** `src/coldeyesengine.{h,cpp}` (engine,
+  Qt::Core only) + `RemoteControl::cmdColdEyes{Partition,Brief,
+  CrossDocDiff,FoldIn}` + 4 provider lambdas + 4 MCP tool schemas
+  + 18 tests (10 engine ENG-1..ENG-10 + 8 MCP wiring REG-1..REG-8).
+  Default partition emits `contracts` (CLAUDE.md / README.md /
+  ROADMAP.md / CHANGELOG.md) + `standards` + `decisions` +
+  `plugins` (if present) + one lane per active spec (📋/🚧)
+  capped at 12 most-recently-modified. Brief manifest is
+  paths-only (ANTS-1281 INV-5 contract); cross-doc-diff is
+  disk-input only (ANTS-1282 INV-1 contract, cold-eyes-greenfield
+  divergence: no inline-reports alternative); fold-in heading is
+  `### 📝 Cold-eyes <YYYY-MM-DD>` via `RoadmapFoldIn::allocateIds`
+  + `insertBlock` atomic insert. INV-11 echo hygiene on
+  `bad_scope` / `not_found` (64-byte cap + `< 0x20` substitute).
+  Spec: `docs/specs/ANTS-1319.md` (cold-eyes loops 1 + 2 CLEAN).
   **Layman:** push the mechanical "scan all the docs, find
   contradictions" parts of /cold-eyes into the terminal as MCP
   tools so Claude doesn't burn tokens loading the doc trail

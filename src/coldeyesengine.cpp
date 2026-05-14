@@ -1,0 +1,365 @@
+#include "coldeyesengine.h"
+
+#include "indiereviewengine.h"
+
+#include <QChar>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QPair>
+#include <QRegularExpression>
+#include <QSet>
+
+#include <algorithm>
+
+namespace ColdEyesEngine {
+
+namespace {
+
+QString slurpUtf8(const QString &absPath) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    return QString::fromUtf8(f.readAll());
+}
+
+// INV-13 path-rule defence: canonicalise candidate, accept only if it
+// remains under projectPath's canonical form.
+bool isInsideProject(const QString &projectPath, const QString &candidate) {
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty()) return false;
+    const QString candCanon = QFileInfo(candidate).canonicalFilePath();
+    if (candCanon.isEmpty()) return false;
+    return candCanon == rootCanon
+           || candCanon.startsWith(rootCanon + QChar('/'));
+}
+
+bool fileExists(const QString &projectPath, const QString &rel) {
+    return QFileInfo::exists(projectPath + QChar('/') + rel);
+}
+
+// Read .cold-eyes/partition.json if present. Schema:
+//   {"version": 1, "lanes": [{"name": "...", "summary": "...",
+//                             "doc_paths": ["..."]}, ...]}
+QList<Lane> readPartitionOverride(const QString &projectPath) {
+    const QString raw = slurpUtf8(projectPath
+                                  + QStringLiteral("/.cold-eyes/partition.json"));
+    if (raw.isEmpty()) return {};
+    QJsonParseError pe{};
+    const auto doc = QJsonDocument::fromJson(raw.toUtf8(), &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isObject()) return {};
+    const auto root = doc.object();
+    if (root.value(QStringLiteral("version")).toInt() != 1) return {};
+    const auto lanesArr = root.value(QStringLiteral("lanes")).toArray();
+    QList<Lane> out;
+    out.reserve(lanesArr.size());
+    for (const auto &v : lanesArr) {
+        const auto o = v.toObject();
+        Lane l;
+        l.name    = o.value(QStringLiteral("name")).toString();
+        l.summary = o.value(QStringLiteral("summary")).toString();
+        if (l.name.isEmpty()) continue;
+        for (const auto &dv :
+             o.value(QStringLiteral("doc_paths")).toArray()) {
+            const QString d = dv.toString();
+            if (!d.isEmpty()) l.docPaths << d;
+        }
+        out << l;
+    }
+    return out;
+}
+
+// docs/standards/*.md
+QStringList listMdInDir(const QString &projectPath, const QString &relDir) {
+    QStringList out;
+    QDir d(projectPath + QChar('/') + relDir);
+    if (!d.exists()) return out;
+    const auto entries = d.entryList(QStringList{QStringLiteral("*.md")},
+                                     QDir::Files | QDir::NoDotAndDotDot,
+                                     QDir::Name);
+    for (const QString &e : entries) {
+        out << relDir + QChar('/') + e;
+    }
+    return out;
+}
+
+}  // namespace
+
+bool parseScope(const QString &raw, Scope *out) {
+    const QString s = raw.trimmed().toLower();
+    if (s.isEmpty() || s == QStringLiteral("default")) {
+        if (out) *out = Scope::Default;
+        return true;
+    }
+    if (s == QStringLiteral("docs_only")) {
+        if (out) *out = Scope::DocsOnly;
+        return true;
+    }
+    if (s == QStringLiteral("contracts_only")) {
+        if (out) *out = Scope::ContractsOnly;
+        return true;
+    }
+    return false;
+}
+
+QList<int> activeSpecIds(const QString &projectPath) {
+    const QString raw = slurpUtf8(projectPath
+                                  + QStringLiteral("/ROADMAP.md"));
+    if (raw.isEmpty()) return {};
+    // Regex matches `^- (📋|🚧) [ANTS-NNNN]`. Emoji written as literal
+    // UTF-8 source characters — QStringLiteral's `\xNN` escape path
+    // does Latin-1 byte promotion (per-byte → per-codepoint), which
+    // mismatches the correctly-UTF-8-decoded file content.
+    static const QRegularExpression rx(
+        QStringLiteral("^- (📋|🚧)\\s+\\[ANTS-(\\d+)\\]"),
+        QRegularExpression::MultilineOption);
+    QList<int> out;
+    QSet<int>  seen;
+    auto it = rx.globalMatch(raw);
+    while (it.hasNext()) {
+        const auto m  = it.next();
+        bool ok = false;
+        const int id = m.captured(2).toInt(&ok);
+        if (ok && !seen.contains(id)) {
+            seen.insert(id);
+            out << id;
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+PartitionResult derivePartition(const QString &projectPath, Scope scope) {
+    PartitionResult result;
+    result.scope        = scope;
+    result.overridePath = QStringLiteral("<default>");
+
+    // Override path wins regardless of scope (the user committed to a
+    // hand-written partition).
+    const auto override = readPartitionOverride(projectPath);
+    if (!override.isEmpty()) {
+        result.lanes        = override;
+        result.overridePath = QStringLiteral(".cold-eyes/partition.json");
+        result.scopedCount  = override.size();
+        return result;
+    }
+
+    // Contracts lane — emitted under Default + ContractsOnly.
+    if (scope != Scope::DocsOnly) {
+        Lane contracts;
+        contracts.name    = QStringLiteral("contracts");
+        contracts.summary = QStringLiteral(
+            "CLAUDE.md + README.md + ROADMAP.md + CHANGELOG.md "
+            "(cross-cutting)");
+        for (const char *p : {"CLAUDE.md", "README.md", "ROADMAP.md",
+                              "CHANGELOG.md"}) {
+            const QString rel = QString::fromLatin1(p);
+            if (fileExists(projectPath, rel)) contracts.docPaths << rel;
+        }
+        if (!contracts.docPaths.isEmpty()) result.lanes << contracts;
+
+        if (scope == Scope::ContractsOnly) {
+            result.scopedCount = result.lanes.size();
+            return result;
+        }
+    }
+
+    // Standards bundle.
+    {
+        Lane stds;
+        stds.name     = QStringLiteral("standards");
+        stds.summary  = QStringLiteral(
+            "docs/standards/*.md (project-wide contract docs)");
+        stds.docPaths = listMdInDir(projectPath,
+                                    QStringLiteral("docs/standards"));
+        if (!stds.docPaths.isEmpty()) result.lanes << stds;
+    }
+
+    // Decisions bundle.
+    {
+        Lane decs;
+        decs.name     = QStringLiteral("decisions");
+        decs.summary  = QStringLiteral(
+            "docs/decisions/*.md (ADRs, Michael Nygard format)");
+        decs.docPaths = listMdInDir(projectPath,
+                                    QStringLiteral("docs/decisions"));
+        if (!decs.docPaths.isEmpty()) result.lanes << decs;
+    }
+
+    // Plugins.md
+    if (fileExists(projectPath, QStringLiteral("PLUGINS.md"))) {
+        Lane plugins;
+        plugins.name     = QStringLiteral("plugins");
+        plugins.summary  = QStringLiteral(
+            "PLUGINS.md (plugin-author contract)");
+        plugins.docPaths << QStringLiteral("PLUGINS.md");
+        result.lanes << plugins;
+    }
+
+    // Active-spec lanes.
+    const auto allActive = activeSpecIds(projectPath);
+    // INV-2: pick the kMaxSpecLanes most-recently-modified, then sort
+    // by ID ascending for stable presentation order.
+    QList<QPair<qint64, int>> mtimes;
+    mtimes.reserve(allActive.size());
+    for (int id : allActive) {
+        const QString rel = QStringLiteral("docs/specs/ANTS-%1.md").arg(id);
+        const QString abs = projectPath + QChar('/') + rel;
+        QFileInfo fi(abs);
+        if (!fi.exists()) continue;  // active in ROADMAP but no spec file
+        mtimes.append({fi.lastModified().toMSecsSinceEpoch(), id});
+    }
+    result.scopedCount = mtimes.size();
+    std::sort(mtimes.begin(), mtimes.end(),
+              [](const auto &a, const auto &b) { return a.first > b.first; });
+    if (mtimes.size() > kMaxSpecLanes) {
+        mtimes = mtimes.mid(0, kMaxSpecLanes);
+        result.truncated = true;
+    }
+    QList<int> chosen;
+    chosen.reserve(mtimes.size());
+    for (const auto &p : mtimes) chosen << p.second;
+    std::sort(chosen.begin(), chosen.end());
+
+    for (int id : chosen) {
+        Lane l;
+        l.name    = QStringLiteral("spec/ANTS-%1").arg(id);
+        l.summary = QStringLiteral("Single spec lane (active)");
+        l.docPaths << QStringLiteral("docs/specs/ANTS-%1.md").arg(id);
+        result.lanes << l;
+    }
+
+    return result;
+}
+
+QStringList extractCitedCodePaths(const QString &projectPath,
+                                  const QStringList &docPaths) {
+    QSet<QString> seen;
+    QStringList   out;
+
+    static const QRegularExpression rx(
+        // src/foo.h, src/foo.cpp, src/foo.{h,cpp}
+        QStringLiteral("\\bsrc/([A-Za-z0-9_./-]+\\.(?:h|cpp))"));
+
+    for (const QString &rel : docPaths) {
+        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
+        if (body.isEmpty()) continue;
+        auto it = rx.globalMatch(body);
+        while (it.hasNext()) {
+            const QString hit = QStringLiteral("src/")
+                              + it.next().captured(1);
+            if (seen.contains(hit)) continue;
+            seen.insert(hit);
+            // INV-13 defence.
+            const QString abs = projectPath + QChar('/') + hit;
+            if (!isInsideProject(projectPath, abs)) continue;
+            if (!QFileInfo::exists(abs)) continue;
+            out << hit;
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+BriefManifest assembleBriefManifest(const QString &projectPath,
+                                    const Lane &lane) {
+    BriefManifest m;
+    m.docPaths = lane.docPaths;
+
+    // INV-4 fixed cross-reference docs. De-dup against lane.docPaths.
+    static const QStringList kCrossRefs = {
+        QStringLiteral("CLAUDE.md"),
+        QStringLiteral("README.md"),
+        QStringLiteral("ROADMAP.md"),
+        QStringLiteral("CHANGELOG.md"),
+    };
+    const QSet<QString> laneDocSet(lane.docPaths.begin(), lane.docPaths.end());
+    for (const QString &x : kCrossRefs) {
+        if (!laneDocSet.contains(x) && fileExists(projectPath, x)) {
+            m.crossReferenceDocs << x;
+        }
+    }
+
+    m.citedCodePaths = extractCitedCodePaths(projectPath, lane.docPaths);
+
+    // INV-3: paths-only brief. Subagent reads each doc itself.
+    QString b;
+    b += QStringLiteral("# Cold-eyes brief — lane: ") + lane.name + QChar('\n');
+    b += QStringLiteral("\n## Summary\n\n") + lane.summary + QChar('\n');
+    b += QStringLiteral("\n## Doc files (this lane)\n\n");
+    for (const QString &p : lane.docPaths) {
+        b += QStringLiteral("- ") + p + QChar('\n');
+    }
+    if (!m.crossReferenceDocs.isEmpty()) {
+        b += QStringLiteral("\n## Cross-reference docs "
+                            "(always cross-check for drift)\n\n");
+        for (const QString &p : m.crossReferenceDocs) {
+            b += QStringLiteral("- ") + p + QChar('\n');
+        }
+    }
+    if (!m.citedCodePaths.isEmpty()) {
+        b += QStringLiteral("\n## Cited code files (read-only, "
+                            "verify doc-vs-code accuracy)\n\n");
+        for (const QString &p : m.citedCodePaths) {
+            b += QStringLiteral("- ") + p + QChar('\n');
+        }
+    }
+    b += QStringLiteral(
+        "\n## Instructions\n\n"
+        "Read each doc and cross-reference file via your Read tool. "
+        "Do NOT trust prior summarisations of them — the doc set may "
+        "have shifted since the brief was assembled. Flag findings "
+        "with file:line citations against the doc whose claim you "
+        "dispute (or the code whose behaviour the doc misstates).\n");
+    m.brief = b;
+    return m;
+}
+
+QList<IndieReviewEngine::CorroboratedFinding>
+crossDocDiffFromDir(const QString &projectPath,
+                    const QString &reportsDirRelative,
+                    int minLanes,
+                    int *reportsRead) {
+    // INV-5: thin wrapper. Same disk-input contract, same 64 KiB
+    // truncate, same `(file, line)` keying, same min_lanes semantics.
+    return IndieReviewEngine::corroboratedFindingsFromDir(
+        projectPath, reportsDirRelative, minLanes, reportsRead);
+}
+
+QString templateColdEyesFoldInBlock(
+    const QList<IndieReviewEngine::CorroboratedFinding> &actionable,
+    const QList<int> &allocatedIds,
+    const QString &dateIso) {
+    QString out;
+    out += QStringLiteral("### 📝 Cold-eyes ") + dateIso + QChar('\n');
+    out += QChar('\n');
+    const int n = std::min(actionable.size(), allocatedIds.size());
+    for (int i = 0; i < n; ++i) {
+        const auto &f = actionable[i];
+        const int   id = allocatedIds[i];
+        QString lanesJoined;
+        for (int j = 0; j < f.citingLanes.size(); ++j) {
+            if (j) lanesJoined += QStringLiteral(", ");
+            lanesJoined += f.citingLanes[j];
+        }
+        out += QStringLiteral("- 📋 [ANTS-%1] **Cold-eyes finding:** ")
+                   .arg(id);
+        out += f.file;
+        if (f.line > 0) {
+            out += QChar(':');
+            out += QString::number(f.line);
+        }
+        out += QStringLiteral(" — cited across [");
+        out += lanesJoined;
+        out += QStringLiteral("].\n");
+        out += QStringLiteral("  Kind: review-fix.\n");
+        out += QStringLiteral("  Source: cold-eyes-")
+             + dateIso + QStringLiteral(".\n");
+    }
+    return out;
+}
+
+}  // namespace ColdEyesEngine

@@ -7,6 +7,7 @@
 #include <QJsonObject>
 
 #include "auditengine.h"  // ANTS-1254 — AuditSummary value member below
+#include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
 
 class QLocalServer;
@@ -197,6 +198,15 @@ public:
     // docs/specs/ANTS-1284.md.
     QJsonDocument cmdTokenUsage(const QJsonObject &req);
 
+    // ANTS-1319 — four `cold_eyes_*` MCP tools. Mirror to indie_review
+    // / debt_sweep fold-in pattern. Pure delegation to ColdEyesEngine
+    // + (for cmdColdEyesFoldIn) RoadmapFoldIn helpers. See
+    // docs/specs/ANTS-1319.md.
+    QJsonDocument cmdColdEyesPartition(const QJsonObject &req);
+    QJsonDocument cmdColdEyesBrief(const QJsonObject &req);
+    QJsonDocument cmdColdEyesCrossDocDiff(const QJsonObject &req);
+    QJsonDocument cmdColdEyesFoldIn(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 
@@ -225,6 +235,16 @@ private:
     mutable QVector<RoadmapIndex::Section> m_roadmapIndex;
     mutable QHash<QString, QJsonArray>     m_roadmapSectionCache;
     static constexpr qint64 kRoadmapCacheTtlMs = 100;
+
+    // ANTS-1319 — mtime-cached partition result (INV-12). Single-entry
+    // cache keyed on (path, scope, stamp). TTL = 5 s, picked to cover
+    // the typical N-lane parallel dispatch within Phase 2 of /cold-eyes
+    // without holding stale state past a doc edit cycle.
+    mutable QString m_coldEyesCachePath;
+    mutable qint64  m_coldEyesCacheStampMs = 0;
+    mutable ColdEyesEngine::Scope m_coldEyesCacheScope = ColdEyesEngine::Scope::Default;
+    mutable ColdEyesEngine::PartitionResult m_coldEyesCache;
+    static constexpr qint64 kColdEyesCacheTtlMs = 5000;
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent

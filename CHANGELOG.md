@@ -14,6 +14,55 @@ for security-relevant changes.
 
 ### Added
 
+- **`/cold-eyes` MCP fold-in — mechanical doc-walk + cross-doc
+  diff server-side (ANTS-1319).** Mirror to ANTS-1112 / ANTS-1113
+  fold-in pattern. Four new MCP tools host the mechanical phases
+  of the `superpowers:cold-eyes` skill:
+  - `cold_eyes_partition` — walks `docs/` + root contracts, groups
+    by topic cohesion. Default lanes: `contracts`
+    (CLAUDE.md / README.md / ROADMAP.md / CHANGELOG.md),
+    `standards` (`docs/standards/*.md`), `decisions`
+    (`docs/decisions/*.md`), `plugins` (`PLUGINS.md` if present),
+    plus one lane per active spec (📋/🚧 status) capped at 12
+    most-recently-modified (INV-2). Optional override:
+    `<project>/.cold-eyes/partition.json`. Optional `scope` arg
+    (`default` / `docs_only` / `contracts_only`).
+  - `cold_eyes_brief lane=X` — paths-only manifest (no doc-body
+    inlining, per ANTS-1281 INV-5). Response fields: `brief`,
+    `doc_paths[]`, `cross_reference_docs[]` (contract trio +
+    CHANGELOG, de-duped against lane docs), `cited_code_paths[]`
+    (regex pass for `src/foo.{h,cpp}` mentions; INV-13 path-rule
+    defence rejects `..`-escapes).
+  - `cold_eyes_cross_doc_diff reports_dir=...` — disk-input
+    corroboration filter mirroring ANTS-1282 (no inline-reports
+    alternative; cold-eyes greenfield). Thin wrapper around
+    `IndieReviewEngine::corroboratedFindingsFromDir` (same 64 KiB
+    per-report truncate, same `(file, line)` keying, same
+    `min_lanes` semantics).
+  - `cold_eyes_fold_in actionable=[...]` — renders
+    `### 📝 Cold-eyes <YYYY-MM-DD>` ROADMAP block via
+    `RoadmapFoldIn::allocateIds` + `insertBlock` (flock +
+    QSaveFile, atomic-rename insert). One bullet per finding with
+    citing-lanes list, `Kind: review-fix`, `Source:
+    cold-eyes-<date>`.
+
+  Engine: `src/coldeyesengine.{h,cpp}` (Qt6::Core only, in
+  `ants_core_lib`). INV-12 mtime-cached partition with 5 s TTL
+  shared across `partition`/`brief` calls during a parallel
+  dispatch. INV-11 echo hygiene on `bad_scope` / `not_found`
+  responses (64-byte truncate + `< 0x20 → '?'` substitute, shared
+  `ceSanitiseEcho` helper). Schema required-arrays match
+  indie-review pattern: `partition` (none), `brief` (`["lane"]`),
+  `cross_doc_diff` (`["reports_dir"]`), `fold_in`
+  (`["actionable"]`). Cited-code-path regex parsing uses literal
+  emoji UTF-8 in the source (not `\xNN` escapes — those go
+  through Latin-1 promotion in `QStringLiteral`). Token-savings
+  estimate: ~50–100 K orchestrator tokens per `/cold-eyes` run
+  by avoiding the full doc-trail load through the parent each
+  pass. Spec: `docs/specs/ANTS-1319.md` (cold-eyes loops 1 + 2
+  CLEAN). 18 new feature tests (10 engine ENG-1..ENG-10 + 8 MCP
+  wiring REG-1..REG-8); ctest 498 → 516 green.
+
 - **Roadmap-query indexed parser cache — partial-section queries
   skip the full `parseBullets` walk (ANTS-1287).** `roadmap_query`
   gained an optional `section` slug argument. When present, a

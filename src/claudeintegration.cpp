@@ -2040,6 +2040,154 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1319 — cold_eyes_* (4 tools). Mirror to indie_review /
+                // debt_sweep fold-in pattern; pure delegation to
+                // ColdEyesEngine + RoadmapFoldIn helpers.
+                {
+                    QJsonObject t;
+                    t["name"] = "cold_eyes_partition";
+                    t["description"] = QStringLiteral(
+                        "Return the doc-lane partition for /cold-eyes. "
+                        "Walks docs/ + root contracts, groups by topic "
+                        "cohesion (contracts / standards / decisions / "
+                        "plugins / per-active-spec). Optional override: "
+                        "<projectPath>/.cold-eyes/partition.json. "
+                        "Spec-lanes capped at 12 (most-recently-modified). "
+                        "Optional: scope (\"default\" / \"docs_only\" / "
+                        "\"contracts_only\").");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject scopeProp;
+                    scopeProp["type"] = "string";
+                    QJsonArray scopeEnum;
+                    scopeEnum.append("default");
+                    scopeEnum.append("docs_only");
+                    scopeEnum.append("contracts_only");
+                    scopeProp["enum"] = scopeEnum;
+                    scopeProp["default"] = "default";
+                    scopeProp["description"] = QStringLiteral(
+                        "Partition scope. \"default\" emits the full "
+                        "lane set; \"docs_only\" omits the root "
+                        "contract lane; \"contracts_only\" emits ONLY "
+                        "the contract lane.");
+                    QJsonObject props;
+                    props["scope"] = scopeProp;
+                    schema["properties"] = props;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "cold_eyes_brief";
+                    t["description"] = QStringLiteral(
+                        "Return a brief manifest for one lane: brief "
+                        "text + doc_paths + cross_reference_docs + "
+                        "cited_code_paths. Doc bodies are NOT inlined "
+                        "(ANTS-1319 INV-3, mirrors ANTS-1281); the "
+                        "subagent reads each doc via its Read tool. "
+                        "Required: lane (string).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject laneProp;
+                    laneProp["type"] = "string";
+                    laneProp["description"] = QStringLiteral(
+                        "Lane name as returned by cold_eyes_partition.");
+                    QJsonObject props;
+                    props["lane"] = laneProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("lane");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "cold_eyes_cross_doc_diff";
+                    t["description"] = QStringLiteral(
+                        "Cross-doc corroboration filter. Reads "
+                        "*.md files from `<project>/<reports_dir>/` "
+                        "(64 KiB truncate per file, top-level only) "
+                        "and returns findings cited by >= min_lanes "
+                        "distinct reports at the same (file, line). "
+                        "Pure regex pass; no LLM. Mirrors "
+                        "indie_review_corroborate's disk path "
+                        "(ANTS-1282) — the inline-reports alternative "
+                        "is intentionally absent for cold-eyes. "
+                        "Required: reports_dir. Optional: min_lanes "
+                        "(default 2).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject rdProp;
+                    rdProp["type"] = "string";
+                    rdProp["description"] = QStringLiteral(
+                        "Project-relative path to a directory of "
+                        "*.md report files. Lane name = filename "
+                        "stem. Top level only; sub-dirs not "
+                        "recursed.");
+                    QJsonObject mlProp;
+                    mlProp["type"]    = "integer";
+                    mlProp["default"] = 2;
+                    mlProp["minimum"] = 1;
+                    mlProp["description"] = QStringLiteral(
+                        "Minimum distinct lanes citing a (file, "
+                        "line) for it to count as corroborated.");
+                    QJsonObject props;
+                    props["reports_dir"] = rdProp;
+                    props["min_lanes"]   = mlProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("reports_dir");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                {
+                    QJsonObject t;
+                    t["name"] = "cold_eyes_fold_in";
+                    t["description"] = QStringLiteral(
+                        "Render an `### 📝 Cold-eyes <YYYY-MM-DD>` "
+                        "ROADMAP block from a list of corroborated "
+                        "findings. Allocates IDs from "
+                        ".roadmap-counter (via "
+                        "RoadmapFoldIn::allocateIds) and, if a "
+                        "release-block heading is found via "
+                        "findActiveReleaseHeading, atomically "
+                        "inserts the block into ROADMAP.md. "
+                        "Required: actionable (array).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject aProp;
+                    aProp["type"] = "array";
+                    aProp["description"] = QStringLiteral(
+                        "Array of {file, line, citing_lanes[]} "
+                        "objects describing the corroborated set.");
+                    QJsonObject dProp;
+                    dProp["type"] = "string";
+                    dProp["description"] = QStringLiteral(
+                        "ISO date for the heading + Source. "
+                        "Defaults to today.");
+                    QJsonObject hProp;
+                    hProp["type"] = "string";
+                    hProp["description"] = QStringLiteral(
+                        "Optional explicit `## ` heading to "
+                        "insert after; defaults to "
+                        "RoadmapFoldIn::findActiveReleaseHeading.");
+                    QJsonObject props;
+                    props["actionable"]            = aProp;
+                    props["date_iso"]              = dProp;
+                    props["release_block_heading"] = hProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("actionable");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
 
                 result["tools"] = tools;
                 haveResult = true;
