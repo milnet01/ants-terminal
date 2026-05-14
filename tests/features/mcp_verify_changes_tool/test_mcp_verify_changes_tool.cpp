@@ -69,16 +69,28 @@ TEST(McpVerifyChangesTool, CmdMethodDefinedInCpp) {
 }
 
 // Region-scoped block-level checks (REG-5, REG-6). Region: from the
-// `// ANTS-1289` anchor to the next `result["tools"] = tools;`.
-// Future tools added after this one should introduce their own
-// `// ANTS-NNNN` anchor so a similar region-scoped test can ride.
+// `// ANTS-1289` anchor to the NEXT `// ANTS-NNNN` anchor (block-local),
+// falling back to `result["tools"] = tools;` if there's no subsequent
+// anchor. This tightening lets future tool registrations be inserted
+// after the verify_changes block without polluting this scan region —
+// see docs/specs/ANTS-1290.md § 5 for the MED-3 rationale.
+namespace {
+size_t verifyChangesBlockEnd(const std::string &ci, size_t start) {
+    auto e = ci.find("// ANTS-1290", start);
+    if (e == std::string::npos) {
+        e = ci.find("result[\"tools\"] = tools;", start);
+    }
+    return e;
+}
+}  // namespace
+
 TEST(McpVerifyChangesTool, SchemaSetsAdditionalPropertiesFalse) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("// ANTS-1289");
     ASSERT_NE(block_start, std::string::npos)
         << "// ANTS-1289 anchor missing — region scan can't run";
-    auto block_end = ci.find("result[\"tools\"] = tools;", block_start);
+    const auto block_end = verifyChangesBlockEnd(ci, block_start);
     ASSERT_NE(block_end, std::string::npos);
     const std::string region = ci.substr(block_start, block_end - block_start);
 
@@ -98,7 +110,7 @@ TEST(McpVerifyChangesTool, SchemaListsOptionalArgs) {
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("// ANTS-1289");
     ASSERT_NE(block_start, std::string::npos);
-    auto block_end = ci.find("result[\"tools\"] = tools;", block_start);
+    const auto block_end = verifyChangesBlockEnd(ci, block_start);
     ASSERT_NE(block_end, std::string::npos);
     const std::string region = ci.substr(block_start, block_end - block_start);
 

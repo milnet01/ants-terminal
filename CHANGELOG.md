@@ -14,6 +14,31 @@ for security-relevant changes.
 
 ### Added
 
+- **`mcp__ants__plan_template` MCP tool — host the `writing-plans`
+  skill's template emission (ANTS-1290).** New MCP tool emits an
+  Ants-conventional implementation-plan skeleton (header, N task
+  blocks with TDD step structure, self-review checklist, execution
+  handoff) with project conventions pre-baked (commit format, test
+  scaffolding pattern, build/test commands, bundle hints). Required
+  arg: `feature_name` (kebab-case). Optional: `goal`,
+  `architecture`, `tech_stack`, `task_count_hint` (clamped [1, 12]),
+  `includes_tests`, `ants_id`, `save`. Engine
+  (`PlanTemplateEngine`, Qt6::Core only) delegates ANTS-ID
+  allocation to the existing `RoadmapFoldIn::allocateIds` helper
+  (flock + QSaveFile — cross-process safe). `save:false` is a pure
+  dry-run (no disk writes when `ants_id` is provided); `save:true`
+  writes atomically to `docs/plans/<id>-<feature>.md` with
+  strict-below path guard + no-overwrite refusal. Filename
+  deviates from the writing-plans skill's `YYYY-MM-DD-` prefix in
+  favour of `<ants_id>-` to keep output byte-deterministic
+  (rationale: INV-2; the ANTS-ID is already monotonic +
+  chronological). Headline savings: ~1.5 K tokens/session
+  unconditional from collapsing template-echo overhead; up to ~6 K
+  with vendor-skill update on Ants-equipped projects. Spec:
+  `docs/specs/ANTS-1290.md`. The same commit tightens the
+  ANTS-1289 verify_changes MCP-test scan region so future tool
+  insertions can't pollute its count.
+
 - **`mcp__ants__verify_changes` MCP tool — host the
   `verification-before-completion` skill server-side (ANTS-1289).**
   New MCP tool runs the project's build / tests / lint gates and

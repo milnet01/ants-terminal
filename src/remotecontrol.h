@@ -184,6 +184,12 @@ public:
     // VerifyEngine. See docs/specs/ANTS-1289.md.
     QJsonDocument cmdVerifyChanges(const QJsonObject &req);
 
+    // ANTS-1290 — plan_template. Emits an Ants-conventional
+    // implementation-plan skeleton with project conventions
+    // pre-baked. Pure delegation to PlanTemplateEngine. See
+    // docs/specs/ANTS-1290.md.
+    QJsonDocument cmdPlanTemplate(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

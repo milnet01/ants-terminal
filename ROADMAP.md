@@ -5287,7 +5287,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1290] **`mcp__ants__plan_template` — host the
+- ✅ [ANTS-1290] **`mcp__ants__plan_template` — host the
   `writing-plans` skill's template emission.** That skill mostly
   emits a structured "Goal / Steps / Verify each step / Tests"
   template that Claude then fills in. Move the template emission
@@ -5297,6 +5297,16 @@ template / mutate this state atomically" → movable. If it's
   creation. Same shape would also work for `feature-test`'s
   spec.md scaffolding (we already have the
   `feature-test-writer` agent but it's parent-driven).
+  **Shipped 2026-05-14:** `src/plantemplateengine.{h,cpp}` +
+  `RemoteControl::cmdPlanTemplate` + provider lambda + 17 tests
+  (11 engine + 6 MCP-layer). Engine delegates to
+  `RoadmapFoldIn::allocateIds` for `.roadmap-counter` mutation
+  (flock + QSaveFile, cross-process safe). `save:false` is a pure
+  dry-run; `save:true` writes atomically to
+  `docs/plans/<id>-<feature>.md` with strict-below path guard +
+  no-overwrite. Verify_changes MCP-test scan region tightened in
+  the same commit to absorb future tool insertions. Spec:
+  `docs/specs/ANTS-1290.md`.
   **Layman:** the "write a plan" skill spends most of its tokens
   reminding Claude of the standard plan shape — keep the shape
   on the MCP server and let Claude just fill in the gaps.

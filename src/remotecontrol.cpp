@@ -4,6 +4,7 @@
 #include "gitwrap.h"
 #include "indiereviewengine.h"
 #include "mainwindow.h"
+#include "plantemplateengine.h"
 #include "roadmapdialog.h"
 #include "roadmapfoldin.h"
 #include "subsystemmap.h"
@@ -2492,5 +2493,85 @@ QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
         gates[VerifyEngine::gateKey(g.name)] = vcGateToJson(g);
     }
     env["gates"] = gates;
+    return QJsonDocument(env);
+}
+
+// ===========================================================================
+// ANTS-1290 — plan_template
+// ===========================================================================
+
+namespace {
+
+QJsonObject ptErr(const QString &code, const QString &msg,
+                  const QString &planPath = QString(),
+                  const QString &planMarkdown = QString()) {
+    QJsonObject o;
+    o["ok"]      = false;
+    o["error"]   = code;
+    o["message"] = msg;
+    if (!planPath.isEmpty())     o["plan_path"]     = planPath;
+    if (!planMarkdown.isEmpty()) o["plan_markdown"] = planMarkdown;
+    return o;
+}
+
+QJsonObject ptConventions() {
+    QJsonObject c;
+    c["commit_format"]     = QStringLiteral("ANTS-NNNN: description");
+    c["test_path_pattern"] = QStringLiteral(
+        "tests/features/<feature>/{spec.md,test_<feature>.cpp}");
+    c["test_bundle_hint"]  = QStringLiteral(
+        "test_chrome | test_audit | test_claude | test_vt | test_dialogs | test_lua");
+    c["build_command"]     = QStringLiteral("cmake --build build --quiet");
+    c["test_command"]      = QStringLiteral(
+        "ctest --test-dir build --output-on-failure");
+    c["save_location"]     = QStringLiteral("docs/plans/");
+    return c;
+}
+
+}  // anonymous
+
+QJsonDocument RemoteControl::cmdPlanTemplate(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(ptErr(QStringLiteral("no_window"),
+        QStringLiteral("plan_template: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(ptErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("plan_template: no focused project")));
+
+    PlanTemplateEngine::PlanOptions opts;
+    opts.featureName   = req.value(QStringLiteral("feature_name")).toString();
+    opts.goal          = req.value(QStringLiteral("goal")).toString();
+    opts.architecture  = req.value(QStringLiteral("architecture")).toString();
+    opts.techStack     = req.value(QStringLiteral("tech_stack")).toString();
+    opts.antsId        = req.value(QStringLiteral("ants_id")).toString();
+    if (req.contains(QStringLiteral("task_count_hint"))) {
+        opts.taskCountHint = req.value(QStringLiteral("task_count_hint"))
+                                .toInt(opts.taskCountHint);
+    }
+    if (req.contains(QStringLiteral("includes_tests"))) {
+        opts.includesTests = req.value(QStringLiteral("includes_tests"))
+                                 .toBool(opts.includesTests);
+    }
+    if (req.contains(QStringLiteral("save"))) {
+        opts.save = req.value(QStringLiteral("save")).toBool(opts.save);
+    }
+
+    const PlanTemplateEngine::PlanResult r =
+        PlanTemplateEngine::buildPlan(root, opts);
+
+    if (!r.ok) {
+        return QJsonDocument(ptErr(r.errorCode, r.errorMessage,
+                                   r.planPath, r.planMarkdown));
+    }
+
+    QJsonObject env;
+    env["ok"]             = true;
+    env["plan_markdown"]  = r.planMarkdown;
+    env["plan_path"]      = r.planPath;
+    env["ants_id"]        = r.antsId;
+    env["ants_id_source"] = PlanTemplateEngine::antsIdSourceKey(r.antsIdSource);
+    env["saved"]          = r.saved;
+    env["task_count"]     = r.taskCount;
+    env["conventions"]    = ptConventions();
     return QJsonDocument(env);
 }

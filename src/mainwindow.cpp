@@ -3865,6 +3865,14 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdVerifyChanges(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1290 — plan_template.
+    m_claudeIntegration->registerToolProvider("plan_template",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdPlanTemplate(args).toJson(QJsonDocument::Compact));
+        });
+
     // Start hook server
     m_claudeIntegration->startHookServer();
 }

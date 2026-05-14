@@ -1911,6 +1911,81 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1290 — plan_template
+                {
+                    QJsonObject t;
+                    t["name"] = "plan_template";
+                    t["description"] = QStringLiteral(
+                        "Emit a project-conventional implementation-"
+                        "plan skeleton with placeholders for the body. "
+                        "Replaces the writing-plans skill's template "
+                        "emission. Returns markdown + suggested save "
+                        "path + project conventions (commit format, "
+                        "test scaffolding, build commands). Optionally "
+                        "writes to docs/plans/ when save:true. "
+                        "Required: feature_name. Optional: goal, "
+                        "architecture, tech_stack, task_count_hint, "
+                        "includes_tests, ants_id, save.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject featProp;
+                    featProp["type"] = "string";
+                    featProp["description"] = QStringLiteral(
+                        "Kebab-case feature name (^[a-z0-9_-]+$, max "
+                        "64 chars). Becomes the h1 + test-dir name.");
+                    QJsonObject goalProp;
+                    goalProp["type"] = "string";
+                    goalProp["description"] = QStringLiteral(
+                        "One-sentence \"what this builds\". Empty = "
+                        "placeholder in the skeleton.");
+                    QJsonObject archProp;
+                    archProp["type"] = "string";
+                    archProp["description"] = QStringLiteral(
+                        "2-3 sentences on the approach. Empty = "
+                        "placeholder.");
+                    QJsonObject stackProp;
+                    stackProp["type"] = "string";
+                    stackProp["description"] = QStringLiteral(
+                        "Key technologies/libraries. Empty = "
+                        "placeholder.");
+                    QJsonObject countProp;
+                    countProp["type"] = "integer";
+                    countProp["description"] = QStringLiteral(
+                        "Number of task blocks to emit. Server-"
+                        "clamped [1, 12]; default 4.");
+                    QJsonObject testsProp;
+                    testsProp["type"] = "boolean";
+                    testsProp["description"] = QStringLiteral(
+                        "Whether to include test-scaffolding hints in "
+                        "the skeleton. Default true.");
+                    QJsonObject antsProp;
+                    antsProp["type"] = "string";
+                    antsProp["description"] = QStringLiteral(
+                        "Pre-allocated ANTS-NNNN id. Empty = engine "
+                        "allocates from .roadmap-counter.");
+                    QJsonObject saveProp;
+                    saveProp["type"] = "boolean";
+                    saveProp["description"] = QStringLiteral(
+                        "If true, also writes the skeleton to "
+                        "docs/plans/<id>-<feature>.md atomically. "
+                        "Refuses to overwrite. Default false.");
+                    QJsonObject props;
+                    props["feature_name"]    = featProp;
+                    props["goal"]            = goalProp;
+                    props["architecture"]    = archProp;
+                    props["tech_stack"]      = stackProp;
+                    props["task_count_hint"] = countProp;
+                    props["includes_tests"]  = testsProp;
+                    props["ants_id"]         = antsProp;
+                    props["save"]            = saveProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("feature_name"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
 
                 result["tools"] = tools;
                 haveResult = true;
