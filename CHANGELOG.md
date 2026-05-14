@@ -14,6 +14,22 @@ for security-relevant changes.
 
 ### Added
 
+- **Audit tool-detection cache (ANTS-1286).** New
+  `ToolDetectionEngine` (`src/tooldetectionengine.{h,cpp}`) in
+  `ants_core_lib` (Qt6::Core only): process-lifetime
+  `QHash<QString, QString>` cache keyed by a 16-hex SHA-256
+  truncation of `$PATH`. `AuditDialog::toolExists`
+  (`auditdialog.cpp:349`) collapses to a one-line forward —
+  signature preserved, every call-site keeps working. The
+  cold-path probe swaps `QProcess("which")` + 3 s timeout for
+  `QStandardPaths::findExecutable` (Qt-idiomatic, no subprocess
+  spawn). `grep -c "toolExists" auditdialog.cpp` = 27 lines:
+  cppcheck alone was probed 3× (lines 1128 ×2 + 1150); now
+  cached once. PATH change clears the cache atomically on the
+  next call (INV-2). RAM budget ≤ ~10 KiB (~30 entries × 120–200
+  B). 8 new tests TDE-1..TDE-8. Spec:
+  `docs/specs/ANTS-1286.md` (cold-eyes loops 1 + 2 + 3 CLEAN).
+
 - **`session_memory` MCP key-value store — per-cwd persistence
   across Claude Code sessions (ANTS-1283).** New
   `mcp__ants__session_memory` tool with `op = get / set / delete /

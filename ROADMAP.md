@@ -5219,12 +5219,23 @@ The items below identify the next batch of leverage.
   Kind: optimize.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1286] **Audit tool-detection cache (session-scoped).**
-  Every /audit invocation re-runs `command -v cppcheck` etc. for
-  ~9 tools — fast (~10 ms each) but unnecessary. Cache the result
-  for the MCP server's process lifetime (or via ANTS-1283 session
-  memory for cross-process persistence). Invalidate on
-  `$PATH` change.
+- ✅ [ANTS-1286] **Audit tool-detection cache (session-scoped).**
+  Shipped 2026-05-14. Added `ToolDetectionEngine`
+  (`src/tooldetectionengine.{h,cpp}`) to `ants_core_lib`
+  (Qt6::Core only): process-lifetime `QHash<QString, QString>`
+  cache keyed by a 16-hex-char SHA-256 truncation of `$PATH`.
+  `AuditDialog::toolExists` (`auditdialog.cpp:349`) collapses to a
+  one-line forward to `ToolDetectionEngine::exists` — same
+  signature, every existing call-site keeps working. The probe
+  itself swaps `QProcess("which")` + 3000 ms timeout for
+  `QStandardPaths::findExecutable` (Qt-idiomatic, no subprocess
+  spawn). Cache invalidation: any call whose computed PATH-hash
+  differs from the cached hash sees an empty cache.
+  `grep -c "toolExists" auditdialog.cpp` = 27 lines — cppcheck
+  alone was probed 3× (lines 1128 ×2 + 1150); now cached once.
+  RAM budget ≤ ~10 KiB (≈ 30 entries × 120–200 B). 8 new tests
+  TDE-1..TDE-8. Spec: `docs/specs/ANTS-1286.md` (cold-eyes loops
+  1 + 2 + 3 CLEAN).
   **Layman:** stop probing for the same installed tools every
   audit run.
   Kind: optimize.

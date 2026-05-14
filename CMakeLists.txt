@@ -228,6 +228,7 @@ add_library(ants_core_lib STATIC
     src/plantemplateengine.cpp
     src/tokenusageengine.cpp
     src/sessionmemoryengine.cpp
+    src/tooldetectionengine.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
@@ -906,7 +907,8 @@ if(ANTS_TESTS)
                 tests/features/token_usage_engine/test_token_usage_engine.cpp
                 tests/features/roadmap_index_engine/test_roadmap_index_engine.cpp
                 tests/features/cold_eyes_engine/test_cold_eyes_engine.cpp
-                tests/features/session_memory_engine/test_session_memory_engine.cpp)
+                tests/features/session_memory_engine/test_session_memory_engine.cpp
+                tests/features/tool_detection_engine/test_tool_detection_engine.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

@@ -4,6 +4,7 @@
 #include "featurecoverage.h"
 #include "secureio.h"
 #include "toggleswitch.h"
+#include "tooldetectionengine.h"
 #include "config.h"
 
 #include <QVBoxLayout>
@@ -346,10 +347,8 @@ void AuditDialog::detectProject() {
 // ---------------------------------------------------------------------------
 
 bool AuditDialog::toolExists(const QString &tool) {
-    QProcess p;
-    p.start("which", {tool});
-    p.waitForFinished(3000);
-    return p.exitCode() == 0;
+    // ANTS-1286 — delegate to process-lifetime PATH-keyed cache.
+    return ToolDetectionEngine::exists(tool);
 }
 
 void AuditDialog::addGrepCheck(const QString &id, const QString &name,
