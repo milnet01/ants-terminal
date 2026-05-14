@@ -86,6 +86,29 @@ hostile-content findings.
   hook RPC; a peer dribbling 1 byte every 4.9 s with
   restart-on-read would hold the connection indefinitely.
   Comment-only fix; no behaviour change.
+- **Lua sandbox sticky-kill defeats pcall-nesting wall-clock
+  evasion (ANTS-1332, lane-6 H-1).** ANTS-1172 added a 1.5 s
+  wall-clock budget to the Lua sandbox, but the budget could be
+  defeated by a plugin that catches the `luaL_error` longjmp
+  inside a Lua-level `pcall`. The loop form
+  (`while true do pcall(function() <busy> end) end`) was
+  unbounded: each cycle consumed another ~100 000 instructions
+  of work before the inner `pcall` caught the next forced fire,
+  with no mechanism to escape — termination only via
+  `LUAI_MAXCCALLS` for the source-nested form, never for the
+  loop form. Fix: a sticky `m_killed` latch set on first wall-
+  clock expiry, plus an in-hook `lua_sethook` re-arm that drops
+  the count-mask threshold to 1 so each catch is followed by at
+  most one VM instruction or one line-change before the next
+  forced fire. Worst-case UI-thread stall now bounded by
+  `kPcallBudgetMs + LUAI_MAXCCALLS × t_unwind` ≈ 1505 ms
+  regardless of pcall nesting. The captureless lambda in
+  `LuaEngine::initialize` was lifted to a named static
+  `LuaEngine::instructionHook` so the in-hook re-arm can pass
+  the same callback symbol to `lua_sethook`. Spec at
+  `docs/specs/ANTS-1332.md`; regression test at
+  `tests/features/lua_pcall_nesting_timeout/` (4 runtime asserts +
+  5 source-grep asserts; bundled into `test_lua`).
 
 #### 🔒 Tier 2 — hardening + correctness
 

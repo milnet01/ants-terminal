@@ -4765,29 +4765,6 @@ class; the deferrals below cover the rest.
 
 #### 🔒 Tier 1 — security & data-loss
 
-- 📋 [ANTS-1332] **Lua sandbox pcall-nesting wall-clock evasion
-  (lane-6 H-1).** `LuaEngine`'s instruction-count hook calls
-  `luaL_error` once the 1.5 s wall-clock budget is breached, but
-  `luaL_error` longjmps to the nearest `pcall`. A malicious plugin
-  running `pcall(function() while true do pcall(function() …
-  end) end end)` catches each timeout error inside the inner
-  pcall, letting each level of nesting consume another budget
-  window. With Lua's default ~200-deep pcall stack the plugin can
-  stall the UI thread for ~5 minutes before C stack pressure
-  forces an escape. Fix: once `m_timedOut` is set, treat the
-  deadline as terminal — store an `m_kill` flag the hook checks
-  and call `luaL_error` unconditionally every fire, OR force
-  `m_pcallDeadlineMs = INT64_MIN` after the first miss so every
-  subsequent hook fires `luaL_error` instantly (inner pcall still
-  swallows, but plugin gets ~0 useful work per nested catch).
-  Pair with a regression test that exercises 100-deep pcall
-  nesting + asserts wall-clock budget held.
-  **Layman:** stop a misbehaving Lua plugin from holding the UI
-  thread for minutes by abusing nested error-handlers to
-  swallow the timeout signal.
-  Kind: security.
-  Source: indie-review-2026-05-14.
-
 - 📋 [ANTS-1333] **`m_scrollbackHyperlinks` not lockstep with
   `m_scrollback` on reflow (lane-1 H1).** `TerminalGrid::resize`
   pushes `m_scrollback` rows during width-change reflow at

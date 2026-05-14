@@ -75,6 +75,7 @@ bool LuaEngine::initialize() {
 
     m_luaMemUsage = 0;
     m_timedOut = false;
+    m_killed = false;
     m_state = lua_newstate(luaAlloc, this);
     if (!m_state) return false;
 
@@ -96,44 +97,74 @@ bool LuaEngine::initialize() {
     sandboxEnvironment();
 
     // ANTS-1172: instruction-count + per-line + wall-clock watchdog.
-    // The instruction-count hook (10M instructions) bounds pure-Lua
+    // The instruction-count hook (100k instructions) bounds pure-Lua
     // busy loops; the line hook fires per Lua source line so a tight
     // C-call-in-loop pattern (e.g. `for i=1,N do string.find(...) end`)
-    // hits the deadline check more often than once per 10M ops; the
+    // hits the deadline check more often than once per 100k ops; the
     // wall-clock check inside the hook closes the case where a plugin
     // burns time across mostly-C surfaces and the instruction count
     // alone wouldn't accumulate fast enough to fire before a freeze
     // is felt by the user. A SINGLE C call (one giant gsub) still
     // can't be preempted on the main thread — the budget is enforced
     // at the next bytecode boundary.
-    lua_sethook(m_state, [](lua_State *L, lua_Debug *) {
-        lua_getfield(L, LUA_REGISTRYINDEX, "__ants_engine");
-        auto *eng = static_cast<LuaEngine *>(lua_touserdata(L, -1));
-        lua_pop(L, 1);
-        if (!eng) {
-            luaL_error(L, "Script execution timeout exceeded");
-            return;
-        }
-        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-        const bool wallExpired =
-            eng->m_pcallDeadlineMs > 0 && nowMs > eng->m_pcallDeadlineMs;
-        // Instruction-count branch fires every kInstrSlice ops
-        // regardless of wall clock, so set m_timedOut whenever the
-        // count hook hits its budget AND wallExpired is also true.
-        // Otherwise reset the slice and continue (gives every plugin
-        // up to kPcallBudgetMs of wall time even if its instruction
-        // count is high).
-        if (wallExpired) {
-            eng->m_timedOut = true;
-            luaL_error(L, "Script wall-clock budget exceeded");
-        }
-    }, LUA_MASKCOUNT | LUA_MASKLINE, 100000);
+    //
+    // ANTS-1332: the hook callback is the named static
+    // LuaEngine::instructionHook so it can re-arm lua_sethook from
+    // inside its own body once the wall budget is breached.
+    lua_sethook(m_state, &LuaEngine::instructionHook,
+                LUA_MASKCOUNT | LUA_MASKLINE, 100000);
 
     return true;
 }
 
+void LuaEngine::instructionHook(lua_State *L, lua_Debug * /*ar*/) {
+    lua_getfield(L, LUA_REGISTRYINDEX, "__ants_engine");
+    auto *eng = static_cast<LuaEngine *>(lua_touserdata(L, -1));
+    lua_pop(L, 1);
+    if (!eng) {
+        luaL_error(L, "Script execution timeout exceeded");
+        return;
+    }
+    // ANTS-1332 — sticky-kill latch. Once a wall-clock timeout has
+    // fired for this pcall, every subsequent hook fire raises
+    // luaL_error unconditionally. A Lua-level inner pcall in the
+    // plugin will still catch the longjmp, but with the count-mask
+    // threshold dropped to 1 below (see "first expiry" branch) the
+    // plugin gets at most one VM instruction or one line-change
+    // between catches. Loop-nested attacks unwind through the
+    // engine's outer lua_pcall the moment the post-catch instruction
+    // is outside any inner pcall; source-nested attacks unwind one
+    // frame at a time until LUAI_MAXCCALLS bounds the depth.
+    if (eng->m_killed) {
+        luaL_error(L, "Script wall-clock budget exceeded (latched)");
+        return;
+    }
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const bool wallExpired =
+        eng->m_pcallDeadlineMs > 0 && nowMs > eng->m_pcallDeadlineMs;
+    if (wallExpired) {
+        eng->m_timedOut = true;
+        eng->m_killed = true;
+        // Re-arm with count=1 BEFORE luaL_error — luaL_error longjmps
+        // and any statement after it is unreachable (ANTS-1332
+        // Invariants 3 + 5). Keep both mask bits set so line-changes
+        // still trip the hook in the unlikely case the plugin
+        // spans multiple source lines between count-1 fires.
+        lua_sethook(L, &LuaEngine::instructionHook,
+                    LUA_MASKCOUNT | LUA_MASKLINE, 1);
+        luaL_error(L, "Script wall-clock budget exceeded");
+    }
+}
+
 void LuaEngine::startPcallBudget() {
     if (!m_state) return;
+    // ANTS-1332 — clear the sticky-kill latch and restore the normal
+    // count-mask threshold before the next pcall runs. Cheap on the
+    // well-behaved-plugin hot path (one bool store + one lua_sethook
+    // call, both touching the same lua_State cache line).
+    m_killed = false;
+    lua_sethook(m_state, &LuaEngine::instructionHook,
+                LUA_MASKCOUNT | LUA_MASKLINE, 100000);
     // 1.5 s per pcall — big enough to let a normal plugin finish
     // (most fire-and-forget handlers complete in single-digit ms),
     // small enough that the user notices a stall as "snappy still"
@@ -316,6 +347,7 @@ void LuaEngine::shutdown() {
         m_state = nullptr;
         m_luaMemUsage = 0;
         m_timedOut = false;
+        m_killed = false;
     }
 }
 

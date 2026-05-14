@@ -8,8 +8,9 @@
 #include <string>
 #include <vector>
 
-// Forward declare Lua state
+// Forward declare Lua state + activation record
 struct lua_State;
+struct lua_Debug;
 
 // Event types for plugin hooks
 enum class PluginEvent {
@@ -87,6 +88,12 @@ signals:
                                 const QString &action, const QString &hotkey);
 
 private:
+    // ANTS-1332: instruction-count + line + wall-clock hook. Lifted from
+    // a captureless lambda in initialize() to a named static so it can
+    // re-arm `lua_sethook` from inside its own body once the wall budget
+    // is breached (drops the count-mask threshold from 100000 to 1).
+    static void instructionHook(lua_State *L, lua_Debug *ar);
+
     // Lua C API callbacks (static, use upvalues for 'this' pointer)
     static int lua_ants_send(lua_State *L);
     static int lua_ants_notify(lua_State *L);
@@ -121,6 +128,12 @@ private:
     lua_State *m_state = nullptr;
     size_t m_luaMemUsage = 0;  // Current Lua memory usage in bytes
     bool m_timedOut = false;    // Set by instruction hook, checked after pcall
+    // ANTS-1332: sticky-kill latch. Set in the hook on first wall-clock
+    // expiry; once true, every subsequent hook fire raises luaL_error
+    // unconditionally. Cleared in startPcallBudget() (next outer pcall
+    // runs at normal cadence) and in shutdown(). Header default-init
+    // matches the m_timedOut pattern above.
+    bool m_killed = false;
     qint64 m_pcallDeadlineMs = 0;  // ANTS-1172 — wall-clock deadline.
     QString m_recentOutput;
     QString m_cwd;
