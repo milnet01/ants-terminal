@@ -52,6 +52,7 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(bool quakeMode = false, QWidget *parent = nullptr);
+    ~MainWindow() override;
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -215,13 +216,16 @@ private:
     QActionGroup *m_opacityGroup = nullptr;
 
     // ANTS-1182: maintain a flat list of every TerminalWidget under
-    // m_tabWidget so the 13 broadcast / iterate-all sites don't each
+    // m_tabWidget so the broadcast / iterate-all sites don't each
     // walk the QObject child tree per call. Updated on connectTerminal
-    // (append) + on each terminal's destroyed signal (compact). The
-    // hot path (broadcast keystroke / focus change) reads this list
-    // directly. QPointer entries auto-null on object destruction so
-    // any stragglers slip through harmlessly even if compact misses.
-    QList<QPointer<TerminalWidget>> m_allTerminals;
+    // (append); compacted lazily on each liveTerminals() read via the
+    // QPointer auto-null safety net. ANTS-1324: we deliberately do NOT
+    // remove eagerly from a destroyed() slot — that slot fires from
+    // inside QWidget::~QWidget(), where QPointer<TerminalWidget>::data()
+    // would static_cast<TerminalWidget*>(QObject*) on an object whose
+    // vptr has already demoted to QWidget, tripping UBSan
+    // -fsanitize=vptr (qpointer.h:75 downcast).
+    mutable QList<QPointer<TerminalWidget>> m_allTerminals;
     // Compact m_allTerminals by erasing nulled QPointers + return
     // the live set in one pass. Inline in the .cpp; declared here so
     // every iterate-all site can call it without a public API surface

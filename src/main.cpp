@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include "debuglog.h"
 #include <QCommandLineParser>
+#include <QTimer>
 #include <QFont>
 #include <QSurfaceFormat>
 #include <QStringList>
@@ -391,6 +392,15 @@ int main(int argc, char *argv[]) {
 
     MainWindow window(quakeMode);
     window.show();
+
+    // Debug-only graceful auto-quit. Env-gated, no production effect.
+    // Kept in tree for future LSan / shutdown-ordering investigations
+    // — without it, signals bypass QApplication's atexit teardown and
+    // LSan can't flush its report. See
+    // docs/journal/2026-05-14-mainwindow-ctor-16byte-leak.md.
+    if (const int ms = qEnvironmentVariableIntValue("ANTS_DEBUG_QUIT_AFTER_INIT_MS"); ms > 0) {
+        QTimer::singleShot(ms, qApp, &QCoreApplication::quit);
+    }
 
     return app.exec();
 }

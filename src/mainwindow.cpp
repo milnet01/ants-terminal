@@ -113,6 +113,14 @@ void sweepKwinScriptOrphansOnce();
 #include <QSystemTrayIcon>
 #include <QWindow>
 
+// POSIX kill(2) used by ANTS-1322 stale-MCP-socket sweep at startup.
+#include <csignal>
+#include <cerrno>
+
+// ANTS-1323: configure-time build-date / build-time macros for the
+// window-title build-badge.
+#include "build_info.h"
+
 #ifdef ANTS_WAYLAND_LAYER_SHELL
 #include <LayerShellQt/Window>
 #endif
@@ -248,7 +256,10 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
 
     // Custom title bar
     m_titleBar = new TitleBar(this);
-    m_titleBar->setTitle("Ants Terminal");
+    // ANTS-1323: route the initial title through onTitleChanged so
+    // the version + build-date + build-time badge appears at startup,
+    // not just after the first shell-title broadcast.
+    onTitleChanged(QString());
     connect(m_titleBar, &TitleBar::minimizeRequested, this, &QWidget::showMinimized);
     connect(m_titleBar, &TitleBar::maximizeRequested, this, &MainWindow::toggleMaximize);
     connect(m_titleBar, &TitleBar::closeRequested, this, &QWidget::close);
@@ -1069,6 +1080,26 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     static const bool remoteControlGate = m_config.remoteControlEnabled();
     if (remoteControlGate) {
         m_remoteControl->start();
+    }
+}
+
+MainWindow::~MainWindow() {
+    // ANTS-1320 (review-button probe path): any in-flight QProcess
+    // child (the `git status` review-changes probe, started by
+    // refreshReviewChangesButton) emits finished/errorOccurred from
+    // its destructor when Qt's deleteChildren forcibly terminates the
+    // child. Those connected lambdas capture QPointer<MainWindow> and
+    // dereference `.data()` — a downcast that is UB once the derived
+    // (MainWindow) destructor body has returned (vptr swapped to
+    // QWidget). UBSan-confirmed 2026-05-14. Disconnect this MainWindow
+    // as receiver and kill the child cleanly here, BEFORE the implicit
+    // destruction chain emits the racy signal.
+    for (QProcess *p : findChildren<QProcess *>()) {
+        p->disconnect(this);
+        if (p->state() != QProcess::NotRunning) {
+            p->kill();
+            p->waitForFinished(500);
+        }
     }
 }
 
@@ -1986,10 +2017,19 @@ QList<TerminalWidget *> MainWindow::liveTerminals() const {
     // caller so iteration is stable even if a terminal is destroyed
     // mid-loop. The pointers themselves remain owned by Qt's parent
     // chain.
+    //
+    // ANTS-1324: compact null entries (Qt auto-nulled them when the
+    // wrapped TerminalWidget was destroyed) lazily here, rather than
+    // eagerly via a destroyed() slot. The eager path fired UBSan
+    // because the slot runs during ~QWidget() with vptr=QWidget, and
+    // QPointer<TerminalWidget>::data() would static_cast that to
+    // TerminalWidget*. m_allTerminals is `mutable` for this reason.
+    m_allTerminals.removeIf(
+        [](const QPointer<TerminalWidget> &p) { return p.isNull(); });
     QList<TerminalWidget *> live;
     live.reserve(m_allTerminals.size());
     for (const QPointer<TerminalWidget> &p : m_allTerminals) {
-        if (p) live.append(p.data());
+        live.append(p.data());
     }
     return live;
 }
@@ -1997,14 +2037,11 @@ QList<TerminalWidget *> MainWindow::liveTerminals() const {
 void MainWindow::connectTerminal(TerminalWidget *terminal) {
     // ANTS-1182: register with the flat all-terminals list so
     // iterate-all sites don't each walk the QObject child tree.
+    // ANTS-1324: removal is lazy (see liveTerminals()) — no eager
+    // destroyed() handler, because that handler would call
+    // QPointer<TerminalWidget>::data() while ~QWidget() is on the
+    // stack and trip UBSan -fsanitize=vptr.
     m_allTerminals.append(QPointer<TerminalWidget>(terminal));
-    connect(terminal, &QObject::destroyed, this, [this](QObject *obj) {
-        m_allTerminals.removeIf(
-            [obj](const QPointer<TerminalWidget> &p) {
-                return p.data() == static_cast<TerminalWidget *>(obj)
-                       || p.isNull();
-            });
-    });
 
     connect(terminal, &TerminalWidget::titleChanged, this, [this, terminal](const QString &title) {
         // Find which tab this terminal is in
@@ -3191,11 +3228,21 @@ void MainWindow::applyFontSizeToAll(int size) {
 }
 
 void MainWindow::onTitleChanged(const QString &title) {
+    // ANTS-1323: append a compact `version \u00b7 build-date build-time`
+    // suffix so the running build is visible at a glance, without
+    // opening Help \u2192 About. The full SHA + build type stay in the
+    // About dialog. Format chosen for readability under the frameless
+    // title bar's typical width.
+    const QString badge = QStringLiteral("%1 \u00b7 %2 %3")
+        .arg(QString::fromLatin1(ANTS_VERSION),
+             QString::fromLatin1(ANTS_BUILD_DATE),
+             QString::fromLatin1(ANTS_BUILD_TIME));
     QString windowTitle;
     if (title.isEmpty()) {
-        windowTitle = "Ants Terminal";
+        windowTitle = QStringLiteral("Ants Terminal \u2014 ") + badge;
     } else {
-        windowTitle = title + " \u2014 Ants Terminal";
+        windowTitle = title + QStringLiteral(" \u2014 Ants Terminal \u00b7 ")
+                            + badge;
     }
     setWindowTitle(windowTitle);
     m_titleBar->setTitle(windowTitle);
@@ -3505,6 +3552,31 @@ void MainWindow::setupStatusBarChrome() {
     connect(m_roadmapBtn, &QPushButton::clicked,
             this, &MainWindow::showRoadmapDialog);
 
+    // ANTS-1323: compact build-badge chip on the right edge of the
+    // status bar — surfaces the running version + build date + build
+    // time at-a-glance so the user can tell "am I on the latest?"
+    // without opening Help → About. Full SHA + build type live in
+    // the About dialog. Tooltip carries the long form for hover-detail.
+    {
+        auto *versionChip = new QLabel(this);
+        versionChip->setSizePolicy(QSizePolicy::Fixed,
+                                    QSizePolicy::Preferred);
+        versionChip->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        versionChip->setText(QStringLiteral("v%1 · %2 %3")
+            .arg(QString::fromLatin1(ANTS_VERSION),
+                 QString::fromLatin1(ANTS_BUILD_DATE),
+                 QString::fromLatin1(ANTS_BUILD_TIME)));
+        versionChip->setToolTip(QStringLiteral(
+            "Ants Terminal %1\nBuilt %2 %3 (%4)\ncommit %5")
+            .arg(QString::fromLatin1(ANTS_VERSION),
+                 QString::fromLatin1(ANTS_BUILD_DATE),
+                 QString::fromLatin1(ANTS_BUILD_TIME),
+                 QString::fromLatin1(ANTS_BUILD_TYPE),
+                 QString::fromLatin1(ANTS_BUILD_COMMIT)));
+        versionChip->setAccessibleName(tr("Ants Terminal build"));
+        statusBar()->addPermanentWidget(versionChip);
+    }
+
     // (0.7.45 repo visibility badge moved to the LEFT side next to the
     // git branch in 0.7.49 — see addWidget call earlier in the
     // constructor. Per-tab refresh via refreshRepoVisibility.)
@@ -3548,6 +3620,41 @@ void MainWindow::setupStatusBarChrome() {
 // state, then starts the hook server. Split out from
 // setupClaudeIntegration because it isn't status-bar chrome.
 void MainWindow::setupClaudeMcpProviders() {
+    // ANTS-1322: reap stale MCP sockets from previously-crashed
+    // ants-terminal instances. Without this they accumulate in
+    // /tmp/ants-terminal-mcp-<PID> indefinitely; the mcp-bridge
+    // picker would happily pick a stale one (newest by mtime) and
+    // fail to connect, breaking the user-scoped MCP for every
+    // non-Ants project. Sweep is cheap — one stat + one kill(0)
+    // probe per file, dozens at most.
+    {
+        const QString tmp = QDir::tempPath();
+        QDir tmpDir(tmp);
+        const QStringList entries = tmpDir.entryList(
+            QStringList{QStringLiteral("ants-terminal-mcp-*")},
+            QDir::System | QDir::Files | QDir::Hidden);
+        for (const QString &name : entries) {
+            // Path-shape: ants-terminal-mcp-<PID>
+            const QString pidStr = name.section(QChar('-'), -1);
+            bool ok = false;
+            const pid_t pid = pidStr.toLong(&ok);
+            if (!ok) continue;  // doesn't look like our format
+            if (pid == QApplication::applicationPid()) continue;
+            // kill(pid, 0) returns 0 if the PID is live, -1 with
+            // errno=ESRCH if it's gone. EPERM means someone else's
+            // PID — leave that socket alone (not ours to clean).
+            if (::kill(static_cast<pid_t>(pid), 0) == 0) continue;
+            if (errno != ESRCH) continue;
+            const QString full = tmp + QChar('/') + name;
+            // S_ISSOCK guard prevents removing a regular file that
+            // happens to share the name (defensive — unlikely).
+            QFileInfo fi(full);
+            if (fi.exists() && QFile(full).remove()) {
+                qDebug() << "Reaped stale MCP socket:" << full;
+            }
+        }
+    }
+
     QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
                         QString::number(QApplication::applicationPid());
     m_claudeIntegration->startMcpServer(mcpSocket);
@@ -3748,6 +3855,14 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             return QString::fromUtf8(
                 m_remoteControl->cmdDebtSweepTriagePrompt(args).toJson(QJsonDocument::Compact));
+        });
+
+    // ANTS-1289 — verify_changes.
+    m_claudeIntegration->registerToolProvider("verify_changes",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdVerifyChanges(args).toJson(QJsonDocument::Compact));
         });
 
     // Start hook server

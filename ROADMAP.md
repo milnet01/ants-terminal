@@ -429,6 +429,62 @@ for the rotation contract.
   exit-code-mismatched HMACs. See
   [CHANGELOG.md §0.6.31](CHANGELOG.md#0631--2026-04-17).
 
+- 📋 [ANTS-1330] **Floating prompt-jump button in scrollback —
+  visual companion to the back-to-bottom chip.** User request
+  2026-05-14. Add a small floating chip (styled like the
+  scroll-to-bottom chip — circular, ID-scoped stylesheet so it
+  resists the app `QPushButton` cascade, see ANTS-1326) that
+  lets users navigate between their own prompt boundaries in
+  scrollback by mouse. The Ctrl+Shift+Up / Ctrl+Shift+Down
+  keyboard nav already exists (shipped 0.6.10 with OSC 133
+  command-blocks). New surface: a chip that scrolls the
+  viewport to the previous / next user prompt — likely two
+  arrows in one chip, or a single chip with a "Jump to last
+  prompt" affordance. Positioning: above the back-to-bottom
+  chip on the right edge so the two coexist when scrolled up.
+  Stylesheet: reuse the `QPushButton#scrollToBottomBtn`
+  override pattern (`padding: 0; min-width: 32px; max-width:
+  32px;`) so the cascading app-wide QPushButton padding can't
+  clip it. Implementation hooks: `TerminalGrid` already tracks
+  prompt rows via the OSC 133;A side-table (used by the
+  ANTS-1146 command-block renderer); the chip's click handler
+  computes the next/prev prompt row and adjusts `m_scrollOffset`
+  + emits scroll. Spec to be written under
+  `docs/specs/ANTS-1330.md` when scheduled.
+  **Layman:** like the "back to bottom" button, but jumps to
+  the previous (or next) one of YOUR commands in the scrollback
+  — for finding "where did that last command land" without
+  scrolling by hand.
+  Kind: feature.
+  Source: user-request-2026-05-14.
+  Priority: after the current token-saving / Claude-Code-
+  integration sprint.
+
+- 📋 [ANTS-1331] **Menu-bar "Sponsors" entry → opens GitHub
+  Sponsors page.** User request 2026-05-14. Add a top-level
+  menu item after "Help" in `MainWindow`'s menu bar that opens
+  `https://github.com/sponsors/milnet01` via
+  `QDesktopServices::openUrl()`. Single action, no submenu —
+  click goes straight to the GitHub Sponsors profile. Icon
+  optional (a heart / hand glyph if Qt's standard icon set has
+  one; otherwise plain text). Accessibility name "Support Ants
+  Terminal on GitHub Sponsors". The URL is the canonical
+  destination from `SUPPORTERS.md` — keep them lockstep so the
+  in-app link and the docs always agree. Implementation: ~10
+  lines in `MainWindow::setupMenuBar` (or wherever the menus
+  are built) plus a docstring. No new files needed. Spec
+  optional — a regression test that the menu entry exists and
+  opens the URL (mock `QDesktopServices`) is more useful than
+  a full spec.md.
+  **Layman:** a "Sponsors" item in the menu bar (after "Help")
+  that takes you straight to the GitHub Sponsors page if you
+  want to support the project — one click instead of "where do
+  I donate?".
+  Kind: feature.
+  Source: user-request-2026-05-14.
+  Priority: after the current token-saving / Claude-Code-
+  integration sprint.
+
 ### 🔌 Plugins — trigger system
 
 - ✅ **Trigger rules** with `instant` flag and the full iTerm2 action
@@ -5036,30 +5092,43 @@ The items below identify the next batch of leverage.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1281] **`indie_review_brief` returns template, not source
-  bodies.** Today the tool returns the verbatim brief plus
-  per-lane source-file contents — useful for one-shot rendering
-  but the source bodies inflate parent context. Redesign:
-  `indie_review_brief lane=X` returns `{prompt_template_text,
-  source_paths[], contract_docs[], external_specs[],
-  dimension_weighting{}}` — the SUBAGENT can read source files
-  itself (it's already in the brief's contract: "read these
-  source files in full"). Saves ~10–30 K tokens per lane in
-  parent context.
-  **Layman:** the "build a review brief" tool dumps the whole
-  source file into context — let the subagent read its own files
-  and just return the prompt template.
+- ✅ [ANTS-1281] **`indie_review_brief` returns manifest, not source
+  bodies** (shipped to `[Unreleased]` 2026-05-13 — first item of
+  the post-0.7.91 cycle). The tool's response keeps the `brief`
+  field (no rename — backwards compatible) but drops the per-file
+  `=== file: <path> ===` body sections. New structured fields
+  alongside: `source_paths[]`, `contract_docs[]`, `external_specs[]`
+  (reserved, empty in v1), `dimension_weighting{}` (reserved, empty
+  in v1). `brief` text now contains an explicit "Read each source
+  file in the list above using your Read tool" sentinel so
+  dispatched subagents know the omission is intentional.
+  **Token saving: ~10–30 K orchestrator tokens per lane × 14 lanes
+  per `/indie-review` sweep.** Spec:
+  [`docs/specs/ANTS-1281.md`](docs/specs/ANTS-1281.md). Engine:
+  `IndieReviewEngine::assembleBriefManifest`. Test:
+  `tests/features/indie_review_brief_manifest/` (4 INVs, all
+  passing).
+  **Layman:** the "build a review brief" tool used to dump the
+  whole source file into context — now it just lists the paths and
+  the subagent reads its own files.
   Kind: refactor.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1282] **`indie_review_corroborate` accepts a directory
-  path.** Current schema requires `reports: {lane_name:
-  report_markdown}` — passing 14 full reports through parent
-  context just to corroborate is exactly the round-trip the MCP
-  should avoid. Add an alternative input `reports_dir: string`
-  that reads `<dir>/*.md` server-side and returns the corroborated
-  set. Pairs with ANTS-1279's `/tmp/indie-review-<date>/` output
-  contract.
+- ✅ [ANTS-1282] **`indie_review_corroborate` accepts a directory
+  path** (shipped to `[Unreleased]` 2026-05-13). The tool now
+  accepts EITHER `reports: {lane_name: report_markdown}` (v1
+  inline) OR `reports_dir: <project-relative-path>` (v2 disk
+  read). XOR-validated at the MCP handler layer. Engine adds
+  `corroboratedFindingsFromDir(projectPath, reportsDirRelative,
+  minLanes, *reportsRead)` with path-traversal guard (INV-3) +
+  64 KiB file truncation parity (INV-8) + non-`.md`-file skip
+  (INV-4) + missing-dir tolerance (INV-6). Spec:
+  [`docs/specs/ANTS-1282.md`](docs/specs/ANTS-1282.md). Test:
+  `tests/features/indie_review_corroborate_dir/` (6 INVs, all
+  passing). **Token saving: ~14 × ~8 KiB median reports = ~112
+  KiB no longer transit parent context per `/indie-review`
+  sweep.** Pairs with ANTS-1281 (brief manifest); together they
+  close the orchestrator's two biggest context-round-trip costs.
   **Layman:** instead of pasting all the reports back into the
   tool's input, point it at the directory the orchestrator
   already wrote them to.
@@ -5160,6 +5229,35 @@ The items below identify the next batch of leverage.
 
 #### 🔌 MCP — skill displacement (moving workflow tokens server-side)
 
+- 📋 [ANTS-1319] **`/cold-eyes` MCP fold-in — mechanical doc-walk
+  + cross-doc diff server-side.** Mirror to ANTS-1112 (folded
+  `/indie-review`) and ANTS-1113 (folded `/debt-sweep`). The
+  `superpowers:cold-eyes` skill today drives Claude through a
+  parallel multi-agent loop: dispatch N agents reading
+  README.md / CLAUDE.md / ROADMAP.md / docs/specs/*.md /
+  docs/decisions/*.md / per-feature `spec.md` files; aggregate
+  flagged inconsistencies; loop until clean. The *mechanical*
+  pieces are server-movable: discover which docs cover what
+  (regex-driven), partition into per-agent briefs, extract
+  cross-doc claim sets (INV-N references, path mentions, term
+  glossary), diff for contradictions/dangling references,
+  render fold-in markdown. The *judgment* pieces (which
+  contradiction is real vs. expected; what the spec SHOULD say)
+  stay Claude-side. New MCP tools: `cold_eyes_partition`,
+  `cold_eyes_brief lane=X` (returns manifest per ANTS-1281
+  shape — paths not bodies), `cold_eyes_cross_doc_diff
+  reports_dir=...` (per ANTS-1282 shape — disk input),
+  `cold_eyes_fold_in actionable=[...]`. Expected token savings:
+  ~50-100K orchestrator tokens per `/cold-eyes` run (currently
+  burns the whole CLAUDE.md + ROADMAP + specs trail across N
+  agents through the parent each pass). Spec when scheduled.
+  **Layman:** push the mechanical "scan all the docs, find
+  contradictions" parts of /cold-eyes into the terminal as MCP
+  tools so Claude doesn't burn tokens loading the doc trail
+  each pass.
+  Kind: implement.
+  Source: user-request-2026-05-13.
+
 Every `superpowers:*` skill invocation loads 150–500 lines of skill
 markdown into Claude's context AND drives Claude through the workflow
 in-conversation, both of which burn tokens. The *mechanical* parts of
@@ -5172,7 +5270,7 @@ the skill's core loop is "run X, parse Y, return Z" or "render this
 template / mutate this state atomically" → movable. If it's
 "hypothesise, ask user, narrow down" → not movable.
 
-- 📋 [ANTS-1289] **`mcp__ants__verify_changes` — host the
+- ✅ [ANTS-1289] **`mcp__ants__verify_changes` — host the
   `verification-before-completion` skill server-side.** That skill's
   core loop is mechanical: run the project's build + test + lint
   commands, return `{build: pass|fail, tests: <pass>/<total>,
@@ -5364,6 +5462,296 @@ template / mutate this state atomically" → movable. If it's
   developer reference material.
   Kind: docs.
   Source: indie-review-2026-05-13.
+
+### 🎨 At-a-glance build-version surface (user request 2026-05-14)
+
+- ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
+  window title + status bar.** With the new weekly Wednesday
+  cadence + rolling-RC cycle, the user couldn't tell which local
+  rebuild they were running — multiple builds per day collapsed
+  to the same `2026-05-14` date stamp. Fix: add `ANTS_BUILD_TIME`
+  (HH:MM, configure-time `string(TIMESTAMP)`) alongside the
+  existing `ANTS_BUILD_DATE`, and surface the combined badge in
+  three places: (a) window title — `Ants Terminal — 0.7.92 ·
+  2026-05-14 08:48`; (b) status-bar permanent chip on the right
+  — `v0.7.92 · 2026-05-14 08:48` (tooltip carries the long form
+  with build type + commit SHA); (c) About dialog's build line —
+  date AND time AND build type AND short SHA. Initial title set
+  through `onTitleChanged(QString())` so the badge appears
+  immediately at startup, not just after the first shell title
+  broadcast. `build_info.h` extended with `ANTS_BUILD_TIME`;
+  `ants_chrome_lib` gains the generated include path (was
+  previously only on `ants_dialogs_lib` for the About dialog).
+  **Layman:** the version stamp now includes the build time
+  down to the minute, visible at a glance in three places — so
+  you always know which build you're running, even after several
+  rebuilds in one day.
+  Kind: feature.
+  Source: user-request-2026-05-14.
+
+### 🔌 Ants-MCP discoverability — stale-socket sweep (user request 2026-05-14)
+
+- ✅ [ANTS-1322] **Ants MCP unreachable from user-scope sessions —
+  stale `/tmp/ants-terminal-mcp-<PID>` sockets accumulated from
+  crashed instances.** The MCP server is already registered at
+  `claude mcp` user scope (visible to all projects via the
+  `mcp-bridge.py` stdio→Unix-socket bridge), but kept failing to
+  connect with `Failed to connect`. Root cause: every crashed
+  ants-terminal left its socket behind (no cleanup on abort), so
+  `pick_socket()` — which used `(mtime, path)` to pick the newest
+  one — would happily pick a stale socket whose process had been
+  gone for hours/days. **Two-part fix:**
+  (a) `mcp-bridge.py::pick_socket` now ranks sockets as
+  `(live_pid_tier, mtime, path)` — live-PID sockets always beat
+  stale ones; mtime breaks ties within each tier.
+  (b) `MainWindow::setupClaudeMcpProviders` now sweeps stale
+  sockets at startup — each `/tmp/ants-terminal-mcp-<PID>` whose
+  PID returns `ESRCH` from `kill(pid, 0)` is unlinked. So the
+  next ants-terminal launch auto-reaps the prior crashed
+  instance's leftovers. 11 stale sockets reaped during repro
+  2026-05-14.
+  **Layman:** the MCP server was always supposed to be available
+  to every project — but the bridge kept picking dead leftovers
+  from crashed Ants instances. Now both the bridge and Ants
+  itself ignore / clean up the dead ones.
+  Kind: bugfix.
+  Source: user-request-2026-05-14.
+
+### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
+
+- ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
+  spacing for readability** (shipped 2026-05-14). User feedback
+  after ANTS-1328 (word-wrap): "Can you add a little line spacing
+  between items, just to separate them please." Shipped first as
+  `QListWidget::setSpacing(6)` (12 px gap); user-tuned same day
+  through 4 (8 px) and finally to `setSpacing(3)` (6 px gap)
+  after two "still too much" rounds. setSpacing pads both above
+  and below each item, so the gap between neighbours is 2 ×
+  spacing. Hover highlight (already present, user noted "I also
+  like that the task lowlights / highlights") remains as the
+  secondary visual separator.
+  **Layman:** the task list now has a small gap between rows so
+  each task is visually distinct, not just a tight wall of text.
+  Kind: feature.
+  Source: user-feedback-2026-05-14.
+
+- ✅ [ANTS-1328] **Tasks dialog wraps long task subjects, no
+  horizontal scrollbar** (shipped 2026-05-14). User feedback
+  2026-05-14: "Can we also display the text in an easier to read
+  fashion? Perhaps add wrapping so users don't have to scroll
+  left and right." Previously the dialog's `QListWidget` used
+  Qt's default `setWordWrap(false)` + `Qt::ElideMiddle` text
+  elision, which truncated long task subjects and inserted a
+  horizontal scrollbar when the dialog wasn't wide enough.
+  Fix: enable `setWordWrap(true)`, set
+  `setTextElideMode(Qt::ElideNone)` so wrap can claim a second
+  line, set `setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff)`
+  so the horizontal scrollbar can never appear, and set
+  `setResizeMode(QListView::Adjust)` so row heights recalc on
+  every resize. Auto-update (the `m_tracker->tasksChanged` →
+  `rebuild()` signal connection) is unchanged — already wired
+  since the dialog's introduction.
+  **Layman:** task names that don't fit the dialog width now
+  wrap to a second line instead of getting cut off; no more
+  left/right scrolling.
+  Kind: feature.
+  Source: user-feedback-2026-05-14.
+
+- ✅ [ANTS-1327] **Tasks chip + dialog now mirror Claude Code's
+  sidebar — full session history across `/compact`** (shipped
+  2026-05-14, supersedes ANTS-1224). User feedback 2026-05-14: "if
+  we going to offer this to users, what CC is showing is what the
+  button / dialog should be showing." The 0.7.82 contract
+  (ANTS-1224) had `isCompactSummary` as a state-reset checkpoint
+  — `parseTranscript` cleared `out` / `idxByToolUseId` /
+  `sawTodoWrite` on each compact event, so the chip presented
+  only post-compact tasks. The new contract treats
+  `isCompactSummary` as a NO-OP marker; the parser `continue`s
+  past it without touching accumulated state, and pre-compact
+  `TaskCreate` / `TodoWrite` / `TaskUpdate` events keep
+  contributing to the lifetime view. The chip's `done/total`
+  numerator now matches what the harness sidebar shows for the
+  same session. Touched: `src/claudetasklist.cpp`,
+  `src/claudebgtasks.cpp` (the bg-tasks tracker had ANTS-1224
+  parity, so the reversal preserves parity). Spec + tests at
+  `tests/features/claude_task_list/` rewritten — the
+  ANTS-1224-INV-1/2/3 invariants are replaced by
+  ANTS-1327-INV-1/2/3 with inverted expectations. Sidechain
+  filter ordering (the deprecated 1224-INV-3) is preserved in
+  1327-INV-3 verbatim.
+  **Layman:** the tasks chip used to reset itself after each
+  `/compact`, hiding previously-completed tasks. Now it keeps
+  the full history visible, the same way Claude Code's own
+  sidebar does.
+  Kind: behaviour-change.
+  Source: user-feedback-2026-05-14.
+
+- ✅ [ANTS-1326] **Scroll-to-bottom chip clipped off the widget's
+  right edge — app-wide `QPushButton` rule cascading through the
+  chip's inline stylesheet** (shipped 2026-05-14). User report
+  2026-05-14: "back-to-bottom button is being cut off on the side
+  of the screen — previously it was a nice round circle just to
+  the left of the right hand side of the screen." Root cause: the
+  chip (`m_scrollToBottomBtn`) is rendered with
+  `setFixedSize(32, 32)` and a local stylesheet that sets only
+  background / colour / border-radius. The app-wide
+  `themedstylesheet::buildAppStylesheet` rule for QPushButton
+  declares `padding: 6px 14px; min-width: 60px;` — those
+  properties cascade through to the chip's selector (no `padding`
+  / `min-width` override on the local rule). Qt 6.7+ adds padding
+  to the content box when rendering the button, so the visual
+  occupies ≈62 × 46 px even though geometry is 32 × 32 → the chip
+  extends past `width()-20` and clips against the widget edge / hides
+  behind the scrollbar. Fix: tag the chip with
+  `objectName("scrollToBottomBtn")` and use `QPushButton#scrollToBottomBtn`
+  selectors that explicitly reset `padding: 0; min-width: 32px;
+  max-width: 32px; min-height/max-height: 32px;` so the cascading
+  values can't leak in. Regression-locked via grep test (forbids
+  the chip stylesheet from omitting the `padding: 0` / `min-width:
+  32px` resets).
+  **Layman:** the app's default button look was sneaking padding
+  into the back-to-bottom chip and making it too wide, which
+  pushed half of it off the right edge of the terminal area.
+  Kind: bugfix.
+  Source: user-report-2026-05-14.
+
+- ✅ [ANTS-1324] **UBSan `qpointer.h:75` downcast — destroyed()
+  predicate's `p.data()` runs while `~QWidget()` is on the stack**
+  (shipped 2026-05-14, follow-up to ANTS-1320). ANTS-1320 thought it
+  was avoiding the bad downcast by casting the *result* of `p.data()`
+  back UP to `QObject*`. But `QPointer<TerminalWidget>::data()` itself
+  IS the downcast — `static_cast<TerminalWidget*>(QObject*)` at
+  qpointer.h:75. The upcast on the result came too late to matter;
+  UBSan catches the downcast inside `.data()`, not the use of the
+  pointer afterwards. Repro: any `shellExited` → `deleteLater()` (or
+  the shutdown chain) posts a deferred-delete event; `~TerminalWidget`
+  → `~QWidget` → `emit destroyed()` runs the lambda, the lambda walks
+  `m_allTerminals.removeIf`, each predicate call invokes `p.data()`
+  on the QPointer wrapping the being-destroyed object whose vptr has
+  already demoted to QWidget → UBSan `runtime error: downcast …
+  object is of type 'QWidget'`. Fix: drop the `destroyed → removeIf`
+  handler entirely and compact null entries lazily in
+  `liveTerminals()` instead. Qt's QPointer auto-null fires *after*
+  destroyed() returns, so the next read of `m_allTerminals`
+  naturally drops the dead entry. Side benefit: kills the ANTS-1320
+  failure mode at its source — no destroyed-signal lambda means
+  nothing to disconnect in `~MainWindow` (vestigial loop removed).
+  `m_allTerminals` is now `mutable` so the lazy compact fits inside
+  the existing `const` accessor.
+  **Layman:** the previous fix only looked like it cast safely; the
+  cast it tried to avoid was hiding one level deeper inside
+  `QPointer::data()`. Stop dereferencing the pointer at all during
+  the dangerous window — Qt nulls it out a moment later, just read
+  it then.
+  Kind: bugfix.
+  Source: asan-2026-05-14.
+
+- 📋 [ANTS-1325] **clangd `unused-includes` follow-up — two
+  false-positive warnings in mainwindow.{cpp,h}.** Tracked rather
+  than fixed in the ANTS-1324 commit because they're out of lane
+  (per CLAUDE.md §11). (a) `mainwindow.h:6 — themes.h is not used
+  directly` — needs verification (a forward-declared themes type
+  may make the include genuinely removable, or it may be transitive
+  through another header). (b) `mainwindow.cpp:117 — csignal is not
+  used directly` — false positive, `::kill(pid, 0)` is called at
+  `mainwindow.cpp:3646` from the ANTS-1322 stale-socket sweep;
+  technically POSIX `kill(2)` is declared in `<signal.h>` (which
+  `<csignal>` transitively pulls in on glibc) — clangd is reading
+  the standard literally. Resolution either way: replace `<csignal>`
+  with `<signal.h>` to satisfy clangd, or annotate the include as
+  `// IWYU pragma: keep`. Both warnings predate ANTS-1324 — flagged
+  during that build, not introduced by it.
+  Kind: chore.
+  Source: clangd-2026-05-14.
+
+- ✅ [ANTS-1321] **Stylesheet `%3` / `%6` placeholder reuse — CSS
+  vs SVG-data-URI context collision** (shipped 2026-05-14).
+  `themedstylesheet::buildAppStylesheet` pre-encoded `textPrimary`
+  + `textSecondary` colours as `%23RRGGBB` (URL-encoded `#`) so
+  the data-URI SVG inside `QTabBar::close-button` `image: url(...)`
+  would render. But the SAME `arg()` position served both
+  contexts: 25+ CSS rules using `color: %3;` / `color: %6;`
+  ended up with `color: %23RRGGBB;` — invalid CSS. Qt logged
+  `"Could not parse application stylesheet"` on every theme
+  apply and silently fell back to default colours for the
+  affected rules. Suspected to be the same family as the
+  intermittent theme-change SIGSEGV (malformed CSS → parser
+  state corruption during stylesheet polish). Fix: split into
+  separate placeholders — `%3`/`%6` keep CSS-literal `#RRGGBB`,
+  new `%8`/`%9` carry the URL-encoded `%23RRGGBB` ONLY where
+  the SVG strokes need it. Regression-locked at
+  `tests/features/tab_close_button_visible/test_tab_close_button_visible.cpp`
+  (`I-regression-1321` invariants explicitly reject SVG strokes
+  reusing `%3` or `%6`).
+  **Layman:** the theme code was using the URL-encoded `#` for
+  EVERYTHING — fine inside the icon SVG but invalid as a plain
+  CSS colour. Qt was rejecting most theme rules silently and
+  this was probably what crashed it when switching themes too.
+  Kind: bugfix.
+  Source: asan-2026-05-14.
+
+- ✅ [ANTS-1320] **Heap-use-after-free at close — destroyed-signal
+  lambda outlives the QList it captures.** ASan repro 2026-05-13
+  pinpointed the cause: `MainWindow::connectTerminal` registered a
+  `terminal->destroyed` lambda that captured `this` and indexed
+  into `m_allTerminals` (a `QList<QPointer<TerminalWidget>>`
+  member). At close, `~MainWindow`'s implicit member-destruction
+  chain destroyed the QList **before** Qt's `deleteChildren()`
+  step (in `~QObject`) destroyed each tab's `TerminalWidget`. Each
+  `TerminalWidget::~TerminalWidget` then ran `~QWidget` which
+  emitted `destroyed()` — firing the lambda, which reached into
+  the already-freed `m_allTerminals` → glibc `"corrupted
+  double-linked list"` SIGABRT on Release builds, clean ASan
+  heap-use-after-free on the sanitized build. Fix: explicit
+  `~MainWindow()` that disconnects `destroyed` from every
+  registered terminal targeting `this` before the member chain
+  runs. Same commit also fixes a UBSan
+  `static_cast<TerminalWidget*>(QObject*)` in the lambda (UB once
+  the derived dtor has run + vptr swapped to `QWidget`) — cast the
+  other way (`p.data()` up to `QObject*`) for the
+  pointer-identity check. Crashed dozens of times across 2026-05-11
+  → 2026-05-13 before catching. Should also resolve the related
+  theme-change SIGSEGV (similar pattern — connected lambda firing
+  during stylesheet polish that touched freed state); awaiting
+  user re-test to confirm.
+  **Layman:** at close, a "remove me from the list" callback wired
+  to every tab's "I'm being destroyed" signal was firing AFTER the
+  list itself was freed. Disconnect it earlier.
+  Kind: bugfix.
+  Source: asan-2026-05-13.
+
+### 📦 Release cadence + Patron RC pipeline (user request 2026-05-13)
+
+User-decided 2026-05-13: move from ad-hoc per-feature releases to a
+weekly Wednesday cadence with a 7-day frozen-RC Patron preview
+window. Last ad-hoc release: 0.7.91 (2026-05-13). Bootstrap week
+2026-05-20 cuts only the first RC; public cadence steady-state
+starts 2026-05-27.
+
+- 📋 [ANTS-1318] **Weekly Wednesday release cadence + Patron-tier
+  frozen-RC pipeline.** Frozen-RC model: every Wednesday cuts both
+  (a) the public release for the in-flight `X.Y.Z` (= the latest
+  `vX.Y.Z-rcN` tag's bits, fast-forwarded to `vX.Y.Z`) AND (b) a
+  new RC `vX.Y.(Z+1)-rc1` from current `main`. Bug fixes for
+  Patron-reported regressions land on `main` first, then are
+  cherry-picked into a temp commit chain off the RC tag and
+  re-tagged `rc(N+1)`. No long-lived `rc/<version>` branch.
+  Patrons (🛠 tier) notified via the GitHub Sponsors-tier comms
+  channel with the public-but-unannounced pre-release URL — no
+  technical gating ("early access," not "exclusive access"; per
+  `SUPPORTERS.md:31`). Critical infra change: AppImage `UPDATE_INFORMATION`
+  for RC builds points at an `rc-channel` (NOT `latest`) so
+  stable users can't auto-update onto RCs. Touches `/release`
+  skill (Wed-detection + dual-cut + `--rc-respin` subcommand),
+  `release.yml` (zsync channel split), no schema change to
+  `bump.json` or `CMakeLists.txt` (RC suffix lives only at tag +
+  GH release title + AppImage filename per INV-3). 9 invariants
+  spec'd. Spec: [`docs/specs/ANTS-1318.md`](docs/specs/ANTS-1318.md).
+  **Layman:** stop releasing piecemeal — once per week on
+  Wednesday, with Patrons getting a 7-day testing window before
+  public.
+  Kind: process + tooling.
+  Source: user-request-2026-05-13.
 
 ### 🔌 MCP — general Claude Code workflows (2026-05-13)
 
@@ -5593,6 +5981,37 @@ expected token-leverage per implementation hour.
   the AI dialog opens with that text already loaded.
   Kind: implement.
   Source: indie-review-2026-05-13.
+
+- 📋 [ANTS-1331] **Prev/next prompt-history navigation on Claude
+  tabs.** When Claude has been running unattended for a while and
+  the user comes back to a long scrollback, finding "what was the
+  prompt I sent before this one?" means manually scrolling /
+  searching. Add a small pair of `◀ / ▶` buttons on the Claude tab
+  (status-bar chip or inline with the existing Claude chips) that
+  scroll the terminal viewport to anchor on the *previous / next
+  user-typed prompt as it appears in the live terminal scrollback*.
+  **Scope is strictly the scrollback** — no transcript JSONL parse,
+  no synthesis from offline state. If a prompt has scrolled past
+  the buffer head (TerminalGrid's `m_maxScrollback`), there's
+  nothing to jump to and the button at that boundary greys out.
+  Detection: walk the scrollback for the Claude-Code prompt-input
+  marker (a stable line shape — `>` indicator followed by the
+  user's text, the same boundary the human eye uses when
+  scrolling). Read-only — clicking just scrolls + visually marks
+  the row; doesn't load the prompt into an input, doesn't replay
+  it, doesn't touch the PTY. **RAM**: lazy — anchor positions
+  recomputed on demand from the live grid, no persistent index;
+  if profiling shows the per-click walk is too slow on 50k-line
+  scrollback, fall back to a `QList<int>` of anchor row indices
+  invalidated on every `TerminalGrid::clearScrollback` / new
+  Claude session (cost: ~8 B × ≤200 prompts ≈ 2 KiB per tab).
+  **Layman:** little prev/next arrows on Claude tabs that jump
+  the scrollback back to your earlier prompts so you can re-read
+  what happened, without having to scroll-search manually. If
+  the prompt has already scrolled off the buffer, the button is
+  greyed out — same as the natural limit of the scrollback.
+  Kind: implement.
+  Source: user-2026-05-14.
 
 #### 📢 Visibility — getting Anthropic + Claude Code users to notice
 

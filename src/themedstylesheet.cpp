@@ -71,7 +71,12 @@ QString buildAppStylesheet(const Theme &theme) {
         "QTabBar { background-color: %2; }"
         "QTabBar::tab { background-color: %2; color: %6; padding: 6px 16px 6px 22px;"
         "  border: none; border-bottom: 2px solid transparent; }"
-        "QTabBar::tab:selected { color: %3; border-bottom: 2px solid %5; }"
+        // User feedback 2026-05-14: round the underline's bottom corners
+        // so the active-tab indicator looks softer. 4 px gives a visible
+        // but subtle curve at the bar's outer ends without bleeding past
+        // the 2 px stroke height.
+        "QTabBar::tab:selected { color: %3; border-bottom: 2px solid %5;"
+        "  border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }"
         "QTabBar::tab:hover { background-color: %1; color: %3; }"
         // 0.7.32 (user feedback 2026-04-25) — the platform-style fallback
         // (0.6.27) still rendered the × hover-only on Fusion / qt6ct /
@@ -81,21 +86,31 @@ QString buildAppStylesheet(const Theme &theme) {
         // style. Hover variant uses textPrimary instead of textSecondary
         // for "lifting" feedback and keeps the ansi-red background (%7)
         // for the will-click cue.
+        // ANTS-1321: %8 / %9 are URL-encoded variants of textPrimary
+        // (%3) and textSecondary (%6) used ONLY here, inside the
+        // data-URI SVG. The `#` in a CSS color is a URL-fragment
+        // delimiter inside a `url(...)` value, so the SVG attribute
+        // needs `%23RRGGBB` rather than `#RRGGBB`. The earlier scheme
+        // (splicing `%23` into the SAME arg() position used for the
+        // CSS `color:` rules) produced `color: %23RRGGBB;` everywhere
+        // %3/%6 also appeared as a color value — Qt rejected those
+        // rules with "Could not parse application stylesheet" on
+        // every theme apply (verified ASan log 2026-05-14).
         "QTabBar::close-button {"
         "  image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'"
         " width='10' height='10' viewBox='0 0 10 10'>"
-        "<line x1='2' y1='2' x2='8' y2='8' stroke='%6'"
+        "<line x1='2' y1='2' x2='8' y2='8' stroke='%9'"
         " stroke-width='1.5' stroke-linecap='round'/>"
-        "<line x1='8' y1='2' x2='2' y2='8' stroke='%6'"
+        "<line x1='8' y1='2' x2='2' y2='8' stroke='%9'"
         " stroke-width='1.5' stroke-linecap='round'/></svg>\");"
         "  subcontrol-position: right; margin: 2px; padding: 1px;"
         "  width: 14px; height: 14px; border-radius: 3px; }"
         "QTabBar::close-button:hover {"
         "  image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'"
         " width='10' height='10' viewBox='0 0 10 10'>"
-        "<line x1='2' y1='2' x2='8' y2='8' stroke='%3'"
+        "<line x1='2' y1='2' x2='8' y2='8' stroke='%8'"
         " stroke-width='1.5' stroke-linecap='round'/>"
-        "<line x1='8' y1='2' x2='2' y2='8' stroke='%3'"
+        "<line x1='8' y1='2' x2='2' y2='8' stroke='%8'"
         " stroke-width='1.5' stroke-linecap='round'/></svg>\");"
         "  background-color: %7; border-radius: 3px; }"
         "QSplitter::handle { background-color: %4; }"
@@ -185,22 +200,23 @@ QString buildAppStylesheet(const Theme &theme) {
         "  border-radius: 3px; text-align: center; }"
         "QProgressBar::chunk { background-color: %5; }"
         "QDialogButtonBox QPushButton { min-width: 80px; }"
-    ).arg(theme.bgPrimary.name(),
-          theme.bgSecondary.name(),
-          // %3 — textPrimary; appears verbatim in most rules but ALSO
-          // as a stroke color in the data-URI SVG for the tab-close
-          // glyph hover variant. Pre-encode the leading `#` as %23 so
-          // Qt's CSS parser doesn't truncate the URI at the fragment
-          // delimiter; the `%23` literal would also collide with
-          // QString::arg() placeholder numbering, so we splice it
-          // here rather than embed it in the format string.
-          QStringLiteral("%23") + theme.textPrimary.name().mid(1),
-          theme.border.name(),
-          theme.accent.name(),
-          // %6 — textSecondary; same SVG-stroke pre-encoding as %3
-          // above, used by the default (non-hover) tab close button.
-          QStringLiteral("%23") + theme.textSecondary.name().mid(1),
-          theme.ansi[1].name());  // ANSI red for close/danger
+    // ANTS-1321: %3 / %6 carry CSS colour literals (`#RRGGBB`); %8 / %9
+    // carry the URL-encoded form (`%23RRGGBB`) for the SVG data-URI
+    // contexts only. See block comment above the QTabBar::close-button
+    // rules for why both forms must exist. Pre-1321 code spliced
+    // `%23` into the same arg() position used for CSS colour values,
+    // producing invalid `color: %23RRGGBB;` rules everywhere %3/%6
+    // also appeared as a colour — Qt logged "Could not parse
+    // application stylesheet" on every theme apply.
+    ).arg(theme.bgPrimary.name(),                              // %1
+          theme.bgSecondary.name(),                            // %2
+          theme.textPrimary.name(),                            // %3 (CSS)
+          theme.border.name(),                                 // %4
+          theme.accent.name(),                                 // %5
+          theme.textSecondary.name(),                          // %6 (CSS)
+          theme.ansi[1].name(),                                // %7
+          QStringLiteral("%23") + theme.textPrimary.name().mid(1),    // %8 (URL-encoded textPrimary, SVG only)
+          QStringLiteral("%23") + theme.textSecondary.name().mid(1)); // %9 (URL-encoded textSecondary, SVG only)
 }
 
 QString buildMenuBarStylesheet(const Theme &theme) {

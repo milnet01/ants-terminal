@@ -71,12 +71,15 @@ TEST(TabCloseButtonVisible, Main) {
                "I1/default-rule-has-data-uri-image");
     }
     // SVG body must draw two lines for the × — guards against an
-    // empty-rect or single-line regression.
+    // empty-rect or single-line regression. ANTS-1321: SVG strokes
+    // now use %9 (URL-encoded textSecondary) NOT %6 (CSS-context
+    // textSecondary). The pre-1321 shape reused %6 in both contexts
+    // which produced invalid CSS `color: %23RRGGBB;` rules.
     expect(contains(src,
-               "<line x1='2' y1='2' x2='8' y2='8' stroke='%6'"),
+               "<line x1='2' y1='2' x2='8' y2='8' stroke='%9'"),
            "I1/default-svg-line1-textSecondary-stroke");
     expect(contains(src,
-               "<line x1='8' y1='2' x2='2' y2='8' stroke='%6'"),
+               "<line x1='8' y1='2' x2='2' y2='8' stroke='%9'"),
            "I1/default-svg-line2-textSecondary-stroke");
 
     // I2 — hover rule exists with its own image and ansi-red bg.
@@ -88,11 +91,30 @@ TEST(TabCloseButtonVisible, Main) {
         expect(std::regex_search(src, hoverRule),
                "I2/hover-rule-has-data-uri-image");
     }
+    // ANTS-1321: hover stroke moved from %3 (CSS textPrimary) to %8
+    // (URL-encoded textPrimary, SVG-only) to fix the parse-bug where
+    // %3 ended up serving both contexts.
     expect(contains(src,
-               "<line x1='2' y1='2' x2='8' y2='8' stroke='%3'"),
+               "<line x1='2' y1='2' x2='8' y2='8' stroke='%8'"),
            "I2/hover-svg-line1-textPrimary-stroke");
     expect(contains(src, "background-color: %7;"),
            "I2/hover-keeps-ansi-red-bg");
+
+    // I-regression-1321: explicitly forbid the old buggy shape. If
+    // an SVG stroke reuses %3 or %6, the URL-encoded `%23` would be
+    // spliced into the CSS-context arg position too, breaking every
+    // `color: %3;` / `color: %6;` rule. "Could not parse application
+    // stylesheet" was the user-visible signal pre-1321.
+    {
+        std::regex svgUsesCssTextPrimary(
+            R"(stroke=\\?'%3\\?')");
+        expect(!std::regex_search(src, svgUsesCssTextPrimary),
+               "I-regression-1321/svg-must-not-use-css-percent-3");
+        std::regex svgUsesCssTextSecondary(
+            R"(stroke=\\?'%6\\?')");
+        expect(!std::regex_search(src, svgUsesCssTextSecondary),
+               "I-regression-1321/svg-must-not-use-css-percent-6");
+    }
 
     // I3 — URL-encoded `%23` injected via the arg list, not the
     // format string. Two `QStringLiteral("%23") + ` splices: one

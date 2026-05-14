@@ -31,19 +31,41 @@ def pick_socket() -> str:
     override = os.environ.get("ANTS_MCP_SOCKET")
     if override:
         return override
+    # ANTS-1322: prefer sockets whose embedded PID is a live process
+    # over stale leftovers from crashed instances. Pre-1322 the picker
+    # used mtime alone and would happily return a socket whose
+    # ants-terminal had crashed days ago, producing the "Failed to
+    # connect" the user sees in `claude mcp list`.
+    from stat import S_ISSOCK
     candidates = []
     for p in glob.glob(SOCK_GLOB):
         try:
             st = os.stat(p)
         except OSError:
             continue
-        from stat import S_ISSOCK
-        if S_ISSOCK(st.st_mode):
-            candidates.append((st.st_mtime, p))
+        if not S_ISSOCK(st.st_mode):
+            continue
+        # Path shape: /tmp/ants-terminal-mcp-<PID>
+        pid_str = p.rsplit("-", 1)[-1]
+        live = False
+        try:
+            pid = int(pid_str)
+            os.kill(pid, 0)  # signal 0 = liveness probe, no signal sent
+            live = True
+        except (ValueError, ProcessLookupError, PermissionError):
+            # ValueError: filename didn't carry a PID (custom socket)
+            # ProcessLookupError: PID is gone — stale socket
+            # PermissionError: PID exists but not ours (different user)
+            #   — treat as not-live for our purposes.
+            live = False
+        # Live-PID sockets always rank above stale ones, mtime breaks
+        # ties within each tier (a user with two live Ants instances
+        # gets the most-recently-active one).
+        candidates.append((1 if live else 0, st.st_mtime, p))
     if not candidates:
         return ""
     candidates.sort(reverse=True)
-    return candidates[0][1]
+    return candidates[0][2]
 
 
 def err_reply(req_id, code: int, message: str) -> dict:

@@ -196,17 +196,19 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
         // never count toward the parent's plan.
         if (ev.value(QStringLiteral("isSidechain")).toBool()) continue;
 
-        // ANTS-1224-INV-1/2/3: isCompactSummary is a state-reset
-        // checkpoint. Without this, post-/compact + relaunch leaves
-        // pre-compact TaskCreate/TodoWrite contributions visible in
-        // the chip and dialog. Reset BEFORE the type-dispatch so the
-        // checkpoint event itself contributes zero task entries; the
-        // sidechain filter above has already short-circuited any
-        // hypothetical isSidechain+isCompactSummary combination.
+        // ANTS-1327 (2026-05-14, user-request): `isCompactSummary`
+        // is NO LONGER a state-reset checkpoint. Previously (ANTS-1224,
+        // 0.7.82) the parser cleared `out` on each compact event so
+        // the chip showed only post-compact tasks; user feedback was
+        // that the chip should mirror what Claude Code's own sidebar
+        // shows — i.e. the *full* task history, including pre-compact
+        // completed tasks. We now skip ONLY the compact-summary event
+        // itself (it carries a synthetic conversation summary with no
+        // tool_use blocks) and let prior pre-compact TaskCreate /
+        // TodoWrite / TaskUpdate events keep contributing. The chip's
+        // `done/total` numerator therefore reflects the lifetime of
+        // the resumed session, matching the CC sidebar.
         if (ev.value(QStringLiteral("isCompactSummary")).toBool()) {
-            out.clear();
-            idxByToolUseId.clear();
-            sawTodoWrite = false;
             continue;
         }
 

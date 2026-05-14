@@ -8,6 +8,7 @@
 #include "roadmapfoldin.h"
 #include "subsystemmap.h"
 #include "terminalwidget.h"
+#include "verifyengine.h"
 #include "debuglog.h"
 #include "secureio.h"
 
@@ -25,6 +26,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTabWidget>
+#include <cmath>
 
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -1974,13 +1976,30 @@ QJsonDocument RemoteControl::cmdIndieReviewBrief(const QJsonObject &req) {
         QStringLiteral("not_found"),
         QStringLiteral("indie_review_brief: no such lane")));
 
-    const QString brief = IndieReviewEngine::assembleBrief(root, *match);
+    // ANTS-1281: v2 manifest shape — `brief` no longer inlines source
+    // bodies; subagent reads them via its Read tool. Per the spec the
+    // `brief` field is kept (not renamed to prompt_template_text) to
+    // avoid breaking out-of-tree consumers; structured fields are
+    // added alongside for programmatic access.
+    const auto manifest =
+        IndieReviewEngine::assembleBriefManifest(root, *match);
+    QJsonArray paths;
+    for (const QString &p : manifest.sourcePaths) paths.append(p);
+    QJsonArray contractDocs;
+    for (const QString &p : manifest.contractDocs) contractDocs.append(p);
+    QJsonArray externalSpecs;
+    for (const QString &p : manifest.externalSpecs) externalSpecs.append(p);
+
     QJsonObject env;
-    env["ok"]           = true;
-    env["lane"]         = laneName;
-    env["brief"]        = brief;
-    env["source_count"] = match->sourcePaths.size();
-    env["byte_count"]   = brief.toUtf8().size();
+    env["ok"]                  = true;
+    env["lane"]                = laneName;
+    env["brief"]               = manifest.brief;
+    env["source_paths"]        = paths;
+    env["contract_docs"]       = contractDocs;
+    env["external_specs"]      = externalSpecs;
+    env["dimension_weighting"] = QJsonObject{};
+    env["source_count"]        = manifest.sourcePaths.size();
+    env["byte_count"]          = manifest.brief.toUtf8().size();
     return QJsonDocument(env);
 }
 
@@ -1992,24 +2011,55 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_corroborate: no focused project")));
 
-    const QJsonObject reportsObj = req.value(QStringLiteral("reports")).toObject();
-    if (reportsObj.isEmpty()) return QJsonDocument(irErr(
-        QStringLiteral("bad_args"),
-        QStringLiteral("indie_review_corroborate: reports object required")));
-
-    QHash<QString, QString> reports;
-    qint64 totalIn = 0;
-    for (auto it = reportsObj.constBegin(); it != reportsObj.constEnd(); ++it) {
-        const QString r = it.value().toString();
-        reports.insert(it.key(), r);
-        totalIn += r.toUtf8().size();
+    // ANTS-1282: accept EITHER `reports` (inline map, v1) OR
+    // `reports_dir` (server-side disk read, v2). XOR — exactly one
+    // required (INV-1).
+    const bool hasReports    = req.contains(QStringLiteral("reports"));
+    const bool hasReportsDir = req.contains(QStringLiteral("reports_dir"));
+    if (hasReports == hasReportsDir) {
+        return QJsonDocument(irErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral(
+                "indie_review_corroborate: provide exactly one of "
+                "`reports` (inline map) or `reports_dir` (project-relative "
+                "directory of *.md files)")));
     }
 
     int minLanes = req.value(QStringLiteral("min_lanes")).toInt(2);
     if (minLanes < 1) minLanes = 1;
 
-    const auto found = IndieReviewEngine::corroboratedFindings(
-        root, reports, minLanes);
+    QList<IndieReviewEngine::CorroboratedFinding> found;
+    QString reportsDir;
+    int     reportsRead = 0;
+    qint64  totalIn = 0;
+
+    if (hasReportsDir) {
+        reportsDir = req.value(QStringLiteral("reports_dir"))
+                        .toString().trimmed();
+        if (reportsDir.isEmpty()) return QJsonDocument(irErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral("indie_review_corroborate: reports_dir must be a "
+                           "non-empty project-relative path")));
+        found = IndieReviewEngine::corroboratedFindingsFromDir(
+            root, reportsDir, minLanes, &reportsRead);
+        // No totalIn tally for the disk path — the orchestrator
+        // didn't pay the parent-context cost, which is the whole
+        // point of ANTS-1282.
+    } else {
+        const QJsonObject reportsObj =
+            req.value(QStringLiteral("reports")).toObject();
+        QHash<QString, QString> reports;
+        for (auto it = reportsObj.constBegin();
+             it != reportsObj.constEnd(); ++it) {
+            const QString r = it.value().toString();
+            reports.insert(it.key(), r);
+            totalIn += r.toUtf8().size();
+        }
+        reportsRead = reports.size();
+        found = IndieReviewEngine::corroboratedFindings(
+            root, reports, minLanes);
+    }
+
     QJsonArray arr;
     for (const auto &f : found) {
         QJsonObject o;
@@ -2029,6 +2079,8 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     env["findings"]           = arr;
     env["total_input_bytes"]  = totalIn;
     env["total_findings"]     = arr.size();
+    env["reports_read"]       = reportsRead;
+    if (hasReportsDir) env["reports_dir"] = reportsDir;
     return QJsonDocument(env);
 }
 
@@ -2338,5 +2390,107 @@ QJsonDocument RemoteControl::cmdDebtSweepTriagePrompt(const QJsonObject &req) {
     env["ok"]         = true;
     env["prompt"]     = prompt;
     env["byte_count"] = prompt.toUtf8().size();
+    return QJsonDocument(env);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-1289 — verify_changes MCP tool
+// ---------------------------------------------------------------------------
+
+namespace {
+
+QJsonObject vcErr(const QString &code, const QString &msg) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = code;
+    o["message"] = msg;
+    return o;
+}
+
+QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
+    QJsonObject o;
+    o["ran"]    = r.ran;
+    o["passed"] = r.passed;
+    if (!r.ran || !r.skippedReason.isEmpty()) {
+        if (!r.skippedReason.isEmpty()) {
+            o["skipped_reason"] = r.skippedReason;
+        }
+    }
+    if (r.ran) {
+        o["exit_code"]       = r.exitCode;
+        // Round duration to 1 decimal.
+        const double rounded = std::round(r.durationSec * 10.0) / 10.0;
+        o["duration_sec"]    = rounded;
+        o["log_tail"]        = r.logTail;
+        o["log_truncated"]   = r.logTruncated;
+        o["log_total_lines"] = r.logTotalLines;
+        if (r.passedCount >= 0 && r.totalCount >= 0) {
+            o["passed_count"] = r.passedCount;
+            o["total_count"]  = r.totalCount;
+        }
+        if (!r.failingTests.isEmpty()) {
+            QJsonArray a;
+            for (const QString &t : r.failingTests) a.append(t);
+            o["failing_tests"] = a;
+        }
+    }
+    return o;
+}
+
+}  // anonymous
+
+QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(vcErr(QStringLiteral("no_window"),
+        QStringLiteral("verify_changes: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main);
+    if (root.isEmpty()) return QJsonDocument(vcErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("verify_changes: no focused project")));
+    const QFileInfo rootInfo(root);
+    if (!rootInfo.isDir()) return QJsonDocument(vcErr(
+        QStringLiteral("cwd_unreachable"),
+        QStringLiteral("verify_changes: project root not a directory")));
+
+    VerifyEngine::VerifyOptions opts;
+    if (req.contains(QStringLiteral("gates"))) {
+        const QJsonArray arr = req.value(QStringLiteral("gates")).toArray();
+        for (const auto &v : arr) {
+            const QString s = v.toString();
+            if (s == QLatin1String("build")) opts.only.append(VerifyEngine::GateName::Build);
+            else if (s == QLatin1String("tests")) opts.only.append(VerifyEngine::GateName::Tests);
+            else if (s == QLatin1String("lint"))  opts.only.append(VerifyEngine::GateName::Lint);
+        }
+    }
+    if (req.contains(QStringLiteral("max_log_lines"))) {
+        opts.maxLogLines = req.value(QStringLiteral("max_log_lines")).toInt(opts.maxLogLines);
+    }
+    if (req.contains(QStringLiteral("timeout_sec"))) {
+        opts.timeoutSec = req.value(QStringLiteral("timeout_sec")).toInt(opts.timeoutSec);
+    }
+
+    // Probe config first so we can surface bad_config without spending
+    // wall-clock on the run.
+    QString cfgSource;
+    auto cfg = VerifyEngine::loadGateConfig(root, &cfgSource);
+    (void)cfg;
+    if (cfgSource == QLatin1String("bad_config")) {
+        return QJsonDocument(vcErr(
+            QStringLiteral("bad_config"),
+            QStringLiteral("verify.json: malformed JSON or schema mismatch")));
+    }
+
+    const VerifyEngine::VerifyReport rep = VerifyEngine::runVerify(root, opts);
+
+    QJsonObject env;
+    env["ok"]            = true;
+    env["all_passed"]    = rep.allPassed;
+    env["project_root"]  = root;
+    env["config_source"] = rep.configSource;
+
+    QJsonObject gates;
+    for (const auto &g : rep.gates) {
+        gates[VerifyEngine::gateKey(g.name)] = vcGateToJson(g);
+    }
+    env["gates"] = gates;
     return QJsonDocument(env);
 }

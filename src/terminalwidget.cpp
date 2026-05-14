@@ -298,13 +298,30 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // Scroll-to-bottom floating button
     m_scrollToBottomBtn = new QPushButton(this);
     m_scrollToBottomBtn->setText("\u25BC");  // down arrow
+    m_scrollToBottomBtn->setObjectName("scrollToBottomBtn");
     m_scrollToBottomBtn->setFixedSize(32, 32);
     m_scrollToBottomBtn->setToolTip("Scroll to bottom");
     m_scrollToBottomBtn->hide();
+    // ANTS-1326: explicitly override padding + min-width that cascade
+    // from themedstylesheet's app-wide `QPushButton` rule
+    // (padding: 6px 14px; min-width: 60px;). Without these resets,
+    // Qt 6.7+ stylesheet renderer adds the padding to the content
+    // box \u2192 effective width becomes 32 + 28 + 2 (border) \u2248 62 px,
+    // and the chip clips against the widget's right edge (the
+    // setFixedSize geometry is honoured, but the stylesheet paint
+    // still extends past it). Visible symptom: only the left half of
+    // the chip renders, the rest disappears behind the scrollbar /
+    // off-widget. Scope rule via #scrollToBottomBtn ID so the reset
+    // can't leak to other QPushButtons.
     m_scrollToBottomBtn->setStyleSheet(
-        "QPushButton { background: rgba(40,40,60,200); color: rgba(200,200,220,220); "
-        "border: 1px solid rgba(100,100,130,150); border-radius: 16px; font-size: 14px; }"
-        "QPushButton:hover { background: rgba(60,60,90,220); color: white; }"
+        "QPushButton#scrollToBottomBtn {"
+        " background: rgba(40,40,60,200); color: rgba(200,200,220,220);"
+        " border: 1px solid rgba(100,100,130,150);"
+        " border-radius: 16px; font-size: 14px;"
+        " padding: 0; min-width: 32px; max-width: 32px;"
+        " min-height: 32px; max-height: 32px; }"
+        "QPushButton#scrollToBottomBtn:hover {"
+        " background: rgba(60,60,90,220); color: white; }"
     );
     connect(m_scrollToBottomBtn, &QPushButton::clicked, this, [this]() {
         m_scrollOffset = 0;

@@ -63,8 +63,31 @@ struct CorroboratedFinding {
     QStringList contexts;     // one per citingLane, same order
 };
 
+// ANTS-1281: brief response without inlined source bodies.
+// The subagent reads source files itself via its Read tool.
+// `brief` carries the header / source-path list / ROADMAP slice /
+// standards-reference + an explicit "Read each source file…"
+// instruction sentinel (see INV-5 of docs/specs/ANTS-1281.md);
+// it deliberately omits the per-file body inlining the v1
+// `assembleBrief` does.
+struct BriefManifest {
+    QString     brief;
+    QStringList sourcePaths;    // project-relative; INV-2 mirrors lane.sourcePaths
+                                // minus any path that fails canonicalisation.
+    QStringList contractDocs;   // INV-6 fixed list, authored order.
+    QStringList externalSpecs;  // reserved; empty in v1.
+    // dimensionWeighting deferred: MCP layer emits the literal `{}`.
+};
+
 QList<Lane> derivePartition(const QString &projectPath);
 
+// v2 brief shape (ANTS-1281). New callers should use this.
+BriefManifest assembleBriefManifest(const QString &projectPath,
+                                    const Lane &lane);
+
+// v1 brief shape — full source bodies inlined. Retained for the
+// existing feature test and any legacy MCP consumer; new callers
+// should prefer assembleBriefManifest.
 QString assembleBrief(const QString &projectPath, const Lane &lane);
 
 QList<Citation> extractFileLineCitations(
@@ -74,6 +97,24 @@ QList<CorroboratedFinding> corroboratedFindings(
     const QString &projectPath,
     const QHash<QString, QString> &reports,
     int minLanes = 2);
+
+// ANTS-1282: read reports from disk, then corroborate. The directory
+// is resolved relative to projectPath; lane name = filename stem of
+// each top-level `*.md` file. Sub-directories are not recursed. Each
+// report file is truncated at 64 KiB (matches extractFileLineCitations'
+// kMaxScanBytes — INV-8 of docs/specs/ANTS-1282.md). Saves the parent
+// orchestrator from holding 14 reports in context just to call
+// corroborate.
+//
+// `reportsRead` is an out-parameter set to the count of `*.md` files
+// actually consumed (caller can compare against expected lane count).
+// Returns an empty list if `reportsDirRelative` is absolute, escapes
+// projectPath, or doesn't exist.
+QList<CorroboratedFinding> corroboratedFindingsFromDir(
+    const QString &projectPath,
+    const QString &reportsDirRelative,
+    int minLanes = 2,
+    int *reportsRead = nullptr);
 
 QString synthesisPrompt(
     const QHash<QString, QString> &reports,

@@ -179,6 +179,11 @@ public:
     QJsonDocument cmdDebtSweepDefer(const QJsonObject &req);
     QJsonDocument cmdDebtSweepTriagePrompt(const QJsonObject &req);
 
+    // ANTS-1289 — verify_changes. Drives the project's build → tests →
+    // lint gates and returns structured pass/fail. Pure delegation to
+    // VerifyEngine. See docs/specs/ANTS-1289.md.
+    QJsonDocument cmdVerifyChanges(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 

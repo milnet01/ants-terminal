@@ -1595,12 +1595,17 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "indie_review_brief";
                     t["description"] = QStringLiteral(
-                        "Return the verbatim brief text for one lane: "
-                        "header + source bodies + ROADMAP slice + "
-                        "standards links. Pure file IO (no LLM). One "
-                        "call per lane saves ~3-15 K orchestrator "
-                        "tokens vs assembling the brief in main "
-                        "context. Required: lane (string).");
+                        "Return a brief manifest for one lane: "
+                        "prompt template + source-path list + "
+                        "contract-doc list (ANTS-1281). Response "
+                        "fields: brief, source_paths[], "
+                        "contract_docs[], external_specs[], "
+                        "dimension_weighting{}. Source bodies are "
+                        "NOT inlined; the subagent reads them via "
+                        "its Read tool. Saves ~10-30 K orchestrator "
+                        "tokens per lane vs the v1 shape that "
+                        "inlined bodies. Pure file IO (no LLM). "
+                        "Required: lane (string).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject laneProp;
@@ -1621,18 +1626,32 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "indie_review_corroborate";
                     t["description"] = QStringLiteral(
-                        "Cross-lane corroboration filter. Input: a map "
-                        "of {lane: report_text}. Returns findings cited "
-                        "by >= min_lanes distinct lanes at the same "
-                        "(file, line). Pure regex pass; no LLM. "
-                        "Required: reports (object). Optional: "
+                        "Cross-lane corroboration filter. Input: "
+                        "EITHER `reports` (inline map of "
+                        "{lane: report_text}, v1) OR `reports_dir` "
+                        "(project-relative directory of *.md files, "
+                        "v2 — saves parent context by reading from "
+                        "disk server-side; ANTS-1282). Returns "
+                        "findings cited by >= min_lanes distinct "
+                        "lanes at the same (file, line). Pure regex "
+                        "pass; no LLM. Provide exactly one of "
+                        "`reports` or `reports_dir`. Optional: "
                         "min_lanes (default 2).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject reportsProp;
                     reportsProp["type"] = "object";
                     reportsProp["description"] = QStringLiteral(
-                        "Map of {lane_name: report_markdown}.");
+                        "Map of {lane_name: report_markdown}. "
+                        "Mutually exclusive with reports_dir.");
+                    QJsonObject reportsDirProp;
+                    reportsDirProp["type"] = "string";
+                    reportsDirProp["description"] = QStringLiteral(
+                        "Project-relative path to a directory of "
+                        "*.md files. Lane name = filename stem. "
+                        "Top level only; sub-directories not "
+                        "recursed. Files >64 KiB truncated. "
+                        "Mutually exclusive with reports.");
                     QJsonObject minLanesProp;
                     minLanesProp["type"]    = "integer";
                     minLanesProp["default"] = 2;
@@ -1641,12 +1660,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "Minimum distinct lanes citing a (file, line) "
                         "for it to count as corroborated.");
                     QJsonObject props;
-                    props["reports"]   = reportsProp;
-                    props["min_lanes"] = minLanesProp;
+                    props["reports"]     = reportsProp;
+                    props["reports_dir"] = reportsDirProp;
+                    props["min_lanes"]   = minLanesProp;
                     schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("reports");
-                    schema["required"] = req;
+                    // INV-1 XOR is enforced at the handler layer
+                    // (cmdIndieReviewCorroborate), not the schema —
+                    // JSON Schema's oneOf is verbose and Claude
+                    // Code's schema validator handles oneOf poorly.
+                    // The handler returns bad_args if both or
+                    // neither is provided.
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -1842,6 +1865,47 @@ void ClaudeIntegration::onMcpConnection() {
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("findings");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                // ANTS-1289 — verify_changes
+                {
+                    QJsonObject t;
+                    t["name"] = "verify_changes";
+                    t["description"] = QStringLiteral(
+                        "Run the project's build / test / lint gates "
+                        "and return pass/fail with log tails. Replaces "
+                        "the verification-before-completion skill's "
+                        "mechanical loop. Reads .ants/verify.json (or "
+                        "auto-detects from CMakePresets/package.json/"
+                        "Cargo.toml/pyproject.toml). Pure shell-out. "
+                        "No required args.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject gatesProp;
+                    gatesProp["type"] = "array";
+                    gatesProp["description"] = QStringLiteral(
+                        "Subset of [\"build\",\"tests\",\"lint\"] to "
+                        "run. Empty / omitted = all configured gates.");
+                    QJsonObject linesProp;
+                    linesProp["type"] = "integer";
+                    linesProp["description"] = QStringLiteral(
+                        "Per-gate log-tail line cap. Server-clamped "
+                        "[10, 500]; default 50.");
+                    QJsonObject timeoutProp;
+                    timeoutProp["type"] = "integer";
+                    timeoutProp["description"] = QStringLiteral(
+                        "Total wall-clock budget in seconds, split "
+                        "evenly across configured gates. Server-"
+                        "clamped [10, 1800]; default 1200.");
+                    QJsonObject props;
+                    props["gates"]         = gatesProp;
+                    props["max_log_lines"] = linesProp;
+                    props["timeout_sec"]   = timeoutProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;

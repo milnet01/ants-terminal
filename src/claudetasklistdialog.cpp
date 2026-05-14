@@ -6,6 +6,7 @@
 
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QListView>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
@@ -61,6 +62,25 @@ ClaudeTaskListDialog::ClaudeTaskListDialog(ClaudeTaskListTracker *tracker,
     list->setObjectName(QStringLiteral("taskListItems"));
     list->setSelectionMode(QAbstractItemView::NoSelection);
     list->setFocusPolicy(Qt::NoFocus);
+    // ANTS-1328: wrap long task subjects to the dialog's width
+    // instead of letting them overflow horizontally. `setWordWrap`
+    // toggles per-item wrapping; `setTextElideMode(Qt::ElideNone)`
+    // disables the default mid-text elision so the wrap can actually
+    // claim a second line. `setHorizontalScrollBarPolicy` removes
+    // the horizontal scrollbar entirely — vertical-only scrolling
+    // matches Claude Code's own task-list rendering.
+    list->setWordWrap(true);
+    list->setTextElideMode(Qt::ElideNone);
+    list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    list->setResizeMode(QListView::Adjust);
+    // ANTS-1329: 3 px of vertical padding around each item for
+    // breathing room — the wrapped multi-line subjects
+    // (ANTS-1328) ran together visually without separation.
+    // setSpacing applies uniformly above + below each item, so
+    // the total gap between neighbours is 2 × spacing = 6 px
+    // (user-tuned 2026-05-14: 6 → 4 → 3; first two read too
+    // generous, settled at 3 for a tight-but-readable gap).
+    list->setSpacing(3);
     m_list = list;
 
     auto *btnRow = new QHBoxLayout;

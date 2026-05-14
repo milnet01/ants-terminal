@@ -205,6 +205,92 @@ QString assembleBrief(const QString &projectPath, const Lane &lane) {
     return out;
 }
 
+BriefManifest assembleBriefManifest(const QString &projectPath,
+                                    const Lane &lane) {
+    BriefManifest m;
+    m.contractDocs = {
+        QStringLiteral("docs/standards/coding.md"),
+        QStringLiteral("docs/standards/testing.md"),
+        QStringLiteral("docs/standards/documentation.md"),
+    };
+    // INV-4: path-traversal guard parity. Filter sourcePaths through
+    // the same canonicalisation check assembleBrief uses on the
+    // body-inline loop, but apply it BEFORE listing the path in the
+    // brief — tighter than v1's path-listed-but-body-skipped.
+    const QFileInfo rootInfo(projectPath);
+    const QString rootCanon = rootInfo.canonicalFilePath();
+    QStringList safePaths;
+    safePaths.reserve(lane.sourcePaths.size());
+    for (const QString &sp : lane.sourcePaths) {
+        const QString abs = projectPath + QChar('/') + sp;
+        const QString canon = QFileInfo(abs).canonicalFilePath();
+        if (!canon.isEmpty() && !rootCanon.isEmpty()
+            && canon.startsWith(rootCanon + QChar('/'))) {
+            safePaths << sp;
+        }
+    }
+    m.sourcePaths = safePaths;
+
+    QString out;
+    out.reserve(4 * 1024);
+    out += QStringLiteral("=== Lane: ");
+    out += lane.name;
+    out += QStringLiteral(" ===\n\n");
+    out += QStringLiteral("Summary: ");
+    out += lane.summary;
+    out += QStringLiteral("\n\n");
+    out += QStringLiteral("Source files (");
+    out += QString::number(m.sourcePaths.size());
+    out += QStringLiteral("):\n");
+    for (const QString &sp : m.sourcePaths) {
+        out += QStringLiteral("- ");
+        out += sp;
+        out += QChar('\n');
+    }
+    out += QChar('\n');
+
+    // INV-5: verbatim sentinel — test asserts presence so future
+    // edits can't silently drop the read-instruction.
+    out += QStringLiteral(
+        "Read each source file in the list above using your Read tool "
+        "BEFORE beginning the review. The contract docs listed at the "
+        "bottom are project standards — read them only if your review "
+        "surfaces a violation you want to cite by line. The MCP server "
+        "has deliberately NOT inlined source bodies into this brief; "
+        "doing so would inflate parent (orchestrator) context for no "
+        "reviewer benefit.\n\n");
+
+    // ROADMAP slice — same filter as v1 assembleBrief.
+    const QString roadmap = slurpUtf8(projectPath
+                                      + QStringLiteral("/ROADMAP.md"));
+    if (!roadmap.isEmpty()) {
+        out += QStringLiteral("=== ROADMAP slice ===\n");
+        const QStringList lines = roadmap.split(QChar('\n'));
+        const QString needle = lane.name;
+        for (const QString &line : lines) {
+            if (line.contains(QStringLiteral("Lanes:"), Qt::CaseInsensitive)
+                && line.contains(needle, Qt::CaseInsensitive)) {
+                out += line;
+                out += QChar('\n');
+            } else if (line.contains(QStringLiteral("`")
+                                     + needle + QStringLiteral("`"))) {
+                out += line;
+                out += QChar('\n');
+            }
+        }
+        out += QChar('\n');
+    }
+
+    out += QStringLiteral("=== Standards reference (not inlined; reviewer fetches if needed) ===\n");
+    for (const QString &doc : m.contractDocs) {
+        out += QStringLiteral("- ");
+        out += doc;
+        out += QChar('\n');
+    }
+    m.brief = out;
+    return m;
+}
+
 QList<Citation> extractFileLineCitations(const QString &projectPath,
                                          const QString &report) {
     QList<Citation> out;
@@ -328,6 +414,57 @@ QList<CorroboratedFinding> corroboratedFindings(
         return a.line > b.line;
     });
     return out;
+}
+
+QList<CorroboratedFinding> corroboratedFindingsFromDir(
+    const QString &projectPath,
+    const QString &reportsDirRelative,
+    int minLanes,
+    int *reportsRead) {
+    if (reportsRead) *reportsRead = 0;
+
+    // INV-3: reject absolute paths outright.
+    if (QFileInfo(reportsDirRelative).isAbsolute()) return {};
+
+    // INV-3: canonicalise + ensure under projectPath.
+    const QString abs = QDir(projectPath).filePath(reportsDirRelative);
+    const QString canon = QFileInfo(abs).canonicalFilePath();
+    if (canon.isEmpty()) return {};
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty()) return {};
+    if (canon != rootCanon && !canon.startsWith(rootCanon + QChar('/'))) {
+        return {};
+    }
+
+    QDir dir(canon);
+    if (!dir.exists()) return {};
+
+    QHash<QString, QString> reports;
+    // INV-4: top-level only (NoDotAndDotDot, no recursion). Hidden
+    // files filtered by default since QDir::Files excludes
+    // QDir::Hidden unless explicitly OR'd in.
+    const QStringList entries = dir.entryList(
+        QStringList{QStringLiteral("*.md")},
+        QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
+
+    static constexpr int kMaxScanBytes = 64 * 1024;  // INV-8
+
+    for (const QString &name : entries) {
+        // INV-5: hidden files (.foo.md) skipped — entryList without
+        // QDir::Hidden already does this, but be defensive.
+        if (name.startsWith(QChar('.'))) continue;
+        const QString lane = QFileInfo(name).completeBaseName();
+        if (lane.isEmpty()) continue;
+        const QString full = dir.filePath(name);
+        QFile f(full);
+        if (!f.open(QIODevice::ReadOnly)) continue;
+        QByteArray bytes = f.read(kMaxScanBytes);
+        f.close();
+        reports.insert(lane, QString::fromUtf8(bytes));
+        if (reportsRead) (*reportsRead)++;
+    }
+
+    return corroboratedFindings(projectPath, reports, minLanes);
 }
 
 QString synthesisPrompt(const QHash<QString, QString> &reports,

@@ -12,6 +12,238 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **`mcp__ants__verify_changes` MCP tool — host the
+  `verification-before-completion` skill server-side (ANTS-1289).**
+  New MCP tool runs the project's build / tests / lint gates and
+  returns structured pass/fail with log tails. Replaces the
+  140-line / 4.1 KiB skill markdown's mechanical 3-step loop with
+  one MCP call. Auto-detects build/test commands from
+  `CMakeLists.txt`+`build/`, `CMakePresets.json`, `package.json`,
+  `Cargo.toml`, or `pyproject.toml`; project authors can override
+  via `.ants/verify.json`. Engine (`VerifyEngine`, Qt6::Core
+  only) enforces per-gate timeout, 16 KiB log byte cap +
+  N-line tail cap, path-traversal guard on `.ants/verify.json`,
+  and serial build→tests→lint ordering with tests skipping when
+  a prior build failed. ctest output is parsed for
+  `passed_count`/`total_count` + failing-test names.
+  Headline savings: ~6–12 K tokens/session unconditional from
+  collapsing Bash-frame overhead; up to ~18–24 K when paired with
+  a vendor-skill update that short-circuits the skill markdown on
+  Ants-equipped projects.
+
+- **At-a-glance build-badge in window title + status bar
+  (ANTS-1323).** Format: `v0.7.92 · 2026-05-14 08:48` —
+  version + ISO date + HH:MM (UTC if `SOURCE_DATE_EPOCH` is
+  set, else local). Surfaces in (a) window title bar,
+  (b) right-edge status-bar permanent chip (tooltip carries
+  build type + short SHA), (c) About dialog. With the new
+  weekly Wednesday cadence + rolling-RC cycle, multiple
+  rebuilds in one day previously collapsed to the same
+  date-only stamp — HH:MM makes intra-day builds
+  distinguishable.
+
+### Changed
+
+- **Tasks dialog rows get 3 px vertical spacing (ANTS-1329).**
+  Follow-up to ANTS-1328 word-wrap. Wrapped multi-line subjects
+  were visually running together without separation. Added
+  `QListWidget::setSpacing(3)` so each row gets 3 px above + 3 px
+  below, with neighbouring rows therefore 6 px apart (user-tuned
+  from 6 → 4 → 3 — the larger values read as too generous).
+
+- **Tasks dialog wraps long task subjects + drops horizontal
+  scrollbar (ANTS-1328).** User feedback 2026-05-14: long
+  subjects were being mid-elided and the dialog grew a
+  horizontal scrollbar. Enabled `setWordWrap(true)`,
+  `setTextElideMode(Qt::ElideNone)`, and
+  `setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff)` on the
+  `QListWidget`. Rows now reflow to a second line at the
+  dialog's current width. Auto-update via
+  `ClaudeTaskListTracker::tasksChanged` was already wired.
+
+- **Tasks chip + dialog show full session history across
+  `/compact` (ANTS-1327, supersedes ANTS-1224).** User feedback
+  2026-05-14: "what CC is showing is what the button / dialog
+  should be showing." Previously (0.7.82, ANTS-1224) the parser
+  treated each `isCompactSummary` event as a state-reset
+  checkpoint — the chip's `done/total` count restarted from zero
+  after every `/compact`. New contract: `isCompactSummary` is a
+  no-op marker; pre-compact `TaskCreate` / `TodoWrite` /
+  `TaskUpdate` events keep contributing. The chip's numerator
+  now matches what Claude Code's own sidebar shows for the same
+  session. Both `claudetasklist.cpp` and `claudebgtasks.cpp`
+  reverted in step (the bg-tasks tracker had 1224 parity).
+  Spec + tests at `tests/features/claude_task_list/` rewritten;
+  ANTS-1224-INV-1/2/3 are replaced by ANTS-1327-INV-1/2/3 with
+  inverted expectations.
+
+### Fixed
+
+- **Scroll-to-bottom chip clipped on widget right edge —
+  cascading `QPushButton` padding from the app stylesheet
+  (ANTS-1326).** User report 2026-05-14: the back-to-bottom
+  chip ("nice round circle just left of the right edge") was
+  being half-clipped against the terminal widget's right edge.
+  Root cause: the chip's local stylesheet sets only background,
+  colour, border, and border-radius — it does NOT override
+  `padding` or `min-width`. The app-wide `QPushButton` rule
+  in `themedstylesheet::buildAppStylesheet` declares `padding:
+  6px 14px; min-width: 60px;`, and those properties cascade
+  through to the chip. Qt 6.7+'s stylesheet renderer adds
+  padding to the content box, so even though geometry is
+  `setFixedSize(32, 32)`, the painted button occupies ≈62 × 46
+  px and clips against the widget edge / hides behind the
+  scrollbar. **Fix:** scope the chip's stylesheet to
+  `QPushButton#scrollToBottomBtn` and explicitly reset
+  `padding: 0; min-width: 32px; max-width: 32px;
+  min-height/max-height: 32px;` so the cascading values can't
+  leak in. The scope-by-ID also prevents the reset from
+  affecting other QPushButtons elsewhere in the terminal
+  surface.
+
+- **UBSan `qpointer.h:75` downcast — `destroyed`-slot predicate
+  called `p.data()` while `~QWidget()` was on the stack
+  (ANTS-1324).** Follow-up to ANTS-1320. That fix thought it was
+  avoiding the bad downcast by casting the *result* of
+  `p.data()` back up to `QObject*` — but
+  `QPointer<TerminalWidget>::data()` itself IS the downcast
+  (`static_cast<TerminalWidget*>(QObject*)`), so the upcast on
+  the result came too late to matter. UBSan -fsanitize=vptr
+  catches the downcast inside `.data()`, not what we do with
+  the pointer afterwards. Repro: any `shellExited` →
+  `deleteLater()` or shutdown-time SIGTERM → shell-exit chain
+  posts a deferred-delete event; `~TerminalWidget` →
+  `~QWidget` → `emit destroyed()` runs the lambda, the lambda
+  walks `m_allTerminals.removeIf`, each predicate call invokes
+  `p.data()` on the QPointer wrapping the being-destroyed
+  object whose vptr has already demoted to QWidget. **Fix:**
+  drop the `destroyed → m_allTerminals.removeIf` handler entirely
+  and compact null entries lazily inside `liveTerminals()`. Qt's
+  QPointer auto-null fires after `destroyed()` returns, so the
+  next read of `m_allTerminals` naturally drops the dead entry
+  — no in-flight `.data()` call ever sees a demoted vptr. Side
+  benefit: kills the ANTS-1320 failure mode at its source — no
+  destroyed-signal lambda means nothing to disconnect at
+  `~MainWindow`, so the vestigial disconnect loop is removed.
+  `m_allTerminals` is now `mutable` so the lazy compact fits
+  inside the existing `const` accessor. Regression-locked at
+  `tests/features/qpointer_destroyed_safe/`.
+
+- **Ants MCP unreachable from non-Ants project sessions —
+  stale-socket buildup (ANTS-1322).** The MCP server is registered
+  at user scope (visible to every project via `mcp-bridge.py`) but
+  kept failing to connect with `Failed to connect`. Crashed
+  ants-terminal instances were leaving `/tmp/ants-terminal-mcp-<PID>`
+  behind indefinitely; the bridge's `pick_socket()` heuristic
+  ("newest by mtime") would pick a stale leftover from a long-dead
+  PID. Two-part fix: (a) the bridge now ranks candidates as `(live
+  PID, mtime, path)` so a live socket always wins; (b) Ants Terminal
+  reaps stale `/tmp/ants-terminal-mcp-*` sockets at startup —
+  every entry whose embedded PID returns `ESRCH` from `kill(pid, 0)`
+  is unlinked, so each launch auto-cleans the prior crashed
+  instance's leftovers. 11 stale sockets reaped during repro
+  2026-05-14.
+
+- **Stylesheet `%3` / `%6` placeholder collision — every theme
+  apply silently failed (ANTS-1321).**
+  `themedstylesheet::buildAppStylesheet` was pre-encoding
+  `textPrimary` and `textSecondary` colours as `%23RRGGBB`
+  (URL-encoded `#`) so the data-URI SVG in
+  `QTabBar::close-button` `image: url(...)` would render.
+  Problem: the SAME `arg()` position serviced both the SVG
+  context AND every `color: %3;` / `color: %6;` CSS rule — Qt
+  rejected those rules with `"Could not parse application
+  stylesheet"` and fell back to platform defaults. Suspected to
+  be the source of the intermittent theme-change SIGSEGV
+  (malformed CSS → Qt's CSS parser polish path). Fix: split
+  into separate placeholders — `%3`/`%6` stay as CSS-literal
+  `#RRGGBB`, new `%8`/`%9` carry the URL-encoded form ONLY
+  where SVG strokes consume it. Regression-locked in
+  `tests/features/tab_close_button_visible/`.
+
+- **QProcess `git status` child + lambda use-after-free during
+  ~MainWindow (ANTS-1320 extended).** The `Review Changes`
+  status-bar button starts a `git status --porcelain=v1 -b`
+  QProcess child whose `finished`/`errorOccurred` slots capture
+  a `QPointer<MainWindow>` and call `.data()` to flip
+  `m_reviewProbeInFlight`. At close, `~MainWindow`'s implicit
+  destruction chain destroyed the QProcess child mid-run; the
+  destructor emitted the racy signal and the lambda
+  dereferenced a downcast that was UB (vptr already swapped to
+  `QWidget`). Same fix pattern as ANTS-1320: `~MainWindow` now
+  walks `findChildren<QProcess*>()`, disconnects `this` as
+  receiver, and kills the child cleanly before the implicit
+  chain frees the captured state. Also silences Qt's
+  `"QProcess: Destroyed while process ("git") is still
+  running"` log on exit.
+
+- **Heap-use-after-free at close — `~MainWindow` raced child
+  TerminalWidget destruction (ANTS-1320).** A
+  `terminal->destroyed` lambda registered in
+  `MainWindow::connectTerminal` reached into an `m_allTerminals`
+  member-`QList` that had already been freed by `~MainWindow`'s
+  implicit member-destruction chain by the time `~QObject` got
+  around to running `deleteChildren()` and emitting `destroyed()`
+  for each tab's TerminalWidget. Surfaced as glibc `"corrupted
+  double-linked list"` SIGABRT on Release builds; ASan caught it
+  as a clean heap-use-after-free. Fix: explicit `~MainWindow()`
+  that disconnects `QObject::destroyed` from every registered
+  terminal targeting `this` BEFORE the member chain destroys the
+  QList. Same commit fixes the related UBSan
+  `static_cast<TerminalWidget*>(QObject*)` in the lambda — at
+  `destroyed()` time the derived dtor has run and the vptr is
+  `QWidget`, so cast the other way (`p.data()` → `QObject*`) for
+  the pointer-identity check.
+
+### Changed
+
+- **MCP `indie_review_corroborate` accepts `reports_dir`
+  (ANTS-1282).** Pairs with ANTS-1281. The tool now accepts
+  EITHER `reports: {lane: markdown}` (v1 inline map) OR
+  `reports_dir: <project-relative-path>` (v2 — server reads
+  every `*.md` file in that directory itself, lane name =
+  filename stem). XOR-validated; calls with both or neither
+  return `bad_args`. Path-traversal guard rejects absolute paths
+  and any path canonicalising outside the project root. Files
+  >64 KiB truncated at scan time (matches v1
+  `extractFileLineCitations` window). Response gains
+  `reports_read` (file count) and `reports_dir` (echoed path)
+  when invoked via the v2 path. **Token saving: ~14 × ~8 KiB
+  median reports = ~112 KiB no longer transit parent context
+  per `/indie-review` sweep**, on top of the ANTS-1281 brief
+  saving. Spec: [`docs/specs/ANTS-1282.md`](docs/specs/ANTS-1282.md).
+
+- **MCP `indie_review_brief` no longer inlines source bodies
+  (ANTS-1281).** The tool's response keeps the `brief` field but
+  drops the per-file `=== file: <path> ===` body sections that
+  previously inflated parent (orchestrator) context. New
+  structured fields land alongside: `source_paths[]`,
+  `contract_docs[]`, `external_specs[]` (reserved, empty in v1),
+  `dimension_weighting{}` (reserved, empty in v1). The `brief`
+  text now contains an explicit "Read each source file in the
+  list above using your Read tool" instruction so dispatched
+  subagents know the omission is intentional. **Token saving:
+  ~10–30 K orchestrator tokens per lane × 14 lanes per
+  `/indie-review` sweep.** Backwards-compatible: any caller that
+  forwards the `brief` field to a subagent prompt continues to
+  work; the subagent now performs the Read calls itself.
+  Spec: [`docs/specs/ANTS-1281.md`](docs/specs/ANTS-1281.md).
+
+### Added
+
+- **Spec — weekly Wednesday release cadence + Patron RC pipeline
+  (ANTS-1318).** From this release onward, public releases ship
+  on Wednesdays only. `main` IS the rolling RC, force-moved
+  `v<next>-rc` tag on every push. Patrons (🛠 tier on GitHub
+  Sponsors) are notified each Wednesday with the public-but-unannounced
+  pre-release URL. AppImage `UPDATE_INFORMATION` for RC builds
+  uses the rolling `v*-rc` tag (NOT `latest`) so stable users
+  never auto-update onto an RC. Full design + invariants:
+  [`docs/specs/ANTS-1318.md`](docs/specs/ANTS-1318.md).
+  Implementation lands separately (workflow + skill changes).
+
 ## [0.7.91] — 2026-05-13
 
 **Theme:** indie-review fold-in. The 2026-05-13 multi-agent /audit

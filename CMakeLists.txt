@@ -27,8 +27,15 @@ add_compile_definitions(ANTS_VERSION="${PROJECT_VERSION}")
 # __clang_major__, so no CMake plumbing for that.
 if(DEFINED ENV{SOURCE_DATE_EPOCH})
     string(TIMESTAMP ANTS_BUILD_DATE "%Y-%m-%d" UTC)
+    # ANTS-1323: HH:MM minute granularity for intra-day rebuilds.
+    # Multiple builds in one day used to collapse to the same
+    # "0.7.92 · 2026-05-14" label, leaving the user unable to tell
+    # one local build from another (especially during the weekly
+    # rolling-RC cycle where every push to main rebuilds).
+    string(TIMESTAMP ANTS_BUILD_TIME "%H:%M" UTC)
 else()
     string(TIMESTAMP ANTS_BUILD_DATE "%Y-%m-%d")
+    string(TIMESTAMP ANTS_BUILD_TIME "%H:%M")
 endif()
 
 set(ANTS_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
@@ -216,6 +223,7 @@ add_library(ants_core_lib STATIC
     src/gitwrap.cpp
     src/indiereviewengine.cpp
     src/debtsweepengine.cpp
+    src/verifyengine.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
     src/themedstylesheet.cpp
@@ -253,6 +261,12 @@ add_library(ants_chrome_lib STATIC
 target_link_libraries(ants_chrome_lib
     PUBLIC  ants_vt_lib
     PRIVATE ants_warnings)
+# ANTS-1323: mainwindow.cpp now reads ANTS_BUILD_DATE / ANTS_BUILD_TIME
+# from the configure-time-generated build_info.h for the window-title
+# build-badge — same generated header ants_dialogs_lib already uses
+# (ANTS-1222).
+target_include_directories(ants_chrome_lib
+    PRIVATE "${CMAKE_BINARY_DIR}/generated")
 set_target_properties(ants_chrome_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(LayerShellQt_FOUND)
     target_link_libraries(ants_chrome_lib PRIVATE LayerShellQt::Interface)
@@ -672,6 +686,8 @@ if(ANTS_TESTS)
                 tests/features/menubar_hover_stylesheet/test_menubar_hover_stylesheet.cpp
                 tests/features/tabbar_statusbar_opaque/test_tabbar_statusbar_opaque.cpp
                 tests/features/tab_close_button_visible/test_tab_close_button_visible.cpp
+                tests/features/qpointer_destroyed_safe/test_qpointer_destroyed_safe.cpp
+                tests/features/scroll_to_bottom_chip_size/test_scroll_to_bottom_chip_size.cpp
                 tests/features/review_changes_branches/test_review_changes_branches.cpp
                 tests/features/review_changes_clickable/test_review_changes_clickable.cpp
                 tests/features/review_changes_scroll_preserve/test_review_changes_scroll_preserve.cpp
@@ -798,7 +814,10 @@ if(ANTS_TESTS)
                 tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp
                 tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp
                 tests/features/mcp_indie_review_tools/test_mcp_indie_review_tools.cpp
-                tests/features/mcp_debt_sweep_tools/test_mcp_debt_sweep_tools.cpp)
+                tests/features/indie_review_brief_manifest/test_indie_review_brief_manifest.cpp
+                tests/features/indie_review_corroborate_dir/test_indie_review_corroborate_dir.cpp
+                tests/features/mcp_debt_sweep_tools/test_mcp_debt_sweep_tools.cpp
+                tests/features/mcp_verify_changes_tool/test_mcp_verify_changes_tool.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -871,7 +890,8 @@ if(ANTS_TESTS)
                 tests/features/audit_drop_alias/test_audit_drop_alias.cpp
                 tests/features/audit_framework_detect/test_audit_framework_detect.cpp
                 tests/features/indie_review_engine/test_indie_review_engine.cpp
-                tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp)
+                tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp
+                tests/features/verify_changes_engine/test_verify_changes_engine.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

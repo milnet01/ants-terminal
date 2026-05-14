@@ -93,15 +93,18 @@ TEST(McpDebtSweepTools, Inv12dAllCmdMethodsDefinedInCpp) {
 TEST(McpDebtSweepTools, Inv12eAllSchemasUseAdditionalPropertiesFalse) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
-    // Region: from the first debt_sweep_* tool name to the next
-    // `result["tools"] = tools;` afterwards.
+    // Region: from the first debt_sweep_* tool name to the close of
+    // the last debt_sweep tool's block (its `tools.append(t);` call).
+    // Terminating at the family boundary — not at `result["tools"]` —
+    // keeps subsequently-inserted tool families (e.g. ANTS-1289
+    // verify_changes) from leaking into the count.
     const auto block_start = ci.find("debt_sweep_scan");
     ASSERT_NE(block_start, std::string::npos);
     const auto last_block_pos = ci.find("debt_sweep_triage_prompt");
     ASSERT_NE(last_block_pos, std::string::npos);
-    const auto block_end = ci.find("result[\"tools\"] = tools;",
-                                   last_block_pos);
+    auto block_end = ci.find("tools.append(t);", last_block_pos);
     ASSERT_NE(block_end, std::string::npos);
+    block_end += std::string("tools.append(t);").size();
     const std::string region = ci.substr(block_start, block_end - block_start);
     int count = 0;
     size_t pos = 0;

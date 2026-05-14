@@ -544,14 +544,22 @@ QString compactSummaryEvent() {
         R"({"type":"user","isSidechain":false,"isCompactSummary":true,"message":{"role":"user","content":"compacted summary text"}})");
 }
 
-void testAnts1224Inv1_compactSummaryResetsState() {
+// ANTS-1327 supersedes ANTS-1224: isCompactSummary is a NO-OP marker,
+// NOT a state-reset checkpoint. The chip and dialog therefore mirror
+// Claude Code's own sidebar — full session history across /compact.
+
+void testAnts1327Inv1_compactSummaryPreservesState() {
     QTemporaryDir dir;
-    if (!dir.isValid()) { expect(false, "ANTS-1224-INV-1 setup"); return; }
+    if (!dir.isValid()) { expect(false, "ANTS-1327-INV-1 setup"); return; }
 
     // Pre-compact: TodoWrite with 2 tasks. Then isCompactSummary
-    // checkpoint. Then post-compact: TodoWrite with 1 different task.
-    // Expected: state reflects only the post-checkpoint TodoWrite.
-    const QString p = writeFixture(dir, "fix1224a.jsonl", {
+    // (NO-OP marker — must NOT clear state). Then post-compact:
+    // TodoWrite with 1 task. The post-compact TodoWrite REPLACES the
+    // pre-compact one (TodoWrite is snapshot-replace per existing
+    // semantics) — that's INV-3's standing behaviour, not 1327's.
+    // INV-1 checks that the parser doesn't crash or zero out anything
+    // unexpectedly when it sees the compact marker.
+    const QString p = writeFixture(dir, "fix1327a.jsonl", {
         assistantToolUse(QStringLiteral("TodoWrite"),
             R"({"todos":[)"
             R"({"content":"Pre-compact A","status":"pending","activeForm":"Doing A"},)"
@@ -567,23 +575,26 @@ void testAnts1224Inv1_compactSummaryResetsState() {
     });
 
     const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    // TodoWrite is replace-semantics — post-compact TodoWrite still
+    // wins over pre-compact, regardless of the compact marker.
     expect(tasks.size() == 1,
-           "ANTS-1224-INV-1: post-checkpoint TodoWrite is the surviving state",
+           "ANTS-1327-INV-1: TodoWrite-after-compact still replaces (existing INV-3 behaviour)",
            "got " + std::to_string(tasks.size()));
     if (tasks.size() == 1) {
         expect(tasks[0].subject.contains(QStringLiteral("Post-compact only")),
-               "ANTS-1224-INV-1: surviving entry is from after the checkpoint");
+               "ANTS-1327-INV-1: surviving entry is from the last TodoWrite");
     }
 }
 
-void testAnts1224Inv1b_compactSummaryClearsTaskCreates() {
+void testAnts1327Inv1b_taskCreateBeforeCompactSurvives() {
     QTemporaryDir dir;
-    if (!dir.isValid()) { expect(false, "ANTS-1224-INV-1b setup"); return; }
+    if (!dir.isValid()) { expect(false, "ANTS-1327-INV-1b setup"); return; }
 
-    // The user's actual repro: TaskCreate before /compact, no terminal
-    // TaskUpdate, then isCompactSummary, then nothing. Pre-fix: chip
-    // shows the pre-compact tasks. Post-fix: zero tasks.
-    const QString p = writeFixture(dir, "fix1224b.jsonl", {
+    // ANTS-1327 reversal repro: TaskCreate before /compact, then
+    // isCompactSummary, then nothing post-compact. Under the old
+    // ANTS-1224 contract this would yield zero tasks (compact cleared
+    // state). Under 1327 the pre-compact tasks MUST survive.
+    const QString p = writeFixture(dir, "fix1327b.jsonl", {
         assistantToolUse(QStringLiteral("TaskCreate"),
             R"({"subject":"Test the chip","description":"x","activeForm":"x"})",
             QStringLiteral("toolu_t1")),
@@ -599,19 +610,19 @@ void testAnts1224Inv1b_compactSummaryClearsTaskCreates() {
     });
 
     const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
-    expect(tasks.isEmpty(),
-           "ANTS-1224-INV-1: TaskCreate events before isCompactSummary contribute "
-           "zero post-checkpoint state",
+    expect(tasks.size() == 2,
+           "ANTS-1327-INV-1: TaskCreate events before isCompactSummary survive — chip mirrors CC sidebar full-history view",
            "got " + std::to_string(tasks.size()));
 }
 
-void testAnts1224Inv2_multipleCheckpointsConverge() {
+void testAnts1327Inv2_multipleCheckpointsAllNoop() {
     QTemporaryDir dir;
-    if (!dir.isValid()) { expect(false, "ANTS-1224-INV-2 setup"); return; }
+    if (!dir.isValid()) { expect(false, "ANTS-1327-INV-2 setup"); return; }
 
-    // Two checkpoints. State at EOF must reflect only events after the
-    // second one.
-    const QString p = writeFixture(dir, "fix1224c.jsonl", {
+    // Two checkpoints, each a no-op. The three TodoWrites are each
+    // snapshot-replace, so the final TodoWrite wins — but the
+    // compact markers must NOT have introduced any side effect.
+    const QString p = writeFixture(dir, "fix1327c.jsonl", {
         assistantToolUse(QStringLiteral("TodoWrite"),
             R"({"todos":[{"content":"Phase 1","status":"pending","activeForm":"P1"}]})",
             QStringLiteral("toolu_p1")),
@@ -627,33 +638,35 @@ void testAnts1224Inv2_multipleCheckpointsConverge() {
 
     const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
     expect(tasks.size() == 1,
-           "ANTS-1224-INV-2: state after the FINAL checkpoint",
+           "ANTS-1327-INV-2: with replace-semantic TodoWrite, last TodoWrite still wins regardless of compact markers",
            "got " + std::to_string(tasks.size()));
     if (tasks.size() == 1) {
         expect(tasks[0].subject.contains(QStringLiteral("Phase 3")),
-               "ANTS-1224-INV-2: surviving entry is from after the final checkpoint");
+               "ANTS-1327-INV-2: surviving entry is the final TodoWrite (replace-semantic INV-3, unaffected by compact)");
     }
 }
 
-void testAnts1224Inv3_sidechainCheckpointFilteredFirst() {
+void testAnts1327Inv3_sidechainCompactStillFiltered() {
     QTemporaryDir dir;
-    if (!dir.isValid()) { expect(false, "ANTS-1224-INV-3 setup"); return; }
+    if (!dir.isValid()) { expect(false, "ANTS-1327-INV-3 setup"); return; }
 
-    // A theoretical sidechain compact-summary event MUST be filtered by
-    // INV-5 before INV-1 fires — so a parent TodoWrite preceding it
-    // survives. Defensive ordering against future Claude Code versions.
+    // Sidechain CompactSummary must be filtered by INV-5 sidechain
+    // skip BEFORE the INV-1 no-op fires. Behaviour-wise this is
+    // identical to the deprecated 1224-INV-3 — the order matters
+    // even though INV-1's body changed from clear-and-continue to
+    // continue.
     const QString sidechainCheckpoint = QStringLiteral(
         R"({"type":"user","isSidechain":true,"isCompactSummary":true,"message":{"role":"user","content":"side"}})");
-    const QString p = writeFixture(dir, "fix1224d.jsonl", {
+    const QString p = writeFixture(dir, "fix1327d.jsonl", {
         assistantToolUse(QStringLiteral("TodoWrite"),
             R"({"todos":[{"content":"Parent","status":"pending","activeForm":"P"}]})",
             QStringLiteral("toolu_parent")),
-        sidechainCheckpoint,  // filtered by INV-5; must NOT clear state
+        sidechainCheckpoint,  // filtered by INV-5; must NOT affect state
     });
 
     const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
     expect(tasks.size() == 1,
-           "ANTS-1224-INV-3: sidechain isCompactSummary does NOT reset state "
+           "ANTS-1327-INV-3: sidechain isCompactSummary does not reach the INV-1 skip "
            "(INV-5 sidechain filter fires first)",
            "got " + std::to_string(tasks.size()));
 }
@@ -883,27 +896,27 @@ TEST(ClaudeTaskList, Ants1218Inv1ChipFormatCountsUp) {
     if (g_failures > before) FAIL();
 }
 
-TEST(ClaudeTaskList, Ants1224Inv1CompactSummaryResetsState) {
+TEST(ClaudeTaskList, Ants1327Inv1CompactSummaryPreservesState) {
     int before = g_failures;
-    testAnts1224Inv1_compactSummaryResetsState();
+    testAnts1327Inv1_compactSummaryPreservesState();
     if (g_failures > before) FAIL();
 }
 
-TEST(ClaudeTaskList, Ants1224Inv1bCompactSummaryClearsTaskCreates) {
+TEST(ClaudeTaskList, Ants1327Inv1bTaskCreateBeforeCompactSurvives) {
     int before = g_failures;
-    testAnts1224Inv1b_compactSummaryClearsTaskCreates();
+    testAnts1327Inv1b_taskCreateBeforeCompactSurvives();
     if (g_failures > before) FAIL();
 }
 
-TEST(ClaudeTaskList, Ants1224Inv2MultipleCheckpointsConverge) {
+TEST(ClaudeTaskList, Ants1327Inv2MultipleCheckpointsAllNoop) {
     int before = g_failures;
-    testAnts1224Inv2_multipleCheckpointsConverge();
+    testAnts1327Inv2_multipleCheckpointsAllNoop();
     if (g_failures > before) FAIL();
 }
 
-TEST(ClaudeTaskList, Ants1224Inv3SidechainCheckpointFilteredFirst) {
+TEST(ClaudeTaskList, Ants1327Inv3SidechainCompactStillFiltered) {
     int before = g_failures;
-    testAnts1224Inv3_sidechainCheckpointFilteredFirst();
+    testAnts1327Inv3_sidechainCompactStillFiltered();
     if (g_failures > before) FAIL();
 }
 

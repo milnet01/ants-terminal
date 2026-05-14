@@ -104,10 +104,13 @@ void showAboutAnts(QWidget *parent) {
     // compiler. Surfaces just enough context that bug-report triage
     // doesn't need a follow-up "what build are you on?". Order chosen
     // to lead with what changes most often (date/SHA) and tail with
-    // toolchain (rarely surprises).
+    // toolchain (rarely surprises). ANTS-1323: extended with HH:MM
+    // build-time minute granularity so intra-day rebuilds (common
+    // during the weekly rolling-RC cycle) are distinguishable.
     const QString buildLine = QStringLiteral(
-        "<br/><b>Build:</b> %1 (%2) · commit %3 · %4")
+        "<br/><b>Build:</b> %1 %2 (%3) · commit %4 · %5")
         .arg(QString::fromLatin1(ANTS_BUILD_DATE),
+             QString::fromLatin1(ANTS_BUILD_TIME),
              QString::fromLatin1(ANTS_BUILD_TYPE),
              QString::fromLatin1(ANTS_BUILD_COMMIT),
              compilerInfo());

@@ -196,12 +196,13 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
         // session's running count. Mirrors claudetasklist.cpp's filter
         // (ANTS-1158 sidechain rationale).
         if (ev.value(QStringLiteral("isSidechain")).toBool()) continue;
-        // ANTS-1224 parity: a /compact summary resets in-memory state
-        // so post-compact event stream rebuilds from a clean slate.
+        // ANTS-1327 parity (2026-05-14): no longer reset on compact —
+        // the bg-tasks dialog should match the foreground tracker's
+        // full-history semantics (which match Claude Code's own
+        // sidebar). We only skip the compact-summary event itself
+        // (it carries no tool_use); pre-compact background tasks
+        // continue to contribute to the lifetime view.
         if (ev.value(QStringLiteral("isCompactSummary")).toBool()) {
-            out.clear();
-            idxByToolUseId.clear();
-            idxByBgId.clear();
             continue;
         }
         const QString type = ev.value(QStringLiteral("type")).toString();

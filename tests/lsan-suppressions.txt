@@ -1,0 +1,36 @@
+# LSan suppression file for Ants Terminal.
+#
+# Wired via LSAN_OPTIONS=suppressions=tests/lsan-suppressions.txt
+# in the `debug` test preset's environment block (CMakePresets.json).
+# Loaded by LeakSanitizer at process exit; each `leak:<regex>` line
+# matches any frame in a leak's stack trace by symbol substring.
+#
+# Rule: every entry below must name a concrete one-shot bookkeeping
+# allocation that lives outside the project's source tree (Qt
+# internals, system libraries). Progressive leaks from our code must
+# never be suppressed — they have to be fixed.
+#
+# Audit cadence: re-check this list every minor release. If an entry
+# stops triggering, remove it.
+
+# ----------------------------------------------------------------------
+# Qt6 connect() slot-object bookkeeping (16 bytes), allocated during
+# MainWindow construction's connect() cascade. Qt's slot object is
+# reference-counted and freed when the connection ends, but
+# QApplication shutdown ordering leaves a small residue at LSan-check
+# time. Confirmed via objdump: the alloc is plain `operator new(16)`
+# followed by `QtPrivate::QMetaTypeInterfaceWrapper<TitleBar>::
+# metaType` pointer use — Qt-internal slot construction, not ours.
+# See docs/journal/2026-05-14-task11-mainwindow-ctor-leak.md.
+leak:MainWindow::MainWindow
+
+# ----------------------------------------------------------------------
+# libproxy / libpxbackend / GLib leaks during
+# QNetworkAccessManager::get() — proxy-config strings cached by
+# libproxy's GObject layer for the life of the process. Triggered by
+# the status-bar update-check chip (MainWindow::checkForUpdates).
+# Not fixable from our side; libproxy upstream issue.
+leak:libpxbackend
+leak:libproxy
+leak:px_proxy_factory_new
+leak:px_manager_new_with_options
