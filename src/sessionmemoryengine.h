@@ -14,6 +14,11 @@ namespace SessionMemoryEngine {
 constexpr qint64 kMaxStoreBytes = 100 * 1024;   // INV-2 — 100 KiB total cap
 constexpr qint64 kMaxValueBytes =  16 * 1024;   // INV-8 — 16 KiB per value
 constexpr int    kMaxKeyLength  = 64;           // INV-7 — key length
+// Indie-review-2026-05-14 lane-5 HI-4: cap distinct-key count. Byte
+// caps don't bound the QJsonObject member count, which dominates the
+// List-op O(n log n) sort cost. 1024 is comfortably above realistic
+// use yet well below worst-case pressure.
+constexpr int    kMaxStoreKeys  = 1024;
 
 enum class Op { Get, Set, Delete, List };
 

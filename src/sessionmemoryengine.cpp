@@ -230,6 +230,16 @@ OpResult execute(const QString &cwd, Op op,
             }
             QJsonObject next = store;
             next[key] = value;
+            // Indie-review-2026-05-14 lane-5 HI-4: cap distinct key
+            // count. The byte caps don't bound the number of keys,
+            // which dominates the List-op sort cost.
+            if (next.size() > kMaxStoreKeys) {
+                return makeErr(op, key, QStringLiteral("cap_exceeded"),
+                    QStringLiteral("session_memory: store would exceed "
+                                   "%1-key cap (%2 keys)")
+                        .arg(kMaxStoreKeys).arg(next.size()),
+                    path);
+            }
             const qint64 total = serializedSize(next);
             // INV-2 — total cap.
             if (total > kMaxStoreBytes) {
