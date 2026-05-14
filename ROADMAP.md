@@ -5437,7 +5437,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: security.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1295] **Per-tool cwd-anchor enforcement on
+- ✅ [ANTS-1295] **Per-tool cwd-anchor enforcement on
   path-accepting MCP tools.** `file_outline`, `workspace_search`,
   `git_state` accept `path` parameters. The `git_state`
   `validatePath` helper anchors against `rootCanonical`; verify

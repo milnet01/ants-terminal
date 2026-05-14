@@ -214,6 +214,23 @@ as a type and flags every signal emission.
   register it normally; the dispatch site wraps it automatically.
   See `docs/specs/ANTS-1294.md`.
 
+- **Path-accepting MCP tools route through `PathValidation::validatePath`
+  (ANTS-1295).** Every tool that takes a path-typed argument (`path`,
+  `lane`, `reports_dir`, `file`) calls
+  `PathValidation::validatePath(rawPath, rootCanonical, toolName,
+  paramName)` from `src/pathvalidation.h` before any filesystem
+  operation. The helper NFC-normalises, rejects control chars +
+  backslash, canonicalises (symlink-resolving), and anchors to the
+  focused project root. Reject envelope:
+  `{ok:false, error:"<tool>: \"<param>\" escapes project root",
+  code:"bad_path"}`. On accept, `check.argvForm` is the safe-for-argv
+  form (with `./` prefix when the path starts with `-`); `check.resolved`
+  is the canonical FS path or empty if the path doesn't exist yet
+  (valid for git pathspec on deleted files; callers that require
+  existence check `check.resolved.isEmpty()`). If you add a new tool
+  that consumes a path, call validatePath at the MCP layer — do NOT
+  re-implement the anchor inline. See `docs/specs/ANTS-1295.md`.
+
 ## Project standards
 
 Four shareable v1 standards at `docs/standards/`:

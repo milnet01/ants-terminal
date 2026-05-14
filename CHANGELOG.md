@@ -14,6 +14,35 @@ for security-relevant changes.
 
 ### Security
 
+- **Per-tool cwd-anchor enforcement on path-accepting MCP tools
+  (ANTS-1295).** Promoted the ANTS-1250 `validatePath` helper out
+  of `remotecontrol.cpp`'s anonymous namespace into a new
+  `src/pathvalidation.{h,cpp}` module so every path-accepting MCP
+  tool routes its path-typed argument through the same chokepoint
+  before any filesystem read, walk, exec, or write. Eight call-sites
+  across six tools now share one validator: `git_state` log + diff,
+  `file_outline`, `workspace_search`, `indie_review_corroborate`,
+  `cold_eyes_cross_doc_diff`, `debt_sweep_apply_fix`, plus the
+  `subsystem` lane-files defence-in-depth check. Closes the
+  previously-unguarded vector in `debt_sweep_apply_fix`, where a
+  triple with `file="../../etc/passwd"` would have caused
+  `QFile::open()` against `projectPath + "/" + finding.file` with
+  the information-disclosure and write paths that follow. The
+  helper emits a uniform `{ok:false, error:"<tool>: \"<param>\"
+  escapes project root", code:"bad_path"}` envelope; the previous
+  `bad_lane` code that `workspace_search` emitted for anchor
+  failures has been retired — consumers checking specifically for
+  `bad_lane` on the lane field must now check `bad_path`.
+  `bad_pattern` and `bad_glob` (independent of the anchor) are
+  unchanged. Spec: `docs/specs/ANTS-1295.md`. 16 new tests in
+  `tests/features/mcp_path_anchor/` cover the ten engine cases
+  (empty, dash-prefix, traversal, absolute outside, control char,
+  backslash, NFC, lexical-fallback, etc.) and six wiring cases
+  (eight call-sites, no inline anchor pair in `remotecontrol.cpp`,
+  `bad_lane` retirement). Pairs with ANTS-1294 — same defense
+  layer, different attack surface (1294 wraps response *content*,
+  1295 anchors input *paths*).
+
 - **MCP output sanitisation — frame user-supplied content as data,
   not instructions (ANTS-1294).** Every `tools/call` response that
   flows through the registry at `src/mainwindow.cpp:3671–3917` is

@@ -6,6 +6,7 @@
 #include "claudeintegration.h"
 #include "indiereviewengine.h"
 #include "mainwindow.h"
+#include "pathvalidation.h"
 #include "plantemplateengine.h"
 #include "sessionmemoryengine.h"
 #include "tokenusageengine.h"
@@ -845,6 +846,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 // Stderr capped at 4 KiB and surfaced only in the ok:false branch
 // to avoid path enumeration on the ok:true path (INV-8).
 namespace {
+// Forward decl — definition in the second anonymous namespace below
+// (it lives next to the rest of the git_state helpers). Both
+// unnamed-namespace blocks in this TU share linkage.
+QString resolveRootCanonical(MainWindow *main);
 constexpr int kWorkspaceSearchHardKillMs   = 2000;  // ANTS-1248-INV-5
 constexpr int kWorkspaceSearchKillGraceMs  =  200;  // ANTS-1248-INV-5
 constexpr int kWorkspaceSearchMaxResultsCap = 500;  // ANTS-1248-INV-4
@@ -860,12 +865,6 @@ QJsonObject wsErr(const char *code, const QString &message) {
     return o;
 }
 
-bool hasControlOrBackslash(const QString &s) {
-    for (QChar c : s) {
-        if (c.unicode() < 0x20 || c == QLatin1Char('\\')) return true;
-    }
-    return false;
-}
 }  // namespace
 
 QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
@@ -893,31 +892,30 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const QFileInfo rootInfo(rootCwd);
     const QString rootCanonical = rootInfo.canonicalFilePath();
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(wsErr("bad_lane",
+        // ANTS-1295: unified to bad_path with the rest of the
+        // anchor-failure envelope; bad_lane is retired.
+        return QJsonDocument(wsErr("bad_path",
             QStringLiteral("workspace-search: project root \"%1\" does not exist").arg(rootCwd)));
     }
 
-    // ANTS-1248-INV-2: lane validation — NFC normalise, reject control
-    // chars + backslash, then canonical-path-startswith the root.
-    // Symlink-resolving canonicalFilePath() (not lexical cleanPath())
-    // closes the parent-traversal vector; ripgrep is invoked without
-    // -L to bound the post-resolve symlink TOCTOU window.
-    QString laneArg = req.value("lane").toString().normalized(QString::NormalizationForm_C);
+    // ANTS-1248-INV-2 / ANTS-1295: lane validation through the central
+    // PathValidation chokepoint. The historical contract requires the
+    // lane to exist on disk (ripgrep's cwd), so reject when
+    // check.resolved is empty even though validatePath would otherwise
+    // accept via the lexical-fallback branch.
+    const QString laneRaw = req.value("lane").toString();
     QString laneAbs = rootCanonical;
-    if (!laneArg.isEmpty()) {
-        if (hasControlOrBackslash(laneArg)) {
-            return QJsonDocument(wsErr("bad_lane",
-                QStringLiteral("workspace-search: \"lane\" contains control or backslash characters")));
+    if (!laneRaw.isEmpty()) {
+        const auto check = PathValidation::validatePath(
+            laneRaw, rootCanonical,
+            QStringLiteral("workspace-search"),
+            QStringLiteral("lane"));
+        if (check.bad) return QJsonDocument(check.err);
+        if (check.resolved.isEmpty()) {
+            return QJsonDocument(wsErr("bad_path",
+                QStringLiteral("workspace-search: \"lane\" does not exist")));
         }
-        const QString joined = QDir(rootCanonical).filePath(laneArg);
-        const QString resolved = QFileInfo(joined).canonicalFilePath();
-        if (resolved.isEmpty() ||
-            !(resolved == rootCanonical ||
-              resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
-            return QJsonDocument(wsErr("bad_lane",
-                QStringLiteral("workspace-search: \"lane\" escapes project root or does not exist")));
-        }
-        laneAbs = resolved;
+        laneAbs = check.resolved;
     }
 
     // ANTS-1248-INV-9: glob validation — NFC normalise, 256-byte cap,
@@ -1102,56 +1100,32 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         return QJsonDocument(o);
     }
 
-    // ANTS-1249-INV-1: path canonicalisation + project-root guard.
-    // Same logic as ANTS-1248's lane check (canonicalFilePath +
-    // startsWith). ANTS-1253 will consolidate these into a shared
-    // helper.
-    QString rootCwd;
-    if (auto *t = m_main->currentTerminal()) {
-        rootCwd = t->shellCwd();
-    }
-    if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
-    const QString rootCanonical = QFileInfo(rootCwd).canonicalFilePath();
+    // ANTS-1249-INV-1 / ANTS-1295: anchor through the central
+    // PathValidation chokepoint. file_outline requires the path to
+    // exist (we can't outline a file we can't read), so reject when
+    // check.resolved is empty with a `not_found` code distinct from
+    // the anchor-fail `bad_path` envelope.
+    const QString rootCanonical = resolveRootCanonical(m_main);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: project root \"%1\" does not exist").arg(rootCwd);
+        o["error"] = QStringLiteral("file_outline: no focused project");
         o["code"]  = QStringLiteral("bad_path");
         return QJsonDocument(o);
     }
-
-    // NFC + reject control / backslash before canonicalising.
-    const QString nfc = rawPath.normalized(QString::NormalizationForm_C);
-    if (hasControlOrBackslash(nfc)) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: \"path\" contains control or backslash characters");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
-    }
-
-    QString joined;
-    if (QFileInfo(nfc).isAbsolute()) {
-        joined = nfc;
-    } else {
-        joined = QDir(rootCanonical).filePath(nfc);
-    }
-    const QString resolved = QFileInfo(joined).canonicalFilePath();
-    if (resolved.isEmpty()) {
+    const auto check = PathValidation::validatePath(
+        rawPath, rootCanonical,
+        QStringLiteral("file_outline"),
+        QStringLiteral("path"));
+    if (check.bad) return QJsonDocument(check.err);
+    if (check.resolved.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
         o["error"] = QStringLiteral("file_outline: \"%1\" does not exist").arg(rawPath);
         o["code"]  = QStringLiteral("not_found");
         return QJsonDocument(o);
     }
-    if (!(resolved == rootCanonical ||
-          resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: \"path\" escapes project root");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
-    }
+    const QString resolved = check.resolved;
 
     // ANTS-1249: mode + flags. Delegate to fileoutline.cpp for the
     // actual scan.
@@ -1224,67 +1198,8 @@ QString resolveRootCanonical(MainWindow *main) {
     return QFileInfo(rootCwd).canonicalFilePath();
 }
 
-// ANTS-1250-INV-8: per-call path validation. Empty path → empty
-// QString returned (caller treats absence as "no path filter"). On
-// rejection returns nullopt-equivalent: bad=true and err contains
-// the error envelope.
-struct PathCheck {
-    bool        bad = false;
-    QJsonObject err;        // populated when bad
-    QString     argvForm;   // path as it should appear in argv (./ prefix when starts with -)
-};
-
-PathCheck validatePath(const QString &rawPath, const QString &rootCanonical) {
-    PathCheck pc;
-    if (rawPath.isEmpty()) return pc;
-    const QString nfc = rawPath.normalized(QString::NormalizationForm_C);
-    if (hasControlOrBackslash(nfc)) {
-        pc.bad = true;
-        pc.err = gitErr("bad_path",
-            QStringLiteral("git_state: \"path\" contains control or "
-                           "backslash characters"));
-        return pc;
-    }
-    QString joined;
-    if (QFileInfo(nfc).isAbsolute()) {
-        joined = nfc;
-    } else {
-        joined = QDir(rootCanonical).filePath(nfc);
-    }
-    const QString resolved = QFileInfo(joined).canonicalFilePath();
-    // We do NOT require the path to exist (git log/diff for a deleted
-    // file is meaningful). But if it DOES resolve, it must canonicalise
-    // back inside root. If it does NOT resolve, fall back to a lexical
-    // root-prefix check on the joined path so a non-existent path
-    // outside root still gets rejected.
-    if (!resolved.isEmpty()) {
-        if (!(resolved == rootCanonical ||
-              resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
-            pc.bad = true;
-            pc.err = gitErr("bad_path",
-                QStringLiteral("git_state: \"path\" escapes project root"));
-            return pc;
-        }
-    } else {
-        const QString cleaned = QDir::cleanPath(joined);
-        if (!(cleaned == rootCanonical ||
-              cleaned.startsWith(rootCanonical + QLatin1Char('/')))) {
-            pc.bad = true;
-            pc.err = gitErr("bad_path",
-                QStringLiteral("git_state: \"path\" escapes project root"));
-            return pc;
-        }
-    }
-    // Use the user-supplied form (relative or absolute) verbatim for
-    // argv. ANTS-1250-INV-5: prefix `./` so a leading `-` cannot be
-    // misread by git as a flag.
-    QString form = nfc;
-    if (form.startsWith(QLatin1Char('-'))) {
-        form = QStringLiteral("./") + form;
-    }
-    pc.argvForm = form;
-    return pc;
-}
+// ANTS-1250-INV-8 / ANTS-1295: per-call path validation now lives in
+// the central PathValidation chokepoint. See src/pathvalidation.{h,cpp}.
 
 // Status header line: `## branch...origin/branch [ahead 1, behind 2]`
 // or `## branch` for an untracked branch.
@@ -1421,7 +1336,9 @@ QJsonObject runLogOp(MainWindow *main, const QJsonObject &req) {
     }
     const bool wantBody = req.value("body").toBool(false);
 
-    PathCheck pc = validatePath(req.value("path").toString(), rootCanonical);
+    const auto pc = PathValidation::validatePath(
+        req.value("path").toString(), rootCanonical,
+        QStringLiteral("git_state"), QStringLiteral("path"));
     if (pc.bad) return pc.err;
 
     // Format: SHA<US>SUBJECT<US>DATE(<US>BODY)?<RS>
@@ -1534,7 +1451,9 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
         return gitErr("bad_range",
             QStringLiteral("git_state: \"range\" failed validation"));
     }
-    PathCheck pc = validatePath(req.value("path").toString(), rootCanonical);
+    const auto pc = PathValidation::validatePath(
+        req.value("path").toString(), rootCanonical,
+        QStringLiteral("git_state"), QStringLiteral("path"));
     if (pc.bad) return pc.err;
 
     QStringList argv;
@@ -1780,17 +1699,18 @@ QStringList resolveLaneFiles(const QString &lane, const QString &rootCanonical) 
     const QFileInfoList entries = srcDir.entryInfoList(
         filters, QDir::Files | QDir::NoSymLinks);
     for (const QFileInfo &fi : entries) {
-        const QString resolved = fi.canonicalFilePath();
-        if (resolved.isEmpty()) continue;
-        // Defence in depth — even though `lane` came from a trusted
-        // CLAUDE.md membership check, a malicious symlink inside src/
-        // could redirect outside root.
-        if (!(resolved == rootCanonical ||
-              resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
-            continue;
-        }
+        // ANTS-1295: route the defence-in-depth anchor (malicious
+        // symlink inside src/ that points outside root) through the
+        // central validator. We treat any failure here as "skip this
+        // entry" rather than emitting the validator's envelope, since
+        // resolveLaneFiles is a filter and the lane itself is already
+        // a parsed-CLAUDE.md member.
+        const auto check = PathValidation::validatePath(
+            fi.absoluteFilePath(), rootCanonical,
+            QStringLiteral("subsystem"), QStringLiteral("file"));
+        if (check.bad || check.resolved.isEmpty()) continue;
         // Emit repo-relative paths.
-        QString rel = resolved;
+        QString rel = check.resolved;
         rel.remove(0, rootCanonical.size());
         if (rel.startsWith(QLatin1Char('/'))) rel.remove(0, 1);
         out.push_back(rel);
@@ -2177,6 +2097,15 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
             QStringLiteral("bad_args"),
             QStringLiteral("indie_review_corroborate: reports_dir must be a "
                            "non-empty project-relative path")));
+        // ANTS-1295: anchor reports_dir before the engine sees it. The
+        // engine has its own anchor as defense-in-depth, but the MCP
+        // layer's uniform `bad_path` envelope is more informative than
+        // the engine's silent empty-list return.
+        const auto check = PathValidation::validatePath(
+            reportsDir, root,
+            QStringLiteral("indie_review_corroborate"),
+            QStringLiteral("reports_dir"));
+        if (check.bad) return QJsonDocument(check.err);
         found = IndieReviewEngine::corroboratedFindingsFromDir(
             root, reportsDir, minLanes, &reportsRead);
         // No totalIn tally for the disk path — the orchestrator
@@ -2426,6 +2355,17 @@ QJsonDocument RemoteControl::cmdDebtSweepApplyFix(const QJsonObject &req) {
         return QJsonDocument(dsErr(QStringLiteral("bad_args"),
             QStringLiteral("debt_sweep_apply_fix: detector_id+file+line required")));
     }
+
+    // ANTS-1295: anchor `file` before the engine opens it. The engine
+    // does no cwd check of its own — without this, a triple with
+    // file="../../etc/passwd" causes QFile::open() at projectPath +
+    // "/" + "../../etc/passwd" with the unrelated information-disclosure
+    // and write vectors that follow from there.
+    const auto check = PathValidation::validatePath(
+        file, root,
+        QStringLiteral("debt_sweep_apply_fix"),
+        QStringLiteral("file"));
+    if (check.bad) return QJsonDocument(check.err);
 
     // Re-synthesise a Finding from the triple. The engine re-validates
     // every claim in §3.9, so this is safe.
@@ -2957,6 +2897,14 @@ QJsonDocument RemoteControl::cmdColdEyesCrossDocDiff(const QJsonObject &req) {
         QStringLiteral("bad_args"),
         QStringLiteral("cold_eyes_cross_doc_diff: reports_dir must be a "
                        "non-empty project-relative path")));
+
+    // ANTS-1295: anchor reports_dir before reaching the engine, same
+    // reasoning as indie_review_corroborate.
+    const auto check = PathValidation::validatePath(
+        reportsDir, root,
+        QStringLiteral("cold_eyes_cross_doc_diff"),
+        QStringLiteral("reports_dir"));
+    if (check.bad) return QJsonDocument(check.err);
 
     int minLanes = req.value(QStringLiteral("min_lanes")).toInt(2);
     if (minLanes < 1) minLanes = 1;

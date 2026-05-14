@@ -218,6 +218,7 @@ add_library(ants_core_lib STATIC
     src/config.cpp
     src/debuglog.cpp
     src/clipboardguard.cpp
+    src/pathvalidation.cpp
     src/remotecontrol.cpp
     src/fileoutline.cpp
     src/gitwrap.cpp
@@ -829,7 +830,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_section_slice/test_mcp_roadmap_section_slice.cpp
                 tests/features/mcp_cold_eyes/test_mcp_cold_eyes.cpp
                 tests/features/mcp_session_memory/test_mcp_session_memory.cpp
-                tests/features/mcp_output_sanitisation/test_mcp_output_sanitisation.cpp)
+                tests/features/mcp_output_sanitisation/test_mcp_output_sanitisation.cpp
+                tests/features/mcp_path_anchor/test_mcp_path_anchor.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
