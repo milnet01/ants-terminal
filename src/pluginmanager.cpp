@@ -308,7 +308,19 @@ void PluginManager::loadPlugin(const PluginInfo &info) {
             }
             if (m_grantSave) m_grantSave(info.name, granted);
         } else {
-            granted = saved;
+            // Indie-review-2026-05-14 lane-6 M-2: filter the saved
+            // grant list against the manifest's CURRENT permissions
+            // before honouring it. Pre-fix, if a plugin shrunk its
+            // requested permissions between sessions (manifest edited
+            // from ["clipboard.write", "settings"] to just
+            // ["clipboard.write"]), the engine still ran with both
+            // grants because `saved` still contained the old one.
+            // The hasPermission gates each ants.* call, but the
+            // manifest-vs-engine asymmetry violates the documented
+            // contract that the manifest is the source of truth.
+            for (const QString &p : saved) {
+                if (info.permissions.contains(p)) granted << p;
+            }
         }
     }
 
