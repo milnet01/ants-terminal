@@ -971,6 +971,16 @@ void ClaudeIntegration::onHookConnection() {
         // and never sends bytes (or never closes) used to hold a
         // QLocalSocket forever. 5 s idle timeout matches
         // RemoteControl.
+        //
+        // Indie-review-2026-05-14 lane-3 H1 — LOAD-BEARING: do NOT
+        // restart this timer inside readyRead to "extend on activity."
+        // The 5 s cap is the only wall-clock bound on a single
+        // hook-server RPC; the JSON parse happens once on
+        // disconnect against up to 10 MiB of buffered data. A peer
+        // that dribbled 1 byte every 4.9 s with a restart-on-read
+        // would hold the connection indefinitely and pay one
+        // expensive parse at the end. setSingleShot keeps the
+        // wall-clock cap absolute regardless of activity.
         QTimer *idleTimer = new QTimer(socket);
         idleTimer->setSingleShot(true);
         idleTimer->setInterval(5000);
