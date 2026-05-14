@@ -4891,6 +4891,117 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
+- 📋 [ANTS-1375] **Per-tab Claude state dot regression — dots
+  missing on tabs with active CC sessions (v0.7.91).** Confirmed
+  by user screenshot 2026-05-14: 5 tabs labelled "Claude: …"
+  (Ants Terminal, MAME Curator, RetroDB, Album Builder, Vestige)
+  all have running CC sessions, yet no per-tab state dot appears
+  on any of them. The status-bar surface at the bottom right
+  reports "Claude: idle" for the focused tab — so
+  `ClaudeTabTracker::shellState(pid)` IS returning a non-NotRunning
+  state for at least the focused shell. The same tracker drives
+  the indicator provider at `claudestatuswidgets.cpp:159–202`,
+  which should yield `Glyph::Idle` and paint a grey dot at
+  `coloredtabbar.cpp:138–180`. Wiring chain inspected at
+  `mainwindow.cpp:3507–3523` is intact:
+  `setupStatusBarChrome` constructs the tracker, sets all four
+  providers (`current/focused/terminalAtTab/tabIndicatorEnabled`),
+  then calls `attach()` which installs the indicator-provider
+  lambda. Last known good: 0.7.45 (CHANGELOG:4982). Last
+  meaningful change to the wiring was ANTS-1146 (d957624,
+  2026-05-01) which moved the lambda from `mainwindow.cpp` into
+  `ClaudeStatusBarController::attach()`. No subsequent commits
+  touched the dot rendering itself, so the bug is likely in one
+  of: (a) `m_terminalAtTabProvider(tabIndex)` returning the
+  wrong terminal (or nullptr) for non-focused tabs;
+  (b) `findClaudeChildPid` failing under the user's specific
+  shell-spawn topology; (c) the dot being painted at the wrong z
+  or with an alpha-zero colour. Repro plan: add temporary debug
+  logging in the provider lambda (one ants.log line per tab per
+  paint event, throttled) for one build to identify which
+  early-return branch fires. Then fix that branch.
+  **Layman:** tabs that have a running Claude Code session aren't
+  showing the little state dot anymore (it WAS working in a
+  previous version) — investigate which step in the rendering
+  pipeline is silently failing.
+  Kind: fix.
+  Source: user-report-2026-05-14.
+
+- 📋 [ANTS-1372] **MCP fold-in / debt-sweep mutating verbs write
+  to the focused-tab project, not the calling session's
+  project.** Observed 2026-05-14: a Claude Code session running
+  inside MAME Curator (with an Ants Terminal window having a tab
+  focused on the Ants Terminal repo) invoked an Ants MCP
+  fold-in / debt-sweep verb. The server resolved "active
+  project" to the focused tab's cwd rather than the calling
+  session's cwd. The verb bumped `.roadmap-counter` 1371 → 1436
+  in the Ants Terminal repo and appended 65 ROADMAP bullets
+  (referencing MAME Curator paths like `src/mame_curator/...`,
+  `tests/filter/*.py`) under § 0.7.65. Reverted manually in the
+  Ants Terminal repo; the MAME Curator session is re-folding to
+  its own ROADMAP. Pairs with [ANTS-1342] which covers the
+  symlinked-counter case; this is the focused-tab-vs-caller-cwd
+  case. Fix: every mutating MCP verb that touches
+  `.roadmap-counter`, ROADMAP.md, CHANGELOG.md, or files inside
+  a project root MUST resolve "project root" from the calling
+  session's cwd (already exposed via `mcp__ants__get_cwd`), not
+  from the focused tab. If they disagree, refuse with
+  `{ok:false, code:"cwd_mismatch", error:"<verb>: calling
+  session cwd does not match focused tab cwd"}` and surface to
+  the user. Audit verbs: `debt_sweep_apply_fix`,
+  `indie_review_fold_in`, `cold_eyes_fold_in`, and any future
+  fold-in tools introduced by the App-Build workflow.
+  **Layman:** a Claude Code session in project A can
+  accidentally mutate project B's files (ROADMAP / counter /
+  fix-pass writes) when the Ants window has a tab focused on
+  project B. Pin every write to the caller's project, not the
+  focused tab's.
+  Kind: security.
+  Source: incident-2026-05-14.
+
+#### 🧹 Debt-sweep fold-in (2026-05-14, build warnings)
+
+- 📋 [ANTS-1373] **Compiler/clangd warnings surfaced during ANTS-1332
+  build but unrelated to the change.** Three items observed running
+  `cmake --build build` on the test_lua bundle 2026-05-14:
+  (a) `luaengine.h:7` and `:8` — `clangd: included header functional
+  is not used directly` and `included header string is not used
+  directly` (`unused-includes` lint). (b) `tests/features/
+  lua_sandbox_hardening/test_lua_sandbox_hardening.cpp:192` —
+  `unused parameter 'argc'` + `'argv'` on `runMain(int argc, char
+  **argv)` (parameters kept from pre-bundle_main_gui era; the
+  bundle's `main` owns argc/argv now). (c) `cc1plus: warning:
+  cmake_pch.hxx.gch: created and used with different settings of
+  -fpic` repeated on every test-bundle target — the
+  `ants-terminal` PCH was built without `-fPIC` but the test
+  bundles set it; either rebuild PCH per-target or scope the PCH
+  to `-fPIC` consumers. Fix all three under one debt-sweep commit;
+  none affect correctness, but they all add noise to every build
+  log and erode signal-to-noise for future warnings.
+  **Layman:** clean up three classes of harmless-but-noisy
+  compiler warnings that show up on every build so real warnings
+  stand out.
+  Kind: chore.
+  Source: build-2026-05-14.
+
+- 📋 [ANTS-1374] **Expand the tab title-background colour palette
+  + picker.** The current `tab_color_sequence` config key
+  (`config.cpp:1019–1027`) accepts an ordered JSON array of
+  colours; the in-app picker (`mainwindow.cpp` tab-context menu)
+  exposes a fixed swatch list. User request 2026-05-14: more
+  colour choices for tab title backgrounds. Surface two changes:
+  (1) ship a richer default palette (currently 8 colours; target
+  ~16, balanced for both light + dark themes); (2) optionally
+  expose a "custom colour…" entry in the picker that opens
+  `QColorDialog` for per-tab arbitrary colour assignment, persisted
+  through the existing `tab_groups` UUID-keyed store. Verify
+  contrast against terminal text colour at the same time.
+  **Layman:** give users more colour choices when colouring tab
+  title backgrounds, plus a "custom colour" picker for fully
+  arbitrary colours.
+  Kind: enhancement.
+  Source: user-request-2026-05-14.
+
 #### 🔒 Tier 2 — hardening sweep
 
 - 📋 [ANTS-1339] **`applyFilter` line-split materialisation on
