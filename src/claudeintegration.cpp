@@ -2549,6 +2549,40 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1400 — caller_cwd_info diagnostic verb.
+                // Surfaces the ResolvedRoot::Source enum so callers
+                // can dispatch on which branch fired without
+                // invoking a tab-anchored tool first.
+                {
+                    QJsonObject t;
+                    t["name"] = "caller_cwd_info";
+                    t["description"] = QStringLiteral(
+                        "Diagnose how Ants would resolve your "
+                        "caller_cwd. Returns "
+                        "{ok:true, source:'ExplicitMatch'|"
+                        "'EmptyFallback'|'NoMatch'|'Unresolvable', "
+                        "resolved_cwd:'...', tab_index:N?}. No side "
+                        "effects — does not read scrollback, run "
+                        "git, or write any state. Pass caller_cwd "
+                        "to test resolution; omit it to see the "
+                        "empty-fallback behaviour (focused tab). "
+                        "See docs/specs/ANTS-1400.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD or an arbitrary path you want "
+                        "to test. Empty/absent → EmptyFallback "
+                        "(returns focused-tab info).");
+                    QJsonObject props;
+                    props["caller_cwd"] = callerProp;
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray();
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1283 — session_memory KV. Per-cwd key-value
                 // persistence backed by
                 // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json.
@@ -2880,6 +2914,13 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("token_usage"))        return C::ProcessGlobal;
     if (toolName == QStringLiteral("tab_list"))           return C::ProcessGlobal;
     if (toolName == QStringLiteral("get_session_info"))   return C::ProcessGlobal;
+    // ANTS-1400 — caller_cwd_info is the diagnostic verb that
+    // surfaces the resolution Source enum. caller_cwd is its
+    // INPUT (not an anchor), so neither Required nor ProcessGlobal
+    // is the right fit — Optional accepts the empty case (which
+    // is the "what would happen without it?" question the verb
+    // is built to answer).
+    if (toolName == QStringLiteral("caller_cwd_info"))    return C::Optional;
     // Everything else — Optional (default).
     return C::Optional;
 }

@@ -212,6 +212,23 @@ void sweepKwinScriptOrphansOnce() {
         }
     }
 }
+
+// ANTS-1400 — stringify `ants::ResolvedRoot::Source` for the
+// `caller_cwd_info` MCP verb envelope. PascalCase mirrors the
+// enum identifiers so the JSON literal and the C++ symbol stay
+// in lock-step. New enum values added in the future require a
+// matching case here; -Wswitch catches the gap at compile time.
+QString sourceToString(ants::ResolvedRoot::Source s) {
+    using S = ants::ResolvedRoot::Source;
+    switch (s) {
+        case S::ExplicitMatch: return QStringLiteral("ExplicitMatch");
+        case S::EmptyFallback: return QStringLiteral("EmptyFallback");
+        case S::NoMatch:       return QStringLiteral("NoMatch");
+        case S::Unresolvable:  return QStringLiteral("Unresolvable");
+    }
+    return QStringLiteral("Unresolvable");  // -Wreturn-type
+}
+
 }  // namespace
 
 MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
@@ -4050,6 +4067,28 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             return QString::fromUtf8(
                 m_remoteControl->cmdSessionMemory(args).toJson(QJsonDocument::Compact));
+        });
+
+    // ANTS-1400 — caller_cwd_info diagnostic verb. Pure delegation to
+    // ants::resolveCallerCwdRoot. No filesystem operations beyond the
+    // canonicalisations the helper performs; no shell, no process.
+    // The verb is intentionally classified Optional in
+    // ClaudeIntegration::callerCwdContractFor so empty caller_cwd is
+    // accepted (EmptyFallback is the legitimate "what would happen
+    // without it?" question). See docs/specs/ANTS-1400.md.
+    m_claudeIntegration->registerToolProvider("caller_cwd_info",
+        [this](const QJsonObject &args) -> QString {
+            const QString callerCwd =
+                args.value(QStringLiteral("caller_cwd")).toString();
+            const ants::ResolvedRoot rr =
+                ants::resolveCallerCwdRoot(this, callerCwd);
+            QJsonObject env;
+            env["ok"]           = true;
+            env["source"]       = sourceToString(rr.source);
+            env["resolved_cwd"] = rr.cwd;
+            if (rr.tabIndex) env["tab_index"] = *rr.tabIndex;
+            return QString::fromUtf8(
+                QJsonDocument(env).toJson(QJsonDocument::Compact));
         });
 
     // Start hook server
