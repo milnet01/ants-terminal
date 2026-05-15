@@ -4748,6 +4748,64 @@ minor tag (next: pre-0.8.0).
 
 ## 0.7.92 — indie-review #4 + Ants MCP roadmap pass (target: 2026-05-21)
 
+### 📦 Bundle plan for the 0.7.92 run (logged 2026-05-15)
+
+53 📋 items live in this section. Mirroring the post-0.7.27 plan at
+L974, the groups below organise by **theme + file affinity** so each
+weekly-Wednesday pull retires 2-4 related items at once instead of
+one. Each item still gets its own `tests/features/<name>/` spec +
+regression test; the bundle gets one CHANGELOG section + one drift
+cycle. Cadence: one bundle per Wednesday per
+[`project_release_cadence`] memo.
+
+| Bundle | Theme | Items | File affinity |
+|--------|-------|-------|---------------|
+| **A** | `terminalgrid` correctness + perf | ANTS-1333 · 1334 · 1361 · 1362 · 1366 | `terminalgrid.cpp` |
+| **B** | `caller_cwd` Phase 3 + diagnostics | ANTS-1336 · 1400 · 1401 · 1404 | `remotecontrol.cpp` · `mainwindow.cpp` |
+| **C** | MCP token-economy hygiene | ANTS-1398 · 1399 · 1402 · 1403 · 1409 | `claudeintegration.cpp` · `remotecontrol.cpp` |
+| **D** | Skill → MCP orchestrator trio | ANTS-1351 · 1352 · 1397 · 1410 | new engines + MCP dispatch |
+| **E** | MCP API hygiene + governance | ANTS-1353 · 1354 · 1356 · 1405 | docs + descriptor + parser |
+| **F** | CC tracker state drift | ANTS-1341 · 1375 · 1407 | `claudetasklist.cpp` · `claudestatuswidgets.cpp` |
+| **G** | Audit / review engine quality | ANTS-1339 · 1343 · 1344 · 1345 · 1358 | `auditengine.cpp` · `auditdialog.cpp` · `indiereviewengine.cpp` · `coldeyesengine.cpp` |
+| **H** | Build / test infrastructure | ANTS-1379 · 1380 · 1383 · 1384 · 1394 | `tests/_support` · `CMakeLists.txt` |
+| **I** | Test-suite housekeeping | ANTS-1381 · 1386 · 1387 | `tests/features/*_extraction` |
+| **J** | Cold-eyes cross-project portability | ANTS-1411 · 1412 · 1413 · 1414 | `coldeyesengine.cpp` · `indiereviewengine.cpp` |
+
+**Standalone — pull when adjacent work touches the same file:**
+
+- ANTS-1338 (`sessionPathForCwd` PID-reuse defense) — composes with
+  bundle B if a single dev tackles both.
+- ANTS-1340 (`cmdSubsystem` synchronous per-file git) — perf,
+  isolated; pair with G if a slot opens.
+- ANTS-1349 (Pty `EAGAIN` silent drop) — design decision pending
+  (signal vs document); slot when decided.
+- ANTS-1350 (roadmap dialog tab order + compact font) — a11y,
+  single file.
+- ANTS-1363 (status-bar refresh pauses on window-unfocus) — battery
+  perf, single signal hook; fold into next status-bar touch.
+- ANTS-1369 (project `.gitleaks.toml` allowlist) — config only,
+  weekly-Wednesday filler.
+- ANTS-1370 (`m_engines.insert` duplicate-key guard) — single-line,
+  fold into next `pluginmanager.cpp` touch.
+- ANTS-1374 (tab title-background palette + picker) — UX, depends
+  on user palette feedback before sizing the swatch list.
+- ANTS-1376 (CC ghost-suggestion auto-submit) — investigate-first,
+  no fix prescribed yet.
+- ANTS-1390 (path-tool scope excludes `~/.claude/`) — design
+  decision (sentinel vs flag vs new tool); own design pass.
+- ANTS-1406 (`last_audit_summary since_commit` /
+  `audit_precondition_summary`) — spec-first; pairs with the
+  ANTS-1359 caching pattern.
+- ANTS-1408 (archive-rotate shipped 0.7.x sections out of
+  ROADMAP.md) — process / infra, schedule when audit cadence
+  permits.
+
+Picking the next bundle is mechanical: take the lowest-letter bundle
+whose items are all still 📋 in the source-of-truth list below. If a
+referenced item turns ✅ between bumps, the bundle shrinks; if a new
+item appears mid-stream that fits an existing bundle's theme, fold it
+in rather than spinning up a new release.
+
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 
 6-lane indie-review on 2026-05-14 immediately after ANTS-1294
@@ -5281,6 +5339,136 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
 
+- 📋 [ANTS-1410] **`/audit` skill enumerates project-specific CI
+  gates.** Cross-session report 2026-05-15 (MAME Curator session):
+  the skill's tool list (ruff, bandit, semgrep, gitleaks, cppcheck,
+  clazy) is generic and project-agnostic. MAME Curator's
+  `.github/workflows/ci.yml` includes a `tools/check_api_types_sync.py`
+  step (Python ↔ TS type drift) that the audit subagent never ran.
+  Result: `/close-phase` reported "CLEAN" while the project-specific
+  gate was actually broken — discovered post-tag when CI failed,
+  needed a hot-fix. Two candidate fixes:
+  (a) `/audit` skill markdown parses `.github/workflows/*.yml`,
+      enumerates every `run:` step invoking a project-local script
+      (`tools/check_*.py`, `scripts/check_*`, etc.), and executes
+      each as a per-project audit pass.
+  (b) At minimum, surface the gap in the audit summary as "CI runs
+      N project-specific gates the skill did not execute; review
+      manually" — non-actionable but visible.
+  Pairs with ANTS-1351 (`audit_run` MCP orchestrator) — once that
+  lands, the workflow-enumeration logic belongs server-side and
+  every Ants project inherits it. Also pairs with the global skill
+  at `~/.claude/skills/audit/` for the markdown-side fix in the
+  meantime.
+  **Layman:** the audit skill runs the same generic linters on
+  every project but misses project-specific CI scripts (the kind
+  every repo grows for its own type-sync / format-sync / drift
+  checks). Have it parse `.github/workflows/ci.yml` and execute
+  every project-local script it sees, so close-phase stops
+  missing project-specific drift.
+  Kind: implement.
+  Source: cross-session-report-2026-05-15 (MAME Curator —
+  DS02 R2 hot-fix root cause).
+
+- 📋 [ANTS-1411] **`cold_eyes_partition` spec-lane detection
+  hardcoded to `ANTS-NNNN.md` filename shape.**
+  `coldeyesengine.cpp:223,245` builds spec-lane paths as
+  `QStringLiteral("docs/specs/ANTS-%1.md").arg(id)`. Cross-session
+  report 2026-05-15: MAME Curator has 13 specs under `docs/specs/`
+  with names like `DS01.md`, `FP05.md`, `P04.md` — the partition
+  walks zero of them, returning only the 3 generic lanes
+  (contracts, standards, decisions) with `scoped_count: 0`. The
+  tool description even advertises "Spec-lanes capped at 12 (most-
+  recently-modified)" which is silently a lie on non-Ants projects.
+  Fix: generalise the spec-lane scanner to walk every `*.md` under
+  `docs/specs/` regardless of filename shape (mtime-sort + cap as
+  documented). Composes with ANTS-1405 (same project-portability
+  concern in `roadmap_query`'s ID parser). Suggest also: log a
+  startup line "cold_eyes_partition will walk: <paths>" so projects
+  can configure-or-fail-fast.
+  **Layman:** the cold-eyes partition tool only finds specs whose
+  filename starts with `ANTS-`; on other projects using the same
+  documentation pattern (DS01.md, FP05.md, etc.) it silently
+  reports zero specs even though the directory is full of them.
+  Walk every `*.md` under `docs/specs/` instead.
+  Kind: fix.
+  Source: cross-session-report-2026-05-15 (MAME Curator).
+
+- 📋 [ANTS-1412] **`cold_eyes_partition` `.cold-eyes/partition.json`
+  override schema undocumented + silent fallback on malformed.**
+  Cross-session report 2026-05-15: caller hand-built
+  `.cold-eyes/partition.json` with what they believed was a
+  reasonable shape (`{"lanes":[{"name":...,"doc_paths":[...],
+  "cross_reference_docs":[...],"cited_code_paths":[...],
+  "summary":...}]}`); `cold_eyes_partition` returned `path:
+  "<default>"` with no diagnostic. Per `ANTS-1319.md:310` the
+  malformed-override-falls-back-silently behaviour is by design,
+  but the schema callers should write to is documented nowhere in
+  the tool description — they have to read the engine's source
+  (`coldeyesengine.cpp:44–159`). Fix candidates: (a) the tool's MCP
+  description embeds (or links) the expected JSON schema;
+  (b) on malformed/schema-mismatched override, return
+  `{ok:true, path:"<default>", override_warning:"<file at X has
+  invalid schema — see Y for valid shape>"}` so the caller knows
+  their file was ignored. Pairs with ANTS-1411 (debug-line at
+  startup naming the walked paths).
+  **Layman:** the cold-eyes partition tool advertises a
+  `.cold-eyes/partition.json` override file but doesn't document
+  what shape the JSON needs to be. If you guess wrong, the
+  tool silently ignores it. Either document the schema in the
+  tool description or surface a warning when the override is
+  malformed.
+  Kind: fix.
+  Source: cross-session-report-2026-05-15 (MAME Curator).
+
+- 📋 [ANTS-1413] **`cold_eyes_single_doc` brief tool for
+  single-spec review.** The current cold-eyes MCP surface
+  (`partition` / `brief` / `cross_doc_diff` / `corroborate` /
+  `fold_in`) is designed for full-doc-tree sweeps. For a single
+  new spec drafted in conversation, there's no clean entry-point:
+  the caller has to write a partition override, dispatch reviewer
+  subagents manually, save reports to disk, then call
+  `cross_doc_diff` on those reports. Cross-session report
+  2026-05-15 wanted "given a `doc_path`, return a manifest with
+  cross-references it should be consistent with (other specs in
+  the same dir, project standards, root contracts)" — a 30-second
+  what-should-this-be-cross-consistent-with check before any
+  reviewer dispatch. Reuses the partition tool's cross-reference
+  logic but anchored to one doc. Returns `{doc_path, related: {
+  same_dir_specs:[...], standards:[...], root_contracts:[...]},
+  recommended_reviewers:[...]}`. Pairs with ANTS-1414 (cross-doc-
+  diff primitive exposed for non-cold-eyes report sources).
+  **Layman:** add a cold-eyes tool that takes one spec and tells
+  you which other docs it should be consistent with — useful for
+  reviewing a single new spec without running the full multi-
+  lane review workflow.
+  Kind: implement.
+  Source: cross-session-report-2026-05-15.
+
+- 📋 [ANTS-1414] **Expose `cross_doc_diff` regex hotspot
+  primitive for indie-review report corroboration.** Cross-
+  session report 2026-05-15 confirmed `cold_eyes_cross_doc_diff`
+  works well: regex-based hotspot detection across reviewer
+  reports is fast (no LLM cost), produced useful signal at
+  `min_lanes=2`. The same primitive is structurally identical to
+  what `indie_review_corroborate` does for `.indie-review-reports/`
+  — but the two are separate implementations. Either: (a) rename
+  the engine helper to `crossDocDiff(reports_dir, min_lanes)` and
+  have both `cold_eyes_*` and `indie_review_*` route through it;
+  (b) expose a third MCP tool `cross_doc_diff_generic(reports_dir,
+  min_lanes)` that doesn't presume which subagent generated the
+  reports. Saves engine code duplication; lets a future audit
+  surface (e.g. `audit_corroborate`) reuse the same hotspot
+  detector without bolting on a third copy.
+  **Layman:** the cold-eyes corroboration tool that finds the
+  same finding across multiple reviewer reports works really
+  well. Refactor so the same logic powers the indie-review
+  corroboration tool (and any future audit-side equivalent)
+  instead of being separately implemented in each.
+  Kind: refactor.
+  Source: cross-session-report-2026-05-15 (positive feedback +
+  follow-up suggestion).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single
@@ -5396,6 +5584,50 @@ indie-review finding.
   with the same name never silently overwrite each other.
   Kind: security.
   Source: indie-review-2026-05-14 (lane-6 L-4).
+
+- 📋 [ANTS-1408] **Archive-rotate shipped 0.7.x sections out of
+  `ROADMAP.md`.** Current file: 12,373 lines / ~657 KiB. Nine
+  fully-shipped h2 sections — `0.7.0`, `0.7.7`, `0.7.12`,
+  `0.7.50–0.7.59`, `0.7.78`, `0.7.79`, `0.7.80–0.7.84` — account
+  for ~9,000 lines of historical detail that's never consulted in
+  planning queries. `docs/standards/roadmap-format.md` § 3.9
+  already specifies the rotation contract; `docs/roadmap/0.5.md`
+  and `0.6.md` are the live precedent. Action: rotate the listed
+  shipped 0.7.x sections to `docs/roadmap/0.7.md`, leave a one-line
+  `## 0.7.x — archived → docs/roadmap/0.7.md` stub in `ROADMAP.md`,
+  verify the roadmap-viewer archive-load path
+  (`tests/features/roadmap_viewer_archive/`) still resolves cross-
+  references. Token savings: every `roadmap_query` / `file_outline`
+  / agent-Read shrinks by ~70 %. Pairs with ANTS-1156 (roadmap-
+  system audit) which is the broader umbrella.
+  **Layman:** the main ROADMAP file has grown huge because every
+  shipped 0.7.x release's detail is still inline. The "archive
+  rotation" rule for that already exists (0.5.x and 0.6.x are
+  already moved out); apply it to the shipped 0.7.x sections too.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (self-observed while reading
+  ROADMAP for the bundle plan above).
+
+- 📋 [ANTS-1409] **Per-tool MCP descriptor blurbs duplicate the
+  "Pass `caller_cwd` to anchor to…" phrasing.** ANTS-1391
+  centralised the *schema property*'s description via the
+  `makeCallerCwdReadProp` lambda, but each tool's own outer
+  `description` string at `claudeintegration.cpp:1358, 1392, 1396,
+  1424, 1440, 1456, 1540, 1607, 1660, 1720, 1764, 1809, 1838`
+  re-types a near-identical "Pass `caller_cwd` (your $PWD) to
+  anchor to your tab" suffix. ~120 B × ~13 tools = ~1.5 KiB of
+  duplication on every `tools/list` response. Fix: extract a
+  shared `callerCwdSuffix()` returning the suffix text; each
+  tool's main blurb concatenates it (`+ callerCwdSuffix()`).
+  Refactor only — no observable behaviour change. Pairs with
+  ANTS-1401 (central `ResolvedRoot` helper) as the descriptor-
+  side counterpart of the same DRY concern.
+  **Layman:** ~13 MCP tool descriptions each spell out the same
+  "Pass caller_cwd to anchor to your tab" sentence in their own
+  words; deduplicate it into one shared helper.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (self-observed while preparing
+  the bundle plan).
 
 - 📋 [ANTS-1376] **Claude Code ghost-suggestion auto-submits
   on Enter — verify Ants Terminal behavior.** Claude Code
