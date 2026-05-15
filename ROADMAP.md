@@ -4760,7 +4760,7 @@ cycle. Cadence: one bundle per Wednesday per
 
 | Bundle | Theme | Items | File affinity |
 |--------|-------|-------|---------------|
-| **A** | `terminalgrid` correctness + perf | ANTS-1333 · 1334 · 1361 · 1362 · 1366 | `terminalgrid.cpp` |
+| **A** | `terminalgrid` correctness + perf | ANTS-1333 ✅ · 1334 ✅ · 1362 ✅ · 1366 ✅ | `terminalgrid.cpp` |
 | **B** | `caller_cwd` Phase 3 + diagnostics | ANTS-1336 · 1400 · 1401 · 1404 | `remotecontrol.cpp` · `mainwindow.cpp` |
 | **C** | MCP token-economy hygiene | ANTS-1398 · 1399 · 1402 · 1403 · 1409 | `claudeintegration.cpp` · `remotecontrol.cpp` |
 | **D** | Skill → MCP orchestrator trio | ANTS-1351 · 1352 · 1397 · 1410 | new engines + MCP dispatch |
@@ -4799,6 +4799,13 @@ cycle. Cadence: one bundle per Wednesday per
 - ANTS-1408 (archive-rotate shipped 0.7.x sections out of
   ROADMAP.md) — process / infra, schedule when audit cadence
   permits.
+- ANTS-1361 (locale-independent grapheme width via vendored
+  Unicode table) — extracted from Bundle A on sizing review
+  2026-05-15: scope is a multi-day design pass (table source +
+  licensing + build integration + update cadence), not bundleable
+  with one-line correctness fixes. Needs its own spec cycle
+  (multi-model design synthesis per the user's workflow) before
+  implementation. Carries to a standalone release after Bundle B.
 
 Picking the next bundle is mechanical: take the lowest-letter bundle
 whose items are all still 📋 in the source-of-truth list below. If a
