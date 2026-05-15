@@ -75,7 +75,11 @@ TEST(McpSessionMemory, SchemaRequiredArrayMatchesInv9) {
         << "value should NOT be schema-required (handler enforces)";
 }
 
-// REG-3
+// REG-3 — ANTS-1336 amendment. The legacy `cwd` arg is now refused
+// entirely — caller_cwd via RcGate is the only project-scope source
+// across every op. Pre-ANTS-1336 this test asserted `cwd` WAS
+// extracted; flipping the assertion is the regression-lock that the
+// cross-project tenancy bypass stays closed.
 TEST(McpSessionMemory, CmdExtractsAllArgs) {
     const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
@@ -97,9 +101,41 @@ TEST(McpSessionMemory, CmdExtractsAllArgs) {
     EXPECT_NE(body.find("req.value(QStringLiteral(\"value\"))"),
               std::string::npos)
         << "value arg not extracted";
-    EXPECT_NE(body.find("req.value(QStringLiteral(\"cwd\"))"),
+    EXPECT_EQ(body.find("req.value(QStringLiteral(\"cwd\"))"),
               std::string::npos)
-        << "cwd arg not extracted";
+        << "ANTS-1336: legacy `cwd` arg must NOT be extracted — "
+           "caller_cwd via RcGate is the only project-scope source. "
+           "Re-introducing the arg re-opens the cross-tenant bypass "
+           "(lane-5 HI-1, indie-review 2026-05-14).";
+}
+
+// REG-3b (ANTS-1336) — RcGate covers every op, not just mutates.
+// Pre-fix, the `if (mutates)` / `else` split applied the gate only
+// to set/delete; the else branch was the leak path. The regression
+// lock-in: the gate call must NOT be wrapped in a mutates-only
+// conditional inside cmdSessionMemory's body.
+TEST(McpSessionMemory, RcGateAppliedToEveryOp) {
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    const auto pos = rc.find(
+        "QJsonDocument RemoteControl::cmdSessionMemory");
+    ASSERT_NE(pos, std::string::npos);
+    const auto end = rc.find("\n}\n", pos);
+    ASSERT_NE(end, std::string::npos);
+    const std::string body = rc.substr(pos, end - pos);
+
+    EXPECT_NE(body.find("RcGate::checkCallerCwd"), std::string::npos)
+        << "ANTS-1336 INV-1: RcGate::checkCallerCwd call missing";
+    // Pre-fix wrap signature: `if (mutates)` then `else` for reads.
+    // The fix removes the conditional split entirely.
+    EXPECT_EQ(body.find("if (mutates)"), std::string::npos)
+        << "ANTS-1336 INV-1: mutates-only branch must be removed — "
+           "all ops route through RcGate, no else-branch for reads";
+    // Also confirm the legacy no_project read-side error code is
+    // gone (it had its own envelope on the leak branch).
+    EXPECT_EQ(body.find("session_memory: cwd is empty and no focused project"),
+              std::string::npos)
+        << "ANTS-1336 INV-1: leak-branch envelope still present";
 }
 
 // REG-4
@@ -119,8 +155,11 @@ TEST(McpSessionMemory, ErrorCodesComplete) {
         << "bad_key error code missing";
     EXPECT_NE(body.find("\"bad_value\""), std::string::npos)
         << "bad_value error code missing";
-    EXPECT_NE(body.find("\"no_project\""), std::string::npos)
-        << "no_project error code missing";
+    // ANTS-1336: no_project is no longer a literal in this handler
+    // — it bubbles up through gate.errorCode (RcGate) and r.code
+    // (SessionMemoryEngine). Asserting it inline would be a false
+    // requirement post-fix. Coverage moved to the runtime test that
+    // exercises an empty-focused-tab scenario.
 }
 
 // REG-5

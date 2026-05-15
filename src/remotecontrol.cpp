@@ -3629,44 +3629,27 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
             QString(), opRaw));
     }
 
-    QString cwd;
-    const bool mutates = (op == SessionMemoryEngine::Op::Set ||
-                          op == SessionMemoryEngine::Op::Delete);
-    if (mutates) {
-        // ANTS-1372: set/delete must pass caller_cwd; the legacy
-        // optional `cwd` arg is removed (it was a second escape route
-        // — callers could write to any path they specified).
-        const auto gate = RcGate::checkCallerCwd(
-            resolveRootCanonical(m_main), req,
-            QStringLiteral("session_memory"));
-        if (!gate.ok) {
-            // Materialise via smErr to keep the existing 4-field
-            // shape (path/extra come back empty for gate refusals).
-            return QJsonDocument(smErr(gate.errorCode, gate.error,
-                                       opRaw, QString()));
-        }
-        cwd = gate.focused;
-    } else {
-        // get/list: read-only — keep the legacy default-to-focused
-        // resolution. The optional `cwd` arg still works for cross-
-        // project READS, which is the legitimate "survey project B
-        // from project A" use case (see ANTS-1372 spec INV-7).
-        cwd = req.value(QStringLiteral("cwd")).toString();
-        // ANTS-1391: when `cwd` arg isn't provided, prefer the caller_cwd
-        // anchor over the focused-tab default so list/get reads the
-        // calling Claude's own project bucket — not whichever tab is
-        // focused in Ants.
-        if (cwd.isEmpty()) cwd = resolveRootCanonical(m_main, req);
-        if (cwd.isEmpty()) return QJsonDocument(smErr(
-            QStringLiteral("no_project"),
-            QStringLiteral("session_memory: cwd is empty and no focused project"),
-            opRaw, QString()));
-        cwd = QFileInfo(cwd).canonicalFilePath();
-        if (cwd.isEmpty()) return QJsonDocument(smErr(
-            QStringLiteral("no_project"),
-            QStringLiteral("session_memory: cwd does not canonicalise"),
-            opRaw, QString()));
+    // ANTS-1336: every op (get / list / set / delete) routes through
+    // RcGate. caller_cwd is the only project-scope source. Pre-fix,
+    // get/list accepted a user-supplied `cwd` arg, which let a
+    // session in project A read project B's bucket via the
+    // ~/.cache/.../mcp-state/<sha256(cwd)>.json hash path. ANTS-1372
+    // closed this for set/delete but preserved it for reads under
+    // INV-7 ("survey project B from A"); the 2026-05-14 indie review
+    // (lane-5 HI-1) reclassified the same capability as a tenancy
+    // bypass. INV-7 is now amended — session_memory is the unique
+    // read-only verb that reads from a tenant-hashed cache path, so
+    // it joins the gated set. See docs/specs/ANTS-1336.md.
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("session_memory"));
+    if (!gate.ok) {
+        // Materialise via smErr to keep the existing 4-field shape
+        // (path/extra come back empty for gate refusals).
+        return QJsonDocument(smErr(gate.errorCode, gate.error,
+                                   opRaw, QString()));
     }
+    const QString cwd = gate.focused;
 
     const QString    key   = req.value(QStringLiteral("key")).toString();
     const QJsonValue value = req.value(QStringLiteral("value"));

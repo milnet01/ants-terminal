@@ -2563,10 +2563,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "caches: last audit timestamp, partition "
                         "snapshots, tool-detection results. 100 KiB "
                         "cap per cwd; 16 KiB cap per value. Required: "
-                        "op (\"get\"/\"set\"/\"delete\"/\"list\"). "
-                        "key required for get/set/delete; value "
-                        "required for set. See "
-                        "docs/specs/ANTS-1283.md.");
+                        "op (\"get\"/\"set\"/\"delete\"/\"list\"), "
+                        "caller_cwd (your $PWD; ANTS-1336 — gates "
+                        "every op against the focused-tab project "
+                        "root). key required for get/set/delete; "
+                        "value required for set. See "
+                        "docs/specs/ANTS-1283.md + "
+                        "docs/specs/ANTS-1336.md.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject opProp;
@@ -2589,25 +2592,31 @@ void ClaudeIntegration::onMcpConnection() {
                     valProp["description"] = QStringLiteral(
                         "Any JSON value (≤ 16 KiB serialised). "
                         "Required for set.");
+                    // ANTS-1336 — `cwd` is deprecated for one release
+                    // (0.7.92). Handler ignores it; schema keeps the
+                    // field documented so migration errors point at
+                    // the replacement. Field is dropped from the
+                    // schema entirely in 0.7.93.
                     QJsonObject cwdProp;
                     cwdProp["type"] = "string";
                     cwdProp["description"] = QStringLiteral(
-                        "Optional cwd override (default = focused "
-                        "project root). Treated as a hash input, "
-                        "not a permission check.");
-                    // ANTS-1389 — surface the ANTS-1372 caller_cwd
-                    // gate. Required for set/delete (enforced at the
-                    // handler) but accepted on all ops; declared
-                    // optional in the schema so list/get still work
-                    // without it.
+                        "DEPRECATED (ANTS-1336). The handler ignores "
+                        "this field. Pass caller_cwd instead. Removed "
+                        "in 0.7.93.");
+                    // ANTS-1389 — surface the caller_cwd gate.
+                    // ANTS-1336 promoted caller_cwd to required for
+                    // every op (previously required only on
+                    // set/delete; the read-side bypass was the
+                    // tenancy leak).
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
-                        "Your $PWD. REQUIRED for op=\"set\" / "
-                        "\"delete\" (ANTS-1372 cross-project write "
-                        "gate — refuses on mismatch with the focused "
-                        "tab's cwd). Optional for op=\"get\" / "
-                        "\"list\" (read-only ops).");
+                        "Your $PWD. REQUIRED for every op "
+                        "(ANTS-1336 — cross-project tenancy gate; "
+                        "refuses on mismatch with the focused tab's "
+                        "cwd). Previously optional for get/list "
+                        "(ANTS-1372 INV-7); now required for those "
+                        "too — see docs/specs/ANTS-1336.md.");
                     QJsonObject props;
                     props["op"]         = opProp;
                     props["key"]        = keyProp;
@@ -2617,6 +2626,7 @@ void ClaudeIntegration::onMcpConnection() {
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append(QStringLiteral("op"));
+                    req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
