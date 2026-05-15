@@ -5,6 +5,7 @@
 // invariants (INV-7) assert AiDialog::sendRequest wires scrub() to
 // both m_terminalContext and the userMessage.
 
+#include "../../_support/expect.h"
 #include "secretredact.h"
 
 #include <gtest/gtest.h>
@@ -20,15 +21,15 @@
 #error "SRC_AIDIALOG_CPP compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 const char *g_currentCase = "<unset>";
 
 void fail(const char *msg)
 {
-    std::fprintf(stderr, "FAIL [%s]: %s\n", g_currentCase, msg);
-    ++g_failures;
+    expect(false, g_currentCase, msg);
 }
 
 // Assert that `out` does NOT contain the raw secret substring and DOES
@@ -82,6 +83,7 @@ std::string slurp(const char *path)
 } // namespace
 
 TEST(AiContextRedaction, Main) {
+    expect_reset();
 
     // ─────────────────────────────────────────────────────────────
     // INV-1: SecretRedact::scrub exists with the documented signature.
@@ -383,12 +385,10 @@ TEST(AiContextRedaction, Main) {
         }
     }
 
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d invariant check(s) failed — see spec.md for context\n",
-                     g_failures);
-        FAIL();
+    if (expect_failures() == 0) {
+        std::printf("OK: ai_context_redaction — %zu positive + %zu negative + wiring grep\n",
+                    positives.size(), negatives.size());
     }
-    std::printf("OK: ai_context_redaction — %zu positive + %zu negative + wiring grep\n",
-                positives.size(), negatives.size());
+    ASSERT_EQ(0, expect_finish());
 }
 

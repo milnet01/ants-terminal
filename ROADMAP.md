@@ -5445,7 +5445,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane C).
 
-- 🚧 [ANTS-1382] **Extract `tests/_support/expect.h` —
+- ✅ [ANTS-1382] **Extract `tests/_support/expect.h` —
   buffer-on-success + drop `if (runMain != 0) FAIL();`.**
   ~80 test files reimplement the same `int g_failures;
   void expect(bool, const char*, const QString&)` helper
@@ -5465,16 +5465,17 @@ that shipped 6+ months ago — pure self-reference).
   output, ~3000 LoC of duplication removed across the
   suite. Major win for AI-assistant friendliness when
   reading `ctest --output-on-failure` tails.
-  **Status (2026-05-15):** Phase 1 landed. `tests/_support/expect.h`
-  shipped with `ANTS_TEST_SCOPE()` macro (per-TU scope, buffered PASS
-  with `(N prior ok)` flush on first FAIL). 35 files mechanically
-  converted from `if (runMain() != 0) FAIL();` → `ASSERT_EQ(0,
-  runMain());` via `tools/migrate_expect_helper.py`. Two reference
-  files hand-migrated to validate Pattern A (runMain wrapper:
-  `lua_pcall_nesting_timeout`) and Pattern B (TEST() calls expect()
-  directly: `confirm_close_with_processes`). Remaining: ~47 files
-  with full `g_failures + expect()` duplication still need bulk
-  migration — see ANTS-1385.
+  **Shipped (2026-05-15):** Phase 1 + phase 2 (ANTS-1385) both
+  landed same day. `tests/_support/expect.h` shipped with
+  `ANTS_TEST_SCOPE()` macro (per-TU scope, buffered PASS with
+  `(N prior ok)` flush on first FAIL). All 184 feature tests now
+  use the helper except `vt_osc_esc_discard` which uses gtest-
+  native `ADD_FAILURE()`. 82 files migrated total: 35 in phase 1
+  (mechanical FAIL→ASSERT_EQ); 41 in phase 2 via the iterated
+  `tools/migrate_expect_helper.py` script (Patterns A/B/C/E/G
+  + orphan-increment converter); 4 hand-migrated for irregular
+  shapes; 2 reference files hand-migrated in phase 1
+  (`lua_pcall_nesting_timeout`, `confirm_close_with_processes`).
   **Layman:** every test file copy-pastes the same little
   `expect()` helper that prints `[PASS]` for every check
   — when a test fails, its log is mostly the PASS lines
@@ -5483,31 +5484,22 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane D).
 
-- 📋 [ANTS-1385] **Bulk-migrate remaining ~47 tests to
-  `ANTS_TEST_SCOPE()`.** Phase 2 of ANTS-1382. The 35 mechanical
-  shim conversions + 2 reference hand-migrations landed on
-  2026-05-15. The remaining files split across three patterns the
-  current `tools/migrate_expect_helper.py` script flagged as
-  needing manual review:
-  - **Pattern B variants (~8)** — TEST() bodies call `expect()`
-    directly without a runMain wrapper, end with `if (g_failures)
-    { fprintf; FAIL(); }`. Mechanical: convert to
-    `ASSERT_EQ(0, expect_finish());`.
-  - **Pattern C — multi-TEST delta-check (~20)** — files like
-    `claude_pid_replacement` with multiple `TEST()` blocks each
-    snapshotting `int before = g_failures; …; if (g_failures >
-    before) FAIL();`. Needs `expect_failures()` accessor (already
-    in the header) and per-TEST `expect_reset()` semantics.
-  - **Pattern D — setup-error helpers bumping g_failures (~12)**
-    — `++g_failures` inside `writeTemp()` / `slurp()` / similar.
-    Trivial conversion to `expect(false, "setup/...", ...)` once
-    the local g_failures is removed.
-  - Files using counter names other than `g_failures` (e.g.
-    `failures` in `flathub_manifest_transform`) — single
-    s/failures/expect_finish()/ each.
-  Iterate the migration script to handle these, then bulk-apply.
-  Expected to remove ~2500 LoC and bring all 184 feature tests
-  onto the shared helper.
+- ✅ [ANTS-1385] **Bulk-migrate remaining ~47 tests to
+  `ANTS_TEST_SCOPE()`.** Phase 2 of ANTS-1382, shipped 2026-05-15.
+  Iterated `tools/migrate_expect_helper.py` to recognise five
+  patterns (A/B/C/E/G) plus orphan-increment converter for
+  setup-error sites. 41 files auto-migrated by the script,
+  4 hand-migrated for irregular shapes (`ai_context_redaction`
+  custom helpers; `command_palette_ghost_completion` macros;
+  `crash_safe_session_persist` + `ui_state_persistence` that
+  silently passed because they never asserted on `g_failures`
+  — now per-TEST `EXPECT_EQ(0, expect_failures())`). Net 46
+  files / +941 / −1013, all 584 tests pass. Only one feature
+  test outside the helper now: `vt_osc_esc_discard`, which uses
+  gtest-native `ADD_FAILURE()` and doesn't need it. Side fix:
+  `crash_safe_session_persist` and `ui_state_persistence` now
+  actually assert (previously their `expect()` printed `[FAIL]`
+  but ctest reported PASS).
   Kind: refactor.
   Source: ANTS-1382-phase-2 (2026-05-15).
 

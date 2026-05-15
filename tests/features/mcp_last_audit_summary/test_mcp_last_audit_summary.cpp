@@ -14,6 +14,7 @@
 
 #include <QString>
 
+#include "../../_support/expect.h"
 #include "auditengine.h"
 
 #ifndef SRC_AUDIT_ENGINE_H_PATH
@@ -41,6 +42,8 @@
 #error "FIXTURE_EMPTY_SARIF compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
 std::string slurp(const char *path) {
@@ -54,14 +57,7 @@ std::string slurp(const char *path) {
     return ss.str();
 }
 
-int g_failures = 0;
 
-void expect(bool cond, const char *invName, const char *msg) {
-    if (!cond) {
-        ++g_failures;
-        std::fprintf(stderr, "[%s] FAIL: %s\n", invName, msg);
-    }
-}
 
 }  // namespace
 
@@ -70,7 +66,7 @@ void expect(bool cond, const char *invName, const char *msg) {
 // ----------------------------------------------------------------
 
 TEST(McpLastAuditSummary, Inv3SortOrderLevelDescConfidenceDesc) {
-    g_failures = 0;
+    expect_reset();
     auto s = AuditEngine::summariseSarif(
         QString::fromUtf8(FIXTURE_MIN_SARIF), 50, "note");
     expect(s.has_value(), "INV-3", "summariseSarif returned nullopt");
@@ -98,11 +94,11 @@ TEST(McpLastAuditSummary, Inv3SortOrderLevelDescConfidenceDesc) {
         expect(top[4].level == "note", "INV-3",
                "[4] should be note (lowest level)");
     }
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpLastAuditSummary, Inv4CountsCoverFullSetNotFiltered) {
-    g_failures = 0;
+    expect_reset();
     // severity_floor=error → top_findings has only error rows, but
     // counts must still cover all 3 levels + suppressed.
     auto s = AuditEngine::summariseSarif(
@@ -120,11 +116,11 @@ TEST(McpLastAuditSummary, Inv4CountsCoverFullSetNotFiltered) {
     expect(s->topFindings.size() == 1, "INV-4",
            ("error-only top size=" +
             std::to_string(s->topFindings.size())).c_str());
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpLastAuditSummary, Inv7FilePassthroughNoRewrite) {
-    g_failures = 0;
+    expect_reset();
     auto s = AuditEngine::summariseSarif(
         QString::fromUtf8(FIXTURE_MIN_SARIF), 50, "note");
     if (!s || s->topFindings.isEmpty()) FAIL();
@@ -138,11 +134,11 @@ TEST(McpLastAuditSummary, Inv7FilePassthroughNoRewrite) {
     }
     expect(foundAsIs, "INV-7",
            "expected file 'src/a.cpp' (as-is from SARIF) in topFindings");
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpLastAuditSummary, Inv9CountsFixedShape) {
-    g_failures = 0;
+    expect_reset();
     auto s = AuditEngine::summariseSarif(
         QString::fromUtf8(FIXTURE_MIN_SARIF), 50, "note");
     if (!s) FAIL();
@@ -152,20 +148,20 @@ TEST(McpLastAuditSummary, Inv9CountsFixedShape) {
     expect(s->countError + s->countWarning + s->countNote ==
                (1 + 3 + 1),
            "INV-9", "all 4 count fields populated by parser");
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpLastAuditSummary, Inv10EmptyRunsReturnsNullopt) {
-    g_failures = 0;
+    expect_reset();
     auto s = AuditEngine::summariseSarif(
         QString::fromUtf8(FIXTURE_EMPTY_SARIF), 5, "warning");
     expect(!s.has_value(), "INV-10",
            "empty runs[] must return nullopt (caller maps to not_audited)");
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpLastAuditSummary, Inv3SeverityResolvedFromRuleIndex) {
-    g_failures = 0;
+    expect_reset();
     auto s = AuditEngine::summariseSarif(
         QString::fromUtf8(FIXTURE_MIN_SARIF), 50, "note");
     if (!s || s->topFindings.size() < 5) FAIL();
@@ -181,7 +177,7 @@ TEST(McpLastAuditSummary, Inv3SeverityResolvedFromRuleIndex) {
            "INV-3 / spec § 3.1 step 3",
            ("expected MINOR, got " +
             s->topFindings.last().severity.toStdString()).c_str());
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 // ----------------------------------------------------------------
@@ -189,7 +185,7 @@ TEST(McpLastAuditSummary, Inv3SeverityResolvedFromRuleIndex) {
 // ----------------------------------------------------------------
 
 TEST(McpLastAuditSummary, Inv1EngineDoesNotReadHtml) {
-    g_failures = 0;
+    expect_reset();
     const std::string ec = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
     // summariseSarif derives htmlPath but never opens it for read.
     // QFile::exists is allowed (just stat); QFile::open is not.
@@ -204,11 +200,11 @@ TEST(McpLastAuditSummary, Inv1EngineDoesNotReadHtml) {
                body.find("htmlPath.open(") == std::string::npos,
            "INV-1",
            "summariseSarif appears to open() the HTML file (must only stat)");
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpLastAuditSummary, Inv2CacheMembersDeclared) {
-    g_failures = 0;
+    expect_reset();
     const std::string rh = slurp(SRC_REMOTECONTROL_H_PATH);
     std::regex memberRe(R"(mutable[^;]*m_auditSummary)");
     auto begin = std::sregex_iterator(rh.begin(), rh.end(), memberRe);
@@ -219,11 +215,11 @@ TEST(McpLastAuditSummary, Inv2CacheMembersDeclared) {
             " mutable m_auditSummary* fields; expected 5 "
             "(path/mtimeMs/cache/topN/floor)")
                .c_str());
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpLastAuditSummary, Inv8FloorValidatedBeforeDiskScan) {
-    g_failures = 0;
+    expect_reset();
     const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
     // Within cmdLastAuditSummary, the bad_severity_floor return must
     // come BEFORE the .audit_cache directory scan.
@@ -238,11 +234,11 @@ TEST(McpLastAuditSummary, Inv8FloorValidatedBeforeDiskScan) {
            "INV-8", "expected both bad_severity_floor and .audit_cache");
     expect(floorPos < cachePos, "INV-8",
            "bad_severity_floor must be returned BEFORE .audit_cache scan");
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpLastAuditSummary, Inv5And6WiringRegistered) {
-    g_failures = 0;
+    expect_reset();
     // INV-5 (UDS reachability) is inherited; the witness here is that
     // last_audit_summary IS registered through the same pipeline as
     // every other tool. INV-6 (lex-max discovery) is exercised by
@@ -257,5 +253,5 @@ TEST(McpLastAuditSummary, Inv5And6WiringRegistered) {
            "INV-6",
            "cmdLastAuditSummary must scan with QDir::Name | QDir::Reversed "
            "for lex-max filename discovery");
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }

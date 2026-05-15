@@ -3,6 +3,7 @@
 //
 // Exit 0 = all 10 invariants hold.
 
+#include "../../_support/expect.h"
 #include "fileoutline.h"
 
 #include <cstdio>
@@ -35,6 +36,8 @@
 #error "ANTS_SOURCE_DIR compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
 std::string slurp(const char *path) {
@@ -52,22 +55,12 @@ bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const char *detail = nullptr) {
-    if (!ok) {
-        ++g_failures;
-        std::fprintf(stderr, "[FAIL] %s%s%s\n",
-                     label,
-                     detail ? " — " : "",
-                     detail ? detail : "");
-    }
-}
 
 }  // namespace
 
 TEST(McpFileOutline, WiringContract) {
-    g_failures = 0;
+    expect_reset();
 
     const std::string ciCpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string ciHdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
@@ -183,9 +176,7 @@ TEST(McpFileOutline, WiringContract) {
            "INV-8b",
            "mainwindow.cpp does not delegate the provider lambda to cmdFileOutline");
 
-    if (g_failures) {
-        FAIL() << g_failures << " ANTS-1249 wiring invariant(s) failed";
-    }
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1249 wiring invariant(s) failed";
 }
 
 // INV-9 — runtime smoke. compute() against the in-tree
@@ -193,6 +184,7 @@ TEST(McpFileOutline, WiringContract) {
 // regex-set regressions that the source-grep above would miss
 // (e.g. a regex that compiles but matches nothing).
 TEST(McpFileOutline, RuntimeFloor) {
+    expect_reset();
     const QString auditPath =
         QString::fromUtf8(ANTS_SOURCE_DIR) + "/src/auditdialog.cpp";
     const QJsonObject out = FileOutline::compute(
@@ -212,6 +204,7 @@ TEST(McpFileOutline, RuntimeFloor) {
 // INV-10 — non-existent path returns the not_found code without
 // crashing.
 TEST(McpFileOutline, NotFoundPath) {
+    expect_reset();
     const QString missing =
         QString::fromUtf8(ANTS_SOURCE_DIR) +
         "/src/this-file-does-not-exist-1249.cpp";

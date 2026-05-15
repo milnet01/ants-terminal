@@ -505,8 +505,27 @@ hostile-content findings.
   uninformative gtest banner); (c) two reference hand-migrations
   exercising both common patterns (`lua_pcall_nesting_timeout` for
   the runMain wrapper case, `confirm_close_with_processes` for the
-  TEST() body case). Bulk migration of the remaining ~47 files is
-  rolled into ROADMAP ANTS-1385.
+  TEST() body case).
+
+- **Phase 2 — bulk migration of the remaining feature tests
+  (ANTS-1385).** Iterated `tools/migrate_expect_helper.py` to
+  recognise five patterns (A runMain wrapper, B `EXPECT_EQ` end,
+  C multi-TEST delta-check, E `if (g_failures) { FAIL(); }` block,
+  G multi-TEST per-test fail with optional explicit reset and
+  stream-form `FAIL() << g_failures << "..."`) plus an orphan-
+  increment converter for setup-error sites. 41 files auto-
+  migrated; 4 hand-migrated for irregular shapes:
+  `ai_context_redaction` (custom helpers `expectRedacted`/
+  `expectSurvives`/`fail`); `command_palette_ghost_completion`
+  (CHECK/CHECK_EQ_STR macros); `crash_safe_session_persist` and
+  `ui_state_persistence` (multi-TEST that historically printed
+  `[FAIL]` from the local helper but reported PASS to ctest
+  because no TEST asserted on `g_failures` — now per-TEST
+  `expect_reset()` + `EXPECT_EQ(0, expect_failures())` make
+  them genuinely assertive). All 184 feature tests now use
+  the shared helper; the only exception is `vt_osc_esc_discard`
+  which uses gtest-native `ADD_FAILURE()` and doesn't need it.
+  Net: 46 files / +941 / −1013, all 584 tests pass.
 
 - **Build-warning debt sweep (ANTS-1373 + ANTS-1367 + ANTS-1368 +
   ANTS-1325).** Cleared the four warning classes that fired on every

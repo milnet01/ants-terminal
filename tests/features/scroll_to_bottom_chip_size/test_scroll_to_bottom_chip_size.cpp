@@ -6,6 +6,8 @@
 // cascade can't inflate the chip's painted size and clip it past
 // the widget's right edge.
 
+#include "../../_support/expect.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -17,18 +19,11 @@
 #  error "SRC_TERMINALWIDGET_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const std::string &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label, detail.c_str());
-        ++g_failures;
-    }
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -48,6 +43,7 @@ bool contains(const std::string &h, const std::string &n) {
 }  // namespace
 
 TEST(ScrollToBottomChipSize, Main) {
+    expect_reset();
     const std::string src = slurp(SRC_TERMINALWIDGET_PATH);
 
     // I-1: setObjectName binds the chip with the ID the stylesheet
@@ -80,5 +76,5 @@ TEST(ScrollToBottomChipSize, Main) {
     expect(contains(src, " max-height: 32px;"),
            "I-4/max-height-32-override-present");
 
-    EXPECT_EQ(g_failures, 0);
+    EXPECT_EQ(0, expect_failures());
 }

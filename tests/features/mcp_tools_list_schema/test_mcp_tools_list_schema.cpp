@@ -4,6 +4,8 @@
 // when any entry is missing it, silently registering zero tools.
 // See tests/features/mcp_tools_list_schema/spec.md.
 
+#include "../../_support/expect.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -14,6 +16,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
+
+ANTS_TEST_SCOPE();
 
 namespace {
 
@@ -32,17 +36,7 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const char *detail = nullptr) {
-    if (!ok) {
-        ++g_failures;
-        std::fprintf(stderr, "[FAIL] %s%s%s\n",
-                     label,
-                     detail ? " — " : "",
-                     detail ? detail : "");
-    }
-}
 
 }  // namespace
 
@@ -51,7 +45,7 @@ void expect(bool ok, const char *label, const char *detail = nullptr) {
 // If it's missing or lacks the type field the MCP validator rejects
 // the whole response.
 TEST(McpToolsListSchema, EmptySchemaTypeDeclared) {
-    g_failures = 0;
+    expect_reset();
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     expect(contains(ci, "emptySchema[\"type\"] = \"object\""),
@@ -59,13 +53,13 @@ TEST(McpToolsListSchema, EmptySchemaTypeDeclared) {
            "emptySchema[\"type\"] = \"object\" not found in claudeintegration.cpp — "
            "zero-arg tools will be emitted without a valid inputSchema");
 
-    if (g_failures) FAIL() << g_failures << " invariant(s) failed";
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " invariant(s) failed";
 }
 
 // INV-2 — each of the six zero-arg tools assigns inputSchema.
 // One assertion per tool so the failure message names the offending tool.
 TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
-    g_failures = 0;
+    expect_reset();
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     // Pattern: <toolVar>["inputSchema"] = emptySchema;
@@ -90,7 +84,7 @@ TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
         expect(contains(ci, c.assign), label, detail);
     }
 
-    if (g_failures) FAIL() << g_failures << " zero-arg tool(s) missing inputSchema";
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " zero-arg tool(s) missing inputSchema";
 }
 
 // INV-1 / INV-4 — every registered tool name appears alongside an
@@ -103,7 +97,7 @@ TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
 // "tools/list" to "tools/call"), then count "inputSchema" assignments
 // and "tools.append(" calls — they must be equal.
 TEST(McpToolsListSchema, AllRegisteredToolsHaveInputSchema) {
-    g_failures = 0;
+    expect_reset();
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     // Locate the tools/list block.
@@ -153,5 +147,5 @@ TEST(McpToolsListSchema, AllRegisteredToolsHaveInputSchema) {
         expect(appendCount == schemaCount, "INV-1 / INV-4", detail);
     }
 
-    if (g_failures) FAIL() << g_failures << " invariant(s) failed";
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " invariant(s) failed";
 }

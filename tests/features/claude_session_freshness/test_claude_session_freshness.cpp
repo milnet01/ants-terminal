@@ -10,6 +10,7 @@
 //    of controlled mtimes + tail content, call
 //    ClaudeIntegration::sessionPathForCwd directly.
 
+#include "../../_support/expect.h"
 #include "claudeintegration.h"
 
 #include <gtest/gtest.h>
@@ -31,17 +32,11 @@
 #include <unistd.h>
 #include <utime.h>
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const std::string &detail = {}) {
-    std::fprintf(stderr, "[%-72s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 detail.empty() ? "" : " — ",
-                 detail.c_str());
-    if (!ok) ++g_failures;
-}
 
 [[noreturn]] void die(const std::string &msg) {
     std::fprintf(stderr, "setup-fail: %s\n", msg.c_str());
@@ -362,36 +357,36 @@ void testWiring() {
 }  // namespace
 
 TEST(ClaudeSessionFreshness, ProcessStartTimeMs) {
-    int before = g_failures;
+    const int before = expect_failures();
     testProcessStartTimeMs();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeSessionFreshness, LastEventTimestampMs) {
     QTemporaryDir dir;
     if (!dir.isValid()) FAIL() << "cannot create QTemporaryDir";
-    int before = g_failures;
+    const int before = expect_failures();
     testLastEventTimestampMs(dir);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeSessionFreshness, FilterAndPick) {
     QTemporaryDir home;
     if (!home.isValid()) FAIL() << "cannot create QTemporaryDir";
-    int before = g_failures;
+    const int before = expect_failures();
     testFilterAndPick(home);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeSessionFreshness, EncodeProjectPath) {
-    int before = g_failures;
+    const int before = expect_failures();
     testEncodeProjectPath();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeSessionFreshness, Wiring) {
-    int before = g_failures;
+    const int before = expect_failures();
     testWiring();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 

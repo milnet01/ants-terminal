@@ -8,24 +8,17 @@
 //
 // Exit 0 = all assertions hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "sshdialog.h"
 
 #include <gtest/gtest.h>
 #include <QCoreApplication>
 
-#include <cstdio>
+ANTS_TEST_SCOPE();
 
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const QString &detail = QString()) {
-    std::fprintf(stderr, "[%-58s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 detail.isEmpty() ? "" : " — ",
-                 qUtf8Printable(detail));
-    if (!ok) ++g_failures;
-}
 
 void testSanitize() {
     // Single-token ProxyCommand
@@ -174,14 +167,14 @@ void testEndToEnd() {
 
 
 TEST(SshExtraArgsSanitize, Sanitize) {
-    int before = g_failures;
+    const int before = expect_failures();
     testSanitize();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(SshExtraArgsSanitize, EndToEnd) {
-    int before = g_failures;
+    const int before = expect_failures();
     testEndToEnd();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 

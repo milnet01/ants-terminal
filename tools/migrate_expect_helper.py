@@ -1,27 +1,23 @@
 #!/usr/bin/env python3
-"""ANTS-1382 — convert legacy `g_failures` + `expect()` test helpers
-to the shared tests/_support/expect.h API.
+"""ANTS-1382 / ANTS-1385 — convert legacy `g_failures` + `expect()` test
+helpers to the shared tests/_support/expect.h API.
 
-Migration steps applied per file:
-  1. Insert `#include "../../_support/expect.h"` after the first
-     project-local include.
-  2. Insert `ANTS_TEST_SCOPE();` at file scope (after the includes,
-     before the first `namespace {`).
-  3. Delete the local `int g_failures = 0;` line.
-  4. Delete the local `void expect(bool ...) { ... }` function body.
-  5. In `runMain()`/`runMain(int, char**)`: replace the trailing
-     `if (g_failures) { fprintf...; return 1; } ... return 0;`
-     diagnostic block with `return expect_finish();`.
-  6. Insert `expect_reset();` at the top of runMain's body.
-  7. Replace `if (runMain(...)... != 0) FAIL();` with
-     `ASSERT_EQ(0, runMain(...));`.
-  8. Drop now-orphaned `++g_failures;` lines (each becomes an
-     `expect(false, ...)` if attached to a setup error path —
-     surfaced as "MANUAL" in the report so I review them by hand).
-  9. Drop `<cstdio>` include if no fprintf/printf remain.
+Patterns handled:
+  A — runMain() wrapper + `if (runMain() != 0) FAIL();` shim.
+  B — single TEST + `EXPECT_EQ(g_failures, 0);` at end.
+  C — multi-TEST delta-check (`int before = g_failures; ...;
+      if (g_failures > before) FAIL();`).
+  E — single TEST + trailing
+      `if (g_failures) { fprintf...; FAIL(); }` block.
+
+Patterns NOT auto-handled (refused, surfaced for hand-migration):
+  F — multi-TEST that never checks g_failures (silently broken — fix
+      requires per-TEST instrumentation).
+  Variants with macros, custom counter names, or stream-form FAIL —
+      surfaced as 'OTHER'.
 
 Run with: python3 tools/migrate_expect_helper.py [--apply] [path...]
-Default: dry-run, prints proposed diffs."""
+Default: dry-run, prints classification + planned actions."""
 
 from __future__ import annotations
 
@@ -31,157 +27,31 @@ import sys
 from pathlib import Path
 
 
-EXPECT_FN_RE = re.compile(
-    r"^void expect\(bool [^)]*\)\s*\{[^}]*\}\s*\n",
-    re.MULTILINE | re.DOTALL,
-)
-
-# Some files use multi-line bodies with nested braces; tolerate a wider
-# pattern by walking braces.
-def strip_local_expect(src: str) -> tuple[str, bool]:
-    """Remove the local `void expect(bool ...) { ... }` definition."""
-    sig_re = re.compile(r"^(?:static\s+)?void expect\(bool[^)]*\)\s*\{",
-                         re.MULTILINE)
-    m = sig_re.search(src)
-    if not m:
-        return src, False
-    # brace-walk forward from the opening `{` at m.end() - 1
-    i = m.end() - 1
-    depth = 0
-    while i < len(src):
-        c = src[i]
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                # consume trailing \n
-                while end < len(src) and src[end] in (" ", "\t"):
-                    end += 1
-                if end < len(src) and src[end] == "\n":
-                    end += 1
-                return src[: m.start()] + src[end:], True
-        i += 1
-    return src, False
-
-
-def strip_g_failures_decl(src: str) -> tuple[str, bool]:
-    """Remove `int g_failures = 0;` (and any tab/space prefix)."""
-    new = re.sub(
-        r"^[ \t]*int g_failures\s*=\s*0;[ \t]*\n",
-        "",
-        src,
-        flags=re.MULTILINE,
-    )
-    return new, new != src
-
-
-def replace_runmain_diagnostic(src: str) -> tuple[str, bool]:
-    """Replace the trailing `if (g_failures) { ...; return 1; } ...;
-    return 0;` block in runMain with `return expect_finish();`."""
-
-    # Anchor on `if (g_failures)` and brace-walk to the runMain
-    # function's closing `}`. This is the safest mechanical replacement
-    # since file styles vary widely.
-    pattern = re.compile(
-        r"""
-        ^(?P<indent>[ \t]*)if\s*\(\s*g_failures\s*\)\s*\{    # if (g_failures) {
-        .*?                                                    # body (any return / fprintf)
-        \n(?P=indent)\}\s*\n                                   # closing brace
-        (?P<tail>.*?)                                          # any "all good" line(s)
-        ^(?P=indent)return\s+0;\s*\n                           # return 0;
-        """,
-        re.DOTALL | re.MULTILINE | re.VERBOSE,
-    )
-    m = pattern.search(src)
-    if not m:
-        return src, False
-    indent = m.group("indent")
-    replacement = f"{indent}return expect_finish();\n"
-    return src[: m.start()] + replacement + src[m.end() :], True
-
-
-def insert_runmain_reset(src: str) -> tuple[str, bool]:
-    """Insert `expect_reset();` as the first statement of runMain."""
-    pattern = re.compile(
-        r"^(?P<sig>(?:static\s+)?int\s+runMain\([^)]*\)\s*\{[ \t]*\n)",
-        re.MULTILINE,
-    )
-    m = pattern.search(src)
-    if not m:
-        return src, False
-    # Detect indent of next line (function body)
-    after = m.end()
-    indent_m = re.match(r"([ \t]*)", src[after:after + 32])
-    indent = indent_m.group(1) if indent_m else "    "
-    # Don't double-insert
-    body_head = src[after : after + 200]
-    if "expect_reset()" in body_head:
-        return src, False
-    inject = f"{indent}expect_reset();\n"
-    return src[:after] + inject + src[after:], True
-
-
-def replace_fail_shim(src: str) -> tuple[str, bool]:
-    """Replace `if (runMain(...) != 0) FAIL();` with
-    `ASSERT_EQ(0, runMain(...));`."""
-
-    pattern = re.compile(
-        r"""
-        if\s*\(\s*runMain\((?P<args>[^)]*)\)\s*!=\s*0\s*\)\s*  # if (runMain(...) != 0)
-        FAIL\(\)\s*;                                            # FAIL();
-        """,
-        re.VERBOSE,
-    )
-    n = 0
-
-    def sub(m: re.Match[str]) -> str:
-        nonlocal n
-        n += 1
-        return f"ASSERT_EQ(0, runMain({m.group('args')}));"
-
-    new = pattern.sub(sub, src)
-    return new, n > 0
+# ---- shared helpers --------------------------------------------------
 
 
 def insert_support_include(src: str) -> tuple[str, bool]:
-    """Insert `#include "../../_support/expect.h"` after the first
-    project-local include (`#include "..."`). If only system includes
-    exist, place it before them."""
     if '"../../_support/expect.h"' in src:
-        return src, False
-    # Find first `#include "..."` (project-local).
+        return src, True  # already present is OK
     local_re = re.compile(r'^#include\s+"[^"]+"\s*\n', re.MULTILINE)
     m = local_re.search(src)
     needle = '#include "../../_support/expect.h"\n'
     if m:
-        # Insert as the first project-local include — keep the existing
-        # block tidy by placing before the matched line plus a blank
-        # separator to preserve clang-format-friendly grouping if
-        # already present.
         return src[: m.start()] + needle + src[m.start() :], True
-    # Fallback: place before first #include of any kind.
     sys_re = re.compile(r"^#include\s*<", re.MULTILINE)
     m2 = sys_re.search(src)
     if m2:
         return src[: m2.start()] + needle + "\n" + src[m2.start() :], True
-    # No includes at all? Place at the top.
     return needle + src, True
 
 
 def insert_test_scope(src: str) -> tuple[str, bool]:
-    """Insert `ANTS_TEST_SCOPE();` after the include block, before the
-    first `namespace {`."""
     if "ANTS_TEST_SCOPE()" in src:
-        return src, False
-    # Find first `namespace {` at file scope.
+        return src, True
     ns_re = re.compile(r"^namespace\s*\{\s*\n", re.MULTILINE)
     m = ns_re.search(src)
     if m:
-        inject = "ANTS_TEST_SCOPE();\n\n"
-        return src[: m.start()] + inject + src[m.start() :], True
-    # No anonymous namespace — place after last include.
+        return src[: m.start()] + "ANTS_TEST_SCOPE();\n\n" + src[m.start() :], True
     last_include = None
     for m2 in re.finditer(r"^#include[^\n]*\n", src, re.MULTILINE):
         last_include = m2
@@ -191,11 +61,91 @@ def insert_test_scope(src: str) -> tuple[str, bool]:
     return src, False
 
 
+def strip_local_expect(src: str) -> tuple[str, bool]:
+    """Find `void expect(bool ...)` (handles nested parens like
+    `= QString()` default args) and strip the entire function body."""
+    sig_re = re.compile(
+        r"^(?:static\s+)?void expect\(bool",
+        re.MULTILINE,
+    )
+    m = sig_re.search(src)
+    if not m:
+        return src, False
+    # Walk the parameter-list parens balanced from the `(` after `expect`.
+    open_paren = src.index("(", m.start())
+    i = open_paren
+    pdepth = 0
+    while i < len(src):
+        c = src[i]
+        if c == "(":
+            pdepth += 1
+        elif c == ")":
+            pdepth -= 1
+            if pdepth == 0:
+                break
+        i += 1
+    if i >= len(src):
+        return src, False
+    # Skip whitespace to opening brace.
+    j = i + 1
+    while j < len(src) and src[j] in (" ", "\t", "\n"):
+        j += 1
+    if j >= len(src) or src[j] != "{":
+        return src, False
+    # Brace-walk body.
+    depth = 0
+    k = j
+    while k < len(src):
+        c = src[k]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                end = k + 1
+                while end < len(src) and src[end] in (" ", "\t"):
+                    end += 1
+                if end < len(src) and src[end] == "\n":
+                    end += 1
+                return src[: m.start()] + src[end:], True
+        k += 1
+    return src, False
+
+
+def strip_g_failures_decl(src: str) -> tuple[str, bool]:
+    new = re.sub(
+        r"^[ \t]*int g_failures\s*=\s*0;[ \t]*\n",
+        "",
+        src,
+        flags=re.MULTILINE,
+    )
+    return new, new != src
+
+
+def convert_orphan_increments(src: str) -> tuple[str, int]:
+    """After local expect() is stripped, any remaining `++g_failures;`
+    is a setup-error path. Convert each to `expect(false, "setup", "");`
+    so the helper's failure count is bumped. The preceding fprintf is
+    left intact; readers see both the diagnostic and the fail tick."""
+    new, n = re.subn(
+        r"^([ \t]*)\+\+g_failures\s*;[ \t]*\n",
+        r'\1expect(false, "setup-error", "");\n',
+        src,
+        flags=re.MULTILINE,
+    )
+    # Also handle `if (!ok) ++g_failures;` (one-line form inside helper
+    # bodies that aren't the local expect()).
+    new, n2 = re.subn(
+        r"if\s*\(\s*!\s*ok\s*\)\s*\+\+g_failures\s*;",
+        r'expect(ok, "check-result", "");',
+        new,
+    )
+    return new, n + n2
+
+
 def drop_unused_cstdio(src: str) -> tuple[str, bool]:
-    """Drop `#include <cstdio>` if no fprintf/printf/FILE remains."""
     has_uses = bool(
-        re.search(r"\b(?:f?printf|FILE|stderr|stdout|stdin|f?puts)\b",
-                  src)
+        re.search(r"\b(?:f?printf|FILE|stderr|stdout|stdin|f?puts)\b", src)
     )
     if has_uses:
         return src, False
@@ -203,163 +153,400 @@ def drop_unused_cstdio(src: str) -> tuple[str, bool]:
     return new, new != src
 
 
-def drop_orphan_g_failures_increments(src: str) -> tuple[str, bool]:
-    """Drop `++g_failures;` lines that were paired with raw fprintf
-    setup-error paths (those should be flagged for manual review —
-    they were `expect(false, ...)` in spirit, not generic counter
-    bumps). For now we leave them as MANUAL findings instead of
-    silently dropping."""
-    # We DON'T auto-modify these — flag instead.
-    if re.search(r"\+\+g_failures\b", src):
-        return src, False  # no change; manual
-    return src, False
+# ---- pattern detection -----------------------------------------------
 
 
-def migrate_full(path: Path, apply: bool) -> dict:
-    """Full conversion for canonical pattern: single runMain wrapped
-    by single TEST(...) { if (runMain() != 0) FAIL(); }. All-or-
-    nothing — if any required step doesn't fire, leave the file
-    untouched and report so we can hand-migrate it."""
-    src = path.read_text()
-    original = src
+def classify(src: str) -> str:
+    if "ANTS_TEST_SCOPE" in src:
+        return "ALREADY"
+    if "int g_failures = 0" not in src:
+        return "NO_LEGACY"
+    has_runmain = bool(re.search(r"^\s*(?:static\s+)?int\s+runMain\(", src, re.M))
+    has_fail_shim = bool(
+        re.search(r"if\s*\(\s*runMain\([^)]*\)\s*!=\s*0\s*\)\s*FAIL\(\)\s*;", src)
+    )
+    has_test_fail_block = bool(
+        re.search(
+            r"if\s*\(\s*g_failures(?:\s*>\s*0)?\s*\)\s*\{[^}]*FAIL\(\)[^}]*\}",
+            src,
+            re.S,
+        )
+    )
+    has_test_expect_eq = "EXPECT_EQ(g_failures, 0)" in src
+    has_delta = "int before = g_failures" in src
+    test_count = len(re.findall(r"^\s*TEST\s*\(", src, re.M))
 
-    # Skip files that don't have the legacy pattern.
-    if "g_failures" not in src and "void expect(bool" not in src:
-        return {"path": str(path), "status": "skip-no-legacy"}
+    # Pattern G: multi-TEST with per-TEST `if (g_failures) FAIL();` or
+    # the multi-line `if (g_failures) { FAIL() << ...; }` form.
+    # Explicit `g_failures = 0;` reset per-TEST is optional — if absent
+    # we inject `expect_reset();` at the top of each TEST so state
+    # doesn't leak across them (most legacy multi-TEST files miss this
+    # reset, leading to silent cascade failures).
+    has_per_test_fail = bool(
+        re.search(r"if\s*\(\s*g_failures(?:\s*>\s*0)?\s*\)\s*\{?\s*FAIL\s*\(\)", src)
+    )
 
-    # Required: must have a strippable local expect(), a g_failures
-    # decl, AND the FAIL shim. If any is missing, hand-migrate.
-    has_local_expect = bool(re.search(
-        r"^(?:static\s+)?void expect\(bool[^)]*\)\s*\{",
-        src, re.MULTILINE,
-    ))
-    has_g_failures_decl = bool(re.search(
-        r"^[ \t]*int g_failures\s*=\s*0;", src, re.MULTILINE,
-    ))
-    has_fail_shim = bool(re.search(
-        r"if\s*\(\s*runMain\([^)]*\)\s*!=\s*0\s*\)\s*FAIL\(\)\s*;",
+    has_explicit_reset = bool(re.search(r"^\s*g_failures\s*=\s*0\s*;", src, re.M))
+    has_stream_fail = bool(
+        re.search(r"FAIL\(\)\s*<<\s*g_failures", src)
+    )
+
+    if has_runmain and has_fail_shim:
+        return "A"
+    if has_delta:
+        return "C"
+    if has_test_expect_eq:
+        return "B"
+    # G handles: multi-TEST per-test-fail (with or without reset), OR
+    # any pattern with explicit `g_failures = 0;` resets, OR any
+    # pattern with `FAIL() << g_failures` stream form.
+    if has_per_test_fail and (test_count > 1 or has_explicit_reset
+                               or has_stream_fail):
+        return "G"
+    if has_test_fail_block and test_count == 1:
+        return "E"
+    return "OTHER"
+
+
+# ---- pattern-specific transforms -------------------------------------
+
+
+def apply_pattern_a(src: str) -> tuple[str, bool, list[str]]:
+    """runMain wrapper — replace runMain trailing g_failures check with
+    expect_finish, replace shim with ASSERT_EQ, insert reset at top."""
+    notes: list[str] = []
+    # Tail variant 1: `if (g_failures[ > 0]) { ...; return 1; } return 0;`
+    pat1 = re.compile(
+        r"""
+        ^(?P<indent>[ \t]*)if\s*\(\s*g_failures(?:\s*>\s*0)?\s*\)\s*\{
+        .*?
+        \n(?P=indent)\}\s*\n
+        (?P<tail>.*?)
+        ^(?P=indent)return\s+0;\s*\n
+        """,
+        re.DOTALL | re.MULTILINE | re.VERBOSE,
+    )
+    # Tail variant 2: `return g_failures == 0 ? 0 : 1;` (single-line).
+    pat2 = re.compile(
+        r"^(?P<indent>[ \t]*)return\s+g_failures\s*==\s*0\s*\?\s*0\s*:\s*1\s*;\s*\n",
+        re.MULTILINE,
+    )
+    # Tail variant 3: `return g_failures != 0 ? 1 : 0;`
+    pat3 = re.compile(
+        r"^(?P<indent>[ \t]*)return\s+g_failures\s*!=\s*0\s*\?\s*1\s*:\s*0\s*;\s*\n",
+        re.MULTILINE,
+    )
+    # Tail variant 4: `return g_failures ? 1 : 0;`
+    pat4 = re.compile(
+        r"^(?P<indent>[ \t]*)return\s+g_failures\s*\?\s*1\s*:\s*0\s*;\s*\n",
+        re.MULTILINE,
+    )
+    for pat in (pat1, pat2, pat3, pat4):
+        m = pat.search(src)
+        if m:
+            indent = m.group("indent")
+            src = src[: m.start()] + f"{indent}return expect_finish();\n" + src[m.end():]
+            notes.append("runMain-tail->expect_finish")
+            break
+    else:
+        notes.append("runMain-tail-MISSING")
+        return src, False, notes
+
+    # FAIL shim → ASSERT_EQ.
+    src, n = re.subn(
+        r"if\s*\(\s*runMain\((?P<args>[^)]*)\)\s*!=\s*0\s*\)\s*FAIL\(\)\s*;",
+        lambda m: f"ASSERT_EQ(0, runMain({m.group('args')}));",
         src,
-    ))
-    has_runmain = bool(re.search(
-        r"^(?:static\s+)?int\s+runMain\(", src, re.MULTILINE,
-    ))
-    # Files that access g_failures in test bodies (e.g.
-    # `int before = g_failures;` pattern) need a different
-    # migration — defer.
-    accesses_g_failures_directly = bool(re.search(
-        r"\bg_failures\b(?!\s*=\s*0)", src,
-    ))
-    g_failures_uses_count = len(re.findall(
-        r"\bg_failures\b", src,
-    ))
-    # The decl itself counts; the runMain check counts; anything
-    # beyond ~3 uses suggests delta-check pattern.
-    if g_failures_uses_count > 4:
-        return {"path": str(path), "status": "skip-complex-pattern",
-                "notes": [f"g_failures used {g_failures_uses_count}× "
-                         "(delta-check pattern; needs manual migration)"]}
+    )
+    if n == 0:
+        notes.append("fail-shim-MISSING")
+        return src, False, notes
+    notes.append(f"fail-shim->ASSERT_EQ ({n})")
 
-    if not (has_local_expect and has_g_failures_decl and has_fail_shim
-            and has_runmain):
-        return {
-            "path": str(path),
-            "status": "skip-needs-manual",
-            "notes": [
-                f"localExpect={has_local_expect}",
-                f"g_failuresDecl={has_g_failures_decl}",
-                f"failShim={has_fail_shim}",
-                f"runMain={has_runmain}",
-            ],
-        }
-    # Setup-error paths bump g_failures directly. Acceptable IF the
-    # only remaining `++g_failures` is in setup helpers (writeTemp,
-    # etc.) — the user can rewrite as expect(false, ...) later.
-    if re.search(r"\+\+g_failures\b", src):
-        # Allow if just one or two: convert to expect(false,...)?
-        # For safety, defer.
-        return {"path": str(path), "status": "skip-needs-manual",
-                "notes": ["++g_failures setup-error path remains"]}
+    # Insert expect_reset at top of runMain.
+    sig = re.compile(
+        r"^(?P<sig>(?:static\s+)?int\s+runMain\([^)]*\)\s*\{[ \t]*\n)",
+        re.MULTILINE,
+    )
+    sm = sig.search(src)
+    if sm:
+        after = sm.end()
+        indent_m = re.match(r"([ \t]*)", src[after:after + 32])
+        indent = indent_m.group(1) if indent_m else "    "
+        body_head = src[after : after + 200]
+        if "expect_reset()" not in body_head:
+            src = src[:after] + f"{indent}expect_reset();\n" + src[after:]
+            notes.append("runMain-reset-inserted")
 
-    # All-or-nothing migration.
-    src, ok1 = insert_support_include(src)
-    src, ok2 = insert_test_scope(src)
-    src, ok3 = strip_local_expect(src)
-    src, ok4 = strip_g_failures_decl(src)
-    src, ok5 = insert_runmain_reset(src)
-    src, ok6 = replace_runmain_diagnostic(src)
-    src, ok7 = replace_fail_shim(src)
-    src, _   = drop_unused_cstdio(src)
-
-    # All required steps must have fired.
-    required = [ok1, ok2, ok3, ok4, ok5, ok7]
-    # ok6 (runMainTail) is optional — some files just have
-    # `return g_failures ? 1 : 0;` instead of the if-block.
-    if not all(required):
-        return {
-            "path": str(path),
-            "status": "skip-partial",
-            "notes": [f"steps={required}"],
-        }
-
-    if src == original:
-        return {"path": str(path), "status": "no-change"}
-    if apply:
-        path.write_text(src)
-        return {"path": str(path), "status": "written-full"}
-    return {"path": str(path), "status": "would-write-full"}
+    return src, True, notes
 
 
-def migrate_fail_shim_only(path: Path, apply: bool) -> dict:
-    """For files that don't have g_failures/expect but DO have the
-    `if (runMain() != 0) FAIL();` shim — replace just that with
-    ASSERT_EQ. These may use other helper conventions but the FAIL
-    shim is universally inferior to ASSERT_EQ."""
-    src = path.read_text()
-    if not re.search(
-        r"if\s*\(\s*runMain\([^)]*\)\s*!=\s*0\s*\)\s*FAIL\(\)\s*;",
+def apply_pattern_b(src: str) -> tuple[str, bool, list[str]]:
+    """TEST + EXPECT_EQ(g_failures, 0) end."""
+    notes: list[str] = []
+    src, n = re.subn(
+        r"EXPECT_EQ\(g_failures,\s*0\)",
+        "EXPECT_EQ(0, expect_failures())",
         src,
-    ):
-        return {"path": str(path), "status": "skip-no-shim"}
-    src2, ok = replace_fail_shim(src)
-    if not ok or src2 == src:
-        return {"path": str(path), "status": "no-change"}
-    if apply:
-        path.write_text(src2)
-        return {"path": str(path), "status": "written-shim"}
-    return {"path": str(path), "status": "would-write-shim"}
+    )
+    if n == 0:
+        return src, False, notes
+    notes.append(f"EXPECT_EQ-replaced ({n})")
+    src = _insert_reset_at_test_top(src, notes)
+    return src, True, notes
+
+
+def apply_pattern_c(src: str) -> tuple[str, bool, list[str]]:
+    """Multi-TEST delta-check: rewrite g_failures references."""
+    notes: list[str] = []
+    # int before = g_failures;  →  const int before = expect_failures();
+    src, n1 = re.subn(
+        r"\bint\s+before\s*=\s*g_failures\s*;",
+        "const int before = expect_failures();",
+        src,
+    )
+    if n1:
+        notes.append(f"before-decl ({n1})")
+    # if (g_failures > before)  → if (expect_failures() > before)
+    src, n2 = re.subn(
+        r"\bg_failures\s*([!><]=?)\s*before\b",
+        r"expect_failures() \1 before",
+        src,
+    )
+    if n2:
+        notes.append(f"delta-check ({n2})")
+    if n1 == 0 or n2 == 0:
+        return src, False, notes
+    return src, True, notes
+
+
+def apply_pattern_e(src: str) -> tuple[str, bool, list[str]]:
+    """Single TEST + trailing if (g_failures) { fprintf...; FAIL(); }."""
+    notes: list[str] = []
+    pattern = re.compile(
+        r"""
+        ^(?P<indent>[ \t]*)if\s*\(\s*g_failures(?:\s*>\s*0)?\s*\)\s*\{
+        .*?
+        FAIL\(\)\s*;
+        .*?
+        \n(?P=indent)\}\s*\n
+        """,
+        re.DOTALL | re.MULTILINE | re.VERBOSE,
+    )
+    m = pattern.search(src)
+    if not m:
+        return src, False, notes
+    indent = m.group("indent")
+    replacement = f"{indent}ASSERT_EQ(0, expect_finish());\n"
+    src = src[: m.start()] + replacement + src[m.end() :]
+    notes.append("test-fail-block->ASSERT_EQ")
+    src = _insert_reset_at_test_top(src, notes)
+    return src, True, notes
+
+
+def apply_pattern_g(src: str) -> tuple[str, bool, list[str]]:
+    """Multi-TEST + per-TEST `if (g_failures) FAIL();` (with optional
+    explicit `g_failures = 0;` reset and/or stream form). Replace each
+    piece with the helper API; inject expect_reset() at the top of
+    every TEST that doesn't already have one."""
+    notes: list[str] = []
+    # Step 1: `g_failures = 0;` (standalone) → `expect_reset();`
+    src, n1 = re.subn(
+        r"^([ \t]*)g_failures\s*=\s*0\s*;[ \t]*\n",
+        r"\1expect_reset();\n",
+        src,
+        flags=re.MULTILINE,
+    )
+    if n1:
+        notes.append(f"explicit-reset->expect_reset ({n1})")
+
+    # Step 2a: multi-line `if (g_failures) { FAIL() << ...; }` block.
+    block_re = re.compile(
+        r"""
+        ^(?P<indent>[ \t]*)if\s*\(\s*g_failures(?:\s*>\s*0)?\s*\)\s*\{
+        \s*FAIL\(\)\s*<<\s*g_failures(?P<rest>[^;]*);\s*\n
+        (?P=indent)\}\s*\n
+        """,
+        re.MULTILINE | re.VERBOSE,
+    )
+
+    def _block_sub(m: re.Match[str]) -> str:
+        return (f"{m.group('indent')}EXPECT_EQ(0, expect_failures()) "
+                f"<< expect_failures(){m.group('rest')};\n")
+
+    src, n_block = block_re.subn(_block_sub, src)
+    if n_block:
+        notes.append(f"block-fail->EXPECT_EQ ({n_block})")
+
+    # Step 2b: one-liner with stream-form
+    # `if (g_failures) FAIL() << g_failures << "...";` →
+    #   `EXPECT_EQ(0, expect_failures()) << expect_failures() << "...";`
+    src, n2a = re.subn(
+        r"if\s*\(\s*g_failures(?:\s*>\s*0)?\s*\)\s*FAIL\(\)\s*<<\s*g_failures",
+        r"EXPECT_EQ(0, expect_failures()) << expect_failures()",
+        src,
+    )
+    src, n2b = re.subn(
+        r"if\s*\(\s*g_failures(?:\s*>\s*0)?\s*\)\s*FAIL\(\)\s*<<",
+        r"EXPECT_EQ(0, expect_failures()) <<",
+        src,
+    )
+    src, n2c = re.subn(
+        r"if\s*\(\s*g_failures(?:\s*>\s*0)?\s*\)\s*FAIL\(\)\s*;",
+        r"EXPECT_EQ(0, expect_failures());",
+        src,
+    )
+    n2 = n2a + n2b + n2c
+    if n2 + n_block:
+        notes.append(f"per-test-fail->EXPECT_EQ ({n2 + n_block})")
+
+    # Step 3: inject `expect_reset();` at the top of every TEST that
+    # doesn't already have one — protects against state-leak across
+    # tests that historically relied on a (silently-broken) global
+    # counter.
+    src, n_inj = _inject_reset_into_every_test(src)
+    if n_inj:
+        notes.append(f"reset-injected ({n_inj})")
+
+    if (n2 + n_block) == 0:
+        return src, False, notes
+    return src, True, notes
+
+
+def _inject_reset_into_every_test(src: str) -> tuple[str, int]:
+    """Walk every `TEST(...) { ... }` block; if it doesn't start with
+    `expect_reset()`, insert one. Brace-balance, so nested blocks don't
+    confuse us."""
+    test_re = re.compile(r"^TEST\s*\([^)]*\)\s*\{[ \t]*\n", re.MULTILINE)
+    out_chunks = []
+    pos = 0
+    n = 0
+    for m in test_re.finditer(src):
+        out_chunks.append(src[pos:m.end()])
+        # Indentation of body.
+        body_start = m.end()
+        indent_m = re.match(r"([ \t]*)", src[body_start:body_start + 32])
+        indent = indent_m.group(1) if indent_m else "    "
+        body_head = src[body_start:body_start + 200]
+        if "expect_reset()" not in body_head:
+            out_chunks.append(f"{indent}expect_reset();\n")
+            n += 1
+        pos = body_start
+    out_chunks.append(src[pos:])
+    return "".join(out_chunks), n
+
+
+def _insert_reset_at_test_top(src: str, notes: list[str]) -> str:
+    """Insert `expect_reset();` as the first statement of the (single)
+    TEST block. Single-TEST helper — used by Pattern B and E."""
+    test_re = re.compile(
+        r"^(?P<sig>TEST\s*\([^)]*\)\s*\{[ \t]*\n)",
+        re.MULTILINE,
+    )
+    m = test_re.search(src)
+    if not m:
+        return src
+    after = m.end()
+    indent_m = re.match(r"([ \t]*)", src[after:after + 32])
+    indent = indent_m.group(1) if indent_m else "    "
+    body_head = src[after : after + 200]
+    if "expect_reset()" in body_head:
+        return src
+    notes.append("test-top-reset-inserted")
+    return src[:after] + f"{indent}expect_reset();\n" + src[after:]
+
+
+# ---- driver ----------------------------------------------------------
 
 
 def migrate_one(path: Path, apply: bool) -> dict:
-    """Try full migration first; if it doesn't apply, fall back to
-    FAIL-shim-only conversion."""
-    full = migrate_full(path, apply)
-    if full["status"] in ("written-full", "would-write-full"):
-        return full
-    # Either skip or partial — try the shim-only pass for the
-    # benefit of files that don't have the g_failures pattern but
-    # still have the FAIL shim.
-    if "skip-no-legacy" in full["status"]:
-        return migrate_fail_shim_only(path, apply)
-    return full
+    src = path.read_text()
+    pat = classify(src)
+
+    if pat == "ALREADY":
+        return {"path": str(path), "pattern": pat, "status": "skip-already"}
+    if pat == "NO_LEGACY":
+        # Try legacy FAIL-shim conversion.
+        src2, n = re.subn(
+            r"if\s*\(\s*runMain\((?P<args>[^)]*)\)\s*!=\s*0\s*\)\s*FAIL\(\)\s*;",
+            lambda m: f"ASSERT_EQ(0, runMain({m.group('args')}));",
+            src,
+        )
+        if n > 0:
+            if apply:
+                path.write_text(src2)
+                return {"path": str(path), "pattern": "shim",
+                        "status": "written", "notes": [f"shim ({n})"]}
+            return {"path": str(path), "pattern": "shim",
+                    "status": "would-write", "notes": [f"shim ({n})"]}
+        return {"path": str(path), "pattern": pat, "status": "skip-no-legacy"}
+    if pat == "OTHER":
+        return {"path": str(path), "pattern": pat,
+                "status": "skip-needs-manual",
+                "notes": ["unrecognized pattern"]}
+
+    # All-or-nothing: apply scope+strips+pattern transform; if any
+    # required step fails, leave the file untouched and report.
+    original = src
+    src, ok_inc = insert_support_include(src)
+    src, ok_scope = insert_test_scope(src)
+    src, ok_decl = strip_g_failures_decl(src)
+    src, ok_expect = strip_local_expect(src)
+
+    transform = {
+        "A": apply_pattern_a,
+        "B": apply_pattern_b,
+        "C": apply_pattern_c,
+        "E": apply_pattern_e,
+        "G": apply_pattern_g,
+    }[pat]
+    src, ok_pat, notes = transform(src)
+
+    # After local-expect strip + pattern transform, convert any orphan
+    # ++g_failures sites to expect(false, ...).
+    src, n_orphan = convert_orphan_increments(src)
+    if n_orphan:
+        notes.append(f"orphan-incs->expect ({n_orphan})")
+    if "++g_failures" in src:
+        return {"path": str(path), "pattern": pat,
+                "status": "skip-orphan-increment",
+                "notes": notes + ["++g_failures remains after strip"]}
+    # No bare `g_failures` should remain either (decl + uses gone).
+    if re.search(r"\bg_failures\b", src):
+        return {"path": str(path), "pattern": pat,
+                "status": "skip-residual-references",
+                "notes": notes + ["bare g_failures remains"]}
+
+    src, _ = drop_unused_cstdio(src)
+
+    if not (ok_inc and ok_scope and ok_decl and ok_expect and ok_pat):
+        return {"path": str(path), "pattern": pat, "status": "skip-partial",
+                "notes": notes + [
+                    f"steps inc={ok_inc} scope={ok_scope} decl={ok_decl} "
+                    f"expect={ok_expect} pat={ok_pat}",
+                ]}
+    if src == original:
+        return {"path": str(path), "pattern": pat, "status": "no-change"}
+
+    if apply:
+        path.write_text(src)
+        return {"path": str(path), "pattern": pat,
+                "status": "written", "notes": notes}
+    return {"path": str(path), "pattern": pat,
+            "status": "would-write", "notes": notes}
 
 
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("paths", nargs="*", default=[])
-    p.add_argument("--apply", action="store_true",
-                   help="Write changes (default: dry-run).")
+    p.add_argument("--apply", action="store_true")
     args = p.parse_args()
 
-    if args.paths:
-        files = [Path(x) for x in args.paths]
-    else:
-        files = sorted(
-            Path("tests/features").glob("*/test_*.cpp")
-        )
-
+    files = [Path(x) for x in args.paths] if args.paths else sorted(
+        Path("tests/features").glob("*/test_*.cpp")
+    )
     results = [migrate_one(f, args.apply) for f in files]
 
-    # Print compact report.
     by_status: dict[str, list[dict]] = {}
     for r in results:
         by_status.setdefault(r["status"], []).append(r)
@@ -368,13 +555,8 @@ def main() -> int:
         print(f"\n=== {status} ({len(items)}) ===")
         for r in items:
             notes = ", ".join(r.get("notes", []))
-            print(f"  {r['path']}  {notes}")
+            print(f"  [{r['pattern']}] {r['path']}  {notes}")
 
-    manual = [r for r in results
-              if any("MANUAL" in n for n in r.get("notes", []))]
-    if manual:
-        print(f"\nMANUAL REVIEW: {len(manual)} file(s) need hand "
-              f"editing for ++g_failures setup-error paths.")
     return 0
 
 

@@ -5,6 +5,8 @@
 // default and hover states, with the URL-encoded `%23` color
 // pre-encoding spliced into the arg list (not the format string).
 
+#include "../../_support/expect.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -25,18 +27,11 @@
 #  error "SRC_THEMEDSTYLESHEET_CPP_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const std::string &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label, detail.c_str());
-        ++g_failures;
-    }
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -56,6 +51,7 @@ bool contains(const std::string &h, const std::string &n) {
 }  // namespace
 
 TEST(TabCloseButtonVisible, Main) {
+    expect_reset();
     // ANTS-1147 — the close-button QSS rules moved into
     // themedstylesheet.cpp. Source path of the QSS body is now
     // there; mainwindow.cpp no longer carries the data-URI SVG.
@@ -146,10 +142,7 @@ TEST(TabCloseButtonVisible, Main) {
            "I4/two-image-rules-default-and-hover",
            "got " + std::to_string(imageCount));
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        FAIL();
-    }
+    ASSERT_EQ(0, expect_finish());
     std::fprintf(stderr, "\nall invariants hold\n");
     return;
 }

@@ -19,6 +19,8 @@
 // status indicator hidden until tab-switch" symptom that triggered
 // ANTS-1225.
 
+#include "../../_support/expect.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -26,17 +28,11 @@
 #include <sstream>
 #include <string>
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const std::string &detail = {}) {
-    std::fprintf(stderr, "[%-78s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 detail.empty() ? "" : " — ",
-                 detail.c_str());
-    if (!ok) ++g_failures;
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -178,28 +174,28 @@ void testInv4ShellPidEarlyReturn(const std::string &claudeintegration) {
 
 TEST(claude_pid_replacement, Inv1ReplacementGate) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv1ReplacementGate(ci);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv2RebindSequence) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv2RebindSequence(ci);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv3NotFoundBranch) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv3NotFoundBranch(ci);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv4ShellPidEarlyReturn) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv4ShellPidEarlyReturn(ci);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }

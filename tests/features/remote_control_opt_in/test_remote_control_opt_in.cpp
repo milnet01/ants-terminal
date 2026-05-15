@@ -17,6 +17,7 @@
 //
 // Exit 0 = all assertions hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "config.h"
 #include "remotecontrol.h"
 
@@ -40,17 +41,11 @@
 #error "SRC_MAINWINDOW_CPP compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const char *detail = "") {
-    std::fprintf(stderr, "[%-48s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 (detail && *detail) ? " — " : "",
-                 detail ? detail : "");
-    if (!ok) ++g_failures;
-}
 
 void testFilter() {
     // Pure payload: nothing stripped.
@@ -242,19 +237,16 @@ void testGateBehavioral() {
 }  // namespace
 
 static int runMain(int argc, char **argv) {
+    expect_reset();
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     testFilter();
     testSourceInvariants();
     testGateBehavioral();
 
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", g_failures);
-        return 1;
-    }
-    return 0;
+    return expect_finish();
 }
 
 TEST(RemoteControlOptIn, Main) {
-    if (runMain(0, nullptr) != 0) FAIL();
+    ASSERT_EQ(0, runMain(0, nullptr));
 }

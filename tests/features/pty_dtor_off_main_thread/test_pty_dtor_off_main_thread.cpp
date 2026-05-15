@@ -13,6 +13,8 @@
 // architecture (~Pty already runs on parse-worker) makes the
 // detach redundant, and removing it eliminates the crash.
 
+#include "../../_support/expect.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -25,18 +27,11 @@
 #  error "SRC_PTYHANDLER_CPP_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const std::string &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label, detail.c_str());
-        ++g_failures;
-    }
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -83,6 +78,7 @@ std::string extractDtor(const std::string &src) {
 }  // namespace
 
 TEST(PtyDtorOffMainThread, Main) {
+    expect_reset();
     const std::string src = slurp(SRC_PTYHANDLER_CPP_PATH);
     const std::string dtor = extractDtor(src);
     expect(!dtor.empty(), "extract/dtor-body-found");
@@ -153,10 +149,7 @@ TEST(PtyDtorOffMainThread, Main) {
     expect(!contains(src, "#include <thread>"),
            "I7/no-thread-header-include");
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        FAIL();
-    }
+    ASSERT_EQ(0, expect_finish());
     std::fprintf(stderr, "\nall invariants hold\n");
     return;
 }

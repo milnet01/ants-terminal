@@ -24,6 +24,7 @@
 //   14  auditdialog.cpp wiring (severity + show-new-only setter/getter)
 //   15  mainwindow.cpp passes &m_config to new AuditDialog (multi-line grep)
 
+#include "../../_support/expect.h"
 #include "config.h"
 
 #include <QCoreApplication>
@@ -37,23 +38,14 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
-#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 
+ANTS_TEST_SCOPE();
+
 namespace {
-
-int g_failures = 0;
-
-void expect(bool ok, const char *label, const std::string &detail = {}) {
-    std::fprintf(stderr, "[%-72s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 detail.empty() ? "" : " — ",
-                 detail.c_str());
-    if (!ok) ++g_failures;
-}
 
 std::string readFile(const char *path) {
     std::ifstream f(path);
@@ -104,6 +96,7 @@ struct Sandbox {
 // ----- Round-trip lane -----
 
 TEST(UiStatePersistence, Inv1_settingsDialogLastTab) {
+    expect_reset();
     Sandbox sb;
     if (!sb.valid()) { expect(false, "ANTS-1150-INV-1 setup"); return; }
 
@@ -127,9 +120,11 @@ TEST(UiStatePersistence, Inv1_settingsDialogLastTab) {
         expect(d.settingsDialogLastTab() == 0,
                "ANTS-1150-INV-1: setSettingsDialogLastTab(0) round-trip");
     }
+    EXPECT_EQ(0, expect_failures()) << "Inv1_settingsDialogLastTab failed";
 }
 
 TEST(UiStatePersistence, Inv2_roadmapActivePreset) {
+    expect_reset();
     Sandbox sb;
     if (!sb.valid()) { expect(false, "ANTS-1150-INV-2 setup"); return; }
 
@@ -187,9 +182,11 @@ TEST(UiStatePersistence, Inv2_roadmapActivePreset) {
                "ANTS-1179: setRoadmapActivePreset(unknown) is a no-op; "
                "prior known value preserved");
     }
+    EXPECT_EQ(0, expect_failures()) << "Inv2_roadmapActivePreset failed";
 }
 
 TEST(UiStatePersistence, Inv3_roadmapKindFilters) {
+    expect_reset();
     Sandbox sb;
     if (!sb.valid()) { expect(false, "ANTS-1150-INV-3 setup"); return; }
 
@@ -221,9 +218,11 @@ TEST(UiStatePersistence, Inv3_roadmapKindFilters) {
                "ANTS-1150-INV-3: kinds sorted ASCII on disk "
                "(audit-fix before fix)");
     }
+    EXPECT_EQ(0, expect_failures()) << "Inv3_roadmapKindFilters failed";
 }
 
 TEST(UiStatePersistence, Inv4_roadmapStatusFilters) {
+    expect_reset();
     Sandbox sb;
     if (!sb.valid()) { expect(false, "ANTS-1150-INV-4 setup"); return; }
 
@@ -250,9 +249,11 @@ TEST(UiStatePersistence, Inv4_roadmapStatusFilters) {
         expect(ok, "ANTS-1150-INV-4: roadmapStatusFilters round-trip "
                    "preserves five-key boolean object");
     }
+    EXPECT_EQ(0, expect_failures()) << "Inv4_roadmapStatusFilters failed";
 }
 
 TEST(UiStatePersistence, Inv5_auditSeverityFilters) {
+    expect_reset();
     Sandbox sb;
     if (!sb.valid()) { expect(false, "ANTS-1150-INV-5 setup"); return; }
 
@@ -279,9 +280,11 @@ TEST(UiStatePersistence, Inv5_auditSeverityFilters) {
         expect(ok, "ANTS-1150-INV-5: auditSeverityFilters round-trip "
                    "preserves five-key boolean object");
     }
+    EXPECT_EQ(0, expect_failures()) << "Inv5_auditSeverityFilters failed";
 }
 
 TEST(UiStatePersistence, Inv6_auditShowNewOnly) {
+    expect_reset();
     Sandbox sb;
     if (!sb.valid()) { expect(false, "ANTS-1150-INV-6 setup"); return; }
 
@@ -294,12 +297,14 @@ TEST(UiStatePersistence, Inv6_auditShowNewOnly) {
         expect(b.auditShowNewOnly() == true,
                "ANTS-1150-INV-6: setAuditShowNewOnly(true) round-trip");
     }
+    EXPECT_EQ(0, expect_failures()) << "Inv6_auditShowNewOnly failed";
 }
 
 // INV-7 — short-circuit on second same-value setter call. Asserts
 // at the rawData() in-memory layer (not filesystem mtime — see
 // cold-eyes HIGH #5). Sample one of each setter shape.
 TEST(UiStatePersistence, Inv7_storeIfChangedShortCircuit) {
+    expect_reset();
     Sandbox sb;
     if (!sb.valid()) { expect(false, "ANTS-1150-INV-7 setup"); return; }
 
@@ -331,11 +336,13 @@ TEST(UiStatePersistence, Inv7_storeIfChangedShortCircuit) {
     expect(c.rawData() == snap,
            "ANTS-1150-INV-7: same-value re-set leaves rawData() "
            "byte-identical (storeIfChanged short-circuit)");
+    EXPECT_EQ(0, expect_failures()) << "Inv7_storeIfChangedShortCircuit failed";
 }
 
 // INV-8 — first-launch defaults. Fresh Config, no config.json,
 // every getter returns the documented default without throwing.
 TEST(UiStatePersistence, Inv8_firstLaunchDefaults) {
+    expect_reset();
     Sandbox sb;
     if (!sb.valid()) { expect(false, "ANTS-1150-INV-8 setup"); return; }
 
@@ -352,11 +359,13 @@ TEST(UiStatePersistence, Inv8_firstLaunchDefaults) {
            "ANTS-1150-INV-8: auditSeverityFilters default = empty object");
     expect(c.auditShowNewOnly() == false,
            "ANTS-1150-INV-8: auditShowNewOnly default = false");
+    EXPECT_EQ(0, expect_failures()) << "Inv8_firstLaunchDefaults failed";
 }
 
 // ----- Wiring lane (source-grep) -----
 
 TEST(UiStatePersistence, Inv9_settingsDialogWiring) {
+    expect_reset();
     const std::string sd = readFile("src/settingsdialog.cpp");
     if (sd.empty()) { expect(false, "ANTS-1150-INV-9: read settingsdialog.cpp"); return; }
 
@@ -371,9 +380,11 @@ TEST(UiStatePersistence, Inv9_settingsDialogWiring) {
     // back through the just-installed handler (cold-eyes MEDIUM #9).
     expect(contains(sd, "QSignalBlocker"),
            "ANTS-1150-INV-9: settingsdialog.cpp uses QSignalBlocker on restore");
+    EXPECT_EQ(0, expect_failures()) << "Inv9_settingsDialogWiring failed";
 }
 
 TEST(UiStatePersistence, Inv10_roadmapDialogPresetWriteSites) {
+    expect_reset();
     const std::string rd = readFile("src/roadmapdialog.cpp");
     if (rd.empty()) { expect(false, "ANTS-1150-INV-10: read roadmapdialog.cpp"); return; }
 
@@ -400,9 +411,11 @@ TEST(UiStatePersistence, Inv10_roadmapDialogPresetWriteSites) {
            "ANTS-1150-INV-10: onCheckboxToggled persists active preset "
            "on Custom-divergence (setRoadmapActivePreset or "
            "persistActivePreset call)");
+    EXPECT_EQ(0, expect_failures()) << "Inv10_roadmapDialogPresetWriteSites failed";
 }
 
 TEST(UiStatePersistence, Inv11_roadmapDialogKindStatusWiring) {
+    expect_reset();
     const std::string rd = readFile("src/roadmapdialog.cpp");
     if (rd.empty()) { expect(false, "ANTS-1150-INV-11: read roadmapdialog.cpp"); return; }
 
@@ -410,9 +423,11 @@ TEST(UiStatePersistence, Inv11_roadmapDialogKindStatusWiring) {
            "ANTS-1150-INV-11: roadmapdialog.cpp calls setRoadmapKindFilters(");
     expect(contains(rd, "setRoadmapStatusFilters("),
            "ANTS-1150-INV-11: roadmapdialog.cpp calls setRoadmapStatusFilters(");
+    EXPECT_EQ(0, expect_failures()) << "Inv11_roadmapDialogKindStatusWiring failed";
 }
 
 TEST(UiStatePersistence, Inv12_roadmapDialogCtorRestore) {
+    expect_reset();
     const std::string rd = readFile("src/roadmapdialog.cpp");
     if (rd.empty()) { expect(false, "ANTS-1150-INV-12: read roadmapdialog.cpp"); return; }
 
@@ -438,9 +453,11 @@ TEST(UiStatePersistence, Inv12_roadmapDialogCtorRestore) {
                "by Preset::Custom check (cold-eyes CRITICAL #1 "
                "named-preset-skip path)");
     }
+    EXPECT_EQ(0, expect_failures()) << "Inv12_roadmapDialogCtorRestore failed";
 }
 
 TEST(UiStatePersistence, Inv13_auditDialogCtorSignature) {
+    expect_reset();
     const std::string ah = readFile("src/auditdialog.h");
     if (ah.empty()) { expect(false, "ANTS-1150-INV-13: read auditdialog.h"); return; }
 
@@ -473,9 +490,11 @@ TEST(UiStatePersistence, Inv13_auditDialogCtorSignature) {
                "ANTS-1150-INV-13: Config* third arg has no `= nullptr` "
                "default (cold-eyes HIGH #3 — single call site, no need)");
     }
+    EXPECT_EQ(0, expect_failures()) << "Inv13_auditDialogCtorSignature failed";
 }
 
 TEST(UiStatePersistence, Inv14_auditDialogWiring) {
+    expect_reset();
     const std::string ad = readFile("src/auditdialog.cpp");
     if (ad.empty()) { expect(false, "ANTS-1150-INV-14: read auditdialog.cpp"); return; }
 
@@ -487,9 +506,11 @@ TEST(UiStatePersistence, Inv14_auditDialogWiring) {
            "ANTS-1150-INV-14: auditdialog.cpp ctor reads auditSeverityFilters()");
     expect(contains(ad, "auditShowNewOnly()"),
            "ANTS-1150-INV-14: auditdialog.cpp ctor reads auditShowNewOnly()");
+    EXPECT_EQ(0, expect_failures()) << "Inv14_auditDialogWiring failed";
 }
 
 TEST(UiStatePersistence, Inv15_mainWindowAuditDialogCallSite) {
+    expect_reset();
     const std::string mw = readFile("src/mainwindow.cpp");
     if (mw.empty()) { expect(false, "ANTS-1150-INV-15: read mainwindow.cpp"); return; }
 
@@ -526,6 +547,7 @@ TEST(UiStatePersistence, Inv15_mainWindowAuditDialogCallSite) {
     expect(contains(ctorArgs, "&m_config"),
            "ANTS-1150-INV-15: `new AuditDialog(...)` includes `&m_config` "
            "in its argument list");
+    EXPECT_EQ(0, expect_failures()) << "Inv15_mainWindowAuditDialogCallSite failed";
 }
 
 }  // namespace

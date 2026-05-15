@@ -20,6 +20,8 @@
 // build (a specific INV violation) rather than the user-visible
 // "stale tasks from a prior session" symptom that triggered ANTS-1219.
 
+#include "../../_support/expect.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdio>
@@ -27,17 +29,11 @@
 #include <sstream>
 #include <string>
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const std::string &detail = {}) {
-    std::fprintf(stderr, "[%-72s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 detail.empty() ? "" : " — ",
-                 detail.c_str());
-    if (!ok) ++g_failures;
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -208,43 +204,43 @@ void testInv6PollRescue(const std::string &widgets) {
 
 TEST(claude_task_list_session_isolation, Inv1RefreshWiring) {
     const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv1RefreshWiring(widgets);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv2TimerCadence) {
     const std::string mainwindow = slurp(SRC_MAINWINDOW_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv2TimerCadence(mainwindow);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv3HideBranch) {
     const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv3HideBranch(widgets);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv4TabSwitchReset) {
     const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const std::string mainwindow = slurp(SRC_MAINWINDOW_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv4TabSwitchReset(widgets, mainwindow);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv5FeedbackConnect) {
     const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv5FeedbackConnect(widgets);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv6PollRescue) {
     const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
-    int before = g_failures;
+    const int before = expect_failures();
     testInv6PollRescue(widgets);
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }

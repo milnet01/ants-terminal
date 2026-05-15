@@ -7,6 +7,8 @@
 // does its own null-compact pass, AND that m_allTerminals carries
 // the `mutable` qualifier needed for the const accessor to compact.
 
+#include "../../_support/expect.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -22,18 +24,11 @@
 #  error "SRC_MAINWINDOW_H_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const std::string &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label, detail.c_str());
-        ++g_failures;
-    }
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -49,6 +44,7 @@ std::string slurp(const char *path) {
 }  // namespace
 
 TEST(QPointerDestroyedSafe, Main) {
+    expect_reset();
     const std::string cpp = slurp(SRC_MAINWINDOW_CPP_PATH);
     const std::string hdr = slurp(SRC_MAINWINDOW_H_PATH);
 
@@ -126,5 +122,5 @@ TEST(QPointerDestroyedSafe, Main) {
                "C-3/liveTerminals-compacts-null-entries");
     }
 
-    EXPECT_EQ(g_failures, 0);
+    EXPECT_EQ(0, expect_failures());
 }

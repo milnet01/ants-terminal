@@ -5,6 +5,7 @@
 //
 // INV labels qualified ANTS-1158-INV-N. See spec.md.
 
+#include "../../_support/expect.h"
 #include "claudetasklist.h"
 
 #include <gtest/gtest.h>
@@ -14,22 +15,15 @@
 #include <QString>
 #include <QTemporaryDir>
 
-#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <string>
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const std::string &detail = {}) {
-    std::fprintf(stderr, "[%-72s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 detail.empty() ? "" : " — ",
-                 detail.c_str());
-    if (!ok) ++g_failures;
-}
 
 std::string readFile(const char *path) {
     // ANTS-1217 Phase 4: bundles run from build/, so prefix with the
@@ -801,146 +795,146 @@ void testAnts1246Inv8_modeASnapshotUnchanged() {
 
 
 TEST(ClaudeTaskList, Inv1TodoWriteSnapshot) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv1_todoWriteSnapshot();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv2MostRecentWins) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv2_mostRecentWins();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv3TaskCreatePairedResult) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv3_taskCreatePairedResult();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv4TaskUpdateFlipsStatus) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv4_taskUpdateFlipsStatus();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv5SidechainFiltered) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv5_sidechainFiltered();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv6SubagentDispatchFiltered) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv6_subagentDispatchFiltered();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv7SetEmptyPathClears) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv7_setEmptyPathClears();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv8SetSamePathIdempotent) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv8_setSamePathIdempotent();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv9WidgetHiddenOnEmpty) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv9_widgetHiddenOnEmpty();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv10WidgetLabelFormat) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv10_widgetLabelFormat();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv11DialogRendersRows) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv11_dialogRendersRows();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv12DialogRebuildsOnTasksChanged) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv12_dialogRebuildsOnTasksChanged();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Inv13DialogAntiRegressionWaylandFlake) {
-    int before = g_failures;
+    const int before = expect_failures();
     testInv13_dialogAntiRegressionWaylandFlake();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1221Inv1UnfinishedExcludesInProgress) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1221Inv1_unfinishedExcludesInProgress();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1221Inv2AllRunningChipStaysVisible) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1221Inv2_allRunningChipStaysVisible();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1218Inv1ChipFormatCountsUp) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1218Inv1_chipFormatCountsUp();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1327Inv1CompactSummaryPreservesState) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1327Inv1_compactSummaryPreservesState();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1327Inv1bTaskCreateBeforeCompactSurvives) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1327Inv1b_taskCreateBeforeCompactSurvives();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1327Inv2MultipleCheckpointsAllNoop) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1327Inv2_multipleCheckpointsAllNoop();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1327Inv3SidechainCompactStillFiltered) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1327Inv3_sidechainCompactStillFiltered();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1246Inv6BatchResetAfterAllCompleted) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1246Inv6_batchResetAfterAllCompleted();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1246Inv7PartialBatchPreserved) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1246Inv7_partialBatchPreserved();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1246Inv8ModeASnapshotUnchanged) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1246Inv8_modeASnapshotUnchanged();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(ClaudeTaskList, Ants1218Inv2ChipNumeratorMonotone) {
-    int before = g_failures;
+    const int before = expect_failures();
     testAnts1218Inv2_chipNumeratorMonotone();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 

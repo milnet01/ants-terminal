@@ -10,6 +10,7 @@
 //
 // Exit 0 = all assertions hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "config.h"
 
 #include <QCoreApplication>
@@ -20,21 +21,12 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
-#include <cstdio>
-
-
 #include <gtest/gtest.h>
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const char *detail = "") {
-    std::fprintf(stderr, "[%-60s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 (detail && *detail) ? " — " : "",
-                 detail ? detail : "");
-    if (!ok) ++g_failures;
-}
 
 // Plant a specific `config.json` inside a sandboxed XDG_CONFIG_HOME
 // and return the directory that contains it. `content == nullptr`
@@ -223,6 +215,7 @@ void testRetentionCap() {
 }  // namespace
 
 static int runMain(int argc, char **argv) {
+    expect_reset();
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     testFreshRun();
@@ -232,13 +225,9 @@ static int runMain(int argc, char **argv) {
     testNonObjectJson();
     testRetentionCap();
 
-    if (g_failures > 0) {
-        std::fprintf(stderr, "\n%d assertion(s) failed.\n", g_failures);
-        return 1;
-    }
-    return 0;
+    return expect_finish();
 }
 
 TEST(ConfigParseFailureGuard, Main) {
-    if (runMain(0, nullptr) != 0) FAIL();
+    ASSERT_EQ(0, runMain(0, nullptr));
 }

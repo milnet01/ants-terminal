@@ -10,6 +10,7 @@
 //
 // Exit 0 = all invariants hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "sessionmanager.h"
 #include "terminalgrid.h"
 
@@ -22,19 +23,11 @@
 #include <cstdio>
 #include <gtest/gtest.h>
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const QString &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label,
-                     qUtf8Printable(detail));
-        ++g_failures;
-    }
-}
 
 QString slurp(const QString &path) {
     QFile f(path);
@@ -181,10 +174,7 @@ TEST(TabRenamePersist, Main) {    checkI1();
     checkI3();
     checkI4I5();
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        FAIL();
-    }
+    ASSERT_EQ(0, expect_finish());
     std::fprintf(stderr, "\nall invariants hold\n");
     return;
 }

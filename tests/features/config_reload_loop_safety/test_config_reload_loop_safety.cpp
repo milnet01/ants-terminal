@@ -12,6 +12,7 @@
 //
 // Exit 0 = all assertions hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "config.h"
 
 #include <QCoreApplication>
@@ -29,17 +30,11 @@
 
 
 #include <gtest/gtest.h>
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const char *detail = "") {
-    std::fprintf(stderr, "[%-72s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 (detail && *detail) ? " — " : "",
-                 detail ? detail : "");
-    if (!ok) ++g_failures;
-}
 
 std::string readFile(const char *path) {
     std::ifstream f(path);
@@ -330,6 +325,7 @@ void testInv4_failedBlockSignalsRemoved() {
 }  // namespace
 
 static int runMain(int argc, char **argv) {
+    expect_reset();
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
     testInv1_setThemeIdempotent_callShape();
     testInv1_setThemeIdempotent_functional();
@@ -338,9 +334,9 @@ static int runMain(int argc, char **argv) {
     testInv2_onConfigFileChanged_skipsNoOpApplyTheme();
     testInv3_reentrancyGuard();
     testInv4_failedBlockSignalsRemoved();
-    return g_failures == 0 ? 0 : 1;
+    return expect_finish();
 }
 
 TEST(ConfigReloadLoopSafety, Main) {
-    if (runMain(0, nullptr) != 0) FAIL();
+    ASSERT_EQ(0, runMain(0, nullptr));
 }

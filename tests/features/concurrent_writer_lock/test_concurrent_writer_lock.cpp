@@ -11,6 +11,7 @@
 // No Qt event loop required — ConfigWriteLock is plain POSIX flock(2)
 // wrapped in RAII.
 
+#include "../../_support/expect.h"
 #include "configbackup.h"
 
 #include <cstdio>
@@ -39,18 +40,11 @@
 #  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const std::string &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label, detail.c_str());
-        ++g_failures;
-    }
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -186,17 +180,13 @@ void sourceGrepTests() {
 }  // namespace
 
 static int runMain() {
+    expect_reset();
     runtimeTests();
     sourceGrepTests();
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return expect_finish();
 }
 
 TEST(ConcurrentWriterLock, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

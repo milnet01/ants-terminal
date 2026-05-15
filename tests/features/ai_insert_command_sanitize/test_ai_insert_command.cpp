@@ -5,6 +5,7 @@
 //
 // Exit 0 = all assertions hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "aidialog.h"
 
 #include <gtest/gtest.h>
@@ -19,17 +20,11 @@
 #error "SRC_AI_CPP compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const QString &detail = QString()) {
-    std::fprintf(stderr, "[%-58s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 detail.isEmpty() ? "" : " — ",
-                 qUtf8Printable(detail));
-    if (!ok) ++g_failures;
-}
 
 void testExtraction() {
     // Fenced block with language hint
@@ -245,26 +240,26 @@ void testSourceInvariants() {
 
 
 TEST(AiInsertCommandSanitize, Extraction) {
-    int before = g_failures;
+    const int before = expect_failures();
     testExtraction();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(AiInsertCommandSanitize, Sanitization) {
-    int before = g_failures;
+    const int before = expect_failures();
     testSanitization();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(AiInsertCommandSanitize, LengthCap) {
-    int before = g_failures;
+    const int before = expect_failures();
     testLengthCap();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(AiInsertCommandSanitize, SourceInvariants) {
-    int before = g_failures;
+    const int before = expect_failures();
     testSourceInvariants();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 

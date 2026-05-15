@@ -11,6 +11,7 @@
 // Links against src/luaengine.cpp + Lua 5.4. Runs without Qt GUI.
 // Exit 0 = all invariants hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "luaengine.h"
 
 #include <QCoreApplication>
@@ -26,19 +27,11 @@
 
 
 #include <gtest/gtest.h>
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const QString &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label,
-                     qUtf8Printable(detail));
-        ++g_failures;
-    }
-}
 
 QString writeTemp(const QString &dir, const QString &basename,
                   const QByteArray &bytes) {
@@ -48,7 +41,7 @@ QString writeTemp(const QString &dir, const QString &basename,
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         std::fprintf(stderr, "[FAIL] setup: cannot write %s\n",
                      qUtf8Printable(path));
-        ++g_failures;
+        expect(false, "setup-error", "");
         return {};
     }
     f.write(bytes);
@@ -65,7 +58,7 @@ void runRuntimeChecks() {
     LuaEngine engine;
     if (!engine.initialize()) {
         std::fprintf(stderr, "[FAIL] setup: LuaEngine::initialize failed\n");
-        ++g_failures;
+        expect(false, "setup-error", "");
         return;
     }
 
@@ -141,7 +134,7 @@ void runSourceChecks() {
         std::fprintf(stderr,
                      "[FAIL] source-open: cannot read %s\n",
                      qUtf8Printable(path));
-        ++g_failures;
+        expect(false, "setup-error", "");
         return;
     }
     const QString src = QString::fromUtf8(f.readAll());
@@ -190,19 +183,15 @@ void runSourceChecks() {
 }  // namespace
 
 static int runMain() {
+    expect_reset();
     // QCoreApplication is owned by bundle_main (ANTS-1217); this helper
     // takes no argc/argv since it doesn't need to forward to Qt.
     runRuntimeChecks();
     runSourceChecks();
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return expect_finish();
 }
 
 TEST(LuaSandboxHardening, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

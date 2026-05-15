@@ -6,6 +6,8 @@
 //   I3: anchor on canonicalFilePath of m_pluginDir.
 //   I4: per-entry canonical-containment reject.
 
+#include "../../_support/expect.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -18,18 +20,11 @@
 #  error "SRC_PLUGINMANAGER_CPP_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const std::string &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label, detail.c_str());
-        ++g_failures;
-    }
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -74,6 +69,7 @@ std::string extractFn(const std::string &src, const std::string &fnSig) {
 }  // namespace
 
 static int runMain() {
+    expect_reset();
     const std::string src = slurp(SRC_PLUGINMANAGER_CPP_PATH);
     const std::string body = extractFn(src,
         "void PluginManager::scanAndLoad(const QStringList &enabledList)");
@@ -115,14 +111,9 @@ static int runMain() {
     expect(contains(body, "resolves outside the plugin"),
            "I4/reject-warning-message");
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return expect_finish();
 }
 
 TEST(PluginManifestSafety, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

@@ -4,6 +4,8 @@
 // in the header AND define one in the cpp that issues an async
 // Session.Close on a non-empty session handle.
 
+#include "../../_support/expect.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -18,18 +20,11 @@
 #  error "SRC_PORTAL_CPP_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const std::string &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label, detail.c_str());
-        ++g_failures;
-    }
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -77,6 +72,7 @@ std::string extractDtor(const std::string &src) {
 }  // namespace
 
 TEST(PortalSessionClose, Main) {
+    expect_reset();
     const std::string hdr = slurp(SRC_PORTAL_H_PATH);
     const std::string cpp = slurp(SRC_PORTAL_CPP_PATH);
 
@@ -110,10 +106,7 @@ TEST(PortalSessionClose, Main) {
     expect(contains(dtor, "m_bus.asyncCall(msg)"),
            "I2/uses-asyncCall-fire-and-forget");
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        FAIL();
-    }
+    ASSERT_EQ(0, expect_finish());
     std::fprintf(stderr, "\nall invariants hold\n");
     return;
 }

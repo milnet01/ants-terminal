@@ -5,6 +5,7 @@
 //
 // Exit 0 = all invariants hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "config.h"
 
 #include <QCoreApplication>
@@ -13,21 +14,13 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
-#include <cstdio>
-
 #include <gtest/gtest.h>
+
+ANTS_TEST_SCOPE();
 
 namespace {
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const char *detail = "") {
-    std::fprintf(stderr, "[%-62s] %s%s%s\n",
-                 label, ok ? "PASS" : "FAIL",
-                 (detail && *detail) ? " — " : "",
-                 detail ? detail : "");
-    if (!ok) ++g_failures;
-}
 
 // Sandbox XDG_CONFIG_HOME inside tmp so Config writes never touch the
 // real user config. Matches the pattern used by config_parse_failure_guard.
@@ -136,19 +129,19 @@ void testPathCanonicalization() {
 }  // namespace
 
 TEST(AuditCommandRuleTrust, RoundTripAndHashInvalidation) {
-    int before = g_failures;
+    const int before = expect_failures();
     testRoundTripAndHashInvalidation();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(AuditCommandRuleTrust, CrossProjectIsolation) {
-    int before = g_failures;
+    const int before = expect_failures();
     testCrossProjectIsolation();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(AuditCommandRuleTrust, PathCanonicalization) {
-    int before = g_failures;
+    const int before = expect_failures();
     testPathCanonicalization();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }

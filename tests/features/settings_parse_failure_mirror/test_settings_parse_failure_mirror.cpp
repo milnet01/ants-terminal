@@ -8,6 +8,8 @@
 //       parse failure.
 //   I3: read-OPEN failure also refuses (not only parse failure).
 
+#include "../../_support/expect.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -24,18 +26,11 @@
 #  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const std::string &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label, detail.c_str());
-        ++g_failures;
-    }
-}
 
 std::string slurp(const char *path) {
     std::ifstream f(path);
@@ -66,6 +61,7 @@ int countMatches(const std::string &h, const std::string &n) {
 }  // namespace
 
 static int runMain() {
+    expect_reset();
     const std::string allowlist = slurp(SRC_CLAUDEALLOWLIST_CPP_PATH);
     const std::string settings  = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
 
@@ -129,14 +125,9 @@ static int runMain() {
     expect(contains(settings, "refusing to overwrite"),
            "I3/settingsdialog-comment-explains-refuse");
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return expect_finish();
 }
 
 TEST(SettingsParseFailureMirror, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

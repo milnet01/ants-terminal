@@ -14,6 +14,7 @@
 // QT_QPA_PLATFORM=offscreen because ClaudeAllowlistDialog is a QDialog.
 // Exit 0 = all invariants hold. Non-zero = regression.
 
+#include "../../_support/expect.h"
 #include "claudeallowlist.h"
 
 #include <gtest/gtest.h>
@@ -29,19 +30,11 @@
 
 #include <cstdio>
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const QString &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label,
-                     qUtf8Printable(detail));
-        ++g_failures;
-    }
-}
 
 // Returns the POSIX mode bits (0..07777) of `path`, or -1 if stat fails.
 int statMode(const QString &path) {
@@ -111,7 +104,7 @@ void checkSourceBindings() {
         std::fprintf(stderr,
                      "[FAIL] I2/source-open: cannot read %s\n",
                      qUtf8Printable(path));
-        ++g_failures;
+        expect(false, "setup-error", "");
         return;
     }
     const QString src = QString::fromUtf8(f.readAll());
@@ -149,13 +142,11 @@ void checkSourceBindings() {
 }  // namespace
 
 TEST(AllowlistPermsPostcommit, Main) {
+expect_reset();
 
     checkPermsAfterSave();
     checkSourceBindings();
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        FAIL();
-    }
+    ASSERT_EQ(0, expect_finish());
 }
 

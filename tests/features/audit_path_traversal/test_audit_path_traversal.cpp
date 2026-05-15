@@ -21,6 +21,8 @@
 // regressed — either the helper's contract weakened or a call site
 // sneaked back to the unsafe pattern.
 
+#include "../../_support/expect.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -35,19 +37,11 @@
 
 #include <gtest/gtest.h>
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const QString &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label,
-                     qUtf8Printable(detail));
-        ++g_failures;
-    }
-}
 
 // Reference reimplementation of AuditDialog::resolveProjectPath.
 // Kept byte-faithful to the production code so behavioral drift here
@@ -95,7 +89,7 @@ void runBehavioralChecks() {
     QFile good(projectSrc + QStringLiteral("/good.cpp"));
     if (!good.open(QIODevice::WriteOnly)) {
         std::fprintf(stderr, "[FAIL] setup: could not create good.cpp\n");
-        ++g_failures;
+        expect(false, "setup-error", "");
         return;
     }
     good.write("int main() { return 0; }\n");
@@ -104,7 +98,7 @@ void runBehavioralChecks() {
     QFile sensitive(outsideDir + QStringLiteral("/sensitive.txt"));
     if (!sensitive.open(QIODevice::WriteOnly)) {
         std::fprintf(stderr, "[FAIL] setup: could not create sensitive.txt\n");
-        ++g_failures;
+        expect(false, "setup-error", "");
         return;
     }
     sensitive.write("SECRET=exfil-target\n");
@@ -118,7 +112,7 @@ void runBehavioralChecks() {
         std::fprintf(stderr,
                      "[FAIL] I2/setup-symlink: could not create test "
                      "symlink (errno=%d)\n", errno);
-        ++g_failures;
+        expect(false, "setup-error", "");
     }
 
     // Invariant 3 — in-project path resolves to canonical absolute.
@@ -185,7 +179,7 @@ void runSourceChecks() {
         std::fprintf(stderr,
                      "[FAIL] I5/source-open: cannot read %s\n",
                      qUtf8Printable(path));
-        ++g_failures;
+        expect(false, "setup-error", "");
         return;
     }
     const QString src = QString::fromUtf8(f.readAll());
@@ -241,15 +235,15 @@ void runSourceChecks() {
 }
 
 TEST(AuditPathTraversal, BehavioralChecks) {
-    int before = g_failures;
+    const int before = expect_failures();
     runBehavioralChecks();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 TEST(AuditPathTraversal, SourceChecks) {
-    int before = g_failures;
+    const int before = expect_failures();
     runSourceChecks();
-    if (g_failures > before) FAIL();
+    if (expect_failures() > before) FAIL();
 }
 
 }  // namespace

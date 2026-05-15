@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "../../_support/expect.h"
 #include "commandpalette.h"
 #include <gtest/gtest.h>
 
@@ -21,26 +22,18 @@
 #error "COMMANDPALETTE_CPP_PATH must be defined by CMake (full path to commandpalette.cpp)"
 #endif
 
-namespace {
+ANTS_TEST_SCOPE();
 
-int g_failures = 0;
-
-#define CHECK(cond, msg) do { \
-    if (!(cond)) { \
-        std::fprintf(stderr, "FAIL [%s:%d] %s\n", __FILE__, __LINE__, msg); \
-        ++g_failures; \
-    } \
-} while (0)
+#define CHECK(cond, msg) expect((cond), msg)
 
 #define CHECK_EQ_STR(actual, expected, label) do { \
     QString _a = (actual); \
     QString _e = (expected); \
-    if (_a != _e) { \
-        std::fprintf(stderr, "FAIL [%s:%d] %s: got \"%s\", expected \"%s\"\n", \
-            __FILE__, __LINE__, label, _a.toUtf8().constData(), _e.toUtf8().constData()); \
-        ++g_failures; \
-    } \
+    expect(_a == _e, label, \
+           QStringLiteral("got \"%1\", expected \"%2\"").arg(_a, _e)); \
 } while (0)
+
+namespace {
 
 void sendKey(QWidget *target, int key) {
     QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
@@ -67,7 +60,9 @@ int countSubstr(const QString &haystack, const QString &needle) {
 
 } // namespace
 
-TEST(CommandPaletteGhostCompletion, Main) {    // Three actions designed to exercise prefix / non-prefix / no-match:
+TEST(CommandPaletteGhostCompletion, Main) {
+    expect_reset();
+    // Three actions designed to exercise prefix / non-prefix / no-match:
     //   "Index Review"  — prefix-matched by "ind", "INDEX"
     //   "Index Browse"  — second prefix-matched candidate (sanity)
     //   "Open File"     — `contains` "File" but does NOT start with it
@@ -167,11 +162,9 @@ TEST(CommandPaletteGhostCompletion, Main) {    // Three actions designed to exer
 
     delete palette;
 
-    if (g_failures == 0) {
+    if (expect_failures() == 0) {
         std::fprintf(stderr, "OK: command_palette_ghost_completion (10 invariants)\n");
-        return;
     }
-    std::fprintf(stderr, "FAIL: %d invariant(s) failed\n", g_failures);
-    FAIL();
+    ASSERT_EQ(0, expect_finish());
 }
 

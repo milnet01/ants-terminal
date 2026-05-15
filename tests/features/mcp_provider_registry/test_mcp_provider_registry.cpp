@@ -4,6 +4,8 @@
 //
 // Exit 0 = all 10 invariants hold.
 
+#include "../../_support/expect.h"
+
 #include <cstdio>
 #include <fstream>
 #include <regex>
@@ -23,6 +25,8 @@
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
 std::string slurp(const char *path) {
@@ -36,14 +40,7 @@ std::string slurp(const char *path) {
     return ss.str();
 }
 
-int g_failures = 0;
 
-void expect(bool cond, const char *invName, const char *msg) {
-    if (!cond) {
-        ++g_failures;
-        std::fprintf(stderr, "[%s] FAIL: %s\n", invName, msg);
-    }
-}
 
 // Counts non-overlapping regex matches across a string (regex has no
 // trivial std equivalent for this; the iteration form below is the
@@ -57,6 +54,7 @@ size_t countMatches(const std::string &haystack, const std::regex &re) {
 }  // namespace
 
 TEST(McpProviderRegistry, Inv1NoStdFunctionProviderMembers) {
+    expect_reset();
     // Spec INV-5: 0 std::function<...> m_*Provider members in
     // claudeintegration.h. Catches accidental re-introduction of
     // a per-tool member after the registry consolidation.
@@ -67,10 +65,11 @@ TEST(McpProviderRegistry, Inv1NoStdFunctionProviderMembers) {
            ("claudeintegration.h has " + std::to_string(n) +
             " std::function<...> m_*Provider members; expected 0 (was 12)")
                .c_str());
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv2NoSetXProviderDecls) {
+    expect_reset();
     // Setter decls are gone; registry replaces them.
     const std::string hdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
     std::regex setterRe(R"(void\s+set[A-Z][A-Za-z]*Provider\b)");
@@ -79,10 +78,11 @@ TEST(McpProviderRegistry, Inv2NoSetXProviderDecls) {
            ("claudeintegration.h has " + std::to_string(n) +
             " setXProvider decls; expected 0 (was 12)")
                .c_str());
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv3RegistrarAndTypeAlias) {
+    expect_reset();
     const std::string hdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
     expect(hdr.find("registerToolProvider(const QString &name") != std::string::npos,
            "INV-3a",
@@ -93,19 +93,21 @@ TEST(McpProviderRegistry, Inv3RegistrarAndTypeAlias) {
            "INV-3b",
            "claudeintegration.h missing ToolHandler = "
            "std::function<QString(const QJsonObject&)> alias");
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv4ExplicitMapInclude) {
+    expect_reset();
     const std::string hdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
     std::regex mapRe(R"(#include\s*<map>)");
     expect(std::regex_search(hdr, mapRe),
            "INV-4",
            "claudeintegration.h missing explicit #include <map>");
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv5DispatcherCollapsed) {
+    expect_reset();
     const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     std::regex outwardRe(
         R"((?:else )?if\s*\(\s*toolName\s*==\s*"[^"]+"\s*&&\s*m_\w+Provider\s*\))");
@@ -122,10 +124,11 @@ TEST(McpProviderRegistry, Inv5DispatcherCollapsed) {
             " get_session_info inline branches; expected exactly 1 "
             "(the documented carve-out)")
                .c_str());
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv6RegistryReferencedFromDispatch) {
+    expect_reset();
     const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     std::regex reg(R"(\bm_toolProviders\b)");
     const size_t n = countMatches(cpp, reg);
@@ -134,10 +137,11 @@ TEST(McpProviderRegistry, Inv6RegistryReferencedFromDispatch) {
             std::to_string(n) +
             " times; expected ≥ 2 (registrar body + dispatch lookup)")
                .c_str());
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv7AtLeastTwelveRegisterCalls) {
+    expect_reset();
     // Spec § 10 step 4 verifier — narrow regex matches the call form
     // (m_claudeIntegration->registerToolProvider("…") and won't drift
     // on future docstring mentions of the function name. ANTS-1253
@@ -150,10 +154,11 @@ TEST(McpProviderRegistry, Inv7AtLeastTwelveRegisterCalls) {
            ("mainwindow.cpp has " + std::to_string(n) +
             " ->registerToolProvider(\" call sites; expected ≥ 12")
                .c_str());
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
+    expect_reset();
     // Every tool name in the tools/list schema builder
     // (`<toolVar>["name"] = "<name>"`) other than get_session_info
     // must have a matching registerToolProvider("<name>", …) call
@@ -177,10 +182,11 @@ TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
                 "has no matching registerToolProvider(\"" + name + "\", …) call")
                    .c_str());
     }
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv9GetTextIsDoubleGate) {
+    expect_reset();
     // ANTS-1244 INV-9 must survive the consolidation: the get_text
     // lambda body in mainwindow.cpp gates BOTH tab and lines on
     // isDouble() so tab=0 and lines=0 are valid values distinct from
@@ -200,10 +206,11 @@ TEST(McpProviderRegistry, Inv9GetTextIsDoubleGate) {
                "get_text lambda body must reference both \"tab\" and "
                "\"lines\" args");
     }
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }
 
 TEST(McpProviderRegistry, Inv10SessionInfoCarveoutPreserved) {
+    expect_reset();
     // get_session_info is the lone inline branch — it reads
     // ClaudeIntegration's own private state, so it has no provider.
     const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
@@ -220,5 +227,5 @@ TEST(McpProviderRegistry, Inv10SessionInfoCarveoutPreserved) {
                "ClaudeIntegration private state (m_state / m_currentTool / "
                "m_contextPercent)");
     }
-    if (g_failures) FAIL();
+    EXPECT_EQ(0, expect_failures());
 }

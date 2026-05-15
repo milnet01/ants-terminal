@@ -12,6 +12,8 @@
 // absence of the right tokens (or the presence of the wrong ones)
 // is both sufficient and much cheaper than a MainWindow harness.
 
+#include "../../_support/expect.h"
+
 #include <QCoreApplication>
 #include <QFile>
 #include <QString>
@@ -20,19 +22,11 @@
 
 
 #include <gtest/gtest.h>
+ANTS_TEST_SCOPE();
+
 namespace {
 
-int g_failures = 0;
 
-void expect(bool cond, const char *label, const QString &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label,
-                     qUtf8Printable(detail));
-        ++g_failures;
-    }
-}
 
 // Return the substring of `src` between the first line starting with
 // `signature` and the matching `^}` line below it. Used to scope a
@@ -49,6 +43,7 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
 }  // namespace
 
 static int runMain() {
+    expect_reset();
     // QCoreApplication is owned by bundle_main (ANTS-1217); this helper
     // takes no argc/argv since it doesn't need to forward to Qt.
     const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
@@ -122,14 +117,9 @@ static int runMain() {
                           "with `&m_config`; if that changed, this "
                           "test needs rewriting"));
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return expect_finish();
 }
 
 TEST(SettingsDialogConfigReload, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

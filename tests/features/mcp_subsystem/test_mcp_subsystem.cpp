@@ -16,6 +16,7 @@
 #include <QStringList>
 #include <QVector>
 
+#include "../../_support/expect.h"
 #include "subsystemmap.h"
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
@@ -46,6 +47,8 @@
 #error "CMAKELISTS_PATH compile definition required"
 #endif
 
+ANTS_TEST_SCOPE();
+
 namespace {
 
 std::string slurp(const char *path) {
@@ -63,22 +66,12 @@ bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-int g_failures = 0;
 
-void expect(bool ok, const char *label, const char *detail = nullptr) {
-    if (!ok) {
-        ++g_failures;
-        std::fprintf(stderr, "[FAIL] %s%s%s\n",
-                     label,
-                     detail ? " — " : "",
-                     detail ? detail : "");
-    }
-}
 
 }  // namespace
 
 TEST(McpSubsystem, WiringContract) {
-    g_failures = 0;
+    expect_reset();
 
     const std::string ciCpp  = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string ciHdr  = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
@@ -225,7 +218,5 @@ TEST(McpSubsystem, WiringContract) {
                   haveVtparser ? "true" : "false");
     expect(lanes.size() >= 15 && haveVtparser, "INV-12", detail12);
 
-    if (g_failures) {
-        FAIL() << g_failures << " ANTS-1251 invariant(s) failed";
-    }
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1251 invariant(s) failed";
 }
