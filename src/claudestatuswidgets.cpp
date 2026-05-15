@@ -1,6 +1,8 @@
 #include "claudestatuswidgets.h"
 
+#include <QDateTime>
 #include <QHBoxLayout>
+#include <QHash>
 #include <QLabel>
 #include <QObject>
 #include <QPointer>
@@ -158,25 +160,56 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         // user most needs to notice.
         m_coloredTabBar->setClaudeIndicatorProvider([this](int tabIndex) {
             ClaudeTabIndicator ind;
-            if (!m_tracker) return ind;
+            // ANTS-1375 diagnostic — log which early-return branch fires
+            // for each tab. Throttled to once per second per tab to avoid
+            // flooding on rapid repaints. Activate with ANTS_DEBUG=claude.
+            // Remove after the failing branch is identified.
+            auto trace = [tabIndex](const char *branch, pid_t pid,
+                                    int state, int glyph) {
+                if (!DebugLog::enabled(DebugLog::Claude)) return;
+                static QHash<int, qint64> lastMs;
+                const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                if (now - lastMs.value(tabIndex, 0) < 1000) return;
+                lastMs[tabIndex] = now;
+                ANTS_LOG(DebugLog::Claude,
+                    "[ANTS-1375] indicator tab=%d branch=%s pid=%d "
+                    "state=%d glyph=%d",
+                    tabIndex, branch, (int)pid, state, glyph);
+            };
+            if (!m_tracker) {
+                trace("no-tracker", -1, -1, (int)ind.glyph);
+                return ind;
+            }
             if (m_tabIndicatorEnabledProvider &&
-                !m_tabIndicatorEnabledProvider()) return ind;  // toggle off
+                !m_tabIndicatorEnabledProvider()) {
+                trace("toggle-off", -1, -1, (int)ind.glyph);
+                return ind;  // toggle off
+            }
             auto *term = m_terminalAtTabProvider
                 ? m_terminalAtTabProvider(tabIndex) : nullptr;
-            if (!term) return ind;
+            if (!term) {
+                trace("no-term", -1, -1, (int)ind.glyph);
+                return ind;
+            }
             const pid_t pid = term->shellPid();
-            if (pid <= 0) return ind;
+            if (pid <= 0) {
+                trace("no-pid", pid, -1, (int)ind.glyph);
+                return ind;
+            }
             const ClaudeTabTracker::ShellState s = m_tracker->shellState(pid);
             if (s.awaitingInput) {
                 ind.glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
+                trace("awaiting-input", pid, (int)s.state, (int)ind.glyph);
                 return ind;
             }
             if (s.planMode && s.state != ClaudeState::NotRunning) {
                 ind.glyph = ClaudeTabIndicator::Glyph::Planning;
+                trace("plan-mode", pid, (int)s.state, (int)ind.glyph);
                 return ind;
             }
             if (s.auditing && s.state != ClaudeState::NotRunning) {
                 ind.glyph = ClaudeTabIndicator::Glyph::Auditing;
+                trace("auditing", pid, (int)s.state, (int)ind.glyph);
                 return ind;
             }
             switch (s.state) {
@@ -198,6 +231,7 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
                 case ClaudeState::Compacting:
                     ind.glyph = ClaudeTabIndicator::Glyph::Compacting; break;
             }
+            trace("state-resolved", pid, (int)s.state, (int)ind.glyph);
             return ind;
         });
     }
