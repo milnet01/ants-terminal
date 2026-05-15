@@ -18,6 +18,8 @@
 
 #include "luaengine.h"
 
+#include "../../_support/expect.h"
+
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -27,21 +29,9 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdio>
+ANTS_TEST_SCOPE();
 
 namespace {
-
-int g_failures = 0;
-
-void expect(bool cond, const char *label, const QString &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label,
-                     qUtf8Printable(detail));
-        ++g_failures;
-    }
-}
 
 QString writeTemp(const QString &dir, const QString &basename,
                   const QByteArray &bytes) {
@@ -49,9 +39,8 @@ QString writeTemp(const QString &dir, const QString &basename,
     const QString path = dir + QStringLiteral("/") + basename;
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        std::fprintf(stderr, "[FAIL] setup: cannot write %s\n",
-                     qUtf8Printable(path));
-        ++g_failures;
+        expect(false, "setup/writeTemp",
+               QStringLiteral("cannot write %1").arg(path));
         return {};
     }
     f.write(bytes);
@@ -375,18 +364,14 @@ void runSourceChecks() {
 }
 
 int runMain() {
+    expect_reset();
     runRuntimeChecks();
     runSourceChecks();
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        return 1;
-    }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return 0;
+    return expect_finish();
 }
 
 }  // namespace
 
 TEST(LuaPcallNestingTimeout, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

@@ -140,5 +140,5 @@ static int runMain() {
 }
 
 TEST(RemoteControlNewTab, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

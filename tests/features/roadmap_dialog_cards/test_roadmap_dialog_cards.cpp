@@ -696,5 +696,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(RoadmapDialogCards, Main) {
-    if (runMain(0, nullptr) != 0) FAIL();
+    ASSERT_EQ(0, runMain(0, nullptr));
 }

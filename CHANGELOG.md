@@ -487,6 +487,27 @@ hostile-content findings.
   rolled into ROADMAP under `### 🔬 Test-suite audit fold-in
   (2026-05-15)` for follow-up.
 
+- **Shared `tests/_support/expect.h` helper — phase 1 (ANTS-1382).**
+  New header replaces the per-TU `int g_failures; void expect(bool,
+  const char*, …)` boilerplate that ~80 feature tests duplicated.
+  `ANTS_TEST_SCOPE()` macro emits an anonymous-namespace scope with
+  `expect()` (overloaded for `const char*`, `QString`, `std::string`),
+  `expect_reset()`, `expect_finish()`, `expect_failures()`. PASS
+  labels are now buffered silently — only on the first FAIL does the
+  helper flush a single `(N prior ok)` summary line followed by the
+  FAIL detail. Goal: shrink `ctest --output-on-failure` tails from
+  ~12 stderr lines per 7-PASS+1-FAIL test to 2, so AI assistants
+  reading test logs see the FAIL without scanning past PASS noise.
+  This first phase landed three pieces: (a) the header itself plus
+  `tests/` on the bundle include path; (b) 35 mechanical
+  `if (runMain() != 0) FAIL();` → `ASSERT_EQ(0, runMain());`
+  conversions via `tools/migrate_expect_helper.py` (drops the
+  uninformative gtest banner); (c) two reference hand-migrations
+  exercising both common patterns (`lua_pcall_nesting_timeout` for
+  the runMain wrapper case, `confirm_close_with_processes` for the
+  TEST() body case). Bulk migration of the remaining ~47 files is
+  rolled into ROADMAP ANTS-1385.
+
 - **Build-warning debt sweep (ANTS-1373 + ANTS-1367 + ANTS-1368 +
   ANTS-1325).** Cleared the four warning classes that fired on every
   build, dropping `cmake --build build` to a zero-warning floor.

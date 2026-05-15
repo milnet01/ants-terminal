@@ -127,5 +127,5 @@ static int runMain() {
 }
 
 TEST(RemoteControlLaunch, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

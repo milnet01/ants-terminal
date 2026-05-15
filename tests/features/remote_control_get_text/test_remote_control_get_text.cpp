@@ -99,5 +99,5 @@ static int runMain() {
 }
 
 TEST(RemoteControlGetText, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

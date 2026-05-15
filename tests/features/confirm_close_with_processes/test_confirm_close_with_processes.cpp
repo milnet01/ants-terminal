@@ -6,32 +6,23 @@
 // validate the wire-up shape via grep — the same pattern the rest
 // of the project uses for MainWindow-touching invariants.
 
+#include "../../_support/expect.h"
+
 #include <QCoreApplication>
 #include <QFile>
 #include <QString>
 
-#include <cstdio>
 #include <gtest/gtest.h>
 
+ANTS_TEST_SCOPE();
+
 namespace {
-
-int g_failures = 0;
-
-void expect(bool cond, const char *label, const QString &detail = {}) {
-    if (cond) {
-        std::fprintf(stderr, "[PASS] %s\n", label);
-    } else {
-        std::fprintf(stderr, "[FAIL] %s  %s\n", label,
-                     qUtf8Printable(detail));
-        ++g_failures;
-    }
-}
 
 QString readFileOrFail(const char *macroPath) {
     QFile f(QString::fromUtf8(macroPath));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr,
-                     "[FAIL] source-open: cannot read %s\n", macroPath);
+        expect(false, "source-open",
+               QStringLiteral("cannot read %1").arg(macroPath));
         return {};
     }
     QString s = QString::fromUtf8(f.readAll());
@@ -49,7 +40,9 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
 
 }  // namespace
 
-TEST(ConfirmCloseWithProcesses, Main) {    const QString configH = readFileOrFail(SRC_CONFIG_H_PATH);
+TEST(ConfirmCloseWithProcesses, Main) {
+    expect_reset();
+    const QString configH = readFileOrFail(SRC_CONFIG_H_PATH);
     const QString configCpp = readFileOrFail(SRC_CONFIG_CPP_PATH);
     const QString mwCpp = readFileOrFail(SRC_MAINWINDOW_PATH);
     const QString sdH = readFileOrFail(SRC_SETTINGSDIALOG_H_PATH);
@@ -182,11 +175,6 @@ TEST(ConfirmCloseWithProcesses, Main) {    const QString configH = readFileOrFai
                    "m_confirmCloseWithProcesses->setChecked(true)")),
            "INV-11/restore-defaults-true");
 
-    if (g_failures) {
-        std::fprintf(stderr, "\n%d invariant(s) failed\n", g_failures);
-        FAIL();
-    }
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return;
+    ASSERT_EQ(0, expect_finish());
 }
 

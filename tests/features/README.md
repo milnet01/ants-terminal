@@ -95,6 +95,28 @@ reported against three prior releases.
    public API. Use `TEST(SuiteName, ...)` blocks (Suite name = the
    directory name in CamelCase). Assert invariants with `EXPECT_*` /
    `ASSERT_*`. Stream extra context via `<<` on failure.
+
+   **For labelled invariant checks (`INV-1`, `INV-2` …) use the
+   shared helper at `tests/_support/expect.h`** (ANTS-1382):
+
+   ```cpp
+   #include "../../_support/expect.h"
+   ANTS_TEST_SCOPE();   // at file scope, outside any namespace
+
+   TEST(MyFeature, Main) {
+       expect_reset();
+       expect(condA,  "INV-1/condA");
+       expect(condB,  "INV-2/condB", QStringLiteral("got %1").arg(x));
+       ASSERT_EQ(0, expect_finish());
+   }
+   ```
+
+   PASS labels are silently counted; on the first FAIL the helper
+   flushes a single `(N prior ok)` summary plus the FAIL line —
+   `ctest --output-on-failure` tails stay short. The macro emits
+   `expect()` overloads for `const char*`, `QString`, and
+   `std::string` details. Per-TU scope, so multiple test files in
+   one bundle don't share state.
 4. Add the source path to the appropriate bundle's `SOURCES` list in
    `CMakeLists.txt` — `test_vt` for vtparser/terminalgrid features,
    `test_chrome` for mainwindow/tabs, etc. Do **not** add a new

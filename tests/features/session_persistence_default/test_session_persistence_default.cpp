@@ -153,5 +153,5 @@ static int runMain() {
 }
 
 TEST(SessionPersistenceDefault, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

@@ -5445,7 +5445,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane C).
 
-- 📋 [ANTS-1382] **Extract `tests/_support/expect.h` —
+- 🚧 [ANTS-1382] **Extract `tests/_support/expect.h` —
   buffer-on-success + drop `if (runMain != 0) FAIL();`.**
   ~80 test files reimplement the same `int g_failures;
   void expect(bool, const char*, const QString&)` helper
@@ -5465,6 +5465,16 @@ that shipped 6+ months ago — pure self-reference).
   output, ~3000 LoC of duplication removed across the
   suite. Major win for AI-assistant friendliness when
   reading `ctest --output-on-failure` tails.
+  **Status (2026-05-15):** Phase 1 landed. `tests/_support/expect.h`
+  shipped with `ANTS_TEST_SCOPE()` macro (per-TU scope, buffered PASS
+  with `(N prior ok)` flush on first FAIL). 35 files mechanically
+  converted from `if (runMain() != 0) FAIL();` → `ASSERT_EQ(0,
+  runMain());` via `tools/migrate_expect_helper.py`. Two reference
+  files hand-migrated to validate Pattern A (runMain wrapper:
+  `lua_pcall_nesting_timeout`) and Pattern B (TEST() calls expect()
+  directly: `confirm_close_with_processes`). Remaining: ~47 files
+  with full `g_failures + expect()` duplication still need bulk
+  migration — see ANTS-1385.
   **Layman:** every test file copy-pastes the same little
   `expect()` helper that prints `[PASS]` for every check
   — when a test fails, its log is mostly the PASS lines
@@ -5472,6 +5482,34 @@ that shipped 6+ months ago — pure self-reference).
   failure, and you get short readable failure logs.
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane D).
+
+- 📋 [ANTS-1385] **Bulk-migrate remaining ~47 tests to
+  `ANTS_TEST_SCOPE()`.** Phase 2 of ANTS-1382. The 35 mechanical
+  shim conversions + 2 reference hand-migrations landed on
+  2026-05-15. The remaining files split across three patterns the
+  current `tools/migrate_expect_helper.py` script flagged as
+  needing manual review:
+  - **Pattern B variants (~8)** — TEST() bodies call `expect()`
+    directly without a runMain wrapper, end with `if (g_failures)
+    { fprintf; FAIL(); }`. Mechanical: convert to
+    `ASSERT_EQ(0, expect_finish());`.
+  - **Pattern C — multi-TEST delta-check (~20)** — files like
+    `claude_pid_replacement` with multiple `TEST()` blocks each
+    snapshotting `int before = g_failures; …; if (g_failures >
+    before) FAIL();`. Needs `expect_failures()` accessor (already
+    in the header) and per-TEST `expect_reset()` semantics.
+  - **Pattern D — setup-error helpers bumping g_failures (~12)**
+    — `++g_failures` inside `writeTemp()` / `slurp()` / similar.
+    Trivial conversion to `expect(false, "setup/...", ...)` once
+    the local g_failures is removed.
+  - Files using counter names other than `g_failures` (e.g.
+    `failures` in `flathub_manifest_transform`) — single
+    s/failures/expect_finish()/ each.
+  Iterate the migration script to handle these, then bulk-apply.
+  Expected to remove ~2500 LoC and bring all 184 feature tests
+  onto the shared helper.
+  Kind: refactor.
+  Source: ANTS-1382-phase-2 (2026-05-15).
 
 - 📋 [ANTS-1383] **Re-enable shared bundle PCH +
   `gtest_discover_tests POST_BUILD`.** The

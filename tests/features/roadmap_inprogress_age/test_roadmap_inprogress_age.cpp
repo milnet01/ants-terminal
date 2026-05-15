@@ -356,5 +356,5 @@ static int runMain() {
 }
 
 TEST(RoadmapInProgressAge, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

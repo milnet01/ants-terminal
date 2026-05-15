@@ -275,5 +275,5 @@ static int runMain() {
 }
 
 TEST(FeatureCoverage, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

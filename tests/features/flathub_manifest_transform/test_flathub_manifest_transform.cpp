@@ -158,5 +158,5 @@ static int runMain() {
 }
 
 TEST(FlathubManifestTransform, Main) {
-    if (runMain() != 0) FAIL();
+    ASSERT_EQ(0, runMain());
 }

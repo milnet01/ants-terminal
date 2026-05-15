@@ -548,6 +548,13 @@ if(ANTS_TESTS)
         target_link_libraries(${name} PRIVATE
             -Wl,--start-group ${B_LIBS} -Wl,--end-group
             ants_warnings GTest::gtest)
+        # ANTS-1382: tests/_support/expect.h is included by feature
+        # tests via "../../_support/expect.h" — relative path resolves
+        # without an explicit -I, but we add tests/ on the include path
+        # too so future helpers under tests/_support/ can be referenced
+        # by short name.
+        target_include_directories(${name} PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests)
         # ANTS-1373/1368: do NOT REUSE_FROM ants-terminal's PCH. The PCH
         # is generated with the main exe's full flag set (PIC +
         # QT_OPENGL_LIB define from the OpenGLWidgets link). Test bundles
@@ -568,6 +575,8 @@ if(ANTS_TESTS)
         add_executable(${name} tests/bundle_main_core.cpp ${B_SOURCES})
         target_link_libraries(${name} PRIVATE
             ${B_LIBS} ants_warnings GTest::gtest Qt6::Core)
+        target_include_directories(${name} PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests)
         gtest_discover_tests(${name}
             DISCOVERY_MODE PRE_TEST
             PROPERTIES LABELS "features;fast" TIMEOUT 10)
