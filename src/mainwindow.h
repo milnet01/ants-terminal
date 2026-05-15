@@ -149,6 +149,13 @@ public:
     // share this accessor.
     TerminalWidget *terminalAtTab(int index) const;
 
+    // ANTS-1401 — total open-tab count for the central
+    // `resolveCallerCwdRoot` helper (free function defined in
+    // remotecontrol.cpp, declared in resolvedroot.h). The helper
+    // iterates tabs from outside this class; this is the only new
+    // public surface the refactor introduces.
+    int tabCount() const;
+
     // ANTS-1392 — caller-anchored terminal lookup for MCP read verbs.
     // If `callerCwd` is non-empty, walks the tab list looking for a
     // terminal whose canonical `shellCwd()` matches the canonical

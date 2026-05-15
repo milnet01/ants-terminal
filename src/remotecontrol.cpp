@@ -9,6 +9,7 @@
 #include "pathvalidation.h"
 #include "plantemplateengine.h"
 #include "remotecontrolgate.h"
+#include "resolvedroot.h"
 #include "sessionmemoryengine.h"
 #include "tokenusageengine.h"
 #include "roadmapdialog.h"
@@ -1367,14 +1368,102 @@ QString resolveRootCanonical(MainWindow *main) {
 // callers' existing bad_path envelope fires — no new error code needed.
 // Mutating verbs continue to enforce strict match via RcGate (ANTS-1372);
 // read verbs just route, without refusing on mismatch.
+//
+// ANTS-1401 refactor: body is now a wrapper around `resolveCallerCwdRoot`,
+// the single source of truth shared with `MainWindow::terminalForCaller`
+// and the `caller_cwd_info` MCP verb (ANTS-1400). Pre-refactor mapping:
+//   EmptyFallback              → focused-tab root
+//   ExplicitMatch / NoMatch    → canonical caller_cwd (no tab walk —
+//                                this overload trusts the caller's
+//                                claim; tab-finding is the other
+//                                wrapper's job)
+//   Unresolvable               → empty string
 QString resolveRootCanonical(MainWindow *main, const QJsonObject &req) {
     const QString rawCaller =
         req.value(QStringLiteral("caller_cwd")).toString();
-    if (!rawCaller.isEmpty()) {
-        return QFileInfo(rawCaller).canonicalFilePath();
+    const ants::ResolvedRoot rr =
+        ants::resolveCallerCwdRoot(main, rawCaller);
+    switch (rr.source) {
+        case ants::ResolvedRoot::Source::EmptyFallback:
+            return resolveRootCanonical(main);
+        case ants::ResolvedRoot::Source::ExplicitMatch:
+        case ants::ResolvedRoot::Source::NoMatch:
+            return rr.cwd;
+        case ants::ResolvedRoot::Source::Unresolvable:
+            return QString();
     }
-    return resolveRootCanonical(main);
+    return QString();  // -Wreturn-type
 }
+
+}  // namespace (anonymous from line 1320 — closed early so the
+   // `ants::resolveCallerCwdRoot` definition below has external
+   // linkage and matches its declaration in resolvedroot.h).
+
+// ANTS-1401 — Central `caller_cwd` resolution helper. Single source of
+// truth for the four-case decision tree introduced in ANTS-1396 and now
+// shared with `MainWindow::terminalForCaller`,
+// `resolveRootCanonical(main, req)`, the `caller_cwd_info` MCP verb
+// (ANTS-1400), and the per-tool contract dispatcher (ANTS-1404).
+namespace ants {
+
+ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
+                                  const QString &callerCwd) {
+    ResolvedRoot rr;
+    if (!main) {
+        // Defensive: shouldn't happen — MCP dispatch always has a
+        // MainWindow. Match the "no useful answer" shape.
+        rr.source = ResolvedRoot::Source::EmptyFallback;
+        return rr;
+    }
+    if (callerCwd.isEmpty()) {
+        // Case 1 — empty caller_cwd → focused fallback.
+        rr.source = ResolvedRoot::Source::EmptyFallback;
+        if (auto *t = main->focusedTerminal()) {
+            const QString cwd = t->shellCwd();
+            if (!cwd.isEmpty()) {
+                rr.cwd = QFileInfo(cwd).canonicalFilePath();
+            }
+        }
+        const int idx = main->currentTabIndexForRemote();
+        if (idx >= 0) rr.tabIndex = idx;
+        return rr;
+    }
+    const QString wantCanonical =
+        QFileInfo(callerCwd).canonicalFilePath();
+    if (wantCanonical.isEmpty()) {
+        // Case 4 — present but unresolvable.
+        rr.source = ResolvedRoot::Source::Unresolvable;
+        return rr;
+    }
+    // INV-5 — deterministic lowest-index tie-break. for-loop walks
+    // indices ascending; first match wins.
+    for (int i = 0; i < main->tabCount(); ++i) {
+        TerminalWidget *t = main->terminalAtTab(i);
+        if (!t) continue;
+        const QString tabCwd = t->shellCwd();
+        if (tabCwd.isEmpty()) continue;
+        const QString tabCanonical =
+            QFileInfo(tabCwd).canonicalFilePath();
+        if (!tabCanonical.isEmpty() &&
+            tabCanonical == wantCanonical) {
+            // Case 2 — explicit caller_cwd hits an open tab.
+            rr.source   = ResolvedRoot::Source::ExplicitMatch;
+            rr.cwd      = wantCanonical;
+            rr.tabIndex = i;
+            return rr;
+        }
+    }
+    // Case 3 — explicit caller_cwd, no open tab matches.
+    rr.source = ResolvedRoot::Source::NoMatch;
+    rr.cwd    = wantCanonical;
+    return rr;
+}
+
+}  // namespace ants
+
+namespace {  // reopen the anonymous namespace closed above so the rest
+             // of the gitwrap helpers (parseStatusHeader, runStatusOp,
+             // etc.) keep their internal-linkage placement.
 
 // ANTS-1250-INV-8 / ANTS-1295: per-call path validation now lives in
 // the central PathValidation chokepoint. See src/pathvalidation.{h,cpp}.

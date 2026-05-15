@@ -13,6 +13,7 @@
 #include "settingsdialog.h"
 #include "sessionmanager.h"
 #include "remotecontrol.h"
+#include "resolvedroot.h"      // ANTS-1401 — terminalForCaller helper
 #include "verifytrustmodal.h"  // ANTS-1337 Phase 2
 #include "branchchip.h"           // ANTS-1109 helper
 #include "clipboardguard.h"       // ANTS-1014 clipboard funnel
@@ -2746,32 +2747,32 @@ TerminalWidget *MainWindow::terminalAtTab(int index) const {
 // terminalForCaller call sites in this file:
 // `if (auto *t = terminalForCaller(...))` or `if (!t) return {};`).
 TerminalWidget *MainWindow::terminalForCaller(const QString &callerCwd) const {
-    if (callerCwd.isEmpty()) {
-        // Case 1: legacy back-compat.
-        return focusedTerminal();
+    // ANTS-1401 — single source of truth. The four-case decision tree
+    // ANTS-1396 introduced now lives in `ants::resolveCallerCwdRoot`
+    // (declared in resolvedroot.h, defined alongside the
+    // `resolveRootCanonical` overloads in remotecontrol.cpp). This
+    // function maps the tagged variant back to a TerminalWidget *.
+    const ants::ResolvedRoot rr =
+        ants::resolveCallerCwdRoot(this, callerCwd);
+    switch (rr.source) {
+        case ants::ResolvedRoot::Source::EmptyFallback:
+            // Case 1 — legacy back-compat. Accessor may return nullptr
+            // if no tab is focused; preserve that shape unchanged.
+            return focusedTerminal();
+        case ants::ResolvedRoot::Source::ExplicitMatch:
+            // Case 2: caller_cwd canonicalises and matches an open tab.
+            return rr.tabIndex ? terminalAtTab(*rr.tabIndex) : nullptr;
+        case ants::ResolvedRoot::Source::NoMatch:
+        case ants::ResolvedRoot::Source::Unresolvable:
+            // Case 3: explicit caller_cwd, no match → nullptr.
+            //         Unresolvable path also degrades to nullptr.
+            return nullptr;
     }
-    const QString wantCanonical =
-        QFileInfo(callerCwd).canonicalFilePath();
-    if (wantCanonical.isEmpty()) {
-        // caller_cwd was given but is unresolvable (e.g. path doesn't
-        // exist). Treat as "no match" — case 3.
-        return nullptr;
-    }
-    for (int i = 0; i < m_tabWidget->count(); ++i) {
-        TerminalWidget *t = terminalAtTab(i);
-        if (!t) continue;
-        const QString tabCwd = t->shellCwd();
-        if (tabCwd.isEmpty()) continue;
-        const QString tabCanonical =
-            QFileInfo(tabCwd).canonicalFilePath();
-        if (!tabCanonical.isEmpty() &&
-            tabCanonical == wantCanonical) {
-            // Case 2.
-            return t;
-        }
-    }
-    // Case 3: explicit caller_cwd, no match → nullptr.
-    return nullptr;
+    return nullptr;  // -Wreturn-type
+}
+
+int MainWindow::tabCount() const {
+    return m_tabWidget->count();
 }
 
 int MainWindow::currentTabIndexForRemote() const {
