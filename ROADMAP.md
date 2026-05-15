@@ -6091,6 +6091,123 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (deferred from
   ANTS-1355 v2's spec § 8 / § 9).
 
+- 📋 [ANTS-1404] **Cross-project isolation Phase 3 —
+  per-tool `caller_cwd` contract audit + fail-loud policy
+  on absent caller_cwd.** ANTS-1396 fixed the silent
+  fallback when caller_cwd is *provided but doesn't match*.
+  Cross-session report 2026-05-15: when caller_cwd is
+  *absent entirely*, tab-anchored tools (`get_git_status`,
+  `get_environment`, `get_last_command`, `get_scrollback`,
+  `get_text`, plus path-anchored `verify_changes` and
+  `last_audit_summary`) still silently anchor to the
+  focused tab — i.e. a Claude session in project B calling
+  `get_git_status()` while Ants happens to have project A
+  focused gets A's data. The deep fix: classify each
+  tool into one of four contracts and enforce at the
+  dispatch site:
+  - **cwd-required** (anchorable + leaks if wrong):
+    `get_git_status`, `verify_changes`, `last_audit_summary`,
+    `git_state` → refuse with
+    `{ok:false, code:"caller_cwd_required"}` when absent.
+  - **cwd-optional** (anchor when present, focused-fallback
+    is explicit choice): `roadmap_query`, `subsystem`,
+    `workspace_search` → current behaviour.
+  - **tab-specific** (reads per-tab scrollback that's
+    inherently not project-anchored): `get_scrollback`,
+    `get_text` → return
+    `{ok:false, code:"tab_specific", hint:"this tool reads
+    a tab and cannot be cwd-anchored; pass `tab` index or
+    use a different tool"}` if caller passed caller_cwd
+    expecting cwd routing.
+  - **process-global** (no per-tab/per-project state):
+    `mcp_trace`, `token_usage`, `tab_list`, `get_session_info`
+    → caller_cwd accepted-and-ignored.
+  Implementation: extend the existing `caller_cwd_handling`
+  enum (introduced in ANTS-1391) into the tool registry so
+  the dispatcher knows per-tool what to do BEFORE the
+  provider lambda runs. Spec-first; pairs with ANTS-1401
+  (central `ResolvedRoot` helper). Contract break for any
+  caller still relying on focused-tab fallback on the
+  cwd-required group — surface via CHANGELOG + a one-release
+  deprecation warning before refusal.
+  **Layman:** Right now tools fall back to whichever tab
+  is focused when the caller doesn't say which project
+  it's in. Decide per-tool what should happen instead —
+  refuse, accept with no project context, or warn — so a
+  Claude in project B doesn't accidentally get project A's
+  git status.
+  Kind: security.
+  Source: cross-session-report-2026-05-15 (other CC
+  instance — broadens the ANTS-1396 fix to cover the
+  absent-caller_cwd case, not just the mismatched case).
+
+- 📋 [ANTS-1405] **`roadmap_query` parser handles
+  non-Ants project stable-ID formats.** Cross-session
+  report 2026-05-15: the MAME Curator project (running
+  on the shareable `roadmap-format.md` v1 standard,
+  not the Ants-specific extensions) embeds stable IDs
+  inline in the headline as `**P##** [mame-curator-NNNN]
+  **Title**`. The current parser only extracts the Ants
+  `[ANTS-NNNN]` shape — every bullet on a non-Ants
+  project returns `"id": ""`, forcing the caller to fall
+  back to reading ROADMAP.md to recover the ID. Fix:
+  generalise the ID-extraction regex to accept
+  `\[([a-z][a-z0-9-]+-\d+)\]` immediately after either
+  the leading bullet dash or after a recognised
+  phase/emoji prefix. Also document in the tool
+  description that the parser follows the shareable
+  `docs/standards/roadmap-format.md` spec (which is
+  byte-identical across projects per the App-Build
+  templates).
+  **Layman:** the roadmap-lookup tool only finds the
+  stable IDs on Ants Terminal itself; on other projects
+  using the same roadmap format, every entry comes back
+  with an empty ID. Fix the parser to also recognise
+  `[project-NNNN]` patterns.
+  Kind: fix.
+  Source: cross-session-report-2026-05-15 (other CC
+  instance running on MAME Curator project).
+
+- 📋 [ANTS-1406] **`last_audit_summary` `since_commit`
+  / `audit_precondition_summary` — short-circuit /audit
+  on clean closes.** Cross-session report 2026-05-15:
+  `/close-phase` dispatches `/audit` + `/indie-review`
+  in parallel; on clean closes, `/audit` returns "all
+  gates green + 0 actionable" after burning ~45–50 K
+  tokens re-running the same precondition gates
+  (`ruff check && ruff format --check && mypy && bandit
+  && pytest`). At ~30 phase-closes/month/project,
+  that's ~1.5 M tokens of redundant audit spend per
+  project per month. Two candidate fixes:
+  - (a) Extend `mcp__ants__last_audit_summary` with a
+    `since_commit=<sha>` parameter that returns the
+    cached snapshot only if it's at-or-after the
+    supplied SHA (and within a freshness window, e.g.
+    5 min). `/close-phase` can then ask "is there an
+    audit-clean snapshot already cached at HEAD?" and
+    skip the dispatch if yes.
+  - (b) Add a new `audit_precondition_summary` MCP
+    tool that reports the gate state without re-running
+    (reads the most recent `pytest` / `mypy` / etc.
+    cache markers and reports pass/fail per gate).
+  Option (a) is cheaper; option (b) is more transparent.
+  `/indie-review` is NOT in scope — it produces
+  load-bearing contract-vs-implementation findings the
+  audit doesn't, and its dispatch should stay
+  unconditional. Implementation pairs with ANTS-1359
+  (verify_changes build-cache) which already proves the
+  caching infrastructure pattern.
+  **Layman:** /close-phase runs the audit suite twice —
+  once as a precondition gate, then again as the audit
+  itself — burning ~50 K tokens for what's basically a
+  re-verification. Let /close-phase ask "did the audit
+  already pass at this commit?" and skip the second
+  pass when it did.
+  Kind: perf / optimize.
+  Source: cross-session-report-2026-05-15 (other CC
+  instance — ~50 K tokens × 30 closes/month/project
+  ≈ ~1.5 M tokens/month/project on clean closes).
+
 ---
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
