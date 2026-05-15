@@ -479,7 +479,12 @@ private:
     // dominates the newline_stream hot path. Capped to kFreePoolCap entries
     // so memory stays bounded when scrolls outpace consumption.
     std::vector<std::vector<Cell>> m_freeCellBuffers;
-    static constexpr int kFreePoolCap = 4;
+    // ANTS-1362 — was 4 in 0.7.x. Raised to 32 to bridge typical
+    // burst paths (24-row `clear`, dmesg flood, tmux split redraw)
+    // that previously paid fresh allocations for the rows past 4.
+    // RAM ceiling ~256 KiB at 200-col widths; cf. m_scrollback at
+    // ~360 MiB upper bound. See docs/specs/ANTS-1362.md.
+    static constexpr int kFreePoolCap = 32;
     // Pulls a blanked m_cols-wide cells row from the pool, or allocates fresh.
     std::vector<Cell> takeBlankedCellsRow();
     // Returns a cells buffer to the pool if it's the right size and the pool

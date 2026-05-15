@@ -19,6 +19,19 @@ Bundle plan). Items group around `terminalgrid.cpp` correctness +
 perf so width-reflow + wide-char-edge + Sixel-budget land in one
 release.
 
+- **ANTS-1362 — Cell-buffer free pool raised 4 → 32.**
+  `m_freeCellBuffers` recycles `vector<Cell>(m_cols)` allocations
+  across scrollUp/scrollDown/insertLines/deleteLines. Cap of 4
+  was sized for steady-state scrolling; bursty paths (`clear`
+  on a 24-row terminal, dmesg flood, tmux split redraw)
+  overflowed it and paid fresh allocations for the tail. Bump
+  to 32 covers the common burst sizes; RAM ceiling ~256 KiB at
+  200-col widths (0.14 % of scrollback). Spec:
+  `docs/specs/ANTS-1362.md`. Layman: a small internal buffer
+  cache used while scrolling fast was too small; making it
+  bigger removes some allocation overhead on `clear` and
+  similar fast-scroll bursts.
+
 - **ANTS-1366 — Sixel raster-header pre-budget rejects over-cap
   images before the first-pass walk.** Pre-fix, `handleDcs`'s
   first pass clamped raster `Pan/Pad/Ph/Pv` mid-parse with

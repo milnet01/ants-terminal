@@ -5515,7 +5515,20 @@ indie-review finding.
   Kind: perf / fix.
   Source: indie-review-2026-05-14 (lane-1 M4).
 
-- 📋 [ANTS-1362] **Cell-buffer free pool cap tuning.**
+- ✅ [ANTS-1362] **Cell-buffer free pool cap tuning.** Shipped
+  2026-05-15 (Bundle A pull 4). `kFreePoolCap` raised from 4 → 32
+  in `terminalgrid.h:482`. Bridges 24-row `clear`, dmesg flood,
+  and tmux split-redraw bursts that previously paid fresh
+  `vector<Cell>(m_cols)` allocations for every row past 4. RAM
+  ceiling ~256 KiB at 200-col widths (cf. m_scrollback ~360 MiB
+  upper bound — 0.14 % of scrollback RAM). Spec
+  `docs/specs/ANTS-1362.md`. Single-line constant change; no new
+  test (behavioural correctness already covered by scrollback /
+  scroll-region tests; perf is a tunable not a contract — no
+  source-grep tripwire per ANTS-1381 hygiene). Full suite
+  656/656 green.
+  Original finding (lane-1 open question, indie-review
+  2026-05-14):
   `m_freeCellBuffers` cap is 4 (`terminalgrid.cpp` — lane-1
   open question). A scrollUp burst of > 4 rows in a frame
   pays one fresh `vector<Cell>(cols)` per row past 4. Measure
