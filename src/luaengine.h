@@ -66,6 +66,15 @@ public:
     void setRecentOutput(const QString &output);
     void setCwd(const QString &cwd);
 
+    // Per-pcall wall-clock budget (default 1500 ms). Test-only knob —
+    // production callers leave it at the default so a normal plugin
+    // gets the full budget; timeout-enforcement tests drop it to a
+    // small value to assert the kill path without sleeping ~1.5 s
+    // per pcall on every CI run. Applies to the next call to
+    // `startPcallBudget()` (i.e. the next outer pcall launched by
+    // `loadScript` or an event firing).
+    void setPcallBudgetMs(qint64 ms) { m_pcallBudgetMs = ms; }
+
 signals:
     void sendToTerminal(const QString &text);
     void showNotification(const QString &title, const QString &message);
@@ -133,6 +142,7 @@ private:
     // matches the m_timedOut pattern above.
     bool m_killed = false;
     qint64 m_pcallDeadlineMs = 0;  // ANTS-1172 — wall-clock deadline.
+    qint64 m_pcallBudgetMs   = 1500;  // Tunable via setPcallBudgetMs().
     QString m_recentOutput;
     QString m_cwd;
 

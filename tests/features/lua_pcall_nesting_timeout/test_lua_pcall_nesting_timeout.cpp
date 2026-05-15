@@ -59,9 +59,14 @@ QString writeTemp(const QString &dir, const QString &basename,
     return path;
 }
 
-// Spec § 4 Invariant 6: kPcallBudgetMs (1500 ms) + LUAI_MAXCCALLS × t_unwind.
-// 500 ms slack covers loaded-CI scheduler jitter.
-constexpr qint64 kBudgetMs = 1500;
+// Spec § 4 Invariant 6: m_pcallBudgetMs (production 1500 ms) +
+// LUAI_MAXCCALLS × t_unwind. The kill-path semantics are independent
+// of the budget value; the test injects a tightened budget via
+// LuaEngine::setPcallBudgetMs() so each pcall completes in well under
+// a second instead of paying ~1.5 s × N runs. 500 ms slack covers
+// loaded-CI scheduler jitter (unchanged from the production budget
+// because jitter doesn't scale with the budget itself).
+constexpr qint64 kBudgetMs = 250;
 constexpr qint64 kSlackMs = 500;
 constexpr qint64 kRuntimeBoundMs = kBudgetMs + kSlackMs;
 
@@ -73,8 +78,9 @@ void runA1(const QString &dir) {
         expect(false, "A1/init", QStringLiteral("LuaEngine::initialize failed"));
         return;
     }
+    engine.setPcallBudgetMs(kBudgetMs);
     // 1e9 inner iterations would take ~minutes uncapped; the wall budget
-    // kicks in at 1.5 s.
+    // kicks in at the test-injected kBudgetMs.
     const QByteArray script =
         "while true do\n"
         "  pcall(function()\n"
@@ -98,9 +104,10 @@ void runA1(const QString &dir) {
                           "returned true after %1ms").arg(elapsed));
     expect(elapsed <= kRuntimeBoundMs,
            "A1b/loop-nested-within-slack",
-           QStringLiteral("loadScript took %1ms (budget %2ms = "
-                          "1500 wall + 500 slack)")
-               .arg(elapsed).arg(kRuntimeBoundMs));
+           QStringLiteral("loadScript took %1ms (bound %2ms = "
+                          "%3 wall + %4 slack)")
+               .arg(elapsed).arg(kRuntimeBoundMs)
+               .arg(kBudgetMs).arg(kSlackMs));
 
     QFile::remove(path);
     engine.shutdown();
@@ -113,6 +120,7 @@ void runA2(const QString &dir) {
         expect(false, "A2/init", QStringLiteral("LuaEngine::initialize failed"));
         return;
     }
+    engine.setPcallBudgetMs(kBudgetMs);
     // Each level wraps the next-deeper call in pcall; at depth 0 the
     // innermost level burns CPU until the wall-clock expires. Depth 100
     // is well under Lua's LUAI_MAXCCALLS default of 200.
@@ -156,6 +164,7 @@ void runA3(const QString &dir) {
         expect(false, "A3/init", QStringLiteral("LuaEngine::initialize failed"));
         return;
     }
+    engine.setPcallBudgetMs(kBudgetMs);
     // First: trigger the kill path with a tiny loop-nested attack.
     const QByteArray bad =
         "while true do\n"
@@ -205,6 +214,7 @@ void runA4(const QString &dir) {
         expect(false, "A4/init", QStringLiteral("LuaEngine::initialize failed"));
         return;
     }
+    engine.setPcallBudgetMs(kBudgetMs);
     // ~10 000 trivial instructions — well under the count-mask threshold.
     const QByteArray script =
         "local x = 0\n"

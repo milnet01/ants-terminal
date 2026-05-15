@@ -467,6 +467,26 @@ hostile-content findings.
 
 ### Changed
 
+- **Test-suite perf injectables — verify floor + Lua pcall budget
+  (ANTS-1377 + ANTS-1378).** Surfaced by the 2026-05-15 in-house
+  test-suite audit (5 parallel lanes — perf, security, dedup,
+  output-friendliness, build cost). Two of the three slowest
+  feature tests had hard-coded production floors that gated their
+  wall time. ANTS-1377 added `VerifyOptions::minPerGateSec` and
+  `minTotalTimeoutSec` (both default 10) to `verifyengine.h`;
+  `Inv2TimeoutKillsHangingGate` drops both to 1 and asserts kill-
+  on-expiry in ~1 s instead of ~10 s. ANTS-1378 added
+  `LuaEngine::setPcallBudgetMs()` (default 1500 ms); the
+  `lua_pcall_nesting_timeout` test sets 250 ms across all four
+  cases (A1 + A2 + A3 + A4). Combined wall-time saving on `ctest`:
+  20.07 s → 13.05 s (−7.0 s real), 37.98 s → 24.08 s (−13.9 s
+  cumulative `features` label). Production callers leave the
+  knobs at their defaults so behaviour is unchanged. Spec for
+  the Lua test updated (`tests/features/lua_pcall_nesting_timeout/spec.md`)
+  to document the test-only injection. Remaining audit findings
+  rolled into ROADMAP under `### 🔬 Test-suite audit fold-in
+  (2026-05-15)` for follow-up.
+
 - **Build-warning debt sweep (ANTS-1373 + ANTS-1367 + ANTS-1368 +
   ANTS-1325).** Cleared the four warning classes that fired on every
   build, dropping `cmake --build build` to a zero-warning floor.

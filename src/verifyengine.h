@@ -54,6 +54,15 @@ struct VerifyOptions {
     QList<GateName> only;            // empty = run every configured gate
     int             maxLogLines = 50;
     int             timeoutSec  = 1200;  // INV-2 default (20 min total)
+    // Test-only floors. Production callers leave these at the default
+    // 10 s — the rationale being a real verify gate (build / tests /
+    // lint) below 10 s is almost certainly mis-configured. Tests
+    // exercising timeout-enforcement behaviour drop these to 1 to
+    // assert kill-on-expiry without sleeping the per-gate floor on
+    // every run. Mirrored in `runVerify` (total clamp) and the
+    // per-gate divisor.
+    int             minPerGateSec      = 10;
+    int             minTotalTimeoutSec = 10;
 };
 
 // Top-level report. `allPassed` is the AND of every gate's

@@ -31,10 +31,14 @@ re-broken.
 
 - **A1 — Loop-nested catch terminates within slack.** Load a script
   that runs `while true do pcall(function() <busy work> end) end`.
-  Measure `loadScript`'s wall-clock. Assert ≤ `1500 + 500 ms`. The
+  Measure `loadScript`'s wall-clock. Assert ≤ `budget + 500 ms`. The
   500 ms slack is for loaded-CI scheduler jitter; the actual unwind
-  is sub-millisecond. **If pre-fix code is present, `loadScript` will
-  never return — CTest TIMEOUT on the bundle is the backstop.**
+  is sub-millisecond. The production budget is 1500 ms; the test
+  injects a tightened budget via `LuaEngine::setPcallBudgetMs()` so
+  the assertion completes in well under one second per case (the
+  kill path is what's under test, not the wall-clock value itself).
+  **If pre-fix code is present, `loadScript` will never return —
+  CTest TIMEOUT on the bundle is the backstop.**
 - **A2 — Source-nested catch terminates within slack.** Recursive
   100-deep `pcall` nesting (per ANTS-1332 § 5 and the ROADMAP entry's
   explicit ask), with the busy work at the innermost level. Same
@@ -85,5 +89,8 @@ completes in a few seconds.
 - Cross-engine interactions — each `LuaEngine` is per-plugin, so a
   rogue plugin can only stall its own VM. The trust contract under
   test here is the per-VM bound, not multi-VM safety.
-- `kPcallBudgetMs` tuning. The spec considers that out of scope; this
-  test asserts behaviour at the current value (1500 ms).
+- `m_pcallBudgetMs` tuning for production callers. The spec considers
+  that out of scope; the production default is 1500 ms. The test
+  injects a smaller value via `setPcallBudgetMs()` purely to keep
+  CI fast — the kill-path semantics are independent of the budget
+  value.

@@ -5340,6 +5340,193 @@ indie-review finding.
   Kind: security.
   Source: indie-review-2026-05-14 (lane-6 L-4).
 
+- 📋 [ANTS-1376] **Claude Code ghost-suggestion auto-submits
+  on Enter — verify Ants Terminal behavior.** Claude Code
+  renders a faded next-step suggestion in its prompt area
+  (terminal cells, drawn via SGR-faded text the cursor sits
+  in). User report 2026-05-15: in Konsole, pressing Enter
+  while a CC ghost-suggestion is visible auto-submits the
+  suggestion as a real prompt — unwanted, because the user
+  did not actually type anything. Verify whether Ants
+  Terminal exhibits the same behavior. If yes, decide
+  whether to match Konsole (parity) or diverge (user
+  implied diverge: bare-Enter on an empty buffer should
+  NOT promote a CC-rendered ghost to a submitted prompt).
+  Likely a CC-side keystroke contract — investigate which
+  bytes Enter sends in this state and whether CC interprets
+  a bare CR/LF as "accept ghost"; may need an upstream
+  filing if it's CC's own ghost-completion handler. No
+  Ants-side fix prescribed yet — needs reproduction first.
+  **Layman:** when Claude Code shows a faded "next thing
+  you might want to type" suggestion in the prompt, pressing
+  Enter in Konsole sends it as a real prompt even though
+  you never typed anything. Check whether Ants does the
+  same and decide what we want.
+  Kind: investigate.
+  Source: user-request-2026-05-15.
+
+### 🔬 Test-suite audit fold-in (2026-05-15)
+
+5-lane in-house audit of the 584-test suite across perf,
+security, duplication, output-friendliness, and build cost.
+Two T1 perf wins shipped inline (ANTS-1377 + ANTS-1378 — see
+CHANGELOG); the cluster-bullets below capture the deferrals.
+Cross-cutting theme: **bundle-wide environment pollution**
+(the `ants_add_gui_bundle` pattern packs 25–40 tests into one
+process, so any test that mutates env vars / `QStandardPaths`
+test-mode without restoring leaks state into siblings) and
+**decayed source-grep tripwires** (~7 tests assert "this
+exact string exists in the source" for one-shot refactors
+that shipped 6+ months ago — pure self-reference).
+
+- 📋 [ANTS-1379] **Test env-pollution sweep — bundle-wide
+  RAII for `qputenv` / `setTestModeEnabled` / `umask`.**
+  ~10 tests call `qputenv("XDG_CONFIG_HOME"|"XDG_DATA_HOME"|
+  "HOME")` without restoring; `tab_color.cpp:221`
+  permanently flips `QStandardPaths::setTestModeEnabled(true)`
+  for the rest of the `test_chrome` bundle;
+  `kwin_position_tracker` mutates KDE/XDG vars unrestored.
+  The `QTemporaryDir` these point at gets destroyed at
+  function exit, leaving subsequent tests with env vars
+  pointing at deleted directories. RAII helpers already
+  exist (`claude_tab_status_indicator:445-448` qScopeGuard,
+  `ui_state_persistence:92-102` Sandbox struct,
+  `tool_detection_engine:28-29` PathScope) — extract to a
+  shared `tests/_support/sandbox.h` and converge all leaking
+  tests on it.
+  **Layman:** test files in the same bundle share one
+  process, and several tests change environment variables
+  without putting them back — leaking state into the next
+  test. Centralise the cleanup so this stops happening.
+  Kind: refactor.
+  Source: test-suite-audit-2026-05-15 (lane B).
+
+- 📋 [ANTS-1380] **`concurrent_writer_lock` predictable
+  `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack
+  exposure.** `tests/features/concurrent_writer_lock/
+  test_concurrent_writer_lock.cpp:69` builds a predictable
+  filename in `/tmp`; the child's `::open(O_RDWR|O_CREAT,
+  0600)` follows symlinks (no `O_NOFOLLOW` / `O_EXCL`).
+  Same defect class as `claude_status_bar_per_tab/
+  test_claude_status_bar_per_tab.cpp:58-61`'s hardcoded
+  `/tmp/projects/dummy/<uuid>.jsonl`. Replace both with
+  `QTemporaryDir`; harden the lock open with
+  `O_NOFOLLOW | O_EXCL`.
+  **Layman:** two tests build predictable temp filenames
+  in `/tmp` instead of using `QTemporaryDir`, and one of
+  them opens the file in a way that follows symlinks —
+  small symlink-attack window on shared `/tmp`.
+  Kind: security.
+  Source: test-suite-audit-2026-05-15 (lane B).
+
+- 📋 [ANTS-1381] **Delete decayed source-grep tripwires
+  (~2000 LoC, zero behavioural coverage loss).** Four
+  `*_extraction` tests freeze one-shot refactors that
+  shipped ≥ 6 months ago (`claude_statusbar_extraction`,
+  `diffviewer_extraction`, `audit_engine_extraction`,
+  `themedstylesheet_extraction`); each greps the new TU
+  for verbatim method signatures and a `≥ 480 LoC` floor.
+  Live behaviour is covered by sibling runtime tests
+  (`claude_status_bar`, `audit_*`, etc.). `audit_drop_alias`
+  (40 LoC) asserts the source contains the regex literal
+  we wrote. `claude_task_list_session_isolation` is a pure
+  comment-anchored grep (asserts strings exist near
+  `// ANTS-1219-INV-N` markers; runtime parser is already
+  covered by `claude_task_list`). Delete all six; keep the
+  GUI-free linkage discipline (`hasGuiInclude` style) by
+  folding it into the surviving runtime tests as a one-line
+  include guard. ~5 fewer link steps per build.
+  **Layman:** several tests check that the source code
+  contains specific strings we wrote — they pass only as
+  long as nobody renames a comment marker. The behaviour
+  they were guarding is already covered by other tests
+  that actually exercise the code. Delete the
+  source-string ones.
+  Kind: refactor.
+  Source: test-suite-audit-2026-05-15 (lane C).
+
+- 📋 [ANTS-1382] **Extract `tests/_support/expect.h` —
+  buffer-on-success + drop `if (runMain != 0) FAIL();`.**
+  ~80 test files reimplement the same `int g_failures;
+  void expect(bool, const char*, const QString&)` helper
+  that unconditionally `fprintf(stderr, "[PASS] …")` on
+  every check. With `--output-on-failure`, ctest dumps the
+  full stderr block including all PASS lines — a 7-PASS +
+  1-FAIL test produces ~12 stderr lines where the FAIL
+  signal is buried. 115 files use `if (runMain() != 0)
+  FAIL();` which adds a 3-line gtest banner with zero
+  diagnostic value (`runMain` already printed [FAIL]).
+  Two-part fix: (a) extract the helper to a shared header
+  with buffer-on-success semantics (PASS labels accumulate
+  silently; flushed only when a FAIL is emitted, as a
+  single `(7/8 ok) FAIL: <list>` summary line); (b)
+  replace the `FAIL()` shim with `ASSERT_EQ(0,
+  runMain())`. Estimated: ~70-90% smaller failure-block
+  output, ~3000 LoC of duplication removed across the
+  suite. Major win for AI-assistant friendliness when
+  reading `ctest --output-on-failure` tails.
+  **Layman:** every test file copy-pastes the same little
+  `expect()` helper that prints `[PASS]` for every check
+  — when a test fails, its log is mostly the PASS lines
+  before the FAIL. Centralise the helper, only print on
+  failure, and you get short readable failure logs.
+  Kind: refactor.
+  Source: test-suite-audit-2026-05-15 (lane D).
+
+- 📋 [ANTS-1383] **Re-enable shared bundle PCH +
+  `gtest_discover_tests POST_BUILD`.** The
+  `target_precompile_headers REUSE_FROM ants-terminal` line
+  was dropped in ANTS-1373 because of a `-Winvalid-pch`
+  rejection (PIC + `QT_OPENGL_LIB` flag delta). On closer
+  inspection: every `*_lib` and `ants-terminal` itself are
+  `POSITION_INDEPENDENT_CODE ON`, so PIC isn't actually a
+  delta; only `QT_OPENGL_LIB` is, and 5 of 6 GUI bundles
+  inherit it via `ants_vt_lib`'s PUBLIC `Qt6::OpenGLWidgets`
+  link. Solution: introduce a separate
+  `add_library(bundle_pch_iface INTERFACE)` carrying a
+  bundle-local PCH, used via `REUSE_FROM bundle_pch_iface`
+  on all 6 GUI bundles — one Qt-aggregate cold-compile
+  instead of six. Pair with `gtest_discover_tests
+  DISCOVERY_MODE POST_BUILD` (currently PRE_TEST forks
+  each binary at every `ctest` start). Estimated build-
+  time saving: ~30-40 s per clean build, ~1.4 s per
+  `ctest` invocation.
+  **Layman:** the precompiled-header optimisation that the
+  main app uses got disabled on the test bundles to fix a
+  warning; turning it back on (with a separate header
+  shared just between bundles) would make test compilation
+  ~30 s faster on a clean build.
+  Kind: perf.
+  Source: test-suite-audit-2026-05-15 (lane E).
+
+- 📋 [ANTS-1384] **Remaining test perf — sleep-free reflow,
+  bench gate, fixture-size caps.** Cluster of smaller perf
+  fixes from the audit: (a) `osc8_apc_memory_caps`
+  `ApcOverflowDropped` reduces overflow margin from `+1024
+  bytes` to `+1` (cap+1 still trips drop) — saves ~1.5 s.
+  (b) `bench_vt_throughput` runs unconditionally despite
+  `LABELS perf` — gate behind `ANTS_PERF_BENCH=ON` or
+  `set_tests_properties(... DISABLED TRUE)`, saves ~1.6 s.
+  (c) `config_reload_loop_safety` 5 × `QThread::msleep(50)`
+  to outrun ext4 mtime granularity — replace with
+  `utimensat`-forced mtime, saves ~250 ms. (d)
+  `threaded_parse_equivalence` byte-by-byte 64 KB fixture
+  → cap to ≤ 256-byte fixtures for the per-byte variant.
+  (e) `verify_changes_engine` Inv3 forks 500 sub-shells
+  via `printf '%.0s.' $(seq 1 200)` per line — write the
+  file directly. (f) `token_usage_engine:47`
+  `QThread::msleep(5)` non-determinism → inject `now()`
+  into `Tracker::reset()`. (g) Hoist a shared
+  `mainwindowSource()` lazy-cache helper for the 62 tests
+  that re-`readAll()` `mainwindow.cpp` (5914 lines) per
+  invocation. Aggregate saving: ~3-4 s per CI run.
+  **Layman:** a half-dozen test files do unnecessarily
+  expensive setup (huge fixtures, real-clock sleeps, shell
+  forks, repeated file reads). Each individually small;
+  together ~3 s of CI tax.
+  Kind: perf.
+  Source: test-suite-audit-2026-05-15 (lane A residual).
+
 ---
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)

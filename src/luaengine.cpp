@@ -165,13 +165,13 @@ void LuaEngine::startPcallBudget() {
     m_killed = false;
     lua_sethook(m_state, &LuaEngine::instructionHook,
                 LUA_MASKCOUNT | LUA_MASKLINE, 100000);
-    // 1.5 s per pcall — big enough to let a normal plugin finish
-    // (most fire-and-forget handlers complete in single-digit ms),
-    // small enough that the user notices a stall as "snappy still"
-    // rather than "frozen." Tunable later if a user-facing hook ends
-    // up needing more.
-    constexpr qint64 kPcallBudgetMs = 1500;
-    m_pcallDeadlineMs = QDateTime::currentMSecsSinceEpoch() + kPcallBudgetMs;
+    // Default 1.5 s per pcall — big enough to let a normal plugin
+    // finish (most fire-and-forget handlers complete in single-digit
+    // ms), small enough that the user notices a stall as "snappy
+    // still" rather than "frozen." `m_pcallBudgetMs` is tunable via
+    // `setPcallBudgetMs()` for tests that exercise the kill path —
+    // production callers never touch it.
+    m_pcallDeadlineMs = QDateTime::currentMSecsSinceEpoch() + m_pcallBudgetMs;
 }
 
 void LuaEngine::registerApi() {

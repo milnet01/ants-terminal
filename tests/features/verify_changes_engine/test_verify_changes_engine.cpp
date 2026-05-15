@@ -65,15 +65,19 @@ TEST(VerifyEngine, Inv1HandRolledConfigWins) {
 TEST(VerifyEngine, Inv2TimeoutKillsHangingGate) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    // sleep 30 will be killed after ~10 s (the floor) when we ask for
-    // a 10 s total budget on a single-gate config. We use exactly 10 s
-    // because INV-2 floors per-gate at kMinPerGateSec (10).
+    // sleep 30 gets killed after ~1 s once we drop both per-gate and
+    // total floors via the test-only injectables on VerifyOptions.
+    // Production callers leave the floors at the 10 s default; this
+    // test asserts the kill-on-expiry path without paying the 10 s
+    // floor on every CI run.
     writeFile(tmp.path(), ".ants/verify.json", R"({
         "build": {"command": "sleep 30", "format": "plain"}
     })");
 
     VerifyEngine::VerifyOptions opts;
-    opts.timeoutSec = 10;  // 10 / 1 gate = 10 s per gate
+    opts.timeoutSec         = 1;  // 1 / 1 gate = 1 s per gate
+    opts.minPerGateSec      = 1;  // override 10 s floor for the per-gate clamp
+    opts.minTotalTimeoutSec = 1;  // override 10 s floor for the total clamp
     const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
 
     auto *g = findGate(const_cast<VerifyEngine::VerifyReport &>(rep),
@@ -84,10 +88,10 @@ TEST(VerifyEngine, Inv2TimeoutKillsHangingGate) {
     EXPECT_EQ(g->exitCode, -1);
     EXPECT_TRUE(g->skippedReason.contains(QLatin1String("timeout")))
         << "skippedReason: " << g->skippedReason.toStdString();
-    // Wall-clock should be in the ballpark of the per-gate timeout
-    // (allow generous slack: ≥ 9 s, ≤ 20 s).
-    EXPECT_GE(g->durationSec, 9.0);
-    EXPECT_LE(g->durationSec, 20.0);
+    // Wall-clock around the 1 s per-gate budget; allow slack for QProcess
+    // start + post-kill drain.
+    EXPECT_GE(g->durationSec, 0.5);
+    EXPECT_LE(g->durationSec, 5.0);
 }
 
 // ---------------------------------------------------------------------------

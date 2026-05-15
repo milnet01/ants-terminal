@@ -19,8 +19,9 @@ constexpr int kHardByteCap   = 16 * 1024;   // INV-3 floor
 constexpr int kMaxLogLinesHi = 500;
 constexpr int kMaxLogLinesLo = 10;
 constexpr int kTimeoutHi     = 1800;
-constexpr int kTimeoutLo     = 10;
-constexpr int kMinPerGateSec = 10;          // INV-2 floor
+// Lower floors live on `VerifyOptions` (minPerGateSec /
+// minTotalTimeoutSec, both default 10) so timeout-enforcement tests
+// can drop them to 1 without redefining production behaviour.
 
 QString gateName(GateName g) {
     switch (g) {
@@ -295,7 +296,10 @@ GateResult runOneGate(const QString &projectPath,
         return r;
     }
 
-    const int perGateMs = qMax(perGateTimeoutSec, kMinPerGateSec) * 1000;
+    // Floor enforcement happens at the caller (`runVerify` clamps via
+    // `opts.minPerGateSec`); runOneGate trusts the value passed in so
+    // tests can drive a sub-floor budget without a second clamp here.
+    const int perGateMs = perGateTimeoutSec * 1000;
     if (!p.waitForFinished(perGateMs)) {
         p.kill();
         p.waitForFinished(2000);
@@ -404,9 +408,9 @@ VerifyReport runVerify(const QString &projectPath,
 
     // Clamp opts to documented ranges.
     int maxLines = qBound(kMaxLogLinesLo, opts.maxLogLines, kMaxLogLinesHi);
-    int timeoutTotal = qBound(kTimeoutLo, opts.timeoutSec, kTimeoutHi);
+    int timeoutTotal = qBound(opts.minTotalTimeoutSec, opts.timeoutSec, kTimeoutHi);
     int perGateSec =
-        qMax(kMinPerGateSec,
+        qMax(opts.minPerGateSec,
              timeoutTotal / qMax(1, configured.size()));
 
     // Apply `only` filter — if non-empty, keep only matching gates.
