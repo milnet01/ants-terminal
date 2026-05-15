@@ -188,6 +188,34 @@ public:
     using ToolHandler = std::function<QString(const QJsonObject &args)>;
     void registerToolProvider(const QString &name, ToolHandler handler);
 
+    // ANTS-1404 — per-tool caller_cwd contract. Recorded once per
+    // tool at registration time and consulted by the dispatcher
+    // before the provider lambda runs. See docs/specs/ANTS-1404.md.
+    enum class CallerCwdContract {
+        // Anchorable + leaks if absent — refuse with
+        // {ok:false, code:"caller_cwd_required"} when caller_cwd is
+        // empty. Group (Phase 3a): get_git_status, last_audit_summary,
+        // git_state, verify_changes.
+        Required,
+        // Anchor when caller_cwd present, focused-tab fallback when
+        // absent. Survey-from-outside legitimate. Default for
+        // unclassified tools.
+        Optional,
+        // Per-tab reads that route on `tab` index *or* caller_cwd.
+        // Phase 3a classifies but does NOT enforce — the routing-
+        // vs-anchoring overlap with ANTS-1392 needs its own spec
+        // pass.
+        TabSpecific,
+        // No per-tab / per-project state; caller_cwd accepted-and-
+        // ignored. Phase 3a does not enforce.
+        ProcessGlobal,
+    };
+
+    // ANTS-1404 — return the classification for `toolName`. Static
+    // table inside claudeintegration.cpp; unknown tools default to
+    // Optional. See docs/specs/ANTS-1404.md.
+    static CallerCwdContract callerCwdContractFor(const QString &toolName);
+
     // ANTS-1357 — shared with the MainWindow lambdas that emit this
     // exact envelope when m_remoteControl is null (transient startup
     // window). The idempotent-read cache rejects this literal at

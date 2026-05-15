@@ -2659,13 +2659,45 @@ void ClaudeIntegration::onMcpConnection() {
                 // (not zero). Stop right before recordMcpTrace below.
                 QElapsedTimer mcpTraceTimer;
                 mcpTraceTimer.start();
+                // ANTS-1404 — per-tool caller_cwd contract check.
+                // Runs BEFORE the cache lookup so a refused call
+                // doesn't pollute the cache, and BEFORE the
+                // get_session_info inline branch so the contract
+                // applies uniformly. INV-2: tools classified Required
+                // refuse with {ok:false, code:"caller_cwd_required"}
+                // when caller_cwd is absent — closes the silent
+                // focused-fallback leak (2026-05-15 cross-session
+                // report). Other categories (Optional, TabSpecific,
+                // ProcessGlobal) are no-ops in Phase 3a.
+                const CallerCwdContract contract =
+                    callerCwdContractFor(toolName);
+                const QString callerCwd =
+                    argsObj.value(QStringLiteral("caller_cwd"))
+                        .toString();
+                if (contract == CallerCwdContract::Required &&
+                    callerCwd.isEmpty()) {
+                    QJsonObject env;
+                    env["ok"]    = false;
+                    env["code"]  = QStringLiteral("caller_cwd_required");
+                    env["error"] = QString(
+                        "%1: caller_cwd is required for this tool "
+                        "(ANTS-1404). Pass your $PWD as caller_cwd "
+                        "so the tool routes to your project rather "
+                        "than whichever tab Ants has focused.")
+                        .arg(toolName);
+                    responseText = QString::fromUtf8(
+                        QJsonDocument(env)
+                            .toJson(QJsonDocument::Compact));
+                    toolHandled = true;
+                }
                 // ANTS-1357 — short-TTL idempotent-read cache lookup
                 // happens before dispatch. Only the 4 allowlisted tools
                 // hit this path (isIdempotentReadTool); everything else
                 // falls through to the registry below. INV-1: cache
                 // hit response is byte-identical to a miss at stampMs.
                 bool cachedHit = false;
-                const bool cacheable = isIdempotentReadTool(toolName);
+                const bool cacheable =
+                    !toolHandled && isIdempotentReadTool(toolName);
                 if (cacheable) {
                     const QString hit = tryGetIdempotentReadCache(
                         toolName, argsObj);
@@ -2680,12 +2712,11 @@ void ClaudeIntegration::onMcpConnection() {
                 // m_currentTool, m_contextPercent, m_changedFiles,
                 // m_activeSessionId) rather than delegating to an
                 // external provider. All 12 outward-delegate tools
-                // dispatch via the registry below. The wrapping
-                // `if (!cachedHit)` guard is the ANTS-1357 cache-hit
-                // short-circuit — keeps the original branch shape
-                // unchanged for the McpProviderRegistry INV-5
-                // dispatcher-collapsed regex.
-                if (!cachedHit) {
+                // dispatch via the registry below. Guard widened to
+                // `!toolHandled` so a prior refusal (ANTS-1404
+                // contract check) or cache hit (ANTS-1357) short-
+                // circuits this block.
+                if (!toolHandled) {
                     if (toolName == "get_session_info") {
                         QJsonObject info;
                         info["state"] = static_cast<int>(m_state);
@@ -2819,6 +2850,38 @@ QString ClaudeIntegration::wrapMcpData(const QString &toolName,
     safeTool.replace(QLatin1Char('"'),  QStringLiteral("&quot;"));
     return QStringLiteral("<ants_mcp_data tool=\"%1\">%2</ants_mcp_data>")
         .arg(safeTool, sanitised);
+}
+
+// --- ANTS-1404 — per-tool caller_cwd contract ---
+
+// Static classification table. Adding a new tool without an entry
+// defaults to Optional (INV-4) — gracious degradation so a typo
+// doesn't refuse calls. Required-tier entries are the four whose
+// silent focused-fallback is the 2026-05-15 cross-session leak shape.
+// See docs/specs/ANTS-1404.md for the full classification rationale.
+ClaudeIntegration::CallerCwdContract
+ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
+    using C = CallerCwdContract;
+    // Required — refuse with caller_cwd_required when absent.
+    if (toolName == QStringLiteral("get_git_status"))     return C::Required;
+    if (toolName == QStringLiteral("last_audit_summary")) return C::Required;
+    if (toolName == QStringLiteral("git_state"))          return C::Required;
+    if (toolName == QStringLiteral("verify_changes"))     return C::Required;
+    // TabSpecific — classified but not enforced in Phase 3a. The
+    // ANTS-1392 routing semantics (caller_cwd as a tab-routing key)
+    // need their own spec pass before refusal makes sense.
+    if (toolName == QStringLiteral("get_scrollback"))     return C::TabSpecific;
+    if (toolName == QStringLiteral("get_text"))           return C::TabSpecific;
+    if (toolName == QStringLiteral("get_last_command"))   return C::TabSpecific;
+    if (toolName == QStringLiteral("get_environment"))    return C::TabSpecific;
+    if (toolName == QStringLiteral("get_cwd"))            return C::TabSpecific;
+    // ProcessGlobal — caller_cwd accepted and ignored.
+    if (toolName == QStringLiteral("mcp_trace"))          return C::ProcessGlobal;
+    if (toolName == QStringLiteral("token_usage"))        return C::ProcessGlobal;
+    if (toolName == QStringLiteral("tab_list"))           return C::ProcessGlobal;
+    if (toolName == QStringLiteral("get_session_info"))   return C::ProcessGlobal;
+    // Everything else — Optional (default).
+    return C::Optional;
 }
 
 // --- ANTS-1357 — MCP idempotent-read cache helpers ---
