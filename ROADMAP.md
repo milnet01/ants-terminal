@@ -5961,6 +5961,136 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: implement.
   Source: in-session-2026-05-15 (user request).
 
+- 📋 [ANTS-1398] **`roadmap_query` filters out header-rollup
+  bullets server-side.** The `active`-filtered response
+  (recommended for planning queries) returns ~10 bullets with
+  empty `id` / `headline` / `kind` mixed into the structured
+  list — these are the rollup headings under emoji section
+  banners (e.g. "Trust-model gaps in IPC sockets",
+  "Doc/code drift across four lanes"). Clients that want
+  actionable items have to scan the array and drop them.
+  Fix: either filter them out of `bullets[]` server-side
+  when `status` is set, or move them to a separate
+  `sections[]` envelope so the structure is explicit. Token
+  savings on a 146-bullet response: ~600–800 B (10 entries
+  × ~70 B). Verify against `parseStatusFilter` semantics so
+  back-compat callers that *do* want them can opt in via
+  a new `include_section_headers:true` flag.
+  **Layman:** the roadmap-lookup tool returns some "section
+  heading" placeholders alongside the real items; filter
+  them out so callers get only actionable entries.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (self-observed during
+  the ANTS-1355 / 1396 / 1395 bundle).
+
+- 📋 [ANTS-1399] **`tool_info(name)` MCP verb — fetch a
+  single tool's descriptor.** `tools/list` returns ~30 tool
+  descriptors (~5 KiB compressed). When the assistant only
+  needs to refresh memory on one tool's schema (e.g. "what
+  args does `verify_changes` take?"), there's no cheaper
+  read than the full list. Adds `tool_info` taking
+  `{name}` returning the same descriptor shape (`name`,
+  `description`, `inputSchema`) for just the requested tool.
+  Unknown name → `{ok:false, code:"unknown_tool",
+  available:[...]}`. Pairs with ANTS-1297 (lazy
+  registration); ANTS-1399 is the lighter-weight prerequisite
+  that doesn't require restructuring the registry.
+  RAM: zero (looks up existing in-memory descriptors).
+  **Layman:** add a way for Claude to ask about *one* MCP
+  tool's args instead of re-loading the full ~5 KiB
+  tools/list every time.
+  Kind: implement.
+  Source: in-session-2026-05-15 (self-observed).
+
+- 📋 [ANTS-1400] **`caller_cwd` resolution diagnostic mode.**
+  ANTS-1396's silent-fallback leak in `terminalForCaller`
+  was easy to miss because the resolution path is opaque to
+  the caller — you can't ask "which tab would this call
+  resolve to?" without invoking the actual tool. Add either
+  (a) an env-var `ANTS_MCP_DIAGNOSE_CALLER_CWD=1` that
+  attaches a `_diagnose: {source: ExplicitMatch | EmptyFallback
+  | NoMatch | Unresolvable, resolved_cwd, tab_index}` field
+  to every tab-anchored response, or (b) a `caller_cwd_info`
+  MCP verb taking `caller_cwd` and returning the same
+  diagnostic envelope without invoking any underlying tool.
+  Option (b) is the lighter touch; preferred. Use case: the
+  next time another CC session reports "I got the wrong
+  project's data", the assistant can call `caller_cwd_info`
+  to confirm which resolution branch fired.
+  **Layman:** add a way to ask Ants "which of my tabs would
+  this caller_cwd resolve to?" so cross-project leaks are
+  diagnosable instead of silent.
+  Kind: implement.
+  Source: in-session-2026-05-15 (follow-up to ANTS-1396).
+
+- 📋 [ANTS-1401] **Central `ResolvedRoot` helper for the
+  `caller_cwd` convention.** Three call paths handle
+  caller_cwd differently: `terminalForCaller` (now correct
+  after ANTS-1396), `resolveRootCanonical(main, req)` in
+  remotecontrol.cpp (echoes caller's canonical cwd —
+  correct), and `session_memory`'s cwd arg (ANTS-1336
+  documents the bypass — open). A central helper returning a
+  tagged variant — `ResolvedRoot { QString cwd; enum
+  Source { ExplicitMatch, EmptyFallback, NoMatch,
+  Unresolvable }; std::optional<int> tabIndex; }` — would
+  make audits cheaper and prevent future regressions like
+  ANTS-1396 by collapsing all three paths into one source
+  of truth. Refactor; not behavioural change. Pairs with
+  ANTS-1400 (the diagnostic envelope is just the `Source`
+  enum surfaced through MCP).
+  **Layman:** there are three places in the code that
+  decode the same `caller_cwd` argument with subtly
+  different rules. Collapse them into one helper so a fix
+  in one place fixes everywhere.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (self-observed during
+  the ANTS-1396 audit).
+
+- 📋 [ANTS-1402] **Share per-call observation point between
+  `mcp_trace` and `token_usage`.** Today the dispatch site
+  in `claudeintegration.cpp:2710–2719` calls
+  `m_tokenUsage.recordCall(...)` AND `recordMcpTrace(...)`
+  for every successful tools/call — both consume the same
+  `argBytes`, `outBytes`, `durUs`, `cachedHit` derived in
+  the same block. Each accumulator is independent; the
+  redundant call could be collapsed into a single
+  `recordDispatch()` that both observers tee from. Cost
+  saving is small (~10 ns per call); the real value is
+  structural — adding a third observer (e.g. a future
+  per-cwd telemetry tap) becomes a one-liner instead of a
+  third recordCall. Pairs with ANTS-1399 if a similar
+  pattern emerges for `tools/list`.
+  **Layman:** the dispatch site updates two trackers
+  side-by-side with the same numbers; merge them into a
+  single observation point so adding a third tracker
+  later is trivial.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (self-observed while
+  shipping ANTS-1355 v2).
+
+- 📋 [ANTS-1403] **Wrap-overhead framing compression — v3
+  on ANTS-1294.** With ANTS-1355 v2 shipped, the
+  `total_wrap_bytes` envelope field now exposes how much of
+  cumulative `bytes_out` is `<ants_mcp_data tool="…">…
+  </ants_mcp_data>` framing rather than payload. Decision
+  trigger: if a session's `total_wrap_bytes / sum(bytes_out)`
+  exceeds ~10 %, the wrap is paying-rent-poorly. Two
+  candidate v3 designs: (a) abbreviate the tag to
+  `<amd t="…">…</amd>` (saves ~22 B/call); (b) move the
+  tool-name to a stable per-session prelude
+  (`<!--ANTS_MCP_DATA_TOOL=verify_changes-->\n…`) so each
+  payload only carries the `\n` separator. Option (a) is
+  the simpler migration. Out of scope today; specifies the
+  trigger and the candidate paths so future work has the
+  context. Pairs with ANTS-1294 sanitisation invariants.
+  **Layman:** the wrapper Ants puts around each MCP
+  response adds a small overhead per call. If telemetry
+  ever shows that overhead climbing above ~10 %, this is
+  the followup that shortens it.
+  Kind: optimize.
+  Source: in-session-2026-05-15 (deferred from
+  ANTS-1355 v2's spec § 8 / § 9).
+
 ---
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
