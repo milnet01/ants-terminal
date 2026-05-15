@@ -205,6 +205,37 @@ public:
         return r;
     }
 
+    // ANTS-1347 — path-side byte hygiene for the `cwd` field on
+    // `launch` and `new-tab`. Reject-not-strip semantics: silently
+    // mutating a path would change its identity and mislead the
+    // caller; reject the request instead and let the caller fix it.
+    //
+    // Rejects:
+    //   - C0 controls U+0000..U+001F (all of them — HT/LF/CR are
+    //     never legitimate in a path argument; the filterControlChars
+    //     allowlist for those bytes applies only to text payloads).
+    //   - Backslash U+005C (Windows-path-confusion vector — every
+    //     Ants path is forward-slash-separated, no exceptions).
+    //   - C1 controls U+0080..U+009F (path-side counterpart to
+    //     ANTS-1335's byte-strip on text payloads).
+    //
+    // NFC-normalises the input before scanning so a decomposed-form
+    // path (e.g. "café" as 'c' 'a' 'f' 'e' U+0301) doesn't sneak
+    // around the U+0080..U+009F check via the combining-acute byte.
+    //
+    // Defined inline so feature tests can exercise it without
+    // pulling in the full MainWindow dep chain.
+    static inline bool cwdHasBadByte(const QString &raw) {
+        const QString nfc = raw.normalized(QString::NormalizationForm_C);
+        for (QChar c : nfc) {
+            const ushort u = c.unicode();
+            if (u < 0x20) return true;                  // C0
+            if (u == 0x5C) return true;                 // backslash
+            if (u >= 0x80 && u <= 0x9F) return true;    // C1
+        }
+        return false;
+    }
+
     // ANTS-1244: read-only verbs promoted to public so the MCP server
     // in ClaudeIntegration can delegate to them without duplicating
     // bodies. Provider lambdas in MainWindow::setupClaudeMcpProviders

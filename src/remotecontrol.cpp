@@ -47,6 +47,14 @@
 // so the Claude hook + MCP server start paths can share the same
 // helper. The file-scope static here was unified with that lift.
 
+namespace {
+// Forward decl for early callers (ANTS-1347 cmdLaunch / cmdNewTab,
+// post-bundle-A). Definition lives in the anonymous namespace below
+// next to the rest of the git_state helpers. The two anon-namespace
+// blocks in this TU share internal linkage so this forward decl
+// resolves at the same `resolveRootCanonical` symbol.
+QString resolveRootCanonical(MainWindow *main);
+}  // namespace
 
 RemoteControl::RemoteControl(MainWindow *main, QObject *parent)
     : QObject(parent), m_main(main) {}
@@ -546,24 +554,49 @@ QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
     const QString filteredCommand = QString::fromUtf8(payload);
 
     const QString cwd = req.value("cwd").toString();
-    // Indie-review 2026-05-13: reject control bytes / backslashes in
-    // `cwd` (CWE-22 / CWE-78 parity with workspace-search, file-outline,
-    // git_state). Same-UID trust model holds today, but the verb is the
-    // seam Claude Code (and any future MCP) crosses with user-supplied
-    // input. Validate at the boundary, not the kernel.
-    auto cwdHasControl = [](const QString &s) {
-        for (QChar c : s)
-            if (c.unicode() < 0x20 || c == QLatin1Char('\\')) return true;
-        return false;
-    };
-    if (!cwd.isEmpty() && cwdHasControl(
-            cwd.normalized(QString::NormalizationForm_C))) {
-        QJsonObject errOut;
-        errOut["ok"] = false;
-        errOut["error"] = QStringLiteral(
-            "launch: cwd contains control or backslash characters");
-        errOut["code"] = QStringLiteral("bad_cwd");
-        return QJsonDocument(errOut);
+    // ANTS-1347 — `cwd` hygiene + anchor.
+    //
+    // Byte hygiene (always): the shared cwdHasBadByte helper rejects
+    // C0 (U+0000..U+001F), backslash, and C1 (U+0080..U+009F). The
+    // C1 leg is the path-side counterpart to ANTS-1335's byte-strip
+    // on text payloads — same threat (rc/MCP seam delivering
+    // untrusted bytes), different semantics (reject-not-strip for
+    // paths, where silent mutation would mislead the caller).
+    //
+    // Anchor (default-on): non-empty cwd routes through
+    // PathValidation::validatePath against the focused project root,
+    // matching every other path-typed rc/MCP verb post-ANTS-1295.
+    // The optional `allow_outside_root: true` opt-out skips the
+    // anchor while keeping byte hygiene — for callers (Lua plugins,
+    // ants @ launch CLI) that legitimately need to chdir outside any
+    // project root.
+    if (!cwd.isEmpty()) {
+        if (RemoteControl::cwdHasBadByte(cwd)) {
+            QJsonObject errOut;
+            errOut["ok"] = false;
+            errOut["error"] = QStringLiteral(
+                "launch: cwd contains control or backslash characters");
+            errOut["code"] = QStringLiteral("bad_cwd");
+            return QJsonDocument(errOut);
+        }
+        const bool allowOutside =
+            req.value("allow_outside_root").toBool(false);
+        if (!allowOutside) {
+            const QString root = resolveRootCanonical(m_main);
+            if (root.isEmpty()) {
+                QJsonObject errOut;
+                errOut["ok"] = false;
+                errOut["error"] = QStringLiteral(
+                    "launch: no focused project root (set "
+                    "allow_outside_root:true to chdir outside any project)");
+                errOut["code"] = QStringLiteral("no_project");
+                return QJsonDocument(errOut);
+            }
+            const auto check = PathValidation::validatePath(
+                cwd, root, QStringLiteral("launch"),
+                QStringLiteral("cwd"));
+            if (check.bad) return QJsonDocument(check.err);
+        }
     }
     const int idx = m_main->newTabForRemote(cwd, filteredCommand);
     out["ok"] = true;
@@ -601,20 +634,35 @@ QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
         filteredCommand = QString::fromUtf8(payload);
     }
 
-    // Indie-review 2026-05-13: cwd hardening (mirror cmdLaunch).
-    auto cwdHasControl = [](const QString &s) {
-        for (QChar c : s)
-            if (c.unicode() < 0x20 || c == QLatin1Char('\\')) return true;
-        return false;
-    };
-    if (!cwd.isEmpty() && cwdHasControl(
-            cwd.normalized(QString::NormalizationForm_C))) {
-        QJsonObject errOut;
-        errOut["ok"] = false;
-        errOut["error"] = QStringLiteral(
-            "new-tab: cwd contains control or backslash characters");
-        errOut["code"] = QStringLiteral("bad_cwd");
-        return QJsonDocument(errOut);
+    // ANTS-1347 — `cwd` hygiene + anchor. See cmdLaunch for the
+    // full rationale; this verb mirrors the same flow.
+    if (!cwd.isEmpty()) {
+        if (RemoteControl::cwdHasBadByte(cwd)) {
+            QJsonObject errOut;
+            errOut["ok"] = false;
+            errOut["error"] = QStringLiteral(
+                "new-tab: cwd contains control or backslash characters");
+            errOut["code"] = QStringLiteral("bad_cwd");
+            return QJsonDocument(errOut);
+        }
+        const bool allowOutside =
+            req.value("allow_outside_root").toBool(false);
+        if (!allowOutside) {
+            const QString root = resolveRootCanonical(m_main);
+            if (root.isEmpty()) {
+                QJsonObject errOut;
+                errOut["ok"] = false;
+                errOut["error"] = QStringLiteral(
+                    "new-tab: no focused project root (set "
+                    "allow_outside_root:true to chdir outside any project)");
+                errOut["code"] = QStringLiteral("no_project");
+                return QJsonDocument(errOut);
+            }
+            const auto check = PathValidation::validatePath(
+                cwd, root, QStringLiteral("new-tab"),
+                QStringLiteral("cwd"));
+            if (check.bad) return QJsonDocument(check.err);
+        }
     }
     const int idx = m_main->newTabForRemote(cwd, filteredCommand);
     out["ok"] = true;

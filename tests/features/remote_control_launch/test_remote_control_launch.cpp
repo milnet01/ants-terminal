@@ -1,9 +1,9 @@
 // Remote-control `launch` — source-grep regression test. See spec.md.
 
+#include "../../_support/srcgrep.h"
+
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 
 
@@ -18,20 +18,14 @@
 #error "SRC_MAIN_CPP compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
+static int runMain() {
+    const std::string rc  = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string mwc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mc  = ants_test::slurpFile(SRC_MAIN_CPP);
+    if (rc.empty() || mwc.empty() || mc.empty()) {
+        std::fprintf(stderr, "cannot open source files\n");
         std::exit(2);
     }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
-
-static int runMain() {
-    const std::string rc  = slurp(SRC_RC_CPP);
-    const std::string mwc = slurp(SRC_MAINWINDOW_CPP);
-    const std::string mc  = slurp(SRC_MAIN_CPP);
 
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -46,16 +40,16 @@ static int runMain() {
         fail("INV-1: dispatch must route \"launch\" to cmdLaunch");
     }
 
-    // INV-2 + INV-3 + INV-4: cmdLaunch shape.
-    size_t lPos = rc.find("RemoteControl::cmdLaunch");
-    if (lPos == std::string::npos) {
+    // INV-2 + INV-3 + INV-4: cmdLaunch shape. Brace-matched body
+    // slurp via the shared srcgrep.h helper (ANTS-1386) so this
+    // test stays robust against future body growth — the previous
+    // 3500-char fixed window broke during ANTS-1347 when the
+    // validatePath block landed.
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdLaunch");
+    if (body.empty()) {
         fail("INV-2a: RemoteControl::cmdLaunch definition missing");
     } else {
-        // Window expanded to 3500 chars in 2026-05-13 — cmdLaunch body
-        // grew when cwd validation (CWE-22 hardening) was added.
-        // 0.7.52 had bumped it from the original to 3000 when
-        // filterControlChars landed.
-        std::string body = rc.substr(lPos, 3500);
         if (body.find("isString()") == std::string::npos) {
             fail("INV-2b: cmdLaunch must validate `command` via isString()");
         }
@@ -91,17 +85,17 @@ static int runMain() {
     }
 
     // INV-5: newTabForRemote uses sendToPty (raw bytes, no auto-\n).
-    size_t ntPos = mwc.find("MainWindow::newTabForRemote");
-    if (ntPos == std::string::npos) {
+    const std::string ntBody =
+        ants_test::slurpFunctionBody(mwc, "MainWindow::newTabForRemote");
+    if (ntBody.empty()) {
         fail("INV-5a: MainWindow::newTabForRemote definition missing");
     } else {
-        std::string body = mwc.substr(ntPos, 2500);
-        if (body.find("sendToPty(") == std::string::npos) {
+        if (ntBody.find("sendToPty(") == std::string::npos) {
             fail("INV-5b: newTabForRemote must use sendToPty (raw bytes) for "
                  "the deferred command write — keeps the documented "
                  "\"caller owns newline\" contract honest");
         }
-        if (body.find("writeCommand(") != std::string::npos) {
+        if (ntBody.find("writeCommand(") != std::string::npos) {
             fail("INV-5c (neg): newTabForRemote must NOT use writeCommand — "
                  "writeCommand auto-appends \\n, which would silently turn "
                  "every new-tab --remote-command into a launch and break "

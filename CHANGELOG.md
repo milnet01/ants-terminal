@@ -86,6 +86,35 @@ hostile-content findings.
   hook RPC; a peer dribbling 1 byte every 4.9 s with
   restart-on-read would hold the connection indefinitely.
   Comment-only fix; no behaviour change.
+- **`cwd` anchor on `cmdLaunch` / `cmdNewTab` via
+  `PathValidation::validatePath` (ANTS-1347, lane-2 M3 deferral).**
+  Both rc verbs accepted a `cwd` field with only an inline
+  control-byte/backslash check, no project-root anchor — same-UID
+  rc/MCP peers could open new tabs at `/etc`, `/proc/self/fd`,
+  `/var/log/syslog`, or any reachable directory. Every other
+  path-typed rc/MCP verb (file_outline, workspace_search,
+  git_state, debt_sweep_apply_fix, indie_review_corroborate,
+  cold_eyes_cross_doc_diff) routes through
+  `PathValidation::validatePath` post-ANTS-1295; these two were
+  the outliers. Fix: lift the two per-verb `cwdHasControl`
+  lambdas to a shared `RemoteControl::cwdHasBadByte` static
+  inline (which also rejects C1 U+0080..U+009F — the path-side
+  counterpart to ANTS-1335's byte strip on text payloads), then
+  route the `cwd` field through `PathValidation::validatePath`
+  by default. New optional `allow_outside_root: true` opt-out
+  preserves the legitimate chdir-anywhere workflow (Lua plugins
+  opening a support-bundle directory, `ants @ launch` CLI
+  scripts pointing at `/tmp/x`). On anchor reject the verb
+  emits the uniform `{code:"bad_path"}` envelope; on byte-
+  hygiene reject the existing `{code:"bad_cwd"}` code is
+  retained for the different class. `PathValidation::validatePath`
+  call-site count rises from 8 (ANTS-1295) to 10. Spec at
+  `docs/specs/ANTS-1347.md`; regression test at
+  `tests/features/rc_launch_cwd_anchor/` (7 CB-* engine + 5
+  WI-* source-grep; bundled into `test_core`). The existing
+  `remote_control_launch` test migrated from
+  `rc.substr(lPos, 3500)` to `slurpFunctionBody` (ANTS-1386)
+  since the cmdLaunch body grew past the fixed window.
 - **`/tmp` socket-path fallback hardening (ANTS-1365,
   lane-2 M1 deferral).** `RemoteControl::defaultSocketPath`
   fell back to `/tmp/ants-terminal-<uid>.sock` when

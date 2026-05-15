@@ -5037,7 +5037,7 @@ class; the deferrals below cover the rest.
   Kind: perf.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1347] **`cmdLaunch` / `cmdNewTab` `cwd` arg not
+- ✅ [ANTS-1347] **`cmdLaunch` / `cmdNewTab` `cwd` arg not
   validatePath'd (lane-2 M3).** `remotecontrol.cpp:506–525,
   562–576`. Only `hasControlOrBackslash` is checked. Same-UID
   trust permits any reachable directory — `/etc`, `/var/log`,
@@ -5556,6 +5556,140 @@ that shipped 6+ months ago — pure self-reference).
   together ~3 s of CI tax.
   Kind: perf.
   Source: test-suite-audit-2026-05-15 (lane A residual).
+
+- 📋 [ANTS-1386] **Migrate remaining fixed-window source-grep tests
+  to `tests/_support/srcgrep.h::slurpFunctionBody`.** ANTS-1348
+  surfaced that `tests/features/remote_control_get_text/` used
+  `rc.substr(gtPos, 2500)` to slurp `cmdGetText`'s body for the
+  invariant greps. When the body grew past 2500 chars during the
+  ANTS-1348 patch, INV-5 ("response carries 'bytes' field") fell
+  outside the window and falsely failed. Band-aid in that PR was
+  bumping the window to 3500; permanent fix landed as
+  `tests/_support/srcgrep.h` (`slurpFunctionBody` walks matching
+  braces with string/char/line-comment/block-comment awareness).
+  `remote_control_get_text` migrated as a worked example. A grep
+  for `rc.substr(.*[Pp]os.*, [0-9]+)` and similar fixed-window
+  patterns across `tests/features/` returns several hits; each
+  needs migrating to the helper before the next body-growth
+  regression. Low-priority chore; landed incrementally as those
+  tests are touched.
+  **Layman:** several source-grep regression tests slurp a fixed
+  number of chars of a function body to check invariants. As
+  functions grow, the assertions silently fall outside the
+  slurped window. We added a brace-matched helper; migrate the
+  remaining tests to use it.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (ANTS-1348 implementation).
+
+- 📋 [ANTS-1387] **`test_core` link closure limitation —
+  document or restructure.** `ants_core_lib` includes
+  `vtstream.cpp` (which uses `VtParser` from `ants_vt_lib`),
+  `remotecontrol.cpp` (which uses `AuditEngine`, `FeatureCoverage`
+  not in the lib's closure), and `debtsweepengine.cpp` (which uses
+  `FeatureCoverage`). `test_core` links only `ants_core_lib`, so
+  any test in `test_core` that references a symbol from those
+  `.cpp` files triggers an undefined-reference cascade at link
+  time. Today the bundle gets away with it because every existing
+  test exercises only static-inline helpers from the matching
+  `.h` files — but it's a footgun for any future behavioural
+  test (caught during ANTS-1365 when SD-6 tried to call
+  `RemoteControl::defaultSocketPath`). Options: (a) add the
+  missing libs to `test_core` link line; (b) move pure functions
+  to header-inline; (c) document the constraint in
+  `tests/_support/README` (probably the cheapest fix). Pick after
+  the next time we need a behavioural test on something in
+  `remotecontrol.cpp`.
+  **Layman:** the `test_core` test bundle has a sneaky link
+  limitation — tests can only call functions that live in
+  headers, not function bodies in `remotecontrol.cpp`. Document
+  it or restructure the libs.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (ANTS-1365 implementation).
+
+- 📋 [ANTS-1390] **MCP path-tool scope excludes `~/.claude/`
+  global config tree.** `workspace_search`, `file_outline`, and
+  `verify_changes` all anchor against the focused tab's project
+  root (`resolveRootCanonical`), which is correct for project
+  work but unusable when a user is editing global Claude Code
+  config — skills, agents, commands, the global CLAUDE.md — under
+  `~/.claude/`. Cross-session report 2026-05-15: a CC session
+  asked to streamline `~/.claude/skills/` while cwd was
+  `/mnt/Games`; workspace_search would have been the natural tool
+  but scope rejected, so the assistant fell back to `grep -r` via
+  Bash and burned ~250-4500 extra tokens per query. Three
+  remediations to consider, in increasing intrusiveness:
+  (1) New `lane` sentinel like `~global` / `~claude-config` that
+  resolves to `~/.claude/` regardless of cwd — fits the existing
+  `lane` shape; tool descriptors gain one documented value.
+  (2) Accept absolute paths outside the workspace root behind a
+  per-tool `allow_outside_root:true` opt-out (mirroring the
+  ANTS-1347 path-anchor opt-out for `cmdLaunch.cwd`) — most
+  general but requires per-tool plumbing.
+  (3) Add a separate `mcp__ants__global_config_search` tool
+  hardcoded to `~/.claude/` — most discoverable, smallest blast
+  radius, but adds surface area.
+  In all cases: update every path-tool's MCP descriptor to spell
+  out the scope rule explicitly ("paths must resolve under the
+  focused project root" — currently the only hint is the lane
+  param's "Subdir under repo root" gloss, easy to miss for paths
+  passed via `path=` or `file=`).
+  Related: `verify_changes` for skill-files would benefit from a
+  frontmatter-parses + cross-references-resolve check (no
+  build/test/lint to run on markdown), but that's a follow-up
+  ticket once the scope problem is fixed.
+  **Layman:** the MCP search / outline / verify tools all assume
+  you're inside a project; they refuse to look at the global
+  Claude config under `~/.claude/`. Add a way to point them at
+  home-relative paths, or document the limit clearly so the
+  assistant doesn't waste tokens trying.
+  Kind: refactor.
+  Source: cross-session-report-2026-05-15.
+
+- 📋 [ANTS-1389] **MCP `caller_cwd` schema discoverability gap on
+  ANTS-1372-gated verbs.** `mcp__ants__verify_changes` (and the
+  other mutating verbs gated by `RcGate::checkCallerCwd`:
+  `indie_review_fold_in`, `cold_eyes_fold_in`,
+  `debt_sweep_apply_fix`, `debt_sweep_defer`, `session_memory`
+  set/delete) refuse without `caller_cwd` in the request body:
+  `{ok:false, error:"verify_changes: caller_cwd argument
+  required (pass your $PWD; refuses on mismatch with focused
+  tab)", code:"cwd_missing"}`. But the tool descriptor's JSON
+  schema doesn't declare `caller_cwd` as a parameter — Claude
+  Code's MCP client doesn't surface it as an argument the
+  assistant should pass, so the first call always fails. Fix:
+  add `caller_cwd` (string, required) to every ANTS-1372-gated
+  verb's `parameters.properties` in the MCP tool descriptor.
+  Then the assistant's tool-call codegen will fill it
+  automatically. Discovered 2026-05-15 mid-session when trying
+  to use `verify_changes` for the ANTS-1347 build verification.
+  **Layman:** the new MCP gate that prevents cross-project
+  writes asks for a `caller_cwd` argument, but the tool's
+  documented schema doesn't list it — so the first attempt
+  always fails. Add the field to the schema so Claude Code's
+  client populates it automatically.
+  Kind: fix.
+  Source: in-session-2026-05-15 (ANTS-1347 implementation).
+
+- 📋 [ANTS-1388] **`cmake --build --quiet` in CLAUDE.md doesn't
+  work.** CLAUDE.md's "token-frugal build invocations" block
+  prescribes `cmake --build build --quiet 2>&1 | tail -20` but
+  `--quiet` is not a valid flag for `cmake --build` (cmake rejects
+  it with the full usage banner — wastes the assistant's first
+  build attempt every session). Most likely the original author
+  meant `cmake --build build -- --quiet` (passing `--quiet` to
+  the native tool, e.g. Ninja `--quiet` is a no-op since Ninja
+  is already quiet, GNU Make has `--silent`). Two-line fix:
+  drop `--quiet` from the documented invocation, OR change the
+  recipe to use `2>&1 | tail -20` alone (which already
+  accomplishes the token-frugal goal). Also update the
+  CMakePresets-shipped form. CLAUDE.md edit + verify against a
+  fresh shell.
+  **Layman:** the project README tells you to run
+  `cmake --build … --quiet` to keep build output short, but
+  cmake doesn't accept `--quiet` — every assistant that follows
+  the doc wastes a build attempt before noticing. Fix the doc.
+  Kind: doc.
+  Source: in-session-2026-05-15.
 
 ---
 
