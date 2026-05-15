@@ -33,11 +33,24 @@ Tracker::Tracker() {
 
 void Tracker::recordCall(const QString &toolName,
                          qint64         bytesIn,
-                         qint64         bytesOut) {
+                         qint64         bytesOut,
+                         qint64         wrapBytes,
+                         qint64         durationUs) {
     auto &c = m_counters[toolName];
-    c.nCalls   += 1;
-    c.bytesIn  += bytesIn;
-    c.bytesOut += bytesOut;
+    // ANTS-1355 INV-4: sentinel handling for min/max — overwrite
+    // unconditionally on the first record, then min/max thereafter.
+    if (c.nCalls == 0) {
+        c.durationUsMin = durationUs;
+        c.durationUsMax = durationUs;
+    } else {
+        if (durationUs < c.durationUsMin) c.durationUsMin = durationUs;
+        if (durationUs > c.durationUsMax) c.durationUsMax = durationUs;
+    }
+    c.nCalls        += 1;
+    c.bytesIn       += bytesIn;
+    c.bytesOut      += bytesOut;
+    c.wrapBytes     += wrapBytes;
+    c.durationUsSum += durationUs;
 }
 
 void Tracker::reset() {
@@ -60,10 +73,17 @@ Snapshot Tracker::buildReport(bool includeZero) const {
     all.reserve(m_counters.size());
     for (auto it = m_counters.cbegin(); it != m_counters.cend(); ++it) {
         ToolReport r;
-        r.tool     = it.key();
-        r.nCalls   = it.value().nCalls;
-        r.bytesIn  = it.value().bytesIn;
-        r.bytesOut = it.value().bytesOut;
+        r.tool          = it.key();
+        r.nCalls        = it.value().nCalls;
+        r.bytesIn       = it.value().bytesIn;
+        r.bytesOut      = it.value().bytesOut;
+        // ANTS-1355 v2 fields.
+        r.wrapBytes     = it.value().wrapBytes;
+        r.durationUsMin = it.value().durationUsMin;
+        r.durationUsMax = it.value().durationUsMax;
+        r.durationUsMean = (it.value().nCalls > 0)
+            ? (it.value().durationUsSum / it.value().nCalls)
+            : 0;
 
         const qint64 baseline = baselineFor(r.tool);
         // Per-call baseline × n_calls is the modelled "would-have-spent"
@@ -74,7 +94,8 @@ Snapshot Tracker::buildReport(bool includeZero) const {
         const qint64 savedBytes    = std::max<qint64>(0, totalBaseline - totalActual);
         r.estTokensSaved = savedBytes / kCharsPerToken;
 
-        snap.totalSaved += r.estTokensSaved;
+        snap.totalSaved     += r.estTokensSaved;
+        snap.totalWrapBytes += r.wrapBytes;  // ANTS-1355 — across ALL tools
         all.append(r);
     }
 

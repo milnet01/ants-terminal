@@ -857,7 +857,9 @@ if(ANTS_TESTS)
                 # ANTS-1359 verify_changes session build-cache.
                 tests/features/verify_changes_build_cache/test_verify_changes_build_cache.cpp
                 # ANTS-1360 mcp_trace ring buffer.
-                tests/features/mcp_trace_ring_buffer/test_mcp_trace_ring_buffer.cpp)
+                tests/features/mcp_trace_ring_buffer/test_mcp_trace_ring_buffer.cpp
+                # ANTS-1396 terminalForCaller cross-project isolation.
+                tests/features/terminal_for_caller_isolation/test_terminal_for_caller_isolation.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

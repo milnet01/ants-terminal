@@ -12,6 +12,65 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 📊 MCP observability + cross-project hardening (2026-05-15)
+
+Three follow-ons on top of the MCP-platform theme: extends
+`token_usage` to surface wrap-overhead + latency, plugs a
+cross-project data leak in `terminalForCaller`, and clears the
+`-Wshadow` warnings that had piled up in `tools/list`.
+
+- **ANTS-1355 — `token_usage` v2: wrap-overhead + latency
+  breakdown.** Response now adds `wrap_bytes` per tool
+  (cumulative ANTS-1294 framing overhead), `duration_us_min`,
+  `duration_us_max`, `duration_us_mean` per tool, plus
+  `total_wrap_bytes` on the envelope. Backwards-compatible:
+  v1 callers parse v2 transparently (additive fields only). The
+  latency timer is the same `QElapsedTimer` ANTS-1360 starts at
+  dispatch, so the `mcp_trace` ring and the aggregate report
+  see byte-identical timestamps for the same call. Engine RAM
+  grew ~32 B per tracked tool → ~4.2 KiB worst-case (33 tools).
+  Spec: `docs/specs/ANTS-1355.md`; 2-pass cold-eyes loop on the
+  spec (HIGH-1 tool-count drift + LOW-1 escape-char miscount
+  caught + fixed before Pass 2 CLEAN). 7 new engine tests + 4
+  MCP-layer wire-shape tests; total 31 token_usage tests green.
+
+- **ANTS-1396 — `terminalForCaller` cross-project fallback
+  fix.** Reported in-session by another Claude Code instance
+  (`mcp__ants__get_git_status` was returning the Ants Terminal
+  repo's branch/status/log while the caller's `caller_cwd`
+  pointed at a different project with no matching Ants tab).
+  Root cause: `MainWindow::terminalForCaller` fell back to
+  `focusedTerminal()` not just on empty caller_cwd (the
+  intended back-compat path) but also on non-empty +
+  unresolvable / non-empty + no-tab-match. Fix splits the
+  contract into three cases: empty → focused (back-compat);
+  match → tab; no-match or unresolvable → `nullptr`. The four
+  consuming tools (`get_scrollback`, `get_last_command`,
+  `get_git_status`, `get_environment`) already null-check the
+  return, so the null-on-no-match propagates as an empty
+  response rather than leaked cross-project data. The parallel
+  caller_cwd path in `remotecontrol.cpp`
+  (`resolveRootCanonical`) was audited and is already
+  correct — it echoes the caller's canonical cwd rather than
+  sourcing data from a tab, so no parallel leak. 4 source-grep
+  regression tests added.
+
+- **ANTS-1395 — `-Wshadow` cleanup in `tools/list`.**
+  Self-noticed last bundle while shipping ANTS-1360. The first
+  tool block (`get_scrollback`) declared `props` / `schema` at
+  the outer scope of the whole `tools/list` `else if` branch;
+  every subsequent tool block's matching declarations triggered
+  `-Wshadow=compatible-local`. Fix wrapped `get_scrollback`'s
+  declarations in their own `{...}` block. ~5 LOC; zero
+  warnings after a forced rebuild of `ants_claude_lib`.
+
+Roadmap entries logged for follow-ons not in this bundle:
+ANTS-1397 (incorporate `/test-audit` skill into Ants MCP as a
+parallel-subagent `test_audit_*` tool family — user request
+2026-05-15), and ANTS-1354 (MCP tool descriptor `version`
+field, deferred — ~30 mechanical edits across every tool
+descriptor better handled as its own commit).
+
 ### 🧰 MCP debug-log tap (2026-05-15)
 
 Closes out the MCP-platform theme that started with the perf

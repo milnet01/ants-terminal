@@ -15,9 +15,14 @@
 namespace TokenUsageEngine {
 
 struct ToolCounter {
-    int    nCalls   = 0;
-    qint64 bytesIn  = 0;
-    qint64 bytesOut = 0;
+    int    nCalls         = 0;
+    qint64 bytesIn        = 0;
+    qint64 bytesOut       = 0;
+    // ANTS-1355 — v2 accumulators.
+    qint64 wrapBytes      = 0;
+    qint64 durationUsMin  = 0;  // sentinel "unset" → nCalls==0
+    qint64 durationUsMax  = 0;
+    qint64 durationUsSum  = 0;  // private; not surfaced (INV-9)
 };
 
 struct ToolReport {
@@ -25,21 +30,33 @@ struct ToolReport {
     int     nCalls         = 0;
     qint64  bytesIn        = 0;
     qint64  bytesOut       = 0;
+    // ANTS-1355 — v2 fields.
+    qint64  wrapBytes      = 0;
+    qint64  durationUsMin  = 0;
+    qint64  durationUsMax  = 0;
+    qint64  durationUsMean = 0;  // floor(sum / n_calls)
     qint64  estTokensSaved = 0;
 };
 
 struct Snapshot {
-    qint64           sinceUnixMs = 0;
-    QList<ToolReport> calls;       // sorted by estTokensSaved desc, then tool asc
-    qint64           totalSaved  = 0;
-    int              toolsCalled = 0;
+    qint64           sinceUnixMs    = 0;
+    QList<ToolReport> calls;        // sorted by estTokensSaved desc, then tool asc
+    qint64           totalSaved     = 0;
+    qint64           totalWrapBytes = 0;  // ANTS-1355 — sum across ALL tools
+    int              toolsCalled    = 0;
 };
 
 class Tracker {
 public:
     Tracker();
 
-    void recordCall(const QString &toolName, qint64 bytesIn, qint64 bytesOut);
+    // ANTS-1355 — v2 signature adds wrapBytes + durationUs. Callers
+    // that don't have those values (tests) pass 0.
+    void recordCall(const QString &toolName,
+                    qint64 bytesIn,
+                    qint64 bytesOut,
+                    qint64 wrapBytes = 0,
+                    qint64 durationUs = 0);
     void reset();
 
     Snapshot buildReport(bool includeZero) const;

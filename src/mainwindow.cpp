@@ -2727,29 +2727,51 @@ TerminalWidget *MainWindow::terminalAtTab(int index) const {
 // ANTS-1392 — caller_cwd-anchored terminal lookup. Walks every tab
 // (including split-pane subtrees via activeTerminalInTab) for a
 // terminal whose canonical shellCwd matches the canonical callerCwd.
-// First match wins. Empty callerCwd or no match → falls back to
-// focusedTerminal() (preserves the pre-ANTS-1392 contract for tools
-// invoked without caller_cwd).
+// First match wins.
+//
+// ANTS-1396 — contract split. Three cases:
+//   1. caller_cwd is empty  → fall back to focusedTerminal()
+//      (preserves the pre-ANTS-1392 contract for tools invoked
+//      without the arg).
+//   2. caller_cwd given, matches a tab → return that tab.
+//   3. caller_cwd given, NO matching tab → return nullptr (do NOT
+//      fall back to focused). A caller that names a specific cwd
+//      is asking for *that* project's data; silently substituting
+//      whatever happens to be focused leaks cross-project data
+//      (the originating report was `get_git_status` returning the
+//      Ants Terminal repo while the caller's cwd was a different
+//      project with no Ants tab open).
+//
+// Callers already null-check the return (verified at the four
+// terminalForCaller call sites in this file:
+// `if (auto *t = terminalForCaller(...))` or `if (!t) return {};`).
 TerminalWidget *MainWindow::terminalForCaller(const QString &callerCwd) const {
-    if (!callerCwd.isEmpty()) {
-        const QString wantCanonical =
-            QFileInfo(callerCwd).canonicalFilePath();
-        if (!wantCanonical.isEmpty()) {
-            for (int i = 0; i < m_tabWidget->count(); ++i) {
-                TerminalWidget *t = terminalAtTab(i);
-                if (!t) continue;
-                const QString tabCwd = t->shellCwd();
-                if (tabCwd.isEmpty()) continue;
-                const QString tabCanonical =
-                    QFileInfo(tabCwd).canonicalFilePath();
-                if (!tabCanonical.isEmpty() &&
-                    tabCanonical == wantCanonical) {
-                    return t;
-                }
-            }
+    if (callerCwd.isEmpty()) {
+        // Case 1: legacy back-compat.
+        return focusedTerminal();
+    }
+    const QString wantCanonical =
+        QFileInfo(callerCwd).canonicalFilePath();
+    if (wantCanonical.isEmpty()) {
+        // caller_cwd was given but is unresolvable (e.g. path doesn't
+        // exist). Treat as "no match" — case 3.
+        return nullptr;
+    }
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        TerminalWidget *t = terminalAtTab(i);
+        if (!t) continue;
+        const QString tabCwd = t->shellCwd();
+        if (tabCwd.isEmpty()) continue;
+        const QString tabCanonical =
+            QFileInfo(tabCwd).canonicalFilePath();
+        if (!tabCanonical.isEmpty() &&
+            tabCanonical == wantCanonical) {
+            // Case 2.
+            return t;
         }
     }
-    return focusedTerminal();
+    // Case 3: explicit caller_cwd, no match → nullptr.
+    return nullptr;
 }
 
 int MainWindow::currentTabIndexForRemote() const {

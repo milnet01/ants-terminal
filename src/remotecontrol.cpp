@@ -3182,6 +3182,9 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req) {
     env["since_unix_ms"] = static_cast<qint64>(snap.sinceUnixMs);
     env["tools_called"]  = snap.toolsCalled;
     env["total_saved"]   = static_cast<qint64>(snap.totalSaved);
+    // ANTS-1355 — envelope sum across ALL tools (includes those
+    // filtered out of `calls[]` by include_zero:false).
+    env["total_wrap_bytes"] = static_cast<qint64>(snap.totalWrapBytes);
     env["reset_performed"] = wantsReset;
 
     QJsonArray calls;
@@ -3191,6 +3194,11 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req) {
         c["n_calls"]           = r.nCalls;
         c["bytes_in"]          = static_cast<qint64>(r.bytesIn);
         c["bytes_out"]         = static_cast<qint64>(r.bytesOut);
+        // ANTS-1355 — wrap-overhead + latency breakdown.
+        c["wrap_bytes"]        = static_cast<qint64>(r.wrapBytes);
+        c["duration_us_min"]   = static_cast<qint64>(r.durationUsMin);
+        c["duration_us_max"]   = static_cast<qint64>(r.durationUsMax);
+        c["duration_us_mean"]  = static_cast<qint64>(r.durationUsMean);
         c["est_tokens_saved"]  = static_cast<qint64>(r.estTokensSaved);
         calls.append(c);
     }

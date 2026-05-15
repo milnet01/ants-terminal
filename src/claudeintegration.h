@@ -228,9 +228,14 @@ public:
     void resetTokenUsage() { m_tokenUsage.reset(); }
     // Test-only convenience: drive recordCall without the full MCP
     // dispatch path. Mirrors processHookEventForTest's pattern.
+    // ANTS-1355 — wrapBytes + durationUs defaulted to preserve v1
+    // test-callsite compatibility.
     void recordTokenUsageForTest(const QString &toolName,
-                                 qint64 bytesIn, qint64 bytesOut) {
-        m_tokenUsage.recordCall(toolName, bytesIn, bytesOut);
+                                 qint64 bytesIn, qint64 bytesOut,
+                                 qint64 wrapBytes = 0,
+                                 qint64 durationUs = 0) {
+        m_tokenUsage.recordCall(toolName, bytesIn, bytesOut,
+                                wrapBytes, durationUs);
     }
 
     // ANTS-1294 — frame user-supplied MCP content as data. Wraps a

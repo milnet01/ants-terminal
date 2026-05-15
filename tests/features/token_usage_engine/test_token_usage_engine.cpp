@@ -174,3 +174,120 @@ TEST(TokenUsageEngine, BaselineScalesPerCall) {
     EXPECT_EQ(snap.calls[0].nCalls, 3);
     EXPECT_EQ(snap.calls[0].estTokensSaved, qint64(6144));
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-1355 — v2: wrap_bytes + latency accumulators.
+// ---------------------------------------------------------------------------
+
+// V2-1 — recordCall writes new accumulators.
+TEST(TokenUsageEngine, V2WrapBytesAndDurationAccumulate) {
+    Tracker t;
+    t.recordCall("foo", 10, 100, /*wrap=*/5,  /*durUs=*/200);
+    t.recordCall("foo", 10, 100, /*wrap=*/5,  /*durUs=*/200);
+    auto snap = t.buildReport(true);
+    ASSERT_EQ(snap.calls.size(), 1);
+    EXPECT_EQ(snap.calls[0].wrapBytes,      qint64(10));
+    EXPECT_EQ(snap.calls[0].durationUsMin,  qint64(200));
+    EXPECT_EQ(snap.calls[0].durationUsMax,  qint64(200));
+    EXPECT_EQ(snap.calls[0].durationUsMean, qint64(200));
+    EXPECT_EQ(snap.totalWrapBytes,          qint64(10));
+}
+
+// V2-2 — duration min/max/mean evolve correctly across calls.
+TEST(TokenUsageEngine, V2DurationMinMaxMeanEvolve) {
+    Tracker t;
+    t.recordCall("bar", 0, 0, 0, /*durUs=*/500);
+    t.recordCall("bar", 0, 0, 0, /*durUs=*/100);
+    t.recordCall("bar", 0, 0, 0, /*durUs=*/2000);
+    auto snap = t.buildReport(true);
+    ASSERT_EQ(snap.calls.size(), 1);
+    EXPECT_EQ(snap.calls[0].durationUsMin,  qint64(100));
+    EXPECT_EQ(snap.calls[0].durationUsMax,  qint64(2000));
+    // floor((500 + 100 + 2000) / 3) = floor(866.66) = 866.
+    EXPECT_EQ(snap.calls[0].durationUsMean, qint64(866));
+}
+
+// V2-3 — totalWrapBytes envelope sum across ALL tools, even when
+// includeZero:false filters a contributing tool out of calls[].
+TEST(TokenUsageEngine, V2TotalWrapBytesSpansAllTools) {
+    Tracker t;
+    // roadmap_query — has a baseline → est_tokens_saved > 0.
+    t.recordCall("roadmap_query", 0, 0, /*wrap=*/30, /*durUs=*/100);
+    // unknown tool — baseline 0 → est_tokens_saved 0; would be
+    // filtered when includeZero:false. wrap_bytes still counts.
+    t.recordCall("zzz_unknown",    0, 0, /*wrap=*/50, /*durUs=*/100);
+    auto snap = t.buildReport(/*includeZero=*/false);
+    // zzz_unknown filtered out of calls[].
+    ASSERT_EQ(snap.calls.size(), 1);
+    EXPECT_EQ(snap.calls[0].tool, QString("roadmap_query"));
+    // But its wrap_bytes contributes to the envelope total.
+    EXPECT_EQ(snap.totalWrapBytes, qint64(80));
+    // tools_called still counts both.
+    EXPECT_EQ(snap.toolsCalled, 2);
+}
+
+// V2-4 — sentinel handling: first call with durationUs=0 records a
+// genuine 0 sample (NOT treated as uninitialised).
+TEST(TokenUsageEngine, V2DurationZeroOnFirstCallIsGenuine) {
+    Tracker t;
+    t.recordCall("baz", 0, 0, 0, /*durUs=*/0);
+    auto snap = t.buildReport(true);
+    ASSERT_EQ(snap.calls.size(), 1);
+    EXPECT_EQ(snap.calls[0].nCalls, 1);
+    EXPECT_EQ(snap.calls[0].durationUsMin,  qint64(0));
+    EXPECT_EQ(snap.calls[0].durationUsMax,  qint64(0));
+    EXPECT_EQ(snap.calls[0].durationUsMean, qint64(0));
+    // Adding a non-zero second sample lifts max but min stays at 0.
+    t.recordCall("baz", 0, 0, 0, /*durUs=*/500);
+    snap = t.buildReport(true);
+    EXPECT_EQ(snap.calls[0].durationUsMin,  qint64(0));
+    EXPECT_EQ(snap.calls[0].durationUsMax,  qint64(500));
+    EXPECT_EQ(snap.calls[0].durationUsMean, qint64(250));
+}
+
+// V2-5 — duration_us_sum is private (not on ToolReport).
+// Compile-time check: presence of the public fields is enough;
+// absence of `durationUsSum` would only be testable via SFINAE
+// which is overkill for a feature test. Documented in spec INV-9.
+TEST(TokenUsageEngine, V2DurationSumIsPrivate) {
+    TokenUsageEngine::ToolReport r;
+    // These fields exist (won't compile if they don't):
+    (void)r.durationUsMin;
+    (void)r.durationUsMax;
+    (void)r.durationUsMean;
+    // r.durationUsSum would not compile — INV-9 enforced
+    // structurally by absence.
+    SUCCEED();
+}
+
+// V2-6 — reset clears v2 accumulators too.
+TEST(TokenUsageEngine, V2ResetClearsV2Fields) {
+    Tracker t;
+    t.recordCall("foo", 10, 100, /*wrap=*/5, /*durUs=*/200);
+    t.reset();
+    auto snap = t.buildReport(true);
+    EXPECT_EQ(snap.totalWrapBytes, qint64(0));
+    EXPECT_EQ(snap.calls.size(),   0);
+    // Second record after reset behaves as a fresh tool (sentinel).
+    t.recordCall("foo", 0, 0, 0, /*durUs=*/777);
+    snap = t.buildReport(true);
+    ASSERT_EQ(snap.calls.size(), 1);
+    EXPECT_EQ(snap.calls[0].durationUsMin, qint64(777));
+    EXPECT_EQ(snap.calls[0].durationUsMax, qint64(777));
+}
+
+// V2-7 — v1 carry-overs unchanged when v2 fields default to 0.
+TEST(TokenUsageEngine, V2DefaultedCallMatchesV1Behavior) {
+    Tracker t;
+    t.recordCall("verify_changes", 100, 300);  // no v2 args
+    auto snap = t.buildReport(true);
+    ASSERT_EQ(snap.calls.size(), 1);
+    // v1 fields exact match.
+    EXPECT_EQ(snap.calls[0].estTokensSaved, qint64(1948));
+    // v2 fields zero.
+    EXPECT_EQ(snap.calls[0].wrapBytes,      qint64(0));
+    EXPECT_EQ(snap.calls[0].durationUsMin,  qint64(0));
+    EXPECT_EQ(snap.calls[0].durationUsMax,  qint64(0));
+    EXPECT_EQ(snap.calls[0].durationUsMean, qint64(0));
+    EXPECT_EQ(snap.totalWrapBytes,          qint64(0));
+}

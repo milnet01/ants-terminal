@@ -5162,19 +5162,29 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1355] **`token_usage` v2 — break out wrap overhead
-  + latency (lane-3 follow-up).** Today `token_usage` reports
-  `bytes_out` for the wrapped payload (ANTS-1294 INV-8). Split
-  this into `bytes_wrap_overhead` + `bytes_payload` so users
-  can see the wrap cost (~30–40 B/call). Add per-tool latency
-  distribution (`p50_ms`, `p95_ms`, `max_ms`) and error-rate
-  counter. Lets the assistant pick the cheapest equivalent
-  tool when several exist.
-  **Layman:** make the token-usage telemetry show how much
-  of each response is the wrapping overhead vs the actual
-  content, plus how fast each tool runs.
+- ✅ [ANTS-1355] **`token_usage` v2 — wrap-overhead + latency
+  breakdown.** Shipped 2026-05-15. `token_usage` MCP response
+  now surfaces per-tool `wrap_bytes` (cumulative ANTS-1294
+  framing overhead), `duration_us_{min,max,mean}` (latency
+  bounds + integer mean), plus envelope `total_wrap_bytes`.
+  Latency data sourced from the same `QElapsedTimer` that
+  feeds the ANTS-1360 `mcp_trace` ring — both surfaces see
+  byte-identical timestamps for the same dispatch. Engine
+  RAM grew 4 × qint64 per entry (≤ ~4.2 KiB worst-case for
+  all 33 registered tools). Backwards-compatible (additive
+  fields only; v1 callers parse v2 transparently). 7 new
+  engine tests + 4 new MCP-layer wire tests; total 31
+  token_usage tests, all green. 2-pass cold-eyes loop on the
+  spec (Pass 1: HIGH-1 tool-count drift + LOW-1 escape-char
+  miscount; Pass 2: CLEAN). Spec: `docs/specs/ANTS-1355.md`.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
+
+  Out-of-scope items deferred to a future bundle (per
+  spec § 9): p50/p95 percentile latency (needs reservoir
+  sampler), per-cwd/per-project breakdown, failure-path
+  latency aggregation, `duration_us_sum` on the wire
+  (kept private per INV-9).
 
 - 📋 [ANTS-1356] **MCP per-tool rate-limit / quota.** No cap
   on call rate. A misbehaving Claude session could fire
@@ -5880,28 +5890,76 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (user spotted 13:26 stamp on a
   14:13 binary after ANTS-1392/1393 relaunch).
 
-- 📋 [ANTS-1395] **`tools/list` `-Wshadow` warnings — per-tool
-  `props` / `schema` re-declarations.** Discovered while
-  building ANTS-1360 (2026-05-15). The first tool block in the
-  `tools/list` response at `claudeintegration.cpp:1364, 1369`
-  declares `QJsonObject props;` and `QJsonObject schema;` at
-  the OUTER scope of the whole `tools/list` `else if` branch
-  (the `get_scrollback` tool's locals). Every subsequent tool
-  block wraps its declarations in `{ ... }` scopes that
-  re-declare `props` / `schema`, shadowing the outer locals
-  and producing `-Wshadow=compatible-local` warnings at each
-  site (line ~1393, 1395, 1421, 1423, 1437, 1439, 1453, …
-  through every tool past `get_scrollback`, including the new
-  `mcp_trace` block). Fix: scope `get_scrollback`'s
-  `props` / `schema` inside their own `{...}` block too so
-  the outer scope has no name to shadow. ~5 LOC mechanical
-  change. No behavioural impact; clean-build hygiene.
-  **Layman:** the compiler is yelling about repeated local
-  variable names in the MCP tool-list builder — a stylistic
-  fix that doesn't change behaviour.
+- ✅ [ANTS-1395] **`tools/list` `-Wshadow` warnings —
+  scoped `get_scrollback` props/schema.** Shipped 2026-05-15.
+  Wrapped `get_scrollback`'s `props` / `schema`
+  declarations in their own `{...}` block at
+  `claudeintegration.cpp:1361–1378` so the outer scope of
+  the whole `tools/list` `else if` branch no longer
+  carries those names. Every subsequent tool block's
+  matching declarations stopped emitting
+  `-Wshadow=compatible-local`. Verified by forced
+  recompile of `ants_claude_lib`: zero shadow warnings.
   Kind: refactor.
   Source: in-session-2026-05-15 (incidental while
   implementing ANTS-1360).
+
+- ✅ [ANTS-1396] **`terminalForCaller` cross-project
+  fallback leak.** Shipped 2026-05-15. Reported in-session
+  by another CC instance: `mcp__ants__get_git_status` was
+  returning the Ants Terminal repo's branch/status/log while
+  the caller's `caller_cwd` pointed at a different project
+  with no matching Ants tab. Root cause:
+  `MainWindow::terminalForCaller(callerCwd)` fell back to
+  `focusedTerminal()` not just on empty callerCwd
+  (intended back-compat) but also on non-empty +
+  unresolvable / non-empty + no-tab-match (LEAK). Fix
+  split the contract into three cases: empty → focused
+  (back-compat); match → tab; no-match or unresolvable →
+  nullptr. Callers (`get_scrollback`, `get_last_command`,
+  `get_git_status`, `get_environment`) already null-check
+  the return, so the null-on-no-match propagates cleanly as
+  empty response. 4 source-grep regression tests added at
+  `tests/features/terminal_for_caller_isolation/`. The
+  parallel caller_cwd path in `remotecontrol.cpp`
+  (`resolveRootCanonical(main, req)`) was audited and is
+  already correct — it echoes the caller's canonical cwd
+  rather than sourcing data from a tab, so no parallel
+  leak.
+  **Layman:** when a Claude session in project B asked
+  Ants for git status, Ants was silently returning project
+  A's status because A's tab was focused. Now Ants returns
+  an empty response instead of leaking the wrong project's
+  data.
+  Kind: security.
+  Source: cross-session-report-2026-05-15 (other CC
+  instance reported the leak; verified + fixed in this
+  bundle).
+
+- 📋 [ANTS-1397] **Incorporate `/test-audit` skill into
+  Ants MCP — parallel to `indie_review_*` / `debt_sweep_*`
+  / `cold_eyes_*`.** The `/test-audit` skill today fires a
+  parallel-subagent sweep across the test suite (performance,
+  flakiness, duplication, isolation, determinism, accuracy,
+  security, verbosity), triaged into a prioritised list.
+  All of that lives in markdown the assistant has to load
+  on demand. Pattern from ANTS-1351 / ANTS-1352 / ANTS-1319:
+  Move the skill's brief generation + chunk partitioning +
+  triage logic into a C++ engine (`testauditengine.{h,cpp}`)
+  in `ants_core_lib`, surface it via MCP verbs
+  (`test_audit_partition`, `test_audit_brief`,
+  `test_audit_synthesis_prompt`, `test_audit_fold_in`).
+  Token savings: skill markdown is ~10 KiB per invocation →
+  ~10 K tokens displaced per session. Pairs with ANTS-1351
+  (audit_run) + ANTS-1352 (indie_review_dispatch) as the
+  third "skill → MCP" migration. Out of scope here: the
+  ANTS-1280 audit_orchestrate v2 (end-to-end). Spec needed
+  before implementation.
+  **Layman:** turn the test-quality-review skill into a set
+  of fast MCP tools so Claude doesn't have to load the
+  10 KiB skill markdown every time it audits the test suite.
+  Kind: implement.
+  Source: in-session-2026-05-15 (user request).
 
 ---
 

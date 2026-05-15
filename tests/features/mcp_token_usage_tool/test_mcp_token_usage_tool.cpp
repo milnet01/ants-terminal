@@ -101,6 +101,59 @@ TEST(McpTokenUsageTool, SchemaSetsAdditionalPropertiesFalse) {
            "token_usage registration block";
 }
 
+// ANTS-1355 REG-V2-1 — response builder emits envelope total_wrap_bytes.
+TEST(McpTokenUsageTool, V2EnvelopeIncludesTotalWrapBytes) {
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    EXPECT_NE(rc.find("env[\"total_wrap_bytes\"]"), std::string::npos)
+        << "cmdTokenUsage must surface total_wrap_bytes on the envelope";
+}
+
+// ANTS-1355 REG-V2-2 — per-tool entry emits wrap_bytes + duration fields.
+TEST(McpTokenUsageTool, V2PerCallEntryIncludesWrapAndLatency) {
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    for (const char *key : {
+            "c[\"wrap_bytes\"]",
+            "c[\"duration_us_min\"]",
+            "c[\"duration_us_max\"]",
+            "c[\"duration_us_mean\"]",
+         }) {
+        EXPECT_NE(rc.find(key), std::string::npos)
+            << "cmdTokenUsage per-call entry missing " << key;
+    }
+}
+
+// ANTS-1355 REG-V2-3 — dispatch site computes wrapBytes + durUs and
+// passes both to recordCall (5-argument v2 signature).
+TEST(McpTokenUsageTool, V2DispatchSiteWiresFiveArgRecordCall) {
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    // Locate the `m_tokenUsage.recordCall(` invocation site.
+    const auto recordCallPos = ci.find("m_tokenUsage.recordCall(");
+    ASSERT_NE(recordCallPos, std::string::npos);
+    // A v2 callsite reads as: recordCall(toolName, argBytes, outBytes,
+    // wrapBytes, durUs). The literal tokens after `recordCall(` —
+    // searched within a ~200-byte window from the call site — must
+    // include each of these names.
+    const std::string near =
+        ci.substr(recordCallPos,
+                  std::min<size_t>(ci.size() - recordCallPos, 200));
+    for (const char *name : {"argBytes", "outBytes", "wrapBytes", "durUs"}) {
+        EXPECT_NE(near.find(name), std::string::npos)
+            << "recordCall site missing v2 argument: " << name;
+    }
+}
+
+// ANTS-1355 REG-V2-4 — wrap delta is computed as outBytes - rawBytes.
+TEST(McpTokenUsageTool, V2WrapDeltaComputedAsOutMinusRaw) {
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    EXPECT_NE(ci.find("outBytes - rawBytes"), std::string::npos)
+        << "wrap_bytes must be computed as outBytes - rawBytes per "
+           "ANTS-1355 INV-3";
+}
+
 // REG-6
 TEST(McpTokenUsageTool, SchemaListsOptionalArgsAndEmptyRequired) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);

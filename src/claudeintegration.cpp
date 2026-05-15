@@ -1358,18 +1358,24 @@ void ClaudeIntegration::onMcpConnection() {
                     "Pass `caller_cwd` (your $PWD) to anchor to your "
                     "tab; without it the result comes from whichever "
                     "tab Ants happens to have focused (ANTS-1392).");
-                QJsonObject linesParam;
-                linesParam["type"] = "integer";
-                linesParam["default"] = 50;
-                QJsonObject props;
-                props["lines"] = linesParam;
-                // ANTS-1392 — caller_cwd anchor for the terminal-state
-                // verbs. Optional; falls back to focused tab when absent.
-                props["caller_cwd"] = makeCallerCwdReadProp();
-                QJsonObject schema;
-                schema["type"] = "object";
-                schema["properties"] = props;
-                scrollbackTool["inputSchema"] = schema;
+                // ANTS-1395 — scope props/schema inside a block so every
+                // subsequent tool's matching declarations (each already
+                // wrapped in `{ ... }`) no longer trigger
+                // -Wshadow=compatible-local against this outer-scope pair.
+                {
+                    QJsonObject linesParam;
+                    linesParam["type"] = "integer";
+                    linesParam["default"] = 50;
+                    QJsonObject props;
+                    props["lines"] = linesParam;
+                    // ANTS-1392 — caller_cwd anchor for the terminal-state
+                    // verbs. Optional; falls back to focused tab when absent.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["properties"] = props;
+                    scrollbackTool["inputSchema"] = schema;
+                }
                 tools.append(scrollbackTool);
 
                 // MCP spec requires every tool to declare an inputSchema
@@ -2312,10 +2318,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "Reports per-tool token-saving telemetry for "
                         "this MCP server's current session. Returns "
                         "{since, calls:[...], total_saved, "
-                        "tools_called}; calls sorted by "
-                        "est_tokens_saved descending. Pure read by "
-                        "default; pass reset:true to read-and-clear "
-                        "in one round-trip. No required args.");
+                        "total_wrap_bytes, tools_called}; per-tool "
+                        "entry adds {wrap_bytes, duration_us_min/"
+                        "max/mean}. Sorted by est_tokens_saved "
+                        "descending. Pure read by default; pass "
+                        "reset:true to read-and-clear in one "
+                        "round-trip. No required args.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject resetProp;
@@ -2706,17 +2714,24 @@ void ClaudeIntegration::onMcpConnection() {
                     result["content"] = makeTextContent(wrapped);
                     // ANTS-1284 — record dispatch for token_usage report.
                     // Byte counts measure the wrapped payload (what
-                    // actually crosses the wire).
+                    // actually crosses the wire). ANTS-1355: also feed
+                    // wrap delta + dispatch latency.
                     const qint64 argBytes = QJsonDocument(argsObj)
                         .toJson(QJsonDocument::Compact).size();
-                    const qint64 outBytes = wrapped.toUtf8().size();
-                    m_tokenUsage.recordCall(toolName, argBytes, outBytes);
+                    const qint64 outBytes  = wrapped.toUtf8().size();
+                    const qint64 rawBytes  = responseText.toUtf8().size();
+                    const qint64 wrapBytes = outBytes - rawBytes;       // ANTS-1355 INV-3
+                    const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
+                    m_tokenUsage.recordCall(toolName, argBytes, outBytes,
+                                            wrapBytes, durUs);
                     // ANTS-1360 — per-call sequence trace. Single hook
                     // point shared with both branches. INV-5 self-
                     // exclusion handled inside recordMcpTrace.
+                    // ANTS-1355: reuse the durUs captured above so the
+                    // mcp_trace record and the token_usage aggregate
+                    // see byte-identical latency for the same call.
                     recordMcpTrace(toolName, argsObj, argBytes, outBytes,
-                                   mcpTraceTimer.nsecsElapsed() / 1000,
-                                   cachedHit, QStringLiteral("ok"));
+                                   durUs, cachedHit, QStringLiteral("ok"));
                     haveResult = true;
                 } else {
                     // JSON-RPC application error: tool not found or provider missing.
