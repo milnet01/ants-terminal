@@ -2809,6 +2809,61 @@ void TerminalGrid::handleDcs(const std::string &payload) {
     // Parse raster attributes if present
     size_t dataStart = qpos + 1;
 
+    // ANTS-1366 — Pre-budget at raster Pv;Ph. If the payload opens with
+    // a raster header `"Pan;Pad;Ph;Pv`, read the declared dimensions
+    // before the first-pass walk. Reject early if either exceeds
+    // MAX_IMAGE_DIM (4096) — the existing first-pass clamps each param
+    // to MAX_IMAGE_DIM mid-parse, which silently *accepts* an over-cap
+    // declaration as 4096 and proceeds to allocate. Pre-budget reads
+    // the RAW declared values and refuses.
+    if (dataStart < payload.size() && payload[dataStart] == '"') {
+        size_t i = dataStart + 1;
+        int raw[4] = {0, 0, 0, 0};
+        int rp = 0;
+        bool overflow = false;
+        while (i < payload.size() && rp < 4) {
+            char ch = payload[i];
+            if (ch >= '0' && ch <= '9') {
+                // Use 64-bit accumulation so we detect overflow rather
+                // than letting it wrap. MAX_IMAGE_DIM=4096 fits in 13 bits;
+                // any value > MAX_IMAGE_DIM is an early-reject signal.
+                long long acc = static_cast<long long>(raw[rp]) * 10 +
+                                (ch - '0');
+                if (acc > MAX_IMAGE_DIM) {
+                    overflow = true;
+                    break;
+                }
+                raw[rp] = static_cast<int>(acc);
+            } else if (ch == ';') {
+                ++rp;
+            } else {
+                break;
+            }
+            ++i;
+        }
+        const int declaredPh = raw[2];
+        const int declaredPv = raw[3];
+        if (overflow ||
+            declaredPh > MAX_IMAGE_DIM ||
+            declaredPv > MAX_IMAGE_DIM) {
+            writeInlineError(
+                QString("[ants: sixel declared %1×%2 exceeds %3 dim cap]")
+                    .arg(declaredPh).arg(declaredPv).arg(MAX_IMAGE_DIM));
+            return;
+        }
+        if (declaredPh > 0 && declaredPv > 0) {
+            const size_t projected =
+                static_cast<size_t>(declaredPh) * declaredPv * 4;
+            if (!m_imageBudget.canFit(projected)) {
+                writeInlineError(
+                    QString("[ants: sixel %1×%2 (%3 MB) exceeds 256 MB image budget]")
+                        .arg(declaredPh).arg(declaredPv)
+                        .arg(projected / (1024 * 1024)));
+                return;
+            }
+        }
+    }
+
     // Sixel color palette (up to 256 entries)
     QColor palette[256];
     for (int i = 0; i < 16; ++i) palette[i] = s_palette256[i];

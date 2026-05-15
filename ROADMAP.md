@@ -5570,7 +5570,21 @@ indie-review finding.
   Kind: security.
   Source: indie-review-2026-05-14 (lane-2 M1).
 
-- 📋 [ANTS-1366] **Sixel pre-budget at raster `Pv;Ph`.**
+- ✅ [ANTS-1366] **Sixel pre-budget at raster `Pv;Ph`.** Shipped
+  2026-05-15 (Bundle A pull 3). Pre-fix, the existing first-pass
+  walk parsed the raster header inside the loop and clamped each
+  rasterParam to MAX_IMAGE_DIM (`std::min(..., MAX_IMAGE_DIM)` at
+  `terminalgrid.cpp:2857`), which silently *accepted* an over-cap
+  declared dimension as 4096 and allocated. Fix reads the RAW
+  raster values before the first-pass walk and refuses both
+  over-MAX_IMAGE_DIM declarations and over-image-budget projected
+  byte counts. Sub-discovery surfaced during the fix: the clamp
+  was masking an over-cap acceptance bug, not just delaying the
+  reject. Spec `docs/specs/ANTS-1366.md`; tests
+  `tests/features/sixel_raster_header_prebudget/` (3 invariants:
+  over-cap Ph reject, over-cap Pv reject, small valid Sixel
+  still renders). 656/656 features green.
+  Original finding (lane-1 L2, indie-review 2026-05-14):
   Sixel image path walks the entire payload to compute
   `imgWidth/imgHeight` before deciding on the dimension cap
   (`terminalgrid.cpp:2750–2806`). A 4 MB payload that just

@@ -19,6 +19,21 @@ Bundle plan). Items group around `terminalgrid.cpp` correctness +
 perf so width-reflow + wide-char-edge + Sixel-budget land in one
 release.
 
+- **ANTS-1366 — Sixel raster-header pre-budget rejects over-cap
+  images before the first-pass walk.** Pre-fix, `handleDcs`'s
+  first pass clamped raster `Pan/Pad/Ph/Pv` mid-parse with
+  `std::min(..., MAX_IMAGE_DIM)`, which silently accepted an
+  over-cap declared dimension as 4096 and proceeded to allocate.
+  Fix reads the RAW raster values before the first-pass walk
+  (after the `q` introducer) and refuses both
+  `> MAX_IMAGE_DIM` (4096) and `> 256 MB` projected byte counts
+  with the same inline-error label the post-walk reject emits.
+  Spec: `docs/specs/ANTS-1366.md`; tests:
+  `tests/features/sixel_raster_header_prebudget/` (3 invariants).
+  Layman: a hostile or buggy program sending a Sixel image with
+  a wildly oversized declared size used to allocate a 64 MB
+  buffer before noticing; now we reject it immediately.
+
 - **ANTS-1334 — Combining marks at wide-char right-edge attach to
   the lead cell.** Pre-fix, after writing a wide CJK char at
   cols-2, the cursor clamp to cols-1 + `m_wrapNext=true` meant the
