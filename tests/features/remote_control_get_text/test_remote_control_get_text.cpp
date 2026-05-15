@@ -1,9 +1,9 @@
 // Remote-control `get-text` — source-grep regression test. See spec.md.
 
+#include "../../_support/srcgrep.h"
+
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 
 
@@ -15,19 +15,13 @@
 #error "SRC_MAIN_CPP compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
+static int runMain() {
+    const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string mc = ants_test::slurpFile(SRC_MAIN_CPP);
+    if (rc.empty() || mc.empty()) {
+        std::fprintf(stderr, "cannot open source files\n");
         std::exit(2);
     }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
-
-static int runMain() {
-    const std::string rc = slurp(SRC_RC_CPP);
-    const std::string mc = slurp(SRC_MAIN_CPP);
 
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -42,13 +36,18 @@ static int runMain() {
         fail("INV-1: dispatch must route \"get-text\" to cmdGetText");
     }
 
-    // INV-2 + INV-3 + INV-4 + INV-5: shape of cmdGetText.
-    size_t gtPos = rc.find("RemoteControl::cmdGetText");
-    if (gtPos == std::string::npos) {
-        fail("INV-2a: RemoteControl::cmdGetText definition missing");
+    // INV-2 + INV-3 + INV-4 + INV-5: shape of cmdGetText. Brace-matched
+    // body slurp via the shared srcgrep.h helper so this test stays
+    // robust against future body growth (the previous fixed-size
+    // 2500-char window broke once during ANTS-1348 — INV-5's "bytes"
+    // field check fell outside the window after the new max_bytes
+    // block landed).
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdGetText");
+    if (body.empty()) {
+        fail("INV-2a: RemoteControl::cmdGetText definition missing "
+             "(or unbalanced braces)");
     } else {
-        // 3500-char window (ANTS-1348 grew the body past 2500).
-        std::string body = rc.substr(gtPos, 3500);
         if (body.find("isDouble()") == std::string::npos) {
             fail("INV-2b: cmdGetText must use isDouble() for tab + lines "
                  "(consistent with send-text / set-title / select-window)");
