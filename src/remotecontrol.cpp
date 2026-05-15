@@ -42,6 +42,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <QCryptographicHash>
+#include <QScopeGuard>
 #include <QTimer>
 
 // safeToUnlinkLocalSocket lives in secureio.h as of ANTS-1132 (0.7.66)
@@ -2724,6 +2726,129 @@ QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
 
 }  // anonymous
 
+// ANTS-1359 — verify_changes session build-cache helpers. Per
+// docs/specs/ANTS-1359.md § 2.3 + § 2.7 the cache key is built from
+// projectRoot + git HEAD + git status SHA + trust-outcome SHA +
+// ANTS_VERIFY_TRUST_AUTOTRUST + canonicalised options.
+namespace {
+
+struct VerifyGitSnapshot {
+    bool    valid = false;
+    QString head;            // 40-hex commit SHA
+    QString statusSha;       // SHA256-hex16 of `git status --porcelain=v1 -z`
+};
+
+// Run `git -C <root> <argv...>` and return stdout on exit 0 or {} on
+// any failure. 2 s wall-clock cap; merged stderr discarded.
+QByteArray runGit(const QString &root, const QStringList &argv) {
+    QProcess p;
+    p.setProcessChannelMode(QProcess::SeparateChannels);
+    QStringList full;
+    full << QStringLiteral("-C") << root;
+    full.append(argv);
+    p.start(QStringLiteral("git"), full);
+    if (!p.waitForStarted(1000)) return {};
+    if (!p.waitForFinished(2000)) {
+        p.kill();
+        p.waitForFinished(500);
+        return {};
+    }
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        return {};
+    }
+    return p.readAllStandardOutput();
+}
+
+VerifyGitSnapshot collectGitSnapshot(const QString &root) {
+    VerifyGitSnapshot s;
+    const QByteArray headRaw = runGit(root, {QStringLiteral("rev-parse"),
+                                             QStringLiteral("HEAD")});
+    if (headRaw.isEmpty()) return s;
+    const QString head = QString::fromUtf8(headRaw).trimmed();
+    if (head.size() < 7) return s;
+
+    const QByteArray statusRaw = runGit(root,
+        {QStringLiteral("status"), QStringLiteral("--porcelain=v1"),
+         QStringLiteral("-z")});
+    // Empty status output is valid (a clean tree). Detect "git failed"
+    // separately via the rev-parse already succeeded — if status fails
+    // here, the second QProcess returned empty even on success which is
+    // indistinguishable from "clean tree" — accept that as the snapshot
+    // (the hash of an empty array is deterministic).
+    s.head      = head;
+    s.statusSha = QString::fromUtf8(
+        QCryptographicHash::hash(statusRaw, QCryptographicHash::Sha256)
+            .toHex().left(16));
+    s.valid = true;
+    return s;
+}
+
+QJsonObject canonicaliseVerifyOptions(const QJsonObject &req) {
+    QJsonObject canon;
+    if (req.contains(QStringLiteral("gates"))) {
+        const QJsonArray arr =
+            req.value(QStringLiteral("gates")).toArray();
+        QStringList gates;
+        for (const auto &v : arr) gates.append(v.toString());
+        gates.sort();
+        QJsonArray sorted;
+        for (const QString &g : gates) sorted.append(g);
+        canon[QStringLiteral("gates")] = sorted;
+    }
+    if (req.contains(QStringLiteral("max_log_lines"))) {
+        canon[QStringLiteral("max_log_lines")] =
+            req.value(QStringLiteral("max_log_lines")).toInt();
+    }
+    if (req.contains(QStringLiteral("timeout_sec"))) {
+        canon[QStringLiteral("timeout_sec")] =
+            req.value(QStringLiteral("timeout_sec")).toInt();
+    }
+    return canon;
+}
+
+QString verifyCacheKey(const QString &root,
+                       const VerifyGitSnapshot &snap,
+                       const QString &cfgSource,
+                       bool verifyUntrusted,
+                       const QByteArray &autoTrustEnv,
+                       const QJsonObject &canonOpts) {
+    QByteArray trustMaterial;
+    trustMaterial += cfgSource.toUtf8();
+    trustMaterial += ':';
+    trustMaterial += verifyUntrusted ? '1' : '0';
+    const QByteArray trustSha =
+        QCryptographicHash::hash(trustMaterial,
+                                 QCryptographicHash::Sha256)
+            .toHex().left(16);
+
+    QByteArray buf;
+    buf += root.toUtf8();
+    buf += '\0';
+    buf += snap.head.toUtf8();
+    buf += '\0';
+    buf += snap.statusSha.toUtf8();
+    buf += '\0';
+    buf += trustSha;
+    buf += '\0';
+    buf += autoTrustEnv;
+    buf += '\0';
+    buf += QJsonDocument(canonOpts).toJson(QJsonDocument::Compact);
+    return QString::fromUtf8(
+        QCryptographicHash::hash(buf, QCryptographicHash::Sha256)
+            .toHex().left(16));
+}
+
+bool anyGateNotNaturallyCompleted(const VerifyEngine::VerifyReport &rep) {
+    for (const auto &g : rep.gates) {
+        const QString &reason = g.skippedReason;
+        if (reason == QLatin1String("command not resolvable")) return true;
+        if (reason.startsWith(QLatin1String("timeout after "))) return true;
+    }
+    return false;
+}
+
+}  // anonymous
+
 QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(vcErr(QStringLiteral("no_window"),
         QStringLiteral("verify_changes: no MainWindow")));
@@ -2734,12 +2859,70 @@ QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
         resolveRootCanonical(m_main), req,
         QStringLiteral("verify_changes"));
     if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
-    const QString root = gate.focused;
+    return cmdVerifyChangesImpl(gate.focused, req);
+}
+
+QJsonDocument RemoteControl::cmdVerifyChangesWithRoot(
+        const QString &root, const QJsonObject &req) {
+    // Test seam — bypasses the MainWindow / RcGate path so tests can
+    // drive cmdVerifyChanges against a synthetic project root inside
+    // a QTemporaryDir without a MainWindow. See spec § 3.
+    return cmdVerifyChangesImpl(root, req);
+}
+
+QJsonObject RemoteControl::tryGetVerifyCacheForTest(
+        const QString &key) const {
+    const auto it = m_verifyCache.find(key);
+    if (it == m_verifyCache.end()) return {};
+    return it->response;
+}
+
+void RemoteControl::putVerifyCacheForTest(
+        const QString &key, const QJsonObject &response) {
+    VerifyChangesCacheEntry e;
+    e.stampMs  = QDateTime::currentMSecsSinceEpoch();
+    e.key      = key;
+    e.response = response;
+    if (!m_verifyCache.contains(key)) {
+        m_verifyCacheLru.prepend(key);
+    } else {
+        m_verifyCacheLru.removeOne(key);
+        m_verifyCacheLru.prepend(key);
+    }
+    m_verifyCache.insert(key, e);
+    while (m_verifyCacheLru.size() > kVerifyCacheCap) {
+        const QString evict = m_verifyCacheLru.takeLast();
+        m_verifyCache.remove(evict);
+    }
+}
+
+QJsonDocument RemoteControl::cmdVerifyChangesImpl(
+        const QString &root, const QJsonObject &req) {
     const QFileInfo rootInfo(root);
     if (!rootInfo.isDir()) return QJsonDocument(vcErr(
         QStringLiteral("cwd_unreachable"),
         QStringLiteral("verify_changes: project root not a directory")));
 
+    // INV-9 — incompatible-args gate up front.
+    const bool force = req.value(QStringLiteral("force_refresh")).toBool(false);
+    const bool probe = req.value(QStringLiteral("cache_only")).toBool(false);
+    if (force && probe) {
+        return QJsonDocument(vcErr(
+            QStringLiteral("incompatible_args"),
+            QStringLiteral("force_refresh and cache_only are mutually exclusive")));
+    }
+
+    // INV-11 — reentrancy gate with RAII reset.
+    if (m_verifyInFlight) {
+        return QJsonDocument(vcErr(
+            QStringLiteral("verify_in_flight"),
+            QStringLiteral("verify_changes: a previous call is still running")));
+    }
+    m_verifyInFlight = true;
+    auto inFlightGuard = qScopeGuard([this]{ m_verifyInFlight = false; });
+
+    // Parse options up front so the canonical-options form is the
+    // same on lookup and insert.
     VerifyEngine::VerifyOptions opts;
     if (req.contains(QStringLiteral("gates"))) {
         const QJsonArray arr = req.value(QStringLiteral("gates")).toArray();
@@ -2757,43 +2940,110 @@ QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
         opts.timeoutSec = req.value(QStringLiteral("timeout_sec")).toInt(opts.timeoutSec);
     }
 
-    // ANTS-1337 — wire the trust client into VerifyOptions so both
-    // the config-probe and the actual runVerify call go through the
-    // gate. ANTS_VERIFY_TRUST_AUTOTRUST=1 is a transition-window
-    // env-var bypass: when set, the verb behaves as before (null
-    // client). Documented in CHANGELOG; will be removed once the
-    // modal-trust workflow stabilises.
-    if (qgetenv("ANTS_VERIFY_TRUST_AUTOTRUST") != "1") {
+    // ANTS-1337 — trust client wiring (autotrust env bypass preserved).
+    const QByteArray autoTrustEnv =
+        qgetenv("ANTS_VERIFY_TRUST_AUTOTRUST");
+    if (autoTrustEnv != "1") {
         opts.trustClient = m_verifyTrustClient.get();
     }
 
-    // Probe config first so we can surface bad_config without spending
-    // wall-clock on the run.
+    // Step 5 — pre-run git snapshot.
+    const VerifyGitSnapshot preSnapshot = collectGitSnapshot(root);
+    const bool cacheable = preSnapshot.valid && !force;
+
+    // Step 6 — trust-aware config load. May invoke prompt() at most
+    // once per (SHA, session) per verifytrust.cpp:58-97.
     QString cfgSource;
-    bool probedUntrusted = false;
-    auto cfg = VerifyEngine::loadGateConfig(
+    bool   probedUntrusted = false;
+    QList<VerifyEngine::GateConfig> cfg = VerifyEngine::loadGateConfig(
         root, &cfgSource, opts.trustClient, &probedUntrusted);
     (void)cfg;
     if (cfgSource == QLatin1String("bad_config")) {
+        // Excluded by INV-4 class 1; early return is sound under
+        // inFlightGuard (resets the flag on this return path too).
         return QJsonDocument(vcErr(
             QStringLiteral("bad_config"),
             QStringLiteral("verify.json: malformed JSON or schema mismatch")));
     }
 
-    const VerifyEngine::VerifyReport rep = VerifyEngine::runVerify(root, opts);
+    // Step 7 — compute the cache key now that the trust outcome is
+    // known.
+    const QJsonObject canonOpts = canonicaliseVerifyOptions(req);
+    const QString key = cacheable
+        ? verifyCacheKey(root, preSnapshot, cfgSource, probedUntrusted,
+                         autoTrustEnv, canonOpts)
+        : QString();
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+    // Step 8 — cache lookup (skip on force_refresh).
+    if (cacheable && !force) {
+        const auto it = m_verifyCache.find(key);
+        if (it != m_verifyCache.end()
+            && (nowMs - it->stampMs) <= kVerifyCacheTtlMs) {
+            QJsonObject resp = it->response;
+            resp[QStringLiteral("cache_hit")] = true;
+            m_verifyCacheLru.removeOne(key);
+            m_verifyCacheLru.prepend(key);
+            return QJsonDocument(resp);
+        }
+    }
+
+    // Step 9 — cache_only probe miss.
+    if (probe) {
+        QJsonObject resp;
+        resp[QStringLiteral("ok")]            = true;
+        resp[QStringLiteral("cache_hit")]     = false;
+        resp[QStringLiteral("cache_miss")]    = true;
+        resp[QStringLiteral("project_root")]  = root;
+        return QJsonDocument(resp);
+    }
+
+    // Step 10 — miss path. runVerify takes (root, opts) and re-calls
+    // loadGateConfig internally; the second call is silent for
+    // already-decided SHAs (spec § 2.1 rationale).
+    const VerifyEngine::VerifyReport rep =
+        VerifyEngine::runVerify(root, opts);
 
     QJsonObject env;
-    env["ok"]               = true;
-    env["all_passed"]       = rep.allPassed;
-    env["project_root"]     = root;
-    env["config_source"]    = rep.configSource;
-    env["verify_untrusted"] = rep.verifyUntrusted;
+    env[QStringLiteral("ok")]               = true;
+    env[QStringLiteral("all_passed")]       = rep.allPassed;
+    env[QStringLiteral("project_root")]     = root;
+    env[QStringLiteral("config_source")]    = rep.configSource;
+    env[QStringLiteral("verify_untrusted")] = rep.verifyUntrusted;
+    env[QStringLiteral("cache_hit")]        = false;
 
     QJsonObject gates;
     for (const auto &g : rep.gates) {
         gates[VerifyEngine::gateKey(g.name)] = vcGateToJson(g);
     }
-    env["gates"] = gates;
+    env[QStringLiteral("gates")] = gates;
+
+    // Step 10b — post-run snapshot + exclusion-list gate (§ 2.5).
+    const VerifyGitSnapshot postSnapshot =
+        cacheable ? collectGitSnapshot(root) : VerifyGitSnapshot{};
+    const bool snapshotMatched = cacheable
+        && postSnapshot.valid
+        && postSnapshot.head      == preSnapshot.head
+        && postSnapshot.statusSha == preSnapshot.statusSha;
+    const bool shouldInsert =
+           cacheable
+        && snapshotMatched                                  // class 4
+        && rep.configSource != QLatin1String("none")        // class 2
+        && !rep.verifyUntrusted                              // class 3
+        && !anyGateNotNaturallyCompleted(rep);              // class 6
+    if (shouldInsert) {
+        VerifyChangesCacheEntry e;
+        e.stampMs  = nowMs;
+        e.key      = key;
+        e.response = env;
+        m_verifyCache.insert(key, e);
+        m_verifyCacheLru.removeOne(key);
+        m_verifyCacheLru.prepend(key);
+        while (m_verifyCacheLru.size() > kVerifyCacheCap) {
+            const QString evict = m_verifyCacheLru.takeLast();
+            m_verifyCache.remove(evict);
+        }
+    }
     return QJsonDocument(env);
 }
 

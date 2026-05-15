@@ -243,9 +243,17 @@ void testTrustFile() {
 void testMcpWiring() {
 #ifdef SRC_RC_CPP
     const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
-    const std::string body =
+    // ANTS-1359 refactored cmdVerifyChanges into a thin RcGate wrapper
+    // + a cmdVerifyChangesImpl that holds the trust-client wiring and
+    // the new build-cache. Slurp both bodies and search the combined
+    // text so the trust-gate invariants (MC-2..MC-4) keep firing
+    // against whichever function carries them.
+    const std::string wrapper =
         ants_test::slurpFunctionBody(rc, "RemoteControl::cmdVerifyChanges");
-    expect(!body.empty(), "MC-1 cmdVerifyChanges body slurped");
+    const std::string impl =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdVerifyChangesImpl");
+    const std::string body = wrapper + "\n" + impl;
+    expect(!wrapper.empty(), "MC-1 cmdVerifyChanges body slurped");
     if (!body.empty()) {
         // MC-2: response envelope carries the new field.
         expect(body.find("\"verify_untrusted\"") != std::string::npos,

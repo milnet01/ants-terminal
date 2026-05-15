@@ -360,6 +360,27 @@ public:
                            m_roadmapSectionLru.cend());
     }
 
+    // ANTS-1359 — test-only entry point + cache inspectors. Bypasses
+    // the MainWindow / RcGate path so tests can drive cmdVerifyChanges
+    // against a synthetic project root inside a QTemporaryDir without
+    // standing up a real MainWindow. See docs/specs/ANTS-1359.md § 3.
+    QJsonDocument cmdVerifyChangesWithRoot(const QString &root,
+                                           const QJsonObject &req);
+    int verifyCacheSizeForTest() const { return m_verifyCache.size(); }
+    QStringList verifyCacheLruForTest() const {
+        return QStringList(m_verifyCacheLru.cbegin(),
+                           m_verifyCacheLru.cend());
+    }
+    void putVerifyCacheForTest(const QString &key,
+                               const QJsonObject &response);
+    QJsonObject tryGetVerifyCacheForTest(const QString &key) const;
+    void clearVerifyCacheForTest() {
+        m_verifyCache.clear();
+        m_verifyCacheLru.clear();
+    }
+    bool verifyInFlightForTest() const { return m_verifyInFlight; }
+    void setVerifyInFlightForTest(bool v) { m_verifyInFlight = v; }
+
 private slots:
     void onNewConnection();
 
@@ -404,6 +425,24 @@ private:
     mutable ColdEyesEngine::Scope m_coldEyesCacheScope = ColdEyesEngine::Scope::Default;
     mutable ColdEyesEngine::PartitionResult m_coldEyesCache;
     static constexpr qint64 kColdEyesCacheTtlMs = 5000;
+
+    // ANTS-1359 — session-scoped verify_changes build-cache. Entries
+    // keyed on (projectRoot, git HEAD, git status SHA, trust outcome,
+    // autotrust env, canonicalised options) — see docs/specs/ANTS-1359.md
+    // § 2.3. Excludes bad_config / none / verify_untrusted / non-git /
+    // not-naturally-completed gates / mid-run snapshot drift per § 2.5.
+    struct VerifyChangesCacheEntry {
+        qint64       stampMs = 0;
+        QString      key;
+        QJsonObject  response;
+    };
+    mutable QHash<QString, VerifyChangesCacheEntry> m_verifyCache;
+    mutable QList<QString>                          m_verifyCacheLru;
+    mutable bool m_verifyInFlight = false;
+    static constexpr int    kVerifyCacheCap   = 8;
+    static constexpr qint64 kVerifyCacheTtlMs = 300 * 1000;   // 5 min
+    QJsonDocument cmdVerifyChangesImpl(const QString &root,
+                                        const QJsonObject &req);
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent

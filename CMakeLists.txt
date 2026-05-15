@@ -853,7 +853,9 @@ if(ANTS_TESTS)
                 tests/features/mcp_path_anchor/test_mcp_path_anchor.cpp
                 # ANTS-1357 + ANTS-1346 MCP perf bundle.
                 tests/features/mcp_idempotent_read_cache/test_mcp_idempotent_read_cache.cpp
-                tests/features/roadmap_section_cache_lru/test_roadmap_section_cache_lru.cpp)
+                tests/features/roadmap_section_cache_lru/test_roadmap_section_cache_lru.cpp
+                # ANTS-1359 verify_changes session build-cache.
+                tests/features/verify_changes_build_cache/test_verify_changes_build_cache.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

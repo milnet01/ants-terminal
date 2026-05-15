@@ -2057,8 +2057,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "mechanical loop. Reads .ants/verify.json (or "
                         "auto-detects from CMakePresets/package.json/"
                         "Cargo.toml/pyproject.toml). Pure shell-out. "
-                        "Required: caller_cwd (string — your $PWD; "
-                        "ANTS-1372 cross-project gate).");
+                        "ANTS-1359 — results are cached in-process for "
+                        "up to 5 minutes keyed on git state + options; "
+                        "responses carry cache_hit. Pass force_refresh "
+                        "to bypass; pass cache_only to probe without "
+                        "running. Required: caller_cwd (string — your "
+                        "$PWD; ANTS-1372 cross-project gate).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject gatesProp;
@@ -2083,11 +2087,28 @@ void ClaudeIntegration::onMcpConnection() {
                     callerProp["description"] = QStringLiteral(
                         "Your $PWD. Mutating verbs refuse on mismatch "
                         "with the focused tab's cwd (ANTS-1372).");
+                    // ANTS-1359 — cache-control args.
+                    QJsonObject forceProp;
+                    forceProp["type"] = "boolean";
+                    forceProp["description"] = QStringLiteral(
+                        "Bypass the in-process build-cache (ANTS-1359) "
+                        "and force a fresh run. Useful after a system "
+                        "update or any change to a `.gitignore`d build "
+                        "input. Default false.");
+                    QJsonObject probeProp;
+                    probeProp["type"] = "boolean";
+                    probeProp["description"] = QStringLiteral(
+                        "Return the cached response if present; else "
+                        "return {ok:true, cache_miss:true} without "
+                        "running gates. Default false. Mutually "
+                        "exclusive with force_refresh.");
                     QJsonObject props;
-                    props["gates"]         = gatesProp;
-                    props["max_log_lines"] = linesProp;
-                    props["timeout_sec"]   = timeoutProp;
-                    props["caller_cwd"]    = callerProp;
+                    props["gates"]          = gatesProp;
+                    props["max_log_lines"]  = linesProp;
+                    props["timeout_sec"]    = timeoutProp;
+                    props["caller_cwd"]     = callerProp;
+                    props["force_refresh"]  = forceProp;
+                    props["cache_only"]     = probeProp;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("caller_cwd");

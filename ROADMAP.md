@@ -5216,17 +5216,30 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1359] **`mcp__ants__verify_changes` build-cache.**
-  Repeated `verify_changes` calls within the same session re-
-  run cmake/ctest from scratch even when no source files
-  changed since the last run. Cache by `(file_set_mtime,
-  command)`; invalidate on `git status -s` delta. Halves the
-  cost of multi-turn refactor → verify loops.
-  **Deferred 2026-05-15** from the ANTS-1357/1346/1364 bundle:
-  this is the riskiest item in the perf set (a stale-cache
-  hit could mask a real build regression), needs its own
-  careful spec pass with invalidation-correctness tests
-  before implementation. Track separately.
+- ✅ [ANTS-1359] **`mcp__ants__verify_changes` build-cache.**
+  Repeated `verify_changes` calls within the same session no
+  longer re-run cmake/ctest when nothing relevant changed.
+  Session-scoped cache on `RemoteControl`, keyed on (project
+  root + git HEAD + `git status --porcelain` SHA + trust
+  outcome + `ANTS_VERIFY_TRUST_AUTOTRUST` env + canonical
+  options). 5-minute TTL, 8-entry LRU, ~80 KB typical /
+  ~385 KB ceiling. Pre-run AND post-run git snapshots — any
+  drift between them excludes the entry (no mid-edit
+  contamination). Seven exclusion classes (`bad_config`,
+  `none`, `verify_untrusted`, snapshot drift, non-git project,
+  command-not-resolvable, timeout-killed). Reentrancy gate
+  via `qScopeGuard` so a second call while one is in flight
+  returns `verify_in_flight` without touching the cache.
+  Two new optional args: `force_refresh` (bypass lookup +
+  re-run) and `cache_only` (probe without running); the
+  combination returns `incompatible_args`. New `cache_hit`
+  field on every response. **Cold-eyes-reviewed across four
+  passes** before implementation (1 → CRITICAL on
+  `.gitignore`d input invisibility + race-window framing +
+  Qt event-loop reentrancy + 4 HIGHs; 2 → 2 new HIGHs from
+  the pass-1 fixes; 3 → 1 HIGH on `runVerify` signature; 4 →
+  CLEAN). Spec: `docs/specs/ANTS-1359.md`. Tests:
+  `tests/features/verify_changes_build_cache/` (17 tests).
   **Layman:** stop re-running the full build + tests on every
   Claude turn when nothing relevant changed.
   Kind: perf.

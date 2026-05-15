@@ -12,13 +12,52 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### ⚡ `verify_changes` session build-cache (2026-05-15)
+
+The fourth (and riskiest) item from the MCP-perf set, shipped after
+its own dedicated invalidation-correctness pass.
+
+- **ANTS-1359 — `mcp__ants__verify_changes` session build-cache.**
+  Repeated `verify_changes` calls within the same session no longer
+  re-run cmake/ctest when nothing relevant changed. Session-scoped
+  cache on `RemoteControl` keyed on `(project_root + git HEAD +
+  git status --porcelain SHA + trust_outcome +
+  ANTS_VERIFY_TRUST_AUTOTRUST env + canonical options)`. 5-minute
+  TTL, 8-entry LRU, ~80 KB typical / ~385 KB ceiling. **Two-snapshot
+  drift detection** — pre-run AND post-run git snapshots taken
+  around `runVerify`; any drift between them excludes the entry
+  from insert, so a mid-edit contamination never poisons the cache.
+  **Seven exclusion classes** (`bad_config`, `none`,
+  `verify_untrusted`, snapshot drift, non-git project,
+  command-not-resolvable, timeout-killed gate). Each exclusion has
+  a corresponding test. **Reentrancy gate** via `qScopeGuard` so a
+  second call while one is in flight returns `verify_in_flight`
+  without touching the cache (Qt event-loop pumps during
+  `QProcess::waitForFinished` make this reachable in practice).
+  Two new optional args on the verb: `force_refresh` (bypass
+  lookup + re-run) and `cache_only` (probe the cache without
+  running gates); the combination returns `incompatible_args`. New
+  `cache_hit` field on every response. **Cold-eyes-reviewed across
+  four passes** before any code landed — pass 1 surfaced CRITICAL
+  findings on `.gitignore`d input invisibility, the pre/post
+  race-window framing, and Qt event-loop reentrancy through
+  `QProcess::waitForFinished`; passes 2 and 3 each surfaced new
+  HIGH findings from the previous pass's fixes (key-time
+  `outcomeForConfig` could pop a modal, reentrancy flag leaked
+  through the existing `bad_config` early return, `runVerify`
+  signature mismatch); pass 4 confirmed CLEAN. All findings folded
+  with invariants + tests before implementation began. 17 new
+  feature-conformance tests cover the cap/LRU/TTL/exclusion matrix
+  plus all five `force_refresh`/`cache_only` interaction paths
+  plus the reentrancy flag. Spec: `docs/specs/ANTS-1359.md`.
+  Tests: `tests/features/verify_changes_build_cache/`.
+
 ### ⚡ MCP perf / token-reduction bundle (2026-05-15)
 
 Three of the four items in the indie-review-flagged MCP-perf set;
-the fourth (ANTS-1359 verify_changes build-cache) deferred to its
-own pass because a stale-cache hit there could mask a real build
-regression. All three shipping items are spec-locked, regression-
-locked, and live-tested against the running Ants binary.
+the fourth (ANTS-1359 verify_changes build-cache, above) shipped
+in its own subsequent pass. All four items are spec-locked,
+regression-locked, and live-tested against the running Ants binary.
 
 - **ANTS-1357 — MCP idempotent-read response cache.** Four
   read-only MCP verbs (`get_cwd`, `get_environment`, `tab_list`,
