@@ -47,7 +47,8 @@ static int runMain() {
     if (gtPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdGetText definition missing");
     } else {
-        std::string body = rc.substr(gtPos, 2500);
+        // 3500-char window (ANTS-1348 grew the body past 2500).
+        std::string body = rc.substr(gtPos, 3500);
         if (body.find("isDouble()") == std::string::npos) {
             fail("INV-2b: cmdGetText must use isDouble() for tab + lines "
                  "(consistent with send-text / set-title / select-window)");

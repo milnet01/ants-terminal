@@ -5052,7 +5052,7 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1348] **`cmdGetText` no server-side byte cap
+- ✅ [ANTS-1348] **`cmdGetText` no server-side byte cap
   (lane-2 M4).** `remotecontrol.cpp:415` caps at 10 000 lines
   but not bytes. A 10 000-line scrollback of 4 KB lines yields
   a 40 MB JSON document; client-side 1 MiB cap then truncates

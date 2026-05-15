@@ -86,6 +86,30 @@ hostile-content findings.
   hook RPC; a peer dribbling 1 byte every 4.9 s with
   restart-on-read would hold the connection indefinitely.
   Comment-only fix; no behaviour change.
+- **Server-side byte cap on `cmdGetText` / `mcp__ants__get_text`
+  (ANTS-1348, lane-2 M4 deferral).** The handler at
+  `remotecontrol.cpp:375` capped at 10 000 lines but applied no
+  byte cap — a scrollback of 10 000 × 4 KB lines yielded a 40 MB
+  JSON envelope that the MCP bridge's 1 MiB receive limit then
+  truncated mid-stream, surfacing as a misleading "socket hijack"
+  error to the Claude Code caller. Now adds an optional
+  `max_bytes` request field (default 1 MiB matching the bridge
+  cap, hard ceiling 16 MiB), trims from the head (drops oldest;
+  newest tail always survives), snaps the cut to the next `\n`
+  boundary so the response never starts mid-line, and prepends a
+  `<truncated N bytes / M lines>\n` sentinel. Response envelope
+  gains `truncated` (always present, `false` on the happy path),
+  `bytes_dropped` + `lines_dropped` (only when truncated), and
+  `bytes_cap_clamped:true` when `max_bytes` exceeded the ceiling.
+  Refactored `cmdGetText` to delegate the cut logic to a pure
+  `RemoteControl::trimScrollbackForGetText` static inline helper
+  so feature tests cover it without instantiating MainWindow.
+  Spec at `docs/specs/ANTS-1348.md`; regression test at
+  `tests/features/rc_get_text_byte_cap/` (10 GT-* engine + 3 WI-*
+  source-grep assertions; bundled into `test_core`). The
+  existing `remote_control_get_text` test's body-window heuristic
+  bumped from 2500 → 3500 chars to accommodate the longer
+  `cmdGetText` body.
 - **UTF-8 C1 byte strip in `filterControlChars` (ANTS-1335,
   lane-2 M2 deferral).** The rc/MCP byte filter at
   `remotecontrol.h:95` stripped C0 controls but explicitly punted

@@ -413,11 +413,32 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
         if (requested > 0) lines = std::min(requested, 10000);
     }
 
-    const QString text = target->recentOutput(lines);
+    // ANTS-1348 — server-side byte cap. Default 1 MiB matches the MCP
+    // bridge's receive budget so the happy path never trips the
+    // transport limit. Caller can lower (test harness) or raise (up
+    // to the 16 MiB ceiling for non-MCP rc consumers).
+    int maxBytes = RemoteControl::kGetTextDefaultBytesCap;
+    const QJsonValue maxBytesVal = req.value("max_bytes");
+    if (maxBytesVal.isDouble()) {
+        const int requested = maxBytesVal.toInt();
+        if (requested > 0) maxBytes = requested;
+    }
+
+    const QString raw = target->recentOutput(lines);
+    const auto trim =
+        RemoteControl::trimScrollbackForGetText(raw, maxBytes);
+
     out["ok"] = true;
-    out["text"] = text;
-    out["lines"] = text.count('\n') + (text.isEmpty() ? 0 : 1);
-    out["bytes"] = text.toUtf8().size();
+    out["text"] = trim.text;
+    out["lines"] =
+        trim.text.count('\n') + (trim.text.isEmpty() ? 0 : 1);
+    out["bytes"] = trim.text.toUtf8().size();
+    out["truncated"] = trim.truncated;
+    if (trim.truncated) {
+        out["bytes_dropped"] = trim.bytesDropped;
+        out["lines_dropped"] = trim.linesDropped;
+    }
+    if (trim.capClamped) out["bytes_cap_clamped"] = true;
     return QJsonDocument(out);
 }
 

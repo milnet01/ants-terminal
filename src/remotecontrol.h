@@ -138,6 +138,73 @@ public:
         return out;
     }
 
+    // ANTS-1348 — server-side byte cap on `get-text` responses.
+    //
+    // Default cap matches the MCP bridge's 1 MiB receive budget so the
+    // happy path never trips the transport limit; over-ceiling values
+    // (e.g. a curious test passing 256 MiB) silently clamp at 16 MiB
+    // and surface via `capClamped` in the result.
+    static constexpr int kGetTextDefaultBytesCap  = 1 * 1024 * 1024;   // 1 MiB
+    static constexpr int kGetTextMaxBytesCeiling  = 16 * 1024 * 1024;  // 16 MiB
+
+    // Result of `trimScrollbackForGetText`. `text` is the (possibly
+    // truncation-prefixed) string to put in the response; the other
+    // fields surface as response-envelope flags.
+    struct GetTextTrim {
+        QString text;
+        qint64  bytesDropped = 0;
+        qint64  linesDropped = 0;
+        bool    truncated = false;
+        bool    capClamped = false;
+    };
+
+    // Trim a scrollback string to fit `maxBytes` of UTF-8. Drops from
+    // the *head* (oldest output) so the newest tail always survives;
+    // snaps the cut to the next '\n' so the result never starts with
+    // a partial line. When truncation happens, the returned text is
+    // prefixed with a `<truncated N bytes / M lines>\n` sentinel so
+    // line-based consumers see an unambiguous boundary marker.
+    //
+    // `maxBytes <= 0` falls back to the 1 MiB default. Values above
+    // the 16 MiB ceiling are silently clamped (and `capClamped` is set
+    // in the result). The `\n` snap is safe across multi-byte UTF-8
+    // because 0x0A is never a continuation byte in any valid UTF-8
+    // sequence.
+    //
+    // Defined inline so feature tests can exercise it without pulling
+    // in the full MainWindow dep chain. See ANTS-1348 spec.
+    static inline GetTextTrim trimScrollbackForGetText(
+            const QString &raw, int maxBytes) {
+        GetTextTrim r;
+
+        int cap = maxBytes;
+        if (cap > kGetTextMaxBytesCeiling) {
+            cap = kGetTextMaxBytesCeiling;
+            r.capClamped = true;
+        }
+        if (cap <= 0) cap = kGetTextDefaultBytesCap;
+
+        const QByteArray utf8 = raw.toUtf8();
+        if (utf8.size() <= cap) {
+            r.text = raw;
+            return r;
+        }
+
+        const int cut = static_cast<int>(utf8.size()) - cap;
+        int snap = utf8.indexOf('\n', cut);
+        if (snap < 0) snap = cut;       // no newline found; hard cut
+        else          ++snap;            // skip the newline itself
+
+        const QByteArray kept = utf8.mid(snap);
+        r.bytesDropped = snap;
+        r.linesDropped = utf8.left(snap).count('\n');
+        r.text = QStringLiteral("<truncated %1 bytes / %2 lines>\n")
+                     .arg(r.bytesDropped).arg(r.linesDropped)
+                 + QString::fromUtf8(kept);
+        r.truncated = true;
+        return r;
+    }
+
     // ANTS-1244: read-only verbs promoted to public so the MCP server
     // in ClaudeIntegration can delegate to them without duplicating
     // bodies. Provider lambdas in MainWindow::setupClaudeMcpProviders
