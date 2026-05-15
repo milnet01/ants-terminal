@@ -351,6 +351,15 @@ public:
     // docs/specs/ANTS-1283.md.
     QJsonDocument cmdSessionMemory(const QJsonObject &req);
 
+    // ANTS-1346 test-only inspectors for the section-cache LRU.
+    int sectionCacheSizeForTest() const {
+        return m_roadmapSectionCache.size();
+    }
+    QStringList sectionLruForTest() const {
+        return QStringList(m_roadmapSectionLru.cbegin(),
+                           m_roadmapSectionLru.cend());
+    }
+
 private slots:
     void onNewConnection();
 
@@ -378,6 +387,12 @@ private:
     // mtime advance or TTL expiry. See docs/specs/ANTS-1287.md § 2.3.
     mutable QVector<RoadmapIndex::Section> m_roadmapIndex;
     mutable QHash<QString, QJsonArray>     m_roadmapSectionCache;
+    // ANTS-1346 — MRU-front list bounding the section cache at 64
+    // slugs. Hit-path bumps the slug to the front; insert-path evicts
+    // the tail when size > kRoadmapSectionCacheCap. Cleared together
+    // with the cache on the mtime-stale wipe path.
+    mutable QList<QString>                 m_roadmapSectionLru;
+    static constexpr int    kRoadmapSectionCacheCap = 64;
     static constexpr qint64 kRoadmapCacheTtlMs = 100;
 
     // ANTS-1319 — mtime-cached partition result (INV-12). Single-entry

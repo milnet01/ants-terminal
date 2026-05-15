@@ -12,6 +12,70 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### ⚡ MCP perf / token-reduction bundle (2026-05-15)
+
+Three of the four items in the indie-review-flagged MCP-perf set;
+the fourth (ANTS-1359 verify_changes build-cache) deferred to its
+own pass because a stale-cache hit there could mask a real build
+regression. All three shipping items are spec-locked, regression-
+locked, and live-tested against the running Ants binary.
+
+- **ANTS-1357 — MCP idempotent-read response cache.** Four
+  read-only MCP verbs (`get_cwd`, `get_environment`, `tab_list`,
+  `last_audit_summary`) now short-circuit through a 100 ms TTL
+  cache in `ClaudeIntegration::processTools` before reaching the
+  registry. Key = SHA256-hex16 of `(toolName + '\0' + compact(args))`,
+  32-entry LRU cap, allowlist enforced at lookup AND insert.
+  INV-5 exclusions reject empty responses (provider-failure
+  idiom) and the verbatim `kMcpRcUnavailable` literal
+  (transient startup-window envelope) so the cache never
+  serves a "couldn't answer" as the answer to the next caller.
+  Saves both Ants-side compute and Claude-side input tokens on
+  subagent fan-outs that re-issue the same tool call.
+  `kRcUnavailable` promoted to `ClaudeIntegration::kMcpRcUnavailable`
+  inline-constexpr so the cache rejection rule can reference the
+  same bytes the providers emit. Spec: `docs/specs/ANTS-1357.md`.
+  Tests: `tests/features/mcp_idempotent_read_cache/` (8 tests
+  covering hit/miss/TTL/LRU bump/cap/allowlist + both INV-5
+  rejections).
+- **ANTS-1346 — `roadmap_query` section cache LRU eviction.**
+  `m_roadmapSectionCache` was bounded only by ROADMAP heading
+  count + mtime-stale wipe; on a stable ROADMAP it grew
+  monotonically up to 177 sections (current heading count).
+  Added `m_roadmapSectionLru` (MRU-front `QList<QString>`),
+  `kRoadmapSectionCacheCap = 64`, hit-path bump
+  (`removeOne` + `prepend`), insert-path tail-eviction
+  (`takeLast` + `cache.remove`). The mtime-stale wipe path
+  now co-clears all three structures (`m_roadmapIndex`,
+  `m_roadmapSectionCache`, `m_roadmapSectionLru`) in
+  lock-step. Worst-case RAM ceiling drops from "ROADMAP-
+  heading-count × largest-slice" (~hundreds of KB on the
+  pathological case) to a deterministic ≤ 288 KB. Spec:
+  `docs/specs/ANTS-1346.md`. Tests:
+  `tests/features/roadmap_section_cache_lru/`.
+- **ANTS-1364 — `session_memory` Set/Delete serialize-once
+  refactor.** `saveStore(QString,QJsonObject)` signature
+  changed to `saveStore(QString,QByteArray)`; callers in
+  `SessionMemoryEngine::execute` (Set + Delete branches) now
+  compute `QJsonDocument(next).toJson(Compact)` once, check
+  the byte-cap against the resulting size, then pass the same
+  bytes to disk — halving the JSON serialisation cost on every
+  write to the store. INV-2 (`totalBytes` equals on-disk
+  bytes) preserved and newly test-locked. The original ROADMAP
+  framing (cross-call delta caching) bought nothing because
+  `execute()` is stateless across calls; this refactor
+  captures the intra-call waste that was the real cost. Spec:
+  `docs/specs/ANTS-1364.md`. Tests:
+  `tests/features/session_memory_serialize_once/`.
+
+Three new spec docs (`docs/specs/ANTS-1346.md`,
+`docs/specs/ANTS-1357.md`, `docs/specs/ANTS-1364.md`) each
+cold-eyes-reviewed in three iterative passes against the live
+codebase before any implementation landed — the original drafts
+each carried verified critical/high/medium findings (wrong
+function names, fabricated RAM numbers, broken test paths,
+unrealistic test seams) that were folded back in before code.
+
 ### 🔍 Indie-review fold-in (2026-05-14)
 
 Six-lane independent code review across the full src/ tree;

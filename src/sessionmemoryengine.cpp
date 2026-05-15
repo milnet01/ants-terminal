@@ -93,7 +93,10 @@ QJsonObject loadStore(const QString &path, bool *corruptOut) {
     return doc.object();
 }
 
-QString saveStore(const QString &path, const QJsonObject &store) {
+QString saveStore(const QString &path, const QByteArray &body) {
+    // ANTS-1364 — body is pre-serialized by the caller. INV-3 + INV-10
+    // logic (atomic temp+rename, parent-dir 0700, leaf 0600) is
+    // unchanged byte-for-byte; only the serialize moved up the stack.
     // INV-10 — ensure parent dir exists with mode 0700.
     const QFileInfo fi(path);
     const QDir parent = fi.absoluteDir();
@@ -114,8 +117,6 @@ QString saveStore(const QString &path, const QJsonObject &store) {
         return QStringLiteral("session_memory: failed to open ")
             + path + QStringLiteral(" for write: ") + sf.errorString();
     }
-    const QByteArray body = QJsonDocument(store).toJson(
-        QJsonDocument::Compact);
     if (sf.write(body) != body.size()) {
         sf.cancelWriting();
         return QStringLiteral("session_memory: short write to ") + path;
@@ -240,7 +241,13 @@ OpResult execute(const QString &cwd, Op op,
                         .arg(kMaxStoreKeys).arg(next.size()),
                     path);
             }
-            const qint64 total = serializedSize(next);
+            // ANTS-1364 — serialize once; reuse the bytes for both the
+            // total-cap check and the on-disk write. Pre-fix code did
+            // this work twice (serializedSize(next) + an internal
+            // QJsonDocument(store).toJson() inside saveStore).
+            const QByteArray body = QJsonDocument(next)
+                .toJson(QJsonDocument::Compact);
+            const qint64 total = body.size();
             // INV-2 — total cap.
             if (total > kMaxStoreBytes) {
                 return makeErr(op, key, QStringLiteral("cap_exceeded"),
@@ -248,7 +255,7 @@ OpResult execute(const QString &cwd, Op op,
                                    "100 KiB cap (%1 bytes)").arg(total),
                     path);
             }
-            const QString saveErr = saveStore(path, next);
+            const QString saveErr = saveStore(path, body);
             if (!saveErr.isEmpty()) {
                 return makeErr(op, key, QStringLiteral("io_error"),
                                saveErr, path);
@@ -262,12 +269,15 @@ OpResult execute(const QString &cwd, Op op,
             if (had) {
                 QJsonObject next = store;
                 next.remove(key);
-                const QString saveErr = saveStore(path, next);
+                // ANTS-1364 — serialize once for write + totalBytes.
+                const QByteArray body = QJsonDocument(next)
+                    .toJson(QJsonDocument::Compact);
+                const QString saveErr = saveStore(path, body);
                 if (!saveErr.isEmpty()) {
                     return makeErr(op, key, QStringLiteral("io_error"),
                                    saveErr, path);
                 }
-                r.totalBytes = serializedSize(next);
+                r.totalBytes = body.size();
             } else {
                 r.totalBytes = serializedSize(store);
             }

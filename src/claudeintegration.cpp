@@ -4,6 +4,7 @@
 #include "debuglog.h"
 #include "secureio.h"
 
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -2463,26 +2464,54 @@ void ClaudeIntegration::onMcpConnection() {
                 const QJsonObject argsObj = params.value("arguments").toObject();
                 QString responseText;
                 bool toolHandled = false;
+                // ANTS-1357 — short-TTL idempotent-read cache lookup
+                // happens before dispatch. Only the 4 allowlisted tools
+                // hit this path (isIdempotentReadTool); everything else
+                // falls through to the registry below. INV-1: cache
+                // hit response is byte-identical to a miss at stampMs.
+                bool cachedHit = false;
+                const bool cacheable = isIdempotentReadTool(toolName);
+                if (cacheable) {
+                    const QString hit = tryGetIdempotentReadCache(
+                        toolName, argsObj);
+                    if (!hit.isEmpty()) {
+                        responseText = hit;
+                        toolHandled  = true;
+                        cachedHit    = true;
+                    }
+                }
                 // ANTS-1253: get_session_info stays inline — it reads
                 // ClaudeIntegration's own private state (m_state,
                 // m_currentTool, m_contextPercent, m_changedFiles,
                 // m_activeSessionId) rather than delegating to an
                 // external provider. All 12 outward-delegate tools
-                // dispatch via the registry below.
-                if (toolName == "get_session_info") {
-                    QJsonObject info;
-                    info["state"] = static_cast<int>(m_state);
-                    info["current_tool"] = m_currentTool;
-                    info["context_percent"] = m_contextPercent;
-                    info["changed_files"] = QJsonArray::fromStringList(m_changedFiles);
-                    info["session_id"] = m_activeSessionId;
-                    responseText = QString::fromUtf8(
-                        QJsonDocument(info).toJson(QJsonDocument::Compact));
-                    toolHandled = true;
-                } else if (auto it = m_toolProviders.find(toolName);
-                           it != m_toolProviders.end()) {
-                    responseText = it->second(argsObj);
-                    toolHandled = true;
+                // dispatch via the registry below. The wrapping
+                // `if (!cachedHit)` guard is the ANTS-1357 cache-hit
+                // short-circuit — keeps the original branch shape
+                // unchanged for the McpProviderRegistry INV-5
+                // dispatcher-collapsed regex.
+                if (!cachedHit) {
+                    if (toolName == "get_session_info") {
+                        QJsonObject info;
+                        info["state"] = static_cast<int>(m_state);
+                        info["current_tool"] = m_currentTool;
+                        info["context_percent"] = m_contextPercent;
+                        info["changed_files"] = QJsonArray::fromStringList(m_changedFiles);
+                        info["session_id"] = m_activeSessionId;
+                        responseText = QString::fromUtf8(
+                            QJsonDocument(info).toJson(QJsonDocument::Compact));
+                        toolHandled = true;
+                    } else if (auto it = m_toolProviders.find(toolName);
+                               it != m_toolProviders.end()) {
+                        responseText = it->second(argsObj);
+                        toolHandled = true;
+                    }
+                }
+                // ANTS-1357 — populate cache on miss-success. INV-5
+                // exclusions enforced inside maybeInsertIdempotentReadCache.
+                if (toolHandled && cacheable && !cachedHit) {
+                    maybeInsertIdempotentReadCache(
+                        toolName, argsObj, responseText);
                 }
 
                 if (toolHandled) {
@@ -2574,6 +2603,68 @@ QString ClaudeIntegration::wrapMcpData(const QString &toolName,
     safeTool.replace(QLatin1Char('"'),  QStringLiteral("&quot;"));
     return QStringLiteral("<ants_mcp_data tool=\"%1\">%2</ants_mcp_data>")
         .arg(safeTool, sanitised);
+}
+
+// --- ANTS-1357 — MCP idempotent-read cache helpers ---
+
+bool ClaudeIntegration::isIdempotentReadTool(const QString &toolName) {
+    // Allowlist enforced at lookup AND insert (INV-4). Hardcoded; new
+    // tools must opt in explicitly to make caching-eligibility a
+    // deliberate decision per tool.
+    return toolName == QStringLiteral("get_cwd")
+        || toolName == QStringLiteral("get_environment")
+        || toolName == QStringLiteral("tab_list")
+        || toolName == QStringLiteral("last_audit_summary");
+}
+
+QString ClaudeIntegration::idempotentReadCacheKey(
+    const QString &toolName, const QJsonObject &args) {
+    // INV-9 — args are part of the key. QJsonObject::toJson(Compact)
+    // emits keys lexicographically (Qt6 internal), so the bytes are
+    // stable across runs for the same arg set.
+    QByteArray buf = toolName.toUtf8();
+    buf.append('\0');
+    buf.append(QJsonDocument(args).toJson(QJsonDocument::Compact));
+    return QString::fromUtf8(QCryptographicHash::hash(
+        buf, QCryptographicHash::Sha256).toHex().left(16));
+}
+
+QString ClaudeIntegration::tryGetIdempotentReadCache(
+    const QString &toolName, const QJsonObject &args) const {
+    if (!isIdempotentReadTool(toolName)) return QString();
+    const QString key = idempotentReadCacheKey(toolName, args);
+    auto it = m_idempotentReadCache.find(key);
+    if (it == m_idempotentReadCache.end()) return QString();
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (nowMs - it->stampMs > kIdempotentReadTtlMs) {
+        // INV-2 — entries past TTL are treated as miss (the next
+        // insert will overwrite).
+        return QString();
+    }
+    // INV-3 LRU bump.
+    m_idempotentReadLru.removeOne(key);
+    m_idempotentReadLru.prepend(key);
+    return it->response;
+}
+
+void ClaudeIntegration::maybeInsertIdempotentReadCache(
+    const QString &toolName, const QJsonObject &args,
+    const QString &response) {
+    // INV-4 — allowlist check at insert.
+    if (!isIdempotentReadTool(toolName)) return;
+    // INV-5(a) — empty response = "couldn't answer". Don't cache.
+    if (response.isEmpty()) return;
+    // INV-5(b) — kRcUnavailable = transient startup window. Don't cache.
+    if (response == QString::fromUtf8(kMcpRcUnavailable)) return;
+    const QString key = idempotentReadCacheKey(toolName, args);
+    m_idempotentReadCache.insert(key,
+        IdempotentReadEntry{QDateTime::currentMSecsSinceEpoch(), response});
+    m_idempotentReadLru.removeOne(key);
+    m_idempotentReadLru.prepend(key);
+    while (m_idempotentReadLru.size() > kIdempotentReadCacheCap) {
+        const QString evicted = m_idempotentReadLru.takeLast();
+        m_idempotentReadCache.remove(evicted);
+    }
 }
 
 // --- Project / Session Discovery ---

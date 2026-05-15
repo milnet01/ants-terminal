@@ -43,7 +43,11 @@ QString storePathFor(const QString &cwd, const QString &baseDirOverride = {});
 bool        parseOp(const QString &raw, Op *out);
 bool        isValidKey(const QString &key);
 QJsonObject loadStore(const QString &path, bool *corruptOut = nullptr);
-QString     saveStore(const QString &path, const QJsonObject &store);
+// ANTS-1364 — accepts pre-serialized bytes so callers that already
+// hold them (cap-check call sites) avoid a redundant
+// QJsonDocument(store).toJson(Compact). Pre-fix signature took a
+// QJsonObject and serialized internally, doubling the work.
+QString     saveStore(const QString &path, const QByteArray &body);
 qint64      serializedSize(const QJsonObject &store);
 qint64      serializedSize(const QJsonValue &value);
 

@@ -3718,9 +3718,11 @@ void MainWindow::setupClaudeMcpProviders() {
     // Indie-review-2026-05-14 lane-5 HI-3: every other envelope in the
     // codebase carries a `code` field so callers can dispatch on it
     // programmatically. This was the one outlier.
+    // ANTS-1357: the literal lives at ClaudeIntegration::kMcpRcUnavailable
+    // — shared so the idempotent-read cache can reject the same bytes
+    // at insert time (INV-5(b)). Re-aliased here for local readability.
     static constexpr const char *kRcUnavailable =
-        "{\"ok\":false,\"error\":\"remote-control unavailable\","
-        "\"code\":\"no_remote_control\"}";
+        ClaudeIntegration::kMcpRcUnavailable;
 
     m_claudeIntegration->registerToolProvider("get_scrollback",
         [this](const QJsonObject &args) -> QString {

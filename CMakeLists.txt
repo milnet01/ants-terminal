@@ -850,7 +850,10 @@ if(ANTS_TESTS)
                 tests/features/mcp_cold_eyes/test_mcp_cold_eyes.cpp
                 tests/features/mcp_session_memory/test_mcp_session_memory.cpp
                 tests/features/mcp_output_sanitisation/test_mcp_output_sanitisation.cpp
-                tests/features/mcp_path_anchor/test_mcp_path_anchor.cpp)
+                tests/features/mcp_path_anchor/test_mcp_path_anchor.cpp
+                # ANTS-1357 + ANTS-1346 MCP perf bundle.
+                tests/features/mcp_idempotent_read_cache/test_mcp_idempotent_read_cache.cpp
+                tests/features/roadmap_section_cache_lru/test_roadmap_section_cache_lru.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -930,7 +933,9 @@ if(ANTS_TESTS)
                 tests/features/roadmap_index_engine/test_roadmap_index_engine.cpp
                 tests/features/cold_eyes_engine/test_cold_eyes_engine.cpp
                 tests/features/session_memory_engine/test_session_memory_engine.cpp
-                tests/features/tool_detection_engine/test_tool_detection_engine.cpp)
+                tests/features/tool_detection_engine/test_tool_detection_engine.cpp
+                # ANTS-1364 — Set/Delete serialize-once refactor.
+                tests/features/session_memory_serialize_once/test_session_memory_serialize_once.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QFileSystemWatcher>
 #include <QHash>
+#include <QList>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QDateTime>
@@ -187,6 +188,35 @@ public:
     using ToolHandler = std::function<QString(const QJsonObject &args)>;
     void registerToolProvider(const QString &name, ToolHandler handler);
 
+    // ANTS-1357 — shared with the MainWindow lambdas that emit this
+    // exact envelope when m_remoteControl is null (transient startup
+    // window). The idempotent-read cache rejects this literal at
+    // insert time (INV-5(b)).
+    static constexpr const char *kMcpRcUnavailable =
+        "{\"ok\":false,\"error\":\"remote-control unavailable\","
+        "\"code\":\"no_remote_control\"}";
+
+    // ANTS-1357 — direct cache API (test-only seam). The integration
+    // with the MCP dispatch is exercised in
+    // tests/features/mcp_idempotent_read_cache via these methods,
+    // bypassing the QLocalSocket round-trip. See docs/specs/ANTS-1357.md.
+    QString tryGetIdempotentReadCacheForTest(
+        const QString &toolName, const QJsonObject &args) const {
+        return tryGetIdempotentReadCache(toolName, args);
+    }
+    void putIdempotentReadCacheForTest(
+        const QString &toolName, const QJsonObject &args,
+        const QString &response) {
+        maybeInsertIdempotentReadCache(toolName, args, response);
+    }
+    int idempotentReadCacheSizeForTest() const {
+        return m_idempotentReadCache.size();
+    }
+    QStringList idempotentReadCacheLruForTest() const {
+        return QStringList(m_idempotentReadLru.cbegin(),
+                           m_idempotentReadLru.cend());
+    }
+
     // ANTS-1284 — in-process MCP dispatch counter. recordCall is
     // invoked from the dispatch site (private member access);
     // reset/buildReport are exposed for RemoteControl::cmdTokenUsage
@@ -337,6 +367,31 @@ private:
     // ANTS-1284 — per-tool MCP dispatch byte counters. Resets on
     // MCP `initialize` and on explicit token_usage(reset:true).
     TokenUsageEngine::Tracker m_tokenUsage;
+
+    // ANTS-1357 — short-TTL idempotent-read cache.
+    // Allowlist: get_cwd / get_environment / tab_list / last_audit_summary.
+    // Key: SHA256-hex16(toolName + '\0' + QJsonDocument(args).toJson(Compact)).
+    // INVs in docs/specs/ANTS-1357.md.
+    struct IdempotentReadEntry {
+        qint64  stampMs = 0;
+        QString response;
+    };
+    mutable QHash<QString, IdempotentReadEntry> m_idempotentReadCache;
+    mutable QList<QString>                      m_idempotentReadLru;
+    static constexpr int    kIdempotentReadCacheCap = 32;
+    static constexpr qint64 kIdempotentReadTtlMs    = 100;
+
+    // Private helpers — the test-only methods in the public section
+    // delegate here, and the dispatch site at processTools uses them
+    // directly.
+    static bool isIdempotentReadTool(const QString &toolName);
+    static QString idempotentReadCacheKey(
+        const QString &toolName, const QJsonObject &args);
+    QString tryGetIdempotentReadCache(
+        const QString &toolName, const QJsonObject &args) const;
+    void maybeInsertIdempotentReadCache(
+        const QString &toolName, const QJsonObject &args,
+        const QString &response);
 
     // Session tracking
     QString m_activeSessionId;

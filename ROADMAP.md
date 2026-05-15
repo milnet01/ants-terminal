@@ -5022,7 +5022,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1346] **`roadmap_query` section cache unbounded
+- ✅ [ANTS-1346] **`roadmap_query` section cache unbounded
   growth (lane-5 ME-1).** `remotecontrol.cpp:756`. The cache
   is keyed on section slug; the slug set is implicitly bounded
   by ROADMAP heading count, but only wiped when `mtime`
@@ -5031,7 +5031,10 @@ class; the deferrals below cover the rest.
   `sliceSection` returns whatever lies between two headings —
   on a malformed / un-anchored ROADMAP that could be hundreds
   of KB per slug. Fix: explicit per-slug size cap + LRU
-  eviction at 64 slugs.
+  eviction at 64 slugs (`kRoadmapSectionCacheCap`),
+  `m_roadmapSectionLru` MRU-front list, three-way co-clear on
+  mtime-stale wipe. Spec: `docs/specs/ANTS-1346.md`. Tests:
+  `tests/features/roadmap_section_cache_lru/`.
   **Layman:** the roadmap-query MCP tool's cache can grow
   large on huge roadmaps; add an LRU cap.
   Kind: perf.
@@ -5186,13 +5189,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: security.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1357] **MCP idempotent-read response cache.**
+- ✅ [ANTS-1357] **MCP idempotent-read response cache.**
   `get_cwd`, `last_audit_summary`, `get_environment`,
   `tab_list` are idempotent reads with stable results across
   the same session-tick. Cache by `(tool, args_sha256)` for
-  100 ms (matches the existing `roadmap_query` TTL pattern).
-  Saves both compute and token round-trips when the assistant
-  retries the same query.
+  100 ms (matches the existing `roadmap_query` TTL pattern),
+  32-entry LRU cap, INV-5 exclusions for empty / `kMcpRcUnavailable`
+  responses, allowlist enforced at lookup AND insert. Saves
+  both compute and token round-trips when the assistant
+  retries the same query. Spec: `docs/specs/ANTS-1357.md`.
+  Tests: `tests/features/mcp_idempotent_read_cache/`.
   **Layman:** cache repeated identical MCP calls for a short
   window so Claude doesn't re-pay for the same answer.
   Kind: perf.
@@ -5216,6 +5222,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   changed since the last run. Cache by `(file_set_mtime,
   command)`; invalidate on `git status -s` delta. Halves the
   cost of multi-turn refactor → verify loops.
+  **Deferred 2026-05-15** from the ANTS-1357/1346/1364 bundle:
+  this is the riskiest item in the perf set (a stale-cache
+  hit could mask a real build regression), needs its own
+  careful spec pass with invalidation-correctness tests
+  before implementation. Track separately.
   **Layman:** stop re-running the full build + tests on every
   Claude turn when nothing relevant changed.
   Kind: perf.
@@ -5277,10 +5288,18 @@ indie-review finding.
   Kind: perf.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1364] **`session_memory` `serializedSize` caching.**
-  Every `Set` op re-serialises the whole QJsonObject to bytes
-  just to measure. Cache the size + apply a per-key delta on
-  insert/replace/delete. Saves O(n) on every write.
+- ✅ [ANTS-1364] **`session_memory` `serializedSize` caching.**
+  Every `Set` op re-serialised the whole QJsonObject to bytes
+  twice — once for the byte-cap check, once inside `saveStore`.
+  Resolution: `saveStore(QString,QByteArray)` accepts pre-
+  serialised bytes; callers compute the JSON body once, check
+  the cap, and pass the same bytes to disk. INV-2 (totalBytes
+  equals on-disk bytes) preserved + newly test-locked.
+  Delta-caching across calls (the original framing) bought
+  nothing because `execute()` is stateless across calls; this
+  refactor captures the intra-call waste instead. Spec:
+  `docs/specs/ANTS-1364.md`. Tests:
+  `tests/features/session_memory_serialize_once/`.
   **Layman:** stop recomputing the whole memory store's size
   on every save.
   Kind: perf.

@@ -799,6 +799,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // the heading index. Both regenerate lazily below.
         m_roadmapIndex.clear();
         m_roadmapSectionCache.clear();
+        m_roadmapSectionLru.clear();   // ANTS-1346 — keep INV-2 in sync.
         m_roadmapCachePath = path;
         m_roadmapCacheMtimeMs = mtime;
         m_roadmapCacheStampMs = nowMs;
@@ -860,6 +861,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         QJsonArray sectionBullets;
         if (m_roadmapSectionCache.contains(sec->slug)) {
             sectionBullets = m_roadmapSectionCache.value(sec->slug);
+            // ANTS-1346 — bump to MRU front.
+            m_roadmapSectionLru.removeOne(sec->slug);
+            m_roadmapSectionLru.prepend(sec->slug);
         } else {
             QFile f(path);
             if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -888,6 +892,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 sectionBullets.append(o);
             }
             m_roadmapSectionCache.insert(sec->slug, sectionBullets);
+            // ANTS-1346 — push slug to MRU front and evict tail if
+            // the cap is exceeded. removeOne is a no-op on first
+            // insert; harmless on duplicate-key re-insert path.
+            m_roadmapSectionLru.removeOne(sec->slug);
+            m_roadmapSectionLru.prepend(sec->slug);
+            while (m_roadmapSectionLru.size() > kRoadmapSectionCacheCap) {
+                const QString evicted = m_roadmapSectionLru.takeLast();
+                m_roadmapSectionCache.remove(evicted);
+            }
         }
 
         // ANTS-1287-INV-8: status filter applies post-section.
