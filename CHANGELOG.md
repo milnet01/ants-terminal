@@ -12,6 +12,33 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🐛 Bundle A — terminalgrid correctness + perf (in flight, 2026-05-15)
+
+First pull from the 0.7.92 bundle plan (`ROADMAP.md` § 0.7.92 →
+Bundle plan). Items group around `terminalgrid.cpp` correctness +
+perf so width-reflow + wide-char-edge + Sixel-budget land in one
+release.
+
+- **ANTS-1333 — Scrollback hyperlinks now stay length-locked with
+  scrollback rows across width reflow.** `TerminalGrid::resize()`
+  width-change reflow at `terminalgrid.cpp:2458–2528` rebuilt
+  `m_scrollback` but left `m_scrollbackHyperlinks` untouched. After
+  any width-change resize, the two deques drifted on the slow
+  `joinLogical → rewrap` path (row splits), and the screen→scrollback
+  overflow push at `:2548–2553` added a second leak. Defensive
+  bounds check at `:227–228` masked the drift as a silent no-op for
+  out-of-range probes, but in-range probes returned spans for the
+  WRONG row. Fix carries each row's spans across the in-place fast
+  path with column clipping (INV-2), emits empty span vectors on
+  the slow rewrap path (INV-3), pairs every overflow push with an
+  empty vector (INV-4), and pops both deques in lockstep on cap
+  trim (INV-5). Spec: `docs/specs/ANTS-1333.md`. Tests:
+  `tests/features/scrollback_hyperlinks_reflow_lockstep/` (5
+  invariants). Layman: after you resize the Ants window, links
+  shown in scrollback used to map to the wrong rows (clickable
+  rectangle drifted off the underline); now they stay correct or
+  cleanly drop, never wrong.
+
 ### 📊 MCP observability + cross-project hardening (2026-05-15)
 
 Three follow-ons on top of the MCP-platform theme: extends

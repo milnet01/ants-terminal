@@ -4823,8 +4823,22 @@ class; the deferrals below cover the rest.
 
 #### 🔒 Tier 1 — security & data-loss
 
-- 📋 [ANTS-1333] **`m_scrollbackHyperlinks` not lockstep with
-  `m_scrollback` on reflow (lane-1 H1).** `TerminalGrid::resize`
+- ✅ [ANTS-1333] **`m_scrollbackHyperlinks` not lockstep with
+  `m_scrollback` on reflow (lane-1 H1).** Shipped 2026-05-15 (Bundle A
+  pull 1). `TerminalGrid::resize()` width-change reflow now carries
+  the parallel `m_scrollbackHyperlinks` deque alongside the
+  rebuild — fast-path rows preserve their spans with column
+  clipping (INV-2), slow-path rows emit empty span vectors
+  (INV-3), the screen→scrollback overflow push at `:2548–2553`
+  pairs each `push_back` with an empty hyperlinks entry (INV-4),
+  cap-trim pops both deques together (INV-5). Spec
+  `docs/specs/ANTS-1333.md`; tests
+  `tests/features/scrollback_hyperlinks_reflow_lockstep/` (5
+  invariants, GUI-free, label `features;fast`). Verified to fail
+  on pre-fix code via INV-3 slow-rewrap drift (cols 80 → 10);
+  passes post-fix; full suite 655/656 green (one unrelated
+  env-pollution flake, ANTS-1379).
+  Original finding (lane-1 H1, indie-review 2026-05-14): `TerminalGrid::resize`
   pushes `m_scrollback` rows during width-change reflow at
   `terminalgrid.cpp:2547` but never updates
   `m_scrollbackHyperlinks` in lockstep. Wide reflow at
@@ -5584,6 +5598,26 @@ indie-review finding.
   with the same name never silently overwrite each other.
   Kind: security.
   Source: indie-review-2026-05-14 (lane-6 L-4).
+
+- 📋 [ANTS-1415] **`DBGLOG` macro uses GNU
+  `##__VA_ARGS__` token-paste extension.** Surfaced during the
+  ANTS-1333 fix build (2026-05-15): clang emits
+  `-Wgnu-zero-variadic-macro-arguments` at
+  `terminalgrid.cpp:18:95`. Pre-existing — the `do { if (...)
+  fprintf(m_debugFile, fmt "\n", ##__VA_ARGS__); fflush(...); }
+  while(0)` macro depends on the GCC/clang token-paste extension
+  that drops the trailing comma when `__VA_ARGS__` is empty. C++20
+  shipped `__VA_OPT__` for this exact case; fix is `, __VA_OPT__(,)
+  __VA_ARGS__` (or migrate to a variadic template + `std::format`).
+  Compiles fine but warns under `-Wall -Wextra` and would be a
+  hard error under `-Werror -Wgnu-zero-variadic-macro-arguments`.
+  Low-risk single-line refactor.
+  **Layman:** the debug-log macro in the terminal renderer uses an
+  old compiler extension that newer compilers warn about; swap it
+  for the standard C++20 syntax.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (clang diagnostic during
+  ANTS-1333 fix build).
 
 - 📋 [ANTS-1408] **Archive-rotate shipped 0.7.x sections out of
   `ROADMAP.md`.** Current file: 12,373 lines / ~657 KiB. Nine

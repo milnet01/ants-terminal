@@ -2457,6 +2457,12 @@ void TerminalGrid::resize(int rows, int cols) {
     // to O(N) cheap in-place resizes.
     if (cols != m_cols && !m_scrollback.empty()) {
         std::deque<TermLine> newScrollback;
+        // ANTS-1333 — keep m_scrollbackHyperlinks lockstep with the new
+        // scrollback deque. INV-2 (fast-path) carries the source row's
+        // spans across with column clipping; INV-3 (slow-path) emits an
+        // empty span vector per reflowed row to match joinLogical's
+        // combining-char drop semantics.
+        std::deque<std::vector<HyperlinkSpan>> newScrollbackHyperlinks;
         std::vector<TermLine> pending; // current soft-wrap sequence
 
         auto flushPending = [&]() {
@@ -2464,7 +2470,10 @@ void TerminalGrid::resize(int rows, int cols) {
             auto logicals = joinLogical(pending);
             std::vector<TermLine> reflowed;
             for (auto &L : logicals) rewrap(L, reflowed);
-            for (auto &tl : reflowed) newScrollback.push_back(std::move(tl));
+            for (auto &tl : reflowed) {
+                newScrollback.push_back(std::move(tl));
+                newScrollbackHyperlinks.emplace_back();  // INV-3
+            }
             pending.clear();
         };
 
@@ -2472,6 +2481,19 @@ void TerminalGrid::resize(int rows, int cols) {
             int len = static_cast<int>(tl.cells.size());
             while (len > 0 && tl.cells[len - 1].codepoint == ' ') --len;
             return len;
+        };
+
+        auto clipSpansToCols = [cols](std::vector<HyperlinkSpan> spans) {
+            // INV-2 clipping: drop spans starting past new cols, clamp
+            // endCol into range.
+            std::vector<HyperlinkSpan> out;
+            out.reserve(spans.size());
+            for (auto &s : spans) {
+                if (s.startCol >= cols) continue;
+                if (s.endCol >= cols) s.endCol = cols - 1;
+                out.push_back(std::move(s));
+            }
+            return out;
         };
 
         auto inPlaceResize = [this, cols](TermLine &tl) {
@@ -2496,6 +2518,8 @@ void TerminalGrid::resize(int rows, int cols) {
             }
         };
 
+        int srcIdx = 0;
+        const int srcHlSize = static_cast<int>(m_scrollbackHyperlinks.size());
         for (auto &tl : m_scrollback) {
             bool inSequence = !pending.empty() || tl.softWrapped;
             if (inSequence) {
@@ -2507,6 +2531,13 @@ void TerminalGrid::resize(int rows, int cols) {
                 if (cw <= cols) {
                     inPlaceResize(tl);
                     newScrollback.push_back(std::move(tl));
+                    // INV-2: carry spans across with clipping.
+                    if (srcIdx < srcHlSize)
+                        newScrollbackHyperlinks.push_back(
+                            clipSpansToCols(std::move(
+                                m_scrollbackHyperlinks[srcIdx])));
+                    else
+                        newScrollbackHyperlinks.emplace_back();
                 } else {
                     // Doesn't fit — fall through to slow path as a 1-line
                     // sequence so rewrap() handles the split exactly as
@@ -2515,16 +2546,21 @@ void TerminalGrid::resize(int rows, int cols) {
                     flushPending();
                 }
             }
+            ++srcIdx;
         }
         // Flush any pending remainder. Defensive — the last scrollback line
         // should have softWrapped=false so this is usually a no-op.
         flushPending();
 
         m_scrollback = std::move(newScrollback);
+        m_scrollbackHyperlinks = std::move(newScrollbackHyperlinks);
 
-        // Trim to limit
-        while (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
+        // Trim to limit — INV-5 pops both deques in lockstep.
+        while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
             m_scrollback.pop_front();
+            if (!m_scrollbackHyperlinks.empty())
+                m_scrollbackHyperlinks.pop_front();
+        }
     }
 
     // Reflow screen lines when width changes
@@ -2548,8 +2584,14 @@ void TerminalGrid::resize(int rows, int cols) {
         while (static_cast<int>(reflowed.size()) > rows) {
             TermLine front = std::move(reflowed.front());
             reflowed.erase(reflowed.begin());
-            if (!isBlankLine(front))
+            if (!isBlankLine(front)) {
                 m_scrollback.push_back(std::move(front));
+                // ANTS-1333 INV-4 — reflowed rows came from joinLogical
+                // on m_screenLines; no usable mapping back to
+                // m_screenHyperlinks. Push an empty span vector to keep
+                // the deque length-locked.
+                m_scrollbackHyperlinks.emplace_back();
+            }
         }
 
         // Build final screen
