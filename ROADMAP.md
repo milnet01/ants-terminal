@@ -6208,6 +6208,73 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   instance — ~50 K tokens × 30 closes/month/project
   ≈ ~1.5 M tokens/month/project on clean closes).
 
+- 📋 [ANTS-1407] **Tasks chip / Task List dialog drift
+  from CC session's inline view.** User-reported
+  2026-05-15 with two screenshots showing the same root
+  bug from opposite directions:
+  - **Undercount** (`Claude: MAME Curator` tab): chip
+    shows `≡ 0/4`, dialog says "4 tasks — 0 done, 0
+    running, 4 outstanding". CC session's own inline
+    task display shows **6 tasks** — 4 pending DS05
+    steps + 1 explicit `✓ Monitor DS02 close CI run`
+    (completed) + `+1 completed` rollup (1 more
+    completed task collapsed). Tracker drops the 2
+    completed.
+  - **Overcount** (`Claude: Ants Terminal` tab — this
+    session): chip shows `≡ 30/40`, dialog says "40
+    tasks — 30 done, 0 running, 8 outstanding".
+    30 + 8 = 38, so 2 are status `deleted` and counted
+    in the chip total but hidden in the dialog
+    breakdown. CC session's inline display shows **no
+    tasks at all** (current TodoWrite/TaskUpdate burst
+    has fully resolved). Tracker accumulates every
+    `TaskCreate` from earlier in the session forever.
+  Both symptoms share the same diagnosis: the tracker's
+  state model (`m_tasks` accumulating across all
+  TaskCreate / TodoWrite events with status-flip
+  bookkeeping) and the CC session's inline view (latest
+  TodoWrite snapshot's *active* items only, with
+  completed items collapsed into a rollup line) are
+  different sources of truth. The user's policy is
+  unambiguous: **the tracker must mirror what the CC
+  session is showing at all times**. Candidate fixes:
+  - (a) Chip & dialog read "active = pending +
+    in_progress" only; the "done/total" semantics
+    (ANTS-1246) becomes "completed-this-batch / total-
+    this-batch" where "this-batch" resets on every
+    TodoWrite snapshot AND on the `TaskCreate-after-all-
+    terminal` heuristic that ANTS-1221 already
+    introduced for Mode B (verify it actually fires in
+    the real-world traces — the screenshots suggest it
+    doesn't).
+  - (b) Tracker keeps full history (for diagnostics) but
+    chip/dialog filter to "tasks the CC inline view
+    would currently show" — requires reading the same
+    rollup-collapse heuristics CC uses (latest
+    TodoWrite + "N more completed" footer).
+  - (c) Add a `TodoWrite-with-empty-list` reset event
+    detection: when CC writes an empty `todos: []`,
+    treat as a hard reset of the tracker.
+  Option (a) is the cleanest behavioural fix; option (c)
+  is the smallest patch if CC actually emits the
+  empty-list event on inline-view clear (worth grepping
+  the transcript). Spec needed; INV-12 of ANTS-1246
+  (chip semantics) should be updated as part of the
+  same commit. Pairs with ANTS-1221 (the prior pending-
+  only diagnostic accessor — keep for backward compat).
+  **Layman:** the little "tasks" chip in the bottom-
+  right of Ants is supposed to show whatever the Claude
+  Code session inside the tab is showing for its own
+  task list. Right now they don't match — sometimes the
+  chip shows fewer tasks than Claude does (drops
+  completed), sometimes it shows way more (remembers
+  every task from earlier in the session). Make them
+  match.
+  Kind: fix.
+  Source: in-session-report-2026-05-15 (user
+  screenshots — undercount on MAME Curator tab,
+  overcount on Ants Terminal tab).
+
 ---
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
