@@ -72,20 +72,25 @@ public:
                          const QJsonObject &args,
                          const QString &socketPath);
 
-    // Strip C0 control bytes from a `send-text` payload to block
-    // local-UID keystroke-injection attacks (ESC-based bracketed-paste
-    // toggles, OSC 52 clipboard overwrites, cursor reprogramming).
-    // Preserves HT (0x09), LF (0x0A), CR (0x0D) — those are regular
-    // keystrokes in a PTY stream. C1 control codepoints (U+0080..U+009F)
-    // are not stripped here: at the UTF-8 byte level they manifest as
-    // continuation bytes (0x80..0xBF) inside multi-byte sequences for
-    // ordinary characters, so a byte-oriented strip would mangle them.
-    // Stripping C1 is the AI-dialog layer's job (`aidialog.cpp`), which
-    // operates on QChar codepoints, not raw bytes.
+    // Strips C0 control bytes (0x00..0x1F minus HT/LF/CR), DEL (0x7F),
+    // and the UTF-8 encoding of C1 control codepoints U+0080..U+009F
+    // (encoded as 0xC2 0x80 .. 0xC2 0x9F) from an rc-socket payload
+    // before it reaches the PTY. Both classes — 7-bit ESC-led and
+    // 8-bit C1-led — would otherwise drive vtparser into CSI/OSC/DCS/
+    // APC states (cursor reprogramming, OSC 52 clipboard overwrites,
+    // bracketed-paste toggle, Sixel/APC image injection) from
+    // untrusted same-UID input. ANTS-1335 closed the C1 byte vector
+    // (the C0 strip alone was added by ANTS-0.7.52).
+    //
+    // Preserves HT/LF/CR (regular PTY keystrokes), all printable
+    // ASCII, all multi-byte UTF-8 not in the C1 range, and any
+    // malformed pre-existing input — the filter does not synthesise
+    // meaning from invalid bytes.
     //
     // Returns the filtered payload. `out_stripped`, if non-null, is
-    // set to the number of bytes removed — callers surface this in
-    // the `stripped` response field.
+    // set to the number of bytes removed (a C1 strip increments by 2
+    // since the U+0080..U+009F UTF-8 sequence is two bytes; a C0 or
+    // DEL strip increments by 1).
     //
     // The `send-text` request JSON may carry `"raw": true` to bypass
     // this filter; see tests/features/remote_control_opt_in/spec.md.
@@ -97,16 +102,37 @@ public:
         QByteArray out;
         out.reserve(in.size());
         int removed = 0;
-        for (char c : in) {
-            const unsigned char b = static_cast<unsigned char>(c);
-            const bool isAllowedWhitespace = (b == 0x09 || b == 0x0A || b == 0x0D);
+        const int n = in.size();
+        for (int i = 0; i < n; ++i) {
+            const unsigned char b = static_cast<unsigned char>(in[i]);
+
+            // ANTS-1335 — C1 8-bit form: 0xC2 followed by 0x80..0x9F
+            // is the UTF-8 encoding of U+0080..U+009F (CSI / OSC /
+            // DCS / APC / PM / SOS introducers). Strip both bytes
+            // atomically. No other valid UTF-8 sequence can encode
+            // U+0080..U+009F, so this match is unambiguous; bare
+            // 0xC2 at end-of-input or followed by an out-of-range
+            // byte passes through (don't synthesise meaning from
+            // partial/invalid UTF-8).
+            if (b == 0xC2 && i + 1 < n) {
+                const unsigned char b1 =
+                    static_cast<unsigned char>(in[i + 1]);
+                if (b1 >= 0x80 && b1 <= 0x9F) {
+                    removed += 2;
+                    ++i;  // skip both bytes
+                    continue;
+                }
+            }
+
+            const bool isAllowedWhitespace =
+                (b == 0x09 || b == 0x0A || b == 0x0D);
             const bool isC0Bad = (b < 0x20) && !isAllowedWhitespace;
             const bool isDel = (b == 0x7F);
             if (isC0Bad || isDel) {
                 ++removed;
                 continue;
             }
-            out.append(c);
+            out.append(static_cast<char>(b));
         }
         if (out_stripped) *out_stripped = removed;
         return out;

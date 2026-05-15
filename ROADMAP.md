@@ -4802,7 +4802,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1335] **C1 8-bit control bytes pass through
+- ✅ [ANTS-1335] **C1 8-bit control bytes pass through
   `filterControlChars` (lane-2 M2).** `remotecontrol.cpp:335`
   → `sendToPty` writes user-controlled bytes verbatim after C0
   strip. C1 (U+0080..U+009F) bytes are explicitly NOT stripped

@@ -86,6 +86,21 @@ hostile-content findings.
   hook RPC; a peer dribbling 1 byte every 4.9 s with
   restart-on-read would hold the connection indefinitely.
   Comment-only fix; no behaviour change.
+- **UTF-8 C1 byte strip in `filterControlChars` (ANTS-1335,
+  lane-2 M2 deferral).** The rc/MCP byte filter at
+  `remotecontrol.h:95` stripped C0 controls but explicitly punted
+  C1 stripping to the AI-dialog layer; that comment was correct
+  for the AI path but wrong for the rc seam. Same-UID rc/MCP
+  peers could deliver the UTF-8 encoding of U+009B (the 8-bit
+  CSI introducer, `0xC2 0x9B`) and reach the PTY unchanged —
+  `vtparser` honours 8-bit C1 the same way as 7-bit ESC-led
+  forms. Filter now strips the 2-byte sequence atomically
+  alongside C0. All three `send-text` / `launch.command` /
+  `new-tab.command` call-sites pick up the C1 strip for free
+  (no wire-schema change; `stripped` byte counter now counts
+  C1 bytes too). Spec at `docs/specs/ANTS-1335.md`; regression
+  test at `tests/features/rc_c1_byte_filter/` (16 byte-level +
+  3 source-grep assertions; bundled into `test_core`).
 - **Lua sandbox sticky-kill defeats pcall-nesting wall-clock
   evasion (ANTS-1332, lane-6 H-1).** ANTS-1172 added a 1.5 s
   wall-clock budget to the Lua sandbox, but the budget could be

@@ -1043,6 +1043,7 @@ if(ANTS_TESTS)
                 tests/features/remote_control_ls/test_remote_control_ls.cpp
                 tests/features/remote_control_send_text/test_remote_control_send_text.cpp
                 tests/features/remote_control_opt_in/test_remote_control_opt_in.cpp
+                tests/features/rc_c1_byte_filter/test_rc_c1_byte_filter.cpp
                 tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp
                 tests/features/remote_control_select_window/test_remote_control_select_window.cpp
                 tests/features/remote_control_set_title/test_remote_control_set_title.cpp
