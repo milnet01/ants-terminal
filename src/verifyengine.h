@@ -12,6 +12,8 @@
 #include <QString>
 #include <QStringList>
 
+namespace VerifyTrust { class Client; }
+
 namespace VerifyEngine {
 
 enum class GateName { Build, Tests, Lint };
@@ -67,11 +69,18 @@ struct VerifyOptions {
 
 // Top-level report. `allPassed` is the AND of every gate's
 // `ran && passed`. `configSource` is one of the three documented
-// strings: ".ants/verify.json" | "auto-detected" | "none".
+// strings: ".ants/verify.json" | "auto-detected" | "none" |
+// "auto (untrusted-bespoke)".
 struct VerifyReport {
     QList<GateResult> gates;
     bool              allPassed = false;
     QString           configSource;
+    // ANTS-1337: when the caller passed a trust client and the
+    // `.ants/verify.json` SHA wasn't trusted, the engine fell back
+    // to auto-detect AND set `verifyUntrusted=true` so the MCP
+    // layer can surface it in the response envelope. Empty trust
+    // client (nullptr) leaves this false — back-compat.
+    bool              verifyUntrusted = false;
 };
 
 // Load `.ants/verify.json` if it exists and passes the INV-4
@@ -80,9 +89,20 @@ struct VerifyReport {
 // an empty list and sets `*configSource` to "none" or the parse-
 // error sentinel — callers check the list size + configSource.
 //
+// ANTS-1337 — optional `trustClient`. When non-null, a found
+// `.ants/verify.json` is gated through the client's
+// `outcomeForConfig`. If the SHA isn't trusted, the engine falls
+// back to auto-detect AND sets `*verifyUntrusted=true` (when
+// non-null) so the caller can surface it in the response envelope.
+// When `trustClient` is null, the bespoke config is honoured
+// unconditionally — preserves pre-ANTS-1337 behaviour for callers
+// that haven't yet wired the trust client through.
+//
 // `*configSource` is filled when non-null.
 QList<GateConfig> loadGateConfig(const QString &projectPath,
-                                 QString *configSource);
+                                 QString *configSource,
+                                 VerifyTrust::Client *trustClient = nullptr,
+                                 bool *verifyUntrusted = nullptr);
 
 // Run gates sequentially per INV-6 (build → tests → lint, never
 // concurrent). Per-gate timeout = max(10, opts.timeoutSec /

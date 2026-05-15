@@ -1,6 +1,7 @@
 // VerifyEngine implementation — see verifyengine.h + docs/specs/ANTS-1289.md.
 
 #include "verifyengine.h"
+#include "verifytrust.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -351,9 +352,14 @@ QString gateKey(GateName g) {
 }
 
 QList<GateConfig> loadGateConfig(const QString &projectPath,
-                                 QString *configSourceOut) {
+                                 QString *configSourceOut,
+                                 VerifyTrust::Client *trustClient,
+                                 bool *verifyUntrustedOut) {
     auto setSource = [&](const QString &v) {
         if (configSourceOut) *configSourceOut = v;
+    };
+    auto setUntrusted = [&](bool v) {
+        if (verifyUntrustedOut) *verifyUntrustedOut = v;
     };
 
     const QFileInfo rootInfo(projectPath);
@@ -376,6 +382,34 @@ QList<GateConfig> loadGateConfig(const QString &projectPath,
                     return {};
                 }
                 if (!gates.isEmpty()) {
+                    // ANTS-1337 — trust gate. When a client is
+                    // wired, the bespoke config is honoured only if
+                    // the SHA is trusted. Untrusted falls back to
+                    // auto-detect AND surfaces verifyUntrusted=true
+                    // in the report so the caller knows why the
+                    // bespoke commands were skipped.
+                    if (trustClient) {
+                        const auto decision =
+                            trustClient->outcomeForConfig(rootCanon, raw);
+                        if (decision.outcome ==
+                            VerifyTrust::Outcome::Trusted) {
+                            setSource(QStringLiteral(".ants/verify.json"));
+                            return gates;
+                        }
+                        // Untrusted / Headless → fall through to
+                        // auto-detect with the untrusted flag set.
+                        setUntrusted(true);
+                        QList<GateConfig> auto_ = autoDetect(projectPath);
+                        if (auto_.isEmpty()) {
+                            setSource(QStringLiteral("auto (untrusted-bespoke)"));
+                            return {};
+                        }
+                        setSource(QStringLiteral("auto (untrusted-bespoke)"));
+                        return auto_;
+                    }
+                    // Back-compat: no client → honour unconditionally
+                    // (Phase 1; Phase 2 wires the client through
+                    // cmdVerifyChanges).
                     setSource(QStringLiteral(".ants/verify.json"));
                     return gates;
                 }

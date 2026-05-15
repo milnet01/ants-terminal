@@ -86,6 +86,27 @@ hostile-content findings.
   hook RPC; a peer dribbling 1 byte every 4.9 s with
   restart-on-read would hold the connection indefinitely.
   Comment-only fix; no behaviour change.
+- **Verify-changes content-trust gate — Phase 1 infrastructure
+  (ANTS-1337, lane-5 HI-2 deferral).** `VerifyEngine::runOneGate`
+  executes `gc.command` from `.ants/verify.json` via `/bin/sh -c`.
+  A hostile cloned repo with a malicious `command` runs arbitrary
+  shell the first time the user fires `mcp__ants__verify_changes`
+  from inside it (same content-trust boundary ANTS-1294 named).
+  Phase 1 ships the infrastructure for the trust gate:
+  `VerifyTrust::Client` abstract interface, `FilePersistedTrustClient`
+  concrete impl (loads/saves `~/.config/ants-terminal/verify-trust.json`
+  mode 0600 via atomic tmpfile + `std::rename` + `setOwnerOnlyPerms`
+  + `fsyncParentDir`), plus `AlwaysTrustClient` / `AlwaysDenyClient`
+  fakes for tests. `VerifyEngine::loadGateConfig` extended with an
+  optional `trustClient` argument + `verifyUntrusted` out-param:
+  when the client is non-null and the SHA isn't trusted, the engine
+  falls back to auto-detect and surfaces `verifyUntrusted=true`.
+  Null client preserves pre-ANTS-1337 behaviour exactly (back-compat;
+  Phase 2 wires `cmdVerifyChanges` to pass a real client + adds the
+  modal QDialog that lets the user grant trust). Spec at
+  `docs/specs/ANTS-1337.md`; regression test at
+  `tests/features/verify_trust_gate/` (3 VT-* engine + 3 TF-*
+  trust-file format assertions; bundled into `test_core`).
 - **`cwd` anchor on `cmdLaunch` / `cmdNewTab` via
   `PathValidation::validatePath` (ANTS-1347, lane-2 M3 deferral).**
   Both rc verbs accepted a `cwd` field with only an inline

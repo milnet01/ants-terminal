@@ -227,6 +227,7 @@ add_library(ants_core_lib STATIC
     src/debtsweepengine.cpp
     src/coldeyesengine.cpp
     src/verifyengine.cpp
+    src/verifytrust.cpp
     src/plantemplateengine.cpp
     src/tokenusageengine.cpp
     src/sessionmemoryengine.cpp
@@ -1047,6 +1048,7 @@ if(ANTS_TESTS)
                 tests/features/rc_get_text_byte_cap/test_rc_get_text_byte_cap.cpp
                 tests/features/rc_socket_dir_hardening/test_rc_socket_dir_hardening.cpp
                 tests/features/rc_launch_cwd_anchor/test_rc_launch_cwd_anchor.cpp
+                tests/features/verify_trust_gate/test_verify_trust_gate.cpp
                 tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp
                 tests/features/remote_control_select_window/test_remote_control_select_window.cpp
                 tests/features/remote_control_set_title/test_remote_control_set_title.cpp
