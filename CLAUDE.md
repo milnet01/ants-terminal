@@ -214,6 +214,39 @@ as a type and flags every signal emission.
   register it normally; the dispatch site wraps it automatically.
   See `docs/specs/ANTS-1294.md`.
 
+- **MCP `caller_cwd` routes through `ants::resolveCallerCwdRoot`
+  (ANTS-1401).** Three call paths historically decoded `caller_cwd`
+  with subtly different rules; one helper is now the source of
+  truth. `ants::ResolvedRoot { cwd, source, tabIndex }` (in
+  `src/resolvedroot.h`) carries the four-case decision tree
+  (`ExplicitMatch` / `EmptyFallback` / `NoMatch` / `Unresolvable`).
+  `terminalForCaller` and `resolveRootCanonical(main, req)` are
+  thin wrappers. If you add a new MCP entry point that consumes
+  `caller_cwd`, call `ants::resolveCallerCwdRoot` rather than
+  re-implementing canonicalisation or tab-walks. See
+  `docs/specs/ANTS-1401.md`.
+
+- **MCP tools declare a `CallerCwdContract` (ANTS-1404).**
+  Every tool is classified at `ClaudeIntegration::callerCwdContractFor`
+  into one of `Required` / `Optional` / `TabSpecific` /
+  `ProcessGlobal`. The dispatcher in
+  `claudeintegration.cpp::processTools` enforces `Required`
+  before the cache lookup and before the provider lambda runs:
+  empty `caller_cwd` ⇒ refuse with
+  `{ok:false, code:"caller_cwd_required"}`. When you register a
+  new tool, add a matching contract entry — unclassified tools
+  default to `Optional` (no enforcement), which is safe but loses
+  the explicit declaration. `TabSpecific` is classified but not
+  enforced in Phase 3a. See `docs/specs/ANTS-1404.md`.
+
+- **session_memory routes every op through RcGate (ANTS-1336).**
+  Including reads. The legacy `cwd` arg is ignored by the handler
+  (still in the schema for one release as `DEPRECATED`, drops in
+  0.7.93). `caller_cwd` is the only project-scope source.
+  ANTS-1372 § 4 INV-7 is amended — session_memory is the unique
+  read-only verb that joins the gated set because its storage
+  is tenant-hashed. See `docs/specs/ANTS-1336.md`.
+
 - **Path-accepting MCP tools route through `PathValidation::validatePath`
   (ANTS-1295).** Every tool that takes a path-typed argument (`path`,
   `lane`, `reports_dir`, `file`) calls

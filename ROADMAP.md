@@ -4761,7 +4761,7 @@ cycle. Cadence: one bundle per Wednesday per
 | Bundle | Theme | Items | File affinity |
 |--------|-------|-------|---------------|
 | **A** | `terminalgrid` correctness + perf | ANTS-1333 ✅ · 1334 ✅ · 1362 ✅ · 1366 ✅ | `terminalgrid.cpp` |
-| **B** | `caller_cwd` Phase 3 + diagnostics | ANTS-1336 · 1400 · 1401 · 1404 | `remotecontrol.cpp` · `mainwindow.cpp` |
+| **B** | `caller_cwd` Phase 3 + diagnostics | ANTS-1336 ✅ · 1400 ✅ · 1401 ✅ · 1404 ✅ | `remotecontrol.cpp` · `mainwindow.cpp` |
 | **C** | MCP token-economy hygiene | ANTS-1398 · 1399 · 1402 · 1403 · 1409 | `claudeintegration.cpp` · `remotecontrol.cpp` |
 | **D** | Skill → MCP orchestrator trio | ANTS-1351 · 1352 · 1397 · 1410 | new engines + MCP dispatch |
 | **E** | MCP API hygiene + governance | ANTS-1353 · 1354 · 1356 · 1405 | docs + descriptor + parser |
@@ -4913,17 +4913,20 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1336] **`session_memory` `cwd` arg cross-project
-  tenancy bypass (lane-5 HI-1).** `remotecontrol.cpp:3039–3049`
-  accepts a user-supplied `cwd` arg, canonicalises it, but does
-  NOT anchor against the focused tab's project root. A Claude
-  session in project A can read/write project B's
-  `session_memory` by passing `cwd="/path/to/B"`. Hash file
-  lives in `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`,
-  so the file targeted is whatever sha256 the attacker chooses.
-  Fix: either remove the `cwd` arg (force focused-tab cwd) or
-  run it through `PathValidation::validatePath` against
-  `resolveRootCanonical(m_main)`.
+- ✅ [ANTS-1336] **`session_memory` `cwd` arg cross-project
+  tenancy bypass (lane-5 HI-1).** Shipped 2026-05-16 (Bundle B
+  pull 2). RcGate now applies to every op (get / list / set /
+  delete), not just mutates. `caller_cwd` is the only project-
+  scope source; the user-supplied `cwd` arg is ignored by the
+  handler and stays in the schema for one release as
+  "DEPRECATED" before dropping in 0.7.93. ANTS-1372 § 4 INV-7
+  is amended in the new spec — session_memory is the unique
+  read-only verb that reads from a tenant-hashed cache path,
+  so it joins the gated set. Spec `docs/specs/ANTS-1336.md`;
+  tests updated in `tests/features/mcp_session_memory/` (REG-3
+  inverted to assert `cwd` is NOT extracted; new
+  RcGateAppliedToEveryOp case). 659/659 features green; 671
+  with the rest of Bundle B.
   **Layman:** an MCP session inside project A can read project
   B's saved key-value notes by lying about the project path —
   anchor the cwd argument to the focused project.
@@ -6314,42 +6317,45 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: implement.
   Source: in-session-2026-05-15 (self-observed).
 
-- 📋 [ANTS-1400] **`caller_cwd` resolution diagnostic mode.**
-  ANTS-1396's silent-fallback leak in `terminalForCaller`
-  was easy to miss because the resolution path is opaque to
-  the caller — you can't ask "which tab would this call
-  resolve to?" without invoking the actual tool. Add either
-  (a) an env-var `ANTS_MCP_DIAGNOSE_CALLER_CWD=1` that
-  attaches a `_diagnose: {source: ExplicitMatch | EmptyFallback
-  | NoMatch | Unresolvable, resolved_cwd, tab_index}` field
-  to every tab-anchored response, or (b) a `caller_cwd_info`
-  MCP verb taking `caller_cwd` and returning the same
-  diagnostic envelope without invoking any underlying tool.
-  Option (b) is the lighter touch; preferred. Use case: the
-  next time another CC session reports "I got the wrong
-  project's data", the assistant can call `caller_cwd_info`
-  to confirm which resolution branch fired.
+- ✅ [ANTS-1400] **`caller_cwd` resolution diagnostic verb.**
+  Shipped 2026-05-16 (Bundle B pull 4). Option (b) implemented:
+  new `caller_cwd_info` MCP verb takes the same `caller_cwd`
+  argument every tab-anchored tool already accepts, runs it
+  through `ants::resolveCallerCwdRoot` (ANTS-1401), and returns
+  the resolution envelope verbatim (`{source:'ExplicitMatch'|
+  'EmptyFallback'|'NoMatch'|'Unresolvable', resolved_cwd:'...',
+  tab_index:N?}`). No side effects — does not read scrollback,
+  run git, or write any state. Classified
+  `CallerCwdContract::Optional` so empty `caller_cwd` is
+  accepted (the "what would happen without it?" question the
+  verb is built to answer). Spec `docs/specs/ANTS-1400.md`;
+  tests `tests/features/caller_cwd_info_verb/` (5 source-scrape
+  assertions). 671/671 features green.
   **Layman:** add a way to ask Ants "which of my tabs would
   this caller_cwd resolve to?" so cross-project leaks are
   diagnosable instead of silent.
   Kind: implement.
   Source: in-session-2026-05-15 (follow-up to ANTS-1396).
 
-- 📋 [ANTS-1401] **Central `ResolvedRoot` helper for the
-  `caller_cwd` convention.** Three call paths handle
-  caller_cwd differently: `terminalForCaller` (now correct
-  after ANTS-1396), `resolveRootCanonical(main, req)` in
-  remotecontrol.cpp (echoes caller's canonical cwd —
-  correct), and `session_memory`'s cwd arg (ANTS-1336
-  documents the bypass — open). A central helper returning a
-  tagged variant — `ResolvedRoot { QString cwd; enum
-  Source { ExplicitMatch, EmptyFallback, NoMatch,
-  Unresolvable }; std::optional<int> tabIndex; }` — would
-  make audits cheaper and prevent future regressions like
-  ANTS-1396 by collapsing all three paths into one source
-  of truth. Refactor; not behavioural change. Pairs with
-  ANTS-1400 (the diagnostic envelope is just the `Source`
-  enum surfaced through MCP).
+- ✅ [ANTS-1401] **Central `ResolvedRoot` helper for the
+  `caller_cwd` convention.** Shipped 2026-05-16 (Bundle B pull
+  1). New header `src/resolvedroot.h` defines
+  `ants::ResolvedRoot { QString cwd; Source { ExplicitMatch,
+  EmptyFallback, NoMatch, Unresolvable }; std::optional<int>
+  tabIndex; }`. Free function
+  `ants::resolveCallerCwdRoot(MainWindow*, QString)` in
+  `remotecontrol.cpp` is the single source of truth for the
+  four-case decision tree introduced in ANTS-1396. Two existing
+  entry points (`terminalForCaller`, `resolveRootCanonical(main,
+  req)`) become wrappers mapping the variant back to QString /
+  TerminalWidget *. Refactor only — no observable behaviour
+  change. Foundation for ANTS-1336 (RcGate uses canonical),
+  ANTS-1404 (Required-contract dispatcher), and ANTS-1400
+  (`caller_cwd_info` envelope). Spec
+  `docs/specs/ANTS-1401.md`. ANTS-1396 source-scrape tests
+  relocated to scan the helper; new INV-5 ascending-walk +
+  WrapperDelegatesToHelper cases added. 658/658 features
+  green at landing; 671 with the rest of Bundle B.
   **Layman:** there are three places in the code that
   decode the same `caller_cwd` argument with subtly
   different rules. Collapse them into one helper so a fix
@@ -6403,45 +6409,30 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (deferred from
   ANTS-1355 v2's spec § 8 / § 9).
 
-- 📋 [ANTS-1404] **Cross-project isolation Phase 3 —
+- ✅ [ANTS-1404] **Cross-project isolation Phase 3a —
   per-tool `caller_cwd` contract audit + fail-loud policy
-  on absent caller_cwd.** ANTS-1396 fixed the silent
-  fallback when caller_cwd is *provided but doesn't match*.
-  Cross-session report 2026-05-15: when caller_cwd is
-  *absent entirely*, tab-anchored tools (`get_git_status`,
-  `get_environment`, `get_last_command`, `get_scrollback`,
-  `get_text`, plus path-anchored `verify_changes` and
-  `last_audit_summary`) still silently anchor to the
-  focused tab — i.e. a Claude session in project B calling
-  `get_git_status()` while Ants happens to have project A
-  focused gets A's data. The deep fix: classify each
-  tool into one of four contracts and enforce at the
-  dispatch site:
-  - **cwd-required** (anchorable + leaks if wrong):
-    `get_git_status`, `verify_changes`, `last_audit_summary`,
-    `git_state` → refuse with
-    `{ok:false, code:"caller_cwd_required"}` when absent.
-  - **cwd-optional** (anchor when present, focused-fallback
-    is explicit choice): `roadmap_query`, `subsystem`,
-    `workspace_search` → current behaviour.
-  - **tab-specific** (reads per-tab scrollback that's
-    inherently not project-anchored): `get_scrollback`,
-    `get_text` → return
-    `{ok:false, code:"tab_specific", hint:"this tool reads
-    a tab and cannot be cwd-anchored; pass `tab` index or
-    use a different tool"}` if caller passed caller_cwd
-    expecting cwd routing.
-  - **process-global** (no per-tab/per-project state):
-    `mcp_trace`, `token_usage`, `tab_list`, `get_session_info`
-    → caller_cwd accepted-and-ignored.
-  Implementation: extend the existing `caller_cwd_handling`
-  enum (introduced in ANTS-1391) into the tool registry so
-  the dispatcher knows per-tool what to do BEFORE the
-  provider lambda runs. Spec-first; pairs with ANTS-1401
-  (central `ResolvedRoot` helper). Contract break for any
-  caller still relying on focused-tab fallback on the
-  cwd-required group — surface via CHANGELOG + a one-release
-  deprecation warning before refusal.
+  on absent caller_cwd.** Shipped 2026-05-16 (Bundle B pull
+  3). New `CallerCwdContract` enum in claudeintegration.h
+  classifies every MCP tool into one of four categories:
+  Required, Optional, TabSpecific, ProcessGlobal. Phase 3a
+  enforces only the Required group at the dispatcher;
+  TabSpecific is classified but not enforced because the
+  routing-vs-anchoring overlap with ANTS-1392 needs its own
+  spec pass. Required tools (`get_git_status`,
+  `last_audit_summary`, `git_state`, `verify_changes`)
+  refuse with `{ok:false, code:"caller_cwd_required"}` when
+  caller_cwd is absent. Cache + provider-dispatch guards
+  widened to `!toolHandled` so refusals bypass the cache
+  and don't fall through to the provider lambda. Phase 3a
+  ships **immediate refusal**, not warn-then-allow — the
+  leak is a security bypass and migration is one arg. (The
+  prior plan's `caller_cwd_handling` enum referenced in the
+  roadmap text turned out not to exist in the code; this
+  ticket introduced it from scratch.) Spec
+  `docs/specs/ANTS-1404.md`; tests
+  `tests/features/mcp_caller_cwd_contracts/` (7 source-scrape
+  assertions). 671/671 features green. Phase 3b (TabSpecific
+  enforcement) is a follow-up.
   **Layman:** Right now tools fall back to whichever tab
   is focused when the caller doesn't say which project
   it's in. Decide per-tool what should happen instead —
