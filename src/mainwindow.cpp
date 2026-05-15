@@ -3981,6 +3981,19 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdTokenUsage(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1360 — mcp_trace: read a slice of ClaudeIntegration's
+    // ring buffer of last tool/call dispatches. Does NOT delegate
+    // to RemoteControl — the ring lives inside ClaudeIntegration.
+    m_claudeIntegration->registerToolProvider("mcp_trace",
+        [ci = m_claudeIntegration](const QJsonObject &args) -> QString {
+            const quint64 since = static_cast<quint64>(
+                args.value("since").toVariant().toLongLong());
+            const int limit = args.value("limit").toInt(50);
+            return QString::fromUtf8(
+                QJsonDocument(ci->queryMcpTrace(since, limit))
+                    .toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1319 — cold_eyes_* (4 tools). Mirror to indie_review fold-in
     // pattern; each handler delegates to RemoteControl::cmdColdEyes*.
     m_claudeIntegration->registerToolProvider("cold_eyes_partition",

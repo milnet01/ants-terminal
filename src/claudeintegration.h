@@ -242,6 +242,34 @@ public:
     static QString wrapMcpData(const QString &toolName,
                                const QString &payload);
 
+    // ANTS-1360 — MCP debug-log tap. The registered `mcp_trace`
+    // provider lambda calls this to read a slice of the ring.
+    // Filter: id >= since (INV-3 inclusive). Result envelope shape:
+    //   {ok, records, next_id, ring_capacity, ring_size}
+    // See docs/specs/ANTS-1360.md.
+    QJsonObject queryMcpTrace(quint64 since, int limit) const;
+
+    // ANTS-1360 — test-only seam. Drive record/query/clear without
+    // standing up the QLocalSocket round-trip. Mirrors ANTS-1357's
+    // tryGet/maybeInsert pattern.
+    void recordMcpTraceForTest(
+        const QString &toolName, const QJsonObject &args,
+        qint64 argBytes, qint64 respBytes, qint64 durationUs,
+        bool cacheHit, const QString &result) {
+        recordMcpTrace(toolName, args, argBytes, respBytes,
+                       durationUs, cacheHit, result);
+    }
+    QJsonObject queryMcpTraceForTest(quint64 since, int limit) const {
+        return queryMcpTrace(since, limit);
+    }
+    int mcpTraceSizeForTest() const {
+        return m_mcpTraceRing.size();
+    }
+    void clearMcpTraceForTest() {
+        m_mcpTraceRing.clear();
+        m_mcpTraceNextId = 1;
+    }
+
     // Project/session discovery
     QList<ClaudeProject> discoverProjects() const;
     QString sessionSummary(const QString &transcriptPath) const;
@@ -392,6 +420,34 @@ private:
     void maybeInsertIdempotentReadCache(
         const QString &toolName, const QJsonObject &args,
         const QString &response);
+
+    // ANTS-1360 — MCP debug-log tap. Ring buffer of last
+    // kMcpTraceCap tools/call dispatches. Single-threaded by INV-10
+    // (Qt main thread, QLocalSocket readyRead). See
+    // docs/specs/ANTS-1360.md.
+    struct McpTraceRecord {
+        quint64     id          = 0;
+        qint64      tsMs        = 0;
+        QString     tool;
+        QJsonObject argKeys;
+        qint64      argBytes    = 0;
+        QString     argsSha16;
+        qint64      respBytes   = 0;
+        qint64      durationUs  = 0;
+        bool        cacheHit    = false;
+        QString     result;
+    };
+    QList<McpTraceRecord>  m_mcpTraceRing;
+    quint64                m_mcpTraceNextId = 1;
+    static constexpr int   kMcpTraceCap     = 200;
+
+    void recordMcpTrace(
+        const QString &toolName, const QJsonObject &args,
+        qint64 argBytes, qint64 respBytes, qint64 durationUs,
+        bool cacheHit, const QString &result);
+    static QJsonObject argShapeOf(const QJsonObject &args);
+    static QString argsSha16Of(const QJsonObject &args);
+    static QJsonObject recordToJson(const McpTraceRecord &r);
 
     // Session tracking
     QString m_activeSessionId;

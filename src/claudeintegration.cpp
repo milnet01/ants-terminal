@@ -7,6 +7,7 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -1156,6 +1157,117 @@ void ClaudeIntegration::registerToolProvider(
     m_toolProviders[name] = std::move(handler);
 }
 
+// ANTS-1360 — MCP debug-log tap. Top-level shape only — no recursion
+// into nested objects/arrays (INV-6). Returns a JSON object whose
+// keys mirror `args`' keys and whose values are short type tags.
+QJsonObject ClaudeIntegration::argShapeOf(const QJsonObject &args) {
+    QJsonObject shape;
+    for (auto it = args.constBegin(); it != args.constEnd(); ++it) {
+        const QJsonValue &v = it.value();
+        QString tag;
+        switch (v.type()) {
+        case QJsonValue::Null:   tag = QStringLiteral("null");   break;
+        case QJsonValue::Bool:   tag = QStringLiteral("bool");   break;
+        case QJsonValue::String: tag = QStringLiteral("string"); break;
+        case QJsonValue::Double: {
+            // Best-effort int/double distinction: Qt stores all
+            // numerics as double, but a "looks like an int" check
+            // helps debug-readability. Spec § 2.4.
+            const double d = v.toDouble();
+            const qint64 i = static_cast<qint64>(v.toVariant().toLongLong());
+            tag = (d == static_cast<double>(i))
+                ? QStringLiteral("int")
+                : QStringLiteral("double");
+            break;
+        }
+        case QJsonValue::Array:
+            tag = QStringLiteral("array<%1>").arg(v.toArray().size());
+            break;
+        case QJsonValue::Object:
+            tag = QStringLiteral("object<%1>").arg(v.toObject().size());
+            break;
+        default:
+            tag = QStringLiteral("unknown");
+            break;
+        }
+        shape.insert(it.key(), tag);
+    }
+    return shape;
+}
+
+QString ClaudeIntegration::argsSha16Of(const QJsonObject &args) {
+    const QByteArray compact =
+        QJsonDocument(args).toJson(QJsonDocument::Compact);
+    return QString::fromUtf8(
+        QCryptographicHash::hash(compact, QCryptographicHash::Sha256)
+            .toHex().left(16));
+}
+
+QJsonObject ClaudeIntegration::recordToJson(const McpTraceRecord &r) {
+    QJsonObject o;
+    o["id"]          = static_cast<qint64>(r.id);
+    o["ts_ms"]       = r.tsMs;
+    o["tool"]        = r.tool;
+    o["arg_keys"]    = r.argKeys;
+    o["arg_bytes"]   = r.argBytes;
+    o["args_sha16"]  = r.argsSha16;
+    o["resp_bytes"]  = r.respBytes;
+    o["duration_us"] = r.durationUs;
+    o["cache_hit"]   = r.cacheHit;
+    o["result"]      = r.result;
+    return o;
+}
+
+void ClaudeIntegration::recordMcpTrace(
+    const QString &toolName, const QJsonObject &args,
+    qint64 argBytes, qint64 respBytes, qint64 durationUs,
+    bool cacheHit, const QString &result) {
+    // INV-5: mcp_trace never records itself.
+    if (toolName == QLatin1String("mcp_trace")) return;
+    McpTraceRecord rec;
+    rec.id         = m_mcpTraceNextId++;
+    rec.tsMs       = QDateTime::currentMSecsSinceEpoch();
+    rec.tool       = toolName;
+    rec.argKeys    = argShapeOf(args);
+    rec.argBytes   = argBytes;
+    rec.argsSha16  = argsSha16Of(args);
+    rec.respBytes  = respBytes;
+    rec.durationUs = durationUs;
+    rec.cacheHit   = cacheHit;
+    rec.result     = result;
+    m_mcpTraceRing.append(rec);
+    if (m_mcpTraceRing.size() > kMcpTraceCap) {
+        m_mcpTraceRing.removeFirst();
+    }
+}
+
+QJsonObject ClaudeIntegration::queryMcpTrace(
+    quint64 since, int limit) const {
+    // INV-4: limit clamps to [1, ring_capacity].
+    if (limit < 1)             limit = 1;
+    if (limit > kMcpTraceCap)  limit = kMcpTraceCap;
+    QJsonArray records;
+    quint64 maxReturnedId = 0;
+    int emitted = 0;
+    for (const McpTraceRecord &r : m_mcpTraceRing) {
+        if (r.id < since) continue;              // INV-3: id >= since
+        if (emitted >= limit) break;             // INV-4 cap
+        records.append(recordToJson(r));
+        if (r.id > maxReturnedId) maxReturnedId = r.id;
+        ++emitted;
+    }
+    QJsonObject out;
+    out["ok"]            = true;
+    out["records"]       = records;
+    // INV-3 next_id: max(returned)+1 on non-empty; since echoed on empty.
+    out["next_id"]       = records.isEmpty()
+        ? static_cast<qint64>(since)
+        : static_cast<qint64>(maxReturnedId + 1);
+    out["ring_capacity"] = kMcpTraceCap;
+    out["ring_size"]     = m_mcpTraceRing.size();
+    return out;
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -2226,6 +2338,45 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1360 — mcp_trace: ring-buffer slice of last
+                // tools/call dispatches. Privacy-first: shape +
+                // lengths + hashes only, no raw arg values.
+                {
+                    QJsonObject t;
+                    t["name"] = "mcp_trace";
+                    t["description"] = QStringLiteral(
+                        "Return the last N tool/call records observed "
+                        "by this Ants Terminal MCP server. Useful for "
+                        "debugging third-party MCP integrations. "
+                        "Records are structured (shape + lengths + "
+                        "hashes only) — raw argument values are never "
+                        "stored. ANTS-1360.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject sinceProp;
+                    sinceProp["type"] = "integer";
+                    sinceProp["minimum"] = 0;
+                    sinceProp["description"] = QStringLiteral(
+                        "Return only records with id >= since "
+                        "(inclusive). Use 0 to start from the oldest "
+                        "record currently in the ring.");
+                    QJsonObject limitProp;
+                    limitProp["type"] = "integer";
+                    limitProp["minimum"] = 1;
+                    limitProp["maximum"] = 200;
+                    limitProp["default"] = 50;
+                    limitProp["description"] = QStringLiteral(
+                        "Maximum records returned. Hard cap = ring "
+                        "cap (200). Out-of-range values are clamped.");
+                    QJsonObject props;
+                    props["since"] = sinceProp;
+                    props["limit"] = limitProp;
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray();
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1319 — cold_eyes_* (4 tools). Mirror to indie_review /
                 // debt_sweep fold-in pattern; pure delegation to
                 // ColdEyesEngine + RoadmapFoldIn helpers.
@@ -2485,6 +2636,11 @@ void ClaudeIntegration::onMcpConnection() {
                 const QJsonObject argsObj = params.value("arguments").toObject();
                 QString responseText;
                 bool toolHandled = false;
+                // ANTS-1360 — start latency clock before cache lookup
+                // so cache-hit records capture true µs-range latency
+                // (not zero). Stop right before recordMcpTrace below.
+                QElapsedTimer mcpTraceTimer;
+                mcpTraceTimer.start();
                 // ANTS-1357 — short-TTL idempotent-read cache lookup
                 // happens before dispatch. Only the 4 allowlisted tools
                 // hit this path (isIdempotentReadTool); everything else
@@ -2555,11 +2711,25 @@ void ClaudeIntegration::onMcpConnection() {
                         .toJson(QJsonDocument::Compact).size();
                     const qint64 outBytes = wrapped.toUtf8().size();
                     m_tokenUsage.recordCall(toolName, argBytes, outBytes);
+                    // ANTS-1360 — per-call sequence trace. Single hook
+                    // point shared with both branches. INV-5 self-
+                    // exclusion handled inside recordMcpTrace.
+                    recordMcpTrace(toolName, argsObj, argBytes, outBytes,
+                                   mcpTraceTimer.nsecsElapsed() / 1000,
+                                   cachedHit, QStringLiteral("ok"));
                     haveResult = true;
                 } else {
                     // JSON-RPC application error: tool not found or provider missing.
                     error["code"] = -32602; // Invalid params
                     error["message"] = QString("Unknown tool: %1").arg(toolName);
+                    // ANTS-1360 — INV-7 failure-path record. INV-12:
+                    // resp_bytes=0 and a non-negative duration_us.
+                    const qint64 argBytes = QJsonDocument(argsObj)
+                        .toJson(QJsonDocument::Compact).size();
+                    recordMcpTrace(toolName, argsObj, argBytes, 0,
+                                   mcpTraceTimer.nsecsElapsed() / 1000,
+                                   false,
+                                   QStringLiteral("tool_not_found"));
                 }
             } else {
                 // JSON-RPC -32601 = Method not found

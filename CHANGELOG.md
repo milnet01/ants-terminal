@@ -12,6 +12,48 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🧰 MCP debug-log tap (2026-05-15)
+
+Closes out the MCP-platform theme that started with the perf
+bundle — third-party MCP integrators now have a structured
+in-process view of dispatch they can query over MCP itself.
+
+- **ANTS-1360 — `mcp_trace` MCP tool.** Adds a session-scoped
+  ring buffer of the last 200 `tools/call` dispatches, queryable
+  through a new `mcp__ants__mcp_trace` verb with `since` +
+  `limit` args. Each record carries `{id, ts_ms, tool, arg_keys,
+  arg_bytes, args_sha16, resp_bytes, duration_us, cache_hit,
+  result}`. **Privacy-first**: raw argument values are NEVER
+  stored — `arg_keys` records *shape only* (top-level keys
+  mapped to type tags like `string` / `int` / `object<N>` /
+  `array<N>` with no recursion into nested values), `arg_bytes`
+  records the compact-JSON length, and `args_sha16` is a 16-hex
+  SHA-256 prefix that correlates repeat calls without leaking
+  text. `cache_hit:true` propagates the ANTS-1357 short-circuit
+  so a debugger can see the cache fire without instrumenting
+  it separately. INV-5 (no self-recording) keeps a polling
+  client from filling the ring with its own queries. INV-7
+  records both successful dispatch AND unknown-tool failures
+  (`result:"tool_not_found"`, `resp_bytes:0`). FIFO eviction
+  at the cap; `next_id` cursor walks the trace without gaps,
+  and a wrap (`ring_size == ring_capacity AND records[0].id >
+  max(since, 1)`) is detectable so a polling client can
+  surface dropped records. ~50 KB RAM ceiling. **Cold-eyes-
+  reviewed across four passes** before any code landed —
+  pass 1 caught a HIGH on the `next_id` cursor (the spec
+  originally framed `id > since` with `next_id = max+1`,
+  which would have skipped one record on every poll); pass 2
+  caught a MEDIUM on the wrap-detection boundary (full ring +
+  `since=0` falsely flagged a wrap); pass 3 caught a LOW on
+  the int/double type-tag heuristic; pass 4 confirmed CLEAN.
+  Spec: `docs/specs/ANTS-1360.md`. Tests:
+  `tests/features/mcp_trace_ring_buffer/` (16 tests covering
+  cap/eviction/cursor/wrap/redaction/no-recursion/failure
+  paths). Pre-existing `-Wshadow` warnings at
+  `claudeintegration.cpp:1393+` (per-tool `props`/`schema`
+  re-declarations under the outer `get_scrollback` scope) are
+  unchanged by this commit and now tracked under ANTS-1395.
+
 ### ⚡ `verify_changes` session build-cache (2026-05-15)
 
 The fourth (and riskiest) item from the MCP-perf set, shipped after

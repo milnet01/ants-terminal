@@ -5245,12 +5245,27 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: perf.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1360] **MCP debug-log tap (`mcp_trace` tool).** No
-  way to inspect raw request/response pairs from inside the
-  app — `DebugLog::Claude` writes to stderr only. Add a ring
-  buffer (last N=200 calls) accessible via
-  `mcp__ants__mcp_trace { since:int, limit:int }`. Helps
-  third-party tooling debug Ants MCP integration.
+- ✅ [ANTS-1360] **MCP debug-log tap (`mcp_trace` tool).**
+  Session-scoped ring buffer of the last 200 `tools/call`
+  dispatches inside `ClaudeIntegration`, queryable via a new
+  `mcp__ants__mcp_trace { since:int, limit:int }` verb.
+  Per-record fields: `{id, ts_ms, tool, arg_keys, arg_bytes,
+  args_sha16, resp_bytes, duration_us, cache_hit, result}`.
+  **Privacy-first**: raw arg values are never stored — only
+  shape (top-level keys → type tags, no recursion), compact-
+  JSON byte length, and a 16-hex SHA-256 prefix for correlation.
+  `cache_hit` propagates the ANTS-1357 short-circuit so a
+  developer sees the cache fire without separate instrumentation.
+  INV-5 keeps `mcp_trace` from self-recording; INV-7 records
+  unknown-tool failures with `resp_bytes:0`. FIFO eviction at
+  cap; `next_id` cursor walks the trace without gaps, wraps
+  are detectable via `ring_size == ring_capacity AND
+  records[0].id > max(since, 1)`. **Cold-eyes-reviewed across
+  four passes** before implementation (1 → HIGH on `next_id`
+  cursor skip, plus 5 MEDIUM / 2 LOW; 2 → MEDIUM on wrap-
+  detection boundary at `since=0`; 3 → LOW on int/double type
+  tag; 4 → CLEAN). Spec: `docs/specs/ANTS-1360.md`. Tests:
+  `tests/features/mcp_trace_ring_buffer/` (16 tests).
   **Layman:** let developers inspect the last N MCP calls the
   server saw, for debugging integrations.
   Kind: refactor.
@@ -5864,6 +5879,29 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Source: in-session-2026-05-15 (user spotted 13:26 stamp on a
   14:13 binary after ANTS-1392/1393 relaunch).
+
+- 📋 [ANTS-1395] **`tools/list` `-Wshadow` warnings — per-tool
+  `props` / `schema` re-declarations.** Discovered while
+  building ANTS-1360 (2026-05-15). The first tool block in the
+  `tools/list` response at `claudeintegration.cpp:1364, 1369`
+  declares `QJsonObject props;` and `QJsonObject schema;` at
+  the OUTER scope of the whole `tools/list` `else if` branch
+  (the `get_scrollback` tool's locals). Every subsequent tool
+  block wraps its declarations in `{ ... }` scopes that
+  re-declare `props` / `schema`, shadowing the outer locals
+  and producing `-Wshadow=compatible-local` warnings at each
+  site (line ~1393, 1395, 1421, 1423, 1437, 1439, 1453, …
+  through every tool past `get_scrollback`, including the new
+  `mcp_trace` block). Fix: scope `get_scrollback`'s
+  `props` / `schema` inside their own `{...}` block too so
+  the outer scope has no name to shadow. ~5 LOC mechanical
+  change. No behavioural impact; clean-build hygiene.
+  **Layman:** the compiler is yelling about repeated local
+  variable names in the MCP tool-list builder — a stylistic
+  fix that doesn't change behaviour.
+  Kind: refactor.
+  Source: in-session-2026-05-15 (incidental while
+  implementing ANTS-1360).
 
 ---
 
