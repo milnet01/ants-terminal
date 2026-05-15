@@ -4,8 +4,10 @@
 #include <QFileDevice>
 #include <QString>
 
+#include <cerrno>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <QFileInfo>
 #include <unistd.h>
 
@@ -78,5 +80,43 @@ inline bool safeToUnlinkLocalSocket(const QString &path) {
     }
     if (!S_ISSOCK(st.st_mode)) return false;
     if (st.st_uid != ::getuid()) return false;
+    return true;
+}
+
+// ANTS-1365 — bring up the rc-socket /tmp fallback's containing
+// directory at mode 0700, owned by the running user. Defense against
+// the same-UID DoS where a rogue process pre-creates the socket path
+// as a regular file or symlink, blocking `listen()` and silently
+// degrading rc/MCP for the session.
+//
+// Idempotent: a pre-existing directory at `dir` is accepted iff it is
+// (a) a real directory (not a symlink — lstat reports the symlink
+//     itself, S_ISDIR is false on a symlink),
+// (b) owned by the running UID,
+// (c) mode 0700 exactly.
+// Otherwise, if `dir` doesn't exist (ENOENT), create it 0700 atomically
+// via ::mkdir(0700) and re-stat to confirm. Any other error (permission
+// failure, intermediate path race, mode mismatch after create) returns
+// false. The caller treats false as "rc-socket directory unavailable"
+// and disables rc/MCP for this process — same shape as the existing
+// listen-failure path. Sibling to `safeToUnlinkLocalSocket` above; the
+// two layers compose for defense-in-depth.
+inline bool ensureSocketDir(const QString &dir) {
+    const QByteArray dirBytes = QFile::encodeName(dir);
+
+    struct stat st{};
+    if (::lstat(dirBytes.constData(), &st) == 0) {
+        if (!S_ISDIR(st.st_mode)) return false;
+        if (st.st_uid != ::getuid()) return false;
+        if ((st.st_mode & 0777) != 0700) return false;
+        return true;
+    }
+    if (errno != ENOENT) return false;
+
+    if (::mkdir(dirBytes.constData(), 0700) != 0) return false;
+    if (::lstat(dirBytes.constData(), &st) != 0) return false;
+    if (!S_ISDIR(st.st_mode)) return false;
+    if (st.st_uid != ::getuid()) return false;
+    if ((st.st_mode & 0777) != 0700) return false;
     return true;
 }

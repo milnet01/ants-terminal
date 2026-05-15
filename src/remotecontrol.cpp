@@ -68,7 +68,11 @@ QString RemoteControl::defaultSocketPath() {
     if (!xdg.isEmpty()) {
         return xdg + "/ants-terminal.sock";
     }
-    return QStringLiteral("/tmp/ants-terminal-%1.sock")
+    // ANTS-1365 — /tmp fallback wraps the socket in a per-user 0700
+    // subdir (`/tmp/ants-<uid>/`) so a same-UID rogue can't pre-create
+    // the socket path as a regular file or symlink. The subdir is
+    // brought up by `ensureSocketDir` in `start()` before listen().
+    return QStringLiteral("/tmp/ants-%1/ants-terminal.sock")
         .arg(::getuid());
 }
 
@@ -76,7 +80,23 @@ bool RemoteControl::start() {
     if (m_server) return true;
 
     const QString path = defaultSocketPath();
-    QDir().mkpath(QFileInfo(path).absolutePath());
+    // ANTS-1365 — bring up the socket-containing directory at 0700,
+    // verified to be owned by us, before listen(). Replaces the
+    // previous `QDir::mkpath` (which always creates with 0755 on
+    // POSIX and offers no ownership/mode verification). On any
+    // failure — wrong owner, wrong mode, inherited symlink, mkdir
+    // failure — return false and disable rc/MCP for this process.
+    // The XDG primary path is already a systemd-managed 0700 dir,
+    // so this is a no-op there; the /tmp fallback is the real
+    // beneficiary.
+    const QString socketDir = QFileInfo(path).absolutePath();
+    if (!ensureSocketDir(socketDir)) {
+        ANTS_LOG(DebugLog::Network,
+            "remote-control: socket dir %s unavailable; "
+            "remote-control disabled for this process",
+            qUtf8Printable(socketDir));
+        return false;
+    }
 
     m_server = new QLocalServer(this);
     // Restrict access to the owning user — matches the hook/MCP

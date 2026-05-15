@@ -5286,7 +5286,7 @@ indie-review finding.
   Kind: perf.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1365] **`/tmp` socket-squat hardening.**
+- ✅ [ANTS-1365] **`/tmp` socket-squat hardening.**
   `defaultSocketPath` falls back to `/tmp/ants-terminal-<uid>.sock`
   when `XDG_RUNTIME_DIR` is unset (`remotecontrol.cpp:70–71`).
   `/tmp` is world-writable; a same-UID misbehaving process can

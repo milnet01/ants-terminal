@@ -86,6 +86,29 @@ hostile-content findings.
   hook RPC; a peer dribbling 1 byte every 4.9 s with
   restart-on-read would hold the connection indefinitely.
   Comment-only fix; no behaviour change.
+- **`/tmp` socket-path fallback hardening (ANTS-1365,
+  lane-2 M1 deferral).** `RemoteControl::defaultSocketPath`
+  fell back to `/tmp/ants-terminal-<uid>.sock` when
+  `XDG_RUNTIME_DIR` was unset (non-systemd Linux, stripped
+  containers, `env -u XDG_RUNTIME_DIR ants-terminal`). `/tmp`
+  is world-writable; a same-UID rogue process could pre-create
+  the path as a regular file or symlink and silently disable
+  rc/MCP for the session (DoS by path-squat — `listen()` fails;
+  `safeToUnlinkLocalSocket` correctly refuses to clobber a
+  non-socket path; rc/MCP starts up degraded). Fix: wrap the
+  fallback in a per-user 0700 subdir
+  (`/tmp/ants-<uid>/ants-terminal.sock`), created via atomic
+  `::mkdir(0700)` with post-create `::lstat` verification
+  (S_ISDIR + st_uid + mode bits). New helper `ensureSocketDir`
+  in `secureio.h` mirrors the existing `safeToUnlinkLocalSocket`
+  pattern; the two layers compose — even if the subdir guard
+  is somehow bypassed, the file-level guard still gates the
+  socket-bind step. XDG primary path
+  (`/run/user/<uid>/ants-terminal.sock`) is unchanged.
+  Spec at `docs/specs/ANTS-1365.md`; regression test at
+  `tests/features/rc_socket_dir_hardening/` (4 SD-* engine
+  assertions via QTemporaryDir + 4 WI-* source-grep; bundled
+  into `test_core`).
 - **Server-side byte cap on `cmdGetText` / `mcp__ants__get_text`
   (ANTS-1348, lane-2 M4 deferral).** The handler at
   `remotecontrol.cpp:375` capped at 10 000 lines but applied no
