@@ -4839,7 +4839,7 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1337] **`verify_changes` arbitrary shell from
+- ✅ [ANTS-1337] **`verify_changes` arbitrary shell from
   `.ants/verify.json` — hostile-clone vector (lane-5 HI-2).**
   `verifyengine.cpp:290–291` runs `gc.command` from
   `.ants/verify.json` against `/bin/sh -c` with the user's UID.

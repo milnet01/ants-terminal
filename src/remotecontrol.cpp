@@ -16,6 +16,7 @@
 #include "subsystemmap.h"
 #include "terminalwidget.h"
 #include "verifyengine.h"
+#include "verifytrust.h"
 #include "debuglog.h"
 #include "secureio.h"
 
@@ -58,6 +59,11 @@ QString resolveRootCanonical(MainWindow *main);
 
 RemoteControl::RemoteControl(MainWindow *main, QObject *parent)
     : QObject(parent), m_main(main) {}
+
+void RemoteControl::setVerifyTrustClient(
+        std::unique_ptr<VerifyTrust::Client> c) {
+    m_verifyTrustClient = std::move(c);
+}
 
 RemoteControl::~RemoteControl() {
     if (m_server) {
@@ -2658,10 +2664,22 @@ QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
         opts.timeoutSec = req.value(QStringLiteral("timeout_sec")).toInt(opts.timeoutSec);
     }
 
+    // ANTS-1337 — wire the trust client into VerifyOptions so both
+    // the config-probe and the actual runVerify call go through the
+    // gate. ANTS_VERIFY_TRUST_AUTOTRUST=1 is a transition-window
+    // env-var bypass: when set, the verb behaves as before (null
+    // client). Documented in CHANGELOG; will be removed once the
+    // modal-trust workflow stabilises.
+    if (qgetenv("ANTS_VERIFY_TRUST_AUTOTRUST") != "1") {
+        opts.trustClient = m_verifyTrustClient.get();
+    }
+
     // Probe config first so we can surface bad_config without spending
     // wall-clock on the run.
     QString cfgSource;
-    auto cfg = VerifyEngine::loadGateConfig(root, &cfgSource);
+    bool probedUntrusted = false;
+    auto cfg = VerifyEngine::loadGateConfig(
+        root, &cfgSource, opts.trustClient, &probedUntrusted);
     (void)cfg;
     if (cfgSource == QLatin1String("bad_config")) {
         return QJsonDocument(vcErr(
@@ -2672,10 +2690,11 @@ QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
     const VerifyEngine::VerifyReport rep = VerifyEngine::runVerify(root, opts);
 
     QJsonObject env;
-    env["ok"]            = true;
-    env["all_passed"]    = rep.allPassed;
-    env["project_root"]  = root;
-    env["config_source"] = rep.configSource;
+    env["ok"]               = true;
+    env["all_passed"]       = rep.allPassed;
+    env["project_root"]     = root;
+    env["config_source"]    = rep.configSource;
+    env["verify_untrusted"] = rep.verifyUntrusted;
 
     QJsonObject gates;
     for (const auto &g : rep.gates) {

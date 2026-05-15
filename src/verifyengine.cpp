@@ -437,8 +437,11 @@ VerifyReport runVerify(const QString &projectPath,
     rep.gates.clear();
 
     QString cfgSource;
-    QList<GateConfig> configured = loadGateConfig(projectPath, &cfgSource);
+    bool verifyUntrusted = false;
+    QList<GateConfig> configured = loadGateConfig(
+        projectPath, &cfgSource, opts.trustClient, &verifyUntrusted);
     rep.configSource = cfgSource;
+    rep.verifyUntrusted = verifyUntrusted;
 
     // Clamp opts to documented ranges.
     int maxLines = qBound(kMaxLogLinesLo, opts.maxLogLines, kMaxLogLinesHi);

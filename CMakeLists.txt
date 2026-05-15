@@ -266,6 +266,7 @@ add_library(ants_chrome_lib STATIC
     src/dialogchrome.cpp
     src/coloredtabbar.cpp
     src/commandpalette.cpp
+    src/verifytrustmodal.cpp
 )
 target_link_libraries(ants_chrome_lib
     PUBLIC  ants_vt_lib

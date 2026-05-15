@@ -10,9 +10,12 @@
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
 
+#include <memory>
+
 class QLocalServer;
 class QLocalSocket;
 class MainWindow;
+namespace VerifyTrust { class Client; }
 
 // Remote-control server for Ants Terminal. Kitty-style JSON envelopes
 // over a Unix domain socket — unlocks scripting, IDE integration, CI.
@@ -58,6 +61,17 @@ public:
 
     // Default socket path — see header doc for resolution order.
     static QString defaultSocketPath();
+
+    // ANTS-1337 Phase 2 — install the verify-changes trust client.
+    // Called from MainWindow construction with a chrome-layer
+    // VerifyTrustModalClient. RemoteControl takes ownership. nullptr
+    // (default) means cmdVerifyChanges runs without a trust gate,
+    // preserving pre-ANTS-1337 behaviour — used by tests / headless
+    // CI / ANTS_VERIFY_TRUST_AUTOTRUST=1.
+    void setVerifyTrustClient(std::unique_ptr<VerifyTrust::Client> c);
+    VerifyTrust::Client *verifyTrustClient() const {
+        return m_verifyTrustClient.get();
+    }
 
     // Client entry point — connects, sends one JSON request, reads
     // one JSON response, writes it to stdout. Called from main.cpp
@@ -378,6 +392,11 @@ private:
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent
+
+    // ANTS-1337 — verify_changes content-trust gate. nullptr by
+    // default; MainWindow constructs the chrome-layer modal client
+    // and installs it via setVerifyTrustClient.
+    std::unique_ptr<VerifyTrust::Client> m_verifyTrustClient;
 
     // ANTS-1254 — single-entry summary cache. Keyed on
     // (path, mtime, topN, floor) per spec INV-2.

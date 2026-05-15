@@ -86,6 +86,30 @@ hostile-content findings.
   hook RPC; a peer dribbling 1 byte every 4.9 s with
   restart-on-read would hold the connection indefinitely.
   Comment-only fix; no behaviour change.
+- **Verify-changes content-trust gate — Phase 2 modal + wiring
+  (ANTS-1337, lane-5 HI-2 deferral, completes the ticket).**
+  Phase 2 plugs Phase 1's infrastructure into the live MCP path:
+  new chrome-layer `VerifyTrust::ModalClient` (subclass of
+  `FilePersistedTrustClient`) overrides `prompt()` to show a
+  `QMessageBox` with the repo path, SHA-256 (short form +
+  full-hex tooltip), and the first gate's command preview
+  (first 200 chars). Three buttons: "Trust this SHA" / "Trust
+  this repo" / "Deny once" (Cancel maps to Deny). Trust grants
+  persist immediately via `addTrustedSha` / `addTrustedRepo`;
+  on disk-write failure the outcome degrades to Headless
+  (safer than honouring without persisting).
+  `RemoteControl` gained a `setVerifyTrustClient` setter +
+  `unique_ptr` member; `MainWindow` injects a `ModalClient` at
+  construction so `cmdVerifyChanges` can read it. The MCP
+  response envelope gains `verify_untrusted` (always present;
+  `false` on the happy path) so Claude Code knows when the
+  bespoke config was skipped. Transition-window env-var bypass:
+  `ANTS_VERIFY_TRUST_AUTOTRUST=1` skips the gate entirely and
+  preserves pre-ANTS-1337 behaviour — for users who can't grant
+  trust yet (e.g., scripted CI) or who want to opt out
+  permanently. Will be removed in a future release once the
+  modal flow stabilises. Regression test grew 3 MC-* source-grep
+  assertions on the cmdVerifyChanges body wiring.
 - **Verify-changes content-trust gate — Phase 1 infrastructure
   (ANTS-1337, lane-5 HI-2 deferral).** `VerifyEngine::runOneGate`
   executes `gc.command` from `.ants/verify.json` via `/bin/sh -c`.

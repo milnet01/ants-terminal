@@ -9,6 +9,7 @@
 // Modal + MCP envelope tests live in Phase 2 (test_chrome bundle).
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 #include "verifyengine.h"
 #include "verifytrust.h"
 
@@ -237,10 +238,34 @@ void testTrustFile() {
     }
 }
 
+// ---- MCP envelope wiring (Phase 2) --------------------------------
+
+void testMcpWiring() {
+#ifdef SRC_RC_CPP
+    const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdVerifyChanges");
+    expect(!body.empty(), "MC-1 cmdVerifyChanges body slurped");
+    if (!body.empty()) {
+        // MC-2: response envelope carries the new field.
+        expect(body.find("\"verify_untrusted\"") != std::string::npos,
+               "MC-2 cmdVerifyChanges emits verify_untrusted field");
+        // MC-3: trust client wired into VerifyOptions.
+        expect(body.find("opts.trustClient") != std::string::npos,
+               "MC-3 cmdVerifyChanges sets opts.trustClient");
+        // MC-4: ANTS_VERIFY_TRUST_AUTOTRUST env-var bypass present
+        // (transition window).
+        expect(body.find("ANTS_VERIFY_TRUST_AUTOTRUST") != std::string::npos,
+               "MC-4 ANTS_VERIFY_TRUST_AUTOTRUST env-var bypass present");
+    }
+#endif
+}
+
 int runMain() {
     expect_reset();
     testEngine();
     testTrustFile();
+    testMcpWiring();
     return expect_finish();
 }
 

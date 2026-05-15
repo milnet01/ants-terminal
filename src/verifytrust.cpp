@@ -44,7 +44,8 @@ FilePersistedTrustClient::FilePersistedTrustClient()
 
 FilePersistedTrustClient::FilePersistedTrustClient(
         const QString &trustFilePath)
-    : m_path(trustFilePath) {
+    : m_path(trustFilePath.isEmpty() ? defaultTrustFilePath()
+                                     : trustFilePath) {
     loadFromDisk();
 }
 

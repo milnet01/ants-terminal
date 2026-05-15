@@ -13,6 +13,7 @@
 #include "settingsdialog.h"
 #include "sessionmanager.h"
 #include "remotecontrol.h"
+#include "verifytrustmodal.h"  // ANTS-1337 Phase 2
 #include "branchchip.h"           // ANTS-1109 helper
 #include "clipboardguard.h"       // ANTS-1014 clipboard funnel
 #include "dialogfocus.h"          // ANTS-1050 helper
@@ -1071,6 +1072,13 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // already owns the socket) is non-fatal: the log notes it and
     // the main window boots normally.
     m_remoteControl = new RemoteControl(this, this);
+    // ANTS-1337 Phase 2 — install the verify-changes trust client.
+    // Chrome-layer VerifyTrustModalClient shows a QMessageBox when
+    // verify_changes hits a .ants/verify.json whose SHA isn't
+    // trusted; user can grant trust via "Trust this SHA" /
+    // "Trust this repo". RemoteControl takes ownership.
+    m_remoteControl->setVerifyTrustClient(
+        std::make_unique<VerifyTrust::ModalClient>(this));
     // Gated by config: any process under the user's UID can otherwise
     // drive the terminal via the rc socket (including send-text
     // keystroke injection). Opt-in per 0.7.12 /indie-review finding.

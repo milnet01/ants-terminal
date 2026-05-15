@@ -65,6 +65,12 @@ struct VerifyOptions {
     // per-gate divisor.
     int             minPerGateSec      = 10;
     int             minTotalTimeoutSec = 10;
+    // ANTS-1337 — optional trust client gating .ants/verify.json.
+    // nullptr (default) preserves pre-ANTS-1337 behaviour: bespoke
+    // configs are honoured unconditionally. When non-null, runVerify
+    // threads the client through to loadGateConfig, which surfaces
+    // VerifyReport::verifyUntrusted on a Deny/Headless outcome.
+    VerifyTrust::Client *trustClient = nullptr;
 };
 
 // Top-level report. `allPassed` is the AND of every gate's
