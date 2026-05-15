@@ -19,6 +19,19 @@ Bundle plan). Items group around `terminalgrid.cpp` correctness +
 perf so width-reflow + wide-char-edge + Sixel-budget land in one
 release.
 
+- **ANTS-1334 — Combining marks at wide-char right-edge attach to
+  the lead cell.** Pre-fix, after writing a wide CJK char at
+  cols-2, the cursor clamp to cols-1 + `m_wrapNext=true` meant the
+  next zero-width combiner stored to `combining[cols-1]` — the
+  continuation cell, which the renderer ignores. Result: the
+  diacritic vanished. Fix steps `targetCol` left when it lands on
+  an `isWideCont` cell, so combiners land on the lead.
+  Spec: `docs/specs/ANTS-1334.md`; tests:
+  `tests/features/combining_at_wide_right_edge/` (3 invariants).
+  Layman: Chinese/Japanese/Korean text with diacritics no longer
+  loses the accent mark when the underlying character sits at the
+  right edge of the terminal.
+
 - **ANTS-1333 — Scrollback hyperlinks now stay length-locked with
   scrollback rows across width reflow.** `TerminalGrid::resize()`
   width-change reflow at `terminalgrid.cpp:2458–2528` rebuilt

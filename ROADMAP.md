@@ -4856,8 +4856,20 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1334] **Combining marks on wide-char right-edge
-  attach to continuation cell (lane-1 H3).**
+- ✅ [ANTS-1334] **Combining marks on wide-char right-edge
+  attach to continuation cell (lane-1 H3).** Shipped 2026-05-15
+  (Bundle A pull 2). Pre-fix, after a wide char at cols-2 the
+  m_wrapNext + cursor-clamp left m_cursorCol on the continuation
+  cell; a subsequent zero-width combiner stored to `combining[
+  cols-1]` instead of the lead at cols-2 (renderer ignores
+  combiners on cont cells → diacritic invisible). Fix
+  decrements targetCol once when it lands on an isWideCont cell.
+  Spec `docs/specs/ANTS-1334.md`; tests
+  `tests/features/combining_at_wide_right_edge/` (3 invariants:
+  right-edge lead attach, no cont leak, interior + narrow
+  regression coverage). Pre-fix verified failing on INV-1;
+  post-fix 655/655 features green.
+  Original finding (lane-1 H3, indie-review 2026-05-14):
   `terminalgrid.cpp:386–399`. After writing a wide char at
   `cursorCol = cols-2`, the lead lands at `cols-2`, the
   continuation at `cols-1`, and `m_wrapNext = true`. A subsequent

@@ -659,6 +659,7 @@ if(ANTS_TESTS)
                 tests/features/combining_on_resize/test_combining.cpp
                 tests/features/osc8_insert_delete_lines/test_osc8_linerange.cpp
                 tests/features/scrollback_hyperlinks_reflow_lockstep/test_scrollback_hyperlinks_reflow_lockstep.cpp
+                tests/features/combining_at_wide_right_edge/test_combining_at_wide_right_edge.cpp
                 tests/features/hyperlink_resize_clamp/test_hyperlink_resize_clamp.cpp
                 tests/features/osc133_hmac_verification/test_osc133_hmac.cpp
                 tests/features/threaded_parse_equivalence/test_threaded_parse_equivalence.cpp

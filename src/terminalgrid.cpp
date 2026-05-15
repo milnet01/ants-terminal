@@ -392,6 +392,14 @@ void TerminalGrid::handlePrint(uint32_t cp) {
         } else {
             return;  // no previous cell to attach to
         }
+        // ANTS-1334 — if the resolved target lands on a wide-char
+        // continuation cell, step one left to the lead. Common at
+        // right-edge delayed-wrap with CJK: lead at cols-2, cont at
+        // cols-1, m_cursorCol clamps to cols-1 + m_wrapNext=true →
+        // combiner would land on cont, which the renderer ignores.
+        if (targetCol > 0 && targetCol < m_cols &&
+            m_screenLines[m_cursorRow].cells[targetCol].isWideCont)
+            --targetCol;
         auto &comb = m_screenLines[m_cursorRow].combining[targetCol];
         if (static_cast<int>(comb.size()) < MAX_COMBINING_PER_CELL)
             comb.push_back(cp);
