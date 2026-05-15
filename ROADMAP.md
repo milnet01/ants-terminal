@@ -5606,40 +5606,67 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: in-session-2026-05-15 (ANTS-1365 implementation).
 
-- 📋 [ANTS-1391] **MCP "focused project" resolution ignores
-  caller_cwd on read verbs (cross-project leak).** Cross-session
-  report 2026-05-15: an Ants MCP caller in project B (e.g. a
-  CC session in /mnt/Games) gets data from project A (the
-  focused-tab cwd, e.g. /mnt/Games/Scripts/Linux/Ants_Terminal)
-  on every read verb — `workspace_search`, `file_outline`,
-  `git_state`, `roadmap_query`, `subsystem`, `cold_eyes_brief`,
-  `indie_review_brief`, `last_audit_summary`, etc. ANTS-1372
-  closed this for *mutating* verbs by gating on
-  `RcGate::checkCallerCwd`; reads still resolve root via
-  `resolveRootCanonical(m_main)` which returns whatever the
-  focused tab points at, regardless of caller. Symptom: an
-  assistant in repo B asks "what's in ROADMAP?" and gets repo
-  A's ROADMAP because the user happens to have Ants focused
-  on a tab in repo A.
-  Fix sketch: extend the ANTS-1372 caller-cwd gate to read
-  verbs too. Two options:
-  (a) Make `caller_cwd` REQUIRED on every read verb (breaking
-  change; assistant must always pass it).
-  (b) Make `caller_cwd` OPTIONAL on read verbs but anchor to it
-  when present (back-compat: missing caller_cwd → use focused
-  tab as today; passing caller_cwd → that wins). Likely the
-  better choice — preserves the "survey project B from
-  project A" intent (ANTS-1372 INV-7) for explicit cases while
-  letting properly-coded clients (the assistant) ask for the
-  right project.
-  Composes with ANTS-1389 (the schema discoverability gap —
-  `caller_cwd` needs to appear in every read verb's MCP
-  descriptor too so Claude Code's client populates it).
-  **Layman:** when one Claude Code session running in project
-  B asks the Ants MCP "what's in ROADMAP?", it gets project
-  A's ROADMAP because Ants's focused tab is on a different
-  project. The mutating verbs got fixed in ANTS-1372; the
-  read verbs need the same treatment.
+#### 🔌 MCP cross-project isolation (caller_cwd) — Phase 1 + Phase 2
+
+Six-item bundle from the 2026-05-15 cross-session report: a Claude
+session in project B asking the Ants MCP for project B's state
+could get project A's state instead, because the focused tab in
+Ants determined the resolution root for every MCP read. ANTS-1372
+had closed this for *mutating* verbs back in April; this bundle
+closes the reads.
+
+Phase 1 (shipped 2026-05-15): project-root read verbs route through
+`resolveRootCanonical(main, req)` honouring `caller_cwd`
+(ANTS-1391); the schema for mutating verbs declares `caller_cwd`
+so the Claude Code client populates it automatically (ANTS-1389);
+the `cmake --build --quiet` recipe baked into the verify_changes
+auto-detect default was rejected by CMake and is corrected
+(ANTS-1388).
+
+Phase 2 (shipped 2026-05-15): terminal-state verbs route through
+`MainWindow::terminalForCaller(callerCwd)` so a Claude session in
+tab N gets its own scrollback / last-command / env / git-status
+(ANTS-1392); the `roadmap_query` registry-bridge lambda forwards
+`caller_cwd` into `req` instead of dropping it (ANTS-1393).
+Regression-locked in
+`tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp`
+(`RegistryLambdasForwardCallerCwd`).
+
+Still open (deferred): path-tool scope excludes `~/.claude/` global
+config (ANTS-1390 — separate scope, not cross-tab leak).
+
+Companion in "🔒 Tier 1 — security & data-loss" above: ANTS-1336
+(`session_memory`'s `cwd` arg still accepts unanchored paths) —
+mostly closed by ANTS-1372's `RcGate::checkCallerCwd` on mutating
+ops; the residual read-path is intentional per ANTS-1372 INV-7
+(legitimate cross-project survey).
+
+- ✅ [ANTS-1391] **MCP "focused project" resolution now honours
+  caller_cwd on read verbs.** Shipped 2026-05-15. Added an
+  overload `resolveRootCanonical(MainWindow*, const QJsonObject&)`
+  that prefers `caller_cwd` when present, falling back to the
+  focused tab when absent (back-compat). Switched every read
+  verb's root-resolution callsite to the overload:
+  `workspace_search`, `file_outline`, `git_state` (status/log/
+  diff), `subsystem`, `last_audit_summary`,
+  `indie_review_partition`/`brief`/`corroborate`/`synthesis_prompt`,
+  `debt_sweep_scan`/`triage_prompt`,
+  `cold_eyes_partition`/`brief`/`cross_doc_diff`,
+  `session_memory` list/get fallback. `roadmap_query` derives the
+  ROADMAP.md path under caller_cwd's project when present (matches
+  `refreshRoadmapButton`'s case-variant search). `get_cwd` echoes
+  caller_cwd canonical when present so the simplest reproducer
+  (Claude in tab 2 asks for its cwd, gets tab 1's cwd) is closed.
+  Each schema declares `caller_cwd` as an optional property
+  routed through a shared `makeCallerCwdReadProp` lambda so the
+  description stays uniform. Composes with ANTS-1389 (schema
+  discoverability for the mutating-verb gate). Cross-session
+  report reproducer from 2026-05-15 now resolves correctly.
+  **Layman:** a Claude session running in project B asks the
+  Ants MCP "what's in ROADMAP?" and now gets project B's ROADMAP
+  — not project A's because Ants happens to have a different tab
+  focused. The mutating verbs got this in ANTS-1372; reads got
+  the same treatment here.
   Kind: fix.
   Source: cross-session-report-2026-05-15.
 
@@ -5682,51 +5709,129 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: cross-session-report-2026-05-15.
 
-- 📋 [ANTS-1389] **MCP `caller_cwd` schema discoverability gap on
-  ANTS-1372-gated verbs.** `mcp__ants__verify_changes` (and the
-  other mutating verbs gated by `RcGate::checkCallerCwd`:
-  `indie_review_fold_in`, `cold_eyes_fold_in`,
-  `debt_sweep_apply_fix`, `debt_sweep_defer`, `session_memory`
-  set/delete) refuse without `caller_cwd` in the request body:
-  `{ok:false, error:"verify_changes: caller_cwd argument
-  required (pass your $PWD; refuses on mismatch with focused
-  tab)", code:"cwd_missing"}`. But the tool descriptor's JSON
-  schema doesn't declare `caller_cwd` as a parameter — Claude
-  Code's MCP client doesn't surface it as an argument the
-  assistant should pass, so the first call always fails. Fix:
-  add `caller_cwd` (string, required) to every ANTS-1372-gated
-  verb's `parameters.properties` in the MCP tool descriptor.
-  Then the assistant's tool-call codegen will fill it
-  automatically. Discovered 2026-05-15 mid-session when trying
-  to use `verify_changes` for the ANTS-1347 build verification.
-  **Layman:** the new MCP gate that prevents cross-project
-  writes asks for a `caller_cwd` argument, but the tool's
-  documented schema doesn't list it — so the first attempt
-  always fails. Add the field to the schema so Claude Code's
-  client populates it automatically.
+- ✅ [ANTS-1389] **MCP `caller_cwd` schema discoverability gap on
+  ANTS-1372-gated verbs.** Shipped 2026-05-15. Added `caller_cwd`
+  (string) to every ANTS-1372-gated verb's `inputSchema.properties`
+  with a description citing the ANTS-1372 cross-project gate.
+  `verify_changes`, `indie_review_fold_in`, `cold_eyes_fold_in`,
+  `debt_sweep_apply_fix`, `debt_sweep_defer` add it to
+  `required[]`. `session_memory` adds it to `properties` with a
+  description noting "REQUIRED for op=set/delete, optional for
+  op=get/list" — the schema can't conditionally require, but the
+  description tells Claude when to send it and the handler-level
+  RcGate continues to enforce the gate. Schema-test
+  `tests/features/mcp_tools_list_schema/` covers the assertion
+  that every tool declares an inputSchema (test updated for the
+  caller_cwd-bearing `get_cwd` shape).
+  **Layman:** the new MCP gate that prevented cross-project
+  writes asked for a `caller_cwd` argument, but the tool's
+  documented schema didn't list it — every first call failed.
+  Fixed by adding the field to the schemas.
   Kind: fix.
   Source: in-session-2026-05-15 (ANTS-1347 implementation).
 
-- 📋 [ANTS-1388] **`cmake --build --quiet` in CLAUDE.md doesn't
-  work.** CLAUDE.md's "token-frugal build invocations" block
-  prescribes `cmake --build build --quiet 2>&1 | tail -20` but
-  `--quiet` is not a valid flag for `cmake --build` (cmake rejects
-  it with the full usage banner — wastes the assistant's first
-  build attempt every session). Most likely the original author
-  meant `cmake --build build -- --quiet` (passing `--quiet` to
-  the native tool, e.g. Ninja `--quiet` is a no-op since Ninja
-  is already quiet, GNU Make has `--silent`). Two-line fix:
-  drop `--quiet` from the documented invocation, OR change the
-  recipe to use `2>&1 | tail -20` alone (which already
-  accomplishes the token-frugal goal). Also update the
-  CMakePresets-shipped form. CLAUDE.md edit + verify against a
-  fresh shell.
-  **Layman:** the project README tells you to run
-  `cmake --build … --quiet` to keep build output short, but
-  cmake doesn't accept `--quiet` — every assistant that follows
-  the doc wastes a build attempt before noticing. Fix the doc.
-  Kind: doc.
+- ✅ [ANTS-1388] **`cmake --build --quiet` rejected by CMake —
+  verify_changes auto-detect emitted an invalid command.** Shipped
+  2026-05-15. `cmake --build` does not accept `--quiet`; cmake
+  responds with "Unknown argument --quiet" and prints its full
+  usage banner. Two live sites were broken: `verifyengine::autoDetect`
+  minted `"cmake --build build --quiet"` as the default build gate
+  for any project with a `CMakeLists.txt` + `build/` directory, and
+  CLAUDE.md's "token-frugal build invocations" block prescribed
+  the same form. Dropped `--quiet` in both; the `2>&1 | tail -20`
+  pipe at the caller still accomplishes the token-frugal goal and
+  Ninja (the recommended generator) is quiet by default. Same drop
+  applied to ANTS-1247 / ANTS-1253 / ANTS-1289 / ANTS-1290 spec
+  docs that copy-quoted the broken form. Regression-locked in
+  `tests/features/verify_changes_engine/test_verify_changes_engine.cpp`
+  (INV-4 auto-detect assertion now expects the corrected command).
+  **Layman:** the project README told you to run
+  `cmake --build … --quiet` to keep build output short, but cmake
+  doesn't accept `--quiet` — every assistant that followed the doc
+  wasted a build attempt before noticing. Same bad command was
+  baked into the verify_changes auto-detect default too.
+  Kind: fix.
   Source: in-session-2026-05-15.
+
+- ✅ [ANTS-1392] **Terminal-state MCP verbs now anchor on caller's
+  tab.** Shipped 2026-05-15. Added
+  `MainWindow::terminalForCaller(callerCwd)` that walks every tab
+  (split panes via `activeTerminalInTab`) for a terminal whose
+  canonical `shellCwd()` matches the canonical `callerCwd`. First
+  match wins; empty `callerCwd` or no match falls back to
+  `focusedTerminal()` (preserves the pre-1392 contract). Switched
+  the five terminal-state registry lambdas (`get_scrollback`,
+  `get_last_command`, `get_git_status`, `get_environment`,
+  `get_text`) and `cmdGetText`'s no-tab path to call it. Each
+  tool's MCP schema gained an optional `caller_cwd` property
+  routed through the shared `makeCallerCwdReadProp` lambda.
+  Regression-locked in
+  `tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp`
+  (`RegistryLambdasForwardCallerCwd` greps mainwindow.cpp for the
+  `terminalForCaller` symbol + `get_text` `caller_cwd` forward).
+  590/590 tests green.
+  **Layman:** the previous fix made the "what's in this project"
+  MCP tools route to the calling Claude's project. The "what's
+  in this terminal" MCP tools (scrollback, last command, env,
+  git status) now do too — they look up which tab matches the
+  caller's $PWD instead of using whichever tab Ants has focused.
+  Kind: fix.
+  Source: cross-session-report-2026-05-15.
+
+- ✅ [ANTS-1393] **`roadmap_query` registry-bridge lambda now
+  forwards `caller_cwd` — Phase-1 ANTS-1391 fix is live.** Shipped
+  2026-05-15. ANTS-1391 plumbed `caller_cwd` through
+  `cmdRoadmapQuery` at `remotecontrol.cpp:738` and added the schema
+  property, but the registry-bridge lambda at `mainwindow.cpp:3776`
+  rebuilt `req` selectively (`status` + `section` only) and never
+  forwarded `caller_cwd`. Discovered 2026-05-15 by repro:
+  `mcp__ants__roadmap_query{caller_cwd:
+  "/mnt/Games/Scripts/Linux/Ants_Terminal"}` returned MAME_Curator's
+  ROADMAP (focused-tab leak). Cross-checked `workspace_search` +
+  `get_cwd` with the same caller_cwd — both routed correctly (they
+  pass `args` straight through). Fix: added an `isString()` gate +
+  one-line forward of `args.value("caller_cwd")` into `req` at the
+  bottom of the rebuild. The same shape was wrong for `get_text`
+  too — closed by ANTS-1392. Regression-locked in
+  `tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp`
+  (`RegistryLambdasForwardCallerCwd` greps mainwindow.cpp for the
+  `req["caller_cwd"] = callerCwd` substring).
+  **Layman:** the just-shipped ANTS-1391 fix routes roadmap_query
+  to the caller's project — but the wiring step between the MCP
+  tool registry and the underlying handler silently dropped the
+  `caller_cwd` argument, so the fix had no effect on roadmap_query.
+  One-line plumbing fix.
+  Kind: fix.
+  Source: in-session-2026-05-15 (verifying ANTS-1391 post-restart).
+
+- 📋 [ANTS-1394] **`ANTS_BUILD_TIME` label is stale on incremental
+  rebuilds — ANTS-1323 regression.** Discovered 2026-05-15 by repro:
+  source edits + `cmake --build build` produced a binary linked at
+  14:13 but `Help → About` still showed `13:26` (the time `cmake -B
+  build` last reconfigured). Root cause: `CMakeLists.txt:35`
+  evaluates `string(TIMESTAMP ANTS_BUILD_TIME "%H:%M")` at cmake-
+  configure time and bakes the result into
+  `build/generated/build_info.h`. Pure build-only invocations
+  (`cmake --build build` without any change that triggers
+  reconfigure) don't refresh the timestamp, so every incremental
+  build between two reconfigures collapses to the same label —
+  defeating the entire stated intent of ANTS-1323 ("Multiple builds
+  in one day used to collapse to the same `0.7.92 · 2026-05-14`
+  label, leaving the user unable to tell one local build from
+  another"). Fix candidate: wire `configure_file` through an
+  `add_custom_command(... DEPENDS ALWAYS)` or
+  `add_custom_target(build_info ALL ...)` so `build_info.h`
+  regenerates on every `cmake --build` invocation rather than only
+  on reconfigure. Cheap, scoped change to `CMakeLists.txt`. Verify
+  by editing one `.cpp`, rebuilding twice 1 minute apart, checking
+  About-dialog stamps differ.
+  **Layman:** the build-time stamp shown in About says the wrong
+  time — it's the time you ran `cmake` last, not the time the
+  binary was built. The ANTS-1323 fix only half-worked. Need to
+  make the stamp regenerate on every build.
+  Kind: fix.
+  Source: in-session-2026-05-15 (user spotted 13:26 stamp on a
+  14:13 binary after ANTS-1392/1393 relaunch).
 
 ---
 

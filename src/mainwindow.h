@@ -149,6 +149,17 @@ public:
     // share this accessor.
     TerminalWidget *terminalAtTab(int index) const;
 
+    // ANTS-1392 — caller-anchored terminal lookup for MCP read verbs.
+    // If `callerCwd` is non-empty, walks the tab list looking for a
+    // terminal whose canonical `shellCwd()` matches the canonical
+    // `callerCwd` and returns it. Falls back to `focusedTerminal()`
+    // when callerCwd is empty or no tab matches. Used by the
+    // get_scrollback / get_last_command / get_git_status /
+    // get_environment / get_text MCP tools so a Claude session in
+    // tab N gets its own terminal state rather than whichever tab
+    // Ants happens to have focused.
+    TerminalWidget *terminalForCaller(const QString &callerCwd) const;
+
     // `selectTabForRemote(i)` switches the active tab to `i`. Returns
     // false if the index is out of range — caller propagates as an
     // error envelope to the rc_protocol client. Focuses the new tab's

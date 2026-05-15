@@ -2724,6 +2724,34 @@ TerminalWidget *MainWindow::terminalAtTab(int index) const {
     return activeTerminalInTab(m_tabWidget->widget(index));
 }
 
+// ANTS-1392 — caller_cwd-anchored terminal lookup. Walks every tab
+// (including split-pane subtrees via activeTerminalInTab) for a
+// terminal whose canonical shellCwd matches the canonical callerCwd.
+// First match wins. Empty callerCwd or no match → falls back to
+// focusedTerminal() (preserves the pre-ANTS-1392 contract for tools
+// invoked without caller_cwd).
+TerminalWidget *MainWindow::terminalForCaller(const QString &callerCwd) const {
+    if (!callerCwd.isEmpty()) {
+        const QString wantCanonical =
+            QFileInfo(callerCwd).canonicalFilePath();
+        if (!wantCanonical.isEmpty()) {
+            for (int i = 0; i < m_tabWidget->count(); ++i) {
+                TerminalWidget *t = terminalAtTab(i);
+                if (!t) continue;
+                const QString tabCwd = t->shellCwd();
+                if (tabCwd.isEmpty()) continue;
+                const QString tabCanonical =
+                    QFileInfo(tabCwd).canonicalFilePath();
+                if (!tabCanonical.isEmpty() &&
+                    tabCanonical == wantCanonical) {
+                    return t;
+                }
+            }
+        }
+    }
+    return focusedTerminal();
+}
+
 int MainWindow::currentTabIndexForRemote() const {
     return m_tabWidget->currentIndex();
 }
@@ -3697,17 +3725,36 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("get_scrollback",
         [this](const QJsonObject &args) -> QString {
             const int lines = args.value("lines").toInt(50);
-            if (auto *t = focusedTerminal()) return t->recentOutput(lines);
+            // ANTS-1392 — caller_cwd routes to the caller's tab when
+            // present; falls back to focusedTerminal() otherwise.
+            const QString callerCwd =
+                args.value("caller_cwd").toString();
+            if (auto *t = terminalForCaller(callerCwd))
+                return t->recentOutput(lines);
             return {};
         });
     m_claudeIntegration->registerToolProvider("get_cwd",
-        [this](const QJsonObject &) -> QString {
+        [this](const QJsonObject &args) -> QString {
+            // ANTS-1391: if the caller passes its own cwd, echo it back.
+            // get_cwd's contract is "the terminal's cwd"; without
+            // caller_cwd that's the focused-tab cwd (which may not be
+            // the caller's tab in a multi-Ants-tab setup).
+            const QString callerRaw =
+                args.value(QStringLiteral("caller_cwd")).toString();
+            if (!callerRaw.isEmpty()) {
+                const QString canonical =
+                    QFileInfo(callerRaw).canonicalFilePath();
+                if (!canonical.isEmpty()) return canonical;
+            }
             if (auto *t = focusedTerminal()) return t->shellCwd();
             return QDir::currentPath();
         });
     m_claudeIntegration->registerToolProvider("get_last_command",
-        [this](const QJsonObject &) -> QString {
-            auto *t = focusedTerminal();
+        [this](const QJsonObject &args) -> QString {
+            // ANTS-1392 — caller_cwd routes to the caller's tab.
+            const QString callerCwd =
+                args.value("caller_cwd").toString();
+            auto *t = terminalForCaller(callerCwd);
             const int   exitCode = t ? t->lastExitCode()      : 0;
             const QString output = t ? t->lastCommandOutput() : QString();
             QJsonObject info;
@@ -3718,8 +3765,11 @@ void MainWindow::setupClaudeMcpProviders() {
                 QJsonDocument(info).toJson(QJsonDocument::Compact));
         });
     m_claudeIntegration->registerToolProvider("get_git_status",
-        [this](const QJsonObject &) -> QString {
-            auto *t = focusedTerminal();
+        [this](const QJsonObject &args) -> QString {
+            // ANTS-1392 — caller_cwd routes to the caller's tab.
+            const QString callerCwd =
+                args.value("caller_cwd").toString();
+            auto *t = terminalForCaller(callerCwd);
             if (!t) return {};
             QString cwd = t->shellCwd();
             if (cwd.isEmpty()) return {};
@@ -3739,8 +3789,11 @@ void MainWindow::setupClaudeMcpProviders() {
             return result.join("\n\n");
         });
     m_claudeIntegration->registerToolProvider("get_environment",
-        [this](const QJsonObject &) -> QString {
-            auto *t = focusedTerminal();
+        [this](const QJsonObject &args) -> QString {
+            // ANTS-1392 — caller_cwd routes to the caller's tab.
+            const QString callerCwd =
+                args.value("caller_cwd").toString();
+            auto *t = terminalForCaller(callerCwd);
             if (!t) return {};
             pid_t pid = t->shellPid();
             if (pid <= 0) return {};
@@ -3771,9 +3824,17 @@ void MainWindow::setupClaudeMcpProviders() {
             // matches the ANTS-1247 INV-9 pattern for `status`.
             const QJsonValue sectionVal = args.value("section");
             const QString section = sectionVal.isString() ? sectionVal.toString() : QString();
+            // ANTS-1393 — forward caller_cwd so cmdRoadmapQuery's
+            // per-project ROADMAP.md resolution at
+            // remotecontrol.cpp:738 sees it. Without this the selective
+            // rebuild silently dropped the field and the ANTS-1391
+            // fix had no effect on roadmap_query.
+            const QJsonValue cwdVal = args.value("caller_cwd");
+            const QString callerCwd = cwdVal.isString() ? cwdVal.toString() : QString();
             QJsonObject req;
             if (!status.isEmpty()) req["status"] = status;
             if (!section.isEmpty()) req["section"] = section;
+            if (!callerCwd.isEmpty()) req["caller_cwd"] = callerCwd;
             return QString::fromUtf8(
                 m_remoteControl->cmdRoadmapQuery(req).toJson(QJsonDocument::Compact));
         });
@@ -3792,6 +3853,12 @@ void MainWindow::setupClaudeMcpProviders() {
             QJsonObject req;
             if (args.value("tab").isDouble())   req["tab"]   = args.value("tab").toInt();
             if (args.value("lines").isDouble()) req["lines"] = args.value("lines").toInt();
+            // ANTS-1392 — forward caller_cwd so cmdGetText's
+            // tab-resolution falls through to terminalForCaller when
+            // `tab` is omitted.
+            const QJsonValue cwdVal = args.value("caller_cwd");
+            if (cwdVal.isString() && !cwdVal.toString().isEmpty())
+                req["caller_cwd"] = cwdVal.toString();
             return QString::fromUtf8(
                 m_remoteControl->cmdGetText(req).toJson(QJsonDocument::Compact));
         });

@@ -55,6 +55,10 @@ namespace {
 // blocks in this TU share internal linkage so this forward decl
 // resolves at the same `resolveRootCanonical` symbol.
 QString resolveRootCanonical(MainWindow *main);
+// ANTS-1391 — read-verb overload: prefer caller_cwd in the request
+// body over the focused-tab default. Definition next to the legacy
+// one below.
+QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
 }  // namespace
 
 RemoteControl::RemoteControl(MainWindow *main, QObject *parent)
@@ -432,7 +436,13 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
             return QJsonDocument(out);
         }
     } else {
-        target = m_main->currentTerminal();
+        // ANTS-1392 — when `tab` is omitted, prefer the caller_cwd
+        // anchor over the focused tab. terminalForCaller falls back
+        // to focusedTerminal() when caller_cwd is empty or no tab
+        // matches, preserving the pre-1392 contract.
+        const QString callerCwd =
+            req.value(QStringLiteral("caller_cwd")).toString();
+        target = m_main->terminalForCaller(callerCwd);
         if (!target) {
             out["ok"] = false;
             out["error"] = QStringLiteral("get-text: no active terminal");
@@ -723,7 +733,35 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // path (existing behaviour, INV-6).
     const QString section = req.value(QStringLiteral("section")).toString();
 
-    const QString path = m_main->roadmapPathForRemote();
+    // ANTS-1391: when caller_cwd is present, derive the ROADMAP.md path
+    // under that root (matching MainWindow::refreshRoadmapButton's
+    // case-variant search) instead of relying on the focused tab's
+    // pre-discovered m_roadmapPath. Falls back to the focused tab when
+    // absent (back-compat).
+    QString path;
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    if (!callerRaw.isEmpty()) {
+        const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
+        if (!callerCanonical.isEmpty()) {
+            const QStringList candidates = {
+                QStringLiteral("ROADMAP.md"),
+                QStringLiteral("roadmap.md"),
+                QStringLiteral("Roadmap.md"),
+            };
+            for (const QString &name : candidates) {
+                const QString candidate =
+                    callerCanonical + QLatin1Char('/') + name;
+                if (QFileInfo::exists(candidate)) {
+                    path = candidate;
+                    break;
+                }
+            }
+        }
+    }
+    if (path.isEmpty() && callerRaw.isEmpty()) {
+        path = m_main->roadmapPathForRemote();
+    }
     if (path.isEmpty()) {
         out["ok"] = false;
         out["error"] = QStringLiteral(
@@ -946,6 +984,8 @@ namespace {
 // (it lives next to the rest of the git_state helpers). Both
 // unnamed-namespace blocks in this TU share linkage.
 QString resolveRootCanonical(MainWindow *main);
+// ANTS-1391 — read-verb overload (see top-of-file forward decl).
+QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
 constexpr int kWorkspaceSearchHardKillMs   = 2000;  // ANTS-1248-INV-5
 constexpr int kWorkspaceSearchKillGraceMs  =  200;  // ANTS-1248-INV-5
 constexpr int kWorkspaceSearchMaxResultsCap = 500;  // ANTS-1248-INV-4
@@ -980,8 +1020,15 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // working dir for the search is determined by `lane`. Default
     // (`lane=""`) is the focused tab's shellCwd; explicit `lane` is
     // resolved relative to that root and must canonicalise back inside.
+    // ANTS-1391: prefer the caller_cwd-rooted project when present so a
+    // Claude session in project B searches project B, not whichever tab
+    // is focused in Ants.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
     QString rootCwd;
-    if (auto *t = m_main->currentTerminal()) {
+    if (!callerRaw.isEmpty()) {
+        rootCwd = callerRaw;
+    } else if (auto *t = m_main->currentTerminal()) {
         rootCwd = t->shellCwd();
     }
     if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
@@ -1201,7 +1248,8 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     // exist (we can't outline a file we can't read), so reject when
     // check.resolved is empty with a `not_found` code distinct from
     // the anchor-fail `bad_path` envelope.
-    const QString rootCanonical = resolveRootCanonical(m_main);
+    // ANTS-1391: prefer caller_cwd's project root over the focused tab.
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -1294,6 +1342,25 @@ QString resolveRootCanonical(MainWindow *main) {
     return QFileInfo(rootCwd).canonicalFilePath();
 }
 
+// ANTS-1391: read-verb overload. When the request body carries
+// `caller_cwd`, anchor the read to that cwd's project instead of the
+// focused tab's. Use case: a Claude session in project B asks Ants
+// "what's in ROADMAP?" — without this, the focused-tab default would
+// reply with project A's ROADMAP whenever the user's attention is on
+// a different tab. Empty/absent caller_cwd preserves back-compat (use
+// focused tab). Present-but-unresolvable caller_cwd returns "" so
+// callers' existing bad_path envelope fires — no new error code needed.
+// Mutating verbs continue to enforce strict match via RcGate (ANTS-1372);
+// read verbs just route, without refusing on mismatch.
+QString resolveRootCanonical(MainWindow *main, const QJsonObject &req) {
+    const QString rawCaller =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    if (!rawCaller.isEmpty()) {
+        return QFileInfo(rawCaller).canonicalFilePath();
+    }
+    return resolveRootCanonical(main);
+}
+
 // ANTS-1250-INV-8 / ANTS-1295: per-call path validation now lives in
 // the central PathValidation chokepoint. See src/pathvalidation.{h,cpp}.
 
@@ -1341,8 +1408,10 @@ void parseStatusHeader(const QString &headerLine, QJsonObject &out) {
     out["behind"]   = behindN;
 }
 
-QJsonObject runStatusOp(MainWindow *main) {
-    const QString rootCanonical = resolveRootCanonical(main);
+// ANTS-1391: req carries optional caller_cwd; pass-through to the
+// read-verb resolveRootCanonical overload.
+QJsonObject runStatusOp(MainWindow *main, const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(main, req);
     if (rootCanonical.isEmpty()) {
         return gitErr("bad_path",
             QStringLiteral("git_state: project root does not exist"));
@@ -1418,7 +1487,8 @@ QJsonObject runStatusOp(MainWindow *main) {
 }
 
 QJsonObject runLogOp(MainWindow *main, const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(main);
+    // ANTS-1391: prefer caller_cwd when present.
+    const QString rootCanonical = resolveRootCanonical(main, req);
     if (rootCanonical.isEmpty()) {
         return gitErr("bad_path",
             QStringLiteral("git_state: project root does not exist"));
@@ -1532,7 +1602,8 @@ QJsonObject runLogOp(MainWindow *main, const QJsonObject &req) {
 }
 
 QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(main);
+    // ANTS-1391: prefer caller_cwd when present.
+    const QString rootCanonical = resolveRootCanonical(main, req);
     if (rootCanonical.isEmpty()) {
         return gitErr("bad_path",
             QStringLiteral("git_state: project root does not exist"));
@@ -1645,7 +1716,8 @@ QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
     // ANTS-1250-INV-1: dispatch on op ∈ {status, log, diff}.
     const QString op = req.value("op").toString();
     if (op == QLatin1String("status")) {
-        return QJsonDocument(runStatusOp(m_main));
+        // ANTS-1391: thread req through so caller_cwd anchors the root.
+        return QJsonDocument(runStatusOp(m_main, req));
     }
     if (op == QLatin1String("log")) {
         return QJsonDocument(runLogOp(m_main, req));
@@ -1827,7 +1899,8 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
                            "{map, files, recent_changes}, got \"%1\"").arg(op)));
     }
 
-    const QString rootCanonical = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
     const QString claudeMdPath  = findClaudeMdForRoot(rootCanonical);
     // Note: cachedLanes returns empty when the file is missing; that
     // collapses to an empty `lanes[]` for op:"map" (INV-7) and a
@@ -2007,7 +2080,8 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     if (topN > 50) topN = 50;
 
     // Discover latest SARIF in {projectRoot}/.audit_cache.
-    const QString rootCanonical = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(lasErr(QStringLiteral("not_audited"),
             QStringLiteral("last_audit_summary: project root unresolved")));
@@ -2076,10 +2150,11 @@ QJsonObject irErr(const QString &code, const QString &message) {
 
 }  // namespace
 
-QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &) {
+QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_partition: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_partition: no focused project")));
@@ -2110,7 +2185,8 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &) {
 QJsonDocument RemoteControl::cmdIndieReviewBrief(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_brief: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_brief: no focused project")));
@@ -2159,7 +2235,8 @@ QJsonDocument RemoteControl::cmdIndieReviewBrief(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_corroborate: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_corroborate: no focused project")));
@@ -2249,7 +2326,8 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdIndieReviewSynthesisPrompt(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_synthesis_prompt: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_synthesis_prompt: no focused project")));
@@ -2385,7 +2463,8 @@ DebtSweepEngine::Finding dsJsonToFinding(const QJsonObject &o) {
 QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
         QStringLiteral("debt_sweep_scan: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(dsErr(
         QStringLiteral("no_project"),
         QStringLiteral("debt_sweep_scan: no focused project")));
@@ -2566,7 +2645,8 @@ QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdDebtSweepTriagePrompt(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
         QStringLiteral("debt_sweep_triage_prompt: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(dsErr(
         QStringLiteral("no_project"),
         QStringLiteral("debt_sweep_triage_prompt: no focused project")));
@@ -2918,7 +2998,8 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_partition: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_partition: no focused project")));
@@ -2960,7 +3041,8 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_brief: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_brief: no focused project")));
@@ -3021,7 +3103,8 @@ QJsonDocument RemoteControl::cmdColdEyesCrossDocDiff(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_cross_doc_diff: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main);
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
     if (root.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_cross_doc_diff: no focused project")));
@@ -3209,7 +3292,11 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
         // project READS, which is the legitimate "survey project B
         // from project A" use case (see ANTS-1372 spec INV-7).
         cwd = req.value(QStringLiteral("cwd")).toString();
-        if (cwd.isEmpty()) cwd = resolveRootCanonical(m_main);
+        // ANTS-1391: when `cwd` arg isn't provided, prefer the caller_cwd
+        // anchor over the focused-tab default so list/get reads the
+        // calling Claude's own project bucket — not whichever tab is
+        // focused in Ants.
+        if (cwd.isEmpty()) cwd = resolveRootCanonical(m_main, req);
         if (cwd.isEmpty()) return QJsonDocument(smErr(
             QStringLiteral("no_project"),
             QStringLiteral("session_memory: cwd is empty and no focused project"),

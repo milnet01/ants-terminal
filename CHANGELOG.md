@@ -870,6 +870,72 @@ hostile-content findings.
   `QWidget`, so cast the other way (`p.data()` → `QObject*`) for
   the pointer-identity check.
 
+- **MCP read verbs respect caller's project, not the focused tab
+  (ANTS-1391).** Before this fix, an Ants MCP caller in project B
+  (a Claude Code session running in tab 2) got data from project A
+  (whichever tab the user had focused) on every read verb —
+  `workspace_search`, `file_outline`, `git_state`, `roadmap_query`,
+  `subsystem`, `last_audit_summary`, `indie_review_partition`/
+  `brief`/`corroborate`/`synthesis_prompt`,
+  `debt_sweep_scan`/`triage_prompt`, `cold_eyes_partition`/`brief`/
+  `cross_doc_diff`. ANTS-1372 had closed this for *mutating* verbs
+  by gating on `RcGate::checkCallerCwd`; reads still resolved root
+  via `resolveRootCanonical(m_main)` which returned the focused tab.
+  **Fix:** new overload `resolveRootCanonical(main, req)` prefers
+  `caller_cwd` in the request body when present, falling back to
+  the focused tab when absent (back-compat). Every read-verb root
+  callsite switched. `roadmap_query` derives the ROADMAP.md path
+  under caller_cwd's project (matches `refreshRoadmapButton`'s
+  case-variant search) when present. `session_memory` list/get
+  fallback uses the new overload. `get_cwd` echoes caller_cwd
+  canonical when present (the simplest cross-tab leak symptom).
+  Each read-verb schema declares `caller_cwd` as an optional
+  property via a shared `makeCallerCwdReadProp` lambda. Mutating
+  verbs continue to gate strictly (ANTS-1372 unchanged). Pairs
+  with ANTS-1389 (schema-discoverability so Claude Code's MCP
+  client populates the field automatically). Cross-session report
+  reproducer (Claude in tab 2 asks for roadmap, gets tab 1's
+  data) is closed. The terminal-state tools (`get_text`,
+  `get_scrollback`, `get_last_command`, `get_git_status`,
+  `get_environment`) still anchor on the focused tab — tracked as
+  ANTS-1392 follow-up.
+
+- **MCP mutating-verb schemas declare `caller_cwd` (ANTS-1389).**
+  ANTS-1372 gated `verify_changes`, `indie_review_fold_in`,
+  `cold_eyes_fold_in`, `debt_sweep_apply_fix`, `debt_sweep_defer`,
+  and `session_memory` set/delete on `caller_cwd` in the request
+  body — but the MCP tool descriptors never declared the field in
+  `inputSchema.properties`, so Claude Code's MCP client didn't
+  populate it and every first call failed with `cwd_missing`. Each
+  affected schema now lists `caller_cwd` as a typed string property
+  with a description citing the ANTS-1372 cross-project gate.
+  `verify_changes` / `indie_review_fold_in` / `cold_eyes_fold_in` /
+  `debt_sweep_apply_fix` / `debt_sweep_defer` add it to `required[]`.
+  `session_memory` declares it as a property without adding it to
+  `required[]` (the schema can't express "required for set/delete,
+  optional for get/list" cleanly) and leans on the handler-level
+  RcGate to refuse mutating ops missing the field.
+
+- **`cmake --build --quiet` rejected by CMake — verify_changes
+  auto-detect emitted an invalid command (ANTS-1388).** `cmake
+  --build` does not accept `--quiet` (CMake responds with
+  "Unknown argument --quiet" and prints its full usage banner).
+  Two sites were affected: `verifyengine::autoDetect` minted
+  `"cmake --build build --quiet"` as the default build gate for
+  any project that owned a `CMakeLists.txt` + `build/`
+  directory, and CLAUDE.md's "token-frugal build invocations"
+  block prescribed the same form. Every fresh Claude session
+  following the docs — and every `verify_changes` call against a
+  CMake project without a custom `.ants/verify.json` — wasted
+  its first attempt before noticing. Dropped `--quiet` in both
+  places; the existing `2>&1 | tail -20` already accomplishes
+  the token-frugal goal, and Ninja (the recommended generator)
+  is quiet by default anyway. Same drop applied to the
+  ANTS-1247 / ANTS-1253 / ANTS-1289 / ANTS-1290 spec docs that
+  copy-quoted the broken form. Regression-locked at
+  `tests/features/verify_changes_engine/test_verify_changes_engine.cpp`
+  (INV-4 auto-detect assertion).
+
 ### Changed
 
 - **MCP `indie_review_corroborate` accepts `reports_dir`
@@ -916,6 +982,35 @@ hostile-content findings.
   never auto-update onto an RC. Full design + invariants:
   [`docs/specs/ANTS-1318.md`](docs/specs/ANTS-1318.md).
   Implementation lands separately (workflow + skill changes).
+
+#### 🔌 MCP cross-project isolation (caller_cwd) — Phase 2 (2026-05-15)
+
+- **Terminal-state MCP verbs anchor on caller's tab (ANTS-1392).**
+  Added `MainWindow::terminalForCaller(callerCwd)` that walks every
+  tab (split panes via `activeTerminalInTab`) for a terminal whose
+  canonical `shellCwd()` matches the canonical `callerCwd`. First
+  match wins; falls back to `focusedTerminal()` on empty
+  `callerCwd` or no match (preserves the pre-1392 contract).
+  Switched the five terminal-state registry lambdas
+  (`get_scrollback`, `get_last_command`, `get_git_status`,
+  `get_environment`, `get_text`) and `cmdGetText`'s no-tab path to
+  call it. Each tool's MCP schema gained an optional `caller_cwd`
+  property via the shared `makeCallerCwdReadProp` lambda. Repro
+  before fix: Claude session in tab N called `get_scrollback`,
+  received scrollback from whichever tab Ants had focused.
+- **`roadmap_query` registry-bridge lambda forwards `caller_cwd`
+  (ANTS-1393).** ANTS-1391 plumbed `caller_cwd` through
+  `cmdRoadmapQuery` at `remotecontrol.cpp:738` and added the
+  schema property, but the registry-bridge lambda at
+  `mainwindow.cpp:3776` rebuilt `req` selectively (`status` +
+  `section` only) and never forwarded `caller_cwd`. Discovered
+  2026-05-15 by repro:
+  `mcp__ants__roadmap_query{caller_cwd:"…/Ants_Terminal"}`
+  returned the focused tab's project ROADMAP, not the caller's.
+  Fix: one-line forward of `args.value("caller_cwd")` into `req`
+  at the bottom of the rebuild. Regression-locked in
+  `tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp`
+  (`RegistryLambdasForwardCallerCwd`). 590/590 tests green.
 
 ## [0.7.91] — 2026-05-13
 

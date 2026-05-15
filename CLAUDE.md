@@ -126,7 +126,7 @@ is the path that earlyoom-reaped binaries in 0.7.x.
 output):
 
 ```bash
-cmake --build build --quiet 2>&1 | tail -20
+cmake --build build 2>&1 | tail -20
 ctest --test-dir build --output-on-failure 2>&1 | tail -20
 ```
 

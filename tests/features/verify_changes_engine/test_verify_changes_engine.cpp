@@ -184,7 +184,7 @@ TEST(VerifyEngine, Inv4SymlinkOutsideRootIsRejected) {
     EXPECT_EQ(src, QStringLiteral("auto-detected"));
     ASSERT_GE(gates.size(), 1);
     EXPECT_EQ(gates.first().command,
-              QStringLiteral("cmake --build build --quiet"))
+              QStringLiteral("cmake --build build"))
         << "expected auto-detect to fire; got: "
         << gates.first().command.toStdString();
 }

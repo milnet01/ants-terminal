@@ -117,7 +117,11 @@ QList<GateConfig> autoDetect(const QString &projectPath) {
 
     if (QFileInfo::exists(cml) && QFileInfo(buildDir).isDir()) {
         GateConfig b; b.name = GateName::Build;
-        b.command = QStringLiteral("cmake --build build --quiet");
+        // ANTS-1388: `--quiet` is not accepted by `cmake --build`. Drop
+        // it; Ninja (the recommended generator) is already quiet by
+        // default. Token-frugality comes from the `tail -20` at the
+        // caller, not from a per-tool quiet flag.
+        b.command = QStringLiteral("cmake --build build");
         b.format  = QStringLiteral("plain");
         gates.append(b);
         GateConfig t; t.name = GateName::Tests;

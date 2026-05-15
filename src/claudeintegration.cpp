@@ -1220,14 +1220,39 @@ void ClaudeIntegration::onMcpConnection() {
             } else if (method == "tools/list") {
                 QJsonArray tools;
 
+                // ANTS-1391: shared schema property for read verbs that
+                // accept caller_cwd as an OPTIONAL anchor. Mutating
+                // verbs gate strictly on caller_cwd via RcGate
+                // (ANTS-1372) and declare their own required-form copy.
+                auto makeCallerCwdReadProp = []{
+                    QJsonObject p;
+                    p["type"] = "string";
+                    p["description"] = QStringLiteral(
+                        "Optional. Your $PWD. ANTS-1391: when "
+                        "present, this read is anchored to your "
+                        "cwd's project instead of whichever tab is "
+                        "focused in Ants. Pass it so a session in "
+                        "project B asking the MCP about project B "
+                        "doesn't get project A's data because Ants "
+                        "happens to have a different tab focused.");
+                    return p;
+                };
+
                 QJsonObject scrollbackTool;
                 scrollbackTool["name"] = "get_scrollback";
-                scrollbackTool["description"] = "Get the last N lines of terminal scrollback";
+                scrollbackTool["description"] = QStringLiteral(
+                    "Get the last N lines of terminal scrollback. "
+                    "Pass `caller_cwd` (your $PWD) to anchor to your "
+                    "tab; without it the result comes from whichever "
+                    "tab Ants happens to have focused (ANTS-1392).");
                 QJsonObject linesParam;
                 linesParam["type"] = "integer";
                 linesParam["default"] = 50;
                 QJsonObject props;
                 props["lines"] = linesParam;
+                // ANTS-1392 — caller_cwd anchor for the terminal-state
+                // verbs. Optional; falls back to focused tab when absent.
+                props["caller_cwd"] = makeCallerCwdReadProp();
                 QJsonObject schema;
                 schema["type"] = "object";
                 schema["properties"] = props;
@@ -1244,8 +1269,27 @@ void ClaudeIntegration::onMcpConnection() {
 
                 QJsonObject cwdTool;
                 cwdTool["name"] = "get_cwd";
-                cwdTool["description"] = "Get the terminal's current working directory";
-                cwdTool["inputSchema"] = emptySchema;
+                cwdTool["description"] = QStringLiteral(
+                    "Get a terminal cwd. If `caller_cwd` is passed "
+                    "(your $PWD), the server echoes it back canonical "
+                    "(ANTS-1391); otherwise returns the focused tab's "
+                    "shellCwd, which may NOT be your tab in a multi-"
+                    "Ants-tab setup. Pass caller_cwd to avoid the "
+                    "cross-tab leak.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Optional. Your $PWD. When present, echoed "
+                        "back canonical instead of returning the "
+                        "focused-tab cwd.");
+                    props["caller_cwd"] = callerProp;
+                    schema["properties"] = props;
+                    cwdTool["inputSchema"] = schema;
+                }
                 tools.append(cwdTool);
 
                 QJsonObject sessionTool;
@@ -1256,20 +1300,50 @@ void ClaudeIntegration::onMcpConnection() {
 
                 QJsonObject lastCmdTool;
                 lastCmdTool["name"] = "get_last_command";
-                lastCmdTool["description"] = "Get the last command's exit code and output (via shell integration)";
-                lastCmdTool["inputSchema"] = emptySchema;
+                lastCmdTool["description"] = QStringLiteral(
+                    "Get the last command's exit code and output "
+                    "(via shell integration). Pass `caller_cwd` to "
+                    "anchor to your tab (ANTS-1392).");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    lastCmdTool["inputSchema"] = schema;
+                }
                 tools.append(lastCmdTool);
 
                 QJsonObject gitTool;
                 gitTool["name"] = "get_git_status";
-                gitTool["description"] = "Get git branch, status, and recent commits for the terminal's CWD";
-                gitTool["inputSchema"] = emptySchema;
+                gitTool["description"] = QStringLiteral(
+                    "Get git branch, status, and recent commits for "
+                    "the terminal's CWD. Pass `caller_cwd` to anchor "
+                    "to your tab (ANTS-1392).");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    gitTool["inputSchema"] = schema;
+                }
                 tools.append(gitTool);
 
                 QJsonObject envTool;
                 envTool["name"] = "get_environment";
-                envTool["description"] = "Get shell environment info (PATH, virtualenv, key env vars)";
-                envTool["inputSchema"] = emptySchema;
+                envTool["description"] = QStringLiteral(
+                    "Get shell environment info (PATH, virtualenv, "
+                    "key env vars). Pass `caller_cwd` to anchor to "
+                    "your tab (ANTS-1392).");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    envTool["inputSchema"] = schema;
+                }
                 tools.append(envTool);
 
                 // ANTS-1244 — surface 3 existing remote-control verbs
@@ -1324,6 +1398,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "for partial queries. Unknown slug → "
                         "code=bad_section.");
                     props["section"] = sectionProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     roadmapTool["inputSchema"] = schema;
                 }
@@ -1342,9 +1418,12 @@ void ClaudeIntegration::onMcpConnection() {
                 getTextTool["name"] = "get_text";
                 getTextTool["description"] = QStringLiteral(
                     "Read trailing scrollback lines from a tab. Optional "
-                    "`tab` (default = active tab) and `lines` (default 100, "
-                    "capped at 10000). Returns {ok, text, lines, bytes} or "
-                    "{ok:false, error} when the tab index is out of range.");
+                    "`tab` (explicit index), `caller_cwd` (your $PWD — "
+                    "ANTS-1392, anchors to your tab when `tab` is "
+                    "omitted), and `lines` (default 100, capped at "
+                    "10000). Returns {ok, text, lines, bytes} or "
+                    "{ok:false, error} when the tab index is out of "
+                    "range.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1354,6 +1433,9 @@ void ClaudeIntegration::onMcpConnection() {
                                            linesProp["default"] = 100;
                     props["tab"]   = tabProp;
                     props["lines"] = linesProp;
+                    // ANTS-1392 — caller_cwd anchor for the no-`tab`
+                    // path. Falls back to focused tab when absent.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     getTextTool["inputSchema"] = schema;
                 }
@@ -1412,6 +1494,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["max_results"] = maxProp;
                     props["context"]     = ctxProp;
                     props["case"]        = caseProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("pattern");
@@ -1462,6 +1546,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["mode"]                 = modeProp;
                     props["include_doc_comment"]  = hdrProp;
                     props["max_symbols"]          = maxSymProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"]           = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("path");
@@ -1517,6 +1603,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["path"]  = pathProp;
                     props["range"] = rangeProp;
                     props["body"]  = bodyProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("op");
@@ -1561,6 +1649,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["op"]   = opProp;
                     props["lane"] = laneProp;
                     props["n"]    = nProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("op");
@@ -1606,6 +1696,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Findings below this are still counted.");
                     props["top_n"]          = topNProp;
                     props["severity_floor"] = floorProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"]     = makeCallerCwdReadProp();
                     schema["properties"]    = props;
                     lasTool["inputSchema"] = schema;
                 }
@@ -1626,7 +1718,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "the orchestrator would otherwise do.");
                     QJsonObject schema;
                     schema["type"] = "object";
-                    schema["properties"] = QJsonObject{};
+                    QJsonObject props;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -1654,6 +1749,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Lane name as returned by indie_review_partition.");
                     QJsonObject props;
                     props["lane"] = laneProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("lane");
@@ -1703,6 +1800,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["reports"]     = reportsProp;
                     props["reports_dir"] = reportsDirProp;
                     props["min_lanes"]   = minLanesProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     // INV-1 XOR is enforced at the handler layer
                     // (cmdIndieReviewCorroborate), not the schema —
@@ -1735,6 +1834,8 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     props["reports"]                    = reportsProp;
                     props["include_threat_model_extras"] = incProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("reports");
@@ -1754,7 +1855,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "release-block heading is found via "
                         "findActiveReleaseHeading, atomically inserts "
                         "the block into ROADMAP.md. Required: "
-                        "actionable (array).");
+                        "actionable (array), caller_cwd (string — "
+                        "your $PWD; ANTS-1372 cross-project gate).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject actProp;
@@ -1773,13 +1875,24 @@ void ClaudeIntegration::onMcpConnection() {
                         "Optional explicit `## ` heading to insert "
                         "after; defaults to "
                         "RoadmapFoldIn::findActiveReleaseHeading.");
+                    // ANTS-1389 — surface the ANTS-1372 caller-cwd gate
+                    // in the schema so Claude Code's MCP client fills
+                    // it on the first call.
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. Mutating verbs refuse on mismatch "
+                        "with the focused tab's cwd (ANTS-1372 "
+                        "cross-project write gate).");
                     QJsonObject props;
                     props["actionable"]             = actProp;
                     props["date_iso"]               = dateProp;
                     props["release_block_heading"]  = hdrProp;
+                    props["caller_cwd"]             = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("actionable");
+                    req.append("caller_cwd");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -1811,6 +1924,8 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     props["since"]      = sinceProp;
                     props["categories"] = catProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -1826,7 +1941,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "marker is still on the line before mutating. "
                         "Returns {ok, applied, error_code?, error?}; "
                         "ok=true with applied=false signals a recognised "
-                        "no-op (file_changed / not_fixable).");
+                        "no-op (file_changed / not_fixable). Required: "
+                        "caller_cwd (string — your $PWD; ANTS-1372).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject didProp; didProp["type"] = "string";
@@ -1836,16 +1952,24 @@ void ClaudeIntegration::onMcpConnection() {
                     aProp["description"] = QStringLiteral(
                         "Caller asserts the finding was auto_fixable in "
                         "the prior scan. Defaults to true.");
+                    // ANTS-1389 — caller_cwd schema surfacing.
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. Mutating verbs refuse on mismatch "
+                        "with the focused tab's cwd (ANTS-1372).");
                     QJsonObject props;
                     props["detector_id"]  = didProp;
                     props["file"]         = fProp;
                     props["line"]         = lProp;
                     props["auto_fixable"] = aProp;
+                    props["caller_cwd"]   = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("detector_id");
                     req.append("file");
                     req.append("line");
+                    req.append("caller_cwd");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -1860,7 +1984,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Allocates IDs from .roadmap-counter and, if a "
                         "release-block heading is found, atomically "
                         "inserts the block into ROADMAP.md. Required: "
-                        "deferred (array).");
+                        "deferred (array), caller_cwd (string — your "
+                        "$PWD; ANTS-1372).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject dProp; dProp["type"] = "array";
@@ -1874,13 +1999,21 @@ void ClaudeIntegration::onMcpConnection() {
                     hdrProp["description"] = QStringLiteral(
                         "Optional explicit `## ` heading. Defaults to "
                         "RoadmapFoldIn::findActiveReleaseHeading.");
+                    // ANTS-1389 — caller_cwd schema surfacing.
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. Mutating verbs refuse on mismatch "
+                        "with the focused tab's cwd (ANTS-1372).");
                     QJsonObject props;
                     props["deferred"]              = dProp;
                     props["date_iso"]              = dateProp;
                     props["release_block_heading"] = hdrProp;
+                    props["caller_cwd"]            = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("deferred");
+                    req.append("caller_cwd");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -1902,6 +2035,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Array of Finding-shaped objects.");
                     QJsonObject props;
                     props["findings"] = fProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("findings");
@@ -1921,7 +2056,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "mechanical loop. Reads .ants/verify.json (or "
                         "auto-detects from CMakePresets/package.json/"
                         "Cargo.toml/pyproject.toml). Pure shell-out. "
-                        "No required args.");
+                        "Required: caller_cwd (string — your $PWD; "
+                        "ANTS-1372 cross-project gate).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject gatesProp;
@@ -1940,12 +2076,20 @@ void ClaudeIntegration::onMcpConnection() {
                         "Total wall-clock budget in seconds, split "
                         "evenly across configured gates. Server-"
                         "clamped [10, 1800]; default 1200.");
+                    // ANTS-1389 — caller_cwd schema surfacing.
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. Mutating verbs refuse on mismatch "
+                        "with the focused tab's cwd (ANTS-1372).");
                     QJsonObject props;
                     props["gates"]         = gatesProp;
                     props["max_log_lines"] = linesProp;
                     props["timeout_sec"]   = timeoutProp;
+                    props["caller_cwd"]    = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
+                    req.append("caller_cwd");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -2092,6 +2236,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "the contract lane.");
                     QJsonObject props;
                     props["scope"] = scopeProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -2115,6 +2261,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Lane name as returned by cold_eyes_partition.");
                     QJsonObject props;
                     props["lane"] = laneProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("lane");
@@ -2157,6 +2305,8 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     props["reports_dir"] = rdProp;
                     props["min_lanes"]   = mlProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("reports_dir");
@@ -2177,7 +2327,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "release-block heading is found via "
                         "findActiveReleaseHeading, atomically "
                         "inserts the block into ROADMAP.md. "
-                        "Required: actionable (array).");
+                        "Required: actionable (array), caller_cwd "
+                        "(string — your $PWD; ANTS-1372).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject aProp;
@@ -2196,13 +2347,22 @@ void ClaudeIntegration::onMcpConnection() {
                         "Optional explicit `## ` heading to "
                         "insert after; defaults to "
                         "RoadmapFoldIn::findActiveReleaseHeading.");
+                    // ANTS-1389 — caller_cwd schema surfacing.
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. Mutating verbs refuse on "
+                        "mismatch with the focused tab's cwd "
+                        "(ANTS-1372).");
                     QJsonObject props;
                     props["actionable"]            = aProp;
                     props["date_iso"]              = dProp;
                     props["release_block_heading"] = hProp;
+                    props["caller_cwd"]            = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("actionable");
+                    req.append("caller_cwd");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -2254,11 +2414,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "Optional cwd override (default = focused "
                         "project root). Treated as a hash input, "
                         "not a permission check.");
+                    // ANTS-1389 — surface the ANTS-1372 caller_cwd
+                    // gate. Required for set/delete (enforced at the
+                    // handler) but accepted on all ops; declared
+                    // optional in the schema so list/get still work
+                    // without it.
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. REQUIRED for op=\"set\" / "
+                        "\"delete\" (ANTS-1372 cross-project write "
+                        "gate — refuses on mismatch with the focused "
+                        "tab's cwd). Optional for op=\"get\" / "
+                        "\"list\" (read-only ops).");
                     QJsonObject props;
-                    props["op"]    = opProp;
-                    props["key"]   = keyProp;
-                    props["value"] = valProp;
-                    props["cwd"]   = cwdProp;
+                    props["op"]         = opProp;
+                    props["key"]        = keyProp;
+                    props["value"]      = valProp;
+                    props["cwd"]        = cwdProp;
+                    props["caller_cwd"] = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append(QStringLiteral("op"));

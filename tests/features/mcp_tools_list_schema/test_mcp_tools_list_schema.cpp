@@ -17,6 +17,10 @@
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
 
+#ifndef SRC_MAINWINDOW_CPP_PATH
+#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#endif
+
 ANTS_TEST_SCOPE();
 
 namespace {
@@ -62,14 +66,20 @@ TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
     expect_reset();
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
-    // Pattern: <toolVar>["inputSchema"] = emptySchema;
-    // The pre-fix code had no such assignments for these tools.
+    // Pattern: <toolVar>["inputSchema"] = <something>;
+    // The pre-fix code had no such assignments for these tools. INV-2
+    // is satisfied by *any* inputSchema assignment — several tools
+    // shed the bare-emptySchema shape over time: get_cwd in ANTS-1391
+    // (caller_cwd optional property); get_last_command, get_git_status,
+    // get_environment in ANTS-1392 (caller_cwd anchor for the
+    // terminal-state read verbs). For those, we check the substring
+    // before the `=` so the test stays robust to the inputSchema body.
     struct { const char *tool; const char *assign; } checks[] = {
-        { "get_cwd",          "cwdTool[\"inputSchema\"] = emptySchema"     },
+        { "get_cwd",          "cwdTool[\"inputSchema\"] = "       },
         { "get_session_info", "sessionTool[\"inputSchema\"] = emptySchema" },
-        { "get_last_command", "lastCmdTool[\"inputSchema\"] = emptySchema" },
-        { "get_git_status",   "gitTool[\"inputSchema\"] = emptySchema"     },
-        { "get_environment",  "envTool[\"inputSchema\"] = emptySchema"     },
+        { "get_last_command", "lastCmdTool[\"inputSchema\"] = "   },
+        { "get_git_status",   "gitTool[\"inputSchema\"] = "       },
+        { "get_environment",  "envTool[\"inputSchema\"] = "       },
         { "tab_list",         "tabListTool[\"inputSchema\"] = emptySchema" },
     };
 
@@ -146,6 +156,44 @@ TEST(McpToolsListSchema, AllRegisteredToolsHaveInputSchema) {
                       appendCount - schemaCount);
         expect(appendCount == schemaCount, "INV-1 / INV-4", detail);
     }
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " invariant(s) failed";
+}
+
+// ANTS-1392 + ANTS-1393 — the registry-bridge lambdas in mainwindow.cpp
+// must forward caller_cwd from `args` to the underlying handler.
+// History: ANTS-1391 plumbed caller_cwd through cmdRoadmapQuery and
+// added the schema property, but the registry lambda at
+// mainwindow.cpp:3776 rebuilt `req` selectively (status + section only)
+// and silently dropped caller_cwd — masking the fix. ANTS-1393 closed
+// that and ANTS-1392 extended caller-anchoring to the terminal-state
+// verbs via MainWindow::terminalForCaller().
+TEST(McpToolsListSchema, RegistryLambdasForwardCallerCwd) {
+    expect_reset();
+    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+
+    // ANTS-1393 — roadmap_query lambda forwards caller_cwd into req.
+    expect(contains(mw, "req[\"caller_cwd\"] = callerCwd"),
+           "ANTS-1393",
+           "roadmap_query registry lambda must forward caller_cwd "
+           "to req — otherwise cmdRoadmapQuery never sees the field "
+           "and the ANTS-1391 fix has no effect");
+
+    // ANTS-1392 — MainWindow::terminalForCaller exists. The five
+    // terminal-state lambdas (get_scrollback / get_last_command /
+    // get_git_status / get_environment / get_text) route through it
+    // so a Claude session in tab N gets its own terminal state.
+    expect(contains(mw, "MainWindow::terminalForCaller"),
+           "ANTS-1392",
+           "MainWindow::terminalForCaller definition not found — "
+           "terminal-state MCP verbs cannot route by caller_cwd");
+
+    // ANTS-1392 — get_text lambda forwards caller_cwd into req so
+    // cmdGetText's no-tab path can call terminalForCaller(callerCwd).
+    expect(contains(mw, "req[\"caller_cwd\"] = cwdVal.toString()"),
+           "ANTS-1392 / get_text",
+           "get_text registry lambda must forward caller_cwd to req — "
+           "otherwise cmdGetText's no-tab path resolves to focused tab");
 
     EXPECT_EQ(0, expect_failures()) << expect_failures() << " invariant(s) failed";
 }
