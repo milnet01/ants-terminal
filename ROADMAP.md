@@ -4877,7 +4877,7 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1375] **Per-tab Claude state dot regression — dots
+- ✅ [ANTS-1375] **Per-tab Claude state dot regression — dots
   missing on tabs with active CC sessions (v0.7.91).** Confirmed
   by user screenshot 2026-05-14: 5 tabs labelled "Claude: …"
   (Ants Terminal, MAME Curator, RetroDB, Album Builder, Vestige)
@@ -5605,6 +5605,43 @@ that shipped 6+ months ago — pure self-reference).
   it or restructure the libs.
   Kind: refactor.
   Source: in-session-2026-05-15 (ANTS-1365 implementation).
+
+- 📋 [ANTS-1391] **MCP "focused project" resolution ignores
+  caller_cwd on read verbs (cross-project leak).** Cross-session
+  report 2026-05-15: an Ants MCP caller in project B (e.g. a
+  CC session in /mnt/Games) gets data from project A (the
+  focused-tab cwd, e.g. /mnt/Games/Scripts/Linux/Ants_Terminal)
+  on every read verb — `workspace_search`, `file_outline`,
+  `git_state`, `roadmap_query`, `subsystem`, `cold_eyes_brief`,
+  `indie_review_brief`, `last_audit_summary`, etc. ANTS-1372
+  closed this for *mutating* verbs by gating on
+  `RcGate::checkCallerCwd`; reads still resolve root via
+  `resolveRootCanonical(m_main)` which returns whatever the
+  focused tab points at, regardless of caller. Symptom: an
+  assistant in repo B asks "what's in ROADMAP?" and gets repo
+  A's ROADMAP because the user happens to have Ants focused
+  on a tab in repo A.
+  Fix sketch: extend the ANTS-1372 caller-cwd gate to read
+  verbs too. Two options:
+  (a) Make `caller_cwd` REQUIRED on every read verb (breaking
+  change; assistant must always pass it).
+  (b) Make `caller_cwd` OPTIONAL on read verbs but anchor to it
+  when present (back-compat: missing caller_cwd → use focused
+  tab as today; passing caller_cwd → that wins). Likely the
+  better choice — preserves the "survey project B from
+  project A" intent (ANTS-1372 INV-7) for explicit cases while
+  letting properly-coded clients (the assistant) ask for the
+  right project.
+  Composes with ANTS-1389 (the schema discoverability gap —
+  `caller_cwd` needs to appear in every read verb's MCP
+  descriptor too so Claude Code's client populates it).
+  **Layman:** when one Claude Code session running in project
+  B asks the Ants MCP "what's in ROADMAP?", it gets project
+  A's ROADMAP because Ants's focused tab is on a different
+  project. The mutating verbs got fixed in ANTS-1372; the
+  read verbs need the same treatment.
+  Kind: fix.
+  Source: cross-session-report-2026-05-15.
 
 - 📋 [ANTS-1390] **MCP path-tool scope excludes `~/.claude/`
   global config tree.** `workspace_search`, `file_outline`, and

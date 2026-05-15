@@ -1050,6 +1050,7 @@ if(ANTS_TESTS)
                 tests/features/rc_socket_dir_hardening/test_rc_socket_dir_hardening.cpp
                 tests/features/rc_launch_cwd_anchor/test_rc_launch_cwd_anchor.cpp
                 tests/features/verify_trust_gate/test_verify_trust_gate.cpp
+                tests/features/claude_dot_restored_tabs/test_claude_dot_restored_tabs.cpp
                 tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp
                 tests/features/remote_control_select_window/test_remote_control_select_window.cpp
                 tests/features/remote_control_set_title/test_remote_control_set_title.cpp

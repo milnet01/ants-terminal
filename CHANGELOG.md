@@ -86,6 +86,36 @@ hostile-content findings.
   hook RPC; a peer dribbling 1 byte every 4.9 s with
   restart-on-read would hold the connection indefinitely.
   Comment-only fix; no behaviour change.
+- **Per-tab Claude state dot survives Ants restart (ANTS-1375,
+  user report 2026-05-14).** After a session-persistence restart,
+  tabs whose restored shell had a running Claude Code session
+  showed no per-tab state dot — even though the bottom-bar
+  status correctly showed "Claude: idle" for the focused tab.
+  Root cause (identified via the throttled per-tab branch tracer
+  added in commit 9fa6a84): `MainWindow::restoreSessions` starts
+  the shells for restored tabs via `startShell` but never calls
+  `m_claudeTabTracker->trackShell(terminal->shellPid())` — the
+  `newTab` and `newTabForRemote` paths both do, the restore
+  path was the regression. So `ClaudeTabTracker::m_shells` never
+  contained the restored shells' PIDs, `shellState(pid)` fell
+  through to the default `ShellState{state: NotRunning}` for
+  every restored tab, and the indicator-provider lambda
+  rendered `Glyph::None`. The bottom-bar still worked because
+  the tab-switch handler at `mainwindow.cpp:4340` wires
+  `ClaudeIntegration` on focus independently of the tracker.
+  Fix: one-line `trackShell` call after `startShell` in
+  `restoreSessions` (mirroring the existing newTab paths).
+  Regression test at `tests/features/claude_dot_restored_tabs/`
+  asserts both `trackShell(` and `startShell(` appear in the
+  `restoreSessions` body (via the brace-matched srcgrep helper
+  so it stays robust to future body growth). The temporary
+  per-branch diagnostic logging in `claudestatuswidgets.cpp`
+  was removed in the same commit — it served its purpose.
+  Last known good: 0.7.45. Regression introduced sometime
+  between 0.7.45 and 0.7.91; the diagnostic-tracer ticket
+  pinned the failing branch as `state-resolved state=0
+  glyph=0` for every tab simultaneously, which is the
+  exact signature of "shells aren't in m_shells."
 - **Verify-changes content-trust gate — Phase 2 modal + wiring
   (ANTS-1337, lane-5 HI-2 deferral, completes the ticket).**
   Phase 2 plugs Phase 1's infrastructure into the live MCP path:

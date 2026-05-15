@@ -3486,6 +3486,16 @@ void MainWindow::restoreSessions() {
                 continue;
             tab.terminal->update();
             SessionManager::removeSession(tab.tabId);
+            // ANTS-1375 — register the restored shell with the Claude
+            // services. newTab + newTabForRemote already do this; the
+            // restoreSessions path forgot, so per-tab Claude state dots
+            // stayed dark on every tab carried across an Ants restart
+            // (the bottom-bar status still works because tab-switch at
+            // mainwindow.cpp:4340 wires ClaudeIntegration on focus,
+            // but ClaudeTabTracker::m_shells is only ever populated by
+            // trackShell — no other path reaches it).
+            if (m_claudeTabTracker && tab.terminal->shellPid() > 0)
+                m_claudeTabTracker->trackShell(tab.terminal->shellPid());
         }
 
         if (auto *t = focusedTerminal()) t->setFocus();
