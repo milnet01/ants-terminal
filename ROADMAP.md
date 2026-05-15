@@ -5505,6 +5505,137 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: cross-session-report-2026-05-15 (positive feedback +
   follow-up suggestion).
 
+- 📋 [ANTS-1415] **Phase 3b — TabSpecific contract enforcement.**
+  ANTS-1404 (Phase 3a, shipped 2026-05-16) classified five tools
+  as `CallerCwdContract::TabSpecific` (`get_scrollback`, `get_text`,
+  `get_last_command`, `get_environment`, `get_cwd`) but does not
+  enforce them. These tools read per-tab state and currently fall
+  back to the focused tab when *both* `tab` index and `caller_cwd`
+  are absent — the residual leak shape ANTS-1404 closed for
+  Required tools. The blocker on Phase 3a enforcement was the
+  routing-vs-anchoring semantic overlap with ANTS-1392: caller_cwd
+  is used both to anchor a project root AND to route to a matching
+  tab. Phase 3b needs a spec-first pass to disambiguate: refuse
+  when BOTH `tab` and `caller_cwd` are absent (force the caller
+  to identify the tab), vs accept-and-fallback-to-focused
+  (preserve ANTS-1392). Pairs with ANTS-1404's classification
+  table (already in place — only the dispatch-site enforcement
+  is missing).
+  **Layman:** the per-tab tools (scrollback, last command, env)
+  still silently fall back to whichever tab Ants has focused when
+  the caller doesn't pass `tab` or `caller_cwd`. Closing that
+  needs a careful spec because the two args do different things.
+  Kind: security.
+  Source: in-session-2026-05-16 (deferred from ANTS-1404 § Out
+  of scope).
+
+- 📋 [ANTS-1416] **Hoist `session_memory`'s RcGate into the
+  dispatcher's `Required` contract.** ANTS-1336 (shipped
+  2026-05-16) made `session_memory` require `caller_cwd` for
+  every op via an in-handler `RcGate::checkCallerCwd` call.
+  ANTS-1404's dispatcher framework could enforce the same gate
+  one layer up — currently `session_memory` is classified
+  `Optional` in `callerCwdContractFor` (so the dispatcher passes
+  through) and the handler does the gate itself. The
+  classification is misleading: session_memory behaves Required
+  in practice. Hoist by reclassifying to `Required` and dropping
+  the handler-level RcGate call — refusal envelope shape changes
+  from `cwd_missing` / `cwd_mismatch` (RcGate codes) to
+  `caller_cwd_required` (the contract code). One-release
+  migration since the envelope shape shifts. Pairs with
+  ANTS-1404's `Required` group; this would be its fifth member.
+  **Layman:** session_memory's check that you passed caller_cwd
+  is currently done inside the handler; the new framework can
+  do it one layer up so the dispatcher catches it before the
+  handler runs. Cleaner but slightly different error shape.
+  Kind: refactor.
+  Source: in-session-2026-05-16 (self-observed during ANTS-1336
+  + ANTS-1404 design).
+
+- 📋 [ANTS-1417] **Test asserts every registered tool has a
+  `CallerCwdContract` classification entry.** ANTS-1404 § 4
+  INV-4 documents that unclassified tools default to `Optional`
+  (gracious degradation). But there's no test that catches an
+  *intentional* Required tool added without a classification
+  entry — e.g. a future `verify_changes_remote` that should be
+  Required but defaults to Optional silently. Add a feature
+  test that walks `m_toolProviders` keys and asserts each name
+  appears in a comment-marker block in `claudeintegration.cpp`
+  under `callerCwdContractFor` (source-scrape) OR walks the
+  schema descriptor list and asserts coverage. Catches drift
+  on the first new tool added without classification.
+  **Layman:** add a check that the per-tool security classification
+  list stays in sync with the actual list of tools, so adding a
+  new tool without classifying it gets caught by the test suite
+  instead of leaking silently.
+  Kind: testing.
+  Source: in-session-2026-05-16 (self-observed during ANTS-1404
+  implementation; the INV-1 promise was logged but the test was
+  never created).
+
+- 📋 [ANTS-1418] **Refusal envelopes name `caller_cwd_info` as
+  the diagnostic path.** ANTS-1400 shipped the diagnostic verb
+  but ANTS-1404's refusal envelope says "Pass your $PWD as
+  caller_cwd" without mentioning the verb that lets the caller
+  *confirm* their cwd would resolve correctly. When a refusal
+  fires in a complex case (symlinked project root, worktree
+  checkout, container bind-mount), the caller may pass `caller_cwd`
+  and STILL get the wrong tab — that's exactly the case
+  `caller_cwd_info` was built to diagnose. Append a one-line
+  hint to the `caller_cwd_required` envelope: `"hint": "call
+  mcp__ants__caller_cwd_info with your $PWD to confirm which
+  tab Ants would route the call to"`. Same shape for the
+  ANTS-1336 `cwd_missing` envelope (RcGate already builds the
+  message — small text tweak).
+  **Layman:** when Ants refuses a call for missing caller_cwd,
+  the error message should point the caller at the new
+  caller_cwd_info diagnostic tool so they can debug their cwd
+  without guesswork.
+  Kind: implement.
+  Source: in-session-2026-05-16 (self-observed: the diagnostic
+  verb exists but is undiscoverable from the refusal path).
+
+- 📋 [ANTS-1419] **Hoist `CallerCwdContract` declaration into
+  `registerToolProvider` signature.** Current pattern: the
+  classification table in `callerCwdContractFor` is maintained
+  separately from `registerToolProvider` calls in
+  `mainwindow.cpp`. Drift is graceful (defaults to Optional —
+  ANTS-1404 INV-4) but the explicit declaration is lost when
+  a dev forgets the classification step. Compile-time fix:
+  add `CallerCwdContract` as a 2nd argument to
+  `registerToolProvider(name, contract, handler)`. Stores the
+  contract in `m_toolProviders` value (pair<handler, contract>).
+  Dispatcher consults `m_toolProviders[toolName].second`
+  instead of the table. Pros: single source of truth at the
+  call site; impossible to add a tool without classifying it.
+  Cons: signature change touches every existing registration
+  (~28 call sites) — mechanical refactor; one large diff.
+  Pairs with ANTS-1417 (the test becomes a compile-time check
+  instead of a runtime grep).
+  **Layman:** today the per-tool security classification lives
+  in a separate table; a refactor would move it next to each
+  tool's registration so it's impossible to add a tool without
+  declaring how it handles caller_cwd.
+  Kind: refactor.
+  Source: in-session-2026-05-16 (self-observed during ANTS-1404
+  design; table-vs-registration trade-off).
+
+- 📋 [ANTS-1420] **Drop deprecated `cwd` field from
+  `session_memory` schema in 0.7.93.** ANTS-1336 (shipped
+  2026-05-16) marked the `cwd` field as DEPRECATED in the
+  schema descriptor at `claudeintegration.cpp:2596–2606` with
+  a "handler ignores; removed in 0.7.93" description. Field
+  must drop from the schema entirely in 0.7.93. The handler
+  already ignores it; only the schema entry remains. One-line
+  edit + schema regression test update. Track as a chore on
+  the 0.7.93 release checklist rather than a standalone bump.
+  **Layman:** clean up the placeholder schema entry left behind
+  for the session_memory `cwd` migration window — drops in the
+  release after 0.7.92.
+  Kind: chore.
+  Source: in-session-2026-05-16 (deferred cleanup from
+  ANTS-1336's two-release migration window).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single
