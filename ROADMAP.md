@@ -5920,6 +5920,343 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: claudeintegration.
   Source: in-session-2026-05-16 (ANTS-1422 pull 3 follow-on)..
 
+- 📋 [ANTS-1428] **Adapter mode for non-Ants ROADMAP formats — read + write across MCP and Roadmap dialog.**
+  **Problem.** `roadmap_query` against the Vestige engine
+  roadmap (`/mnt/Games/Scripts/Linux/3D_Engine/ROADMAP.md`,
+  ~2130 lines, 402 KB) returns `{bullets: [], count: 0}`.
+  Vestige uses the GFM task-list convention
+  (`- [x] **Sh4.** ...` / `- [ ] **Ed1.** ...`) with
+  project-specific multi-prefix short IDs (Sh, Ed, etc.). The
+  Ants parser anchors on the `📋/🚧/✅/💭 [PROJ-NNNN]` combo
+  and skips everything else. Vestige is the canary; any project
+  that grew out of a GitHub README task-list looks the same.
+
+  **2026-05-16 Vestige CC feedback inverted the strategy.** The
+  user's first instinct was migration (rewrite Vestige's
+  roadmap into Ants format), but the Vestige CC's response was
+  "fix the tool, not the file." Concrete reasons: (a) Vestige's
+  roadmap already has IDs — just in a different shape
+  (multi-prefix short form, not `[PROJ-NNNN]`); migrating would
+  mean renaming hundreds of existing IDs. (b) Silent-empty
+  (ANTS-1429) is the immediate pain — fix that first, then
+  adapter mode is a natural follow-on. (c) Migrating swaps
+  visual rendering on a file the user may still review on
+  github.com — the cost is asymmetric (small ongoing tooling
+  benefit, real one-time aesthetic loss). Adapter mode is the
+  primary path; the Roadmap dialog also adapts (not just the
+  MCP).
+
+  **Tier 1 — Read-side adapter.** When the
+  `<!-- ants-roadmap-format: 1 -->` marker is absent, activate
+  permissive parser (both MCP query AND dialog renderer):
+  - `- [x]` → ✅, `- [ ]` → 📋 (GFM semantic equivalence).
+  - `(COMPLETE)` in `##`/`###` headings → enclosed bullets
+    inherit ✅ unless overridden inline.
+  - **Existing-ID preservation.** If the bullet begins with a
+    `**Bold-ID.**` token (e.g. `**Sh4.**`, `**VEST-0042.**`,
+    `**Ed1.**`), extract it as the stable ID. Multi-prefix
+    projects work — Ants no longer assumes one prefix per repo.
+  - **Synthetic-ID fallback (content-hash).** When no ID token
+    is present, generate an ID from FNV-1a hash of the headline
+    (base36, 6 chars): e.g. `VESTIGE-a8f3kp`. Stable across
+    edits that move lines around; line-number-based synthetic
+    IDs (the earlier draft) were strictly worse — line shifts
+    on every insert/delete. Mark `synthetic:true` in the
+    envelope.
+  - Theme emoji from heading title (heuristic: "Visual Quality"
+    → 🎨, "Performance" → ⚡, "Security" → 🔒); fallback `📂`.
+  - `Kind/Source/Layman` empty (degraded features, not errors).
+  - Envelope echoes `format:"github-task-list"` so callers know
+    they're in adapter mode.
+  - **Dialect cache via session_memory (ANTS-1430).** First
+    call on a project triggers the scan; the detected dialect
+    persists until project_layout TTL expires (default 7 days)
+    or any scanned-path mtime advances. Subsequent calls hit
+    the cache — no re-parse of the format header on every
+    query.
+
+  **Tier 2 — Write-side via Obsidian-style caret anchors.**
+  Key insight from prior-art research: Obsidian uses
+  `- [ ] task content ^block-id` (caret-prefix at end of line).
+  GFM renders the caret-anchor as plain trailing text (no
+  visual disruption on GitHub); Obsidian renders it as a real
+  block link; Ants parses it as a stable ID. The pattern is
+  **opt-in and incremental**:
+  - New items written by `roadmap_log` use
+    `- [ ] **Headline** — body ^vest-0042` (anchor after body,
+    before any `Lanes:`/`Kind:` lines if present).
+  - Existing items being status-flipped: locate by content
+    (headline match within section), inject anchor on first
+    touch — same write that flips `[ ]` ↔ `[x]`.
+  - `.roadmap-counter` lives at project root just like Ants;
+    counter advances only when an anchor is actually written.
+    Hand-edited items never consume IDs.
+  - **Existing-ID preservation on write.** If the bullet
+    already has a `**Bold-ID.**` token, no anchor injection
+    needed — the existing ID is the locator.
+  - Status flip locator (in order):
+    1. If item has `**Bold-ID.**` → locate by ID token.
+    2. If item has `^vest-NNNN` → locate by anchor.
+    3. Otherwise → locate by headline match (FNV-1a hash
+       check confirms the match isn't ambiguous).
+    4. On match failure → return
+       `{ok:false, code:"bullet_not_found", suggestions:[...]}`
+       — never blind-write.
+  - 🚧 / 💭 (no GFM equivalent): inline emoji prefix —
+    `- [ ] 🚧 **Headline** ^vest-0042`. Reads as unchecked +
+    in-progress in both GitHub and Ants.
+
+  **Tier 3 (optional) — One-shot `roadmap_migrate` MCP verb.**
+  Pure conversion from GFM-task-list → Ants format. Writes a
+  proposed diff to `.ants-roadmap-migration.diff` for human
+  review; never overwrites the source. **Largely deprecated by
+  adapter mode being primary** — kept only for projects that
+  explicitly want full Ants format (Layman cards, Kind
+  taxonomy, Roadmap dialog filtering). The Vestige migration
+  prompt drafted 2026-05-16 stands as the reference workflow.
+
+  **Round-trip strategy.** Research confirmed (remark-stringify
+  docs) that *complete AST round-trip is impossible*. Strategy:
+  **line-locator surgery, not AST rewrite.** Parse to find the
+  bullet's start/end line; rewrite just the affected line(s);
+  preserve everything else byte-for-byte. The Ants parser
+  already does this for native format; extend to handle the
+  GFM-task-list line shape.
+
+  **Library choice.** Don't add `cmark-gfm` or `remark` as a
+  dependency — Ants' existing line-oriented parser handles 95%
+  of cases and is auditable. Adapter mode adds ~150 LoC of
+  shape-detection on the read side + ~250 LoC of
+  locator-surgery on the write side + ~80 LoC for the dialog
+  renderer to recognize the GFM bullet shape. Worth comparing
+  against `cmark-gfm` (C, linkable, GitHub's own fork) if the
+  line-oriented approach hits a recursive-list edge case.
+
+  **Pairs with these tickets.**
+  - **ANTS-1429** — silent-empty fix is the immediate-pain
+    sibling. Ships first (small, ~20 LoC) so callers get a
+    clean error on Day 1, before adapter mode lands.
+  - **ANTS-1430** — `project_layout` scan helper provides the
+    cache surface for dialect-detection.
+  - **ANTS-1431** — format-spec compat section documents the
+    GFM-task-list sibling format. Land the doc when adapter
+    mode lands.
+  - **ANTS-1432** — failed-call metric helps measure adapter
+    mode's effectiveness (zero failed `roadmap_query` calls on
+    Vestige post-adapter = the working condition).
+
+  **Out of scope v1.** Phase-to-release heading restructuring
+  (Vestige's `## Phase 11A` → `## 0.x.y — gameplay` mapping
+  needs human judgment).
+
+  **Open questions for design pass.**
+  1. Theme-emoji heuristic vs. explicit `.roadmap-themes.json`
+     mapping per project?
+  2. Should adapter mode auto-add the format marker to files
+     on first write, or stay invisible until `roadmap_migrate`
+     is explicitly run? (Lean: invisible — write the anchor,
+     nothing else; respect the user's format choice.)
+  3. Counter file conflict — if `.roadmap-counter` doesn't
+     exist (Vestige doesn't have one), create it on first
+     `roadmap_log`? Or use a separate `.ants-adapter-counter`
+     to make the adapter footprint visible? (Lean: separate
+     file — the adapter's presence is auditable.)
+  4. Multi-prefix counter strategy. Vestige has Sh/Ed/etc.
+     prefixes — does the counter file track per-prefix
+     high-water marks (`.roadmap-counter.Sh = 8`,
+     `.roadmap-counter.Ed = 12`), or one shared counter that
+     gets prefix-stamped at write time?
+
+  **RAM budget.** O(file size) per parse, same as native.
+  Dialect-detection result cached via session_memory
+  (ANTS-1430); content-hash IDs computed lazily per bullet
+  (~30 ns each — negligible).
+
+  **Build cost.** ~480 LoC added (parser branch + write
+  locator + dialog renderer fork). One new test fixture
+  `tests/features/mcp_adapter_github_tasklist/`. No new deps.
+
+  **Prior-art references.** Obsidian block-reference syntax
+  (end-of-line caret anchors, opt-in, GFM-compatible). GitHub
+  sub-issues retired the old "tasklist blocks" (April 2025) in
+  favour of out-of-band tracking — informs the decision to
+  **not** invent another inline tracking syntax beyond
+  Obsidian's already-established convention. Taskwarrior's
+  "ephemeral display ID + stable internal UUID" model
+  influenced the synthetic-ID approach. `mdast-util-gfm-task-
+  list-item` (JS) and `cmark-gfm` (C) confirmed available as
+  fallback parsers if line-oriented approach hits a wall.
+  **Layman:** When Claude tries to read a roadmap file written in GitHub's checkbox style (which Vestige uses, and most projects that start from a README task-list use), Ants currently returns "0 items." Add an adapter so Ants reads and writes both formats — using a caret-anchor convention (`^vest-0042`) that's invisible on GitHub but lets Ants track items. The Roadmap dialog also learns to render both styles. The user's first instinct was to migrate Vestige's roadmap into Ants format; the Vestige CC's response inverted that — "fix the tool, not the file."
+  Kind: implement.
+  Lanes: remotecontrol, roadmapdialog, session_memory.
+  Source: user-request-2026-05-16 + vestige-cc-feedback-2026-05-16..
+
+- 📋 [ANTS-1429] **`roadmap_query` silent-empty failure mode — return `unrecognised_format` on non-empty unparseable files.**
+  **Problem.** `roadmap_query` against Vestige (~2130 lines,
+  402 KB of GFM-task-list content) returned
+  `{ok:true, bullets:[], count:0}` — the silent-empty envelope is
+  structurally identical to "no work pending" and "tool can't
+  read this file." The caller (another Claude session) had no
+  signal to fall back to Read+grep until tokens had already been
+  wasted on the failing query.
+  
+  **Fix.** When parse yields 0 bullets from a file >1 KB, return
+  `{ok:false, code:"unrecognised_format", path, bytes,
+  hint:"this tool expects roadmap-format.md emoji bullets; see
+  ANTS-1428 for adapter mode status"}`. The 1 KB threshold avoids
+  false positives on genuinely empty roadmaps (a stub file with
+  just `# Roadmap` is fine).
+  
+  Apply the same gate to `roadmap_log` (write path) — refusing
+  to append an emoji-bullet to a file we can't parse prevents
+  format-mixing.
+  
+  **Scope.** ~20 LoC in `cmdRoadmapQuery` + `cmdRoadmapLog`. New
+  error code `unrecognised_format` joins the taxonomy (to be
+  folded into `docs/standards/mcp-error-codes.md` when ANTS-1353
+  lands).
+  
+  **Tests.** `tests/features/mcp_roadmap_unrecognised_format/`:
+  INV-1 silent-empty no longer fires on >1 KB unparseable file
+  (returns `code:"unrecognised_format"`); INV-2 zero-byte and
+  sub-1 KB stub files still return clean `bullets:[]` (no false
+  positive); INV-3 write path refuses with same code on
+  unparseable target.
+  
+  **Pairs with ANTS-1428.** Immediate-pain sibling of adapter
+  mode. Even when adapter mode lands, callers want a clean error
+  before adapter-mode parsing completes — fail fast when the file
+  shape isn't recognized at all. Should ship first (small, ~20
+  LoC) so callers get a clean error on Day 1.
+  **Layman:** Right now if Ants can't parse a roadmap file it returns "0 items" — which looks identical to "your roadmap is empty." Fix: detect non-empty unparseable files and return a clear error envelope instead. Both query and write paths get the same gate.
+  Kind: fix.
+  Lanes: remotecontrol.
+  Source: vestige-cc-feedback-2026-05-16.
+
+- 📋 [ANTS-1430] **`session_memory` `project_layout` scan helper — pre-cache file layout per project, weekly TTL.**
+  **Problem.** Every MCP tool that touches project-relative paths
+  re-derives the layout on each call: find ROADMAP.md, check
+  CHANGELOG.md presence, locate `docs/standards/`, scan for
+  AppStream metainfo, find the ADR directory. The layout doesn't
+  change between sessions — Vestige CC: "every other MCP tool
+  re-discovers these from scratch ... one scan per project per
+  week is plenty."
+  
+  **Design.** New `session_memory` key `project_layout` per
+  project, keyed by `caller_cwd`. First MCP call against a project
+  triggers a one-shot scan that writes a structured envelope:
+  
+  ```json
+  {
+    "scanned_at_ms": 1778900000000,
+    "ttl_days": 7,
+    "roadmap": {
+      "path": "ROADMAP.md",
+      "format": "ants-v1" | "github-task-list" | "unknown",
+      "format_marker_present": true,
+      "bullet_count_estimate": 156
+    },
+    "changelog": { "path": "CHANGELOG.md", "size_bytes": 134567 },
+    "specs_dir": "docs/specs",
+    "standards_dir": "docs/standards",
+    "adr_dir": "docs/decisions",
+    "appstream_metainfo":
+      "packaging/com.example.foo.metainfo.xml",
+    "counter_file": ".roadmap-counter"
+  }
+  ```
+  
+  Cache invalidates after `ttl_days` (default 7) OR when any of
+  the scanned paths has an mtime newer than `scanned_at_ms`.
+  
+  **Beneficiaries.** `roadmap_query`, `roadmap_log`, `subsystem`,
+  `workspace_search`, `file_outline`, `verify_changes`,
+  `last_audit_summary`, future `audit_run` orchestrator. Each
+  saves the file-existence checks + path probing on every call.
+  
+  **Scope.** ~150 LoC + new MCP verb `mcp__ants__project_layout`
+  (read accessor — runs scan-if-stale + returns cached envelope).
+  Pairs with ANTS-1428's dialect detection (cache hit makes
+  adapter-mode activation instant).
+  
+  **Tests.** `tests/features/mcp_project_layout_scan/`: INV-1
+  first call triggers scan; INV-2 second call within TTL returns
+  cached; INV-3 mtime change invalidates; INV-4 TTL expiry
+  invalidates; INV-5 scan envelope shape stable.
+  **Layman:** Every MCP tool currently re-derives the project layout — where the roadmap is, the changelog, the specs, the ADRs — on every single call. This new helper scans once per week per project and caches it, so subsequent calls get the layout instantly.
+  Kind: implement.
+  Lanes: session_memory, remotecontrol.
+  Source: vestige-cc-feedback-2026-05-16.
+
+- 📋 [ANTS-1431] **`docs/standards/roadmap-format.md` — add §3.10 GFM task-list compatibility section.**
+  **Problem.** `docs/standards/roadmap-format.md` documents
+  Ants' emoji-bullet convention but doesn't acknowledge GFM
+  task-list as the broader sibling format. Vestige CC referred
+  to GFM task-list as "the older markdown task-list convention"
+  — accurate, and worth surfacing in the spec so future CC
+  sessions don't have to re-derive the relationship.
+  
+  **Add §3.10 — Compatibility with GFM task lists.** Cover:
+  - GFM task-list is the canonical GitHub convention; Ants'
+    format extends it with status taxonomy + stable IDs +
+    Kind/Layman/Source metadata.
+  - Semantic equivalence: `[ ]` ↔ 📋 (planned), `[x]` ↔ ✅
+    (shipped). Ants' 🚧/💭 have no direct GFM equivalent;
+    documented prefix workaround.
+  - Adapter mode (ANTS-1428) lets Ants tools read GFM-task-list
+    roadmaps without migration.
+  - Migration option exists (see the Vestige migration prompt
+    in the 2026-05-16 session journal) for projects that want
+    full Ants format.
+  - Multi-prefix support: Vestige uses Sh/Ed/etc. short prefixes
+    (vs. Ants' single-prefix-per-repo); spec should clarify
+    one-prefix-per-repo is convention not requirement.
+  
+  **Scope.** ~30 lines added to the spec. No code changes.
+  Cross-ref from ANTS-1428's spec when that lands.
+  **Layman:** The Ants roadmap format spec doesn't currently acknowledge GitHub-style checkbox roadmaps (the most common alternative). Add a compatibility section explaining how they relate and what Ants does with them.
+  Kind: doc.
+  Lanes: docs/standards.
+  Source: vestige-cc-feedback-2026-05-16.
+
+- 📋 [ANTS-1432] **`token_usage` failed-call metric — surface waste-on-failure per tool.**
+  **Problem.** Vestige CC: "MCP cost tokens for the failed query
+  and saved none." `token_usage` reports per-tool *savings* on
+  successful calls but doesn't surface per-tool *waste* on failed
+  calls. A caller can't see that a tool is net-negative until the
+  failed-call cost dominates.
+  
+  This would have helped during the ANTS-1422 investigation —
+  we'd have seen `token_usage` itself accumulating waste-bytes
+  while the bypass wasn't yet in place.
+  
+  **Design.** Extend `TokenUsageEngine::recordCall` to accept a
+  `success: bool` arg. Add per-tool fields to the report:
+  - `failed_calls` — int, count of non-`ok` dispatches.
+  - `failed_bytes_in` — total wasted argument bytes on failures.
+  - `failed_bytes_out` — total wasted response bytes (error
+    envelopes still consume output tokens).
+  
+  Hooks into `recordDispatch` (the ANTS-1402 unified observation
+  point — failed branches already go through it; gate is one new
+  field, not a new dispatch path).
+  
+  Envelope adds `total_failed_bytes` summary field alongside
+  existing `total_saved` / `total_wrap_bytes`.
+  
+  **Scope.** ~40 LoC in `claudeintegration.cpp` +
+  `token_usage_engine.h` + `remotecontrol.cpp` (envelope build).
+  
+  **Tests.** `tests/features/token_usage_failed_metric/`: INV-1
+  failed-branch dispatch increments `failed_calls`; INV-2 byte
+  counts accumulate correctly; INV-3 success path unaffected
+  (no `failed_*` fields for never-failed tools when
+  include_zero:false).
+  **Layman:** When an MCP call fails it still costs tokens. The token-savings report currently doesn't show this cost. Adding a "wasted on failures" counter per tool so callers can see which tools are net-negative.
+  Kind: perf.
+  Lanes: claudeintegration.
+  Source: vestige-cc-feedback-2026-05-16.
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single
