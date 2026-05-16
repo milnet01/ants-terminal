@@ -2626,6 +2626,156 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1424 — roadmap_log: append a new bullet to
+                // ROADMAP.md. Mutates project state (counter +
+                // markdown), so Required-contract gated and path-
+                // validated. Schema mirrors the field set in
+                // docs/standards/roadmap-format.md § 3.5.
+                {
+                    QJsonObject t;
+                    t["name"] = "roadmap_log";
+                    t["description"] = QStringLiteral(
+                        "Append a new bullet to ROADMAP.md. Allocates "
+                        "the next stable ID from .roadmap-counter, "
+                        "formats the bullet per the project's "
+                        "roadmap-format spec, and inserts at the end "
+                        "of the named `section` (slug from "
+                        "roadmap_query). Required: caller_cwd, "
+                        "section, status (planned/in-progress/shipped/"
+                        "considered), headline, kind (implement/fix/"
+                        "refactor/...), source. Optional: body, "
+                        "layman, lanes[], id_hint. Returns {ok, id, "
+                        "file, line, bytes_written} or {ok:false, "
+                        "error, code}. ANTS-1424.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. REQUIRED — anchors the write to "
+                        "your project's ROADMAP.md.");
+
+                    QJsonObject sectionProp;
+                    sectionProp["type"] = "string";
+                    sectionProp["description"] = QStringLiteral(
+                        "Slug of a ## or ### heading "
+                        "(e.g. \"performance-2\"). Get valid slugs "
+                        "from `roadmap_query`'s section echo. New "
+                        "bullet appends at the end of this section.");
+
+                    QJsonObject statusProp;
+                    statusProp["type"] = "string";
+                    QJsonArray statusEnum;
+                    statusEnum.append("planned");
+                    statusEnum.append("in-progress");
+                    statusEnum.append("shipped");
+                    statusEnum.append("considered");
+                    statusProp["enum"] = statusEnum;
+                    statusProp["description"] = QStringLiteral(
+                        "Lifecycle status. Mapped to 📋/🚧/✅/💭 "
+                        "emoji by the verb.");
+
+                    QJsonObject headlineProp;
+                    headlineProp["type"]      = "string";
+                    headlineProp["maxLength"] = 200;
+                    headlineProp["description"] = QStringLiteral(
+                        "One-line bold headline ending in a period "
+                        "(per roadmap-format.md § 3.5).");
+
+                    QJsonObject kindProp;
+                    kindProp["type"] = "string";
+                    QJsonArray kindEnum;
+                    kindEnum.append("implement");
+                    kindEnum.append("fix");
+                    kindEnum.append("audit-fix");
+                    kindEnum.append("review-fix");
+                    kindEnum.append("doc");
+                    kindEnum.append("doc-fix");
+                    kindEnum.append("refactor");
+                    kindEnum.append("test");
+                    kindEnum.append("chore");
+                    kindEnum.append("release");
+                    kindEnum.append("perf");
+                    kindEnum.append("security");
+                    kindEnum.append("feature");
+                    kindEnum.append("enhancement");
+                    kindEnum.append("investigate");
+                    kindEnum.append("research");
+                    kindEnum.append("accessibility");
+                    kindEnum.append("optimize");
+                    kindEnum.append("package");
+                    kindEnum.append("marketing");
+                    kindEnum.append("ux");
+                    kindProp["enum"] = kindEnum;
+                    kindProp["description"] = QStringLiteral(
+                        "Work category — see roadmap-format.md § 3.5.3.");
+
+                    QJsonObject sourceProp;
+                    sourceProp["type"]      = "string";
+                    sourceProp["maxLength"] = 200;
+                    sourceProp["description"] = QStringLiteral(
+                        "Provenance (e.g. \"user-request-2026-05-16\", "
+                        "\"in-session-2026-05-16\", "
+                        "\"indie-review-2026-05-14 lane-2 M3\").");
+
+                    QJsonObject bodyProp;
+                    bodyProp["type"]      = "string";
+                    bodyProp["maxLength"] = 4000;
+                    bodyProp["description"] = QStringLiteral(
+                        "Optional body prose. Written verbatim with "
+                        "a 2-space indent; pre-wrap to ~70 columns.");
+
+                    QJsonObject laymanProp;
+                    laymanProp["type"]      = "string";
+                    laymanProp["maxLength"] = 400;
+                    laymanProp["description"] = QStringLiteral(
+                        "Optional one-sentence summary for non-"
+                        "technical readers. Renders on the card face "
+                        "in the Roadmap dialog (ANTS-1154).");
+
+                    QJsonObject lanesProp;
+                    lanesProp["type"] = "array";
+                    QJsonObject laneItem;
+                    laneItem["type"] = "string";
+                    lanesProp["items"] = laneItem;
+                    lanesProp["description"] = QStringLiteral(
+                        "Optional subsystem owners. Emitted as a "
+                        "`Lanes: a, b, c` line.");
+
+                    QJsonObject idHintProp;
+                    idHintProp["type"]    = "integer";
+                    idHintProp["minimum"] = 1;
+                    idHintProp["description"] = QStringLiteral(
+                        "Optional explicit ID. Must exceed the "
+                        "current .roadmap-counter value or returns "
+                        "code=id_taken.");
+
+                    QJsonObject props;
+                    props["caller_cwd"] = callerProp;
+                    props["section"]    = sectionProp;
+                    props["status"]     = statusProp;
+                    props["headline"]   = headlineProp;
+                    props["kind"]       = kindProp;
+                    props["source"]     = sourceProp;
+                    props["body"]       = bodyProp;
+                    props["layman"]     = laymanProp;
+                    props["lanes"]      = lanesProp;
+                    props["id_hint"]    = idHintProp;
+                    schema["properties"] = props;
+
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    req.append(QStringLiteral("section"));
+                    req.append(QStringLiteral("status"));
+                    req.append(QStringLiteral("headline"));
+                    req.append(QStringLiteral("kind"));
+                    req.append(QStringLiteral("source"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1399-INV-1 — tool_info(name) descriptor.
                 // Cheaper than re-fetching tools/list when the assistant
                 // only needs to refresh memory on one tool's schema.
@@ -3055,6 +3205,12 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("get_session_info"))   return C::ProcessGlobal;
     // ANTS-1399 — tool_info reads the process-wide descriptor cache.
     if (toolName == QStringLiteral("tool_info"))          return C::ProcessGlobal;
+
+    // ANTS-1424 — roadmap_log mutates ROADMAP.md + .roadmap-counter
+    // under the caller's project root. Required-contract gated so
+    // an absent caller_cwd refuses at the dispatcher rather than
+    // falling back to the focused tab's roadmap.
+    if (toolName == QStringLiteral("roadmap_log"))        return C::Required;
     // ANTS-1400 — caller_cwd_info is the diagnostic verb that
     // surfaces the resolution Source enum. caller_cwd is its
     // INPUT (not an anchor), so neither Required nor ProcessGlobal

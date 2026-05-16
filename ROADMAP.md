@@ -5721,9 +5721,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-report-2026-05-16 (Bundle C kickoff
   screenshot).
 
-- 📋 [ANTS-1424] **MCP `roadmap_log` write verb — let
+- ✅ [ANTS-1424] **MCP `roadmap_log` write verb — let
   Claude append roadmap items without hand-editing
-  `ROADMAP.md`.** Today the assistant has `roadmap_query`
+  `ROADMAP.md`.** Shipped 2026-05-16 (Bundle C pull 6). Today the assistant has `roadmap_query`
   (read) but no write surface; logging a new item means
   Edit-tool against ROADMAP.md plus a manual bump of
   `.roadmap-counter`. User observation 2026-05-16:
@@ -5749,11 +5749,34 @@ fixes don't address. Roadmapped here as their own design tasks.
   size on append) — same as a manual edit. Pairs with
   ANTS-1156 (roadmap-system audit) which has the broader
   framing question; this is the narrow MCP-write piece.
+  **2026-05-16 shipped notes (Bundle C pull 6):** v1 lands as
+  `cmdRoadmapLog` in `remotecontrol.cpp` + schema in the
+  `tools/list` block + Required-contract entry +
+  `registerToolProvider` lambda. Required args:
+  `caller_cwd`, `section`, `status` (planned/in-progress/
+  shipped/considered word form; verb writes the emoji),
+  `headline`, `kind` (21-entry enum mirroring
+  roadmap-format.md § 3.5.3), `source`. Optional: `body`,
+  `layman`, `lanes[]`, `id_hint`. Counter rewrite via
+  `QSaveFile` (atomic). Section insertion uses
+  `RoadmapIndex::buildIndex` + `findBySlug`; bullet splices
+  at the section's `lineEnd` boundary so it lands at the
+  end of the named section, before the next `##`/`###`
+  heading. Envelope: `{ok, id, file, line, bytes_written}`
+  on success; 11 error codes for the failure shapes
+  (`missing_field`, `bad_status`, `bad_kind`, `bad_section`,
+  `id_taken`, `counter_read_failed`,
+  `counter_write_failed`, `roadmap_write_failed`,
+  `headline_empty`, `no_main`, `no_roadmap`). Spec
+  `docs/specs/ANTS-1424.md`; tests
+  `tests/features/mcp_roadmap_log_verb/` (8 invariants,
+  source-scrape only — behavioural fixture test deferred
+  to v2). 710/710 features green.
   **Layman:** when Claude wants to log a new roadmap
-  item, it currently has to hand-edit the markdown file
-  and a counter file. Add an MCP tool that does it in one
-  call so Claude saves tokens and can't get the format
-  wrong.
+  item, it had to hand-edit the markdown file and bump a
+  counter file. Now there's an MCP tool that does both
+  atomically — saves tokens and gets the format right
+  every time.
   Kind: implement.
   Source: user-request-2026-05-16 (Bundle C kickoff).
 

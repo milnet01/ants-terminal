@@ -3886,6 +3886,16 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdTabList().toJson(QJsonDocument::Compact));
         });
+    // ANTS-1424 — roadmap_log: append a new bullet to ROADMAP.md.
+    // Required-contract gated at the dispatcher (ANTS-1404), so
+    // absent caller_cwd refuses upstream before this lambda runs.
+    m_claudeIntegration->registerToolProvider("roadmap_log",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdRoadmapLog(args)
+                    .toJson(QJsonDocument::Compact));
+        });
     m_claudeIntegration->registerToolProvider("get_text",
         [this](const QJsonObject &args) -> QString {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);

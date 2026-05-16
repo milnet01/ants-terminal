@@ -14,6 +14,7 @@
 #include "tokenusageengine.h"
 #include "roadmapdialog.h"
 #include "roadmapfoldin.h"
+#include "roadmapindex.h"
 #include "subsystemmap.h"
 #include "terminalwidget.h"
 #include "verifyengine.h"
@@ -28,6 +29,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <algorithm>
 #include <QJsonArray>
 #include <QLocalServer>
@@ -1028,6 +1030,294 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (hasIncludeHeadersArg) {
         out["include_section_headers"] = includeSectionHeaders;
     }
+    return QJsonDocument(out);
+}
+
+// ANTS-1424 — roadmap_log: append a new bullet to ROADMAP.md +
+// bump .roadmap-counter atomically. Required-contract gated at the
+// dispatcher (ANTS-1404). All paths derived from caller_cwd so the
+// write stays anchored to the caller's project root. See
+// docs/specs/ANTS-1424.md.
+QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+
+    if (!m_main) {
+        return rlErr(QStringLiteral("no_main"),
+                     QStringLiteral("roadmap_log: no main window"));
+    }
+
+    // ANTS-1424-INV-6: validate every required field before any IO.
+    // Anchor for the source-scrape regression test.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString section =
+        req.value(QStringLiteral("section")).toString();
+    const QString status =
+        req.value(QStringLiteral("status")).toString();
+    const QString headline =
+        req.value(QStringLiteral("headline")).toString();
+    const QString kind =
+        req.value(QStringLiteral("kind")).toString();
+    const QString source =
+        req.value(QStringLiteral("source")).toString();
+
+    if (callerRaw.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: caller_cwd is required"));
+    }
+    if (section.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: section is required"));
+    }
+    if (status.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: status is required"));
+    }
+    if (headline.isEmpty()) {
+        return rlErr(QStringLiteral("headline_empty"),
+            QStringLiteral("roadmap_log: headline must not be empty"));
+    }
+    if (kind.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: kind is required"));
+    }
+    if (source.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: source is required"));
+    }
+
+    // ANTS-1424-INV-5: status → emoji map. Word form is the wire
+    // contract; the verb writes the emoji.
+    QString statusEmoji;
+    if      (status == QLatin1String("planned"))     statusEmoji = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
+    else if (status == QLatin1String("in-progress")) statusEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
+    else if (status == QLatin1String("shipped"))     statusEmoji = QString::fromUtf8("\xE2\x9C\x85");     // ✅
+    else if (status == QLatin1String("considered"))  statusEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
+    else {
+        return rlErr(QStringLiteral("bad_status"),
+            QStringLiteral("roadmap_log: unknown status \"%1\" — "
+                           "expected planned / in-progress / "
+                           "shipped / considered").arg(status));
+    }
+
+    // ANTS-1424 — kind enum check. Mirrors the schema's enum list.
+    static const QSet<QString> validKinds = {
+        QStringLiteral("implement"),    QStringLiteral("fix"),
+        QStringLiteral("audit-fix"),    QStringLiteral("review-fix"),
+        QStringLiteral("doc"),          QStringLiteral("doc-fix"),
+        QStringLiteral("refactor"),     QStringLiteral("test"),
+        QStringLiteral("chore"),        QStringLiteral("release"),
+        QStringLiteral("perf"),         QStringLiteral("security"),
+        QStringLiteral("feature"),      QStringLiteral("enhancement"),
+        QStringLiteral("investigate"),  QStringLiteral("research"),
+        QStringLiteral("accessibility"),QStringLiteral("optimize"),
+        QStringLiteral("package"),      QStringLiteral("marketing"),
+        QStringLiteral("ux"),
+    };
+    if (!validKinds.contains(kind)) {
+        return rlErr(QStringLiteral("bad_kind"),
+            QStringLiteral("roadmap_log: unknown kind \"%1\" — see "
+                           "docs/standards/roadmap-format.md § 3.5.3 "
+                           "for recognised values").arg(kind));
+    }
+
+    // Resolve ROADMAP.md path under caller_cwd. Anchored via
+    // canonicalFilePath; if the path doesn't resolve to a real
+    // directory, return no_roadmap rather than walking parents.
+    const QString callerCanonical =
+        QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty()) {
+        return rlErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not "
+                           "canonicalise to an existing directory")
+                .arg(callerRaw));
+    }
+    QString roadmapPath;
+    const QStringList nameCandidates = {
+        QStringLiteral("ROADMAP.md"),
+        QStringLiteral("roadmap.md"),
+        QStringLiteral("Roadmap.md"),
+    };
+    for (const QString &n : nameCandidates) {
+        const QString c = callerCanonical + QLatin1Char('/') + n;
+        if (QFileInfo::exists(c)) {
+            roadmapPath = c;
+            break;
+        }
+    }
+    if (roadmapPath.isEmpty()) {
+        return rlErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
+                .arg(callerCanonical));
+    }
+
+    // Counter path next to ROADMAP.md.
+    const QString counterPath =
+        callerCanonical + QLatin1Char('/') +
+        QStringLiteral(".roadmap-counter");
+
+    // ANTS-1424-INV-3 — counter allocation. Reads the high-water
+    // mark; honours id_hint if present (must be > counter); writes
+    // the bumped value back atomically.
+    qint64 counter = 0;
+    {
+        QFile cf(counterPath);
+        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return rlErr(QStringLiteral("counter_read_failed"),
+                QStringLiteral("roadmap_log: could not read "
+                               ".roadmap-counter at \"%1\"")
+                    .arg(counterPath));
+        }
+        const QByteArray raw = cf.readAll().trimmed();
+        bool ok = false;
+        counter = QString::fromUtf8(raw).toLongLong(&ok);
+        if (!ok) {
+            return rlErr(QStringLiteral("counter_read_failed"),
+                QStringLiteral("roadmap_log: .roadmap-counter is "
+                               "not a number"));
+        }
+    }
+    qint64 newId = counter + 1;
+    if (req.contains(QStringLiteral("id_hint"))) {
+        const qint64 hint =
+            req.value(QStringLiteral("id_hint")).toInteger();
+        if (hint <= counter) {
+            return rlErr(QStringLiteral("id_taken"),
+                QStringLiteral("roadmap_log: id_hint %1 is at or "
+                               "below current counter %2 — pick a "
+                               "value > counter or omit the hint")
+                    .arg(hint).arg(counter));
+        }
+        newId = hint;
+    }
+
+    // Read ROADMAP.md for section lookup + body splice.
+    QFile rf(roadmapPath);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return rlErr(QStringLiteral("roadmap_read_failed"),
+            QStringLiteral("roadmap_log: could not read \"%1\"")
+                .arg(roadmapPath));
+    }
+    const QString markdown = QString::fromUtf8(rf.readAll());
+    rf.close();
+
+    // ANTS-1424-INV-4 — locate the named section via RoadmapIndex.
+    const auto index = RoadmapIndex::buildIndex(markdown);
+    const auto *sec = RoadmapIndex::findBySlug(index, section);
+    if (!sec) {
+        // Sanitise echo (≤ 64 B + control-char filter) per the
+        // cmdRoadmapQuery convention so we don't reflect arbitrary
+        // bytes through the response.
+        QString verbatim = section;
+        if (verbatim.size() > 64) verbatim.truncate(64);
+        for (int i = 0; i < verbatim.size(); ++i) {
+            if (verbatim.at(i).unicode() < 0x20) {
+                verbatim[i] = QChar('?');
+            }
+        }
+        return rlErr(QStringLiteral("bad_section"),
+            QStringLiteral("roadmap_log: unknown section slug "
+                           "\"%1\"").arg(verbatim));
+    }
+
+    // Construct the bullet. Indentation: 2-space hang for body.
+    QString idStr = QStringLiteral("ANTS-%1").arg(newId, 4, 10,
+                                                  QLatin1Char('0'));
+    // Pad wider once the project crosses 9999.
+    if (newId > 9999) {
+        idStr = QStringLiteral("ANTS-%1").arg(newId);
+    }
+    QString bullet;
+    bullet += QStringLiteral("- ") + statusEmoji + QChar(' ') +
+              QChar('[') + idStr + QChar(']') + QChar(' ') +
+              QStringLiteral("**") + headline + QStringLiteral("**\n");
+    const QString body =
+        req.value(QStringLiteral("body")).toString();
+    if (!body.isEmpty()) {
+        const QStringList lines = body.split(QChar('\n'));
+        for (const QString &ln : lines) {
+            bullet += QStringLiteral("  ") + ln + QChar('\n');
+        }
+    }
+    const QString layman =
+        req.value(QStringLiteral("layman")).toString();
+    if (!layman.isEmpty()) {
+        bullet += QStringLiteral("  **Layman:** ") + layman +
+                  QChar('\n');
+    }
+    bullet += QStringLiteral("  Kind: ") + kind + QStringLiteral(".\n");
+    const QJsonArray lanesArr =
+        req.value(QStringLiteral("lanes")).toArray();
+    if (!lanesArr.isEmpty()) {
+        QStringList laneStrs;
+        for (const auto &v : lanesArr) laneStrs.append(v.toString());
+        bullet += QStringLiteral("  Lanes: ") +
+                  laneStrs.join(QStringLiteral(", ")) +
+                  QStringLiteral(".\n");
+    }
+    bullet += QStringLiteral("  Source: ") + source +
+              QStringLiteral(".\n\n");
+
+    // Splice bullet at the section's lineEnd. lineEnd is 0-indexed
+    // and exclusive — i.e. the line index of the next heading (or
+    // total_lines for the last section). Inserting at that line
+    // pushes the heading down by one block.
+    QStringList lines = markdown.split(QChar('\n'));
+    const int insertAt = sec->lineEnd;  // 0-indexed
+    QString bulletNoTrailNl = bullet;
+    if (bulletNoTrailNl.endsWith(QChar('\n'))) {
+        bulletNoTrailNl.chop(1);
+    }
+    const QStringList bulletLines = bulletNoTrailNl.split(QChar('\n'));
+    for (int i = bulletLines.size() - 1; i >= 0; --i) {
+        lines.insert(insertAt, bulletLines.at(i));
+    }
+    const QString updated = lines.join(QChar('\n'));
+
+    // Write ROADMAP.md atomically via QSaveFile.
+    QSaveFile rw(roadmapPath);
+    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return rlErr(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("roadmap_log: could not open \"%1\" for "
+                           "writing").arg(roadmapPath));
+    }
+    const QByteArray utf8 = updated.toUtf8();
+    if (rw.write(utf8) != utf8.size() || !rw.commit()) {
+        return rlErr(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("roadmap_log: atomic write of \"%1\" "
+                           "failed").arg(roadmapPath));
+    }
+
+    // Counter rewrite.
+    QSaveFile cw(counterPath);
+    if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return rlErr(QStringLiteral("counter_write_failed"),
+            QStringLiteral("roadmap_log: could not open "
+                           ".roadmap-counter for writing"));
+    }
+    const QByteArray cv =
+        (QString::number(newId) + QChar('\n')).toUtf8();
+    if (cw.write(cv) != cv.size() || !cw.commit()) {
+        return rlErr(QStringLiteral("counter_write_failed"),
+            QStringLiteral("roadmap_log: atomic write of "
+                           ".roadmap-counter failed"));
+    }
+
+    // ANTS-1424-INV-8 — success envelope: id (full ANTS-NNNN
+    // string), file (basename), line (1-based insertion point),
+    // bytes_written (the appended bullet's UTF-8 byte size).
+    QJsonObject out;
+    out["ok"]            = true;
+    out["id"]            = idStr;
+    out["file"]          = QStringLiteral("ROADMAP.md");
+    out["line"]          = insertAt + 1;  // 1-based for humans
+    out["bytes_written"] = static_cast<qint64>(bullet.toUtf8().size());
     return QJsonDocument(out);
 }
 

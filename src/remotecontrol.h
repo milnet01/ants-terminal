@@ -351,6 +351,12 @@ public:
     // docs/specs/ANTS-1283.md.
     QJsonDocument cmdSessionMemory(const QJsonObject &req);
 
+    // ANTS-1424 — roadmap_log. Append a new bullet to ROADMAP.md.
+    // Mutates project state (counter + markdown). Required contract
+    // gates absent caller_cwd; PathValidation anchors paths to the
+    // caller's project root. See docs/specs/ANTS-1424.md.
+    QJsonDocument cmdRoadmapLog(const QJsonObject &req);
+
     // ANTS-1346 test-only inspectors for the section-cache LRU.
     int sectionCacheSizeForTest() const {
         return m_roadmapSectionCache.size();

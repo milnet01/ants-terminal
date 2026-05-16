@@ -51,14 +51,23 @@ TEST(token_usage_no_ci_diagnostic, Inv1NoCiDiagnostic) {
 }
 
 // INV-2 — no_main branch emits the same diagnostic shape.
+// Anchor on cmdTokenUsage's ANTS-1422 comment so the test doesn't
+// confuse this with cmdRoadmapLog's own m_main null check
+// (ANTS-1424, also added in Bundle C).
 TEST(token_usage_no_ci_diagnostic, Inv2NoMainDiagnostic) {
     expect_reset();
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
-    const auto pos = cpp.find("\"no_main\"");
+    const auto pos = cpp.find(
+        "cmdTokenUsage(const QJsonObject");
     ASSERT_NE(pos, std::string::npos)
-        << "INV-2 precondition: no_main literal missing from "
-           "remotecontrol.cpp";
+        << "INV-2 precondition: cmdTokenUsage signature missing "
+           "from remotecontrol.cpp";
+    // 1500 bytes from the signature covers the no_main branch
+    // (first branch inside cmdTokenUsage) without bleeding into
+    // any sibling function.
     const std::string region = cpp.substr(pos, 1500);
+    expect(contains(region, "\"no_main\""),
+           "INV-2: cmdTokenUsage's no_main branch present");
     expect(contains(region, "\"m_main_ptr\""),
            "INV-2: debug.m_main_ptr emitted on no_main branch");
     expect(contains(region, "\"this_rc_ptr\""),
