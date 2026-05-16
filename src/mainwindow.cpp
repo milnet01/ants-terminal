@@ -3877,6 +3877,18 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!status.isEmpty()) req["status"] = status;
             if (!section.isEmpty()) req["section"] = section;
             if (!callerCwd.isEmpty()) req["caller_cwd"] = callerCwd;
+            // ANTS-1437 — forward `mode` so section_index dispatch
+            // sees it. Same isString() gate as status/section. Empty
+            // / missing → cmdRoadmapQuery defaults to "bullets".
+            const QJsonValue modeVal = args.value("mode");
+            if (modeVal.isString()) {
+                const QString mode = modeVal.toString();
+                if (!mode.isEmpty()) req["mode"] = mode;
+            }
+            // ANTS-1398 forward-fix — `include_section_headers` was
+            // also dropped here. Caught while landing ANTS-1437.
+            const QJsonValue inclVal = args.value("include_section_headers");
+            if (inclVal.isBool()) req["include_section_headers"] = inclVal.toBool();
             return QString::fromUtf8(
                 m_remoteControl->cmdRoadmapQuery(req).toJson(QJsonDocument::Compact));
         });

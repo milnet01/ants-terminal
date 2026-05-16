@@ -144,3 +144,26 @@ TEST(roadmap_query_section_index, SchemaModePropAdvertised) {
            "schema: mode property registered on roadmap_query tool");
     EXPECT_EQ(0, expect_failures());
 }
+
+// Dispatch — mainwindow's MCP→cmdRoadmapQuery lambda forwards the
+// `mode` arg (and `include_section_headers`, caught during 1437
+// live-test). Without this, the schema advertises args the
+// dispatcher silently drops at the MCP boundary. Regression
+// test for the bug found while live-testing ANTS-1437.
+TEST(roadmap_query_section_index, DispatchForwardsModeArg) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_MAINWINDOW_CPP_PATH);
+    expect(contains(cpp, "ANTS-1437 — forward `mode`"),
+           "dispatch: mainwindow lambda forwards mode arg "
+           "(anchor present)");
+    expect(contains(cpp, "args.value(\"mode\")"),
+           "dispatch: lambda reads mode from args");
+    expect(contains(cpp, "req[\"mode\"]"),
+           "dispatch: lambda writes mode into the cmdRoadmapQuery req");
+    // ANTS-1398 forward-fix companion — caught while landing 1437.
+    expect(contains(cpp, "ANTS-1398 forward-fix"),
+           "dispatch: include_section_headers forward-fix anchor present");
+    expect(contains(cpp, "args.value(\"include_section_headers\")"),
+           "dispatch: lambda reads include_section_headers from args");
+    EXPECT_EQ(0, expect_failures());
+}
