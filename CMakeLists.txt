@@ -870,7 +870,9 @@ if(ANTS_TESTS)
                 # ANTS-1409 callerCwdSuffix descriptor helper.
                 tests/features/mcp_caller_cwd_suffix_helper/test_mcp_caller_cwd_suffix_helper.cpp
                 # ANTS-1398 roadmap_query rollup-bullet filter.
-                tests/features/roadmap_query_filter_section_headers/test_roadmap_query_filter_section_headers.cpp)
+                tests/features/roadmap_query_filter_section_headers/test_roadmap_query_filter_section_headers.cpp
+                # ANTS-1399 tool_info(name) MCP verb.
+                tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

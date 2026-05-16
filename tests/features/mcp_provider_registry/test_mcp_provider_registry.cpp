@@ -176,6 +176,11 @@ TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
            "no tool names found in tools/list schema builder");
     for (const auto &name : schemaTools) {
         if (name == "get_session_info") continue;  // documented carve-out
+        // ANTS-1399 — tool_info is inline-dispatched alongside
+        // get_session_info; it reads ClaudeIntegration's own
+        // m_lastToolsList snapshot rather than delegating to an
+        // external provider, so no registerToolProvider() entry.
+        if (name == "tool_info") continue;
         const std::string needle = "registerToolProvider(\"" + name + "\"";
         expect(mw.find(needle) != std::string::npos, "INV-8b",
                ("schema names tool \"" + name + "\" but mainwindow.cpp "

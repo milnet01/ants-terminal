@@ -2609,6 +2609,41 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1399-INV-1 — tool_info(name) descriptor.
+                // Cheaper than re-fetching tools/list when the assistant
+                // only needs to refresh memory on one tool's schema.
+                // Self-registers so tool_info({name:"tool_info"})
+                // round-trips like every other listed tool.
+                {
+                    QJsonObject t;
+                    t["name"] = "tool_info";
+                    t["description"] = QStringLiteral(
+                        "Fetch a single MCP tool's descriptor — name, "
+                        "description, inputSchema. Cheaper than a full "
+                        "tools/list refresh (~50–200 B vs ~5 KiB). "
+                        "Unknown name returns code=unknown_tool plus "
+                        "an `available` list of registered tool names. "
+                        "Empty/missing name returns code=missing_name. "
+                        "Cache cold (no prior tools/list) returns "
+                        "code=tools_not_ready. See "
+                        "docs/specs/ANTS-1399.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject nameProp;
+                    nameProp["type"] = "string";
+                    nameProp["description"] = QStringLiteral(
+                        "Registered tool name (e.g. "
+                        "\"verify_changes\", \"file_outline\").");
+                    QJsonObject props;
+                    props["name"] = nameProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("name"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1283 — session_memory KV. Per-cwd key-value
                 // persistence backed by
                 // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json.
@@ -2694,6 +2729,11 @@ void ClaudeIntegration::onMcpConnection() {
                 }
 
                 result["tools"] = tools;
+                // ANTS-1399-INV-2 — snapshot for tool_info to read from
+                // without re-running the array build. Descriptors are
+                // built from compile-time literals so the snapshot
+                // never goes stale in practice.
+                m_lastToolsList = tools;
                 haveResult = true;
             } else if (method == "tools/call") {
                 QJsonObject params = request.value("params").toObject();
@@ -2787,6 +2827,52 @@ void ClaudeIntegration::onMcpConnection() {
                         responseText = QString::fromUtf8(
                             QJsonDocument(info).toJson(QJsonDocument::Compact));
                         toolHandled = true;
+                    } else if (toolName == "tool_info") {
+                        // ANTS-1399-INV-3 — read from the snapshot
+                        // populated at tools/list end. Inline-dispatched
+                        // (no provider lambda) so the cache lives next
+                        // to the descriptors it slices from.
+                        QJsonObject env;
+                        const QString reqName =
+                            argsObj.value(QStringLiteral("name")).toString();
+                        if (reqName.isEmpty()) {
+                            env["ok"]    = false;
+                            env["code"]  = QStringLiteral("missing_name");
+                            env["error"] = QStringLiteral(
+                                "tool_info: 'name' arg is required");
+                        } else if (m_lastToolsList.isEmpty()) {
+                            env["ok"]    = false;
+                            env["code"]  = QStringLiteral("tools_not_ready");
+                            env["error"] = QStringLiteral(
+                                "tool_info: call tools/list first to "
+                                "populate the descriptor cache");
+                        } else {
+                            QJsonObject match;
+                            QJsonArray available;
+                            for (const auto &v : std::as_const(m_lastToolsList)) {
+                                const QJsonObject d = v.toObject();
+                                const QString n =
+                                    d.value(QStringLiteral("name")).toString();
+                                available.append(n);
+                                if (n == reqName) match = d;
+                            }
+                            if (match.isEmpty()) {
+                                env["ok"]        = false;
+                                env["code"]      = QStringLiteral("unknown_tool");
+                                env["error"]     = QStringLiteral(
+                                    "tool_info: no MCP tool registered "
+                                    "as '%1'").arg(reqName);
+                                env["available"] = available;
+                            } else {
+                                env["ok"]          = true;
+                                env["name"]        = match.value(QStringLiteral("name"));
+                                env["description"] = match.value(QStringLiteral("description"));
+                                env["inputSchema"] = match.value(QStringLiteral("inputSchema"));
+                            }
+                        }
+                        responseText = QString::fromUtf8(
+                            QJsonDocument(env).toJson(QJsonDocument::Compact));
+                        toolHandled = true;
                     } else if (auto it = m_toolProviders.find(toolName);
                                it != m_toolProviders.end()) {
                         responseText = it->second(argsObj);
@@ -2808,7 +2894,12 @@ void ClaudeIntegration::onMcpConnection() {
                     // from content. See docs/specs/ANTS-1294.md.
                     const bool isControlPlane =
                         (toolName == QStringLiteral("get_session_info") ||
-                         toolName == QStringLiteral("token_usage"));
+                         toolName == QStringLiteral("token_usage") ||
+                         // ANTS-1399 — tool_info returns a descriptor
+                         // slice (server-generated metadata about other
+                         // tools), not user content. Bypass the wrap
+                         // for the same reason get_session_info does.
+                         toolName == QStringLiteral("tool_info"));
                     const QString wrapped = isControlPlane
                         ? responseText
                         : wrapMcpData(toolName, responseText);
@@ -2940,6 +3031,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("token_usage"))        return C::ProcessGlobal;
     if (toolName == QStringLiteral("tab_list"))           return C::ProcessGlobal;
     if (toolName == QStringLiteral("get_session_info"))   return C::ProcessGlobal;
+    // ANTS-1399 — tool_info reads the process-wide descriptor cache.
+    if (toolName == QStringLiteral("tool_info"))          return C::ProcessGlobal;
     // ANTS-1400 — caller_cwd_info is the diagnostic verb that
     // surfaces the resolution Source enum. caller_cwd is its
     // INPUT (not an anchor), so neither Required nor ProcessGlobal

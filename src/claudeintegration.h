@@ -429,6 +429,14 @@ private:
     // MCP `initialize` and on explicit token_usage(reset:true).
     TokenUsageEngine::Tracker m_tokenUsage;
 
+    // ANTS-1399 — snapshot of the last `tools/list` array build,
+    // populated at the end of the `tools/list` handler. `tool_info`
+    // reads from this snapshot to return a single descriptor slice
+    // without rebuilding the ~5 KiB array. Lifetime: process; the
+    // descriptors are built from compile-time literals so the
+    // snapshot never goes stale in practice.
+    mutable QJsonArray m_lastToolsList;
+
     // ANTS-1357 — short-TTL idempotent-read cache.
     // Allowlist: get_cwd / get_environment / tab_list / last_audit_summary.
     // Key: SHA256-hex16(toolName + '\0' + QJsonDocument(args).toJson(Compact)).

@@ -6552,21 +6552,31 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (self-observed during
   the ANTS-1355 / 1396 / 1395 bundle).
 
-- 📋 [ANTS-1399] **`tool_info(name)` MCP verb — fetch a
-  single tool's descriptor.** `tools/list` returns ~30 tool
-  descriptors (~5 KiB compressed). When the assistant only
-  needs to refresh memory on one tool's schema (e.g. "what
-  args does `verify_changes` take?"), there's no cheaper
-  read than the full list. Adds `tool_info` taking
-  `{name}` returning the same descriptor shape (`name`,
-  `description`, `inputSchema`) for just the requested tool.
-  Unknown name → `{ok:false, code:"unknown_tool",
-  available:[...]}`. Pairs with ANTS-1297 (lazy
-  registration); ANTS-1399 is the lighter-weight prerequisite
-  that doesn't require restructuring the registry.
-  RAM: zero (looks up existing in-memory descriptors).
-  **Layman:** add a way for Claude to ask about *one* MCP
-  tool's args instead of re-loading the full ~5 KiB
+- ✅ [ANTS-1399] **`tool_info(name)` MCP verb — fetch a
+  single tool's descriptor.** Shipped 2026-05-16 (Bundle C
+  pull 3). New inline-dispatched MCP verb returns one
+  descriptor slice (`{ok, name, description, inputSchema}`)
+  from a lazy `m_lastToolsList` snapshot populated at
+  `tools/list` end. Cache lifetime: process; descriptors
+  are compile-time literals so the snapshot never goes
+  stale. Empty cache → `{ok:false, code:"tools_not_ready"}`;
+  unknown name → `{ok:false, code:"unknown_tool",
+  available:[...registered names...]}`; empty name →
+  `{ok:false, code:"missing_name"}`. Classified
+  `ProcessGlobal` (no caller_cwd consulted); bypasses the
+  ANTS-1294 wrap (descriptor metadata, not user content).
+  Self-registers in `tools/list` so
+  `tool_info({name:"tool_info"})` round-trips. Spec
+  `docs/specs/ANTS-1399.md`; tests
+  `tests/features/mcp_tool_info_verb/` (8 invariants:
+  INV-1 descriptor, INV-2 snapshot, INV-3 dispatch,
+  INV-4/5/6 error codes, INV-7 contract, INV-8 inline
+  dispatch). McpProviderRegistry INV-8b allowlist amended
+  to carve out `tool_info` alongside `get_session_info`.
+  Token saving on a refresh-one-tool flow: ~5 KiB → ~150 B
+  per call. 692/692 features green.
+  **Layman:** added a way for Claude to ask about *one*
+  MCP tool's args instead of re-loading the full ~5 KiB
   tools/list every time.
   Kind: implement.
   Source: in-session-2026-05-15 (self-observed).
