@@ -6091,7 +6091,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, roadmapdialog, session_memory.
   Source: user-request-2026-05-16 + vestige-cc-feedback-2026-05-16..
 
-- 📋 [ANTS-1429] **`roadmap_query` silent-empty failure mode — return `unrecognised_format` on non-empty unparseable files.**
+- ✅ [ANTS-1429] **`roadmap_query` silent-empty failure mode — return `unrecognised_format` on non-empty unparseable files.** Shipped 2026-05-16 (Bundle C pull 9). Spec: [`docs/specs/ANTS-1429.md`](docs/specs/ANTS-1429.md). Tests: `tests/features/mcp_roadmap_unrecognised_format/` (3 INVs, all source-scrape).
   **Problem.** `roadmap_query` against Vestige (~2130 lines,
   402 KB of GFM-task-list content) returned
   `{ok:true, bullets:[], count:0}` — the silent-empty envelope is

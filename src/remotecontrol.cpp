@@ -989,6 +989,31 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
     }
 
+    // ANTS-1429 — unrecognised_format gate. After cache fill /
+    // lazy fill, if the parsed bullet count is zero AND the file
+    // is larger than the conservative stub threshold, return a
+    // typed error envelope rather than the legitimate-but-
+    // misleading {ok:true, bullets:[], count:0} shape. Single
+    // gate site covers cache-hit, cache-miss, and lazy-fill
+    // paths because all three populate m_roadmapCacheBullets
+    // from the same parseBullets call.
+    if (m_roadmapCacheBullets.isEmpty() &&
+        fi.size() > kRoadmapMinParseableSize) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = QStringLiteral("unrecognised_format");
+        env["error"] = QStringLiteral(
+            "roadmap_query: \"%1\" parsed zero bullets from %2 "
+            "bytes — format not recognised")
+                .arg(path).arg(fi.size());
+        env["path"]  = path;
+        env["bytes"] = fi.size();
+        env["hint"]  = QStringLiteral(
+            "this tool expects roadmap-format.md emoji bullets; "
+            "see ANTS-1428 for adapter mode status");
+        return QJsonDocument(env);
+    }
+
     // ANTS-1247-INV-2/3: filter the cached array post-cache.
     // "active" → 📋+🚧 (planned + in-progress);
     // "shipped" → ✅ only; "all" → pass-through. Anchor: filter switch.
@@ -1206,6 +1231,33 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     }
     const QString markdown = QString::fromUtf8(rf.readAll());
     rf.close();
+
+    // ANTS-1429 — unrecognised_format gate (write path). Refuse
+    // to splice an Ants-emoji bullet into a file we can't parse.
+    // Runs before RoadmapIndex::buildIndex so a foreign-dialect
+    // roadmap (e.g. Vestige's GFM task-list) returns the typed
+    // error instead of misleading bad_section / silent corruption.
+    // Envelope shape parity with the cmdRoadmapQuery gate above:
+    // path + bytes + hint inline-constructed (not via rlErr).
+    const auto preflightBullets =
+        RoadmapDialog::parseBullets(markdown);
+    const qint64 markdownBytes = markdown.toUtf8().size();
+    if (preflightBullets.isEmpty() &&
+        markdownBytes > kRoadmapMinParseableSize) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = QStringLiteral("unrecognised_format");
+        env["error"] = QStringLiteral(
+            "roadmap_log: \"%1\" parsed zero bullets from %2 "
+            "bytes — format not recognised; cannot safely splice")
+                .arg(roadmapPath).arg(markdownBytes);
+        env["path"]  = roadmapPath;
+        env["bytes"] = markdownBytes;
+        env["hint"]  = QStringLiteral(
+            "this tool expects roadmap-format.md emoji bullets; "
+            "see ANTS-1428 for adapter mode status");
+        return QJsonDocument(env);
+    }
 
     // ANTS-1424-INV-4 — locate the named section via RoadmapIndex.
     const auto index = RoadmapIndex::buildIndex(markdown);

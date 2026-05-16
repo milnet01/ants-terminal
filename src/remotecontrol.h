@@ -430,6 +430,12 @@ private:
     mutable QList<QString>                 m_roadmapSectionLru;
     static constexpr int    kRoadmapSectionCacheCap = 64;
     static constexpr qint64 kRoadmapCacheTtlMs = 100;
+    // ANTS-1429 — minimum file size (bytes) above which an empty
+    // parseBullets result is treated as `unrecognised_format`
+    // rather than the legitimate "no work pending" envelope. 1 KB
+    // is conservative: a structured stub (intro paragraph +
+    // headings) lands ~600 B; real roadmaps clear by ≥ 100×.
+    static constexpr qint64 kRoadmapMinParseableSize = 1024;
 
     // ANTS-1319 — mtime-cached partition result (INV-12). Single-entry
     // cache keyed on (path, scope, stamp). TTL = 5 s, picked to cover

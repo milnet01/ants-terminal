@@ -16,13 +16,15 @@ for security-relevant changes.
 
 Third bundle from the 0.7.92 plan. Items group around the MCP layer:
 descriptor dedup, response shape, dispatch instrumentation, audit
-trail, and one write-verb addition. Eight items shipped (1409 / 1398
-/ 1399 / 1402 / 1422 / 1424 / 1426 / 1427). One item deferred
+trail, and two write-verb additions. Nine items shipped (1409 / 1398
+/ 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1429). One item deferred
 (ANTS-1403 — wrap-overhead v3, gated on having clean token_usage
 data which now ships; the v3 work itself stays planned for a future
-bundle). Three follow-ups discovered mid-bundle (ANTS-1425 logged
-for next round; ANTS-1426 fixed-in-bundle; ANTS-1427 added + shipped
-in the pull-3 close-out for ANTS-1422).
+bundle). Four follow-ups discovered mid-bundle (ANTS-1425 logged for
+next round; ANTS-1426 fixed-in-bundle; ANTS-1427 added + shipped in
+the pull-3 close-out for ANTS-1422; ANTS-1429 added + shipped after
+2026-05-16 Vestige CC feedback exposed silent-empty as the worst-UX
+failure mode for non-Ants-format roadmaps).
 
 - **ANTS-1409 — Per-tool MCP descriptor blurbs deduplicate the
   "Pass `caller_cwd` to anchor to…" phrasing.** New
@@ -221,6 +223,38 @@ in the pull-3 close-out for ANTS-1422).
   checkpoints in its lifecycle. Would have saved two diagnostic
   rounds on the `token_usage` mystery — adding it now so the
   next one doesn't.
+
+- **ANTS-1429 — `roadmap_query` / `roadmap_log` typed
+  `unrecognised_format` envelope.** `mcp__ants__roadmap_query`
+  against the Vestige engine roadmap (~402 KB of GFM-task-list
+  content) previously returned `{ok:true, bullets:[], count:0}` —
+  structurally identical to "no work pending" so the caller
+  couldn't distinguish empty roadmap from unparseable file.
+  Vestige CC feedback on 2026-05-16: *"MCP cost tokens for the
+  failed query and saved none."* Add a gate to both
+  `cmdRoadmapQuery` (read path) and `cmdRoadmapLog` (write path):
+  when `RoadmapDialog::parseBullets` returns zero hits AND the
+  file exceeds 1 KB, return
+  `{ok:false, code:"unrecognised_format", path, bytes, hint}`
+  where the hint string points to ANTS-1428 (adapter mode) as
+  next steps. New file-scope constant `kRoadmapMinParseableSize
+  = 1024` lives in `remotecontrol.h` alongside
+  `kRoadmapCacheTtlMs` so both gate sites reference the same
+  threshold. Write-path envelope is inline-constructed (not via
+  `rlErr`) so it carries the same `path` + `bytes` + `hint`
+  fields as the read path — caller can correlate the failure
+  with file size regardless of which verb they called. Spec
+  `docs/specs/ANTS-1429.md`; tests
+  `tests/features/mcp_roadmap_unrecognised_format/` (3
+  invariants, all source-scrape). 731/731 features green at
+  landing.
+  Layman: when the roadmap-lookup tool couldn't read a roadmap
+  file's format, it used to return "0 items" — the same answer
+  it gives for an actual empty roadmap. Now it returns a clear
+  error envelope saying "format not recognised" with the file
+  path and size, so the caller knows immediately to fall back
+  to grep. Same fix on the roadmap-write tool — refuses to
+  splice a bullet into a file it can't parse.
 
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 
