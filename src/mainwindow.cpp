@@ -3889,6 +3889,13 @@ void MainWindow::setupClaudeMcpProviders() {
             // also dropped here. Caught while landing ANTS-1437.
             const QJsonValue inclVal = args.value("include_section_headers");
             if (inclVal.isBool()) req["include_section_headers"] = inclVal.toBool();
+            // ANTS-1436 — forward offset/limit VERBATIM (not
+            // type-gated) so the handler can emit bad_args on
+            // non-numeric. The only roadmap_query dispatch lambda
+            // that breaks the silent-drop pattern; deliberate per
+            // INV-8.
+            if (args.contains("offset")) req["offset"] = args.value("offset");
+            if (args.contains("limit"))  req["limit"]  = args.value("limit");
             return QString::fromUtf8(
                 m_remoteControl->cmdRoadmapQuery(req).toJson(QJsonDocument::Compact));
         });

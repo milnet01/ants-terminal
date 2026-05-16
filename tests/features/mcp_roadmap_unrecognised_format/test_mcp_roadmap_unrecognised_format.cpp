@@ -49,7 +49,12 @@ bool contains(const std::string &hay, const std::string &needle) {
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 28 * 1024) {
+                           size_t kMaxBound = 32 * 1024) {
+    // ANTS-1436 bumped 28→32 KB: pagination args parse (~1.5 KB)
+    // + PaginationEngine::pageBullets call + envelope augment at
+    // each of the 2 emission sites (~600 B × 2). The pagination
+    // LOGIC lives in src/paginationengine.cpp; only the call sites
+    // are in cmdRoadmapQuery.
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());

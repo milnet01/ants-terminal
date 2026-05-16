@@ -152,8 +152,14 @@ TEST(mcp_roadmap_status_filter, Inv10CountPostFilter) {
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1247-INV-10"),
            "INV-10 anchor comment present");
-    expect(contains(cpp, "out[\"count\"] = filtered.size()"),
-           "INV-10: count uses filtered.size(), not cached.size()");
+    // ANTS-1436 — count is now post-PAGINATION (page.slice.size()),
+    // which equals filtered.size() when no pagination applies.
+    // INV-10's intent ("count reflects what was actually emitted in
+    // bullets[], not the cache size") is preserved; the literal
+    // changed from `filtered.size()` to `page.slice.size()`.
+    expect(contains(cpp, "out[\"count\"] = page.slice.size()"),
+           "INV-10: count uses page.slice.size() (post-pagination), "
+           "not cached.size()");
     EXPECT_EQ(0, expect_failures());
 }
 

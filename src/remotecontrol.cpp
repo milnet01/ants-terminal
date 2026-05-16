@@ -6,6 +6,7 @@
 #include "claudeintegration.h"
 #include "indiereviewengine.h"
 #include "mainwindow.h"
+#include "paginationengine.h"
 #include "pathvalidation.h"
 #include "plantemplateengine.h"
 #include "projectlayoutengine.h"
@@ -986,6 +987,52 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // path (existing behaviour, INV-6).
     const QString section = req.value(QStringLiteral("section")).toString();
 
+    // ANTS-1436-INV-8 — optional `offset` + `limit` args. Forwarded
+    // verbatim from the dispatch lambda (NOT type-gated there) so
+    // we can emit bad_args on non-numeric. isUndefined() is the
+    // "not passed" gate; isDouble() the "passed and well-formed"
+    // gate. Negative values rejected at this layer too.
+    const QJsonValue offsetVal = req.value(QStringLiteral("offset"));
+    const QJsonValue limitVal  = req.value(QStringLiteral("limit"));
+    const bool callerPassedOffset = !offsetVal.isUndefined();
+    const bool callerPassedLimit  = !limitVal.isUndefined();
+    int offsetArg = 0;
+    int limitArg  = -1;  // sentinel: -1 = auto-pick
+    if (callerPassedOffset) {
+        if (!offsetVal.isDouble()) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "offset must be a non-negative integer");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+        offsetArg = offsetVal.toInt();
+        if (offsetArg < 0) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "offset must be a non-negative integer");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+    }
+    if (callerPassedLimit) {
+        if (!limitVal.isDouble()) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "limit must be a positive integer (1..500)");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+        limitArg = limitVal.toInt();
+        if (limitArg < 1) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "limit must be a positive integer (1..500)");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+    }
+
     // ANTS-1437-INV-1/2: optional `mode` arg. Default "bullets" (back-
     // compat). "section_index" returns a compact section index instead
     // of bullets. Unknown mode → bad_mode with the same 64-byte +
@@ -1011,6 +1058,19 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["ok"] = false;
         out["error"] = QStringLiteral(
             "section_index mode does not accept section= filter");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    // ANTS-1436-INV-6: section_index + offset/limit is also exclusive
+    // — section_index returns a bounded sections array, not bullets,
+    // so pagination is meaningless. Reject-loudly (vs silent-ignore)
+    // so a future spec adding pagination to section_index isn't a
+    // back-compat hazard.
+    if (mode == QLatin1String("section_index") &&
+        (callerPassedOffset || callerPassedLimit)) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "section_index mode does not accept offset/limit");
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
@@ -1364,12 +1424,26 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
             filtered = pruned;
         }
+        // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
+        // One call site per emission branch (section + full-file).
+        const auto page = PaginationEngine::pageBullets(
+            filtered, offsetArg, limitArg);
+        const bool emitPagination =
+            PaginationEngine::shouldEmitPaginationFields(
+                callerPassedOffset, callerPassedLimit, page.truncated);
         out["ok"] = true;
-        out["bullets"] = filtered;
+        out["bullets"] = page.slice;
         out["path"] = path;
-        out["count"] = filtered.size();
+        out["count"] = page.slice.size();
         out["filter"] = filter;
         out["section"] = sec->slug;
+        if (emitPagination) {
+            out["offset"]    = page.offset;
+            out["limit"]     = page.limit;
+            out["total"]     = page.total;
+            out["truncated"] = page.truncated;
+            if (page.truncated) out["next_offset"] = page.nextOffset;
+        }
         // ANTS-1398-INV-5: echo the opt-in only when the caller set it.
         if (hasIncludeHeadersArg) {
             out["include_section_headers"] = includeSectionHeaders;
@@ -1468,13 +1542,30 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         filtered = pruned;
     }
 
+    // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
+    // Second of two call sites (the other is in the section-mode
+    // branch above). Stateless; auto-truncate fires when caller
+    // omitted limit AND filtered exceeds the soft cap.
+    const auto page = PaginationEngine::pageBullets(
+        filtered, offsetArg, limitArg);
+    const bool emitPagination =
+        PaginationEngine::shouldEmitPaginationFields(
+            callerPassedOffset, callerPassedLimit, page.truncated);
+
     out["ok"] = true;
-    out["bullets"] = filtered;
+    out["bullets"] = page.slice;
     out["path"] = path;
-    // ANTS-1247-INV-10: count is post-filter bullets.size().
-    out["count"] = filtered.size();
+    // ANTS-1247-INV-10: count is post-filter post-pagination size.
+    out["count"] = page.slice.size();
     // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
     out["filter"] = filter;
+    if (emitPagination) {
+        out["offset"]    = page.offset;
+        out["limit"]     = page.limit;
+        out["total"]     = page.total;
+        out["truncated"] = page.truncated;
+        if (page.truncated) out["next_offset"] = page.nextOffset;
+    }
     // ANTS-1428 — envelope-level format echo. The adapter parses
     // the whole file in one shape; if any bullet was tagged GFM,
     // surface the format so callers know they're in adapter mode

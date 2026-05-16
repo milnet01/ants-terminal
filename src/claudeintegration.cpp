@@ -1618,6 +1618,31 @@ void ClaudeIntegration::onMcpConnection() {
                         "500-bullet roadmap). Cannot combine with "
                         "section= (bad_mode_combo).");
                     props["mode"] = modeProp;
+                    // ANTS-1436 — offset/limit pagination args.
+                    QJsonObject offsetProp;
+                    offsetProp["type"] = "integer";
+                    offsetProp["minimum"] = 0;
+                    offsetProp["description"] = QStringLiteral(
+                        "0-based start index into the post-filter "
+                        "bullets array. Defaults to 0. Use with "
+                        "`limit` to page through large responses. "
+                        "Past-end returns empty bullets[] with "
+                        "offset == total.");
+                    props["offset"] = offsetProp;
+                    QJsonObject limitProp;
+                    limitProp["type"] = "integer";
+                    limitProp["minimum"] = 1;
+                    limitProp["maximum"] = 500;
+                    limitProp["description"] = QStringLiteral(
+                        "Cap on bullets[] length (1..500). If "
+                        "omitted, server auto-truncates when the "
+                        "response would exceed ~20 KB and emits "
+                        "`truncated:true` + `next_offset`. Explicit "
+                        "limit wins (auto-pick only fires when "
+                        "omitted). When pagination applies, envelope "
+                        "carries offset/limit/total/truncated and "
+                        "next_offset when truncated.");
+                    props["limit"] = limitProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
