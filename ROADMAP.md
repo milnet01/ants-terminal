@@ -6257,6 +6257,70 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: claudeintegration.
   Source: vestige-cc-feedback-2026-05-16.
 
+- 📋 [ANTS-1433] **Atomic-write rollback test seam — failure-injection coverage for `QSaveFile` paths, starting with `cmdRoadmapLog`'s two-stage commit.**
+  **Problem.** 2026-05-16 cross-project pattern from Vestige's
+  /test-audit hand-off (Prompt 3): atomic-write paths in Vestige
+  had zero failure-injection coverage. Vestige's CC scoped a
+  test-only seam in `engine/utils/atomic_write.cpp` gated by
+  `#ifdef VESTIGE_TEST_HOOKS`.
+  
+  Ants has the same gap on its side. ~10 `QSaveFile` call sites
+  (`cmdRoadmapLog`, `sessionmemoryengine`, `plantemplateengine`,
+  `debtsweepengine`, `settingsdialog`, `config`, `claudeallowlist`)
+  all rely on the QSaveFile rename-on-commit guarantee; **zero**
+  tests fail-inject a rename failure and assert rollback.
+  
+  Highest-exposure two-stage write: `cmdRoadmapLog` (line ~1284
+  `QSaveFile rw(roadmapPath)` commits ROADMAP.md, then line ~1298
+  `QSaveFile cw(counterPath)` commits `.roadmap-counter`). If the
+  counter commit fails after the ROADMAP.md commit succeeds, the
+  on-disk state is desynced — the appended bullet has ID N, but
+  the counter still reads N-1. The next `roadmap_log` allocates N
+  again → duplicate IDs in ROADMAP.md.
+  
+  **Approach.**
+  1. Add a test-only failure-injection seam. Two options:
+     (a) `static std::atomic<int> g_qsaveFailNextN{0}` + setter,
+         gated by `#ifdef ANTS_TEST_HOOKS`. Wraps `QSaveFile::commit()`
+         at chosen call sites with a check.
+     (b) Lighter: a `RcGate`-style test hook just for `cmdRoadmapLog`
+         — `g_forceCounterCommitFail` for the specific two-stage
+         case. Easier to land, narrower scope.
+     Prefer (b) for v1 (single specific call site).
+  2. Wire `ANTS_TEST_HOOKS` define into the test bundle target in
+     CMakeLists.txt (mirror Vestige's pattern). Production builds
+     stay clean — `#ifdef`'d code disappears.
+  3. New regression test
+     `tests/features/mcp_roadmap_log_atomicity/` —
+     `CounterCommitFailureDoesNotDuplicateId`: pre-seed
+     `.roadmap-counter` at N; toggle the counter-commit-fail flag;
+     call `cmdRoadmapLog`; assert (a) the verb returns
+     `{ok:false, code:"counter_write_failed"}` and (b) the
+     counter on disk still reads N. Ideally the gate should
+     ALSO roll back the ROADMAP.md write — that's the harder
+     part; investigate whether QSaveFile can be uncommitted, or
+     whether we need a manual restore-from-snapshot before the
+     second commit attempt.
+  
+  **Scope.** ~50 LoC seam + ~120 LoC test fixture. The harder bit
+  is whether to roll back ROADMAP.md when the counter fails — if
+  no, the test only pins counter-side integrity; if yes, the
+  patch grows ~80 LoC for snapshot-and-restore.
+  
+  **Pairs with ANTS-1380** (concurrent_writer_lock /tmp predictable
+  path). Both tickets harden the project's atomic-write story;
+  1380 is the input-side defence, this ticket is the
+  test-infrastructure side.
+  
+  **Out of scope v1.** Failure-injection for the other 9
+  `QSaveFile` sites (session_memory, plantemplate, debt-sweep,
+  settings, config, claudeallowlist). Bundle them into a v2 sweep
+  once the v1 seam pattern proves out on `cmdRoadmapLog`.
+  **Layman:** Ants has ~10 places where it writes a file atomically (so a crash mid-write can't corrupt it), but no tests pin what happens if the write fails partway. The biggest exposure is `roadmap_log`: it writes the roadmap and the counter in two steps, and if the counter step fails the next ID gets reused. Add a test hook that lets tests force-fail writes, then a regression test for the two-stage rollback.
+  Kind: test.
+  Lanes: remotecontrol, tests, config, sessionmemoryengine.
+  Source: vestige-cc-cross-project-pattern-2026-05-16.
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single
