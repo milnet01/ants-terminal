@@ -36,6 +36,24 @@ ClaudeTask taskFromTodoEntry(const QJsonObject &o) {
     return t;
 }
 
+// ANTS-1341: parse an ISO-8601-with-ms timestamp string into epoch
+// ms. Returns 0 on empty / unparseable input — fail-soft so the
+// abandonment filter preserves tasks whose timestamps are missing.
+// Pattern matches src/claudebgtasks.cpp:245-246.
+qint64 parseIsoMs(const QString &ts) {
+    if (ts.isEmpty()) return 0;
+    const QDateTime dt = QDateTime::fromString(ts, Qt::ISODateWithMs);
+    return dt.isValid() ? dt.toMSecsSinceEpoch() : 0;
+}
+
+// ANTS-1341: abandonment threshold. An `in_progress` task whose
+// last event is more than 24 h before the latest event in the
+// transcript is dropped as abandoned (subagent crashed, partial
+// network failure, transcript-replay artefact). Other statuses
+// (pending = unstarted backlog, completed = history) are NOT
+// time-bounded.
+constexpr qint64 kStaleInProgressMs = 24LL * 3600LL * 1000LL;
+
 } // namespace
 
 ClaudeTaskListTracker::ClaudeTaskListTracker(QObject *parent)
@@ -186,6 +204,9 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
 
     bool sawTodoWrite = false;
     QHash<QString, int> idxByToolUseId;   // tool_use_id → index in `out`
+    qint64 latestEventMs = 0;             // ANTS-1341: monotonic over the
+                                          // walk; abandonment threshold uses
+                                          // this as the reference time
 
     while (!file.atEnd()) {
         const QByteArray rawLine = file.readLine().trimmed();
@@ -193,6 +214,15 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
         const QJsonDocument doc = QJsonDocument::fromJson(rawLine);
         if (!doc.isObject()) continue;
         const QJsonObject ev = doc.object();
+
+        // ANTS-1341: advance `latestEventMs` BEFORE any filter dispatch.
+        // Sidechain-skipped events and `isCompactSummary`-skipped events
+        // still contribute to "wall-clock progress" — a long `/compact`
+        // pause should not artificially suppress the abandonment
+        // threshold and prevent stuck tasks from being dropped.
+        const qint64 evMs =
+            parseIsoMs(ev.value(QStringLiteral("timestamp")).toString());
+        if (evMs > latestEventMs) latestEventMs = evMs;
 
         // Sidechain filter — subagent's own TodoWrite/TaskCreate/etc.
         // never count toward the parent's plan.
@@ -250,7 +280,12 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
                     // list lets a subsequent TaskCreate resume Mode B.
                     sawTodoWrite = !todos.isEmpty();
                     for (const QJsonValue &tv : todos) {
-                        out.append(taskFromTodoEntry(tv.toObject()));
+                        ClaudeTask t = taskFromTodoEntry(tv.toObject());
+                        // ANTS-1341: stamp every entry with the snapshot's
+                        // event timestamp; TodoWrite is itself an event
+                        // affecting every entry it lists.
+                        t.lastEventAtMs = evMs;
+                        out.append(std::move(t));
                     }
                     continue;
                 }
@@ -294,6 +329,8 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
                     t.activeForm =
                         input.value(QStringLiteral("activeForm")).toString();
                     t.status = QStringLiteral("pending");
+                    // ANTS-1341: stamp the create-time event timestamp.
+                    t.lastEventAtMs = evMs;
                     out.append(t);
                     if (!toolUseId.isEmpty())
                         idxByToolUseId.insert(toolUseId, out.size() - 1);
@@ -316,6 +353,11 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
                             const QString desc =
                                 input.value(QStringLiteral("description")).toString();
                             if (!desc.isEmpty()) t.description = desc;
+                            // ANTS-1341: bump the touched task's last-event
+                            // timestamp. This is what keeps an
+                            // actively-updated `in_progress` task out of
+                            // the abandonment filter.
+                            t.lastEventAtMs = evMs;
                             break;
                         }
                     }
@@ -357,6 +399,26 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
             return t.status == QLatin1String("deleted");
         }),
         out.end());
+
+    // ANTS-1341: abandonment filter. An `in_progress` task whose
+    // last event is more than 24 h before the latest event in the
+    // transcript is dropped — subagent crashed, partial network
+    // failure, or transcript-replay artefact. A task with
+    // lastEventAtMs == 0 (timestamp missing or unparseable) is
+    // preserved (fail-soft: malformed timestamp must not drop
+    // user-visible work). Reference time = transcript's latest
+    // event, NOT wall-clock — deterministic against synthetic
+    // fixtures.
+    if (latestEventMs > 0) {
+        const qint64 threshold = latestEventMs - kStaleInProgressMs;
+        out.erase(std::remove_if(out.begin(), out.end(),
+            [threshold](const ClaudeTask &t) {
+                return t.status == QLatin1String("in_progress")
+                       && t.lastEventAtMs > 0
+                       && t.lastEventAtMs < threshold;
+            }),
+            out.end());
+    }
 
     return out;
 }

@@ -30,6 +30,12 @@ struct ClaudeTask {
                           // (ANTS-1407: `deleted` is filtered out at end of
                           // parseTranscript — never user-visible, but lives
                           // mid-walk so TaskUpdate-by-id can find the entry.)
+    qint64  lastEventAtMs = 0;  // ANTS-1341: epoch ms of the latest event
+                                // affecting this task (TaskCreate timestamp;
+                                // bumped on each TaskUpdate; TodoWrite sets
+                                // it from the snapshot's event timestamp).
+                                // Zero if absent or unparseable — fail-soft
+                                // preserves the task (abandonment INV-7).
 };
 
 // Per-session tracker mirroring ClaudeBgTaskTracker's shape:

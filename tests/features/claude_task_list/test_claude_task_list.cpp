@@ -73,6 +73,19 @@ QString assistantToolUse(const QString &name,
         .arg(isSidechain ? "true" : "false", toolUseId, name, inputJson);
 }
 
+// ANTS-1341: variant of `assistantToolUse` that emits an explicit
+// `timestamp` field on the event. Required by the abandonment-filter
+// tests since `parseIsoMs` returns 0 on missing timestamps (fail-soft
+// preserves untouched tasks per INV-7).
+QString assistantToolUseTs(const QString &name,
+                           const QString &inputJson,
+                           const QString &toolUseId,
+                           const QString &timestamp) {
+    return QStringLiteral(
+        R"({"type":"assistant","isSidechain":false,"timestamp":"%1","message":{"role":"assistant","content":[{"type":"tool_use","id":"%2","name":"%3","input":%4}]}})")
+        .arg(timestamp, toolUseId, name, inputJson);
+}
+
 // Build a `user` role event carrying a `tool_result` for the paired
 // tool_use_id. `resultBody` is the result content string.
 QString userToolResult(const QString &toolUseId,
@@ -80,6 +93,24 @@ QString userToolResult(const QString &toolUseId,
     return QStringLiteral(
         R"({"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%1","content":"%2"}]}})")
         .arg(toolUseId, resultBody);
+}
+
+// ANTS-1341: tool_result variant with explicit timestamp.
+QString userToolResultTs(const QString &toolUseId,
+                         const QString &resultBody,
+                         const QString &timestamp) {
+    return QStringLiteral(
+        R"({"type":"user","isSidechain":false,"timestamp":"%1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%2","content":"%3"}]}})")
+        .arg(timestamp, toolUseId, resultBody);
+}
+
+// ANTS-1341: a bare heartbeat user-turn line with only a timestamp.
+// Used to advance `latestEventMs` past the abandonment threshold
+// without contributing any task state.
+QString userHeartbeatTs(const QString &timestamp) {
+    return QStringLiteral(
+        R"({"type":"user","isSidechain":false,"timestamp":"%1","message":{"role":"user","content":[]}})")
+        .arg(timestamp);
 }
 
 // ----- Parser lane (link-based) -----
@@ -918,6 +949,151 @@ void testAnts1407Inv7_modeAThenModeBViaEmpty() {
     }
 }
 
+// ANTS-1341-INV-2/3: TaskCreate stamps `lastEventAtMs`; TaskUpdate
+// bumps it to the update event's timestamp.
+void testAnts1341Inv2_timestampStampedOnCreateAndUpdate() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1341-INV-2 setup"); return; }
+
+    const QString T0 = QStringLiteral("2026-05-15T10:00:00.000Z");
+    const QString T1 = QStringLiteral("2026-05-16T10:00:00.000Z");
+
+    const QString p = writeFixture(dir, "fix1341a.jsonl", {
+        assistantToolUseTs(QStringLiteral("TaskCreate"),
+            R"({"subject":"X","description":"d","activeForm":"x"})",
+            QStringLiteral("toolu_x"), T0),
+        userToolResultTs(QStringLiteral("toolu_x"),
+            QStringLiteral("Task #5 created successfully: X"), T0),
+        assistantToolUseTs(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"5","status":"in_progress"})",
+            QStringLiteral("toolu_xu"), T1),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1341-INV-2: TaskCreate+TaskUpdate yields one task",
+           "got " + std::to_string(tasks.size()));
+    if (tasks.size() == 1) {
+        const QDateTime expected = QDateTime::fromString(T1, Qt::ISODateWithMs);
+        const qint64 want = expected.toMSecsSinceEpoch();
+        expect(tasks[0].lastEventAtMs == want,
+               "ANTS-1341-INV-3: lastEventAtMs bumped to TaskUpdate's "
+               "timestamp (not the earlier TaskCreate's)",
+               "got " + std::to_string(tasks[0].lastEventAtMs)
+               + " want " + std::to_string(want));
+    }
+}
+
+// ANTS-1341-INV-5: an `in_progress` task whose last event is more
+// than 24 h before the transcript's latest event is dropped.
+void testAnts1341Inv5_inProgressAbandoned() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1341-INV-5 setup"); return; }
+
+    // T0 = 2026-05-15T10:00:00.000Z
+    // Heartbeat at T0+24h+1ms = 2026-05-16T10:00:00.001Z (just past threshold)
+    const QString T0 = QStringLiteral("2026-05-15T10:00:00.000Z");
+    const QString TH = QStringLiteral("2026-05-16T10:00:00.001Z");
+
+    const QString p = writeFixture(dir, "fix1341b.jsonl", {
+        assistantToolUseTs(QStringLiteral("TaskCreate"),
+            R"({"subject":"Stuck","description":"d","activeForm":"s"})",
+            QStringLiteral("toolu_s"), T0),
+        userToolResultTs(QStringLiteral("toolu_s"),
+            QStringLiteral("Task #9 created successfully: Stuck"), T0),
+        assistantToolUseTs(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"9","status":"in_progress"})",
+            QStringLiteral("toolu_su"), T0),
+        userHeartbeatTs(TH),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 0,
+           "ANTS-1341-INV-5: stuck in_progress task dropped by "
+           "abandonment filter (24h+1ms elapsed)",
+           "got " + std::to_string(tasks.size()));
+}
+
+// ANTS-1341-INV-6/8: an `in_progress` task within 24h of the
+// latest event is preserved.
+void testAnts1341Inv6_recentInProgressPreserved() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1341-INV-6 setup"); return; }
+
+    // T0 = 2026-05-15T10:00:00.000Z
+    // T23 = T0 + 23h (within threshold)
+    const QString T0  = QStringLiteral("2026-05-15T10:00:00.000Z");
+    const QString T23 = QStringLiteral("2026-05-16T09:00:00.000Z");
+
+    const QString p = writeFixture(dir, "fix1341c.jsonl", {
+        assistantToolUseTs(QStringLiteral("TaskCreate"),
+            R"({"subject":"Working","description":"d","activeForm":"w"})",
+            QStringLiteral("toolu_w"), T0),
+        userToolResultTs(QStringLiteral("toolu_w"),
+            QStringLiteral("Task #3 created successfully: Working"), T0),
+        assistantToolUseTs(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"3","status":"in_progress"})",
+            QStringLiteral("toolu_wu"), T23),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1341-INV-6: in_progress task within 24h preserved",
+           "got " + std::to_string(tasks.size()));
+    if (tasks.size() == 1) {
+        expect(tasks[0].status == QStringLiteral("in_progress"),
+               "ANTS-1341-INV-8: preserved task still in_progress");
+    }
+}
+
+// ANTS-1341-INV-5 multi-task: three stale in_progress tasks dropped
+// at once, closing the gap between the boundary test and the
+// user-reported "multi-day pile-up" symptom in § 1.
+void testAnts1341Inv5_multiTaskAbandoned() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1341-INV-5b setup"); return; }
+
+    const QString T0 = QStringLiteral("2026-05-10T10:00:00.000Z");
+    const QString T1 = QStringLiteral("2026-05-10T11:00:00.000Z");
+    const QString T2 = QStringLiteral("2026-05-10T12:00:00.000Z");
+    // Heartbeat 5 days later, well past 24h threshold.
+    const QString TH = QStringLiteral("2026-05-15T12:00:00.000Z");
+
+    const QString p = writeFixture(dir, "fix1341d.jsonl", {
+        assistantToolUseTs(QStringLiteral("TaskCreate"),
+            R"({"subject":"A","description":"d","activeForm":"a"})",
+            QStringLiteral("toolu_a"), T0),
+        userToolResultTs(QStringLiteral("toolu_a"),
+            QStringLiteral("Task #1 created successfully: A"), T0),
+        assistantToolUseTs(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"1","status":"in_progress"})",
+            QStringLiteral("toolu_au"), T0),
+        assistantToolUseTs(QStringLiteral("TaskCreate"),
+            R"({"subject":"B","description":"d","activeForm":"b"})",
+            QStringLiteral("toolu_b"), T1),
+        userToolResultTs(QStringLiteral("toolu_b"),
+            QStringLiteral("Task #2 created successfully: B"), T1),
+        assistantToolUseTs(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"2","status":"in_progress"})",
+            QStringLiteral("toolu_bu"), T1),
+        assistantToolUseTs(QStringLiteral("TaskCreate"),
+            R"({"subject":"C","description":"d","activeForm":"c"})",
+            QStringLiteral("toolu_c"), T2),
+        userToolResultTs(QStringLiteral("toolu_c"),
+            QStringLiteral("Task #3 created successfully: C"), T2),
+        assistantToolUseTs(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"3","status":"in_progress"})",
+            QStringLiteral("toolu_cu"), T2),
+        userHeartbeatTs(TH),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 0,
+           "ANTS-1341-INV-5 multi-task: all three stuck in_progress "
+           "tasks dropped after a 5-day heartbeat",
+           "got " + std::to_string(tasks.size()));
+}
+
 }  // namespace
 
 
@@ -1086,6 +1262,30 @@ TEST(ClaudeTaskList, Ants1407Inv4DeletedFiltered) {
 TEST(ClaudeTaskList, Ants1407Inv7ModeAThenModeBViaEmpty) {
     const int before = expect_failures();
     testAnts1407Inv7_modeAThenModeBViaEmpty();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1341Inv2TimestampStampedOnCreateAndUpdate) {
+    const int before = expect_failures();
+    testAnts1341Inv2_timestampStampedOnCreateAndUpdate();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1341Inv5InProgressAbandoned) {
+    const int before = expect_failures();
+    testAnts1341Inv5_inProgressAbandoned();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1341Inv6RecentInProgressPreserved) {
+    const int before = expect_failures();
+    testAnts1341Inv6_recentInProgressPreserved();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1341Inv5MultiTaskAbandoned) {
+    const int before = expect_failures();
+    testAnts1341Inv5_multiTaskAbandoned();
     if (expect_failures() > before) FAIL();
 }
 
