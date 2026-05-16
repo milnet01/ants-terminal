@@ -1255,18 +1255,24 @@ void ClaudeIntegration::recordMcpTrace(
 }
 
 // ANTS-1402-INV-2 — single dispatch-observation hook. Tees the
-// same numbers to m_tokenUsage and recordMcpTrace. recordCall
-// only fires on the success path ("ok") to preserve the
-// pre-1402 behaviour where failed dispatches updated only the
-// mcp_trace ring, not the per-tool byte counters.
+// same numbers to m_tokenUsage and recordMcpTrace.
+// ANTS-1432 — recordCall now fires on every dispatch with a
+// `success` flag derived from `result`. The pre-1432 short-circuit
+// (recordCall skipped when result != "ok") meant per-tool byte
+// counters under-reported failed-call cost.
 void ClaudeIntegration::recordDispatch(
     const QString &toolName, const QJsonObject &argsObj,
     qint64 argBytes, qint64 outBytes, qint64 wrapBytes,
     qint64 durUs, bool cachedHit, const QString &result) {
-    if (result == QLatin1String("ok")) {
-        m_tokenUsage.recordCall(toolName, argBytes, outBytes,
-                                wrapBytes, durUs);
-    }
+    // ANTS-1432 — recordCall now fires on every dispatch. The engine
+    // routes the byte counts into success- or failed-* accumulators
+    // based on `success`. Pre-1432 behaviour skipped failed branches
+    // entirely; that masked waste-on-failure cost (Vestige CC's
+    // 2026-05-16 observation: "MCP cost tokens for the failed query
+    // and saved none").
+    const bool succeeded = (result == QLatin1String("ok"));
+    m_tokenUsage.recordCall(toolName, argBytes, outBytes,
+                            wrapBytes, durUs, succeeded);
     recordMcpTrace(toolName, argsObj, argBytes, outBytes,
                    durUs, cachedHit, result);
     // ANTS-1427 — per-dispatch audit trail. Gated on

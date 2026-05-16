@@ -16,17 +16,20 @@ for security-relevant changes.
 
 Third bundle from the 0.7.92 plan. Items group around the MCP layer:
 descriptor dedup, response shape, dispatch instrumentation, audit
-trail, and two write-verb additions. Ten items shipped (1409 / 1398
-/ 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1429 / 1431). One item
-deferred (ANTS-1403 — wrap-overhead v3, gated on having clean
-token_usage data which now ships; the v3 work itself stays planned
-for a future bundle). Five follow-ups discovered mid-bundle
-(ANTS-1425 logged for next round; ANTS-1426 fixed-in-bundle;
-ANTS-1427 added + shipped in the pull-3 close-out for ANTS-1422;
-ANTS-1429 added + shipped after 2026-05-16 Vestige CC feedback
-exposed silent-empty as the worst-UX failure mode for non-Ants-format
-roadmaps; ANTS-1431 added + shipped same session to document the
-GFM-task-list sibling format in the standards spec).
+trail, and two write-verb additions. Eleven items shipped
+(1409 / 1398 / 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1429 / 1431
+/ 1432). One item deferred (ANTS-1403 — wrap-overhead v3, gated on
+having clean token_usage data which now ships; the v3 work itself
+stays planned for a future bundle). Six follow-ups discovered
+mid-bundle (ANTS-1425 logged for next round; ANTS-1426 fixed-in-
+bundle; ANTS-1427 added + shipped in the pull-3 close-out for
+ANTS-1422; ANTS-1429 added + shipped after 2026-05-16 Vestige CC
+feedback exposed silent-empty as the worst-UX failure mode for
+non-Ants-format roadmaps; ANTS-1431 added + shipped same session to
+document the GFM-task-list sibling format in the standards spec;
+ANTS-1432 added + shipped same session to surface failed-call cost
+in `token_usage` — the measurement guard that would have caught the
+1429-class regression earlier).
 
 - **ANTS-1409 — Per-tool MCP descriptor blurbs deduplicate the
   "Pass `caller_cwd` to anchor to…" phrasing.** New
@@ -281,6 +284,35 @@ GFM-task-list sibling format in the standards spec).
   documents how it relates to GitHub's `- [ ]` / `- [x]` checkbox
   roadmaps — the most common alternative format. Future readers
   don't have to figure out the relationship themselves.
+
+- **ANTS-1432 — `token_usage` failed-call metric surfaces
+  waste-on-failure per tool.** `token_usage` reported per-tool
+  *savings* on successful calls but not per-tool *waste* on failed
+  calls. A failed `roadmap_query` against a non-Ants-format roadmap
+  (the Vestige case that drove ANTS-1429) cost input tokens for the
+  request envelope and output tokens for the error envelope, but
+  `token_usage` showed zero entries — the dispatcher short-circuited
+  the counter on non-`ok` results. `TokenUsageEngine::recordCall`
+  gains a `success` arg; on failure the byte counts accumulate into
+  new `failedCalls` / `failedBytesIn` / `failedBytesOut` fields
+  (mutually exclusive with the success accumulators, so
+  `est_tokens_saved` arithmetic stays clean).
+  `ClaudeIntegration::recordDispatch` now fires `recordCall` on
+  every dispatch with `success = (result == "ok")`. The envelope
+  surfaces three new per-tool fields plus a summary
+  `total_failed_bytes`. `include_zero:false` retains tools with
+  failed-only history so a regression like 1429 surfaces in the
+  report instead of disappearing. Spec `docs/specs/ANTS-1432.md`;
+  tests `tests/features/token_usage_failed_metric/` (6 INVs covering
+  branch isolation, summary aggregation, filter behaviour, and
+  v2-callsite backward compatibility). 735/735 features green at
+  landing.
+  Layman: when an MCP call fails it still costs tokens — the
+  request and the error response both consume bytes. The
+  token-savings report used to skip these failed calls entirely,
+  hiding their cost. Now every tool's entry shows both "how many
+  tokens you saved" and "how many tokens you spent on failures",
+  so a tool that's net-negative is immediately visible.
 
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 

@@ -258,12 +258,15 @@ public:
     // dispatch path. Mirrors processHookEventForTest's pattern.
     // ANTS-1355 — wrapBytes + durationUs defaulted to preserve v1
     // test-callsite compatibility.
+    // ANTS-1432 — `success` defaulted to true preserves v2 callsite
+    // compatibility; failed-branch tests pass false explicitly.
     void recordTokenUsageForTest(const QString &toolName,
                                  qint64 bytesIn, qint64 bytesOut,
                                  qint64 wrapBytes = 0,
-                                 qint64 durationUs = 0) {
+                                 qint64 durationUs = 0,
+                                 bool   success    = true) {
         m_tokenUsage.recordCall(toolName, bytesIn, bytesOut,
-                                wrapBytes, durationUs);
+                                wrapBytes, durationUs, success);
     }
 
     // ANTS-1294 — frame user-supplied MCP content as data. Wraps a

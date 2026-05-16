@@ -3656,6 +3656,10 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
     // ANTS-1355 — envelope sum across ALL tools (includes those
     // filtered out of `calls[]` by include_zero:false).
     env["total_wrap_bytes"] = static_cast<qint64>(snap.totalWrapBytes);
+    // ANTS-1432 — Σ(failed_bytes_in + failed_bytes_out) across ALL
+    // tools. Net-token-impact for the session is
+    //     total_saved - total_failed_bytes / 4.
+    env["total_failed_bytes"] = static_cast<qint64>(snap.totalFailedBytes);
     env["reset_performed"] = wantsReset;
 
     QJsonArray calls;
@@ -3671,6 +3675,11 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
         c["duration_us_max"]   = static_cast<qint64>(r.durationUsMax);
         c["duration_us_mean"]  = static_cast<qint64>(r.durationUsMean);
         c["est_tokens_saved"]  = static_cast<qint64>(r.estTokensSaved);
+        // ANTS-1432 — per-tool failure cost. Zero for tools that
+        // have only ever succeeded.
+        c["failed_calls"]      = static_cast<qint64>(r.failedCalls);
+        c["failed_bytes_in"]   = static_cast<qint64>(r.failedBytesIn);
+        c["failed_bytes_out"]  = static_cast<qint64>(r.failedBytesOut);
         calls.append(c);
     }
     env["calls"] = calls;

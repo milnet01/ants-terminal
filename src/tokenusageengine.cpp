@@ -35,8 +35,20 @@ void Tracker::recordCall(const QString &toolName,
                          qint64         bytesIn,
                          qint64         bytesOut,
                          qint64         wrapBytes,
-                         qint64         durationUs) {
+                         qint64         durationUs,
+                         bool           success) {
     auto &c = m_counters[toolName];
+    // ANTS-1432 — failed-call branch is mutually exclusive with the
+    // success accumulator. We deliberately do NOT update nCalls /
+    // durations / wrapBytes on failure: those are "what did this
+    // tool cost when it worked" metrics; mixing failure bytes into
+    // estTokensSaved arithmetic would muddy the saved figure.
+    if (!success) {
+        c.failedCalls    += 1;
+        c.failedBytesIn  += bytesIn;
+        c.failedBytesOut += bytesOut;
+        return;
+    }
     // ANTS-1355 INV-4: sentinel handling for min/max — overwrite
     // unconditionally on the first record, then min/max thereafter.
     if (c.nCalls == 0) {
@@ -84,6 +96,10 @@ Snapshot Tracker::buildReport(bool includeZero) const {
         r.durationUsMean = (it.value().nCalls > 0)
             ? (it.value().durationUsSum / it.value().nCalls)
             : 0;
+        // ANTS-1432 v3 fields.
+        r.failedCalls    = it.value().failedCalls;
+        r.failedBytesIn  = it.value().failedBytesIn;
+        r.failedBytesOut = it.value().failedBytesOut;
 
         const qint64 baseline = baselineFor(r.tool);
         // Per-call baseline × n_calls is the modelled "would-have-spent"
@@ -94,8 +110,12 @@ Snapshot Tracker::buildReport(bool includeZero) const {
         const qint64 savedBytes    = std::max<qint64>(0, totalBaseline - totalActual);
         r.estTokensSaved = savedBytes / kCharsPerToken;
 
-        snap.totalSaved     += r.estTokensSaved;
-        snap.totalWrapBytes += r.wrapBytes;  // ANTS-1355 — across ALL tools
+        snap.totalSaved        += r.estTokensSaved;
+        snap.totalWrapBytes    += r.wrapBytes;     // ANTS-1355 — across ALL tools
+        // ANTS-1432 — sum across ALL tools (even ones filtered out
+        // of calls[] by include_zero) so the envelope summary stays
+        // truthful regardless of the include_zero filter.
+        snap.totalFailedBytes  += r.failedBytesIn + r.failedBytesOut;
         all.append(r);
     }
 
@@ -115,7 +135,10 @@ Snapshot Tracker::buildReport(bool includeZero) const {
     } else {
         snap.calls.reserve(all.size());
         for (auto &r : all) {
-            if (r.estTokensSaved > 0) {
+            // ANTS-1432 — also retain tools with only failed calls
+            // (estTokensSaved == 0 but failedCalls > 0). Surfacing
+            // failure-only tools is the whole point of the metric.
+            if (r.estTokensSaved > 0 || r.failedCalls > 0) {
                 snap.calls.append(std::move(r));
             }
         }

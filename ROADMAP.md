@@ -6219,7 +6219,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: docs/standards.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1432] **`token_usage` failed-call metric — surface waste-on-failure per tool.**
+- ✅ [ANTS-1432] **`token_usage` failed-call metric — surface waste-on-failure per tool.** Shipped 2026-05-16 (Bundle C pull 11). `TokenUsageEngine::recordCall` v3 signature adds `success` arg; failed branch accumulates into new `failedCalls` / `failedBytesIn` / `failedBytesOut` fields (mutually exclusive with the success accumulators). `recordDispatch` now fires on every dispatch instead of short-circuiting on non-`ok`. Envelope adds per-tool `failed_calls` / `failed_bytes_in` / `failed_bytes_out` + summary `total_failed_bytes`. `include_zero:false` retains tools with failed-only history. Spec: docs/specs/ANTS-1432.md. Tests: tests/features/token_usage_failed_metric/ (6 INVs). 735/735 features green.
   **Problem.** Vestige CC: "MCP cost tokens for the failed query
   and saved none." `token_usage` reports per-tool *savings* on
   successful calls but doesn't surface per-tool *waste* on failed
