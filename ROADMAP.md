@@ -6325,7 +6325,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, tests, config, sessionmemoryengine.
   Source: vestige-cc-cross-project-pattern-2026-05-16.
 
-- 📋 [ANTS-1435] **`session_memory` read ops (`list`, `get`) refuse cross-tenant on focused-tab mismatch despite caller_cwd.**
+- ✅ [ANTS-1435] **`session_memory` read ops (`list`, `get`) refuse cross-tenant on focused-tab mismatch despite caller_cwd.** Shipped 2026-05-16 (Vestige sweep pull 3, commit 706f3cb). Spec: [`docs/specs/ANTS-1435.md`](docs/specs/ANTS-1435.md). Tests: `tests/features/session_memory_read_caller_cwd/` (7 INVs) + `mcp_session_memory/` REG-3b rewrite. Cross-doc amendments to CLAUDE.md, ANTS-1336 INV-7, ANTS-1430 double-gating. Cold-eyes-reviewed pre-implementation (3 HIGHs, 7 MEDs, 7 LOWs folded in; option A on §Limitations sign-off). 797/797 features green.
+
   Vestige CC session 2026-05-16: `session_memory op:"list"` returned `code:"cwd_mismatch"` because the focused Ants tab was on a different project than `caller_cwd`. The whole point of `caller_cwd` (ANTS-1391, ANTS-1336) is to anchor reads to the caller's project, but ANTS-1336 § INV-7 routes every `session_memory` op through `RcGate` — including reads — which gates on focused-tab cwd-match, not caller_cwd-anchor.
   
   Other read-only verbs (`roadmap_query`, `subsystem`, `git_state`) honour `caller_cwd` as the tenancy assertion. `session_memory`'s reads should match that pattern: the storage is tenant-hashed by cwd, so a read with `caller_cwd` is a self-scoped lookup against the caller's own bucket — no cross-tenant risk. Writes (`put`, `delete`) keep the stronger gate.
@@ -6353,7 +6354,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, roadmap_query.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1437] **`roadmap_query` section-index mode returns slug + headline + active-count without bullets.**
+- ✅ [ANTS-1437] **`roadmap_query` section-index mode returns slug + headline + active-count without bullets.** Shipped 2026-05-16 (Vestige sweep pull 1, commits f70b7b3 + 26a2f9b — pull 2 was the MCP-dispatch arg-forwarding fix). Spec: [`docs/specs/ANTS-1437.md`](docs/specs/ANTS-1437.md). Tests: `tests/features/roadmap_query_section_index/` (9 INVs including DispatchForwardsModeArg regression for the boundary-drop bug found at live-test). New `mode:"section_index"` arg; ~5 KB on a 500-bullet roadmap vs ~100 KB for full active. 797/797 features green.
+
   Vestige CC session 2026-05-16: had to guess section slugs (`slice-12-editor-undo-hygiene` etc.); guessed wrong on a couple, burnt round-trips. A `roadmap_query` mode that returns only the section index (slug + headline + active-count per section, no bullets) at single-digit kB cost would replace the "fire one query per slice" pattern (12+ calls in that session).
   
   Design sketch: new arg `mode:"section_index"` (default `"bullets"`). When set, response carries `sections:[{slug,headline,level,active_count,shipped_count,total_count}]` and no `bullets[]`. Cheap to compute — the existing parser walks every `##`/`###` heading and tallies bullets per section; just expose the tally. Envelope:
@@ -6375,7 +6377,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, roadmap_query.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1438] **`roadmap_query bullets[].id` is sometimes a 10-char nonce instead of the human-readable bold-ID.**
+- ✅ [ANTS-1438] **`roadmap_query bullets[].id` is sometimes a 10-char nonce instead of the human-readable bold-ID.** Shipped 2026-05-16 (Vestige sweep pull 2, commit d53fa2a). Spec: [`docs/specs/ANTS-1438.md`](docs/specs/ANTS-1438.md). Tests: `tests/features/gfm_adapter_bold_id_multitoken/` (8 INVs, includes Vestige-fixture INV-8). Widened `extractBoldId` regex to match multi-token bold prefixes (`**FW W5 (cont.)**`, `**Terrain System**`); new `bold_id` envelope field; em-dash separator splits headline from ID; section-mode emission picked up missing `format/synthetic/anchor/bold_id` ANTS-1428 metadata in passing. 797/797 features green.
+
   Vestige CC session 2026-05-16: `roadmap_query` on Vestige's GFM-task-list roadmap returned `bullets[].id` as a 10-char nonce (e.g. `nwd5vars2r`) for some entries and as the human-readable bold-ID (e.g. `Sh4`, `R2 follow-up`) for others. The bold-ID lives inside `headline` for the nonce-id entries; consumers can't correlate with commit-message prefixes (`Ed7:`, `Pe5:`) without parsing the headline string.
   
   Root cause is in the ANTS-1428 GFM adapter: the content-hash synthetic ID (FNV-1a 64-bit, base36-encoded) is generated as a fallback when no bold-ID locator is detected. The detection likely matches `**Bold-ID.**` but misses other bold-ID shapes documented in the spec (`**Sh4**`, `**R2 follow-up.**`, `**W8 part 2.**`).
@@ -6444,6 +6447,26 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Lanes: coldeyesengine, cold_eyes_brief.
   Source: in-session-2026-05-16 (self-observed during ANTS-1435/1436 cold-eyes review).
+
+- 📋 [ANTS-1441] **`roadmap_log op:"flip"` supports ants-v1 native format (currently GFM-only).**
+  In-session reproduction 2026-05-16: after shipping ANTS-1435, called `mcp__ants__roadmap_log{op:"flip", id:"ANTS-1435", to_status:"shipped"}` on this repo's own ROADMAP.md. Returned `{ok:false, code:"unrecognised_format", error:"roadmap_log: parsed zero GFM-format bullets ... file may be in ants-v1 native format"}`.
+  
+  The `op:"flip"` verb (added by ANTS-1428) is hard-coded to the GFM-adapter parser. Ants's own ROADMAP.md uses ants-v1 native shape (`- 📋 [ANTS-NNNN] **Title.** body...`). Vestige's project uses GFM. Both need the flip.
+  
+  Fix: dispatch on the detected format (same predicate the parser uses):
+  
+  - If `format == "github-task-list"`, use the existing ANTS-1428 path (bold-ID / caret-anchor / headline-hash locator + status checkbox flip + anchor injection).
+  - If `format == "ants-v1"`, locate the bullet via `[ANTS-NNNN]` token (rxId in parseBullets), find the leading status emoji on that line, replace it with the to_status emoji. Anchor injection is not needed — `[ANTS-NNNN]` IS the durable handle.
+  
+  The two paths share the same locator/refusal envelope (`bullet_not_found`, `bullet_ambiguous`); the actual edit is just "replace one Unicode emoji at a known offset" — atomic via QSaveFile.
+  
+  Test fixtures: extend `tests/features/mcp_adapter_github_tasklist/test_adapter_write.cpp` with ants-v1 fixtures, OR add `tests/features/mcp_roadmap_log_flip_native/` per the new path.
+  
+  Without this, "ship + flip via MCP" workflow only works for Vestige-style projects; Ants itself (and any other ants-v1 project) still requires hand-edits.
+  **Layman:** When Claude finishes implementing an ANTS-NNNN item, it should be able to flip the roadmap entry from 📋 to ✅ via MCP. Right now the flip verb only works on GFM-style roadmaps; Ants's own roadmap is the native ants-v1 format and the verb refuses. Result: every "mark item shipped" still requires a manual file edit.
+  Kind: implement.
+  Lanes: remotecontrol, roadmap_log, ANTS-1428.
+  Source: in-session-2026-05-16 (self-observed during ANTS-1435 ship).
 
 ### ⚡ Other improvements (performance, security, optimisations)
 
