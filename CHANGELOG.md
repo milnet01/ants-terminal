@@ -12,6 +12,174 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🪙 Bundle C — MCP token-economy hygiene (in flight, 2026-05-16)
+
+Third bundle from the 0.7.92 plan. Items group around the MCP layer:
+descriptor dedup, response shape, dispatch instrumentation, and one
+write-verb addition. Six items shipped (1409 / 1398 / 1399 / 1402 /
+1424 / 1426). One item is mid-flight at the closeout boundary
+(ANTS-1422 — pulls 1 + 2 of 3 landed; pull 3 root-cause fix is gated
+on diagnostic data from the relaunched binary). One item deferred
+(ANTS-1403 — wrap-overhead v3, gated on ANTS-1422 unblocking
+`token_usage`; closeout-measurement was recorded but the v3 work
+itself stays planned). Two follow-ups discovered mid-bundle
+(ANTS-1425 logged; ANTS-1426 fixed-in-bundle).
+
+- **ANTS-1409 — Per-tool MCP descriptor blurbs deduplicate the
+  "Pass `caller_cwd` to anchor to…" phrasing.** New
+  `callerCwdSuffix` lambda in `claudeintegration.cpp`'s `tools/list`
+  handler returns the canonical short form **"Pass `caller_cwd` to
+  anchor to your tab (ANTS-1392)."**; three tool descriptions
+  (`get_last_command`, `get_git_status`, `get_environment`) now
+  `+ callerCwdSuffix()` instead of spelling the suffix out.
+  `get_scrollback` and `get_text` keep their tool-specific phrasing
+  (long-form fallback caveat / inline arg-list form respectively).
+  Source-level dedup, not wire compression — each tool's full
+  description is still emitted. Spec `docs/specs/ANTS-1409.md`;
+  tests `tests/features/mcp_caller_cwd_suffix_helper/` (7
+  invariants). 678/678 features green at landing.
+  Layman: three MCP tool descriptions used to each spell out the
+  same "Pass caller_cwd to anchor to your tab" sentence in their
+  own words; deduplicated into one shared helper so future tools
+  inherit the canonical phrasing instead of retyping it.
+
+- **ANTS-1398 — `roadmap_query` filters out header-rollup bullets
+  server-side.** `cmdRoadmapQuery` now drops section-rollup bullets
+  (empty `id` AND empty `headline`, status emoji only) from
+  `bullets[]` post-status filter, in both the full-file and
+  section-mode emission paths. New opt-in arg
+  `include_section_headers:true` retains the legacy shape for
+  back-compat callers; the envelope echoes the field only when the
+  caller set it (INV-5). The cache stores the unfiltered array so a
+  follow-up call with the opt-in flag doesn't re-parse. Token
+  saving on a 161-bullet active-filter response: ~10 rollups ×
+  ~70 B = ~700 B per call. Spec `docs/specs/ANTS-1398.md`; tests
+  `tests/features/roadmap_query_filter_section_headers/` (6
+  invariants). 684/684 features green.
+  Layman: the roadmap-lookup tool was returning some "section
+  heading" placeholders mixed in with the real items; now drops
+  them by default so callers get only actionable entries. Pass
+  `include_section_headers:true` to opt back in.
+
+- **ANTS-1399 — `tool_info(name)` MCP verb — fetch a single
+  tool's descriptor.** New inline-dispatched MCP verb returns one
+  descriptor slice (`{ok, name, description, inputSchema}`) from a
+  lazy `m_lastToolsList` snapshot populated at `tools/list` end.
+  Cache lifetime: process; descriptors are compile-time literals so
+  the snapshot never goes stale. Empty cache →
+  `{ok:false, code:"tools_not_ready"}`; unknown name →
+  `{ok:false, code:"unknown_tool", available:[...]}`; empty name →
+  `{ok:false, code:"missing_name"}`. Classified `ProcessGlobal`
+  (no caller_cwd consulted); bypasses the ANTS-1294 wrap
+  (descriptor metadata, not user content). Self-registers in
+  `tools/list` so `tool_info({name:"tool_info"})` round-trips.
+  Token saving on a refresh-one-tool flow: ~5 KiB → ~150 B per
+  call. Spec `docs/specs/ANTS-1399.md`; tests
+  `tests/features/mcp_tool_info_verb/` (8 invariants).
+  McpProviderRegistry INV-8b allowlist amended to carve out
+  `tool_info` alongside `get_session_info`. 692/692 features green.
+  Layman: added a way for Claude to ask about *one* MCP tool's
+  args instead of re-loading the full ~5 KiB tools/list every time.
+
+- **ANTS-1402 — Share per-call observation point between
+  `mcp_trace` and `token_usage`.** New
+  `ClaudeIntegration::recordDispatch` hook tees the same
+  `argBytes` / `outBytes` / `wrapBytes` / `durUs` / `cachedHit` to
+  both `m_tokenUsage.recordCall` (gated on `result == "ok"`) and
+  `recordMcpTrace` (unconditional). Both branches at the MCP
+  dispatch site (success + failure) collapse to a single
+  `recordDispatch(...)` call each. `m_tokenUsage.recordCall` now
+  appears exactly once in `claudeintegration.cpp` — inside
+  `recordDispatch` — so adding a third observer (e.g. a future
+  per-cwd telemetry tap) is one internal change. Byte-count
+  contract from ANTS-1284 preserved; failure-branch behaviour
+  preserved (m_tokenUsage skipped when result != "ok"). Spec
+  `docs/specs/ANTS-1402.md`; tests
+  `tests/features/mcp_record_dispatch_unification/` (5 invariants).
+  697/697 features green.
+  Layman: the dispatch site updated two trackers side-by-side with
+  the same numbers; merged into a single observation point so
+  adding a third tracker later is trivial.
+
+- **ANTS-1424 — MCP `roadmap_log` write verb — Claude appends
+  roadmap items without hand-editing `ROADMAP.md`.** New
+  `cmdRoadmapLog` in `remotecontrol.cpp` + schema in the
+  `tools/list` block + Required-contract entry +
+  `registerToolProvider` lambda. Required args: `caller_cwd`,
+  `section`, `status` (planned/in-progress/shipped/considered word
+  form; verb writes the emoji), `headline`, `kind` (21-entry enum
+  mirroring `roadmap-format.md` § 3.5.3), `source`. Optional:
+  `body`, `layman`, `lanes[]`, `id_hint`. Counter rewrite via
+  `QSaveFile` (atomic). Section insertion uses
+  `RoadmapIndex::buildIndex` + `findBySlug`; bullet splices at the
+  section's `lineEnd` boundary so it lands at the end of the named
+  section, before the next `##`/`###` heading. Envelope:
+  `{ok, id, file, line, bytes_written}` on success; 11 error codes
+  for the failure shapes. Out of scope v1: editing existing items
+  (`roadmap_update` is a separate ticket); cross-project routing
+  (one repo per call). Pairs with ANTS-1156 (roadmap-system audit)
+  which has the broader framing question; this is the narrow
+  MCP-write piece. Spec `docs/specs/ANTS-1424.md`; tests
+  `tests/features/mcp_roadmap_log_verb/` (8 invariants,
+  source-scrape only — behavioural fixture test deferred to v2).
+  710/710 features green.
+  Layman: when Claude wants to log a new roadmap item, it had to
+  hand-edit the markdown file and bump a counter file. Now there's
+  an MCP tool that does both atomically — saves tokens and gets
+  the format right every time.
+
+- **ANTS-1426 — `parseBullets` blank-line continuation —
+  CommonMark loose-list parity.** `RoadmapDialog::parseBullets`
+  terminated bullet-body collection at the first blank line —
+  stricter than CommonMark's loose-list mode. The ANTS-1422 entry
+  uses a blank line between "pull 7" and "pull 1" sub-blocks for
+  human readability; the `Kind: fix.` line at the bottom never
+  reached the regex matcher, so `roadmap_query` returned `kind:""`
+  for that bullet. Caught by the Bundle C dogfood read-back. Fix:
+  when the loop hits a blank line, peek to the next non-blank
+  line. If that line is an indented continuation (`  …`, not
+  `- `/`* `/`#`), absorb the blank as a single `\n` in the body
+  and keep collecting. INV-3/4/5 preserved (new top-level bullet /
+  heading / EOF after blank still terminate correctly).
+  Behavioural test
+  `tests/features/roadmap_parser_blank_line_continuation/` (5
+  invariants, all five passing). 717/717 features green.
+  Layman: the roadmap dialog's bullet parser was throwing away
+  the "Kind: ..." line if a bullet had a blank line in its body
+  (e.g. for readability). Fixed — matches the markdown standard's
+  loose-list rule now.
+
+- **ANTS-1422 (pulls 1–2 of 3) — `token_usage` diagnostic envelope
+  + production bypass.** The MCP `token_usage` tool was refusing
+  every call on a live, configured Ants with
+  `{ok:false, code:"no_claude_integration"}` despite the integration
+  being demonstrably wired (`mcp_trace`, `caller_cwd_info`,
+  `roadmap_query` all worked from the same dispatch site). Pull 1
+  (`f8188e6`) added a `debug` object to both error envelopes
+  (`no_ci`, `no_main`) carrying `m_main_ptr`, `this_rc_ptr`, and
+  `ci_via_getter_null` for hypothesis discrimination. Pointer
+  values from the relaunched binary confirmed `m_main` was a valid
+  stack pointer and `RemoteControl* this` was a valid heap pointer,
+  so the static-analysis-unreachable null branch was firing.
+  Pull 2 (`26c7b42`) ships the production bypass: `cmdTokenUsage`
+  takes an optional `ClaudeIntegration* explicitCi` arg; the MCP
+  lambda in `mainwindow.cpp` captures `m_claudeIntegration` directly
+  and passes it. The `m_main->claudeIntegration()` indirection
+  stays as a fallback for non-lambda callers and still emits the
+  diagnostic envelope if it fails. Lambda also passes
+  `reinterpret_cast<quintptr>(this)` for cross-comparison.
+  Tests `tests/features/token_usage_no_ci_diagnostic/` extended
+  with INV-6/INV-7 locking the bypass wiring. 712/712 features
+  green. Pull 3 (root-cause fix once diagnostics arrive) remains
+  open; ticket stays 🚧.
+  Layman: the tool that measures Claude's token usage was broken
+  on the live build — refusing every call. Two pulls land in this
+  bundle: one that captures diagnostic data to figure out why,
+  and one that routes around the bug so the tool works in
+  production while the underlying mystery is debugged. The actual
+  root-cause fix comes in a follow-up pull once the diagnostic
+  data arrives from the user's next session.
+
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 
 Sixth pull from the 0.7.92 bundle plan (`ROADMAP.md` § 0.7.92 →

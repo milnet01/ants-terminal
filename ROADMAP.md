@@ -4762,7 +4762,7 @@ cycle. Cadence: one bundle per Wednesday per
 |--------|-------|-------|---------------|
 | **A** | `terminalgrid` correctness + perf | ANTS-1333 ✅ · 1334 ✅ · 1362 ✅ · 1366 ✅ | `terminalgrid.cpp` |
 | **B** | `caller_cwd` Phase 3 + diagnostics | ANTS-1336 ✅ · 1400 ✅ · 1401 ✅ · 1404 ✅ | `remotecontrol.cpp` · `mainwindow.cpp` |
-| **C** | MCP token-economy hygiene | ANTS-1398 · 1399 · 1402 · 1403 · 1409 | `claudeintegration.cpp` · `remotecontrol.cpp` |
+| **C** | MCP token-economy hygiene | ANTS-1409 ✅ · 1398 ✅ · 1399 ✅ · 1402 ✅ · 1424 ✅ · 1426 ✅ · 1422 🚧 (pulls 1–2 / 3) · 1403 (v3 defer) | `claudeintegration.cpp` · `remotecontrol.cpp` |
 | **D** | Skill → MCP orchestrator trio | ANTS-1351 · 1352 · 1397 · 1410 | new engines + MCP dispatch |
 | **E** | MCP API hygiene + governance | ANTS-1353 · 1354 · 1356 · 1405 | docs + descriptor + parser |
 | **F** | CC tracker state drift | ANTS-1341 ✅ · 1375 ✅ · 1407 ✅ | `claudetasklist.cpp` · `claudestatuswidgets.cpp` |
