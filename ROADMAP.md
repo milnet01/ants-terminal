@@ -6188,7 +6188,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: session_memory, remotecontrol.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1431] **`docs/standards/roadmap-format.md` — add §3.10 GFM task-list compatibility section.**
+- ✅ [ANTS-1431] **`docs/standards/roadmap-format.md` — add §3.10 GFM task-list compatibility section.** Shipped 2026-05-16 (Bundle C pull 10). New § 3.10 covers semantic equivalence (`[ ]`↔📋, `[x]`↔✅), reader-side adapter mode (ANTS-1428), migration recipe, and multi-prefix conventions. Existing anti-patterns renumbered to § 3.11.
   **Problem.** `docs/standards/roadmap-format.md` documents
   Ants' emoji-bullet convention but doesn't acknowledge GFM
   task-list as the broader sibling format. Vestige CC referred
@@ -12622,7 +12622,9 @@ here.)
 
   **(7) Writing standards** — already documented in
   `docs/standards/roadmap-format.md` § 3.5 (bullet structure)
-  + § 3.10 (anti-patterns). Worth a refresh against the recent
+  + § 3.11 (anti-patterns; renumbered from § 3.10 by ANTS-1431
+  when § 3.10 became the GFM-compat section). Worth a refresh
+  against the recent
   six months of bullets: the actual median bullet is much
   longer than the spec's example shows (≈30-50 LoC of body
   vs. the spec's 3-4-line example). Either tighten the

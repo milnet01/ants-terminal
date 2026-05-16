@@ -16,15 +16,17 @@ for security-relevant changes.
 
 Third bundle from the 0.7.92 plan. Items group around the MCP layer:
 descriptor dedup, response shape, dispatch instrumentation, audit
-trail, and two write-verb additions. Nine items shipped (1409 / 1398
-/ 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1429). One item deferred
-(ANTS-1403 — wrap-overhead v3, gated on having clean token_usage
-data which now ships; the v3 work itself stays planned for a future
-bundle). Four follow-ups discovered mid-bundle (ANTS-1425 logged for
-next round; ANTS-1426 fixed-in-bundle; ANTS-1427 added + shipped in
-the pull-3 close-out for ANTS-1422; ANTS-1429 added + shipped after
-2026-05-16 Vestige CC feedback exposed silent-empty as the worst-UX
-failure mode for non-Ants-format roadmaps).
+trail, and two write-verb additions. Ten items shipped (1409 / 1398
+/ 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1429 / 1431). One item
+deferred (ANTS-1403 — wrap-overhead v3, gated on having clean
+token_usage data which now ships; the v3 work itself stays planned
+for a future bundle). Five follow-ups discovered mid-bundle
+(ANTS-1425 logged for next round; ANTS-1426 fixed-in-bundle;
+ANTS-1427 added + shipped in the pull-3 close-out for ANTS-1422;
+ANTS-1429 added + shipped after 2026-05-16 Vestige CC feedback
+exposed silent-empty as the worst-UX failure mode for non-Ants-format
+roadmaps; ANTS-1431 added + shipped same session to document the
+GFM-task-list sibling format in the standards spec).
 
 - **ANTS-1409 — Per-tool MCP descriptor blurbs deduplicate the
   "Pass `caller_cwd` to anchor to…" phrasing.** New
@@ -255,6 +257,30 @@ failure mode for non-Ants-format roadmaps).
   path and size, so the caller knows immediately to fall back
   to grep. Same fix on the roadmap-write tool — refuses to
   splice a bullet into a file it can't parse.
+
+- **ANTS-1431 — `docs/standards/roadmap-format.md` § 3.10 documents
+  GFM task-list compatibility.** The format spec previously
+  described Ants' emoji-bullet convention in isolation, leaving
+  every fresh reader (human or LLM) to re-derive the relationship
+  with the canonical GitHub markdown task-list shape
+  (`- [ ]` / `- [x]`). Vestige CC referred to GFM task-list as
+  "the older markdown task-list convention" during the 2026-05-16
+  feedback session — accurate, and worth surfacing in the spec
+  itself so future sessions don't pay that re-derivation cost.
+  New § 3.10 covers: semantic equivalence
+  (`[ ]`↔📋 planned, `[x]`↔✅ shipped, with 🚧 / 💭 documented
+  as Ants-format extensions); reader-side adapter mode
+  (ANTS-1428, when it ships, reads GFM-task-list roadmaps without
+  migration); a four-step migration recipe for projects converting
+  GFM → emoji; and the clarification that single-prefix-per-repo
+  is convention, not requirement (multi-prefix repos like Vestige
+  with `Sh-` / `Ed-` short prefixes are permitted, they just need
+  one counter per prefix). Existing anti-patterns section
+  renumbered to § 3.11. Doc-only — no code changes.
+  Layman: the project's roadmap-format guide now explicitly
+  documents how it relates to GitHub's `- [ ]` / `- [x]` checkbox
+  roadmaps — the most common alternative format. Future readers
+  don't have to figure out the relationship themselves.
 
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 

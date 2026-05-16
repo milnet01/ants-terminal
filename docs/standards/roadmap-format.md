@@ -447,7 +447,81 @@ Spec for the viewer's archive-load path:
 (Ants project; the standard owns the layout, the spec owns the
 viewer behaviour).
 
-### 3.10 ROADMAP anti-patterns
+### 3.10 Compatibility with GFM task lists
+
+The wider markdown ecosystem has a sibling convention — GitHub
+Flavored Markdown (GFM) **task lists**:
+
+```markdown
+- [ ] Build login screen
+- [x] Wire CI cache
+```
+
+GFM task lists are the canonical GitHub convention for ad-hoc
+to-do tracking in markdown. **This spec's emoji-bullet format
+extends GFM task lists, it does not replace them.** The
+extensions are the parts that GFM doesn't model:
+
+- A four-state taxonomy (✅ 🚧 📋 💭) instead of the GFM
+  two-state checkbox (`[x]` / `[ ]`).
+- Stable IDs (`[PROJ-NNNN]`) for cross-doc reference.
+- Required `Kind:` / `Source:` / `Layman:` metadata lines per
+  bullet.
+
+#### 3.10.1 Semantic equivalence
+
+| GFM      | This spec     | Meaning                |
+|----------|---------------|------------------------|
+| `[ ]`    | 📋            | Planned, not started.  |
+| `[x]`    | ✅            | Done / shipped.        |
+| *(none)* | 🚧            | In progress.           |
+| *(none)* | 💭            | Idea / not yet planned.|
+
+The two GFM states map cleanly to two of this spec's four.
+GFM has no native syntax for "in progress" or "speculative" —
+projects that need them on a GFM-task-list roadmap either
+adopt the full emoji set or annotate with a prose prefix
+(`- [ ] (WIP) Build login screen`). The emoji set is
+strictly more expressive.
+
+#### 3.10.2 Reader-side adapter mode
+
+Ants Terminal's MCP verbs (`roadmap_query`, `roadmap_log`) and
+the `RoadmapDialog` viewer can read GFM-task-list roadmaps
+without requiring migration. See **ANTS-1428** for the adapter
+implementation; the contract is that `[ ]` / `[x]` bullets are
+surfaced through the same envelope shape as emoji bullets, with
+the missing fields (`Kind:`, `Source:`, etc.) returned as
+empty strings rather than parse errors. Projects that prefer
+GFM stay on GFM; projects that adopt the full Ants format get
+the extra surface.
+
+#### 3.10.3 Migration
+
+A project that wants the full emoji-bullet format from a
+GFM-task-list starting point converts in four passes:
+
+1. Replace `- [x]` with `- ✅`, `- [ ]` with `- 📋`.
+2. Assign stable IDs (`[PROJ-NNNN]`) bottom-up against a fresh
+   `.roadmap-counter` (§ 3.5.2).
+3. Add `Kind:` and `Source:` lines under each bullet (§ 3.5.3).
+4. Add `Layman:` summaries (§ 3.5 Bullet structure).
+
+The migration is reversible — write `[x]` / `[ ]` back, drop
+the metadata, and the file is GFM again.
+
+#### 3.10.4 Prefix conventions
+
+This spec uses **one prefix per repo** (`ANTS-`, `VESTIGE-`,
+…) by convention. Repos with multiple work streams sometimes
+prefer **multi-prefix** schemes (`Sh-`, `Ed-`, `Phase-`) for
+lane visibility. Multi-prefix is permitted — the format-spec
+tooling only requires the regex `\[[A-Z][A-Z0-9_-]+-\d+\]`
+to match. The single-prefix rule is convention because it
+keeps `.roadmap-counter` unambiguous; multi-prefix repos need
+one counter per prefix.
+
+### 3.11 ROADMAP anti-patterns
 
 - ❌ Status emoji other than ✅ 🚧 📋 💭. Tools won't recognise
   them.
@@ -458,7 +532,8 @@ viewer behaviour).
   order is not.
 - ❌ More than ~3 🚧 bullets simultaneously.
 - ❌ Mixing `[ ]` / `[x]` task-list syntax with the emoji
-  status system.
+  status system on the same bullet (the formats coexist at
+  file scope per § 3.10, but not at bullet scope).
 
 
 ## 4. CHANGELOG.md format spec
