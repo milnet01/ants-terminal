@@ -6339,7 +6339,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, session_memory, ANTS-1336.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1436] **`roadmap_query status:"active"` blows the 25k-token response cap on large roadmaps.**
+- ✅ [ANTS-1436] **`roadmap_query status:"active"` blows the 25k-token response cap on large roadmaps.** Shipped 2026-05-16 (Vestige sweep pull 4, commit f9647bc). Spec: [`docs/specs/ANTS-1436.md`](docs/specs/ANTS-1436.md). Tests: `tests/features/roadmap_query_pagination/` (14 INVs). New `src/paginationengine.{h,cpp}` in ants_core_lib — stateless `pageBullets` helper with measure-then-cut binary search; offset/limit args; auto-truncate fallback when caller omitted limit AND filtered exceeds 20 KB soft cap; envelope adds offset/limit/total/truncated/next_offset only when pagination applied (back-compat with pre-1436 callers). Cold-eyes-folded (H3 measure-then-cut replacing the 180 B estimate). 811/811 features green.
+
   Vestige CC session 2026-05-16: their Phase 10.9 roadmap is large; `roadmap_query status:"active"` returned ~100 KB on a single line, exceeding the 25k-token cap and triggering the spill-file fallback. The current envelope is one giant JSON array on one line.
   
   Three candidate fixes (not mutually exclusive):
