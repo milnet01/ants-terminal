@@ -874,6 +874,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_filter_section_headers/test_roadmap_query_filter_section_headers.cpp
                 # ANTS-1437 roadmap_query section_index mode.
                 tests/features/roadmap_query_section_index/test_roadmap_query_section_index.cpp
+                # ANTS-1435 session_memory + project_layout read-op tenancy split.
+                tests/features/session_memory_read_caller_cwd/test_session_memory_read_caller_cwd.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.

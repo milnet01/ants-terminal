@@ -6411,6 +6411,40 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: session_memory, project_layout, claudeintegration.
   Source: vestige-cc-feedback-2026-05-16.
 
+- 📋 [ANTS-1440] **`cold_eyes_brief` spec-lane manifest is too thin — empty cited_code_paths, generic cross-refs, useless summary.**
+  In-session reproduction 2026-05-16: I drafted ANTS-1435 (security model amendment) + ANTS-1436 (pagination), then called `mcp__ants__cold_eyes_brief{lane:"spec/ANTS-1435"}` to get the reviewer brief. The response:
+  
+  ```json
+  {
+    "doc_paths": ["docs/specs/ANTS-1435.md"],
+    "cross_reference_docs": ["CLAUDE.md", "README.md", "ROADMAP.md", "CHANGELOG.md"],
+    "cited_code_paths": [],
+    "summary": "Single spec lane (active)"
+  }
+  ```
+  
+  Three concrete gaps:
+  
+  1. **`cited_code_paths` is always empty for spec lanes.** ANTS-1435 names `src/remotecontrol.cpp:4818`, `src/remotecontrolgate.cpp`, `src/sessionmemoryengine.cpp` — the actual code the reviewer needs to read to verify the spec's claims. The brief doesn't extract these. ANTS-1319's `extractCitedCodePaths` (the engine helper) clearly works for indie-review (per code path naming) but isn't applied to spec lanes.
+  
+  2. **`cross_reference_docs` is the generic 4** (CLAUDE/README/ROADMAP/CHANGELOG) instead of the specs the spec actually references. ANTS-1435 names ANTS-1336, ANTS-1372, ANTS-1283, ANTS-1430, ANTS-1437 in its "Pairs with:" line. The brief should parse the spec's frontmatter / first-paragraph "Pairs with:" / "Cross-refs:" markers and include those specs as cross-reference docs.
+  
+  3. **Summary string is "Single spec lane (active)" — uselessly generic** for every spec lane. Should be the spec's `# ANTS-NNNN — <title>` H1 line (or first sentence of the Problem section). Otherwise Claude has to Read the spec just to know what to brief the reviewer about.
+  
+  Fix sketch in `src/coldeyesengine.cpp::buildBrief` (or the equivalent):
+  
+  - Run a `parseSpecHeader(doc_path)` pass on each `spec/*` lane:
+    - First H1 line → `summary`
+    - Lines matching `^- \*\*Pairs with:\*\*` or `^- ANTS-NNNN —` → cross-reference doc list (resolve to `docs/specs/ANTS-NNNN.md`)
+    - Regex pass on body for `src/<name>\.{h,cpp}(:\d+)?` matches → `cited_code_paths`
+  - Cap citation lists at a sensible threshold (~20 each) to keep the brief under the documented ~10 KB token budget.
+  
+  Composes with ANTS-1413 (single-doc cold-eyes brief): both addressing the "drafting one new spec needs one review" pattern. Could land 1413 first as the entry-point and use this fix to make its output usable.
+  **Layman:** When Claude asks Ants for a cold-eyes review brief on a single spec, the answer is uselessly thin — no code-path citations from inside the spec, no related-spec links from the spec's "Pairs with:" section, and a generic "Single spec lane (active)" summary that says nothing about what the spec is. Result: Claude has to re-read the spec just to figure out what to put in front of the reviewer.
+  Kind: fix.
+  Lanes: coldeyesengine, cold_eyes_brief.
+  Source: in-session-2026-05-16 (self-observed during ANTS-1435/1436 cold-eyes review).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single

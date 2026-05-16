@@ -239,15 +239,21 @@ as a type and flags every signal emission.
   the explicit declaration. `TabSpecific` is classified but not
   enforced in Phase 3a. See `docs/specs/ANTS-1404.md`.
 
-- **session_memory routes every op through RcGate (ANTS-1336).**
-  Including reads. The legacy `cwd` arg is ignored by the handler
-  (still in the schema for one release as `DEPRECATED`, drops in
-  0.7.93). `caller_cwd` is the only project-scope source.
-  ANTS-1372 § 4 INV-7 is amended — any read-only verb whose
-  storage is tenant-hashed joins the gated set. As of 2026-05-16
-  that's `session_memory` and `project_layout` (ANTS-1430); both
-  read from `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`.
-  See `docs/specs/ANTS-1336.md`.
+- **session_memory + project_layout gate routing is asymmetric
+  (ANTS-1336 + ANTS-1435).** Write ops on tenant-hashed storage
+  (`session_memory set/delete`) go through RcGate — focused-tab
+  match required, prevents the confused-deputy attack. Read ops
+  (`session_memory get/list`, entire `project_layout`) anchor to
+  `caller_cwd` directly — canonicalise + isDir check, no focused-
+  tab match. The storage at
+  `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json` is per-cwd-
+  hashed and reads of the caller's own bucket are self-scoped.
+  `session_memory`'s legacy `cwd` arg is ignored (still in the
+  schema for one release as `DEPRECATED`, drops in 0.7.93);
+  `caller_cwd` is the only project-scope source. ANTS-1372 § 4
+  INV-7 amended by ANTS-1336 then re-amended by ANTS-1435 to
+  reflect the read/write split. See `docs/specs/ANTS-1435.md` and
+  its `§Limitations` block for the same-UID observability trade-off.
 
 - **Path-accepting MCP tools route through `PathValidation::validatePath`
   (ANTS-1295).** Every tool that takes a path-typed argument (`path`,

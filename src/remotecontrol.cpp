@@ -4834,27 +4834,60 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
             QString(), opRaw));
     }
 
-    // ANTS-1336: every op (get / list / set / delete) routes through
-    // RcGate. caller_cwd is the only project-scope source. Pre-fix,
-    // get/list accepted a user-supplied `cwd` arg, which let a
-    // session in project A read project B's bucket via the
-    // ~/.cache/.../mcp-state/<sha256(cwd)>.json hash path. ANTS-1372
-    // closed this for set/delete but preserved it for reads under
-    // INV-7 ("survey project B from A"); the 2026-05-14 indie review
-    // (lane-5 HI-1) reclassified the same capability as a tenancy
-    // bypass. INV-7 is now amended — session_memory is the unique
-    // read-only verb that reads from a tenant-hashed cache path, so
-    // it joins the gated set. See docs/specs/ANTS-1336.md.
-    const auto gate = RcGate::checkCallerCwd(
-        resolveRootCanonical(m_main), req,
-        QStringLiteral("session_memory"));
-    if (!gate.ok) {
-        // Materialise via smErr to keep the existing 4-field shape
-        // (path/extra come back empty for gate refusals).
-        return QJsonDocument(smErr(gate.errorCode, gate.error,
-                                   opRaw, QString()));
+    // ANTS-1336 + ANTS-1435 — gate routing is now ASYMMETRIC:
+    //   * Read ops (get, list): anchor to caller_cwd directly. The
+    //     storage at ~/.cache/.../mcp-state/<sha256(cwd)>.json is
+    //     per-cwd-hashed, and the caller's bucket is self-scoped.
+    //     No focused-tab match required — Vestige's cross-tab read
+    //     pattern works. §Limitations: a same-UID process can read
+    //     any bucket it can name; documented trade-off per cold-eyes
+    //     H1 / spec sign-off.
+    //   * Write ops (set, delete): keep RcGate flow. Prevents the
+    //     confused-deputy "session in /A writes to /B's bucket" attack.
+    // ANTS-1435 INV-4b — read ops require caller_cwd to canonicalise
+    // AND be a directory; QFileInfo::canonicalFilePath accepts any
+    // existing path (file, FIFO, device). A read against /etc/passwd
+    // would hash to a real bucket file and silently return empty.
+    QString cwd;
+    const bool isReadOp = (op == SessionMemoryEngine::Op::Get ||
+                           op == SessionMemoryEngine::Op::List);
+    if (isReadOp) {
+        const QString rawCaller =
+            req.value(QStringLiteral("caller_cwd")).toString();
+        if (rawCaller.isEmpty()) {
+            return QJsonDocument(smErr(
+                QStringLiteral("cwd_missing"),
+                QStringLiteral("session_memory: caller_cwd argument "
+                    "required (pass your $PWD)"),
+                opRaw, QString()));
+        }
+        const QFileInfo fi(rawCaller);
+        const QString canon = fi.canonicalFilePath();
+        if (canon.isEmpty()) {
+            return QJsonDocument(smErr(
+                QStringLiteral("cwd_bad"),
+                QStringLiteral("session_memory: caller_cwd \"%1\" "
+                    "does not exist").arg(rawCaller),
+                opRaw, QString()));
+        }
+        if (!QFileInfo(canon).isDir()) {
+            return QJsonDocument(smErr(
+                QStringLiteral("cwd_bad"),
+                QStringLiteral("session_memory: caller_cwd \"%1\" "
+                    "is not a directory").arg(rawCaller),
+                opRaw, QString()));
+        }
+        cwd = canon;
+    } else {
+        const auto gate = RcGate::checkCallerCwd(
+            resolveRootCanonical(m_main), req,
+            QStringLiteral("session_memory"));
+        if (!gate.ok) {
+            return QJsonDocument(smErr(gate.errorCode, gate.error,
+                                       opRaw, QString()));
+        }
+        cwd = gate.focused;
     }
-    const QString cwd = gate.focused;
 
     const QString    key   = req.value(QStringLiteral("key")).toString();
     const QJsonValue value = req.value(QStringLiteral("value"));
@@ -4928,14 +4961,25 @@ QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
         env["error"] = QStringLiteral("project_layout: no MainWindow");
         return QJsonDocument(env);
     }
-    // ANTS-1336 / ANTS-1404 — caller_cwd gate. Required-contract
-    // refusal at dispatcher catches empty caller_cwd; this gate
-    // catches present-but-wrong (cross-project) mismatch.
-    const auto gate = RcGate::checkCallerCwd(
-        resolveRootCanonical(m_main), req,
-        QStringLiteral("project_layout"));
-    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
-    const QString cwd = gate.focused;
+    // ANTS-1404 + ANTS-1435 — caller_cwd anchoring.
+    // Dispatcher Required-contract refusal already caught empty
+    // caller_cwd upstream. Here we canonicalise + isDir-check the
+    // value and use it as the tenancy assertion (no focused-tab
+    // match — project_layout reads are self-scoped to the caller's
+    // bucket, same trade-off as session_memory read ops). Cold-eyes
+    // H2 / M3: isDir gate prevents /etc/passwd-style false hits.
+    const QString rawCaller = req.value(QStringLiteral("caller_cwd")).toString();
+    const QFileInfo plFi(rawCaller);
+    const QString cwd = plFi.canonicalFilePath();
+    if (cwd.isEmpty() || !QFileInfo(cwd).isDir()) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["error"] = QStringLiteral(
+            "project_layout: caller_cwd \"%1\" is not a directory")
+                .arg(rawCaller);
+        env["code"]  = QStringLiteral("cwd_bad");
+        return QJsonDocument(env);
+    }
 
     const bool forceRescan =
         req.value(QStringLiteral("force_rescan")).toBool(false);

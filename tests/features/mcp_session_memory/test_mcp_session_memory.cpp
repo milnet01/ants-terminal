@@ -109,12 +109,23 @@ TEST(McpSessionMemory, CmdExtractsAllArgs) {
            "(lane-5 HI-1, indie-review 2026-05-14).";
 }
 
-// REG-3b (ANTS-1336) — RcGate covers every op, not just mutates.
-// Pre-fix, the `if (mutates)` / `else` split applied the gate only
-// to set/delete; the else branch was the leak path. The regression
-// lock-in: the gate call must NOT be wrapped in a mutates-only
-// conditional inside cmdSessionMemory's body.
-TEST(McpSessionMemory, RcGateAppliedToEveryOp) {
+// REG-3b (ANTS-1336 / ANTS-1435) — RcGate covers ONLY write ops
+// (set, delete). Read ops (get, list) anchor to caller_cwd directly
+// without focused-tab match — the storage at sha256(cwd).json is
+// per-cwd-hashed and the caller's bucket is self-scoped.
+//
+// Historical context: ANTS-1336 originally routed EVERY op through
+// RcGate to close a read-side tenancy leak. Vestige CC feedback
+// 2026-05-16 surfaced that the resulting focused-tab requirement was
+// overly strict for legitimate cross-tab reads. ANTS-1435 split the
+// gate by op — writes keep the strong guarantee, reads honour
+// caller_cwd.
+//
+// Regression lock-in: confirm the asymmetric routing is in place.
+// The read-branch substring must appear BEFORE the first
+// RcGate::checkCallerCwd call (i.e. the gate is INSIDE an else
+// branch keyed off the read-op condition).
+TEST(McpSessionMemory, RcGateOnWriteOpsOnly) {
     const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
@@ -124,18 +135,29 @@ TEST(McpSessionMemory, RcGateAppliedToEveryOp) {
     ASSERT_NE(end, std::string::npos);
     const std::string body = rc.substr(pos, end - pos);
 
+    // Gate is still present (writes still need it).
     EXPECT_NE(body.find("RcGate::checkCallerCwd"), std::string::npos)
-        << "ANTS-1336 INV-1: RcGate::checkCallerCwd call missing";
-    // Pre-fix wrap signature: `if (mutates)` then `else` for reads.
-    // The fix removes the conditional split entirely.
-    EXPECT_EQ(body.find("if (mutates)"), std::string::npos)
-        << "ANTS-1336 INV-1: mutates-only branch must be removed — "
-           "all ops route through RcGate, no else-branch for reads";
-    // Also confirm the legacy no_project read-side error code is
-    // gone (it had its own envelope on the leak branch).
-    EXPECT_EQ(body.find("session_memory: cwd is empty and no focused project"),
-              std::string::npos)
-        << "ANTS-1336 INV-1: leak-branch envelope still present";
+        << "ANTS-1435: gate must remain present for write ops";
+
+    // Read-branch sentinel: isReadOp branch decides whether to
+    // gate or not. Must appear inside cmdSessionMemory.
+    EXPECT_NE(body.find("isReadOp"), std::string::npos)
+        << "ANTS-1435: isReadOp branch missing — read/write "
+           "asymmetry not in place";
+
+    // The isReadOp condition must appear BEFORE the first
+    // RcGate::checkCallerCwd call (the gate is in the else branch).
+    const auto readOpPos  = body.find("isReadOp");
+    const auto rcGatePos  = body.find("RcGate::checkCallerCwd");
+    EXPECT_LT(readOpPos, rcGatePos)
+        << "ANTS-1435: isReadOp must precede RcGate::checkCallerCwd "
+           "(read branch handles caller_cwd directly; write branch "
+           "delegates to gate)";
+
+    // isDir() check on the read branch — INV-4b prevents /etc/passwd
+    // from hashing to a real bucket file.
+    EXPECT_NE(body.find("isDir()"), std::string::npos)
+        << "ANTS-1435 INV-4b: read branch must isDir-check caller_cwd";
 }
 
 // REG-4

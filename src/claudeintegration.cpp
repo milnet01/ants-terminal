@@ -2956,7 +2956,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "(cached:true). mtime change on any probed path "
                         "invalidates. Pass force_rescan:true to bypass. "
                         "caller_cwd required (Required contract — "
-                        "tenant-hashed storage).");
+                        "tenant-hashed storage). ANTS-1435: reads "
+                        "anchor to your caller_cwd directly — no "
+                        "focused-tab match needed (cross-tab queries "
+                        "work).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject forceProp;
@@ -2995,12 +2998,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "snapshots, tool-detection results. 100 KiB "
                         "cap per cwd; 16 KiB cap per value. Required: "
                         "op (\"get\"/\"set\"/\"delete\"/\"list\"), "
-                        "caller_cwd (your $PWD; ANTS-1336 — gates "
-                        "every op against the focused-tab project "
-                        "root). key required for get/set/delete; "
-                        "value required for set. See "
+                        "caller_cwd (your $PWD). ANTS-1435: read ops "
+                        "(get, list) anchor to your caller_cwd "
+                        "directly — cross-tab reads work. Write ops "
+                        "(set, delete) require caller_cwd to match "
+                        "the focused Ants tab's cwd (prevents "
+                        "confused-deputy writes). key required for "
+                        "get/set/delete; value required for set. See "
                         "docs/specs/ANTS-1283.md + "
-                        "docs/specs/ANTS-1336.md.");
+                        "docs/specs/ANTS-1336.md + "
+                        "docs/specs/ANTS-1435.md.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject opProp;
@@ -3363,6 +3370,12 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // session_memory store. Joins session_memory in the gated
     // Required set (see ANTS-1336 INV-7 amendment).
     if (toolName == QStringLiteral("project_layout"))     return C::Required;
+    // ANTS-1435 — session_memory: dispatcher refuses empty
+    // caller_cwd upstream (Required). The handler still has a
+    // body-level cwd_missing for the IPC path which bypasses the
+    // contract — kept for diagnostic parity. Asymmetric internal
+    // routing: reads anchor to caller_cwd, writes match focused tab.
+    if (toolName == QStringLiteral("session_memory"))     return C::Required;
     // TabSpecific — classified but not enforced in Phase 3a. The
     // ANTS-1392 routing semantics (caller_cwd as a tab-routing key)
     // need their own spec pass before refusal makes sense.

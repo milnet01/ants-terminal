@@ -43,7 +43,15 @@ TEST(McpCallerCwdContracts, RequiredToolsClassified) {
             "\"get_git_status\"",
             "\"last_audit_summary\"",
             "\"git_state\"",
-            "\"verify_changes\""}) {
+            "\"verify_changes\"",
+            // ANTS-1430 — project_layout reads tenant-hashed storage.
+            "\"project_layout\"",
+            // ANTS-1435 — session_memory joins Required (dispatcher
+            // refuses empty caller_cwd upstream; handler still has
+            // a body-level cwd_missing for the IPC path).
+            "\"session_memory\"",
+            // ANTS-1424 — roadmap_log mutates ROADMAP under caller cwd.
+            "\"roadmap_log\""}) {
         const auto p = body.find(tool);
         ASSERT_NE(p, std::string::npos)
             << "ANTS-1404 CLS-1: tool " << tool << " missing from "
