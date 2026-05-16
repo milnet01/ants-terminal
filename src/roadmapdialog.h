@@ -303,6 +303,12 @@ public:
         QString sectionHeading;  // text of the most recent ## or ### heading
         int sectionLevel = 0;    // 2 for `##`, 3 for `###`, 0 if no section
         QString sectionSlug;     // sectionHeading → lowercase, non-alnum→`-`
+        // ANTS-1428 (adapter mode) — fields populated when the parser
+        // engages the GFM-task-list branch. native parses leave them
+        // at default (empty/false).
+        QString anchor;        // ^prefix-NNNN caret anchor; "" if absent
+        bool    synthetic = false;  // id was content-hash-derived, not from a token
+        QString format;        // "ants-v1" (default) | "github-task-list"
     };
 
     // Pure helper: parse `markdownText` into top-level status-emoji

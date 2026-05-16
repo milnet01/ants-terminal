@@ -841,6 +841,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
                 o["lanes"] = lanes;
+                // ANTS-1428 — adapter-mode metadata. Native parses
+                // leave these at default (empty/false), so callers
+                // that ignore them see no change.
+                if (b.format == QLatin1String("github-task-list")) {
+                    o["format"] = b.format;
+                }
+                if (b.synthetic) o["synthetic"] = true;
+                if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
                 arr.append(o);
             }
             m_roadmapCacheBullets = arr;
@@ -984,6 +992,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
                 o["lanes"] = lanes;
+                // ANTS-1428 — adapter-mode metadata (lazy-fill path).
+                if (b.format == QLatin1String("github-task-list")) {
+                    o["format"] = b.format;
+                }
+                if (b.synthetic) o["synthetic"] = true;
+                if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
                 arr.append(o);
             }
             m_roadmapCacheBullets = arr;
@@ -1051,6 +1065,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     out["count"] = filtered.size();
     // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
     out["filter"] = filter;
+    // ANTS-1428 — envelope-level format echo. The adapter parses
+    // the whole file in one shape; if any bullet was tagged GFM,
+    // surface the format so callers know they're in adapter mode
+    // and the (kind/lanes/layman) fields are degraded.
+    for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+        if (v.toObject().value(QStringLiteral("format")).toString() ==
+            QLatin1String("github-task-list")) {
+            out["format"] = QStringLiteral("github-task-list");
+            break;
+        }
+    }
     // ANTS-1398-INV-5: echo the opt-in only when the caller set it
     // so the default-false case stays trim on the wire.
     if (hasIncludeHeadersArg) {

@@ -35,10 +35,16 @@ bool contains(const std::string &hay, const std::string &needle) {
 // the bound is non-zero and ≤ kMaxBound bytes so a future reorder
 // that widens the bound trips the test loudly rather than passing
 // silently against the wrong function body.
+// ANTS-1428 bumped the kMaxBound ceiling from 16 KB to 24 KB
+// because cmdRoadmapQuery legitimately grew: per-bullet
+// `format`/`synthetic`/`anchor` envelope fields + the
+// envelope-level format echo are ~700 B of new behaviour
+// distributed across the cache-fill, lazy-fill, and emission
+// paths. The bound is still a meaningful runaway-guard ceiling.
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 16 * 1024) {
+                           size_t kMaxBound = 24 * 1024) {
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());

@@ -16,11 +16,14 @@ for security-relevant changes.
 
 Third bundle from the 0.7.92 plan. Items group around the MCP layer:
 descriptor dedup, response shape, dispatch instrumentation, audit
-trail, and two write-verb additions. Twelve items shipped
-(1409 / 1398 / 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1429 / 1430
-/ 1431 / 1432). One item deferred (ANTS-1403 — wrap-overhead v3,
-gated on having clean token_usage data which now ships; the v3 work
-itself stays planned for a future bundle). Seven follow-ups discovered
+trail, and two write-verb additions. Thirteen items shipped
+(1409 / 1398 / 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1428 /
+1429 / 1430 / 1431 / 1432). One item deferred (ANTS-1403 —
+wrap-overhead v3, gated on having clean token_usage data which now
+ships; the v3 work itself stays planned for a future bundle).
+ANTS-1428 Tier 1 (read-side adapter) ships here; Tiers 2–3 (write +
+renderer) advance to 🚧 for the next bundle. Seven follow-ups
+discovered
 mid-bundle (ANTS-1425 logged for next round; ANTS-1426 fixed-in-
 bundle; ANTS-1427 added + shipped in the pull-3 close-out for
 ANTS-1422; ANTS-1429 added + shipped after 2026-05-16 Vestige CC
@@ -355,6 +358,60 @@ adapter-mode dialect-detection will ride on next).
   style vs GitHub checkbox style), so the next ticket
   (ANTS-1428) can switch on that without re-sniffing the file
   every time.
+
+- **ANTS-1428 — Adapter mode for GitHub-task-list ROADMAP files
+  (Tier 1 / read-side).** `roadmap_query` against the Vestige
+  engine roadmap (`/mnt/Games/Scripts/Linux/3D_Engine/ROADMAP.md`,
+  402 KB, ~600 GFM-task-list bullets) used to return
+  `{bullets:[], count:0}` (and post-ANTS-1429,
+  `{ok:false, code:"unrecognised_format"}`). The adapter now
+  parses both formats end-to-end. Detection rule: no
+  `<!-- ants-roadmap-format: 1 -->` marker AND ≥ 1
+  `^- \[[ x]\]` line in the first 100 non-empty lines →
+  adapter engages; otherwise native parser. Tier 1 covers:
+  status mapping (`- [x]` → ✅, `- [ ]` → 📋, inline emoji
+  prefix wins — including the contradictory case
+  `- [x] 📋 …` → 📋, by design), `**Bold-ID.**` token
+  preservation (multi-prefix projects like Vestige's
+  `Sh4` / `Ed1` / `VEST-0042` work without configuration),
+  synthetic IDs via FNV-1a 64-bit content-hash of the
+  normalised headline (10-char base36, stable across line
+  reorders, ~10⁻¹⁴ collision probability at document scale),
+  `(COMPLETE)` / `(DONE)` heading-marker inheritance for
+  enclosed planned bullets, caret-anchor extraction
+  (`^vest-0042`) as future locator handles. `RoadmapDialog::
+  BulletRecord` gains three additive fields (`anchor`,
+  `synthetic`, `format`); per-bullet envelope echoes them when
+  set; envelope-level `format:"github-task-list"` surfaces when
+  any bullet engaged the adapter. The native (`ants-v1`) parse
+  path is byte-identical to pre-1428 behaviour. Spec
+  `docs/specs/ANTS-1428.md` covers all three tiers (the spec
+  ran three cold-eyes loops to clean — 2 CRITICAL, 7 HIGH, 7
+  MEDIUM, multiple LOW findings verified-and-fixed across
+  loops; cross-doc amendment to ANTS-1336 INV-7 + CLAUDE.md
+  threaded through to add `project_layout` to the
+  tenant-hashed-storage gated set). Tests:
+  `tests/features/mcp_adapter_github_tasklist/test_adapter_read.cpp`
+  (10 INVs covering detection, multi-prefix bold-IDs, synthetic
+  stability, distinctness on 50-bullet stress fixture, status
+  mapping inc. contradictory case, section-completion
+  inheritance, native-path regression, anchor extraction).
+  **Remaining for next bundle:** Tier 2 (write-side `op:"flip"`
+  with caret-anchor injection + counter-consume-on-write
+  semantics — adds `bullet_not_found` / `bullet_ambiguous` /
+  `anchor_unsafe_context` / `bad_op_combo` error codes per
+  spec § Error code taxonomy) and Tier 3 (dialog renderer fork
+  for the v2 card UI). ROADMAP advances 📋→🚧. 756/756
+  features green at landing.
+  Layman: Vestige's roadmap (and any other project that started
+  from a GitHub-style README task-list with `- [ ]` / `- [x]`
+  checkboxes) is now queryable through Ants tools without
+  rewriting the file. The Ants checker recognises the foreign
+  shape, maps the checkboxes to its own status emoji, preserves
+  any existing IDs the project uses, and synthesises stable
+  IDs from headline text when no IDs exist. Writes (status
+  flips) and the visual roadmap dialog ride the same adapter
+  but ship next week.
 
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 

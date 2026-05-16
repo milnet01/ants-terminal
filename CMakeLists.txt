@@ -885,7 +885,9 @@ if(ANTS_TESTS)
                 # ANTS-1427 MCP dispatch debug-log audit trail.
                 tests/features/mcp_dispatch_debug_log/test_mcp_dispatch_debug_log.cpp
                 # ANTS-1429 roadmap_query/log unrecognised_format gate.
-                tests/features/mcp_roadmap_unrecognised_format/test_mcp_roadmap_unrecognised_format.cpp)
+                tests/features/mcp_roadmap_unrecognised_format/test_mcp_roadmap_unrecognised_format.cpp
+                # ANTS-1428 GFM-task-list adapter (Tier 1 read-side).
+                tests/features/mcp_adapter_github_tasklist/test_adapter_read.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

@@ -473,6 +473,158 @@ QStringList RoadmapDialog::collectCurrentBullets() const {
 using RoadmapIndex::headingLevel;
 using RoadmapIndex::uniqueSlug;
 
+namespace {
+
+// ANTS-1428 — GFM-task-list adapter helpers. All operate on
+// already-extracted line content (post-`- ` prefix strip).
+
+// 64-bit FNV-1a hash of the normalised headline. See
+// docs/specs/ANTS-1428.md § Synthetic-ID fallback.
+quint64 fnv1a64(const QString &normalised) {
+    constexpr quint64 kFnvOffsetBasis = 0xcbf29ce484222325ULL;
+    constexpr quint64 kFnvPrime       = 0x100000001b3ULL;
+    quint64 h = kFnvOffsetBasis;
+    const QByteArray bytes = normalised.toUtf8();
+    for (char c : bytes) {
+        h ^= static_cast<quint64>(static_cast<unsigned char>(c));
+        h *= kFnvPrime;
+    }
+    return h;
+}
+
+// Lowercase, collapse whitespace, drop trailing punctuation.
+QString normaliseHeadline(const QString &raw) {
+    QString s = raw.toLower();
+    QString out;
+    out.reserve(s.size());
+    bool prevSpace = false;
+    for (QChar c : s) {
+        if (c.isSpace()) {
+            if (!out.isEmpty() && !prevSpace) out.append(QLatin1Char(' '));
+            prevSpace = true;
+        } else {
+            out.append(c);
+            prevSpace = false;
+        }
+    }
+    while (!out.isEmpty()) {
+        const QChar c = out.back();
+        if (c == QLatin1Char('.') || c == QLatin1Char(',') ||
+            c == QLatin1Char(';') || c == QLatin1Char(':') ||
+            c == QLatin1Char('!') || c == QLatin1Char('?') ||
+            c == QLatin1Char(' ')) {
+            out.chop(1);
+        } else {
+            break;
+        }
+    }
+    return out;
+}
+
+// Encode the low N base36 chars of a 64-bit value. Returns 10
+// chars by default (sufficient distribution per spec collision
+// math). Length is capped at the encode capacity (13 chars).
+QString base36Lower(quint64 v, int n = 10) {
+    QString out;
+    out.reserve(n);
+    static const char kChars[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+    if (v == 0) {
+        out.append(QLatin1Char('0'));
+    } else {
+        while (v != 0 && out.size() < n + 6) {
+            out.prepend(QLatin1Char(kChars[v % 36]));
+            v /= 36;
+        }
+    }
+    while (out.size() < n) out.prepend(QLatin1Char('0'));
+    if (out.size() > n) out = out.right(n);
+    return out;
+}
+
+// Try to extract a bold-ID token (`**Sh4.**`, `**VEST-0042.**`,
+// `**Ed1.**`) from the start of the line. On match, sets *id to
+// the token (e.g. "Sh4") and returns true.
+bool extractBoldId(const QString &lineHead, QString *id) {
+    static const QRegularExpression rx(QStringLiteral(
+        "^\\*\\*([A-Z][A-Za-z0-9_-]{0,15})\\.\\*\\*"));
+    const auto m = rx.match(lineHead);
+    if (!m.hasMatch()) return false;
+    if (id) *id = m.captured(1);
+    return true;
+}
+
+// Try to extract a caret anchor at line end (`^vest-0042`).
+// Returns the anchor body (without the caret) on match.
+QString extractCaretAnchor(const QString &line) {
+    static const QRegularExpression rx(QStringLiteral(
+        "\\^([a-z0-9-]+)\\s*$"));
+    const auto m = rx.match(line);
+    if (!m.hasMatch()) return QString();
+    return m.captured(1);
+}
+
+// `(COMPLETE)` / `(DONE)` heading-completion marker. Whole-word,
+// case-insensitive. Returns true on match.
+bool headingIsComplete(const QString &heading) {
+    static const QRegularExpression rx(
+        QStringLiteral("\\b(complete|done)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    return rx.match(heading).hasMatch();
+}
+
+// Map a GFM checkbox char to the ants status emoji.
+QString gfmStatusFromCheckbox(QChar ch) {
+    if (ch == QLatin1Char('x') || ch == QLatin1Char('X'))
+        return QStringLiteral("✅");
+    return QStringLiteral("📋");
+}
+
+// Try to strip an inline status emoji prefix from the head; on
+// match, updates `status` and returns true. The prefix wins over
+// the checkbox state per spec INV-4.
+bool stripInlineEmoji(QString &head, QString &status) {
+    if (head.startsWith(QString::fromUtf8(kEmojiDone))) {
+        status = QStringLiteral("✅");
+        head.remove(0, QString::fromUtf8(kEmojiDone).size());
+    } else if (head.startsWith(QString::fromUtf8(kEmojiPlanned))) {
+        status = QStringLiteral("📋");
+        head.remove(0, QString::fromUtf8(kEmojiPlanned).size());
+    } else if (head.startsWith(QString::fromUtf8(kEmojiInProgress))) {
+        status = QStringLiteral("🚧");
+        head.remove(0, QString::fromUtf8(kEmojiInProgress).size());
+    } else if (head.startsWith(QString::fromUtf8(kEmojiConsidered))) {
+        status = QStringLiteral("💭");
+        head.remove(0, QString::fromUtf8(kEmojiConsidered).size());
+    } else {
+        return false;
+    }
+    while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);
+    return true;
+}
+
+// Detect format by scanning the head of the document for one of
+// the two shapes. ants-v1 marker wins; otherwise look for GFM
+// task-list bullets in the first 100 non-empty lines.
+QString detectRoadmapFormat(const QStringList &lines) {
+    if (lines.isEmpty()) return QStringLiteral("ants-v1");
+    int seen = 0;
+    for (const auto &ln : lines) {
+        if (ln.contains(QStringLiteral("<!-- ants-roadmap-format: 1 -->"))) {
+            return QStringLiteral("ants-v1");
+        }
+        if (ln.trimmed().isEmpty()) continue;
+        if (ln.startsWith(QStringLiteral("- [ ]")) ||
+            ln.startsWith(QStringLiteral("- [x]")) ||
+            ln.startsWith(QStringLiteral("- [X]"))) {
+            return QStringLiteral("github-task-list");
+        }
+        if (++seen >= 100) break;
+    }
+    return QStringLiteral("ants-v1");
+}
+
+}  // namespace
+
 QVector<RoadmapDialog::BulletRecord>
 RoadmapDialog::parseBullets(const QString &markdownText) {
     QVector<BulletRecord> out;
@@ -495,9 +647,19 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         QRegularExpression::CaseInsensitiveOption);
 
     const QStringList lines = markdownText.split('\n');
+    // ANTS-1428 — format detection runs once per parse. On
+    // detection of github-task-list, the bullet-line matcher
+    // accepts `- [ ]` / `- [x]` shapes and synthesises IDs via
+    // FNV-1a 64-bit content-hash when no `**Bold-ID.**` token is
+    // present. Native parse path is byte-identical to pre-1428
+    // behaviour when format == "ants-v1".
+    const QString docFormat = detectRoadmapFormat(lines);
+    const bool isGfm = (docFormat == QStringLiteral("github-task-list"));
+
     QString currentSectionHeading;
     QString currentSectionSlug;
     int currentSectionLevel = 0;
+    bool currentSectionComplete = false;
     // ANTS-1239 — seen-set for unique heading slugs. Mirror the
     // renderCardsHtml walk: both call uniqueSlug() in the same
     // document order, so the Nth "Performance" h3 here gets the same
@@ -515,6 +677,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
             currentSectionHeading = headingText;
             currentSectionLevel = level;
             currentSectionSlug = uniqueSlug(seenSlugs, headingText);
+            currentSectionComplete = isGfm && headingIsComplete(headingText);
             ++i;
             continue;
         }
@@ -524,25 +687,55 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
                               raw.startsWith(QStringLiteral("* "));
         if (!isBullet) { ++i; continue; }
         QString head = raw.mid(2);
-        // Strip leading status emoji; skip plain-narration bullets.
         QString status;
-        if (head.startsWith(QString::fromUtf8(kEmojiDone))) {
-            status = QStringLiteral("✅");
-            head.remove(0, QString::fromUtf8(kEmojiDone).size());
-        } else if (head.startsWith(QString::fromUtf8(kEmojiPlanned))) {
-            status = QStringLiteral("📋");
-            head.remove(0, QString::fromUtf8(kEmojiPlanned).size());
-        } else if (head.startsWith(QString::fromUtf8(kEmojiInProgress))) {
-            status = QStringLiteral("🚧");
-            head.remove(0, QString::fromUtf8(kEmojiInProgress).size());
-        } else if (head.startsWith(QString::fromUtf8(kEmojiConsidered))) {
-            status = QStringLiteral("💭");
-            head.remove(0, QString::fromUtf8(kEmojiConsidered).size());
+        QString anchorValue;       // ANTS-1428 — caret anchor at line end
+        QString boldId;            // multi-prefix bold-ID token, e.g. "Sh4"
+        QString rowFormat;         // per-bullet format echo
+
+        // ANTS-1428 / Tier 1 GFM branch. When the document is in
+        // github-task-list format AND this line starts with the
+        // checkbox token, parse via the adapter; otherwise fall
+        // through to the native emoji-prefix path. Native mode
+        // (docFormat == "ants-v1") never engages the GFM branch.
+        const bool gfmHere = isGfm &&
+            (head.startsWith(QStringLiteral("[ ]")) ||
+             head.startsWith(QStringLiteral("[x]")) ||
+             head.startsWith(QStringLiteral("[X]")));
+        if (gfmHere) {
+            const QChar boxCh = head.at(1);
+            status = gfmStatusFromCheckbox(boxCh);
+            head.remove(0, 3);
+            while (!head.isEmpty() && head.front().isSpace())
+                head.remove(0, 1);
+            // Inline emoji prefix wins over checkbox state (INV-4).
+            QString inlineStatus;
+            if (stripInlineEmoji(head, inlineStatus)) {
+                status = inlineStatus;
+            }
+            // Heading `(COMPLETE)` inheritance — bullets in a
+            // marked-complete section inherit ✅ unless an inline
+            // emoji override won above.
+            if (status == QStringLiteral("📋") &&
+                currentSectionComplete) {
+                status = QStringLiteral("✅");
+            }
+            // Extract caret anchor (if any) from the line. We
+            // look at the raw line (not the post-emoji-strip
+            // head) so trailing anchors after body text still
+            // match.
+            anchorValue = extractCaretAnchor(raw);
+            // Bold-ID token preservation. Multi-prefix projects
+            // get their existing ID respected.
+            extractBoldId(head, &boldId);
+            rowFormat = QStringLiteral("github-task-list");
         } else {
-            ++i;
-            continue;
+            // Native path — unchanged from pre-1428.
+            if (!stripInlineEmoji(head, status)) {
+                ++i;
+                continue;
+            }
+            rowFormat = QStringLiteral("ants-v1");
         }
-        while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);
 
         BulletRecord rec;
         rec.status = status;
@@ -551,6 +744,8 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         if (!currentSectionHeading.isEmpty()) {
             rec.sectionSlug = currentSectionSlug;
         }
+        rec.anchor = anchorValue;
+        rec.format = rowFormat;
 
         // Collect the bullet body — first line + subsequent indented
         // continuation lines. ANTS-1426: a blank line inside the body
@@ -605,12 +800,59 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         const auto idMatch = rxId.match(body);
         if (idMatch.hasMatch()) {
             rec.id = QStringLiteral("ANTS-%1").arg(idMatch.captured(1));
+        } else if (!boldId.isEmpty()) {
+            // ANTS-1428 — multi-prefix bold-ID preservation.
+            rec.id = boldId;
         }
         const auto boldMatch = rxBold.match(body);
         if (boldMatch.hasMatch()) {
             QString h = boldMatch.captured(1).trimmed();
+            // Strip a trailing `.` if the bold token is actually
+            // a Bold-ID locator (e.g. `**Sh4.**`); the visible
+            // headline of a bold-ID'd bullet is the *next* bold
+            // chunk, but if there's only one, use the post-`.`
+            // text after the token.
+            if (!boldId.isEmpty() && h == boldId + QLatin1Char('.')) {
+                // Find the next bold token after the bold-ID.
+                const int after = boldMatch.capturedEnd();
+                const auto m2 = rxBold.match(body, after);
+                if (m2.hasMatch()) {
+                    h = m2.captured(1).trimmed();
+                } else {
+                    // Use the prose immediately following the
+                    // bold-ID token; trim to one line.
+                    h = body.mid(after).trimmed();
+                    const int nl = h.indexOf(QLatin1Char('\n'));
+                    if (nl >= 0) h = h.left(nl).trimmed();
+                }
+            }
             if (h.size() > 120) { h.truncate(120); h.append(QStringLiteral("…")); }
             rec.headline = h;
+        } else if (gfmHere) {
+            // ANTS-1428 — GFM bullets often have no `**bold**`
+            // formatting at all (Vestige's roadmap is mixed). Use
+            // the first line of body, stripped of any trailing
+            // caret anchor, as the headline.
+            QString h = body;
+            const int nl = h.indexOf(QLatin1Char('\n'));
+            if (nl >= 0) h = h.left(nl);
+            // Drop trailing caret anchor + surrounding whitespace.
+            static const QRegularExpression rxTrailAnchor(
+                QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
+            h.replace(rxTrailAnchor, QString());
+            h = h.trimmed();
+            if (h.size() > 120) { h.truncate(120); h.append(QStringLiteral("…")); }
+            rec.headline = h;
+        }
+        // ANTS-1428 — synthetic ID when GFM bullet has no bold-ID
+        // and no `[ANTS-NNNN]` legacy token. Stable across line
+        // reorders (depends only on the normalised headline).
+        if (gfmHere && rec.id.isEmpty()) {
+            const QString norm = normaliseHeadline(rec.headline);
+            if (!norm.isEmpty()) {
+                rec.id = base36Lower(fnv1a64(norm), 10);
+                rec.synthetic = true;
+            }
         }
         const auto kindMatch = rxKind.match(body);
         if (kindMatch.hasMatch()) {
