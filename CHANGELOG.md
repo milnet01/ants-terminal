@@ -12,6 +12,76 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
+
+Sixth pull from the 0.7.92 bundle plan (`ROADMAP.md` § 0.7.92 →
+Bundle plan). Both items live in `claudetasklist.cpp::parseTranscript`
+and address state-drift symptoms the user reported via two
+screenshots on 2026-05-15. ANTS-1375 (per-tab Claude state-dot
+regression) was the third Bundle F item; it shipped earlier as
+part of the 2026-05-14 sweep and is already in `[Unreleased]`.
+
+- **ANTS-1407 — Tracker mirrors CC inline view.** Three textual
+  changes in `parseTranscript`. (1) Empty `TodoWrite { todos: [] }`
+  no longer locks Mode B; CC fires this between bursts to clear
+  its sidebar, but the parser was sticking `sawTodoWrite = true`
+  permanently, dropping every subsequent TaskCreate (root cause of
+  the MAME-Curator-tab undercount). (2) Widen the ANTS-1246
+  batch-reset terminal predicate from `completed` only to
+  `{completed, deleted}` — a `deleted` task is terminal in
+  TaskUpdate semantics; it should not block a fresh burst. (3)
+  Final-pass filter at end of `parseTranscript` drops `deleted`
+  tasks from the visible list. They live in `out` during the walk
+  so TaskUpdate-by-id can still match, but the dialog header sums
+  (`done + running + outstanding`) already excluded `deleted` —
+  the chip's total now matches (overcount: 30 done + 8 pending +
+  2 deleted now reads 30/38, not 30/40). Spec
+  `docs/specs/ANTS-1407.md` (1 solo + 2 joint cold-eyes loops to
+  clean). Header `claudetasklist.h:29` status comment extended
+  to document the `deleted` value. Tests: 4 new in
+  `tests/features/claude_task_list/test_claude_task_list.cpp` —
+  INV-1 empty-TodoWrite-no-lock, INV-3 batch-reset-with-deleted,
+  INV-4 deleted-filter, INV-7 Mode-A-then-Mode-B-via-empty. 28/28
+  ClaudeTaskList green post-fix; 4/4 FAIL pre-fix.
+  Layman: the little "tasks" chip in the bottom-right of Ants was
+  drifting from what Claude Code showed in its own inline list —
+  sometimes too few, sometimes too many. Three fixes land together
+  so the chip mirrors Claude's view across the failure modes the
+  user reported.
+
+- **ANTS-1341 — Mode-B `in_progress` task abandonment (24h).**
+  The ANTS-1246 batch-reset (widened in ANTS-1407 to
+  `{completed, deleted}`) only fires when every prior task is
+  terminal; a stuck `in_progress` task blocks it forever. CC's
+  subagent crashes, partial network failures, and transcript-replay
+  artefacts can all leave `in_progress` tasks that never receive a
+  closing TaskUpdate. Across multi-day sessions, the chip ratio
+  plateaus (`5/13`, `5/15`, `5/17`) as fresh bursts cumulatively
+  append. Fix: add `qint64 lastEventAtMs` to `ClaudeTask`; stamp
+  it from the event timestamp on every TaskCreate / TaskUpdate /
+  TodoWrite; track `latestEventMs` advancing on every parsed line
+  (before any sidechain / compact-summary filter dispatches, so a
+  long `/compact` pause doesn't suppress the threshold); at end of
+  parse (after ANTS-1407's deleted-filter), drop `in_progress`
+  tasks more than 24 h older than `latestEventMs`. Pending and
+  completed tasks are NOT time-bounded (pending = unstarted
+  backlog, completed = history). Reference time is
+  transcript-relative for deterministic synthetic tests. Fail-soft:
+  tasks with `lastEventAtMs == 0` (missing or unparseable
+  timestamp) are preserved. Spec `docs/specs/ANTS-1341.md`
+  (3 joint cold-eyes loops with ANTS-1407 to clean). Tests: 4 new
+  — INV-2/3 stamp on Create+Update, INV-5 boundary abandonment at
+  24h+1ms, INV-6/8 within-threshold preserved at 23h, INV-5
+  multi-task across a 5-day heartbeat (closes the gap between the
+  boundary and the user's multi-day pile-up symptom). 32/32
+  ClaudeTaskList green post-fix; compile-fail on the missing
+  `lastEventAtMs` field pre-fix.
+  Layman: stuck "in progress" tasks used to pile up across multi-
+  day sessions because Claude Code occasionally left tasks
+  mid-flight (subagent crashed, network blip); the tracker now
+  drops them after 24 hours of silence so the chip ratio doesn't
+  plateau on stale work.
+
 ### 🔒 Bundle B — `caller_cwd` Phase 3 + diagnostics (in flight, 2026-05-16)
 
 Second pull from the 0.7.92 bundle plan. Items group around

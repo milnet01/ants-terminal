@@ -4765,7 +4765,7 @@ cycle. Cadence: one bundle per Wednesday per
 | **C** | MCP token-economy hygiene | ANTS-1398 · 1399 · 1402 · 1403 · 1409 | `claudeintegration.cpp` · `remotecontrol.cpp` |
 | **D** | Skill → MCP orchestrator trio | ANTS-1351 · 1352 · 1397 · 1410 | new engines + MCP dispatch |
 | **E** | MCP API hygiene + governance | ANTS-1353 · 1354 · 1356 · 1405 | docs + descriptor + parser |
-| **F** | CC tracker state drift | ANTS-1341 · 1375 · 1407 | `claudetasklist.cpp` · `claudestatuswidgets.cpp` |
+| **F** | CC tracker state drift | ANTS-1341 ✅ · 1375 ✅ · 1407 ✅ | `claudetasklist.cpp` · `claudestatuswidgets.cpp` |
 | **G** | Audit / review engine quality | ANTS-1339 · 1343 · 1344 · 1345 · 1358 | `auditengine.cpp` · `auditdialog.cpp` · `indiereviewengine.cpp` · `coldeyesengine.cpp` |
 | **H** | Build / test infrastructure | ANTS-1379 · 1380 · 1383 · 1384 · 1394 | `tests/_support` · `CMakeLists.txt` |
 | **I** | Test-suite housekeeping | ANTS-1381 · 1386 · 1387 | `tests/features/*_extraction` |
@@ -5060,19 +5060,40 @@ class; the deferrals below cover the rest.
   Kind: perf.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1341] **`claudetasklist` Mode B `in_progress` leak
-  accumulates forever (lane-3 H3).** The Mode B batch-reset at
-  `claudetasklist.cpp:262–275` triggers only when all tasks are
-  `completed`. If Claude marks a task `in_progress` and never
-  flips it to `completed` (transcript-replay bug or partial
-  network failure), the parser sees a live `in_progress` and
-  refuses to reset on the next `TaskCreate`. Forever-stuck
-  tasks pile up across sessions. Fix: add a time-based
-  secondary reset (e.g. `in_progress` for > 24 h with no
-  status events → consider it abandoned).
-  **Layman:** Claude tasks that get stuck in "in progress"
-  pile up across sessions until the dialog is reloaded; add
-  a time-based cleanup so old stuck tasks expire.
+- ✅ [ANTS-1341] **`claudetasklist` Mode B `in_progress` leak
+  accumulates forever (lane-3 H3).** Shipped 2026-05-16 (Bundle F
+  pull 2). Added `qint64 lastEventAtMs` to `ClaudeTask`; the
+  parser stamps it from the event timestamp on every TaskCreate /
+  TaskUpdate / TodoWrite, and tracks `latestEventMs` advancing on
+  EVERY parsed JSONL line (before sidechain / compact-summary
+  filters dispatch — so a long `/compact` pause doesn't suppress
+  the threshold). At end of parse, after ANTS-1407's deleted-filter,
+  the abandonment filter drops `in_progress` tasks more than
+  `kStaleInProgressMs = 24 h` older than `latestEventMs`. Pending
+  and completed tasks are NOT time-bounded (pending = unstarted
+  backlog, completed = history). Reference time is transcript-
+  relative for deterministic synthetic tests. Fail-soft: tasks
+  with `lastEventAtMs == 0` (missing or unparseable timestamp) are
+  preserved. Spec `docs/specs/ANTS-1341.md` (3 joint cold-eyes
+  loops with ANTS-1407 to clean). Tests
+  `tests/features/claude_task_list/test_claude_task_list.cpp`:
+  4 new — INV-2/3 stamp on Create+Update, INV-5 boundary
+  abandonment at 24h+1ms, INV-6/8 within-threshold preserved at
+  23h, INV-5 multi-task across a 5-day heartbeat. 32/32 green
+  post-fix; compile-fail on the missing `lastEventAtMs` field
+  pre-fix.
+  Original finding (lane-3 H3, indie-review 2026-05-14):
+  The Mode B batch-reset at `claudetasklist.cpp:262–275`
+  triggered only when all tasks were `completed`. If Claude
+  marked a task `in_progress` and never flipped it to
+  `completed` (transcript-replay bug or partial network
+  failure), the parser saw a live `in_progress` and refused to
+  reset on the next `TaskCreate`. Forever-stuck tasks piled
+  up across sessions.
+  **Layman:** Claude tasks that got stuck in "in progress"
+  used to pile up across sessions until the dialog was
+  reloaded; the tracker now drops them after 24 hours of
+  silence so the chip ratio doesn't plateau on stale work.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
@@ -6918,12 +6939,37 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   instance — ~50 K tokens × 30 closes/month/project
   ≈ ~1.5 M tokens/month/project on clean closes).
 
-- 📋 [ANTS-1407] **Tasks chip / Task List dialog drift
-  from CC session's inline view.** User-reported
-  2026-05-15 with two screenshots showing the same root
-  bug from opposite directions:
+- ✅ [ANTS-1407] **Tasks chip / Task List dialog drift
+  from CC session's inline view.** Shipped 2026-05-16
+  (Bundle F pull 1). Three textual changes in
+  `parseTranscript` so the chip mirrors what CC's inline
+  view shows: (1) empty `TodoWrite { todos: [] }` no
+  longer locks Mode B (CC fires this between bursts to
+  clear its sidebar; previously the parser locked
+  permanently and dropped every subsequent TaskCreate);
+  (2) widened the ANTS-1246 batch-reset terminal
+  predicate from `completed` only to `{completed,
+  deleted}` (a `deleted` task is terminal in TaskUpdate
+  semantics); (3) final-pass filter drops `deleted`
+  tasks at end of `parseTranscript` (they live mid-walk
+  so TaskUpdate-by-id can still find them, but the
+  user-visible tracker excludes them, matching the
+  dialog header's existing `done + running +
+  outstanding` sum). Header `claudetasklist.h:29`
+  status comment extended to document the `deleted`
+  value. Spec `docs/specs/ANTS-1407.md` (1 solo + 2
+  joint cold-eyes loops with ANTS-1341 to clean).
+  Tests: 4 new in
+  `tests/features/claude_task_list/test_claude_task_list.cpp` —
+  INV-1 empty-TodoWrite-no-lock, INV-3
+  batch-reset-with-deleted, INV-4 deleted-filter,
+  INV-7 Mode-A-then-Mode-B-via-empty. 28/28 green
+  post-fix; 4/4 FAIL pre-fix.
+  Original finding (user-report 2026-05-15, two
+  screenshots showing the same root bug from opposite
+  directions):
   - **Undercount** (`Claude: MAME Curator` tab): chip
-    shows `≡ 0/4`, dialog says "4 tasks — 0 done, 0
+    shows `☰ 0/4`, dialog says "4 tasks — 0 done, 0
     running, 4 outstanding". CC session's own inline
     task display shows **6 tasks** — 4 pending DS05
     steps + 1 explicit `✓ Monitor DS02 close CI run`
@@ -6931,7 +6977,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
     completed task collapsed). Tracker drops the 2
     completed.
   - **Overcount** (`Claude: Ants Terminal` tab — this
-    session): chip shows `≡ 30/40`, dialog says "40
+    session): chip shows `☰ 30/40`, dialog says "40
     tasks — 30 done, 0 running, 8 outstanding".
     30 + 8 = 38, so 2 are status `deleted` and counted
     in the chip total but hidden in the dialog
