@@ -791,6 +791,133 @@ void testAnts1246Inv8_modeASnapshotUnchanged() {
     }
 }
 
+// ANTS-1407-INV-1: an empty TodoWrite does NOT lock Mode B. The
+// parser preserves `sawTodoWrite = false` when `todos: []`, so a
+// subsequent TaskCreate is honoured rather than silently dropped.
+void testAnts1407Inv1_emptyTodoWriteDoesNotLockModeB() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1407-INV-1 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix1407a.jsonl", {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[]})",
+            QStringLiteral("toolu_empty")),
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Post-empty","description":"d","activeForm":"P"})",
+            QStringLiteral("toolu_post")),
+        userToolResult(QStringLiteral("toolu_post"),
+            QStringLiteral("Task #99 created successfully: Post-empty")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1407-INV-1: empty TodoWrite did not lock Mode B; "
+           "the subsequent TaskCreate is honoured",
+           "got " + std::to_string(tasks.size()));
+    if (tasks.size() == 1) {
+        expect(tasks[0].subject == QStringLiteral("Post-empty"),
+               "ANTS-1407-INV-1: surviving task is from the post-empty TaskCreate");
+        expect(tasks[0].status == QStringLiteral("pending"),
+               "ANTS-1407-INV-1: status is pending (fresh TaskCreate)");
+    }
+}
+
+// ANTS-1407-INV-3 + INV-4: a `TaskCreate` arriving after a prior
+// batch whose only task is `deleted` (a terminal status post-1407)
+// fires the widened batch-reset, then the final-pass deleted-filter
+// strips A entirely.
+void testAnts1407Inv3_batchResetWithDeleted() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1407-INV-3 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix1407b.jsonl", {
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Old A","description":"d","activeForm":"A"})",
+            QStringLiteral("toolu_a")),
+        userToolResult(QStringLiteral("toolu_a"),
+            QStringLiteral("Task #1 created successfully: Old A")),
+        assistantToolUse(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"1","status":"deleted"})",
+            QStringLiteral("toolu_adel")),
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"New B","description":"d","activeForm":"B"})",
+            QStringLiteral("toolu_b")),
+        userToolResult(QStringLiteral("toolu_b"),
+            QStringLiteral("Task #2 created successfully: New B")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1407-INV-3: batch-reset fires on `deleted` prior "
+           "batch (widened terminal predicate); deleted A then "
+           "stripped by final filter; only B remains",
+           "got " + std::to_string(tasks.size()));
+    if (tasks.size() == 1) {
+        expect(tasks[0].subject == QStringLiteral("New B"),
+               "ANTS-1407-INV-3: surviving task is B");
+        expect(tasks[0].status == QStringLiteral("pending"),
+               "ANTS-1407-INV-3: B is pending (fresh)");
+    }
+}
+
+// ANTS-1407-INV-4: a task with status `deleted` at end of parse is
+// removed from the returned list (final-pass filter).
+void testAnts1407Inv4_deletedFiltered() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1407-INV-4 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix1407c.jsonl", {
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Doomed","description":"d","activeForm":"D"})",
+            QStringLiteral("toolu_doom")),
+        userToolResult(QStringLiteral("toolu_doom"),
+            QStringLiteral("Task #7 created successfully: Doomed")),
+        assistantToolUse(QStringLiteral("TaskUpdate"),
+            R"({"taskId":"7","status":"deleted"})",
+            QStringLiteral("toolu_doomdel")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 0,
+           "ANTS-1407-INV-4: deleted task removed from final list",
+           "got " + std::to_string(tasks.size()));
+}
+
+// ANTS-1407-INV-7: Mode A then empty TodoWrite then Mode B —
+// the empty TodoWrite clears the lock, so the subsequent
+// TaskCreate is honoured.
+void testAnts1407Inv7_modeAThenModeBViaEmpty() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1407-INV-7 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix1407d.jsonl", {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"A1","status":"pending","activeForm":"a1"},)"
+            R"({"content":"B1","status":"pending","activeForm":"b1"})"
+            R"(]})",
+            QStringLiteral("toolu_w1")),
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[]})",
+            QStringLiteral("toolu_w2")),
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"C2","description":"d","activeForm":"c2"})",
+            QStringLiteral("toolu_c")),
+        userToolResult(QStringLiteral("toolu_c"),
+            QStringLiteral("Task #3 created successfully: C2")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-1407-INV-7: empty TodoWrite reset the Mode-A lock; "
+           "subsequent TaskCreate is honoured; just C remains",
+           "got " + std::to_string(tasks.size()));
+    if (tasks.size() == 1) {
+        expect(tasks[0].subject == QStringLiteral("C2"),
+               "ANTS-1407-INV-7: surviving task is the post-empty TaskCreate");
+    }
+}
+
 }  // namespace
 
 
@@ -935,6 +1062,30 @@ TEST(ClaudeTaskList, Ants1246Inv8ModeASnapshotUnchanged) {
 TEST(ClaudeTaskList, Ants1218Inv2ChipNumeratorMonotone) {
     const int before = expect_failures();
     testAnts1218Inv2_chipNumeratorMonotone();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1407Inv1EmptyTodoWriteDoesNotLockModeB) {
+    const int before = expect_failures();
+    testAnts1407Inv1_emptyTodoWriteDoesNotLockModeB();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1407Inv3BatchResetWithDeleted) {
+    const int before = expect_failures();
+    testAnts1407Inv3_batchResetWithDeleted();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1407Inv4DeletedFiltered) {
+    const int before = expect_failures();
+    testAnts1407Inv4_deletedFiltered();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1407Inv7ModeAThenModeBViaEmpty) {
+    const int before = expect_failures();
+    testAnts1407Inv7_modeAThenModeBViaEmpty();
     if (expect_failures() > before) FAIL();
 }
 

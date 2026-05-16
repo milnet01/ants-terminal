@@ -26,7 +26,10 @@ struct ClaudeTask {
     QString subject;      // user-visible title
     QString description;  // longer text (optional)
     QString activeForm;   // present-continuous form (optional)
-    QString status;       // "pending" / "in_progress" / "completed"
+    QString status;       // "pending" / "in_progress" / "completed" / "deleted"
+                          // (ANTS-1407: `deleted` is filtered out at end of
+                          // parseTranscript — never user-visible, but lives
+                          // mid-walk so TaskUpdate-by-id can find the entry.)
 };
 
 // Per-session tracker mirroring ClaudeBgTaskTracker's shape:

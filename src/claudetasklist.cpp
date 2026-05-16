@@ -1,5 +1,7 @@
 #include "claudetasklist.h"
 
+#include <algorithm>
+
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
@@ -240,9 +242,13 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
                     // Snapshot replaces the list.
                     out.clear();
                     idxByToolUseId.clear();
-                    sawTodoWrite = true;
                     const QJsonArray todos =
                         input.value(QStringLiteral("todos")).toArray();
+                    // ANTS-1407: an empty TodoWrite is a "no active todos"
+                    // signal, not a mode commitment. Only lock out Mode B
+                    // when CC actually listed items via TodoWrite; an empty
+                    // list lets a subsequent TaskCreate resume Mode B.
+                    sawTodoWrite = !todos.isEmpty();
                     for (const QJsonValue &tv : todos) {
                         out.append(taskFromTodoEntry(tv.toObject()));
                     }
@@ -257,18 +263,25 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
                     // this, completed work piles up forever in Mode B —
                     // user opens the Tasks dialog mid-session and sees
                     // 15 entries when the current logical batch is 4.
-                    // TodoWrite (Mode A) already clears on snapshot at
-                    // line 234; this brings TaskCreate to parity.
+                    // TodoWrite (Mode A) already clears on snapshot;
+                    // this brings TaskCreate to parity.
+                    //
+                    // ANTS-1407: widen the terminal predicate from
+                    // `completed` only to `completed OR deleted`.
+                    // Both are terminal in TaskUpdate semantics; a
+                    // `deleted` task should not block a fresh burst.
                     if (!out.isEmpty()) {
-                        bool allCompleted = true;
+                        bool allTerminal = true;
                         for (const auto &existing : out) {
                             if (existing.status
-                                != QLatin1String("completed")) {
-                                allCompleted = false;
+                                    != QLatin1String("completed")
+                                && existing.status
+                                    != QLatin1String("deleted")) {
+                                allTerminal = false;
                                 break;
                             }
                         }
-                        if (allCompleted) {
+                        if (allTerminal) {
                             out.clear();
                             idxByToolUseId.clear();
                         }
@@ -333,6 +346,17 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
             }
         }
     }
+
+    // ANTS-1407: `deleted` tasks live in `out` during the walk so
+    // that later TaskUpdate-by-id can find them, but the visible
+    // tracker does not surface them — dialog header sums
+    // (done + running + outstanding) already exclude `deleted`,
+    // and the chip's total should match. Drop them as a final pass.
+    out.erase(std::remove_if(out.begin(), out.end(),
+        [](const ClaudeTask &t) {
+            return t.status == QLatin1String("deleted");
+        }),
+        out.end());
 
     return out;
 }
