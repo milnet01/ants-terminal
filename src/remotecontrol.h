@@ -15,6 +15,7 @@
 class QLocalServer;
 class QLocalSocket;
 class MainWindow;
+class ClaudeIntegration;
 namespace VerifyTrust { class Client; }
 
 // Remote-control server for Ants Terminal. Kitty-style JSON envelopes
@@ -334,7 +335,19 @@ public:
     // TokenUsageEngine::Tracker via m_main->claudeIntegration()
     // and returns the per-tool dispatch report. See
     // docs/specs/ANTS-1284.md.
-    QJsonDocument cmdTokenUsage(const QJsonObject &req);
+    //
+    // ANTS-1422 pull 2 — optional explicitCi arg. The MCP lambda
+    // captures `m_claudeIntegration` directly and passes it in
+    // because the `m_main->claudeIntegration()` indirection was
+    // observed returning null on a live, otherwise-healthy Ants
+    // (no static-analysis explanation; bug class still under
+    // investigation, see docs/specs/ANTS-1422.md). The explicit
+    // override is the production path; the m_main fallback stays
+    // for back-compat callers (CLI / tests) and surfaces a
+    // diagnostic envelope when it fails.
+    QJsonDocument cmdTokenUsage(const QJsonObject &req,
+                                ClaudeIntegration *explicitCi = nullptr,
+                                quintptr lambdaThisPtr = 0);
 
     // ANTS-1319 — four `cold_eyes_*` MCP tools. Mirror to indie_review
     // / debt_sweep fold-in pattern. Pure delegation to ColdEyesEngine

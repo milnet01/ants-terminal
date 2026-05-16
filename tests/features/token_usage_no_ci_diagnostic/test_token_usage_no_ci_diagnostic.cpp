@@ -105,6 +105,43 @@ TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// INV-6 (ANTS-1422 pull 2) — token_usage lambda passes the
+// captured m_claudeIntegration explicitly to cmdTokenUsage,
+// bypassing the broken m_main->claudeIntegration() lookup.
+TEST(token_usage_no_ci_diagnostic, Inv6LambdaPassesExplicitCi) {
+    expect_reset();
+    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const auto pos = mw.find(
+        "registerToolProvider(\"token_usage\"");
+    ASSERT_NE(pos, std::string::npos)
+        << "INV-6 precondition: token_usage registration missing "
+           "from mainwindow.cpp";
+    // 1000-byte window covers the lambda body.
+    const std::string region = mw.substr(pos, 1000);
+    expect(contains(region, "m_claudeIntegration"),
+           "INV-6: lambda must capture/access m_claudeIntegration "
+           "and pass it explicitly to cmdTokenUsage (pull 2 bypass)");
+    expect(contains(region, "lambdaThisPtr") ||
+           contains(region, "reinterpret_cast<quintptr>(this)"),
+           "INV-6: lambda must forward `this` as lambdaThisPtr so "
+           "the diagnostic envelope can compare it with m_main");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-7 (ANTS-1422 pull 2) — cmdTokenUsage signature accepts
+// explicitCi + lambdaThisPtr params with the right defaults.
+TEST(token_usage_no_ci_diagnostic, Inv7SignatureAcceptsExplicitCi) {
+    expect_reset();
+    const std::string h = slurp(SRC_RC_HEADER);
+    expect(contains(h, "ClaudeIntegration *explicitCi"),
+           "INV-7: cmdTokenUsage declares explicitCi parameter");
+    expect(contains(h, "lambdaThisPtr"),
+           "INV-7: cmdTokenUsage declares lambdaThisPtr parameter");
+    expect(contains(h, "= nullptr"),
+           "INV-7: explicitCi defaults to nullptr for back-compat");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // INV-5 — both error branches set code == error.
 TEST(token_usage_no_ci_diagnostic, Inv5CodeMatchesError) {
     expect_reset();

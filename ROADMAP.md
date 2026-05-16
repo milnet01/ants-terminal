@@ -5668,7 +5668,30 @@ fixes don't address. Roadmapped here as their own design tasks.
   own trigger metric (`total_wrap_bytes / sum(bytes_out)`)
   while this is broken — `token_usage` is the only surface.
   Folded into Bundle C as a Tier-1 prerequisite.
-  **2026-05-16 update (Bundle C pull 5):** Diagnostic patch
+  **2026-05-16 update (Bundle C pull 7 — production bypass):**
+  Pull 1's diagnostic envelope on a relaunched binary returned
+  `m_main_ptr:"7fff09517fe0"` (stack — matches the expected
+  `MainWindow window(quakeMode)` location in main.cpp:393) and
+  `this_rc_ptr:"1e51b0b0"` (heap — matches the `new
+  RemoteControl(this, this)` site). Both pointers are valid,
+  so the getter genuinely returns null — the static-analysis-
+  unreachable branch is firing. Rather than block on the
+  underlying mystery, pull 2 ships the production bypass:
+  `cmdTokenUsage` takes an optional `ClaudeIntegration*
+  explicitCi` arg; the MCP lambda in mainwindow.cpp captures
+  `m_claudeIntegration` directly and passes it. The
+  `m_main->claudeIntegration()` indirection stays as a
+  fallback (non-lambda callers) and still emits the
+  diagnostic envelope if it fails. Lambda also passes
+  `reinterpret_cast<quintptr>(this)` so the diagnostic can
+  compare m_main vs lambda's `this` when the fallback fires.
+  Pull 3 (follow-on) lands the actual root-cause fix once
+  fresh diagnostics arrive. Tests
+  `tests/features/token_usage_no_ci_diagnostic/` extended
+  with INV-6/INV-7 locking the bypass wiring. 712/712
+  features green.
+
+  **2026-05-16 pull 1 (diagnostic only):** Diagnostic patch
   shipped. cmdTokenUsage's two error envelopes
   (`no_claude_integration` + `no_main`) now carry a `debug`
   object with `m_main_ptr`, `this_rc_ptr`, and
