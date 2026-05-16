@@ -1154,7 +1154,20 @@ void ClaudeIntegration::stopMcpServer() {
 // it into a text content block.
 void ClaudeIntegration::registerToolProvider(
     const QString &name, ToolHandler handler) {
-    m_toolProviders[name] = std::move(handler);
+    // ANTS-1427 — wrap every handler with a lambda-entry log line so
+    // multi-checkpoint debugging sees: lambda-enter (here) → cmd*
+    // body checkpoint (per-cmd one-liner) → recordDispatch (final).
+    // Zero overhead in production (single bit-test when category off).
+    ToolHandler wrapped =
+        [name, inner = std::move(handler)]
+        (const QJsonObject &args) -> QString {
+            ANTS_LOG(DebugLog::Claude,
+                     "mcp lambda-enter tool=%s arg_keys=%lld",
+                     name.toUtf8().constData(),
+                     static_cast<long long>(args.size()));
+            return inner(args);
+        };
+    m_toolProviders[name] = std::move(wrapped);
 }
 
 // ANTS-1360 — MCP debug-log tap. Top-level shape only — no recursion
@@ -1256,6 +1269,20 @@ void ClaudeIntegration::recordDispatch(
     }
     recordMcpTrace(toolName, argsObj, argBytes, outBytes,
                    durUs, cachedHit, result);
+    // ANTS-1427 — per-dispatch audit trail. Gated on
+    // DebugLog::Claude so production is a single bit-test.
+    // recordDispatch is the unique observation point (ANTS-1402);
+    // logging here means one line per MCP call, no double-count.
+    ANTS_LOG(DebugLog::Claude,
+             "mcp dispatch tool=%s result=%s "
+             "arg_b=%lld out_b=%lld wrap_b=%lld dur_us=%lld cached=%s",
+             toolName.toUtf8().constData(),
+             result.toUtf8().constData(),
+             static_cast<long long>(argBytes),
+             static_cast<long long>(outBytes),
+             static_cast<long long>(wrapBytes),
+             static_cast<long long>(durUs),
+             cachedHit ? "yes" : "no");
 }
 
 QJsonObject ClaudeIntegration::queryMcpTrace(

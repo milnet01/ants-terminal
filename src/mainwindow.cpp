@@ -4023,22 +4023,17 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdPlanTemplate(args).toJson(QJsonDocument::Compact));
         });
 
-    // ANTS-1284 — token_usage. ANTS-1422 pull 2: pass
-    // m_claudeIntegration explicitly to cmdTokenUsage. The
-    // m_main->claudeIntegration() indirection was observed
-    // returning null on a live Ants 2026-05-16 with no static-
-    // analysis explanation; the lambda's `this` and its captured
-    // m_claudeIntegration access bypass the broken path entirely.
-    // Also pass `this` as lambdaThisPtr for the diagnostic
-    // envelope (so a re-repro shows whether m_main and the
-    // lambda's `this` point to the same MainWindow).
+    // ANTS-1284 — token_usage. ANTS-1422 pull 3: explicit
+    // ClaudeIntegration* is now the canonical (only) path. The
+    // m_main->claudeIntegration() fallback was retired — it
+    // returned null on a live build with no static-analysis
+    // explanation, and the only call site (this lambda) always
+    // supplies the pointer.
     m_claudeIntegration->registerToolProvider("token_usage",
         [this](const QJsonObject &args) -> QString {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             return QString::fromUtf8(
-                m_remoteControl->cmdTokenUsage(
-                    args, m_claudeIntegration,
-                    reinterpret_cast<quintptr>(this))
+                m_remoteControl->cmdTokenUsage(args, m_claudeIntegration)
                     .toJson(QJsonDocument::Compact));
         });
 

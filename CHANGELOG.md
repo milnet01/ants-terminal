@@ -15,15 +15,14 @@ for security-relevant changes.
 ### 🪙 Bundle C — MCP token-economy hygiene (in flight, 2026-05-16)
 
 Third bundle from the 0.7.92 plan. Items group around the MCP layer:
-descriptor dedup, response shape, dispatch instrumentation, and one
-write-verb addition. Six items shipped (1409 / 1398 / 1399 / 1402 /
-1424 / 1426). One item is mid-flight at the closeout boundary
-(ANTS-1422 — pulls 1 + 2 of 3 landed; pull 3 root-cause fix is gated
-on diagnostic data from the relaunched binary). One item deferred
-(ANTS-1403 — wrap-overhead v3, gated on ANTS-1422 unblocking
-`token_usage`; closeout-measurement was recorded but the v3 work
-itself stays planned). Two follow-ups discovered mid-bundle
-(ANTS-1425 logged; ANTS-1426 fixed-in-bundle).
+descriptor dedup, response shape, dispatch instrumentation, audit
+trail, and one write-verb addition. Eight items shipped (1409 / 1398
+/ 1399 / 1402 / 1422 / 1424 / 1426 / 1427). One item deferred
+(ANTS-1403 — wrap-overhead v3, gated on having clean token_usage
+data which now ships; the v3 work itself stays planned for a future
+bundle). Three follow-ups discovered mid-bundle (ANTS-1425 logged
+for next round; ANTS-1426 fixed-in-bundle; ANTS-1427 added + shipped
+in the pull-3 close-out for ANTS-1422).
 
 - **ANTS-1409 — Per-tool MCP descriptor blurbs deduplicate the
   "Pass `caller_cwd` to anchor to…" phrasing.** New
@@ -149,36 +148,79 @@ itself stays planned). Two follow-ups discovered mid-bundle
   (e.g. for readability). Fixed — matches the markdown standard's
   loose-list rule now.
 
-- **ANTS-1422 (pulls 1–2 of 3) — `token_usage` diagnostic envelope
-  + production bypass.** The MCP `token_usage` tool was refusing
-  every call on a live, configured Ants with
-  `{ok:false, code:"no_claude_integration"}` despite the integration
-  being demonstrably wired (`mcp_trace`, `caller_cwd_info`,
-  `roadmap_query` all worked from the same dispatch site). Pull 1
-  (`f8188e6`) added a `debug` object to both error envelopes
-  (`no_ci`, `no_main`) carrying `m_main_ptr`, `this_rc_ptr`, and
-  `ci_via_getter_null` for hypothesis discrimination. Pointer
-  values from the relaunched binary confirmed `m_main` was a valid
-  stack pointer and `RemoteControl* this` was a valid heap pointer,
-  so the static-analysis-unreachable null branch was firing.
-  Pull 2 (`26c7b42`) ships the production bypass: `cmdTokenUsage`
-  takes an optional `ClaudeIntegration* explicitCi` arg; the MCP
-  lambda in `mainwindow.cpp` captures `m_claudeIntegration` directly
-  and passes it. The `m_main->claudeIntegration()` indirection
-  stays as a fallback for non-lambda callers and still emits the
-  diagnostic envelope if it fails. Lambda also passes
-  `reinterpret_cast<quintptr>(this)` for cross-comparison.
-  Tests `tests/features/token_usage_no_ci_diagnostic/` extended
-  with INV-6/INV-7 locking the bypass wiring. 712/712 features
-  green. Pull 3 (root-cause fix once diagnostics arrive) remains
-  open; ticket stays 🚧.
+- **ANTS-1422 — `token_usage` `no_claude_integration` regression
+  (3 pulls).** The MCP `token_usage` tool was refusing every call
+  on a live, configured Ants with `{ok:false, code:"no_claude_
+  integration"}` despite the integration being demonstrably wired
+  (`mcp_trace`, `caller_cwd_info`, `roadmap_query` all worked from
+  the same dispatch site). **Pull 1** (`f8188e6`) added a `debug`
+  object to both error envelopes (`no_ci`, `no_main`) carrying
+  `m_main_ptr`, `this_rc_ptr`, and `ci_via_getter_null` for
+  hypothesis discrimination. Pointer values from the relaunched
+  binary confirmed `m_main` was a valid stack pointer and
+  `RemoteControl* this` was a valid heap pointer, so the static-
+  analysis-unreachable null branch was firing. **Pull 2**
+  (`26c7b42`) shipped the production bypass: `cmdTokenUsage` took
+  an optional `ClaudeIntegration* explicitCi` arg; the MCP lambda
+  in `mainwindow.cpp` captured `m_claudeIntegration` directly and
+  passed it. **Pull 3** (this commit) retires the unreached
+  fallback. After multi-day soak with the bypass in place, the
+  original failure mode is unreproducible and the fallback was
+  never re-exercised. The pragmatic close is to delete the
+  observed-null path rather than indefinitely maintain a
+  diagnostic-only branch: `cmdTokenUsage` signature simplifies
+  to `(req, ci)` with `ci` mandatory; both diagnostic envelopes
+  and the `m_main->claudeIntegration()` lookup are deleted; lambda
+  drops the `lambdaThisPtr` forwarding. Net ~50 LoC removed,
+  ~10 LoC added (slimmed comment + ANTS-1427 cmd-enter log line).
+  Root-cause investigation parks here — the non-virtual inline
+  getter returning null when the field was non-null remains
+  unexplained from source alone. If the same shape ever appears
+  on a different MCP tool, the new ANTS-1427 audit-trail logging
+  will surface it at per-dispatch granularity. Spec
+  `docs/specs/ANTS-1422.md` § "Pull 3 (2026-05-16): production
+  close-out". Tests `tests/features/token_usage_no_ci_diagnostic/`
+  rewritten to 5 invariants reflecting the post-pull-3 contract.
+  728/728 features green.
   Layman: the tool that measures Claude's token usage was broken
-  on the live build — refusing every call. Two pulls land in this
-  bundle: one that captures diagnostic data to figure out why,
-  and one that routes around the bug so the tool works in
-  production while the underlying mystery is debugged. The actual
-  root-cause fix comes in a follow-up pull once the diagnostic
-  data arrives from the user's next session.
+  on the live build for a still-mysterious reason. Three pulls
+  in this bundle: one that captured diagnostic data, one that
+  routed around the bug, one that deletes the broken path
+  entirely (because after a few days it was clear nothing was
+  ever going to take that path again). The mystery itself stays
+  open as a research curiosity, but the user-facing tool works.
+
+- **ANTS-1427 — MCP dispatch debug logging (paired with 1422
+  close-out).** The 2026-05-16 ANTS-1422 investigation needed
+  two diagnostic pulls because no audit trail of MCP dispatches
+  existed — every regression hypothesis required redeploying a
+  fresh diagnostic build. Add three log-line sites, all gated on
+  `DebugLog::Claude` (zero overhead in production): (1)
+  **lambda-enter** in `ClaudeIntegration::registerToolProvider`
+  — wraps every handler with one entry-log line, so all current
+  and future MCP tools inherit the audit trail automatically;
+  (2) **cmd-enter** in `RemoteControl::cmdTokenUsage` — middle
+  checkpoint with the `ci` pointer value, lets future debug
+  sessions confirm the pointer captured at lambda-registration
+  time matches the pointer inside the cmd function; (3)
+  **dispatch-end** in `ClaudeIntegration::recordDispatch` — the
+  unified observation point from ANTS-1402, fires exactly once
+  per dispatch across success + failure branches with tool name,
+  result, byte counts, duration µs, cached-hit flag. The three
+  lines comprise the user's classic printf-debugging style:
+  print relevant variables at multiple checkpoints, annotated
+  by location, so a variable's change point can be pinned. The
+  per-cmd middle checkpoint is added here only for
+  `cmdTokenUsage` (the historical hot spot); other `cmd*` sites
+  add the same one-liner ad-hoc as future debugging needs
+  surface. Spec `docs/specs/ANTS-1427.md`; tests
+  `tests/features/mcp_dispatch_debug_log/` (3 invariants, all
+  source-scrape). 728/728 features green.
+  Layman: when MCP tools have weird failures, we now have a
+  debug log we can turn on to see every tool call at three
+  checkpoints in its lifecycle. Would have saved two diagnostic
+  rounds on the `token_usage` mystery — adding it now so the
+  next one doesn't.
 
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 

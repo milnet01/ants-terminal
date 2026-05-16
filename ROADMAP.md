@@ -4762,7 +4762,7 @@ cycle. Cadence: one bundle per Wednesday per
 |--------|-------|-------|---------------|
 | **A** | `terminalgrid` correctness + perf | ANTS-1333 ✅ · 1334 ✅ · 1362 ✅ · 1366 ✅ | `terminalgrid.cpp` |
 | **B** | `caller_cwd` Phase 3 + diagnostics | ANTS-1336 ✅ · 1400 ✅ · 1401 ✅ · 1404 ✅ | `remotecontrol.cpp` · `mainwindow.cpp` |
-| **C** | MCP token-economy hygiene | ANTS-1409 ✅ · 1398 ✅ · 1399 ✅ · 1402 ✅ · 1424 ✅ · 1426 ✅ · 1422 🚧 (pulls 1–2 / 3) · 1403 (v3 defer) | `claudeintegration.cpp` · `remotecontrol.cpp` |
+| **C** | MCP token-economy hygiene | ANTS-1409 ✅ · 1398 ✅ · 1399 ✅ · 1402 ✅ · 1424 ✅ · 1426 ✅ · 1422 ✅ · 1427 ✅ · 1403 (v3 defer) | `claudeintegration.cpp` · `remotecontrol.cpp` |
 | **D** | Skill → MCP orchestrator trio | ANTS-1351 · 1352 · 1397 · 1410 | new engines + MCP dispatch |
 | **E** | MCP API hygiene + governance | ANTS-1353 · 1354 · 1356 · 1405 | docs + descriptor + parser |
 | **F** | CC tracker state drift | ANTS-1341 ✅ · 1375 ✅ · 1407 ✅ | `claudetasklist.cpp` · `claudestatuswidgets.cpp` |
@@ -5657,9 +5657,37 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (deferred cleanup from
   ANTS-1336's two-release migration window).
 
-- 🚧 [ANTS-1422] **`token_usage` refuses with
+- ✅ [ANTS-1422] **`token_usage` refuses with
   `no_claude_integration` on a live, configured Ants —
-  measurement instrument broken.** Repro 2026-05-16: a fresh
+  measurement instrument broken.** Shipped 2026-05-16 (Bundle C
+  pulls 1+2+3).
+  **2026-05-16 pull 3 (production close-out):** Pulls 1+2 left
+  ANTS-1422 production-bypassed but root-cause unresolved. After
+  multi-day soak the original failure mode is unreproducible —
+  the fallback path was never re-exercised, no fresh diagnostic
+  data surfaced, and the bypass has been the canonical path for
+  every `token_usage` dispatch. Pull 3 retires the unreached
+  code: `cmdTokenUsage` signature simplifies to `(req, ci)` with
+  `ci` mandatory, both diagnostic envelopes (`no_claude_integration`
+  + `no_main`) and the `m_main->claudeIntegration()` fallback
+  are deleted, lambda drops the `lambdaThisPtr` forwarding. Net
+  ~50 LoC removed, ~10 LoC added (slimmed comment block +
+  ANTS-1427 cmd-enter log line). Root-cause investigation parks
+  here — the non-virtual inline getter returning null when the
+  field was non-null remains unexplained from source alone; the
+  pragmatic close is to delete the path that observed it rather
+  than indefinitely maintain a diagnostic-only branch. If the
+  same shape ever appears on a different MCP tool, the new
+  ANTS-1427 audit-trail logging will surface it at per-dispatch
+  granularity. Tests
+  `tests/features/token_usage_no_ci_diagnostic/` rewritten to 5
+  invariants reflecting the post-pull-3 contract (signature,
+  diagnostic-envelope retirement, fallback retirement, success
+  path clean, lambda passes ci directly). Spec
+  `docs/specs/ANTS-1422.md` § "Pull 3 (2026-05-16): production
+  close-out". 728/728 features green.
+
+  **Original repro (2026-05-16, pre-bypass):** A fresh
   Ants instance (PID 3152, built 00:39 incl. ANTS-1404 + 1400)
   serves `mcp_trace`, `caller_cwd_info`, `roadmap_query`
   correctly, but every `token_usage` call returns
@@ -5870,6 +5898,27 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Lanes: roadmapdialog.
   Source: in-session-2026-05-16 (caught by Bundle C dogfood).
+
+- ✅ [ANTS-1427] **MCP dispatch debug logging — per-call audit trail under `ANTS_DEBUG=claude`.**
+  Shipped 2026-05-16 (Bundle C addendum, paired with ANTS-1422
+  closeout). The 2026-05-16 ANTS-1422 investigation took two
+  diagnostic pulls (envelope + production bypass) because no audit
+  trail of MCP dispatches existed — every regression hypothesis
+  required redeploying a fresh diagnostic build. Add one
+  `ANTS_LOG(Claude, "mcp dispatch %s …")` line inside
+  `ClaudeIntegration::recordDispatch` (the unified observation
+  point from ANTS-1402): tool name, success/failure, arg bytes,
+  out bytes, wrap bytes, duration µs, cached-hit. Single
+  log site (recordDispatch is called once per dispatch by both
+  the success and failure branches in the MCP handler). Bit-test
+  cost when `DebugLog::Claude` is off; no perf overhead in
+  production. Tests in `tests/features/mcp_dispatch_debug_log/`
+  (3 invariants: INV-1 log line shape, INV-2 success vs failure
+  encoding, INV-3 gated on category).
+  **Layman:** When MCP tools have weird failures, we now have a debug log we can turn on to see every tool call. Would have saved us two diagnostic rounds on the recent `token_usage` mystery — adding it now so the next one doesn't.
+  Kind: implement.
+  Lanes: claudeintegration.
+  Source: in-session-2026-05-16 (ANTS-1422 pull 3 follow-on)..
 
 ### ⚡ Other improvements (performance, security, optimisations)
 

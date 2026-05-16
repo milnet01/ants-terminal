@@ -3568,69 +3568,21 @@ QJsonDocument RemoteControl::cmdPlanTemplate(const QJsonObject &req) {
 // caller can read-and-clear in one round-trip.
 // See docs/specs/ANTS-1284.md.
 
-// ANTS-1422 — tuErr() helper retired: both error branches now
-// emit inline envelopes with diagnostic `debug` fields. Keeping
-// the envelope construction inline is the minimum-magic path
-// to root-cause the live no_claude_integration regression.
+// ANTS-1422 pull 3 — diagnostic envelope + m_main fallback retired
+// (the only call site is the MCP lambda which always passes
+// explicitCi; the indirection was unreachable in practice and
+// observed null on a live build with no static-analysis path).
 
 QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
-                                           ClaudeIntegration *explicitCi,
-                                           quintptr lambdaThisPtr) {
-    // ANTS-1422 pull 2 — prefer the explicit ClaudeIntegration* that
-    // the MCP lambda captured at registration time. The
-    // `m_main->claudeIntegration()` indirection returned null on a
-    // live Ants 2026-05-16 with no static-analysis explanation;
-    // bypassing it is the production fix. The m_main fallback is
-    // kept for non-lambda callers (CLI/tests/IPC socket) and emits
-    // the diagnostic envelope if it fails so we can keep
-    // root-causing the underlying getter regression.
-    auto *ci = explicitCi;
-    if (!ci) {
-        if (!m_main) {
-            QJsonObject env;
-            env["ok"]      = false;
-            env["error"]   = QStringLiteral("no_main");
-            env["code"]    = QStringLiteral("no_main");
-            env["message"] = QStringLiteral("token_usage: no main window");
-            QJsonObject dbg;
-            dbg["m_main_ptr"]      = QStringLiteral("0x0");
-            dbg["this_rc_ptr"]     =
-                QString::number(reinterpret_cast<quintptr>(this), 16);
-            dbg["lambda_this_ptr"] =
-                QString::number(lambdaThisPtr, 16);
-            dbg["explicit_ci_provided"] = false;
-            env["debug"] = dbg;
-            return QJsonDocument(env);
-        }
-        ci = m_main->claudeIntegration();
-        if (!ci) {
-            // ANTS-1422 — observed 2026-05-16 on a live, otherwise-
-            // healthy Ants Terminal. m_main is non-null, the getter
-            // returns null. Static analysis says this branch is
-            // unreachable; the diagnostic envelope dumps pointers so
-            // a re-repro yields data. Compare m_main_ptr against
-            // lambda_this_ptr — if they differ, RemoteControl's
-            // m_main points to a different MainWindow than the
-            // lambda's captured `this` (the smoking-gun hypothesis).
-            QJsonObject env;
-            env["ok"]      = false;
-            env["error"]   = QStringLiteral("no_claude_integration");
-            env["code"]    = QStringLiteral("no_claude_integration");
-            env["message"] = QStringLiteral(
-                "token_usage: claude integration unavailable");
-            QJsonObject dbg;
-            dbg["m_main_ptr"] =
-                QString::number(reinterpret_cast<quintptr>(m_main), 16);
-            dbg["this_rc_ptr"] =
-                QString::number(reinterpret_cast<quintptr>(this), 16);
-            dbg["lambda_this_ptr"] =
-                QString::number(lambdaThisPtr, 16);
-            dbg["ci_via_getter_null"] = true;
-            dbg["explicit_ci_provided"] = false;
-            env["debug"] = dbg;
-            return QJsonDocument(env);
-        }
-    }
+                                           ClaudeIntegration *ci) {
+    // ANTS-1427 — middle checkpoint in the multi-stage MCP audit
+    // trail. Pairs with the lambda-entry log (registerToolProvider
+    // wrapper) and the dispatch-end log (recordDispatch). The
+    // pointer value lets future debug sessions confirm the ci
+    // captured at lambda-registration time is still the same here.
+    ANTS_LOG(DebugLog::Claude,
+             "mcp cmd-enter cmdTokenUsage ci=%p",
+             static_cast<const void *>(ci));
 
     const bool wantsReset  = req.value(QStringLiteral("reset")).toBool(false);
     const bool includeZero = req.value(QStringLiteral("include_zero")).toBool(false);

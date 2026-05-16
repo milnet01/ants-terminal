@@ -332,22 +332,18 @@ public:
     QJsonDocument cmdPlanTemplate(const QJsonObject &req);
 
     // ANTS-1284 — token_usage. Reads ClaudeIntegration's
-    // TokenUsageEngine::Tracker via m_main->claudeIntegration()
-    // and returns the per-tool dispatch report. See
-    // docs/specs/ANTS-1284.md.
+    // TokenUsageEngine::Tracker and returns the per-tool dispatch
+    // report. See docs/specs/ANTS-1284.md.
     //
-    // ANTS-1422 pull 2 — optional explicitCi arg. The MCP lambda
-    // captures `m_claudeIntegration` directly and passes it in
-    // because the `m_main->claudeIntegration()` indirection was
-    // observed returning null on a live, otherwise-healthy Ants
-    // (no static-analysis explanation; bug class still under
-    // investigation, see docs/specs/ANTS-1422.md). The explicit
-    // override is the production path; the m_main fallback stays
-    // for back-compat callers (CLI / tests) and surfaces a
-    // diagnostic envelope when it fails.
+    // ANTS-1422 pull 3 — `explicitCi` is the canonical path. The
+    // MCP lambda in mainwindow.cpp passes the captured
+    // `m_claudeIntegration` directly. The pull-1/2 fallback through
+    // `m_main->claudeIntegration()` was deleted: it returned null
+    // on a live build (no static-analysis explanation, bug class
+    // unreproducible after the bypass), and the only call site
+    // (the lambda) always supplies `explicitCi`.
     QJsonDocument cmdTokenUsage(const QJsonObject &req,
-                                ClaudeIntegration *explicitCi = nullptr,
-                                quintptr lambdaThisPtr = 0);
+                                ClaudeIntegration *ci);
 
     // ANTS-1319 — four `cold_eyes_*` MCP tools. Mirror to indie_review
     // / debt_sweep fold-in pattern. Pure delegation to ColdEyesEngine
