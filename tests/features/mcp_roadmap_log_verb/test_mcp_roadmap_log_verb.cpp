@@ -40,9 +40,11 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     ASSERT_NE(pos, std::string::npos)
         << "INV-1: roadmap_log name literal missing from "
            "claudeintegration.cpp";
-    // 8 KiB window — the schema block is large (long description
-    // literal + per-property descriptions). 4 KiB wasn't enough.
-    const std::string region = ci.substr(pos, 8000);
+    // 12 KiB window — the schema block grew (ANTS-1428 added op /
+    // to_status / id / anchor / prefix_hint properties under the
+    // same descriptor, ~3 KiB of new prose + props). 8 KiB was
+    // enough through ANTS-1424; 12 KiB carries us through Tier 2.
+    const std::string region = ci.substr(pos, 12000);
     expect(contains(region, "\"caller_cwd\""),
            "INV-1: caller_cwd schema property present");
     expect(contains(region, "\"section\""),

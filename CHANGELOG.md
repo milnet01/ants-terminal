@@ -21,9 +21,9 @@ trail, and two write-verb additions. Thirteen items shipped
 1429 / 1430 / 1431 / 1432). One item deferred (ANTS-1403 —
 wrap-overhead v3, gated on having clean token_usage data which now
 ships; the v3 work itself stays planned for a future bundle).
-ANTS-1428 Tier 1 (read-side adapter) ships here; Tiers 2–3 (write +
-renderer) advance to 🚧 for the next bundle. Seven follow-ups
-discovered
+ANTS-1428 ships in two pulls (Tier 1 read-side, then Tiers 2–3
+write-side + dialog renderer fork) — the second pull closes the
+read/write loop end-to-end. Seven follow-ups discovered
 mid-bundle (ANTS-1425 logged for next round; ANTS-1426 fixed-in-
 bundle; ANTS-1427 added + shipped in the pull-3 close-out for
 ANTS-1422; ANTS-1429 added + shipped after 2026-05-16 Vestige CC
@@ -360,58 +360,86 @@ adapter-mode dialect-detection will ride on next).
   every time.
 
 - **ANTS-1428 — Adapter mode for GitHub-task-list ROADMAP files
-  (Tier 1 / read-side).** `roadmap_query` against the Vestige
-  engine roadmap (`/mnt/Games/Scripts/Linux/3D_Engine/ROADMAP.md`,
-  402 KB, ~600 GFM-task-list bullets) used to return
+  (Tier 1 read + Tier 2 write + Tier 3 dialog renderer).**
+  `roadmap_query` against the Vestige engine roadmap
+  (`/mnt/Games/Scripts/Linux/3D_Engine/ROADMAP.md`, 402 KB,
+  ~600 GFM-task-list bullets) used to return
   `{bullets:[], count:0}` (and post-ANTS-1429,
   `{ok:false, code:"unrecognised_format"}`). The adapter now
-  parses both formats end-to-end. Detection rule: no
+  reads + writes both formats end-to-end. Detection rule: no
   `<!-- ants-roadmap-format: 1 -->` marker AND ≥ 1
   `^- \[[ x]\]` line in the first 100 non-empty lines →
-  adapter engages; otherwise native parser. Tier 1 covers:
-  status mapping (`- [x]` → ✅, `- [ ]` → 📋, inline emoji
-  prefix wins — including the contradictory case
-  `- [x] 📋 …` → 📋, by design), `**Bold-ID.**` token
-  preservation (multi-prefix projects like Vestige's
-  `Sh4` / `Ed1` / `VEST-0042` work without configuration),
-  synthetic IDs via FNV-1a 64-bit content-hash of the
-  normalised headline (10-char base36, stable across line
-  reorders, ~10⁻¹⁴ collision probability at document scale),
-  `(COMPLETE)` / `(DONE)` heading-marker inheritance for
-  enclosed planned bullets, caret-anchor extraction
-  (`^vest-0042`) as future locator handles. `RoadmapDialog::
-  BulletRecord` gains three additive fields (`anchor`,
-  `synthetic`, `format`); per-bullet envelope echoes them when
-  set; envelope-level `format:"github-task-list"` surfaces when
-  any bullet engaged the adapter. The native (`ants-v1`) parse
-  path is byte-identical to pre-1428 behaviour. Spec
+  adapter engages; otherwise native parser. **Tier 1**
+  (read-side, Bundle C pull 13): status mapping (`- [x]` → ✅,
+  `- [ ]` → 📋, inline emoji prefix wins — including the
+  contradictory case `- [x] 📋 …` → 📋, by design),
+  `**Bold-ID.**` token preservation (multi-prefix projects
+  like Vestige's `Sh4` / `Ed1` / `VEST-0042` work without
+  configuration), synthetic IDs via FNV-1a 64-bit content-hash
+  of the normalised headline (10-char base36, stable across
+  line reorders, ~10⁻¹⁴ collision probability at document
+  scale), `(COMPLETE)` / `(DONE)` heading-marker inheritance
+  for enclosed planned bullets, caret-anchor extraction
+  (`^vest-0042`). `RoadmapDialog::BulletRecord` gains three
+  additive fields (`anchor`, `synthetic`, `format`).
+  **Tier 2** (write-side `op:"flip"`, Bundle C pull 14):
+  `cmdRoadmapLog` dispatches on a new `op` field — default
+  `"append"` is byte-identical to ANTS-1424; `"flip"` flips a
+  bullet's status via a `bold-ID → caret anchor →
+  headline-hash` locator and injects an Obsidian-style
+  `^prefix-NNNN` caret anchor on first touch of a bullet that
+  has neither a bold-ID nor an existing anchor. Counter
+  consumes only on anchor injection (INV-8). Four new error
+  codes per the spec's taxonomy table:
+  `bullet_not_found` (with ≤3 nearest-neighbour
+  `suggestions[]` ranked by shared headline-prefix length),
+  `bullet_ambiguous` (with the actual matches for caller
+  disambiguation), `anchor_unsafe_context` (bullet inside a
+  fenced code block), `bad_op_combo` (`id_hint` under flip,
+  headline alongside a canonical-handle locator, or unknown
+  `op` string). Default prefix from `caller_cwd`'s leaf-dir
+  uppercase first 4 chars; override via `prefix_hint`
+  (validated against `^[A-Z][A-Z0-9_-]{0,15}$`). MCP schema
+  in `claudeintegration.cpp` advertises the new properties
+  (`op` enum, `to_status`, `id`, `anchor`, `prefix_hint`);
+  conditional requireds enforced at the verb (not the schema)
+  via the standard `missing_field` / `bad_op_combo` refusals.
+  **Tier 3** (dialog renderer fork, Bundle C pull 14):
+  `renderCardsHtml` decorates synthetic-ID cards with a
+  `rm-card-synthetic` CSS class — dashed left border so
+  hand-authored vs auto-anchored bullets are visually
+  distinguishable. Other INV-10 requirements (status icon
+  mapping, headline preservation, kind/lanes/layman chip
+  suppression on empty, ID rendering) flow structurally from
+  the existing emitCard path — Tier 1's BulletRecord
+  population is the load-bearing surface. Spec
   `docs/specs/ANTS-1428.md` covers all three tiers (the spec
   ran three cold-eyes loops to clean — 2 CRITICAL, 7 HIGH, 7
   MEDIUM, multiple LOW findings verified-and-fixed across
   loops; cross-doc amendment to ANTS-1336 INV-7 + CLAUDE.md
   threaded through to add `project_layout` to the
   tenant-hashed-storage gated set). Tests:
-  `tests/features/mcp_adapter_github_tasklist/test_adapter_read.cpp`
-  (10 INVs covering detection, multi-prefix bold-IDs, synthetic
-  stability, distinctness on 50-bullet stress fixture, status
-  mapping inc. contradictory case, section-completion
-  inheritance, native-path regression, anchor extraction).
-  **Remaining for next bundle:** Tier 2 (write-side `op:"flip"`
-  with caret-anchor injection + counter-consume-on-write
-  semantics — adds `bullet_not_found` / `bullet_ambiguous` /
-  `anchor_unsafe_context` / `bad_op_combo` error codes per
-  spec § Error code taxonomy) and Tier 3 (dialog renderer fork
-  for the v2 card UI). ROADMAP advances 📋→🚧. 756/756
-  features green at landing.
-  Layman: Vestige's roadmap (and any other project that started
-  from a GitHub-style README task-list with `- [ ]` / `- [x]`
-  checkboxes) is now queryable through Ants tools without
-  rewriting the file. The Ants checker recognises the foreign
-  shape, maps the checkboxes to its own status emoji, preserves
-  any existing IDs the project uses, and synthesises stable
-  IDs from headline text when no IDs exist. Writes (status
-  flips) and the visual roadmap dialog ride the same adapter
-  but ship next week.
+  `tests/features/mcp_adapter_github_tasklist/` — 10 INVs in
+  `test_adapter_read.cpp` (Tier 1), 11 INVs in
+  `test_adapter_write.cpp` (Tier 2, behavioural against
+  RemoteControl + QTemporaryDir), 9 INVs in
+  `test_adapter_render.cpp` (Tier 3, behavioural against
+  renderCardsHtml). 774/774 features green at landing.
+  Layman: Vestige's roadmap (and any other project that
+  started from a GitHub-style README task-list with `- [ ]` /
+  `- [x]` checkboxes) is now fully queryable, status-flippable,
+  and visible in the Ants roadmap dialog without rewriting the
+  file. The Ants checker recognises the foreign shape, maps
+  the checkboxes to its own status emoji, preserves any
+  existing IDs the project uses, and synthesises stable IDs
+  from headline text when no IDs exist. The first time a
+  status-flip touches a bullet that has no ID, Ants writes a
+  tiny invisible-on-GitHub anchor (`^vest-0001`) at the end of
+  the line so future flips know which bullet is which —
+  Obsidian's block-reference syntax, doubled as a stable
+  handle. The roadmap dialog draws a dashed left border on
+  auto-anchored bullets so you can tell them apart from
+  hand-authored ones at a glance.
 
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 

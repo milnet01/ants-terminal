@@ -370,6 +370,11 @@ public:
     // Mutates project state (counter + markdown). Required contract
     // gates absent caller_cwd; PathValidation anchors paths to the
     // caller's project root. See docs/specs/ANTS-1424.md.
+    //
+    // ANTS-1428 — adapter mode adds `op:"flip"` for GFM-format
+    // roadmaps; cmdRoadmapLog routes to cmdRoadmapLogFlip on that
+    // value. Default `op:"append"` preserves ANTS-1424 behaviour
+    // byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
     QJsonDocument cmdRoadmapLog(const QJsonObject &req);
 
     // ANTS-1346 test-only inspectors for the section-cache LRU.
@@ -407,6 +412,10 @@ private slots:
 
 private:
     QJsonDocument dispatch(const QJsonObject &req);
+    // ANTS-1428 — adapter-mode write path for GFM-format roadmaps.
+    // Dispatched from cmdRoadmapLog when req["op"] == "flip". See
+    // docs/specs/ANTS-1428.md § Tier 2.
+    QJsonDocument cmdRoadmapLogFlip(const QJsonObject &req);
     QJsonDocument cmdLs();
     QJsonDocument cmdSendText(const QJsonObject &req);
     QJsonDocument cmdNewTab(const QJsonObject &req);

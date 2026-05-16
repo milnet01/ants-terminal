@@ -2668,18 +2668,31 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "roadmap_log";
                     t["description"] = QStringLiteral(
-                        "Append a new bullet to ROADMAP.md. Allocates "
-                        "the next stable ID from .roadmap-counter, "
+                        "Append a new bullet to ROADMAP.md, or flip "
+                        "the status of an existing bullet on a "
+                        "GFM-task-list-format roadmap. Mode picked "
+                        "by `op` (default \"append\"). "
+                        "op:\"append\" (ANTS-1424) — allocates the "
+                        "next stable ID from .roadmap-counter, "
                         "formats the bullet per the project's "
                         "roadmap-format spec, and inserts at the end "
-                        "of the named `section` (slug from "
-                        "roadmap_query). Required: caller_cwd, "
-                        "section, status (planned/in-progress/shipped/"
-                        "considered), headline, kind (implement/fix/"
-                        "refactor/...), source. Optional: body, "
-                        "layman, lanes[], id_hint. Returns {ok, id, "
-                        "file, line, bytes_written} or {ok:false, "
-                        "error, code}. ANTS-1424.");
+                        "of `section` (slug from roadmap_query). "
+                        "Required: caller_cwd, section, status "
+                        "(planned/in-progress/shipped/considered), "
+                        "headline, kind, source. Optional: body, "
+                        "layman, lanes[], id_hint. "
+                        "op:\"flip\" (ANTS-1428) — flips a bullet's "
+                        "status without touching anything else; "
+                        "injects an Obsidian-style `^prefix-NNNN` "
+                        "anchor on first touch as the durable "
+                        "handle. Required: caller_cwd, to_status, "
+                        "and one of (id | anchor | headline). "
+                        "Optional: prefix_hint. Refusal codes: "
+                        "bullet_not_found, bullet_ambiguous, "
+                        "anchor_unsafe_context, bad_op_combo, "
+                        "unrecognised_format. Returns {ok, id?, "
+                        "file, line, bytes_written, ...op-specific} "
+                        "or {ok:false, error, code}.");
                     QJsonObject schema;
                     schema["type"] = "object";
 
@@ -2780,30 +2793,83 @@ void ClaudeIntegration::onMcpConnection() {
                     idHintProp["type"]    = "integer";
                     idHintProp["minimum"] = 1;
                     idHintProp["description"] = QStringLiteral(
-                        "Optional explicit ID. Must exceed the "
-                        "current .roadmap-counter value or returns "
-                        "code=id_taken.");
+                        "Optional explicit ID under op:\"append\". "
+                        "Must exceed the current .roadmap-counter "
+                        "value or returns code=id_taken. Not accepted "
+                        "under op:\"flip\" (bad_op_combo).");
+
+                    // ANTS-1428 flip-mode fields.
+                    QJsonObject opProp;
+                    opProp["type"] = "string";
+                    QJsonArray opEnum;
+                    opEnum.append("append");
+                    opEnum.append("flip");
+                    opProp["enum"] = opEnum;
+                    opProp["description"] = QStringLiteral(
+                        "Verb mode. Default \"append\" (ANTS-1424). "
+                        "\"flip\" routes to the GFM-adapter status-"
+                        "flip path (ANTS-1428).");
+                    QJsonObject toStatusProp;
+                    toStatusProp["type"] = "string";
+                    QJsonArray toStatusEnum;
+                    toStatusEnum.append("planned");
+                    toStatusEnum.append("in-progress");
+                    toStatusEnum.append("shipped");
+                    toStatusEnum.append("considered");
+                    toStatusProp["enum"] = toStatusEnum;
+                    toStatusProp["description"] = QStringLiteral(
+                        "Target lifecycle status for op:\"flip\". "
+                        "Mapped to 📋/🚧/✅/💭 emoji by the verb.");
+                    QJsonObject idProp;
+                    idProp["type"] = "string";
+                    idProp["description"] = QStringLiteral(
+                        "Bold-ID locator for op:\"flip\" (e.g. "
+                        "\"Sh4\", \"VEST-0042\"). Highest precedence "
+                        "locator; wins over anchor when both are "
+                        "passed (INV-12).");
+                    QJsonObject anchorProp;
+                    anchorProp["type"] = "string";
+                    anchorProp["description"] = QStringLiteral(
+                        "Caret-anchor locator for op:\"flip\" (e.g. "
+                        "\"vest-0042\"). Used when no bold-ID is "
+                        "available.");
+                    QJsonObject prefixHintProp;
+                    prefixHintProp["type"] = "string";
+                    prefixHintProp["pattern"] = "^[A-Z][A-Z0-9_-]{0,15}$";
+                    prefixHintProp["description"] = QStringLiteral(
+                        "Optional prefix for newly-injected caret "
+                        "anchors under op:\"flip\". Defaults to the "
+                        "uppercase first 4 chars of caller_cwd's "
+                        "leaf directory.");
 
                     QJsonObject props;
-                    props["caller_cwd"] = callerProp;
-                    props["section"]    = sectionProp;
-                    props["status"]     = statusProp;
-                    props["headline"]   = headlineProp;
-                    props["kind"]       = kindProp;
-                    props["source"]     = sourceProp;
-                    props["body"]       = bodyProp;
-                    props["layman"]     = laymanProp;
-                    props["lanes"]      = lanesProp;
-                    props["id_hint"]    = idHintProp;
+                    props["caller_cwd"]  = callerProp;
+                    props["op"]          = opProp;
+                    props["section"]     = sectionProp;
+                    props["status"]      = statusProp;
+                    props["to_status"]   = toStatusProp;
+                    props["headline"]    = headlineProp;
+                    props["kind"]        = kindProp;
+                    props["source"]      = sourceProp;
+                    props["body"]        = bodyProp;
+                    props["layman"]      = laymanProp;
+                    props["lanes"]       = lanesProp;
+                    props["id_hint"]     = idHintProp;
+                    props["id"]          = idProp;
+                    props["anchor"]      = anchorProp;
+                    props["prefix_hint"] = prefixHintProp;
                     schema["properties"] = props;
 
+                    // ANTS-1428 — only caller_cwd is unconditionally
+                    // required across both ops. op:"append" needs
+                    // section+status+headline+kind+source; op:"flip"
+                    // needs to_status + one locator. JSON Schema's
+                    // top-level `required` can't express this without
+                    // `oneOf`/`allOf`; the verb enforces the
+                    // conditional logic at runtime via
+                    // missing_field / bad_op_combo refusals.
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
-                    req.append(QStringLiteral("section"));
-                    req.append(QStringLiteral("status"));
-                    req.append(QStringLiteral("headline"));
-                    req.append(QStringLiteral("kind"));
-                    req.append(QStringLiteral("source"));
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;

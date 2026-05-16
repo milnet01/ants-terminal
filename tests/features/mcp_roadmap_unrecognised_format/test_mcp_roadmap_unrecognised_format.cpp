@@ -103,13 +103,17 @@ TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty()) << "INV-3: remotecontrol.cpp not readable";
 
+    // ANTS-1428 inserted cmdRoadmapLogFlip between cmdRoadmapLog
+    // and cmdWorkspaceSearch in the TU; the old bound captured
+    // both bodies. Tighten to the flip-impl boundary so we test
+    // the cmdRoadmapLog (append) body specifically.
     const std::string body = boundedBetween(
         cpp,
         "QJsonDocument RemoteControl::cmdRoadmapLog(",
-        "QJsonDocument RemoteControl::cmdWorkspaceSearch(");
+        "QJsonDocument RemoteControl::cmdRoadmapLogFlip(");
     ASSERT_FALSE(body.empty())
         << "INV-3: failed to bound cmdRoadmapLog body (sig moved "
-           "or bound > 16 KB)";
+           "or bound > 24 KB)";
 
     expect(contains(body, "ANTS-1429"),
            "INV-3: ANTS-1429 anchor present in cmdRoadmapLog");

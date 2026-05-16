@@ -886,8 +886,10 @@ if(ANTS_TESTS)
                 tests/features/mcp_dispatch_debug_log/test_mcp_dispatch_debug_log.cpp
                 # ANTS-1429 roadmap_query/log unrecognised_format gate.
                 tests/features/mcp_roadmap_unrecognised_format/test_mcp_roadmap_unrecognised_format.cpp
-                # ANTS-1428 GFM-task-list adapter (Tier 1 read-side).
-                tests/features/mcp_adapter_github_tasklist/test_adapter_read.cpp)
+                # ANTS-1428 GFM-task-list adapter (Tier 1 read-side
+                # + Tier 2 write-side op:"flip").
+                tests/features/mcp_adapter_github_tasklist/test_adapter_read.cpp
+                tests/features/mcp_adapter_github_tasklist/test_adapter_write.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -1014,6 +1016,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_search_keybinds/test_roadmap_search_keybinds.cpp
                 tests/features/roadmap_inprogress_age/test_roadmap_inprogress_age.cpp
                 tests/features/roadmap_density/test_roadmap_density.cpp
+                # ANTS-1428 GFM-task-list adapter Tier 3 — renderer fork.
+                tests/features/mcp_adapter_github_tasklist/test_adapter_render.cpp
                 tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp)
     target_compile_definitions(test_dialogs PRIVATE

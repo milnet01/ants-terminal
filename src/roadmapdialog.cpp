@@ -1392,6 +1392,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         ".rm-parent{font-weight:normal;font-size:%16px;color:%6;padding-left:8px;}"
         ".rm-card{margin:%17px 0;padding:%18px %19px;border-left:3px solid %5;background:%3;}"
         ".rm-card.rm-current{border-left-color:%4;background:rgba(229,194,74,0.08);}"
+        // ANTS-1428 INV-10 — synthetic-ID cards (GFM bullets with no
+        // bold-ID) carry a dashed left border so hand-authored and
+        // auto-anchored bullets are visually distinguishable at a
+        // glance. Dashed (vs solid fill) so a missing-stylesheet
+        // fallback still reads as a card, just without the marker.
+        ".rm-card.rm-card-synthetic{border-left-style:dashed;}"
         ".rm-state{font-size:%7px;padding-right:6px;}"
         ".rm-state-label{font-size:%20px;color:%6;padding-right:6px;}"
         ".rm-kind{font-size:%16px;color:%6;padding-right:6px;}"
@@ -1536,10 +1542,16 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             : QStringLiteral("expand");
         const QString chevron = expanded
             ? QStringLiteral("▴") : QStringLiteral("▾");
+        // ANTS-1428 INV-10 — append rm-card-synthetic for GFM
+        // bullets that received a content-hash ID (no bold-ID
+        // token in source). Native parses leave rec.synthetic
+        // false, so existing cards are unchanged.
+        QString cardClasses;
+        if (isCurrent(rec.body)) cardClasses += QStringLiteral(" rm-current");
+        if (rec.synthetic)       cardClasses += QStringLiteral(" rm-card-synthetic");
         // ANTS-1154-INV-1
         html += QStringLiteral("<div class=\"rm-card%1\" id=\"rm-%2\">")
-                    .arg(isCurrent(rec.body) ? QStringLiteral(" rm-current") : QString(),
-                         rec.id);
+                    .arg(cardClasses, rec.id);
         // Row 1
         html += QStringLiteral("<span class=\"rm-state\">%1</span>")
                     .arg(rec.status);
