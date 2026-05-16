@@ -5803,6 +5803,30 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: user-request-2026-05-16 (Bundle C kickoff).
 
+- 📋 [ANTS-1425] **`roadmap_query` rollup filter v2 — widen predicate to drop bullets with empty `id` regardless of headline.**
+  ANTS-1398 v1 used `id.isEmpty() && headline.isEmpty()` as the
+  rollup predicate. The leading status-only rollup cards
+  ("📋 N planned" with no headline) are now filtered — proven
+  on the relaunched binary 2026-05-16. But a second class of
+  ID-less bullets still leaks through: narrator bullets with a
+  non-empty headline but empty `id`, e.g. "Trust-model gaps in
+  IPC sockets.", "Doc/code drift across four lanes.",
+  "Per-poll work without caching." These are section-summary
+  narration that doesn't carry an actionable ID. The project
+  standard (`docs/standards/roadmap-format.md` § 3.5.1) makes
+  the stable `[PROJ-NNNN]` ID mandatory for every actionable
+  bullet — so `id.isEmpty()` alone is a sufficient
+  non-actionable signal. Widen the predicate to
+  `id.isEmpty()` only. v2 deferred behind v1 for back-compat
+  observation; if no caller surfaces depending on the narrator
+  bullets within one release, the predicate can widen
+  unconditionally. Until then a second opt-in flag
+  `include_narrator_bullets:true` mirrors the v1 design.
+  **Layman:** The Roadmap filter we shipped today drops the "N planned" summary cards but still lets some unnumbered narration through. Widen the rule so anything without a project ID gets dropped.
+  Kind: refactor.
+  Lanes: remotecontrol.
+  Source: in-session-2026-05-16 (post-Bundle C validation).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single
