@@ -486,6 +486,18 @@ private:
         const QString &toolName, const QJsonObject &args,
         qint64 argBytes, qint64 respBytes, qint64 durationUs,
         bool cacheHit, const QString &result);
+
+    // ANTS-1402 — single dispatch-observation hook. Both
+    // m_tokenUsage.recordCall and recordMcpTrace see byte-
+    // identical input. `result` is "ok" on the success path
+    // and the failure code (e.g. "tool_not_found") on the
+    // failure path. m_tokenUsage only counts successful calls
+    // — failure-branch observer behaviour preserved from the
+    // pre-1402 wiring.
+    void recordDispatch(
+        const QString &toolName, const QJsonObject &argsObj,
+        qint64 argBytes, qint64 outBytes, qint64 wrapBytes,
+        qint64 durUs, bool cachedHit, const QString &result);
     static QJsonObject argShapeOf(const QJsonObject &args);
     static QString argsSha16Of(const QJsonObject &args);
     static QJsonObject recordToJson(const McpTraceRecord &r);

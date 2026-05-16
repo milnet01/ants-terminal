@@ -6628,24 +6628,35 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (self-observed during
   the ANTS-1396 audit).
 
-- 📋 [ANTS-1402] **Share per-call observation point between
-  `mcp_trace` and `token_usage`.** Today the dispatch site
-  in `claudeintegration.cpp:2710–2719` calls
-  `m_tokenUsage.recordCall(...)` AND `recordMcpTrace(...)`
-  for every successful tools/call — both consume the same
-  `argBytes`, `outBytes`, `durUs`, `cachedHit` derived in
-  the same block. Each accumulator is independent; the
-  redundant call could be collapsed into a single
-  `recordDispatch()` that both observers tee from. Cost
-  saving is small (~10 ns per call); the real value is
-  structural — adding a third observer (e.g. a future
-  per-cwd telemetry tap) becomes a one-liner instead of a
-  third recordCall. Pairs with ANTS-1399 if a similar
-  pattern emerges for `tools/list`.
-  **Layman:** the dispatch site updates two trackers
-  side-by-side with the same numbers; merge them into a
-  single observation point so adding a third tracker
-  later is trivial.
+- ✅ [ANTS-1402] **Share per-call observation point between
+  `mcp_trace` and `token_usage`.** Shipped 2026-05-16
+  (Bundle C pull 4). New `ClaudeIntegration::recordDispatch`
+  hook tees the same `argBytes` / `outBytes` / `wrapBytes` /
+  `durUs` / `cachedHit` to both `m_tokenUsage.recordCall`
+  (gated on `result == "ok"`) and `recordMcpTrace`
+  (unconditional). Both branches at the MCP dispatch site
+  (success + failure) collapse to a single
+  `recordDispatch(...)` call each.
+  `m_tokenUsage.recordCall` now appears exactly once in
+  `claudeintegration.cpp` — inside `recordDispatch` — so
+  adding a third observer (e.g. a future per-cwd telemetry
+  tap) is one internal change instead of a third recordCall
+  at the dispatch site. Byte-count contract from ANTS-1284
+  preserved: arg/out bytes still measure the wrapped payload
+  that crosses the wire. ANTS-1355's wrap delta + dispatch
+  latency captured once and forwarded verbatim. Failure-
+  branch behaviour preserved: m_tokenUsage skipped when
+  result != "ok" so failed calls only update mcp_trace.
+  Spec `docs/specs/ANTS-1402.md`; tests
+  `tests/features/mcp_record_dispatch_unification/` (5
+  invariants: INV-1 declaration, INV-2 body gates recordCall,
+  INV-3 success-branch single hook, INV-4 failure-branch
+  literal, INV-5 cpp-file single-call-site guard). 697/697
+  features green.
+  **Layman:** the dispatch site updated two trackers
+  side-by-side with the same numbers; merged into a single
+  observation point so adding a third tracker later is
+  trivial.
   Kind: refactor.
   Source: in-session-2026-05-15 (self-observed while
   shipping ANTS-1355 v2).

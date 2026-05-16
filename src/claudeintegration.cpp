@@ -1241,6 +1241,23 @@ void ClaudeIntegration::recordMcpTrace(
     }
 }
 
+// ANTS-1402-INV-2 — single dispatch-observation hook. Tees the
+// same numbers to m_tokenUsage and recordMcpTrace. recordCall
+// only fires on the success path ("ok") to preserve the
+// pre-1402 behaviour where failed dispatches updated only the
+// mcp_trace ring, not the per-tool byte counters.
+void ClaudeIntegration::recordDispatch(
+    const QString &toolName, const QJsonObject &argsObj,
+    qint64 argBytes, qint64 outBytes, qint64 wrapBytes,
+    qint64 durUs, bool cachedHit, const QString &result) {
+    if (result == QLatin1String("ok")) {
+        m_tokenUsage.recordCall(toolName, argBytes, outBytes,
+                                wrapBytes, durUs);
+    }
+    recordMcpTrace(toolName, argsObj, argBytes, outBytes,
+                   durUs, cachedHit, result);
+}
+
 QJsonObject ClaudeIntegration::queryMcpTrace(
     quint64 since, int limit) const {
     // INV-4: limit clamps to [1, ring_capacity].
@@ -2904,38 +2921,43 @@ void ClaudeIntegration::onMcpConnection() {
                         ? responseText
                         : wrapMcpData(toolName, responseText);
                     result["content"] = makeTextContent(wrapped);
-                    // ANTS-1284 — record dispatch for token_usage report.
-                    // Byte counts measure the wrapped payload (what
-                    // actually crosses the wire). ANTS-1355: also feed
-                    // wrap delta + dispatch latency.
+                    // ANTS-1284 — record dispatch (token_usage +
+                    // mcp_trace). ANTS-1402-INV-3: now teed through
+                    // a single recordDispatch hook so both observers
+                    // see byte-identical numbers. ANTS-1284 byte-count
+                    // contract preserved: arg/out bytes measure the
+                    // wrapped payload (what actually crosses the wire).
+                    // ANTS-1355: wrap delta + dispatch latency captured
+                    // once at the dispatch site and forwarded verbatim.
                     const qint64 argBytes = QJsonDocument(argsObj)
                         .toJson(QJsonDocument::Compact).size();
                     const qint64 outBytes  = wrapped.toUtf8().size();
                     const qint64 rawBytes  = responseText.toUtf8().size();
                     const qint64 wrapBytes = outBytes - rawBytes;       // ANTS-1355 INV-3
                     const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
-                    m_tokenUsage.recordCall(toolName, argBytes, outBytes,
-                                            wrapBytes, durUs);
-                    // ANTS-1360 — per-call sequence trace. Single hook
-                    // point shared with both branches. INV-5 self-
-                    // exclusion handled inside recordMcpTrace.
-                    // ANTS-1355: reuse the durUs captured above so the
-                    // mcp_trace record and the token_usage aggregate
-                    // see byte-identical latency for the same call.
-                    recordMcpTrace(toolName, argsObj, argBytes, outBytes,
-                                   durUs, cachedHit, QStringLiteral("ok"));
+                    recordDispatch(toolName, argsObj, argBytes, outBytes,
+                                   wrapBytes, durUs, cachedHit,
+                                   QStringLiteral("ok"));
                     haveResult = true;
                 } else {
                     // JSON-RPC application error: tool not found or provider missing.
                     error["code"] = -32602; // Invalid params
                     error["message"] = QString("Unknown tool: %1").arg(toolName);
-                    // ANTS-1360 — INV-7 failure-path record. INV-12:
-                    // resp_bytes=0 and a non-negative duration_us.
+                    // ANTS-1402-INV-4 — failure-branch hook now routes
+                    // through recordDispatch with result="tool_not_found".
+                    // m_tokenUsage.recordCall is skipped inside
+                    // recordDispatch when result != "ok" (preserves
+                    // pre-1402 behaviour). INV-12 of ANTS-1360 still
+                    // applies: resp_bytes=0 and a non-negative
+                    // duration_us reach the mcp_trace ring.
                     const qint64 argBytes = QJsonDocument(argsObj)
                         .toJson(QJsonDocument::Compact).size();
-                    recordMcpTrace(toolName, argsObj, argBytes, 0,
-                                   mcpTraceTimer.nsecsElapsed() / 1000,
-                                   false,
+                    const qint64 durUs = mcpTraceTimer.nsecsElapsed() / 1000;
+                    recordDispatch(toolName, argsObj, argBytes,
+                                   /*outBytes=*/0,
+                                   /*wrapBytes=*/0,
+                                   durUs,
+                                   /*cachedHit=*/false,
                                    QStringLiteral("tool_not_found"));
                 }
             } else {
