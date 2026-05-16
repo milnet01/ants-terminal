@@ -874,7 +874,9 @@ if(ANTS_TESTS)
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.
-                tests/features/mcp_record_dispatch_unification/test_mcp_record_dispatch_unification.cpp)
+                tests/features/mcp_record_dispatch_unification/test_mcp_record_dispatch_unification.cpp
+                # ANTS-1422 token_usage no_ci diagnostic envelope.
+                tests/features/token_usage_no_ci_diagnostic/test_token_usage_no_ci_diagnostic.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

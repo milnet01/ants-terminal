@@ -5636,7 +5636,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (deferred cleanup from
   ANTS-1336's two-release migration window).
 
-- 📋 [ANTS-1422] **`token_usage` refuses with
+- 🚧 [ANTS-1422] **`token_usage` refuses with
   `no_claude_integration` on a live, configured Ants —
   measurement instrument broken.** Repro 2026-05-16: a fresh
   Ants instance (PID 3152, built 00:39 incl. ANTS-1404 + 1400)
@@ -5668,11 +5668,26 @@ fixes don't address. Roadmapped here as their own design tasks.
   own trigger metric (`total_wrap_bytes / sum(bytes_out)`)
   while this is broken — `token_usage` is the only surface.
   Folded into Bundle C as a Tier-1 prerequisite.
+  **2026-05-16 update (Bundle C pull 5):** Diagnostic patch
+  shipped. cmdTokenUsage's two error envelopes
+  (`no_claude_integration` + `no_main`) now carry a `debug`
+  object with `m_main_ptr`, `this_rc_ptr`, and
+  `ci_via_getter_null`. Re-running `token_usage` against the
+  rebuilt binary surfaces pointer values that discriminate
+  between the three hypotheses (build-cache drift / stale
+  m_main / inline-getter mis-resolve). v2 fix is gated on
+  this diagnostic returning actionable data — see
+  `docs/specs/ANTS-1422.md` § "Goal v2" for the per-hypothesis
+  patches. Tests
+  `tests/features/token_usage_no_ci_diagnostic/` (5
+  invariants: INV-1 no_ci debug, INV-2 no_main debug, INV-3
+  tuErr retired, INV-4 success path clean, INV-5 code ==
+  error). 702/702 features green.
   **Layman:** the tool that tells us "how many tokens has
   Ants MCP saved you this session?" refuses to run, even
-  though the rest of the MCP is healthy. Has to be fixed
-  before we can measure whether the wrapper around MCP
-  responses is paying rent.
+  though the rest of the MCP is healthy. First step:
+  diagnostic info shipped so we can see WHY when the user
+  next relaunches. Then a targeted fix lands.
   Kind: fix.
   Source: in-session-2026-05-16 (user-observed during
   Bundle C kickoff).

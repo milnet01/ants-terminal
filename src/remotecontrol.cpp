@@ -3278,27 +3278,54 @@ QJsonDocument RemoteControl::cmdPlanTemplate(const QJsonObject &req) {
 // caller can read-and-clear in one round-trip.
 // See docs/specs/ANTS-1284.md.
 
-namespace {
-
-QJsonDocument tuErr(const QString &code, const QString &message) {
-    QJsonObject env;
-    env["ok"]      = false;
-    env["error"]   = code;
-    env["message"] = message;
-    return QJsonDocument(env);
-}
-
-}  // namespace
+// ANTS-1422 — tuErr() helper retired: both error branches now
+// emit inline envelopes with diagnostic `debug` fields. Keeping
+// the envelope construction inline is the minimum-magic path
+// to root-cause the live no_claude_integration regression.
 
 QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req) {
     if (!m_main) {
-        return tuErr(QStringLiteral("no_main"),
-                     QStringLiteral("token_usage: no main window"));
+        // ANTS-1422 — never observed in practice but defensive against
+        // a never-initialised RemoteControl. Diagnostic dump of the
+        // RemoteControl object pointer so we can spot a stale instance
+        // if it ever fires.
+        QJsonObject env;
+        env["ok"]      = false;
+        env["error"]   = QStringLiteral("no_main");
+        env["code"]    = QStringLiteral("no_main");
+        env["message"] = QStringLiteral("token_usage: no main window");
+        QJsonObject dbg;
+        dbg["m_main_ptr"]     = QStringLiteral("0x0");
+        dbg["this_rc_ptr"]    =
+            QString::number(reinterpret_cast<quintptr>(this), 16);
+        env["debug"] = dbg;
+        return QJsonDocument(env);
     }
     auto *ci = m_main->claudeIntegration();
     if (!ci) {
-        return tuErr(QStringLiteral("no_claude_integration"),
-                     QStringLiteral("token_usage: claude integration unavailable"));
+        // ANTS-1422 — observed 2026-05-16 on a live, otherwise-healthy
+        // Ants Terminal (mcp_trace / caller_cwd_info / roadmap_query all
+        // returned proper data; only token_usage refused). Static
+        // analysis shows m_claudeIntegration is assigned once at
+        // mainwindow.cpp:3598 and never re-nulled, so reaching this
+        // branch is structurally impossible from the MCP-lambda
+        // dispatch path (the lambda is registered BY m_claudeIntegration
+        // itself). Surfacing pointer values in the envelope so a fresh
+        // repro can be root-caused without an out-of-band stderr capture.
+        QJsonObject env;
+        env["ok"]      = false;
+        env["error"]   = QStringLiteral("no_claude_integration");
+        env["code"]    = QStringLiteral("no_claude_integration");
+        env["message"] = QStringLiteral(
+            "token_usage: claude integration unavailable");
+        QJsonObject dbg;
+        dbg["m_main_ptr"] =
+            QString::number(reinterpret_cast<quintptr>(m_main), 16);
+        dbg["this_rc_ptr"] =
+            QString::number(reinterpret_cast<quintptr>(this), 16);
+        dbg["ci_via_getter_null"] = true;
+        env["debug"] = dbg;
+        return QJsonDocument(env);
     }
 
     const bool wantsReset  = req.value(QStringLiteral("reset")).toBool(false);
