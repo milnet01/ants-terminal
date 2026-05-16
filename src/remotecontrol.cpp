@@ -1125,6 +1125,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 }
                 if (b.synthetic) o["synthetic"] = true;
                 if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
+                // ANTS-1438 — bold_id field, emitted only when set
+                // (additive; absent on native ants-v1 bullets and on
+                // GFM bullets with no bold prefix).
+                if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
                 arr.append(o);
             }
             m_roadmapCacheBullets = arr;
@@ -1167,6 +1171,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     }
                     if (b.synthetic) o["synthetic"] = true;
                     if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
+                    if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
                     arr.append(o);
                 }
                 m_roadmapCacheBullets = arr;
@@ -1309,6 +1314,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // bullets in section-mode carry the requested slug,
                 // regardless of slice-local uniqueSlug state.
                 o["section_slug"] = sec->slug;
+                // ANTS-1428 metadata — parity with the full-file
+                // path's emission. Predates ANTS-1438 but only
+                // surfaced now that I'm adding bold_id here too;
+                // pre-1438 section-mode was missing adapter fields.
+                if (b.format == QLatin1String("github-task-list")) {
+                    o["format"] = b.format;
+                }
+                if (b.synthetic) o["synthetic"] = true;
+                if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
+                // ANTS-1438 — bold_id (matches full-file emission).
+                if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
                 sectionBullets.append(o);
             }
             m_roadmapSectionCache.insert(sec->slug, sectionBullets);
@@ -1388,6 +1404,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 }
                 if (b.synthetic) o["synthetic"] = true;
                 if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
+                // ANTS-1438 — bold_id field, emitted only when set
+                // (additive; absent on native ants-v1 bullets and on
+                // GFM bullets with no bold prefix).
+                if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
                 arr.append(o);
             }
             m_roadmapCacheBullets = arr;

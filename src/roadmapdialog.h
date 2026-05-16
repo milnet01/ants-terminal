@@ -309,6 +309,13 @@ public:
         QString anchor;        // ^prefix-NNNN caret anchor; "" if absent
         bool    synthetic = false;  // id was content-hash-derived, not from a token
         QString format;        // "ants-v1" (default) | "github-task-list"
+        // ANTS-1438 — bold-ID token, populated when the GFM-adapter
+        // matched a `**...**` prefix at the start of the head. Distinct
+        // from `id` because id may be a synthetic content-hash when
+        // boldId is empty; when boldId is non-empty, id == boldId.
+        // Surfaced through the envelope as `bold_id` so callers can
+        // correlate with commit-message prefixes explicitly.
+        QString boldId;        // "FW W5 (cont.)", "Sh4", "Audit/FW X2", …
     };
 
     // Pure helper: parse `markdownText` into top-level status-emoji

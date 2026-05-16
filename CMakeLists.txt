@@ -1020,6 +1020,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_density/test_roadmap_density.cpp
                 # ANTS-1428 GFM-task-list adapter Tier 3 — renderer fork.
                 tests/features/mcp_adapter_github_tasklist/test_adapter_render.cpp
+                # ANTS-1438 GFM-adapter bold-ID multi-token widening.
+                tests/features/gfm_adapter_bold_id_multitoken/test_gfm_adapter_bold_id_multitoken.cpp
                 tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp)
     target_compile_definitions(test_dialogs PRIVATE

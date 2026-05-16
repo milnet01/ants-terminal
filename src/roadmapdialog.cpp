@@ -541,16 +541,49 @@ QString base36Lower(quint64 v, int n = 10) {
     return out;
 }
 
-// Try to extract a bold-ID token (`**Sh4.**`, `**VEST-0042.**`,
-// `**Ed1.**`) from the start of the line. On match, sets *id to
-// the token (e.g. "Sh4") and returns true.
+// ANTS-1438 — widened to match multi-token bold prefixes
+// (`**FW W5 (cont.)**`, `**Audit/FW X2**`, `**Terrain System**`)
+// in addition to the original single-token ants shape (`**Sh4.**`,
+// `**VEST-0042.**`). Trailing period inside the bold is stripped
+// so `**Sh4**` and `**Sh4.**` both yield "Sh4". Capped at 80 chars
+// to avoid swallowing the whole headline on a pathological
+// `**all text is bold**` bullet. Non-greedy match (`.{1,80}?`)
+// stops at the FIRST closing `**`, not the last.
 bool extractBoldId(const QString &lineHead, QString *id) {
     static const QRegularExpression rx(QStringLiteral(
-        "^\\*\\*([A-Z][A-Za-z0-9_-]{0,15})\\.\\*\\*"));
+        "^\\*\\*(.{1,80}?)\\*\\*"));
     const auto m = rx.match(lineHead);
     if (!m.hasMatch()) return false;
-    if (id) *id = m.captured(1);
+    QString captured = m.captured(1);
+    if (captured.endsWith(QLatin1Char('.'))) captured.chop(1);
+    captured = captured.trimmed();
+    if (captured.isEmpty()) return false;
+    if (id) *id = captured;
     return true;
+}
+
+// ANTS-1438 — split `head` on the first em-dash separator (` — `,
+// preferred; ` -- ` / ` - ` accepted as lenient fallbacks for
+// projects that haven't typographic-em-dashed). Returns the trimmed
+// post-separator text on match, empty QString otherwise. Whitespace
+// brackets the separator so mid-word hits (e.g. `re-render`) don't
+// match.
+QString splitOnEmDash(const QString &head) {
+    static const QString sep1 = QString::fromUtf8(" \xE2\x80\x94 ");  // " — "
+    int idx = head.indexOf(sep1);
+    int sepLen = sep1.size();
+    if (idx < 0) {
+        const QString sep2 = QStringLiteral(" -- ");
+        idx = head.indexOf(sep2);
+        sepLen = sep2.size();
+    }
+    if (idx < 0) {
+        const QString sep3 = QStringLiteral(" - ");
+        idx = head.indexOf(sep3);
+        sepLen = sep3.size();
+    }
+    if (idx < 0) return QString();
+    return head.mid(idx + sepLen).trimmed();
 }
 
 // Try to extract a caret anchor at line end (`^vest-0042`).
@@ -804,8 +837,36 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
             // ANTS-1428 — multi-prefix bold-ID preservation.
             rec.id = boldId;
         }
+        // ANTS-1438 — surface the bold-ID on the record so the
+        // envelope can emit a dedicated `bold_id` field. Keeps the
+        // `id` semantics back-compatible (matches boldId here, but
+        // a synthetic content-hash if boldId was empty further down).
+        if (!boldId.isEmpty()) rec.boldId = boldId;
+        // ANTS-1438-INV-4 — GFM bullets with a bold-ID *and* an
+        // em-dash separator have a natural (id, headline) split:
+        // `**FW W5 (cont.)** — add a reference-regression spec ...`
+        // The em-dash convention is used by every Vestige bullet
+        // and any other project that wraps an ID-as-label. When the
+        // split matches, set the headline directly from the post-
+        // separator prose; the rxBold-based fallback below stays
+        // for INV-5 (no separator) and ants-v1 (no boldId).
+        if (gfmHere && !boldId.isEmpty()) {
+            const QString afterSep = splitOnEmDash(head);
+            if (!afterSep.isEmpty()) {
+                QString h = afterSep;
+                static const QRegularExpression rxTrailAnchor(
+                    QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
+                h.replace(rxTrailAnchor, QString());
+                h = h.trimmed();
+                if (h.size() > 120) { h.truncate(120); h.append(QStringLiteral("…")); }
+                rec.headline = h;
+            }
+        }
         const auto boldMatch = rxBold.match(body);
-        if (boldMatch.hasMatch()) {
+        if (!rec.headline.isEmpty()) {
+            // INV-4 already set the headline from the em-dash split;
+            // skip the bold-or-prose fallback for this row.
+        } else if (boldMatch.hasMatch()) {
             QString h = boldMatch.captured(1).trimmed();
             // Strip a trailing `.` if the bold token is actually
             // a Bold-ID locator (e.g. `**Sh4.**`); the visible

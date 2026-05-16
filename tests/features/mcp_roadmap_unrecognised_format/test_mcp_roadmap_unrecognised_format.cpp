@@ -40,11 +40,16 @@ bool contains(const std::string &hay, const std::string &needle) {
 // `format`/`synthetic`/`anchor` envelope fields + the
 // envelope-level format echo are ~700 B of new behaviour
 // distributed across the cache-fill, lazy-fill, and emission
-// paths. The bound is still a meaningful runaway-guard ceiling.
+// paths. ANTS-1437 + ANTS-1438 bumped it again to 28 KB:
+// section_index branch (~4 KB — lazy fill + tally + envelope)
+// plus bold_id emissions across three sites (~300 B). The bound
+// is still a meaningful runaway-guard ceiling — at 28 KB any
+// "added a new mode" change should make the author think twice
+// about whether the work belongs in a helper instead.
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 24 * 1024) {
+                           size_t kMaxBound = 28 * 1024) {
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());
