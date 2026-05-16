@@ -866,7 +866,9 @@ if(ANTS_TESTS)
                 # ANTS-1404 per-tool caller_cwd contracts (Phase 3a).
                 tests/features/mcp_caller_cwd_contracts/test_mcp_caller_cwd_contracts.cpp
                 # ANTS-1400 caller_cwd_info diagnostic verb.
-                tests/features/caller_cwd_info_verb/test_caller_cwd_info_verb.cpp)
+                tests/features/caller_cwd_info_verb/test_caller_cwd_info_verb.cpp
+                # ANTS-1409 callerCwdSuffix descriptor helper.
+                tests/features/mcp_caller_cwd_suffix_helper/test_mcp_caller_cwd_suffix_helper.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

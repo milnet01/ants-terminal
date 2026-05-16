@@ -5636,6 +5636,112 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (deferred cleanup from
   ANTS-1336's two-release migration window).
 
+- 📋 [ANTS-1422] **`token_usage` refuses with
+  `no_claude_integration` on a live, configured Ants —
+  measurement instrument broken.** Repro 2026-05-16: a fresh
+  Ants instance (PID 3152, built 00:39 incl. ANTS-1404 + 1400)
+  serves `mcp_trace`, `caller_cwd_info`, `roadmap_query`
+  correctly, but every `token_usage` call returns
+  `{ok:false, error:"no_claude_integration", message:
+  "token_usage: claude integration unavailable"}`. The error
+  envelope comes from `remotecontrol.cpp:3253` where
+  `m_main->claudeIntegration()` is observed null. Static
+  analysis shows that pointer is assigned once at
+  `mainwindow.cpp:3598` (`m_claudeIntegration = new
+  ClaudeIntegration(this);`) and never re-nulled — no
+  `delete`, no `reset`, no `= nullptr` after default-init.
+  The MCP-lambda dispatch path requires `m_claudeIntegration`
+  to be non-null at registration time (line 4017), so the
+  null observed in `cmdTokenUsage` is structurally impossible
+  via that path. Three working hypotheses to discriminate at
+  runtime: (a) `MainWindow::claudeIntegration()` is being
+  shadowed/overridden by a non-getter somewhere I haven't
+  found; (b) `m_remoteControl->m_main` stores a different
+  MainWindow pointer than the lambda's `this` (multi-window
+  bug or `RemoteControl` ctor mis-wiring); (c) memory
+  corruption / TOCTOU between the lambda's MainWindow and
+  the RemoteControl's cached pointer. Diagnostic patch:
+  `qWarning() << "cmdTokenUsage: m_main=" << (void*)m_main
+  << "ci=" << (void*)m_main->claudeIntegration()
+  << "self=" << (void*)this;` before the null check.
+  Impact: ANTS-1403 (wrap-overhead v3) cannot measure its
+  own trigger metric (`total_wrap_bytes / sum(bytes_out)`)
+  while this is broken — `token_usage` is the only surface.
+  Folded into Bundle C as a Tier-1 prerequisite.
+  **Layman:** the tool that tells us "how many tokens has
+  Ants MCP saved you this session?" refuses to run, even
+  though the rest of the MCP is healthy. Has to be fixed
+  before we can measure whether the wrapper around MCP
+  responses is paying rent.
+  Kind: fix.
+  Source: in-session-2026-05-16 (user-observed during
+  Bundle C kickoff).
+
+- 📋 [ANTS-1423] **Roadmap dialog "Current" preset shows
+  ✅ shipped items mixed with planned / in-progress.**
+  User screenshot 2026-05-16 (during Bundle C kickoff)
+  shows the Current tab listing "8 shipped" /
+  "1 in progress" / "1 planned" headers — but `Current`
+  is supposed to filter to active work only (📋 / 🚧).
+  Possibilities: (a) the preset filter in
+  `roadmapdialog.cpp::renderCardsHtml` lost the
+  `status != "shipped"` gate during the ANTS-1154 v2 cards
+  refactor; (b) the section-rollup header (the "N shipped"
+  card) is itself emitting child ✅ rows that the preset's
+  bullet-level filter doesn't reach; (c) per-item expansion
+  state persists across sessions and re-opens the shipped
+  rows under their section card. Investigate
+  `roadmapdialog.cpp::renderCardsHtml` first — count what
+  the Current preset's bullet filter drops, then trace
+  whether shipped children leak through section-card
+  expansion. Pair with the cold-eyes review of the
+  `Config::roadmap*` persistence keys (per CLAUDE.md
+  module map) so an unexpected default doesn't re-open
+  shipped cards on launch.
+  **Layman:** the "Current" tab of the roadmap dialog
+  should hide things already shipped, but right now it
+  shows lots of green-tick items alongside the active
+  ones. Find out why and fix the filter.
+  Kind: fix.
+  Source: user-report-2026-05-16 (Bundle C kickoff
+  screenshot).
+
+- 📋 [ANTS-1424] **MCP `roadmap_log` write verb — let
+  Claude append roadmap items without hand-editing
+  `ROADMAP.md`.** Today the assistant has `roadmap_query`
+  (read) but no write surface; logging a new item means
+  Edit-tool against ROADMAP.md plus a manual bump of
+  `.roadmap-counter`. User observation 2026-05-16:
+  "isn't that exactly what Ants MCP can do?" — the
+  workflow is one of the highest-frequency assistant
+  operations and currently bypasses the MCP token-economy
+  entirely. Proposed verb signature:
+  `roadmap_log({status, headline, layman, kind, source,
+  section?, id_hint?, lanes?, caller_cwd})` returning
+  `{ok, id, file:"ROADMAP.md", line, bytes_written}`.
+  Implementation: (1) gate via `CallerCwdContract::Required`
+  + `validatePath` (write verb, full ANTS-1295 rules);
+  (2) atomically allocate next `.roadmap-counter` value
+  (or use `id_hint` if free); (3) format the bullet per
+  `docs/standards/roadmap-format.md` § 3 (status emoji +
+  [ANTS-NNNN] + headline + Layman / Kind / Source lines);
+  (4) append to the appropriate section (default: the
+  current "in-flight" follow-up block; explicit
+  `section` arg for elsewhere); (5) bump the counter atomically
+  in the same transaction. Out of scope v1: editing
+  existing items (`roadmap_update` is a separate ticket);
+  cross-project routing (one repo per call). RAM: O(file
+  size on append) — same as a manual edit. Pairs with
+  ANTS-1156 (roadmap-system audit) which has the broader
+  framing question; this is the narrow MCP-write piece.
+  **Layman:** when Claude wants to log a new roadmap
+  item, it currently has to hand-edit the markdown file
+  and a counter file. Add an MCP tool that does it in one
+  call so Claude saves tokens and can't get the format
+  wrong.
+  Kind: implement.
+  Source: user-request-2026-05-16 (Bundle C kickoff).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single
@@ -5822,23 +5928,34 @@ indie-review finding.
   Source: in-session-2026-05-15 (self-observed while reading
   ROADMAP for the bundle plan above).
 
-- 📋 [ANTS-1409] **Per-tool MCP descriptor blurbs duplicate the
-  "Pass `caller_cwd` to anchor to…" phrasing.** ANTS-1391
-  centralised the *schema property*'s description via the
-  `makeCallerCwdReadProp` lambda, but each tool's own outer
-  `description` string at `claudeintegration.cpp:1358, 1392, 1396,
-  1424, 1440, 1456, 1540, 1607, 1660, 1720, 1764, 1809, 1838`
-  re-types a near-identical "Pass `caller_cwd` (your $PWD) to
-  anchor to your tab" suffix. ~120 B × ~13 tools = ~1.5 KiB of
-  duplication on every `tools/list` response. Fix: extract a
-  shared `callerCwdSuffix()` returning the suffix text; each
-  tool's main blurb concatenates it (`+ callerCwdSuffix()`).
-  Refactor only — no observable behaviour change. Pairs with
-  ANTS-1401 (central `ResolvedRoot` helper) as the descriptor-
-  side counterpart of the same DRY concern.
-  **Layman:** ~13 MCP tool descriptions each spell out the same
-  "Pass caller_cwd to anchor to your tab" sentence in their own
-  words; deduplicate it into one shared helper.
+- ✅ [ANTS-1409] **Per-tool MCP descriptor blurbs duplicate the
+  "Pass `caller_cwd` to anchor to…" phrasing.** Shipped
+  2026-05-16 (Bundle C pull 1). New `callerCwdSuffix` lambda
+  in `claudeintegration.cpp`'s `tools/list` handler (adjacent
+  to `makeCallerCwdReadProp`) returns the canonical short
+  form **"Pass `caller_cwd` to anchor to your tab
+  (ANTS-1392)."**. Three tool descriptions
+  (`get_last_command`, `get_git_status`, `get_environment`)
+  now `+ callerCwdSuffix()` instead of spelling the suffix
+  out. **Scope correction:** the original estimate of
+  "~120 B × ~13 tools = ~1.5 KiB" overcounted. After a head-
+  count, only 3 sites carry the byte-identical short form;
+  two more (`get_scrollback`, `get_text`) carry tool-specific
+  phrasing the canonical short suffix doesn't (long-form
+  fallback caveat / inline arg-list form respectively) and
+  stay verbatim (INV-4 of the spec). Wire bytes don't change
+  — each tool's full description is still emitted — so the
+  payoff is **source-level dedup** (single source of truth
+  for the canonical phrasing) not wire compression. Spec
+  `docs/specs/ANTS-1409.md`; tests
+  `tests/features/mcp_caller_cwd_suffix_helper/` (7
+  invariants: 5 positive, 2 negative). 678/678 features
+  green.
+  **Layman:** three MCP tool descriptions each spell out the
+  same "Pass caller_cwd to anchor to your tab" sentence in
+  their own words; deduplicated into one shared helper so
+  future tools inherit the canonical phrasing instead of
+  retyping it.
   Kind: refactor.
   Source: in-session-2026-05-15 (self-observed while preparing
   the bundle plan).

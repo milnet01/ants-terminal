@@ -1351,6 +1351,20 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
+                // ANTS-1409 — canonical "Pass caller_cwd to anchor"
+                // suffix used by three tool descriptions verbatim
+                // (get_last_command, get_git_status, get_environment).
+                // The helper keeps the phrasing in one place so
+                // future MCP tools opt in via `+ callerCwdSuffix()`
+                // rather than re-typing it. INV-4 of the spec
+                // explicitly excludes get_scrollback and get_text —
+                // those carry tool-specific phrasing the canonical
+                // short suffix doesn't.
+                auto callerCwdSuffix = []{
+                    return QStringLiteral(
+                        "Pass `caller_cwd` to anchor to your tab (ANTS-1392).");
+                };
+
                 QJsonObject scrollbackTool;
                 scrollbackTool["name"] = "get_scrollback";
                 scrollbackTool["description"] = QStringLiteral(
@@ -1421,8 +1435,7 @@ void ClaudeIntegration::onMcpConnection() {
                 lastCmdTool["name"] = "get_last_command";
                 lastCmdTool["description"] = QStringLiteral(
                     "Get the last command's exit code and output "
-                    "(via shell integration). Pass `caller_cwd` to "
-                    "anchor to your tab (ANTS-1392).");
+                    "(via shell integration). ") + callerCwdSuffix();
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1437,8 +1450,7 @@ void ClaudeIntegration::onMcpConnection() {
                 gitTool["name"] = "get_git_status";
                 gitTool["description"] = QStringLiteral(
                     "Get git branch, status, and recent commits for "
-                    "the terminal's CWD. Pass `caller_cwd` to anchor "
-                    "to your tab (ANTS-1392).");
+                    "the terminal's CWD. ") + callerCwdSuffix();
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1453,8 +1465,7 @@ void ClaudeIntegration::onMcpConnection() {
                 envTool["name"] = "get_environment";
                 envTool["description"] = QStringLiteral(
                     "Get shell environment info (PATH, virtualenv, "
-                    "key env vars). Pass `caller_cwd` to anchor to "
-                    "your tab (ANTS-1392).");
+                    "key env vars). ") + callerCwdSuffix();
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
