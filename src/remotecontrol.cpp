@@ -986,6 +986,35 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // path (existing behaviour, INV-6).
     const QString section = req.value(QStringLiteral("section")).toString();
 
+    // ANTS-1437-INV-1/2: optional `mode` arg. Default "bullets" (back-
+    // compat). "section_index" returns a compact section index instead
+    // of bullets. Unknown mode → bad_mode with the same 64-byte +
+    // control-char hygiene as bad_status / bad_section.
+    const bool hasModeArg = req.contains(QStringLiteral("mode"));
+    QString mode = req.value(QStringLiteral("mode")).toString().toLower();
+    if (mode.isEmpty()) mode = QStringLiteral("bullets");
+    if (mode != QLatin1String("bullets") &&
+        mode != QLatin1String("section_index")) {
+        QString verbatim = req.value(QStringLiteral("mode")).toString();
+        if (verbatim.size() > 64) verbatim.truncate(64);
+        for (int i = 0; i < verbatim.size(); ++i) {
+            if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
+        }
+        out["ok"] = false;
+        out["error"] = QStringLiteral("unknown mode: %1").arg(verbatim);
+        out["code"] = QStringLiteral("bad_mode");
+        return QJsonDocument(out);
+    }
+    // ANTS-1437-INV-3: section_index + section is conceptually
+    // exclusive — section_index IS the section-discovery surface.
+    if (mode == QLatin1String("section_index") && !section.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "section_index mode does not accept section= filter");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+
     // ANTS-1398-INV-1: `include_section_headers` opt-in. Default false
     // — section-rollup bullets (empty id + empty headline, status emoji
     // only) are dropped from `bullets[]` server-side so clients don't
@@ -1108,6 +1137,117 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
     }
 
+    // ANTS-1437 — section_index branch. Returns a compact section
+    // index instead of bullets. Both caches (bullets + index) are
+    // populated lazily here if cold so the count tally has every
+    // bullet to look at.
+    if (mode == QLatin1String("section_index")) {
+        // Lazy-fill m_roadmapCacheBullets if cold (cache HIT may have
+        // come from an earlier section-mode call, INV-9 mirror).
+        if (m_roadmapCacheBullets.isEmpty() &&
+            (m_roadmapCachePath == path) &&
+            (m_roadmapCacheMtimeMs == mtime)) {
+            QFile f(path);
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString markdown = QString::fromUtf8(f.readAll());
+                const auto bullets = RoadmapDialog::parseBullets(markdown);
+                QJsonArray arr;
+                for (const auto &b : bullets) {
+                    QJsonObject o;
+                    o["id"] = b.id;
+                    o["status"] = b.status;
+                    o["headline"] = b.headline;
+                    o["kind"] = b.kind;
+                    o["section_slug"] = b.sectionSlug;
+                    QJsonArray lanes;
+                    for (const QString &l : b.lanes) lanes.append(l);
+                    o["lanes"] = lanes;
+                    if (b.format == QLatin1String("github-task-list")) {
+                        o["format"] = b.format;
+                    }
+                    if (b.synthetic) o["synthetic"] = true;
+                    if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
+                    arr.append(o);
+                }
+                m_roadmapCacheBullets = arr;
+            }
+        }
+        // Lazy-fill the index — same shape as the section-mode branch.
+        if (m_roadmapIndex.isEmpty()) {
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                out["ok"] = false;
+                out["error"] = QStringLiteral(
+                    "could not open %1 for reading").arg(path);
+                out["code"] = QStringLiteral("read_failed");
+                return QJsonDocument(out);
+            }
+            const QString markdown = QString::fromUtf8(f.readAll());
+            m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
+        }
+
+        // ANTS-1437-INV-8 — `unrecognised_format` gate applies before
+        // emission, mirroring the bullet-mode gate below.
+        if (m_roadmapCacheBullets.isEmpty() &&
+            fi.size() > kRoadmapMinParseableSize) {
+            QJsonObject env;
+            env["ok"]    = false;
+            env["code"]  = QStringLiteral("unrecognised_format");
+            env["error"] = QStringLiteral(
+                "roadmap_query: \"%1\" parsed zero bullets from %2 "
+                "bytes — format not recognised")
+                    .arg(path).arg(fi.size());
+            env["path"]  = path;
+            env["bytes"] = fi.size();
+            env["hint"]  = QStringLiteral(
+                "this tool expects roadmap-format.md emoji bullets; "
+                "see ANTS-1428 for adapter mode status");
+            return QJsonDocument(env);
+        }
+
+        // Tally counts per slug. parseBullets sets sectionSlug on every
+        // record (roadmapdialog.cpp:745). Empty headline + empty id is
+        // a rollup bullet (ANTS-1398-INV-2); INV-6 excludes those.
+        const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B");
+        const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7");
+        const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");
+        struct Tally { int active = 0; int shipped = 0; int total = 0; };
+        QHash<QString, Tally> counts;
+        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+            const QJsonObject o = v.toObject();
+            const QString id    = o.value(QStringLiteral("id")).toString();
+            const QString hl    = o.value(QStringLiteral("headline")).toString();
+            if (id.isEmpty() && hl.isEmpty()) continue;  // INV-6 rollup
+            const QString slug  = o.value(QStringLiteral("section_slug")).toString();
+            const QString s     = o.value(QStringLiteral("status")).toString();
+            Tally &t = counts[slug];
+            if (s == plannedEmoji || s == progressEmoji) t.active++;
+            if (s == doneEmoji) t.shipped++;
+            t.total++;
+        }
+
+        // INV-4 — emit EVERY indexed section, including empties.
+        QJsonArray sections;
+        for (const auto &sec : std::as_const(m_roadmapIndex)) {
+            const Tally t = counts.value(sec.slug, Tally{});
+            QJsonObject obj;
+            obj["slug"]          = sec.slug;
+            obj["headline"]      = sec.headingText;
+            obj["level"]         = sec.level;
+            obj["active_count"]  = t.active;
+            obj["shipped_count"] = t.shipped;
+            obj["total_count"]   = t.total;
+            sections.append(obj);
+        }
+
+        out["ok"] = true;
+        out["mode"] = mode;          // explicit in section_index path
+        out["path"] = path;
+        out["filter"] = filter;      // status filter echo (no-op here)
+        out["sections"] = sections;
+        return QJsonDocument(out);
+    }
+
     // ANTS-1287 — section branch.
     if (!section.isEmpty()) {
         // INV-9: ensure we have an index even on a cache HIT taken
@@ -1218,6 +1358,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (hasIncludeHeadersArg) {
             out["include_section_headers"] = includeSectionHeaders;
         }
+        // ANTS-1437 — mode echo only when caller set the arg
+        // (default-back-compat envelope shape per INV-1).
+        if (hasModeArg) out["mode"] = mode;
         return QJsonDocument(out);
     }
 
@@ -1328,6 +1471,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (hasIncludeHeadersArg) {
         out["include_section_headers"] = includeSectionHeaders;
     }
+    // ANTS-1437 — mode echo only when caller set the arg
+    // (default-back-compat envelope shape per INV-1).
+    if (hasModeArg) out["mode"] = mode;
     return QJsonDocument(out);
 }
 

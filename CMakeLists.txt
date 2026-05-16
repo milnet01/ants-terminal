@@ -872,6 +872,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_caller_cwd_suffix_helper/test_mcp_caller_cwd_suffix_helper.cpp
                 # ANTS-1398 roadmap_query rollup-bullet filter.
                 tests/features/roadmap_query_filter_section_headers/test_roadmap_query_filter_section_headers.cpp
+                # ANTS-1437 roadmap_query section_index mode.
+                tests/features/roadmap_query_section_index/test_roadmap_query_section_index.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.

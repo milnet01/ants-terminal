@@ -1549,9 +1549,15 @@ void ClaudeIntegration::onMcpConnection() {
                     "~12 K tokens). Optional `section` slug — returns "
                     "only bullets within that ## or ### heading "
                     "(e.g. \"performance\", \"080\"); response carries "
-                    "`section` echo. Envelope: {ok, bullets, path, "
-                    "count, filter, section?} on success or "
-                    "{ok:false, error, code} on error.");
+                    "`section` echo. Optional `mode` — \"bullets\" "
+                    "(default) / \"section_index\" (returns a compact "
+                    "{slug, headline, level, active_count, "
+                    "shipped_count, total_count}[] index instead of "
+                    "bullets[] — use for slug discovery before drilling "
+                    "in via section=). Envelope: {ok, bullets, path, "
+                    "count, filter, section?, mode?} or "
+                    "{ok, sections, path, filter, mode} for "
+                    "section_index, or {ok:false, error, code} on error.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1593,6 +1599,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "clients get only actionable entries. "
                         "Opt-in for back-compat callers (ANTS-1398).");
                     props["include_section_headers"] = inclHeadersProp;
+                    // ANTS-1437 — mode arg. Default "bullets" (legacy).
+                    // "section_index" returns a compact section index
+                    // instead of bullets — use to discover slugs cheaply.
+                    QJsonObject modeProp;
+                    modeProp["type"] = "string";
+                    QJsonArray modeEnum;
+                    modeEnum.append("bullets");
+                    modeEnum.append("section_index");
+                    modeProp["enum"] = modeEnum;
+                    modeProp["default"] = "bullets";
+                    modeProp["description"] = QStringLiteral(
+                        "Response mode. \"bullets\" (default) returns "
+                        "bullets[]. \"section_index\" returns "
+                        "sections[{slug, headline, level, active_count, "
+                        "shipped_count, total_count}] and no bullets — "
+                        "use for slug discovery (response < 5 KB on a "
+                        "500-bullet roadmap). Cannot combine with "
+                        "section= (bad_mode_combo).");
+                    props["mode"] = modeProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;

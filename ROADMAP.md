@@ -6325,6 +6325,92 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, tests, config, sessionmemoryengine.
   Source: vestige-cc-cross-project-pattern-2026-05-16.
 
+- 📋 [ANTS-1435] **`session_memory` read ops (`list`, `get`) refuse cross-tenant on focused-tab mismatch despite caller_cwd.**
+  Vestige CC session 2026-05-16: `session_memory op:"list"` returned `code:"cwd_mismatch"` because the focused Ants tab was on a different project than `caller_cwd`. The whole point of `caller_cwd` (ANTS-1391, ANTS-1336) is to anchor reads to the caller's project, but ANTS-1336 § INV-7 routes every `session_memory` op through `RcGate` — including reads — which gates on focused-tab cwd-match, not caller_cwd-anchor.
+  
+  Other read-only verbs (`roadmap_query`, `subsystem`, `git_state`) honour `caller_cwd` as the tenancy assertion. `session_memory`'s reads should match that pattern: the storage is tenant-hashed by cwd, so a read with `caller_cwd` is a self-scoped lookup against the caller's own bucket — no cross-tenant risk. Writes (`put`, `delete`) keep the stronger gate.
+  
+  Fix sketch: in `cmdSessionMemory` (post-ANTS-1336 routing), branch on op — for `list`/`get`, replace the RcGate call with an `ants::resolveCallerCwdRoot` + tenant-hash + bucket-lookup path; for `put`/`delete`, keep the RcGate flow. Amend ANTS-1336 § INV-7 to record the read/write asymmetry. Cold-eyes the security model before shipping — the threat is "session in tab A claims to be project B and reads B's memory" — but project B's memory entries are already only readable by callers who can supply project B's path; the entries themselves are not secrets.
+  
+  Pairs with the spec/CLAUDE.md amendment from ANTS-1430 which already adds `project_layout` to the tenant-hashed-storage gated set.
+  **Layman:** When another Claude Code session asks Ants to list its own memory entries, Ants refuses if the focused Ants tab happens to be on a different project — even when the caller correctly identifies its own project. Reads should honour caller_cwd the way roadmap_query and other read-only verbs do.
+  Kind: fix.
+  Lanes: remotecontrol, session_memory, ANTS-1336.
+  Source: vestige-cc-feedback-2026-05-16.
+
+- 📋 [ANTS-1436] **`roadmap_query status:"active"` blows the 25k-token response cap on large roadmaps.**
+  Vestige CC session 2026-05-16: their Phase 10.9 roadmap is large; `roadmap_query status:"active"` returned ~100 KB on a single line, exceeding the 25k-token cap and triggering the spill-file fallback. The current envelope is one giant JSON array on one line.
+  
+  Three candidate fixes (not mutually exclusive):
+  
+  - **(a) NDJSON streaming.** Emit each bullet on its own line as a self-contained JSON object (`{"id":"ANTS-1351","status":"📋",...}`). Downstream tools can `Read` with `offset/limit` instead of re-parsing the entire array. Wraps the existing bullets array in a string-with-newlines body — backward-compatible if the envelope still includes the array, but adds an `ndjson:"..."` field consumers can prefer.
+  - **(b) Pagination.** Add `offset` + `limit` args; default `limit=50`. Envelope adds `next_offset` when there are more. Caller pages through. Simpler model; preserves the JSON-array shape.
+  - **(c) Auto-truncate with hint.** When the response would exceed ~20k tokens, truncate to the first N bullets and emit `{truncated:true, hint:"use section=<slug> to drill in"}`. Zero schema change for sub-cap responses.
+  
+  Pairs with the section-index gap (other Vestige item: section slugs not discoverable) — once that lands, callers can drill in via `section=` without paging. ANTS-1398 (rollup filter) already trims the response size on the small end; this is the same theme on the large end.
+  **Layman:** When Claude asks Ants for the active items on a big project's roadmap, the answer can balloon past the 25k-token response cap (~100k chars on a single JSON line), forcing a spill-file fallback. Either chunk the response, paginate, or stream as one-bullet-per-line NDJSON so downstream tools can use Read with offset/limit.
+  Kind: perf.
+  Lanes: remotecontrol, roadmap_query.
+  Source: vestige-cc-feedback-2026-05-16.
+
+- 📋 [ANTS-1437] **`roadmap_query` section-index mode returns slug + headline + active-count without bullets.**
+  Vestige CC session 2026-05-16: had to guess section slugs (`slice-12-editor-undo-hygiene` etc.); guessed wrong on a couple, burnt round-trips. A `roadmap_query` mode that returns only the section index (slug + headline + active-count per section, no bullets) at single-digit kB cost would replace the "fire one query per slice" pattern (12+ calls in that session).
+  
+  Design sketch: new arg `mode:"section_index"` (default `"bullets"`). When set, response carries `sections:[{slug,headline,level,active_count,shipped_count,total_count}]` and no `bullets[]`. Cheap to compute — the existing parser walks every `##`/`###` heading and tallies bullets per section; just expose the tally. Envelope:
+  
+  ```jsonc
+  {
+    "ok": true,
+    "mode": "section_index",
+    "path": "/path/to/ROADMAP.md",
+    "sections": [
+      {"slug":"ants-mcp-...", "headline":"🔌 Ants MCP — improvements...", "level":3, "active_count":21, "shipped_count":7, "total_count":28}
+    ]
+  }
+  ```
+  
+  Pairs with the response-cap concern (other Vestige item) — drill-in via `section=` becomes discoverable instead of guess-and-check. Cheap to implement; one of the highest-leverage MCP polish items.
+  **Layman:** There's no way to ask Ants "what sections does this roadmap have?" without running a full query and re-parsing the response. Callers end up guessing slug names (and getting them wrong). Add a cheap section-index-only mode that returns just the sections, no bullets.
+  Kind: implement.
+  Lanes: remotecontrol, roadmap_query.
+  Source: vestige-cc-feedback-2026-05-16.
+
+- 📋 [ANTS-1438] **`roadmap_query bullets[].id` is sometimes a 10-char nonce instead of the human-readable bold-ID.**
+  Vestige CC session 2026-05-16: `roadmap_query` on Vestige's GFM-task-list roadmap returned `bullets[].id` as a 10-char nonce (e.g. `nwd5vars2r`) for some entries and as the human-readable bold-ID (e.g. `Sh4`, `R2 follow-up`) for others. The bold-ID lives inside `headline` for the nonce-id entries; consumers can't correlate with commit-message prefixes (`Ed7:`, `Pe5:`) without parsing the headline string.
+  
+  Root cause is in the ANTS-1428 GFM adapter: the content-hash synthetic ID (FNV-1a 64-bit, base36-encoded) is generated as a fallback when no bold-ID locator is detected. The detection likely matches `**Bold-ID.**` but misses other bold-ID shapes documented in the spec (`**Sh4**`, `**R2 follow-up.**`, `**W8 part 2.**`).
+  
+  Fix candidates:
+  
+  - **(a) Strengthen bold-ID detection.** Widen the regex from `\*\*([A-Z]{1,4}\d+)\.?\*\*` to also match multi-token bold prefixes (`**Sh4**`, `**R2 follow-up**`, `**W8 part 2**`) — the spec § 3.5 already documents these as valid forms.
+  - **(b) Add separate `bold_id` field.** Keep `id` as the synthetic/stable handle (caret-anchor or content-hash), add `bold_id` populated whenever a `**...**` prefix is present in the headline. Backward-compatible.
+  
+  Recommend (a)+(b) together: (a) reduces false-nonce-IDs at the source, (b) lets consumers correlate explicitly when both exist. Pairs with ANTS-1428's adapter test suite — extend `tests/features/mcp_adapter_github_tasklist/` with INVs for the multi-token bold-ID shapes Vestige hit.
+  **Layman:** When Claude queries the roadmap, some bullets come back with a stable ID like "Sh4" or "VEST-0042" — great. Others come back with a random-looking 10-character string like "nwd5vars2r" — useless for matching commit messages or talking about the item. Always surface the human-readable ID when one exists.
+  Kind: fix.
+  Lanes: remotecontrol, roadmap_query, ANTS-1428.
+  Source: vestige-cc-feedback-2026-05-16.
+
+- 📋 [ANTS-1439] **Path-keyed MCP caches survive user-initiated project relocation (defensive sweep).**
+  Vestige CC session 2026-05-16, defensive observation (not a bug Vestige hit): the user's repo moved `/mnt/Storage → /mnt/Games` on 2026-05-08. Any MCP cache that hashes by absolute path (`project_layout` ttl cache, `session_memory` tenant-hashes, `verify_changes` build cache) could carry stale entries from the old path while the new path starts cold.
+  
+  Audit checklist:
+  
+  - **`session_memory`** (ANTS-1283/1336): per-cwd storage at `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`. Entries under the old SHA still exist on disk; the new SHA's entries are fresh. **Not silently shadowed** — they live in different files; just orphaned bytes. Defensive ask: stale-entry GC at session start.
+  - **`project_layout`** (ANTS-1430): stored inside session_memory; inherits the per-cwd-SHA isolation. Same orphan-not-shadow profile.
+  - **`verify_changes` build cache** (ANTS-1359): in-process only, scoped by project root + git HEAD + porcelain SHA. Process death wipes it; no relocation hazard.
+  - **`mcp_trace` ring buffer** (ANTS-1360): in-process only; no relocation hazard.
+  - **`roadmap_query` per-call cache**: process-scoped + mtime keyed; not by absolute path.
+  - **`session_memory` 100ms TTL idempotent-read cache** (ANTS-1357): keyed by `(tool, args_sha256)` where args may contain `caller_cwd`. A relocation would change the hash, so old entries become unreachable. No shadow.
+  
+  Net: nothing silently shadows. The defensive gaps are (a) orphaned bytes accumulate (one disk entry per dead path), (b) cold-start cost on the new path. Worth a `session_memory` GC sweep ("entries last-touched > N days drop") and an opt-in `migrate-cwd <old> <new>` MCP verb for explicit relocations.
+  
+  Defer until user actually hits a relocation symptom; logging here so the cache layer's relocation contract is documented when the next relocation happens.
+  **Layman:** If a user moves a project from /mnt/Storage to /mnt/Games (as happened on 2026-05-08), any cached data that's keyed by the old path could silently shadow the new location's data — wrong answers without an error. Audit every path-keyed cache and document the relocation contract.
+  Kind: research.
+  Lanes: session_memory, project_layout, claudeintegration.
+  Source: vestige-cc-feedback-2026-05-16.
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single
