@@ -6788,9 +6788,33 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   response adds a small overhead per call. If telemetry
   ever shows that overhead climbing above ~10 %, this is
   the followup that shortens it.
+  **2026-05-16 measurement (Bundle C closeout — defer):**
+  Live `token_usage` snapshot after Bundle C ship returned
+  `total_wrap_bytes=462`, `sum(bytes_out)=20 819` across 14
+  calls and 6 distinct verbs — **session-aggregate ratio
+  2.22 %**, well below the 10 % trigger. **Decision: keep
+  📋, no v3 work this cycle.** Per-tool view reveals a
+  nuance worth recording before this entry is picked up:
+  small-payload verbs *individually* sit over the threshold
+  (`caller_cwd_info` 54/160 = 33.8 %, `roadmap_log`
+  100/262 = 38.2 %, `mcp_trace` 48/295 = 16.3 %), but
+  `roadmap_query`'s 16 495 B payload (260 B wrap = 1.6 %)
+  dominates the aggregate and pulls the session ratio
+  down. Two implications for whoever picks this up: (i)
+  refine the trigger to OR a per-tool ratio check
+  (`max(wrap_bytes/bytes_out) over verbs with n_calls ≥
+  N`) alongside the aggregate, so a workload dominated by
+  small verbs doesn't fly under the radar; (ii) fixed
+  wrap envelope is ~52 B (`<ants_mcp_data
+  tool="…"></ants_mcp_data>` with average tool-name) —
+  payloads under ~500 B break the 10 % line by
+  construction, so Option (a) abbreviation gains most for
+  small-payload verbs, which is the population that needs
+  it.
   Kind: optimize.
   Source: in-session-2026-05-15 (deferred from
-  ANTS-1355 v2's spec § 8 / § 9).
+  ANTS-1355 v2's spec § 8 / § 9); 2026-05-16 measurement
+  recorded at Bundle C closeout.
 
 - ✅ [ANTS-1404] **Cross-project isolation Phase 3a —
   per-tool `caller_cwd` contract audit + fail-loud policy
