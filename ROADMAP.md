@@ -5827,6 +5827,29 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol.
   Source: in-session-2026-05-16 (post-Bundle C validation).
 
+- ✅ [ANTS-1426] **`parseBullets` blank-line continuation — CommonMark loose-list parity.**
+  Shipped 2026-05-16 (Bundle C pull 8). `RoadmapDialog::parseBullets`
+  terminated bullet-body collection at the first blank line — stricter
+  than CommonMark's loose-list mode. The ANTS-1422 entry's body uses
+  a blank line between "pull 7" and "pull 1" sub-blocks for human
+  readability; the `Kind: fix.` line at the bottom never reached the
+  regex matcher, so `roadmap_query` returned `kind:""` for that bullet.
+  Caught by the Bundle C dogfood read-back. Fix: when the loop hits
+  a blank line, peek to the next non-blank line. If that line is an
+  indented continuation (`  …`, not `- `/`* `/`#`), absorb the blank
+  as a single `\n` in the body and keep collecting. INV-3/4/5 preserved
+  (new top-level bullet / heading / EOF after blank still terminate
+  correctly). Behavioral test
+  `tests/features/roadmap_parser_blank_line_continuation/` (5
+  invariants, all five passing). 717/717 features green.
+  **Layman:** The roadmap dialog's bullet parser was throwing away
+  the "Kind: ..." line if a bullet had a blank line in its body
+  (e.g. for readability). Fixed — matches the markdown standard's
+  loose-list rule now.
+  Kind: fix.
+  Lanes: roadmapdialog.
+  Source: in-session-2026-05-16 (caught by Bundle C dogfood).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single

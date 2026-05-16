@@ -878,7 +878,9 @@ if(ANTS_TESTS)
                 # ANTS-1422 token_usage no_ci diagnostic envelope.
                 tests/features/token_usage_no_ci_diagnostic/test_token_usage_no_ci_diagnostic.cpp
                 # ANTS-1424 roadmap_log MCP write verb.
-                tests/features/mcp_roadmap_log_verb/test_mcp_roadmap_log_verb.cpp)
+                tests/features/mcp_roadmap_log_verb/test_mcp_roadmap_log_verb.cpp
+                # ANTS-1426 parseBullets blank-line continuation.
+                tests/features/roadmap_parser_blank_line_continuation/test_roadmap_parser_blank_line_continuation.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

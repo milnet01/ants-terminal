@@ -553,13 +553,43 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         }
 
         // Collect the bullet body — first line + subsequent indented
-        // continuation lines until a blank line or another top-level
-        // bullet. Mirrors renderHtml's continuation walk.
+        // continuation lines. ANTS-1426: a blank line inside the body
+        // is tolerated when the next non-blank line is still an
+        // indented continuation (CommonMark loose-list mode). Without
+        // this rule, an author splitting the body into sub-blocks for
+        // readability (as ANTS-1422 did) causes `Kind:` / `Lanes:` /
+        // `Layman:` lines after the blank to be silently dropped.
         QString body = head;
         ++i;
         while (i < lines.size()) {
             const QString &cont = lines[i];
-            if (cont.trimmed().isEmpty()) break;
+            if (cont.trimmed().isEmpty()) {
+                // Peek to the next non-blank line. If it's still an
+                // indented continuation (and not a new top-level
+                // bullet), absorb the blank and keep collecting.
+                int peek = i + 1;
+                while (peek < lines.size() &&
+                       lines[peek].trimmed().isEmpty()) {
+                    ++peek;
+                }
+                if (peek >= lines.size()) break;          // INV-5
+                const QString &nextLine = lines[peek];
+                // INV-3: a top-level bullet (col 0) is a new entry.
+                if (nextLine.startsWith(QStringLiteral("- ")) ||
+                    nextLine.startsWith(QStringLiteral("* "))) break;
+                // INV-4: a heading at col 0 ends the body.
+                if (nextLine.startsWith(QStringLiteral("#"))) break;
+                // INV-2: indented continuation — absorb the blank
+                // line(s) (as a single '\n' in the body) and skip
+                // forward to the continuation line.
+                if (nextLine.startsWith(QStringLiteral("  "))) {
+                    body.append('\n');
+                    i = peek;
+                    continue;
+                }
+                // Anything else at col 0 ends the body.
+                break;
+            }
             if (cont.startsWith(QStringLiteral("- ")) ||
                 cont.startsWith(QStringLiteral("* "))) break;
             if (cont.startsWith(QStringLiteral("  "))) {
