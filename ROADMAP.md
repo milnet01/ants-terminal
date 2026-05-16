@@ -6524,24 +6524,30 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: implement.
   Source: in-session-2026-05-15 (user request).
 
-- 📋 [ANTS-1398] **`roadmap_query` filters out header-rollup
-  bullets server-side.** The `active`-filtered response
-  (recommended for planning queries) returns ~10 bullets with
-  empty `id` / `headline` / `kind` mixed into the structured
-  list — these are the rollup headings under emoji section
-  banners (e.g. "Trust-model gaps in IPC sockets",
-  "Doc/code drift across four lanes"). Clients that want
-  actionable items have to scan the array and drop them.
-  Fix: either filter them out of `bullets[]` server-side
-  when `status` is set, or move them to a separate
-  `sections[]` envelope so the structure is explicit. Token
-  savings on a 146-bullet response: ~600–800 B (10 entries
-  × ~70 B). Verify against `parseStatusFilter` semantics so
-  back-compat callers that *do* want them can opt in via
-  a new `include_section_headers:true` flag.
-  **Layman:** the roadmap-lookup tool returns some "section
-  heading" placeholders alongside the real items; filter
-  them out so callers get only actionable entries.
+- ✅ [ANTS-1398] **`roadmap_query` filters out header-rollup
+  bullets server-side.** Shipped 2026-05-16 (Bundle C pull
+  2). `cmdRoadmapQuery` now drops section-rollup bullets
+  (empty `id` AND empty `headline`, status emoji only) from
+  `bullets[]` post-status filter, in both the full-file and
+  section-mode emission paths. New opt-in arg
+  `include_section_headers:true` retains the legacy shape
+  for back-compat callers; the envelope echoes the field
+  only when the caller set it (INV-5). The
+  `isRollupBullet` lambda lives next to the filter pass —
+  predicate test: `id.isEmpty() && headline.isEmpty()`. The
+  cache stores the unfiltered array so a follow-up call
+  with the opt-in flag doesn't re-parse. Token savings on a
+  161-bullet active-filter response: ~10 rollups × ~70 B =
+  ~700 B per call. Spec `docs/specs/ANTS-1398.md`; tests
+  `tests/features/roadmap_query_filter_section_headers/` (6
+  invariants: INV-1 flag parse, INV-2 predicate, INV-3a/b
+  filter both paths, INV-4 schema, INV-5 conditional echo).
+  684/684 features green.
+  **Layman:** the roadmap-lookup tool was returning some
+  "section heading" placeholders mixed in with the real
+  items; now drops them by default so callers get only
+  actionable entries. Pass `include_section_headers:true`
+  to opt back in.
   Kind: refactor.
   Source: in-session-2026-05-15 (self-observed during
   the ANTS-1355 / 1396 / 1395 bundle).

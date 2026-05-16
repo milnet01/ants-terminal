@@ -1528,6 +1528,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "for partial queries. Unknown slug → "
                         "code=bad_section.");
                     props["section"] = sectionProp;
+                    // ANTS-1398 — opt-in to retain section-rollup
+                    // bullets (empty id/headline, status emoji only).
+                    // Default false; the dropped rollups are visual
+                    // chrome the dialog uses but actionable-item
+                    // clients never want them in bullets[].
+                    QJsonObject inclHeadersProp;
+                    inclHeadersProp["type"] = "boolean";
+                    inclHeadersProp["default"] = false;
+                    inclHeadersProp["description"] = QStringLiteral(
+                        "If true, retain section-rollup bullets "
+                        "(empty id+headline, status emoji only) in "
+                        "bullets[]. Default false — drops them so "
+                        "clients get only actionable entries. "
+                        "Opt-in for back-compat callers (ANTS-1398).");
+                    props["include_section_headers"] = inclHeadersProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;

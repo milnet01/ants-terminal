@@ -736,6 +736,25 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // path (existing behaviour, INV-6).
     const QString section = req.value(QStringLiteral("section")).toString();
 
+    // ANTS-1398-INV-1: `include_section_headers` opt-in. Default false
+    // — section-rollup bullets (empty id + empty headline, status emoji
+    // only) are dropped from `bullets[]` server-side so clients don't
+    // have to scan for them. Pass true to retain the legacy shape for
+    // any back-compat caller that wants them.
+    const bool hasIncludeHeadersArg =
+        req.contains(QStringLiteral("include_section_headers"));
+    const bool includeSectionHeaders =
+        req.value(QStringLiteral("include_section_headers")).toBool(false);
+
+    // ANTS-1398-INV-2: rollup predicate. A bullet is a section rollup
+    // iff its `id` and `headline` are both empty — the unambiguous
+    // signature of `parseBullets`'s status-only summary cards.
+    auto isRollupBullet = [](const QJsonValue &v) {
+        const QJsonObject o = v.toObject();
+        return o.value(QStringLiteral("id")).toString().isEmpty()
+            && o.value(QStringLiteral("headline")).toString().isEmpty();
+    };
+
     // ANTS-1391: when caller_cwd is present, derive the ROADMAP.md path
     // under that root (matching MainWindow::refreshRoadmapButton's
     // case-variant search) instead of relying on the focused tab's
@@ -922,12 +941,25 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 if (keep) filtered.append(v);
             }
         }
+        // ANTS-1398-INV-3b: section-mode emission path drops rollup
+        // bullets post-status filter unless the caller opts in.
+        if (!includeSectionHeaders) {
+            QJsonArray pruned;
+            for (const auto &v : std::as_const(filtered)) {
+                if (!isRollupBullet(v)) pruned.append(v);
+            }
+            filtered = pruned;
+        }
         out["ok"] = true;
         out["bullets"] = filtered;
         out["path"] = path;
         out["count"] = filtered.size();
         out["filter"] = filter;
         out["section"] = sec->slug;
+        // ANTS-1398-INV-5: echo the opt-in only when the caller set it.
+        if (hasIncludeHeadersArg) {
+            out["include_section_headers"] = includeSectionHeaders;
+        }
         return QJsonDocument(out);
     }
 
@@ -973,6 +1005,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (keep) filtered.append(v);
         }
     }
+    // ANTS-1398-INV-3a: full-file emission path drops rollup bullets
+    // post-status filter unless the caller opts in. Runs after status
+    // filter so the rollup card's status emoji can't leak through.
+    if (!includeSectionHeaders) {
+        QJsonArray pruned;
+        for (const auto &v : std::as_const(filtered)) {
+            if (!isRollupBullet(v)) pruned.append(v);
+        }
+        filtered = pruned;
+    }
 
     out["ok"] = true;
     out["bullets"] = filtered;
@@ -981,6 +1023,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     out["count"] = filtered.size();
     // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
     out["filter"] = filter;
+    // ANTS-1398-INV-5: echo the opt-in only when the caller set it
+    // so the default-false case stays trim on the wire.
+    if (hasIncludeHeadersArg) {
+        out["include_section_headers"] = includeSectionHeaders;
+    }
     return QJsonDocument(out);
 }
 
