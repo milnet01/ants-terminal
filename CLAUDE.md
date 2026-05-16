@@ -243,9 +243,11 @@ as a type and flags every signal emission.
   Including reads. The legacy `cwd` arg is ignored by the handler
   (still in the schema for one release as `DEPRECATED`, drops in
   0.7.93). `caller_cwd` is the only project-scope source.
-  ANTS-1372 § 4 INV-7 is amended — session_memory is the unique
-  read-only verb that joins the gated set because its storage
-  is tenant-hashed. See `docs/specs/ANTS-1336.md`.
+  ANTS-1372 § 4 INV-7 is amended — any read-only verb whose
+  storage is tenant-hashed joins the gated set. As of 2026-05-16
+  that's `session_memory` and `project_layout` (ANTS-1430); both
+  read from `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`.
+  See `docs/specs/ANTS-1336.md`.
 
 - **Path-accepting MCP tools route through `PathValidation::validatePath`
   (ANTS-1295).** Every tool that takes a path-typed argument (`path`,

@@ -6133,7 +6133,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1430] **`session_memory` `project_layout` scan helper — pre-cache file layout per project, weekly TTL.**
+- ✅ [ANTS-1430] **`session_memory` `project_layout` scan helper — pre-cache file layout per project, weekly TTL.** Shipped 2026-05-16 (Bundle C pull 12). Spec: [`docs/specs/ANTS-1430.md`](docs/specs/ANTS-1430.md). New engine `ProjectLayoutEngine` (Qt6::Core, `ants_core_lib`) + new MCP verb `mcp__ants__project_layout` (Required-contract gated). Scan envelope: roadmap (path/format/marker/bullet-count/size/mtime), changelog, specs/standards/decisions dirs, appstream metainfo, counter-file, probed_paths. Cache via `session_memory` under well-known key `project_layout`; TTL = 7 days; mtime invalidation on any probed path. `force_rescan` arg bypasses. Tests: `tests/features/mcp_project_layout_scan/` (9 INVs, all pass; 746/746 features green at landing). Cross-doc amendment: ANTS-1336 § INV-7 + `CLAUDE.md` session_memory bullet now name both `session_memory` AND `project_layout` as the tenant-hashed-storage gated set.
   **Problem.** Every MCP tool that touches project-relative paths
   re-derives the layout on each call: find ROADMAP.md, check
   CHANGELOG.md presence, locate `docs/standards/`, scan for

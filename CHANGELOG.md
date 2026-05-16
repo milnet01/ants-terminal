@@ -16,11 +16,11 @@ for security-relevant changes.
 
 Third bundle from the 0.7.92 plan. Items group around the MCP layer:
 descriptor dedup, response shape, dispatch instrumentation, audit
-trail, and two write-verb additions. Eleven items shipped
-(1409 / 1398 / 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1429 / 1431
-/ 1432). One item deferred (ANTS-1403 — wrap-overhead v3, gated on
-having clean token_usage data which now ships; the v3 work itself
-stays planned for a future bundle). Six follow-ups discovered
+trail, and two write-verb additions. Twelve items shipped
+(1409 / 1398 / 1399 / 1402 / 1422 / 1424 / 1426 / 1427 / 1429 / 1430
+/ 1431 / 1432). One item deferred (ANTS-1403 — wrap-overhead v3,
+gated on having clean token_usage data which now ships; the v3 work
+itself stays planned for a future bundle). Seven follow-ups discovered
 mid-bundle (ANTS-1425 logged for next round; ANTS-1426 fixed-in-
 bundle; ANTS-1427 added + shipped in the pull-3 close-out for
 ANTS-1422; ANTS-1429 added + shipped after 2026-05-16 Vestige CC
@@ -29,7 +29,9 @@ non-Ants-format roadmaps; ANTS-1431 added + shipped same session to
 document the GFM-task-list sibling format in the standards spec;
 ANTS-1432 added + shipped same session to surface failed-call cost
 in `token_usage` — the measurement guard that would have caught the
-1429-class regression earlier).
+1429-class regression earlier; ANTS-1430 added + shipped same
+session as the `project_layout` cache surface that ANTS-1428's
+adapter-mode dialect-detection will ride on next).
 
 - **ANTS-1409 — Per-tool MCP descriptor blurbs deduplicate the
   "Pass `caller_cwd` to anchor to…" phrasing.** New
@@ -313,6 +315,46 @@ in `token_usage` — the measurement guard that would have caught the
   hiding their cost. Now every tool's entry shows both "how many
   tokens you saved" and "how many tokens you spent on failures",
   so a tool that's net-negative is immediately visible.
+
+- **ANTS-1430 — `session_memory` `project_layout` scan helper —
+  per-project file-layout cache.** Every MCP tool that touches
+  project-relative paths used to re-derive the layout on each
+  call: probe `ROADMAP.md`, probe `CHANGELOG.md`, locate
+  `docs/standards/`, scan for `packaging/*.metainfo.xml`, find
+  `.roadmap-counter`. Stat calls are cheap individually but
+  add up across ~30 tools × ~hundred-call sessions. New engine
+  `ProjectLayoutEngine` (Qt6::Core, lives in `ants_core_lib`)
+  performs the scan once per project and caches the envelope via
+  `session_memory` under the well-known key `project_layout`.
+  Cache invalidates after a 7-day TTL OR when any probed path's
+  mtime advances past `scanned_at_ms`. New MCP verb
+  `mcp__ants__project_layout` (Required-contract gated) returns
+  `{roadmap:{path, format, format_marker_present,
+  bullet_count_estimate, size_bytes, mtime_ms}, changelog:
+  {path, size_bytes, mtime_ms}, specs_dir, standards_dir,
+  adr_dir, appstream_metainfo, counter_file, probed_paths,
+  cached, scanned_at_ms, ttl_days, root_cwd}`. Pass
+  `force_rescan:true` to bypass TTL+mtime checks. Format
+  detection on ROADMAP.md returns `"ants-v1"` when the marker is
+  present, `"github-task-list"` when GFM bullets are detected,
+  `"unknown"` otherwise — this is the hand-off surface ANTS-1428
+  reads next. Cross-doc amendment: ANTS-1336 § INV-7 +
+  `CLAUDE.md` session_memory bullet now name both `session_memory`
+  AND `project_layout` as the tenant-hashed-storage gated set
+  (any read-only verb whose storage is hash-derived joins the
+  gate). Spec `docs/specs/ANTS-1430.md`; tests
+  `tests/features/mcp_project_layout_scan/` (9 INVs covering
+  empty/populated scans, both format detections, mtime + TTL
+  invalidation, round-trip fidelity). 746/746 features green at
+  landing.
+  Layman: every MCP tool used to re-discover where the roadmap,
+  changelog, and docs folders live on every single call. This
+  new helper does the discovery once per week per project and
+  caches the result — subsequent calls get the layout instantly.
+  It also detects which format the roadmap is in (Ants emoji
+  style vs GitHub checkbox style), so the next ticket
+  (ANTS-1428) can switch on that without re-sniffing the file
+  every time.
 
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 

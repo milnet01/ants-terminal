@@ -231,6 +231,7 @@ add_library(ants_core_lib STATIC
     src/plantemplateengine.cpp
     src/tokenusageengine.cpp
     src/sessionmemoryengine.cpp
+    src/projectlayoutengine.cpp
     src/tooldetectionengine.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
@@ -968,7 +969,9 @@ if(ANTS_TESTS)
                 tests/features/session_memory_engine/test_session_memory_engine.cpp
                 tests/features/tool_detection_engine/test_tool_detection_engine.cpp
                 # ANTS-1364 — Set/Delete serialize-once refactor.
-                tests/features/session_memory_serialize_once/test_session_memory_serialize_once.cpp)
+                tests/features/session_memory_serialize_once/test_session_memory_serialize_once.cpp
+                # ANTS-1430 — project_layout scan helper.
+                tests/features/mcp_project_layout_scan/test_project_layout_scan.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

@@ -4085,6 +4085,14 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdSessionMemory(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1430 — project_layout pre-cache.
+    m_claudeIntegration->registerToolProvider("project_layout",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdProjectLayout(args).toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1400 — caller_cwd_info diagnostic verb. Pure delegation to
     // ants::resolveCallerCwdRoot. No filesystem operations beyond the
     // canonicalisations the helper performs; no shell, no process.

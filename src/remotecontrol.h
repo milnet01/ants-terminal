@@ -360,6 +360,12 @@ public:
     // docs/specs/ANTS-1283.md.
     QJsonDocument cmdSessionMemory(const QJsonObject &req);
 
+    // ANTS-1430 — project_layout read verb. Scan-if-stale wrapper
+    // over ProjectLayoutEngine + SessionMemoryEngine (well-known
+    // key `project_layout`). Required contract; gateErrorEnvelope
+    // on caller_cwd mismatch. See docs/specs/ANTS-1430.md.
+    QJsonDocument cmdProjectLayout(const QJsonObject &req);
+
     // ANTS-1424 — roadmap_log. Append a new bullet to ROADMAP.md.
     // Mutates project state (counter + markdown). Required contract
     // gates absent caller_cwd; PathValidation anchors paths to the

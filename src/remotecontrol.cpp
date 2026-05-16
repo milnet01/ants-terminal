@@ -8,6 +8,7 @@
 #include "mainwindow.h"
 #include "pathvalidation.h"
 #include "plantemplateengine.h"
+#include "projectlayoutengine.h"
 #include "remotecontrolgate.h"
 #include "resolvedroot.h"
 #include "sessionmemoryengine.h"
@@ -4093,4 +4094,71 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
             break;
     }
     return QJsonDocument(env);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-1430 — project_layout MCP tool
+// ---------------------------------------------------------------------------
+//
+// Pre-cached project file layout (ROADMAP/CHANGELOG/specs/etc.) per
+// caller_cwd, persisted via SessionMemoryEngine under the well-known
+// key `project_layout`. Required-contract gated (dispatcher refuses
+// empty caller_cwd before the provider lambda runs). On invocation:
+// gate → cache lookup → freshness check (TTL + mtime) → scan-if-stale
+// → cache write (best-effort). See docs/specs/ANTS-1430.md.
+
+QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
+    if (!m_main) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = QStringLiteral("no_window");
+        env["error"] = QStringLiteral("project_layout: no MainWindow");
+        return QJsonDocument(env);
+    }
+    // ANTS-1336 / ANTS-1404 — caller_cwd gate. Required-contract
+    // refusal at dispatcher catches empty caller_cwd; this gate
+    // catches present-but-wrong (cross-project) mismatch.
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("project_layout"));
+    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
+    const QString cwd = gate.focused;
+
+    const bool forceRescan =
+        req.value(QStringLiteral("force_rescan")).toBool(false);
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+    // Cache lookup. SessionMemoryEngine::execute(Get) returns
+    // OpResult.value as a QJsonValue; the layout envelope is a
+    // JSON object so we round-trip via toObject().
+    bool cacheHit = false;
+    ProjectLayoutEngine::LayoutEnvelope env;
+    if (!forceRescan) {
+        const auto getRes = SessionMemoryEngine::execute(
+            cwd, SessionMemoryEngine::Op::Get,
+            QStringLiteral("project_layout"),
+            QJsonValue());
+        if (getRes.ok && getRes.found && getRes.value.isObject()) {
+            env = ProjectLayoutEngine::fromJson(
+                getRes.value.toObject());
+            if (!ProjectLayoutEngine::isStale(env, nowMs)) {
+                cacheHit = true;
+            }
+        }
+    }
+    if (!cacheHit) {
+        env = ProjectLayoutEngine::scanLayout(cwd);
+        // Best-effort cache write. Spec § INV-8: store-write
+        // failure is non-fatal; the verb still returns the fresh
+        // envelope.
+        SessionMemoryEngine::execute(
+            cwd, SessionMemoryEngine::Op::Set,
+            QStringLiteral("project_layout"),
+            QJsonValue(ProjectLayoutEngine::toJson(env)));
+    }
+
+    QJsonObject out = ProjectLayoutEngine::toJson(env);
+    out[QStringLiteral("ok")]     = true;
+    out[QStringLiteral("cached")] = cacheHit;
+    return QJsonDocument(out);
 }

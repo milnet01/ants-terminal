@@ -2844,6 +2844,51 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1430 — project_layout. Pre-cached project file
+                // layout (ROADMAP/CHANGELOG/specs/standards/decisions/
+                // appstream/counter). Read verb; scans the project tree
+                // when the cache is missing, expired (7-day TTL), or
+                // any probed path's mtime has advanced. Persists via
+                // session_memory under the well-known key
+                // `project_layout`. See docs/specs/ANTS-1430.md.
+                {
+                    QJsonObject t;
+                    t["name"] = "project_layout";
+                    t["description"] = QStringLiteral(
+                        "Per-project file-layout cache. Returns "
+                        "{roadmap:{path,format,bullet_count_estimate,"
+                        "size_bytes,mtime_ms},changelog:{path,"
+                        "size_bytes,mtime_ms},specs_dir,standards_dir,"
+                        "adr_dir,appstream_metainfo,counter_file,"
+                        "cached:bool}. First call scans (cached:false), "
+                        "subsequent within 7-day TTL return the cache "
+                        "(cached:true). mtime change on any probed path "
+                        "invalidates. Pass force_rescan:true to bypass. "
+                        "caller_cwd required (Required contract — "
+                        "tenant-hashed storage).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject forceProp;
+                    forceProp["type"] = "boolean";
+                    forceProp["description"] = QStringLiteral(
+                        "If true, bypasses TTL+mtime check and "
+                        "re-scans unconditionally. Default false.");
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. REQUIRED — Required contract "
+                        "refuses with caller_cwd_required when empty.");
+                    QJsonObject props;
+                    props["force_rescan"] = forceProp;
+                    props["caller_cwd"]   = callerProp;
+                    schema["properties"]  = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1283 — session_memory KV. Per-cwd key-value
                 // persistence backed by
                 // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json.
@@ -3223,6 +3268,10 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("last_audit_summary")) return C::Required;
     if (toolName == QStringLiteral("git_state"))          return C::Required;
     if (toolName == QStringLiteral("verify_changes"))     return C::Required;
+    // ANTS-1430 — project_layout reads from the tenant-hashed
+    // session_memory store. Joins session_memory in the gated
+    // Required set (see ANTS-1336 INV-7 amendment).
+    if (toolName == QStringLiteral("project_layout"))     return C::Required;
     // TabSpecific — classified but not enforced in Phase 3a. The
     // ANTS-1392 routing semantics (caller_cwd as a tab-routing key)
     // need their own spec pass before refusal makes sense.
