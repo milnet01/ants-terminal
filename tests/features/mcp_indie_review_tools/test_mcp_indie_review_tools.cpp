@@ -95,7 +95,8 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // Defensive: every new tool's inputSchema sets additionalProperties=false
     // so unknown keys are rejected. Region scoped to JUST the indie_review_*
     // block — start at indie_review_partition, end at the next non-indie
-    // tool block (currently debt_sweep_scan, ANTS-1113).
+    // tool block (currently debt_sweep_scan, ANTS-1113). ANTS-1352 added
+    // indie_review_dispatch within this region (sixth tool).
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("\"indie_review_partition\"");
@@ -117,5 +118,7 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
         ++count;
         ++pos;
     }
-    EXPECT_EQ(count, 5) << "expected 5 additionalProperties=false (one per tool)";
+    EXPECT_EQ(count, 6)
+        << "expected 6 additionalProperties=false (5 original "
+           "indie_review_* tools + ANTS-1352 indie_review_dispatch)";
 }

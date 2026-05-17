@@ -4223,6 +4223,40 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdIndieReviewFoldIn(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1352 — indie_review_dispatch. Inline in-flight gate via
+    // verbInFlight* (same pattern as audit_run); caller_cwd Required
+    // per callerCwdContractFor; rate-limit tier Expensive.
+    m_claudeIntegration->registerToolProvider("indie_review_dispatch",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            const QString callerCwd = args.value(
+                QStringLiteral("caller_cwd")).toString();
+            const QString canon =
+                QFileInfo(callerCwd).canonicalFilePath();
+            const qint64 existing =
+                m_claudeIntegration->verbInFlightTryAcquire(
+                    QStringLiteral("indie_review_dispatch"), canon);
+            if (existing >= 0) {
+                QJsonObject env;
+                env["ok"]               = false;
+                env["code"]             = QStringLiteral("already_running");
+                env["error"]            = QStringLiteral(
+                    "indie_review_dispatch: a sweep is already in flight "
+                    "for this project root; retry after it completes");
+                env["running_since_ms"] =
+                    QDateTime::currentMSecsSinceEpoch() - existing;
+                env["retry_after_ms"]   = 30000;
+                return QString::fromUtf8(
+                    QJsonDocument(env).toJson(QJsonDocument::Compact));
+            }
+            QString out = QString::fromUtf8(
+                m_remoteControl->cmdIndieReviewDispatch(args)
+                    .toJson(QJsonDocument::Compact));
+            m_claudeIntegration->verbInFlightRelease(
+                QStringLiteral("indie_review_dispatch"), canon);
+            return out;
+        });
+
     // ANTS-1113 — debt_sweep_* (4 tools).
     m_claudeIntegration->registerToolProvider("debt_sweep_scan",
         [this](const QJsonObject &args) -> QString {

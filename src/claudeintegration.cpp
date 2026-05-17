@@ -2209,6 +2209,88 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1352 — indie_review_dispatch (server-side
+                // reviewer fan-out).
+                {
+                    QJsonObject t;
+                    t["name"] = "indie_review_dispatch";
+                    t["description"] = QStringLiteral(
+                        "Server-side multi-agent independent code "
+                        "review: dispatches N parallel HTTP POSTs to "
+                        "the project's configured AI endpoint "
+                        "(Settings → AI), one per lane from "
+                        "indie_review_partition, saves each response "
+                        "as <reports_dir>/<lane>.md, returns a "
+                        "manifest. Replaces the per-Agent fan-out in "
+                        "the /indie-review skill — displaces the "
+                        "orchestration token tax onto the upstream "
+                        "provider's billing. Required: caller_cwd, "
+                        "reports_dir. Optional: lanes (subset of "
+                        "partition; default all), concurrency [1-8] "
+                        "default 4, max_tokens [4096-128000] default "
+                        "64000, model (default = Config::aiModel(), "
+                        "which is \"llama3\" out-of-box — see "
+                        "docs/specs/ANTS-1352.md § 3.3), "
+                        "system_extras (≤ 4 KiB append to system "
+                        "prompt). See docs/specs/ANTS-1352.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. Anchors lane partition lookup "
+                        "and reports_dir. caller_cwd Required "
+                        "(ANTS-1404).");
+                    QJsonObject rdProp;
+                    rdProp["type"] = "string";
+                    rdProp["description"] = QStringLiteral(
+                        "Project-relative directory under caller_cwd "
+                        "where <lane>.md files are written. Created "
+                        "if missing. Refuses on collision (delete "
+                        "stale files or pick a fresh dir).");
+                    QJsonObject lanesProp;
+                    lanesProp["type"] = "array";
+                    lanesProp["description"] = QStringLiteral(
+                        "Optional subset of lane names from "
+                        "indie_review_partition. Empty = all.");
+                    QJsonObject concProp;
+                    concProp["type"] = "integer";
+                    concProp["description"] = QStringLiteral(
+                        "Max parallel in-flight requests, [1, 8]. "
+                        "Default 4.");
+                    QJsonObject mtProp;
+                    mtProp["type"] = "integer";
+                    mtProp["description"] = QStringLiteral(
+                        "Per-lane response cap forwarded to upstream "
+                        "API, [4096, 128000]. Default 64000.");
+                    QJsonObject modelProp;
+                    modelProp["type"] = "string";
+                    modelProp["description"] = QStringLiteral(
+                        "Model name passed verbatim to upstream. "
+                        "\"auto\" or empty → Config::aiModel().");
+                    QJsonObject extrasProp;
+                    extrasProp["type"] = "string";
+                    extrasProp["description"] = QStringLiteral(
+                        "Appended to system prompt with a `---` "
+                        "separator. Useful for project-specific "
+                        "threat-model hints. ≤ 4 KiB.");
+                    QJsonObject props;
+                    props["caller_cwd"]    = callerProp;
+                    props["reports_dir"]   = rdProp;
+                    props["lanes"]         = lanesProp;
+                    props["concurrency"]   = concProp;
+                    props["max_tokens"]    = mtProp;
+                    props["model"]         = modelProp;
+                    props["system_extras"] = extrasProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    req.append("reports_dir");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1113 — debt_sweep_* (4 tools).
                 {
                     QJsonObject t;
@@ -3777,6 +3859,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("last_audit_summary")) return C::Required;
     if (toolName == QStringLiteral("git_state"))          return C::Required;
     if (toolName == QStringLiteral("verify_changes"))     return C::Required;
+    // ANTS-1352: indie_review_dispatch — server-side reviewer fan-out.
+    // Required: assembles per-lane prompts from caller_cwd's CLAUDE.md.
+    if (toolName == QStringLiteral("indie_review_dispatch"))     return C::Required;
     // ANTS-1351 — audit_run mutates per-call SARIF files under /tmp
     // and consumes a worker-pool slot; Required gate refuses early
     // before any pool dispatch.
@@ -3959,6 +4044,8 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     if (toolName == QStringLiteral("indie_review_partition"))   return R::Expensive;
     if (toolName == QStringLiteral("indie_review_corroborate")) return R::Expensive;
     if (toolName == QStringLiteral("indie_review_fold_in"))     return R::Expensive;
+    // ANTS-1352: indie_review_dispatch
+    if (toolName == QStringLiteral("indie_review_dispatch"))    return R::Expensive;
     if (toolName == QStringLiteral("test_audit_brief"))         return R::Expensive;
     if (toolName == QStringLiteral("test_audit_partition"))     return R::Expensive;
     if (toolName == QStringLiteral("test_audit_fold_in"))       return R::Expensive;

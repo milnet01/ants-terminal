@@ -311,6 +311,11 @@ public:
     QJsonDocument cmdIndieReviewSynthesisPrompt(const QJsonObject &req);
     QJsonDocument cmdIndieReviewFoldIn(const QJsonObject &req);
 
+    // ANTS-1352 — server-side dispatch orchestrator. Fires N parallel
+    // HTTP POSTs to Config::aiEndpoint, saves each response under
+    // reports_dir. See docs/specs/ANTS-1352.md.
+    QJsonDocument cmdIndieReviewDispatch(const QJsonObject &req);
+
     // ANTS-1113 — four `debt_sweep_*` MCP tools. Same project-path
     // resolution as `indie_review_*`. Pure delegation to
     // DebtSweepEngine + (for cmdDebtSweepDefer) RoadmapFoldIn helpers.

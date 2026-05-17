@@ -5235,7 +5235,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1352] **MCP `indie_review_dispatch` orchestrator.**
+- ✅ [ANTS-1352] **MCP `indie_review_dispatch` orchestrator.**
   The existing `indie_review_partition` / `_brief` /
   `_corroborate` / `_synthesis_prompt` / `_fold_in` tools are
   individual steps; missing the orchestrator that takes a
@@ -8827,7 +8827,54 @@ template / mutate this state atomically" → movable. If it's
   pull retire all three together.
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (RetroDB CC instance
-  running /test-audit on a Flask app).
+  running /test-audit on a Flask app). Detailed write-up
+  preserved at `/mnt/Games/Scripts/Linux/RetroDB/.test-audit-reports/ANTS_MCP_FEEDBACK.md`
+  — adds specifics on (b) error-code rename
+  (`reports_dir_missing` → `reports_dir_outside_project_root`,
+  since the dir exists and has files in it — it's *rejected*,
+  not *missing*) and (c) `mode:"summary"|"full"` arg shape +
+  multi-line output for grep-debuggability.
+
+- 📋 [ANTS-1456] **`audit_run` v1 usability gaps surfaced
+  by RetroArch CC session (cross-session report 2026-05-17).**
+  Three friction points reported while running `mcp__ants__audit_run`
+  against RetroArch (flat-layout C project — no `src/` subdir,
+  source under `gfx/`, `audio/`, `network/`, … directly at repo root):
+  - **(a) `cppcheck` invocation hardcodes `-I src/`** (per
+    `auditrunner.cpp:155-158`). Against a flat-layout project the
+    include path doesn't resolve; cppcheck silently exits 0 even
+    when `-I` paths are wrong, so `audit_run` reports
+    `raw_count: 0` with `executionSuccessful: true` and the audit
+    appears clean despite never actually parsing the sources. Fix
+    options: (i) auto-detect `src/` existence before passing `-I`,
+    (ii) honour a project-side `audit-config.json` (existing
+    convention — RetroArch ships
+    `docs/private/audit/audit-config.json` with the right
+    invocation), (iii) surface cppcheck's
+    "couldn't find path given by -I" warning as a tool-config
+    error rather than a clean run.
+  - **(b) `scope:"auto"` falls back to "changed since fork-point"
+    silently.** A fresh tree with no diff against `master` returns
+    `total_raw: 0` — correct behaviour but counterintuitive on
+    first call. Document in the tool descriptor, and consider
+    `scope:"diff"` vs `scope:"all"` as explicit names with `auto`
+    preserved as the existing alias.
+  - **(c) `executionSuccessful: true` is misleading when the
+    findings count is from `toolExecutionNotifications` rather
+    than real results.** SARIF emit should distinguish between
+    "tool ran cleanly with zero findings" and "tool ran cleanly
+    but with config-load warnings that suppressed all findings."
+  All three feed the v2 follow-up to ANTS-1351 (the
+  `audit_run` engine). Pairs with ANTS-1449 (the existing v2
+  rollup of AuditDialog config-table integration); fold these
+  bullets in or keep as a tightly-scoped own pull, author's call.
+  **Layman:** the `audit_run` MCP tool assumes a specific project
+  layout and silently reports "all clean" when its assumptions
+  don't fit. Three small fixes make it honest on flat-layout
+  projects.
+  Kind: enhancement.
+  Source: cross-session-report-2026-05-17 (RetroArch CC instance
+  running `audit_run` against a flat-layout C project).
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 

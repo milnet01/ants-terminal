@@ -146,12 +146,13 @@ void testWiring() {
     }
 
     // WI-3 — PathValidation::validatePath call-site count rises from
-    // ANTS-1295's 8 to 10 (cmdLaunch + cmdNewTab add one each).
+    // ANTS-1295's 8 to 10 (cmdLaunch + cmdNewTab add one each), then
+    // to 11 with ANTS-1352's cmdIndieReviewDispatch.
     {
         const std::size_t count = ants_test::countOccurrences(
             rc, "PathValidation::validatePath(");
-        expect(count == 10,
-               (std::string("WI-3 expected 10 validatePath call-sites, "
+        expect(count == 11,
+               (std::string("WI-3 expected 11 validatePath call-sites, "
                             "found ")
                 + std::to_string(count)).c_str());
     }

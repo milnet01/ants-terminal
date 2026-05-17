@@ -307,6 +307,8 @@ add_library(ants_audit_lib STATIC
     src/auditrulequality.cpp
     # ANTS-1351 — server-side audit runner (Qt6::Core only).
     src/auditrunner.cpp
+    # ANTS-1352 — indie-review dispatcher (Qt6::Network).
+    src/indiereviewdispatcher.cpp
 )
 target_link_libraries(ants_audit_lib
     PUBLIC  ants_core_lib
@@ -911,7 +913,9 @@ if(ANTS_TESTS)
                 tests/features/mcp_adapter_github_tasklist/test_adapter_read.cpp
                 tests/features/mcp_adapter_github_tasklist/test_adapter_write.cpp
                 # ANTS-1356 MCP per-tool rate-limit / quota.
-                tests/features/mcp_rate_limit/test_mcp_rate_limit.cpp)
+                tests/features/mcp_rate_limit/test_mcp_rate_limit.cpp
+                # ANTS-1352 indie_review_dispatch orchestrator.
+                tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -956,6 +960,13 @@ if(ANTS_TESTS)
         SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
         # ANTS-1397 — test_audit engine source for source-scrape tests.
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
+        # ANTS-1352 — indie_review_dispatch source-scrape paths.
+        SRC_INDIE_REVIEW_DISPATCHER_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.h"
+        SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.cpp"
+        SRC_INDIE_REVIEW_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.h"
+        SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
         FIXTURE_EMPTY_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_empty.sarif"
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
