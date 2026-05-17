@@ -1177,6 +1177,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
                 o["lanes"] = lanes;
+                // ANTS-1442 — section_slug must be on every cache
+                // population path. Without it the section_index
+                // tally walks objects keyed to "" and rolls up zero.
+                o["section_slug"] = b.sectionSlug;
                 // ANTS-1428 — adapter-mode metadata. Native parses
                 // leave these at default (empty/false), so callers
                 // that ignore them see no change.
@@ -1472,6 +1476,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
                 o["lanes"] = lanes;
+                // ANTS-1442 — section_slug must be on every cache
+                // population path.
+                o["section_slug"] = b.sectionSlug;
                 // ANTS-1428 — adapter-mode metadata (lazy-fill path).
                 if (b.format == QLatin1String("github-task-list")) {
                     o["format"] = b.format;

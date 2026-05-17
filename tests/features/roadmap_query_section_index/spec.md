@@ -38,6 +38,15 @@ tripping a full bullet payload.
 - **INV-8 / `unrecognised_format` gate applies before emission.**
   `code:"unrecognised_format"` fires in section_index mode under the
   same conditions as bullet mode. Anchor: `ANTS-1437-INV-8`.
+- **INV-9 / section_slug populated on every cache-fill path
+  (ANTS-1442 regression).** The section_index tally walks
+  `m_roadmapCacheBullets` keyed by `section_slug`. Because the cache
+  is shared across `roadmap_query` modes, EVERY cache-fill loop must
+  emit `section_slug` — otherwise a section_index call following a
+  bullet-mode call walks objects keyed to "" and rolls up zero for
+  every section. Three loops in `cmdRoadmapQuery` (bullet-mode pre-
+  fill, section_index lazy-fill, full-file lazy-fill); test asserts
+  loop-count == section_slug-emission-count. Anchor: `ANTS-1442`.
 
 ## Test scope
 

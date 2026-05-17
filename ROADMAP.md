@@ -6469,6 +6469,149 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, roadmap_log, ANTS-1428.
   Source: in-session-2026-05-16 (self-observed during ANTS-1435 ship).
 
+- 📋 [ANTS-1442] **`roadmap_query mode:"section_index"` returns zero counts for every section.**
+  Observed 2026-05-17 live-testing ANTS-1437 on this repo's own
+  ROADMAP.md: every section in the returned `sections[]` array shows
+  `active_count: 0, shipped_count: 0, total_count: 0`, despite the
+  roadmap carrying ~160 actionable bullets across the same sections.
+  
+  Envelope shape is correct (slug/headline/level populated, mode echo
+  present, response under cap) — only the count rollups are wrong.
+  
+  Suspected cause: counts are tallied against bullets that sit directly
+  under a heading, but the ants-v1 roadmap nests bullets two levels deep
+  (level-3 sub-headings under level-2 version anchors). The walker
+  probably stops at the immediate heading instead of recursing into the
+  sub-tree.
+  
+  Fix scope: `cmdRoadmapQuery`'s section_index branch — walk bullets
+  whose containing heading is the target slug OR any descendant heading
+  of it. Tests: extend
+  `tests/features/roadmap_query_section_index/` with a fixture roadmap
+  that has bullets under both level-2 and level-3 headings, assert
+  counts roll up the subtree correctly.
+  
+  Blocks: ANTS-1437 §INV-7 (count fields populated) should reference
+  this as the actual contract — the spec passed because it only
+  asserted field *presence*, not *correctness*. Tighten the spec
+  assertion as part of the fix.
+  **Layman:** The new "what sections exist?" lookup shows every section as empty, even when it has dozens of items — a counting bug.
+  Kind: fix.
+  Lanes: remotecontrol, cmdRoadmapQuery.
+  Source: in-session-2026-05-17 live test of ANTS-1437.
+
+- 📋 [ANTS-1443] **`audit_run` streaming progress events.**
+  ANTS-1351 v1 is blocking ≤ 4 min with no progress. § 9 Q1 deferred
+  to user feedback. Implement: server emits `progress_notification`
+  events as each tool completes; caller updates UI. MCP notification
+  surface is thinly supported (first project tool to need it) — revisit
+  when blocking-wait UX is reported as a problem.
+  **Layman:** Add per-tool progress updates so long audits don't look frozen — only if user feedback flags the wait UX as a problem.
+  Kind: enhancement.
+  Lanes: audit_run, claudeintegration.
+  Source: deferred from ANTS-1351 § 9 Q1 (cold-eyes loop 3 2026-05-17).
+
+- 📋 [ANTS-1444] **Split `ants_audit_lib` into engine/runner core + dialog GUI.**
+  ANTS-1351's `auditrunner.{h,cpp}` lives in `ants_audit_lib`
+  alongside `auditdialog.cpp` (a QDialog). Anything depending on
+  auditrunner pulls Qt6::Widgets via the lib's transitive deps even
+  though auditrunner.cpp itself doesn't include a Widgets header.
+  
+  Proposed split:
+  - `ants_audit_lib` → engine + runner + hygiene (Qt6::Core only)
+  - `ants_audit_dialog_lib` → dialog + UI helpers (Qt6::Widgets)
+  
+  Affects test linkage (the new MCP audit test could link
+  `ants_audit_lib` directly without dragging widgets). Larger scope
+  than v1 cleanup; better to do before lib has grown more.
+  **Layman:** Right now the audit library bundles the GUI dialog with the engine — anything that links the engine drags the GUI in too. Split them.
+  Kind: refactor.
+  Lanes: ants_audit_lib, CMakeLists.txt.
+  Source: deferred from ANTS-1351 § 9 Q5 (cold-eyes loop 3 2026-05-17).
+
+- 📋 [ANTS-1445] **Prompt-injection fence sweep across `*_synthesis_prompt` MCP verbs.**
+  ANTS-1397 INV-8 adopts a `<chunk_report file="…">…</chunk_report>`
+  fence around per-chunk reports spliced into the synth prompt
+  (defends against prompt-injection from hostile dep reports in
+  `reports_dir`).
+  
+  Same class of risk exists in `cold_eyes_synth` / `indie_review_synth`
+  which also splice disk-read reports into prompts. Audit each:
+  - Does the synth prompt fence per-report content?
+  - Are nested fence markers escaped?
+  - Is the prompt template "quote, don't narrate" third-party content?
+  
+  Add invariant + test to whichever specs need it. ANTS-1294's
+  `<ants_mcp_data>` wrap is the precedent; the synth case needs the
+  inner-level fence.
+  **Layman:** When MCP tools splice user-controlled content into prompts handed to subagents, they must wrap it so the subagent can't be tricked by a malicious file. Apply the fence pattern everywhere.
+  Kind: security.
+  Lanes: cold_eyes_synth, indie_review_synth, test_audit_synth.
+  Source: cold-eyes loop 3 security H-A (2026-05-17) — generalises to all synth verbs.
+
+- 📋 [ANTS-1446] **`audit_run` `compile_commands.json` argument-path validation.**
+  ANTS-1351 v1 only checks `compile_commands.json` existence at
+  projectRoot (cheap; if symlinked-out, clazy fails at link time and
+  the audit reports `not_runnable`). v2 deep validation:
+  
+  - Parse the JSON.
+  - Walk every `arguments[]` entry for `-I`, `-isystem`, `-include`,
+    `-iquote` paths.
+  - Run each through `PathValidation::validatePath` against project
+    root.
+  - Reject the audit run with `code:"compile_commands_escape"` if any
+    arg escapes.
+  
+  Risk under same-uid model: clazy currently reads/preprocesses
+  whatever paths the JSON points at; assistant-shown samples can
+  carry secrets from arbitrary paths reached via `-include`.
+  Acceptable v1 risk; revisit if same-uid attacker model proves
+  insufficient.
+  **Layman:** When clazy reads compile_commands.json, it follows include paths inside the file. A malicious or misconfigured file could point clazy at directories outside the project. Validate the include paths.
+  Kind: security.
+  Lanes: audit_run, pathvalidation.
+  Source: deferred from ANTS-1351 § 9 Q4 (cold-eyes loop 3 2026-05-17 security H-C).
+
+- 📋 [ANTS-1447] **`test_audit` mtime cache deep-tree gap.**
+  ANTS-1397 INV-15 bounds the recheck to top-level test_globs roots
+  + 5 s rate-limit. Adding a file in `tests/api/integration/` doesn't
+  update `tests/`'s mtime → cache misses the invalidation; brief/synth
+  can return stale findings until the next full `partition` recompute.
+  
+  v2 options if reported as a real problem:
+  - inotify watch on the test tree (new infra cost)
+  - Recursive mtime scan with `du`-style aggregation
+  - Accept the gap; document "re-run partition after editing tests"
+  
+  v1 documents the limitation in INV-15. Revisit if feedback flags
+  stale-brief bugs.
+  **Layman:** When a test file deep in the tree is added, the partition cache might miss the change. Document the limitation; revisit if users hit stale-brief bugs.
+  Kind: enhancement.
+  Lanes: testauditengine.
+  Source: deferred from ANTS-1397 § 9 Q-E (cold-eyes loop 3 2026-05-17).
+
+- 📋 [ANTS-1448] **ADR — same-uid trust model for the MCP audit/test-audit/synth suite.**
+  ANTS-1351 + ANTS-1397 + ANTS-1352 all defer multiple security
+  concerns to "accepted under same-uid trust model" (stderr leaks,
+  pattern_id read primitive, registry pulls, TOCTOU on reports_dir).
+  Each spec re-explains the trust model. Centralise in
+  `docs/decisions/ADR-XXXX-same-uid-trust-model.md`:
+  
+  - Boundary: anyone with the Ants user's process perms is already
+    able to read the project files; MCP verbs that leak file
+    fragments add nothing beyond what `cat` already gives.
+  - Out of trust: forwarding the envelope to a third party
+    (PR comment, public log, screenshot) — the assistant must
+    redact before re-publication.
+  - Concrete consequences: stderr excerpts, `pattern_id+file+line`,
+    semgrep registry pulls, TOCTOU windows.
+  
+  Future specs cite the ADR instead of re-deriving.
+  **Layman:** Write down once that the audit tools assume "anyone running them already has the user's file-read access" so future specs don't keep re-deriving the trust boundary.
+  Kind: doc.
+  Lanes: docs/decisions, ANTS-1351, ANTS-1397, ANTS-1352.
+  Source: cold-eyes loop 3 (2026-05-17) — same-uid trust model recurs across audit/test-audit/synth specs.
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single

@@ -145,6 +145,59 @@ TEST(roadmap_query_section_index, SchemaModePropAdvertised) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// INV-7 — section_slug populated on EVERY cache-fill path so the
+// count tally doesn't roll up zero when an earlier bullet-mode call
+// has already populated the cache. ANTS-1442 — fixed-up after live
+// test showed every section reporting 0/0/0 even when populated.
+//
+// The pattern: each cache-fill site is a
+// `for (const auto &b : bullets)` loop that builds a QJsonObject.
+// Section_slug must be set inside every such loop. A future engineer
+// adding a 4th cache-fill site needs to add section_slug too, or
+// callers downstream of section_index will silently read "" for
+// every bullet.
+TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    // Count the cache-fill loops (the canonical bullet-iteration
+    // shape used by all four sites: bullet-mode pre-fill,
+    // section_index lazy-fill, section-mode emission, and full-file
+    // lazy-fill).
+    size_t loopCount = 0;
+    size_t pos = 0;
+    const std::string loopNeedle = "for (const auto &b : bullets)";
+    while ((pos = cpp.find(loopNeedle, pos)) != std::string::npos) {
+        ++loopCount;
+        pos += loopNeedle.size();
+    }
+    expect(loopCount == 4,
+           "INV-7: cmdRoadmapQuery has exactly 4 cache-fill loops "
+           "(bullet-mode pre-fill, section_index lazy-fill, section-"
+           "mode emission, full-file lazy-fill). If this changes, "
+           "audit each new loop for section_slug emission.");
+
+    // Count any `section_slug` emission. Every loop must set it —
+    // either `b.sectionSlug` (full-file paths) or `sec->slug` (the
+    // section-mode emission, ANTS-1287-INV-7). The exact RHS doesn't
+    // matter; what matters is the field is populated.
+    size_t slugCount = 0;
+    pos = 0;
+    const std::string slugNeedle = "o[\"section_slug\"] =";
+    while ((pos = cpp.find(slugNeedle, pos)) != std::string::npos) {
+        ++slugCount;
+        pos += slugNeedle.size();
+    }
+    expect(slugCount == loopCount,
+           "INV-7: every cache-fill loop must emit section_slug "
+           "(ANTS-1442). Missing it on any path makes the "
+           "section_index tally roll up zero for every section.");
+
+    // The fix anchor must be present.
+    expect(contains(cpp, "ANTS-1442"),
+           "INV-7: ANTS-1442 anchor present in cmdRoadmapQuery");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // Dispatch — mainwindow's MCP→cmdRoadmapQuery lambda forwards the
 // `mode` arg (and `include_section_headers`, caught during 1437
 // live-test). Without this, the schema advertises args the
