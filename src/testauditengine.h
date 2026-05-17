@@ -110,8 +110,12 @@ struct BriefResult {
 struct SynthRequest {
     QString     callerCwd;
     QString     partitionToken;
-    QString     reportsDir;          // project-relative
-    QJsonObject calibrationAnchor;   // optional {raw, actionable, noise_rate_pct}
+    QString     reportsDir;              // project-relative OR absolute
+    QJsonObject calibrationAnchor;       // optional {raw, actionable, noise_rate_pct}
+    bool        allowOutsideProject = false;  // ANTS-1455 — opt-in escape hatch
+    QString     mode;                    // ANTS-1455 — "summary" (default) | "full"
+    int         offset = 0;              // ANTS-1455 — pagination cursor (full mode)
+    int         limit = -1;              // ANTS-1455 — page size; -1=default
 };
 
 struct SynthResult {
@@ -122,6 +126,16 @@ struct SynthResult {
     QJsonObject dimensionSummaries;
     int         reportsRead = 0;
     int         byteCount = 0;
+    // ANTS-1455 — full-mode pagination fields.
+    int         chunksTotal = 0;
+    int         chunksReturned = 0;
+    int         nextOffset = -1;
+    bool        truncatedByLimit = false;
+    // ANTS-1455 — summary-mode envelope fields.
+    QString     mode;                    // echoed back: "summary" | "full"
+    QJsonArray  topDimensions;           // [{dimension, count}]
+    QJsonArray  fileIndex;               // [{file, dimension_hits_total}]
+    bool        truncated = false;       // either summary cap fired
 };
 
 struct FoldInRequest {

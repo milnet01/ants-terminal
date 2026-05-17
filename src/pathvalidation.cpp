@@ -37,7 +37,8 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
 Check validatePath(const QString &rawPath,
                    const QString &rootCanonical,
                    const QString &toolName,
-                   const QString &paramName) {
+                   const QString &paramName,
+                   bool allowOutsideRoot) {
     Check pc;
     if (rawPath.isEmpty()) return pc;
 
@@ -57,29 +58,39 @@ Check validatePath(const QString &rawPath,
     }
     const QString resolved = QFileInfo(joined).canonicalFilePath();
 
-    // If the path canonicalises, the canonical form is the source of
-    // truth — symlink escapes from inside the tree to outside get
-    // caught. If it doesn't canonicalise (e.g. a git pathspec for a
-    // deleted file), apply the lexical fallback so non-existent
-    // escapes still reject.
-    if (!resolved.isEmpty()) {
-        if (!(resolved == rootCanonical ||
-              resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
-            pc.bad = true;
-            pc.err = makeErr(toolName, paramName,
-                QStringLiteral("escapes project root"));
-            return pc;
+    // ANTS-1455 — allowOutsideRoot=true skips the project-root anchor
+    // check but still applies the NFC + control-char + backslash +
+    // canonicalisation pipeline above. `resolved` is still set when
+    // the path canonicalises so callers can sanity-check existence.
+    if (!allowOutsideRoot) {
+        // If the path canonicalises, the canonical form is the source of
+        // truth — symlink escapes from inside the tree to outside get
+        // caught. If it doesn't canonicalise (e.g. a git pathspec for a
+        // deleted file), apply the lexical fallback so non-existent
+        // escapes still reject.
+        if (!resolved.isEmpty()) {
+            if (!(resolved == rootCanonical ||
+                  resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
+                pc.bad = true;
+                pc.err = makeErr(toolName, paramName,
+                    QStringLiteral("escapes project root"));
+                return pc;
+            }
+            pc.resolved = resolved;
+        } else {
+            const QString cleaned = QDir::cleanPath(joined);
+            if (!(cleaned == rootCanonical ||
+                  cleaned.startsWith(rootCanonical + QLatin1Char('/')))) {
+                pc.bad = true;
+                pc.err = makeErr(toolName, paramName,
+                    QStringLiteral("escapes project root"));
+                return pc;
+            }
         }
-        pc.resolved = resolved;
     } else {
-        const QString cleaned = QDir::cleanPath(joined);
-        if (!(cleaned == rootCanonical ||
-              cleaned.startsWith(rootCanonical + QLatin1Char('/')))) {
-            pc.bad = true;
-            pc.err = makeErr(toolName, paramName,
-                QStringLiteral("escapes project root"));
-            return pc;
-        }
+        // allowOutsideRoot=true: caller accepts paths anywhere
+        // readable. Still surface the canonical form when available.
+        if (!resolved.isEmpty()) pc.resolved = resolved;
     }
 
     // ANTS-1250-INV-5: prefix `./` when leading char is `-` so the

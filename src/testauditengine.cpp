@@ -4,6 +4,7 @@
 #include "testauditengine.h"
 
 #include "falseposledger.h"
+#include "pathvalidation.h"
 #include "roadmapfoldin.h"
 
 #include <QCryptographicHash>
@@ -157,6 +158,86 @@ QString detectFramework(const QString &projectRoot,
     return QString();
 }
 
+// ANTS-1455 — manual glob→regex conversion. Qt's
+// QRegularExpression::wildcardToRegularExpression doesn't implement
+// globstar (`**`); `tests/**/*.py` would not match `tests/test_a.py`
+// directly. This helper handles:
+//   `**/` → `(?:[^/]+/)*` (zero-or-more directory segments)
+//   `**`  (no trailing `/`) → `.*`
+//   `*`   → `[^/]*`
+//   `?`   → `[^/]`
+//   `[…]` / `[a-z]` → passed through to QRegularExpression natively
+//   Other regex metachars → QRegularExpression::escape'd
+QRegularExpression globToRegex(const QString &glob) {
+    QString rx;
+    rx.reserve(glob.size() * 2 + 4);
+    rx += QStringLiteral("\\A");
+    int i = 0;
+    const int n = glob.size();
+    while (i < n) {
+        const QChar c = glob.at(i);
+        if (c == QLatin1Char('*')) {
+            const bool doubled = (i + 1 < n
+                && glob.at(i + 1) == QLatin1Char('*'));
+            if (doubled) {
+                const bool trailingSlash = (i + 2 < n
+                    && glob.at(i + 2) == QLatin1Char('/'));
+                if (trailingSlash) {
+                    rx += QStringLiteral("(?:[^/]+/)*");
+                    i += 3;
+                } else {
+                    rx += QStringLiteral(".*");
+                    i += 2;
+                }
+            } else {
+                rx += QStringLiteral("[^/]*");
+                i += 1;
+            }
+        } else if (c == QLatin1Char('?')) {
+            rx += QStringLiteral("[^/]");
+            i += 1;
+        } else if (c == QLatin1Char('[')) {
+            // Pass character class through verbatim until the
+            // matching ']' (Qt's regex engine understands these).
+            const int close = glob.indexOf(QLatin1Char(']'), i + 1);
+            if (close < 0) {
+                // No close — treat as literal '['.
+                rx += QRegularExpression::escape(QString(c));
+                i += 1;
+            } else {
+                rx += glob.mid(i, close - i + 1);
+                i = close + 1;
+            }
+        } else if (c == QLatin1Char('/')) {
+            rx += QLatin1Char('/');
+            i += 1;
+        } else {
+            rx += QRegularExpression::escape(QString(c));
+            i += 1;
+        }
+    }
+    rx += QStringLiteral("\\z");
+    return QRegularExpression(rx);
+}
+
+// ANTS-1455 — derive the leading path prefix from a glob, up to the
+// first `**` or the last `/` if no `**`. Returns empty for globs
+// without a path component (`test_*.py`, `*_test.py`, `**/test.py`).
+QString globPathPrefix(const QString &glob) {
+    const int starStar = glob.indexOf(QStringLiteral("**"));
+    if (starStar > 0) {
+        // Trim to last `/` at-or-before starStar so we don't
+        // include a partial segment.
+        const QString head = glob.left(starStar);
+        const int lastSlash = head.lastIndexOf(QLatin1Char('/'));
+        return lastSlash >= 0 ? head.left(lastSlash + 1) : QString();
+    }
+    if (starStar == 0) return QString();  // leading `**/`
+    const int lastSlash = glob.lastIndexOf(QLatin1Char('/'));
+    if (lastSlash < 0) return QString();  // no `/`
+    return glob.left(lastSlash + 1);
+}
+
 // Walk the project tree honouring the test_globs.
 QStringList walkTestFiles(const QString &projectRoot,
                           const QStringList &testGlobs,
@@ -177,35 +258,44 @@ QStringList walkTestFiles(const QString &projectRoot,
         }
         return result;
     }
-    // Convert simple ** globs to QDirIterator + filter.
+
+    // ANTS-1451: single source of truth for build-tree + tooling
+    // exclusions.
+    static const QRegularExpression excludeRx(QStringLiteral(
+        "/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"
+        "|CMakeFiles|autogen)/"));
+
+    // ANTS-1455: per-glob walk with path-prefix optimisation +
+    // full-glob re-filter.
     QSet<QString> seen;
     for (const QString &glob : testGlobs) {
-        QStringList filters;
-        if (glob.contains(QLatin1String("**"))) {
-            // Recursive — derive the basename pattern.
-            const int idx = glob.lastIndexOf(QLatin1Char('/'));
-            filters.append(idx >= 0 ? glob.mid(idx + 1) : glob);
-        } else {
-            filters.append(glob);
-        }
-        QDirIterator it(scopeRoot, filters, QDir::Files,
+        if (glob.isEmpty()) continue;
+        const bool hasSlash = glob.contains(QLatin1Char('/'));
+        const QString prefix = globPathPrefix(glob);
+        const QString walkRoot = prefix.isEmpty()
+            ? scopeRoot
+            : QDir::cleanPath(scopeRoot + QLatin1Char('/') + prefix);
+        if (!QFileInfo(walkRoot).isDir()) continue;
+        const QRegularExpression rx = globToRegex(glob);
+        QDirIterator it(walkRoot, QDir::Files,
                         QDirIterator::Subdirectories);
-        // ANTS-1451: single source of truth for build-tree + tooling
-        // exclusions. `build[^/]*` covers build/, build-asan/,
-        // build-workstation/, build-debug/, future presets. _deps/,
-        // CMakeFiles/, autogen/ cover ctest/CMake autogen subtrees
-        // that previously surfaced moc_*.cpp + mocs_compilation.cpp
-        // as tests.
-        static const QRegularExpression excludeRx(QStringLiteral(
-            "/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"
-            "|CMakeFiles|autogen)/"));
         while (it.hasNext()) {
             const QString p = it.next();
             if (excludeRx.match(p).hasMatch()) continue;
-            if (!seen.contains(p)) {
-                seen.insert(p);
-                result.append(p);
+            if (seen.contains(p)) continue;
+            // For bare-basename globs (no `/`), match against the
+            // candidate's basename. For path-bearing globs, match
+            // against the candidate-relative path under scopeRoot.
+            QString matchTarget;
+            if (hasSlash) {
+                if (!p.startsWith(scopeRoot + QLatin1Char('/'))) continue;
+                matchTarget = p.mid(scopeRoot.size() + 1);
+            } else {
+                matchTarget = QFileInfo(p).fileName();
             }
+            if (!rx.match(matchTarget).hasMatch()) continue;
+            seen.insert(p);
+            result.append(p);
         }
     }
     std::sort(result.begin(), result.end());
@@ -548,69 +638,227 @@ SynthResult synthesize(const SynthRequest &req) {
             "test_audit_synthesis_prompt: partition_token not found");
         return r;
     }
-    if (req.reportsDir.isEmpty() ||
-        req.reportsDir.contains(QStringLiteral(".."))) {
+    if (req.reportsDir.isEmpty()) {
         r.ok = false; r.code = QStringLiteral("bad_path");
         r.error = QStringLiteral(
-            "test_audit_synthesis_prompt: reports_dir invalid");
+            "test_audit_synthesis_prompt: reports_dir required");
         return r;
     }
-    const QString fullDir = canon + QLatin1Char('/') + req.reportsDir;
-    const QString canonDir = QFileInfo(fullDir).canonicalFilePath();
-    if (canonDir.isEmpty() || !canonDir.startsWith(canon) ||
-        !QFileInfo(canonDir).isDir()) {
-        r.ok = false; r.code = QStringLiteral("reports_dir_missing");
+    // ANTS-1455 — route through PathValidation::validatePath (single
+    // source of truth for NFC + control + backslash + canonicalisation).
+    const auto pv = PathValidation::validatePath(
+        req.reportsDir, canon,
+        QStringLiteral("test_audit_synthesis_prompt"),
+        QStringLiteral("reports_dir"),
+        /*allowOutsideRoot=*/req.allowOutsideProject);
+    if (pv.bad) {
+        const QJsonObject &e = pv.err;
+        r.ok = false;
+        // Anchor-failure under default mode → rename code from the
+        // pre-fix `reports_dir_missing` to `reports_dir_outside_root`
+        // (≤ 24 chars, see docs/standards/mcp-error-codes.md § 1).
+        if (e.value(QStringLiteral("error")).toString()
+                .contains(QStringLiteral("escapes project root"))
+            && !req.allowOutsideProject) {
+            r.code = QStringLiteral("reports_dir_outside_root");
+            r.error = QStringLiteral(
+                "test_audit_synthesis_prompt: reports_dir \"%1\" "
+                "resolves outside project root; pass "
+                "allow_outside_project:true to override")
+                    .arg(req.reportsDir);
+        } else {
+            r.code = e.value(QStringLiteral("code")).toString();
+            r.error = e.value(QStringLiteral("error")).toString();
+        }
+        return r;
+    }
+    const QString canonDir = pv.resolved;
+    if (canonDir.isEmpty() || !QFileInfo(canonDir).isDir()) {
+        r.ok = false; r.code = QStringLiteral("reports_dir_unreadable");
         r.error = QStringLiteral(
-            "test_audit_synthesis_prompt: reports_dir \"%1\" does "
-            "not resolve under project root").arg(req.reportsDir);
+            "test_audit_synthesis_prompt: reports_dir \"%1\" does not "
+            "exist, is not a directory, or is unreadable")
+                .arg(req.reportsDir);
         return r;
     }
-    // Read *.md top-level only; fence each report.
+    // ANTS-1455 — mode validation; default "summary" (breaking change
+    // ack: v1 always returned the full-fenced bundle, which exceeded
+    // tool-result caps on real projects).
+    QString mode = req.mode;
+    if (mode.isEmpty()) mode = QStringLiteral("summary");
+    if (mode != QStringLiteral("summary")
+        && mode != QStringLiteral("full")) {
+        r.ok = false; r.code = QStringLiteral("bad_mode");
+        r.error = QStringLiteral(
+            "test_audit_synthesis_prompt: mode \"%1\" not in "
+            "{summary, full}").arg(req.mode);
+        return r;
+    }
+    r.mode = mode;
+
+    // Read *.md top-level only.
     QDir dir(canonDir);
     const QStringList md = dir.entryList({QStringLiteral("*.md")},
                                          QDir::Files);
-    QString prompt;
-    QTextStream ts(&prompt);
-    ts << "# Test-Audit Synthesis\n\n";
-    ts << "Per-chunk reports (each fenced for prompt-injection "
-          "defence — INV-8):\n\n";
+    if (md.isEmpty()) {
+        r.ok = false; r.code = QStringLiteral("reports_dir_empty");
+        r.error = QStringLiteral(
+            "test_audit_synthesis_prompt: reports_dir \"%1\" contains "
+            "no *.md files at top level").arg(req.reportsDir);
+        return r;
+    }
+    r.chunksTotal = md.size();
+
+    // Two-pass: pass 1 reads every chunk to compute dimension counts
+    // + file-reference index (cheap, both modes need it). Pass 2 emits
+    // the fenced bundle for `mode:"full"` only.
     QHash<QString, int> perDimensionCount;
+    QHash<QString, int> fileRefCount;
+    static const QRegularExpression fileRefRx(QStringLiteral(
+        "([\\w./-]+\\.(?:py|cpp|h|hpp|cc|js|ts|tsx|go|rs|rb|java)):"
+        "(\\d+)"));
+    QStringList contentsByChunk;
+    contentsByChunk.reserve(md.size());
     for (const QString &m : md) {
         QFile f(dir.absoluteFilePath(m));
-        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            contentsByChunk.append(QString());
+            continue;
+        }
         const QByteArray raw = f.readAll().left(64 * 1024);
         QString contents = QString::fromUtf8(raw);
-        // Escape nested fence markers.
         contents.replace(QStringLiteral("</chunk_report>"),
                          QStringLiteral("&lt;/chunk_report&gt;"));
-        ts << "<chunk_report file=\"" << m.toHtmlEscaped() << "\">\n"
-           << contents << "\n</chunk_report>\n\n";
-        ++r.reportsRead;
-        // Heuristic dimension-summary count: any line containing
-        // a known dimension name.
+        contentsByChunk.append(contents);
         for (const QString &d : g_kDimensions()) {
             if (contents.contains(d, Qt::CaseInsensitive)) {
                 ++perDimensionCount[d];
             }
         }
+        auto it = fileRefRx.globalMatch(contents);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m2 = it.next();
+            ++fileRefCount[m2.captured(1)];
+        }
     }
+
+    // Dimension summaries (legacy field) + top_dimensions envelope.
+    QJsonObject summaries;
+    QList<QPair<QString, int>> dimRanked;
+    for (auto it = perDimensionCount.constBegin();
+         it != perDimensionCount.constEnd(); ++it) {
+        QJsonObject s; s["count"] = it.value();
+        summaries[it.key()] = s;
+        dimRanked.append({it.key(), it.value()});
+    }
+    r.dimensionSummaries = summaries;
+    std::sort(dimRanked.begin(), dimRanked.end(),
+              [](const auto &a, const auto &b) {
+                  return a.second > b.second;
+              });
+    QJsonArray topDims;
+    const int kTopDimCap = 10;
+    for (int i = 0; i < dimRanked.size() && i < kTopDimCap; ++i) {
+        QJsonObject o;
+        o["dimension"] = dimRanked.at(i).first;
+        o["count"] = dimRanked.at(i).second;
+        topDims.append(o);
+    }
+    if (dimRanked.size() > kTopDimCap) r.truncated = true;
+    r.topDimensions = topDims;
+
+    QList<QPair<QString, int>> fileRanked;
+    for (auto it = fileRefCount.constBegin();
+         it != fileRefCount.constEnd(); ++it) {
+        fileRanked.append({it.key(), it.value()});
+    }
+    std::sort(fileRanked.begin(), fileRanked.end(),
+              [](const auto &a, const auto &b) {
+                  return a.second > b.second;
+              });
+    QJsonArray fileIdx;
+    const int kFileIdxCap = 30;
+    for (int i = 0; i < fileRanked.size() && i < kFileIdxCap; ++i) {
+        QJsonObject o;
+        o["file"] = fileRanked.at(i).first;
+        o["dimension_hits_total"] = fileRanked.at(i).second;
+        fileIdx.append(o);
+    }
+    if (fileRanked.size() > kFileIdxCap) r.truncated = true;
+    r.fileIndex = fileIdx;
+
+    QString prompt;
+    QTextStream ts(&prompt);
+    ts << "# Test-Audit Synthesis\n\n";
+    ts << "Mode: " << mode << "\n";
+    ts << "Reports: " << md.size() << " chunk(s) at "
+       << req.reportsDir << "\n\n";
+
+    if (mode == QStringLiteral("full")) {
+        // ANTS-1455 — pagination. Default limit=5 (NOT -1) prevents
+        // v1 callers transitioning to mode:"full" from re-creating
+        // the 112 KB-blob bug. Explicit limit:-1 opts into "all".
+        int limit = req.limit;
+        if (limit == 0) limit = 5;           // default for unset
+        const int offset = qMax(0, req.offset);
+        const int end = (limit < 0)
+            ? md.size()
+            : qMin(md.size(), offset + limit);
+        ts << "Per-chunk reports (each fenced for prompt-injection "
+              "defence — INV-8):\n\n";
+        for (int i = offset; i < end; ++i) {
+            const QString &m = md.at(i);
+            ts << "<chunk_report file=\"" << m.toHtmlEscaped() << "\">\n"
+               << contentsByChunk.at(i) << "\n</chunk_report>\n\n";
+            ++r.reportsRead;
+        }
+        r.chunksReturned = end - offset;
+        if (end < md.size()) {
+            r.nextOffset = end;
+            r.truncatedByLimit = true;
+        } else {
+            r.nextOffset = -1;
+        }
+    } else {
+        // mode:"summary" — counts + top-N pointers, no fenced bundle.
+        // Output target ≤ 16 KiB; the chunk markdown itself is NOT
+        // inlined (callers wanting bytes pass mode:"full").
+        ts << "## Top dimensions (by chunk-keyword hit count)\n\n";
+        for (const auto &entry : topDims) {
+            const QJsonObject o = entry.toObject();
+            ts << "- **" << o.value("dimension").toString()
+               << "** — " << o.value("count").toInt()
+               << " chunk(s)\n";
+        }
+        ts << "\n## Most-referenced source files\n\n";
+        for (const auto &entry : fileIdx) {
+            const QJsonObject o = entry.toObject();
+            ts << "- `" << o.value("file").toString()
+               << "` — " << o.value("dimension_hits_total").toInt()
+               << " ref(s)\n";
+        }
+        if (r.truncated) {
+            ts << "\n*(top_dimensions and/or file_index truncated; "
+                  "pass mode:\"full\" for the verbatim chunk reports.)*\n";
+        }
+        ts << "\n## Chunk inventory\n\n";
+        for (int i = 0; i < md.size(); ++i) {
+            ts << "- " << md.at(i) << "\n";
+        }
+        r.reportsRead = md.size();
+        r.chunksReturned = 0;
+        r.nextOffset = -1;
+    }
+
     if (!req.calibrationAnchor.isEmpty()) {
-        ts << "## Calibration anchor\n"
+        ts << "\n## Calibration anchor\n"
            << "Prior raw: " << req.calibrationAnchor.value(
                 QStringLiteral("raw")).toInt() << "\n"
            << "Prior actionable: " << req.calibrationAnchor.value(
                 QStringLiteral("actionable")).toInt() << "\n";
     }
     ts.flush();
-    QJsonObject summaries;
-    for (auto it = perDimensionCount.constBegin();
-         it != perDimensionCount.constEnd(); ++it) {
-        QJsonObject s;
-        s["count"] = it.value();
-        summaries[it.key()] = s;
-    }
     r.prompt = prompt;
-    r.dimensionSummaries = summaries;
     r.byteCount = prompt.toUtf8().size();
     return r;
 }

@@ -689,6 +689,108 @@ once real consumers hit it.
   orchestration token tax; the project's AI billing covers
   the lane LLM calls instead.
 
+- **ANTS-1455 — `test_audit_*` MCP usability gaps (RetroDB
+  cross-session report).** Three sub-fixes against the
+  `test_audit_*` trio surfaced by a Flask-app `/test-audit` run:
+  - **(a) `test_audit_partition` now honours `test_globs` by
+    default.** Pre-fix: `walkTestFiles` extracted the basename
+    of each glob (`tests/**/*.py` → `*.py`) and walked the
+    whole tree, silently chunking `app.py`, `routes/*.py`,
+    `services/*.py` as if they were tests. 60-70 % of subagent
+    work was wasted on production source. Fix: per-glob
+    path-prefix derivation + manual `globToRegex` helper
+    (Qt's `wildcardToRegularExpression` doesn't implement
+    globstar — `tests/**/*.py` would not match
+    `tests/test_a.py` directly through Qt's API). Bare-basename
+    globs (`test_*.py`, `*_test.py`) retain full-tree walk
+    matching against the candidate's basename; path-bearing
+    globs match against the candidate-relative path. Path-prefix
+    optimisation is a strict throughput win for the
+    `tests/**/*.py` case (walks under `tests/` instead of the
+    full project).
+  - **(b) `test_audit_synthesis_prompt` accepts `reports_dir`
+    outside the project root with an opt-in flag.** New
+    `allow_outside_project:true` arg lets callers point at
+    `/tmp/test-audit-…` reports without the awkward `cp` into
+    the working tree. `PathValidation::validatePath`
+    (ANTS-1295) gains a new optional `allowOutsideRoot`
+    parameter — all existing call-sites unaffected via the
+    default `false`. The chunk-report fence wrapper at
+    `testauditengine.cpp:584-587` is preserved across both
+    modes; per ADR-0004 the same-UID trust model means read
+    access to `/tmp` doesn't extend the attack surface.
+    Refusal codes:
+    - `reports_dir_outside_root` (renames the pre-fix
+      `reports_dir_missing` — the dir wasn't missing, it was
+      *rejected*; the new name is also ≤ 24 chars per the
+      mcp-error-codes.md naming rule).
+    - `reports_dir_unreadable` — canonical path doesn't exist,
+      isn't a directory, or is unreadable.
+    - `reports_dir_empty` — readable but contains zero `*.md`
+      files at top level. Saves the silent-success failure mode
+      the v1 engine had.
+  - **(c) `test_audit_synthesis_prompt` no longer returns a
+    112 KB single-line blob.** New `mode:"summary"|"full"`
+    arg, default `"summary"`. Summary mode emits per-dimension
+    counts + top-10 dimensions + most-cited 30 source files
+    + chunk inventory, target ≤ 16 KiB. Full mode keeps the
+    existing fenced-bundle behaviour, with `offset` + `limit`
+    pagination (default `limit:5`, NOT -1 — prevents v1 callers
+    transitioning to `mode:"full"` from re-creating the 112 KB
+    bug; explicit `limit:-1` opts into "return all" with the
+    size risk on the caller). New envelope fields:
+    `mode`, `chunks_total`, `chunks_returned`, `next_offset`,
+    `truncated_by_limit`, `top_dimensions`, `file_index`,
+    `truncated`. `bad_mode` refusal reuses the existing
+    taxonomy row (no new code). The default flip is a breaking
+    change vs. v1; explicit in the tool descriptor + spec
+    because v1's full-bundle default was unusable on real
+    projects (RetroDB Issue 3).
+  Architecture: `PathValidation::validatePath` extended with
+  optional `allowOutsideRoot=false` parameter
+  (`src/pathvalidation.h/.cpp`, ~25 lines). `walkTestFiles`
+  rewritten at `src/testauditengine.cpp:160-300` with the new
+  `globToRegex` + `globPathPrefix` helpers. `synthesize()`
+  rewritten at `src/testauditengine.cpp:617-880` with the
+  mode/pagination split + new envelope fields. `BriefResult`
+  gains nine new structured fields; `mainwindow.cpp` MCP
+  lambda wires them into the response envelope.
+  `claudeintegration.cpp` tool descriptor updated with the
+  four new `allow_outside_project` / `mode` / `offset` /
+  `limit` properties (additionalProperties:false preserved).
+  `docs/standards/mcp-error-codes.md` gains
+  `reports_dir_outside_root` (§ 1), `reports_dir_unreadable`
+  (§ 2), and `reports_dir_empty` (§ 2) rows per the standard's
+  "Adding a new code" rule.
+  Cold-eyes: reviewed across 5 parallel lanes (glob walk,
+  reports_dir trust, mode/pagination, cross-doc, impl
+  surface). Each surfaced blockers folded before code landed:
+  C-1 (Qt's `wildcardToRegularExpression` doesn't implement
+  globstar), C-2 (bare-basename basename-relative matching),
+  C-3 (over-promised severity parser dropped — `top_findings`
+  schema narrowed to `top_dimensions` + `file_index` that the
+  engine can actually deliver), H-1 (default-flip breaking
+  change explicit), H-2 (`limit:-1` default switched to
+  `limit:5`), H-3/H-4 (route through `PathValidation::validatePath`
+  rather than re-implement), H-7 (code-name length ≤ 24 chars).
+  Spec `docs/specs/ANTS-1455.md`. Tests
+  `tests/features/test_audit_glob_walk_synth_mode/` (11
+  invariants — glob walk on the RetroDB Flask shape +
+  reports_dir refusal codes + mode/pagination shape +
+  doc-row presence). 959/959 features green at landing
+  (up from 948).
+  **Layman:** the `/test-audit` skill had three usability
+  bugs that surfaced when a sibling CC session ran it
+  against a real Flask app. (1) The chunker was auditing
+  production source as if it were tests; now it honours
+  the project's test patterns. (2) It refused `reports_dir`
+  outside the project root with a misleading error; now an
+  opt-in flag lets `/tmp` work, and the error rename is
+  honest. (3) The synth tool's response was 112 KB on one
+  line and exceeded the orchestrator's context; now it
+  defaults to a compact summary, with a paginated full mode
+  for callers that want the verbatim bundle.
+
 - **ANTS-1457 — False-positive ledger
   (`.ants_review_falsepos.jsonl`) shared across the AI-reviewer
   sweep skills.** New project-level standard at

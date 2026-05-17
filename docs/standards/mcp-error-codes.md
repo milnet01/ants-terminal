@@ -41,6 +41,7 @@ against the table below.
 | `bad_feature_name` | A `feature_name` arg doesn't match the allowed pattern. | `plan_template feature_name:"!!!"`. |
 | `missing_name` | A name-typed required arg is empty. | `tool_info name:""`. |
 | `rate_limited` | The caller exceeded the per-tool sliding-window cap (ANTS-1356). The envelope carries `retry_after_ms`. | `audit_run` 11th call within 60 s (Expensive tier cap = 10/min). Caller should honour `retry_after_ms` before retrying. |
+| `reports_dir_outside_root` | `reports_dir` resolves outside the focused project root AND `allow_outside_project:true` was NOT passed (ANTS-1455). Replaces the pre-ANTS-1455 `reports_dir_missing` emitted at `testauditengine.cpp:562`. | `test_audit_synthesis_prompt reports_dir:"/tmp/foo"` without `allow_outside_project:true`. Caller's natural fix is to pass `allow_outside_project:true` for ephemeral `/tmp` workflows. |
 
 ### 2 — Resource state (the requested object isn't where the tool can act on it)
 
@@ -58,6 +59,8 @@ against the table below.
 | `unrecognised_format` | The file shape isn't one the parser handles. | `roadmap_query` against a file that isn't ants-v1 or GFM. |
 | `already_running` | A long-running operation is in flight; refuse rather than queue. | `audit_run` while a prior call is still working. |
 | `tools_not_ready` | The detector / engine hasn't finished initialising. | early MCP call against `tool_info` before the registry is built. |
+| `reports_dir_unreadable` | `reports_dir` canonicalises but the resolved path doesn't exist, isn't a directory, or the calling user lacks read permission (ANTS-1455). | `test_audit_synthesis_prompt allow_outside_project:true reports_dir:"/no/such/dir"`. |
+| `reports_dir_empty` | `reports_dir` is a readable directory containing zero `*.md` files at top level (ANTS-1455). | `test_audit_synthesis_prompt` against a dir where the per-chunk reports weren't written (empty workflow). Saves the silent-success failure mode the v1 engine had. |
 
 ### 3 — Caller-cwd contract (ANTS-1404 / ANTS-1372)
 

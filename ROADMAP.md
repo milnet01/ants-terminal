@@ -8784,7 +8784,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Source: cold-eyes-review-2026-05-17 (during ANTS-1356).
 
-- 📋 [ANTS-1455] **`test_audit_*` MCP surface — usability gaps
+- 🚧 [ANTS-1455] **`test_audit_*` MCP surface — usability gaps
   surfaced by RetroDB CC session (cross-session reports
   2026-05-17).** Three friction points reported in quick
   succession while running `/test-audit` on a Flask app:
@@ -8875,6 +8875,92 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (RetroArch CC instance
   running `audit_run` against a flat-layout C project).
+
+- 📋 [ANTS-1459] **`roadmap_query` + `last_audit_summary` discovery
+  is too narrow for projects that don't put files at the repo
+  root.** Cross-session report from a RetroArch CC instance running
+  against `/mnt/Games/Scripts/Linux/RetroArch` 2026-05-17:
+  - **(a) `roadmap_query` returned `no_roadmap_loaded`** despite
+    the project keeping its roadmap at `docs/private/ROADMAP.md`
+    (361 lines, GFM-bullet format consistent with the spec the
+    tool already documents). Tool descriptor says "active tab's
+    ROADMAP.md" without specifying where it searches; appears to
+    only check the repo root. Fix options: (i) walk the tree for
+    `ROADMAP.md` under common locations (`./`, `docs/`,
+    `docs/private/`, `docs/internal/`, `.github/`) before
+    declaring not-found, OR (ii) honour a `.ants/roadmap-path` /
+    `ants.toml` override. Tab-vs-cwd anchoring (ANTS-1391)
+    already handles project identity; this is the
+    *within-project* discovery step.
+  - **(b) `last_audit_summary` returned `not_audited`** with
+    error "no audit-*.sarif found", despite the project keeping
+    cppcheck raw XML at `.audit_cache/cppcheck-*.xml` (the
+    format the project's own `docs/private/audit/aggregate.py
+    --from-cppcheck` consumes). Two fix options:
+    - Widen detection to recognise cppcheck XML / clang-tidy
+      YAML / semgrep JSON as first-class audit artifacts; return
+      the same compact summary shape regardless of input format.
+    - Rename the tool / error so callers know it's SARIF-only
+      (e.g. `last_sarif_summary`, or
+      `code:"no_sarif_artifact"` with a hint pointing at the
+      cppcheck XML that's present and how to convert).
+  **Worst failure mode:** silent `not_audited` reads as "nothing
+  to audit here" when in fact there's ~1 MB of fresh audit
+  output one directory away. Claude believes the absence — same
+  failure shape as ANTS-1429 (silent-empty roadmap_query against
+  GFM format) which already shipped in Bundle C.
+  **Layman:** two Ants MCP tools assume project files live at the
+  repo root. RetroArch puts its roadmap under `docs/private/` and
+  its audit cache under `.audit_cache/`, so both tools quietly
+  report nothing-found when the data is right there. Either we
+  search more places, or we rename the error so Claude knows
+  it's a format/location issue rather than an absence.
+  Kind: enhancement.
+  Source: cross-session-report-2026-05-17 (RetroArch CC instance
+  on `/mnt/Games/Scripts/Linux/RetroArch`).
+
+- 📋 [ANTS-1458] **Tasks chip + Task List dialog refresh
+  latency.** User-observed 2026-05-17 20:36 (screenshot in
+  `/home/ants/Pictures/ClaudePaste/paste_20260517_204727_235_*.png`):
+  multiple `TaskCreate` events appended to the active Claude
+  Code transcript took longer than the documented 2-second
+  `refreshTasksButton` cadence to surface in the bottom-bar
+  chip and the Task List dialog. Chip eventually updated to
+  the correct `done/total` count (per ANTS-1246), but the lag
+  was conspicuous. Two suspected paths:
+  - **(a) Watch-loss path.** Per CLAUDE.md `claudestatuswidgets`
+    notes, `QFileSystemWatcher` silently drops on `tmpfile +
+    rename` transcript rewrites. `refreshTasksButton` calls
+    `poll()` / `sweepLiveness()` on the 2 s tick, but if the
+    tracker's `m_tasks` path is non-empty AND `mtime` is
+    unchanged at the next tick, the parse is skipped. A burst
+    of appends within one tick window may all settle before
+    the tick fires; the dialog stays stale until the next
+    `mtime` advance the timer catches.
+  - **(b) Parse cost.** `parseTranscript` walks the JSONL
+    line-by-line; on a ~10 MB transcript the parse may
+    exceed one tick's worth of work, delaying chip refresh
+    by another tick. No observable progress between
+    fire-and-finish.
+  Investigation steps: (i) instrument `refreshTasksButton`
+  with a `qDebug` of `(file_mtime, parse_dur_ms,
+  tasks_count_delta)` per tick; (ii) reproduce by appending
+  10 `TodoWrite` snapshots to a synthetic transcript at
+  100 ms intervals and timing the chip update; (iii) if
+  the parse cost is the bottleneck, add an incremental-parse
+  fast-path that picks up at the previous file offset
+  rather than re-walking from byte 0. Pairs with ANTS-1285
+  (consolidate `claudetasklist` + `claudebgtasks`
+  `QFileSystemWatcher` instances) — a single watcher with
+  a finer-grained event hook would also reduce latency.
+  **Layman:** when Claude Code logs new tasks, the bottom-bar
+  task count and the Task List dialog can take noticeably
+  longer than the documented 2-second refresh window to
+  catch up. Probably the file-watcher dropping its hook on
+  an atomic-rewrite, or the JSONL parse taking longer than
+  a tick. Worth instrumenting before guessing.
+  Kind: investigate.
+  Source: user-report-2026-05-17-20-36.
 
 - 🚧 [ANTS-1457] **False-positive ledger
   (`.ants_review_falsepos.jsonl`) shared across `/audit`,

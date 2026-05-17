@@ -4103,14 +4103,32 @@ void MainWindow::setupClaudeMcpProviders() {
             req.partitionToken     = args.value(QStringLiteral("partition_token")).toString();
             req.reportsDir         = args.value(QStringLiteral("reports_dir")).toString();
             req.calibrationAnchor  = args.value(QStringLiteral("calibration_anchor")).toObject();
+            // ANTS-1455 — opt-in escape hatch + mode + pagination.
+            req.allowOutsideProject = args.value(QStringLiteral("allow_outside_project")).toBool(false);
+            req.mode               = args.value(QStringLiteral("mode")).toString();
+            req.offset             = args.value(QStringLiteral("offset")).toInt(0);
+            // limit defaulting: if caller omitted, leave at -1 sentinel
+            // so engine picks mode-appropriate default (5 for "full",
+            // ignored for "summary"). 0 is a valid "use default" too.
+            if (args.contains(QStringLiteral("limit"))) {
+                req.limit = args.value(QStringLiteral("limit")).toInt(-1);
+            }
             const auto r = TestAuditEngine::synthesize(req);
             QJsonObject env;
             if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
                 return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
             env["ok"]                  = true;
+            env["mode"]                = r.mode;
             env["prompt"]              = r.prompt;
             env["dimension_summaries"] = r.dimensionSummaries;
+            env["top_dimensions"]      = r.topDimensions;
+            env["file_index"]          = r.fileIndex;
+            env["truncated"]           = r.truncated;
             env["reports_read"]        = r.reportsRead;
+            env["chunks_total"]        = r.chunksTotal;
+            env["chunks_returned"]     = r.chunksReturned;
+            env["next_offset"]         = r.nextOffset;
+            env["truncated_by_limit"]  = r.truncatedByLimit;
             env["byte_count"]          = r.byteCount;
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
         });

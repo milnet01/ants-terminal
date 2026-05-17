@@ -36,10 +36,18 @@ struct Check {
 //   - rawPath contains a control char (U+0000..U+001F) or backslash.
 //   - resolved path is outside rootCanonical (canonical anchor for
 //     existing paths, lexical fallback for non-existent ones).
+//
+// ANTS-1455 — opt-in escape hatch. When allowOutsideRoot=true, the
+// project-root anchor check is skipped (the NFC + control-char +
+// backslash + canonicalisation steps still run). Used by
+// test_audit_synthesis_prompt's `allow_outside_project:true` mode
+// so `/tmp` reports dirs can be supplied without an in-tree copy.
+// Default false preserves all existing call-sites byte-for-byte.
 Check validatePath(const QString &rawPath,
                    const QString &rootCanonical,
                    const QString &toolName,
-                   const QString &paramName = QStringLiteral("path"));
+                   const QString &paramName = QStringLiteral("path"),
+                   bool allowOutsideRoot = false);
 
 }  // namespace PathValidation
 

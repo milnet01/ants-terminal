@@ -1019,7 +1019,9 @@ if(ANTS_TESTS)
                 # ANTS-1430 — project_layout scan helper.
                 tests/features/mcp_project_layout_scan/test_project_layout_scan.cpp
                 # ANTS-1457 — false-positive ledger helper.
-                tests/features/audit_falsepos_ledger/test_audit_falsepos_ledger.cpp)
+                tests/features/audit_falsepos_ledger/test_audit_falsepos_ledger.cpp
+                # ANTS-1455 — glob walk + reports_dir opt-in + synth mode/pagination.
+                tests/features/test_audit_glob_walk_synth_mode/test_audit_glob_walk_synth_mode.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
@@ -1039,7 +1041,9 @@ if(ANTS_TESTS)
         SRC_FALSEPOS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/falseposledger.cpp"
         SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
-        SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp")
+        SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
+        # ANTS-1455 — taxonomy doc for new error-code rows.
+        MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md")
 
     # ANTS-1217 Phase 6 — test_dialogs bundle. Subject: settingsdialog +
     # roadmapdialog + diffviewer (the dialogs hosted by chrome). 11 tests

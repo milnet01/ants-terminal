@@ -2654,27 +2654,59 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
                 // ANTS-1397 — test_audit_synthesis_prompt
+                // ANTS-1455 — adds allow_outside_project, mode, offset, limit.
                 {
                     QJsonObject t;
                     t["name"] = "test_audit_synthesis_prompt";
                     t["description"] = QStringLiteral(
                         "Phase 3 of the test_audit trio. Read per-"
-                        "chunk reports from <reports_dir> (project-"
-                        "relative, validated), fence each via "
-                        "<chunk_report file=\"…\"> tags to defend "
-                        "against prompt injection (INV-8), and "
-                        "return a single synth prompt + per-dimension "
-                        "summaries.");
+                        "chunk reports from <reports_dir>, fence each "
+                        "via <chunk_report file=\"…\"> tags (prompt-"
+                        "injection defence, INV-8), and return a "
+                        "synth prompt. Two modes: mode:\"summary\" "
+                        "(default; per-dimension counts + top files "
+                        ", ≤ 16 KiB) and mode:\"full\" (verbatim "
+                        "fenced bundle, paginated via offset/limit; "
+                        "default limit:5). allow_outside_project:true "
+                        "accepts an absolute reports_dir (e.g. /tmp) "
+                        "for ephemeral CI workflows (ANTS-1455). "
+                        "Refusals: bad_mode, reports_dir_outside_root, "
+                        "reports_dir_unreadable, reports_dir_empty.");
                     QJsonObject schema; schema["type"] = "object";
                     QJsonObject pP; pP["type"] = "string";
                     QJsonObject rP; rP["type"] = "string";
                     QJsonObject aP; aP["type"] = "object";
                     QJsonObject ccwd; ccwd["type"] = "string";
+                    QJsonObject aopP; aopP["type"] = "boolean";
+                    aopP["description"] = QStringLiteral(
+                        "ANTS-1455 — when true, reports_dir may resolve "
+                        "outside callerCwd (still NFC + control-char "
+                        "checked + canonicalised). Default false.");
+                    QJsonObject mP; mP["type"] = "string";
+                    mP["enum"] = QJsonArray{QStringLiteral("summary"),
+                                            QStringLiteral("full")};
+                    mP["description"] = QStringLiteral(
+                        "ANTS-1455 — \"summary\" (default) returns "
+                        "counts + top pointers; \"full\" returns the "
+                        "verbatim fenced bundle (paginated).");
+                    QJsonObject oP; oP["type"] = "integer";
+                    oP["description"] = QStringLiteral(
+                        "Chunk offset for mode:\"full\" pagination. "
+                        "Default 0.");
+                    QJsonObject lP; lP["type"] = "integer";
+                    lP["description"] = QStringLiteral(
+                        "Chunk limit for mode:\"full\". Default 5; "
+                        "-1 returns all chunks (caller accepts size "
+                        "risk).");
                     QJsonObject props;
-                    props["partition_token"]    = pP;
-                    props["reports_dir"]        = rP;
-                    props["calibration_anchor"] = aP;
-                    props["caller_cwd"]         = ccwd;
+                    props["partition_token"]       = pP;
+                    props["reports_dir"]           = rP;
+                    props["calibration_anchor"]    = aP;
+                    props["caller_cwd"]            = ccwd;
+                    props["allow_outside_project"] = aopP;
+                    props["mode"]                  = mP;
+                    props["offset"]                = oP;
+                    props["limit"]                 = lP;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("caller_cwd");
