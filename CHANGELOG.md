@@ -643,6 +643,33 @@ once real consumers hit it.
   hint, so a single bad skill can't burn through CPU + tokens
   unchecked.
 
+- **ANTS-1461 — `test_audit` synthesis polish: `file_index` path
+  normalisation + `dimension_hints` clarification.** Two LOW-
+  severity follow-ups from the RetroDB `/test-audit` batch-3 re-run
+  after ANTS-1455 shipped. (a) `file_index` aggregation in
+  `testauditengine.cpp::synthesize` now dedups by basename: chunk
+  subagents that cite the same file inconsistently (`test_X.py`
+  vs. `tests/test_X.py`) merge into one entry under the longest
+  (directory-prefixed) path as the canonical display key.
+  Two-pass: build `canonicalByBase` lookup from
+  `fileRefCount.keys()`, then sum counts into `mergedRefCount`
+  under the canonical key before ranking. (b) `test_audit_partition`
+  tool descriptor now explicitly names what `dimension_hints[]`
+  reflects: pre-pass regex hits on chunk source, NOT a finding-
+  density predictor. Real finding distribution is only known
+  after the subagent reviews the chunk. Field name kept for wire
+  back-compat; only the descriptor text changed. Tests extend
+  `tests/features/mcp_test_audit_trio/` with two source-grep
+  invariants. Both pre-fix and post-fix verified
+  (`git stash` → 2/2 FAIL → restore → 2/2 PASS). 963/963 features
+  green at landing.
+  **Layman:** the `/test-audit` synthesis tool used to show the
+  same file twice in its "most-referenced files" list when chunk
+  reviewers spelled the path differently; now they merge. And the
+  per-chunk `dimension_hints` field — which is keyword-match
+  flavour, not where real bugs concentrate — has caught up in the
+  tool description so future callers won't misread it.
+
 - **ANTS-1460 — `roadmap_log` flip-op descriptor wording catches up
   with ANTS-1441.** Pre-fix the tool description claimed flip mode
   "on a GFM-task-list-format roadmap" — pre-ANTS-1441 wording that

@@ -2709,6 +2709,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "JSON resource. dimensions=\"auto\" (default) "
                         "or \"csv:<d1,d2>\". scope=\"auto\"/\"path:<sub>\"/"
                         "\"files:<csv>\". Required: caller_cwd. "
+                        "Per-chunk `dimension_hints[]` (ANTS-1461) "
+                        "reflects which audit dimensions the pre-pass "
+                        "regex matched on chunk source — it is NOT a "
+                        "finding-density predictor. Real finding "
+                        "distribution is only known after the "
+                        "subagent reviews the chunk. "
                         "See docs/specs/ANTS-1397.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split a test corpus for multi-"

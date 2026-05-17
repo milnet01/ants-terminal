@@ -8989,7 +8989,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: implement.
   Source: user-request-2026-05-17.
 
-- 📋 [ANTS-1461] **`test_audit` synthesis polish — `file_index` path normalisation + `dimension_hints` field rename / schema clarification.**
+- ✅ [ANTS-1461] **`test_audit` synthesis polish — `file_index` path normalisation + `dimension_hints` field rename / schema clarification.**
   Two LOW-severity follow-ups from the RetroDB `/test-audit` re-run after ANTS-1455 shipped. Reported in `/mnt/Games/Scripts/Linux/RetroDB/.test-audit-reports-3/ANTS_MCP_FEEDBACK.md`. Issues 1 + 3 from the prior batch are validated as fixed; these two are the residue:
   
   (a) **`file_index` aggregation double-counts when chunk reports cite files inconsistently.** The same logical file appears twice in `top_files[]` — once as `test_X.py`, once as `tests/test_X.py` — because chunk subagents cite files inconsistently. The synthesis tool surfaces the raw strings without normalisation. Fix: in the `file_index` aggregation step (test_audit_synthesis_prompt), normalise paths to a canonical repo-root-relative form (strip leading `tests/` if it duplicates an existing entry without the prefix, or always resolve to repo-root-relative). Orchestrator can dedupe by basename today; this is polish for a future copy-into-roadmap caller.
@@ -9000,6 +9000,41 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** After ANTS-1455 shipped, the RetroDB session re-ran `/test-audit` and confirmed the two big issues are fixed. Two small leftover items: (1) the file-index list shows the same file twice when chunk reports use different paths for it; (2) the `dimension_hints` field name is misleading because it reflects keyword hits, not where real problems concentrate. Both LOW; the trio is otherwise fit-for-purpose.
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (RetroDB CC instance, batch-3 feedback).
+
+- 📋 [ANTS-1462] **`roadmap_query` header-inventory fallback when bullet-format match fails.**
+  Pairs with ANTS-1459 (a). The RetroArch follow-up surfaces a third failure shape: even when `roadmap_query` finds the file (after ANTS-1459's path-widening lands), the project may use a markdown table + sections format with ✅/📋/🚧/🔄 markers rather than the GFM task list or Ants-v1 emoji bullet shape the parser recognises. Current refusal is `no_roadmap_loaded` / `unrecognised_format` — both silent on what the parser expected.
+  
+  Fix: when path resolution succeeds but the bullet parser yields zero actionable bullets, fall back to a header-level inventory (parse `^#{2,3}\s+(.+)$` and return `sections[{slug, headline, level}]` without bullets). Mode echo `mode:"header_inventory_fallback"` so the caller knows why bullets is empty. Refusal envelopes (where the parser truly can't engage) gain a `expected_format:"GFM-task-list | Ants-v1 emoji"` field so a caller knows whether to reformat the roadmap, write a converter, or just edit the markdown directly.
+  
+  Three-way improvement: (1) discoverability — roadmap_query keeps working on table/section-style roadmaps; (2) transparency — refusals name the expected shape; (3) zero behavioural change for callers on the canonical bullet formats.
+  **Layman:** Some projects use markdown tables with status emoji instead of bullet lists. Today the tool refuses with no hint about what shape it wants — fix: fall back to a section-headline inventory when bullets don't match, and tell the caller exactly which format the parser expected.
+  Kind: enhancement.
+  Source: cross-session-report-2026-05-17 (RetroArch CC instance, second batch).
+
+- 📋 [ANTS-1463] **`roadmap_log` refusal envelope names the expected format on unrecognised_format.**
+  Sibling to the new ANTS-14xx "roadmap_query header-inventory fallback" item. Today `roadmap_log` returns `{ok:false, code:"unrecognised_format"}` when the target ROADMAP.md doesn't parse as GFM-task-list or Ants-v1 emoji bullets — but the envelope doesn't say which formats are supported, so the caller has to read the source to find out.
+  
+  Fix: amend `cmdRoadmapLog` so the `unrecognised_format` refusal carries `expected_format:["GFM-task-list", "Ants-v1 emoji"]` and a one-line `hint:"This roadmap appears to be in a table or section-only shape; see docs/standards/roadmap-format.md for either supported bullet shape, or edit the markdown directly."` Same surface as the ANTS-1429 silent-empty fix — refusal taxonomy gains visibility without changing wire behaviour for callers on the canonical formats.
+  
+  Pairs with ANTS-1453 (selection_hint) — both are descriptor / envelope discoverability fixes that don't change runtime behaviour but tell the caller what they need to know on first refusal.
+  **Layman:** When `roadmap_log` refuses on an unrecognised roadmap format, the error message doesn't say which formats the tool supports. Add a one-line hint + the list of supported shapes so the caller can either reformat the file, write a converter, or just edit by hand without having to read the source.
+  Kind: enhancement.
+  Source: cross-session-report-2026-05-17 (RetroArch CC instance, second batch).
+
+- 📋 [ANTS-1464] **`audit_run` per-tool args passthrough (`tools:[{name, args}]` or `tool_args_passthrough`).**
+  Lower-priority observation from the RetroArch session: `mcp__ants__audit_run` exists but the session called cppcheck directly via Bash because it needed `--max-configs=1` and per-tool flags the wrapper doesn't expose. The current `tools:["cppcheck", "ruff", ...]` shape is name-only; there's no escape hatch for project-specific invariants (RetroArch's bundle workflow constrains configs to keep wall-clock manageable on a 50K-LOC C codebase).
+  
+  Fix options (caller's pick at implementation time):
+  (a) Extend `tools` schema to accept `[{name, args}]` objects alongside bare strings — `tools:[{name:"cppcheck", args:["--max-configs=1"]}, "ruff"]`. Mixed-form arrays handled per-element.
+  (b) Add a sibling `tool_args_passthrough:{cppcheck:[...], ruff:[...]}` map. Same surface, less polymorphism.
+  (c) Honour a project-side `.audit_config.json` for per-tool flag overrides (RetroArch already ships one at `docs/private/audit/audit-config.json`); the wrapper auto-merges when present.
+  
+  Recommendation: ship (c) as the first cut — zero schema change to `audit_run`, opt-in via existing project config convention, dovetails with ANTS-1456's existing project-side `audit-config.json` proposal for the flat-layout `-I src/` fix. (a) and (b) become unnecessary if (c) covers the use case.
+  
+  Pairs with ANTS-1456 (the audit_run v1 usability bundle) — fold this into the v2 follow-up to ANTS-1351.
+  **Layman:** The `audit_run` tool runs cppcheck/ruff/etc. for you, but doesn't let you pass per-tool flags (like `--max-configs=1` for cppcheck). Three options to fix; the cheapest is to honour the project's existing `audit-config.json` if it ships one, so projects with specialised invocations stop having to bypass the wrapper.
+  Kind: enhancement.
+  Source: cross-session-report-2026-05-17 (RetroArch CC instance, second batch).
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 

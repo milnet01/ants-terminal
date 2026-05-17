@@ -767,9 +767,33 @@ SynthResult synthesize(const SynthRequest &req) {
     if (dimRanked.size() > kTopDimCap) r.truncated = true;
     r.topDimensions = topDims;
 
-    QList<QPair<QString, int>> fileRanked;
+    // ANTS-1461 — dedup file_index by basename before ranking.
+    // Chunk subagents cite the same logical file inconsistently
+    // (e.g. `test_X.py` vs `tests/test_X.py`); the raw QHash keeps
+    // them as two entries and double-counts the file in the top-N
+    // display. Two-pass merge: (1) per basename, pick the longest
+    // path as the canonical display key (the directory-prefixed
+    // form is the repo-root-relative truth the walker delivered);
+    // (2) sum counts under the canonical key.
+    QHash<QString, QString> canonicalByBase;
     for (auto it = fileRefCount.constBegin();
          it != fileRefCount.constEnd(); ++it) {
+        const QString &raw = it.key();
+        const QString base = raw.section('/', -1);
+        if (!canonicalByBase.contains(base) ||
+            raw.length() > canonicalByBase.value(base).length()) {
+            canonicalByBase[base] = raw;
+        }
+    }
+    QHash<QString, int> mergedRefCount;
+    for (auto it = fileRefCount.constBegin();
+         it != fileRefCount.constEnd(); ++it) {
+        const QString base = it.key().section('/', -1);
+        mergedRefCount[canonicalByBase.value(base)] += it.value();
+    }
+    QList<QPair<QString, int>> fileRanked;
+    for (auto it = mergedRefCount.constBegin();
+         it != mergedRefCount.constEnd(); ++it) {
         fileRanked.append({it.key(), it.value()});
     }
     std::sort(fileRanked.begin(), fileRanked.end(),

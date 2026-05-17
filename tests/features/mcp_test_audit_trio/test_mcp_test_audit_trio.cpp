@@ -191,6 +191,55 @@ TEST(mcp_test_audit_trio, Inv15RecheckRateLimit) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-1461 — file_index aggregation dedups by basename so a chunk
+// that cites the same file inconsistently (e.g. `test_X.py` and
+// `tests/test_X.py`) is counted once, not twice. Source-grep on
+// the two-pass merge in testauditengine.cpp::synthesisPrompt.
+TEST(mcp_test_audit_trio, Ants1461FileIndexBasenameDedup) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    // The merge keeps the longest path per basename (the
+    // directory-prefixed form is the canonical display key) and
+    // sums counts under that key.
+    expect(contains(cpp, "canonicalByBase"),
+           "ANTS-1461: file_index aggregation must build a "
+           "canonicalByBase map keyed on basename");
+    expect(contains(cpp, "mergedRefCount"),
+           "ANTS-1461: counts must be summed into a mergedRefCount "
+           "table keyed on the canonical (longest) path");
+    expect(contains(cpp,
+               ".section('/', -1)"),
+           "ANTS-1461: basename extraction must use "
+           "QString::section('/', -1)");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1461 — test_audit_partition descriptor names what
+// dimension_hints[] actually reflects (pre-pass regex hits, not
+// finding density). Source-grep on the description string in
+// claudeintegration.cpp.
+TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    // Locate the test_audit_partition descriptor region and
+    // confirm the clarifier sentence is present.
+    const auto pos = ci.find("t[\"name\"] = \"test_audit_partition\"");
+    ASSERT_NE(pos, std::string::npos)
+        << "test_audit_partition descriptor missing";
+    // Description string is set immediately after the name.
+    const std::string region = ci.substr(pos, 4000);
+    // The clarifier sentence is wrapped across two source lines —
+    // C++ concatenates "NOT a " + "finding-density predictor", but
+    // grep sees them with the wrap. Search for the intact tail.
+    expect(contains(region, "finding-density predictor"),
+           "ANTS-1461: descriptor must warn that dimension_hints "
+           "reflects pre-pass regex hits, NOT finding density");
+    expect(contains(region, "dimension_hints"),
+           "ANTS-1461: descriptor must name the dimension_hints "
+           "output field");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // Schema/dispatch — all four verbs registered.
 TEST(mcp_test_audit_trio, AllFourVerbsRegistered) {
     expect_reset();
