@@ -9692,6 +9692,281 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-tool-discovery.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
+- 📋 [ANTS-1506] ****`cold_eyes_partition` near-empty default + case-sensitive contract-doc matching + summary-vs-doc-paths divergence.****
+  RetroDB Issue 1 (HIGH) + Issue 7 (CORRECTNESS). First call with no
+  `.cold-eyes/partition.json` override returned a single `contracts`
+  lane with just `[CLAUDE.md, README.md]` for a project with 12
+  markdown files. Summary text said
+  "CLAUDE.md + README.md + ROADMAP.md + CHANGELOG.md (cross-cutting)"
+  but the lane's doc_paths only contains the first two — the summary
+  names files the lane doesn't include (Issue 7).
+  
+  Root cause: case-sensitive filename match (`ROADMAP.md` /
+  `CHANGELOG.md` expected; RetroDB has lowercase `roadmap.md` + a YAML
+  `data/changelog.yaml`).
+  
+  Asks:
+  
+  (a) Case-insensitive filename matching for canonical contract docs
+  (`ROADMAP.md` / `roadmap.md` / `Roadmap.md` should all resolve).
+  
+  (b) Discover all `docs/*.md` (top level, plus `.rst`) and propose
+  lanes by topic cohesion when the contract set produces < 4 lanes.
+  A 12-file project should not return a 2-file single-lane partition.
+  
+  (c) Surface non-matches transparently — when the summary mentions a
+  file that doesn't exist, include `missing_contract_files:[…]` +
+  `discovered_contract_files:[…]` so the caller can see what was
+  actually found and adjust.
+  
+  (d) **Issue 7 correctness fix**: trim the lane summary to match
+  doc_paths exactly. Listing files in the summary that aren't in
+  doc_paths misleads any downstream caller that reads only summary.
+  
+  (e) Add `partition_source` debug field: `"default"` vs `"override"`
+  so the caller can tell which path ran.
+  
+  Workaround used: manually partitioned 12 files into 6 lanes by
+  topic.
+  
+  Kind: fix.
+  Lanes: mcp-cold-eyes-partition.
+  Source: RetroDB /cold-eyes cross-session report 2026-05-18.
+
+- 📋 [ANTS-1507] ****`project_layout` case-insensitive probe + YAML changelog + liberal standards glob + `discovered[]` array.****
+  RetroDB Issue 2 (HIGH). `project_layout(caller_cwd=…)` returned every
+  field empty even though `roadmap.md` (3107 lines, 176 KB),
+  `data/changelog.yaml`, and `docs/RETRODB_DESIGN_STANDARDS.md` all
+  exist.
+  
+  Root cause stack:
+  - Case-sensitive ROADMAP.md / CHANGELOG.md probe (lowercase variant
+    not tried).
+  - CHANGELOG only recognised as `CHANGELOG.md`; structured-YAML
+    changelog (the app reads it at runtime) ignored.
+  - `standards_dir` only recognised as `docs/standards/`; flat
+    `docs/<PROJECT>_DESIGN_STANDARDS.md` invisible.
+  
+  Asks:
+  
+  (a) Case-insensitive filename probe — try {ROADMAP.md, roadmap.md,
+  Roadmap.md} for the roadmap slot; same for changelog. ANTS-1493 added
+  the fork-only-dir widening; this is the orthogonal name-variant
+  widening.
+  
+  (b) Honour `data/changelog.yaml`, `CHANGELOG.yaml`, `CHANGELOG.yml`,
+  `CHANGES.md` as valid changelog formats. The envelope can carry
+  `changelog.format:"yaml"|"markdown"` so callers branch on shape.
+  
+  (c) Glob `standards_dir` more liberally — when `docs/standards/`
+  doesn't exist, fall back to globbing `docs/*STANDARD*.md` (case-
+  insensitive) at the top level. Same shape for `docs/*ADR*` /
+  `docs/*DECISION*` covering the ADR slot.
+  
+  (d) Return `discovered: [{kind, path}, …]` alongside the canonical
+  slots so callers can adapt to projects that don't fit the canonical
+  layout — kind ∈ {roadmap, changelog, standards, adr, spec,
+  appstream}. Acts as the discoverability escape hatch.
+  
+  Pair with ANTS-1493 (fork-only dir widening) — together they cover
+  the "this project's docs aren't where you expected" case for the
+  two recurring scenarios we've now seen (RetroArch + RetroDB).
+  
+  Kind: fix.
+  Lanes: mcp-project-layout.
+  Source: RetroDB /cold-eyes cross-session report 2026-05-18.
+
+- 📋 [ANTS-1508] ****`cold_eyes_brief` should accept arbitrary lane names (lane-agnostic).****
+  RetroDB Issue 3 (MED). The session distrusted the partition (per
+  ANTS-1506) and built its own 6-lane split by hand, then inlined the
+  canonical brief from
+  `~/.claude/skills/cold-eyes/references/review-brief.md` per Agent
+  prompt — because `cold_eyes_brief` couldn't accept the
+  non-partition-derived lane names.
+  
+  Asks:
+  
+  (a) Accept arbitrary lane names — the brief body is lane-agnostic
+  (only the per-lane block changes); the tool should mint the brief
+  text for any lane name + doc_paths set the caller passes, regardless
+  of whether that lane appears in a prior `cold_eyes_partition`
+  response.
+  
+  (b) Document the lane-agnosticism in the docstring — "the brief
+  content is the same shape for every lane; only the per-lane block
+  changes" saves the next caller the doc-spelunking that the RetroDB
+  session went through.
+  
+  Workaround used: bypassed cold_eyes_brief entirely; copy-pasted the
+  canonical brief into each Agent prompt. Worked but wastes the
+  existing tool surface.
+  
+  Kind: enhancement.
+  Lanes: mcp-cold-eyes-brief.
+  Source: RetroDB /cold-eyes cross-session report 2026-05-18.
+
+- 📋 [ANTS-1509] ****`cold_eyes_cross_doc_diff` should accept inline `reports[]` array (mirror `indie_review_corroborate`).****
+  RetroDB Issue 4 (MED). The `/cold-eyes` skill bundles agent reports
+  inline in the orchestrator's context (one per `Agent` tool result),
+  not on disk. `cold_eyes_cross_doc_diff` requires `reports_dir`
+  pointing at a directory of `.md` files — reachable from
+  `/indie-review` (which writes reports to disk) but not from
+  `/cold-eyes`.
+  
+  Asks (either):
+  
+  (a) Have `cold_eyes_cross_doc_diff` accept an inline `reports`
+  array alongside `reports_dir` — mirror the shape
+  `indie_review_corroborate` already takes. Caller passes
+  `[{lane, content}, …]`; tool computes the diff in-memory.
+  
+  (b) Update the `/cold-eyes` skill to write reports to
+  `<project>/.cold-eyes-reports/` so the cross-diff tool has
+  something to read. (Adds an artifact users may need to gitignore —
+  which our project does, per project_audit_artifact_posture memory.)
+  
+  Recommendation: (a) is cleaner — no on-disk artifact, matches the
+  sibling tool's shape, no skill-side change needed.
+  
+  Kind: enhancement.
+  Lanes: mcp-cold-eyes-cross-doc-diff.
+  Source: RetroDB /cold-eyes cross-session report 2026-05-18.
+
+- 📋 [ANTS-1510] ****`cold_eyes_fold_in` should accept non-`[PROJ-NNNN]` roadmap formats (ad-hoc section headings, explicit release_block_heading, skip ID alloc).****
+  RetroDB Issue 5 (LOW). RetroDB's roadmap uses a "Pass N.M" naming
+  convention, not the `[PROJ-NNNN]` IDs the fold-in tool expects.
+  The tool's `actionable: [{file, line, citing_lanes[]}]` shape and
+  "release-block heading" pattern assume a roadmap shape RetroDB
+  doesn't follow — call refused before any work happened.
+  
+  Asks:
+  
+  (a) Loosen the format requirement: allow projects with ad-hoc
+  section headings to pass an explicit `release_block_heading` and
+  opt out of ID allocation (`id_allocation:"skip"` or
+  `format:"freeform"`). The tool would still do the splice + atomic
+  write; just skip the .roadmap-counter touch.
+  
+  (b) Document "required project shape" up front in the descriptor so
+  callers can short-circuit when the tool doesn't apply, rather than
+  discovering the mismatch in the refusal envelope.
+  
+  Workaround: not invoked; user wrote the ROADMAP block by hand.
+  
+  Same-shape concern applies to `test_audit_fold_in`,
+  `indie_review_fold_in`, `debt_sweep_apply_fix` — if (a) lands, the
+  freeform-mode plumbing should be a shared engine helper so all four
+  tools opt in symmetrically.
+  
+  Kind: enhancement.
+  Lanes: mcp-cold-eyes-fold-in.
+  Source: RetroDB /cold-eyes cross-session report 2026-05-18.
+
+- 📋 [ANTS-1511] ****`project_layout` `roadmap_found:bool` top-level flag (or `roadmap:null`) — disambiguate "scan ran, found nothing" from success.****
+  RetroArch Bundle 64 re-confirms a Bundle 62 nit:
+  `project_layout(caller_cwd=…)` returns `cached:true, ok:true` with
+  all-empty path fields when the scan found nothing. The cache hit is
+  correct behaviour (TTL hasn't expired) but `ok:true` reads as success
+  when nothing useful was found — a caller that only checks `ok` then
+  calls `.split("/")[-1]` on `roadmap.path` gets an empty string back.
+  
+  Asks (either):
+  
+  (a) Add a top-level `roadmap_found: bool` (and parallel
+  `changelog_found`, `specs_dir_found`, …). Backward compatible —
+  existing fields stay; new flag is the explicit predicate.
+  
+  (b) Emit `roadmap: null` (not `{path:"", …}`) when nothing was
+  found. Stronger signal but slightly breaking — callers that
+  unconditionally read `.roadmap.path` would need null-check.
+  
+  Recommendation: (a) — purely additive, zero risk to existing callers,
+  makes the predicate explicit.
+  
+  ANTS-1493 + ANTS-1507 will cover MORE projects, but won't help
+  projects whose roadmap genuinely doesn't exist yet (new repo,
+  greenfield). The ergonomic nit applies to that class.
+  
+  Kind: enhancement.
+  Lanes: mcp-project-layout.
+  Source: RetroArch cross-session report 2026-05-18 (Bundle 64 addendum).
+
+- 📋 [ANTS-1512] ****`audit_run` scoped-check mode — `audit_run(scope=[…], tool=…, checks=[…])` for narrow one-check sweeps.****
+  RetroArch Bundle 64: a tree-wide `bugprone-integer-division` sweep
+  across 8 menu+gfx files needed `clang-tidy --checks='-*,bugprone-
+  integer-division'`. `audit_run` is shaped around the full audit
+  pipeline (cppcheck + clang-tidy + clazy + …) and doesn't have an
+  obvious "narrow scope: one check, N files" mode.
+  
+  This pattern recurs as Tier-3 tidy entries get worked through —
+  each TIDY entry is typically "rule X across paths Y" — so the scoped
+  shape would compound.
+  
+  Ask:
+  
+  ```
+  audit_run(scope=["menu/drivers/", "gfx/"],
+            tool="clang-tidy",
+            checks=["bugprone-integer-division"])
+  → {warnings: [{file, line, col, rule, message}, ...]}
+  ```
+  
+  vs the current shape, which expects the audit config's full
+  `bugprone-*, clang-analyzer-*` spread.
+  
+  Benefits: MCP caches the narrowed result (cheaper than a full audit
+  re-scan), structures the warnings (no parsing on the caller side),
+  and pairs naturally with the kind of "tree-wide style sweep"
+  follow-ups that come out of the tidy lane.
+  
+  Pairs with ANTS-1504 (since-last-run mode) — both narrow audit_run
+  scope from different axes.
+  
+  Kind: enhancement.
+  Lanes: mcp-audit-run.
+  Source: RetroArch cross-session report 2026-05-18 (Bundle 64 addendum).
+
+- 📋 [ANTS-1513] ****`test_audit_recheck <finding-id>` — verify cited file:line still contains the smell when picking up deferred work.****
+  Vestige Observation #7. When a session picks up a deferred
+  test-audit follow-up days later (e.g. working through 22 deferred
+  Ts19 items from a prior audit), the obvious question is "which files
+  does this finding still apply to?" — currently answered by re-
+  reading the ROADMAP entry's `file:line` cite. But if the file has
+  been renamed, split, or merged since the audit ran, the cite goes
+  stale and the work begins with a Read failure or worse, an edit to
+  the wrong file.
+  
+  Ask:
+  
+  ```
+  test_audit_recheck(caller_cwd=…,
+                     finding_id="ANTS-1234")
+  → {
+      ok: true,
+      cited_file: "tests/old/test_X.py",
+      cited_line: 47,
+      file_exists: true,
+      line_still_matches_pattern: bool,
+      drift_hint?: "file likely moved to tests/new/test_X.py:42" (best-effort)
+  }
+  ```
+  
+  Engine work:
+  - Parse the ROADMAP bullet by ID to extract cited file + line + the
+    dimension's pattern.
+  - Stat the cited file. If missing, run `git log --all --diff-filter=R
+    -- <cited_file>` for the best-effort rename hint.
+  - If present, read the line and re-match against the pattern from
+    the prepass pattern set for that dimension.
+  
+  Not a blocker — file moves are rare and the orchestrator catches
+  stale cites via Read anyway. Worth landing when test-audit grows
+  persistent state past the ANTS-1397 trio.
+  
+  Kind: enhancement.
+  Lanes: mcp-test-audit.
+  Source: Vestige cross-session report 2026-05-18 (Slice 19 addendum).
+
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 
 - ✅ [ANTS-1453] **Per-tool "use this when..." selection hint on
