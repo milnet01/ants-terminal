@@ -643,6 +643,54 @@ once real consumers hit it.
   hint, so a single bad skill can't burn through CPU + tokens
   unchecked.
 
+- **ANTS-1458 phase 1 — Tasks chip latency instrumentation.**
+  User-observed 2026-05-17: multiple `TaskCreate` events appended
+  to the active transcript took longer than the 2 s
+  `refreshTasksButton` cadence to surface in the bottom-bar
+  chip. Phase 1 ships the diagnostic plumbing the roadmap entry's
+  step (i) asks for so the next reproduction yields data instead
+  of guesses — no behavioural change, no fix to the underlying
+  lag. Two pieces: (1) new `ClaudeTaskListTracker::lastRescanMtimeMs()`
+  accessor exposing the mtime that gated the last rescan; (2) the
+  existing `tasks/refresh:` debug log (gated on
+  `ANTS_DEBUG=claude`) gains five new columns:
+  `mtime`, `rescan-mtime`, `mtime-delta-ms`, `poll-dur-us`,
+  `delta`. The hide-branch label is also refined from
+  `HIDE/empty` to `HIDE/empty-or-done` so a reader of the log
+  can tell which case fired. Spec `docs/specs/ANTS-1458.md`
+  (TC-1..TC-3) was cold-eyes-reviewed twice before commit;
+  ROADMAP entry stays 🚧 in-progress (phase 2 — actual latency
+  fix — lands once the user reproduces with the log enabled).
+  **Layman:** the task-count chip sometimes lagged behind when
+  Claude added a burst of tasks. We need data to decide whether
+  it's the file-watcher dropping or the parse taking too long;
+  this commit adds the readouts so the next time you see the
+  lag you can copy the log and we'll know which one to fix.
+
+- **ANTS-1456 cold-eyes follow-up — argv-injection hardening on
+  `audit_run`'s project-side config.** A cold-eyes pass on the
+  ANTS-1456 spec surfaced a HIGH-severity gap: the
+  ANTS-1464 `audit-config.json` override path passed user-supplied
+  args verbatim into child argv, re-opening the same surface
+  ANTS-1351-INV-15 had hardened for `scope:"since-tag:"`.
+  Three defences land in this commit (still under ANTS-1456):
+  (a) `kAuditConfigMaxBytes = 64 KiB` cap on
+  `loadProjectAuditConfig` so a malformed config can't OOM
+  the parser. (b) New `isAuditArgSafe(arg)` validator — empty /
+  > 256 chars reject, allowlist
+  `^[A-Za-z0-9._/=:,+@~\-]+$`, explicit `-o` / `-O` reject
+  (the canonical ssh-style argv-injection gadget). (c) The
+  override branch in `toolArgv` validates every arg and
+  discards the *whole* override on any failure (fail-safe;
+  default argv runs instead). Spec amended with AR-7 / AR-8 /
+  AR-9 invariants.
+  **Layman:** the new per-project `audit-config.json` file
+  used to be trusted blindly — a hostile file could have run
+  arbitrary flags through the audit tools. Now every flag has
+  to match a safe-character allowlist and `-o` (the standard
+  ssh-injection trick) is blocked; one bad flag drops the
+  whole override and the safe built-in invocation runs.
+
 - **ANTS-1459 — `roadmap_query` + `last_audit_summary` discovery
   widening (RetroArch cross-session fix) + status-bar button
   parity.** Four landing-together changes:

@@ -151,6 +151,16 @@ const QStringList &kKnownTools() {
 // Schema (per-tool args override): {"<tool>": {"args": ["...","..."]}}.
 // When matched, the tool's argv is replaced wholesale by the array.
 // Malformed JSON / missing file → empty object (default argv used).
+//
+// ANTS-1456 cold-eyes follow-up — config file is bounded to
+// kAuditConfigMaxBytes (64 KiB) and per-arg sanitisation is applied
+// by isAuditArgSafe() at toolArgv() consume time. The config lives
+// inside the project root which IS the audit target, so an
+// attacker who can edit the file already controls the tree being
+// audited; the cap + regex are defence in depth against a
+// wrong-tab CC session auditing untrusted third-party clones.
+constexpr qint64 kAuditConfigMaxBytes = 64 * 1024;
+
 QJsonObject loadProjectAuditConfig(const QString &projectRoot) {
     const QStringList candidates = {
         projectRoot + QLatin1String("/.audit-config.json"),
@@ -159,6 +169,7 @@ QJsonObject loadProjectAuditConfig(const QString &projectRoot) {
     for (const QString &p : candidates) {
         QFile f(p);
         if (!f.open(QIODevice::ReadOnly)) continue;
+        if (f.size() > kAuditConfigMaxBytes) continue;
         const QByteArray raw = f.readAll();
         QJsonParseError err;
         const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
@@ -167,6 +178,23 @@ QJsonObject loadProjectAuditConfig(const QString &projectRoot) {
         }
     }
     return {};
+}
+
+// ANTS-1456 cold-eyes follow-up — per-arg argv-injection guard
+// for the audit-config.json override path. Same shape as
+// isScopeTagSafe() (ANTS-1351-INV-15). Allowlist of safe chars,
+// length cap, and explicit reject of `-o`/`-O` (the canonical
+// argv-injection gadget: ssh-style `-o ProxyCommand=…`). Args
+// that fail validation cause the tool's whole override to be
+// discarded and the default argv runs — fail-safe over fail-open.
+bool isAuditArgSafe(const QString &arg) {
+    if (arg.isEmpty() || arg.size() > 256) return false;
+    static const QRegularExpression rx(
+        QStringLiteral("^[A-Za-z0-9._/=:,+@~\\-]+$"));
+    if (!rx.match(arg).hasMatch()) return false;
+    if (arg == QLatin1String("-o") || arg == QLatin1String("-O"))
+        return false;
+    return true;
 }
 
 // Per-tool argv builder. v1 uses minimal sane defaults (parallel to
@@ -178,18 +206,27 @@ QJsonObject loadProjectAuditConfig(const QString &projectRoot) {
 // `docs/private/audit/audit-config.json`.
 QStringList toolArgv(const QString &tool, const QString &projectRoot,
                      const QJsonObject &projectConfig = {}) {
-    // ANTS-1464 — project-side override wins.
+    // ANTS-1464 — project-side override wins. ANTS-1456 cold-eyes
+    // follow-up: every arg is validated through isAuditArgSafe()
+    // before it reaches child argv. If ANY arg fails, the whole
+    // override is discarded (fail-safe — the tool falls back to the
+    // hardened built-in argv) so a single bad entry can't silently
+    // drop adjacent safe-looking flags.
     if (projectConfig.contains(tool)) {
         const QJsonObject cfg =
             projectConfig.value(tool).toObject();
         const QJsonValue v = cfg.value(QStringLiteral("args"));
         if (v.isArray()) {
             QStringList args;
+            bool allSafe = true;
             const QJsonArray arr = v.toArray();
             for (const QJsonValue &av : arr) {
-                args.append(av.toString());
+                const QString s = av.toString();
+                if (!isAuditArgSafe(s)) { allSafe = false; break; }
+                args.append(s);
             }
-            return args;
+            if (allSafe && !args.isEmpty()) return args;
+            // else: fall through to the default argv path.
         }
     }
     // ANTS-1456 — auto-detect src/ for flat-layout projects.

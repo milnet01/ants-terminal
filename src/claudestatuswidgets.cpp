@@ -1,5 +1,7 @@
 #include "claudestatuswidgets.h"
 
+#include <QElapsedTimer>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QObject>
@@ -712,7 +714,23 @@ void ClaudeStatusBarController::refreshTasksButton() {
     // freezes. poll() mtime-checks m_transcriptPath and only rescans
     // on real change. Same shape as ClaudeBgTaskTracker::sweepLiveness
     // on the bg-tasks side.
+    //
+    // ANTS-1458 — latency instrumentation (phase 1). Sample mtime +
+    // task count BEFORE poll() so the debug log can report whether
+    // (a) the tick saw an mtime advance, (b) the rescan picked up
+    // new tasks, and (c) how long the parse took. Cheap (no extra
+    // stat — QFileInfo's lastModified is the same call poll() makes
+    // internally; the value reads from kernel cache after the first
+    // hit per tick).
+    const int beforeTotal = m_tasks->totalCount();
+    QFileInfo preFi(path);
+    const qint64 preMtimeMs = (path.isEmpty() || !preFi.exists())
+        ? -1 : preFi.lastModified().toMSecsSinceEpoch();
+    const qint64 preRescanMs = m_tasks->lastRescanMtimeMs();
+    QElapsedTimer pollTimer;
+    pollTimer.start();
     m_tasks->poll();
+    const qint64 pollDurUs = pollTimer.nsecsElapsed() / 1000;
 
     const int total      = m_tasks->totalCount();
     const int unfinished = m_tasks->unfinishedCount();
@@ -731,15 +749,27 @@ void ClaudeStatusBarController::refreshTasksButton() {
         const QString pathShort = path.isEmpty()
             ? QStringLiteral("(empty)")
             : path.section('/', -1);
-        const char *branch = (total > 0) ? "SHOW" : "HIDE/empty";
+        const char *branch = (total > 0 && done < total)
+            ? "SHOW" : "HIDE/empty-or-done";
+        // ANTS-1458 — mtime + delta + parse-duration columns.
+        const int totalDelta = total - beforeTotal;
+        const qint64 mtimeDeltaMs = (preMtimeMs < 0 || preRescanMs <= 0)
+            ? -1 : (preMtimeMs - preRescanMs);
         ANTS_LOG(DebugLog::Claude,
                  "tasks/refresh: focused-tab=%s cwd=%s path=%s "
-                 "prev-changed=%s total=%d unfinished=%d "
+                 "prev-changed=%s mtime=%lld rescan-mtime=%lld "
+                 "mtime-delta-ms=%lld poll-dur-us=%lld "
+                 "delta=%+d total=%d unfinished=%d "
                  "in-progress=%d pending=%d done=%d → %s",
                  focusedTabPresent ? "yes" : "no",
                  cwdShort.toUtf8().constData(),
                  pathShort.toUtf8().constData(),
                  (path == prevPath) ? "no" : "yes",
+                 static_cast<long long>(preMtimeMs),
+                 static_cast<long long>(preRescanMs),
+                 static_cast<long long>(mtimeDeltaMs),
+                 static_cast<long long>(pollDurUs),
+                 totalDelta,
                  total, unfinished, inProgress, pending, done, branch);
     }
 

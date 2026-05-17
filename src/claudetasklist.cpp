@@ -167,6 +167,10 @@ void ClaudeTaskListTracker::poll() {
     rescan();
 }
 
+qint64 ClaudeTaskListTracker::lastRescanMtimeMs() const {
+    return m_lastRescanMtimeMs;
+}
+
 // Pure parser. Walks the transcript line by line. See header for
 // event shapes; full disambiguation table at docs/specs/ANTS-1158.md
 // §3.1.

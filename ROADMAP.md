@@ -8919,7 +8919,7 @@ template / mutate this state atomically" → movable. If it's
   Source: cross-session-report-2026-05-17 (RetroArch CC instance
   on `/mnt/Games/Scripts/Linux/RetroArch`).
 
-- 📋 [ANTS-1458] **Tasks chip + Task List dialog refresh
+- 🚧 [ANTS-1458] **Tasks chip + Task List dialog refresh
   latency.** User-observed 2026-05-17 20:36 (screenshot in
   `/home/ants/Pictures/ClaudePaste/paste_20260517_204727_235_*.png`):
   multiple `TaskCreate` events appended to the active Claude

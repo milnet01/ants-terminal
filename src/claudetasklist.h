@@ -83,6 +83,13 @@ public slots:
     // an mtime check short-circuits the full JSONL parse.
     void poll();
 
+    // ANTS-1458 — diagnostic accessor for the chip-refresh
+    // instrumentation (latency-investigation phase 1). Surfaces
+    // the mtime that gated the last rescan so refreshTasksButton
+    // can log (current_mtime, last_rescan_mtime, delta_ms) per
+    // tick under ANTS_DEBUG=claude.
+    qint64 lastRescanMtimeMs() const;
+
 private:
     QString m_transcriptPath;
     QFileSystemWatcher m_watcher;
