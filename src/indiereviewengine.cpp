@@ -411,6 +411,19 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
         out += QChar('\n');
     }
 
+    // ANTS-1457 — previously-rejected findings (do not re-raise).
+    // v2 BriefManifest path mirrors the v1 assembleBrief injection.
+    {
+        const auto fpEntries = ants::falsepos::filter(
+            ants::falsepos::loadEntries(projectPath),
+            QStringLiteral("indie-review"), lane.name);
+        const QString block = ants::falsepos::formatForBrief(fpEntries);
+        if (!block.isEmpty()) {
+            out += block;
+            if (!out.endsWith(QChar('\n'))) out += QChar('\n');
+        }
+    }
+
     out += QStringLiteral("=== Standards reference (not inlined; reviewer fetches if needed) ===\n");
     for (const QString &doc : m.contractDocs) {
         out += QStringLiteral("- ");
