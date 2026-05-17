@@ -1202,13 +1202,22 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
             // Inclusive-OR over enabled categories. Plain narration
             // bullets (Other) always render — they carry document
             // context, not status.
+            // ANTS-1423 — current-signal rescue gated on
+            // (wantDone || !isDone). The signal is fuzzy-matched
+            // against CHANGELOG [Unreleased] + recent commits, which
+            // includes just-shipped items; without the gate, a ✅
+            // bullet whose ID appears in [Unreleased] slips through
+            // the Current preset even though that preset explicitly
+            // excludes ShowDone.
+            const bool currentRescue = current && wantCurrent &&
+                (wantDone || kind != BulletKind::Done);
             const bool keepStatus =
                 (kind == BulletKind::Other) ||
                 (kind == BulletKind::Done && wantDone) ||
                 (kind == BulletKind::Planned && wantPlanned) ||
                 (kind == BulletKind::InProgress && wantInProgress) ||
                 (kind == BulletKind::Considered && wantConsidered) ||
-                (current && wantCurrent);
+                currentRescue;
             // Search predicate: case-insensitive substring against the
             // bullet body, OR the `id:NNNN` shorthand against an
             // `[ANTS-NNNN]` token in the body. Empty predicate keeps
@@ -1378,7 +1387,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         else if (rec.status == QStringLiteral("💭") && wantConsidered) statusOk = true;
         // Current signal: rec is "current" if its body matches a
         // CHANGELOG/[Unreleased] or recent-commit fuzzy hit.
-        const bool isCur = wantCurrent && isCurrent(rec.body);
+        // ANTS-1423 — gated on (wantDone || status != "✅"). The
+        // signal includes just-shipped items via CHANGELOG
+        // [Unreleased]; without the gate, ✅ bullets slip through
+        // the Current preset which explicitly excludes ShowDone.
+        const bool isCur = wantCurrent && isCurrent(rec.body) &&
+            (wantDone || rec.status != QStringLiteral("✅"));
         if (!statusOk && !isCur) return false;
 
         // Kind filter

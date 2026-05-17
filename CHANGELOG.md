@@ -473,6 +473,32 @@ once real consumers hit it.
   their children, so "0.7.92" shows the real total for the whole
   release.
 
+- **ANTS-1423 — Roadmap dialog "Current" preset no longer surfaces
+  ✅ shipped bullets via the current-signal rescue.** User
+  screenshot 2026-05-16 (Bundle C kickoff) showed the Current tab
+  listing "8 shipped" alongside the active work, even though
+  Current = `ShowInProgress | ShowCurrent` and explicitly excludes
+  `ShowDone`. Root cause: `passesFilter`'s current-signal check
+  (`isCur = wantCurrent && isCurrent(rec.body)`) was an unconditional
+  rescue path — and `currentBullets` is fuzzy-matched from the
+  CHANGELOG `[Unreleased]` block, which contains every just-shipped
+  item by definition. So the moment a ✅ bullet's ANTS-NNNN landed
+  in `[Unreleased]`, its ROADMAP row slipped through Current.
+  Fix: gated the rescue on `(wantDone || rec.status != "✅")` in
+  both `renderCardsHtml::passesFilter` and the parallel v1
+  `renderHtml::keepStatus` block (so consumers downstream of either
+  renderer see consistent semantics). 📋 / 🚧 bullets still pass
+  through the signal unchanged — the gate only narrows the rescue
+  for ✅, not the whole path. Spec
+  `tests/features/roadmap_current_preset_excludes_shipped/spec.md`;
+  tests `tests/features/roadmap_current_preset_excludes_shipped/`
+  (4 invariants — Current drops ✅, Full keeps ✅, v1 renderHtml
+  parity, Current still keeps 📋 via signal).
+  Layman: the "Current" tab of the roadmap dialog was showing
+  green-tick items that had just been added to the CHANGELOG as
+  shipped. The filter now hides them, so Current shows only what's
+  actually being worked on right now.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1
