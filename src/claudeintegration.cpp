@@ -2439,6 +2439,138 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1397 — test_audit_partition (v1 trio start)
+                {
+                    QJsonObject t;
+                    t["name"] = "test_audit_partition";
+                    t["description"] = QStringLiteral(
+                        "Phase 1 of the test_audit trio. Detect "
+                        "test framework, walk test files, pack into "
+                        "chunks (size 12 default, [4,30]), run "
+                        "pre-pass regex scan, return paginated chunks "
+                        "+ partition_token. v1 uses a hardcoded "
+                        "pre-pass pattern set; v2 ships a project "
+                        "JSON resource. dimensions=\"auto\" (default) "
+                        "or \"csv:<d1,d2>\". scope=\"auto\"/\"path:<sub>\"/"
+                        "\"files:<csv>\". Required: caller_cwd. "
+                        "See docs/specs/ANTS-1397.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject sP; sP["type"] = "string";
+                    QJsonObject dP; dP["type"] = "string";
+                    QJsonObject cP; cP["type"] = "integer";
+                    QJsonObject qP; qP["type"] = "boolean";
+                    QJsonObject oP; oP["type"] = "integer";
+                    QJsonObject lP; lP["type"] = "integer";
+                    QJsonObject ccwd; ccwd["type"] = "string";
+                    QJsonObject props;
+                    props["scope"] = sP; props["dimensions"] = dP;
+                    props["chunk_size"] = cP; props["quick"] = qP;
+                    props["offset"] = oP; props["limit"] = lP;
+                    props["caller_cwd"] = ccwd;
+                    schema["properties"] = props;
+                    QJsonArray req; req.append("caller_cwd");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                // ANTS-1397 — test_audit_brief
+                {
+                    QJsonObject t;
+                    t["name"] = "test_audit_brief";
+                    t["description"] = QStringLiteral(
+                        "Phase 2 of the test_audit trio. Return "
+                        "structured per-chunk manifest "
+                        "(source_paths, dimensions, framework_context, "
+                        "pre_pass_findings) — NO `brief` string field "
+                        "(caller composes the subagent prompt from "
+                        "structured siblings). Requires "
+                        "partition_token from a prior partition call.");
+                    QJsonObject schema; schema["type"] = "object";
+                    QJsonObject cP; cP["type"] = "string";
+                    QJsonObject pP; pP["type"] = "string";
+                    QJsonObject ccwd; ccwd["type"] = "string";
+                    QJsonObject props;
+                    props["chunk_id"] = cP;
+                    props["partition_token"] = pP;
+                    props["caller_cwd"] = ccwd;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    req.append("chunk_id");
+                    req.append("partition_token");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                // ANTS-1397 — test_audit_synthesis_prompt
+                {
+                    QJsonObject t;
+                    t["name"] = "test_audit_synthesis_prompt";
+                    t["description"] = QStringLiteral(
+                        "Phase 3 of the test_audit trio. Read per-"
+                        "chunk reports from <reports_dir> (project-"
+                        "relative, validated), fence each via "
+                        "<chunk_report file=\"…\"> tags to defend "
+                        "against prompt injection (INV-8), and "
+                        "return a single synth prompt + per-dimension "
+                        "summaries.");
+                    QJsonObject schema; schema["type"] = "object";
+                    QJsonObject pP; pP["type"] = "string";
+                    QJsonObject rP; rP["type"] = "string";
+                    QJsonObject aP; aP["type"] = "object";
+                    QJsonObject ccwd; ccwd["type"] = "string";
+                    QJsonObject props;
+                    props["partition_token"]    = pP;
+                    props["reports_dir"]        = rP;
+                    props["calibration_anchor"] = aP;
+                    props["caller_cwd"]         = ccwd;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    req.append("partition_token");
+                    req.append("reports_dir");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                // ANTS-1397 — test_audit_fold_in
+                {
+                    QJsonObject t;
+                    t["name"] = "test_audit_fold_in";
+                    t["description"] = QStringLiteral(
+                        "Phase 4 of the test_audit trio. Render "
+                        "actionable findings as ROADMAP bullets via "
+                        "RoadmapFoldIn::allocateIds + insertBlock "
+                        "(engine-level delegation, NOT MCP re-entry "
+                        "— INV-3). Single batched write: all N IDs "
+                        "allocated upfront, one insertBlock call.");
+                    QJsonObject schema; schema["type"] = "object";
+                    QJsonObject aP; aP["type"] = "array";
+                    QJsonObject fP; fP["type"] = "string";
+                    QJsonObject fsP; fsP["type"] = "integer";
+                    QJsonObject dP; dP["type"] = "array";
+                    QJsonObject rfP; rfP["type"] = "integer";
+                    QJsonObject ccwd; ccwd["type"] = "string";
+                    QJsonObject props;
+                    props["actionable"]    = aP;
+                    props["framework"]     = fP;
+                    props["files_scanned"] = fsP;
+                    props["dimensions"]    = dP;
+                    props["raw_findings"]  = rfP;
+                    props["caller_cwd"]    = ccwd;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    req.append("actionable");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1290 — plan_template
                 {
                     QJsonObject t;

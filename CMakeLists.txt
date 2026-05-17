@@ -216,6 +216,8 @@ add_library(ants_core_lib STATIC
     src/projectlayoutengine.cpp
     src/paginationengine.cpp
     src/tooldetectionengine.cpp
+    # ANTS-1397 — test_audit_* trio engine (Qt6::Core only).
+    src/testauditengine.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
@@ -874,6 +876,8 @@ if(ANTS_TESTS)
                 tests/features/audit_skill_anchors/test_audit_skill_anchors.cpp
                 # ANTS-1351 v1 audit_run MCP verb.
                 tests/features/mcp_audit_run/test_mcp_audit_run.cpp
+                # ANTS-1397 v1 test_audit_* MCP trio.
+                tests/features/mcp_test_audit_trio/test_mcp_test_audit_trio.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.
@@ -934,6 +938,8 @@ if(ANTS_TESTS)
         SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410.md"
         # ANTS-1351 — audit_run engine source for source-scrape tests.
         SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
+        # ANTS-1397 — test_audit engine source for source-scrape tests.
+        SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
         FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
         FIXTURE_EMPTY_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_empty.sarif"
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"

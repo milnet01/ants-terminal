@@ -6644,6 +6644,37 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: auditrunner, auditengine, auditdialog.
   Source: deferred from ANTS-1351 v1 (in-session 2026-05-17).
 
+- 📋 [ANTS-1450] **`test_audit_*` v2 — JSON pattern resource + recursive mtime + drift-guard test.**
+  ANTS-1397 v1 ships:
+  - Engine with framework detection, chunk packing, pre-pass scan,
+    fold-in delegation, partition cache + LRU, qHash token, synth
+    fence (working).
+  - 4 MCP verbs registered (partition, brief, synthesis_prompt,
+    fold_in) with Optional contract (matches sibling trios).
+  - Pre-pass uses 5 hardcoded patterns (sleep_call, datetime_now,
+    hardcoded_password, hardcoded_api_key, real_network).
+  
+  v1 defers (this entry tracks):
+  - Project-internal JSON resource at
+    `docs/standards/test-audit-grep-patterns.json` carrying the full
+    pattern set the skill markdown documents.
+  - Drift-guard test that reads `references/dimensions.md` and
+    asserts kDimensions matches (INV-6 spec).
+  - INV-15 mtime recheck currently rate-limited but doesn't recurse;
+    deep-tree mtime gap (logged ANTS-1447) revisit.
+  - pre_pass token recomputation in brief/synth (v1 just looks up
+    cache by token; doesn't recompute against fresh stat to detect
+    edits made between partition and brief).
+  - Envelope byte-cap cascade (AuditRunner-style) for partition's
+    pre_pass_findings_by_chunk on large suites.
+  
+  Pairs with: ANTS-1397 v1 (shipped); ANTS-1449 (audit_run v2);
+  ANTS-1447 (mtime cache deep-tree gap).
+  **Layman:** v1 ships a working test-audit MCP trio with 5 hardcoded grep patterns. v2 ships the project's full pattern set as a JSON resource, fixes the deep-tree mtime gap, and adds the drift-guard test.
+  Kind: implement.
+  Lanes: testauditengine.
+  Source: deferred from ANTS-1397 v1 (in-session 2026-05-17).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single
@@ -7401,7 +7432,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   instance reported the leak; verified + fixed in this
   bundle).
 
-- 📋 [ANTS-1397] **Incorporate `/test-audit` skill into
+- ✅ [ANTS-1397] **Incorporate `/test-audit` skill into
   Ants MCP — parallel to `indie_review_*` / `debt_sweep_*`
   / `cold_eyes_*`.** The `/test-audit` skill today fires a
   parallel-subagent sweep across the test suite (performance,

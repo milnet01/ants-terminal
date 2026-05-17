@@ -33,7 +33,8 @@
 #include "claudetranscript.h"
 #include "aboutdialogs.h"          // ANTS-1181 — About-Ants/About-Qt
 #include "auditdialog.h"
-#include "auditrunner.h"   // ANTS-1351 — server-side audit runner.
+#include "auditrunner.h"      // ANTS-1351 — server-side audit runner.
+#include "testauditengine.h"  // ANTS-1397 — test_audit_* trio engine.
 #include "shellutils.h"
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
@@ -4017,6 +4018,122 @@ void MainWindow::setupClaudeMcpProviders() {
                 env["top_findings"] = r.topFindings;
             return QString::fromUtf8(
                 QJsonDocument(env).toJson(QJsonDocument::Compact));
+        });
+    // ANTS-1397 — test_audit trio (v1). All four verbs Optional
+    // contract per § 2.4 (matches cold_eyes / indie_review /
+    // debt_sweep). fold_in delegates to RoadmapFoldIn::* engine
+    // entries directly (NOT MCP re-entry — INV-3).
+    m_claudeIntegration->registerToolProvider("test_audit_partition",
+        [](const QJsonObject &args) -> QString {
+            TestAuditEngine::PartitionRequest req;
+            req.callerCwd   = args.value(QStringLiteral("caller_cwd")).toString();
+            req.scope       = args.value(QStringLiteral("scope")).toString();
+            req.dimensions  = args.value(QStringLiteral("dimensions")).toString();
+            if (args.value(QStringLiteral("chunk_size")).isDouble())
+                req.chunkSize = args.value(QStringLiteral("chunk_size")).toInt();
+            req.quick       = args.value(QStringLiteral("quick")).toBool();
+            if (args.value(QStringLiteral("offset")).isDouble())
+                req.offset = args.value(QStringLiteral("offset")).toInt();
+            if (args.value(QStringLiteral("limit")).isDouble())
+                req.limit = args.value(QStringLiteral("limit")).toInt();
+            const auto r = TestAuditEngine::partition(req);
+            QJsonObject env;
+            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
+                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
+            env["ok"] = true;
+            env["framework"]    = r.framework;
+            env["test_globs"]   = QJsonArray::fromStringList(r.testGlobs);
+            env["total_files"]  = r.totalFiles;
+            env["chunks_count"] = r.chunksCount;
+            QJsonArray chunks;
+            for (const auto &c : r.chunks) {
+                QJsonObject co;
+                co["id"]              = c.id;
+                co["paths"]           = QJsonArray::fromStringList(c.paths);
+                co["dimension_hints"] = QJsonArray::fromStringList(c.dimensionHints);
+                chunks.append(co);
+            }
+            env["chunks"] = chunks;
+            env["dimensions_active"] = QJsonArray::fromStringList(r.dimensionsActive);
+            QJsonObject prePass;
+            for (auto it = r.prePassFindingsByChunk.constBegin();
+                 it != r.prePassFindingsByChunk.constEnd(); ++it) {
+                prePass[it.key()] = it.value();
+            }
+            env["pre_pass_findings_by_chunk"] = prePass;
+            env["pre_pass_cached"] = r.prePassCached;
+            env["partition_token"] = r.partitionToken;
+            env["offset"]    = r.offset;
+            env["limit"]     = r.limit;
+            env["total"]     = r.total;
+            env["truncated"] = r.truncated;
+            if (r.nextOffset >= 0) env["next_offset"] = r.nextOffset;
+            env["byte_count"] = r.byteCount;
+            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("test_audit_brief",
+        [](const QJsonObject &args) -> QString {
+            TestAuditEngine::BriefRequest req;
+            req.callerCwd       = args.value(QStringLiteral("caller_cwd")).toString();
+            req.chunkId         = args.value(QStringLiteral("chunk_id")).toString();
+            req.partitionToken  = args.value(QStringLiteral("partition_token")).toString();
+            const auto r = TestAuditEngine::brief(req);
+            QJsonObject env;
+            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
+                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
+            env["ok"]                = true;
+            env["chunk_id"]          = r.chunkId;
+            env["source_paths"]      = QJsonArray::fromStringList(r.sourcePaths);
+            env["dimensions"]        = QJsonArray::fromStringList(r.dimensions);
+            env["framework_context"] = r.frameworkContext;
+            env["pre_pass_findings"] = r.prePassFindings;
+            env["byte_count"]        = r.byteCount;
+            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("test_audit_synthesis_prompt",
+        [](const QJsonObject &args) -> QString {
+            TestAuditEngine::SynthRequest req;
+            req.callerCwd          = args.value(QStringLiteral("caller_cwd")).toString();
+            req.partitionToken     = args.value(QStringLiteral("partition_token")).toString();
+            req.reportsDir         = args.value(QStringLiteral("reports_dir")).toString();
+            req.calibrationAnchor  = args.value(QStringLiteral("calibration_anchor")).toObject();
+            const auto r = TestAuditEngine::synthesize(req);
+            QJsonObject env;
+            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
+                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
+            env["ok"]                  = true;
+            env["prompt"]              = r.prompt;
+            env["dimension_summaries"] = r.dimensionSummaries;
+            env["reports_read"]        = r.reportsRead;
+            env["byte_count"]          = r.byteCount;
+            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("test_audit_fold_in",
+        [](const QJsonObject &args) -> QString {
+            TestAuditEngine::FoldInRequest req;
+            req.callerCwd    = args.value(QStringLiteral("caller_cwd")).toString();
+            req.actionable   = args.value(QStringLiteral("actionable")).toArray();
+            req.framework    = args.value(QStringLiteral("framework")).toString();
+            req.filesScanned = args.value(QStringLiteral("files_scanned")).toInt();
+            const QJsonArray dimsArr = args.value(QStringLiteral("dimensions")).toArray();
+            for (const QJsonValue &v : dimsArr) req.dimensions.append(v.toString());
+            req.rawFindings  = args.value(QStringLiteral("raw_findings")).toInt();
+            const auto r = TestAuditEngine::foldIn(req);
+            QJsonObject env;
+            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
+                env["written_count"]=r.writtenCount; env["failed_count"]=r.failedCount;
+                env["partial"]=r.partial;
+                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
+            env["ok"]                    = true;
+            env["block"]                 = r.block;
+            env["allocated_ids"]         = QJsonArray::fromStringList(r.allocatedIds);
+            env["written"]               = r.written;
+            env["release_block_heading"] = r.releaseBlockHeading;
+            env["bytes_written"]         = r.bytesWritten;
+            env["written_count"]         = r.writtenCount;
+            env["failed_count"]          = r.failedCount;
+            env["partial"]               = r.partial;
+            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
         });
     m_claudeIntegration->registerToolProvider("get_text",
         [this](const QJsonObject &args) -> QString {
