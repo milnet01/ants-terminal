@@ -3,6 +3,7 @@
 
 #include "testauditengine.h"
 
+#include "falseposledger.h"
 #include "roadmapfoldin.h"
 
 #include <QCryptographicHash>
@@ -502,12 +503,24 @@ BriefResult brief(const BriefRequest &req) {
     fc["framework"] = p->framework;
     r.frameworkContext = fc;
     r.prePassFindings  = p->prePassFindingsByChunk.value(chunk->id);
+    // ANTS-1457 — prior false-positive findings filtered by
+    // review_kind=test-audit. lane filter is empty because
+    // test-audit partitions by chunk-id rather than lane name;
+    // INV-9's bidirectional empty-match covers both lane-tagged
+    // and untagged entries.
+    {
+        const auto fpEntries = ants::falsepos::filter(
+            ants::falsepos::loadEntries(canon),
+            QStringLiteral("test-audit"), QString());
+        r.priorFalsePositives = ants::falsepos::formatForJsonArray(fpEntries);
+    }
     // Byte count (informational).
     QJsonObject env;
     env["chunk_id"]    = r.chunkId;
     env["source_paths"] = QJsonArray::fromStringList(r.sourcePaths);
     env["dimensions"]   = QJsonArray::fromStringList(r.dimensions);
     env["pre_pass_findings"] = r.prePassFindings;
+    env["prior_false_positives"] = r.priorFalsePositives;
     r.byteCount = QJsonDocument(env).toJson(QJsonDocument::Compact).size();
     return r;
 }

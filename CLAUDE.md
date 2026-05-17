@@ -46,6 +46,17 @@ Listed only where behavior isn't obvious from the name.
 - `audithygiene` — splices project-local scanner config into invocations
   (`.semgrep.yml` header → `--exclude-rule`; `pyproject.toml` ruff S-codes
   → bandit `--skip B<nnn>`).
+- `falseposledger` (Qt6::Core only; in `ants_core_lib`) — load + filter
+  + format helpers for `.ants_review_falsepos.jsonl`, the prose-grain
+  false-positive ledger shared across the three AI-reviewer sweep
+  skills (`/cold-eyes`, `/indie-review`, `/test-audit`). Read-only
+  in v1; CC sessions append via `printf '\n%s\n' "$record" >> …` per
+  the standard at `docs/standards/audit-false-positives.md`. The
+  three engines' brief-assembly paths call into this module to
+  inject a "previously-rejected findings" block (text form) or
+  `prior_false_positives` array (test-audit). Fence-hardening
+  mirrors ANTS-1352. Distinct from line-grain `.audit_suppress`
+  which `auditdialog` owns for static-analyser findings. ANTS-1457.
 - `featurecoverage` — in-process audit lanes via `AuditCheck::inProcessRunner`
   (no QProcess). Two in-process: `spec_code_drift`,
   `changelog_test_coverage`. Plus `test_health`, which is implemented

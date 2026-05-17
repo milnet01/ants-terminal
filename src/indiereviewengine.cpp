@@ -1,5 +1,6 @@
 #include "indiereviewengine.h"
 
+#include "falseposledger.h"
 #include "subsystemmap.h"
 
 #include <QChar>
@@ -198,6 +199,20 @@ QString assembleBrief(const QString &projectPath, const Lane &lane) {
         out += QChar('\n');
     }
 
+    // ANTS-1457 — previously-rejected findings (do not re-raise).
+    // Pulled from `.ants_review_falsepos.jsonl` at project root;
+    // empty if file absent or all entries filtered out.
+    {
+        const auto fpEntries = ants::falsepos::filter(
+            ants::falsepos::loadEntries(projectPath),
+            QStringLiteral("indie-review"), lane.name);
+        const QString block = ants::falsepos::formatForBrief(fpEntries);
+        if (!block.isEmpty()) {
+            out += block;
+            if (!out.endsWith(QChar('\n'))) out += QChar('\n');
+        }
+    }
+
     out += QStringLiteral("=== Standards reference (not inlined; reviewer fetches if needed) ===\n");
     out += QStringLiteral("- docs/standards/coding.md\n");
     out += QStringLiteral("- docs/standards/testing.md\n");
@@ -275,6 +290,20 @@ QString assembleBriefForDispatch(const QString &projectPath,
             }
         }
         out += QChar('\n');
+    }
+
+    // ANTS-1457 — previously-rejected findings block, inserted
+    // before the inlined standards docs so the dispatched reviewer
+    // sees it without scrolling past the (much larger) standards.
+    {
+        const auto fpEntries = ants::falsepos::filter(
+            ants::falsepos::loadEntries(projectPath),
+            QStringLiteral("indie-review"), lane.name);
+        const QString block = ants::falsepos::formatForBrief(fpEntries);
+        if (!block.isEmpty()) {
+            out += block;
+            if (!out.endsWith(QChar('\n'))) out += QChar('\n');
+        }
     }
 
     // INV-22 / H-3 fix — inline standards docs (no "fetches if

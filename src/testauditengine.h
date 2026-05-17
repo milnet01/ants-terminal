@@ -103,6 +103,7 @@ struct BriefResult {
     QStringList dimensions;
     QJsonObject frameworkContext;
     QJsonArray  prePassFindings;
+    QJsonArray  priorFalsePositives;  // ANTS-1457
     int         byteCount = 0;
 };
 

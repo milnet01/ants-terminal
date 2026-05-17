@@ -207,6 +207,9 @@ add_library(ants_core_lib STATIC
     src/gitwrap.cpp
     src/indiereviewengine.cpp
     src/debtsweepengine.cpp
+    # ANTS-1457 — false-positive ledger helper shared across
+    # the three AI-reviewer brief-assembly paths.
+    src/falseposledger.cpp
     src/coldeyesengine.cpp
     src/verifyengine.cpp
     src/verifytrust.cpp
@@ -1014,7 +1017,9 @@ if(ANTS_TESTS)
                 # ANTS-1364 — Set/Delete serialize-once refactor.
                 tests/features/session_memory_serialize_once/test_session_memory_serialize_once.cpp
                 # ANTS-1430 — project_layout scan helper.
-                tests/features/mcp_project_layout_scan/test_project_layout_scan.cpp)
+                tests/features/mcp_project_layout_scan/test_project_layout_scan.cpp
+                # ANTS-1457 — false-positive ledger helper.
+                tests/features/audit_falsepos_ledger/test_audit_falsepos_ledger.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
@@ -1028,7 +1033,13 @@ if(ANTS_TESTS)
         # ANTS-1372 source-grep tests: roadmap_fold_in needs visibility
         # into remotecontrol.cpp + roadmapfoldin.cpp for S1-S5.
         SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
-        SRC_ROADMAPFOLDIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapfoldin.cpp")
+        SRC_ROADMAPFOLDIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapfoldin.cpp"
+        # ANTS-1457 — false-positive ledger source-scrape paths.
+        SRC_FALSEPOS_H_PATH="${CMAKE_SOURCE_DIR}/src/falseposledger.h"
+        SRC_FALSEPOS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/falseposledger.cpp"
+        SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
+        SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
+        SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp")
 
     # ANTS-1217 Phase 6 — test_dialogs bundle. Subject: settingsdialog +
     # roadmapdialog + diffviewer (the dialogs hosted by chrome). 11 tests

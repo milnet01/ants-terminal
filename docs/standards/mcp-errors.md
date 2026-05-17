@@ -1,5 +1,12 @@
 # MCP / IPC error-code conventions
 
+> **Superseded by [mcp-error-codes.md](mcp-error-codes.md) (ANTS-1353).**
+> This file is the earlier (2026-05-12) draft from the
+> optimisation-lane cold-eyes pass; the authoritative taxonomy
+> now lives at `mcp-error-codes.md`. Kept as historical
+> reference only — do not author new error codes against this
+> document.
+
 Source: cold-eyes pass 2 on the token-reduction spec pack
 (ANTS-1247..1252), 2026-05-12. Optimisation-lane reviewer M1/M2.
 

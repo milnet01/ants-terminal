@@ -23,6 +23,9 @@ template):
 | Standard | Covers |
 |----------|--------|
 | [status-bar.md](status-bar.md) | Status-bar widget convention specific to this codebase's `MainWindow` + `ClaudeStatusBarController` architecture. |
+| [audit-false-positives.md](audit-false-positives.md) | False-positive ledger (`.ants_review_falsepos.jsonl`) shared across `/audit`, `/cold-eyes`, `/indie-review`, `/test-audit` sweep skills — schema, CC write contract, MCP read contract. |
+| [mcp-error-codes.md](mcp-error-codes.md) | Canonical taxonomy for the `code` field on MCP refusal envelopes (ANTS-1353). Five categories: input validation, resource state, caller-cwd contract, I/O, dispatcher. |
+| [mcp-errors.md](mcp-errors.md) | Earlier (2026-05-12) draft of MCP error-code families — kept as historical reference; `mcp-error-codes.md` (ANTS-1353) is the authoritative version. |
 
 ## How they fit together
 

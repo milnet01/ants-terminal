@@ -8876,6 +8876,33 @@ template / mutate this state atomically" → movable. If it's
   Source: cross-session-report-2026-05-17 (RetroArch CC instance
   running `audit_run` against a flat-layout C project).
 
+- 🚧 [ANTS-1457] **False-positive ledger
+  (`.ants_review_falsepos.jsonl`) shared across `/audit`,
+  `/cold-eyes`, `/indie-review`, `/test-audit`.** New project-level
+  standard at `docs/standards/audit-false-positives.md` defines an
+  append-only JSONL ledger at repo root that CC sessions write when
+  a finding is classified `FALSE_POSITIVE` during fold-in. The
+  three AI-reviewer brief-assembly paths (`indie_review_brief`,
+  `indie_review_dispatch`, `cold_eyes_brief`, `test_audit_brief`)
+  read the ledger and inject a "previously-rejected findings (do
+  not re-raise)" block into the brief — text form for the prose-
+  shaped briefs, structured `prior_false_positives` array for
+  test-audit. Schema, 4-backtick fence + sentinel + treat-as-data
+  hardening, surrogate-safe truncation, secret advisory, atomic-
+  append recipe (POSIX `O_APPEND` + leading-`\n` self-heal) all
+  pinned in the standard. v1 is read-only on the MCP side; CC
+  writes via `printf '\n%s\n' "$record" >> .ants_review_falsepos.jsonl`.
+  Cold-eyes-reviewed across 5 lanes (schema/parser, security,
+  concurrency/IO, cross-doc, implementation+tests). Spec:
+  `docs/specs/ANTS-1457.md`.
+  **Layman:** when the user dismisses an AI reviewer's finding as
+  "not really a bug, because Y", we now save that Y next to the
+  project. The next time we run any review skill, we hand Y back
+  to the reviewer up-front so they don't re-raise the same thing
+  and we don't pay for the same argument twice.
+  Kind: implement.
+  Source: user-request-2026-05-17.
+
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 
 - 📋 [ANTS-1453] **Per-tool "use this when..." selection hint on

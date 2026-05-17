@@ -4090,6 +4090,9 @@ void MainWindow::setupClaudeMcpProviders() {
             env["dimensions"]        = QJsonArray::fromStringList(r.dimensions);
             env["framework_context"] = r.frameworkContext;
             env["pre_pass_findings"] = r.prePassFindings;
+            // ANTS-1457 — surface the prior false-positive ledger
+            // entries as a structured field for the reviewer LLM.
+            env["prior_false_positives"] = r.priorFalsePositives;
             env["byte_count"]        = r.byteCount;
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
         });

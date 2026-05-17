@@ -1,5 +1,6 @@
 #include "coldeyesengine.h"
 
+#include "falseposledger.h"
 #include "indiereviewengine.h"
 
 #include <QChar>
@@ -319,6 +320,20 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
                             "verify doc-vs-code accuracy)\n\n");
         for (const QString &p : m.citedCodePaths) {
             b += QStringLiteral("- ") + p + QChar('\n');
+        }
+    }
+    // ANTS-1457 — previously-rejected findings (do not re-raise).
+    // Inserted before the Instructions section so the reviewer
+    // reads it before they begin.
+    {
+        const auto fpEntries = ants::falsepos::filter(
+            ants::falsepos::loadEntries(projectPath),
+            QStringLiteral("cold-eyes"), lane.name);
+        const QString block = ants::falsepos::formatForBrief(fpEntries);
+        if (!block.isEmpty()) {
+            b += QChar('\n');
+            b += block;
+            if (!b.endsWith(QChar('\n'))) b += QChar('\n');
         }
     }
     b += QStringLiteral(
