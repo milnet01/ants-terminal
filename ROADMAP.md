@@ -5251,7 +5251,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1353] **`docs/standards/mcp-error-codes.md` —
+- ✅ [ANTS-1353] **`docs/standards/mcp-error-codes.md` —
   central code taxonomy.** Every MCP tool emits a `code` field
   on error (`bad_path`, `bad_args`, `bad_pattern`, `bad_glob`,
   `no_project`, `no_window`, `not_found`, `cap_exceeded`,
@@ -5266,7 +5266,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1354] **MCP tool descriptor `version` field.** No
+- ✅ [ANTS-1354] **MCP tool descriptor `version` field.** No
   per-tool version today. If the wrap format (ANTS-1294)
   evolves to v2 or a tool changes its response schema,
   consumers can't tell which version they're talking to. Add a
@@ -5550,7 +5550,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (deferred from ANTS-1404 § Out
   of scope).
 
-- 📋 [ANTS-1416] **Hoist `session_memory`'s RcGate into the
+- ✅ [ANTS-1416] **Hoist `session_memory`'s RcGate into the
   dispatcher's `Required` contract.** ANTS-1336 (shipped
   2026-05-16) made `session_memory` require `caller_cwd` for
   every op via an in-handler `RcGate::checkCallerCwd` call.
@@ -5573,7 +5573,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (self-observed during ANTS-1336
   + ANTS-1404 design).
 
-- 📋 [ANTS-1417] **Test asserts every registered tool has a
+- ✅ [ANTS-1417] **Test asserts every registered tool has a
   `CallerCwdContract` classification entry.** ANTS-1404 § 4
   INV-4 documents that unclassified tools default to `Optional`
   (gracious degradation). But there's no test that catches an
@@ -5594,7 +5594,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   implementation; the INV-1 promise was logged but the test was
   never created).
 
-- 📋 [ANTS-1418] **Refusal envelopes name `caller_cwd_info` as
+- ✅ [ANTS-1418] **Refusal envelopes name `caller_cwd_info` as
   the diagnostic path.** ANTS-1400 shipped the diagnostic verb
   but ANTS-1404's refusal envelope says "Pass your $PWD as
   caller_cwd" without mentioning the verb that lets the caller
@@ -5764,7 +5764,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (user-observed during
   Bundle C kickoff).
 
-- 📋 [ANTS-1423] **Roadmap dialog "Current" preset shows
+- ✅ [ANTS-1423] **Roadmap dialog "Current" preset shows
   ✅ shipped items mixed with planned / in-progress.**
   User screenshot 2026-05-16 (during Bundle C kickoff)
   shows the Current tab listing "8 shipped" /
@@ -5852,7 +5852,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: user-request-2026-05-16 (Bundle C kickoff).
 
-- 📋 [ANTS-1425] **`roadmap_query` rollup filter v2 — widen predicate to drop bullets with empty `id` regardless of headline.**
+- ✅ [ANTS-1425] **`roadmap_query` rollup filter v2 — widen predicate to drop bullets with empty `id` regardless of headline.**
   ANTS-1398 v1 used `id.isEmpty() && headline.isEmpty()` as the
   rollup predicate. The leading status-only rollup cards
   ("📋 N planned" with no headline) are now filtered — proven
@@ -6469,7 +6469,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, roadmap_log, ANTS-1428.
   Source: in-session-2026-05-16 (self-observed during ANTS-1435 ship).
 
-- 📋 [ANTS-1442] **`roadmap_query mode:"section_index"` returns zero counts for every section.**
+- ✅ [ANTS-1442] **`roadmap_query mode:"section_index"` returns zero counts for every section.**
   Observed 2026-05-17 live-testing ANTS-1437 on this repo's own
   ROADMAP.md: every section in the returned `sections[]` array shows
   `active_count: 0, shipped_count: 0, total_count: 0`, despite the
@@ -6590,7 +6590,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: testauditengine.
   Source: deferred from ANTS-1397 § 9 Q-E (cold-eyes loop 3 2026-05-17).
 
-- 📋 [ANTS-1448] **ADR — same-uid trust model for the MCP audit/test-audit/synth suite.**
+- ✅ [ANTS-1448] **ADR — same-uid trust model for the MCP audit/test-audit/synth suite.**
   ANTS-1351 + ANTS-1397 + ANTS-1352 all defer multiple security
   concerns to "accepted under same-uid trust model" (stderr leaks,
   pattern_id read primitive, registry pulls, TOCTOU on reports_dir).
