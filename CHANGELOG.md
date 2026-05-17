@@ -606,6 +606,31 @@ once real consumers hit it.
   default) so Claude Code can detect when a tool's response shape
   has changed and adapt its parsing.
 
+- **ANTS-1416 — `session_memory`'s `Required` contract pinned by a
+  baseline test.** The roadmap bullet asked to "hoist
+  `session_memory`'s RcGate into the dispatcher's `Required`
+  contract and drop the handler-level RcGate call." Half of that
+  already shipped: ANTS-1336 classified `session_memory` as
+  `Required` in `callerCwdContractFor`, so the dispatcher refuses
+  empty-`caller_cwd` calls upstream of the handler. The handler-
+  level RcGate / `cwd_missing` checks stay — `cmdSessionMemory` is
+  reachable via both the MCP dispatcher AND the JSON-RPC IPC
+  socket, and the IPC path doesn't go through
+  `callerCwdContractFor`, so the in-handler checks are essential
+  IPC-path coverage (not redundant).
+  This commit adds `mcp_required_contract_baseline` — a tight
+  functional test that pins the Required group's membership
+  (session_memory + 7 peers) so a future contributor can't silently
+  downgrade any of them to `Optional`, re-opening the silent-
+  focused-fallback leak ANTS-1404 closed. Spec
+  `tests/features/mcp_required_contract_baseline/spec.md`; tests
+  (3 invariants — session_memory Required, full baseline group,
+  caller_cwd_info still Optional).
+  Layman: a test now locks in which MCP tools must always demand
+  a project path from the caller — including `session_memory`. If
+  anyone accidentally weakens one of those tools in the future,
+  the build fails.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1

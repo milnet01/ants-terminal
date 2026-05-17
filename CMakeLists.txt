@@ -876,6 +876,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_narrator_filter/test_narrator_filter.cpp
                 # ANTS-1354 MCP tool descriptor version field.
                 tests/features/mcp_tool_descriptor_version/test_tool_descriptor_version.cpp
+                # ANTS-1416 MCP Required-contract baseline (session_memory + peers).
+                tests/features/mcp_required_contract_baseline/test_required_contract_baseline.cpp
                 # ANTS-1435 session_memory + project_layout read-op tenancy split.
                 tests/features/session_memory_read_caller_cwd/test_session_memory_read_caller_cwd.cpp
                 # ANTS-1436 roadmap_query pagination + auto-truncate.
