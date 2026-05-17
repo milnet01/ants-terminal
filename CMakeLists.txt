@@ -13,60 +13,42 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_definitions(ANTS_VERSION="${PROJECT_VERSION}")
 
 # ---------------------------------------------------------------------------
-# Build metadata for Help → About (ANTS-1222)
+# Build metadata for Help → About (ANTS-1222 + ANTS-1394 build-time refresh)
 # ---------------------------------------------------------------------------
-# Configure-time bake: date, build type, short git SHA. Surfaced via
-# the generated `build_info.h` (see cmake/build_info.h.in). Only
-# `aboutdialogs.cpp` includes this header, so a SHA change recompiles
-# one TU rather than every TU (vs add_compile_definitions which would
-# invalidate ccache for the whole project on every commit).
-#
-# Reconfigure to refresh between commits — `cmake build/` re-runs the
-# git rev-parse step and rewrites the header. The compiler ID/version
-# is detected at COMPILE time inside aboutdialogs.cpp via __GNUC__ /
+# Build-time bake: date, time, build type, short git SHA. Surfaced
+# via the generated `build_info.h` (see cmake/build_info.h.in). Only
+# `aboutdialogs.cpp` + `mainwindow.cpp` include this header, so a
+# SHA change recompiles two TUs rather than every TU (vs
+# add_compile_definitions which would invalidate ccache for the
+# whole project on every commit). The compiler ID/version is
+# detected at COMPILE time inside aboutdialogs.cpp via __GNUC__ /
 # __clang_major__, so no CMake plumbing for that.
-if(DEFINED ENV{SOURCE_DATE_EPOCH})
-    string(TIMESTAMP ANTS_BUILD_DATE "%Y-%m-%d" UTC)
-    # ANTS-1323: HH:MM minute granularity for intra-day rebuilds.
-    # Multiple builds in one day used to collapse to the same
-    # "0.7.92 · 2026-05-14" label, leaving the user unable to tell
-    # one local build from another (especially during the weekly
-    # rolling-RC cycle where every push to main rebuilds).
-    string(TIMESTAMP ANTS_BUILD_TIME "%H:%M" UTC)
-else()
-    string(TIMESTAMP ANTS_BUILD_DATE "%Y-%m-%d")
-    string(TIMESTAMP ANTS_BUILD_TIME "%H:%M")
-endif()
-
-set(ANTS_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
-if(NOT ANTS_BUILD_TYPE)
-    set(ANTS_BUILD_TYPE "Unknown")
-endif()
-
-set(ANTS_BUILD_COMMIT "unknown")
-find_program(GIT_EXECUTABLE git)
-if(GIT_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        OUTPUT_VARIABLE _git_sha_raw
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE _git_sha_result
-        ERROR_QUIET)
-    if(_git_sha_result EQUAL 0 AND _git_sha_raw)
-        set(ANTS_BUILD_COMMIT "${_git_sha_raw}")
-    endif()
-endif()
-
-configure_file(
-    "${CMAKE_SOURCE_DIR}/cmake/build_info.h.in"
-    "${CMAKE_BINARY_DIR}/generated/build_info.h"
-    @ONLY)
-
+#
+# ANTS-1394: a custom target ALL invokes cmake/GenerateBuildInfo.cmake
+# on every build (not every configure), so incremental rebuilds
+# advance the timestamp. configure_file's copy_if_different keeps
+# ccache warm when an intra-minute rebuild produces the same content.
 # Default build type if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
+
+# ANTS-1394: build_info.h refresh on every build, not every configure.
+# add_custom_target ALL always re-runs the script; configure_file
+# inside the script uses copy_if_different so ccache stays warm
+# on intra-minute rebuilds (the file's mtime only advances when
+# the embedded HH:MM minute changed OR git SHA / build type changed).
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+add_custom_target(ants_build_info ALL
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DOUTPUT_FILE=${CMAKE_BINARY_DIR}/generated/build_info.h
+        -DTEMPLATE_FILE=${CMAKE_SOURCE_DIR}/cmake/build_info.h.in
+        -DANTS_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -P ${CMAKE_SOURCE_DIR}/cmake/GenerateBuildInfo.cmake
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/build_info.h
+    COMMENT "Refreshing build_info.h timestamp (ANTS-1394)"
+    VERBATIM)
 
 # Qt6 version floor. 6.2 is the first LTS that ships the full set of
 # components we need (DBus was stabilised in 6.2; Qt6OpenGLWidgets
@@ -280,6 +262,9 @@ target_link_libraries(ants_chrome_lib
 target_include_directories(ants_chrome_lib
     PRIVATE "${CMAKE_BINARY_DIR}/generated")
 set_target_properties(ants_chrome_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# ANTS-1394: mainwindow.cpp #includes build_info.h — must wait for
+# the build-time regenerator so the timestamp is fresh per build.
+add_dependencies(ants_chrome_lib ants_build_info)
 if(LayerShellQt_FOUND)
     target_link_libraries(ants_chrome_lib PRIVATE LayerShellQt::Interface)
     target_compile_definitions(ants_chrome_lib PRIVATE ANTS_WAYLAND_LAYER_SHELL=1)
@@ -343,6 +328,8 @@ target_link_libraries(ants_dialogs_lib
 target_include_directories(ants_dialogs_lib
     PRIVATE "${CMAKE_BINARY_DIR}/generated")
 set_target_properties(ants_dialogs_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# ANTS-1394: aboutdialogs.cpp #includes build_info.h.
+add_dependencies(ants_dialogs_lib ants_build_info)
 
 if(LUA_FOUND)
     add_library(ants_lua_lib STATIC

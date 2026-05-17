@@ -7294,7 +7294,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Source: in-session-2026-05-15 (verifying ANTS-1391 post-restart).
 
-- 📋 [ANTS-1394] **`ANTS_BUILD_TIME` label is stale on incremental
+- ✅ [ANTS-1394] **`ANTS_BUILD_TIME` label is stale on incremental
   rebuilds — ANTS-1323 regression.** Discovered 2026-05-15 by repro:
   source edits + `cmake --build build` produced a binary linked at
   14:13 but `Help → About` still showed `13:26` (the time `cmake -B
