@@ -1599,6 +1599,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "clients get only actionable entries. "
                         "Opt-in for back-compat callers (ANTS-1398).");
                     props["include_section_headers"] = inclHeadersProp;
+                    // ANTS-1425 — opt-in for narrator bullets (empty
+                    // id, non-empty headline — section-summary prose).
+                    QJsonObject inclNarratorsProp;
+                    inclNarratorsProp["type"] = "boolean";
+                    inclNarratorsProp["default"] = false;
+                    inclNarratorsProp["description"] = QStringLiteral(
+                        "If true, retain narrator bullets (empty id, "
+                        "non-empty headline — section-summary prose "
+                        "like \"Trust-model gaps in IPC sockets.\"). "
+                        "Default false — roadmap-format.md § 3.5.1 "
+                        "makes the [PROJ-NNNN] ID mandatory for every "
+                        "actionable bullet, so empty-id is a "
+                        "non-actionable marker. Opt-in for back-compat "
+                        "callers (ANTS-1425).");
+                    props["include_narrator_bullets"] = inclNarratorsProp;
                     // ANTS-1437 — mode arg. Default "bullets" (legacy).
                     // "section_index" returns a compact section index
                     // instead of bullets — use to discover slugs cheaply.

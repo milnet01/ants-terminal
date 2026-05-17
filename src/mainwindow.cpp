@@ -3891,6 +3891,9 @@ void MainWindow::setupClaudeMcpProviders() {
             // also dropped here. Caught while landing ANTS-1437.
             const QJsonValue inclVal = args.value("include_section_headers");
             if (inclVal.isBool()) req["include_section_headers"] = inclVal.toBool();
+            // ANTS-1425 — forward `include_narrator_bullets` opt-in.
+            const QJsonValue inclNarVal = args.value("include_narrator_bullets");
+            if (inclNarVal.isBool()) req["include_narrator_bullets"] = inclNarVal.toBool();
             // ANTS-1436 — forward offset/limit VERBATIM (not
             // type-gated) so the handler can emit bad_args on
             // non-numeric. The only roadmap_query dispatch lambda

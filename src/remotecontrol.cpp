@@ -1188,6 +1188,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         req.contains(QStringLiteral("include_section_headers"));
     const bool includeSectionHeaders =
         req.value(QStringLiteral("include_section_headers")).toBool(false);
+    // ANTS-1425 — `include_narrator_bullets` opt-in. Default false —
+    // narrator bullets (empty id, non-empty headline; section-summary
+    // prose like "Trust-model gaps in IPC sockets.") are also dropped
+    // server-side. roadmap-format.md § 3.5.1 makes the stable
+    // [PROJ-NNNN] ID mandatory for every actionable bullet, so the
+    // empty-id signal is a sufficient non-actionable marker. Mirrors
+    // the v1 design of `include_section_headers`; back-compat callers
+    // who depend on narrator bullets can opt back in.
+    const bool hasIncludeNarratorsArg =
+        req.contains(QStringLiteral("include_narrator_bullets"));
+    const bool includeNarratorBullets =
+        req.value(QStringLiteral("include_narrator_bullets")).toBool(false);
 
     // ANTS-1398-INV-2: rollup predicate. A bullet is a section rollup
     // iff its `id` and `headline` are both empty — the unambiguous
@@ -1197,6 +1209,21 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         return o.value(QStringLiteral("id")).toString().isEmpty()
             && o.value(QStringLiteral("headline")).toString().isEmpty();
     };
+    // ANTS-1425 — narrator predicate. Disjoint with isRollupBullet
+    // (rollup has empty headline, narrator has non-empty headline);
+    // both share empty id.
+    auto isNarratorBullet = [](const QJsonValue &v) {
+        const QJsonObject o = v.toObject();
+        return o.value(QStringLiteral("id")).toString().isEmpty()
+            && !o.value(QStringLiteral("headline")).toString().isEmpty();
+    };
+    // ANTS-1425 — single drop helper that composes both opt-ins.
+    auto shouldDropUnnumbered =
+        [&](const QJsonValue &v) {
+            if (isRollupBullet(v)   && !includeSectionHeaders)  return true;
+            if (isNarratorBullet(v) && !includeNarratorBullets) return true;
+            return false;
+        };
 
     // ANTS-1391: when caller_cwd is present, derive the ROADMAP.md path
     // under that root (matching MainWindow::refreshRoadmapButton's
@@ -1529,12 +1556,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 if (keep) filtered.append(v);
             }
         }
-        // ANTS-1398-INV-3b: section-mode emission path drops rollup
-        // bullets post-status filter unless the caller opts in.
-        if (!includeSectionHeaders) {
+        // ANTS-1398-INV-3b + ANTS-1425 — section-mode emission drops
+        // both rollup and narrator bullets post-status filter unless
+        // the caller opts each class back in via the matching flag.
+        {
             QJsonArray pruned;
             for (const auto &v : std::as_const(filtered)) {
-                if (!isRollupBullet(v)) pruned.append(v);
+                if (!shouldDropUnnumbered(v)) pruned.append(v);
             }
             filtered = pruned;
         }
@@ -1561,6 +1589,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // ANTS-1398-INV-5: echo the opt-in only when the caller set it.
         if (hasIncludeHeadersArg) {
             out["include_section_headers"] = includeSectionHeaders;
+        }
+        // ANTS-1425 — same echo-only-when-set discipline.
+        if (hasIncludeNarratorsArg) {
+            out["include_narrator_bullets"] = includeNarratorBullets;
         }
         // ANTS-1437 — mode echo only when caller set the arg
         // (default-back-compat envelope shape per INV-1).
@@ -1648,13 +1680,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (keep) filtered.append(v);
         }
     }
-    // ANTS-1398-INV-3a: full-file emission path drops rollup bullets
-    // post-status filter unless the caller opts in. Runs after status
-    // filter so the rollup card's status emoji can't leak through.
-    if (!includeSectionHeaders) {
+    // ANTS-1398-INV-3a + ANTS-1425 — full-file emission drops both
+    // rollup and narrator bullets post-status filter unless the caller
+    // opts each class back in via the matching flag.
+    {
         QJsonArray pruned;
         for (const auto &v : std::as_const(filtered)) {
-            if (!isRollupBullet(v)) pruned.append(v);
+            if (!shouldDropUnnumbered(v)) pruned.append(v);
         }
         filtered = pruned;
     }
@@ -1698,6 +1730,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // so the default-false case stays trim on the wire.
     if (hasIncludeHeadersArg) {
         out["include_section_headers"] = includeSectionHeaders;
+    }
+    // ANTS-1425 — same echo-only-when-set discipline.
+    if (hasIncludeNarratorsArg) {
+        out["include_narrator_bullets"] = includeNarratorBullets;
     }
     // ANTS-1437 — mode echo only when caller set the arg
     // (default-back-compat envelope shape per INV-1).

@@ -550,6 +550,32 @@ once real consumers hit it.
   caller see exactly which project Ants would have routed to —
   so the user can debug their setup instead of guessing.
 
+- **ANTS-1425 — `roadmap_query` rollup filter v2: drops narrator
+  bullets in addition to rollups.** ANTS-1398 v1 dropped only
+  status-only rollup cards (empty id + empty headline). A second
+  class still leaked through: narrator bullets (empty id, non-
+  empty headline — e.g. "Trust-model gaps in IPC sockets.").
+  Since `roadmap-format.md` § 3.5.1 mandates a stable `[PROJ-NNNN]`
+  ID for every actionable bullet, `id.isEmpty()` is a sufficient
+  non-actionable marker.
+  Added an `isNarratorBullet` predicate (disjoint complement of
+  `isRollupBullet` — both share empty id, narrator has non-empty
+  headline), a `shouldDropUnnumbered` helper that composes both
+  predicates with their opt-in flags, and an
+  `include_narrator_bullets` opt-in (default false, mirrors
+  `include_section_headers`). Schema + dispatch forward + echo-
+  only-when-set discipline all match the v1 design. The two opt-
+  ins are orthogonal — passing either alone retains its class
+  while still dropping the other.
+  Spec `tests/features/roadmap_query_narrator_filter/spec.md`;
+  tests `tests/features/roadmap_query_narrator_filter/` (6
+  invariants — opt-in read, predicate shape, drop helper, schema
+  advertised, dispatch forward, echo discipline).
+  Layman: the roadmap filter that already hid the "N planned"
+  summary cards now also hides the unnumbered prose lines that
+  some sections use for context. Callers can ask for them back
+  with a flag if they need them.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1
