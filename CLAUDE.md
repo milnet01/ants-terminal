@@ -282,6 +282,12 @@ Four shareable v1 standards at `docs/standards/`:
   — stable `[ANTS-NNNN]` IDs from `.roadmap-counter`, status emojis
   (✅ 🚧 📋 💭), theme emojis, position-is-priority, `Kind:` /
   `Source:` taxonomy, fold-in subsections.
+- Sub-spec: [`mcp-error-codes.md`](docs/standards/mcp-error-codes.md)
+  (ANTS-1353) — canonical taxonomy for the `code` field on MCP
+  refusal envelopes (`{ok:false, error, code}`). Five categories:
+  input validation, resource state, caller-cwd contract, I/O, and
+  dispatcher. Cite when adding or reusing a code in a new refusal
+  site.
 
 `coding.md`, `commits.md`, and `testing.md` are byte-identical to
 `/start-app`'s template at

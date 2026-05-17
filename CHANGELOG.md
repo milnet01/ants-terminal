@@ -576,6 +576,21 @@ once real consumers hit it.
   some sections use for context. Callers can ask for them back
   with a flag if they need them.
 
+- **ANTS-1353 — `docs/standards/mcp-error-codes.md` central
+  taxonomy.** New shareable v1 standards doc that classifies every
+  `code` field on MCP refusal envelopes (`{ok:false, error, code}`)
+  into five categories — input validation, resource state, caller-
+  cwd contract, I/O, dispatcher. Documents ~25 existing codes
+  grepped from `src/*.cpp`, plus the "adding a new code" workflow
+  (pick a category, check for an existing fit, add a row with
+  meaning + example, cite the doc from the implementation comment).
+  Linked from CLAUDE.md alongside the other shared standards.
+  Layman: Ants MCP tools fail with short machine-readable error
+  codes like "bad_path" or "caller_cwd_required". This new doc is
+  the master list of every code, what each one means, and when to
+  reuse vs. add a new one — so future tools don't invent
+  inconsistent codes that callers can't switch on.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1
