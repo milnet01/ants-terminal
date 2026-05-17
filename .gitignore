@@ -86,6 +86,13 @@ ants-audit-*.html
 # no signal worth versioning.
 audit_rule_quality.json
 audit_rule_quality.jsonl
+# Prose-grain false-positive ledger written by the four AI-reviewer
+# sweep skills (/audit, /cold-eyes, /indie-review, /test-audit). Per
+# docs/standards/audit-false-positives.md § Limitations, projects whose
+# rationale entries cite file:line of sensitive areas should keep the
+# file local; this project's entries name fixture credentials and
+# test-internal paths, so it stays gitignored alongside .audit_cache/.
+.ants_review_falsepos.jsonl
 __pycache__/
 *.pyc
 *.pyo
