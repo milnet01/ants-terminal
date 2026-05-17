@@ -898,15 +898,22 @@ SynthResult synthesize(const SynthRequest &req) {
     }
     r.mode = mode;
 
-    // Read *.md top-level only.
+    // Read *.md / *.json top-level. ANTS-1485 — accept .json reports
+    // too: subagent harnesses sometimes drop structured JSON instead
+    // of markdown. Downstream passes are regex-over-text so JSON
+    // bodies still match dimension keywords and `[SEV]` bullets; the
+    // experience degrades when a chunk uses pure JSON-object shape
+    // with no prose tags, but that's no worse than receiving fewer
+    // chunks — and dropping the file via reports_dir_empty was worse.
     QDir dir(canonDir);
-    const QStringList md = dir.entryList({QStringLiteral("*.md")},
-                                         QDir::Files);
+    QStringList md = dir.entryList({QStringLiteral("*.md"),
+                                    QStringLiteral("*.json")},
+                                   QDir::Files);
     if (md.isEmpty()) {
         r.ok = false; r.code = QStringLiteral("reports_dir_empty");
         r.error = QStringLiteral(
             "test_audit_synthesis_prompt: reports_dir \"%1\" contains "
-            "no *.md files at top level").arg(req.reportsDir);
+            "no *.md or *.json files at top level").arg(req.reportsDir);
         return r;
     }
     r.chunksTotal = md.size();

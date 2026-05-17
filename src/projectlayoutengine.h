@@ -54,6 +54,11 @@ struct LayoutEnvelope {
     // Probed paths (relative to rootCwd). isStale() re-stats
     // these to detect post-scan changes.
     QStringList    probedPaths;
+    // ANTS-1507 — every probe that actually matched (file or dir).
+    // Lets callers tell "scan succeeded with nothing" from "scan
+    // succeeded and here's what I found" without inspecting every
+    // nested field. Entries are project-relative paths.
+    QStringList    discovered;
 };
 
 // Walks the well-known path set under `absoluteCwd`, populates

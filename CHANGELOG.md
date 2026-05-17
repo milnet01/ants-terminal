@@ -12,6 +12,133 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 Ants-MCP cross-session-report fold-in pull 2 (in flight, 2026-05-18)
+
+Second pull from the 2026-05-17 cross-session-report fold-in. Items
+group around external CC sessions' real-world usability gaps in the
+MCP surface — case-sensitivity bumps on contract-doc names, sparse-
+default partition output, descriptor token-budget hints, and
+synthesis-prompt acceptance of subagent-produced `.json` reports.
+Seven items shipped (1485 / 1503 / 1505 / 1506 / 1507 / 1508 / 1511).
+
+- **ANTS-1485 — `test_audit_synthesis_prompt` accepts `*.json` reports
+  alongside `*.md`.** `TestAuditEngine::synthesize` widened its
+  reports-dir scan from `entryList({"*.md"})` to `{"*.md", "*.json"}`
+  so subagent harnesses that drop structured-JSON chunk reports
+  (instead of markdown) no longer trip the `reports_dir_empty`
+  refusal. Downstream passes (dimension keyword count, finding-
+  bullet regex, file-reference index) are regex-over-text and keep
+  working when the report is a JSON object whose prose fields still
+  embed dimension names + `[SEV]` tags. The error message also
+  updates to read "no *.md or *.json files at top level" so callers
+  with neither shape get the accurate hint.
+  Layman: the test-audit synthesis step used to refuse to combine
+  subagent reports when they were written as `.json` instead of
+  `.md`; now it accepts both shapes so a chunk's contents matter
+  more than its file extension.
+
+- **ANTS-1503 — `get_last_command` gains a `mode:"summary"` envelope.**
+  Default `mode:"full"` keeps the original `{exit_code, output,
+  failed}` shape for back-compat. New `mode:"summary"` returns
+  `{exit_code, line_count, last_20[], ms, failed, mode}` — `last_20`
+  is the trailing 20 lines of the captured output (the same 100-line
+  cap as full mode applies before tailing), `ms` is the duration
+  from the most recent completed OSC 133 prompt region. Cuts a
+  typical 1–4 KiB body to a few hundred bytes when a caller only
+  needs exit + tail + duration for a status check. Descriptor adds
+  the `mode` enum + selection_hint pointing at the summary mode for
+  status-check callers.
+  Layman: the "what just happened" tool can now return a short
+  summary (last 20 lines + duration) instead of the full command
+  output, which is much smaller when the caller just wants to know
+  if a build succeeded.
+
+- **ANTS-1505 — Per-tool `typical_token_cost` + `worst_case_tokens`
+  on every MCP descriptor.** The `tools/list` builder appends both
+  fields to each descriptor from a flat lookup table keyed by tool
+  name (control-plane reads ~100 typical / ~400 worst; terminal-
+  state reads ~300–1500 / ~800–8000; audit + indie-review heavy
+  paths ~2000–4000 / ~10000–25000). Callers use the hints to size
+  cold-start discovery and pick between overlapping tools without
+  having to call each one once to measure. Values are conservative,
+  rounded to ≤2 sig-fig, and shipped as advice rather than
+  contracts — a future ANTS-1505 follow-up may wire them to the
+  live `token_usage` telemetry so the descriptors track real
+  per-call cost.
+  Layman: every MCP tool description now carries a "this usually
+  costs N tokens, worst case M tokens" hint so the calling assistant
+  can budget before invoking.
+
+- **ANTS-1506 — `cold_eyes_partition` near-empty default surface +
+  case-insensitive contract-doc match + summary mirrors matched
+  docs.** Three fixes in one pull. (1) When `derivePartition` runs
+  under default scope and yields ≤1 lane, `cmdColdEyesPartition`
+  surfaces `{sparse_partition:true, sparse_partition_hint:"..."}`
+  so callers don't treat a sparse scan as a successful sweep —
+  almost-empty default-scope output means a misnamed contract doc
+  or a root that isn't the repo root. (2) `derivePartition` now
+  uses a `caseInsensitiveResolve` helper for contract docs (CLAUDE,
+  README, ROADMAP, CHANGELOG, PLUGINS) and the `docs/standards/`
+  + `docs/decisions/` directories — projects shipping `Readme.md`,
+  `Roadmap.md`, etc. no longer get treated as missing those docs.
+  (3) The contracts-lane summary is now built from the matched
+  doc list (`"CLAUDE.md + README.md (cross-cutting)"`) instead of
+  hard-coding all four names regardless of which actually existed,
+  closing the summary-vs-doc_paths divergence in the response.
+  Layman: the cold-eyes partition step is now case-insensitive
+  for contract doc names, surfaces an explicit warning when it
+  finds almost nothing under the default settings, and its summary
+  line names only the docs it actually found.
+
+- **ANTS-1507 — `project_layout` case-insensitive probe + YAML
+  changelog + `discovered[]` array.** `ProjectLayoutEngine::scanLayout`
+  now routes every probe through the same `caseInsensitiveResolve`
+  helper so contract-doc filenames in non-canonical case
+  (`Readme.md`, `roadmap.md`, `changelog.md`) resolve to their
+  canonical probe slot instead of being treated as absent. The
+  changelog candidate list expands to include `CHANGELOG.yaml` and
+  `CHANGELOG.yml` for projects whose release notes ship as YAML
+  (mixed with the existing `.md` candidates; first-hit wins). The
+  envelope grows a `discovered[]` array — every probe that
+  actually matched, in scan order — so callers can disambiguate
+  "scan ran and found nothing" from "scan succeeded and here's the
+  list" without inspecting every nested field. `isStale` also
+  routes through the case-insensitive resolver so a Read/rename
+  swap to a different case still invalidates the cache.
+  Layman: the project-layout scan now spots contract docs in
+  different cases (Readme.md vs README.md), recognises YAML
+  changelogs, and reports back the full list of things it found.
+
+- **ANTS-1508 — `cold_eyes_brief` accepts arbitrary lane names with
+  `doc_paths[]` fallback.** `cmdColdEyesBrief` previously refused
+  with `code:"not_found"` whenever the caller passed a lane name
+  not in the auto-partition. The handler now accepts an optional
+  `doc_paths[]` array — when the lane isn't in the cached partition
+  but `doc_paths` is supplied, an ad-hoc `Lane` is synthesised on
+  the fly with summary "Ad-hoc lane (caller-supplied doc_paths)."
+  Each entry is anchored inside the project root via the same
+  INV-13 logic the partition.json override uses (no symlink escape,
+  no absolute paths, must exist). When the lane is unknown AND
+  `doc_paths` is absent, the refusal envelope now also carries a
+  `known_lanes[]` array so the caller can recover without a second
+  round-trip to `cold_eyes_partition`.
+  Layman: callers driving custom cold-eyes sweeps can now pass any
+  lane name plus their own list of doc paths, instead of being
+  limited to the auto-discovered lane set.
+
+- **ANTS-1511 — `project_layout` top-level `roadmap_found` +
+  `changelog_found` booleans.** The envelope now emits both flags
+  alongside the nested `roadmap.*` / `changelog.*` objects. Callers
+  used to have to inspect the nested `path` field and check
+  `isEmpty()` to tell "scan succeeded with no roadmap" from "scan
+  failed midway"; the booleans surface that one bit directly.
+  `fromJson` doesn't need to mirror them since they're derived from
+  the nested fields on every `toJson` — single source of truth.
+  Layman: the project-layout response now carries simple yes/no
+  flags for "did you find a roadmap?" and "did you find a
+  changelog?" so callers don't have to dig through nested fields
+  to find out.
+
 ### 🪙 Bundle C — MCP token-economy hygiene (in flight, 2026-05-16)
 
 Third bundle from the 0.7.92 plan. Items group around the MCP layer:

@@ -42,6 +42,39 @@ bool fileExists(const QString &projectPath, const QString &rel) {
     return QFileInfo::exists(projectPath + QChar('/') + rel);
 }
 
+// ANTS-1506 — case-insensitive contract-doc resolver. Mirrors the
+// projectlayoutengine helper: walks each path component against the
+// real on-disk entries so `Claude.md` / `readme.md` / `Roadmap.md`
+// resolve to the canonical contract-doc names instead of silently
+// missing. Returns the actual on-disk relative path that matched,
+// or QString() on miss.
+QString caseInsensitiveResolve(const QString &projectPath,
+                               const QString &relPath) {
+    if (QFileInfo::exists(projectPath + QChar('/') + relPath)) {
+        return relPath;
+    }
+    const QStringList parts = relPath.split(QChar('/'), Qt::SkipEmptyParts);
+    QString cur;
+    for (const QString &p : parts) {
+        const QString parent = cur.isEmpty()
+            ? projectPath
+            : (projectPath + QChar('/') + cur);
+        QDir d(parent);
+        if (!d.exists()) return {};
+        const QStringList entries =
+            d.entryList(QDir::AllEntries | QDir::NoDotAndDotDot,
+                        QDir::Name);
+        QString hit;
+        for (const QString &e : entries) {
+            if (e.compare(p, Qt::CaseInsensitive) == 0) { hit = e; break; }
+        }
+        if (hit.isEmpty()) return {};
+        if (!cur.isEmpty()) cur += QChar('/');
+        cur += hit;
+    }
+    return cur;
+}
+
 // Read .cold-eyes/partition.json if present. Schema:
 //   {"version": 1, "lanes": [{"name": "...", "summary": "...",
 //                             "doc_paths": ["..."]}, ...]}
@@ -165,16 +198,26 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
     // Contracts lane — emitted under Default + ContractsOnly.
     if (scope != Scope::DocsOnly) {
         Lane contracts;
-        contracts.name    = QStringLiteral("contracts");
-        contracts.summary = QStringLiteral(
-            "CLAUDE.md + README.md + ROADMAP.md + CHANGELOG.md "
-            "(cross-cutting)");
+        contracts.name = QStringLiteral("contracts");
         for (const char *p : {"CLAUDE.md", "README.md", "ROADMAP.md",
                               "CHANGELOG.md"}) {
             const QString rel = QString::fromLatin1(p);
-            if (fileExists(projectPath, rel)) contracts.docPaths << rel;
+            // ANTS-1506 — case-insensitive: ship doc names like
+            // `Claude.md` / `readme.md` resolve to the contract slot
+            // they match instead of being treated as missing. The
+            // resolved on-disk name is what the brief should hand to
+            // the subagent so its Read tool matches.
+            const QString resolved = caseInsensitiveResolve(projectPath, rel);
+            if (!resolved.isEmpty()) contracts.docPaths << resolved;
         }
-        if (!contracts.docPaths.isEmpty()) result.lanes << contracts;
+        // ANTS-1506 — summary now mirrors the actually-matched docs,
+        // so callers don't see "CLAUDE.md + README.md + ROADMAP.md +
+        // CHANGELOG.md" while doc_paths only carries two of those.
+        if (!contracts.docPaths.isEmpty()) {
+            contracts.summary = contracts.docPaths.join(QStringLiteral(" + "))
+                              + QStringLiteral(" (cross-cutting)");
+            result.lanes << contracts;
+        }
 
         if (scope == Scope::ContractsOnly) {
             result.scopedCount = result.lanes.size();
@@ -182,36 +225,46 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
         }
     }
 
-    // Standards bundle.
+    // Standards bundle. ANTS-1506 — resolve dir case-insensitively.
     {
         Lane stds;
         stds.name     = QStringLiteral("standards");
         stds.summary  = QStringLiteral(
             "docs/standards/*.md (project-wide contract docs)");
-        stds.docPaths = listMdInDir(projectPath,
-                                    QStringLiteral("docs/standards"));
+        const QString stdDir = caseInsensitiveResolve(
+            projectPath, QStringLiteral("docs/standards"));
+        if (!stdDir.isEmpty()) {
+            stds.docPaths = listMdInDir(projectPath, stdDir);
+        }
         if (!stds.docPaths.isEmpty()) result.lanes << stds;
     }
 
-    // Decisions bundle.
+    // Decisions bundle. ANTS-1506 — resolve dir case-insensitively.
     {
         Lane decs;
         decs.name     = QStringLiteral("decisions");
         decs.summary  = QStringLiteral(
             "docs/decisions/*.md (ADRs, Michael Nygard format)");
-        decs.docPaths = listMdInDir(projectPath,
-                                    QStringLiteral("docs/decisions"));
+        const QString decDir = caseInsensitiveResolve(
+            projectPath, QStringLiteral("docs/decisions"));
+        if (!decDir.isEmpty()) {
+            decs.docPaths = listMdInDir(projectPath, decDir);
+        }
         if (!decs.docPaths.isEmpty()) result.lanes << decs;
     }
 
-    // Plugins.md
-    if (fileExists(projectPath, QStringLiteral("PLUGINS.md"))) {
-        Lane plugins;
-        plugins.name     = QStringLiteral("plugins");
-        plugins.summary  = QStringLiteral(
-            "PLUGINS.md (plugin-author contract)");
-        plugins.docPaths << QStringLiteral("PLUGINS.md");
-        result.lanes << plugins;
+    // Plugins.md. ANTS-1506 — case-insensitive contract resolution.
+    {
+        const QString pluginsRel = caseInsensitiveResolve(
+            projectPath, QStringLiteral("PLUGINS.md"));
+        if (!pluginsRel.isEmpty()) {
+            Lane plugins;
+            plugins.name     = QStringLiteral("plugins");
+            plugins.summary  = pluginsRel
+                + QStringLiteral(" (plugin-author contract)");
+            plugins.docPaths << pluginsRel;
+            result.lanes << plugins;
+        }
     }
 
     // Active-spec lanes.

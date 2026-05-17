@@ -9180,7 +9180,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (RetroArch CC instance, second batch).
 
-- 📋 [ANTS-1485] **test_audit_synthesis_prompt rejects subagent-produced .json reports (refusal: reports_dir_empty).**
+- ✅ [ANTS-1485] **test_audit_synthesis_prompt rejects subagent-produced .json reports (refusal: reports_dir_empty).**
   Repro: I ran /test-audit on the Ants Terminal project. The 20 dispatched
   test-audit-chunk subagents (per the upstream agent definition that ships
   in `~/.claude/agents/test-audit-chunk.md`) write a structured JSON report
@@ -9602,7 +9602,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-tool-discovery.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- 📋 [ANTS-1503] ****`get_last_command` mode:"summary" — `{exit, line_count, last_20, ms}` envelope by default.****
+- ✅ [ANTS-1503] ****`get_last_command` mode:"summary" — `{exit, line_count, last_20, ms}` envelope by default.****
   Bash output is among the heaviest token sinks — a single `cmake --build`
   or `ctest` run can be tens of KiB of progress output. `get_last_command`
   currently returns the full stdout.
@@ -9660,7 +9660,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-audit-run.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- 📋 [ANTS-1505] ****Per-tool `typical_token_cost` + `worst_case_tokens` on every descriptor.****
+- ✅ [ANTS-1505] ****Per-tool `typical_token_cost` + `worst_case_tokens` on every descriptor.****
   Sister to ANTS-1453 (selection_hint): add two integer fields to every
   tool descriptor:
   - `typical_token_cost`: median observed response size in tokens (from
@@ -9692,7 +9692,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-tool-discovery.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- 📋 [ANTS-1506] ****`cold_eyes_partition` near-empty default + case-sensitive contract-doc matching + summary-vs-doc-paths divergence.****
+- ✅ [ANTS-1506] ****`cold_eyes_partition` near-empty default + case-sensitive contract-doc matching + summary-vs-doc-paths divergence.****
   RetroDB Issue 1 (HIGH) + Issue 7 (CORRECTNESS). First call with no
   `.cold-eyes/partition.json` override returned a single `contracts`
   lane with just `[CLAUDE.md, README.md]` for a project with 12
@@ -9733,7 +9733,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes-partition.
   Source: RetroDB /cold-eyes cross-session report 2026-05-18.
 
-- 📋 [ANTS-1507] ****`project_layout` case-insensitive probe + YAML changelog + liberal standards glob + `discovered[]` array.****
+- ✅ [ANTS-1507] ****`project_layout` case-insensitive probe + YAML changelog + liberal standards glob + `discovered[]` array.****
   RetroDB Issue 2 (HIGH). `project_layout(caller_cwd=…)` returned every
   field empty even though `roadmap.md` (3107 lines, 176 KB),
   `data/changelog.yaml`, and `docs/RETRODB_DESIGN_STANDARDS.md` all
@@ -9776,7 +9776,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-project-layout.
   Source: RetroDB /cold-eyes cross-session report 2026-05-18.
 
-- 📋 [ANTS-1508] ****`cold_eyes_brief` should accept arbitrary lane names (lane-agnostic).****
+- ✅ [ANTS-1508] ****`cold_eyes_brief` should accept arbitrary lane names (lane-agnostic).****
   RetroDB Issue 3 (MED). The session distrusted the partition (per
   ANTS-1506) and built its own 6-lane split by hand, then inlined the
   canonical brief from
@@ -9862,7 +9862,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes-fold-in.
   Source: RetroDB /cold-eyes cross-session report 2026-05-18.
 
-- 📋 [ANTS-1511] ****`project_layout` `roadmap_found:bool` top-level flag (or `roadmap:null`) — disambiguate "scan ran, found nothing" from success.****
+- ✅ [ANTS-1511] ****`project_layout` `roadmap_found:bool` top-level flag (or `roadmap:null`) — disambiguate "scan ran, found nothing" from success.****
   RetroArch Bundle 64 re-confirms a Bundle 62 nit:
   `project_layout(caller_cwd=…)` returns `cached:true, ok:true` with
   all-empty path fields when the scan found nothing. The cache hit is

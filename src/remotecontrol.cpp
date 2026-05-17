@@ -5384,6 +5384,23 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
                                               : QStringLiteral("default");
     env["scoped_count"]  = m_coldEyesCache.scopedCount;
     env["truncated"]     = m_coldEyesCache.truncated;
+    // ANTS-1506 — surface the near-empty-default signal so callers
+    // don't silently treat "scan found ≤ 1 lane under default scope"
+    // as a valid sweep. Real projects on default scope yield at
+    // least contracts + standards (≥2). Anything below that signals
+    // a misnamed contract doc, a missing docs/ tree, or the caller
+    // passed a project root that isn't quite the repo root yet.
+    const bool defaultScope = scope == ColdEyesEngine::Scope::Default;
+    if (defaultScope && m_coldEyesCache.lanes.size() <= 1) {
+        env["sparse_partition"] = true;
+        env["sparse_partition_hint"] = QStringLiteral(
+            "Default scope returned %1 lane(s). Check that the "
+            "project root carries CLAUDE.md / README.md / ROADMAP.md "
+            "/ CHANGELOG.md (case-insensitive match) and that "
+            "docs/standards/ + docs/decisions/ exist. Pass scope="
+            "\"contracts_only\" to confirm the contract-doc shape.")
+                .arg(m_coldEyesCache.lanes.size());
+    }
     return QJsonDocument(env);
 }
 
@@ -5421,11 +5438,50 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     for (const auto &l : m_coldEyesCache.lanes) {
         if (l.name == laneName) { match = &l; break; }
     }
+    // ANTS-1508 — lane-agnostic fallback: if the caller passes a lane
+    // name not in the cached partition AND an explicit `doc_paths`
+    // array, synthesise an ad-hoc Lane on the fly. Anchors each path
+    // inside the project root via the same INV-13 logic that the
+    // partition.json override uses (no symlink escape, no absolute
+    // paths). Callers driving custom sweeps (e.g. fork-internal lanes
+    // not surfaced by the auto-partition) can now use the brief
+    // tool without having to commit a .cold-eyes/partition.json.
+    ColdEyesEngine::Lane adhoc;
+    if (!match) {
+        const QJsonValue dpV = req.value(QStringLiteral("doc_paths"));
+        if (dpV.isArray()) {
+            const QString rootCanon = QFileInfo(root).canonicalFilePath();
+            for (const QJsonValue &v : dpV.toArray()) {
+                const QString d = v.toString().trimmed();
+                if (d.isEmpty()) continue;
+                if (QFileInfo(d).isAbsolute()) continue;
+                const QString joined = root + QLatin1Char('/') + d;
+                const QString cand = QFileInfo(joined).canonicalFilePath();
+                if (cand.isEmpty() || rootCanon.isEmpty()) continue;
+                if (cand != rootCanon
+                    && !cand.startsWith(rootCanon + QLatin1Char('/'))) continue;
+                if (!QFileInfo::exists(joined)) continue;
+                adhoc.docPaths << d;
+            }
+        }
+        if (!adhoc.docPaths.isEmpty()) {
+            adhoc.name    = laneName;
+            adhoc.summary = QStringLiteral(
+                "Ad-hoc lane (caller-supplied doc_paths).");
+            match = &adhoc;
+        }
+    }
     if (!match) {
         QJsonObject err = ceErr(
             QStringLiteral("not_found"),
-            QStringLiteral("cold_eyes_brief: no such lane"));
+            QStringLiteral("cold_eyes_brief: no such lane (and no "
+                           "doc_paths[] override supplied)"));
         err["echo"] = ceSanitiseEcho(laneNameRaw);
+        // List known lanes so the caller can recover without a
+        // second round-trip to cold_eyes_partition.
+        QJsonArray known;
+        for (const auto &l : m_coldEyesCache.lanes) known.append(l.name);
+        err["known_lanes"] = known;
         return QJsonDocument(err);
     }
 

@@ -3801,10 +3801,40 @@ void MainWindow::setupClaudeMcpProviders() {
             auto *t = terminalForCaller(callerCwd);
             const int   exitCode = t ? t->lastExitCode()      : 0;
             const QString output = t ? t->lastCommandOutput() : QString();
+            // ANTS-1503 — mode:"summary" envelope cuts the typical
+            // 2-4 KiB body to a few hundred bytes when the caller
+            // only needs exit + tail + duration. Default stays
+            // "full" for back-compat with the original {exit_code,
+            // output, failed} shape.
+            QString mode = args.value("mode").toString().trimmed().toLower();
+            if (mode.isEmpty()) mode = QStringLiteral("full");
             QJsonObject info;
             info["exit_code"] = exitCode;
-            info["output"]    = output;
             info["failed"]    = (exitCode != 0);
+            if (mode == QStringLiteral("summary")) {
+                const QStringList lines = output.split(QLatin1Char('\n'));
+                info["line_count"] = lines.size();
+                const int tailFrom = std::max<int>(0, lines.size() - 20);
+                QJsonArray tail;
+                for (int i = tailFrom; i < lines.size(); ++i) tail.append(lines.at(i));
+                info["last_20"]    = tail;
+                // Duration from the most recent completed OSC 133 region.
+                qint64 ms = 0;
+                if (t && t->grid()) {
+                    const auto &regs = t->grid()->promptRegions();
+                    for (auto it = regs.rbegin(); it != regs.rend(); ++it) {
+                        if (it->commandEndMs > 0 && it->commandStartMs > 0) {
+                            ms = it->commandEndMs - it->commandStartMs;
+                            break;
+                        }
+                    }
+                }
+                info["ms"]   = static_cast<double>(ms);
+                info["mode"] = QStringLiteral("summary");
+            } else {
+                info["output"] = output;
+                info["mode"]   = QStringLiteral("full");
+            }
             return QString::fromUtf8(
                 QJsonDocument(info).toJson(QJsonDocument::Compact));
         });

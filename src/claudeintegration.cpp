@@ -10,6 +10,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QRegularExpression>
@@ -22,6 +23,7 @@
 
 #include <climits>
 #include <limits>
+#include <utility>
 #include <sys/socket.h>
 
 // ANTS-1356 — monotonic clock used by rateLimitCheck in production.
@@ -1515,16 +1517,35 @@ void ClaudeIntegration::onMcpConnection() {
                 lastCmdTool["name"] = "get_last_command";
                 lastCmdTool["description"] = QStringLiteral(
                     "Get the last command's exit code and output "
-                    "(via shell integration). ") + callerCwdSuffix();
+                    "(via shell integration). Optional `mode` — "
+                    "\"full\" (default) returns {exit_code, output, "
+                    "failed}; \"summary\" (ANTS-1503) returns "
+                    "{exit_code, line_count, last_20[], ms, failed} "
+                    "— skip the full body when you only need "
+                    "exit + tail + duration. ") + callerCwdSuffix();
                 lastCmdTool["selection_hint"] = QStringLiteral(
                     "Use after a shell command to inspect exit code "
                     "+ output without scraping scrollback. Requires "
-                    "OSC 133 shell integration.");
+                    "OSC 133 shell integration. Prefer mode:summary "
+                    "for status checks (≤500 bytes vs full mode's "
+                    "1-4 KiB).");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    QJsonObject modeProp;
+                    modeProp["type"] = "string";
+                    QJsonArray modeEnum;
+                    modeEnum.append("full");
+                    modeEnum.append("summary");
+                    modeProp["enum"] = modeEnum;
+                    modeProp["description"] = QStringLiteral(
+                        "Response shape. \"full\" (default) — "
+                        "{exit_code, output, failed}. \"summary\" — "
+                        "{exit_code, line_count, last_20[], ms, "
+                        "failed}.");
+                    props["mode"] = modeProp;
                     schema["properties"] = props;
                     lastCmdTool["inputSchema"] = schema;
                 }
@@ -3158,19 +3179,41 @@ void ClaudeIntegration::onMcpConnection() {
                         "cited_code_paths. Doc bodies are NOT inlined "
                         "(ANTS-1319 INV-3, mirrors ANTS-1281); the "
                         "subagent reads each doc via its Read tool. "
-                        "Required: lane (string).");
+                        "Required: lane (string). Optional (ANTS-1508): "
+                        "doc_paths[] — when `lane` is not in the "
+                        "auto-partition, the brief is synthesised "
+                        "from these caller-supplied paths instead. "
+                        "Paths must be project-relative and resolve "
+                        "inside the project root (INV-13 enforced); "
+                        "absolute paths and symlink escapes are "
+                        "rejected silently.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to assemble the brief for one "
                         "cold-eyes chunk. Run after "
-                        "cold_eyes_partition.");
+                        "cold_eyes_partition. Pass doc_paths[] for "
+                        "ad-hoc lanes the auto-partition didn't "
+                        "surface.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject laneProp;
                     laneProp["type"] = "string";
                     laneProp["description"] = QStringLiteral(
-                        "Lane name as returned by cold_eyes_partition.");
+                        "Lane name. May be a partition-derived name "
+                        "(see cold_eyes_partition) or an ad-hoc label "
+                        "paired with `doc_paths[]`.");
+                    QJsonObject docPathsProp;
+                    docPathsProp["type"] = "array";
+                    QJsonObject docPathsItems;
+                    docPathsItems["type"] = "string";
+                    docPathsProp["items"] = docPathsItems;
+                    docPathsProp["description"] = QStringLiteral(
+                        "Optional. Project-relative doc paths for the "
+                        "lane. Used only when `lane` is absent from "
+                        "the auto-partition. Each entry is anchored "
+                        "inside the project root.");
                     QJsonObject props;
-                    props["lane"] = laneProp;
+                    props["lane"]      = laneProp;
+                    props["doc_paths"] = docPathsProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
@@ -3756,10 +3799,88 @@ void ClaudeIntegration::onMcpConnection() {
                 // bumps `roadmap_query.version` to "1.1" without
                 // touching siblings. Callers dispatch on this field
                 // to decide whether their parsing path still applies.
+                //
+                // ANTS-1505 — per-tool budget hints. `typical_token_cost`
+                // is the token count a caller should expect on the
+                // common path; `worst_case_tokens` is the cap a fresh
+                // call against a large project might hit (after
+                // pagination + truncate). Both are conservative
+                // estimates rounded to ≤2 sig-fig; they're hints, not
+                // contracts. Callers can use them to size cold-start
+                // discovery or to decide between two tools that
+                // expose overlapping data.
+                auto tokenCostFor = [](const QString &name)
+                        -> std::pair<int, int> {
+                    // Buckets: (typical, worst). Keep the table flat
+                    // so the audit pass can spot drift between tool
+                    // additions and budget claims.
+                    static const QHash<QString, std::pair<int, int>> kCosts = {
+                        // Control-plane / cheap fixed responses.
+                        {QStringLiteral("get_session_info"),  {100,  400}},
+                        {QStringLiteral("get_cwd"),           {80,   200}},
+                        {QStringLiteral("caller_cwd_info"),   {150,  400}},
+                        {QStringLiteral("tab_list"),          {200,  800}},
+                        {QStringLiteral("tool_info"),         {500,  2000}},
+                        {QStringLiteral("token_usage"),       {600,  2500}},
+                        {QStringLiteral("mcp_trace"),         {800,  3000}},
+                        // Terminal-state reads.
+                        {QStringLiteral("get_last_command"),  {600,  3000}},
+                        {QStringLiteral("get_git_status"),    {400,  1500}},
+                        {QStringLiteral("get_environment"),   {300,  800}},
+                        {QStringLiteral("get_scrollback"),    {1500, 8000}},
+                        {QStringLiteral("get_text"),          {1200, 6000}},
+                        // Repo / docs.
+                        {QStringLiteral("roadmap_query"),     {1700, 12000}},
+                        {QStringLiteral("roadmap_log"),       {200,  600}},
+                        {QStringLiteral("project_layout"),    {600,  2000}},
+                        {QStringLiteral("session_memory"),    {200,  1000}},
+                        {QStringLiteral("workspace_search"),  {1500, 10000}},
+                        {QStringLiteral("file_outline"),      {800,  4000}},
+                        {QStringLiteral("git_state"),         {700,  4000}},
+                        {QStringLiteral("subsystem"),         {400,  1500}},
+                        // Plan + verify.
+                        {QStringLiteral("plan_template"),     {1500, 6000}},
+                        {QStringLiteral("verify_changes"),    {600,  3000}},
+                        // Audit suite.
+                        {QStringLiteral("audit_run"),         {4000, 25000}},
+                        {QStringLiteral("last_audit_summary"),{600,  2500}},
+                        // Debt-sweep suite.
+                        {QStringLiteral("debt_sweep_scan"),         {2000, 12000}},
+                        {QStringLiteral("debt_sweep_triage_prompt"),{1500, 8000}},
+                        {QStringLiteral("debt_sweep_apply_fix"),    {400,  1500}},
+                        {QStringLiteral("debt_sweep_defer"),        {200,  800}},
+                        // Cold-eyes.
+                        {QStringLiteral("cold_eyes_partition"),    {1000, 4000}},
+                        {QStringLiteral("cold_eyes_brief"),        {1500, 6000}},
+                        {QStringLiteral("cold_eyes_cross_doc_diff"),{1200, 5000}},
+                        {QStringLiteral("cold_eyes_fold_in"),      {800,  3000}},
+                        // Indie-review.
+                        {QStringLiteral("indie_review_partition"),    {1500, 6000}},
+                        {QStringLiteral("indie_review_brief"),        {2000, 8000}},
+                        {QStringLiteral("indie_review_corroborate"),  {1500, 6000}},
+                        {QStringLiteral("indie_review_synthesis_prompt"), {2500, 10000}},
+                        {QStringLiteral("indie_review_dispatch"),     {3000, 12000}},
+                        {QStringLiteral("indie_review_fold_in"),      {1000, 4000}},
+                        // Test-audit.
+                        {QStringLiteral("test_audit_partition"),       {1500, 6000}},
+                        {QStringLiteral("test_audit_brief"),           {2000, 8000}},
+                        {QStringLiteral("test_audit_synthesis_prompt"),{2500, 10000}},
+                        {QStringLiteral("test_audit_fold_in"),         {1000, 4000}},
+                    };
+                    const auto it = kCosts.find(name);
+                    if (it != kCosts.end()) return it.value();
+                    return {500, 2500};  // conservative default
+                };
                 for (int i = 0; i < tools.size(); ++i) {
                     QJsonObject t = tools[i].toObject();
                     if (!t.contains(QStringLiteral("version"))) {
                         t[QStringLiteral("version")] = QStringLiteral("1.0");
+                    }
+                    if (!t.contains(QStringLiteral("typical_token_cost"))) {
+                        const auto cost = tokenCostFor(
+                            t.value(QStringLiteral("name")).toString());
+                        t[QStringLiteral("typical_token_cost")] = cost.first;
+                        t[QStringLiteral("worst_case_tokens")]  = cost.second;
                     }
                     tools.replace(i, t);
                 }

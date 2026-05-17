@@ -75,7 +75,46 @@ int countBullets(const QByteArray &body, const QString &format) {
 // fork-internal docs under docs/private/ or docs/internal/ or
 // docs/fork/ to avoid leaking to upstream. Cheap to probe; almost
 // always null on a normal project.
+//
+// ANTS-1507 — case-insensitive resolver. We pre-declare candidates
+// in canonical case (UPPER on the basename) but resolve via
+// `caseInsensitiveResolve` so projects that ship `Readme.md` /
+// `Changelog.md` / `roadmap.md` aren't told their docs are missing.
 namespace {
+// Resolve `relPath` under `cwd` case-insensitively. Returns the
+// actual on-disk relative path that matches, or QString() on miss.
+// Walks the path component-by-component so each segment can match
+// independently of the others' case. Bounded to the existing
+// candidate set — the directory listings remain O(entries-per-dir).
+QString caseInsensitiveResolve(const QString &cwd, const QString &relPath) {
+    // Fast path: exact match.
+    if (QFileInfo::exists(cwd + QLatin1Char('/') + relPath)) {
+        return relPath;
+    }
+    const QStringList parts = relPath.split(QLatin1Char('/'),
+                                            Qt::SkipEmptyParts);
+    QString cur;
+    for (const QString &p : parts) {
+        const QString parent = cur.isEmpty() ? cwd
+                                             : (cwd + QLatin1Char('/') + cur);
+        QDir d(parent);
+        if (!d.exists()) return {};
+        // Match the part case-insensitively against the directory's
+        // entries; first hit wins (stable ordering by Qt::Name).
+        const QStringList entries =
+            d.entryList(QDir::AllEntries | QDir::NoDotAndDotDot,
+                        QDir::Name);
+        QString hit;
+        for (const QString &e : entries) {
+            if (e.compare(p, Qt::CaseInsensitive) == 0) { hit = e; break; }
+        }
+        if (hit.isEmpty()) return {};
+        if (!cur.isEmpty()) cur += QLatin1Char('/');
+        cur += hit;
+    }
+    return cur;
+}
+
 const QStringList kRoadmapCandidates = {
     QStringLiteral("ROADMAP.md"),
     QStringLiteral("docs/private/ROADMAP.md"),
@@ -84,6 +123,8 @@ const QStringList kRoadmapCandidates = {
 };
 const QStringList kChangelogCandidates = {
     QStringLiteral("CHANGELOG.md"),
+    QStringLiteral("CHANGELOG.yaml"),
+    QStringLiteral("CHANGELOG.yml"),
     QStringLiteral("docs/private/CHANGELOG.md"),
     QStringLiteral("docs/internal/CHANGELOG.md"),
     QStringLiteral("docs/fork/CHANGELOG.md"),
@@ -107,14 +148,17 @@ const QStringList kAdrCandidates = {
 }  // namespace
 
 void scanRoadmap(const QString &cwd, RoadmapInfo &out,
-                 QStringList &probed) {
+                 QStringList &probed, QStringList &discovered) {
     QString rel;
     QString full;
     for (const QString &cand : kRoadmapCandidates) {
         probed.append(cand);
-        const QString f = cwd + QLatin1Char('/') + cand;
-        if (QFileInfo(f).exists()) {
-            rel = cand; full = f;
+        // ANTS-1507 — case-insensitive resolution. `Readme.md`,
+        // `roadmap.md`, etc. resolve to the same probe key.
+        const QString resolved = caseInsensitiveResolve(cwd, cand);
+        if (!resolved.isEmpty()) {
+            rel = resolved; full = cwd + QLatin1Char('/') + resolved;
+            discovered.append(resolved);
             break;
         }
     }
@@ -146,35 +190,50 @@ void scanRoadmap(const QString &cwd, RoadmapInfo &out,
 }
 
 void scanChangelog(const QString &cwd, ChangelogInfo &out,
-                   QStringList &probed) {
+                   QStringList &probed, QStringList &discovered) {
     for (const QString &cand : kChangelogCandidates) {
         probed.append(cand);
-        const QString full = cwd + QLatin1Char('/') + cand;
-        QFileInfo fi(full);
+        // ANTS-1507 — case-insensitive resolution + YAML extensions.
+        const QString resolved = caseInsensitiveResolve(cwd, cand);
+        if (resolved.isEmpty()) continue;
+        QFileInfo fi(cwd + QLatin1Char('/') + resolved);
         if (!fi.exists()) continue;
-        out.path      = cand;
+        out.path      = resolved;
         out.sizeBytes = fi.size();
         out.mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
+        discovered.append(resolved);
         return;
     }
 }
 
 void scanDir(const QString &cwd, const QString &rel,
-             QString &out, QStringList &probed) {
+             QString &out, QStringList &probed,
+             QStringList &discovered) {
     probed.append(rel);
-    const QFileInfo fi(cwd + QLatin1Char('/') + rel);
-    if (fi.exists() && fi.isDir()) out = rel;
+    const QString resolved = caseInsensitiveResolve(cwd, rel);
+    if (resolved.isEmpty()) return;
+    const QFileInfo fi(cwd + QLatin1Char('/') + resolved);
+    if (fi.exists() && fi.isDir()) {
+        out = resolved;
+        discovered.append(resolved);
+    }
 }
 
 void scanFile(const QString &cwd, const QString &rel,
-              QString &out, QStringList &probed) {
+              QString &out, QStringList &probed,
+              QStringList &discovered) {
     probed.append(rel);
-    const QFileInfo fi(cwd + QLatin1Char('/') + rel);
-    if (fi.exists() && fi.isFile()) out = rel;
+    const QString resolved = caseInsensitiveResolve(cwd, rel);
+    if (resolved.isEmpty()) return;
+    const QFileInfo fi(cwd + QLatin1Char('/') + resolved);
+    if (fi.exists() && fi.isFile()) {
+        out = resolved;
+        discovered.append(resolved);
+    }
 }
 
 void scanAppStream(const QString &cwd, QString &out,
-                   QStringList &probed) {
+                   QStringList &probed, QStringList &discovered) {
     // ANTS-1493 — probe at repo root + the common packaging dirs.
     // Reverse-DNS metainfo names vary wildly so we glob *.metainfo.xml
     // rather than hard-coding a prefix.
@@ -197,6 +256,7 @@ void scanAppStream(const QString &cwd, QString &out,
             out = (rel == QStringLiteral("."))
                 ? it.fileName()
                 : (rel + QLatin1Char('/') + it.fileName());
+            discovered.append(out);
             return;
         }
     }
@@ -209,25 +269,30 @@ LayoutEnvelope scanLayout(const QString &absoluteCwd) {
     env.rootCwd     = absoluteCwd;
     env.scannedAtMs = QDateTime::currentMSecsSinceEpoch();
     env.ttlDays     = kDefaultTtlDays;
-    scanRoadmap(absoluteCwd, env.roadmap,   env.probedPaths);
-    scanChangelog(absoluteCwd, env.changelog, env.probedPaths);
+    scanRoadmap(absoluteCwd, env.roadmap, env.probedPaths,
+                env.discovered);
+    scanChangelog(absoluteCwd, env.changelog, env.probedPaths,
+                  env.discovered);
     // ANTS-1493 — iterate candidate dirs; first-hit wins per field.
     for (const QString &cand : kSpecsCandidates) {
         if (!env.specsDir.isEmpty()) break;
-        scanDir(absoluteCwd, cand, env.specsDir, env.probedPaths);
+        scanDir(absoluteCwd, cand, env.specsDir, env.probedPaths,
+                env.discovered);
     }
     for (const QString &cand : kStandardsCandidates) {
         if (!env.standardsDir.isEmpty()) break;
-        scanDir(absoluteCwd, cand, env.standardsDir, env.probedPaths);
+        scanDir(absoluteCwd, cand, env.standardsDir, env.probedPaths,
+                env.discovered);
     }
     for (const QString &cand : kAdrCandidates) {
         if (!env.adrDir.isEmpty()) break;
-        scanDir(absoluteCwd, cand, env.adrDir, env.probedPaths);
+        scanDir(absoluteCwd, cand, env.adrDir, env.probedPaths,
+                env.discovered);
     }
     scanAppStream(absoluteCwd, env.appstreamMetainfo,
-                  env.probedPaths);
+                  env.probedPaths, env.discovered);
     scanFile(absoluteCwd, QStringLiteral(".roadmap-counter"),
-             env.counterFile, env.probedPaths);
+             env.counterFile, env.probedPaths, env.discovered);
     return env;
 }
 
@@ -257,6 +322,17 @@ QJsonObject toJson(const LayoutEnvelope &env) {
     QJsonArray probed;
     for (const auto &p : env.probedPaths) probed.append(p);
     root[QStringLiteral("probed_paths")] = probed;
+    // ANTS-1507 — discovered[] mirror of probedPaths filtered to
+    // paths that actually matched. Cheap disambiguation for callers
+    // ("scan succeeded with nothing" vs "scan found these things").
+    QJsonArray discovered;
+    for (const auto &p : env.discovered) discovered.append(p);
+    root[QStringLiteral("discovered")] = discovered;
+    // ANTS-1511 — explicit top-level booleans so callers don't have
+    // to inspect nested objects. `roadmap_found` is true iff the
+    // roadmap probe matched a file.
+    root[QStringLiteral("roadmap_found")]   = !env.roadmap.path.isEmpty();
+    root[QStringLiteral("changelog_found")] = !env.changelog.path.isEmpty();
     return root;
 }
 
@@ -285,6 +361,8 @@ LayoutEnvelope fromJson(const QJsonObject &obj) {
     env.counterFile       = obj.value(QStringLiteral("counter_file")).toString();
     const QJsonArray probed = obj.value(QStringLiteral("probed_paths")).toArray();
     for (const auto &v : probed) env.probedPaths.append(v.toString());
+    const QJsonArray disc = obj.value(QStringLiteral("discovered")).toArray();
+    for (const auto &v : disc) env.discovered.append(v.toString());
     return env;
 }
 
@@ -294,7 +372,20 @@ bool isStale(const LayoutEnvelope &cached, qint64 nowMs) {
         static_cast<qint64>(cached.ttlDays) * 24 * 3600 * 1000;
     if (nowMs - cached.scannedAtMs > ttlMs) return true;
     for (const auto &p : cached.probedPaths) {
-        const QFileInfo fi(cached.rootCwd + QLatin1Char('/') + p);
+        // ANTS-1507 — probed paths are stored in canonical case but
+        // the real on-disk file may have shifted case (or appeared
+        // post-scan in a new case). Resolve case-insensitively when
+        // the literal form misses, so we don't claim freshness when
+        // an alt-case rename has happened.
+        QString rel = p;
+        QFileInfo fi(cached.rootCwd + QLatin1Char('/') + rel);
+        if (!fi.exists()) {
+            const QString alt = caseInsensitiveResolve(cached.rootCwd, p);
+            if (!alt.isEmpty()) {
+                rel = alt;
+                fi = QFileInfo(cached.rootCwd + QLatin1Char('/') + rel);
+            }
+        }
         if (fi.exists() &&
             fi.lastModified().toMSecsSinceEpoch() >
                 cached.scannedAtMs) {
