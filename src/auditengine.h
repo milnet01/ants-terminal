@@ -208,6 +208,11 @@ struct AuditSummary {
     int     countNote       = 0;
     int     countSuppressed = 0;
     QList<AuditSummaryFinding> topFindings;
+    // ANTS-1459 — echoes the source format the summary was parsed
+    // from. "sarif" for the SARIF path, "cppcheck-xml" for the
+    // native cppcheck XML fallback. Empty when set by an older
+    // call site (defaults to "sarif" in the envelope when blank).
+    QString sourceFormat;
 };
 
 // ANTS-1254 — read SARIF at `sarifPath`, return compact summary.
@@ -219,6 +224,25 @@ struct AuditSummary {
 // checking QFile::exists() before calling).
 std::optional<AuditSummary> summariseSarif(
     const QString &sarifPath,
+    int topN,
+    const QString &levelFloor);
+
+// ANTS-1459 — parse cppcheck's native XML output (--xml --xml-version=2)
+// and return the same AuditSummary shape so last_audit_summary callers
+// don't have to branch on source format. Discovered separately from
+// SARIF; the result struct carries `sarifPath` set to the XML path
+// for cache-key consistency (the field is misnamed historically;
+// rename out of scope for ANTS-1459).
+// Severity mapping:
+//   cppcheck "error"        → level="error"   severity="MAJOR"
+//   cppcheck "warning"      → level="warning" severity="MAJOR"
+//   "style"/"performance"/
+//   "portability"           → level="note"    severity="MINOR"
+//   "information"           → level="note"    severity="INFO"
+// Returns nullopt on read or malformed XML (caller distinguishes by
+// checking QFile::exists() before calling).
+std::optional<AuditSummary> summariseCppcheckXml(
+    const QString &xmlPath,
     int topN,
     const QString &levelFloor);
 

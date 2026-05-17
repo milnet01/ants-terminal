@@ -69,6 +69,39 @@ QString resolveRootCanonical(MainWindow *main);
 // one below.
 QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
 
+// ANTS-1459 — shared path list for ROADMAP.md discovery under a
+// project root. roadmap_query and roadmap_log both call this helper
+// so we don't duplicate the path-widening list (and so neither
+// function body trips the per-function-size regression guard in
+// tests/features/mcp_roadmap_unrecognised_format/).
+//
+// Common subdirs probed:
+//   ./, docs/, docs/private/, docs/internal/, .github/
+// Surfaced by a RetroArch CC session 2026-05-17 where the project
+// kept its roadmap at docs/private/ROADMAP.md and the prior
+// "repo-root only" search returned no_roadmap_loaded.
+QString findRoadmapUnder(const QString &canonicalRoot) {
+    if (canonicalRoot.isEmpty()) return {};
+    static const QStringList kCandidates = {
+        QStringLiteral("ROADMAP.md"),
+        QStringLiteral("roadmap.md"),
+        QStringLiteral("Roadmap.md"),
+        QStringLiteral("docs/ROADMAP.md"),
+        QStringLiteral("docs/roadmap.md"),
+        QStringLiteral("docs/private/ROADMAP.md"),
+        QStringLiteral("docs/private/roadmap.md"),
+        QStringLiteral("docs/internal/ROADMAP.md"),
+        QStringLiteral("docs/internal/roadmap.md"),
+        QStringLiteral(".github/ROADMAP.md"),
+        QStringLiteral(".github/roadmap.md"),
+    };
+    for (const QString &n : kCandidates) {
+        const QString c = canonicalRoot + QLatin1Char('/') + n;
+        if (QFileInfo::exists(c)) return c;
+    }
+    return {};
+}
+
 // ANTS-1428 Tier 2 — pure helpers for the op:"flip" locator. These
 // are intentional duplicates of roadmapdialog.cpp's anon-namespace
 // helpers (fnv1a64 / normaliseHeadline / extractBoldId /
@@ -1236,22 +1269,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
     if (!callerRaw.isEmpty()) {
-        const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
-        if (!callerCanonical.isEmpty()) {
-            const QStringList candidates = {
-                QStringLiteral("ROADMAP.md"),
-                QStringLiteral("roadmap.md"),
-                QStringLiteral("Roadmap.md"),
-            };
-            for (const QString &name : candidates) {
-                const QString candidate =
-                    callerCanonical + QLatin1Char('/') + name;
-                if (QFileInfo::exists(candidate)) {
-                    path = candidate;
-                    break;
-                }
-            }
-        }
+        const QString callerCanonical =
+            QFileInfo(callerRaw).canonicalFilePath();
+        // ANTS-1459 — shared findRoadmapUnder() helper widens the
+        // search to docs/, docs/private/, docs/internal/, .github/.
+        path = findRoadmapUnder(callerCanonical);
     }
     if (path.isEmpty() && callerRaw.isEmpty()) {
         path = m_main->roadmapPathForRemote();
@@ -1869,19 +1891,9 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
                            "canonicalise to an existing directory")
                 .arg(callerRaw));
     }
-    QString roadmapPath;
-    const QStringList nameCandidates = {
-        QStringLiteral("ROADMAP.md"),
-        QStringLiteral("roadmap.md"),
-        QStringLiteral("Roadmap.md"),
-    };
-    for (const QString &n : nameCandidates) {
-        const QString c = callerCanonical + QLatin1Char('/') + n;
-        if (QFileInfo::exists(c)) {
-            roadmapPath = c;
-            break;
-        }
-    }
+    // ANTS-1459 — shared findRoadmapUnder helper widens the search
+    // to docs/, docs/private/, docs/internal/, .github/.
+    const QString roadmapPath = findRoadmapUnder(callerCanonical);
     if (roadmapPath.isEmpty()) {
         return rlErr(QStringLiteral("no_roadmap"),
             QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
@@ -2181,19 +2193,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                            "canonicalise to an existing directory")
                 .arg(callerRaw));
     }
-    QString roadmapPath;
-    const QStringList nameCandidates = {
-        QStringLiteral("ROADMAP.md"),
-        QStringLiteral("roadmap.md"),
-        QStringLiteral("Roadmap.md"),
-    };
-    for (const QString &n : nameCandidates) {
-        const QString c = callerCanonical + QLatin1Char('/') + n;
-        if (QFileInfo::exists(c)) {
-            roadmapPath = c;
-            break;
-        }
-    }
+    // ANTS-1459 — shared findRoadmapUnder helper widens the search
+    // to docs/, docs/private/, docs/internal/, .github/.
+    const QString roadmapPath = findRoadmapUnder(callerCanonical);
     if (roadmapPath.isEmpty()) {
         return rlErr(QStringLiteral("no_roadmap"),
             QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
@@ -3751,6 +3753,11 @@ QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
     ok["run_at"]     = s.runAtIso;
     ok["sarif_path"] = s.sarifPath;
     ok["html_path"]  = s.htmlPath;
+    // ANTS-1459 — name the source format on every response so the
+    // caller doesn't have to guess from sarif_path's extension.
+    ok["source_format"] = s.sourceFormat.isEmpty()
+        ? QStringLiteral("sarif")
+        : s.sourceFormat;
 
     QJsonObject counts;
     counts["error"]      = s.countError;
@@ -3806,15 +3813,38 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     const QStringList sarifNames = cacheDir.entryList(
         QStringList{QStringLiteral("audit-*.sarif")},
         QDir::Files, QDir::Name | QDir::Reversed);
-    if (sarifNames.isEmpty()) {
-        return QJsonDocument(lasErr(QStringLiteral("not_audited"),
-            QStringLiteral("last_audit_summary: no audit-*.sarif found")));
+    // ANTS-1459 — when no SARIF is present, fall back to cppcheck's
+    // native XML output (`cppcheck-*.xml`). The format the project's
+    // own audit pipeline ships matters more than the SARIF default;
+    // returning the same envelope shape regardless of input format
+    // is the discoverability fix.
+    QString reportPath;
+    QString sourceFormat;  // "sarif" | "cppcheck-xml"
+    if (!sarifNames.isEmpty()) {
+        reportPath   = cacheDir.absoluteFilePath(sarifNames.first());
+        sourceFormat = QStringLiteral("sarif");
+    } else {
+        const QStringList cppNames = cacheDir.entryList(
+            QStringList{QStringLiteral("cppcheck-*.xml")},
+            QDir::Files, QDir::Name | QDir::Reversed);
+        if (!cppNames.isEmpty()) {
+            reportPath   = cacheDir.absoluteFilePath(cppNames.first());
+            sourceFormat = QStringLiteral("cppcheck-xml");
+        }
     }
-    const QString sarifPath = cacheDir.absoluteFilePath(sarifNames.first());
+    if (reportPath.isEmpty()) {
+        return QJsonDocument(lasErr(QStringLiteral("not_audited"),
+            QStringLiteral("last_audit_summary: no audit-*.sarif or "
+                           "cppcheck-*.xml found under .audit_cache "
+                           "(ANTS-1459). Run audit_run or "
+                           "cppcheck --xml --xml-version=2 first.")));
+    }
 
-    // Cache key: (path, mtime, topN, floor).
-    const qint64 mtimeMs = QFileInfo(sarifPath).lastModified().toMSecsSinceEpoch();
-    const bool hit = (sarifPath == m_auditSummaryPath
+    // Cache key: (path, mtime, topN, floor). Keyed on resolved path
+    // so a cppcheck-xml read can't collide with a sarif read.
+    const qint64 mtimeMs =
+        QFileInfo(reportPath).lastModified().toMSecsSinceEpoch();
+    const bool hit = (reportPath == m_auditSummaryPath
                       && mtimeMs == m_auditSummaryMtimeMs
                       && topN    == m_auditSummaryCachedTopN
                       && floor   == m_auditSummaryCachedFloor);
@@ -3822,28 +3852,31 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
         return QJsonDocument(buildLasEnvelope(m_auditSummaryCache));
     }
 
-    // Cache miss — parse.
-    auto parsed = AuditEngine::summariseSarif(sarifPath, topN, floor);
+    // Cache miss — parse with the format-appropriate engine helper.
+    auto parsed = (sourceFormat == QLatin1String("cppcheck-xml"))
+        ? AuditEngine::summariseCppcheckXml(reportPath, topN, floor)
+        : AuditEngine::summariseSarif(reportPath, topN, floor);
     if (!parsed) {
-        // Discovery succeeded; failure must be open() or parse.
-        QFile f(sarifPath);
+        QFile f(reportPath);
         if (!f.open(QIODevice::ReadOnly)) {
             return QJsonDocument(lasErr(QStringLiteral("read_failed"),
-                QStringLiteral("last_audit_summary: cannot read SARIF")));
+                QStringLiteral("last_audit_summary: cannot read "
+                               "report")));
         }
         f.close();
-        // INV-10: empty runs[] is treated as not_audited (the user has
-        // nothing to consult).
+        // INV-10: empty results / no runs[] → not_audited.
         return QJsonDocument(lasErr(QStringLiteral("parse_failed"),
-            QStringLiteral("last_audit_summary: SARIF malformed or "
-                           "missing runs[]")));
+            QStringLiteral("last_audit_summary: report malformed or "
+                           "missing findings (%1)").arg(sourceFormat)));
     }
 
-    m_auditSummaryPath        = sarifPath;
+    m_auditSummaryPath        = reportPath;
     m_auditSummaryMtimeMs     = mtimeMs;
     m_auditSummaryCachedTopN  = topN;
     m_auditSummaryCachedFloor = floor;
     m_auditSummaryCache       = std::move(*parsed);
+    // ANTS-1459 — sourceFormat lives on AuditSummary itself so the
+    // cache hit path naturally carries the tag.
 
     return QJsonDocument(buildLasEnvelope(m_auditSummaryCache));
 }

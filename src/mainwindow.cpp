@@ -5487,17 +5487,30 @@ void MainWindow::refreshRoadmapButton() {
         m_roadmapPath.clear();
         return;
     }
-    // ANTS-1137 — case-insensitive match against three explicit
-    // case variants instead of QDir::entryInfoList(QDir::Files)
+    // ANTS-1137 — case-insensitive match against an explicit
+    // candidate list instead of QDir::entryInfoList(QDir::Files)
     // which enumerated the entire CWD on every 2 s status-tick.
     // On a directory with thousands of files (node_modules,
     // ~/Downloads, vendored deps) the enumeration was visible
-    // UI stutter. Three QFileInfo::exists() calls is O(1).
+    // UI stutter. The N QFileInfo::exists() calls remain O(1).
+    //
+    // ANTS-1459 — same docs/ / docs/private/ / docs/internal/ /
+    // .github/ widening as the roadmap_query MCP handler so the
+    // status-bar button surfaces on projects (RetroArch et al.)
+    // that don't keep ROADMAP.md at the repo root.
     QString found;
     const QStringList candidates = {
         QStringLiteral("ROADMAP.md"),
         QStringLiteral("roadmap.md"),
         QStringLiteral("Roadmap.md"),
+        QStringLiteral("docs/ROADMAP.md"),
+        QStringLiteral("docs/roadmap.md"),
+        QStringLiteral("docs/private/ROADMAP.md"),
+        QStringLiteral("docs/private/roadmap.md"),
+        QStringLiteral("docs/internal/ROADMAP.md"),
+        QStringLiteral("docs/internal/roadmap.md"),
+        QStringLiteral(".github/ROADMAP.md"),
+        QStringLiteral(".github/roadmap.md"),
     };
     for (const QString &name : candidates) {
         const QString candidate = cwd + QLatin1Char('/') + name;

@@ -41,6 +41,9 @@
 #ifndef FIXTURE_EMPTY_SARIF
 #error "FIXTURE_EMPTY_SARIF compile definition required"
 #endif
+#ifndef FIXTURE_CPPCHECK_XML
+#error "FIXTURE_CPPCHECK_XML compile definition required"
+#endif
 
 ANTS_TEST_SCOPE();
 
@@ -234,6 +237,94 @@ TEST(McpLastAuditSummary, Inv8FloorValidatedBeforeDiskScan) {
            "INV-8", "expected both bad_severity_floor and .audit_cache");
     expect(floorPos < cachePos, "INV-8",
            "bad_severity_floor must be returned BEFORE .audit_cache scan");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1459 LAS-2 — cppcheck XML parser populates AuditSummary
+// with the right counts + sourceFormat tag.
+TEST(McpLastAuditSummary, Ants1459CppcheckXmlParsesCounts) {
+    expect_reset();
+    auto s = AuditEngine::summariseCppcheckXml(
+        QString::fromUtf8(FIXTURE_CPPCHECK_XML), 10,
+        QStringLiteral("note"));
+    ASSERT_TRUE(s.has_value())
+        << "ANTS-1459 LAS-2: cppcheck XML must parse to AuditSummary";
+    // Fixture has 4 entries:
+    //   uninitMemberVar  severity=error       → countError++
+    //   constParameter   severity=style       → countNote++ (note level)
+    //   useStlAlgorithm  severity=performance → countNote++
+    //   missingInclude   severity=information → countNote++
+    EXPECT_EQ(1, s->countError);
+    EXPECT_EQ(0, s->countWarning);
+    EXPECT_EQ(3, s->countNote);
+    EXPECT_EQ(QString::fromUtf8("cppcheck-xml"), s->sourceFormat);
+    // Top entry sorts to error-level first.
+    ASSERT_FALSE(s->topFindings.isEmpty());
+    EXPECT_EQ(QStringLiteral("error"), s->topFindings.first().level);
+    EXPECT_EQ(QStringLiteral("uninitMemberVar"),
+              s->topFindings.first().ruleId);
+    EXPECT_EQ(QStringLiteral("src/foo.cpp"),
+              s->topFindings.first().file);
+    EXPECT_EQ(42, s->topFindings.first().line);
+}
+
+// ANTS-1459 LAS-3 — buildLasEnvelope echoes source_format
+// (defaulting to "sarif" when blank for back-compat).
+TEST(McpLastAuditSummary, Ants1459SourceFormatInEnvelope) {
+    expect_reset();
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(rc.find("ok[\"source_format\"]") != std::string::npos,
+           "LAS-3",
+           "buildLasEnvelope must emit a source_format field");
+    expect(rc.find("\"sarif\"") != std::string::npos &&
+               rc.find("\"cppcheck-xml\"") != std::string::npos,
+           "LAS-1/2",
+           "remotecontrol.cpp must reference both sarif and "
+           "cppcheck-xml source-format literals");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1459 RQ-1/2/3 — shared findRoadmapUnder helper widens
+// discovery to docs/, docs/private/, docs/internal/, .github/, and
+// returns empty on an empty canonical root.
+TEST(McpLastAuditSummary, Ants1459FindRoadmapUnderWidens) {
+    expect_reset();
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(rc.find("findRoadmapUnder") != std::string::npos,
+           "RQ-3",
+           "remotecontrol.cpp must declare findRoadmapUnder helper");
+    expect(rc.find("if (canonicalRoot.isEmpty()) return {};")
+               != std::string::npos,
+           "RQ-1",
+           "findRoadmapUnder must early-return on empty canonical "
+           "root (defensive guard)");
+    expect(rc.find("docs/private/ROADMAP.md") != std::string::npos,
+           "RQ-2",
+           "findRoadmapUnder must probe docs/private/ROADMAP.md");
+    expect(rc.find("docs/internal/ROADMAP.md") != std::string::npos,
+           "RQ-2",
+           "findRoadmapUnder must probe docs/internal/ROADMAP.md");
+    expect(rc.find(".github/ROADMAP.md") != std::string::npos,
+           "RQ-2",
+           "findRoadmapUnder must probe .github/ROADMAP.md");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1459 RQ-4 — MainWindow::refreshRoadmapButton's path-list
+// stays byte-equal to findRoadmapUnder's so the status-bar
+// button surfaces on the same projects the MCP can query.
+TEST(McpLastAuditSummary, Ants1459StatusBarRoadmapButtonWidened) {
+    expect_reset();
+    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    expect(mw.find("docs/private/ROADMAP.md") != std::string::npos,
+           "RQ-4",
+           "refreshRoadmapButton must probe docs/private/ROADMAP.md");
+    expect(mw.find("docs/internal/ROADMAP.md") != std::string::npos,
+           "RQ-4",
+           "refreshRoadmapButton must probe docs/internal/ROADMAP.md");
+    expect(mw.find(".github/ROADMAP.md") != std::string::npos,
+           "RQ-4",
+           "refreshRoadmapButton must probe .github/ROADMAP.md");
     EXPECT_EQ(0, expect_failures());
 }
 

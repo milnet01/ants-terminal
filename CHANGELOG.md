@@ -643,6 +643,51 @@ once real consumers hit it.
   hint, so a single bad skill can't burn through CPU + tokens
   unchecked.
 
+- **ANTS-1459 — `roadmap_query` + `last_audit_summary` discovery
+  widening (RetroArch cross-session fix) + status-bar button
+  parity.** Four landing-together changes:
+  - **(a)** New `findRoadmapUnder()` shared helper in
+    `remotecontrol.cpp`. Probes 11 candidates in first-hit order:
+    root (3 case variants) → `docs/` → `docs/private/` →
+    `docs/internal/` → `.github/` (2 case variants each). Root
+    wins on conflict. Both `cmdRoadmapQuery` and `cmdRoadmapLog`
+    consume the helper, also keeping each function body under the
+    32 KB regression-guard bound from
+    `tests/features/mcp_roadmap_unrecognised_format/`.
+  - **(b)** `MainWindow::refreshRoadmapButton` ships the same
+    widened candidate list — the status-bar Roadmap button now
+    surfaces on RetroArch (and any other project that keeps its
+    roadmap under `docs/private/`).
+  - **(c)** `last_audit_summary` now accepts cppcheck's native XML
+    output (`cppcheck-*.xml`) when no `audit-*.sarif` is present.
+    New `AuditEngine::summariseCppcheckXml` parses
+    `<results version="2">` via `QXmlStreamReader` (no DTD
+    expansion — XXE-safe by default) and populates the same
+    `AuditSummary` struct the SARIF path uses. Refusal text on
+    the truly-not-found case names both probed shapes and points
+    at `audit_run` / `cppcheck --xml --xml-version=2` as
+    bootstrap paths.
+  - **(d)** `AuditSummary.sourceFormat` new field — every
+    `last_audit_summary` response now echoes `source_format` as
+    `"sarif"` or `"cppcheck-xml"`. Default `"sarif"` when blank
+    for back-compat.
+  Spec `docs/specs/ANTS-1459.md` (RQ-1..RQ-4, LAS-1..LAS-3) was
+  cold-eyes-reviewed before commit: the reviewer caught a 12-vs-11
+  candidate-count discrepancy and an untestable RQ-1 invariant —
+  spec amended, RQ-1 folded into a source-grep test of the
+  defensive early-return. Tests under
+  `tests/features/mcp_last_audit_summary/`: four new
+  `Ants1459*` cases (cppcheck XML parsing, source_format
+  envelope, findRoadmapUnder widening, status-bar button
+  parity). 971/971 features green at landing.
+  **Layman:** two Ants tools used to assume your project's
+  roadmap lives at the repo root and its audit cache uses SARIF;
+  some projects (RetroArch) keep ROADMAP under `docs/private/`
+  and ship cppcheck's native XML instead. Now both tools find
+  the files and parse what's there. The status-bar Roadmap
+  button also surfaces on those projects (you'll see it appear
+  for the first time on RetroArch and similar setups).
+
 - **ANTS-1456 — `audit_run` flat-layout v1 usability fixes +
   ANTS-1464 fold-in (project-side audit-config.json).** Four
   landing-together changes against the RetroArch cross-session

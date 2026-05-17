@@ -8876,7 +8876,7 @@ template / mutate this state atomically" → movable. If it's
   Source: cross-session-report-2026-05-17 (RetroArch CC instance
   running `audit_run` against a flat-layout C project).
 
-- 📋 [ANTS-1459] **`roadmap_query` + `last_audit_summary` discovery
+- ✅ [ANTS-1459] **`roadmap_query` + `last_audit_summary` discovery
   is too narrow for projects that don't put files at the repo
   root.** Cross-session report from a RetroArch CC instance running
   against `/mnt/Games/Scripts/Linux/RetroArch` 2026-05-17:

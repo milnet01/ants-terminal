@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<results version="2">
+  <cppcheck version="2.13.0"/>
+  <errors>
+    <error id="uninitMemberVar" severity="error" msg="Member variable 'foo' is not initialized in the constructor." verbose="Member variable 'foo' is not initialized in the constructor.">
+      <location file="src/foo.cpp" line="42" column="5"/>
+    </error>
+    <error id="constParameter" severity="style" msg="Parameter 'x' can be declared as pointer to const" verbose="Parameter 'x' can be declared as pointer to const">
+      <location file="src/bar.cpp" line="17" column="20"/>
+    </error>
+    <error id="performance/useStlAlgorithm" severity="performance" msg="Consider using std::find_if instead of a raw loop." verbose="Consider using std::find_if instead of a raw loop.">
+      <location file="src/baz.cpp" line="88" column="3"/>
+    </error>
+    <error id="missingInclude" severity="information" msg="Cppcheck cannot find all the include files (use --check-config for details)" verbose="Cppcheck cannot find all the include files (use --check-config for details)"/>
+  </errors>
+</results>

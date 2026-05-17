@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QRegularExpression>
+#include <QXmlStreamReader>
 
 #include <algorithm>
 #include <cstdlib>
@@ -335,7 +336,8 @@ std::optional<AuditSummary> summariseSarif(
     const QJsonObject run = runs.first().toObject();
 
     AuditSummary s;
-    s.sarifPath = sarifPath;
+    s.sarifPath    = sarifPath;
+    s.sourceFormat = QStringLiteral("sarif");  // ANTS-1459
 
     // INV-1 single-run; ignore runs[1..]. invocations[0].startTimeUtc.
     const QJsonArray invocations = run.value(QStringLiteral("invocations")).toArray();
@@ -464,6 +466,137 @@ std::optional<AuditSummary> summariseSarif(
         }
     }
 
+    return s;
+}
+
+// ANTS-1459 — cppcheck native XML parser. Mirrors summariseSarif's
+// AuditSummary output so last_audit_summary callers receive the same
+// envelope shape regardless of which format the project ships.
+//
+// Format reference: cppcheck --xml --xml-version=2 emits a tree
+//   <results version="2">
+//     <cppcheck version="2.x"/>
+//     <errors>
+//       <error id="…" severity="…" msg="…" verbose="…">
+//         <location file="…" line="…" column="…"/>
+//       </error>
+//     </errors>
+//   </results>
+// Only the <error> elements (and their first <location>) carry the
+// finding payload we surface. CWE / inconclusive / hash attributes
+// are ignored at v1 — they have no slot in AuditSummaryFinding.
+std::optional<AuditSummary> summariseCppcheckXml(
+    const QString &xmlPath,
+    int topN,
+    const QString &levelFloor) {
+    QFile f(xmlPath);
+    if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
+
+    AuditSummary s;
+    s.sarifPath    = xmlPath;  // historical field name; XML path lives here
+    s.sourceFormat = QStringLiteral("cppcheck-xml");
+
+    const int floorOrd = levelOrdinal(levelFloor);
+    QList<AuditSummaryFinding> pool;
+
+    // QXmlStreamReader does not expand DTD entities by default,
+    // so XXE / billion-laughs payloads pasted into a malicious
+    // cppcheck-*.xml are not reachable here. No extra hardening
+    // needed.
+    QXmlStreamReader xml(&f);
+    bool sawResults = false;
+    while (!xml.atEnd() && !xml.hasError()) {
+        const auto tt = xml.readNext();
+        if (tt != QXmlStreamReader::StartElement) continue;
+        const QStringView name = xml.name();
+        if (name == QStringLiteral("results")) {
+            sawResults = true;
+            continue;
+        }
+        if (name != QStringLiteral("error")) continue;
+
+        const QXmlStreamAttributes a = xml.attributes();
+        const QString cppSev =
+            a.value(QStringLiteral("severity")).toString();
+        const QString id =
+            a.value(QStringLiteral("id")).toString();
+        const QString msg =
+            a.value(QStringLiteral("msg")).toString();
+
+        // Map cppcheck severity → SARIF-level + severity-tier string.
+        QString sarifLevel;
+        QString sevTier;
+        if (cppSev == QLatin1String("error")) {
+            sarifLevel = QStringLiteral("error");
+            sevTier    = QStringLiteral("MAJOR");
+        } else if (cppSev == QLatin1String("warning")) {
+            sarifLevel = QStringLiteral("warning");
+            sevTier    = QStringLiteral("MAJOR");
+        } else if (cppSev == QLatin1String("information")) {
+            sarifLevel = QStringLiteral("note");
+            sevTier    = QStringLiteral("INFO");
+        } else {  // style / performance / portability / unknown
+            sarifLevel = QStringLiteral("note");
+            sevTier    = QStringLiteral("MINOR");
+        }
+
+        const int ord = levelOrdinal(sarifLevel);
+        if (ord == 2)      ++s.countError;
+        else if (ord == 0) ++s.countNote;
+        else               ++s.countWarning;
+
+        // First nested <location> only (cppcheck can emit several;
+        // v1 mirrors SARIF's locations[0] convention).
+        QString locFile;
+        int     locLine = 0;
+        while (!xml.atEnd()) {
+            const auto next = xml.readNext();
+            if (next == QXmlStreamReader::EndElement &&
+                xml.name() == QStringLiteral("error")) {
+                break;
+            }
+            if (next == QXmlStreamReader::StartElement &&
+                xml.name() == QStringLiteral("location") &&
+                locFile.isEmpty()) {
+                const auto la = xml.attributes();
+                locFile = la.value(QStringLiteral("file")).toString();
+                locLine = la.value(QStringLiteral("line")).toInt();
+            }
+        }
+
+        if (ord < floorOrd) continue;
+
+        AuditSummaryFinding asf;
+        asf.level    = sarifLevel;
+        asf.severity = sevTier;
+        asf.ruleId   = id;
+        asf.message  = msg;
+        asf.file     = locFile;
+        asf.line     = locLine;
+        // cppcheck XML has no confidence signal at v1; leave defaults.
+        pool.append(std::move(asf));
+    }
+
+    if (xml.hasError() || !sawResults) return std::nullopt;
+
+    // Sort + clamp identically to summariseSarif (level desc →
+    // confidence desc → file asc → line asc).
+    std::sort(pool.begin(), pool.end(),
+              [](const AuditSummaryFinding &a,
+                 const AuditSummaryFinding &b) {
+                  const int la = levelOrdinal(a.level);
+                  const int lb = levelOrdinal(b.level);
+                  if (la != lb) return la > lb;
+                  if (a.confidence != b.confidence)
+                      return a.confidence > b.confidence;
+                  if (a.file != b.file) return a.file < b.file;
+                  return a.line < b.line;
+              });
+    if (topN < 0) topN = 0;
+    if (pool.size() > topN) {
+        pool.erase(pool.begin() + topN, pool.end());
+    }
+    s.topFindings = std::move(pool);
     return s;
 }
 
