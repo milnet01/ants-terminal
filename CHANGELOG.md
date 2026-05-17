@@ -643,6 +643,55 @@ once real consumers hit it.
   hint, so a single bad skill can't burn through CPU + tokens
   unchecked.
 
+- **ANTS-1460 — `roadmap_log` flip-op descriptor wording catches up
+  with ANTS-1441.** Pre-fix the tool description claimed flip mode
+  "on a GFM-task-list-format roadmap" — pre-ANTS-1441 wording that
+  did not reflect the ants-v1 emoji-format support shipped in that
+  bundle. A caller reading the descriptor would assume flip was GFM-
+  only and skip the verb on every ants-v1 roadmap (including Ants
+  Terminal's own ROADMAP.md, which it would succeed against — the
+  underlying behaviour was already correct, only the descriptor
+  lied). Two-line wording fix in `claudeintegration.cpp:3110-3135`
+  and the matching `op` enum description at
+  `claudeintegration.cpp:3249-3252` — "either a GFM-task-list or
+  Ants-v1 emoji-status roadmap (auto-detected; ANTS-1441)" and
+  "(ANTS-1428; works on GFM-task-list and Ants-v1 emoji formats —
+  ANTS-1441)". No code change; the existing
+  `roadmap_log_flip_ants_v1` feature test (which backs ANTS-1441)
+  already pins the runtime behaviour this descriptor was
+  underselling.
+  **Layman:** the tool description for `roadmap_log`'s flip mode
+  used to claim it only worked on a specific roadmap format —
+  pre-ANTS-1441 wording. The runtime already supported both
+  formats; the description has caught up.
+
+- **ANTS-1453 — Per-tool `selection_hint` field on every MCP
+  descriptor.** Adds a one-sentence form-factor cue on every tool
+  in the `tools/list` reply (42 tools), surfacing the
+  cost/benefit choice between an Ants MCP call vs. a Bash/Read/
+  Grep round. Cross-session report 2026-05-17 surfaced the gap:
+  a CC instance on a Flask-app bug spent 10 vanilla tool calls
+  doing work `subsystem` + `workspace_search` could have done in
+  two — the descriptor told it *what* the tools do, not *when to
+  prefer them*. Hints follow the "Use when …" / "Prefer over Grep
+  when …" / "Pairs with X" pattern; capped at 240 chars each
+  (~10 KB total payload added to `tools/list`). `tool_info`'s
+  success envelope passes the field through unchanged
+  (`env["selection_hint"] = match.value(QStringLiteral("selection_hint"))`)
+  so a caller can fetch one hint for ~80 B rather than re-paying
+  for the full snapshot. Spec `docs/specs/ANTS-1453.md`. Tests
+  `tests/features/mcp_selection_hint/` (3 invariants: HINT-1 every
+  tool declares one, HINT-2 tool_info passes through, HINT-3 size
+  budget). 961/961 features green at landing. Pairs with ANTS-1460
+  (descriptor hygiene fix shipped same commit) and the queued
+  ANTS-1354 (descriptor `version` field).
+  **Layman:** Claude couldn't always tell when to reach for Ants's
+  smart project-search tools vs. plain Grep — the tool list
+  described what each tool does but didn't say when to prefer one
+  over another. Every tool now carries a short "Use this when …"
+  line so Claude can pick the right one for the shape of the
+  question.
+
 - **ANTS-1454 — `caller_cwd_required` refusals now count as failed
   calls in `token_usage`.** Closes the ANTS-1356 follow-up. The
   ANTS-1404 refusal branch at

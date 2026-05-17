@@ -1438,6 +1438,12 @@ void ClaudeIntegration::onMcpConnection() {
                     "Pass `caller_cwd` (your $PWD) to anchor to your "
                     "tab; without it the result comes from whichever "
                     "tab Ants happens to have focused (ANTS-1392).");
+                // ANTS-1453 — selection_hint: one-sentence
+                // form-factor cue for the calling assistant.
+                scrollbackTool["selection_hint"] = QStringLiteral(
+                    "Use when you need recent terminal output (e.g. "
+                    "the last build error). Prefer over Read/Grep "
+                    "when the data lives in stdout, not on disk.");
                 // ANTS-1395 — scope props/schema inside a block so every
                 // subsequent tool's matching declarations (each already
                 // wrapped in `{ ... }`) no longer trigger
@@ -1475,6 +1481,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "shellCwd, which may NOT be your tab in a multi-"
                     "Ants-tab setup. Pass caller_cwd to avoid the "
                     "cross-tab leak.");
+                cwdTool["selection_hint"] = QStringLiteral(
+                    "Use when you need the canonical form of your "
+                    "$PWD (multi-tab disambiguation, symlink resolve). "
+                    "Cheap (~100 B).");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1494,6 +1504,10 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject sessionTool;
                 sessionTool["name"] = "get_session_info";
                 sessionTool["description"] = "Get terminal session metadata";
+                sessionTool["selection_hint"] = QStringLiteral(
+                    "Use once at session start to learn tab/process "
+                    "layout. Control-plane (no caller_cwd anchor); "
+                    "cheap.");
                 sessionTool["inputSchema"] = emptySchema;
                 tools.append(sessionTool);
 
@@ -1502,6 +1516,10 @@ void ClaudeIntegration::onMcpConnection() {
                 lastCmdTool["description"] = QStringLiteral(
                     "Get the last command's exit code and output "
                     "(via shell integration). ") + callerCwdSuffix();
+                lastCmdTool["selection_hint"] = QStringLiteral(
+                    "Use after a shell command to inspect exit code "
+                    "+ output without scraping scrollback. Requires "
+                    "OSC 133 shell integration.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1517,6 +1535,10 @@ void ClaudeIntegration::onMcpConnection() {
                 gitTool["description"] = QStringLiteral(
                     "Get git branch, status, and recent commits for "
                     "the terminal's CWD. ") + callerCwdSuffix();
+                gitTool["selection_hint"] = QStringLiteral(
+                    "Use for branch + dirty-state + recent-commits "
+                    "in one call. Cheaper than spawning `git status` "
+                    "yourself; prefer git_state for diff/log too.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1532,6 +1554,10 @@ void ClaudeIntegration::onMcpConnection() {
                 envTool["description"] = QStringLiteral(
                     "Get shell environment info (PATH, virtualenv, "
                     "key env vars). ") + callerCwdSuffix();
+                envTool["selection_hint"] = QStringLiteral(
+                    "Use when env vars matter for the diagnosis "
+                    "(PATH resolution, language venv, terminal "
+                    "type). Read-only.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1580,6 +1606,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "dash-then-digits) is recognised, e.g. "
                     "`[ANTS-1234]`, `[MAME-CURATOR-42]`, "
                     "`[mame-curator-7]` (ANTS-1405).");
+                roadmapTool["selection_hint"] = QStringLiteral(
+                    "Use when you need to know which roadmap items "
+                    "are active/shipped before quoting an ID. "
+                    "Prefer over Read for triage queries; use Read "
+                    "for full-text edits.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1693,6 +1724,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "List all open terminal tabs in this Ants instance. "
                     "Each tab: {index, title, cwd, shell_pid, "
                     "claude_running, color}. Envelope: {ok:true, tabs:[…]}.");
+                tabListTool["selection_hint"] = QStringLiteral(
+                    "Use when multiple Ants tabs may exist and you "
+                    "need to pick the right one (e.g. cross-tab "
+                    "queries). Cheap; no caller_cwd anchor.");
                 tabListTool["inputSchema"] = emptySchema;
                 tools.append(tabListTool);
 
@@ -1706,6 +1741,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "10000). Returns {ok, text, lines, bytes} or "
                     "{ok:false, error} when the tab index is out of "
                     "range.");
+                getTextTool["selection_hint"] = QStringLiteral(
+                    "Use when you need a specific tab's trailing "
+                    "scrollback (not your own). Prefer get_scrollback "
+                    "for your own tab; this one targets `tab` index.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1746,6 +1785,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "cache dirs), include_hidden (default false — pass "
                     "true to search dotfile paths; .git/ stays "
                     "excluded regardless).");
+                wsTool["selection_hint"] = QStringLiteral(
+                    "Use for vague-location queries ('where is the X "
+                    "feature wired up?'). For known one-keyword bug "
+                    "hunts, 3 Grep calls can still be cheaper.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1831,6 +1874,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "extension); other types still report "
                     "total_lines/total_bytes for orientation. "
                     "Typically 13-39× smaller than a full Read.");
+                foTool["selection_hint"] = QStringLiteral(
+                    "Use to map a large file's symbols before Read. "
+                    "Prefer over `Read` when you only need a "
+                    "structural overview (which class/function is "
+                    "where).");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1883,6 +1931,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "only, e.g. HEAD~5..HEAD), body (log only, "
                     "include commit body). Saves ~14-300 tokens per "
                     "call vs Bash.");
+                gsTool["selection_hint"] = QStringLiteral(
+                    "Use for git status/log/diff in one structured "
+                    "call (vs three Bash invocations). Pairs with "
+                    "verify_changes after Edit/Write.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1938,6 +1990,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "for files / recent_changes. n: recent_changes "
                     "only (default 10, cap 100). Saves ~24 K tokens "
                     "per /indie-review run.");
+                ssTool["selection_hint"] = QStringLiteral(
+                    "Use as the first call on a 'where does feature "
+                    "X live?' question — walks CLAUDE.md module-map. "
+                    "Collapses 3-5 grep rounds into one.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1983,6 +2039,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "desc, file asc, line asc). Saves ~5-15 K tokens "
                     "vs reading the HTML report. Returns "
                     "{ok:false, code:\"not_audited\"} if no SARIF.");
+                lasTool["selection_hint"] = QStringLiteral(
+                    "Use when planning audit-touching work to see "
+                    "what's already been flagged. Cheap; runs against "
+                    "cached SARIF — no re-scan.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -2027,6 +2087,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "override if present) and computes per-lane "
                         "source-file lists. Saves N file-walk passes "
                         "the orchestrator would otherwise do.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to split source files for multi-reviewer "
+                        "indie-review dispatch. Pairs with "
+                        "indie_review_brief + indie_review_dispatch.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -2052,6 +2116,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "tokens per lane vs the v1 shape that "
                         "inlined bodies. Pure file IO (no LLM). "
                         "Required: lane (string).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to assemble the brief for one "
+                        "indie-review chunk. Run after "
+                        "indie_review_partition.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject laneProp;
@@ -2085,6 +2153,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "pass; no LLM. Provide exactly one of "
                         "`reports` or `reports_dir`. Optional: "
                         "min_lanes (default 2).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to cross-check two+ reviewers' findings "
+                        "against shared evidence. Reduces false "
+                        "positives in N-reviewer fan-out.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject reportsProp;
@@ -2135,6 +2207,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "Caller dispatches the prompt. Required: "
                         "reports (object). Optional: "
                         "include_threat_model_extras (default true).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to draft the synthesis prompt for "
+                        "folding N reviewer chunks into one report. "
+                        "Run before the synthesis subagent dispatch.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject reportsProp;
@@ -2168,6 +2244,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "the block into ROADMAP.md. Required: "
                         "actionable (array), caller_cwd (string — "
                         "your $PWD; ANTS-1372 cross-project gate).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to merge a finished indie-review report "
+                        "back into ROADMAP.md as a fold-in block. "
+                        "Mutates ROADMAP — caller_cwd required.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject actProp;
@@ -2233,6 +2313,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "docs/specs/ANTS-1352.md § 3.3), "
                         "system_extras (≤ 4 KiB append to system "
                         "prompt). See docs/specs/ANTS-1352.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use as the entry-point orchestrator for an "
+                        "end-to-end indie-review run. Wraps "
+                        "partition → brief → dispatch → corroborate.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject callerProp;
@@ -2303,6 +2387,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "/debt-sweep skill for Ants-managed projects. "
                         "Optional: since (git ref, default = most-recent "
                         "tag or HEAD~10), categories (subset of the four).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use when planning a debt-sweep pass. Returns "
+                        "triaged findings + suggested fixes; pairs "
+                        "with debt_sweep_apply_fix + _defer.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject sinceProp;
@@ -2336,6 +2424,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "ok=true with applied=false signals a recognised "
                         "no-op (file_changed / not_fixable). Required: "
                         "caller_cwd (string — your $PWD; ANTS-1372).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to apply ONE triaged debt-sweep fix in "
+                        "place. Mutates files — caller_cwd Required. "
+                        "Pairs with debt_sweep_scan.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject didProp; didProp["type"] = "string";
@@ -2379,6 +2471,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "inserts the block into ROADMAP.md. Required: "
                         "deferred (array), caller_cwd (string — your "
                         "$PWD; ANTS-1372).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to defer (not action) a debt-sweep "
+                        "finding set so it doesn't re-surface every "
+                        "scan. Mutates ROADMAP — caller_cwd required.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject dProp; dProp["type"] = "array";
@@ -2421,6 +2517,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "filters the scan output and passes only the "
                         "judgment-required entries. Pure string "
                         "templating — no LLM call inside Ants.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to draft the triage prompt for the "
+                        "judgment-required subset of debt-sweep "
+                        "findings. Pure templating; no LLM call.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject fProp; fProp["type"] = "array";
@@ -2455,6 +2555,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "to bypass; pass cache_only to probe without "
                         "running. Required: caller_cwd (string — your "
                         "$PWD; ANTS-1372 cross-project gate).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use after Edit/Write to verify build / "
+                        "tests / lint gates still pass. Cheap "
+                        "regression-prevention step; 5-min cache.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject gatesProp;
@@ -2528,6 +2632,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "and optional top_findings_count for inline "
                         "result preview. Required: caller_cwd (ANTS-1404 "
                         "Required gate). See docs/specs/ANTS-1351.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to run the static-analysis sweep without "
+                        "leaving Ants. Pairs with last_audit_summary "
+                        "for the compact read afterwards.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject toolsProp;
@@ -2602,6 +2710,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "or \"csv:<d1,d2>\". scope=\"auto\"/\"path:<sub>\"/"
                         "\"files:<csv>\". Required: caller_cwd. "
                         "See docs/specs/ANTS-1397.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to split a test corpus for multi-"
+                        "reviewer test-audit dispatch. Phase 1 of "
+                        "the trio; pairs with test_audit_brief.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject sP; sP["type"] = "string";
@@ -2635,6 +2747,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "(caller composes the subagent prompt from "
                         "structured siblings). Requires "
                         "partition_token from a prior partition call.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to assemble the brief for one "
+                        "test-audit chunk. Phase 2 of the trio; "
+                        "run after test_audit_partition.");
                     QJsonObject schema; schema["type"] = "object";
                     QJsonObject cP; cP["type"] = "string";
                     QJsonObject pP; pP["type"] = "string";
@@ -2672,6 +2788,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "for ephemeral CI workflows (ANTS-1455). "
                         "Refusals: bad_mode, reports_dir_outside_root, "
                         "reports_dir_unreadable, reports_dir_empty.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to draft the synthesis prompt that "
+                        "folds N test-audit chunks back into one "
+                        "report. Phase 3 of the trio.");
                     QJsonObject schema; schema["type"] = "object";
                     QJsonObject pP; pP["type"] = "string";
                     QJsonObject rP; rP["type"] = "string";
@@ -2728,6 +2848,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "(engine-level delegation, NOT MCP re-entry "
                         "— INV-3). Single batched write: all N IDs "
                         "allocated upfront, one insertBlock call.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to merge a finished test-audit set "
+                        "back into ROADMAP.md as a fold-in block. "
+                        "Phase 4; mutates ROADMAP — caller_cwd "
+                        "required.");
                     QJsonObject schema; schema["type"] = "object";
                     QJsonObject aP; aP["type"] = "array";
                     QJsonObject fP; fP["type"] = "string";
@@ -2766,6 +2891,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "Required: feature_name. Optional: goal, "
                         "architecture, tech_stack, task_count_hint, "
                         "includes_tests, ants_id, save.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use when starting any non-trivial "
+                        "implementation task to scaffold spec.md "
+                        "+ test wiring + CHANGELOG entry skeleton.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject featProp;
@@ -2840,6 +2969,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "descending. Pure read by default; pass "
                         "reset:true to read-and-clear in one "
                         "round-trip. No required args.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to inspect this session's MCP-call "
+                        "cost. Control-plane (no caller_cwd); "
+                        "read-only by default.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject resetProp;
@@ -2875,6 +3008,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "Records are structured (shape + lengths + "
                         "hashes only) — raw argument values are never "
                         "stored. ANTS-1360.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use when debugging MCP tool behaviour. "
+                        "Returns recent dispatcher trace events; "
+                        "read-only ring-buffer.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject sinceProp;
@@ -2916,6 +3053,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "Spec-lanes capped at 12 (most-recently-modified). "
                         "Optional: scope (\"default\" / \"docs_only\" / "
                         "\"contracts_only\").");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to split docs/specs for multi-reviewer "
+                        "cold-eyes dispatch. Pairs with "
+                        "cold_eyes_brief.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject scopeProp;
@@ -2950,6 +3091,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "(ANTS-1319 INV-3, mirrors ANTS-1281); the "
                         "subagent reads each doc via its Read tool. "
                         "Required: lane (string).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to assemble the brief for one "
+                        "cold-eyes chunk. Run after "
+                        "cold_eyes_partition.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject laneProp;
@@ -2983,6 +3128,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "is intentionally absent for cold-eyes. "
                         "Required: reports_dir. Optional: min_lanes "
                         "(default 2).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to surface drift across two related "
+                        "docs (spec vs CHANGELOG, ROADMAP vs spec). "
+                        "Regex pass; no LLM.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject rdProp;
@@ -3026,6 +3175,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "inserts the block into ROADMAP.md. "
                         "Required: actionable (array), caller_cwd "
                         "(string — your $PWD; ANTS-1372).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to merge a finished cold-eyes set "
+                        "back into ROADMAP.md as a fold-in block. "
+                        "Mutates ROADMAP — caller_cwd required.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject aProp;
@@ -3083,6 +3236,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "to test resolution; omit it to see the "
                         "empty-fallback behaviour (focused tab). "
                         "See docs/specs/ANTS-1400.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to debug how Ants would resolve your "
+                        "caller_cwd before sending a real query. "
+                        "No side effects.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject callerProp;
@@ -3109,9 +3266,10 @@ void ClaudeIntegration::onMcpConnection() {
                     t["name"] = "roadmap_log";
                     t["description"] = QStringLiteral(
                         "Append a new bullet to ROADMAP.md, or flip "
-                        "the status of an existing bullet on a "
-                        "GFM-task-list-format roadmap. Mode picked "
-                        "by `op` (default \"append\"). "
+                        "the status of an existing bullet on either "
+                        "a GFM-task-list or Ants-v1 emoji-status "
+                        "roadmap (auto-detected; ANTS-1441). Mode "
+                        "picked by `op` (default \"append\"). "
                         "op:\"append\" (ANTS-1424) — allocates the "
                         "next stable ID from .roadmap-counter, "
                         "formats the bullet per the project's "
@@ -3133,6 +3291,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "unrecognised_format. Returns {ok, id?, "
                         "file, line, bytes_written, ...op-specific} "
                         "or {ok:false, error, code}.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to append a new bullet or flip an "
+                        "existing one's status on ROADMAP.md. "
+                        "Mutates project state — caller_cwd "
+                        "required.");
                     QJsonObject schema;
                     schema["type"] = "object";
 
@@ -3247,8 +3410,9 @@ void ClaudeIntegration::onMcpConnection() {
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
-                        "\"flip\" routes to the GFM-adapter status-"
-                        "flip path (ANTS-1428).");
+                        "\"flip\" routes to the status-flip path "
+                        "(ANTS-1428; works on GFM-task-list and "
+                        "Ants-v1 emoji formats — ANTS-1441).");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
                     QJsonArray toStatusEnum;
@@ -3333,6 +3497,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "Cache cold (no prior tools/list) returns "
                         "code=tools_not_ready. See "
                         "docs/specs/ANTS-1399.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to fetch one tool's descriptor without "
+                        "re-paying for the full tools/list snapshot "
+                        "(~80 B vs ~5 KiB). Surfaces selection_hint "
+                        "field (ANTS-1453).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject nameProp;
@@ -3375,6 +3544,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "anchor to your caller_cwd directly — no "
                         "focused-tab match needed (cross-tab queries "
                         "work).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use as first call when you need to locate "
+                        "ROADMAP/CHANGELOG/specs/standards in an "
+                        "unfamiliar project layout. Cached.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject forceProp;
@@ -3470,6 +3643,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "cwd). Previously optional for get/list "
                         "(ANTS-1372 INV-7); now required for those "
                         "too — see docs/specs/ANTS-1336.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to persist tiny per-project notes "
+                        "across MCP calls (KB-grain). Self-scoped "
+                        "per project; not for large data.");
                     QJsonObject props;
                     props["op"]         = opProp;
                     props["key"]        = keyProp;
@@ -3708,6 +3885,11 @@ void ClaudeIntegration::onMcpConnection() {
                                 env["name"]        = match.value(QStringLiteral("name"));
                                 env["description"] = match.value(QStringLiteral("description"));
                                 env["inputSchema"] = match.value(QStringLiteral("inputSchema"));
+                                // ANTS-1453 — pass selection_hint through
+                                // unchanged. No defaulting (every tool sets
+                                // it in tools/list per HINT-1).
+                                env["selection_hint"] =
+                                    match.value(QStringLiteral("selection_hint"));
                             }
                         }
                         responseText = QString::fromUtf8(

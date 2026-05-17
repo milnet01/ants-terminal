@@ -8989,9 +8989,21 @@ template / mutate this state atomically" → movable. If it's
   Kind: implement.
   Source: user-request-2026-05-17.
 
+- 📋 [ANTS-1461] **`test_audit` synthesis polish — `file_index` path normalisation + `dimension_hints` field rename / schema clarification.**
+  Two LOW-severity follow-ups from the RetroDB `/test-audit` re-run after ANTS-1455 shipped. Reported in `/mnt/Games/Scripts/Linux/RetroDB/.test-audit-reports-3/ANTS_MCP_FEEDBACK.md`. Issues 1 + 3 from the prior batch are validated as fixed; these two are the residue:
+  
+  (a) **`file_index` aggregation double-counts when chunk reports cite files inconsistently.** The same logical file appears twice in `top_files[]` — once as `test_X.py`, once as `tests/test_X.py` — because chunk subagents cite files inconsistently. The synthesis tool surfaces the raw strings without normalisation. Fix: in the `file_index` aggregation step (test_audit_synthesis_prompt), normalise paths to a canonical repo-root-relative form (strip leading `tests/` if it duplicates an existing entry without the prefix, or always resolve to repo-root-relative). Orchestrator can dedupe by basename today; this is polish for a future copy-into-roadmap caller.
+  
+  (b) **`dimension_hints` field name is misleading.** Pre-pass regex hits do not correlate with finding-density — c-005 was hinted with `["security"]` but had 8 Isolation findings; c-001 was hinted with `["security"]` but had 4 Duplication findings. Rename to `pre_pass_dimensions_seen` OR keep the field name and amend the schema description to "dimensions where the pre-pass regex hit, NOT a finding-density predictor."
+  
+  Both items LOW severity per the report ("the trio is fit-for-purpose as-is"). Pairs with ANTS-1455 closure (the two batches' validation feedback).
+  **Layman:** After ANTS-1455 shipped, the RetroDB session re-ran `/test-audit` and confirmed the two big issues are fixed. Two small leftover items: (1) the file-index list shows the same file twice when chunk reports use different paths for it; (2) the `dimension_hints` field name is misleading because it reflects keyword hits, not where real problems concentrate. Both LOW; the trio is otherwise fit-for-purpose.
+  Kind: enhancement.
+  Source: cross-session-report-2026-05-17 (RetroDB CC instance, batch-3 feedback).
+
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 
-- 📋 [ANTS-1453] **Per-tool "use this when..." selection hint on
+- ✅ [ANTS-1453] **Per-tool "use this when..." selection hint on
   every MCP descriptor.** Cross-session report 2026-05-17: a
   Claude Code session on a Flask app (~25 K LOC) triaged a "Scan
   Library doesn't pick up new games" bug. The keyword path was
@@ -9042,7 +9054,7 @@ template / mutate this state atomically" → movable. If it's
   Source: cross-session-report-2026-05-17 (other CC instance on
   RetroDB project).
 
-- 📋 [ANTS-1460] **`roadmap_log` descriptor still says flip op only supports "GFM-task-list-format roadmap" after ANTS-1441 extended it to ants-v1.**
+- ✅ [ANTS-1460] **`roadmap_log` descriptor still says flip op only supports "GFM-task-list-format roadmap" after ANTS-1441 extended it to ants-v1.**
   Observed during ANTS-1454: the `roadmap_log` flip op succeeded against
   Ants Terminal's own ROADMAP.md three times in a row, with the response
   envelope reporting `format:"ants-v1"`. The tool description at

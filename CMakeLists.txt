@@ -918,7 +918,9 @@ if(ANTS_TESTS)
                 # ANTS-1356 MCP per-tool rate-limit / quota.
                 tests/features/mcp_rate_limit/test_mcp_rate_limit.cpp
                 # ANTS-1352 indie_review_dispatch orchestrator.
-                tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp)
+                tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp
+                # ANTS-1453 per-tool MCP selection_hint descriptor field.
+                tests/features/mcp_selection_hint/test_mcp_selection_hint.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
