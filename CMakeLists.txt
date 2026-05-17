@@ -868,6 +868,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_pagination/test_roadmap_query_pagination.cpp
                 # ANTS-1441 roadmap_log op:flip for ants-v1 native format.
                 tests/features/roadmap_log_flip_ants_v1/test_roadmap_log_flip_ants_v1.cpp
+                # ANTS-1410 /audit skill spec-anchor drift detection.
+                tests/features/audit_skill_anchors/test_audit_skill_anchors.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.
@@ -924,6 +926,8 @@ if(ANTS_TESTS)
         SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
         SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         SRC_REMOTECONTROL_H_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
+        # ANTS-1410 — spec-anchor drift test for the /audit skill.
+        SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410.md"
         FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
         FIXTURE_EMPTY_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_empty.sarif"
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"

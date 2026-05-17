@@ -5396,7 +5396,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1410] **`/audit` skill enumerates project-specific CI
+- ✅ [ANTS-1410] **`/audit` skill enumerates project-specific CI
   gates.** Cross-session report 2026-05-15 (MAME Curator session):
   the skill's tool list (ruff, bandit, semgrep, gitleaks, cppcheck,
   clazy) is generic and project-agnostic. MAME Curator's
