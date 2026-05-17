@@ -499,6 +499,33 @@ once real consumers hit it.
   shipped. The filter now hides them, so Current shows only what's
   actually being worked on right now.
 
+- **ANTS-1417 — Every registered MCP tool has an explicit
+  CallerCwdContract classification.** Pre-fix, the
+  `callerCwdContractFor()` function classified 17 of 39 registered
+  tools explicitly; the other 22 (cold-eyes, indie-review,
+  debt-sweep, test-audit, workspace_search, file_outline,
+  plan_template, roadmap_query, subsystem) fell to the default
+  `Optional` return at the end — safe behavior, but silent: a new
+  tool registration would slip through unclassified without
+  anyone noticing. Added explicit `Optional` branches for all 22
+  (current behavior preserved), plus a feature-conformance test
+  (`mcp_caller_cwd_contracts_coverage`) that source-scrapes
+  `registerToolProvider("<name>"` calls against `toolName ==
+  QStringLiteral("<name>")` branches and fails the build if any
+  registered tool lacks an explicit branch. Per-tool Required vs
+  Optional reclassification (especially for engine verbs that
+  write under the caller's project root) is its own follow-up.
+  Spec
+  `tests/features/mcp_caller_cwd_contracts_coverage/spec.md`;
+  tests `tests/features/mcp_caller_cwd_contracts_coverage/`
+  (2 invariants — registered tools all classified, inline-
+  dispatched verbs (`get_session_info`, `tool_info`) still
+  classified for symmetry).
+  Layman: the security layer that decides "does this MCP tool
+  need a working directory passed in?" now has an explicit entry
+  for every tool. A test fails the build if a new tool gets added
+  without one, so the audit decision can never be skipped silently.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1

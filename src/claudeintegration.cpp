@@ -3673,7 +3673,48 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // is the "what would happen without it?" question the verb
     // is built to answer).
     if (toolName == QStringLiteral("caller_cwd_info"))    return C::Optional;
-    // Everything else — Optional (default).
+
+    // ANTS-1417 — explicit Optional classifications for the
+    // remaining registered tools. These currently behave as
+    // Optional (focused-tab fallback when caller_cwd is absent);
+    // the explicit branches lock in the audit decision so a future
+    // tool registration doesn't silently fall to Optional without
+    // a contributor's review. Per-tool Required/Optional re-
+    // classification (especially for the engine verbs that
+    // mutate `.cold-eyes/` / `.indie-review/` / `.debt-sweep/`
+    // workspace dirs under the caller's project root) is its own
+    // follow-up; that audit weighs survey-from-outside legitimacy
+    // against confused-deputy risk per the ANTS-1404 framework.
+    if (toolName == QStringLiteral("roadmap_query"))      return C::Optional;
+    if (toolName == QStringLiteral("subsystem"))          return C::Optional;
+    if (toolName == QStringLiteral("workspace_search"))   return C::Optional;
+    if (toolName == QStringLiteral("file_outline"))       return C::Optional;
+    if (toolName == QStringLiteral("plan_template"))      return C::Optional;
+    // Cold-eyes verb cluster (ANTS-1313).
+    if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Optional;
+    if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Optional;
+    if (toolName == QStringLiteral("cold_eyes_fold_in"))       return C::Optional;
+    if (toolName == QStringLiteral("cold_eyes_partition"))     return C::Optional;
+    // Debt-sweep verb cluster (ANTS-1316).
+    if (toolName == QStringLiteral("debt_sweep_apply_fix"))     return C::Optional;
+    if (toolName == QStringLiteral("debt_sweep_defer"))         return C::Optional;
+    if (toolName == QStringLiteral("debt_sweep_scan"))          return C::Optional;
+    if (toolName == QStringLiteral("debt_sweep_triage_prompt")) return C::Optional;
+    // Indie-review verb cluster (ANTS-1311).
+    if (toolName == QStringLiteral("indie_review_brief"))            return C::Optional;
+    if (toolName == QStringLiteral("indie_review_corroborate"))      return C::Optional;
+    if (toolName == QStringLiteral("indie_review_fold_in"))          return C::Optional;
+    if (toolName == QStringLiteral("indie_review_partition"))        return C::Optional;
+    if (toolName == QStringLiteral("indie_review_synthesis_prompt")) return C::Optional;
+    // Test-audit verb cluster (ANTS-1397).
+    if (toolName == QStringLiteral("test_audit_brief"))            return C::Optional;
+    if (toolName == QStringLiteral("test_audit_fold_in"))          return C::Optional;
+    if (toolName == QStringLiteral("test_audit_partition"))        return C::Optional;
+    if (toolName == QStringLiteral("test_audit_synthesis_prompt")) return C::Optional;
+
+    // Unclassified — fall through. Future tools should be added
+    // above; the ANTS-1417 coverage test fails the build if a
+    // new registerToolProvider call has no matching branch here.
     return C::Optional;
 }
 
