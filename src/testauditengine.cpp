@@ -333,6 +333,198 @@ QStringList resolveDimensions(const QString &arg) {
     return {};  // unknown shape
 }
 
+// ANTS-1491 — strip C/C++ string literals and comments before pre-pass
+// regex matching, so e.g. a `sleep(...)` pattern doesn't match inside a
+// C++ raw-string literal holding a Python child-process script. Mirrors
+// the comment/string filter step in auditdialog's static-analysis
+// pipeline. Replaces content with spaces (not deletes) to preserve
+// column positions; newlines are preserved verbatim so the line-number
+// map stays exact. Only applied to C/C++ extensions — other languages
+// would need their own state machine.
+bool isCxxPath(const QString &path) {
+    static const QStringList kExt = {
+        QStringLiteral(".cpp"), QStringLiteral(".cxx"),
+        QStringLiteral(".cc"),  QStringLiteral(".c"),
+        QStringLiteral(".h"),   QStringLiteral(".hpp"),
+        QStringLiteral(".hh"),  QStringLiteral(".hxx"),
+        QStringLiteral(".ipp"), QStringLiteral(".tcc"),
+    };
+    for (const QString &e : kExt) {
+        if (path.endsWith(e, Qt::CaseInsensitive)) return true;
+    }
+    return false;
+}
+
+QString stripCxxLiteralsAndComments(const QString &src) {
+    QString out;
+    out.reserve(src.size());
+    enum State { Normal, LineComment, BlockComment, StringLit,
+                 CharLit,  RawString };
+    State st = Normal;
+    QString rawDelim;             // captured between R"<delim>( and )<delim>"
+    int rawDelimMatched = 0;      // progress into )<delim>" closer
+    for (int i = 0; i < src.size(); ++i) {
+        const QChar c = src[i];
+        const QChar n = (i + 1 < src.size()) ? src[i+1] : QChar();
+        switch (st) {
+        case Normal: {
+            // Detect raw-string prefix: R"delim( ... )delim"
+            // (Or u8R, uR, UR, LR — accept letter prefix before R).
+            // Cheap probe: at index `i` we're on 'R' and next is '"'.
+            int rawStart = -1;
+            if (c == QLatin1Char('R') && n == QLatin1Char('"')) {
+                rawStart = i;
+            } else if (i + 1 < src.size() &&
+                       src[i+1] == QLatin1Char('R') &&
+                       i + 2 < src.size() &&
+                       src[i+2] == QLatin1Char('"') &&
+                       (c == QLatin1Char('u') || c == QLatin1Char('U') ||
+                        c == QLatin1Char('L'))) {
+                rawStart = i + 1;
+            } else if (c == QLatin1Char('u') && n == QLatin1Char('8') &&
+                       i + 3 < src.size() &&
+                       src[i+2] == QLatin1Char('R') &&
+                       src[i+3] == QLatin1Char('"')) {
+                rawStart = i + 2;
+            }
+            if (rawStart >= 0) {
+                // Find delim between '"' and '('.
+                int j = rawStart + 2;
+                rawDelim.clear();
+                while (j < src.size() && src[j] != QLatin1Char('(')) {
+                    rawDelim.append(src[j]);
+                    ++j;
+                }
+                if (j < src.size()) {
+                    // Emit spaces for the entire R"delim( header.
+                    for (int k = i; k <= j; ++k) {
+                        out.append(src[k] == QLatin1Char('\n')
+                                   ? QLatin1Char('\n')
+                                   : QLatin1Char(' '));
+                    }
+                    i = j;            // loop ++i moves past '('
+                    rawDelimMatched = 0;
+                    st = RawString;
+                    continue;
+                }
+                // fall through — treat as normal
+            }
+            if (c == QLatin1Char('/') && n == QLatin1Char('/')) {
+                st = LineComment;
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                ++i;
+            } else if (c == QLatin1Char('/') && n == QLatin1Char('*')) {
+                st = BlockComment;
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                ++i;
+            } else if (c == QLatin1Char('"')) {
+                st = StringLit;
+                out.append(QLatin1Char(' '));
+            } else if (c == QLatin1Char('\'')) {
+                st = CharLit;
+                out.append(QLatin1Char(' '));
+            } else {
+                out.append(c);
+            }
+            break;
+        }
+        case LineComment:
+            // Preserve newline so line numbers stay exact.
+            if (c == QLatin1Char('\n')) { st = Normal; out.append(c); }
+            else                         out.append(QLatin1Char(' '));
+            break;
+        case BlockComment:
+            if (c == QLatin1Char('*') && n == QLatin1Char('/')) {
+                st = Normal;
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                ++i;
+            } else if (c == QLatin1Char('\n')) {
+                out.append(c);
+            } else {
+                out.append(QLatin1Char(' '));
+            }
+            break;
+        case StringLit:
+            if (c == QLatin1Char('\\') && n != QChar()) {
+                // Preserve a newline that follows an escape (line cont.).
+                out.append(QLatin1Char(' '));
+                out.append(n == QLatin1Char('\n')
+                           ? QLatin1Char('\n') : QLatin1Char(' '));
+                ++i;
+            } else if (c == QLatin1Char('"')) {
+                st = Normal;
+                out.append(QLatin1Char(' '));
+            } else if (c == QLatin1Char('\n')) {
+                // Unterminated string literal — be liberal and end on EOL.
+                st = Normal;
+                out.append(c);
+            } else {
+                out.append(QLatin1Char(' '));
+            }
+            break;
+        case CharLit:
+            if (c == QLatin1Char('\\') && n != QChar()) {
+                out.append(QLatin1Char(' '));
+                out.append(n == QLatin1Char('\n')
+                           ? QLatin1Char('\n') : QLatin1Char(' '));
+                ++i;
+            } else if (c == QLatin1Char('\'')) {
+                st = Normal;
+                out.append(QLatin1Char(' '));
+            } else if (c == QLatin1Char('\n')) {
+                st = Normal;
+                out.append(c);
+            } else {
+                out.append(QLatin1Char(' '));
+            }
+            break;
+        case RawString: {
+            // Watch for )delim" — track progress without rescanning.
+            if (rawDelimMatched == 0 && c == QLatin1Char(')')) {
+                rawDelimMatched = 1;
+                out.append(QLatin1Char(' '));
+            } else if (rawDelimMatched >= 1 &&
+                       rawDelimMatched <= rawDelim.size()) {
+                if (rawDelimMatched - 1 < rawDelim.size() &&
+                    c == rawDelim[rawDelimMatched - 1]) {
+                    ++rawDelimMatched;
+                    out.append(QLatin1Char(' '));
+                } else if (c == QLatin1Char('"')) {
+                    // Edge: ')' followed immediately by '"' with empty delim.
+                    if (rawDelim.isEmpty()) {
+                        st = Normal;
+                        out.append(QLatin1Char(' '));
+                        rawDelimMatched = 0;
+                    } else {
+                        rawDelimMatched = 0;
+                        out.append(c == QLatin1Char('\n')
+                                   ? QLatin1Char('\n') : QLatin1Char(' '));
+                    }
+                } else {
+                    rawDelimMatched = 0;
+                    out.append(c == QLatin1Char('\n')
+                               ? QLatin1Char('\n') : QLatin1Char(' '));
+                }
+            } else if (rawDelimMatched == rawDelim.size() + 1 &&
+                       c == QLatin1Char('"')) {
+                st = Normal;
+                rawDelimMatched = 0;
+                out.append(QLatin1Char(' '));
+            } else {
+                rawDelimMatched = 0;
+                out.append(c == QLatin1Char('\n')
+                           ? QLatin1Char('\n') : QLatin1Char(' '));
+            }
+            break;
+        }
+        }
+    }
+    return out;
+}
+
 // Pre-pass scan one file against the pattern set; return up to N
 // findings as JSON objects (file, line, pattern_id, dimension).
 QJsonArray prePassFile(const QString &path,
@@ -342,11 +534,17 @@ QJsonArray prePassFile(const QString &path,
     if (capRemaining <= 0) return out;
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
-    QTextStream ts(&f);
-    int lineNo = 0;
-    while (!ts.atEnd() && out.size() < capRemaining) {
-        ++lineNo;
-        const QString line = ts.readLine();
+    const QString raw = QString::fromUtf8(f.readAll());
+    // ANTS-1491 — strip C/C++ string literals and comments before
+    // matching, so patterns don't fire inside fixture-string Python
+    // scripts. Newlines/columns preserved so line-number reporting
+    // stays exact.
+    const QString text = isCxxPath(path)
+        ? stripCxxLiteralsAndComments(raw) : raw;
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    for (int idx = 0; idx < lines.size() && out.size() < capRemaining; ++idx) {
+        const int lineNo = idx + 1;
+        const QString &line = lines.at(idx);
         for (int i = 0; i < rxs.size() && out.size() < capRemaining; ++i) {
             if (rxs[i].match(line).hasMatch()) {
                 QJsonObject o;
@@ -489,9 +687,9 @@ PartitionResult partition(const PartitionRequest &req) {
                     QStringLiteral("dimension")).toString());
             }
             Chunk withHints = c;
-            withHints.dimensionHints = hints.values();
-            std::sort(withHints.dimensionHints.begin(),
-                      withHints.dimensionHints.end());
+            withHints.prePassDimensions = hints.values();
+            std::sort(withHints.prePassDimensions.begin(),
+                      withHints.prePassDimensions.end());
             const QString hk = withHints.id;
             r.prePassFindingsByChunk[hk] = findings;
             // Replace chunk-with-hints back.
@@ -684,14 +882,18 @@ SynthResult synthesize(const SynthRequest &req) {
     // ANTS-1455 — mode validation; default "summary" (breaking change
     // ack: v1 always returned the full-fenced bundle, which exceeded
     // tool-result caps on real projects).
+    // ANTS-1486 — "hybrid" added: summary + top-N highest-finding-count
+    // chunks verbatim, so callers can decide-and-read in one round-trip
+    // for heavy chunks without paging through all of mode:full.
     QString mode = req.mode;
     if (mode.isEmpty()) mode = QStringLiteral("summary");
     if (mode != QStringLiteral("summary")
-        && mode != QStringLiteral("full")) {
+        && mode != QStringLiteral("full")
+        && mode != QStringLiteral("hybrid")) {
         r.ok = false; r.code = QStringLiteral("bad_mode");
         r.error = QStringLiteral(
             "test_audit_synthesis_prompt: mode \"%1\" not in "
-            "{summary, full}").arg(req.mode);
+            "{summary, full, hybrid}").arg(req.mode);
         return r;
     }
     r.mode = mode;
@@ -717,12 +919,42 @@ SynthResult synthesize(const SynthRequest &req) {
     static const QRegularExpression fileRefRx(QStringLiteral(
         "([\\w./-]+\\.(?:py|cpp|h|hpp|cc|js|ts|tsx|go|rs|rb|java)):"
         "(\\d+)"));
+    // ANTS-1488 — per-dimension severity histograms. Pre-seed every
+    // dimension to {0,0,0,0,0} so callers see the full lane list even
+    // when a dimension surfaced no findings (orchestrator can iterate
+    // without null-checks).
+    QHash<QString, QHash<QString, int>> sevHist;
+    static const QStringList kSevs = {
+        QStringLiteral("crit"), QStringLiteral("high"),
+        QStringLiteral("med"),  QStringLiteral("low"),
+        QStringLiteral("info"),
+    };
+    for (const QString &d : g_kDimensions()) {
+        for (const QString &s : kSevs) sevHist[d][s] = 0;
+    }
+    // Header pattern: `## <emoji>? <Dimension Name> (N)` — the leading
+    // `##` (or `###`) plus the dimension keyword anywhere in the
+    // header line. We canonicalise by lowercasing + comparing against
+    // kDimensions so cosmetic differences in skill prose ("Performance"
+    // vs "performance") don't fragment counts.
+    static const QRegularExpression headerRx(QStringLiteral(
+        "^#{2,3}\\s+"));
+    // Finding bullet shape: `- [SEV] …` or `- [SEV-tag] …`. Match the
+    // canonical 5 severities and the "MEDIUM" full-word form too.
+    static const QRegularExpression findingRx(QStringLiteral(
+        "^\\s*-\\s*\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]"));
+    // ANTS-1486 — per-chunk total finding count, for hybrid mode's
+    // "top-N by max-finding-count" pick. Computed during pass 1 so we
+    // don't re-scan.
+    QList<int> findingCountByChunk;
+    findingCountByChunk.reserve(md.size());
     QStringList contentsByChunk;
     contentsByChunk.reserve(md.size());
     for (const QString &m : md) {
         QFile f(dir.absoluteFilePath(m));
         if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
             contentsByChunk.append(QString());
+            findingCountByChunk.append(0);
             continue;
         }
         const QByteArray raw = f.readAll().left(64 * 1024);
@@ -740,6 +972,37 @@ SynthResult synthesize(const SynthRequest &req) {
             const QRegularExpressionMatch m2 = it.next();
             ++fileRefCount[m2.captured(1)];
         }
+        // ANTS-1488 — walk lines, track current dimension header,
+        // attribute each finding's severity to that dimension. Lines
+        // outside a recognised dimension header still count toward the
+        // dimension's bucket if the dimension keyword appears in the
+        // header line, even if the prose styled it differently.
+        QString curDim;
+        int chunkFindings = 0;
+        const QStringList lines = contents.split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            if (headerRx.match(line).hasMatch()) {
+                curDim.clear();
+                for (const QString &d : g_kDimensions()) {
+                    if (line.contains(d, Qt::CaseInsensitive)) {
+                        curDim = d;
+                        break;
+                    }
+                }
+                continue;
+            }
+            const auto fm = findingRx.match(line);
+            if (fm.hasMatch()) {
+                ++chunkFindings;
+                if (!curDim.isEmpty()) {
+                    QString sev = fm.captured(1).toLower();
+                    if (sev == QLatin1String("critical")) sev = QStringLiteral("crit");
+                    if (sev == QLatin1String("medium"))   sev = QStringLiteral("med");
+                    ++sevHist[curDim][sev];
+                }
+            }
+        }
+        findingCountByChunk.append(chunkFindings);
     }
 
     // Dimension summaries (legacy field) + top_dimensions envelope.
@@ -811,12 +1074,69 @@ SynthResult synthesize(const SynthRequest &req) {
     if (fileRanked.size() > kFileIdxCap) r.truncated = true;
     r.fileIndex = fileIdx;
 
+    // ANTS-1488 — assemble per-dimension severity histogram envelope.
+    // Only include dimensions that surfaced at least one finding (keeps
+    // the envelope tight; the orchestrator can probe dimensions absent
+    // from this map as "no findings").
+    QJsonObject sevEnv;
+    for (auto it = sevHist.constBegin(); it != sevHist.constEnd(); ++it) {
+        int total = 0;
+        for (const QString &s : kSevs) total += it.value().value(s);
+        if (total == 0) continue;
+        QJsonObject row;
+        for (const QString &s : kSevs) row[s] = it.value().value(s);
+        sevEnv[it.key()] = row;
+    }
+    r.severityHistograms = sevEnv;
+
     QString prompt;
     QTextStream ts(&prompt);
     ts << "# Test-Audit Synthesis\n\n";
     ts << "Mode: " << mode << "\n";
     ts << "Reports: " << md.size() << " chunk(s) at "
        << req.reportsDir << "\n\n";
+
+    // Shared helper: render summary stats block (top_dimensions +
+    // file_index + severity histograms + chunk inventory). Used by
+    // both summary and hybrid modes.
+    auto renderSummaryBlock = [&]() {
+        ts << "## Top dimensions (by chunk-keyword hit count)\n\n";
+        for (const auto &entry : topDims) {
+            const QJsonObject o = entry.toObject();
+            ts << "- **" << o.value("dimension").toString()
+               << "** — " << o.value("count").toInt()
+               << " chunk(s)\n";
+        }
+        // ANTS-1488 — severity histograms.
+        if (!sevEnv.isEmpty()) {
+            ts << "\n## Severity histograms (per dimension)\n\n";
+            for (const QString &d : sevEnv.keys()) {
+                const QJsonObject row = sevEnv.value(d).toObject();
+                ts << "- **" << d << "** — "
+                   << "crit:" << row.value("crit").toInt() << " "
+                   << "high:" << row.value("high").toInt() << " "
+                   << "med:"  << row.value("med").toInt() << " "
+                   << "low:"  << row.value("low").toInt() << " "
+                   << "info:" << row.value("info").toInt() << "\n";
+            }
+        }
+        ts << "\n## Most-referenced source files\n\n";
+        for (const auto &entry : fileIdx) {
+            const QJsonObject o = entry.toObject();
+            ts << "- `" << o.value("file").toString()
+               << "` — " << o.value("dimension_hits_total").toInt()
+               << " ref(s)\n";
+        }
+        if (r.truncated) {
+            ts << "\n*(top_dimensions and/or file_index truncated; "
+                  "pass mode:\"full\" for the verbatim chunk reports.)*\n";
+        }
+        ts << "\n## Chunk inventory\n\n";
+        for (int i = 0; i < md.size(); ++i) {
+            ts << "- " << md.at(i)
+               << " (" << findingCountByChunk.at(i) << " findings)\n";
+        }
+    };
 
     if (mode == QStringLiteral("full")) {
         // ANTS-1455 — pagination. Default limit=5 (NOT -1) prevents
@@ -843,32 +1163,41 @@ SynthResult synthesize(const SynthRequest &req) {
         } else {
             r.nextOffset = -1;
         }
+    } else if (mode == QStringLiteral("hybrid")) {
+        // ANTS-1486 — summary stats + top-N highest-finding-count
+        // chunks verbatim. Default N=3; caller can override via
+        // `limit`. Chunks selected from `findingCountByChunk` desc; ties
+        // broken by chunk index (so output order is stable).
+        renderSummaryBlock();
+        int topN = req.limit;
+        if (topN <= 0) topN = 3;
+        QList<QPair<int /*count*/, int /*idx*/>> ranked;
+        ranked.reserve(md.size());
+        for (int i = 0; i < md.size(); ++i)
+            ranked.append({findingCountByChunk.at(i), i});
+        std::sort(ranked.begin(), ranked.end(),
+                  [](const auto &a, const auto &b) {
+                      if (a.first != b.first) return a.first > b.first;
+                      return a.second < b.second;
+                  });
+        const int n = qMin(topN, static_cast<int>(ranked.size()));
+        ts << "\n## Top " << n
+           << " chunk(s) verbatim (by finding count)\n\n";
+        ts << "Per-chunk reports (each fenced for prompt-injection "
+              "defence — INV-8):\n\n";
+        for (int i = 0; i < n; ++i) {
+            const int idx = ranked.at(i).second;
+            const QString &m = md.at(idx);
+            ts << "<chunk_report file=\"" << m.toHtmlEscaped() << "\">\n"
+               << contentsByChunk.at(idx) << "\n</chunk_report>\n\n";
+            ++r.reportsRead;
+        }
+        r.chunksReturned = n;
+        r.nextOffset = -1;
     } else {
-        // mode:"summary" — counts + top-N pointers, no fenced bundle.
-        // Output target ≤ 16 KiB; the chunk markdown itself is NOT
-        // inlined (callers wanting bytes pass mode:"full").
-        ts << "## Top dimensions (by chunk-keyword hit count)\n\n";
-        for (const auto &entry : topDims) {
-            const QJsonObject o = entry.toObject();
-            ts << "- **" << o.value("dimension").toString()
-               << "** — " << o.value("count").toInt()
-               << " chunk(s)\n";
-        }
-        ts << "\n## Most-referenced source files\n\n";
-        for (const auto &entry : fileIdx) {
-            const QJsonObject o = entry.toObject();
-            ts << "- `" << o.value("file").toString()
-               << "` — " << o.value("dimension_hits_total").toInt()
-               << " ref(s)\n";
-        }
-        if (r.truncated) {
-            ts << "\n*(top_dimensions and/or file_index truncated; "
-                  "pass mode:\"full\" for the verbatim chunk reports.)*\n";
-        }
-        ts << "\n## Chunk inventory\n\n";
-        for (int i = 0; i < md.size(); ++i) {
-            ts << "- " << md.at(i) << "\n";
-        }
+        // mode:"summary" — counts + top-N pointers + severity
+        // histograms; no fenced bundle. Output target ≤ 16 KiB.
+        renderSummaryBlock();
         r.reportsRead = md.size();
         r.chunksReturned = 0;
         r.nextOffset = -1;
@@ -918,11 +1247,17 @@ FoldInResult foldIn(const FoldInRequest &req) {
     const int n = req.actionable.size();
     const QList<int> allocatedInts = RoadmapFoldIn::allocateIds(canon, n);
     if (allocatedInts.size() != n) {
+        // ANTS-1490 — surface the counter-file path in the error so the
+        // caller can clear a stale `.lock` sibling or inspect the file.
+        const QString counterPath = RoadmapFoldIn::counterFilePath(canon);
         r.ok = false; r.code = QStringLiteral("id_counter_failed");
         r.error = QStringLiteral(
             "test_audit_fold_in: allocateIds returned %1 of %2 "
-            "(flock/IO failure)")
-                .arg(allocatedInts.size()).arg(n);
+            "(flock/IO failure on counter %3 — check for a stale "
+            "%3.lock sibling)")
+                .arg(allocatedInts.size()).arg(n)
+                .arg(counterPath.isEmpty()
+                     ? QStringLiteral("(unresolvable)") : counterPath);
         return r;
     }
     QStringList allocated;

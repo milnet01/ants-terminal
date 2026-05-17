@@ -4051,9 +4051,13 @@ void MainWindow::setupClaudeMcpProviders() {
             QJsonArray chunks;
             for (const auto &c : r.chunks) {
                 QJsonObject co;
-                co["id"]              = c.id;
-                co["paths"]           = QJsonArray::fromStringList(c.paths);
-                co["dimension_hints"] = QJsonArray::fromStringList(c.dimensionHints);
+                co["id"]                  = c.id;
+                co["paths"]               = QJsonArray::fromStringList(c.paths);
+                // ANTS-1487: renamed from `dimension_hints` so callers can't
+                // mistake "dimensions the pre-pass grep hit" for "dimensions
+                // worth auditing". Full lane list is `dimensions_active` at
+                // envelope level.
+                co["pre_pass_dimensions"] = QJsonArray::fromStringList(c.prePassDimensions);
                 chunks.append(co);
             }
             env["chunks"] = chunks;
@@ -4064,6 +4068,19 @@ void MainWindow::setupClaudeMcpProviders() {
                 prePass[it.key()] = it.value();
             }
             env["pre_pass_findings_by_chunk"] = prePass;
+            // ANTS-1489 — echo the chunk-ID keyset at envelope level so
+            // callers can decide which per-chunk briefs are worth
+            // fetching without descending into the nested map.
+            QJsonArray prePassChunkIds;
+            for (auto it = r.prePassFindingsByChunk.constBegin();
+                 it != r.prePassFindingsByChunk.constEnd(); ++it) {
+                if (!it.value().isEmpty()) prePassChunkIds.append(it.key());
+            }
+            // Stable order — callers may iterate the array directly.
+            QStringList idsSorted;
+            for (const auto &v : prePassChunkIds) idsSorted.append(v.toString());
+            std::sort(idsSorted.begin(), idsSorted.end());
+            env["pre_pass_chunk_ids"] = QJsonArray::fromStringList(idsSorted);
             env["pre_pass_cached"] = r.prePassCached;
             env["partition_token"] = r.partitionToken;
             env["offset"]    = r.offset;
@@ -4123,6 +4140,10 @@ void MainWindow::setupClaudeMcpProviders() {
             env["dimension_summaries"] = r.dimensionSummaries;
             env["top_dimensions"]      = r.topDimensions;
             env["file_index"]          = r.fileIndex;
+            // ANTS-1488 — per-dimension severity histograms so callers
+            // can decide whether to drop into mode:"full" or mode:"hybrid"
+            // based on whether any dimension surfaced a CRIT/HIGH.
+            env["severity_histograms"] = r.severityHistograms;
             env["truncated"]           = r.truncated;
             env["reports_read"]        = r.reportsRead;
             env["chunks_total"]        = r.chunksTotal;

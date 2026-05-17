@@ -450,9 +450,6 @@ VerifyReport runVerify(const QString &projectPath,
     // Clamp opts to documented ranges.
     int maxLines = qBound(kMaxLogLinesLo, opts.maxLogLines, kMaxLogLinesHi);
     int timeoutTotal = qBound(opts.minTotalTimeoutSec, opts.timeoutSec, kTimeoutHi);
-    int perGateSec =
-        qMax(opts.minPerGateSec,
-             timeoutTotal / qMax(1, configured.size()));
 
     // Apply `only` filter — if non-empty, keep only matching gates.
     if (!opts.only.isEmpty()) {
@@ -462,6 +459,15 @@ VerifyReport runVerify(const QString &projectPath,
         }
         configured = filtered;
     }
+
+    // ANTS-1492 — per-gate budget is divided by the actual gates that will
+    // run, not the configured-set size. Pre-fix bug: a caller passing
+    // gates:["build"], timeout_sec:900 with 3 configured gates got
+    // perGateSec=300 (900/3) instead of 900, then half the build wall-clock
+    // budget silently vanished into "no gate ran" slots.
+    int perGateSec =
+        qMax(opts.minPerGateSec,
+             timeoutTotal / qMax(1, configured.size()));
 
     // Always emit all three gate entries in the report (per § 4 — the
     // shape stays consistent so callers can branch on per-gate state

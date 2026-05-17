@@ -9,6 +9,7 @@
 #include <QStringList>
 #include <QThread>
 
+#include <cerrno>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
@@ -74,15 +75,39 @@ bool roadmapStaysInProject(const QString &projectPath,
 // Acquire ::flock(LOCK_EX|LOCK_NB) on `path`, polling 50 ms × 100
 // (5 s budget). Returns the open fd on success, -1 on timeout / open
 // failure. Caller MUST close + flock(LOCK_UN).
-int lockExclusive(const QString &path) {
+//
+// On flock() systemic failure (errno ∈ {ENOLCK, EBADF, EINVAL,
+// ENOSYS}) — typically observed on networked filesystems or some FUSE
+// drivers — we sleep + retry like a contention wait, since the next
+// attempt may still succeed; only "filesystem cannot support flock at
+// all" should fall through to the rename-based fallback. We
+// distinguish that case via the static-out parameter `*flockBroken`,
+// set true when EVERY attempt failed with one of the systemic codes.
+int lockExclusive(const QString &path, bool *flockBroken = nullptr) {
     const QByteArray utf8 = path.toUtf8();
     int fd = ::open(utf8.constData(), O_RDWR | O_CREAT, 0644);
     if (fd < 0) return -1;
+    bool everSystemic = false;
+    bool everContention = false;
     for (int attempt = 0; attempt < 100; ++attempt) {
-        if (::flock(fd, LOCK_EX | LOCK_NB) == 0) return fd;
+        if (::flock(fd, LOCK_EX | LOCK_NB) == 0) {
+            if (flockBroken) *flockBroken = false;
+            return fd;
+        }
+        const int err = errno;
+        if (err == EWOULDBLOCK || err == EAGAIN || err == EINTR) {
+            everContention = true;
+        } else if (err == ENOLCK || err == EBADF || err == EINVAL
+                   || err == ENOSYS) {
+            everSystemic = true;
+        } else {
+            everSystemic = true;
+        }
         QThread::msleep(50);
     }
     ::close(fd);
+    // If only systemic errors fired, fallback can try rename-locking.
+    if (flockBroken) *flockBroken = everSystemic && !everContention;
     return -1;
 }
 
@@ -92,7 +117,37 @@ void unlockAndClose(int fd) {
     ::close(fd);
 }
 
+// ANTS-1490 — O_CREAT|O_EXCL rename-based locking fallback. Used when
+// flock() returns systemic errors on every retry (NFS, some FUSE
+// filesystems, etc.). Creates `.roadmap-counter.lock` exclusively; the
+// presence of the lock file is the lock. 5 s budget mirroring
+// lockExclusive. Returns true on success; caller MUST call
+// releaseRenameLock to remove the file.
+bool acquireRenameLock(const QString &counterPath_) {
+    const QString lockPath = counterPath_ + QStringLiteral(".lock");
+    const QByteArray utf8 = lockPath.toUtf8();
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        const int fd = ::open(utf8.constData(),
+                              O_WRONLY | O_CREAT | O_EXCL, 0644);
+        if (fd >= 0) { ::close(fd); return true; }
+        if (errno != EEXIST) return false;
+        QThread::msleep(50);
+    }
+    return false;
+}
+
+void releaseRenameLock(const QString &counterPath_) {
+    const QString lockPath = counterPath_ + QStringLiteral(".lock");
+    ::unlink(lockPath.toUtf8().constData());
+}
+
 } // namespace
+
+QString counterFilePath(const QString &projectPath) {
+    const QString canon = QFileInfo(projectPath).canonicalFilePath();
+    if (canon.isEmpty()) return {};
+    return canon + QStringLiteral("/.roadmap-counter");
+}
 
 QList<int> allocateIds(const QString &projectPath, int n) {
     if (n <= 0) return {};
@@ -103,13 +158,36 @@ QList<int> allocateIds(const QString &projectPath, int n) {
     // any flock / read / write happens.
     if (!counterStaysInProject(projectPath, path)) return {};
 
-    int fd = lockExclusive(path);
-    if (fd < 0) return {};
+    bool flockBroken = false;
+    int fd = lockExclusive(path, &flockBroken);
+    bool usingRenameLock = false;
+    if (fd < 0) {
+        if (!flockBroken) return {};
+        // ANTS-1490 — flock returned systemic errors on every retry;
+        // fall back to O_CREAT|O_EXCL rename-based locking. The lock
+        // file's presence IS the lock.
+        if (!acquireRenameLock(path)) return {};
+        usingRenameLock = true;
+        fd = ::open(path.toUtf8().constData(), O_RDWR | O_CREAT, 0644);
+        if (fd < 0) {
+            releaseRenameLock(path);
+            return {};
+        }
+    }
+
+    auto cleanup = [&](){
+        if (usingRenameLock) {
+            ::close(fd);
+            releaseRenameLock(path);
+        } else {
+            unlockAndClose(fd);
+        }
+    };
 
     // Read current value.
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {
-        unlockAndClose(fd);
+        cleanup();
         return {};
     }
     const QByteArray raw = f.readAll();
@@ -118,7 +196,7 @@ QList<int> allocateIds(const QString &projectPath, int n) {
     bool ok = false;
     int current = raw.trimmed().toInt(&ok);
     if (!ok) {
-        unlockAndClose(fd);
+        cleanup();
         return {};
     }
 
@@ -129,16 +207,16 @@ QList<int> allocateIds(const QString &projectPath, int n) {
     // Write the new counter atomically.
     QSaveFile save(path);
     if (!save.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        unlockAndClose(fd);
+        cleanup();
         return {};
     }
     const QByteArray newVal = QByteArray::number(current + n) + '\n';
     if (save.write(newVal) != newVal.size() || !save.commit()) {
-        unlockAndClose(fd);
+        cleanup();
         return {};
     }
 
-    unlockAndClose(fd);
+    cleanup();
     return ids;
 }
 

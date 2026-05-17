@@ -71,17 +71,59 @@ int countBullets(const QByteArray &body, const QString &format) {
     return n;
 }
 
+// ANTS-1493 — fork-only doc tree candidates. Some projects keep
+// fork-internal docs under docs/private/ or docs/internal/ or
+// docs/fork/ to avoid leaking to upstream. Cheap to probe; almost
+// always null on a normal project.
+namespace {
+const QStringList kRoadmapCandidates = {
+    QStringLiteral("ROADMAP.md"),
+    QStringLiteral("docs/private/ROADMAP.md"),
+    QStringLiteral("docs/internal/ROADMAP.md"),
+    QStringLiteral("docs/fork/ROADMAP.md"),
+};
+const QStringList kChangelogCandidates = {
+    QStringLiteral("CHANGELOG.md"),
+    QStringLiteral("docs/private/CHANGELOG.md"),
+    QStringLiteral("docs/internal/CHANGELOG.md"),
+    QStringLiteral("docs/fork/CHANGELOG.md"),
+};
+const QStringList kSpecsCandidates = {
+    QStringLiteral("docs/specs"),
+    QStringLiteral("docs/private/specs"),
+    QStringLiteral("docs/internal/specs"),
+    QStringLiteral("docs/fork/specs"),
+};
+const QStringList kStandardsCandidates = {
+    QStringLiteral("docs/standards"),
+    QStringLiteral("docs/private/standards"),
+    QStringLiteral("docs/internal/standards"),
+};
+const QStringList kAdrCandidates = {
+    QStringLiteral("docs/decisions"),
+    QStringLiteral("docs/private/decisions"),
+    QStringLiteral("docs/internal/decisions"),
+};
+}  // namespace
+
 void scanRoadmap(const QString &cwd, RoadmapInfo &out,
                  QStringList &probed) {
-    const QString rel  = QStringLiteral("ROADMAP.md");
-    const QString full = cwd + QLatin1Char('/') + rel;
-    probed.append(rel);
-    QFileInfo fi(full);
-    if (!fi.exists()) {
+    QString rel;
+    QString full;
+    for (const QString &cand : kRoadmapCandidates) {
+        probed.append(cand);
+        const QString f = cwd + QLatin1Char('/') + cand;
+        if (QFileInfo(f).exists()) {
+            rel = cand; full = f;
+            break;
+        }
+    }
+    if (rel.isEmpty()) {
         // Absent: every field stays empty/zero per spec § Scan
         // logic ("ROADMAP.md is absent" rule).
         return;
     }
+    QFileInfo fi(full);
     out.path      = rel;
     out.sizeBytes = fi.size();
     out.mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
@@ -105,14 +147,16 @@ void scanRoadmap(const QString &cwd, RoadmapInfo &out,
 
 void scanChangelog(const QString &cwd, ChangelogInfo &out,
                    QStringList &probed) {
-    const QString rel  = QStringLiteral("CHANGELOG.md");
-    const QString full = cwd + QLatin1Char('/') + rel;
-    probed.append(rel);
-    QFileInfo fi(full);
-    if (!fi.exists()) return;
-    out.path      = rel;
-    out.sizeBytes = fi.size();
-    out.mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
+    for (const QString &cand : kChangelogCandidates) {
+        probed.append(cand);
+        const QString full = cwd + QLatin1Char('/') + cand;
+        QFileInfo fi(full);
+        if (!fi.exists()) continue;
+        out.path      = cand;
+        out.sizeBytes = fi.size();
+        out.mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
+        return;
+    }
 }
 
 void scanDir(const QString &cwd, const QString &rel,
@@ -131,14 +175,30 @@ void scanFile(const QString &cwd, const QString &rel,
 
 void scanAppStream(const QString &cwd, QString &out,
                    QStringList &probed) {
-    const QString rel = QStringLiteral("packaging");
-    probed.append(rel);
-    const QString full = cwd + QLatin1Char('/') + rel;
-    QDirIterator it(full, QStringList{QStringLiteral("*.metainfo.xml")},
-                    QDir::Files);
-    if (it.hasNext()) {
-        it.next();
-        out = rel + QLatin1Char('/') + it.fileName();
+    // ANTS-1493 — probe at repo root + the common packaging dirs.
+    // Reverse-DNS metainfo names vary wildly so we glob *.metainfo.xml
+    // rather than hard-coding a prefix.
+    static const QStringList kDirs = {
+        QStringLiteral("."),
+        QStringLiteral("packaging"),
+        QStringLiteral("pkg"),
+        QStringLiteral("data"),
+        QStringLiteral("share/applications"),
+    };
+    for (const QString &rel : kDirs) {
+        probed.append(rel == QStringLiteral(".")
+                      ? QStringLiteral("(root)/*.metainfo.xml")
+                      : (rel + QStringLiteral("/*.metainfo.xml")));
+        const QString full = cwd + QLatin1Char('/') + rel;
+        QDirIterator it(full, QStringList{QStringLiteral("*.metainfo.xml")},
+                        QDir::Files);
+        if (it.hasNext()) {
+            it.next();
+            out = (rel == QStringLiteral("."))
+                ? it.fileName()
+                : (rel + QLatin1Char('/') + it.fileName());
+            return;
+        }
     }
 }
 
@@ -151,12 +211,19 @@ LayoutEnvelope scanLayout(const QString &absoluteCwd) {
     env.ttlDays     = kDefaultTtlDays;
     scanRoadmap(absoluteCwd, env.roadmap,   env.probedPaths);
     scanChangelog(absoluteCwd, env.changelog, env.probedPaths);
-    scanDir (absoluteCwd, QStringLiteral("docs/specs"),
-             env.specsDir,    env.probedPaths);
-    scanDir (absoluteCwd, QStringLiteral("docs/standards"),
-             env.standardsDir, env.probedPaths);
-    scanDir (absoluteCwd, QStringLiteral("docs/decisions"),
-             env.adrDir,       env.probedPaths);
+    // ANTS-1493 — iterate candidate dirs; first-hit wins per field.
+    for (const QString &cand : kSpecsCandidates) {
+        if (!env.specsDir.isEmpty()) break;
+        scanDir(absoluteCwd, cand, env.specsDir, env.probedPaths);
+    }
+    for (const QString &cand : kStandardsCandidates) {
+        if (!env.standardsDir.isEmpty()) break;
+        scanDir(absoluteCwd, cand, env.standardsDir, env.probedPaths);
+    }
+    for (const QString &cand : kAdrCandidates) {
+        if (!env.adrDir.isEmpty()) break;
+        scanDir(absoluteCwd, cand, env.adrDir, env.probedPaths);
+    }
     scanAppStream(absoluteCwd, env.appstreamMetainfo,
                   env.probedPaths);
     scanFile(absoluteCwd, QStringLiteral(".roadmap-counter"),

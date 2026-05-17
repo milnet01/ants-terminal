@@ -3923,31 +3923,43 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     const QStringList sarifNames = cacheDir.entryList(
         QStringList{QStringLiteral("audit-*.sarif")},
         QDir::Files, QDir::Name | QDir::Reversed);
-    // ANTS-1459 — when no SARIF is present, fall back to cppcheck's
-    // native XML output (`cppcheck-*.xml`). The format the project's
-    // own audit pipeline ships matters more than the SARIF default;
-    // returning the same envelope shape regardless of input format
-    // is the discoverability fix.
+    // ANTS-1459 + ANTS-1494 — when no SARIF is present, fall back to a
+    // raw-scanner-output discovery order:
+    //   cppcheck-*.xml   (cppcheck --xml --xml-version=2)
+    //   clang-tidy-*.txt (clang-tidy native text)
+    //   semgrep-*.json   (semgrep --json)
+    // First non-empty match wins; mtime preserved as the discovery
+    // pivot via QDir::Name|Reversed lexicographic ordering on the
+    // pattern-matched names. Returning the same envelope shape
+    // regardless of input format is the discoverability fix.
     QString reportPath;
-    QString sourceFormat;  // "sarif" | "cppcheck-xml"
+    QString sourceFormat;  // "sarif" | "cppcheck-xml" | "clang-tidy-text" | "semgrep-json"
+    auto pickLatest = [&](const QString &glob, const QString &tag) {
+        if (!reportPath.isEmpty()) return;
+        const QStringList ns = cacheDir.entryList(
+            QStringList{glob}, QDir::Files, QDir::Name | QDir::Reversed);
+        if (ns.isEmpty()) return;
+        reportPath   = cacheDir.absoluteFilePath(ns.first());
+        sourceFormat = tag;
+    };
     if (!sarifNames.isEmpty()) {
         reportPath   = cacheDir.absoluteFilePath(sarifNames.first());
         sourceFormat = QStringLiteral("sarif");
     } else {
-        const QStringList cppNames = cacheDir.entryList(
-            QStringList{QStringLiteral("cppcheck-*.xml")},
-            QDir::Files, QDir::Name | QDir::Reversed);
-        if (!cppNames.isEmpty()) {
-            reportPath   = cacheDir.absoluteFilePath(cppNames.first());
-            sourceFormat = QStringLiteral("cppcheck-xml");
-        }
+        pickLatest(QStringLiteral("cppcheck-*.xml"),
+                   QStringLiteral("cppcheck-xml"));
+        pickLatest(QStringLiteral("clang-tidy-*.txt"),
+                   QStringLiteral("clang-tidy-text"));
+        pickLatest(QStringLiteral("semgrep-*.json"),
+                   QStringLiteral("semgrep-json"));
     }
     if (reportPath.isEmpty()) {
         return QJsonDocument(lasErr(QStringLiteral("not_audited"),
-            QStringLiteral("last_audit_summary: no audit-*.sarif or "
-                           "cppcheck-*.xml found under .audit_cache "
-                           "(ANTS-1459). Run audit_run or "
-                           "cppcheck --xml --xml-version=2 first.")));
+            QStringLiteral("last_audit_summary: no audit-*.sarif, "
+                           "cppcheck-*.xml, clang-tidy-*.txt, or "
+                           "semgrep-*.json found under .audit_cache "
+                           "(ANTS-1459 + ANTS-1494). Run audit_run or "
+                           "one of the supported scanners first.")));
     }
 
     // Cache key: (path, mtime, topN, floor). Keyed on resolved path
@@ -3963,9 +3975,15 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     }
 
     // Cache miss — parse with the format-appropriate engine helper.
-    auto parsed = (sourceFormat == QLatin1String("cppcheck-xml"))
-        ? AuditEngine::summariseCppcheckXml(reportPath, topN, floor)
-        : AuditEngine::summariseSarif(reportPath, topN, floor);
+    auto parsed = [&]() -> std::optional<AuditEngine::AuditSummary> {
+        if (sourceFormat == QLatin1String("cppcheck-xml"))
+            return AuditEngine::summariseCppcheckXml(reportPath, topN, floor);
+        if (sourceFormat == QLatin1String("clang-tidy-text"))
+            return AuditEngine::summariseClangTidyText(reportPath, topN, floor);
+        if (sourceFormat == QLatin1String("semgrep-json"))
+            return AuditEngine::summariseSemgrepJson(reportPath, topN, floor);
+        return AuditEngine::summariseSarif(reportPath, topN, floor);
+    }();
     if (!parsed) {
         QFile f(reportPath);
         if (!f.open(QIODevice::ReadOnly)) {
@@ -4893,6 +4911,24 @@ bool anyGateNotNaturallyCompleted(const VerifyEngine::VerifyReport &rep) {
 QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(vcErr(QStringLiteral("no_window"),
         QStringLiteral("verify_changes: no MainWindow")));
+    // ANTS-1497: cache_only:true is a pure read (returns cached response
+    // or {ok:true, cache_miss:true} without running gates). The
+    // ANTS-1372 mutating-verb cwd gate is over-broad for that path —
+    // skip it and route via the read-only resolver instead, so a session
+    // on project B can probe its own cache while Ants happens to focus
+    // tab A. force_refresh stays mutating (incompatible_args is caught
+    // inside the impl anyway).
+    const bool isReadOnly =
+        req.value(QStringLiteral("cache_only")).toBool(false)
+        && !req.value(QStringLiteral("force_refresh")).toBool(false);
+    if (isReadOnly) {
+        const QString root = resolveRootCanonical(m_main, req);
+        if (root.isEmpty()) return QJsonDocument(vcErr(
+            QStringLiteral("cwd_unreachable"),
+            QStringLiteral("verify_changes: caller_cwd does not "
+                           "canonicalise to an existing directory")));
+        return cmdVerifyChangesImpl(root, req);
+    }
     // ANTS-1372: gate on caller_cwd matching focused tab (refuses
     // before the cwd_unreachable check so cross-project intent never
     // gets to the build-spawn path).

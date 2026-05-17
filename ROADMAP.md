@@ -9204,7 +9204,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit.
   Source: in-session-2026-05-17 (Ants-Terminal /test-audit run).
 
-- 📋 [ANTS-1486] **test_audit_synthesis_prompt — add mode:hybrid (summary + top-N chunks verbatim) and sharper mode:summary docstring.**
+- ✅ [ANTS-1486] **test_audit_synthesis_prompt — add mode:hybrid (summary + top-N chunks verbatim) and sharper mode:summary docstring.**
   RetroDB Issue 1: mode:summary returns useful stats (top_dimensions,
   file_index) but not enough for the orchestrator to build the actionable
   list — the orchestrator has to either re-Read every chunk file or call
@@ -9225,7 +9225,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit.
   Source: RetroDB cross-session report 2026-05-17.
 
-- 📋 [ANTS-1487] **test_audit_partition — rename dimension_hints to pre_pass_dimensions, always emit full active-dimensions list.**
+- ✅ [ANTS-1487] **test_audit_partition — rename dimension_hints to pre_pass_dimensions, always emit full active-dimensions list.**
   RetroDB Issue 2: the dimension_hints field on each chunk in the
   partition response is effectively "dimensions the cheap pre-pass grep
   already flagged" — not "the only dimensions worth auditing". A chunk
@@ -9245,7 +9245,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit.
   Source: RetroDB cross-session report 2026-05-17.
 
-- 📋 [ANTS-1488] **test_audit_synthesis_prompt — add per-dimension severity histograms in summary mode.**
+- ✅ [ANTS-1488] **test_audit_synthesis_prompt — add per-dimension severity histograms in summary mode.**
   Vestige Issue 3: summary mode returns dimension hit counts, but for
   each dimension a tiny histogram of severities would let the orchestrator
   decide whether to pass mode:full for that dimension without re-reading
@@ -9259,7 +9259,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit.
   Source: Vestige cross-session report 2026-05-17.
 
-- 📋 [ANTS-1489] **test_audit_brief — surface pre-pass-finding chunk IDs upfront so callers can skip empty briefs.**
+- ✅ [ANTS-1489] **test_audit_brief — surface pre-pass-finding chunk IDs upfront so callers can skip empty briefs.**
   Vestige Issue 2: the partition response already carries
   `pre_pass_findings_by_chunk` keyed by chunk ID — Vestige used that
   directly and skipped per-chunk brief() calls for the empty chunks.
@@ -9277,7 +9277,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit.
   Source: Vestige cross-session report 2026-05-17.
 
-- 📋 [ANTS-1490] **test_audit_fold_in — flock failure should fall back + surface counter-file path in error.**
+- ✅ [ANTS-1490] **test_audit_fold_in — flock failure should fall back + surface counter-file path in error.**
   Vestige Issue 4: a fold-in call with 27 actionable items failed with
   {"code":"id_counter_failed","error":"allocateIds returned 0 of 27
   (flock/IO failure)"}. Single session, no concurrent fold-in. Local
@@ -9300,7 +9300,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-roadmap-log, mcp-test-audit.
   Source: Vestige cross-session report 2026-05-17.
 
-- 📋 [ANTS-1491] **test_audit_partition pre-pass regex matches inside C/C++ string literals + comments.**
+- ✅ [ANTS-1491] **test_audit_partition pre-pass regex matches inside C/C++ string literals + comments.**
   Vestige Issue 6: pre-pass flagged tests/test_async_driver.cpp lines
   where the `sleep_call` pattern matched inside a C++ raw-string literal
   holding a Python child-process script. The chunk subagent correctly
@@ -9316,7 +9316,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit.
   Source: Vestige cross-session report 2026-05-17.
 
-- 📋 [ANTS-1492] **verify_changes ignores caller-supplied timeout_sec — returns transport timeout instead.**
+- ✅ [ANTS-1492] **verify_changes ignores caller-supplied timeout_sec — returns transport timeout instead.**
   Vestige Issue 1 (BLOCKER for verify-driven workflows): a
   verify_changes call with gates:["build"] and timeout_sec:900 returned
   "MCP error -32000: Ants MCP transport: timed out". The build itself
@@ -9338,7 +9338,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-verify-changes.
   Source: Vestige cross-session report 2026-05-17.
 
-- 📋 [ANTS-1493] **project_layout + roadmap_query — widen probe set to docs/private/, *.metainfo.xml at repo root, fork-only doc trees.**
+- ✅ [ANTS-1493] **project_layout + roadmap_query — widen probe set to docs/private/, *.metainfo.xml at repo root, fork-only doc trees.**
   RetroArch Issue 1 (high friction): roadmap_query refused with
   no_roadmap_loaded for a project whose roadmap lives at
   docs/private/ROADMAP.md (60K-token GFM file). project_layout also
@@ -9371,7 +9371,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-project-layout, mcp-roadmap-query.
   Source: RetroArch cross-session report 2026-05-17.
 
-- 📋 [ANTS-1494] **last_audit_summary — fall back to raw cppcheck XML / clang-tidy / semgrep when no SARIF present.**
+- ✅ [ANTS-1494] **last_audit_summary — fall back to raw cppcheck XML / clang-tidy / semgrep when no SARIF present.**
   RetroArch Issue 2: many projects keep raw analyser output
   (cppcheck-*.xml, clang-tidy-*.txt, semgrep-*.json) under .audit_cache/
   rather than running an aggregator pass that emits SARIF. Current
@@ -9420,7 +9420,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-git-state.
   Source: RetroArch cross-session report 2026-05-17.
 
-- 📋 [ANTS-1496] **test-audit-chunk subagent definition — verify the report file is on disk before returning success.**
+- ✅ [ANTS-1496] **test-audit-chunk subagent definition — verify the report file is on disk before returning success.**
   Vestige Issue 5: one test-audit-chunk subagent finished, returned the
   full JSON inline in its final message, and stated "report written to
   …/c-004.md" — but no such file existed on disk. Orchestrator had to
@@ -9439,6 +9439,56 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Lanes: test-audit.
   Source: Vestige cross-session report 2026-05-17.
+
+- ✅ [ANTS-1497] ****verify_changes refuses cross-tab `caller_cwd` even with `cache_only:true` — relax for read-only path.****
+  RetroArch Bundle 63 addendum: a session in /mnt/Games/Scripts/Linux/RetroArch
+  called verify_changes(caller_cwd=…, gates=[build], cache_only:true) while the
+  user's Ants Terminal happened to be focused on a different tab
+  (Ants_Terminal). The ANTS-1372 cross-project gate refused with cwd_mismatch.
+  
+  But cache_only:true is documented as "returns the cached response if present;
+  else returns {ok:true, cache_miss:true} **without running gates**" — it's a
+  pure read. The refusal is over-broad for that path.
+  
+  Asks (in order of effort):
+  
+  (a) Easy: when cache_only:true, treat verify_changes as a read and skip the
+  cwd-match gate. Same shape as roadmap_query / workspace_search / subsystem
+  already do for read-only calls anchored to an explicit caller_cwd.
+  
+  (b) Medium: for full verify_changes runs, keep the gate but relax it when
+  (i) caller_cwd is explicit, (ii) the path exists, (iii) the path is a git
+  repo, AND (iv) it's a tab Ants knows about (in the tab list, just not
+  focused). That last criterion protects the cross-project-CI-burn scenario
+  the gate was designed for.
+  
+  (c) Low-effort doc-only: mention the constraint in the tool *description*
+  (currently only in the error envelope) so an agent budgeting tool calls
+  knows when to fall back to Bash directly.
+  
+  Workaround used: ran make -j4 via Bash. Worked, just no MCP build-cache.
+  
+  Kind: fix.
+  Lanes: mcp-verify-changes.
+  Source: RetroArch cross-session report 2026-05-17 (Bundle 63 addendum).
+
+- ✅ [ANTS-1498] ****caller_cwd_info description should suggest *when* to call it, not just *what* it does.****
+  RetroArch Bundle 63 addendum: the session only discovered caller_cwd_info
+  exists because ToolSearch ranked it for the query. Its description ends with
+  "No side effects — does not read scrollback, run git, or write any state"
+  (structurally important) but doesn't suggest *when* to use it.
+  
+  Ask: add a one-line "use this FIRST when …" cue to the description, e.g.
+  "Use this FIRST when a read tool returns `no_roadmap_loaded` or
+  `cwd_mismatch` — confirms which project's data the tool would have been
+  operating on." Would have let the RetroArch session diagnose §1
+  (roadmap_query refusal) one tool-call faster.
+  
+  Low-effort doc tweak in the descriptor registration site.
+  
+  Kind: doc.
+  Lanes: mcp-caller-cwd-info.
+  Source: RetroArch cross-session report 2026-05-17 (Bundle 63 addendum).
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 

@@ -2032,13 +2032,20 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject lasTool;
                 lasTool["name"] = "last_audit_summary";
                 lasTool["description"] = QStringLiteral(
-                    "Read the latest audit-*.sarif under "
-                    "{cwd}/.audit_cache and return a compact summary: "
+                    "Read the latest audit summary under "
+                    "{cwd}/.audit_cache and return a compact envelope: "
                     "counts (error/warning/note/suppressed) plus "
                     "top_findings (sorted by level desc, confidence "
                     "desc, file asc, line asc). Saves ~5-15 K tokens "
-                    "vs reading the HTML report. Returns "
-                    "{ok:false, code:\"not_audited\"} if no SARIF.");
+                    "vs reading the HTML report. Discovery order: "
+                    "audit-*.sarif → cppcheck-*.xml (ANTS-1459) → "
+                    "clang-tidy-*.txt → semgrep-*.json (ANTS-1494). "
+                    "Returns {ok:false, code:\"not_audited\"} if no "
+                    "recognised report is present. "
+                    "Cppcheck gotcha: the default `--check-level=normal` "
+                    "branch budget can silently truncate findings on "
+                    "files > 5 K LoC; re-run cppcheck with "
+                    "--check-level=exhaustive for full coverage.");
                 lasTool["selection_hint"] = QStringLiteral(
                     "Use when planning audit-touching work to see "
                     "what's already been flagged. Cheap; runs against "
@@ -2575,8 +2582,17 @@ void ClaudeIntegration::onMcpConnection() {
                     timeoutProp["type"] = "integer";
                     timeoutProp["description"] = QStringLiteral(
                         "Total wall-clock budget in seconds, split "
-                        "evenly across configured gates. Server-"
-                        "clamped [10, 1800]; default 1200.");
+                        "evenly across the gates that will actually "
+                        "run (post-`gates` filter, ANTS-1492). Server-"
+                        "clamped [10, 1800]; default 1200. Caveat: "
+                        "most MCP clients (incl. Claude Code) apply "
+                        "their own request-level transport timeout "
+                        "independent of this budget — if your build "
+                        "exceeds ~60 s and you see `MCP error -32000: "
+                        "transport: timed out`, that is the client "
+                        "closing the connection, not the tool. Fall "
+                        "back to running the same command via Bash "
+                        "for long builds.");
                     // ANTS-1389 — caller_cwd schema surfacing.
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
@@ -2597,7 +2613,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "Return the cached response if present; else "
                         "return {ok:true, cache_miss:true} without "
                         "running gates. Default false. Mutually "
-                        "exclusive with force_refresh.");
+                        "exclusive with force_refresh. ANTS-1497: "
+                        "treated as a read-only call — the ANTS-1372 "
+                        "focused-tab cwd gate is bypassed so a session "
+                        "in project B can probe its own cache while "
+                        "Ants happens to focus a different tab.");
                     QJsonObject props;
                     props["gates"]          = gatesProp;
                     props["max_log_lines"]  = linesProp;
@@ -2718,12 +2738,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "JSON resource. dimensions=\"auto\" (default) "
                         "or \"csv:<d1,d2>\". scope=\"auto\"/\"path:<sub>\"/"
                         "\"files:<csv>\". Required: caller_cwd. "
-                        "Per-chunk `dimension_hints[]` (ANTS-1461) "
+                        "Per-chunk `pre_pass_dimensions[]` (ANTS-1487 "
+                        "renamed from dimension_hints; ANTS-1461) "
                         "reflects which audit dimensions the pre-pass "
                         "regex matched on chunk source — it is NOT a "
                         "finding-density predictor. Real finding "
                         "distribution is only known after the "
-                        "subagent reviews the chunk. "
+                        "subagent reviews the chunk. Always seed the "
+                        "subagent with the envelope-level "
+                        "`dimensions_active[]` (full lane list); "
+                        "`pre_pass_dimensions[]` is a prioritisation "
+                        "hint, not a coverage allow-list. Envelope "
+                        "also carries `pre_pass_chunk_ids[]` "
+                        "(ANTS-1489) — the subset of chunk IDs the "
+                        "pre-pass found anything on, so callers can "
+                        "skip per-chunk brief() calls for empties. "
                         "See docs/specs/ANTS-1397.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split a test corpus for multi-"
@@ -2794,14 +2823,26 @@ void ClaudeIntegration::onMcpConnection() {
                         "chunk reports from <reports_dir>, fence each "
                         "via <chunk_report file=\"…\"> tags (prompt-"
                         "injection defence, INV-8), and return a "
-                        "synth prompt. Two modes: mode:\"summary\" "
-                        "(default; per-dimension counts + top files "
-                        ", ≤ 16 KiB) and mode:\"full\" (verbatim "
-                        "fenced bundle, paginated via offset/limit; "
-                        "default limit:5). allow_outside_project:true "
-                        "accepts an absolute reports_dir (e.g. /tmp) "
-                        "for ephemeral CI workflows (ANTS-1455). "
-                        "Refusals: bad_mode, reports_dir_outside_root, "
+                        "synth prompt. Three modes: "
+                        "mode:\"summary\" (default) returns stats + "
+                        "pointers only — top_dimensions, file_index, "
+                        "severity_histograms (ANTS-1488), and a chunk "
+                        "inventory annotated with per-chunk finding "
+                        "counts; ≤ 16 KiB; for actionable text use "
+                        "mode:\"full\" + offset/limit, or read per-"
+                        "chunk report files directly. "
+                        "mode:\"full\" returns the verbatim fenced "
+                        "bundle, paginated via offset/limit (default "
+                        "limit:5; -1 = all). "
+                        "mode:\"hybrid\" (ANTS-1486) returns the "
+                        "summary header + the top-N highest-finding-"
+                        "count chunks verbatim (N comes from `limit`, "
+                        "default 3) — call once, get both navigation "
+                        "and actionable text for heavy chunks without "
+                        "paging. allow_outside_project:true accepts "
+                        "an absolute reports_dir (e.g. /tmp) for "
+                        "ephemeral CI workflows (ANTS-1455). Refusals: "
+                        "bad_mode, reports_dir_outside_root, "
                         "reports_dir_unreadable, reports_dir_empty.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to draft the synthesis prompt that "
@@ -2819,20 +2860,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "checked + canonicalised). Default false.");
                     QJsonObject mP; mP["type"] = "string";
                     mP["enum"] = QJsonArray{QStringLiteral("summary"),
-                                            QStringLiteral("full")};
+                                            QStringLiteral("full"),
+                                            QStringLiteral("hybrid")};
                     mP["description"] = QStringLiteral(
                         "ANTS-1455 — \"summary\" (default) returns "
-                        "counts + top pointers; \"full\" returns the "
-                        "verbatim fenced bundle (paginated).");
+                        "counts + top pointers + severity histograms; "
+                        "\"full\" returns the verbatim fenced bundle "
+                        "(paginated); \"hybrid\" (ANTS-1486) returns "
+                        "summary header + top-N highest-finding-count "
+                        "chunks verbatim.");
                     QJsonObject oP; oP["type"] = "integer";
                     oP["description"] = QStringLiteral(
                         "Chunk offset for mode:\"full\" pagination. "
-                        "Default 0.");
+                        "Default 0. Ignored in summary/hybrid.");
                     QJsonObject lP; lP["type"] = "integer";
                     lP["description"] = QStringLiteral(
-                        "Chunk limit for mode:\"full\". Default 5; "
-                        "-1 returns all chunks (caller accepts size "
-                        "risk).");
+                        "Chunk limit for mode:\"full\" (default 5; "
+                        "-1 returns all). For mode:\"hybrid\", this "
+                        "is N — the number of top chunks to inline "
+                        "verbatim (default 3). Ignored in summary.");
                     QJsonObject props;
                     props["partition_token"]       = pP;
                     props["reports_dir"]           = rP;
@@ -2862,7 +2908,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "RoadmapFoldIn::allocateIds + insertBlock "
                         "(engine-level delegation, NOT MCP re-entry "
                         "— INV-3). Single batched write: all N IDs "
-                        "allocated upfront, one insertBlock call.");
+                        "allocated upfront, one insertBlock call. "
+                        "Per-project state: <caller_cwd>/.roadmap-"
+                        "counter (advisory-locked via flock; ANTS-1490 "
+                        "falls back to .roadmap-counter.lock O_EXCL "
+                        "rename-lock on filesystems where flock returns "
+                        "systemic errors). On id_counter_failed the "
+                        "error message names the counter path so the "
+                        "caller can clear a stale .lock sibling.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to merge a finished test-audit set "
                         "back into ROADMAP.md as a fold-in block. "
@@ -3252,8 +3305,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "empty-fallback behaviour (focused tab). "
                         "See docs/specs/ANTS-1400.md.");
                     t["selection_hint"] = QStringLiteral(
-                        "Use to debug how Ants would resolve your "
-                        "caller_cwd before sending a real query. "
+                        "Use FIRST when a read tool returns "
+                        "no_roadmap_loaded, cwd_mismatch, or any "
+                        "*-not-found refusal — confirms which "
+                        "project's data the tool would have read. "
                         "No side effects.");
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -3558,7 +3613,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "tenant-hashed storage). ANTS-1435: reads "
                         "anchor to your caller_cwd directly — no "
                         "focused-tab match needed (cross-tab queries "
-                        "work).");
+                        "work). ANTS-1493: probe set widened to also "
+                        "cover docs/private/, docs/internal/, "
+                        "docs/fork/ (fork-only doc trees) and "
+                        "*.metainfo.xml at repo root + pkg/ + data/ + "
+                        "share/applications/ — first hit per field "
+                        "wins.");
                     t["selection_hint"] = QStringLiteral(
                         "Use as first call when you need to locate "
                         "ROADMAP/CHANGELOG/specs/standards in an "

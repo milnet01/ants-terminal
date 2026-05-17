@@ -51,7 +51,12 @@ const QStringList &kDimensions();
 struct Chunk {
     QString     id;            // "c-001", "c-002", ...
     QStringList paths;
-    QStringList dimensionHints;
+    // ANTS-1487: renamed from dimensionHints — accurate, since this is
+    // "dimensions the cheap pre-pass grep hit" not "the only dimensions
+    // worth auditing". Callers should still seed the chunk subagent
+    // with `dimensions_active` (the full lane list) and only use this
+    // for prioritisation.
+    QStringList prePassDimensions;
 };
 
 struct PartitionRequest {
@@ -132,10 +137,17 @@ struct SynthResult {
     int         nextOffset = -1;
     bool        truncatedByLimit = false;
     // ANTS-1455 — summary-mode envelope fields.
-    QString     mode;                    // echoed back: "summary" | "full"
+    QString     mode;                    // echoed back: "summary" | "full" | "hybrid"
     QJsonArray  topDimensions;           // [{dimension, count}]
     QJsonArray  fileIndex;               // [{file, dimension_hits_total}]
     bool        truncated = false;       // either summary cap fired
+    // ANTS-1488 — per-dimension severity histograms. Map of
+    // dimension → {crit, high, med, low, info} so the orchestrator can
+    // tell at a glance whether any chunk surfaced a CRITICAL without
+    // re-reading every per-chunk markdown. Parsed from the standard
+    // `- [SEV] file:line — …` finding shape under `## <emoji> <Dim> (N)`
+    // section headers. Emitted in summary + hybrid modes.
+    QJsonObject severityHistograms;
 };
 
 struct FoldInRequest {

@@ -214,9 +214,11 @@ TEST(mcp_test_audit_trio, Ants1461FileIndexBasenameDedup) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// ANTS-1461 — test_audit_partition descriptor names what
-// dimension_hints[] actually reflects (pre-pass regex hits, not
-// finding density). Source-grep on the description string in
+// ANTS-1461 + ANTS-1487 — test_audit_partition descriptor names what
+// pre_pass_dimensions[] actually reflects (pre-pass regex hits, not
+// finding density). The field was renamed from dimension_hints to
+// pre_pass_dimensions in ANTS-1487 to make the source explicit on
+// the name itself. Source-grep on the description string in
 // claudeintegration.cpp.
 TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
     expect_reset();
@@ -232,11 +234,11 @@ TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
     // C++ concatenates "NOT a " + "finding-density predictor", but
     // grep sees them with the wrap. Search for the intact tail.
     expect(contains(region, "finding-density predictor"),
-           "ANTS-1461: descriptor must warn that dimension_hints "
+           "ANTS-1461: descriptor must warn that pre_pass_dimensions "
            "reflects pre-pass regex hits, NOT finding density");
-    expect(contains(region, "dimension_hints"),
-           "ANTS-1461: descriptor must name the dimension_hints "
-           "output field");
+    expect(contains(region, "pre_pass_dimensions"),
+           "ANTS-1487: descriptor must name the pre_pass_dimensions "
+           "output field (renamed from dimension_hints)");
     EXPECT_EQ(0, expect_failures());
 }
 

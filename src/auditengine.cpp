@@ -10,8 +10,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
 #include <QJsonValue>
 #include <QRegularExpression>
+#include <QTextStream>
 #include <QXmlStreamReader>
 
 #include <algorithm>
@@ -596,6 +598,171 @@ std::optional<AuditSummary> summariseCppcheckXml(
     if (pool.size() > topN) {
         pool.erase(pool.begin() + topN, pool.end());
     }
+    s.topFindings = std::move(pool);
+    return s;
+}
+
+// ANTS-1494 — clang-tidy native text parser. Format:
+//   path/to/file.cpp:42:5: warning: message text [check-name]
+// Multi-line context (^^^ markers, fix-it hints) is ignored — only the
+// finding header lines are surfaced.
+std::optional<AuditSummary> summariseClangTidyText(
+    const QString &textPath,
+    int topN,
+    const QString &levelFloor) {
+    QFile f(textPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return std::nullopt;
+
+    AuditSummary s;
+    s.sarifPath    = textPath;
+    s.sourceFormat = QStringLiteral("clang-tidy-text");
+
+    const int floorOrd = levelOrdinal(levelFloor);
+    QList<AuditSummaryFinding> pool;
+
+    // Pattern: <file>:<line>:<col>: <severity>: <message> [<rule>]
+    // Rule suffix is optional — clang-tidy occasionally omits it for
+    // notes attached to a parent diagnostic.
+    static const QRegularExpression rx(QStringLiteral(
+        "^([^:]+):(\\d+):(\\d+):\\s*"
+        "(warning|error|note):\\s*"
+        "(.*?)(?:\\s*\\[([^\\]]+)\\])?$"));
+
+    QTextStream ts(&f);
+    while (!ts.atEnd()) {
+        const QString line = ts.readLine();
+        const auto m = rx.match(line);
+        if (!m.hasMatch()) continue;
+        const QString file    = m.captured(1);
+        const int     lineNo  = m.captured(2).toInt();
+        const QString sev     = m.captured(4);
+        const QString msg     = m.captured(5);
+        const QString ruleId  = m.captured(6);  // may be empty
+
+        // Skip clang-tidy "<N> warnings/errors generated." trailers.
+        if (file.contains(QLatin1Char(' '))) continue;
+
+        QString sarifLevel = sev;          // warning/error/note → SARIF 1:1
+        QString sevTier;
+        if (sev == QLatin1String("error"))       sevTier = QStringLiteral("MAJOR");
+        else if (sev == QLatin1String("warning")) sevTier = QStringLiteral("MAJOR");
+        else                                       sevTier = QStringLiteral("INFO");
+
+        const int ord = levelOrdinal(sarifLevel);
+        if (ord == 2)      ++s.countError;
+        else if (ord == 0) ++s.countNote;
+        else               ++s.countWarning;
+
+        if (ord < floorOrd) continue;
+
+        AuditSummaryFinding asf;
+        asf.level    = sarifLevel;
+        asf.severity = sevTier;
+        asf.ruleId   = ruleId;
+        asf.message  = msg;
+        asf.file     = file;
+        asf.line     = lineNo;
+        pool.append(std::move(asf));
+    }
+
+    if (pool.isEmpty() && s.countError + s.countWarning + s.countNote == 0) {
+        return std::nullopt;  // no parseable lines — likely wrong format
+    }
+
+    std::sort(pool.begin(), pool.end(),
+              [](const AuditSummaryFinding &a,
+                 const AuditSummaryFinding &b) {
+                  const int la = levelOrdinal(a.level);
+                  const int lb = levelOrdinal(b.level);
+                  if (la != lb) return la > lb;
+                  if (a.file != b.file) return a.file < b.file;
+                  return a.line < b.line;
+              });
+    if (topN < 0) topN = 0;
+    if (pool.size() > topN) pool.erase(pool.begin() + topN, pool.end());
+    s.topFindings = std::move(pool);
+    return s;
+}
+
+// ANTS-1494 — semgrep JSON output (`semgrep --json`).
+std::optional<AuditSummary> summariseSemgrepJson(
+    const QString &jsonPath,
+    int topN,
+    const QString &levelFloor) {
+    QFile f(jsonPath);
+    if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
+    const QByteArray raw = f.readAll();
+    f.close();
+
+    QJsonParseError pe;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw, &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isObject())
+        return std::nullopt;
+
+    const QJsonArray results =
+        doc.object().value(QStringLiteral("results")).toArray();
+
+    AuditSummary s;
+    s.sarifPath    = jsonPath;
+    s.sourceFormat = QStringLiteral("semgrep-json");
+
+    const int floorOrd = levelOrdinal(levelFloor);
+    QList<AuditSummaryFinding> pool;
+
+    for (const QJsonValue &v : results) {
+        const QJsonObject ro = v.toObject();
+        const QString file   = ro.value(QStringLiteral("path")).toString();
+        const int     lineNo = ro.value(QStringLiteral("start"))
+                                  .toObject()
+                                  .value(QStringLiteral("line")).toInt();
+        const QString ruleId = ro.value(QStringLiteral("check_id")).toString();
+        const QJsonObject extra =
+            ro.value(QStringLiteral("extra")).toObject();
+        const QString msg    = extra.value(QStringLiteral("message")).toString();
+        const QString sevRaw = extra.value(QStringLiteral("severity"))
+                                    .toString().toUpper();
+
+        QString sarifLevel;
+        QString sevTier;
+        if (sevRaw == QLatin1String("ERROR")) {
+            sarifLevel = QStringLiteral("error");
+            sevTier    = QStringLiteral("MAJOR");
+        } else if (sevRaw == QLatin1String("WARNING")) {
+            sarifLevel = QStringLiteral("warning");
+            sevTier    = QStringLiteral("MAJOR");
+        } else {
+            sarifLevel = QStringLiteral("note");
+            sevTier    = QStringLiteral("INFO");
+        }
+
+        const int ord = levelOrdinal(sarifLevel);
+        if (ord == 2)      ++s.countError;
+        else if (ord == 0) ++s.countNote;
+        else               ++s.countWarning;
+
+        if (ord < floorOrd) continue;
+
+        AuditSummaryFinding asf;
+        asf.level    = sarifLevel;
+        asf.severity = sevTier;
+        asf.ruleId   = ruleId;
+        asf.message  = msg;
+        asf.file     = file;
+        asf.line     = lineNo;
+        pool.append(std::move(asf));
+    }
+
+    std::sort(pool.begin(), pool.end(),
+              [](const AuditSummaryFinding &a,
+                 const AuditSummaryFinding &b) {
+                  const int la = levelOrdinal(a.level);
+                  const int lb = levelOrdinal(b.level);
+                  if (la != lb) return la > lb;
+                  if (a.file != b.file) return a.file < b.file;
+                  return a.line < b.line;
+              });
+    if (topN < 0) topN = 0;
+    if (pool.size() > topN) pool.erase(pool.begin() + topN, pool.end());
     s.topFindings = std::move(pool);
     return s;
 }

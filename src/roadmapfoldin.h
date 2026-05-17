@@ -36,8 +36,16 @@ namespace RoadmapFoldIn {
 // Allocate `n` consecutive IDs from <projectPath>/.roadmap-counter.
 // Returns the list of allocated integers (e.g. {1257, 1258, 1259})
 // on success; empty list on flock failure (5 s budget) or any IO
-// error.
+// error. ANTS-1490: if flock returns ENOLCK / EBADF / EINVAL (typical
+// on networked or some FUSE filesystems), falls back to O_CREAT|O_EXCL
+// rename-based locking on a `.roadmap-counter.lock` sibling.
 QList<int> allocateIds(const QString &projectPath, int n);
+
+// ANTS-1490 — counter-file path resolver, exposed so callers can
+// include it in their error envelopes when allocateIds returns empty.
+// Returns the absolute path (canonicalised projectPath +
+// "/.roadmap-counter"); empty when projectPath fails to canonicalise.
+QString counterFilePath(const QString &projectPath);
 
 // Atomic insert per the doc-comment above. Returns true on success,
 // false on heading-not-found or IO error.

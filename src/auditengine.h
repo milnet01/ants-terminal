@@ -246,6 +246,26 @@ std::optional<AuditSummary> summariseCppcheckXml(
     int topN,
     const QString &levelFloor);
 
+// ANTS-1494 — parse clang-tidy's native text output (one finding per
+// line, `file.cpp:LINE:COL: warning|error|note: message [check-name]`).
+// Map clang-tidy severities to SARIF levels 1:1 (warning→warning,
+// error→error, note→note). topN + levelFloor mirror summariseSarif.
+// Returns nullopt on read failure or zero parseable findings.
+std::optional<AuditSummary> summariseClangTidyText(
+    const QString &textPath,
+    int topN,
+    const QString &levelFloor);
+
+// ANTS-1494 — parse semgrep's native JSON output (`semgrep --json`).
+// Each finding sits under `results[]` with `path`, `start.line`,
+// `check_id`, and `extra.severity` ∈ {ERROR, WARNING, INFO}. Mapped to
+// SARIF levels error|warning|note. Returns nullopt on read failure or
+// malformed JSON.
+std::optional<AuditSummary> summariseSemgrepJson(
+    const QString &jsonPath,
+    int topN,
+    const QString &levelFloor);
+
 // ANTS-1111 — severity-tier shift on cross-tool corroboration. In-place
 // mutation of `findings[].severity`:
 //   coverageCount(f) = number of distinct CheckIds whose findings cite
