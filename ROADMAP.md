@@ -5301,16 +5301,39 @@ fixes don't address. Roadmapped here as their own design tasks.
   latency aggregation, `duration_us_sum` on the wire
   (kept private per INV-9).
 
-- 📋 [ANTS-1356] **MCP per-tool rate-limit / quota.** No cap
-  on call rate. A misbehaving Claude session could fire
-  `get_scrollback` in a tight loop. Wall-clock idle timer
-  (5 s) catches dead-air, not floods. Add a per-tool per-
-  session call-rate cap (e.g. 60/min for cheap reads, 10/min
-  for expensive operations like `audit_run` or
-  `cold_eyes_brief`). Returns
-  `{code:"rate_limited", retry_after_ms}`.
-  **Layman:** prevent a runaway Claude from hammering one
-  MCP tool in a tight loop by rate-limiting per tool.
+- ✅ [ANTS-1356] **MCP per-tool rate-limit / quota.** Shipped
+  2026-05-17 (Bundle E pull 2). `ClaudeIntegration::processTools`
+  gains a per-(toolName, callerCwd) sliding-window rate-limit
+  gate. Three tiers: Cheap (60 calls / 60 s, default), Expensive
+  (10 calls / 60 s — `audit_run`, `workspace_search`,
+  `verify_changes`, `cold_eyes_*`, `indie_review_*`,
+  `test_audit_*`, `debt_sweep_scan`/`apply_fix`), ControlPlane
+  (uncapped — `get_session_info`, `token_usage`, `tool_info`,
+  `mcp_trace`, `caller_cwd_info`). Refusal envelope:
+  `{ok:false, code:"rate_limited", retry_after_ms, error}`.
+  Bucket state in `m_rateLimitBuckets` (QHash, LRU-bound at
+  256 buckets, ~3 KiB steady-state); monotonic clock via static
+  `QElapsedTimer s_rateLimitClock` defends against NTP /
+  suspend-resume skew. Refusal routed through new
+  `dispatchResult` variable so `mcp_trace` surfaces the refusal
+  and `token_usage` accounts it under the failed-call bucket
+  (ANTS-1432 success flag). Cold-eyes-reviewed pre-implementation
+  (1 CRITICAL + 2 HIGH + 3 MEDIUM + 2 LOW addressed inline before
+  ship). Spec `docs/specs/ANTS-1356.md`. Tests
+  `tests/features/mcp_rate_limit/` (16 invariants, GUI-free,
+  label `features;fast`). `docs/standards/mcp-error-codes.md`
+  § 1 gains a `rate_limited` row. Full suite 904/904 green.
+  Carries one out-of-scope follow-up: ANTS-1404's
+  `caller_cwd_required` refusal currently still records as
+  `result="ok"` and counts as a successful call in
+  `token_usage` — measurement bug surfaced during cold-eyes,
+  fix path teed up by the `dispatchResult` refactor but
+  intentionally not bundled (logged as ANTS-1454 below).
+  **Layman:** Ants's MCP server now caps how fast any one tool
+  can be called per project. A runaway Claude loop spamming
+  `audit_run` 100 times a minute will hit the cap and get
+  refused with a "wait 5 s" hint, so a single bad skill can't
+  burn through CPU + tokens unchecked.
   Kind: security.
   Source: indie-review-2026-05-14 (self-observed).
 
@@ -8735,6 +8758,76 @@ template / mutate this state atomically" → movable. If it's
   itself ignore / clean up the dead ones.
   Kind: bugfix.
   Source: user-request-2026-05-14.
+
+### 🔌 Ants-MCP follow-ups from ANTS-1356 + RetroDB cross-session reports (2026-05-17)
+
+- 📋 [ANTS-1454] **ANTS-1404 `caller_cwd_required` refusal records
+  as `result="ok"`.** Surfaced during the ANTS-1356 cold-eyes review
+  (2026-05-17): the refusal branch at `claudeintegration.cpp:3431-3454`
+  sets `toolHandled=true` then falls into the success
+  `recordDispatch` call which today passes `dispatchResult`
+  (defaults to `"ok"`). Per ANTS-1432's wiring, `recordCall` fires
+  with `success = (result == "ok")`, so the refusal counts as a
+  successful call in `token_usage` — masking the per-call cost
+  of misconfigured callers. ANTS-1356 introduced the
+  `dispatchResult` variable as the seam for this fix; mechanical
+  retrofit: set `dispatchResult = QStringLiteral("caller_cwd_required")`
+  in the ANTS-1404 branch (one line). Test: extend
+  `tests/features/mcp_caller_cwd_contracts/` with an INV asserting
+  `recordDispatch` is called with `"caller_cwd_required"` (source-
+  grep against the dispatcher), and a behavioural check that
+  `token_usage` reports the refusal in its failed-call bucket.
+  **Layman:** when Ants refuses a misconfigured MCP call (no
+  caller_cwd on a tool that needs one), it should count that as
+  a failed call in the cost dashboard, not a successful one.
+  Today it's the latter — a small accounting bug to fix.
+  Kind: fix.
+  Source: cold-eyes-review-2026-05-17 (during ANTS-1356).
+
+- 📋 [ANTS-1455] **`test_audit_*` MCP surface — usability gaps
+  surfaced by RetroDB CC session (cross-session reports
+  2026-05-17).** Three friction points reported in quick
+  succession while running `/test-audit` on a Flask app:
+  - **(a) `test_audit_partition` walks the whole project by
+    default** instead of respecting `test_globs`. Reporter
+    observed chunks `c-001..c-010` including `app.py`,
+    `routes/*.py`, `services/*.py`, `scraper/*.py` despite
+    `test_globs` containing only test patterns. Workaround:
+    explicit `scope:` filter argument forces a tests-only walk
+    (7 clean chunks). Fix: make `scope:"tests"` the default
+    when `test_globs` is non-empty, or rename the existing
+    walk-all behaviour to `scope:"all"` and require an opt-in.
+  - **(b) `test_audit_synthesis_prompt` requires reports under
+    project root.** A user with reports staged outside the
+    project root (a worktree, a CI artifact dir, a sibling
+    review folder) gets refused and has to copy reports in.
+    Loosen the constraint: accept a `reports_dir:` argument
+    that absolves the under-root requirement if the caller
+    can prove read access (existing `PathValidation::validatePath`
+    contract).
+  - **(c) `test_audit_synthesis_prompt` output is too large to
+    fit in context.** It bundles all per-chunk reports
+    verbatim into the synth-prompt. For a 7-chunk project the
+    output exceeded the caller's context window; the caller
+    fell back to synthesising directly from the per-chunk
+    markdown files. Fix: paginate the synth-prompt (chunked
+    output with `offset`/`limit` like
+    `roadmap_query`/ANTS-1436), OR collapse per-chunk
+    reports into a per-chunk *summary* in the prompt and
+    keep the full text accessible via a fold-in lookup.
+  All three are pure-Ants-MCP issues — no upstream Claude Code
+  changes needed. Group together because they share the
+  `test_audit_*` lane and a single fix-pass will touch the
+  same engine. The ANTS-1397 v1 spec at
+  `docs/specs/ANTS-1397.md` already covers the partition +
+  synth engine; this entry feeds the v2 design.
+  **Layman:** the Ants test-audit MCP tools have three small
+  ergonomic gaps that came up during real cross-project use.
+  Each is a small fix; bundling them lets the next test-audit
+  pull retire all three together.
+  Kind: enhancement.
+  Source: cross-session-report-2026-05-17 (RetroDB CC instance
+  running /test-audit on a Flask app).
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 

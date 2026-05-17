@@ -909,7 +909,9 @@ if(ANTS_TESTS)
                 # ANTS-1428 GFM-task-list adapter (Tier 1 read-side
                 # + Tier 2 write-side op:"flip").
                 tests/features/mcp_adapter_github_tasklist/test_adapter_read.cpp
-                tests/features/mcp_adapter_github_tasklist/test_adapter_write.cpp)
+                tests/features/mcp_adapter_github_tasklist/test_adapter_write.cpp
+                # ANTS-1356 MCP per-tool rate-limit / quota.
+                tests/features/mcp_rate_limit/test_mcp_rate_limit.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

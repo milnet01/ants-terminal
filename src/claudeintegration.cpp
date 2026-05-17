@@ -20,10 +20,26 @@
 #include <QTimer>
 #include <QCoreApplication>
 
+#include <climits>
+#include <limits>
 #include <sys/socket.h>
+
+// ANTS-1356 — monotonic clock used by rateLimitCheck in production.
+// Started once in the ClaudeIntegration constructor; tests bypass via
+// the synthetic-nowMs parameter so this clock is never read during
+// pure-function tests.
+static QElapsedTimer s_rateLimitClock;
 #include <unistd.h>
 
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
+    // ANTS-1356 — start the monotonic clock used by rateLimitCheck.
+    // QElapsedTimer::start() is idempotent; calling it on already-
+    // started clocks resets — which is fine for the singleton
+    // ClaudeIntegration that lives for the whole process lifetime.
+    if (!s_rateLimitClock.isValid()) {
+        s_rateLimitClock.start();
+    }
+
     // Poll for Claude Code process every 2 seconds. This is only for
     // detecting claude-code starting/stopping under our shell — transcript
     // state changes are event-driven via m_transcriptWatcher below.
@@ -3408,6 +3424,15 @@ void ClaudeIntegration::onMcpConnection() {
                 const QJsonObject argsObj = params.value("arguments").toObject();
                 QString responseText;
                 bool toolHandled = false;
+                // ANTS-1356 — dispatchResult overrides the default
+                // "ok" passed to recordDispatch. Refusal branches
+                // (rate_limited) set this to surface the refusal in
+                // mcp_trace + token_usage's failed-call accumulator.
+                // ANTS-1404's caller_cwd_required refusal keeps "ok"
+                // for now (latent measurement bug logged as a
+                // follow-up; see docs/specs/ANTS-1356.md § "ANTS-1404
+                // latent-bug observation").
+                QString dispatchResult = QStringLiteral("ok");
                 // ANTS-1360 — start latency clock before cache lookup
                 // so cache-hit records capture true µs-range latency
                 // (not zero). Stop right before recordMcpTrace below.
@@ -3452,6 +3477,39 @@ void ClaudeIntegration::onMcpConnection() {
                         QJsonDocument(env)
                             .toJson(QJsonDocument::Compact));
                     toolHandled = true;
+                }
+                // ANTS-1356 — per-tool sliding-window rate-limit.
+                // Runs AFTER caller_cwd_required (a misconfigured
+                // caller should see the precise refusal first) but
+                // BEFORE the idempotent-read cache lookup (cache
+                // hits consume bucket budget — INV-5). Refusal sets
+                // toolHandled=true with a {ok:false, code:"rate_limited",
+                // retry_after_ms} envelope; downstream wrap + record
+                // paths see it like any other completed call.
+                if (!toolHandled) {
+                    const qint64 nowMs = s_rateLimitClock.elapsed();
+                    const qint64 retryAfter =
+                        rateLimitCheck(toolName, callerCwd, nowMs);
+                    if (retryAfter > 0) {
+                        const RateLimitTier tier =
+                            rateLimitTierFor(rateLimitClassFor(toolName));
+                        QJsonObject env;
+                        env["ok"]              = false;
+                        env["code"]            = QStringLiteral("rate_limited");
+                        env["retry_after_ms"]  = static_cast<qint64>(retryAfter);
+                        env["error"] = QString(
+                            "%1: rate-limited (%2 calls in last "
+                            "%3 s, cap %2). retry_after_ms=%4")
+                            .arg(toolName)
+                            .arg(tier.capPerWindow)
+                            .arg(tier.windowMs / 1000)
+                            .arg(retryAfter);
+                        responseText = QString::fromUtf8(
+                            QJsonDocument(env)
+                                .toJson(QJsonDocument::Compact));
+                        toolHandled    = true;
+                        dispatchResult = QStringLiteral("rate_limited");
+                    }
                 }
                 // ANTS-1357 — short-TTL idempotent-read cache lookup
                 // happens before dispatch. Only the 4 allowlisted tools
@@ -3581,9 +3639,12 @@ void ClaudeIntegration::onMcpConnection() {
                     const qint64 rawBytes  = responseText.toUtf8().size();
                     const qint64 wrapBytes = outBytes - rawBytes;       // ANTS-1355 INV-3
                     const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
+                    // ANTS-1356 — dispatchResult is "ok" for normal
+                    // success + ANTS-1404 caller_cwd_required refusals,
+                    // and "rate_limited" for ANTS-1356 refusals.
                     recordDispatch(toolName, argsObj, argBytes, outBytes,
                                    wrapBytes, durUs, cachedHit,
-                                   QStringLiteral("ok"));
+                                   dispatchResult);
                     haveResult = true;
                 } else {
                     // JSON-RPC application error: tool not found or provider missing.
@@ -3863,6 +3924,138 @@ void ClaudeIntegration::maybeInsertIdempotentReadCache(
         const QString evicted = m_idempotentReadLru.takeLast();
         m_idempotentReadCache.remove(evicted);
     }
+}
+
+// --- ANTS-1356 — MCP per-tool rate-limit / quota ---
+
+namespace {
+// Test-only cap overrides. Defaulted to -1 = "use compile-time
+// constants" (kRateLimitCheapCap / kRateLimitExpensiveCap). The
+// `*ForTest` setters write here; production callers never touch it.
+int g_rateLimitCheapCapOverride     = -1;
+int g_rateLimitExpensiveCapOverride = -1;
+}  // namespace
+
+ClaudeIntegration::RateLimitClass
+ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
+    using R = RateLimitClass;
+    // ControlPlane — uncapped. Pure reads of server-owned state +
+    // diagnostic verbs. Spec INV-13.
+    if (toolName == QStringLiteral("get_session_info"))   return R::ControlPlane;
+    if (toolName == QStringLiteral("token_usage"))        return R::ControlPlane;
+    if (toolName == QStringLiteral("tool_info"))          return R::ControlPlane;
+    if (toolName == QStringLiteral("mcp_trace"))          return R::ControlPlane;
+    if (toolName == QStringLiteral("caller_cwd_info"))    return R::ControlPlane;
+    // Expensive — 10/min. Heavy verbs (shell-out, subagent dispatch,
+    // cmake/ctest, full-corpus scan).
+    if (toolName == QStringLiteral("audit_run"))                return R::Expensive;
+    if (toolName == QStringLiteral("workspace_search"))         return R::Expensive;
+    if (toolName == QStringLiteral("verify_changes"))           return R::Expensive;
+    if (toolName == QStringLiteral("cold_eyes_brief"))          return R::Expensive;
+    if (toolName == QStringLiteral("cold_eyes_partition"))      return R::Expensive;
+    if (toolName == QStringLiteral("cold_eyes_cross_doc_diff")) return R::Expensive;
+    if (toolName == QStringLiteral("cold_eyes_fold_in"))        return R::Expensive;
+    if (toolName == QStringLiteral("indie_review_brief"))       return R::Expensive;
+    if (toolName == QStringLiteral("indie_review_partition"))   return R::Expensive;
+    if (toolName == QStringLiteral("indie_review_corroborate")) return R::Expensive;
+    if (toolName == QStringLiteral("indie_review_fold_in"))     return R::Expensive;
+    if (toolName == QStringLiteral("test_audit_brief"))         return R::Expensive;
+    if (toolName == QStringLiteral("test_audit_partition"))     return R::Expensive;
+    if (toolName == QStringLiteral("test_audit_fold_in"))       return R::Expensive;
+    if (toolName == QStringLiteral("debt_sweep_scan"))          return R::Expensive;
+    if (toolName == QStringLiteral("debt_sweep_apply_fix"))     return R::Expensive;
+    // Default — Cheap (60/min). All read verbs not classified above.
+    return R::Cheap;
+}
+
+ClaudeIntegration::RateLimitTier
+ClaudeIntegration::rateLimitTierFor(RateLimitClass cls) {
+    switch (cls) {
+        case RateLimitClass::ControlPlane:
+            return RateLimitTier{INT_MAX, kRateLimitWindowMs};
+        case RateLimitClass::Expensive: {
+            const int cap = (g_rateLimitExpensiveCapOverride >= 0)
+                ? g_rateLimitExpensiveCapOverride
+                : kRateLimitExpensiveCap;
+            return RateLimitTier{cap, kRateLimitWindowMs};
+        }
+        case RateLimitClass::Cheap:
+        default: {
+            const int cap = (g_rateLimitCheapCapOverride >= 0)
+                ? g_rateLimitCheapCapOverride
+                : kRateLimitCheapCap;
+            return RateLimitTier{cap, kRateLimitWindowMs};
+        }
+    }
+}
+
+qint64 ClaudeIntegration::rateLimitCheck(
+    const QString &toolName, const QString &callerCwd, qint64 nowMs) {
+    const RateLimitClass cls = rateLimitClassFor(toolName);
+    if (cls == RateLimitClass::ControlPlane) return 0;
+    const RateLimitTier tier = rateLimitTierFor(cls);
+
+    const QPair<QString, QString> key{toolName, callerCwd};
+    auto it = m_rateLimitBuckets.find(key);
+
+    // Map-cap LRU eviction (INV-7). Only when inserting a NEW key
+    // at the cap; existing-key updates don't grow the map.
+    if (it == m_rateLimitBuckets.end() &&
+        m_rateLimitBuckets.size() >= kRateLimitMapCap) {
+        // Linear scan: evict bucket with the oldest most-recent
+        // timestamp (LRU-by-last-call). Bounded cost (256 ≤ 256).
+        QPair<QString, QString> evictKey;
+        qint64 evictMostRecent = std::numeric_limits<qint64>::max();
+        for (auto cit = m_rateLimitBuckets.constBegin();
+             cit != m_rateLimitBuckets.constEnd(); ++cit) {
+            const qint64 mostRecent =
+                cit->tsMs.isEmpty() ? 0 : cit->tsMs.back();
+            if (mostRecent < evictMostRecent) {
+                evictMostRecent = mostRecent;
+                evictKey = cit.key();
+            }
+        }
+        m_rateLimitBuckets.remove(evictKey);
+    }
+
+    RateLimitBucket &bucket = m_rateLimitBuckets[key];
+
+    // Prune front: drop entries that fell out of the sliding window.
+    while (!bucket.tsMs.isEmpty() &&
+           bucket.tsMs.front() < nowMs - tier.windowMs) {
+        bucket.tsMs.dequeue();
+    }
+
+    // INV-6 — empty bucket auto-evicts. Insert nowMs into a fresh
+    // entry and return accept. (We re-fetch the bucket reference
+    // after the remove + re-insert because QHash may rehash.)
+    if (bucket.tsMs.isEmpty()) {
+        m_rateLimitBuckets.remove(key);
+        RateLimitBucket &fresh = m_rateLimitBuckets[key];
+        fresh.tsMs.enqueue(nowMs);
+        return 0;
+    }
+
+    // Under cap — accept and append.
+    if (bucket.tsMs.size() < tier.capPerWindow) {
+        bucket.tsMs.enqueue(nowMs);
+        return 0;
+    }
+
+    // At cap — refuse. retry_after_ms = (oldest + window) - now,
+    // floored at 1 (callers expect a positive sentinel).
+    const qint64 retryAfter = (bucket.tsMs.front() + tier.windowMs) - nowMs;
+    return retryAfter > 0 ? retryAfter : 1;
+}
+
+void ClaudeIntegration::setRateLimitCapsForTest(int cheap, int expensive) {
+    g_rateLimitCheapCapOverride     = cheap;
+    g_rateLimitExpensiveCapOverride = expensive;
+}
+
+void ClaudeIntegration::resetRateLimitCapsForTest() {
+    g_rateLimitCheapCapOverride     = -1;
+    g_rateLimitExpensiveCapOverride = -1;
 }
 
 // --- Project / Session Discovery ---

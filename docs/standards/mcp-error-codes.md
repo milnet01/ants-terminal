@@ -40,6 +40,7 @@ against the table below.
 | `bad_status` | A status-filter arg doesn't match the enum. | `roadmap_query status:"foo"`. |
 | `bad_feature_name` | A `feature_name` arg doesn't match the allowed pattern. | `plan_template feature_name:"!!!"`. |
 | `missing_name` | A name-typed required arg is empty. | `tool_info name:""`. |
+| `rate_limited` | The caller exceeded the per-tool sliding-window cap (ANTS-1356). The envelope carries `retry_after_ms`. | `audit_run` 11th call within 60 s (Expensive tier cap = 10/min). Caller should honour `retry_after_ms` before retrying. |
 
 ### 2 — Resource state (the requested object isn't where the tool can act on it)
 

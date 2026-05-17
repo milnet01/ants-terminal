@@ -606,6 +606,42 @@ once real consumers hit it.
   default) so Claude Code can detect when a tool's response shape
   has changed and adapt its parsing.
 
+- **ANTS-1356 — MCP per-tool rate-limit / quota.**
+  `ClaudeIntegration::processTools` now caps call rate via a
+  per-(toolName, callerCwd) sliding window. Three tiers: **Cheap**
+  (60 calls / 60 s, default), **Expensive** (10 / 60 s — `audit_run`,
+  `workspace_search`, `verify_changes`, `cold_eyes_*`,
+  `indie_review_*`, `test_audit_*`, `debt_sweep_scan`/`apply_fix`),
+  and **ControlPlane** (uncapped — `get_session_info`, `token_usage`,
+  `tool_info`, `mcp_trace`, `caller_cwd_info`). Refusal envelope
+  carries `{ok:false, code:"rate_limited", retry_after_ms, error}`.
+  Bucket state lives in `m_rateLimitBuckets` (QHash, LRU-bound at
+  `kRateLimitMapCap=256`, ~3 KiB steady-state, ~128 KiB absolute
+  worst-case under a synthetic 256×Cheap fill). Monotonic clock via
+  static `QElapsedTimer s_rateLimitClock` defends against NTP /
+  suspend-resume skew that would otherwise corrupt the queue's
+  strictly-ascending invariant. Dispatcher gains a new
+  `dispatchResult` variable so the refusal routes through
+  `recordDispatch` with `result="rate_limited"` — `mcp_trace`
+  surfaces the refusal and `token_usage`'s ANTS-1432 success flag
+  routes the bytes into the failed-call accumulator (visible cost
+  in the dashboards). Spec `docs/specs/ANTS-1356.md`;
+  cold-eyes-reviewed pre-implementation (1 CRITICAL + 2 HIGH + 3
+  MEDIUM + 2 LOW addressed inline). Tests
+  `tests/features/mcp_rate_limit/` (16 invariants, GUI-free,
+  label `features;fast`). `docs/standards/mcp-error-codes.md` § 1
+  gains a `rate_limited` row. 904/904 features green at landing.
+  Carries one out-of-scope follow-up logged as ANTS-1454:
+  ANTS-1404's `caller_cwd_required` refusal still records as
+  `result="ok"` (measurement bug surfaced during the cold-eyes
+  pass) — mechanical fix path teed up by the `dispatchResult`
+  refactor, intentionally not bundled here.
+  Layman: Ants's MCP server now caps how fast any one tool can be
+  called per project — a runaway Claude loop spamming `audit_run`
+  100×/min hits the cap and gets refused with a "retry after N ms"
+  hint, so a single bad skill can't burn through CPU + tokens
+  unchecked.
+
 - **ANTS-1405 — `roadmap_query` parser recognises non-Ants stable
   IDs.** `RoadmapDialog::parseBullets`'s stable-ID regex widened
   from `\[ANTS-(\d+)\]` to

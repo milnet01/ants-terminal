@@ -8,6 +8,7 @@
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QList>
+#include <QQueue>
 #include <QMutex>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -224,6 +225,46 @@ public:
     static constexpr const char *kMcpRcUnavailable =
         "{\"ok\":false,\"error\":\"remote-control unavailable\","
         "\"code\":\"no_remote_control\"}";
+
+    // ANTS-1356 — MCP per-tool rate-limit / quota.
+    //
+    // Three tiers via rateLimitClassFor(toolName):
+    //   Cheap        — 60 calls / 60 s (default; most read verbs).
+    //   Expensive    — 10 calls / 60 s (audit_run, workspace_search,
+    //                  verify_changes, cold_eyes_*, indie_review_*,
+    //                  test_audit_*, debt_sweep_scan/apply_fix).
+    //   ControlPlane — uncapped (get_session_info, token_usage,
+    //                  tool_info, mcp_trace, caller_cwd_info).
+    //
+    // Sliding-window bucket per (toolName, callerCwd). Monotonic
+    // clock in production via s_rateLimitClock; tests pass synthetic
+    // nowMs. See docs/specs/ANTS-1356.md.
+    enum class RateLimitClass { Cheap, Expensive, ControlPlane };
+    struct RateLimitTier { int capPerWindow; qint64 windowMs; };
+    static RateLimitClass rateLimitClassFor(const QString &toolName);
+    static RateLimitTier  rateLimitTierFor(RateLimitClass cls);
+
+    // Returns 0 if the call is accepted (timestamp appended to bucket
+    // as side-effect). Returns retry_after_ms (> 0) if refused.
+    // `nowMs` is parameterised so tests can drive synthetic time.
+    qint64 rateLimitCheck(const QString &toolName,
+                          const QString &callerCwd,
+                          qint64 nowMs);
+
+    // Test-only probes (mirror the existing *ForTest convention).
+    int rateLimitBucketCountForTest() const {
+        return m_rateLimitBuckets.size();
+    }
+    int rateLimitBucketDepthForTest(const QString &toolName,
+                                    const QString &callerCwd) const {
+        const auto it = m_rateLimitBuckets.constFind(
+            qMakePair(toolName, callerCwd));
+        return (it == m_rateLimitBuckets.cend()) ? 0 : it->tsMs.size();
+    }
+    // Override per-tier caps for the duration of a test. Reset to
+    // restore the 60/10 defaults.
+    static void setRateLimitCapsForTest(int cheap, int expensive);
+    static void resetRateLimitCapsForTest();
 
     // ANTS-1357 — direct cache API (test-only seam). The integration
     // with the MCP dispatch is exercised in
@@ -453,6 +494,20 @@ private:
     mutable QList<QString>                      m_idempotentReadLru;
     static constexpr int    kIdempotentReadCacheCap = 32;
     static constexpr qint64 kIdempotentReadTtlMs    = 100;
+
+    // ANTS-1356 — MCP per-tool rate-limit / quota. Per-(toolName,
+    // callerCwd) sliding-window bucket. Pruned on access; empty
+    // buckets auto-evict to keep the map size proportional to active
+    // load. kRateLimitMapCap bounds map growth via LRU eviction.
+    // See docs/specs/ANTS-1356.md.
+    struct RateLimitBucket {
+        QQueue<qint64> tsMs;  // monotonic ms, strictly ascending
+    };
+    QHash<QPair<QString, QString>, RateLimitBucket> m_rateLimitBuckets;
+    static constexpr int kRateLimitMapCap       = 256;
+    static constexpr int kRateLimitCheapCap     = 60;
+    static constexpr int kRateLimitExpensiveCap = 10;
+    static constexpr qint64 kRateLimitWindowMs  = 60'000;
 
     // ANTS-1351 + ANTS-1397 § 2.4 — inline in-flight gate. Key:
     // (verb, canonicalProjectRoot) → start time (ms epoch). RAII

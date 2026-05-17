@@ -93,7 +93,7 @@ TEST(McpCallerCwdContracts, DispatchSiteInvokesContractCheck) {
     ASSERT_NE(pos, std::string::npos)
         << "tools/call dispatch branch missing";
     // Take a generous window (the dispatch block is several hundred lines).
-    const std::string region = cc.substr(pos, 6000);
+    const std::string region = cc.substr(pos, 9000);
     EXPECT_NE(region.find("callerCwdContractFor(toolName)"),
               std::string::npos)
         << "ANTS-1404 DISP-1: dispatcher must consult "
@@ -106,7 +106,7 @@ TEST(McpCallerCwdContracts, RefusalEnvelopeShape) {
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos);
-    const std::string region = cc.substr(pos, 6000);
+    const std::string region = cc.substr(pos, 9000);
     EXPECT_NE(region.find("\"caller_cwd_required\""), std::string::npos)
         << "ANTS-1404 DISP-2: code:\"caller_cwd_required\" literal "
            "missing from refusal envelope";
@@ -122,7 +122,7 @@ TEST(McpCallerCwdContracts, RefusalBypassesCache) {
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos);
-    const std::string region = cc.substr(pos, 6000);
+    const std::string region = cc.substr(pos, 9000);
     // The cacheable assignment must depend on !toolHandled so a
     // refusal-set toolHandled value short-circuits the cache lookup.
     EXPECT_NE(region.find("!toolHandled && isIdempotentReadTool(toolName)"),
@@ -137,7 +137,7 @@ TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos);
-    const std::string region = cc.substr(pos, 6000);
+    const std::string region = cc.substr(pos, 9000);
     // The provider-dispatch block historically guarded on `!cachedHit`;
     // ANTS-1404 widens that to `!toolHandled` so refusals also
     // short-circuit the provider lambda invocation.
