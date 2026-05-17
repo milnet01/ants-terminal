@@ -635,12 +635,42 @@ once real consumers hit it.
   ANTS-1404's `caller_cwd_required` refusal still records as
   `result="ok"` (measurement bug surfaced during the cold-eyes
   pass) — mechanical fix path teed up by the `dispatchResult`
-  refactor, intentionally not bundled here.
+  refactor, intentionally not bundled here. (Closed by
+  ANTS-1454, immediately below.)
   Layman: Ants's MCP server now caps how fast any one tool can be
   called per project — a runaway Claude loop spamming `audit_run`
   100×/min hits the cap and gets refused with a "retry after N ms"
   hint, so a single bad skill can't burn through CPU + tokens
   unchecked.
+
+- **ANTS-1454 — `caller_cwd_required` refusals now count as failed
+  calls in `token_usage`.** Closes the ANTS-1356 follow-up. The
+  ANTS-1404 refusal branch at
+  `src/claudeintegration.cpp:3570-3599` set `toolHandled = true`
+  but left `dispatchResult` at its `"ok"` default; `recordDispatch`
+  derives `succeeded = (result == "ok")`, so every refused call
+  flowed into `token_usage`'s successful-call accumulator and the
+  cost dashboard could not tell a misconfigured caller's refusal
+  bytes apart from a real success. One-line fix inside the
+  refusal branch sets `dispatchResult = QStringLiteral("caller_cwd_required")`
+  before falling into the shared `recordDispatch` call. No schema
+  change to the refusal envelope — only the internal accounting
+  that drives `token_usage`'s `failed_call_*` byte counters and
+  the `mcp_trace` ring's `result` field. The companion comments
+  at the `dispatchResult` initialisation and at the
+  `recordDispatch` call site are updated to list the three known
+  result strings (`"ok"`, `"caller_cwd_required"`, `"rate_limited"`).
+  Spec `docs/specs/ANTS-1454.md`. Tests extend
+  `tests/features/mcp_caller_cwd_contracts/` with `DISP-5` — a
+  source-grep assertion that the refusal branch sets the
+  `dispatchResult` literal inside the closing `}\n` of the
+  ANTS-1404 block (same pattern as the file's other source-scrape
+  invariants).
+  **Layman:** when Ants refuses a misconfigured MCP call (no
+  `caller_cwd` on a tool that needs one), it now counts that as a
+  failed call in the cost dashboard, not a successful one. Pre-fix
+  the accounting was wrong; this closes the loop the rate-limit
+  fix opened.
 
 - **ANTS-1352 — MCP `indie_review_dispatch` orchestrator.**
   Bundle D pull 2. Server-side multi-agent indie-review:

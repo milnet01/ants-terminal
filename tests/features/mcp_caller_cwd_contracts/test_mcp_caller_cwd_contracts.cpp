@@ -131,6 +131,39 @@ TEST(McpCallerCwdContracts, RefusalBypassesCache) {
            "!toolHandled so refusals bypass the cache";
 }
 
+// DISP-5 (ANTS-1454) — refusal branch sets dispatchResult so
+// recordDispatch routes the call into the failed-call accumulator.
+// Pre-1454 the branch inherited the "ok" default and
+// token_usage.recordCall counted refusals as successes.
+TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
+    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(cc.empty());
+    const auto pos = cc.find("else if (method == \"tools/call\")");
+    ASSERT_NE(pos, std::string::npos);
+    const std::string region = cc.substr(pos, 9000);
+    // Locate the ANTS-1404 refusal block (anchored on the literal
+    // code string already asserted by DISP-2) and walk forward to
+    // the toolHandled = true that closes the branch; the
+    // dispatchResult assignment must appear in the same block.
+    const auto refusalAt =
+        region.find("env[\"code\"]  = QStringLiteral(\"caller_cwd_required\")");
+    ASSERT_NE(refusalAt, std::string::npos)
+        << "ANTS-1454 DISP-5: refusal envelope literal not found";
+    const auto branchEnd = region.find("}\n", refusalAt);
+    ASSERT_NE(branchEnd, std::string::npos)
+        << "ANTS-1454 DISP-5: refusal branch close brace not found";
+    const std::string branch = region.substr(
+        refusalAt, branchEnd - refusalAt);
+    EXPECT_NE(branch.find(
+                  "dispatchResult = "
+                  "QStringLiteral(\"caller_cwd_required\")"),
+              std::string::npos)
+        << "ANTS-1454 DISP-5: ANTS-1404 refusal branch must set "
+           "dispatchResult = \"caller_cwd_required\" so "
+           "token_usage's recordCall sees succeeded=false (the "
+           "pre-1454 default \"ok\" masked failed-call cost).";
+}
+
 // DISP-4 — provider-dispatch guard widened to !toolHandled.
 TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
     const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);

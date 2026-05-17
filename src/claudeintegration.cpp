@@ -3539,13 +3539,13 @@ void ClaudeIntegration::onMcpConnection() {
                 QString responseText;
                 bool toolHandled = false;
                 // ANTS-1356 — dispatchResult overrides the default
-                // "ok" passed to recordDispatch. Refusal branches
-                // (rate_limited) set this to surface the refusal in
-                // mcp_trace + token_usage's failed-call accumulator.
-                // ANTS-1404's caller_cwd_required refusal keeps "ok"
-                // for now (latent measurement bug logged as a
-                // follow-up; see docs/specs/ANTS-1356.md § "ANTS-1404
-                // latent-bug observation").
+                // "ok" passed to recordDispatch. Refusal branches set
+                // this to surface the refusal in mcp_trace +
+                // token_usage's failed-call accumulator.
+                // ANTS-1454 retrofitted the ANTS-1404 branch below to
+                // set "caller_cwd_required" — the pre-1454 default-to-
+                // ok masked the per-call cost of misconfigured callers
+                // (see docs/specs/ANTS-1454.md).
                 QString dispatchResult = QStringLiteral("ok");
                 // ANTS-1360 — start latency clock before cache lookup
                 // so cache-hit records capture true µs-range latency
@@ -3590,7 +3590,12 @@ void ClaudeIntegration::onMcpConnection() {
                     responseText = QString::fromUtf8(
                         QJsonDocument(env)
                             .toJson(QJsonDocument::Compact));
-                    toolHandled = true;
+                    toolHandled    = true;
+                    // ANTS-1454 — route the refusal to recordDispatch's
+                    // failed-call accumulator. Pre-1454 the branch
+                    // inherited the "ok" default and token_usage
+                    // double-counted refusals as successes.
+                    dispatchResult = QStringLiteral("caller_cwd_required");
                 }
                 // ANTS-1356 — per-tool sliding-window rate-limit.
                 // Runs AFTER caller_cwd_required (a misconfigured
@@ -3753,9 +3758,12 @@ void ClaudeIntegration::onMcpConnection() {
                     const qint64 rawBytes  = responseText.toUtf8().size();
                     const qint64 wrapBytes = outBytes - rawBytes;       // ANTS-1355 INV-3
                     const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
-                    // ANTS-1356 — dispatchResult is "ok" for normal
-                    // success + ANTS-1404 caller_cwd_required refusals,
-                    // and "rate_limited" for ANTS-1356 refusals.
+                    // ANTS-1356 + ANTS-1454 — dispatchResult is "ok"
+                    // for normal success, "caller_cwd_required" for
+                    // ANTS-1404 refusals, "rate_limited" for ANTS-1356
+                    // refusals. recordDispatch derives `succeeded =
+                    // (result == "ok")` so failed-call accounting in
+                    // token_usage stays honest.
                     recordDispatch(toolName, argsObj, argBytes, outBytes,
                                    wrapBytes, durUs, cachedHit,
                                    dispatchResult);

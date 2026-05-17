@@ -25,3 +25,9 @@ the dispatch-site refusal envelope.
   refusal.
 - **DISP-4.** The `if (!toolHandled)` guard around the provider
   dispatch ensures refused tools don't invoke the provider lambda.
+- **DISP-5 (ANTS-1454).** Refusal branch sets
+  `dispatchResult = "caller_cwd_required"` so `recordDispatch`
+  routes the call to `token_usage`'s failed-call accumulator
+  (`recordCall` derives `succeeded = (result == "ok")`). Pre-1454
+  the branch inherited the `"ok"` default and refusals were
+  double-counted as successful calls in `token_usage`.

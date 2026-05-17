@@ -8761,7 +8761,7 @@ template / mutate this state atomically" → movable. If it's
 
 ### 🔌 Ants-MCP follow-ups from ANTS-1356 + RetroDB cross-session reports (2026-05-17)
 
-- 📋 [ANTS-1454] **ANTS-1404 `caller_cwd_required` refusal records
+- ✅ [ANTS-1454] **ANTS-1404 `caller_cwd_required` refusal records
   as `result="ok"`.** Surfaced during the ANTS-1356 cold-eyes review
   (2026-05-17): the refusal branch at `claudeintegration.cpp:3431-3454`
   sets `toolHandled=true` then falls into the success
@@ -8784,7 +8784,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Source: cold-eyes-review-2026-05-17 (during ANTS-1356).
 
-- 🚧 [ANTS-1455] **`test_audit_*` MCP surface — usability gaps
+- ✅ [ANTS-1455] **`test_audit_*` MCP surface — usability gaps
   surfaced by RetroDB CC session (cross-session reports
   2026-05-17).** Three friction points reported in quick
   succession while running `/test-audit` on a Flask app:
@@ -8962,7 +8962,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: user-report-2026-05-17-20-36.
 
-- 🚧 [ANTS-1457] **False-positive ledger
+- ✅ [ANTS-1457] **False-positive ledger
   (`.ants_review_falsepos.jsonl`) shared across `/audit`,
   `/cold-eyes`, `/indie-review`, `/test-audit`.** New project-level
   standard at `docs/standards/audit-false-positives.md` defines an
@@ -9041,6 +9041,31 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (other CC instance on
   RetroDB project).
+
+- 📋 [ANTS-1460] **`roadmap_log` descriptor still says flip op only supports "GFM-task-list-format roadmap" after ANTS-1441 extended it to ants-v1.**
+  Observed during ANTS-1454: the `roadmap_log` flip op succeeded against
+  Ants Terminal's own ROADMAP.md three times in a row, with the response
+  envelope reporting `format:"ants-v1"`. The tool description at
+  `src/claudeintegration.cpp:3110-3135` still reads "Append a new bullet
+  to ROADMAP.md, or flip the status of an existing bullet on a
+  GFM-task-list-format roadmap." — pre-ANTS-1441 wording. A caller
+  reading the descriptor will assume flip is GFM-only and skip the
+  verb on every ants-v1 roadmap (including Ants Terminal's own
+  ROADMAP.md, which it would succeed on).
+  
+  Fix: drop "on a GFM-task-list-format roadmap" or rewrite to "on a
+  GFM-task-list or Ants-v1 emoji roadmap"; mirror the change into the
+  op:"flip" body sub-paragraph at line 3124-3134. Source-grep test
+  welcome but optional — the existing `roadmap_log_flip_ants_v1`
+  test (which is what backed ANTS-1441) already pins the runtime
+  behaviour; this is purely descriptor hygiene.
+  
+  Pairs with ANTS-1453 (per-tool `selection_hint`) — both are
+  descriptor-grain MCP discoverability gaps that don't change runtime
+  behaviour but do change what callers will reach for.
+  **Layman:** The roadmap-log tool's flip mode now works on Ants's own emoji-style ROADMAP format (since ANTS-1441), but its tool description still says "GFM-task-list-format roadmap" — so Claude will skip the tool on Ants's own project even though it would work. Quick descriptor update.
+  Kind: doc-fix.
+  Source: in-session-2026-05-17.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
