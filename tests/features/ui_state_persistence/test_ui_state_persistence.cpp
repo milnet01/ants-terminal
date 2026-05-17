@@ -43,6 +43,27 @@
 #include <string>
 #include <gtest/gtest.h>
 
+// ANTS-1150 source-grep INVs anchor to bundle-supplied absolute paths so
+// the test fails loudly if a future build wires the bundle without them,
+// rather than silently passing because readFile() returned empty
+// (gtest_discover_tests sets CWD to the build dir, where bare relative
+// paths like "src/settingsdialog.cpp" don't resolve).
+#ifndef SRC_SETTINGSDIALOG_CPP_PATH
+#  error "SRC_SETTINGSDIALOG_CPP_PATH must be defined by the bundle's compile defs"
+#endif
+#ifndef SRC_ROADMAPDIALOG_CPP_PATH
+#  error "SRC_ROADMAPDIALOG_CPP_PATH must be defined by the bundle's compile defs"
+#endif
+#ifndef SRC_AUDITDIALOG_H_PATH
+#  error "SRC_AUDITDIALOG_H_PATH must be defined by the bundle's compile defs"
+#endif
+#ifndef SRC_AUDITDIALOG_CPP_PATH
+#  error "SRC_AUDITDIALOG_CPP_PATH must be defined by the bundle's compile defs"
+#endif
+#ifndef SRC_MAINWINDOW_CPP_PATH
+#  error "SRC_MAINWINDOW_CPP_PATH must be defined by the bundle's compile defs"
+#endif
+
 ANTS_TEST_SCOPE();
 
 namespace {
@@ -366,8 +387,8 @@ TEST(UiStatePersistence, Inv8_firstLaunchDefaults) {
 
 TEST(UiStatePersistence, Inv9_settingsDialogWiring) {
     expect_reset();
-    const std::string sd = readFile("src/settingsdialog.cpp");
-    if (sd.empty()) { expect(false, "ANTS-1150-INV-9: read settingsdialog.cpp"); return; }
+    const std::string sd = readFile(SRC_SETTINGSDIALOG_CPP_PATH);
+    ASSERT_FALSE(sd.empty()) << "ANTS-1150-INV-9: read settingsdialog.cpp (" << SRC_SETTINGSDIALOG_CPP_PATH << ")";
 
     expect(contains(sd, "setSettingsDialogLastTab("),
            "ANTS-1150-INV-9: settingsdialog.cpp calls setSettingsDialogLastTab(");
@@ -385,8 +406,8 @@ TEST(UiStatePersistence, Inv9_settingsDialogWiring) {
 
 TEST(UiStatePersistence, Inv10_roadmapDialogPresetWriteSites) {
     expect_reset();
-    const std::string rd = readFile("src/roadmapdialog.cpp");
-    if (rd.empty()) { expect(false, "ANTS-1150-INV-10: read roadmapdialog.cpp"); return; }
+    const std::string rd = readFile(SRC_ROADMAPDIALOG_CPP_PATH);
+    ASSERT_FALSE(rd.empty()) << "ANTS-1150-INV-10: read roadmapdialog.cpp";
 
     // Both call sites for setRoadmapActivePreset (via persistActivePreset
     // helper or direct). Either spelling counts — the test is "the
@@ -416,8 +437,8 @@ TEST(UiStatePersistence, Inv10_roadmapDialogPresetWriteSites) {
 
 TEST(UiStatePersistence, Inv11_roadmapDialogKindStatusWiring) {
     expect_reset();
-    const std::string rd = readFile("src/roadmapdialog.cpp");
-    if (rd.empty()) { expect(false, "ANTS-1150-INV-11: read roadmapdialog.cpp"); return; }
+    const std::string rd = readFile(SRC_ROADMAPDIALOG_CPP_PATH);
+    ASSERT_FALSE(rd.empty()) << "ANTS-1150-INV-11: read roadmapdialog.cpp";
 
     expect(contains(rd, "setRoadmapKindFilters("),
            "ANTS-1150-INV-11: roadmapdialog.cpp calls setRoadmapKindFilters(");
@@ -428,8 +449,8 @@ TEST(UiStatePersistence, Inv11_roadmapDialogKindStatusWiring) {
 
 TEST(UiStatePersistence, Inv12_roadmapDialogCtorRestore) {
     expect_reset();
-    const std::string rd = readFile("src/roadmapdialog.cpp");
-    if (rd.empty()) { expect(false, "ANTS-1150-INV-12: read roadmapdialog.cpp"); return; }
+    const std::string rd = readFile(SRC_ROADMAPDIALOG_CPP_PATH);
+    ASSERT_FALSE(rd.empty()) << "ANTS-1150-INV-12: read roadmapdialog.cpp";
 
     expect(contains(rd, "roadmapKindFilters()"),
            "ANTS-1150-INV-12: ctor reads roadmapKindFilters()");
@@ -458,8 +479,8 @@ TEST(UiStatePersistence, Inv12_roadmapDialogCtorRestore) {
 
 TEST(UiStatePersistence, Inv13_auditDialogCtorSignature) {
     expect_reset();
-    const std::string ah = readFile("src/auditdialog.h");
-    if (ah.empty()) { expect(false, "ANTS-1150-INV-13: read auditdialog.h"); return; }
+    const std::string ah = readFile(SRC_AUDITDIALOG_H_PATH);
+    ASSERT_FALSE(ah.empty()) << "ANTS-1150-INV-13: read auditdialog.h";
 
     // Ctor must take Config* with no nullptr default (cold-eyes HIGH #3).
     // Accept either `Config *config` or `Config* config` etc.
@@ -495,8 +516,8 @@ TEST(UiStatePersistence, Inv13_auditDialogCtorSignature) {
 
 TEST(UiStatePersistence, Inv14_auditDialogWiring) {
     expect_reset();
-    const std::string ad = readFile("src/auditdialog.cpp");
-    if (ad.empty()) { expect(false, "ANTS-1150-INV-14: read auditdialog.cpp"); return; }
+    const std::string ad = readFile(SRC_AUDITDIALOG_CPP_PATH);
+    ASSERT_FALSE(ad.empty()) << "ANTS-1150-INV-14: read auditdialog.cpp";
 
     expect(contains(ad, "setAuditSeverityFilters("),
            "ANTS-1150-INV-14: auditdialog.cpp calls setAuditSeverityFilters(");
@@ -511,8 +532,8 @@ TEST(UiStatePersistence, Inv14_auditDialogWiring) {
 
 TEST(UiStatePersistence, Inv15_mainWindowAuditDialogCallSite) {
     expect_reset();
-    const std::string mw = readFile("src/mainwindow.cpp");
-    if (mw.empty()) { expect(false, "ANTS-1150-INV-15: read mainwindow.cpp"); return; }
+    const std::string mw = readFile(SRC_MAINWINDOW_CPP_PATH);
+    ASSERT_FALSE(mw.empty()) << "ANTS-1150-INV-15: read mainwindow.cpp";
 
     // Multi-line aware: find first `new AuditDialog(` and look up to
     // the matching `)` for `&m_config`. Cold-eyes MEDIUM #12: don't

@@ -14,7 +14,6 @@
 
 namespace {
 
-static int failures = 0;  // unused stub for legacy diagnostics; gtest tracks failures itself
 // ANTS-1217 Phase 2: CHECK redirected to ADD_FAILURE_AT.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
@@ -243,12 +242,10 @@ TEST(BceScrollErase, Main) {
     testLfScroll(blue, defaultBg);
     testSgrResetBeforeErase(defaultBg);
 
-    if (failures == 0) {
-        std::fprintf(stderr, "PASS bce_scroll_erase (10 subcases)\n");
-        return;
-    }
-    std::fprintf(stderr, "bce_scroll_erase: %d failure(s)\n", failures);
-    FAIL();
-
+    // Note: the per-subcase ADD_FAILURE() calls above already register the
+    // failures with gtest, so we don't print a hand-rolled PASS/FAIL summary
+    // (the legacy `static int failures` was never incremented anywhere — it
+    // was a left-over from the pre-ANTS-1217 standalone harness). gtest's
+    // own per-TEST summary line is the source of truth.
 }
 

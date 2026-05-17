@@ -7926,7 +7926,151 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
 
 ---
 
+- ✅ [ANTS-1484] **Test-audit 2026-05-17 in-session silent-pass fixes (8 files).**
+  Real silent-pass bugs caught by /test-audit 2026-05-17 and fixed
+  in the same session before fold-in:
+  
+  (a) crash_safe_session_persist — 9 INVs were silently passing
+  because readFile("src/mainwindow.{h,cpp}") returned empty under
+  gtest_discover_tests's build-dir CWD, then `expect(false); return;`
+  skipped the EXPECT_EQ(0, expect_failures()) guard. Now uses
+  SRC_MAINWINDOW_{H,CPP}_PATH absolute paths + ASSERT_FALSE.
+  
+  (b) ui_state_persistence — INV-9 through INV-15 had the same
+  silent-pass bug on src/{settingsdialog,roadmapdialog,auditdialog,
+  mainwindow}.{h,cpp}. Added SRC_ROADMAPDIALOG_CPP_PATH +
+  SRC_AUDITDIALOG_{H,CPP}_PATH compile defs to test_chrome bundle
+  and migrated to the macros + ASSERT_FALSE.
+  
+  (c) scrollback_redraw/test_redraw.cpp — runInkOverflowScenario
+  returned 0 always (failures counter never incremented); the
+  "PASS" stderr log printed unconditionally. Added ++failures.
+  
+  (d) decrqss + osc_color_query — `fail()` helpers called
+  ADD_FAILURE() but didn't increment the local `failures` counter,
+  so the terminal "OK: ... invariants hold" log was misleading
+  when only `fail()` (not failContains()) had fired. Changed fail()
+  to return 1 and converted call sites to `failures += fail(...)`.
+  
+  (e) bce_scroll_erase — `static int failures = 0` was never
+  incremented anywhere; the `if (failures == 0)` guard made FAIL()
+  at line 251 unreachable and "PASS bce_scroll_erase" always
+  printed. Removed the dead counter and the false PASS log;
+  gtest's ADD_FAILURE_AT (already wired into CHECK) is the source
+  of truth.
+  
+  (f) shift_enter_bracketed_paste + status_bar_elision — CHECK
+  macro incremented a module-level `int failures` that no TEST
+  asserted on. Changed CHECK to route through ADD_FAILURE_AT,
+  removed the dead counter.
+  
+  Bundle build + the 38 affected ctest entries all green.
+  Kind: audit-fix.
+  Lanes: test, auditengine.
+  Source: test-audit-2026-05-17.
+
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
+
+### 🧪 Test Audit 2026-05-17
+
+Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, duplication, isolation, determinism, accuracy, security, verbosity, naming, coverage_gaps, splitting, fixtures, assertions, hardcoded_data, setup_teardown, parametrisation, error_handling, doc_strings · Raw: 341 · Actionable: 19
+
+- 📋 [ANTS-1465] **~91 test files inline a local slurp() that calls std::exit(2) on file-open failure — kills the entire gtest process instead of reporting a per-test failure..**
+  - File: tests/features/*:0
+  - Dimension: error_handling
+  - Severity: HIGH
+  - Fix: Migrate to ants_test::slurpFile() from tests/_support/srcgrep.h + ASSERT_FALSE(content.empty()) at each call site. Per-file mechanical replacement.
+- 📋 [ANTS-1466] **~30 test files inline a near-identical local slurp() helper despite ants_test::slurpFile() existing in tests/_support/srcgrep.h..**
+  - File: tests/features/*:0
+  - Dimension: duplication
+  - Severity: MED
+  - Fix: Extract: include srcgrep.h, replace local slurp() with ants_test::slurpFile(); delete the duplicates. Batch in lane order so review diffs stay coherent.
+- 📋 [ANTS-1467] **~30 files use TEST(..., Main) bundling that funnels N invariants through runMain() with early-return on first failure — masks downstream invariants..**
+  - File: tests/features/*:0
+  - Dimension: splitting
+  - Severity: MED
+  - Fix: Split into TEST(Suite, InvN_behaviour) per invariant. The audit_engine_extraction / mcp_subsystem / github_status_bar / kwin_position_tracker / claude_transcript_robustness families are the worst offenders. Use ANTS_TEST_SCOPE + expect()/expect_finish() so partial-fail reporting works.
+- 📋 [ANTS-1468] **~10 files inline a naive extractFunctionBody()/extractBody() brace-walker with no string/comment awareness; ants_test::slurpFunctionBody() in srcgrep.h handles string + line/block comment escapes..**
+  - File: tests/features/*:0
+  - Dimension: duplication
+  - Severity: MED
+  - Fix: Migrate every local brace-extractor to ants_test::slurpFunctionBody(); delete the duplicates.
+- 📋 [ANTS-1469] **A3b/A4b benign-fast assertions use bare hardcoded wall-clock thresholds (goodElapsed <= 200, elapsed <= 100) with no CI-slack pad — diverges from the documented kBudgetMs + kSlackMs pattern used elsewhere in the file..**
+  - File: tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp:186
+  - Dimension: flakiness
+  - Severity: HIGH
+  - Fix: Apply the same kSlackMs (e.g. 200 ms) pad used by the surrounding A1/A2 assertions, or skip the benign-fast bound on CI runners where wall-clock jitter dominates.
+- 📋 [ANTS-1470] **QTest::qWait(120) used to wait for a 100 ms TTL — 20 ms margin is thin under CI load..**
+  - File: tests/features/mcp_idempotent_read_cache/test_mcp_idempotent_read_cache.cpp:45
+  - Dimension: flakiness
+  - Severity: HIGH
+  - Fix: Inject a clock into the cache (or accept that flake risk by widening to >= 250 ms wait).
+- 📋 [ANTS-1471] **QThread::msleep(1100) to advance filesystem mtime past 1 s granularity — racey on overloaded CI runners..**
+  - File: tests/features/mcp_project_layout_scan/test_mcp_project_layout_scan.cpp:137
+  - Dimension: flakiness
+  - Severity: HIGH
+  - Fix: Mock the mtime check or assert on a stat-result struct injected at the seam.
+- 📋 [ANTS-1472] **INV-1/INV-2 anchor to QDateTime::currentSecsSinceEpoch() without a frozen clock; runGit 10 s hard timeout is too tight for slow CI runners..**
+  - File: tests/features/roadmap_inprogress_age/test_roadmap_inprogress_age.cpp:87
+  - Dimension: flakiness
+  - Severity: HIGH
+  - Fix: 
+- 📋 [ANTS-1473] **Multiple tests mutate process-global env (XDG_CONFIG_HOME, HOME, PATH) without RAII restore — leaks state to subsequent TESTs in the same binary..**
+  - File: tests/features/*:0
+  - Dimension: isolation
+  - Severity: MED
+  - Fix: Wrap env-mutation in a Sandbox struct whose dtor restores the original value; or use the existing env-guard helper if one exists in _support.
+- 📋 [ANTS-1474] **Several files use fixed-byte-window substr(pos, N) (sizes 800/2000/4000/12000) for source-region searches — silently truncate as source grows..**
+  - File: tests/features/*:0
+  - Dimension: accuracy
+  - Severity: MED
+  - Fix: Migrate to ants_test::slurpFunctionBody(); the brace-balanced extractor eliminates the window.
+- 📋 [ANTS-1475] **CHECK macro writes to stderr + increments a global int failures but no TEST asserts on it — tests can silently pass even when CHECK fires. Same pattern in review_changes_clickable..**
+  - File: tests/features/review_changes_click/test_review_changes_click.cpp:0
+  - Dimension: assertions
+  - Severity: MED
+  - Fix: Route CHECK through ADD_FAILURE_AT(__FILE__, __LINE__) << msg; drop the global counter.
+- 📋 [ANTS-1476] **Local extractFunctionBody uses indexOf("\n}") instead of brace-counting — truncates at first inner brace..**
+  - File: tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp:0
+  - Dimension: accuracy
+  - Severity: MED
+  - Fix: Use ants_test::slurpFunctionBody().
+- 📋 [ANTS-1477] **writeFile() uses ASSERT_TRUE in a non-TEST void helper — gtest terminates the helper but not the calling TEST(), so the file-open failure silently continues with the file unwritten..**
+  - File: tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp:0
+  - Dimension: assertions
+  - Severity: MED
+  - Fix: Return bool from writeFile and ASSERT_TRUE at the call site, or convert helper to a fixture/SetUp.
+- 📋 [ANTS-1478] **Multiple audit_fixtures bad.cpp files cover only a subset of the variants their regex matches — a regex tightening that drops a variant would go undetected. Examples: cmd_injection (3/7 exec variants), qnetworkreply_no_abort (sslErrors missing), memory_patterns (new T(nullptr)/new T(NULL) missing)..**
+  - File: tests/audit_fixtures:0
+  - Dimension: coverage_gaps
+  - Severity: MED
+  - Fix: Add the missing variants to each bad.cpp with @expect markers; update audit_self_test.sh expected counts.
+- 📋 [ANTS-1479] **Benchmark has no regression gate — runs in CI but doesn't fail on throughput regressions..**
+  - File: tests/perf/bench_vt_throughput.cpp:0
+  - Dimension: performance
+  - Severity: MED
+  - Fix: Add a configurable lower-bound MB/s threshold (env-overridable) so ctest -L perf catches >25% regressions.
+- 📋 [ANTS-1480] **~30 files use TEST(..., Main) which gives no behavioural signal at the ctest level — fixed once splitting cleanup lands..**
+  - File: tests/features/*:0
+  - Dimension: naming
+  - Severity: LOW
+  - Fix: 
+- 📋 [ANTS-1481] **Various per-file coverage gaps noted in chunk reports (cmd_injection exec-variants, IndieReviewEngine::corroboratedFindings minLanes boundary, plan-mode signal arg, additionalProperties value check, etc.) — see chunk JSON in /tmp/test-audit-c7ee2911 for the per-file detail..**
+  - File: tests/features/*:0
+  - Dimension: coverage_gaps
+  - Severity: LOW
+  - Fix: 
+- 📋 [ANTS-1482] **Several tests use a 29-test boilerplate pattern, dead PASS-on-success stderr prints, hardcoded machine paths in encode tests, and comments that have drifted from the asserted counts (e.g. "six connects" but asserts 7)..**
+  - File: tests/features/*:0
+  - Dimension: verbosity
+  - Severity: LOW
+  - Fix: 
+- 📋 [ANTS-1483] **Several fixture good.cpp files have misleading or incomplete comments about which regex blind-spots they cover..**
+  - File: tests/audit_fixtures:0
+  - Dimension: doc_strings
+  - Severity: LOW
+  - Fix: 
+
 
 ### 🔍 Indie-review fold-in (2026-05-13)
 
@@ -9035,6 +9179,266 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** The `audit_run` tool runs cppcheck/ruff/etc. for you, but doesn't let you pass per-tool flags (like `--max-configs=1` for cppcheck). Three options to fix; the cheapest is to honour the project's existing `audit-config.json` if it ships one, so projects with specialised invocations stop having to bypass the wrapper.
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (RetroArch CC instance, second batch).
+
+- 📋 [ANTS-1485] **test_audit_synthesis_prompt rejects subagent-produced .json reports (refusal: reports_dir_empty).**
+  Repro: I ran /test-audit on the Ants Terminal project. The 20 dispatched
+  test-audit-chunk subagents (per the upstream agent definition that ships
+  in `~/.claude/agents/test-audit-chunk.md`) write a structured JSON report
+  per chunk — the agent's contract literally says "Return a single JSON
+  object". I called test_audit_synthesis_prompt with reports_dir pointing
+  to the directory of `c-NNN.json` files and got:
+  
+    {"code":"reports_dir_empty","error":"test_audit_synthesis_prompt:
+     reports_dir … contains no *.md files at top level","ok":false}
+  
+  So the trio is inconsistent end-to-end: phase 2 produces JSON, phase 3
+  only accepts Markdown. Either the synthesis_prompt should glob both
+  `*.md` and `*.json` at top level (and fence/inject accordingly), or the
+  upstream subagent definition needs to be flipped to emit .md. The
+  RetroDB session reported the same friction at a different layer.
+  
+  Fix: accept .json siblings in the reports_dir scan; treat each file as
+  its own fenced block. Keep the prompt-injection defence (INV-8 fencing)
+  on both formats.
+  Kind: fix.
+  Lanes: mcp-test-audit.
+  Source: in-session-2026-05-17 (Ants-Terminal /test-audit run).
+
+- 📋 [ANTS-1486] **test_audit_synthesis_prompt — add mode:hybrid (summary + top-N chunks verbatim) and sharper mode:summary docstring.**
+  RetroDB Issue 1: mode:summary returns useful stats (top_dimensions,
+  file_index) but not enough for the orchestrator to build the actionable
+  list — the orchestrator has to either re-Read every chunk file or call
+  again with mode:full + pagination. Two asks (either is fine):
+  
+  (a) Document the workflow split explicitly in the tool docstring:
+  "summary = stats + pointers (≤16 KiB); for actionable text use mode:full
+  + offset/limit, or read per-chunk report files directly".
+  
+  (b) Add `mode:"hybrid"` that returns the summary header + the top-N
+  chunks verbatim (configurable; default N=3 by max-finding-count). Best
+  of both — call once, get navigation + actionable text for heavy-finding
+  chunks without paging.
+  
+  Both are LOW-priority workflow ergonomics; the trio works end-to-end
+  without it.
+  Kind: enhancement.
+  Lanes: mcp-test-audit.
+  Source: RetroDB cross-session report 2026-05-17.
+
+- 📋 [ANTS-1487] **test_audit_partition — rename dimension_hints to pre_pass_dimensions, always emit full active-dimensions list.**
+  RetroDB Issue 2: the dimension_hints field on each chunk in the
+  partition response is effectively "dimensions the cheap pre-pass grep
+  already flagged" — not "the only dimensions worth auditing". A chunk
+  with empty dimension_hints can still produce 22 findings and 4 HIGHs
+  (RetroDB observed this on c-002). A careless caller could mistakenly
+  restrict their subagent prompt to the listed hints and silently shrink
+  audit coverage.
+  
+  Two asks (do both or either):
+  
+  (a) Rename to `pre_pass_dimensions` — accurate; tells callers exactly
+  where the field comes from.
+  
+  (b) Always emit `dimensions_active` in addition (already exists at the
+  envelope level in our impl — confirm it's documented and obvious).
+  Kind: enhancement.
+  Lanes: mcp-test-audit.
+  Source: RetroDB cross-session report 2026-05-17.
+
+- 📋 [ANTS-1488] **test_audit_synthesis_prompt — add per-dimension severity histograms in summary mode.**
+  Vestige Issue 3: summary mode returns dimension hit counts, but for
+  each dimension a tiny histogram of severities would let the orchestrator
+  decide whether to pass mode:full for that dimension without re-reading
+  every chunk. Format: `assertions: {crit:0, high:1, med:7, low:18}`.
+  
+  Right now the orchestrator has to open every c-NNN.{md,json} to know
+  "is there a CRIT anywhere?". The triage subagent already does this
+  synthesis; surfacing the result in the MCP layer would let the
+  orchestrator skip the subagent for small audits.
+  Kind: enhancement.
+  Lanes: mcp-test-audit.
+  Source: Vestige cross-session report 2026-05-17.
+
+- 📋 [ANTS-1489] **test_audit_brief — surface pre-pass-finding chunk IDs upfront so callers can skip empty briefs.**
+  Vestige Issue 2: the partition response already carries
+  `pre_pass_findings_by_chunk` keyed by chunk ID — Vestige used that
+  directly and skipped per-chunk brief() calls for the empty chunks.
+  Other callers can't tell whether per-chunk brief() will surface a hint
+  without iterating all N briefs. Two asks:
+  
+  (a) Document in the test_audit_partition docstring that
+  `pre_pass_findings_by_chunk` is the authoritative pre-pass map —
+  callers can use the keyset to decide which briefs are worth fetching.
+  
+  (b) Optionally include a `pre_pass_chunk_ids: [c-001, c-005, ...]`
+  echo at the envelope level so callers don't have to introspect the
+  nested map keys.
+  Kind: enhancement.
+  Lanes: mcp-test-audit.
+  Source: Vestige cross-session report 2026-05-17.
+
+- 📋 [ANTS-1490] **test_audit_fold_in — flock failure should fall back + surface counter-file path in error.**
+  Vestige Issue 4: a fold-in call with 27 actionable items failed with
+  {"code":"id_counter_failed","error":"allocateIds returned 0 of 27
+  (flock/IO failure)"}. Single session, no concurrent fold-in. Local
+  filesystem (ext4/btrfs, no NFS). The session worked around by
+  hand-assigning IDs. Three asks:
+  
+  (a) On flock failure, fall back to O_CREAT|O_EXCL rename-based locking
+  before giving up.
+  
+  (b) Surface the counter-file path in the error response so the caller
+  can clear stale locks manually.
+  
+  (c) Document the per-project state location (.roadmap-counter) in the
+  tool docstring so operators know where to look.
+  
+  Forward-looking concern: confirm RoadmapFoldIn::insertBlock handles
+  80+ items in one batch without truncation or ID reuse — add a
+  `max-items-per-fold` guard with paging if not.
+  Kind: fix.
+  Lanes: mcp-roadmap-log, mcp-test-audit.
+  Source: Vestige cross-session report 2026-05-17.
+
+- 📋 [ANTS-1491] **test_audit_partition pre-pass regex matches inside C/C++ string literals + comments.**
+  Vestige Issue 6: pre-pass flagged tests/test_async_driver.cpp lines
+  where the `sleep_call` pattern matched inside a C++ raw-string literal
+  holding a Python child-process script. The chunk subagent correctly
+  dismissed it, but wastes subagent tokens on a known-bogus check on
+  every run.
+  
+  Fix: strip C/C++ string literals (incl. raw strings) and `//` / `/* */`
+  comments before pattern matching. Doesn't need to be perfect — "don't
+  match inside `"..."` or `R"(...)"` or `//...` or `/*...*/`" covers the
+  realistic cases. Mirrors what auditdialog's `comment/string filter`
+  step does in the static-analysis pipeline.
+  Kind: fix.
+  Lanes: mcp-test-audit.
+  Source: Vestige cross-session report 2026-05-17.
+
+- 📋 [ANTS-1492] **verify_changes ignores caller-supplied timeout_sec — returns transport timeout instead.**
+  Vestige Issue 1 (BLOCKER for verify-driven workflows): a
+  verify_changes call with gates:["build"] and timeout_sec:900 returned
+  "MCP error -32000: Ants MCP transport: timed out". The build itself
+  was 16 ninja steps and ran in <1 minute via Bash. Hypotheses:
+  
+  (a) The MCP-side wrapper isn't honouring the caller-supplied
+  timeout_sec and is hitting an inner default.
+  
+  (b) The transport closes the connection before the tool's own budget.
+  
+  Asks:
+  - Confirm timeout_sec is plumbed all the way through to the inner build
+    invocation.
+  - Distinguish "tool timed out" from "transport timed out" in the error
+    string so callers know whether to retry or switch tools.
+  - Document the practical cap (current docs say "server-clamped
+    [10, 1800]"; if there's a separate transport cap, name it).
+  Kind: fix.
+  Lanes: mcp-verify-changes.
+  Source: Vestige cross-session report 2026-05-17.
+
+- 📋 [ANTS-1493] **project_layout + roadmap_query — widen probe set to docs/private/, *.metainfo.xml at repo root, fork-only doc trees.**
+  RetroArch Issue 1 (high friction): roadmap_query refused with
+  no_roadmap_loaded for a project whose roadmap lives at
+  docs/private/ROADMAP.md (60K-token GFM file). project_layout also
+  returned empty fields for roadmap.path, changelog.path,
+  specs_dir, appstream_metainfo despite each existing at a non-repo-root
+  path. Probed paths today only include repo-root locations + docs/
+  + packaging/.
+  
+  Asks:
+  
+  (a) Widen project_layout's probe set to also try
+  docs/private/{ROADMAP,CHANGELOG}.md + docs/private/specs/ +
+  docs/internal/ + docs/fork/. Cheap to probe; null on most projects.
+  
+  (b) When project_layout finds docs/private/, recurse one level for
+  ROADMAP.md / CHANGELOG.md / specs/ / standards/. Bound recursion at
+  docs/private/<one>/<two>/.
+  
+  (c) roadmap_query: fall through to find . -maxdepth 4 -name 'ROADMAP.md'
+  the first time it's called per cwd; cache the discovered path in
+  session_memory under roadmap_path so subsequent calls are O(1).
+  
+  (d) AppStream metafile detection: probe *.metainfo.xml at repo root +
+  under pkg/, packaging/, data/, share/applications/. The reverse-DNS
+  prefix varies wildly between projects.
+  
+  Without this, the caller has to either read the 60K-token file directly
+  (overflows the read budget) or hand-roll the parse via head/grep.
+  Kind: fix.
+  Lanes: mcp-project-layout, mcp-roadmap-query.
+  Source: RetroArch cross-session report 2026-05-17.
+
+- 📋 [ANTS-1494] **last_audit_summary — fall back to raw cppcheck XML / clang-tidy / semgrep when no SARIF present.**
+  RetroArch Issue 2: many projects keep raw analyser output
+  (cppcheck-*.xml, clang-tidy-*.txt, semgrep-*.json) under .audit_cache/
+  rather than running an aggregator pass that emits SARIF. Current
+  last_audit_summary returns {"code":"not_audited"} in that case.
+  
+  Two asks (either is fine):
+  
+  (a) If no SARIF is present, fall back to summarising the newest
+  cppcheck-*.xml / clang-tidy-*.txt / semgrep-*.json. Each output format
+  is small + well-defined; per-tool count+top-findings extraction is
+  ~50 LoC per tool and covers the realistic "I ran the tool, didn't
+  run the aggregator yet" workflow.
+  
+  (b) Loudly document the SARIF requirement in the tool description.
+  Current text says "the latest audit-*.sarif" — easy to miss. Spell out
+  the aggregator step that produces it.
+  
+  Bonus (RetroArch Issue 5): mention cppcheck's --check-level=exhaustive
+  in the docstring so callers know cppcheck's default normal branch
+  budget can silently truncate findings on large files (>5K LoC).
+  Kind: enhancement.
+  Lanes: mcp-last-audit-summary.
+  Source: RetroArch cross-session report 2026-05-17.
+
+- 💭 [ANTS-1495] **git_state — include worktrees[] + feature_branches[] for projects with branch-role conventions.**
+  RetroArch Issue 3: deliberately uses two long-lived local branches
+  (local/audit-2026-04 = roadmap/docs, local/fixes-2026-04 = source
+  in /tmp/ra-fixes worktree). The agent has to learn this split from
+  git log + git worktree list every session.
+  
+  Two ideas (low-priority; considered, not actively scoped):
+  
+  (a) git_state could include worktrees: [{branch, path}] and
+  feature_branches: [...] so the agent doesn't have to learn the split
+  by hand.
+  
+  (b) A session_memory key like branch_role_map ({"local/audit-2026-04":
+  "docs", "local/fixes-2026-04": "source"}) could store the convention.
+  The agent picks the right branch automatically on commit; user
+  confirms once at session start.
+  
+  Considered, not planned — only matters for projects with branch-role
+  conventions, which is rare; the workaround (read git output once) is
+  cheap.
+  Kind: enhancement.
+  Lanes: mcp-git-state.
+  Source: RetroArch cross-session report 2026-05-17.
+
+- 📋 [ANTS-1496] **test-audit-chunk subagent definition — verify the report file is on disk before returning success.**
+  Vestige Issue 5: one test-audit-chunk subagent finished, returned the
+  full JSON inline in its final message, and stated "report written to
+  …/c-004.md" — but no such file existed on disk. Orchestrator had to
+  reconstruct the file from the inline JSON.
+  
+  Not strictly an Ants MCP bug — this is in the shared test-audit-chunk
+  agent definition that ships with the /test-audit skill. But worth
+  raising upstream because the skill's contract assumes file presence.
+  
+  Fix: add a final-step check to the agent template — call
+  ls <reports_dir>/<chunk_id>.{md,json} before returning success; refuse
+  to return if the file isn't present.
+  
+  Affects the agent file at ~/.claude/agents/test-audit-chunk.md (or
+  whichever path the user's Claude Code installation uses).
+  Kind: fix.
+  Lanes: test-audit.
+  Source: Vestige cross-session report 2026-05-17.
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 

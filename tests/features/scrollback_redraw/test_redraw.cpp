@@ -128,6 +128,7 @@ int runInkOverflowScenario() {
                      "user clear-scrollback instead of frame-reset).\n",
                      sbAfterPhase1, sbAfterPhase2);
         ADD_FAILURE();
+        ++failures;
     }
     // Invariant (b): no duplication — growth stays bounded.
     if (growth > threshold) {
@@ -137,6 +138,7 @@ int runInkOverflowScenario() {
                      "replay duplicated into scrollback.\n",
                      growth, threshold);
         ADD_FAILURE();
+        ++failures;
     }
     if (failures == 0) {
         std::fprintf(stderr,

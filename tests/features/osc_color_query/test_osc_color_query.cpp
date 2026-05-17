@@ -39,10 +39,15 @@ struct Probe {
     void clear() { capture.clear(); }
 };
 
-void fail(const char *what, const std::string &got, const std::string &expected){
+// Returns 1 so callers can do `failures += fail(...)`. Keeps the local
+// `failures` counter in sync with gtest's own ADD_FAILURE state, so the
+// terminal "OK / N failure(s)" log is no longer misleading when fail()
+// is the only path that fired.
+int fail(const char *what, const std::string &got, const std::string &expected){
     ADD_FAILURE() << what
                   << "  got: '" << got << "'"
                   << "  expected: '" << expected << "'";
+    return 1;
 }
 
 std::string fmtExpected(const char *oscNum, const QColor &c) {
@@ -75,7 +80,7 @@ TEST(OscColorQuery, Main) {
         p.osc("10;?");
         const std::string expected = fmtExpected("10", fg);
         if (p.capture != expected)
-            fail("INV-1 OSC 10;? response shape", p.capture, expected);
+            failures += fail("INV-1 OSC 10;? response shape", p.capture, expected);
     }
 
     // ------------------------------------------------------------------
@@ -88,7 +93,7 @@ TEST(OscColorQuery, Main) {
         p.osc("11;?");
         const std::string expected = fmtExpected("11", bg);
         if (p.capture != expected)
-            fail("INV-2 OSC 11;? response shape", p.capture, expected);
+            failures += fail("INV-2 OSC 11;? response shape", p.capture, expected);
     }
 
     // ------------------------------------------------------------------
@@ -102,7 +107,7 @@ TEST(OscColorQuery, Main) {
         p.osc("12;?");
         const std::string expected = fmtExpected("12", fg);
         if (p.capture != expected)
-            fail("INV-3 OSC 12;? cursor fallback to fg", p.capture, expected);
+            failures += fail("INV-3 OSC 12;? cursor fallback to fg", p.capture, expected);
     }
 
     // ------------------------------------------------------------------
@@ -116,7 +121,7 @@ TEST(OscColorQuery, Main) {
         p.grid.setDefaultBg(bg);
         p.osc("10;#ff0000");
         if (!p.capture.empty())
-            fail("INV-4 OSC 10 set `#ff0000` must not respond",
+            failures += fail("INV-4 OSC 10 set `#ff0000` must not respond",
                              p.capture, "");
     }
     {
@@ -125,7 +130,7 @@ TEST(OscColorQuery, Main) {
         p.grid.setDefaultBg(bg);
         p.osc("11;rgb:ff/00/00");
         if (!p.capture.empty())
-            fail("INV-4 OSC 11 set `rgb:ff/00/00` must not respond",
+            failures += fail("INV-4 OSC 11 set `rgb:ff/00/00` must not respond",
                              p.capture, "");
     }
     {
@@ -134,7 +139,7 @@ TEST(OscColorQuery, Main) {
         p.grid.setDefaultBg(bg);
         p.osc("12;#123456");
         if (!p.capture.empty())
-            fail("INV-4 OSC 12 set `#123456` must not respond",
+            failures += fail("INV-4 OSC 12 set `#123456` must not respond",
                              p.capture, "");
     }
 
@@ -148,7 +153,7 @@ TEST(OscColorQuery, Main) {
         p.grid.setDefaultBg(bg);
         p.osc("13;?");
         if (!p.capture.empty())
-            fail("INV-5 OSC 13;? must not respond via 10/11/12 branch",
+            failures += fail("INV-5 OSC 13;? must not respond via 10/11/12 branch",
                              p.capture, "");
     }
     {
@@ -157,7 +162,7 @@ TEST(OscColorQuery, Main) {
         p.grid.setDefaultBg(bg);
         p.osc("14;?");
         if (!p.capture.empty())
-            fail("INV-5 OSC 14;? must not respond via 10/11/12 branch",
+            failures += fail("INV-5 OSC 14;? must not respond via 10/11/12 branch",
                              p.capture, "");
     }
 
@@ -174,7 +179,7 @@ TEST(OscColorQuery, Main) {
         std::smatch m;
         std::regex re(R"(\x1B\]10;rgb:([0-9a-f]{4})/([0-9a-f]{4})/([0-9a-f]{4})\x1B\\)");
         if (!std::regex_match(p.capture, m, re)) {
-            fail("INV-1 16-bit regex shape",
+            failures += fail("INV-1 16-bit regex shape",
                              p.capture,
                              "\\x1B]10;rgb:NNNN/NNNN/NNNN\\x1B\\\\");
         } else {
@@ -186,6 +191,7 @@ TEST(OscColorQuery, Main) {
                              "FAIL: 16-bit channels must replicate 8-bit low byte; got %s/%s/%s\n",
                              m[1].str().c_str(), m[2].str().c_str(), m[3].str().c_str());
                 ADD_FAILURE();
+                ++failures;
             }
         }
     }

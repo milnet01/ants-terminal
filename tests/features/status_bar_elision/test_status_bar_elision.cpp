@@ -24,12 +24,13 @@
 
 namespace {
 
-int failures = 0;
-
+// CHECK previously appended to a module-level `int failures` counter that
+// no TEST() body ever asserted on — so condition failures printed to
+// stderr but gtest reported PASSED. Route through ADD_FAILURE_AT instead
+// so a CHECK miss is a real gtest failure with the source location.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        std::fprintf(stderr, "FAIL %s:%d — %s\n", __FILE__, __LINE__, msg);  \
-        ++failures;                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
     }                                                                        \
 } while (0)
 

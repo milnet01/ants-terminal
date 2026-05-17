@@ -49,12 +49,13 @@
 
 namespace {
 
-int failures = 0;
-
+// CHECK previously appended to a module-level `int failures` counter that
+// no TEST() body ever asserted on — so condition failures printed to
+// stderr but gtest reported PASSED. Route through ADD_FAILURE_AT instead
+// so a CHECK miss is a real gtest failure with the source location.
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        std::fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, msg);  \
-        ++failures;                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << msg;                          \
     }                                                                        \
 } while (0)
 
@@ -136,10 +137,8 @@ TEST(ShiftEnterBracketedPaste, EndPasteMarkerPresent) {
 QString readTerminalWidgetSource() {
     QFile f(QStringLiteral(SRC_TERMINALWIDGET_PATH));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr, "FAIL: could not open %s: %s\n",
-                     SRC_TERMINALWIDGET_PATH,
-                     qUtf8Printable(f.errorString()));
-        ++failures;
+        ADD_FAILURE() << "could not open " << SRC_TERMINALWIDGET_PATH
+                      << ": " << qUtf8Printable(f.errorString());
         return {};
     }
     QTextStream in(&f);
@@ -175,13 +174,9 @@ TEST(ShiftEnterBracketedPaste, SourceUsesSizeCoupledLiteral) {
         QStringLiteral(R"(QByteArray\(\s*"\\x1B\[200~[^"]*",\s*\d+\s*\))"));
     const QRegularExpressionMatch bugMatch = bugForm.match(src);
     if (bugMatch.hasMatch()) {
-        std::fprintf(stderr,
-            "FAIL: source contains the 0.6.26-style hand-coded-length form:\n"
-            "      %s\n"
-            "      (use QByteArrayLiteral(...) so size is coupled to "
-            "the literal)\n",
-            qUtf8Printable(bugMatch.captured(0)));
-        ++failures;
+        ADD_FAILURE() << "source contains the 0.6.26-style hand-coded-length form: "
+                      << qUtf8Printable(bugMatch.captured(0))
+                      << " (use QByteArrayLiteral(...) so size is coupled to the literal)";
     }
 }
 

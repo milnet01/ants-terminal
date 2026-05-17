@@ -52,10 +52,15 @@ void printEscaped(FILE *f, const std::string &s) {
     }
 }
 
-void fail(const char *what, const std::string &got, const std::string &expected){
+// Returns 1 so callers can do `failures += fail(...)` — keeps the local
+// `failures` counter in sync with gtest's own ADD_FAILURE state, so the
+// terminal "OK / N failure(s)" log is no longer misleading when fail()
+// is the only path that fired.
+int fail(const char *what, const std::string &got, const std::string &expected){
     ADD_FAILURE() << what
                   << "  got:      \"" << got << "\""
                   << "  expected: \"" << expected << "\"";
+    return 1;
 }
 
 int failContains(const char *what, const std::string &got, const std::string &needle) {
@@ -82,7 +87,7 @@ TEST(Decrqss, Main) {
         p.dcs("$qr");
         const std::string expected = "\x1BP1$r1;24r\x1B\\";
         if (p.capture != expected)
-            fail("INV-1 $qr DECSTBM response (fresh grid 24-row)",
+            failures += fail("INV-1 $qr DECSTBM response (fresh grid 24-row)",
                              p.capture, expected);
     }
 
@@ -94,7 +99,7 @@ TEST(Decrqss, Main) {
         p.dcs("$qm");
         const std::string expected = "\x1BP1$r0m\x1B\\";
         if (p.capture != expected)
-            fail("INV-2 $qm SGR response (default attrs)",
+            failures += fail("INV-2 $qm SGR response (default attrs)",
                              p.capture, expected);
     }
 
@@ -109,7 +114,7 @@ TEST(Decrqss, Main) {
         p.dcs("$qm");
         const std::string expected = "\x1BP1$r0;1m\x1B\\";
         if (p.capture != expected)
-            fail("INV-3 $qm with bold set (after CSI 1 m)",
+            failures += fail("INV-3 $qm with bold set (after CSI 1 m)",
                              p.capture, expected);
     }
     {
@@ -119,7 +124,7 @@ TEST(Decrqss, Main) {
         p.dcs("$qm");
         const std::string expected = "\x1BP1$r0;1;3;4m\x1B\\";
         if (p.capture != expected)
-            fail("INV-3 $qm with bold+italic+underline combined",
+            failures += fail("INV-3 $qm with bold+italic+underline combined",
                              p.capture, expected);
     }
 
@@ -132,7 +137,7 @@ TEST(Decrqss, Main) {
         p.dcs("$q q");
         const std::string expected = "\x1BP1$r0 q\x1B\\";
         if (p.capture != expected)
-            fail("INV-4 $q q DECSCUSR fresh grid (BlinkBlock=0)",
+            failures += fail("INV-4 $q q DECSCUSR fresh grid (BlinkBlock=0)",
                              p.capture, expected);
     }
 
@@ -144,7 +149,7 @@ TEST(Decrqss, Main) {
         p.dcs("$qX");
         const std::string expected = "\x1BP0$r\x1B\\";
         if (p.capture != expected)
-            fail("INV-5 $qX unknown setting invalid-reply",
+            failures += fail("INV-5 $qX unknown setting invalid-reply",
                              p.capture, expected);
     }
     {
@@ -152,7 +157,7 @@ TEST(Decrqss, Main) {
         p.dcs("$qfoo");
         const std::string expected = "\x1BP0$r\x1B\\";
         if (p.capture != expected)
-            fail("INV-5 $qfoo unknown setting invalid-reply",
+            failures += fail("INV-5 $qfoo unknown setting invalid-reply",
                              p.capture, expected);
     }
 
@@ -176,7 +181,7 @@ TEST(Decrqss, Main) {
         // Extra safety: assert we didn't emit the invalid-reply bytes.
         const std::string invalidReply = "\x1BP0$r\x1B\\";
         if (p.capture == invalidReply) {
-            fail("INV-6 Sixel payload must not emit invalid-reply",
+            failures += fail("INV-6 Sixel payload must not emit invalid-reply",
                              p.capture, "(empty or non-DECRQSS output)");
         }
     }
@@ -198,7 +203,7 @@ TEST(Decrqss, Main) {
         Probe p;
         p.dcs("$qr");
         if (!structuralOk(p.capture)) {
-            fail("structural: $qr reply must start \\eP1$r and end \\e\\\\",
+            failures += fail("structural: $qr reply must start \\eP1$r and end \\e\\\\",
                              p.capture,
                              "\\x1BP1$r...\\x1B\\\\");
         }
