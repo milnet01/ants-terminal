@@ -58,6 +58,14 @@ against the table below.
 
 ### 3 — Caller-cwd contract (ANTS-1404 / ANTS-1372)
 
+> **See also:** [ADR-0004 — same-UID trust model](../decisions/0004-same-uid-trust-model-for-mcp-audit-suite.md).
+> The caller-cwd contract enforces per-PROJECT isolation under a
+> per-UID trust assumption. The ADR documents what the trust
+> boundary does and does NOT cover for the audit / synth tool
+> suite.
+
+
+
 | Code | Meaning | Diagnostic path |
 |------|---------|-----------------|
 | `caller_cwd_required` | Dispatcher refused: tool is `CallerCwdContract::Required` and `caller_cwd` was empty. | Envelope carries `hint` naming `caller_cwd_info`. |

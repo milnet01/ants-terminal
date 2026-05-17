@@ -631,6 +631,23 @@ once real consumers hit it.
   anyone accidentally weakens one of those tools in the future,
   the build fails.
 
+- **ANTS-1448 — ADR-0004: same-UID trust model for the MCP audit /
+  test-audit / synth suite.** Three in-flight specs (ANTS-1351 /
+  ANTS-1397 / ANTS-1352) each re-derived the "out of scope: same-
+  UID trust" boundary in their own words. ADR-0004 centralises
+  the model in one place — what's in scope, what's NOT in scope
+  (cross-project leaks remain confused-deputy bugs even under
+  same-UID), what the assistant-side redact-on-republication
+  responsibility is. Future specs cite the ADR instead of
+  re-deriving. Linked from
+  `docs/standards/mcp-error-codes.md` § 3 (caller-cwd contract,
+  the nearest neighbouring doc).
+  Layman: the audit-related Ants MCP tools share a security
+  assumption ("the caller already has the same file access we
+  do"). That assumption is now written down once, with concrete
+  examples of where it does and doesn't apply, so future tool
+  designs don't have to re-explain it.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1
