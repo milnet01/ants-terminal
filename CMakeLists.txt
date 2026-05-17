@@ -874,6 +874,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_refusal_envelope_hints/test_refusal_envelope_hints.cpp
                 # ANTS-1425 roadmap_query narrator-bullet filter v2.
                 tests/features/roadmap_query_narrator_filter/test_narrator_filter.cpp
+                # ANTS-1354 MCP tool descriptor version field.
+                tests/features/mcp_tool_descriptor_version/test_tool_descriptor_version.cpp
                 # ANTS-1435 session_memory + project_layout read-op tenancy split.
                 tests/features/session_memory_read_caller_cwd/test_session_memory_read_caller_cwd.cpp
                 # ANTS-1436 roadmap_query pagination + auto-truncate.

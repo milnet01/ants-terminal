@@ -591,6 +591,21 @@ once real consumers hit it.
   reuse vs. add a new one — so future tools don't invent
   inconsistent codes that callers can't switch on.
 
+- **ANTS-1354 — MCP tool descriptor `version` field.** Every
+  `tools/list` entry now carries a `version` string (default
+  `"1.0"`); the finalisation loop in the `tools/list` handler
+  back-fills entries that didn't set their own. SemVer-of-tools
+  policy documented inline: MAJOR = wire-format break, MINOR =
+  additive change, PATCH = bug fix only. Per-tool override is
+  non-destructive — a future tool that ships a v2 schema can set
+  its own `version` before the finalisation loop and the loop
+  won't overwrite it. Spec
+  `tests/features/mcp_tool_descriptor_version/spec.md`; tests
+  `tests/features/mcp_tool_descriptor_version/` (3 invariants).
+  Layman: each Ants MCP tool now reports its version (1.0 by
+  default) so Claude Code can detect when a tool's response shape
+  has changed and adapt its parsing.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1

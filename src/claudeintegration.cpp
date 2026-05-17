@@ -3321,6 +3321,32 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1354 — default `version: "1.0"` on every tool
+                // descriptor unless one already set its own. SemVer-
+                // of-tools policy:
+                //   * MAJOR — wire-format break (response shape
+                //     changes incompatibly, arg semantics flip,
+                //     refusal-code dropped). Caller code that worked
+                //     against the previous MAJOR cannot be expected
+                //     to still parse.
+                //   * MINOR — additive change (new optional arg, new
+                //     response field, new opt-in flag). Old callers
+                //     keep working.
+                //   * PATCH — bug fix only; no observable schema
+                //     change.
+                // Bumping is per-tool: an additive change to
+                // `roadmap_query` (e.g. ANTS-1425 narrator opt-in)
+                // bumps `roadmap_query.version` to "1.1" without
+                // touching siblings. Callers dispatch on this field
+                // to decide whether their parsing path still applies.
+                for (int i = 0; i < tools.size(); ++i) {
+                    QJsonObject t = tools[i].toObject();
+                    if (!t.contains(QStringLiteral("version"))) {
+                        t[QStringLiteral("version")] = QStringLiteral("1.0");
+                    }
+                    tools.replace(i, t);
+                }
+
                 result["tools"] = tools;
                 // ANTS-1399-INV-2 — snapshot for tool_info to read from
                 // without re-running the array build. Descriptors are
