@@ -9490,6 +9490,208 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-caller-cwd-info.
   Source: RetroArch cross-session report 2026-05-17 (Bundle 63 addendum).
 
+- 📋 [ANTS-1499] ****ETag / since-mtime "304 Not Modified" pattern across read tools.****
+  Tools that read disk content currently re-emit the full payload on
+  every call even when nothing changed. Adopt an HTTP-304-style idiom:
+  
+  - Tools that return content emit an `etag` field (sha256-hex16 of the
+    canonical response body) on every response.
+  - Callers can pass `etag_match:"<prior_etag>"` on the next call. When
+    the server's current etag equals etag_match, return
+    `{ok:true, unchanged:true, etag:"<same>"}` instead of the full body.
+  
+  Coverage targets (in priority order): project_layout, roadmap_query,
+  file_outline, last_audit_summary, get_environment, tab_list,
+  subsystem (per-lane), git_state.
+  
+  Implementation: compute the etag from the same byte material we'd
+  serialise. Add a top-level `etag_match` input on each tool's schema
+  (opt-in; absent = current behaviour). One helper in claudeintegration
+  handles the short-circuit so per-tool code only needs to compute the
+  etag.
+  
+  Estimated saving: 100 % of the body bytes on every successful cache
+  hit. Repeated `project_layout` reads (4-8 KiB each) → ~50-byte
+  envelope on hit. Compounds across a session.
+  
+  Risk: etag mismatch is the no-op case (full body returned, current
+  behaviour). No correctness risk — purely an opt-in fast path.
+  
+  Kind: enhancement.
+  Lanes: mcp-token-reduction, mcp-project-layout, mcp-roadmap-query, mcp-last-audit-summary, mcp-file-outline.
+  Source: in-session-2026-05-18 (token-saving brainstorm).
+
+- 📋 [ANTS-1500] ****`get_scrollback` since-cursor incremental-fetch mode.****
+  Currently every `get_scrollback` call returns the full requested
+  window — when a session polls "what just happened" repeatedly, the
+  overlapping prefix is re-emitted on every call.
+  
+  Add `since_cursor:"<token>"` input. Server returns:
+  - `content`: bytes appended since the cursor was issued (or "" if none)
+  - `next_cursor`: opaque token for the next call
+  
+  Cursor format: `<scrollback_rotation_counter>:<byte_offset>` —
+  rotation counter increments when the scrollback ring buffer wraps
+  (so a stale cursor returns the full window with a `cursor_stale:true`
+  flag rather than silently dropping bytes).
+  
+  Coverage: the focused-tab scrollback first; per-tab via `tab_index`
+  later.
+  
+  Estimated saving: 80-95 % on rapid polling workflows (Bash-output
+  watch, "did the build finish?" loop). On the first call etag is
+  issued, so first call is free; subsequent calls return only delta.
+  
+  Risk: ring-buffer wrap must be detected (cursor_stale flag); a stale
+  cursor is the "return full window" fallback, not an error.
+  
+  Kind: enhancement.
+  Lanes: mcp-token-reduction, mcp-get-scrollback.
+  Source: in-session-2026-05-18 (token-saving brainstorm).
+
+- 📋 [ANTS-1501] ****`workspace_search` near-duplicate excerpt dedup.****
+  When a query matches the same code shape across many files (e.g.
+  "emit signalName" finding 14 connect() call sites with near-identical
+  excerpts), the response repeats the same surrounding context lines N
+  times. Server-side dedup collapses identical excerpts into one entry
+  with an `also_at: [{file, line}, ...]` array.
+  
+  Algorithm: hash each excerpt's normalised text (strip leading
+  whitespace + line numbers); group by hash; emit the first match
+  verbatim with `also_at[]` for the rest.
+  
+  Estimated saving: 60-80 % on broad cross-file searches that hit a
+  common pattern (Qt signal emissions, fixture imports, log calls).
+  No savings on heterogeneous results.
+  
+  Risk: callers reading `also_at[]` see only one excerpt with N
+  locations; if they need the exact surrounding context per match, opt
+  out via `dedup:false`. Default on — opt-out preserves current behaviour.
+  
+  Kind: enhancement.
+  Lanes: mcp-token-reduction, mcp-workspace-search.
+  Source: in-session-2026-05-18 (token-saving brainstorm).
+
+- 📋 [ANTS-1502] ****`tools/list-lite` two-tier discovery — names + 1-line summaries only on initial dump.****
+  Current `tools/list` ships the full descriptor for every tool
+  (~40-50 tools × ~1.5 KiB each = ~60-75 KiB). Most sessions never use
+  more than a quarter of the surface. `tool_info` (ANTS-1399) already
+  provides per-descriptor on-demand fetch — but the initial bulk dump
+  still costs.
+  
+  Two-tier flow:
+  - Default `tools/list` returns a lite shape: `[{name, summary, kind}]`
+    per tool (~80 chars per entry ≈ 4 KiB total).
+  - Callers call `tool_info(name)` to get the full schema for any tool
+    they want to invoke.
+  
+  Toggle: respect the MCP spec's `tools/list` protocol — Claude Code's
+  client knows full descriptors are expected, so the lite shape needs
+  to be opt-in (e.g., via `_meta.shape:"lite"` request hint, or a
+  distinct `tools/list-lite` JSON-RPC method that callers can probe).
+  Either way, no breaking change to existing clients.
+  
+  Estimated saving: ~90 % of the initial discovery payload (60 KiB →
+  4 KiB). One-time per session but compounds if Claude Code respawns
+  the MCP connection across compactions.
+  
+  Risk: requires Claude Code (or another MCP client) opt-in to
+  benefit. Until clients adopt, this is server-side capability only.
+  
+  Kind: enhancement.
+  Lanes: mcp-token-reduction, mcp-tool-discovery.
+  Source: in-session-2026-05-18 (token-saving brainstorm).
+
+- 📋 [ANTS-1503] ****`get_last_command` mode:"summary" — `{exit, line_count, last_20, ms}` envelope by default.****
+  Bash output is among the heaviest token sinks — a single `cmake --build`
+  or `ctest` run can be tens of KiB of progress output. `get_last_command`
+  currently returns the full stdout.
+  
+  Add `mode` parameter:
+  - `"summary"` (new default): `{exit_code, line_count, duration_ms,
+    last_20: ["...", ...], starts_with: ["...", ...]}` — caller sees
+    enough to confirm success/failure and read the tail without paying
+    for the middle.
+  - `"full"` (opt-in): current full-stdout behaviour.
+  - `"head_tail"` (opt-in): first N + last N lines.
+  
+  Mirrors the build-output tail pattern users already adopt manually
+  (`cmake --build build 2>&1 | tail -20`). Putting it on the server
+  side means every caller benefits without needing the shell idiom.
+  
+  Breaking change: callers depending on full-stdout default need to
+  pass `mode:"full"`. Acceptable cost for the saving; advertise in the
+  descriptor.
+  
+  Estimated saving: 80-95 % on typical build/test commands.
+  
+  Kind: enhancement.
+  Lanes: mcp-token-reduction, mcp-get-last-command.
+  Source: in-session-2026-05-18 (token-saving brainstorm).
+
+- 📋 [ANTS-1504] ****`audit_run` since-last-run mode — re-scan only files touched since prior cached run.****
+  audit_run currently scans the full project (or whatever scope arg
+  specifies) on every invocation, even when the previous run was 30 s
+  ago and only one file changed. Per-tool wall-clock caps mean the work
+  is bounded, but the response payload (findings array) re-emits
+  findings that haven't shifted.
+  
+  Add `scope:"since-last-run"` (alongside existing auto/files/since-tag/
+  branch-diff). Implementation:
+  - Read prior-run cache key + timestamp from .audit_cache/
+  - Compute `git diff --name-only <prior_run_commit>..HEAD` ∪
+    `git status --porcelain` (untracked + working-tree changes)
+  - Run each tool against only that file set
+  - Merge new findings into the prior SARIF; old findings on
+    untouched files carry forward verbatim
+  
+  Bonus: response envelope includes `delta:{added:N, removed:M,
+  carried_forward:K}` so caller can see at a glance what shifted.
+  
+  Estimated saving: 50-80 % on iterative fix-then-verify loops (the
+  default audit_run pattern). Full project scan still available via
+  `scope:"auto"`.
+  
+  Risk: stale cache rebases. If the prior cache's git HEAD is gone
+  from history (rebase / force-push), fall back to full scan with a
+  `scope_demoted:"full"` flag in the response.
+  
+  Kind: enhancement.
+  Lanes: mcp-token-reduction, mcp-audit-run.
+  Source: in-session-2026-05-18 (token-saving brainstorm).
+
+- 📋 [ANTS-1505] ****Per-tool `typical_token_cost` + `worst_case_tokens` on every descriptor.****
+  Sister to ANTS-1453 (selection_hint): add two integer fields to every
+  tool descriptor:
+  - `typical_token_cost`: median observed response size in tokens (from
+    in-process measurements over the last N calls).
+  - `worst_case_tokens`: 95th-percentile or hard cap.
+  
+  Lets Claude do budget-aware tool selection: "I have 3 K tokens left;
+  which tool fits?" becomes a numeric comparison instead of guesswork.
+  
+  Sources for the numbers:
+  - Seed from current measured behaviour (one-shot calibration run
+    against the project's own corpus).
+  - Update at runtime: in-process moving-average over the last 100
+    responses per tool, persisted to session_memory under
+    `tool_size_stats`.
+  - Expose via tool_info as well so callers can refresh on demand.
+  
+  Pairs with ANTS-1499 etag pattern: `worst_case` is the cold-cache
+  response; `typical` reflects warm-cache (etag-hit) reality once
+  adopted.
+  
+  Estimated saving: indirect — better tool routing on the caller side
+  saves whatever the caller would have wasted picking the wrong tool.
+  
+  Risk: drift between advertised cost and actual cost. Mitigated by
+  runtime updates; advertised numbers stay best-effort.
+  
+  Kind: enhancement.
+  Lanes: mcp-token-reduction, mcp-tool-discovery.
+  Source: in-session-2026-05-18 (token-saving brainstorm).
+
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 
 - ✅ [ANTS-1453] **Per-tool "use this when..." selection hint on
