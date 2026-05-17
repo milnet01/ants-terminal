@@ -49,12 +49,17 @@ bool contains(const std::string &hay, const std::string &needle) {
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 32 * 1024) {
+                           size_t kMaxBound = 40 * 1024) {
     // ANTS-1436 bumped 28→32 KB: pagination args parse (~1.5 KB)
     // + PaginationEngine::pageBullets call + envelope augment at
     // each of the 2 emission sites (~600 B × 2). The pagination
     // LOGIC lives in src/paginationengine.cpp; only the call sites
     // are in cmdRoadmapQuery.
+    // ANTS-1462 bumped 32→40 KB: header-inventory fallback adds
+    // a lazy buildIndex call + ~1.5 KB envelope construction in
+    // each of the 2 emission sites in cmdRoadmapQuery. The
+    // inventory rendering itself lives in
+    // buildHeaderInventoryEnvelope outside the function body.
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());
@@ -136,5 +141,83 @@ TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
            "INV-3: env[\"path\"] assigned in cmdRoadmapLog gate");
     expect(contains(body, "env[\"bytes\"]"),
            "INV-3: env[\"bytes\"] assigned in cmdRoadmapLog gate");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1462 — header-inventory fallback fires from cmdRoadmapQuery
+// when the bullet parser yields zero entries but the file has
+// ##/### headings. Source-grep on the bounded bullets-mode slice.
+TEST(mcp_roadmap_unrecognised_format, Inv4HeaderInventoryFallback) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(cpp.empty())
+        << "INV-4: remotecontrol.cpp not readable";
+
+    const std::string body = boundedBetween(
+        cpp,
+        "QJsonDocument RemoteControl::cmdRoadmapQuery(",
+        "QJsonDocument RemoteControl::cmdRoadmapLog(");
+    ASSERT_FALSE(body.empty())
+        << "INV-4: failed to bound cmdRoadmapQuery body";
+
+    expect(contains(body, "buildHeaderInventoryEnvelope"),
+           "INV-4 / HI-3: bullets-mode fallback dispatches to "
+           "buildHeaderInventoryEnvelope");
+    expect(contains(body, "header_inventory_fallback")
+               || contains(cpp, "header_inventory_fallback"),
+           "INV-4 / HI-3: header_inventory_fallback literal "
+           "present (in fallback envelope or its emitter)");
+    // HI-5: the truly-opaque refusal arm still emits
+    // unrecognised_format alongside the fallback.
+    expect(contains(body, "\"unrecognised_format\""),
+           "INV-4 / HI-5: opaque-file refusal arm preserved");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1463 — every unrecognised_format envelope across the four
+// refusal sites carries the shared kUnrecognisedFormatHint +
+// expected_format[] fields. Wording regression-locks the hint
+// to mention both GFM-task-list and Ants-v1 signatures (and the
+// 📋 emoji byte sequence) so a rewording drops the right tests.
+TEST(mcp_roadmap_unrecognised_format, Inv5ExpectedFormatField) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(cpp.empty())
+        << "INV-5: remotecontrol.cpp not readable";
+
+    // Constant is declared by accessor returning const QString&.
+    expect(contains(cpp,
+               "const QString &kUnrecognisedFormatHint()"),
+           "EF-2: kUnrecognisedFormatHint accessor present");
+
+    // Hint wording carries both bullet-format signatures.
+    expect(contains(cpp, "GFM-task-list"),
+           "EF-2 wording: GFM-task-list signature present");
+    expect(contains(cpp, "Ants-v1"),
+           "EF-2 wording: Ants-v1 signature present");
+    expect(contains(cpp, "- [ ]") && contains(cpp, "- [x]"),
+           "EF-2 wording: GFM bullet signatures `- [ ]` / "
+           "`- [x]` present");
+    expect(contains(cpp, "\\xF0\\x9F\\x93\\x8B"),
+           "EF-2 wording: ants-v1 planned-bullet emoji (📋) "
+           "byte sequence present");
+
+    // Four refusal sites all set env["expected_format"] via the
+    // shared accessor — count 4 + 1 emitter call inside
+    // buildHeaderInventoryEnvelope = 5 occurrences total.
+    auto countOccurrences = [&](const std::string &needle) {
+        size_t n = 0;
+        size_t p = cpp.find(needle);
+        while (p != std::string::npos) {
+            ++n;
+            p = cpp.find(needle, p + needle.size());
+        }
+        return n;
+    };
+    const size_t hits =
+        countOccurrences("env[\"expected_format\"]");
+    expect(hits >= 4,
+           "EF-1: env[\"expected_format\"] assigned at "
+           "≥ 4 sites");
     EXPECT_EQ(0, expect_failures());
 }

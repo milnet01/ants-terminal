@@ -56,7 +56,7 @@ against the table below.
 | `plan_exists` | Conflicting state: a plan file already exists. | `plan_template` told to write over an existing file without `overwrite:true`. |
 | `file_changed` | Apply-time mismatch: source bytes drifted between scan and fix. | `debt_sweep_apply_fix` after the file was edited. |
 | `not_fixable` | The fix the caller asked for isn't a defined operation here. | `debt_sweep_apply_fix` with an op the engine doesn't implement. |
-| `unrecognised_format` | The file shape isn't one the parser handles. | `roadmap_query` against a file that isn't ants-v1 or GFM. |
+| `unrecognised_format` | The file shape isn't one the parser handles. Envelope additionally carries `expected_format[]` and standardised `hint` (ANTS-1463). | `roadmap_query` against a file that isn't ants-v1 or GFM. |
 | `already_running` | A long-running operation is in flight; refuse rather than queue. | `audit_run` while a prior call is still working. |
 | `tools_not_ready` | The detector / engine hasn't finished initialising. | early MCP call against `tool_info` before the registry is built. |
 | `reports_dir_unreadable` | `reports_dir` canonicalises but the resolved path doesn't exist, isn't a directory, or the calling user lacks read permission (ANTS-1455). | `test_audit_synthesis_prompt allow_outside_project:true reports_dir:"/no/such/dir"`. |

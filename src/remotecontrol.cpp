@@ -102,6 +102,77 @@ QString findRoadmapUnder(const QString &canonicalRoot) {
     return {};
 }
 
+// ANTS-1463 — canonical hint emitted on every unrecognised_format
+// refusal envelope across roadmap_query (bullets + section_index
+// modes) and roadmap_log (append + flip terminal branches). One
+// constant defeats per-site copy-drift; the test in
+// tests/features/mcp_roadmap_unrecognised_format/ asserts the
+// hint carries both bullet-format signatures (`- [ ]` for GFM
+// and the 📋 emoji byte sequence for ants-v1) so a rewording
+// that drops either trips the regression guard. Emoji codepoints
+// are inline UTF-8 byte escapes per remotecontrol.cpp:1435-1437.
+const QString &kUnrecognisedFormatHint() {
+    static const QString v = QStringLiteral(
+        "Roadmap content didn't match GFM-task-list "
+        "(`- [ ]` / `- [x]`) or Ants-v1 emoji-status "
+        "(`- \xF0\x9F\x93\x8B/\xF0\x9F\x9A\xA7/"
+        "\xE2\x9C\x85/\xF0\x9F\x92\xAD [PROJ-NNNN]`) bullet "
+        "formats. See docs/standards/roadmap-format.md for the "
+        "Ants-v1 spec; reformat the roadmap, write a converter, "
+        "or edit the markdown directly.");
+    return v;
+}
+
+// ANTS-1463 — expected_format[] array on every unrecognised_format
+// envelope so callers can branch on a single field regardless of
+// which verb refused.
+QJsonArray kUnrecognisedFormatExpected() {
+    QJsonArray a;
+    a.append(QStringLiteral("GFM-task-list"));
+    a.append(QStringLiteral("Ants-v1 emoji"));
+    return a;
+}
+
+// ANTS-1462 — render a header-inventory envelope from a built
+// RoadmapIndex. Used by cmdRoadmapQuery as a fall-through when the
+// bullet parser yields zero entries but the file still has ##/###
+// headings (RetroArch-style table-plus-sections roadmaps). The
+// envelope mirrors the section_index-mode response shape so
+// callers can branch on `mode` alone. Inventory capped at
+// kHeaderInventoryMax to defend against a malformed file with
+// thousands of headings; overflow drops the tail and the envelope
+// carries truncated:true.
+constexpr int kHeaderInventoryMax = 200;
+
+QJsonObject buildHeaderInventoryEnvelope(
+    const QVector<RoadmapIndex::Section> &index,
+    const QString &path,
+    qint64 bytes) {
+    QJsonObject env;
+    env["ok"]    = true;
+    env["mode"]  = QStringLiteral("header_inventory_fallback");
+    env["path"]  = path;
+    env["bytes"] = bytes;
+    QJsonArray sections;
+    const int cap = qMin(index.size(), kHeaderInventoryMax);
+    for (int i = 0; i < cap; ++i) {
+        const RoadmapIndex::Section &s = index.at(i);
+        QJsonObject o;
+        o["slug"]     = s.slug;
+        o["headline"] = s.headingText;
+        o["level"]    = s.level;
+        sections.append(o);
+    }
+    env["sections"]        = sections;
+    env["count"]           = cap;
+    env["truncated"]       = (index.size() > kHeaderInventoryMax);
+    env["hint"]            = QStringLiteral(
+        "no GFM/Ants-v1 bullets parsed; section inventory "
+        "emitted instead — use Read for the full markdown.");
+    env["expected_format"] = kUnrecognisedFormatExpected();
+    return env;
+}
+
 // ANTS-1428 Tier 2 — pure helpers for the op:"flip" locator. These
 // are intentional duplicates of roadmapdialog.cpp's anon-namespace
 // helpers (fnv1a64 / normaliseHeadline / extractBoldId /
@@ -1411,9 +1482,19 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
 
         // ANTS-1437-INV-8 — `unrecognised_format` gate applies before
-        // emission, mirroring the bullet-mode gate below.
+        // emission, mirroring the bullet-mode gate below. ANTS-1462
+        // adds a header-inventory fallback when buildIndex finds
+        // sections; the truly-opaque "no bullets + no headings" case
+        // still refuses with the typed error. ANTS-1463 adds the
+        // shared hint + expected_format envelope fields.
         if (m_roadmapCacheBullets.isEmpty() &&
             fi.size() > kRoadmapMinParseableSize) {
+            // section_index mode populated m_roadmapIndex upstream
+            // (line ~1410); reuse it for the fallback.
+            if (!m_roadmapIndex.isEmpty()) {
+                return QJsonDocument(buildHeaderInventoryEnvelope(
+                    m_roadmapIndex, path, fi.size()));
+            }
             QJsonObject env;
             env["ok"]    = false;
             env["code"]  = QStringLiteral("unrecognised_format");
@@ -1421,11 +1502,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 "roadmap_query: \"%1\" parsed zero bullets from %2 "
                 "bytes — format not recognised")
                     .arg(path).arg(fi.size());
-            env["path"]  = path;
-            env["bytes"] = fi.size();
-            env["hint"]  = QStringLiteral(
-                "this tool expects roadmap-format.md emoji bullets; "
-                "see ANTS-1428 for adapter mode status");
+            env["path"]            = path;
+            env["bytes"]           = fi.size();
+            env["hint"]            = kUnrecognisedFormatHint();
+            env["expected_format"] = kUnrecognisedFormatExpected();
             return QJsonDocument(env);
         }
 
@@ -1669,8 +1749,34 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // gate site covers cache-hit, cache-miss, and lazy-fill
     // paths because all three populate m_roadmapCacheBullets
     // from the same parseBullets call.
+    //
+    // ANTS-1462 — header-inventory fallback: when the bullet
+    // parser yielded zero entries but the file still has ##/###
+    // headings, return them as a section inventory instead of
+    // refusing. Bullets-mode doesn't call buildIndex upstream,
+    // so the fallback path does a lazy call (refusal-path only;
+    // cost is bounded by the file size).
+    //
+    // ANTS-1463 — refusal envelope carries shared hint +
+    // expected_format[] fields so callers can act on what the
+    // parser was expecting without reading the source.
     if (m_roadmapCacheBullets.isEmpty() &&
         fi.size() > kRoadmapMinParseableSize) {
+        // Bullets-mode fallback (ANTS-1462): re-read the file for
+        // a lazy buildIndex. This is the refusal path — cost of
+        // one extra read is bounded and acceptable. Cache m_roadmapIndex
+        // for any subsequent section_index query against the same file.
+        if (m_roadmapIndex.isEmpty()) {
+            QFile fb(path);
+            if (fb.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString md = QString::fromUtf8(fb.readAll());
+                m_roadmapIndex = RoadmapIndex::buildIndex(md);
+            }
+        }
+        if (!m_roadmapIndex.isEmpty()) {
+            return QJsonDocument(buildHeaderInventoryEnvelope(
+                m_roadmapIndex, path, fi.size()));
+        }
         QJsonObject env;
         env["ok"]    = false;
         env["code"]  = QStringLiteral("unrecognised_format");
@@ -1678,11 +1784,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             "roadmap_query: \"%1\" parsed zero bullets from %2 "
             "bytes — format not recognised")
                 .arg(path).arg(fi.size());
-        env["path"]  = path;
-        env["bytes"] = fi.size();
-        env["hint"]  = QStringLiteral(
-            "this tool expects roadmap-format.md emoji bullets; "
-            "see ANTS-1428 for adapter mode status");
+        env["path"]            = path;
+        env["bytes"]           = fi.size();
+        env["hint"]            = kUnrecognisedFormatHint();
+        env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
 
@@ -1962,6 +2067,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     const qint64 markdownBytes = markdown.toUtf8().size();
     if (preflightBullets.isEmpty() &&
         markdownBytes > kRoadmapMinParseableSize) {
+        // ANTS-1463 — shared hint + expected_format envelope fields.
         QJsonObject env;
         env["ok"]    = false;
         env["code"]  = QStringLiteral("unrecognised_format");
@@ -1969,11 +2075,10 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
             "roadmap_log: \"%1\" parsed zero bullets from %2 "
             "bytes — format not recognised; cannot safely splice")
                 .arg(roadmapPath).arg(markdownBytes);
-        env["path"]  = roadmapPath;
-        env["bytes"] = markdownBytes;
-        env["hint"]  = QStringLiteral(
-            "this tool expects roadmap-format.md emoji bullets; "
-            "see ANTS-1428 for adapter mode status");
+        env["path"]            = roadmapPath;
+        env["bytes"]           = markdownBytes;
+        env["hint"]            = kUnrecognisedFormatHint();
+        env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
 
@@ -2348,6 +2453,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             return QJsonDocument(out);
         }
         // Neither GFM nor ants-v1 — genuinely unrecognised.
+        // ANTS-1463 — refusal envelope gains shared hint +
+        // expected_format fields for shape parity with the other
+        // three unrecognised_format sites.
         QJsonObject env;
         env["ok"]    = false;
         env["code"]  = QStringLiteral("unrecognised_format");
@@ -2356,8 +2464,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             "(neither GFM-task-list nor ants-v1 native format "
             "recognised) — cannot safely flip")
                 .arg(roadmapPath).arg(markdownBytes);
-        env["path"]  = roadmapPath;
-        env["bytes"] = markdownBytes;
+        env["path"]            = roadmapPath;
+        env["bytes"]           = markdownBytes;
+        env["hint"]            = kUnrecognisedFormatHint();
+        env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
 

@@ -643,6 +643,60 @@ once real consumers hit it.
   hint, so a single bad skill can't burn through CPU + tokens
   unchecked.
 
+- **ANTS-1462 — `roadmap_query` header-inventory fallback for
+  non-bullet roadmaps.** After ANTS-1459's path-widening lands,
+  `roadmap_query` finds `docs/private/ROADMAP.md` on RetroArch
+  (and any similarly-located project) but still refuses because
+  the file uses a markdown-table-plus-sections shape rather than
+  GFM-task-list or Ants-v1 emoji bullets. This change adds a
+  header-inventory fallback: when the bullet parser yields zero
+  entries BUT the file has `##`/`###` headings, the verb returns
+  `{ok:true, mode:"header_inventory_fallback", sections:[…]}`
+  with each section's slug, headline, and level. Both bullet
+  mode and section_index mode converge on the same envelope shape
+  so callers can branch on `mode` alone. Bullets-mode does a
+  lazy `RoadmapIndex::buildIndex` on the refusal path (no impact
+  on the happy path); section_index reuses the already-populated
+  `m_roadmapIndex`. Inventory capped at 200 entries with
+  `truncated:true` echo. Truly opaque files (zero bullets AND
+  zero headings) still refuse with `unrecognised_format`
+  (ANTS-1429 behaviour preserved). Spec `docs/specs/ANTS-1462.md`
+  was cold-eyes-reviewed twice before commit; first pass surfaced
+  8 findings (HI-1/HI-2 lazy-buildIndex contradiction, two-gate-
+  one-shape gap, backwards-compat callout missing, 200-cap claim
+  unverified, etc.) which the second pass confirmed resolved.
+
+- **ANTS-1463 — `unrecognised_format` refusal envelope names
+  `expected_format[]` + standardised `hint`.** Sibling to
+  ANTS-1462. Every `unrecognised_format` refusal envelope across
+  the four sites — `cmdRoadmapQuery` (bullets mode,
+  section_index mode), `cmdRoadmapLog` (append),
+  `cmdRoadmapLogFlip` (terminal "neither GFM nor ants-v1") — now
+  carries `expected_format: ["GFM-task-list", "Ants-v1 emoji"]`
+  and a shared `hint` constant
+  (`kUnrecognisedFormatHint`) naming both bullet signatures
+  (`- [ ]` / `- [x]` for GFM and `📋/🚧/✅/💭 [PROJ-NNNN]` for
+  ants-v1). One canonical copy lives in the anonymous namespace
+  to defeat per-site copy-drift. The flip-path terminal refusal
+  previously emitted only `code`+`error`+`path`+`bytes` —
+  shape parity with the other three sites is restored.
+  `docs/standards/mcp-error-codes.md` row updated to note the
+  enriched envelope. Spec `docs/specs/ANTS-1463.md` was cold-
+  eyes-reviewed twice; first pass caught the standards-doc drift,
+  the EF-4 byte-equal claim (softened to a constant + reviewer
+  discipline since QJsonObject serialises alphabetically anyway),
+  and the missing emoji-byte-escape regression guard.
+  Tests extend `tests/features/mcp_roadmap_unrecognised_format/`
+  with `Inv4HeaderInventoryFallback` + `Inv5ExpectedFormatField`;
+  pre-fix verification 2/2 FAIL → 2/2 PASS after restore.
+  973/973 features green at landing.
+  **Layman:** two MCP tools used to refuse cryptically on
+  roadmaps that don't match the expected bullet shape. Now (a)
+  if the file at least has section headings the tool returns
+  those instead of refusing, and (b) when it does refuse it
+  tells the caller which formats are supported and what they
+  look like so a converter or hand-edit is a clear next step.
+
 - **ANTS-1458 phase 1 — Tasks chip latency instrumentation.**
   User-observed 2026-05-17: multiple `TaskCreate` events appended
   to the active transcript took longer than the 2 s

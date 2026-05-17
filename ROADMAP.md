@@ -9001,7 +9001,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (RetroDB CC instance, batch-3 feedback).
 
-- 📋 [ANTS-1462] **`roadmap_query` header-inventory fallback when bullet-format match fails.**
+- ✅ [ANTS-1462] **`roadmap_query` header-inventory fallback when bullet-format match fails.**
   Pairs with ANTS-1459 (a). The RetroArch follow-up surfaces a third failure shape: even when `roadmap_query` finds the file (after ANTS-1459's path-widening lands), the project may use a markdown table + sections format with ✅/📋/🚧/🔄 markers rather than the GFM task list or Ants-v1 emoji bullet shape the parser recognises. Current refusal is `no_roadmap_loaded` / `unrecognised_format` — both silent on what the parser expected.
   
   Fix: when path resolution succeeds but the bullet parser yields zero actionable bullets, fall back to a header-level inventory (parse `^#{2,3}\s+(.+)$` and return `sections[{slug, headline, level}]` without bullets). Mode echo `mode:"header_inventory_fallback"` so the caller knows why bullets is empty. Refusal envelopes (where the parser truly can't engage) gain a `expected_format:"GFM-task-list | Ants-v1 emoji"` field so a caller knows whether to reformat the roadmap, write a converter, or just edit the markdown directly.
@@ -9011,7 +9011,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (RetroArch CC instance, second batch).
 
-- 📋 [ANTS-1463] **`roadmap_log` refusal envelope names the expected format on unrecognised_format.**
+- ✅ [ANTS-1463] **`roadmap_log` refusal envelope names the expected format on unrecognised_format.**
   Sibling to the new ANTS-14xx "roadmap_query header-inventory fallback" item. Today `roadmap_log` returns `{ok:false, code:"unrecognised_format"}` when the target ROADMAP.md doesn't parse as GFM-task-list or Ants-v1 emoji bullets — but the envelope doesn't say which formats are supported, so the caller has to read the source to find out.
   
   Fix: amend `cmdRoadmapLog` so the `unrecognised_format` refusal carries `expected_format:["GFM-task-list", "Ants-v1 emoji"]` and a one-line `hint:"This roadmap appears to be in a table or section-only shape; see docs/standards/roadmap-format.md for either supported bullet shape, or edit the markdown directly."` Same surface as the ANTS-1429 silent-empty fix — refusal taxonomy gains visibility without changing wire behaviour for callers on the canonical formats.
