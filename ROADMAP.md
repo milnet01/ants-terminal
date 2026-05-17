@@ -6706,6 +6706,31 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: testauditengine.
   Source: live-test 2026-05-17 (ANTS-1397 v1 first run).
 
+- ✅ [ANTS-1452] **`workspace_search` opts in to gitignored / hidden files.**
+  External CC feedback 2026-05-17 (Vestige session): after a project
+  relocation, the caller wanted to find stale `/mnt/Storage/...`
+  prefixes. `workspace_search` returned 0 matches; a fall-back
+  `grep -r` revealed 1 563 hits, all inside `compile_commands.json`
+  (gitignored). The token-saving claim in the tool description is
+  defeated for any audit that needs to cover generated files.
+  
+  Fix: two opt-in flags. `respect_gitignore` (default `true`) maps
+  to `--no-ignore-vcs --no-ignore` when false; `include_hidden`
+  (default `false`) maps to `--hidden` when true. `ok:true`
+  envelope echoes both effective values so a caller hitting 0
+  matches can tell filter-induced silence from a genuinely clean
+  tree.
+  
+  Both default to pre-1452 behaviour — existing callers unaffected.
+  `.git/` stays excluded regardless of either flag (rg's hardcoded
+  behaviour). 6 new INVs in `tests/features/mcp_workspace_search/`
+  ride the existing 10 ANTS-1248 wiring invariants.
+  Spec: `docs/specs/ANTS-1452.md`. 876/876 features green at landing.
+  **Layman:** the project-wide search tool used to refuse to look inside `.gitignore`'d build outputs — fine for code review, but it meant a "are stale paths still anywhere?" audit silently returned 0 matches even when there were thousands. Two opt-in flags now let Claude turn the filters off, and the response tells you which filters were active so a zero-result is unambiguous.
+  Kind: feat.
+  Lanes: remotecontrol, claudeintegration, mcp_workspace_search.
+  Source: external-cc-feedback-2026-05-17 (Vestige session).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single

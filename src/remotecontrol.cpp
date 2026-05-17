@@ -2688,6 +2688,18 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const bool isRegex = req.value("regex").toBool(false);
     const QString caseMode = req.value("case").toString(QStringLiteral("smart"));
 
+    // ANTS-1452: gitignore-bypass + hidden-file opt-ins. Both default to
+    // pre-1452 behaviour (`respect_gitignore=true`, `include_hidden=false`).
+    // Default-preserving toBool overload — non-bool JSON values fall back
+    // to the default rather than coercing to false (matches the existing
+    // `regex` parse idiom). Effective values are echoed back on the
+    // ok:true envelope so a caller hitting 0 matches can diagnose
+    // filter-induced silence vs. genuine miss.
+    const bool respect_gitignore =
+        req.value(QStringLiteral("respect_gitignore")).toBool(true);
+    const bool include_hidden =
+        req.value(QStringLiteral("include_hidden")).toBool(false);
+
     // ANTS-1248-INV-3: shell-less argv. Every flag is a separate
     // QString in the argv list — QProcess does not invoke a shell.
     // Two-argument start() overload (QString program, QStringList args).
@@ -2703,6 +2715,19 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     if (!isRegex) argv << QStringLiteral("--fixed-strings");
     if (context > 0) argv << QStringLiteral("--context") << QString::number(context);
     if (!glob.isEmpty()) argv << QStringLiteral("--glob") << glob;
+    // ANTS-1452-INV-1: when respect_gitignore is false, disable both the
+    // VCS-specific ignore source (.gitignore, .git/info/exclude) and the
+    // umbrella ignore that covers .ignore + per-user global. Belt-and-
+    // braces — rg accepts both flags without conflict.
+    if (!respect_gitignore) {
+        argv << QStringLiteral("--no-ignore-vcs")
+             << QStringLiteral("--no-ignore");
+    }
+    // ANTS-1452-INV-2: opt into dotfile paths. rg still excludes .git/
+    // itself regardless of --hidden.
+    if (include_hidden) {
+        argv << QStringLiteral("--hidden");
+    }
     argv << QStringLiteral("--") << pattern << laneAbs;
 
     QProcess rg;
@@ -2808,6 +2833,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     out["pattern"]    = pattern;
     out["matches"]    = matches;
     out["truncated"]  = truncated;
+    // ANTS-1452-INV-4: echo effective filter values so callers can tell
+    // a filter-induced 0-match result from a genuinely clean tree.
+    out["respect_gitignore"] = respect_gitignore;
+    out["include_hidden"]    = include_hidden;
     out["elapsed_ms"] = static_cast<int>(wall.elapsed());
     // ANTS-1248-INV-6: stateless — no cache, no member-state mutation.
     // ANTS-1248-INV-10: reachability gated by the existing UDS +

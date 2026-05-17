@@ -146,8 +146,11 @@ TEST(McpWorkspaceSearch, WiringContract) {
     }
     // pattern must be in the required array (literal `"required"`
     // referencing `"pattern"`). Loose check: both literals appear in
-    // proximity (within 200 chars of each other) in the source. A
-    // strict regex over JSON construction would be brittle.
+    // proximity in the source. A strict regex over JSON construction
+    // would be brittle. Window widened to 8000 after ANTS-1452 added
+    // two new props (respect_gitignore + include_hidden) with their
+    // own description blurbs, pushing the schema past the original
+    // 4 KiB anchor.
     {
         // Anchor at the tools/list registration (literal "workspace_search"
         // with quotes), not the first incidental occurrence in a setter
@@ -156,7 +159,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
         bool ok = false;
         if (reqPos != std::string::npos) {
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 4000);
+                                              reqPos + 8000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"required\"") &&
@@ -248,5 +251,83 @@ TEST(McpWorkspaceSearch, WiringContract) {
            "grace step after terminate) on the rg child — INV-5 "
            "violated");
 
-    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1248 invariant(s) failed";
+    // -- ANTS-1452 additions: gitignore-bypass + hidden-file opt-ins -----
+    // Six new invariants riding the same wiring contract; the original
+    // 10 above remain unchanged.
+
+    // INV-1452-1a — argv contains "--no-ignore-vcs" literal.
+    expect(contains(rcCpp, "\"--no-ignore-vcs\""),
+           "INV-1452-1a",
+           "remotecontrol.cpp does not pass --no-ignore-vcs — needed for "
+           "respect_gitignore=false (ANTS-1452 INV-1)");
+    // INV-1452-1b — argv contains "--no-ignore" literal (the umbrella).
+    // Use a regex so the substring isn't matched against --no-ignore-vcs.
+    {
+        std::regex noIgnoreRe(R"("--no-ignore"\s*[,)])");
+        expect(std::regex_search(rcCpp, noIgnoreRe),
+               "INV-1452-1b",
+               "remotecontrol.cpp does not pass the bare --no-ignore "
+               "umbrella flag — needed for respect_gitignore=false "
+               "(ANTS-1452 INV-1)");
+    }
+    // INV-1452-1c — the bypass is gated on the respect_gitignore arg.
+    expect(contains(rcCpp, "respect_gitignore") ||
+           contains(rcCpp, "respectGitignore"),
+           "INV-1452-1c",
+           "remotecontrol.cpp does not parse the respect_gitignore arg "
+           "(ANTS-1452 INV-1)");
+
+    // INV-1452-2 — --hidden gated on include_hidden.
+    expect(contains(rcCpp, "\"--hidden\""),
+           "INV-1452-2a",
+           "remotecontrol.cpp does not pass --hidden — needed for "
+           "include_hidden=true (ANTS-1452 INV-2)");
+    expect(contains(rcCpp, "include_hidden") ||
+           contains(rcCpp, "includeHidden"),
+           "INV-1452-2b",
+           "remotecontrol.cpp does not parse the include_hidden arg "
+           "(ANTS-1452 INV-2)");
+
+    // INV-1452-4 — ok:true envelope echoes both filter values.
+    expect(contains(rcCpp, "out[\"respect_gitignore\"]"),
+           "INV-1452-4a",
+           "remotecontrol.cpp does not set out[\"respect_gitignore\"] "
+           "on the ok:true envelope (ANTS-1452 INV-4)");
+    expect(contains(rcCpp, "out[\"include_hidden\"]"),
+           "INV-1452-4b",
+           "remotecontrol.cpp does not set out[\"include_hidden\"] on "
+           "the ok:true envelope (ANTS-1452 INV-4)");
+
+    // INV-1452-5 — schema declares both new property names.
+    expect(contains(ciCpp, "\"respect_gitignore\""),
+           "INV-1452-5a",
+           "claudeintegration.cpp does not register "
+           "\"respect_gitignore\" in workspace_search inputSchema "
+           "(ANTS-1452 INV-5)");
+    expect(contains(ciCpp, "\"include_hidden\""),
+           "INV-1452-5b",
+           "claudeintegration.cpp does not register \"include_hidden\" "
+           "in workspace_search inputSchema (ANTS-1452 INV-5)");
+
+    // INV-1452-6 — parse uses the default-preserving toBool overload.
+    // Source-scrape for `.toBool(true)` and `.toBool(false)` near each
+    // flag name to lock in the defaults.
+    {
+        std::regex rgIgnoreDefault(
+            R"(respect_gitignore[^;]{0,80}\.toBool\(\s*true\s*\))");
+        expect(std::regex_search(rcCpp, rgIgnoreDefault),
+               "INV-1452-6a",
+               "remotecontrol.cpp does not call .toBool(true) on the "
+               "respect_gitignore parse — default must preserve "
+               "pre-1452 behaviour (ANTS-1452 INV-6)");
+        std::regex rgHiddenDefault(
+            R"(include_hidden[^;]{0,80}\.toBool\(\s*false\s*\))");
+        expect(std::regex_search(rcCpp, rgHiddenDefault),
+               "INV-1452-6b",
+               "remotecontrol.cpp does not call .toBool(false) on the "
+               "include_hidden parse — default must preserve pre-1452 "
+               "behaviour (ANTS-1452 INV-6)");
+    }
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1248 / ANTS-1452 invariant(s) failed";
 }

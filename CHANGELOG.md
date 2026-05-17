@@ -680,6 +680,41 @@ feature-conformance test on the canonical regression path.
   list so it now ignores every `build-*` subtree variant and the
   CMake `_deps/` / `CMakeFiles/` / `autogen/` plumbing.
 
+### 🔍 `workspace_search` gitignore-bypass opt-ins (in flight, 2026-05-17)
+
+External CC feedback (Vestige session 2026-05-17) flagged that the
+`workspace_search` MCP verb is blind to drift inside gitignored
+generated artifacts — exactly the audit lane where stale-path
+sweeps matter. Single-item subsection, ANTS-1248 follow-up.
+
+- **ANTS-1452 — `workspace_search` opts in to gitignored /
+  hidden files.** External CC feedback 2026-05-17 (Vestige
+  session): `workspace_search` returned 0 matches against
+  `compile_commands.json` after a project relocation while a
+  fall-back `grep -r` found 1 563 hits — ripgrep's default of
+  honouring `.gitignore` made the tool blind to drift in
+  generated artifacts (build outputs, cache dirs, lockfiles).
+  Two opt-in booleans: `respect_gitignore` (default `true`)
+  wires `--no-ignore-vcs --no-ignore` when false;
+  `include_hidden` (default `false`) wires `--hidden` when true.
+  Both defaults preserve pre-1452 behaviour, so existing callers
+  are unaffected. `ok:true` envelope now echoes both effective
+  values (`respect_gitignore`, `include_hidden`) so a caller
+  hitting 0 matches can distinguish filter-induced silence from
+  a genuinely clean tree without a second invocation. `.git/`
+  remains excluded regardless of either flag (rg's hardcoded
+  carve-out). 6 new INVs added to
+  `tests/features/mcp_workspace_search/` alongside the original
+  10 ANTS-1248 wiring invariants (876/876 features green). Spec
+  `docs/specs/ANTS-1452.md`.
+  Layman: the project-wide code-search MCP tool used to refuse
+  to look inside `.gitignore`'d files — fine for code review,
+  but it meant "are stale paths still anywhere?" audits
+  silently returned 0 matches even when there were thousands
+  inside gitignored build outputs. Two opt-in flags let Claude
+  turn the filters off, and the response tells you which
+  filters were active so a zero-result is unambiguous.
+
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 
 Sixth pull from the 0.7.92 bundle plan (`ROADMAP.md` § 0.7.92 →

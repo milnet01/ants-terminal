@@ -1,15 +1,17 @@
-# mcp_workspace_search — ANTS-1248
+# mcp_workspace_search — ANTS-1248 + ANTS-1452
 
-Locks the wiring contract for the new `workspace_search` MCP tool —
+Locks the wiring contract for the `workspace_search` MCP tool —
 a ripgrep wrapper that replaces a typical `Bash grep -r ... src/`
 pattern with structured `{matches[], truncated, elapsed_ms}` results.
 
-Spec of record: `docs/specs/ANTS-1248.md`. This test file pins the
-source-grep invariants only; runtime/process behaviour of ripgrep
-itself is the kernel of the ANTS-1248 cold-eyes pass and is left to
-manual smoke-test (no need to spawn a child process from the test
-suite — adds ~200 ms latency per ctest cycle for a deterministic
-shape we can grep for).
+Specs of record: `docs/specs/ANTS-1248.md` (introduction, 10 INVs)
+and `docs/specs/ANTS-1452.md` (`respect_gitignore` + `include_hidden`
+opt-ins, 6 additional INVs). This test file pins the source-grep
+invariants only; runtime/process behaviour of ripgrep itself is the
+kernel of the ANTS-1248 cold-eyes pass and is left to manual
+smoke-test (no need to spawn a child process from the test suite —
+adds ~200 ms latency per ctest cycle for a deterministic shape we
+can grep for).
 
 ## Invariants
 
@@ -25,10 +27,15 @@ shape we can grep for).
 | 8 | `MainWindow::setupClaudeMcpProviders` in `src/mainwindow.cpp` calls `setWorkspaceSearchProvider` with a lambda that delegates to `m_remoteControl->cmdWorkspaceSearch`. Falls back to the same `\"remote-control unavailable\"` JSON when `m_remoteControl` is null. |
 | 9 | The body uses ripgrep flags `--json`, `--no-heading`, `--line-number`, `--max-columns 500`, `--threads 1`. These appear in the argv literally. |
 | 10 | Hard kill is wired via `QTimer::singleShot(2000` (or equivalent constant naming) sending `terminate()`, then a 200 ms grace before `kill()` — INV-5 in the spec. |
+| 1452-1 | `--no-ignore-vcs` and the bare `--no-ignore` umbrella appear in `remotecontrol.cpp`, gated on `respect_gitignore`. (ANTS-1452 INV-1). |
+| 1452-2 | `--hidden` appears in `remotecontrol.cpp`, gated on `include_hidden`. (ANTS-1452 INV-2). |
+| 1452-4 | `ok:true` envelope assigns `out["respect_gitignore"]` and `out["include_hidden"]` — caller can diagnose filter-induced 0-match results. (ANTS-1452 INV-4). |
+| 1452-5 | `tools/list` schema in `claudeintegration.cpp` registers `"respect_gitignore"` and `"include_hidden"` as input properties. (ANTS-1452 INV-5). |
+| 1452-6 | Parse calls use the default-preserving overload — `.toBool(true)` for `respect_gitignore`, `.toBool(false)` for `include_hidden` — so existing callers are unaffected. (ANTS-1452 INV-6). |
 
 ## Acceptance
 
-Exit 0 = all 10 invariants hold.
+Exit 0 = all 10 ANTS-1248 invariants and all 6 ANTS-1452 invariants hold.
 
 Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. No per-feature `CMakeLists.txt`. Uses

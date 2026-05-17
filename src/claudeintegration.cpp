@@ -1711,13 +1711,19 @@ void ClaudeIntegration::onMcpConnection() {
                 wsTool["description"] = QStringLiteral(
                     "Search the project for code matching a literal "
                     "string or regex. Returns {ok, matches:[{file, "
-                    "line, text}], truncated, elapsed_ms}. Prefer this "
-                    "over `Bash grep -r ...` — typically saves 250-4500 "
+                    "line, text}], truncated, respect_gitignore, "
+                    "include_hidden, elapsed_ms}. Prefer this over "
+                    "`Bash grep -r ...` — typically saves 250-4500 "
                     "tokens per query and avoids round-trips for "
                     "no-match cases. Args: pattern (required), regex "
                     "(false), lane (subdir under project root), glob, "
                     "max_results (default 50, cap 500), context, case "
-                    "(smart/sensitive/insensitive).");
+                    "(smart/sensitive/insensitive), respect_gitignore "
+                    "(default true — pass false for stale-path audits "
+                    "across build outputs / compile_commands.json / "
+                    "cache dirs), include_hidden (default false — pass "
+                    "true to search dotfile paths; .git/ stays "
+                    "excluded regardless).");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -1747,6 +1753,27 @@ void ClaudeIntegration::onMcpConnection() {
                     caseEnum.append("insensitive");
                     caseProp["enum"]    = caseEnum;
                     caseProp["default"] = "smart";
+                    // ANTS-1452 — opt-ins for gitignored / hidden files.
+                    // Both default to pre-1452 behaviour so existing
+                    // callers are unaffected; the description points
+                    // Claude at the stale-path-audit / cache-dir use
+                    // case for `respect_gitignore=false`.
+                    QJsonObject respectGitignoreProp;
+                    respectGitignoreProp["type"]    = "boolean";
+                    respectGitignoreProp["default"] = true;
+                    respectGitignoreProp["description"] = QStringLiteral(
+                        "When false, bypass .gitignore/.ignore "
+                        "(--no-ignore-vcs --no-ignore). Use for "
+                        "audits across generated files like "
+                        "compile_commands.json, build/, or cache "
+                        "dirs.");
+                    QJsonObject includeHiddenProp;
+                    includeHiddenProp["type"]    = "boolean";
+                    includeHiddenProp["default"] = false;
+                    includeHiddenProp["description"] = QStringLiteral(
+                        "When true, search dotfile paths (--hidden). "
+                        "Excludes .git/ itself regardless of this "
+                        "flag.");
                     props["pattern"]     = patternProp;
                     props["regex"]       = regexProp;
                     props["lane"]        = laneProp;
@@ -1754,6 +1781,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["max_results"] = maxProp;
                     props["context"]     = ctxProp;
                     props["case"]        = caseProp;
+                    props["respect_gitignore"] = respectGitignoreProp;
+                    props["include_hidden"]    = includeHiddenProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
