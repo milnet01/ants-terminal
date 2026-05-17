@@ -526,6 +526,30 @@ once real consumers hit it.
   for every tool. A test fails the build if a new tool gets added
   without one, so the audit decision can never be skipped silently.
 
+- **ANTS-1418 — `caller_cwd_required` + `cwd_missing` refusal
+  envelopes name `caller_cwd_info` as the diagnostic path.** The
+  ANTS-1404 dispatcher refusal told callers "pass your $PWD as
+  `caller_cwd`" but never mentioned the ANTS-1400 diagnostic verb
+  that lets them confirm the resolution decision — exactly the
+  case the verb was built to handle (symlinked project roots,
+  worktree checkouts, container bind-mounts where `caller_cwd`
+  passes but routes to the wrong project). Same gap on the
+  ANTS-1372 `RcGate::gateErrorEnvelope`'s `cwd_missing` branch.
+  Both envelopes now carry a `hint` field:
+  `"call mcp__ants__caller_cwd_info with your $PWD to confirm
+  which tab Ants would route this call to"`. The other RcGate
+  branches (`cwd_bad`, `no_project`, `cwd_mismatch`) intentionally
+  do NOT get the hint — those refuse for reasons the diagnostic
+  verb can't directly help with. Spec
+  `tests/features/mcp_refusal_envelope_hints/spec.md`; tests
+  `tests/features/mcp_refusal_envelope_hints/` (3 invariants —
+  dispatcher hint, RcGate cwd_missing hint, RcGate non-cwd_missing
+  branches do not carry the hint).
+  Layman: when Ants refuses an MCP call for a missing project
+  path, the error now points at the diagnostic tool that lets the
+  caller see exactly which project Ants would have routed to —
+  so the user can debug their setup instead of guessing.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1

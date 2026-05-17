@@ -870,6 +870,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_current_preset_excludes_shipped/test_current_preset_excludes_shipped.cpp
                 # ANTS-1417 every registered MCP tool has explicit CallerCwdContract entry.
                 tests/features/mcp_caller_cwd_contracts_coverage/test_caller_cwd_contracts_coverage.cpp
+                # ANTS-1418 refusal envelopes name caller_cwd_info diagnostic path.
+                tests/features/mcp_refusal_envelope_hints/test_refusal_envelope_hints.cpp
                 # ANTS-1435 session_memory + project_layout read-op tenancy split.
                 tests/features/session_memory_read_caller_cwd/test_session_memory_read_caller_cwd.cpp
                 # ANTS-1436 roadmap_query pagination + auto-truncate.

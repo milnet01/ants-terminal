@@ -55,6 +55,16 @@ QJsonObject gateErrorEnvelope(const CallerCwdGate &g) {
     env[QStringLiteral("ok")]    = false;
     env[QStringLiteral("error")] = g.error;
     env[QStringLiteral("code")]  = g.errorCode;
+    // ANTS-1418 — only the cwd_missing branch benefits from the
+    // diagnostic-verb hint. The other branches (cwd_bad, no_project,
+    // cwd_mismatch) refuse for reasons the verb can't directly help
+    // with (the caller has a caller_cwd, just one that doesn't
+    // resolve / has no project / mismatches the focused tab).
+    if (g.errorCode == QStringLiteral("cwd_missing")) {
+        env[QStringLiteral("hint")] = QStringLiteral(
+            "call mcp__ants__caller_cwd_info with your $PWD to "
+            "confirm which tab Ants would route this call to");
+    }
     return env;
 }
 

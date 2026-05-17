@@ -3363,6 +3363,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "so the tool routes to your project rather "
                         "than whichever tab Ants has focused.")
                         .arg(toolName);
+                    // ANTS-1418 — surface the diagnostic verb so a
+                    // caller who already passes caller_cwd but still
+                    // gets the wrong tab (symlinked roots, worktree
+                    // checkouts, container bind-mounts) finds the
+                    // tool that lets them confirm the resolution.
+                    env["hint"] = QStringLiteral(
+                        "call mcp__ants__caller_cwd_info with your "
+                        "$PWD to confirm which tab Ants would route "
+                        "this call to");
                     responseText = QString::fromUtf8(
                         QJsonDocument(env)
                             .toJson(QJsonDocument::Compact));
