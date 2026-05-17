@@ -146,7 +146,10 @@ static int runMain() {
         size_t braceOpen = mwCpp.find('{', setupPos);
         std::string body = (braceOpen == std::string::npos)
             ? std::string()
-            : mwCpp.substr(braceOpen, 16 * 1024);
+            // Window bumped 16→32 KiB after ANTS-1351's audit_run
+            // dispatch lambda landed (~5 KiB inline). The window is
+            // a heuristic body-cap; raise as new providers slot in.
+            : mwCpp.substr(braceOpen, 32 * 1024);
         inv(6, contains(body, "registerToolProvider(\"roadmap_query\""),
             "setupClaudeMcpProviders does not register roadmap_query");
         inv(6, contains(body, "registerToolProvider(\"tab_list\""),

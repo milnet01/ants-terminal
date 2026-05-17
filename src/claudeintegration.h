@@ -8,6 +8,7 @@
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QList>
+#include <QMutex>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QDateTime>
@@ -452,6 +453,25 @@ private:
     mutable QList<QString>                      m_idempotentReadLru;
     static constexpr int    kIdempotentReadCacheCap = 32;
     static constexpr qint64 kIdempotentReadTtlMs    = 100;
+
+    // ANTS-1351 + ANTS-1397 § 2.4 — inline in-flight gate. Key:
+    // (verb, canonicalProjectRoot) → start time (ms epoch). RAII
+    // guard removes the slot on return; stale-slot reaper sweeps
+    // entries older than aggregate-cap + 30 s on each tryAcquire
+    // so a worker-death orphan can't permanently brick the slot.
+    mutable QHash<QPair<QString, QString>, qint64> m_verbInFlight;
+    mutable QMutex                                 m_verbInFlightMutex;
+    static constexpr qint64 kVerbInFlightReapMs = 270'000;  // 240 + 30
+public:
+    // Public for the dispatch lambdas in mainwindow.cpp. Returns
+    // -1 if the slot was free (and reserved on the caller's behalf);
+    // otherwise returns the existing start-time so the caller can
+    // emit `already_running` + running_since_ms.
+    qint64 verbInFlightTryAcquire(const QString &verb,
+                                  const QString &projectRoot);
+    void   verbInFlightRelease(const QString &verb,
+                               const QString &projectRoot);
+private:
 
     // Private helpers — the test-only methods in the public section
     // delegate here, and the dispatch site at processTools uses them

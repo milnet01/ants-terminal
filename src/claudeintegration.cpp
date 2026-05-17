@@ -2361,6 +2361,84 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1351 — audit_run (server-side audit runner v1).
+                {
+                    QJsonObject t;
+                    t["name"] = "audit_run";
+                    t["description"] = QStringLiteral(
+                        "Run the project's external audit tools "
+                        "(cppcheck/clazy/ruff/bandit/semgrep/gitleaks/"
+                        "trivy/shellcheck/mypy) server-side and return "
+                        "a structured envelope + SARIF path instead of "
+                        "shipping each tool's raw output through parent "
+                        "context. v1 ships infrastructure: tools run "
+                        "with scrubbed env, absolute-path resolution, "
+                        "per-tool wall-clock cap (default 30 s, [5, 60]), "
+                        "aggregate cap min(N*cap*1.5, 240 s). Caller "
+                        "supplies tools list (auto-detect when empty), "
+                        "scope (auto / files / since-tag:X / branch-diff), "
+                        "and optional top_findings_count for inline "
+                        "result preview. Required: caller_cwd (ANTS-1404 "
+                        "Required gate). See docs/specs/ANTS-1351.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject toolsProp;
+                    toolsProp["type"] = "array";
+                    toolsProp["description"] = QStringLiteral(
+                        "Subset of {cppcheck, clazy, ruff, bandit, "
+                        "semgrep, gitleaks, trivy, shellcheck, mypy}. "
+                        "Empty / omitted = auto-detect all runnable.");
+                    QJsonObject scopeProp;
+                    scopeProp["type"] = "string";
+                    scopeProp["description"] = QStringLiteral(
+                        "Audit scope. \"auto\" = full-tree minus "
+                        "exclusions (default); \"files\" = changed-"
+                        "since-fork-point; \"since-tag:<tag>\" = git "
+                        "diff vs <tag> (tag sanitised, INV-15); "
+                        "\"branch-diff\" = git diff main..HEAD.");
+                    QJsonObject capProp;
+                    capProp["type"] = "integer";
+                    capProp["description"] = QStringLiteral(
+                        "Per-tool wall-clock cap in seconds, [5, 60]. "
+                        "Default 30. Out-of-range → bad_args.");
+                    QJsonObject suppProp;
+                    suppProp["type"] = "string";
+                    suppProp["description"] = QStringLiteral(
+                        "\"auto\" (default) loads .audit_suppress + "
+                        ".audit_allowlist.json; \"none\" ignores both; "
+                        "\"path:<file>\" loads the named file.");
+                    QJsonObject formatsProp;
+                    formatsProp["type"] = "array";
+                    formatsProp["description"] = QStringLiteral(
+                        "Subset of [\"sarif\",\"html\"]. Default "
+                        "[\"sarif\"]; HTML opt-in.");
+                    QJsonObject topProp;
+                    topProp["type"] = "integer";
+                    topProp["description"] = QStringLiteral(
+                        "When > 0, inline first N findings into envelope "
+                        "as top_findings[] (avoids the SARIF-Read round "
+                        "trip). [0, 100]; out-of-range → bad_args.");
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. Mutating verbs refuse on mismatch "
+                        "with the focused tab's cwd (ANTS-1372).");
+                    QJsonObject props;
+                    props["tools"]                = toolsProp;
+                    props["scope"]                = scopeProp;
+                    props["cap_per_tool_seconds"] = capProp;
+                    props["suppressions"]         = suppProp;
+                    props["formats"]              = formatsProp;
+                    props["top_findings_count"]   = topProp;
+                    props["caller_cwd"]           = callerProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1290 — plan_template
                 {
                     QJsonObject t;
@@ -3383,6 +3461,36 @@ QString ClaudeIntegration::wrapMcpData(const QString &toolName,
 // doesn't refuse calls. Required-tier entries are the four whose
 // silent focused-fallback is the 2026-05-15 cross-session leak shape.
 // See docs/specs/ANTS-1404.md for the full classification rationale.
+// ANTS-1351 + ANTS-1397 § 2.4 — inline verb-in-flight gate
+// implementations. Single QMutex around a QHash keyed by
+// (verb, canonicalProjectRoot). Stale-slot reaper sweeps entries
+// older than kVerbInFlightReapMs to recover from worker-death
+// orphans (SIGKILL, segfault, panic-no-RAII).
+qint64 ClaudeIntegration::verbInFlightTryAcquire(
+        const QString &verb, const QString &projectRoot) {
+    QMutexLocker lk(&m_verbInFlightMutex);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // Stale-slot reap: drop any entries older than the reap window.
+    for (auto it = m_verbInFlight.begin(); it != m_verbInFlight.end(); ) {
+        if (now - it.value() > kVerbInFlightReapMs) {
+            it = m_verbInFlight.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    const auto key = qMakePair(verb, projectRoot);
+    auto it = m_verbInFlight.find(key);
+    if (it != m_verbInFlight.end()) return it.value();  // already running
+    m_verbInFlight.insert(key, now);
+    return -1;
+}
+
+void ClaudeIntegration::verbInFlightRelease(
+        const QString &verb, const QString &projectRoot) {
+    QMutexLocker lk(&m_verbInFlightMutex);
+    m_verbInFlight.remove(qMakePair(verb, projectRoot));
+}
+
 ClaudeIntegration::CallerCwdContract
 ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     using C = CallerCwdContract;
@@ -3391,6 +3499,10 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("last_audit_summary")) return C::Required;
     if (toolName == QStringLiteral("git_state"))          return C::Required;
     if (toolName == QStringLiteral("verify_changes"))     return C::Required;
+    // ANTS-1351 — audit_run mutates per-call SARIF files under /tmp
+    // and consumes a worker-pool slot; Required gate refuses early
+    // before any pool dispatch.
+    if (toolName == QStringLiteral("audit_run"))          return C::Required;
     // ANTS-1430 — project_layout reads from the tenant-hashed
     // session_memory store. Joins session_memory in the gated
     // Required set (see ANTS-1336 INV-7 amendment).

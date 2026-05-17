@@ -5217,7 +5217,7 @@ The full audit / indie-review / debt-sweep cycle on 2026-05-14
 exposed structural gaps in the MCP surface that the per-finding
 fixes don't address. Roadmapped here as their own design tasks.
 
-- 📋 [ANTS-1351] **MCP `audit_run` orchestrator tool.** Run the
+- ✅ [ANTS-1351] **MCP `audit_run` orchestrator tool.** Run the
   full external-tool pipeline (cppcheck / clazy / semgrep /
   gitleaks / trivy / shellcheck / ruff / bandit / mypy) inside
   the server, return a structured JSON envelope. Avoids per-
@@ -6611,6 +6611,38 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc.
   Lanes: docs/decisions, ANTS-1351, ANTS-1397, ANTS-1352.
   Source: cold-eyes loop 3 (2026-05-17) — same-uid trust model recurs across audit/test-audit/synth specs.
+
+- 📋 [ANTS-1449] **`audit_run` v2 — AuditDialog config-table integration + per-tool SARIF parsers.**
+  ANTS-1351 v1 ships:
+  - QProcess + QEventLoop multiplexer (working)
+  - Path validation, env scrub, absolute-path tool resolution (working)
+  - Per-tool + aggregate caps (working)
+  - Inline in-flight gate (working)
+  - Per-call SARIF emit (working — minimal driver+notifications shape)
+  - Sample-message 256 B cap + bottom-up cascade (working)
+  
+  v1 defers (this entry tracks):
+  - Rich per-tool finding parsers. v1 counts findings via a quick
+    JSON sniff (semgrep/bandit/ruff/gitleaks/trivy results[]) +
+    line-based fallback (cppcheck/clazy/mypy). v2 wires the real
+    AuditDialog config-table-driven parseFindings/applyFilter
+    pipeline (AuditEngine surface).
+  - `.audit_suppress` SARIF result.suppressions[] surface
+    (INV-7 second half).
+  - `.audit_allowlist.json` regex hardening via
+    AuditEngine::hardenUserRegex + isCatastrophicRegex (INV-6
+    second half).
+  - Top-findings extraction from full SARIF (currently echoes the
+    samples array; v2 will parse the per-tool result entries).
+  - Dedicated m_auditPool QThreadPool worker (INV-9). v1 runs
+    synchronously on the dispatcher thread; v2 dispatches via the
+    pool so concurrent build/verify isn't blocked.
+  
+  Pairs with: ANTS-1351 v1 (shipped).
+  **Layman:** v1 of the audit-runner MCP verb ships infrastructure (tools run, output captured, SARIF emitted) but uses a heuristic line counter. v2 plugs in the real per-tool parsers so finding counts match what the GUI audit dialog shows.
+  Kind: implement.
+  Lanes: auditrunner, auditengine, auditdialog.
+  Source: deferred from ANTS-1351 v1 (in-session 2026-05-17).
 
 ### ⚡ Other improvements (performance, security, optimisations)
 

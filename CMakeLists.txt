@@ -303,6 +303,8 @@ add_library(ants_audit_lib STATIC
     src/audithygiene.cpp
     src/featurecoverage.cpp
     src/auditrulequality.cpp
+    # ANTS-1351 — server-side audit runner (Qt6::Core only).
+    src/auditrunner.cpp
 )
 target_link_libraries(ants_audit_lib
     PUBLIC  ants_core_lib
@@ -870,6 +872,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_flip_ants_v1/test_roadmap_log_flip_ants_v1.cpp
                 # ANTS-1410 /audit skill spec-anchor drift detection.
                 tests/features/audit_skill_anchors/test_audit_skill_anchors.cpp
+                # ANTS-1351 v1 audit_run MCP verb.
+                tests/features/mcp_audit_run/test_mcp_audit_run.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.
@@ -928,6 +932,8 @@ if(ANTS_TESTS)
         SRC_REMOTECONTROL_H_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         # ANTS-1410 — spec-anchor drift test for the /audit skill.
         SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410.md"
+        # ANTS-1351 — audit_run engine source for source-scrape tests.
+        SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
         FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
         FIXTURE_EMPTY_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_empty.sarif"
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"

@@ -76,11 +76,22 @@ TEST(McpVerifyChangesTool, CmdMethodDefinedInCpp) {
 // see docs/specs/ANTS-1290.md § 5 for the MED-3 rationale.
 namespace {
 size_t verifyChangesBlockEnd(const std::string &ci, size_t start) {
-    auto e = ci.find("// ANTS-1290", start);
-    if (e == std::string::npos) {
-        e = ci.find("result[\"tools\"] = tools;", start);
+    // Descriptor blocks in claudeintegration.cpp start at 16-space
+    // indentation: `                // ANTS-NNNN`. Scan for the NEXT
+    // such header after `// ANTS-1289` (verify_changes). Inline
+    // comments that reference ANTS-NNNN at deeper indents don't
+    // match — they're documentation, not block headers. This makes
+    // the test resilient to descriptor blocks getting inserted
+    // before plan_template (was ANTS-1290; ANTS-1351 inserted v1).
+    const std::string anchor = "\n                // ANTS-";
+    size_t pos = start + 12;  // step past "// ANTS-1289" itself
+    const size_t hit = ci.find(anchor, pos);
+    if (hit != std::string::npos) {
+        // +1 skips the leading newline so the region ends just before
+        // the next descriptor block's leading whitespace.
+        return hit + 1;
     }
-    return e;
+    return ci.find("result[\"tools\"] = tools;", start);
 }
 }  // namespace
 

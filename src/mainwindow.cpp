@@ -33,6 +33,7 @@
 #include "claudetranscript.h"
 #include "aboutdialogs.h"          // ANTS-1181 — About-Ants/About-Qt
 #include "auditdialog.h"
+#include "auditrunner.h"   // ANTS-1351 — server-side audit runner.
 #include "shellutils.h"
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
@@ -3914,6 +3915,108 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdRoadmapLog(args)
                     .toJson(QJsonDocument::Compact));
+        });
+    // ANTS-1351 — audit_run server-side runner. Inline in-flight gate
+    // via ClaudeIntegration::verbInFlight* (§ 2.4 of v4 spec) — no
+    // class abstraction; two consumers (this verb + ANTS-1397's
+    // test_audit_partition) don't justify the helper class.
+    // caller_cwd is Required (ANTS-1404 contract registered in
+    // callerCwdContractFor); dispatcher refuses upstream when absent.
+    m_claudeIntegration->registerToolProvider("audit_run",
+        [this](const QJsonObject &args) -> QString {
+            const QString callerCwd = args.value(
+                QStringLiteral("caller_cwd")).toString();
+            const QString canon =
+                QFileInfo(callerCwd).canonicalFilePath();
+            // In-flight gate (INV-11).
+            const qint64 existing =
+                m_claudeIntegration->verbInFlightTryAcquire(
+                    QStringLiteral("audit_run"), canon);
+            if (existing >= 0) {
+                QJsonObject env;
+                env["ok"]               = false;
+                env["code"]             = QStringLiteral("already_running");
+                env["error"]            = QStringLiteral(
+                    "audit_run: a sweep is already in flight for this "
+                    "project root; retry after it completes");
+                env["running_since_ms"] =
+                    QDateTime::currentMSecsSinceEpoch() - existing;
+                env["retry_after_ms"]   = 5000;  // INV-9 hint
+                return QString::fromUtf8(
+                    QJsonDocument(env).toJson(QJsonDocument::Compact));
+            }
+            // Build the engine request.
+            AuditRunner::RunRequest req;
+            req.projectRoot = callerCwd;
+            const QJsonArray toolsArr = args.value(
+                QStringLiteral("tools")).toArray();
+            for (const QJsonValue &v : toolsArr)
+                req.tools.append(v.toString());
+            req.scope = args.value(QStringLiteral("scope")).toString();
+            if (args.value(QStringLiteral("cap_per_tool_seconds"))
+                    .isDouble()) {
+                req.capPerToolSeconds = args.value(
+                    QStringLiteral("cap_per_tool_seconds")).toInt();
+            }
+            req.suppressionsMode =
+                args.value(QStringLiteral("suppressions")).toString();
+            const QJsonArray formatsArr = args.value(
+                QStringLiteral("formats")).toArray();
+            for (const QJsonValue &v : formatsArr)
+                req.formats.append(v.toString());
+            if (args.value(QStringLiteral("top_findings_count"))
+                    .isDouble()) {
+                req.topFindingsCount = args.value(
+                    QStringLiteral("top_findings_count")).toInt();
+            }
+            // Run synchronously (v1) — caller blocks. v2 will route
+            // through the dedicated m_auditPool worker (INV-9).
+            const AuditRunner::RunResult r = AuditRunner::runAudit(req);
+            m_claudeIntegration->verbInFlightRelease(
+                QStringLiteral("audit_run"), canon);
+            // Serialise envelope.
+            QJsonObject env;
+            if (!r.ok) {
+                env["ok"]    = false;
+                env["code"]  = r.code;
+                env["error"] = r.error;
+                return QString::fromUtf8(
+                    QJsonDocument(env).toJson(QJsonDocument::Compact));
+            }
+            env["ok"] = true;
+            QJsonObject byTool;
+            for (auto it = r.byTool.constBegin();
+                 it != r.byTool.constEnd(); ++it) {
+                QJsonObject t;
+                t["status"]              = it->status;
+                t["elapsed_ms"]          = it->elapsedMs;
+                t["raw_count"]           = it->rawCount;
+                t["after_filter_count"]  = it->afterFilterCount;
+                t["samples"]             = it->samples;
+                byTool[it.key()]         = t;
+            }
+            env["by_tool"]          = byTool;
+            env["total_raw"]        = r.totalRaw;
+            env["total_actionable"] = r.totalActionable;
+            env["noise_rate_pct"]   = r.noiseRatePct;
+            if (!r.sarifPath.isEmpty())
+                env["sarif_path"] = r.sarifPath;
+            if (!r.htmlPath.isEmpty())
+                env["html_path"] = r.htmlPath;
+            QJsonArray skipped;
+            for (const auto &ts : r.toolsSkipped) {
+                QJsonObject s;
+                s["tool"]   = ts.tool;
+                s["reason"] = ts.reason;
+                skipped.append(s);
+            }
+            env["tools_skipped"]    = skipped;
+            env["elapsed_total_ms"] = r.elapsedTotalMs;
+            env["samples_truncated"]= r.samplesTruncated;
+            if (!r.topFindings.isEmpty())
+                env["top_findings"] = r.topFindings;
+            return QString::fromUtf8(
+                QJsonDocument(env).toJson(QJsonDocument::Compact));
         });
     m_claudeIntegration->registerToolProvider("get_text",
         [this](const QJsonObject &args) -> QString {
