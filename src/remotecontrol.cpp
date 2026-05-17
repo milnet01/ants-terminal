@@ -313,6 +313,110 @@ void applyGfmFlip(QStringList &lines,
     lines[targetIdx] = target;
 }
 
+// ANTS-1441 — ants-v1 native bullet support for op:"flip". GFM
+// path (above) requires either a `**Bold-ID.**` token or a caret
+// `^anchor`; ants-v1 bullets carry a canonical bracket-ID
+// `[PREFIX-NNNN]` right after the status emoji, so no anchor
+// injection is needed and no counter is consumed. Simpler than GFM.
+//
+// Recognised line shape:
+//   `- <emoji> [<PREFIX-NNNN>] <headline...>`
+// where <emoji> is one of ✅ 📋 🚧 💭.
+struct AntsV1Bullet {
+    int     firstLine    = -1;
+    QString id;            // e.g. "ANTS-1394"
+    QString status;        // "✅" | "📋" | "🚧" | "💭"
+    QString headline;      // post-strip; "**" wrappers removed
+    bool    insideFenced   = false;
+};
+
+// Match the bracket-ID token that immediately follows the status
+// emoji + space. Anchored loosely; the walker checks the prefix
+// explicitly before invoking this.
+static const QRegularExpression rxAntsV1IdBracket(
+    QStringLiteral("\\[([A-Z][A-Z0-9_-]*-\\d{1,8})\\]"));
+
+QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
+    QVector<AntsV1Bullet> out;
+    bool insideFence = false;
+    auto matchEmojiAt = [](const QString &line, int pos) -> QString {
+        const QString done = QString::fromUtf8(kAdapterEmojiDone);
+        const QString plan = QString::fromUtf8(kAdapterEmojiPlanned);
+        const QString prog = QString::fromUtf8(kAdapterEmojiInProgress);
+        const QString cons = QString::fromUtf8(kAdapterEmojiConsidered);
+        if (line.mid(pos, done.size()) == done) return done;
+        if (line.mid(pos, plan.size()) == plan) return plan;
+        if (line.mid(pos, prog.size()) == prog) return prog;
+        if (line.mid(pos, cons.size()) == cons) return cons;
+        return QString();
+    };
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &ln = lines.at(i);
+        if (ln.trimmed().startsWith(QStringLiteral("```"))) {
+            insideFence = !insideFence;
+            continue;
+        }
+        if (!ln.startsWith(QStringLiteral("- "))) continue;
+        // Status emoji sits at position 2 (just past "- ").
+        const QString emoji = matchEmojiAt(ln, 2);
+        if (emoji.isEmpty()) continue;
+        const int afterEmoji = 2 + emoji.size();
+        // Expect a space then "[".
+        if (ln.size() <= afterEmoji + 1 ||
+            ln.at(afterEmoji) != QLatin1Char(' ') ||
+            ln.at(afterEmoji + 1) != QLatin1Char('[')) {
+            continue;
+        }
+        const QRegularExpressionMatch m =
+            rxAntsV1IdBracket.match(ln, afterEmoji);
+        if (!m.hasMatch() || m.capturedStart(0) != afterEmoji + 1)
+            continue;
+        AntsV1Bullet b;
+        b.firstLine    = i;
+        b.insideFenced = insideFence;
+        b.id           = m.captured(1);
+        if      (emoji == QString::fromUtf8(kAdapterEmojiDone))
+            b.status = QStringLiteral("✅");
+        else if (emoji == QString::fromUtf8(kAdapterEmojiPlanned))
+            b.status = QStringLiteral("📋");
+        else if (emoji == QString::fromUtf8(kAdapterEmojiInProgress))
+            b.status = QStringLiteral("🚧");
+        else
+            b.status = QStringLiteral("💭");
+        // Headline: post-`]` text, strip leading space + bold wrapper.
+        QString head = ln.mid(m.capturedEnd(0)).trimmed();
+        if (head.startsWith(QStringLiteral("**"))) {
+            head.remove(0, 2);
+            const int closeIdx = head.indexOf(QStringLiteral("**"));
+            if (closeIdx >= 0) head = head.left(closeIdx);
+        }
+        b.headline = head.trimmed();
+        out.append(b);
+    }
+    return out;
+}
+
+// Apply a status-emoji swap in place. No anchor injection (ants-v1
+// bullets already have the canonical [PREFIX-NNNN] id), no counter
+// consumption. Just replace the emoji byte sequence.
+void applyAntsV1Flip(QStringList &lines, const AntsV1Bullet &b,
+                     const QString &targetEmoji) {
+    QString line = lines.at(b.firstLine);
+    const QString done = QString::fromUtf8(kAdapterEmojiDone);
+    const QString plan = QString::fromUtf8(kAdapterEmojiPlanned);
+    const QString prog = QString::fromUtf8(kAdapterEmojiInProgress);
+    const QString cons = QString::fromUtf8(kAdapterEmojiConsidered);
+    QString oldEmoji;
+    if      (line.mid(2, done.size()) == done) oldEmoji = done;
+    else if (line.mid(2, plan.size()) == plan) oldEmoji = plan;
+    else if (line.mid(2, prog.size()) == prog) oldEmoji = prog;
+    else if (line.mid(2, cons.size()) == cons) oldEmoji = cons;
+    if (oldEmoji.isEmpty()) return;  // walker guarantees one of the four
+    line.remove(2, oldEmoji.size());
+    line.insert(2, targetEmoji);
+    lines[b.firstLine] = line;
+}
+
 }  // namespace
 
 RemoteControl::RemoteControl(MainWindow *main, QObject *parent)
@@ -2063,18 +2167,148 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     rf.close();
     const qint64 markdownBytes = markdown.toUtf8().size();
 
-    // 6. Walk GFM bullets.
+    // 6. Walk GFM bullets first. If none found AND the file is big
+    //    enough to be a real roadmap, fall through to ANTS-1441's
+    //    ants-v1 native walker before refusing.
     QStringList lines = markdown.split(QChar('\n'));
     const QVector<GfmBullet> bullets = walkGfmBullets(lines);
     if (bullets.isEmpty() &&
         markdownBytes > kRoadmapMinParseableSize) {
+        // ANTS-1441 — try ants-v1 native format. Different bullet
+        // shape (`- 📋 [ANTS-NNNN] **headline**`); no anchor
+        // injection or counter use.
+        if (locAnchor.isEmpty()) {
+            // anchor locator is GFM-specific; ants-v1 only supports
+            // id + headline. If caller passed anchor, it's a hard
+            // mismatch — surface as bad_op_combo only after we've
+            // confirmed the file is ants-v1.
+        }
+        const QVector<AntsV1Bullet> v1bullets = walkAntsV1Bullets(lines);
+        if (!v1bullets.isEmpty()) {
+            // Reject anchor locator (ants-v1 doesn't use caret anchors).
+            if (!locAnchor.isEmpty()) {
+                return rlErr(QStringLiteral("bad_op_combo"),
+                    QStringLiteral("roadmap_log: anchor locator is not "
+                                   "supported on ants-v1 native format "
+                                   "— use `id` (e.g. \"ANTS-1394\") or "
+                                   "`headline` instead"));
+            }
+            // Locate target by id or headline.
+            QVector<int> v1matches;
+            if (!locId.isEmpty()) {
+                for (int i = 0; i < v1bullets.size(); ++i) {
+                    if (v1bullets.at(i).id == locId)
+                        v1matches.append(i);
+                }
+            } else {
+                const quint64 needHash =
+                    rcFnv1a64(rcNormaliseHeadline(locHeadline));
+                for (int i = 0; i < v1bullets.size(); ++i) {
+                    if (rcFnv1a64(
+                            rcNormaliseHeadline(v1bullets.at(i).headline))
+                        == needHash) {
+                        v1matches.append(i);
+                    }
+                }
+            }
+            const int v1matchedCount = v1matches.size();
+            if (v1matchedCount == 0 || v1matchedCount > 1) {
+                QJsonArray suggestions;
+                if (v1matchedCount > 1) {
+                    for (int i = 0; i < v1matches.size() &&
+                                    suggestions.size() < 3; ++i) {
+                        const auto &b = v1bullets.at(v1matches.at(i));
+                        QJsonObject s;
+                        s["headline"] = b.headline;
+                        s["id"]       = b.id;
+                        suggestions.append(s);
+                    }
+                } else {
+                    const QString needle = !locHeadline.isEmpty()
+                        ? locHeadline : locId;
+                    const QString norm = rcNormaliseHeadline(needle);
+                    QVector<QPair<int, int>> scored;
+                    for (int i = 0; i < v1bullets.size(); ++i) {
+                        const QString h = rcNormaliseHeadline(
+                            v1bullets.at(i).headline);
+                        int sharedLen = 0;
+                        const int lim = std::min(h.size(), norm.size());
+                        while (sharedLen < lim &&
+                               h.at(sharedLen) == norm.at(sharedLen)) {
+                            ++sharedLen;
+                        }
+                        if (sharedLen > 0)
+                            scored.append(qMakePair(sharedLen, i));
+                    }
+                    std::sort(scored.begin(), scored.end(),
+                        [](const QPair<int,int> &a,
+                           const QPair<int,int> &b) {
+                            return a.first > b.first;
+                        });
+                    for (int k = 0; k < scored.size() &&
+                                    suggestions.size() < 3; ++k) {
+                        const auto &b = v1bullets.at(scored.at(k).second);
+                        QJsonObject s;
+                        s["headline"] = b.headline;
+                        s["id"]       = b.id;
+                        suggestions.append(s);
+                    }
+                }
+                const QString code = (v1matchedCount == 0)
+                    ? QStringLiteral("bullet_not_found")
+                    : QStringLiteral("bullet_ambiguous");
+                const QString msg = (v1matchedCount == 0)
+                    ? QStringLiteral("roadmap_log: locator matched "
+                                     "zero ants-v1 bullets")
+                    : QStringLiteral("roadmap_log: locator matched "
+                                     "%1 ants-v1 bullets — narrow with id")
+                        .arg(v1matchedCount);
+                return rlSugErr(code, msg, suggestions, v1matchedCount);
+            }
+            const AntsV1Bullet &v1target = v1bullets.at(v1matches.first());
+            if (v1target.insideFenced) {
+                return rlErr(QStringLiteral("anchor_unsafe_context"),
+                    QStringLiteral("roadmap_log: located bullet is "
+                                   "inside a fenced code block — "
+                                   "refusing to flip"));
+            }
+            // Apply flip + atomic write.
+            const QString fromStatus = v1target.status;
+            applyAntsV1Flip(lines, v1target, targetEmoji);
+            const QString updated = lines.join(QChar('\n'));
+            QSaveFile rw(roadmapPath);
+            if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return rlErr(QStringLiteral("roadmap_write_failed"),
+                    QStringLiteral("roadmap_log: could not open \"%1\" "
+                                   "for writing").arg(roadmapPath));
+            }
+            const QByteArray utf8 = updated.toUtf8();
+            if (rw.write(utf8) != utf8.size() || !rw.commit()) {
+                return rlErr(QStringLiteral("roadmap_write_failed"),
+                    QStringLiteral("roadmap_log: atomic write of \"%1\" "
+                                   "failed").arg(roadmapPath));
+            }
+            QJsonObject out;
+            out["ok"]              = true;
+            out["op"]              = QStringLiteral("flip");
+            out["format"]          = QStringLiteral("ants-v1");
+            out["from_status"]     = fromStatus;
+            out["to_status"]       = targetEmoji;
+            out["file"]            = QStringLiteral("ROADMAP.md");
+            out["line"]            = v1target.firstLine + 1;
+            out["bytes_written"]   = static_cast<qint64>(utf8.size());
+            out["anchor_injected"] = false;
+            out["id"]              = v1target.id;
+            return QJsonDocument(out);
+        }
+        // Neither GFM nor ants-v1 — genuinely unrecognised.
         QJsonObject env;
         env["ok"]    = false;
         env["code"]  = QStringLiteral("unrecognised_format");
         env["error"] = QStringLiteral(
-            "roadmap_log: \"%1\" parsed zero GFM-format bullets from "
-            "%2 bytes — file may be in ants-v1 native format or a "
-            "shape we don't recognise; cannot safely flip")
+            "roadmap_log: \"%1\" parsed zero bullets from %2 bytes "
+            "(neither GFM-task-list nor ants-v1 native format "
+            "recognised) — cannot safely flip")
                 .arg(roadmapPath).arg(markdownBytes);
         env["path"]  = roadmapPath;
         env["bytes"] = markdownBytes;

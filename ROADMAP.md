@@ -6449,7 +6449,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: coldeyesengine, cold_eyes_brief.
   Source: in-session-2026-05-16 (self-observed during ANTS-1435/1436 cold-eyes review).
 
-- 📋 [ANTS-1441] **`roadmap_log op:"flip"` supports ants-v1 native format (currently GFM-only).**
+- ✅ [ANTS-1441] **`roadmap_log op:"flip"` supports ants-v1 native format (currently GFM-only).**
   In-session reproduction 2026-05-16: after shipping ANTS-1435, called `mcp__ants__roadmap_log{op:"flip", id:"ANTS-1435", to_status:"shipped"}` on this repo's own ROADMAP.md. Returned `{ok:false, code:"unrecognised_format", error:"roadmap_log: parsed zero GFM-format bullets ... file may be in ants-v1 native format"}`.
   
   The `op:"flip"` verb (added by ANTS-1428) is hard-coded to the GFM-adapter parser. Ants's own ROADMAP.md uses ants-v1 native shape (`- 📋 [ANTS-NNNN] **Title.** body...`). Vestige's project uses GFM. Both need the flip.
