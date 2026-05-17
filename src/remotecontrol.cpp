@@ -1384,8 +1384,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B");
         const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7");
         const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");
-        struct Tally { int active = 0; int shipped = 0; int total = 0; };
-        QHash<QString, Tally> counts;
+        QHash<QString, RoadmapIndex::SectionCounts> direct;
         for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
             const QJsonObject o = v.toObject();
             const QString id    = o.value(QStringLiteral("id")).toString();
@@ -1393,16 +1392,23 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (id.isEmpty() && hl.isEmpty()) continue;  // INV-6 rollup
             const QString slug  = o.value(QStringLiteral("section_slug")).toString();
             const QString s     = o.value(QStringLiteral("status")).toString();
-            Tally &t = counts[slug];
+            RoadmapIndex::SectionCounts &t = direct[slug];
             if (s == plannedEmoji || s == progressEmoji) t.active++;
             if (s == doneEmoji) t.shipped++;
             t.total++;
         }
 
+        // ANTS-1442 — INV-10. Roll up child-section tallies into
+        // their parents so level-2 sections show non-zero totals
+        // when bullets live under their level-3 children.
+        const auto rolled = RoadmapIndex::rollupCounts(
+            m_roadmapIndex, direct);
+
         // INV-4 — emit EVERY indexed section, including empties.
         QJsonArray sections;
         for (const auto &sec : std::as_const(m_roadmapIndex)) {
-            const Tally t = counts.value(sec.slug, Tally{});
+            const auto t = rolled.value(sec.slug,
+                                        RoadmapIndex::SectionCounts{});
             QJsonObject obj;
             obj["slug"]          = sec.slug;
             obj["headline"]      = sec.headingText;

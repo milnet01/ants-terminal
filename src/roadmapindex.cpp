@@ -114,6 +114,37 @@ const Section *findBySlug(const QVector<Section> &index, const QString &slug) {
     return nullptr;
 }
 
+// ANTS-1442 — descendant-aware tally rollup. A child section's
+// `[lineStart, lineEnd)` is fully nested inside its parent's by
+// construction in buildIndex (lineEnd extends to the next heading
+// with level <= self.level). So `child` is a descendant of `parent`
+// iff child.lineStart > parent.lineStart && child.lineEnd <=
+// parent.lineEnd. We treat each section as its own descendant so the
+// emitted tally includes self.
+QHash<QString, SectionCounts> rollupCounts(
+    const QVector<Section> &index,
+    const QHash<QString, SectionCounts> &direct) {
+    QHash<QString, SectionCounts> out;
+    out.reserve(index.size());
+    for (const auto &parent : index) {
+        SectionCounts agg;
+        for (const auto &candidate : index) {
+            // Self counts (lineStart/lineEnd both equal) so this
+            // covers both self and proper descendants.
+            const bool nested = (candidate.lineStart >= parent.lineStart &&
+                                 candidate.lineEnd   <= parent.lineEnd);
+            if (!nested) continue;
+            const auto it = direct.constFind(candidate.slug);
+            if (it == direct.cend()) continue;
+            agg.active  += it->active;
+            agg.shipped += it->shipped;
+            agg.total   += it->total;
+        }
+        out.insert(parent.slug, agg);
+    }
+    return out;
+}
+
 QString sliceSection(const QString &markdown, const Section &section) {
     if (section.lineStart < 0 || section.lineEnd <= section.lineStart) {
         return {};

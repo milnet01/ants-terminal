@@ -441,6 +441,38 @@ adapter-mode dialect-detection will ride on next).
   auto-anchored bullets so you can tell them apart from
   hand-authored ones at a glance.
 
+### 🗺 Bundle C closeout — `roadmap_query` math + dialog follow-ups (in flight, 2026-05-17)
+
+Live-test follow-ups discovered while dogfooding the new
+`roadmap_query mode:"section_index"` mode (ANTS-1437) on the project's
+own ROADMAP.md. The discoverability surface ships in Bundle C; these
+items close out the rollup math + dialog-side parity gaps that surfaced
+once real consumers hit it.
+
+- **ANTS-1442 — `roadmap_query mode:"section_index"` rolls up
+  descendant counts into parent sections.** Live test on the
+  project's own ROADMAP.md surfaced every level-2 section reporting
+  `active:0, shipped:0, total:0` despite their level-3 children
+  obviously carrying bullets. Root cause: the per-slug tally was
+  keyed only by each bullet's *immediate* containing-heading slug,
+  so level-2 anchors (which have no bullets directly under the
+  heading — only child level-3 sub-bundles) tallied zero.
+  Fix: extracted a pure `RoadmapIndex::rollupCounts(index, direct)`
+  helper that walks each section's `[lineStart, lineEnd)` range
+  and folds in every nested section's direct tally; section_index
+  emission now uses `rolled.value(sec.slug)` instead of the raw
+  `direct` table. New INV-10 in
+  `tests/features/roadmap_query_section_index/spec.md` plus a
+  source-scrape that the helper is wired in and two functional
+  tests on the pure helper (nested level-2/3 rollup, and a flat-
+  siblings sanity check that the containment predicate doesn't
+  double-count).
+  Layman: the section-index view of the roadmap used to show "0
+  items" for every release header because the items live under
+  sub-headers inside each release. Now the release headers add up
+  their children, so "0.7.92" shows the real total for the whole
+  release.
+
 ### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
 
 Live-test follow-ups discovered immediately after the ANTS-1397 v1

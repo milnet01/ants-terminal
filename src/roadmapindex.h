@@ -40,4 +40,26 @@ int     headingLevel(const QString &raw, QString *text = nullptr);
 QString slugifyHeading(const QString &heading);
 QString uniqueSlug(QSet<QString> &seen, const QString &heading);
 
+// ANTS-1442 — per-section tally used by roadmap_query's section_index
+// mode. Same shape as the `{active,shipped,total}` triplet the verb
+// emits.
+struct SectionCounts {
+    int active  = 0;
+    int shipped = 0;
+    int total   = 0;
+};
+
+// ANTS-1442 — given direct per-slug tallies (bullets keyed by their
+// immediate containing heading slug) and the section index, return a
+// tally per slug where each entry sums self + descendant sections.
+// `direct` carries only sections whose immediate bullets contributed
+// at least one count; the returned hash includes every section in
+// `index` (level-2 parents pick up their level-3 children even when
+// the level-2 heading has no direct bullets). Pure / Qt-Core-only;
+// O(n²) over section count, which is fine at the ~150-section scale
+// the live roadmap has reached.
+QHash<QString, SectionCounts> rollupCounts(
+    const QVector<Section> &index,
+    const QHash<QString, SectionCounts> &direct);
+
 }  // namespace RoadmapIndex

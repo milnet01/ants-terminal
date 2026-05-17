@@ -3,8 +3,13 @@
 // ANTS-1287 / ANTS-1398 tests.
 
 #include "../../_support/expect.h"
+#include "roadmapindex.h"
 
 #include <gtest/gtest.h>
+
+#include <QHash>
+#include <QString>
+#include <QVector>
 
 #include <cstdio>
 #include <fstream>
@@ -196,6 +201,122 @@ TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
     expect(contains(cpp, "ANTS-1442"),
            "INV-7: ANTS-1442 anchor present in cmdRoadmapQuery");
     EXPECT_EQ(0, expect_failures());
+}
+
+// INV-10 — parent sections roll up descendant counts (ANTS-1442
+// root cause). Source-scrape that the helper call is wired in.
+TEST(roadmap_query_section_index, Inv10RollupCountsWired) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "RoadmapIndex::rollupCounts("),
+           "INV-10: section_index branch calls "
+           "RoadmapIndex::rollupCounts to fold descendant tallies "
+           "into their parent section");
+    expect(contains(cpp, "ANTS-1442 — INV-10"),
+           "INV-10: anchor present alongside the rollupCounts call");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-10 — functional. Build a hand-crafted index that mirrors the
+// ROADMAP's nesting shape (one level-2 with two level-3 children)
+// and verify rollupCounts sums child tallies into the parent.
+//
+// Pre-fix, the tally returned for the level-2 slug would equal the
+// direct tally (which is zero, since no bullets live directly under
+// the level-2 heading). Post-fix, it equals the sum of the two
+// children plus the (zero) self.
+TEST(roadmap_query_section_index, Inv10FunctionalLevel2Rollup) {
+    QVector<RoadmapIndex::Section> index;
+    // Mirrors `buildIndex` output: level-2 spans lines [0, 100),
+    // child A spans [10, 50), child B spans [50, 100).
+    {
+        RoadmapIndex::Section parent;
+        parent.slug        = QStringLiteral("release-072");
+        parent.headingText = QStringLiteral("0.7.92 — release");
+        parent.level       = 2;
+        parent.lineStart   = 0;
+        parent.lineEnd     = 100;
+        index.append(parent);
+    }
+    {
+        RoadmapIndex::Section a;
+        a.slug        = QStringLiteral("childA");
+        a.headingText = QStringLiteral("Bundle A");
+        a.level       = 3;
+        a.lineStart   = 10;
+        a.lineEnd     = 50;
+        index.append(a);
+    }
+    {
+        RoadmapIndex::Section b;
+        b.slug        = QStringLiteral("childB");
+        b.headingText = QStringLiteral("Bundle B");
+        b.level       = 3;
+        b.lineStart   = 50;
+        b.lineEnd     = 100;
+        index.append(b);
+    }
+
+    QHash<QString, RoadmapIndex::SectionCounts> direct;
+    direct[QStringLiteral("childA")] = {3, 2, 5};   // 3 active, 2 shipped
+    direct[QStringLiteral("childB")] = {1, 4, 5};   // 1 active, 4 shipped
+    // Note: no entry for the parent slug — it has no direct bullets.
+
+    const auto rolled = RoadmapIndex::rollupCounts(index, direct);
+
+    const auto pa = rolled.value(QStringLiteral("release-072"));
+    EXPECT_EQ(pa.active,  4);   // 0 + 3 + 1
+    EXPECT_EQ(pa.shipped, 6);   // 0 + 2 + 4
+    EXPECT_EQ(pa.total,   10);  // 0 + 5 + 5
+
+    // Children unchanged.
+    const auto ca = rolled.value(QStringLiteral("childA"));
+    EXPECT_EQ(ca.active,  3);
+    EXPECT_EQ(ca.shipped, 2);
+    EXPECT_EQ(ca.total,   5);
+
+    const auto cb = rolled.value(QStringLiteral("childB"));
+    EXPECT_EQ(cb.active,  1);
+    EXPECT_EQ(cb.shipped, 4);
+    EXPECT_EQ(cb.total,   5);
+}
+
+// INV-10 — functional, leaf-only roadmap (no level-2 / level-3 mix).
+// Confirms the rollup is a no-op when sections are siblings, not
+// nested. Guards against an over-eager containment check that would
+// double-count flat layouts.
+TEST(roadmap_query_section_index, Inv10FunctionalFlatNoRollup) {
+    QVector<RoadmapIndex::Section> index;
+    {
+        RoadmapIndex::Section a;
+        a.slug        = QStringLiteral("a");
+        a.headingText = QStringLiteral("A");
+        a.level       = 3;
+        a.lineStart   = 0;
+        a.lineEnd     = 50;
+        index.append(a);
+    }
+    {
+        RoadmapIndex::Section b;
+        b.slug        = QStringLiteral("b");
+        b.headingText = QStringLiteral("B");
+        b.level       = 3;
+        b.lineStart   = 50;
+        b.lineEnd     = 100;
+        index.append(b);
+    }
+
+    QHash<QString, RoadmapIndex::SectionCounts> direct;
+    direct[QStringLiteral("a")] = {2, 1, 3};
+    direct[QStringLiteral("b")] = {0, 5, 5};
+
+    const auto rolled = RoadmapIndex::rollupCounts(index, direct);
+    const auto ra = rolled.value(QStringLiteral("a"));
+    const auto rb = rolled.value(QStringLiteral("b"));
+    EXPECT_EQ(ra.active,  2);
+    EXPECT_EQ(ra.total,   3);
+    EXPECT_EQ(rb.shipped, 5);
+    EXPECT_EQ(rb.total,   5);
 }
 
 // Dispatch — mainwindow's MCP→cmdRoadmapQuery lambda forwards the

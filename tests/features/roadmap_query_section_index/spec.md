@@ -47,12 +47,23 @@ tripping a full bullet payload.
   every section. Three loops in `cmdRoadmapQuery` (bullet-mode pre-
   fill, section_index lazy-fill, full-file lazy-fill); test asserts
   loop-count == section_slug-emission-count. Anchor: `ANTS-1442`.
+- **INV-10 / parent sections roll up descendant counts
+  (ANTS-1442 root cause).** ROADMAP.md nests bullets under level-3
+  headings beneath level-2 version anchors. The tally must walk a
+  parent's subtree, not just its immediate bullets — otherwise a
+  level-2 section like `0.7.92 — ...` surfaces `0/0/0` while its
+  child level-3 sections clearly have content. Per-section emitted
+  counts equal the sum of the section's own direct-bullet tally
+  PLUS the direct-bullet tallies of every descendant section
+  (one whose `[lineStart, lineEnd)` is nested inside the parent's).
+  Pure helper: `RoadmapIndex::rollupCounts(index, direct)`. Anchor:
+  `ANTS-1442` in `src/roadmapindex.cpp`.
 
 ## Test scope
 
 Source-scrape against `src/remotecontrol.cpp` and
 `src/claudeintegration.cpp` for anchor strings and critical helper
-calls. Mirrors ANTS-1398 / ANTS-1287 test pattern. A full live-
-roundtrip test would require instantiating RemoteControl + MainWindow
-+ the MCP socket layer; the per-INV anchor scrape catches drift at
-the load-bearing sites.
+calls. Mirrors ANTS-1398 / ANTS-1287 test pattern. INV-10 also
+exercises the pure `RoadmapIndex::rollupCounts` helper with a
+hand-built fixture — the helper is testable without instantiating
+RemoteControl + MainWindow.
