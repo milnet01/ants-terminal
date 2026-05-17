@@ -180,6 +180,67 @@ TEST(mcp_audit_run, SchemaDescriptorRegistered) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-1456 AR-1/AR-2 — toolArgv auto-detects src/ for flat-layout
+// projects so cppcheck/bandit don't silently fail on the missing
+// hardcoded path.
+TEST(mcp_audit_run, Ants1456SrcAutoDetect) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    expect(contains(cpp, "hasSrcDir"),
+           "AR-1: toolArgv must branch on hasSrcDir");
+    expect(contains(cpp,
+               "QFileInfo(\n        projectRoot + QLatin1String(\"/src\"))"),
+           "AR-1: src/ existence is probed via QFileInfo");
+    expect(contains(cpp, "const QString srcRoot ="),
+           "AR-1: srcRoot constant captures the chosen scan path");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1456 AR-3/AR-4 — loadProjectAuditConfig + per-tool override.
+TEST(mcp_audit_run, Ants1456ProjectAuditConfig) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    expect(contains(cpp, "loadProjectAuditConfig"),
+           "AR-3: loadProjectAuditConfig helper present");
+    expect(contains(cpp, ".audit-config.json"),
+           "AR-3: canonical .audit-config.json path probed");
+    expect(contains(cpp,
+               "docs/private/audit/audit-config.json"),
+           "AR-3: RetroArch-style fallback path probed");
+    expect(contains(cpp, "projectConfig.contains(tool)"),
+           "AR-4: toolArgv consults projectConfig before default "
+           "argv");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1456 AR-5 — SARIF emit exposes config-warning signal.
+TEST(mcp_audit_run, Ants1456SarifConfigWarningProperty) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    expect(contains(cpp, "executionSuccessfulWithConfigWarnings"),
+           "AR-5: SARIF invocation properties carry "
+           "executionSuccessfulWithConfigWarnings");
+    expect(contains(cpp, "tr.rawCount == 0"),
+           "AR-5: the property is set on raw-count-zero clean runs");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1456 AR-6 — audit_run descriptor surfaces scope:"auto" semantics.
+TEST(mcp_audit_run, Ants1456ScopeDescriptorClarified) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    // Locate the audit_run descriptor block by anchoring on its name.
+    const auto pos = ci.find("t[\"name\"] = \"audit_run\"");
+    ASSERT_NE(pos, std::string::npos);
+    const std::string region = ci.substr(pos, 5000);
+    expect(contains(region, "deterministic full sweep"),
+           "AR-6: scope description recommends an explicit "
+           "since-tag override for deterministic full sweeps");
+    expect(contains(region, "ANTS-1456"),
+           "AR-6: scope description carries the ANTS-1456 anchor");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // Dispatch — provider lambda registered in mainwindow.
 TEST(mcp_audit_run, DispatchProviderRegistered) {
     expect_reset();

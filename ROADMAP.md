@@ -8835,7 +8835,7 @@ template / mutate this state atomically" → movable. If it's
   not *missing*) and (c) `mode:"summary"|"full"` arg shape +
   multi-line output for grep-debuggability.
 
-- 📋 [ANTS-1456] **`audit_run` v1 usability gaps surfaced
+- ✅ [ANTS-1456] **`audit_run` v1 usability gaps surfaced
   by RetroArch CC session (cross-session report 2026-05-17).**
   Three friction points reported while running `mcp__ants__audit_run`
   against RetroArch (flat-layout C project — no `src/` subdir,
@@ -9021,7 +9021,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: cross-session-report-2026-05-17 (RetroArch CC instance, second batch).
 
-- 📋 [ANTS-1464] **`audit_run` per-tool args passthrough (`tools:[{name, args}]` or `tool_args_passthrough`).**
+- ✅ [ANTS-1464] **`audit_run` per-tool args passthrough (`tools:[{name, args}]` or `tool_args_passthrough`).**
   Lower-priority observation from the RetroArch session: `mcp__ants__audit_run` exists but the session called cppcheck directly via Bash because it needed `--max-configs=1` and per-tool flags the wrapper doesn't expose. The current `tools:["cppcheck", "ruff", ...]` shape is name-only; there's no escape hatch for project-specific invariants (RetroArch's bundle workflow constrains configs to keep wall-clock manageable on a 50K-LOC C codebase).
   
   Fix options (caller's pick at implementation time):

@@ -144,18 +144,68 @@ const QStringList &kKnownTools() {
     return v;
 }
 
+// ANTS-1456 / ANTS-1464 — load project-side audit-config.json if
+// present. Probed locations (first wins):
+//   <root>/.audit-config.json                   canonical dotfile
+//   <root>/docs/private/audit/audit-config.json RetroArch-style
+// Schema (per-tool args override): {"<tool>": {"args": ["...","..."]}}.
+// When matched, the tool's argv is replaced wholesale by the array.
+// Malformed JSON / missing file → empty object (default argv used).
+QJsonObject loadProjectAuditConfig(const QString &projectRoot) {
+    const QStringList candidates = {
+        projectRoot + QLatin1String("/.audit-config.json"),
+        projectRoot + QLatin1String("/docs/private/audit/audit-config.json"),
+    };
+    for (const QString &p : candidates) {
+        QFile f(p);
+        if (!f.open(QIODevice::ReadOnly)) continue;
+        const QByteArray raw = f.readAll();
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
+        if (err.error == QJsonParseError::NoError && doc.isObject()) {
+            return doc.object();
+        }
+    }
+    return {};
+}
+
 // Per-tool argv builder. v1 uses minimal sane defaults (parallel to
-// the /audit skill's step 5). Project-side configs (audit-config.json
-// etc.) are NOT honoured in v1 — logged as v2 follow-up.
-QStringList toolArgv(const QString &tool, const QString &projectRoot) {
+// the /audit skill's step 5). ANTS-1456 — `src/` existence is
+// auto-detected so flat-layout projects (RetroArch et al.) no longer
+// pass `-I src/` against a missing directory and silently parse no
+// sources. ANTS-1464 — `projectConfig` overrides argv per-tool when
+// the project ships a `.audit-config.json` or
+// `docs/private/audit/audit-config.json`.
+QStringList toolArgv(const QString &tool, const QString &projectRoot,
+                     const QJsonObject &projectConfig = {}) {
+    // ANTS-1464 — project-side override wins.
+    if (projectConfig.contains(tool)) {
+        const QJsonObject cfg =
+            projectConfig.value(tool).toObject();
+        const QJsonValue v = cfg.value(QStringLiteral("args"));
+        if (v.isArray()) {
+            QStringList args;
+            const QJsonArray arr = v.toArray();
+            for (const QJsonValue &av : arr) {
+                args.append(av.toString());
+            }
+            return args;
+        }
+    }
+    // ANTS-1456 — auto-detect src/ for flat-layout projects.
+    const bool hasSrcDir = QFileInfo(
+        projectRoot + QLatin1String("/src")).isDir();
+    const QString srcRoot = hasSrcDir
+        ? QStringLiteral("src")
+        : QStringLiteral(".");
     if (tool == QLatin1String("cppcheck"))
         return {QStringLiteral("--enable=all"),
                 QStringLiteral("--std=c++20"),
                 QStringLiteral("--library=qt"),
                 QStringLiteral("--quiet"),
                 QStringLiteral("-I"),
-                QStringLiteral("src"),
-                QStringLiteral("src")};
+                srcRoot,
+                srcRoot};
     if (tool == QLatin1String("clazy"))
         return {QStringLiteral("-checks=level1"),
                 QStringLiteral("-p"),
@@ -164,7 +214,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot) {
         return {QStringLiteral("check"), QStringLiteral("."),
                 QStringLiteral("--output-format=json")};
     if (tool == QLatin1String("bandit"))
-        return {QStringLiteral("-r"), QStringLiteral("src"),
+        return {QStringLiteral("-r"), srcRoot,
                 QStringLiteral("-f"), QStringLiteral("json"),
                 QStringLiteral("-ll")};
     if (tool == QLatin1String("semgrep"))
@@ -396,6 +446,22 @@ bool writeSarif(const QString &path,
         inv["exitCode"]            =
             (tr.status == QLatin1String("ok"))         ? 0 :
             (tr.status == QLatin1String("timed_out"))  ? 124 : 1;
+        // ANTS-1456(c) — distinguish "ran cleanly, zero findings"
+        // from "ran cleanly but emitted notifications" (typically
+        // config-load warnings that suppressed all findings). The
+        // SARIF spec keeps `executionSuccessful: true` either way,
+        // so the signal lives on `invocation.properties` for any
+        // caller that wants to detect "looks clean but isn't".
+        const QString rawForProp = rawByTool.value(it.key());
+        const bool hasNotifications =
+            (tr.status == QLatin1String("ok")) &&
+            !rawForProp.isEmpty() &&
+            tr.rawCount == 0;
+        if (hasNotifications) {
+            QJsonObject invProps;
+            invProps["executionSuccessfulWithConfigWarnings"] = true;
+            inv["properties"] = invProps;
+        }
         QJsonArray invs;
         invs.append(inv);
         run["invocations"] = invs;
@@ -586,6 +652,11 @@ RunResult runAudit(const RunRequest &req) {
         }
     }
 
+    // ── ANTS-1456 / ANTS-1464 — load project audit-config.json
+    // once per run so toolArgv() can override defaults.
+    const QJsonObject projectConfig =
+        loadProjectAuditConfig(canonProject);
+
     // ── INV-10 / resolve absolute paths for the requested tool list.
     QStringList wantedTools = req.tools;
     if (wantedTools.isEmpty()) wantedTools = kKnownTools();
@@ -718,7 +789,8 @@ RunResult runAudit(const RunRequest &req) {
         procs[tool] = proc;
         perToolTimer[tool].start();
         ++pending;
-        proc->start(it.value(), toolArgv(tool, canonProject));
+        proc->start(it.value(),
+                    toolArgv(tool, canonProject, projectConfig));
     }
 
     // Aggregate cap.

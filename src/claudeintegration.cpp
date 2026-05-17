@@ -2647,11 +2647,20 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject scopeProp;
                     scopeProp["type"] = "string";
                     scopeProp["description"] = QStringLiteral(
-                        "Audit scope. \"auto\" = full-tree minus "
-                        "exclusions (default); \"files\" = changed-"
-                        "since-fork-point; \"since-tag:<tag>\" = git "
-                        "diff vs <tag> (tag sanitised, INV-15); "
-                        "\"branch-diff\" = git diff main..HEAD.");
+                        "Audit scope. \"auto\" (default) = full-tree "
+                        "minus exclusions, BUT some tools degrade to "
+                        "changed-since-fork-point on a clean working "
+                        "tree (ANTS-1456 — RetroArch CC session saw "
+                        "a fresh no-diff tree return total_raw:0 + "
+                        "executionSuccessful:true, which reads as "
+                        "\"audit clean\" when the truth is \"nothing "
+                        "to audit\"). \"files\" = changed-since-fork-"
+                        "point only; \"since-tag:<tag>\" = git diff "
+                        "vs <tag> (tag sanitised, INV-15); "
+                        "\"branch-diff\" = git diff main..HEAD. For "
+                        "a deterministic full sweep, pick "
+                        "since-tag:<earliest-tag> rather than "
+                        "\"auto\".");
                     QJsonObject capProp;
                     capProp["type"] = "integer";
                     capProp["description"] = QStringLiteral(

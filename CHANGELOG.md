@@ -643,6 +643,50 @@ once real consumers hit it.
   hint, so a single bad skill can't burn through CPU + tokens
   unchecked.
 
+- **ANTS-1456 — `audit_run` flat-layout v1 usability fixes +
+  ANTS-1464 fold-in (project-side audit-config.json).** Four
+  landing-together changes against the RetroArch cross-session
+  report:
+  - **(a) `toolArgv()` auto-detects `src/`.** A missing `src/`
+    subdir no longer triggers cppcheck's silent-clean failure
+    mode (`raw_count:0` + `executionSuccessful:true` even though
+    the parser never engaged). Flat-layout projects now fall back
+    to `.` for `-I` and scan-root. cppcheck and bandit both
+    affected.
+  - **(b) `audit_run` descriptor explains `scope:"auto"`.** The
+    `tools/list` schema entry for `scope` now documents the
+    fork-point fallback and recommends `since-tag:<earliest-tag>`
+    for deterministic full sweeps — saves the "looks clean but
+    isn't" misread when the wrapper has no diff to act on.
+  - **(c) SARIF emit exposes config-warning signal.** Invocations
+    that exit `ok` with `rawCount == 0` AND non-empty raw output
+    (config-load warnings that suppressed all findings) now carry
+    `invocation.properties.executionSuccessfulWithConfigWarnings:
+    true`. `executionSuccessful` itself stays `true` (SARIF spec
+    compliance); the new property is what a caller wanting to
+    distinguish "clean zero" from "tool ran but config-broken"
+    reads.
+  - **(d) ANTS-1464 — project-side audit-config.json honoured.**
+    New `loadProjectAuditConfig()` probes
+    `<root>/.audit-config.json` (canonical dotfile) and
+    `<root>/docs/private/audit/audit-config.json` (RetroArch
+    convention). Schema: `{"<tool>":{"args":[...]}}` overrides
+    that tool's argv wholesale. Malformed JSON / missing file →
+    empty config, defaults used. Loaded once per `runAudit()`.
+  Spec `docs/specs/ANTS-1456.md`. Tests extend
+  `tests/features/mcp_audit_run/` with four invariants (AR-1/2
+  auto-detect, AR-3/4 project config, AR-5 SARIF property, AR-6
+  descriptor clarification). Pre-fix verified: 4/4 FAIL → 4/4
+  PASS after restore. 967/967 features green at landing.
+  **Layman:** the `audit_run` tool used to assume your project
+  keeps source under `src/` and used to silently report "all
+  clean" when its assumptions didn't fit. Three fixes: auto-detect
+  flat layouts, surface the misleading "auto" scope semantics in
+  the tool description, and add a SARIF property that says
+  "looks clean but config warnings suppressed everything". Plus
+  one fold-in: projects can now ship a `.audit-config.json` to
+  override per-tool flags without bypassing the wrapper.
+
 - **ANTS-1461 — `test_audit` synthesis polish: `file_index` path
   normalisation + `dimension_hints` clarification.** Two LOW-
   severity follow-ups from the RetroDB `/test-audit` batch-3 re-run
