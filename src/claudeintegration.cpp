@@ -1557,7 +1557,13 @@ void ClaudeIntegration::onMcpConnection() {
                     "in via section=). Envelope: {ok, bullets, path, "
                     "count, filter, section?, mode?} or "
                     "{ok, sections, path, filter, mode} for "
-                    "section_index, or {ok:false, error, code} on error.");
+                    "section_index, or {ok:false, error, code} on error. "
+                    "`bullets[].id` follows the shareable "
+                    "docs/standards/roadmap-format.md § 3.5.1 spec — "
+                    "any `[PROJ-NNNN]` token (letter-prefixed, "
+                    "dash-then-digits) is recognised, e.g. "
+                    "`[ANTS-1234]`, `[MAME-CURATOR-42]`, "
+                    "`[mame-curator-7]` (ANTS-1405).");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";

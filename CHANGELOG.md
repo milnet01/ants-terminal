@@ -606,6 +606,33 @@ once real consumers hit it.
   default) so Claude Code can detect when a tool's response shape
   has changed and adapt its parsing.
 
+- **ANTS-1405 — `roadmap_query` parser recognises non-Ants stable
+  IDs.** `RoadmapDialog::parseBullets`'s stable-ID regex widened
+  from `\[ANTS-(\d+)\]` to
+  `\[([A-Za-z][A-Za-z0-9_-]*-\d+)\]` and `rec.id` is now the full
+  captured token verbatim. For `[ANTS-NNNN]` the value is byte-
+  identical to pre-fix behaviour (INV-1). Uppercase external
+  (`[MAME-CURATOR-42]`, INV-2) and lowercase external
+  (`[mame-curator-7]`, INV-3) tokens are recognised; digit-leading
+  (INV-4) and no-dash-before-digits (INV-5) shapes are rejected;
+  single-letter (INV-6) and underscore-bearing (INV-7) prefixes
+  are tolerated; the ANTS-1428 `boldId` fallback path is
+  untouched (INV-8). `roadmap_query` MCP descriptor cites
+  `docs/standards/roadmap-format.md` § 3.5.1 and shows the
+  `[PROJ-NNNN]` shape so Claude knows what `bullets[].id` will
+  look like cross-project (INV-9). Source observation: a Claude
+  Code session on the MAME Curator project saw every bullet
+  return empty `id` because the parser was hardcoded to the Ants
+  `ANTS-` prefix, forcing fallback to raw ROADMAP.md reads
+  (cross-session-report-2026-05-15). Spec `docs/specs/ANTS-1405.md`;
+  tests `tests/features/roadmap_query_external_project_ids/`
+  (10 invariants, GUI-free, label `features;fast`).
+  888/888 features green at landing.
+  Layman: the roadmap-lookup tool used to recognise stable IDs
+  only on Ants Terminal itself. Now any project that follows the
+  shareable roadmap-format standard — uppercase or lowercase
+  prefix — gets the same first-class behaviour.
+
 - **ANTS-1416 — `session_memory`'s `Required` contract pinned by a
   baseline test.** The roadmap bullet asked to "hoist
   `session_memory`'s RcGate into the dispatcher's `Required`

@@ -1046,6 +1046,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_adapter_github_tasklist/test_adapter_render.cpp
                 # ANTS-1438 GFM-adapter bold-ID multi-token widening.
                 tests/features/gfm_adapter_bold_id_multitoken/test_gfm_adapter_bold_id_multitoken.cpp
+                # ANTS-1405 stable-ID regex widened to [PROJ-NNNN] shape.
+                tests/features/roadmap_query_external_project_ids/test_roadmap_query_external_project_ids.cpp
                 tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp)
     target_compile_definitions(test_dialogs PRIVATE
@@ -1058,6 +1060,9 @@ if(ANTS_TESTS)
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
         ROADMAPDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapdialog.h"
         ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
+        # ANTS-1405 — source-scrape against claudeintegration.cpp for the
+        # roadmap_query descriptor sentence (INV-9).
+        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
         ROADMAP_FORMAT_MD="${CMAKE_SOURCE_DIR}/docs/standards/roadmap-format.md"
         ROTATE_ROADMAP_SH="${CMAKE_SOURCE_DIR}/packaging/rotate-roadmap.sh"
         SRC_DIR="${CMAKE_SOURCE_DIR}/src"

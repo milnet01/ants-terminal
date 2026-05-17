@@ -7732,29 +7732,39 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   instance — broadens the ANTS-1396 fix to cover the
   absent-caller_cwd case, not just the mismatched case).
 
-- 📋 [ANTS-1405] **`roadmap_query` parser handles
-  non-Ants project stable-ID formats.** Cross-session
-  report 2026-05-15: the MAME Curator project (running
-  on the shareable `roadmap-format.md` v1 standard,
-  not the Ants-specific extensions) embeds stable IDs
-  inline in the headline as `**P##** [mame-curator-NNNN]
-  **Title**`. The current parser only extracts the Ants
-  `[ANTS-NNNN]` shape — every bullet on a non-Ants
-  project returns `"id": ""`, forcing the caller to fall
-  back to reading ROADMAP.md to recover the ID. Fix:
-  generalise the ID-extraction regex to accept
-  `\[([a-z][a-z0-9-]+-\d+)\]` immediately after either
-  the leading bullet dash or after a recognised
-  phase/emoji prefix. Also document in the tool
-  description that the parser follows the shareable
-  `docs/standards/roadmap-format.md` spec (which is
-  byte-identical across projects per the App-Build
-  templates).
-  **Layman:** the roadmap-lookup tool only finds the
-  stable IDs on Ants Terminal itself; on other projects
-  using the same roadmap format, every entry comes back
-  with an empty ID. Fix the parser to also recognise
-  `[project-NNNN]` patterns.
+- ✅ [ANTS-1405] **`roadmap_query` parser handles
+  non-Ants project stable-ID formats.** Shipped
+  2026-05-17 (Bundle E pull 1). `RoadmapDialog::parseBullets`
+  regex widened from `\[ANTS-(\d+)\]` to
+  `\[([A-Za-z][A-Za-z0-9_-]*-\d+)\]` and `rec.id` now
+  receives the full captured token verbatim — back-compat
+  byte-for-byte on `[ANTS-NNNN]` (INV-1), recognises
+  uppercase external (`[MAME-CURATOR-42]`, INV-2) and
+  lowercase external (`[mame-curator-7]`, INV-3) tokens,
+  rejects digit-leading (INV-4) and no-dash-before-digits
+  (INV-5) shapes, tolerates single-letter (INV-6) and
+  underscore-bearing (INV-7) prefixes, and leaves the
+  ANTS-1428 `boldId` fallback path untouched (INV-8).
+  `roadmap_query` MCP descriptor updated to cite
+  `docs/standards/roadmap-format.md` § 3.5.1 + the
+  `[PROJ-NNNN]` shape so Claude knows what
+  `bullets[].id` will look like cross-project (INV-9).
+  Spec: `docs/specs/ANTS-1405.md`. Tests:
+  `tests/features/roadmap_query_external_project_ids/`
+  (10 invariants, GUI-free, label `features;fast`).
+  Full suite 888/888 green.
+  Original finding (cross-session-report-2026-05-15):
+  the MAME Curator project (running on the shareable
+  `roadmap-format.md` v1 standard, not the Ants-specific
+  extensions) embeds stable IDs inline in the headline
+  as `[mame-curator-NNNN]`. The parser only extracted
+  the Ants `[ANTS-NNNN]` shape — every bullet on a
+  non-Ants project returned `"id": ""`, forcing the
+  caller to fall back to reading ROADMAP.md to recover
+  the ID.
+  **Layman:** the roadmap-lookup tool now finds stable
+  IDs on any project following the shareable format
+  standard, not just Ants Terminal.
   Kind: fix.
   Source: cross-session-report-2026-05-15 (other CC
   instance running on MAME Curator project).
@@ -8725,6 +8735,59 @@ template / mutate this state atomically" → movable. If it's
   itself ignore / clean up the dead ones.
   Kind: bugfix.
   Source: user-request-2026-05-14.
+
+### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
+
+- 📋 [ANTS-1453] **Per-tool "use this when..." selection hint on
+  every MCP descriptor.** Cross-session report 2026-05-17: a
+  Claude Code session on a Flask app (~25 K LOC) triaged a "Scan
+  Library doesn't pick up new games" bug. The keyword path was
+  direct enough that vanilla `Grep` + `Read` resolved it in ~10
+  tool calls; the assistant never reached for the Ants MCP tools
+  even though `mcp__ants__subsystem('rom scan')` and
+  `mcp__ants__workspace_search('Scan Library button wiring')`
+  could have collapsed the first two grep rounds into one call,
+  and `mcp__ants__last_audit_summary` might have surfaced that
+  this same area already had a security-audit history pointing at
+  a known hazard pattern. The user had to remind the assistant
+  mid-task to use Ants MCP. Two friction points:
+  - **Discovery.** Current tool descriptions describe *what* the
+    tool does, not *when to prefer it over Grep/Read*. A first-
+    time-user assistant scanning the `tools/list` reply has no
+    signal that, say, `subsystem` is the right opening move on a
+    "where does X live?" question vs. a `grep -rln`. Add a short
+    `selection_hint` field (or fold into the description) per
+    tool — one sentence per tool of the form "Prefer this over
+    Grep when …" / "Prefer Grep over this when …" so the
+    cost/benefit calculus is on the descriptor surface.
+  - **Cost-aware suggestion.** For a one-keyword bug, three grep
+    calls beat a `workspace_search` subagent dispatch (the
+    subagent always costs at least one round-trip plus its own
+    token budget). For a vague-location bug ("the launcher is
+    acting weird"), the subagent collapses what would be 6–10
+    grep+read rounds into one. The descriptor should make this
+    trade-off legible so the calling assistant picks the right
+    tool for the *shape* of the question, not just the keywords.
+    `mcp__ants__tool_info` already returns per-tool descriptor
+    slices — surfacing the selection-hint field through that path
+    too means the assistant can fetch it on demand instead of
+    paying for the full `tools/list` snapshot.
+  Implementation sketch: extend the descriptor finalisation loop
+  in `claudeintegration.cpp::tools/list` to inject a
+  `selection_hint` field per tool with a 1-sentence form-factor
+  cue; default empty (no hint) so existing tools opt in
+  individually. Bundle in with ANTS-1354 (descriptor version
+  field) as the same MCP-API-hygiene lane. Pairs with — and
+  partly funded by — `mcp__ants__tool_info` (ANTS-1399) which
+  already returns one descriptor at a time.
+  **Layman:** Claude doesn't always know when to reach for Ants's
+  smart project-search tools vs. plain Grep — the tool list tells
+  it *what* the tools do but not *when* to prefer one over
+  another. Add a short "use this when ..." line to each tool so
+  Claude can pick the right one for the shape of the question.
+  Kind: enhancement.
+  Source: cross-session-report-2026-05-17 (other CC instance on
+  RetroDB project).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 

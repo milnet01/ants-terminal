@@ -661,7 +661,15 @@ QString detectRoadmapFormat(const QStringList &lines) {
 QVector<RoadmapDialog::BulletRecord>
 RoadmapDialog::parseBullets(const QString &markdownText) {
     QVector<BulletRecord> out;
-    static const QRegularExpression rxId(QStringLiteral("\\[ANTS-(\\d+)\\]"));
+    // ANTS-1405 — widened from `\[ANTS-(\d+)\]` to accept any
+    // `[PROJ-NNNN]` token shape per the shareable
+    // docs/standards/roadmap-format.md § 3.5.1 spec. Captures the full
+    // token (e.g. "ANTS-1234", "MAME-CURATOR-42", "mame-curator-7"),
+    // which is assigned verbatim to rec.id below. Back-compat for
+    // ANTS bullets is preserved because the captured string matches
+    // the previous "ANTS-%1".arg(N) shape byte-for-byte.
+    static const QRegularExpression rxId(
+        QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*-\\d+)\\]"));
     static const QRegularExpression rxBold(QStringLiteral("\\*\\*([^*]+)\\*\\*"));
     // MultilineOption so `^` anchors at the start of any line within
     // the bullet body — Kind: / Lanes: / Layman: live as continuation
@@ -832,7 +840,10 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         // Extract structured fields from body.
         const auto idMatch = rxId.match(body);
         if (idMatch.hasMatch()) {
-            rec.id = QStringLiteral("ANTS-%1").arg(idMatch.captured(1));
+            // ANTS-1405 — capture group is the full token; assign
+            // verbatim. For `[ANTS-NNNN]` the value is byte-identical
+            // to the pre-1405 `"ANTS-%1".arg(\d+)` form.
+            rec.id = idMatch.captured(1);
         } else if (!boldId.isEmpty()) {
             // ANTS-1428 — multi-prefix bold-ID preservation.
             rec.id = boldId;
