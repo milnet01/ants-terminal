@@ -6675,6 +6675,37 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: testauditengine.
   Source: deferred from ANTS-1397 v1 (in-session 2026-05-17).
 
+- ✅ [ANTS-1451] **`test_audit_partition` picks up `build-asan/` MOC autogen files as tests.**
+  Observed live 2026-05-17: `test_audit_partition` on the Ants
+  Terminal repo returned 419 files with the first 15 (chunk c-001)
+  all sitting under `build-asan/.../moc_*.cpp` and
+  `mocs_compilation.cpp`. ctest framework correctly detected, but the
+  walker's exclusion list in `walkTestFiles` only filters
+  `/build/`, `/dist/`, `/node_modules/`, `/.venv/`, `/__pycache__/` —
+  the ASan and workstation preset builds (`build-asan/`,
+  `build-workstation/`) slip through.
+  
+  Fix scope:
+  - Generalise the build-dir exclusion to match `/build*/` prefix
+    (covers build/, build-asan/, build-workstation/, build-debug/,
+    any future preset).
+  - Add `_deps/`, `CMakeFiles/`, `autogen/` for belt-and-braces
+    coverage when ctest tests live in those subtrees themselves.
+  - Engine-side INV: `walkTestFiles` exclusion list is the single
+    source of truth; same set used for all framework families.
+  
+  Tests: extend tests/features/mcp_test_audit_trio/ — fixture tree
+  with `build-asan/test_foo.cpp` and `tests/test_real.cpp`; assert
+  only the latter is returned.
+  
+  Workaround until v2 ships: callers can pass
+  `scope:"path:tests"` to restrict the walk to the canonical test
+  directory.
+  **Layman:** When the test-audit MCP scans for test files, it walks into build directories and treats CMake-generated `.cpp` files as tests. The exclusion list misses build-tree variants.
+  Kind: fix.
+  Lanes: testauditengine.
+  Source: live-test 2026-05-17 (ANTS-1397 v1 first run).
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single

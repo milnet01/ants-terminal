@@ -441,6 +441,38 @@ adapter-mode dialect-detection will ride on next).
   auto-anchored bullets so you can tell them apart from
   hand-authored ones at a glance.
 
+### 🧪 `test_audit_*` trio fixes (in flight, 2026-05-17)
+
+Live-test follow-ups discovered immediately after the ANTS-1397 v1
+MCP trio shipped (commit 767e932). Each fix gets its own
+feature-conformance test on the canonical regression path.
+
+- **ANTS-1451 — `walkTestFiles` skips every `/build*/` preset +
+  CMake autogen subtrees.** First live `test_audit_partition` run
+  on the Ants Terminal repo returned 419 files with chunk c-001
+  populated entirely by `build-asan/.../moc_*.cpp` +
+  `mocs_compilation.cpp` because the exclusion list filtered the
+  literal `/build/` segment only — preset trees (`build-asan/`,
+  `build-workstation/`) and CMake autogen subtrees (`_deps/`,
+  `CMakeFiles/`, `autogen/`) slipped through. Replaced the
+  chained `if … || … || …` with one compiled
+  `QRegularExpression` covering
+  `/(node_modules|\.venv|__pycache__|build[^/]*|dist|_deps|CMakeFiles|autogen)/`
+  — single source of truth for the exclusion set across every
+  framework family. `walkTestFiles` exposed via
+  `TestAuditEngine::internal::` namespace for fixture-tree
+  regression coverage. Spec
+  `tests/features/test_audit_walk_exclusions/spec.md`; tests
+  `tests/features/test_audit_walk_exclusions/` (5 invariants
+  covering build presets, autogen subtrees, real-test
+  preservation, legacy-exclusion retention, single-regex source-
+  of-truth guard).
+  Layman: the test-audit MCP tool was walking into the
+  ASan / workstation build directories and treating CMake-
+  generated `.cpp` files as project tests; tightened the skip
+  list so it now ignores every `build-*` subtree variant and the
+  CMake `_deps/` / `CMakeFiles/` / `autogen/` plumbing.
+
 ### 🧵 Bundle F — Tasks chip tracker state drift (in flight, 2026-05-16)
 
 Sixth pull from the 0.7.92 bundle plan (`ROADMAP.md` § 0.7.92 →

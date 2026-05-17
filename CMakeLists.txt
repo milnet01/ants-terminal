@@ -878,6 +878,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_audit_run/test_mcp_audit_run.cpp
                 # ANTS-1397 v1 test_audit_* MCP trio.
                 tests/features/mcp_test_audit_trio/test_mcp_test_audit_trio.cpp
+                # ANTS-1451 walkTestFiles build-tree exclusions.
+                tests/features/test_audit_walk_exclusions/test_walk_exclusions.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.

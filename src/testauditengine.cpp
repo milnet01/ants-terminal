@@ -189,16 +189,18 @@ QStringList walkTestFiles(const QString &projectRoot,
         }
         QDirIterator it(scopeRoot, filters, QDir::Files,
                         QDirIterator::Subdirectories);
+        // ANTS-1451: single source of truth for build-tree + tooling
+        // exclusions. `build[^/]*` covers build/, build-asan/,
+        // build-workstation/, build-debug/, future presets. _deps/,
+        // CMakeFiles/, autogen/ cover ctest/CMake autogen subtrees
+        // that previously surfaced moc_*.cpp + mocs_compilation.cpp
+        // as tests.
+        static const QRegularExpression excludeRx(QStringLiteral(
+            "/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"
+            "|CMakeFiles|autogen)/"));
         while (it.hasNext()) {
             const QString p = it.next();
-            // Skip common exclusions.
-            if (p.contains(QLatin1String("/node_modules/")) ||
-                p.contains(QLatin1String("/.venv/")) ||
-                p.contains(QLatin1String("/__pycache__/")) ||
-                p.contains(QLatin1String("/build/")) ||
-                p.contains(QLatin1String("/dist/"))) {
-                continue;
-            }
+            if (excludeRx.match(p).hasMatch()) continue;
             if (!seen.contains(p)) {
                 seen.insert(p);
                 result.append(p);
@@ -277,6 +279,15 @@ const PartitionResult *lookupPartition(const QString &token) {
     QMutexLocker lk(&g_partitionCacheMutex);
     auto it = g_partitionCache.find(token);
     return (it == g_partitionCache.end()) ? nullptr : &it.value();
+}
+
+// ANTS-1451 — thin forwarder so the regression test can exercise the
+// exclusion list against a fixture tree without going through the
+// full partition() pipeline (which also requires a framework probe).
+QStringList walkTestFiles(const QString &projectRoot,
+                          const QStringList &testGlobs,
+                          const QString &scope) {
+    return ::TestAuditEngine::walkTestFiles(projectRoot, testGlobs, scope);
 }
 }  // namespace internal
 

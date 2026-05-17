@@ -156,6 +156,13 @@ FoldInResult    foldIn(const FoldInRequest &req);
 // Bounded; LRU-evicted to kPartitionCacheCap entries.
 namespace internal {
 const PartitionResult *lookupPartition(const QString &token);
+
+// Exposed for ANTS-1451 regression coverage. Walks the project tree
+// honouring the test_globs, with build-tree + tooling exclusions
+// baked in. `scope` accepts "auto", "path:<sub>", "files:<csv>".
+QStringList walkTestFiles(const QString &projectRoot,
+                          const QStringList &testGlobs,
+                          const QString &scope);
 }  // namespace internal
 
 }  // namespace TestAuditEngine
