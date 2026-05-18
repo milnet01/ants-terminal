@@ -975,6 +975,8 @@ if(ANTS_TESTS)
                 tests/features/cold_eyes_fold_in_freeform/test_cold_eyes_fold_in_freeform.cpp
                 # ANTS-1512 audit_run scoped-check mode.
                 tests/features/audit_run_scoped_check/test_audit_run_scoped_check.cpp
+                # ANTS-1446 audit_run compile_commands.json validation.
+                tests/features/audit_run_compile_commands_validation/test_audit_run_compile_commands_validation.cpp
                 # ANTS-1561 parseBullets multi-line bold headline span.
                 tests/features/roadmap_parser_multiline_bold_headline/test_roadmap_parser_multiline_bold_headline.cpp
                 # ANTS-1567 MCP tool prefix-tag bucket coverage.

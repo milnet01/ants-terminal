@@ -12,6 +12,79 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP synth-fence + audit_run path-validation fold-in — pull 16 (ANTS-1445 + 1446 + 1585, 2026-05-18)
+
+Three discrete fixes on the MCP audit / review surface, sourced from
+the cold-eyes 2026-05-17 loop-3 security findings (H-A + H-C) plus
+an in-session observation surfaced during Bundle G's pull 15.
+
+- **ANTS-1445 (security)** — prompt-injection fence sweep on
+  `*_synthesis_prompt` MCP verbs. `IndieReviewEngine::synthesisPrompt`
+  (`src/indiereviewengine.cpp:613`) now wraps every per-lane report
+  in `<lane_report lane="…">…</lane_report>`, escaping both the
+  inner `<lane_report` (open) and `</lane_report>` (close) markers
+  so a hostile reviewer report can't break out of its fence. The
+  `## Lane: <name>` heading is kept for human readability outside
+  the fence. Threat-model extras get the same treatment with the
+  `<threat_model>…</threat_model>` fence pair so the "quote, don't
+  narrate" contract is uniform across all third-party content
+  spliced into the prompt. `test_audit_synthesis_prompt` was
+  already fenced via ANTS-1397 INV-8; the cold_eyes verbs are
+  paths-only (no body splice) and need no fence. Spec
+  `docs/specs/ANTS-1445.md`; tests
+  `tests/features/indie_review_engine/` (3 new INVs: Inv9 fences
+  shape, Inv10 hostile `</lane_report>` payload, Inv11 hostile
+  `</threat_model>` payload).
+  **Layman:** when several reviewer reports get bundled into a
+  prompt for a summarising agent, a malicious report could slip
+  instructions through. The bundling step now wraps each report in
+  a label so the summariser knows to quote it rather than obey it.
+  Kind: security.
+  Source: cold-eyes loop 3 security H-A (2026-05-17).
+
+- **ANTS-1446 (security)** — `audit_run` `compile_commands.json`
+  argument-path validation. Clazy and clang-tidy follow every
+  `-I` / `-isystem` / `-iquote` / `-include` argument in the JSON
+  verbatim; a malicious `-include /home/user/.ssh/id_rsa` would
+  load the file into every TU and leak through audit samples.
+  `AuditRunner::internal::validateCompileCommands` now parses the
+  JSON before any process spawn, walks each entry's `arguments[]`
+  (or shell-split `command` string), and refuses with
+  `code:"compile_commands_escape"` if any include-style path
+  escapes the project root AND isn't under a hardcoded
+  system-include prefix (`/usr/include`, `/usr/lib`, `/opt`, …).
+  The gate only fires when clazy / clang-tidy are in the
+  resolved tool list. 32 MiB / 50K-entry size caps in place.
+  Spec `docs/specs/ANTS-1446.md`; tests
+  `tests/features/audit_run_compile_commands_validation/`
+  (14 INVs covering both forms of the args field, system-prefix
+  allowlist, hostile path rejection, control-char rejection,
+  relative-path resolution against the entry's `directory` field,
+  and the runAudit wiring).
+  **Layman:** when a developer clones a hostile repo and runs the
+  audit tool against it, the build-commands file could quietly
+  point the auditor at secret files outside the repo. The audit
+  now refuses to run when the build-commands file tries to look
+  outside the project tree or outside standard system paths.
+  Kind: security.
+  Source: deferred from ANTS-1351 § 9 Q4 (cold-eyes loop 3
+  security H-C 2026-05-17).
+
+- **ANTS-1585 (fix)** — `Finding` / `CheckResult` struct enum
+  members now carry default initialisers (`CheckType::Info`,
+  `Severity::Info`) at `src/auditengine.h:82,112`. GCC's
+  `-Wuninitialized` had been firing on every test build that
+  default-constructed a `Finding` or `CheckResult` and stored it
+  into a `QList` (`tests/features/roadmap_fold_in/`); the warning
+  was pre-existing, surfaced during Bundle G's build. Pure
+  declarative fix — no behaviour change, no extra test needed
+  (the implicit value matches what every existing call site was
+  manually filling in).
+  **Layman:** a compiler warning was firing on every test build —
+  added the missing default values so the warning goes away.
+  Kind: fix.
+  Source: in-session-2026-05-18 Bundle G observation.
+
 ### 🔌 MCP audit/review-engine-quality fold-in — pull 15 (ANTS-1339 + 1343 + 1344 + 1345, 2026-05-18)
 
 Bundle G of the 0.7.92 plan (`Audit / review engine quality`). Four

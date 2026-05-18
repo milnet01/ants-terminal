@@ -83,8 +83,8 @@ struct Finding {
     QString checkId;
     QString checkName;
     QString category;
-    CheckType type;
-    Severity severity;
+    CheckType type = CheckType::Info;
+    Severity severity = Severity::Info;
     QString source;
     QString file;
     int     line = -1;
@@ -113,8 +113,8 @@ struct CheckResult {
     QString checkId;
     QString checkName;
     QString category;
-    CheckType type;
-    Severity severity;
+    CheckType type = CheckType::Info;
+    Severity severity = Severity::Info;
     QString source;
     QList<Finding> findings;
     int omittedCount = 0;

@@ -6597,44 +6597,47 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: ants_audit_lib, CMakeLists.txt.
   Source: deferred from ANTS-1351 § 9 Q5 (cold-eyes loop 3 2026-05-17).
 
-- 📋 [ANTS-1445] **Prompt-injection fence sweep across `*_synthesis_prompt` MCP verbs.**
-  ANTS-1397 INV-8 adopts a `<chunk_report file="…">…</chunk_report>`
+- ✅ [ANTS-1445] **Prompt-injection fence sweep across `*_synthesis_prompt` MCP verbs.**
+  Shipped 2026-05-18 (Bundle pull 16). `IndieReviewEngine::synthesisPrompt`
+  now wraps every per-lane report in `<lane_report lane="…">…</lane_report>`,
+  with both `<lane_report` and `</lane_report>` markers escaped inside
+  the body so a hostile reviewer report can't break out of the fence.
+  Threat-model extras get the parallel `<threat_model>…</threat_model>`
+  fence. `test_audit_synthesis_prompt` was already fenced via ANTS-1397
+  INV-8; the cold_eyes verbs are paths-only (no body splice) and need
+  no fence. Spec `docs/specs/ANTS-1445.md`; tests
+  `tests/features/indie_review_engine/` (3 new INVs: shape + 2 hostile
+  payload regressions). 16/16 IndieReviewEngine tests + 1091/1091 full
+  suite green.
+  Original finding: ANTS-1397 INV-8 adopts a `<chunk_report file="…">…</chunk_report>`
   fence around per-chunk reports spliced into the synth prompt
   (defends against prompt-injection from hostile dep reports in
-  `reports_dir`).
-  
-  Same class of risk exists in `cold_eyes_synth` / `indie_review_synth`
-  which also splice disk-read reports into prompts. Audit each:
-  - Does the synth prompt fence per-report content?
-  - Are nested fence markers escaped?
-  - Is the prompt template "quote, don't narrate" third-party content?
-  
-  Add invariant + test to whichever specs need it. ANTS-1294's
-  `<ants_mcp_data>` wrap is the precedent; the synth case needs the
-  inner-level fence.
+  `reports_dir`). Same class of risk exists in
+  `indie_review_synthesis_prompt` which also splices reports into
+  prompts.
   **Layman:** When MCP tools splice user-controlled content into prompts handed to subagents, they must wrap it so the subagent can't be tricked by a malicious file. Apply the fence pattern everywhere.
   Kind: security.
   Lanes: cold_eyes_synth, indie_review_synth, test_audit_synth.
   Source: cold-eyes loop 3 security H-A (2026-05-17) — generalises to all synth verbs.
 
-- 📋 [ANTS-1446] **`audit_run` `compile_commands.json` argument-path validation.**
-  ANTS-1351 v1 only checks `compile_commands.json` existence at
-  projectRoot (cheap; if symlinked-out, clazy fails at link time and
-  the audit reports `not_runnable`). v2 deep validation:
-  
-  - Parse the JSON.
-  - Walk every `arguments[]` entry for `-I`, `-isystem`, `-include`,
-    `-iquote` paths.
-  - Run each through `PathValidation::validatePath` against project
-    root.
-  - Reject the audit run with `code:"compile_commands_escape"` if any
-    arg escapes.
-  
-  Risk under same-uid model: clazy currently reads/preprocesses
-  whatever paths the JSON points at; assistant-shown samples can
-  carry secrets from arbitrary paths reached via `-include`.
-  Acceptable v1 risk; revisit if same-uid attacker model proves
-  insufficient.
+- ✅ [ANTS-1446] **`audit_run` `compile_commands.json` argument-path validation.**
+  Shipped 2026-05-18 (Bundle pull 16). `AuditRunner::internal::validateCompileCommands`
+  now parses the JSON before any process spawn, walks each entry's
+  `arguments[]` (or shell-split `command` string), and refuses with
+  `code:"compile_commands_escape"` if any include-style path escapes
+  the project root AND isn't under a hardcoded system-include
+  prefix (`/usr/include`, `/usr/lib`, `/opt`, …). Helper boundaries:
+  `extractIncludeArgs` (split + glued `-I`/`-isystem`/`-iquote`/`-include`),
+  `splitCommandString` (shell-style fallback for the `command`
+  field), `isIncludePathAllowed` (policy decision with control-char
+  + backslash refusal). Gate fires only when clazy or clang-tidy
+  resolved. 32 MiB / 50K-entry caps. Spec `docs/specs/ANTS-1446.md`;
+  tests `tests/features/audit_run_compile_commands_validation/`
+  (14 INVs). 1091/1091 features green.
+  Original finding: ANTS-1351 v1 only checks `compile_commands.json`
+  existence; clazy reads/preprocesses whatever paths the JSON points
+  at; a malicious file could point at `/home/user/.ssh/id_rsa` and
+  surface the bytes in audit samples.
   **Layman:** When clazy reads compile_commands.json, it follows include paths inside the file. A malicious or misconfigured file could point clazy at directories outside the project. Validate the include paths.
   Kind: security.
   Lanes: audit_run, pathvalidation.
@@ -6799,8 +6802,22 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, claudeintegration, mcp_workspace_search.
   Source: external-cc-feedback-2026-05-17 (Vestige session).
 
-- 📋 [ANTS-1585] **`Finding` struct enum members lack default initializers — `-Wuninitialized` on uninitialised declarations.**
-  `src/auditengine.h:82` declares `CheckType type;` and `Severity severity;` without default initializers. GCC's `-Wuninitialized` fires whenever a caller writes `Finding f;` and the struct is then copied (e.g. into a QList). Surfaced during the ANTS-1343 build at `tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp:61` (`Finding f; QList&lt;Finding&gt; findings = {f, f};` triggers `-Wuninitialized` on `f`). Pre-existing; not introduced by Bundle G — verified by `git stash + rebuild`. Fix: add `= CheckType::Info;` and `= Severity::Info;` defaults to match the rest of the struct's `= -1` / `= false` style.
+- ✅ [ANTS-1585] **`Finding` struct enum members lack default initializers — `-Wuninitialized` on uninitialised declarations.**
+  Shipped 2026-05-18 (Bundle pull 16). `Finding` and `CheckResult`
+  in `src/auditengine.h:82,112` now default-initialise `CheckType
+  type = CheckType::Info` and `Severity severity = Severity::Info`,
+  matching the rest of the struct's `= -1` / `= false` style.
+  Pure declarative fix — no behaviour change; every call site
+  already explicitly filled in those fields. 1091/1091 features
+  green.
+  Original finding: `src/auditengine.h:82` declares `CheckType type;`
+  and `Severity severity;` without default initializers. GCC's
+  `-Wuninitialized` fires whenever a caller writes `Finding f;` and
+  the struct is then copied (e.g. into a QList). Surfaced during the
+  ANTS-1343 build at `tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp:61`
+  (`Finding f; QList<Finding> findings = {f, f};` triggers
+  `-Wuninitialized` on `f`). Pre-existing; not introduced by Bundle
+  G — verified by `git stash + rebuild`.
   **Layman:** A compiler warning has been quietly firing on every test build — fix the underlying default values so the warning goes away cleanly.
   Kind: fix.
   Lanes: auditengine.

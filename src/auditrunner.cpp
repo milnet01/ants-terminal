@@ -37,8 +37,10 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -640,6 +642,265 @@ bool writeHtml(const QString &path,
     return f.commit();
 }
 
+// ── ANTS-1446 — compile_commands.json include-path validation.
+//
+// Clazy / clang-tidy consume compile_commands.json via the `-p` flag
+// and follow every -I / -isystem / -include / -iquote arg verbatim,
+// reading those paths' contents into the audit run. A hostile or
+// misconfigured file with `-include /home/user/.ssh/id_rsa` directly
+// loads the named file into every TU; samples shown back in the audit
+// envelope can carry the file's bytes.
+//
+// v2 validation: walk the JSON, extract every include-style path from
+// each entry's `arguments[]` (or `command` string), and refuse the
+// audit run if any path escapes the project root AND isn't on the
+// system-include allowlist. System paths (`/usr/include`, `/usr/lib`,
+// `/opt`, …) are legitimate for any C/C++ project; only paths under
+// the user's home / outside the build sandbox raise the alarm.
+//
+// Same-uid trust model still applies (an attacker with the user's UID
+// already has access to anything in the user's tree); this catches
+// hostile-clone vectors where the JSON itself is the attack surface
+// before the user has noticed.
+//
+// Helpers below carry an `Impl` suffix and live in the anonymous
+// namespace (file-local); `internal::` wrappers exported via the
+// header delegate to them so the test bundle can drive them.
+
+// Hardcoded allowlist of safe prefixes for system include locations.
+// Order doesn't matter; the helper uses startsWith().
+const QStringList &kSystemIncludePrefixes() {
+    static const QStringList v = {
+        QStringLiteral("/usr/include"),
+        QStringLiteral("/usr/lib"),
+        QStringLiteral("/usr/lib64"),
+        QStringLiteral("/usr/local/include"),
+        QStringLiteral("/usr/local/lib"),
+        QStringLiteral("/usr/local/lib64"),
+        QStringLiteral("/usr/share"),
+        QStringLiteral("/opt"),
+        QStringLiteral("/lib"),
+        QStringLiteral("/lib64"),
+    };
+    return v;
+}
+
+// Extract include-style paths from a clang/gcc argument list. Handles
+// both `-I/abs/path` (glued) and `-I /abs/path` (split) forms; same
+// for -isystem / -iquote / -include. Returns the raw path strings.
+QStringList extractIncludeArgsImpl(const QStringList &args) {
+    QStringList out;
+    static const QStringList kFlags = {
+        QStringLiteral("-I"),
+        QStringLiteral("-isystem"),
+        QStringLiteral("-iquote"),
+        QStringLiteral("-include"),
+    };
+    for (int i = 0; i < args.size(); ++i) {
+        const QString &a = args.at(i);
+        bool matched = false;
+        for (const QString &f : kFlags) {
+            if (a == f) {
+                if (i + 1 < args.size()) {
+                    out << args.at(i + 1);
+                    ++i;
+                }
+                matched = true;
+                break;
+            }
+            if (a.startsWith(f) && a.size() > f.size()
+                // Don't match `-isystem-something-else`; the next char
+                // must be `/`, `.`, `~`, or an alnum for a glued arg.
+                && (a.at(f.size()) == QLatin1Char('/')
+                 || a.at(f.size()) == QLatin1Char('.')
+                 || a.at(f.size()) == QLatin1Char('~')
+                 || a.at(f.size()).isLetterOrNumber())) {
+                out << a.mid(f.size());
+                matched = true;
+                break;
+            }
+        }
+        Q_UNUSED(matched);
+    }
+    return out;
+}
+
+// Cheap shell-style splitter for compile_commands.json's `command`
+// string when no `arguments[]` array is present. Honours plain
+// whitespace and escaped quotes; good enough for the CMake-generated
+// shape, which is what we actually consume.
+QStringList splitCommandStringImpl(const QString &cmd) {
+    QStringList out;
+    QString cur;
+    bool inDquote = false;
+    bool inSquote = false;
+    for (int i = 0; i < cmd.size(); ++i) {
+        const QChar c = cmd.at(i);
+        if (c == QLatin1Char('\\') && i + 1 < cmd.size()) {
+            cur.append(cmd.at(i + 1));
+            ++i;
+            continue;
+        }
+        if (c == QLatin1Char('"') && !inSquote) {
+            inDquote = !inDquote;
+            continue;
+        }
+        if (c == QLatin1Char('\'') && !inDquote) {
+            inSquote = !inSquote;
+            continue;
+        }
+        if (c.isSpace() && !inDquote && !inSquote) {
+            if (!cur.isEmpty()) { out << cur; cur.clear(); }
+            continue;
+        }
+        cur.append(c);
+    }
+    if (!cur.isEmpty()) out << cur;
+    return out;
+}
+
+// Decide whether `includePath` is allowed under our policy.
+//   - Empty or control-char → reject (`reason` filled in).
+//   - Under project root → allow.
+//   - Starts with a system prefix → allow.
+//   - Else → reject as escape.
+// `entryDir` is the compile_commands.json entry's `directory` field
+// (used to resolve relative paths). Resolution uses lexical
+// concatenation + QDir::cleanPath rather than canonicalisation, so a
+// non-existent path still gets a verdict rather than slipping past.
+bool isIncludePathAllowedImpl(const QString &includePath,
+                              const QString &entryDir,
+                              const QString &projectRoot,
+                              QString *reason) {
+    if (includePath.isEmpty()) {
+        if (reason) *reason = QStringLiteral("empty include path");
+        return false;
+    }
+    for (QChar c : includePath) {
+        if (c.unicode() < 0x20 || c == QLatin1Char('\\')) {
+            if (reason) *reason = QStringLiteral(
+                "include path contains control char or backslash");
+            return false;
+        }
+    }
+
+    QString resolved = includePath;
+    if (!QDir::isAbsolutePath(resolved)) {
+        // Relative to the entry's `directory` field; fall back to
+        // projectRoot if `directory` is empty.
+        const QString anchor = entryDir.isEmpty() ? projectRoot : entryDir;
+        resolved = QDir(anchor).filePath(resolved);
+    }
+    resolved = QDir::cleanPath(resolved);
+
+    // If the path exists, canonicalise to resolve symlinks (catches
+    // /tmp/foo → ../../etc/passwd).
+    const QFileInfo fi(resolved);
+    if (fi.exists()) {
+        const QString canon = fi.canonicalFilePath();
+        if (!canon.isEmpty()) resolved = canon;
+    }
+
+    if (resolved == projectRoot
+     || resolved.startsWith(projectRoot + QLatin1Char('/'))) {
+        return true;
+    }
+    for (const QString &p : kSystemIncludePrefixes()) {
+        if (resolved == p
+         || resolved.startsWith(p + QLatin1Char('/'))) {
+            return true;
+        }
+    }
+
+    if (reason) {
+        *reason = QStringLiteral("path \"%1\" escapes project root and "
+                                 "is not under a system-include prefix")
+                      .arg(resolved);
+    }
+    return false;
+}
+
+// Validate every include-style path across every entry. Returns true
+// on success; on failure, `*offending` carries the first escape (form:
+// "{file: …, include: …, reason: …}") and the function short-circuits.
+constexpr qint64 kCompileCommandsMaxBytes = 32 * 1024 * 1024;  // 32 MiB
+constexpr int    kCompileCommandsMaxEntries = 50000;
+
+bool validateCompileCommandsImpl(const QString &canonProject,
+                                 QString *errReason) {
+    // Probe the same two locations clazy's default argv uses.
+    const QStringList candidates = {
+        canonProject + QLatin1String("/build/compile_commands.json"),
+        canonProject + QLatin1String("/compile_commands.json"),
+    };
+    QString chosen;
+    for (const QString &c : candidates) {
+        if (QFile::exists(c)) { chosen = c; break; }
+    }
+    if (chosen.isEmpty()) {
+        // No JSON → nothing to validate. Clazy will fail at runtime
+        // and surface `not_runnable`; that's the v1 behaviour.
+        return true;
+    }
+
+    QFile f(chosen);
+    if (!f.open(QIODevice::ReadOnly)) return true;  // unreadable → skip
+    if (f.size() > kCompileCommandsMaxBytes) {
+        if (errReason) *errReason = QStringLiteral(
+            "compile_commands.json exceeds %1 MiB cap")
+                .arg(kCompileCommandsMaxBytes / (1024 * 1024));
+        return false;
+    }
+    const QByteArray raw = f.readAll();
+    f.close();
+
+    QJsonParseError perr;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw, &perr);
+    if (perr.error != QJsonParseError::NoError || !doc.isArray()) {
+        // Malformed → can't validate; let clazy fail at runtime.
+        return true;
+    }
+    const QJsonArray arr = doc.array();
+    if (arr.size() > kCompileCommandsMaxEntries) {
+        if (errReason) *errReason = QStringLiteral(
+            "compile_commands.json exceeds %1-entry cap")
+                .arg(kCompileCommandsMaxEntries);
+        return false;
+    }
+    for (const QJsonValue &v : arr) {
+        if (!v.isObject()) continue;
+        const QJsonObject e = v.toObject();
+        const QString entryDir = e.value(QStringLiteral("directory"))
+                                  .toString();
+        QStringList args;
+        if (e.value(QStringLiteral("arguments")).isArray()) {
+            for (const QJsonValue &av :
+                 e.value(QStringLiteral("arguments")).toArray()) {
+                args << av.toString();
+            }
+        } else if (e.value(QStringLiteral("command")).isString()) {
+            args = splitCommandStringImpl(
+                e.value(QStringLiteral("command")).toString());
+        }
+        const QStringList incl = extractIncludeArgsImpl(args);
+        for (const QString &p : incl) {
+            QString reason;
+            if (!isIncludePathAllowedImpl(p, entryDir, canonProject,
+                                          &reason)) {
+                if (errReason) {
+                    const QString file = e.value(QStringLiteral("file"))
+                                          .toString();
+                    *errReason = QStringLiteral(
+                        "include path %1 (entry %2): %3")
+                            .arg(p).arg(file).arg(reason);
+                }
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 namespace internal {
@@ -693,6 +954,26 @@ void trimSamplesCascade(QHash<QString, ToolResult> &byTool,
         }
         if (totalSize() <= kEnvelopeHardCapBytes) return;
     }
+}
+
+// ANTS-1446 — wrappers exposing the anonymous-namespace validators
+// to the feature-conformance test bundle.
+bool validateCompileCommands(const QString &canonProject,
+                             QString *errReason) {
+    return validateCompileCommandsImpl(canonProject, errReason);
+}
+bool isIncludePathAllowed(const QString &includePath,
+                          const QString &entryDir,
+                          const QString &projectRoot,
+                          QString *reason) {
+    return isIncludePathAllowedImpl(includePath, entryDir,
+                                    projectRoot, reason);
+}
+QStringList extractIncludeArgs(const QStringList &args) {
+    return extractIncludeArgsImpl(args);
+}
+QStringList splitCommandString(const QString &cmd) {
+    return splitCommandStringImpl(cmd);
 }
 
 }  // namespace internal
@@ -842,6 +1123,28 @@ RunResult runAudit(const RunRequest &req) {
                     "audit_run: requested tool \"%1\" not runnable").arg(t);
                 return r;
             }
+        }
+    }
+
+    // ── ANTS-1446 — compile_commands.json include-path validation.
+    // Only relevant when clazy or clang-tidy is in the resolved tool
+    // list; both consume the JSON via `-p`. Cheap when absent (no
+    // file, no parse, no refusal). Refusal short-circuits the whole
+    // audit run with code:"compile_commands_escape" so the assistant
+    // gets a clear error instead of an opaque "samples carry secrets"
+    // outcome.
+    const bool usesCompileCommands =
+        toolAbsPath.contains(QStringLiteral("clazy"))
+     || toolAbsPath.contains(QStringLiteral("clang-tidy"));
+    if (usesCompileCommands) {
+        QString reason;
+        if (!validateCompileCommandsImpl(canonProject, &reason)) {
+            r.ok    = false;
+            r.code  = QStringLiteral("compile_commands_escape");
+            r.error = QStringLiteral(
+                "audit_run: compile_commands.json validation failed: %1")
+                    .arg(reason);
+            return r;
         }
     }
 

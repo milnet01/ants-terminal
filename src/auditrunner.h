@@ -96,6 +96,31 @@ void trimSamplesCascade(QHash<QString, ToolResult> &byTool,
 // Cap message text to 256 B (UTF-8); appends "…" when truncated.
 QString capMessage(const QString &msg);
 
+// ANTS-1446 — compile_commands.json include-path validation.
+//
+// Walks the JSON at <canonProject>/build/compile_commands.json (or
+// the project root as a fallback) for every entry's -I / -isystem /
+// -iquote / -include argument; refuses the call if any include path
+// escapes the project root AND isn't under a hardcoded system-include
+// prefix (/usr/include, /usr/lib, /opt, …). Returns true when the
+// file is absent, unreadable, or malformed — those cases let the
+// downstream tool surface its own diagnostic.
+//
+// Helper boundaries:
+//   - validateCompileCommands: end-to-end (reads the file).
+//   - isIncludePathAllowed:    single-path policy decision.
+//   - extractIncludeArgs:      args[] → include-style paths only.
+//   - splitCommandString:      shell-style split of the `command`
+//                              fallback field when arguments[] absent.
+bool validateCompileCommands(const QString &canonProject,
+                             QString *errReason);
+bool isIncludePathAllowed(const QString &includePath,
+                          const QString &entryDir,
+                          const QString &projectRoot,
+                          QString *reason);
+QStringList extractIncludeArgs(const QStringList &args);
+QStringList splitCommandString(const QString &cmd);
+
 }  // namespace internal
 
 }  // namespace AuditRunner
