@@ -12,6 +12,99 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP discoverability fold-in — pull 10 (ANTS-1561 + 1566 + 1567 + 1568 + 1578, 2026-05-18 late night)
+
+Five contained MCP improvements aimed at making the tool surface
+self-explanatory at pick time: one parser fix, one refusal-envelope
+sweep, two tool-description sweeps, and one "use FIRST" hint.
+
+- **ANTS-1561 (fix)** — `roadmap_query` `headline_oneline`
+  truncates to the `Layman:` continuation line on multi-line
+  headlines. `parseBullets`'s `rxBold` (lazy `(.+?)` introduced by
+  ANTS-1547) was missing `DotMatchesEverythingOption`, so `.` did
+  not match `\n`. Bullets whose bold headline soft-wraps across
+  two source lines (`**foo\n  bar.**`) had the regex skip the
+  multi-line span and fall through to the next `**Layman:**` token,
+  emitting `headline:"Layman:"` and violating the ANTS-1521 contract
+  for `headline_oneline`. Observed in-session this pull against
+  ANTS-1411/1412/1413/1414/1419/1420 (every bullet in
+  `ants-mcp-improvements-from-running-audit-indie-review-debt-sweep-
+  2026-05-14` with a two-line headline). Fix: add
+  `QRegularExpression::DotMatchesEverythingOption` to `rxBold` in
+  `src/roadmapdialog.cpp`. The lazy quantifier still terminates at
+  the first `**` after the opening pair, so single-line bullets
+  are unchanged. `rcHeadlineOneline` (`src/remotecontrol.cpp:181`)
+  already collapses the captured `\n` to a single space. Spec +
+  regression at `tests/features/roadmap_parser_multiline_bold_headline/`
+  (4 tests / 4 invariants — INV-3 is the regression case that
+  pre-fix returns `"Layman:"`; verified failing on pre-fix code).
+
+- **ANTS-1566 (fix)** — caller_cwd-related refusal envelopes now
+  carry an `example` JSON object so IPC-direct callers that bypass
+  the dispatcher's `caller_cwd_required` gate self-correct in one
+  round-trip. ANTS-1543 had already wired example into the central
+  dispatcher and RcGate `cwd_missing` paths; this pull extends the
+  pattern to `project_layout`'s `cwd_bad` refusal (per-tool path
+  when caller_cwd resolves but is not a directory) and
+  `cmdRoadmapLog`'s `missing_field` / `no_roadmap` paths (the
+  latter via a new code-gated branch inside the existing `rlErr`
+  lambda — `op:"append"` shape sample mirroring
+  `docs/standards/roadmap-format.md` § 3.5.3). Test invariants
+  INV-4 through INV-7 added to the existing
+  `mcp_refusal_envelope_hints` feature test (4 new invariants,
+  pure-function + source-scrape).
+
+- **ANTS-1567 (doc)** — tool description prefix-tag bucket
+  rename + coverage assertion. Music_Production + MAME Curator
+  2026-05-18 reports asked for grep-friendlier category labels in
+  the ANTS-1518 `[<kind>] ` prefix. Two renames in
+  `processTools::kindForName`:  `memory` → `mcp-state` (the
+  bucket is server-side per-cwd KV state, not "RAM/terminal
+  memory") and `caller_cwd_info` moves from `terminal` to `meta`
+  (it's a diagnostic verb, not a pty-state read). New feature
+  test `mcp_tool_prefix_tags` (3 tests / 3 invariants):
+  source-scrape on `mainwindow.cpp::registerToolProvider` extracts
+  every registered tool name and asserts each resolves to a
+  non-`"other"` bucket via either exact name match or family-
+  prefix match in `kindForName`. Future drift — a new tool wired
+  without a matching bucket branch — fails INV-3 loudly.
+
+- **ANTS-1568 (doc)** — etag-pattern usage memo appended to every
+  etag-supporting tool's description. MAME Curator 2026-05-18
+  (late evening) noticed the `etag_match` parameter is documented
+  on the input schema but no tool description suggests WHEN to use
+  it. Fix in `processTools`'s tools/list post-processing loop
+  (same site as the ANTS-1518 prefix injection): when
+  `isEtagSupportedTool(name)` returns true, append a one-line
+  "Etag tip: cache the returned `etag` field and pass it back via
+  `etag_match` on subsequent calls in the same session — saves a
+  full re-emit when the underlying file hasn't changed (ANTS-1499
+  '304 Not Modified' pattern)." Idempotent sentinel:
+  `!desc.contains("Etag tip:")` guards against double-append on
+  hot-reload. Affects the eight tools in `isEtagSupportedTool`
+  (project_layout, roadmap_query, file_outline,
+  last_audit_summary, get_environment, tab_list, subsystem,
+  git_state). New feature test `mcp_etag_tip_memo` (4 tests /
+  4 invariants, source-scrape).
+
+- **ANTS-1578 (doc)** — `caller_cwd_info` description mirrors the
+  existing `selection_hint`'s "Use this FIRST when…" trigger
+  phrase. RetroArch Bundle 63 (2026-05-17): caller only found the
+  verb via ToolSearch ranking — the description doesn't suggest
+  WHEN to reach for it. Description now carries: "Use this FIRST
+  when a project-scoped read returns `no_roadmap_loaded` or any
+  tool returns `cwd_mismatch` — confirms which project's data the
+  tool would have been operating on." Catches consumers that only
+  surface the main description (not the parallel `selection_hint`
+  field). New feature test
+  `mcp_caller_cwd_info_description_hint` (2 tests / 4 invariants,
+  source-scrape on the descriptor block). Pre-existing
+  `CallerCwdInfoVerb.SchemaListed` regression window widened from
+  2000 → 3000 bytes to accommodate the expanded description body.
+
+1001/1001 features green. Pre-fix verified that ANTS-1561's INV-2/3/4
+fail (INV-1 single-line baseline passes — no regression).
+
 ### 🔌 MCP API hygiene + token-saver fold-in — pull 9 (ANTS-1510 + 1512 + 1554, 2026-05-18 night)
 
 Three contained MCP improvements + cleanup of two stray `</invoke>`

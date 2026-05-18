@@ -10775,6 +10775,262 @@ template / mutate this state atomically" → movable. If it's
   Lanes: auditrunner, mcp-audit-run, mcp-token-reduction.
   Source: in-session-2026-05-18 (pull-8 dependency surfaced while sizing ANTS-1504).
 
+- ✅ [ANTS-1561] **`roadmap_query` `headline_oneline` truncates to the `Layman:` continuation line on multi-line headlines.**
+  Shipped 2026-05-18 (MCP discoverability fold-in pull 10). Root
+  cause: `parseBullets`'s `rxBold` (lazy `(.+?)` introduced by
+  ANTS-1547) was missing `DotMatchesEverythingOption`, so `.` did
+  not match `\n` and the regex skipped the multi-line span, falling
+  through to the next `**Layman:**` bold token. Fix: add the
+  option flag to `rxBold` in `src/roadmapdialog.cpp`. The lazy
+  quantifier still terminates at the first `**` after the opening
+  pair, so single-line bullets are unchanged. `rcHeadlineOneline`
+  (`src/remotecontrol.cpp:181`) already collapses the captured `\n`
+  to a single space. Spec + regression at
+  `tests/features/roadmap_parser_multiline_bold_headline/` (4 tests
+  / 4 invariants, GUI-free, label `features;fast`). Pre-fix
+  verified failing on INV-2/3/4 (INV-1 single-line baseline passes
+  — no regression).
+  Original finding (in-session observed against own ROADMAP.md):
+  `roadmap_query(status="active", include_body=true)` against the
+  `ants-mcp-improvements-from-running-audit-indie-review-debt-sweep-
+  2026-05-14` section returned `headline_oneline: "Layman:"` for
+  ANTS-1411/1412/1413/1414/1419/1420. ANTS-1521 advertised
+  `headline_oneline` as "newlines + whitespace runs collapsed to
+  a single space — safe to concatenate" — that contract was
+  violated for any bullet that has a Layman: line.
+  **Layman:** When a bullet's title spans two lines on disk, the
+  one-line summary field gets garbled — it shows the start of
+  the next sentence ("Layman:") instead of the actual title.
+  Confused this session's roadmap triage.
+  Kind: fix.
+  Lanes: mcp-roadmap-query, remotecontrol, tests.
+  Source: cross-session-report-2026-05-18 (in-session observed against own ROADMAP.md).
+
+- 📋 [ANTS-1562] **test-audit pre-pass regex strips C/C++ string literals + comments before pattern matching.**
+  Vestige `/test-audit` 2026-05-17 flagged `tests/test_async_driver.cpp:233,331` for `sleep_call` — but those lines are inside C++ raw-string literals holding a Python child-process script (`R"(import time\ntime.sleep(0.2)\n)"`). The C++ test code does not call `sleep` there. The chunk subagent caught and dismissed it, but the pre-pass waste tokens on every future audit. Fix: standard tokenisation step in `featurecoverage`'s pre-pass scanner — skip content inside `"..."`, `R"(...)"`, `'...'`, `//` to EOL, `/* ... */` ranges. Doesn't need to be perfect; "don't match inside obvious literal/comment ranges" covers ~95% of the noise. Composes with the existing comment/string filter the audit pipeline already runs at the late-stage filter step (auditdialog.cpp) — could reuse that scanner if it's pulled out into `auditengine`.
+  **Layman:** The first-pass regex scanner that the test-audit tool runs flags suspicious patterns even when they're inside string literals or comments — wastes subagent tokens dismissing false positives every audit. Skip those ranges.
+  Kind: fix.
+  Lanes: mcp-test-audit, featurecoverage, auditengine.
+  Source: cross-session-report-2026-05-17 (Vestige /test-audit Issue #6).
+
+- 📋 [ANTS-1563] **`test_audit_fold_in` `id_counter_failed` — fall back to O_CREAT|O_EXCL rename-locking + surface counter-file path in error.**
+  Vestige 2026-05-17 `/test-audit` hit `{code:"id_counter_failed", error:"test_audit_fold_in: allocateIds returned 0 of 27 (flock/IO failure)"}` on a single-session fold-in (no concurrent caller). The project was on local ext4/btrfs, no NFS. Workaround was a manual ROADMAP block with hand-assigned IDs. Two requested fixes: (a) on flock-EINTR / flock-IO failure, fall back to `O_CREAT | O_EXCL` rename-based locking before giving up; (b) surface the counter-file path in the error envelope so the operator can clear stale locks manually (`counter_path: "<path>"`); (c) document the per-project state location in the tool docstring. Forward-looking concern: with allocateIds(N) for N=27+, confirm `RoadmapFoldIn::insertBlock` handles 80+ items without truncation or ID reuse — a `max_items_per_fold` guard with paging is safer than silent truncation.
+  **Layman:** When the test-audit fold-in tool failed to grab a lock on the ID counter file, it gave up with a one-line error and didn't say where the lock file was. Two improvements: try a different lock strategy as a backup, and put the file path in the error so the user can clear it manually.
+  Kind: fix.
+  Lanes: mcp-test-audit, roadmapfoldin, remotecontrol.
+  Source: cross-session-report-2026-05-17 (Vestige /test-audit Issue #4).
+
+- 📋 [ANTS-1564] **`test_audit_synthesis_prompt` `mode="summary"` — emit per-dimension severity histograms.**
+  Vestige 2026-05-17 + RetroDB 2026-05-17 both asked for the same thing: in `mode="summary"`, alongside the existing `top_dimensions` hit counts and `file_index`, return a tiny per-dimension severity histogram — e.g. `assertions: {crit:0, high:1, med:7, low:18}`. Lets the orchestrator decide whether to dispatch `mode:"full"` for a specific dimension without reading every `c-NNN.md`. Today the orchestrator must open every chunk file to know "is there a CRIT anywhere?". The triage subagent already builds this synthesis; surfacing it in the MCP layer lets orchestrators skip the subagent entirely on small audits. Cap envelope size — keep the summary < 16 KiB even on 18-dim x 4-severity audits (72 ints + labels is trivial). Optional add: include `top_files_per_dimension: [{dim, files:[...]}]` so the synthesis is enough for "which file gets the next focused subagent" without re-reading.
+  **Layman:** The summary mode of the test-audit synthesis tool tells you which dimensions had findings, but not how severe — so a triage caller still has to open every chunk report to find criticals. Add a per-dimension severity histogram to the summary so triage decisions stay in one round-trip.
+  Kind: enhancement.
+  Lanes: mcp-test-audit, auditengine.
+  Source: cross-session-reports-2026-05-17 (Vestige Issue #3 + RetroDB Issue 1).
+
+- 📋 [ANTS-1565] **`workspace_search` 2-second rg wall budget hard-kills on mid-size projects — raise default or expose `timeout_sec`.**
+  Vestige 2026-05-18 localization design session: three `workspace_search` calls (different regex patterns scoped to `engine/**/*.{h,cpp}`) all returned `{ok:false, code:"rg_failed", error:"workspace-search: rg exceeded 2 s wall budget, hard-killed"}`. Fallback `Bash → rg -l --no-messages PATTERN -g '*.h' -g '*.cpp'` completed in 150-400 ms per query — so `rg` itself is fast; the wrapper is eating the budget on setup (gitignore parsing, glob expansion, dedup). Two fixes: (a) profile the pre-rg wrapper code in `remotecontrol`'s `workspace-search` handler — if setup eats > 500 ms on a 3700-file project, that's the real bug; (b) raise the default budget to 5 s (reasonable for projects > 2k files) and expose a `timeout_sec` caller arg with the same plumb-through guarantee `verify_changes` is supposed to honour. Also: improve the error response to hint at fallback — `"hint": "try narrower lane= or glob= filter, or fall back to Bash rg directly"`. Severity medium: the wrapper's dedup / `also_at` grouping (ANTS-1501) is genuinely valuable when it works.
+  **Layman:** When the workspace search tool runs on a medium-size project (~3700 files), it gives up after 2 seconds — but the underlying ripgrep call only needs 150-400 ms. The wrapper code is eating the budget on setup. Raise the limit and/or let the caller pass a longer one.
+  Kind: fix.
+  Lanes: mcp-workspace-search, remotecontrol, perf.
+  Source: cross-session-report-2026-05-18 (Vestige Issue #8).
+
+- ✅ [ANTS-1566] **`session_memory` refusal envelope — include `caller_cwd: "<your $PWD>"` example in error body.**
+  Shipped 2026-05-18 (MCP discoverability fold-in pull 10). The
+  central dispatcher `caller_cwd_required` envelope (which the MAME
+  Curator session hit) and the RcGate `cwd_missing` envelope
+  already carried the `example` block via ANTS-1543; pull 10
+  extended the pattern to two IPC-direct refusal sites that bypass
+  the dispatcher gate: `project_layout`'s `cwd_bad` refusal
+  (`src/remotecontrol.cpp` per-tool path when caller_cwd is not a
+  directory) and `cmdRoadmapLog`'s `missing_field` /
+  `no_roadmap` paths (the latter via a new code-gated branch
+  inside `rlErr` that attaches an `op:"append"` shape sample
+  mirroring `docs/standards/roadmap-format.md` § 3.5.3). Test
+  invariants INV-4 through INV-7 added to the existing
+  `mcp_refusal_envelope_hints` feature test (4 new invariants,
+  pure-function + source-scrape).
+  **Layman:** When the session-memory tool refuses for a missing
+  caller_cwd, the error message could include the exact field
+  shape the caller should pass — saves future sessions one tool-
+  call of reading the docs.
+  Kind: doc.
+  Lanes: mcp-error-envelopes, remotecontrol.
+  Source: cross-session-report-2026-05-18 (MAME Curator late session).
+
+- ✅ [ANTS-1567] **Tool description prefix tags — `[audit]/[cold-eyes]/[roadmap]/[git]/[workspace]/[mcp-state]` for grep-friendly browsing.**
+  Shipped 2026-05-18 (MCP discoverability fold-in pull 10). Two
+  label renames in `processTools::kindForName`: `memory` →
+  `mcp-state` (the bucket is server-side per-cwd KV state, not
+  generic "memory") and `caller_cwd_info` moves from `terminal`
+  to `meta` (diagnostic verb, not a pty-state read). New feature
+  test `mcp_tool_prefix_tags` (3 tests / 3 invariants): walks
+  every `registerToolProvider("<name>", …)` call in
+  `mainwindow.cpp` and asserts each resolves to a non-`"other"`
+  bucket via either exact name match or family-prefix match in
+  `kindForName`. Future drift — a new tool wired without a
+  matching bucket branch — fails INV-3 loudly. The other
+  category names in the report (audit / cold-eyes / indie-review
+  / test-audit / debt-sweep / roadmap / git / workspace / verify
+  / plan / terminal / meta) were already in place via ANTS-1518.
+  **Layman:** When a session sees the full list of 40+ Ants MCP
+  tools, they arrive as one big alphabetical block. Adding a one-
+  word prefix tag like `[audit]` or `[git]` to each tool's
+  description makes them easier to filter by category at pick
+  time.
+  Kind: doc.
+  Lanes: mcp-discoverability, remotecontrol.
+  Source: cross-session-reports-2026-05-18 (Music_Production + MAME Curator).
+
+- ✅ [ANTS-1568] **ANTS-1499 etag pattern — one-line usage memo in every supporting tool's description.**
+  Shipped 2026-05-18 (MCP discoverability fold-in pull 10).
+  Implemented at the same `processTools` post-processing site as
+  the ANTS-1518 `[<kind>] ` prefix injection: when
+  `isEtagSupportedTool(name)` returns true, append "Etag tip:
+  cache the returned `etag` field and pass it back via
+  `etag_match` on subsequent calls in the same session — saves a
+  full re-emit when the underlying file hasn't changed (ANTS-1499
+  '304 Not Modified' pattern)." Idempotent sentinel:
+  `!desc.contains("Etag tip:")` guards against double-append on
+  hot-reload. One spot vs. touching eight separate descriptor
+  blocks — stays in lockstep with `isEtagSupportedTool`'s
+  whitelist. New feature test `mcp_etag_tip_memo` (4 tests / 4
+  invariants, source-scrape).
+  **Layman:** The MCP supports a "skip the full response if
+  nothing changed" shortcut on several read tools, but no tool
+  description explains when a caller should use it. One sentence
+  per tool would unlock the pattern.
+  Kind: doc.
+  Lanes: mcp-discoverability, remotecontrol.
+  Source: cross-session-report-2026-05-18 (MAME Curator late evening).
+
+- 📋 [ANTS-1569] **`current_state` MCP aggregator — one-call session-start state recovery.**
+  MAME Curator 2026-05-18 (late evening): every session-start dance is currently a 3-4 read cascade — read `.claude/workflow.md` § 1 active item, then `roadmap_query(status="active")` to confirm bullet still 🚧, then read `docs/specs/<ID>.md` for chunk-table / next-gate, plus maybe `git_state(op="status")` for branch state and `last_audit_summary` counts. Aggregator verb: `current_state(caller_cwd)` returns `{active_bullet:{id, headline, section_slug, kind, lanes, status}, workflow_status_line:<verbatim header from .claude/workflow.md>, git_branch_state:{branch, ahead, behind, files_changed_count}, open_audit_findings_count:<int from last_audit_summary>}`. All backing data already cached / on disk — this is a de-dup of four parallel reads every session does. Pairs with ANTS-1499 etag pattern: aggregator emits one etag covering all four upstreams; on hit the entire bundle short-circuits to ~50 bytes. Optional: add `spec_path` if `active_bullet.id` resolves to a `docs/specs/<ID>.md` file.
+  **Layman:** Every session that picks up project work currently makes 3-4 separate MCP calls just to learn "what's the active task, what branch am I on, what audit findings exist." Bundle them into one `current_state` call.
+  Kind: implement.
+  Lanes: mcp-current-state, claudeintegration, remotecontrol, perf.
+  Source: cross-session-reports-2026-05-18 (MAME Curator x2 late + late evening sessions).
+
+- 📋 [ANTS-1570] **`cold_eyes_partition` summary mismatches `doc_paths` — trim summary to match.**
+  RetroDB 2026-05-17 cold-eyes review hit `{summary:"CLAUDE.md + README.md + ROADMAP.md + CHANGELOG.md (cross-cutting)", doc_paths:["CLAUDE.md","README.md"]}` — the summary names `ROADMAP.md` + `CHANGELOG.md` but the `doc_paths` array only includes the two files that actually exist (RetroDB uses lowercase `roadmap.md` and `data/changelog.yaml`). A downstream caller reading the summary thinks the lane covers the named files; the brief block won't include them. Fix: build the summary from `doc_paths` after the file-existence filter runs, not from the canonical contract-name list. Side effect: when no contract docs match (sparse_partition), the summary should explicitly say "0 contract docs found" rather than naming files that aren't there. Pairs with ANTS-1411/1412 (cold_eyes_partition spec-lane / partition.json override hardening) — same engine module.
+  **Layman:** The cold-eyes partition tool's "summary" field names files (ROADMAP.md, CHANGELOG.md) that the actual lane doesn't include — because the project uses lowercase filenames the partition didn't match. Fix: build the summary from the files that actually made it into the lane, not from the canonical-name list.
+  Kind: fix.
+  Lanes: mcp-cold-eyes, coldeyesengine.
+  Source: cross-session-report-2026-05-17 (RetroDB Issue 7).
+
+- 📋 [ANTS-1571] **`cold_eyes_partition` — widen default doc-tree partition beyond `docs/specs/`.**
+  RetroDB 2026-05-18 full `/cold-eyes` documentation sweep: default partition returned 1 lane (`contracts`: CLAUDE.md + README.md + roadmap.md) on a 21-file doc tree of ~10K lines. The 95% of docs dropped include `docs/specs/` (8 specs, 3.9K lines), `docs/RETRODB_DESIGN_STANDARDS.md` (1.3K lines), `docs/STANDARDS_ADDENDUM.md`, `docs/ROM_NAMING_STANDARD.md`, `docs/PROXY-DEPLOY.md`, `docs/theme_contrast.md`, plus `CONTRIBUTING.md`/`SECURITY.md`/`LEGAL.md` at root. The `sparse_partition_hint` honestly named the missing dirs but only suggested two (`standards/`, `decisions/`). Three fixes: (a) plumb `project_layout`'s `discovered` array into `cold_eyes_partition` as one-lane-per-spec (ANTS-1411 covers the filename-shape rigidity in spec-lane discovery; this is the broader "what counts as a lane" question); (b) treat any root-level `docs/*.md` >100 lines whose filename matches `*STANDARD*|*DESIGN*|*STYLE*|*GUIDE*` as a "standards" lane; (c) treat `CONTRIBUTING.md`, `SECURITY.md`, `LEGAL.md` at project root as first-class root contracts and fold into the contracts lane. Plus: when `sparse_partition=true`, include a `next_step_hint` field naming `cold_eyes_brief`'s ad-hoc `doc_paths[]` escape hatch.
+  **Layman:** When the cold-eyes review tool partitions a project's docs into lanes, it currently only finds the canonical `CLAUDE.md`/`README.md`/`ROADMAP.md`/`CHANGELOG.md`. On a 21-file doc tree it returned ONE lane with two files — 95% of the docs got dropped. Widen the discovery to cover spec dirs, standards-named files, and root community contracts.
+  Kind: enhancement.
+  Lanes: mcp-cold-eyes, coldeyesengine, projectlayoutengine.
+  Source: cross-session-reports-2026-05-17/05-18 (RetroDB Issue 1 + Observation A).
+
+- 📋 [ANTS-1572] **`cold_eyes_cross_doc_diff` — accept inline `reports[]` array (mirror `indie_review_corroborate`'s shape).**
+  RetroDB 2026-05-17 + Music_Production 2026-05-18: the `/cold-eyes` skill bundles agent reports inline in the orchestrator's context (one report per `Agent` tool result), NOT on disk. `cold_eyes_cross_doc_diff` requires `reports_dir` pointing at a directory of `.md` files — reachable from `/indie-review` (which writes reports to disk) but not from `/cold-eyes`. Fix: either (a) accept an inline `reports: [{lane, body}, …]` array alongside `reports_dir` (mirrors `indie_review_corroborate`'s already-implemented shape), OR (b) make the `/cold-eyes` skill write reports to `<project>/.cold-eyes-reports/` so the tool has something to read. Option (a) is the cheap fix; option (b) requires a skill-side change. ANTS-1414 (refactor cross-doc-diff into a generic primitive) would naturally include this. Pairs with ANTS-1571 (sparse_partition next_step_hint).
+  **Layman:** The cold-eyes cross-doc-diff tool only accepts reports from a directory on disk, but the cold-eyes skill keeps them in memory. Either let the tool accept an inline array of reports, or have the skill save its reports to disk first.
+  Kind: enhancement.
+  Lanes: mcp-cold-eyes, coldeyesengine.
+  Source: cross-session-reports-2026-05-17/05-18 (RetroDB Issue 4 + Music_Production).
+
+- 📋 [ANTS-1573] **`cold_eyes_fold_in` — loosen `[PROJ-NNNN]` ID-format requirement for non-emoji-bullet roadmaps.**
+  RetroDB 2026-05-17 cold-eyes: skipped `cold_eyes_fold_in` because RetroDB's roadmap.md uses a `#### Pass N.M …` convention (now adapter-readable since ANTS-1530), not `[PROJ-NNNN]` IDs. The fold-in tool's required `actionable: [{file, line, citing_lanes[]}]` shape and "release-block heading" pattern assume the emoji-bullet roadmap format the writer would emit. Two options: (a) document the format requirement up front in the tool description so callers can short-circuit when their project doesn't match; (b) accept an explicit `release_block_heading` (free-text, no auto-allocate) + `skip_id_allocation: true` mode that appends raw bullets under that heading. Pairs with ANTS-1530 (read-side adapter for Pass-heading roadmaps) — the write-side analogue. Also pairs with `roadmap_log`'s op:flip already supporting GFM-task-list and Ants-v1 (ANTS-1441) — fold-in lags behind on shape-flexibility.
+  **Layman:** The cold-eyes fold-in tool only knows how to write into roadmaps that use the `[PROJ-NNNN]` numbered-ID format. For projects using a different naming convention, the tool refuses and the user has to hand-edit. Either document the limit up front, or add a mode that appends bullets without auto-allocating IDs.
+  Kind: enhancement.
+  Lanes: mcp-cold-eyes, coldeyesengine, roadmapfoldin.
+  Source: cross-session-report-2026-05-17 (RetroDB Issue 5).
+
+- 📋 [ANTS-1574] **`project_layout` — case-insensitive filename probe + `data/changelog.yaml` + `docs/*STANDARD*.md` fallbacks.**
+  RetroDB 2026-05-17 cold-eyes: `project_layout(caller_cwd=…)` returned all-empty fields despite `roadmap.md` (lowercase, 3107 lines, 176 KB), `data/changelog.yaml`, `docs/RETRODB_DESIGN_STANDARDS.md` all existing. Per ANTS-1493 the probe set was widened to fork-only doc trees, but case-insensitive filename matching wasn't part of that. Three fixes: (a) case-insensitive probe — `roadmap.md` should resolve under the `roadmap` slot, same for `changelog.md`; (b) honour `data/changelog.yaml` as a valid changelog format alongside `CHANGELOG.md` (many projects keep structured-YAML changelogs the app reads at runtime); (c) name-based standards fallback — `docs/*STANDARD*.md` / `docs/*DESIGN*.md` / `docs/*STYLE*.md` should populate `standards_dir` when `docs/standards/` doesn't exist. Optional add: return a `discovered: [{kind, path}]` array alongside the canonical-named slots so callers can see what was found vs probed. Cheap to probe; null result on a normal project. Composes with ANTS-1571 (cold_eyes_partition's downstream consumption of project_layout's discovery).
+  **Layman:** The project-layout discovery tool only matches files with exact canonical names — `ROADMAP.md` capitalised, never lowercase. Projects that use `roadmap.md` or keep changelogs as `data/changelog.yaml` or standards files as `docs/RETRODB_DESIGN_STANDARDS.md` all silently return empty fields. Loosen the match.
+  Kind: enhancement.
+  Lanes: mcp-project-layout, projectlayoutengine.
+  Source: cross-session-report-2026-05-17 (RetroDB Issue 2 + 2026-05-18 Observation A composability).
+
+- 📋 [ANTS-1575] **`project_layout` — emit `roadmap_found: bool` top-level (or `roadmap: null`) when probe found nothing.**
+  RetroArch 2026-05-18 (Bundle 64): `project_layout(caller_cwd=…)` returned `{ok:true, cached:true, roadmap:{path:"", size_bytes:0, ...}, changelog:{path:"", ...}}` — `ok:true` reads as success but every interesting field is an empty string. A caller that only checks `ok` and tries `.split("/").pop()` on `roadmap.path` gets an empty string. Two ergonomic options: (a) top-level `roadmap_found: bool` (and `changelog_found`, `standards_found`, etc.) so a single keyword tells the caller whether to do anything; (b) emit `roadmap: null` (or omit the key) when nothing was probed. Option (a) is more discoverable; option (b) matches the "null means absent, omit empty values" Bundle 69 fix request below (ANTS-1576). Pick one and apply consistently across `project_layout`'s envelope. Recurring across Bundle 62/64 — third RetroArch session reporting this shape confusion.
+  **Layman:** The project-layout tool returns `ok:true` even when it didn't find anything — every path field is an empty string. A caller that trusts `ok:true` and tries to use those paths gets nothing useful. Add a clear "was a roadmap found at all" boolean to the response.
+  Kind: fix.
+  Lanes: mcp-project-layout, projectlayoutengine.
+  Source: cross-session-reports-2026-05-17/05-18 (RetroArch Bundles 62/64).
+
+- 📋 [ANTS-1576] **`last_audit_summary` hardening — scope-aware picker + git HEAD/branch capture + `rule_ids[]` filter + null-or-omit for empty fields.**
+  RetroArch Bundles 66/67/69 surfaced four `last_audit_summary` improvements that compose: (1) **scope-aware picker** — Bundle 69 hit a "0 errors, 0 warnings" envelope picking `cppcheck-b68-ozone-postfix.xml` (single-file rerun) over 25+ broader cache files; surface `scope: "single_file"|"narrow"|"broad"` + `narrow_run_files: [...]` + `narrow_run_warning` when picking narrow; prefer broadest-scope file (largest XML or non-`-postfix` suffix) when ties on recency; (2) **git HEAD/branch capture** — Bundle 67 had to cross-reference findings against two branches to know which one the audit ran on; record `git rev-parse HEAD` + `git symbolic-ref HEAD` at scan completion as sidecar JSON next to the SARIF/XML; envelope echoes `branch: "local/audit-2026-04", commit: "1b400e930a"`; (3) **`rule_ids[]` filter** — Bundle 66 wanted `last_audit_summary({rule_ids:["autoVariables","duplicateExpressionTernary"]})` to extract specific FP-class subsets without separate grep; replaces two grep calls with one structured response; (4) **null vs empty string** — Bundle 69 noted `run_at: ""` and `html_path: ""` should be `null` (or omitted) when the field genuinely has no value; "always emit every key as a string" makes Optional-vs-missing harder client-side. Apply consistently across `last_audit_summary`'s envelope.
+  **Layman:** Four related improvements to the "what did the last audit find" tool: (1) warn when the cached file is a narrow single-file rerun rather than a full project sweep; (2) record which git branch the audit ran on; (3) let callers filter by specific rule names; (4) use `null` not empty-string when a field genuinely has no value.
+  Kind: enhancement.
+  Lanes: mcp-last-audit-summary, auditengine, auditrunner.
+  Source: cross-session-reports-2026-05-18 (RetroArch Bundles 66 + 67 + 69).
+
+- 📋 [ANTS-1577] **`audit_run` — scoped-check mode `(scope=[…], tool=…, checks=[…])` for narrow tree-wide sweeps.**
+  RetroArch Bundle 64 (2026-05-18): the work was a tree-wide `clang-tidy --checks='-*,bugprone-integer-division'` sweep over 8 menu+gfx files — a recurring pattern as Tier-3 tidy entries get worked through. `audit_run` today is shaped around the full audit pipeline (cppcheck + clang-tidy + clazy + ...) and doesn't have an obvious "narrow scope: one check, N files" mode. Caller fell back to direct Bash. Add a scoped invocation: `audit_run({scope: ["menu/drivers/", "gfx/"], tool: "clang-tidy", checks: ["bugprone-integer-division"]}) → {warnings: [{file, line, col, rule, message}, ...]}`. Lets the MCP cache + structure the results (which Bash output doesn't). Useful for tree-wide style/idiom sweeps (e.g. tree-wide `cppcheck --enable=style` runs). Composes with ANTS-1504 (since-last-run mode) and ANTS-1555 (per-project `.audit_cache/` infra) — same audit-runner module.
+  **Layman:** When a session wants to run just one clang-tidy check across a subset of files (instead of the full audit suite), there's no good way — you have to use Bash directly. Add a scoped mode where the caller picks one tool, one or two checks, and a few scope directories.
+  Kind: enhancement.
+  Lanes: mcp-audit-run, auditrunner.
+  Source: cross-session-report-2026-05-18 (RetroArch Bundle 64).
+
+- ✅ [ANTS-1578] **`caller_cwd_info` description — add "Use FIRST when `no_roadmap_loaded` / `cwd_mismatch` fires" hint.**
+  Shipped 2026-05-18 (MCP discoverability fold-in pull 10). The
+  pre-existing `selection_hint` already named the trigger phrase;
+  pull 10 mirrors the same sentence into the main `description`
+  field so callers that only see the description text (not the
+  parallel `selection_hint` surface) still find the verb. The
+  hint reads: "Use this FIRST when a project-scoped read returns
+  `no_roadmap_loaded` or any tool returns `cwd_mismatch` —
+  confirms which project's data the tool would have been
+  operating on." New feature test
+  `mcp_caller_cwd_info_description_hint` (2 tests / 4 invariants,
+  source-scrape on the descriptor block). The pre-existing
+  `CallerCwdInfoVerb.SchemaListed` regression window widened from
+  2000 → 3000 bytes to accommodate the expanded description body.
+  **Layman:** The diagnostic tool `caller_cwd_info` lets a caller
+  check which project Ants would route their call to — but its
+  description doesn't say WHEN a caller should reach for it. Add
+  a "use this first when X happens" line so it's findable by
+  future-Claudes hitting the same errors.
+  Kind: doc.
+  Lanes: mcp-discoverability, claudeintegration.
+  Source: cross-session-report-2026-05-17 (RetroArch Bundle 63).
+
+- 📋 [ANTS-1579] **`verify_changes` — confirm `timeout_sec` plumbs through end-to-end + name tool-vs-transport timeout source in the error envelope.**
+  Vestige 2026-05-17 `/test-audit` called `verify_changes({gates:["build"], timeout_sec:900})` and got `MCP error -32000: Ants MCP transport: timed out`. The build was near-empty (16 ninja steps), completed via Bash → cmake --build in well under a minute. ANTS-1525 added a `tool_timed_out:true` + `timed_out_gate` + `per_gate_timeout_sec` + `timeout_hint` envelope for the tool-side timeout — but the caller's symptom was the transport-side `MCP error -32000`. Three follow-up tasks: (a) verify end-to-end that the caller-supplied `timeout_sec` actually reaches the inner gate runner — write a feature test asserting a 5-second `timeout_sec` gives a 4-second-running gate enough headroom to complete; (b) when the transport-side timeout fires (client closes the socket before any envelope arrives), the caller has no MCP-side envelope at all — document that asymmetry loudly in the tool description and suggest fallback to `Bash → cmake/make` for builds > 60 s; (c) consider exposing a tool-side `streaming-progress` ping every N seconds so the transport stays alive on long builds. ANTS-1525 already names the transport timeout as distinct in the description; this is the next-step verification + ergonomic polish.
+  **Layman:** When the build-verify tool times out, the user sees a generic "MCP transport timed out" with no clue whether the tool's own timeout fired (which would have been informative) or the client closed the socket too early (which means just run the build via Bash). Two clarifications and a possible "keep-alive ping" so long builds don't hit the transport cap.
+  Kind: fix.
+  Lanes: mcp-verify-changes, remotecontrol, tests.
+  Source: cross-session-report-2026-05-17 (Vestige /test-audit Issue #1).
+
+- 📋 [ANTS-1580] **Test-audit resume-an-audit pattern — document follow-up session entry path + partition_token discovery via `session_memory`.**
+  MAME Curator 2026-05-18 (evening fold-in session): the use-case "audit was run earlier today, working tree has in-progress fixes, deferred items in ROADMAP, fold those in" has no first-class MCP entry point. No `test_audit_resume(latest=True)`, no `partition_token` discovery via `session_memory`, no documented "this is what a follow-up session does" recipe. The session worked around it by re-reading ROADMAP.md and verifying each FP## against current code with `Read`/`grep`. Two follow-ups: (a) document the resume recipe in the `test_audit_partition` description: "After a deferred audit, call `session_memory(op:get, key:test_audit_partition_token)` to fetch the prior run's token; the existing partition file at /tmp/<token>/ lives for N days"; (b) add `test_audit_resume(partition_token | latest=True)` that re-hydrates partition state from `.test-audit-reports-N/` so the orchestrator can pick up where it left off. Composes with ANTS-1513 (`test_audit_recheck <finding-id>` — verify cited file:line still contains the smell) — same "deferred-audit pickup" workflow. Composes with ANTS-1555 (per-project `.audit_cache/`) — the resume state would live in the same per-project dir.
+  **Layman:** When a test-audit session is partially completed and the user picks it up days later, there's no clean way for the new session to "resume where the last left off." Today they have to re-read ROADMAP and verify findings by hand. Document the recipe, and ideally add a resume verb.
+  Kind: doc.
+  Lanes: mcp-test-audit, mcp-state, sessionmemoryengine.
+  Source: cross-session-report-2026-05-18 (MAME Curator evening fold-in).
+
+- 📋 [ANTS-1581] **Wire `/audit`, `/cold-eyes`, `/indie-review`, `/test-audit` skills to call the matching `mcp__ants__*` tool quartets.**
+  MAME Curator + Music_Production + RetroDB all flagged it: the four review skills at `~/.claude/skills/{audit,cold-eyes,indie-review,test-audit}/SKILL.md` orchestrate entirely via `Agent` subagents + inline `Bash`/`Read`, never calling the matching `mcp__ants__{cold_eyes,indie_review,test_audit}_{brief,partition,synthesis_prompt,fold_in}` tools that exist on the MCP. Naming parity implies the MCP tools are canonical but the reality is they're a parallel API for non-CC callers. Two-stage fix: (a) **skill-side** — update each SKILL.md to call the MCP partition for step "chunking", the MCP synthesis_prompt for step "synthesis brief", the MCP fold_in for step "ROADMAP write" — centralises chunk_size defaults, audit-allowlist discovery, and ROADMAP fold-in formatting across all four skills. (b) **MCP-side discoverability fallback** — until (a) lands, add a one-line note to each `*_brief`/`*_partition`/`*_fold_in`/`*_synthesis_prompt` tool's description: "Not invoked by the matching slash-command skill — for non-CC consumers building their own pipelines." Sets expectation when a Claude reads the deferred-tool list. Also: decide whether `mcp__ants__roadmap_log` is the canonical fold-in write path, and if so, update `~/.claude/skills/_shared/roadmap-fold-in.md` to call it.
+  **Layman:** The four code-review skills (audit / cold-eyes / indie-review / test-audit) currently do their work by spawning sub-agents and editing files directly — none of them call the matching Ants MCP tools that look purpose-built for them. Update each skill to use the MCP tools where they fit; that centralises chunk sizes, allowlist discovery, and roadmap formatting across all four.
+  Kind: refactor.
+  Lanes: mcp-discoverability, skills-integration, roadmapfoldin.
+  Source: cross-session-reports-2026-05-18 (MAME #1 + Music_Production #1 + RetroDB).
+
+- 💭 [ANTS-1582] **Investigate consolidating `cold_eyes_*` / `indie_review_*` / `test_audit_*` MCP surfaces into a single `review_*` quartet with `kind:` discriminator.**
+  MAME Curator + Music_Production both flagged the three near-parallel review-tool surfaces — each with `_brief` / `_partition` / `_synthesis_prompt` / `_fold_in` / (some) `_cross_doc_diff` / `_corroborate` quartets. Today: 15 MCP tools across three families. Proposal: collapse into one `mcp__ants__review_{brief,partition,synthesis_prompt,fold_in,cross_doc_diff,corroborate}` sextet plus a `kind: "cold_eyes" | "indie" | "test_audit"` discriminator on every call. Compresses surface 3× and removes the "which family matches my task?" guess. Marked `considered` not `planned` because (a) needs a spec-first design pass — internal engines differ in subtle ways (cold_eyes partitions docs, indie_review partitions subsystems, test_audit partitions test files); (b) timing-wise, ANTS-1411..1414 are mid-flight inside the existing family namespace — convergence after those land, not during; (c) backwards-compat: the existing 15 names would need a one-release deprecation shim. Composes with ANTS-1414 (cross_doc_diff refactor — natural starting point) and ANTS-1581 (skill wiring — would update skills to call `review_*` from day one).
+  **Layman:** There are three near-parallel families of review tools on the MCP (cold-eyes, indie-review, test-audit) — 15 tools total. They all do similar work in subtly different ways. Worth investigating whether they could be one family with a "kind:" discriminator, halving the tool surface and ending the "which one matches my task" guess.
+  Kind: research.
+  Lanes: mcp-cold-eyes, mcp-indie-review, mcp-test-audit, research.
+  Source: cross-session-reports-2026-05-18 (MAME #2 + Music_Production #2).
+
+- 📋 [ANTS-1583] **`roadmap_branch_drift` MCP verb — compare ROADMAP ✅ entries' cited SHAs against `git branch --contains` for HEAD.**
+  RetroArch Bundle 67 (2026-05-18): the project runs two long-lived branches — `local/audit-2026-04` (docs/roadmap) and `local/fixes-2026-04` (fix commits) — diverged by 76/24 commits. Bundle 60/61/62/64/65 fix commits live only on the fixes branch; the audit branch is missing those commits. ROADMAP claims certain fixes are ✅-landed; cppcheck on the audit branch still flags them. The MCP could detect this cheaply: parse each ✅ bullet for its cited commit SHA (typically a Source: line or a trailing reference like `(2faa000)`), run `git branch --contains <sha>` for the current HEAD, and emit a warning when a claimed-shipped commit isn't reachable. Envelope: `{ok:true, drift_count, drift:[{bullet_id, cited_sha, reason:"sha_not_in_HEAD"}], scanned_bullets, current_branch}`. Composes with ANTS-1576's branch-capture work — once `last_audit_summary` records the branch SARIF was generated on, this verb's "audit-branch fixes not in fixes-branch HEAD" case becomes a clean cross-check. Low-priority feature; works around a project-workflow class issue cheaply.
+  **Layman:** When a project uses separate branches for docs/audit work vs. actual fix commits, the two can drift — the docs claim a fix is shipped but the code on the audit branch doesn't have it. An MCP verb that parses ROADMAP ✅ entries' commit references and checks whether they're reachable from HEAD would catch this cheaply.
+  Kind: implement.
+  Lanes: mcp-roadmap-drift, remotecontrol, claudeintegration.
+  Source: cross-session-report-2026-05-18 (RetroArch Bundle 67).
+
+- 📋 [ANTS-1584] **`test-audit-chunk` subagent — verify report file exists on disk before returning success.**
+  Vestige 2026-05-17 `/test-audit` Issue #5: the `test-audit-chunk` subagent for c-004 finished successfully, returned a full JSON report inline in its final message, and stated "report written to /tmp/.../c-004.md" — but no such file existed on disk. Other chunks correctly wrote their files. Orchestrator reconstructed c-004.md from the agent's inline JSON output. Skill-side fix in `~/.claude/agents/test-audit-chunk.md` (or wherever the agent definition lives): add a final-step verification — call `ls <reports_dir>/<chunk_id>.md` (or stat() equivalent) before returning success, and refuse to return success if the file isn't present. Cheap to implement, removes a silent-failure class. Not strictly an Ants MCP issue (lives in the user's `~/.claude/` tree, not this repo), but worth tracking here since this is where the MCP-integration work is coordinated. Composes with ANTS-1581 (skill wiring) — both are in the same "make the audit skills more robust" lane.
+  **Layman:** The chunk-by-chunk audit sub-agent occasionally claims it wrote its report file when it didn't — the orchestrator has to reconstruct the report from the agent's reply text. Add a one-line "did the file actually appear on disk?" check at the end of the agent definition to refuse a fake success.
+  Kind: fix.
+  Lanes: skills-integration, test-audit-chunk-agent.
+  Source: cross-session-report-2026-05-17 (Vestige Issue #5).
+
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.

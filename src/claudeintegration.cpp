@@ -3610,6 +3610,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "git, or write any state. Pass caller_cwd "
                         "to test resolution; omit it to see the "
                         "empty-fallback behaviour (focused tab). "
+                        // ANTS-1578 — discoverability hint mirrored
+                        // into the description so callers that only
+                        // see the description text (not the separate
+                        // selection_hint field) still find the verb
+                        // when chasing no_roadmap_loaded / cwd_mismatch.
+                        "Use this FIRST when a project-scoped read "
+                        "returns `no_roadmap_loaded` or any tool "
+                        "returns `cwd_mismatch` — confirms which "
+                        "project's data the tool would have been "
+                        "operating on. "
                         "See docs/specs/ANTS-1400.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use FIRST when a read tool returns "
@@ -4144,6 +4154,16 @@ void ClaudeIntegration::onMcpConnection() {
                 // description so a session surfacing tools/list can
                 // grep by surface family without parsing every
                 // descriptor.
+                // ANTS-1567 — Music_Production + MAME Curator
+                // 2026-05-18 asked for grep-friendlier category
+                // labels. Two rename: `memory` → `mcp-state` (the
+                // bucket is server-side per-cwd KV state, not
+                // terminal/RAM "memory"); `caller_cwd_info` moves
+                // from `terminal` to `meta` (it's a diagnostic
+                // verb, not a pty-state read). Net effect: every
+                // tool still has a non-"other" prefix and the
+                // labels match the surface families a session
+                // looking at tools/list would expect to grep for.
                 auto kindForName = [](const QString &name) -> QString {
                     if (name.startsWith(QStringLiteral("cold_eyes_")))
                         return QStringLiteral("cold-eyes");
@@ -4168,16 +4188,16 @@ void ClaudeIntegration::onMcpConnection() {
                         name == QLatin1String("subsystem"))
                         return QStringLiteral("workspace");
                     if (name == QLatin1String("session_memory"))
-                        return QStringLiteral("memory");
+                        return QStringLiteral("mcp-state");
                     if (name == QLatin1String("plan_template"))
                         return QStringLiteral("plan");
                     if (name.startsWith(QStringLiteral("get_")) ||
-                        name == QLatin1String("tab_list") ||
-                        name == QLatin1String("caller_cwd_info"))
+                        name == QLatin1String("tab_list"))
                         return QStringLiteral("terminal");
                     if (name == QLatin1String("tool_info") ||
                         name == QLatin1String("token_usage") ||
-                        name == QLatin1String("mcp_trace"))
+                        name == QLatin1String("mcp_trace") ||
+                        name == QLatin1String("caller_cwd_info"))
                         return QStringLiteral("meta");
                     return QStringLiteral("other");
                 };
@@ -4197,14 +4217,31 @@ void ClaudeIntegration::onMcpConnection() {
                     // Idempotent: skip if already starts with `[` so a
                     // hot-reload or repeated tools/list call doesn't
                     // double-prefix.
+                    // ANTS-1568 — for etag-supporting tools, append a
+                    // one-line "Etag tip" memo so a caller scanning the
+                    // tools/list block sees WHEN to use the etag_match
+                    // shortcut (the parameter doc explains WHAT it
+                    // does; the memo explains the workflow). Idempotent
+                    // sentinel: check for "Etag tip:" in the existing
+                    // description to skip re-append on hot-reload.
                     {
-                        const QString desc =
+                        QString desc =
                             t.value(QStringLiteral("description")).toString();
                         if (!desc.startsWith(QLatin1Char('['))) {
-                            t[QStringLiteral("description")] =
-                                QStringLiteral("[%1] %2")
-                                    .arg(kindForName(name), desc);
+                            desc = QStringLiteral("[%1] %2")
+                                       .arg(kindForName(name), desc);
                         }
+                        if (isEtagSupportedTool(name) &&
+                            !desc.contains(QStringLiteral("Etag tip:"))) {
+                            desc += QStringLiteral(
+                                " Etag tip: cache the returned `etag` "
+                                "field and pass it back via `etag_match` "
+                                "on subsequent calls in the same session "
+                                "— saves a full re-emit when the "
+                                "underlying file hasn't changed "
+                                "(ANTS-1499 \"304 Not Modified\" pattern).");
+                        }
+                        t[QStringLiteral("description")] = desc;
                     }
                     // ANTS-1520 — keep the JSON-schema `required[]`
                     // array in sync with the dispatcher's contract.

@@ -812,7 +812,16 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // surfaces (`cold_eyes_*` / ...)** `) would otherwise fall through
     // boldMatch.hasMatch() with `rec.headline` left empty, and
     // roadmap_query would emit headline:"" / headline_oneline:"".
-    static const QRegularExpression rxBold(QStringLiteral("\\*\\*(.+?)\\*\\*"));
+    // ANTS-1561 — DotMatchesEverythingOption lets `.` match `\n` so
+    // bullets whose bold headline soft-wraps across two source lines
+    // (`**foo\n  bar.**`) are captured as one span instead of being
+    // skipped, which previously caused rxBold to fall through to the
+    // next `**Layman:**` bold token and emit headline:"Layman:" — the
+    // contract `headline_oneline` advertises (one-line summary) was
+    // violated for every multi-line-headline bullet.
+    static const QRegularExpression rxBold(
+        QStringLiteral("\\*\\*(.+?)\\*\\*"),
+        QRegularExpression::DotMatchesEverythingOption);
     // MultilineOption so `^` anchors at the start of any line within
     // the bullet body — Kind: / Lanes: / Layman: live as continuation
     // lines, not at the start of the string.

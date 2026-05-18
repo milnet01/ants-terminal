@@ -70,10 +70,12 @@ TEST(CallerCwdInfoVerb, SchemaListed) {
     const auto pos = cc.find("t[\"name\"] = \"caller_cwd_info\"");
     ASSERT_NE(pos, std::string::npos)
         << "ANTS-1400 REG-3: tool descriptor missing for caller_cwd_info";
-    // 2000-byte window covers the description's multi-line literal
-    // (~11 wrapped lines @ ~80 chars each) without bleeding into
-    // the following session_memory descriptor.
-    const std::string region = cc.substr(pos, 2000);
+    // 3000-byte window covers the description's multi-line literal
+    // (~16 wrapped lines @ ~80 chars each — widened from 2000 by
+    // ANTS-1578 which appended the "Use this FIRST when…"
+    // discoverability hint) without bleeding into the following
+    // session_memory descriptor.
+    const std::string region = cc.substr(pos, 3000);
     EXPECT_NE(region.find("props[\"caller_cwd\"]"),
               std::string::npos)
         << "ANTS-1400 REG-3: caller_cwd property missing from schema";

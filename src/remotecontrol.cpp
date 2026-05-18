@@ -2045,11 +2045,28 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 // roadmaps. Default `op:"append"` preserves the ANTS-1424 path
 // byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
 QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
+    // ANTS-1566 — caller_cwd-related refusals carry an `example`
+    // field so IPC-direct callers (the MCP dispatcher's Required
+    // gate catches the empty case upstream for tools/call requests)
+    // self-correct in one round-trip without round-tripping through
+    // the schema description.
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
         env["ok"]    = false;
         env["code"]  = code;
         env["error"] = message;
+        if (code == QStringLiteral("missing_field") ||
+            code == QStringLiteral("no_roadmap")) {
+            QJsonObject ex;
+            ex[QStringLiteral("op")]         = QStringLiteral("append");
+            ex[QStringLiteral("caller_cwd")] = QStringLiteral("<your $PWD>");
+            ex[QStringLiteral("section")]    = QStringLiteral("<roadmap H2/H3 slug>");
+            ex[QStringLiteral("status")]     = QStringLiteral("planned");
+            ex[QStringLiteral("headline")]   = QStringLiteral("<one-line bullet headline>");
+            ex[QStringLiteral("kind")]       = QStringLiteral("implement");
+            ex[QStringLiteral("source")]     = QStringLiteral("<origin tag>");
+            env[QStringLiteral("example")] = ex;
+        }
         return QJsonDocument(env);
     };
 
@@ -6326,6 +6343,13 @@ QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
             "project_layout: caller_cwd \"%1\" is not a directory")
                 .arg(rawCaller);
         env["code"]  = QStringLiteral("cwd_bad");
+        // ANTS-1566 — concrete JSON snippet so the caller can copy
+        // the exact arguments shape (mirrors session_memory + RcGate
+        // envelopes). Catches IPC-direct callers that bypass the
+        // dispatcher's caller_cwd_required gate.
+        QJsonObject ex;
+        ex[QStringLiteral("caller_cwd")] = QStringLiteral("<your $PWD>");
+        env[QStringLiteral("example")] = ex;
         return QJsonDocument(env);
     }
 

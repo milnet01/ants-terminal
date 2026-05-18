@@ -974,7 +974,15 @@ if(ANTS_TESTS)
                 # ANTS-1510 cold_eyes_fold_in freeform-mode opt-in.
                 tests/features/cold_eyes_fold_in_freeform/test_cold_eyes_fold_in_freeform.cpp
                 # ANTS-1512 audit_run scoped-check mode.
-                tests/features/audit_run_scoped_check/test_audit_run_scoped_check.cpp)
+                tests/features/audit_run_scoped_check/test_audit_run_scoped_check.cpp
+                # ANTS-1561 parseBullets multi-line bold headline span.
+                tests/features/roadmap_parser_multiline_bold_headline/test_roadmap_parser_multiline_bold_headline.cpp
+                # ANTS-1567 MCP tool prefix-tag bucket coverage.
+                tests/features/mcp_tool_prefix_tags/test_mcp_tool_prefix_tags.cpp
+                # ANTS-1568 etag-tip memo appended to etag-supporting tools.
+                tests/features/mcp_etag_tip_memo/test_mcp_etag_tip_memo.cpp
+                # ANTS-1578 caller_cwd_info description hint surfacing.
+                tests/features/mcp_caller_cwd_info_description_hint/test_mcp_caller_cwd_info_description_hint.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

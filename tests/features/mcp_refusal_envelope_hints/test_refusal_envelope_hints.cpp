@@ -100,3 +100,78 @@ TEST(mcp_refusal_envelope_hints,
         EXPECT_FALSE(hasHint);
     }
 }
+
+// ANTS-1566 INV-4 — RcGate's cwd_missing envelope carries a concrete
+// `example` JSON object with the canonical caller_cwd field shape so
+// IPC-direct callers self-correct in one round-trip.
+TEST(mcp_refusal_envelope_hints,
+     Inv4RcGateCwdMissingEnvelopeHasExample) {
+    RcGate::CallerCwdGate g;
+    g.ok = false;
+    g.errorCode = QStringLiteral("cwd_missing");
+    g.error = QStringLiteral("test: caller_cwd argument required");
+
+    const QJsonObject env = RcGate::gateErrorEnvelope(g);
+
+    expect(env.value(QStringLiteral("example")).isObject(),
+           "INV-4: cwd_missing envelope carries an example JSON object");
+    const QJsonObject ex = env.value(QStringLiteral("example")).toObject();
+    expect(ex.value(QStringLiteral("caller_cwd")).isString(),
+           "INV-4: example object names caller_cwd as a string field");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1566 INV-5 — dispatcher's caller_cwd_required envelope carries
+// an example field with caller_cwd named. Source-scrape — the
+// dispatcher is the central path every Required-classified tool
+// refuses through; MAME Curator 2026-05-18 (late session) hit this
+// envelope and asked for the example field.
+TEST(mcp_refusal_envelope_hints,
+     Inv5DispatcherCallerCwdRequiredHasExample) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(ci, "ANTS-1543"),
+           "INV-5: ANTS-1543 anchor present (the original example-field "
+           "introduction; reused for ANTS-1566 sweep)");
+    expect(contains(ci, "env[QStringLiteral(\"example\")]") ||
+           contains(ci, "env[\"example\"]"),
+           "INV-5: dispatcher refusal envelope sets an example field");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1566 INV-6 — project_layout cwd_bad refusal includes example
+// (sweep parity for IPC-direct callers that bypass the dispatcher's
+// caller_cwd_required gate).
+TEST(mcp_refusal_envelope_hints,
+     Inv6ProjectLayoutCwdBadHasExample) {
+    expect_reset();
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    // The cwd_bad block lives near the project_layout handler; check
+    // that an ANTS-1566 anchor sits next to an example assignment.
+    expect(contains(rc, "ANTS-1566"),
+           "INV-6: ANTS-1566 anchor present in remotecontrol.cpp "
+           "(project_layout / roadmap_log cwd refusal sweep)");
+    expect(contains(rc, "project_layout: caller_cwd"),
+           "INV-6: project_layout cwd_bad refusal still present");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1566 INV-7 — roadmap_log caller_cwd-related refusals (missing
+// field, no_roadmap) carry an example field with the full append-op
+// argument shape so the caller can copy it.
+TEST(mcp_refusal_envelope_hints,
+     Inv7RoadmapLogCwdRefusalsHaveExample) {
+    expect_reset();
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    // Check the cmdRoadmapLog's rlErr lambda branches on the code and
+    // attaches example for missing_field / no_roadmap.
+    expect(contains(rc, "missing_field") &&
+           contains(rc, "no_roadmap"),
+           "INV-7: rlErr branches on missing_field and no_roadmap "
+           "codes (caller_cwd-related rejection paths)");
+    expect(contains(rc, "ex[QStringLiteral(\"op\")]") ||
+           contains(rc, "ex[\"op\"]"),
+           "INV-7: rlErr example object includes the op field so "
+           "the caller sees the canonical append shape");
+    EXPECT_EQ(0, expect_failures());
+}
