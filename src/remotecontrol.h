@@ -358,6 +358,10 @@ public:
     QJsonDocument cmdColdEyesBrief(const QJsonObject &req);
     QJsonDocument cmdColdEyesCrossDocDiff(const QJsonObject &req);
     QJsonDocument cmdColdEyesFoldIn(const QJsonObject &req);
+    // ANTS-1413 — single-doc cross-consistency brief (no partition).
+    QJsonDocument cmdColdEyesSingleDoc(const QJsonObject &req);
+    // ANTS-1414 — lane-source-agnostic cross-doc-diff alias.
+    QJsonDocument cmdCrossDocDiff(const QJsonObject &req);
 
     // ANTS-1283 — session_memory KV. Per-cwd key-value persistence to
     // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json. Pure

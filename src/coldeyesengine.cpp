@@ -95,26 +95,86 @@ QString resolveContractStem(const QString &projectPath,
 }
 
 // Read .cold-eyes/partition.json if present. Schema:
-//   {"version": 1, "lanes": [{"name": "...", "summary": "...",
-//                             "doc_paths": ["..."]}, ...]}
-QList<Lane> readPartitionOverride(const QString &projectPath) {
-    const QString raw = slurpUtf8(projectPath
-                                  + QStringLiteral("/.cold-eyes/partition.json"));
-    if (raw.isEmpty()) return {};
+//   {"version": 1,
+//    "lanes": [{"name": "...", "summary": "...",
+//               "doc_paths": ["..."]}, ...]}
+//
+// ANTS-1412 — return a status alongside the parsed lanes so a
+// malformed override can be surfaced to the caller instead of
+// silently swallowing into the default partition. `Absent` is the
+// no-override case (file not present). `Ok` means the file parsed
+// and at least one valid lane survived path-rule filtering. Every
+// other status carries a `warning` describing what failed.
+struct OverrideReadResult {
+    enum Status { Absent, ParseError, BadVersion, BadShape, AllLanesFiltered, Ok };
+    Status      status = Absent;
+    QString     warning;
+    QList<Lane> lanes;
+};
+
+OverrideReadResult readPartitionOverride(const QString &projectPath) {
+    OverrideReadResult r;
+    const QString filePath = projectPath
+                           + QStringLiteral("/.cold-eyes/partition.json");
+    if (!QFileInfo::exists(filePath)) {
+        return r;  // Status::Absent — no file, no warning.
+    }
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        r.status = OverrideReadResult::ParseError;
+        r.warning = QStringLiteral(
+            ".cold-eyes/partition.json: cannot open for reading");
+        return r;
+    }
+    const QByteArray raw = f.readAll();
+    if (raw.trimmed().isEmpty()) {
+        r.status = OverrideReadResult::ParseError;
+        r.warning = QStringLiteral(
+            ".cold-eyes/partition.json: empty file");
+        return r;
+    }
     QJsonParseError pe{};
-    const auto doc = QJsonDocument::fromJson(raw.toUtf8(), &pe);
-    if (pe.error != QJsonParseError::NoError || !doc.isObject()) return {};
+    const auto doc = QJsonDocument::fromJson(raw, &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+        r.status = OverrideReadResult::ParseError;
+        r.warning = QStringLiteral(
+            ".cold-eyes/partition.json: parse error: ")
+            + (pe.error != QJsonParseError::NoError
+                  ? pe.errorString()
+                  : QStringLiteral("root must be a JSON object"));
+        return r;
+    }
     const auto root = doc.object();
-    if (root.value(QStringLiteral("version")).toInt() != 1) return {};
+    const int v = root.value(QStringLiteral("version")).toInt(-1);
+    if (v != 1) {
+        r.status = OverrideReadResult::BadVersion;
+        r.warning = QStringLiteral(
+            ".cold-eyes/partition.json: \"version\" must be 1 (got %1). "
+            "Expected schema: "
+            "{\"version\":1,\"lanes\":[{\"name\":\"<id>\","
+            "\"summary\":\"<text>\",\"doc_paths\":[\"<rel>\",...]}]}")
+                .arg(v);
+        return r;
+    }
+    if (!root.value(QStringLiteral("lanes")).isArray()) {
+        r.status = OverrideReadResult::BadShape;
+        r.warning = QStringLiteral(
+            ".cold-eyes/partition.json: \"lanes\" must be an array of "
+            "{name, summary, doc_paths[]} objects");
+        return r;
+    }
     const auto lanesArr = root.value(QStringLiteral("lanes")).toArray();
-    QList<Lane> out;
-    out.reserve(lanesArr.size());
-    for (const auto &v : lanesArr) {
-        const auto o = v.toObject();
+    int laneCount = 0;
+    int filteredPaths = 0;
+    int filteredLanes = 0;
+    r.lanes.reserve(lanesArr.size());
+    for (const auto &v2 : lanesArr) {
+        ++laneCount;
+        const auto o = v2.toObject();
         Lane l;
         l.name    = o.value(QStringLiteral("name")).toString();
         l.summary = o.value(QStringLiteral("summary")).toString();
-        if (l.name.isEmpty()) continue;
+        if (l.name.isEmpty()) { ++filteredLanes; continue; }
         for (const auto &dv :
              o.value(QStringLiteral("doc_paths")).toArray()) {
             const QString d = dv.toString();
@@ -129,14 +189,38 @@ QList<Lane> readPartitionOverride(const QString &projectPath) {
             // path doesn't come from the MCP arg; it comes from disk.
             // Reject absolute paths outright; canonicalise relative
             // entries and require they resolve inside the project.
-            if (QFileInfo(d).isAbsolute()) continue;
+            if (QFileInfo(d).isAbsolute()) { ++filteredPaths; continue; }
             const QString joined = projectPath + QChar('/') + d;
-            if (!isInsideProject(projectPath, joined)) continue;
+            if (!isInsideProject(projectPath, joined)) {
+                ++filteredPaths;
+                continue;
+            }
             l.docPaths << d;
         }
-        out << l;
+        if (l.docPaths.isEmpty()) { ++filteredLanes; continue; }
+        r.lanes << l;
     }
-    return out;
+    if (r.lanes.isEmpty() && laneCount > 0) {
+        r.status = OverrideReadResult::AllLanesFiltered;
+        r.warning = QStringLiteral(
+            ".cold-eyes/partition.json: every lane was filtered out "
+            "(rejected %1/%2 lanes; rejected %3 path entries by INV-13 "
+            "absolute/escape rule). Falling back to the default "
+            "partition.")
+                .arg(filteredLanes).arg(laneCount).arg(filteredPaths);
+        return r;
+    }
+    if (r.lanes.isEmpty()) {
+        // version-1 + lanes:[] is a valid empty override; treat as
+        // BadShape so the caller knows their config is a no-op.
+        r.status = OverrideReadResult::BadShape;
+        r.warning = QStringLiteral(
+            ".cold-eyes/partition.json: \"lanes\" array is empty — "
+            "no override applied");
+        return r;
+    }
+    r.status = OverrideReadResult::Ok;
+    return r;
 }
 
 // docs/standards/*.md
@@ -200,6 +284,113 @@ QStringList listStandardsByNameGlob(const QString &projectPath) {
     return out;
 }
 
+// ANTS-1440 — read the first ~8 KiB of a doc and extract the first
+// markdown H1 line (skipping front-matter quote/blockquote prefixes).
+// Used to enrich the brief manifest's summary for spec lanes: callers
+// see the spec title ("ANTS-1435 — session_memory reads honour
+// caller_cwd") instead of the generic "Single spec lane" placeholder.
+// Caps the scan so a multi-megabyte mis-named .md file can't blow
+// the cold_eyes_brief request budget.
+QString readDocFirstH1(const QString &absPath) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    QByteArray head = f.read(8192);
+    const QString s = QString::fromUtf8(head);
+    int pos = 0;
+    while (pos < s.size()) {
+        int nl = s.indexOf(QChar('\n'), pos);
+        if (nl < 0) nl = s.size();
+        QString line = s.mid(pos, nl - pos);
+        // strip leading whitespace then a leading '> ' blockquote prefix
+        // (matches the rare spec preamble shape).
+        QString stripped = line;
+        while (stripped.startsWith(QChar(' ')) || stripped.startsWith(QChar('\t'))) {
+            stripped = stripped.mid(1);
+        }
+        if (stripped.startsWith(QStringLiteral("# "))
+            && !stripped.startsWith(QStringLiteral("## "))) {
+            return stripped.mid(2).trimmed();
+        }
+        pos = nl + 1;
+    }
+    return {};
+}
+
+// ANTS-1440 — extract `[ANTS-NNNN]` / `ANTS-NNNN` tokens from the
+// spec's header preamble (first ~8 KiB) and resolve them to existing
+// `docs/specs/ANTS-NNNN.md` paths. Used to populate the brief's
+// cross-reference docs from the spec's own "Pairs with:" / "Cross-
+// refs:" markers — saves a reviewer re-reading the spec to discover
+// related-spec links. Returns project-relative paths that exist on
+// disk; missing references silently filtered.
+QStringList extractRelatedSpecsFromHeader(const QString &projectPath,
+                                          const QString &specAbsPath) {
+    QFile f(specAbsPath);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QByteArray head = f.read(8192);
+    const QString s = QString::fromUtf8(head);
+    // Locate the header preamble. Scan up to the first `## ` heading
+    // (or end of buffer) — Pairs-with markers live in the metadata
+    // block at the top, body usage doesn't count as a header link.
+    int headerEnd = s.indexOf(QStringLiteral("\n## "));
+    if (headerEnd < 0) headerEnd = s.size();
+    const QString header = s.left(headerEnd);
+    static const QRegularExpression rxId(
+        QStringLiteral("\\bANTS-(\\d+)\\b"));
+    auto it = rxId.globalMatch(header);
+    QStringList out;
+    QSet<int> seen;
+    while (it.hasNext()) {
+        const int id = it.next().captured(1).toInt();
+        if (seen.contains(id)) continue;
+        seen.insert(id);
+        const QString rel = QStringLiteral("docs/specs/ANTS-%1.md").arg(id);
+        if (QFileInfo::exists(projectPath + QChar('/') + rel)) {
+            out << rel;
+        }
+    }
+    return out;
+}
+
+// ANTS-1411 — generalised spec-lane candidate walker. Walks every
+// `*.md` under `docs/specs/` regardless of filename shape. For
+// `ANTS-NNNN.md` shapes, gates on the ROADMAP active set (preserves
+// the legacy Ants behaviour: shipped specs don't surface as lanes).
+// For other shapes (e.g. MAME Curator's `DS01.md`, `FP05.md`,
+// `P04.md`), include all — projects without an ANTS-style ROADMAP
+// get every spec file as a candidate. mtime + relative-path pairs;
+// caller sorts + caps.
+QList<QPair<qint64, QString>> listSpecLaneCandidates(
+    const QString &projectPath,
+    const QSet<int> &activeAntsIds) {
+    QList<QPair<qint64, QString>> out;
+    const QString specsDir = caseInsensitiveResolve(
+        projectPath, QStringLiteral("docs/specs"));
+    if (specsDir.isEmpty()) return out;
+    QDir d(projectPath + QChar('/') + specsDir);
+    if (!d.exists()) return out;
+    const auto entries = d.entryList(
+        QStringList{QStringLiteral("*.md")},
+        QDir::Files | QDir::NoDotAndDotDot,
+        QDir::Name);
+    // The legacy Ants filter only knew `ANTS-NNNN.md`. Match strictly
+    // so unrelated filename shapes are never accidentally gated.
+    static const QRegularExpression rxAntsId(
+        QStringLiteral("^ANTS-(\\d+)\\.md$"));
+    for (const QString &e : entries) {
+        const auto am = rxAntsId.match(e);
+        if (am.hasMatch() && !activeAntsIds.isEmpty()) {
+            const int id = am.captured(1).toInt();
+            if (!activeAntsIds.contains(id)) continue;
+        }
+        const QString rel = specsDir + QChar('/') + e;
+        QFileInfo fi(projectPath + QChar('/') + rel);
+        if (!fi.exists()) continue;
+        out.append({fi.lastModified().toMSecsSinceEpoch(), rel});
+    }
+    return out;
+}
+
 }  // namespace
 
 bool parseScope(const QString &raw, Scope *out) {
@@ -252,13 +443,18 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
     result.overridePath = QStringLiteral("<default>");
 
     // Override path wins regardless of scope (the user committed to a
-    // hand-written partition).
+    // hand-written partition). ANTS-1412: malformed overrides fall
+    // through to the default partition but surface a warning so the
+    // caller knows their config was ignored and why.
     const auto override = readPartitionOverride(projectPath);
-    if (!override.isEmpty()) {
-        result.lanes        = override;
+    if (override.status == OverrideReadResult::Ok) {
+        result.lanes        = override.lanes;
         result.overridePath = QStringLiteral(".cold-eyes/partition.json");
-        result.scopedCount  = override.size();
+        result.scopedCount  = override.lanes.size();
         return result;
+    }
+    if (override.status != OverrideReadResult::Absent) {
+        result.overrideWarning = override.warning;
     }
 
     // Contracts lane — emitted under Default + ContractsOnly.
@@ -375,19 +571,16 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
         }
     }
 
-    // Active-spec lanes.
+    // Active-spec lanes. ANTS-1411: scanner walks every `*.md` under
+    // `docs/specs/` regardless of filename shape. For `ANTS-NNNN.md`
+    // files we keep the legacy active-only filter (drops shipped ✅
+    // specs from the lane set). For other naming conventions
+    // (DS01.md, FP05.md, generic.md) every file is a candidate.
     const auto allActive = activeSpecIds(projectPath);
-    // INV-2: pick the kMaxSpecLanes most-recently-modified, then sort
-    // by ID ascending for stable presentation order.
-    QList<QPair<qint64, int>> mtimes;
-    mtimes.reserve(allActive.size());
-    for (int id : allActive) {
-        const QString rel = QStringLiteral("docs/specs/ANTS-%1.md").arg(id);
-        const QString abs = projectPath + QChar('/') + rel;
-        QFileInfo fi(abs);
-        if (!fi.exists()) continue;  // active in ROADMAP but no spec file
-        mtimes.append({fi.lastModified().toMSecsSinceEpoch(), id});
-    }
+    const QSet<int> activeAntsIds(allActive.begin(), allActive.end());
+    auto mtimes = listSpecLaneCandidates(projectPath, activeAntsIds);
+    // INV-2: pick the kMaxSpecLanes most-recently-modified, then
+    // sort by basename for stable presentation order.
     result.scopedCount = mtimes.size();
     std::sort(mtimes.begin(), mtimes.end(),
               [](const auto &a, const auto &b) { return a.first > b.first; });
@@ -395,16 +588,17 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
         mtimes = mtimes.mid(0, kMaxSpecLanes);
         result.truncated = true;
     }
-    QList<int> chosen;
+    QStringList chosen;
     chosen.reserve(mtimes.size());
     for (const auto &p : mtimes) chosen << p.second;
     std::sort(chosen.begin(), chosen.end());
 
-    for (int id : chosen) {
+    for (const QString &rel : chosen) {
+        QFileInfo fi(projectPath + QChar('/') + rel);
         Lane l;
-        l.name    = QStringLiteral("spec/ANTS-%1").arg(id);
-        l.summary = QStringLiteral("Single spec lane (active)");
-        l.docPaths << QStringLiteral("docs/specs/ANTS-%1.md").arg(id);
+        l.name    = QStringLiteral("spec/") + fi.completeBaseName();
+        l.summary = QStringLiteral("Single spec lane");
+        l.docPaths << rel;
         result.lanes << l;
     }
 
@@ -461,10 +655,31 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
 
     m.citedCodePaths = extractCitedCodePaths(projectPath, lane.docPaths);
 
+    // ANTS-1440 — spec-lane enrichment. For lanes named `spec/...`
+    // (single-spec lanes from derivePartition or caller-supplied),
+    // replace the generic "Single spec lane (active)" summary with
+    // the spec's first H1 line and add any related specs referenced
+    // in the header preamble to crossReferenceDocs.
+    m.summary = lane.summary;
+    if (lane.name.startsWith(QStringLiteral("spec/"))
+        && !lane.docPaths.isEmpty()) {
+        const QString primaryAbs = projectPath + QChar('/')
+                                 + lane.docPaths.first();
+        const QString h1 = readDocFirstH1(primaryAbs);
+        if (!h1.isEmpty()) m.summary = h1;
+        const auto related = extractRelatedSpecsFromHeader(
+            projectPath, primaryAbs);
+        for (const QString &rel : related) {
+            if (laneDocSet.contains(rel)) continue;
+            if (m.crossReferenceDocs.contains(rel)) continue;
+            m.crossReferenceDocs << rel;
+        }
+    }
+
     // INV-3: paths-only brief. Subagent reads each doc itself.
     QString b;
     b += QStringLiteral("# Cold-eyes brief — lane: ") + lane.name + QChar('\n');
-    b += QStringLiteral("\n## Summary\n\n") + lane.summary + QChar('\n');
+    b += QStringLiteral("\n## Summary\n\n") + m.summary + QChar('\n');
     b += QStringLiteral("\n## Doc files (this lane)\n\n");
     for (const QString &p : lane.docPaths) {
         b += QStringLiteral("- ") + p + QChar('\n');
@@ -506,6 +721,102 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
         "dispute (or the code whose behaviour the doc misstates).\n");
     m.brief = b;
     return m;
+}
+
+namespace {
+
+// Build the root-contract doc set the same way derivePartition's
+// contracts lane does. Surfaced as a private helper so
+// assembleSingleDocBrief (ANTS-1413) doesn't duplicate the table.
+QStringList resolveRootContractDocs(const QString &projectPath) {
+    QStringList out;
+    static const std::vector<std::pair<QString, QStringList>> kContracts = {
+        { QStringLiteral("CLAUDE"),
+          { QStringLiteral(".md") } },
+        { QStringLiteral("README"),
+          { QStringLiteral(".md"), QStringLiteral(".rst"),
+            QStringLiteral(".adoc"), QStringLiteral(".txt") } },
+        { QStringLiteral("ROADMAP"),
+          { QStringLiteral(".md"), QStringLiteral(".yaml"),
+            QStringLiteral(".yml"), QStringLiteral(".json") } },
+        { QStringLiteral("CHANGELOG"),
+          { QStringLiteral(".md"), QStringLiteral(".yaml"),
+            QStringLiteral(".yml"), QStringLiteral(".json"),
+            QStringLiteral(".rst"), QStringLiteral(".txt") } },
+    };
+    for (const auto &[stem, exts] : kContracts) {
+        const QString resolved = resolveContractStem(projectPath, stem, exts);
+        if (!resolved.isEmpty()) out << resolved;
+    }
+    static const QStringList kCommunityContracts = {
+        QStringLiteral("CONTRIBUTING.md"),
+        QStringLiteral("SECURITY.md"),
+        QStringLiteral("LEGAL.md"),
+        QStringLiteral("CODE_OF_CONDUCT.md"),
+    };
+    for (const QString &name : kCommunityContracts) {
+        const QString resolved = caseInsensitiveResolve(projectPath, name);
+        if (!resolved.isEmpty()) out << resolved;
+    }
+    return out;
+}
+
+// Build the standards doc set the same way derivePartition does:
+// canonical `docs/standards/*.md` first, name-glob fallback when
+// that directory is absent (ANTS-1571).
+QStringList resolveStandardsDocs(const QString &projectPath) {
+    const QString stdDir = caseInsensitiveResolve(
+        projectPath, QStringLiteral("docs/standards"));
+    if (!stdDir.isEmpty()) {
+        return listMdInDir(projectPath, stdDir);
+    }
+    return listStandardsByNameGlob(projectPath);
+}
+
+}  // namespace
+
+SingleDocBrief assembleSingleDocBrief(const QString &projectPath,
+                                      const QString &docPathRel) {
+    SingleDocBrief b;
+    b.docPath = docPathRel;
+    const QString absDoc = projectPath + QChar('/') + docPathRel;
+    b.summary = readDocFirstH1(absDoc);
+
+    // Same-dir siblings — every other `*.md` next to docPathRel.
+    // Capped at 12 (mirrors INV-2's lane cap so payload stays
+    // bounded even on a docs/specs/ directory with hundreds of
+    // specs). Sorted alphabetically for stable presentation.
+    const QFileInfo fi(absDoc);
+    const QString  parentRel = QFileInfo(docPathRel).path();
+    QDir parentDir(fi.dir());
+    if (parentDir.exists()) {
+        const auto entries = parentDir.entryList(
+            QStringList{QStringLiteral("*.md")},
+            QDir::Files | QDir::NoDotAndDotDot,
+            QDir::Name);
+        for (const QString &e : entries) {
+            if (e == fi.fileName()) continue;
+            const QString rel = parentRel.isEmpty()
+                ? e
+                : (parentRel + QChar('/') + e);
+            b.sameDirSiblings << rel;
+            if (b.sameDirSiblings.size() >= kMaxSpecLanes) break;
+        }
+    }
+
+    b.standards     = resolveStandardsDocs(projectPath);
+    b.rootContracts = resolveRootContractDocs(projectPath);
+
+    // Default reviewer-role list — orchestrator dispatches one
+    // subagent per label, each reviewing the same doc with a
+    // different lens. Three is the typical /cold-eyes fanout.
+    b.recommendedReviewers = QStringList{
+        QStringLiteral("primary-correctness-reviewer"),
+        QStringLiteral("cross-doc-consistency-reviewer"),
+        QStringLiteral("security-implications-reviewer"),
+    };
+
+    return b;
 }
 
 QList<IndieReviewEngine::CorroboratedFinding>

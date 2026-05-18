@@ -5848,6 +5848,12 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
                                               : QStringLiteral("default");
     env["scoped_count"]  = m_coldEyesCache.scopedCount;
     env["truncated"]     = m_coldEyesCache.truncated;
+    // ANTS-1412 — surface malformed override files so callers know
+    // their `.cold-eyes/partition.json` was ignored and why. Field
+    // omitted when override loaded cleanly or is absent.
+    if (!m_coldEyesCache.overrideWarning.isEmpty()) {
+        env["override_warning"] = m_coldEyesCache.overrideWarning;
+    }
     // ANTS-1506 — surface the near-empty-default signal so callers
     // don't silently treat "scan found ≤ 1 lane under default scope"
     // as a valid sweep. Real projects on default scope yield at
@@ -5974,6 +5980,9 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     env["doc_paths"]             = dps;
     env["cross_reference_docs"]  = xref;
     env["cited_code_paths"]      = code;
+    // ANTS-1440 — surface the structured summary so callers don't
+    // have to grep the brief markdown for the H1 line.
+    env["summary"]               = m.summary;
     env["byte_count"]            = m.brief.toUtf8().size();
     return QJsonDocument(env);
 }
@@ -6158,6 +6167,147 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     env["id_allocation"] = idAllocMode;
     env["written"]       = written;
     if (!heading.isEmpty()) env["release_block_heading"] = heading;
+    return QJsonDocument(env);
+}
+
+// ANTS-1413 — cold_eyes_single_doc. Cross-consistency brief for one
+// doc without running the full multi-lane partition + brief workflow.
+// Returns the doc's neighbourhood (same-dir siblings, project
+// standards, root contracts) plus a default reviewer-role list.
+QJsonDocument RemoteControl::cmdColdEyesSingleDoc(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(ceErr(
+        QStringLiteral("no_window"),
+        QStringLiteral("cold_eyes_single_doc: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main, req);
+    if (root.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("cold_eyes_single_doc: no focused project")));
+
+    const QString docPathRaw =
+        req.value(QStringLiteral("doc_path")).toString().trimmed();
+    if (docPathRaw.isEmpty()) {
+        QJsonObject err = ceErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral("cold_eyes_single_doc: doc_path required"));
+        return QJsonDocument(err);
+    }
+    // ANTS-1295: anchor the path before the engine sees it. The
+    // engine trusts the input, so the chokepoint must live here.
+    const auto check = PathValidation::validatePath(
+        docPathRaw, root,
+        QStringLiteral("cold_eyes_single_doc"),
+        QStringLiteral("doc_path"));
+    if (check.bad) return QJsonDocument(check.err);
+    if (check.resolved.isEmpty() || !QFileInfo::exists(check.resolved)) {
+        QJsonObject err = ceErr(
+            QStringLiteral("not_found"),
+            QStringLiteral("cold_eyes_single_doc: doc_path does not "
+                           "exist on disk"));
+        err["echo"] = ceSanitiseEcho(docPathRaw);
+        return QJsonDocument(err);
+    }
+
+    const auto b = ColdEyesEngine::assembleSingleDocBrief(root, docPathRaw);
+
+    QJsonObject related;
+    QJsonArray  sibs;
+    for (const QString &p : b.sameDirSiblings) sibs.append(p);
+    related["same_dir_siblings"] = sibs;
+    QJsonArray stds;
+    for (const QString &p : b.standards) stds.append(p);
+    related["standards"] = stds;
+    QJsonArray rc;
+    for (const QString &p : b.rootContracts) rc.append(p);
+    related["root_contracts"] = rc;
+
+    QJsonArray rev;
+    for (const QString &r : b.recommendedReviewers) rev.append(r);
+
+    QJsonObject env;
+    env["ok"]                    = true;
+    env["doc_path"]              = b.docPath;
+    env["summary"]               = b.summary;
+    env["related"]               = related;
+    env["recommended_reviewers"] = rev;
+    return QJsonDocument(env);
+}
+
+// ANTS-1414 — cross_doc_diff. Lane-source-agnostic alias for
+// cold_eyes_cross_doc_diff / indie_review_corroborate's regex hotspot
+// primitive. Lets a caller corroborate any reviewer-report bundle
+// without committing to the cold-eyes vs indie-review framing. Same
+// args, same envelope shape — delegates to the same engine helper.
+QJsonDocument RemoteControl::cmdCrossDocDiff(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(ceErr(
+        QStringLiteral("no_window"),
+        QStringLiteral("cross_doc_diff: no MainWindow")));
+    const QString root = resolveRootCanonical(m_main, req);
+    if (root.isEmpty()) return QJsonDocument(ceErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("cross_doc_diff: no focused project")));
+
+    const bool hasReports    = req.contains(QStringLiteral("reports"));
+    const bool hasReportsDir = req.contains(QStringLiteral("reports_dir"));
+    if (hasReports == hasReportsDir) {
+        return QJsonDocument(ceErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral(
+                "cross_doc_diff: provide exactly one of "
+                "`reports` (inline map) or `reports_dir` (project-relative "
+                "directory of *.md files)")));
+    }
+
+    int minLanes = req.value(QStringLiteral("min_lanes")).toInt(2);
+    if (minLanes < 1) minLanes = 1;
+
+    QList<IndieReviewEngine::CorroboratedFinding> findings;
+    QString reportsDir;
+    int     reportsRead = 0;
+    qint64  totalIn = 0;
+
+    if (hasReportsDir) {
+        reportsDir = req.value(QStringLiteral("reports_dir"))
+                        .toString().trimmed();
+        if (reportsDir.isEmpty()) return QJsonDocument(ceErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral("cross_doc_diff: reports_dir must be a "
+                           "non-empty project-relative path")));
+        const auto check = PathValidation::validatePath(
+            reportsDir, root,
+            QStringLiteral("cross_doc_diff"),
+            QStringLiteral("reports_dir"));
+        if (check.bad) return QJsonDocument(check.err);
+        findings = IndieReviewEngine::corroboratedFindingsFromDir(
+            root, reportsDir, minLanes, &reportsRead);
+    } else {
+        const QJsonObject reportsObj =
+            req.value(QStringLiteral("reports")).toObject();
+        QHash<QString, QString> reports;
+        for (auto it = reportsObj.constBegin();
+             it != reportsObj.constEnd(); ++it) {
+            const QString r = it.value().toString();
+            reports.insert(it.key(), r);
+            totalIn += r.toUtf8().size();
+        }
+        reportsRead = reports.size();
+        findings = IndieReviewEngine::corroboratedFindings(
+            root, reports, minLanes);
+    }
+
+    QJsonArray arr;
+    for (const auto &f : findings) arr.append(ceFindingToJson(f));
+
+    QJsonObject env;
+    env["ok"]              = true;
+    env["findings"]        = arr;
+    env["total_findings"]  = arr.size();
+    env["reports_read"]    = reportsRead;
+    if (hasReportsDir) {
+        env["reports_dir"] = reportsDir;
+    } else {
+        env["total_input_bytes"] = totalIn;
+    }
+    env["min_lanes"]       = minLanes;
     return QJsonDocument(env);
 }
 

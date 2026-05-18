@@ -24,6 +24,28 @@ through `ants_core_lib` (no `Qt6::Widgets` event loop required).
 | ENG-9 | Path-rule defence on cited-code paths (INV-13) | `src/../etc/passwd` mention rejected |
 | ENG-10 | `parseScope` covers all enum values + bad-input | "default" / "docs_only" / "contracts_only" / "weird" |
 
+### Cold-eyes-engine fold-in pull 13 (2026-05-18)
+
+Eight additional cases shipped with pull 13 across the
+ANTS-1411 / 1412 / 1413 / 1440 fixes:
+
+| # | Case | Asserts |
+|---|---|---|
+| ANTS-1411 INV-A | `SpecLanesIncludeNonAntsFilenames` | DS01/FP05/P04.md files surface as `spec/<basename>` lanes even without a ROADMAP |
+| ANTS-1411 INV-B | `AntsShapedSpecsStillGatedByActiveRoadmap` | shipped ✅ ANTS-NNNN.md stays out; non-ANTS shapes always in |
+| ANTS-1412 INV-A | `MalformedPartitionOverrideSurfacesWarning` | parse error → `overrideWarning` non-empty + fallback to default |
+| ANTS-1412 INV-B | `PartitionOverrideWrongVersionSurfacesSchemaHint` | wrong-version warning embeds the expected schema example |
+| ANTS-1412 INV-C | `ValidPartitionOverrideHasNoWarning` | clean override → empty warning, overridePath=.cold-eyes/partition.json |
+| ANTS-1440 INV-A | `SpecLaneSummaryIsParsedH1` | spec lane summary is the parsed `# ` H1, not the generic placeholder |
+| ANTS-1440 INV-B | `SpecLanePairsWithExpandsCrossRefs` | header preamble `ANTS-NNNN` tokens append to crossReferenceDocs |
+| ANTS-1413 INV-A | `SingleDocBriefAssemblesNeighbourhood` | sameDirSiblings + standards + rootContracts + reviewers populate |
+
+ANTS-1414's `cross_doc_diff` MCP alias is wired through
+`RemoteControl::cmdCrossDocDiff`; behaviour is covered by the
+existing `cold_eyes_cross_doc_diff` regression set (same engine
+helper) plus `mcp_tool_prefix_tags.Inv3EveryRegisteredToolHasBucket`
+(ensures the new tool is bucketed under `cold-eyes`).
+
 ## Build wiring
 
 `tests/features/cold_eyes_engine/test_cold_eyes_engine.cpp` is added to

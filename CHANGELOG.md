@@ -12,6 +12,105 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP cold-eyes-engine fold-in — pull 13 (ANTS-1411 + 1412 + 1413 + 1414 + 1440, 2026-05-18)
+
+Five-item bundle against the `cold_eyes_*` MCP family — three fixes
+and two implements — that addresses the cross-project portability
+gaps the MAME Curator and Vestige cross-session reports surfaced on
+2026-05-15/16. The bundle widens spec-lane discovery to non-Ants
+filename conventions, surfaces malformed-override failures instead of
+swallowing them, and makes the brief / single-doc / cross-doc-diff
+surfaces useful on freshly drafted specs.
+
+- **ANTS-1411 (fix)** — `cold_eyes_partition` spec-lane scanner
+  generalised. The pre-fix walker built filenames as
+  `docs/specs/ANTS-%1.md` from the ROADMAP active-set, so projects
+  whose specs use other conventions (MAME Curator's `DS01.md` /
+  `FP05.md` / `P04.md`, RetroDB-style stems) returned zero spec
+  lanes — the tool description's "Spec-lanes capped at 12 (most-
+  recently-modified)" silently lied on non-Ants projects. New helper
+  `listSpecLaneCandidates` (in `src/coldeyesengine.cpp`) walks every
+  `*.md` under `docs/specs/` (case-insensitive dir resolve), gates
+  `ANTS-NNNN.md` filenames on the ROADMAP active-set (preserves the
+  legacy Ants behaviour: shipped ✅ specs stay out of the lane set),
+  and unconditionally includes any other filename shape. Lane name
+  becomes `spec/<basename-without-ext>` instead of the hard-coded
+  `spec/ANTS-NNNN`. Tool description updated to call out the new
+  behaviour. Tests: `ColdEyesEngine.SpecLanesIncludeNonAntsFilenames`,
+  `ColdEyesEngine.AntsShapedSpecsStillGatedByActiveRoadmap`.
+  Source: cross-session-report-2026-05-15 (MAME Curator).
+
+- **ANTS-1412 (fix)** — `.cold-eyes/partition.json` overrides now
+  document their schema in the tool description and surface
+  malformed-file failures via a new `override_warning` envelope
+  field. Pre-fix behaviour: any JSON parse error, version mismatch,
+  or all-lanes-filtered case silently fell through to the default
+  partition with no diagnostic — callers thought their hand-built
+  override loaded but couldn't tell. The new `OverrideReadResult`
+  shape carries one of `Absent` / `ParseError` / `BadVersion` /
+  `BadShape` / `AllLanesFiltered` / `Ok`; only `Ok` applies the
+  override, the others fall back AND set `PartitionResult::
+  overrideWarning` with a specific cause (parser error message,
+  expected schema embedded in the version-mismatch case, count of
+  rejected lanes/paths in the all-filtered case). Tool description
+  embeds the expected JSON schema. Tests:
+  `ColdEyesEngine.MalformedPartitionOverrideSurfacesWarning`,
+  `.PartitionOverrideWrongVersionSurfacesSchemaHint`,
+  `.ValidPartitionOverrideHasNoWarning`.
+  Source: cross-session-report-2026-05-15 (MAME Curator).
+
+- **ANTS-1413 (implement)** — new `cold_eyes_single_doc` MCP tool.
+  Cross-consistency brief for one doc without the full multi-lane
+  partition + brief workflow. Given a `doc_path`, returns the doc's
+  related-doc neighbourhood: `{doc_path, summary, related:
+  {same_dir_siblings[], standards[], root_contracts[]},
+  recommended_reviewers[]}`. Saves callers building a hand-rolled
+  `.cold-eyes/partition.json` and dispatching subagents just to
+  sanity-check one freshly drafted spec. Engine helper
+  `assembleSingleDocBrief` reuses the partition's contract-stem
+  table and standards resolver (extracted to file-scope helpers
+  `resolveRootContractDocs` / `resolveStandardsDocs`). Schema +
+  CallerCwdContract::Required + RateLimitClass::Expensive +
+  bucketed under the `cold-eyes` prefix-tag. Test:
+  `ColdEyesEngine.SingleDocBriefAssemblesNeighbourhood`.
+  Source: cross-session-report-2026-05-15.
+
+- **ANTS-1414 (refactor)** — new lane-source-agnostic
+  `cross_doc_diff` MCP tool. The regex hotspot primitive shared by
+  `cold_eyes_cross_doc_diff` and `indie_review_corroborate`
+  (already engine-level shared via
+  `IndieReviewEngine::corroboratedFindings*`) gets a third MCP
+  entry-point with a neutral name, so callers corroborating
+  arbitrary reviewer-report bundles don't have to commit to the
+  cold-eyes vs indie-review framing. Same arguments + envelope as
+  the originals (`reports` / `reports_dir` XOR, `min_lanes`); the
+  two existing tools stay for backwards compat. Bucketed under
+  `cold-eyes` in `kindForName`. Composes with ANTS-1581 (future
+  skill wiring should call `cross_doc_diff` directly when the
+  framing doesn't matter).
+  Source: cross-session-report-2026-05-15.
+
+- **ANTS-1440 (fix)** — `cold_eyes_brief` spec-lane manifest
+  enriched. The pre-fix brief for a `spec/...` lane carried a
+  generic "Single spec lane (active)" summary and only the four-
+  doc INV-4 contract trio as cross-references, even when the spec
+  itself named other specs in its header preamble. Engine now (a)
+  parses the first H1 line of the primary spec and uses it as
+  `summary` instead of the lane.summary placeholder, (b) scans the
+  spec's header preamble (everything before the first `## ` heading)
+  for `ANTS-NNNN` tokens and appends matching `docs/specs/ANTS-
+  NNNN.md` paths to `crossReferenceDocs` (only when the file
+  exists, de-duped against lane.docPaths). New `summary` field on
+  `BriefManifest` surfaced as the top-level `summary` envelope
+  field. The reporter's third concern (empty `cited_code_paths`)
+  was found to be the bullet author's misdiagnosis — the existing
+  `extractCitedCodePaths` helper does run for spec lanes; the
+  cited spec just had no `src/...` references at the moment the
+  brief was sampled. Tests: `ColdEyesEngine.SpecLaneSummaryIsParsedH1`,
+  `.SpecLanePairsWithExpandsCrossRefs`.
+  Source: in-session-2026-05-16 (during ANTS-1435/1436 cold-eyes
+  review).
+
 ### 🔌 MCP timeout-ergonomics fold-in — pull 12 (ANTS-1565 + 1579 + dupe-closes ANTS-1562/1563/1564/1584, 2026-05-18)
 
 Two targeted fixes against the `workspace_search` and `verify_changes`

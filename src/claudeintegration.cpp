@@ -3386,11 +3386,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "Return the doc-lane partition for /cold-eyes. "
                         "Walks docs/ + root contracts, groups by topic "
                         "cohesion (contracts / standards / decisions / "
-                        "plugins / per-active-spec). Optional override: "
-                        "<projectPath>/.cold-eyes/partition.json. "
-                        "Spec-lanes capped at 12 (most-recently-modified). "
-                        "Optional: scope (\"default\" / \"docs_only\" / "
-                        "\"contracts_only\").");
+                        "plugins / per-spec). Spec lanes (ANTS-1411): "
+                        "every `*.md` under `docs/specs/` is a "
+                        "candidate; `ANTS-NNNN.md` files are gated on "
+                        "ROADMAP active set (legacy filter), other "
+                        "filename shapes (e.g. `DS01.md`, `P04.md`) "
+                        "are unconditionally surfaced. Spec lanes "
+                        "capped at 12 (most-recently-modified). "
+                        "Override (ANTS-1412): "
+                        "`<projectPath>/.cold-eyes/partition.json` with "
+                        "shape `{\"version\":1,\"lanes\":[{\"name\":"
+                        "\"<id>\",\"summary\":\"<text>\",\"doc_paths\":"
+                        "[\"<project-rel>\",...]}]}`. Each doc_path "
+                        "must resolve inside the project root; "
+                        "absolute paths and symlink escapes are "
+                        "dropped per INV-13. Malformed overrides "
+                        "fall back to the default partition and "
+                        "surface the cause in `override_warning`. "
+                        "Optional: scope (\"default\" / \"docs_only\" "
+                        "/ \"contracts_only\").");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split docs/specs for multi-reviewer "
                         "cold-eyes dispatch. Pairs with "
@@ -3620,6 +3634,109 @@ void ClaudeIntegration::onMcpConnection() {
                     req.append("actionable");
                     req.append("caller_cwd");
                     schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                // ANTS-1413 — cold_eyes_single_doc. Cross-consistency
+                // brief for one doc without the full multi-lane
+                // partition + brief workflow. Returns the doc's
+                // related-doc neighbourhood (same-dir siblings,
+                // project standards, root contracts).
+                {
+                    QJsonObject t;
+                    t["name"] = "cold_eyes_single_doc";
+                    t["description"] = QStringLiteral(
+                        "Single-doc cross-consistency brief. Given a "
+                        "`doc_path`, return the docs it should stay "
+                        "consistent with: same-dir siblings, project "
+                        "standards, root contracts. Useful for "
+                        "sanity-checking a freshly drafted spec "
+                        "without committing a "
+                        ".cold-eyes/partition.json or dispatching the "
+                        "full multi-lane sweep. Returns {doc_path, "
+                        "summary, related:{same_dir_siblings, "
+                        "standards, root_contracts}, "
+                        "recommended_reviewers}.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use when reviewing one new spec — gives "
+                        "the cross-consistency neighbourhood without "
+                        "running cold_eyes_partition + brief.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject dpProp;
+                    dpProp["type"] = "string";
+                    dpProp["description"] = QStringLiteral(
+                        "Project-relative doc path. Anchored under "
+                        "project root (INV-13).");
+                    QJsonObject props;
+                    props["doc_path"]   = dpProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("doc_path");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                // ANTS-1414 — cross_doc_diff. Lane-source-agnostic
+                // alias for cold_eyes_cross_doc_diff / indie_review_-
+                // corroborate's regex hotspot primitive. Same args,
+                // same envelope shape — different name so callers
+                // working from arbitrary reviewer-report bundles
+                // don't have to pick a cold-eyes or indie-review
+                // framing.
+                {
+                    QJsonObject t;
+                    t["name"] = "cross_doc_diff";
+                    t["description"] = QStringLiteral(
+                        "Regex hotspot corroboration across reviewer "
+                        "reports. Input: EITHER `reports` (inline map "
+                        "of {lane: report_text}) OR `reports_dir` "
+                        "(project-relative directory of *.md files). "
+                        "Returns findings cited by >= min_lanes "
+                        "distinct reports at the same (file, line). "
+                        "Pure regex pass; no LLM. Lane-source-"
+                        "agnostic alias for "
+                        "cold_eyes_cross_doc_diff / "
+                        "indie_review_corroborate (same engine "
+                        "primitive). Provide exactly one of `reports` "
+                        "or `reports_dir`. Optional: min_lanes "
+                        "(default 2).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use when corroborating an arbitrary "
+                        "reviewer-report bundle without committing "
+                        "to the cold-eyes vs indie-review framing.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject reportsProp;
+                    reportsProp["type"] = "object";
+                    reportsProp["description"] = QStringLiteral(
+                        "Map of {lane_name: report_markdown}. "
+                        "Mutually exclusive with reports_dir.");
+                    QJsonObject rdProp;
+                    rdProp["type"] = "string";
+                    rdProp["description"] = QStringLiteral(
+                        "Project-relative path to a directory of "
+                        "*.md report files. Lane name = filename "
+                        "stem. Top level only; sub-dirs not "
+                        "recursed. Mutually exclusive with reports.");
+                    QJsonObject mlProp;
+                    mlProp["type"]    = "integer";
+                    mlProp["default"] = 2;
+                    mlProp["minimum"] = 1;
+                    mlProp["description"] = QStringLiteral(
+                        "Minimum distinct lanes citing a (file, "
+                        "line) for it to count as corroborated.");
+                    QJsonObject props;
+                    props["reports"]     = reportsProp;
+                    props["reports_dir"] = rdProp;
+                    props["min_lanes"]   = mlProp;
+                    props["caller_cwd"]  = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    // XOR enforced at the handler (cmdCrossDocDiff),
+                    // not the schema — mirrors ANTS-1509 rationale.
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -4160,6 +4277,8 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("cold_eyes_brief"),        {1500, 6000}},
                         {QStringLiteral("cold_eyes_cross_doc_diff"),{1200, 5000}},
                         {QStringLiteral("cold_eyes_fold_in"),      {800,  3000}},
+                        {QStringLiteral("cold_eyes_single_doc"),   {800,  3000}},
+                        {QStringLiteral("cross_doc_diff"),         {1200, 5000}},
                         // Indie-review.
                         {QStringLiteral("indie_review_partition"),    {1500, 6000}},
                         {QStringLiteral("indie_review_brief"),        {2000, 8000}},
@@ -4206,6 +4325,9 @@ void ClaudeIntegration::onMcpConnection() {
                         return QStringLiteral("debt-sweep");
                     if (name.startsWith(QStringLiteral("roadmap_")))
                         return QStringLiteral("roadmap");
+                    // ANTS-1414 — lane-source-agnostic alias bucket.
+                    if (name == QLatin1String("cross_doc_diff"))
+                        return QStringLiteral("cold-eyes");
                     if (name == QLatin1String("audit_run") ||
                         name == QLatin1String("last_audit_summary"))
                         return QStringLiteral("audit");
@@ -4874,6 +4996,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Required;
     if (toolName == QStringLiteral("cold_eyes_fold_in"))       return C::Required;
     if (toolName == QStringLiteral("cold_eyes_partition"))     return C::Required;
+    if (toolName == QStringLiteral("cold_eyes_single_doc"))    return C::Required;
+    if (toolName == QStringLiteral("cross_doc_diff"))          return C::Required;
     // Debt-sweep verb cluster (ANTS-1316).
     if (toolName == QStringLiteral("debt_sweep_apply_fix"))     return C::Required;
     if (toolName == QStringLiteral("debt_sweep_defer"))         return C::Required;
@@ -5046,6 +5170,8 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     if (toolName == QStringLiteral("cold_eyes_partition"))      return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff")) return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_fold_in"))        return R::Expensive;
+    if (toolName == QStringLiteral("cold_eyes_single_doc"))     return R::Expensive;
+    if (toolName == QStringLiteral("cross_doc_diff"))           return R::Expensive;
     if (toolName == QStringLiteral("indie_review_brief"))       return R::Expensive;
     if (toolName == QStringLiteral("indie_review_partition"))   return R::Expensive;
     if (toolName == QStringLiteral("indie_review_corroborate")) return R::Expensive;

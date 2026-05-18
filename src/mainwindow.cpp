@@ -4496,6 +4496,22 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdColdEyesFoldIn(args).toJson(QJsonDocument::Compact));
         });
+    // ANTS-1413 — cold_eyes_single_doc. Single-spec cross-consistency
+    // brief without the partition+brief multi-step.
+    m_claudeIntegration->registerToolProvider("cold_eyes_single_doc",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdColdEyesSingleDoc(args).toJson(QJsonDocument::Compact));
+        });
+    // ANTS-1414 — cross_doc_diff. Lane-source-agnostic alias for the
+    // regex hotspot primitive shared by cold-eyes + indie-review.
+    m_claudeIntegration->registerToolProvider("cross_doc_diff",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdCrossDocDiff(args).toJson(QJsonDocument::Compact));
+        });
 
     // ANTS-1283 — session_memory KV.
     m_claudeIntegration->registerToolProvider("session_memory",

@@ -356,6 +356,190 @@ TEST(ColdEyesEngine, StandardsNameGlobFallbackRejectsShortStubs) {
     }
 }
 
+// ANTS-1411 INV-A — non-ANTS-shape filenames (e.g. DS01.md, FP05.md,
+// P04.md) get spec lanes even without a matching ROADMAP entry.
+// Previously the partition would silently report zero spec lanes on
+// projects whose specs don't follow `ANTS-NNNN.md` naming.
+TEST(ColdEyesEngine, SpecLanesIncludeNonAntsFilenames) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    // No ROADMAP.md at all — non-ANTS specs should still surface.
+    ASSERT_TRUE(ws.writeRel("docs/specs/DS01.md", "# DS01\nbody\n"));
+    ASSERT_TRUE(ws.writeRel("docs/specs/FP05.md", "# FP05\nbody\n"));
+    ASSERT_TRUE(ws.writeRel("docs/specs/P04.md",  "# P04\nbody\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QSet<QString> names;
+    for (const auto &l : r.lanes) names.insert(l.name);
+    EXPECT_TRUE(names.contains(QStringLiteral("spec/DS01")))
+        << "DS01.md missing from spec lanes";
+    EXPECT_TRUE(names.contains(QStringLiteral("spec/FP05")));
+    EXPECT_TRUE(names.contains(QStringLiteral("spec/P04")));
+}
+
+// ANTS-1411 INV-B — ANTS-NNNN.md files still gated on ROADMAP active
+// set. Shipped specs must not surface as lanes — preserves the
+// legacy Ants Terminal behaviour.
+TEST(ColdEyesEngine, AntsShapedSpecsStillGatedByActiveRoadmap) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({
+        {1000, QStringLiteral("📋")},  // active
+        {1001, QStringLiteral("✅")},  // shipped
+    })));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-1000.md", "# stub\n"));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-1001.md", "# stub\n"));
+    // Non-ANTS shape — always included.
+    ASSERT_TRUE(ws.writeRel("docs/specs/GENERIC.md",   "# stub\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QSet<QString> names;
+    for (const auto &l : r.lanes) names.insert(l.name);
+    EXPECT_TRUE(names.contains(QStringLiteral("spec/ANTS-1000")))
+        << "active ANTS-1000 must surface";
+    EXPECT_FALSE(names.contains(QStringLiteral("spec/ANTS-1001")))
+        << "shipped ANTS-1001 must NOT surface (active filter)";
+    EXPECT_TRUE(names.contains(QStringLiteral("spec/GENERIC")))
+        << "non-ANTS-shape file must always surface";
+}
+
+// ANTS-1412 INV-A — malformed partition.json surfaces a warning and
+// the partition falls back to the default lanes.
+TEST(ColdEyesEngine, MalformedPartitionOverrideSurfacesWarning) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md",  "x"));
+    ASSERT_TRUE(ws.writeRel("README.md",  "x"));
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({})));
+    // Garbage JSON.
+    ASSERT_TRUE(ws.writeRel(".cold-eyes/partition.json", "{not json"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    EXPECT_FALSE(r.overrideWarning.isEmpty())
+        << "malformed JSON must set overrideWarning";
+    EXPECT_TRUE(r.overrideWarning.contains(QStringLiteral("parse error"))
+                || r.overrideWarning.contains(QStringLiteral("parser")))
+        << "warning should name the failure: " << r.overrideWarning.toStdString();
+    EXPECT_EQ(r.overridePath, QStringLiteral("<default>"))
+        << "fell back to default partition";
+}
+
+// ANTS-1412 INV-B — wrong version surfaces a warning naming the
+// expected schema.
+TEST(ColdEyesEngine, PartitionOverrideWrongVersionSurfacesSchemaHint) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({})));
+    ASSERT_TRUE(ws.writeRel(".cold-eyes/partition.json",
+        QStringLiteral("{\"version\":2, \"lanes\":[]}")));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    EXPECT_FALSE(r.overrideWarning.isEmpty());
+    EXPECT_TRUE(r.overrideWarning.contains(QStringLiteral("version")))
+        << "warning should name version mismatch: "
+        << r.overrideWarning.toStdString();
+    EXPECT_TRUE(r.overrideWarning.contains(QStringLiteral("doc_paths")))
+        << "warning should embed the expected schema example";
+}
+
+// ANTS-1412 INV-C — a valid override loads cleanly with no warning.
+TEST(ColdEyesEngine, ValidPartitionOverrideHasNoWarning) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({})));
+    ASSERT_TRUE(ws.writeRel("docs/custom-lane.md", "x"));
+    ASSERT_TRUE(ws.writeRel(".cold-eyes/partition.json",
+        QStringLiteral("{\"version\":1,\"lanes\":[{"
+            "\"name\":\"custom\",\"summary\":\"x\","
+            "\"doc_paths\":[\"docs/custom-lane.md\"]}]}")));
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    EXPECT_TRUE(r.overrideWarning.isEmpty())
+        << "clean override must not emit a warning; got "
+        << r.overrideWarning.toStdString();
+    EXPECT_EQ(r.overridePath, QStringLiteral(".cold-eyes/partition.json"));
+    ASSERT_EQ(r.lanes.size(), 1);
+    EXPECT_EQ(r.lanes[0].name, QStringLiteral("custom"));
+}
+
+// ANTS-1440 INV-A — spec-lane brief carries the parsed H1 as summary,
+// not the generic "Single spec lane" placeholder.
+TEST(ColdEyesEngine, SpecLaneSummaryIsParsedH1) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md",
+        QStringLiteral("# ANTS-9999 — sample title with full sentence\n"
+                       "\nbody body body\n")));
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-9999");
+    lane.summary = QStringLiteral("Single spec lane");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    EXPECT_EQ(m.summary,
+        QStringLiteral("ANTS-9999 — sample title with full sentence"));
+    EXPECT_TRUE(m.brief.contains(m.summary))
+        << "brief text must echo the parsed summary";
+}
+
+// ANTS-1440 INV-B — Pairs-with markers in the spec header surface as
+// extra cross-reference docs (alongside the legacy contract trio).
+TEST(ColdEyesEngine, SpecLanePairsWithExpandsCrossRefs) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md",  "x"));
+    ASSERT_TRUE(ws.writeRel("README.md",  "x"));
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({})));
+    ASSERT_TRUE(ws.writeRel("CHANGELOG.md", "x"));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-1234.md",
+        QStringLiteral("# ANTS-1234 — primary\n\n"
+                       "**Pairs with:** ANTS-1100, ANTS-1101.\n\n"
+                       "## Problem\nbody\n")));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-1100.md", "# 1100\n"));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-1101.md", "# 1101\n"));
+    // ANTS-9000 is named in the body but not in the header — should NOT appear.
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-1234");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-1234.md");
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    EXPECT_TRUE(m.crossReferenceDocs.contains(
+        QStringLiteral("docs/specs/ANTS-1100.md")));
+    EXPECT_TRUE(m.crossReferenceDocs.contains(
+        QStringLiteral("docs/specs/ANTS-1101.md")));
+    // Legacy contract trio still present.
+    EXPECT_TRUE(m.crossReferenceDocs.contains(QStringLiteral("CLAUDE.md")));
+}
+
+// ANTS-1413 INV-A — single-doc brief enumerates same-dir siblings,
+// standards lane, and root contracts.
+TEST(ColdEyesEngine, SingleDocBriefAssemblesNeighbourhood) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md",  "x"));
+    ASSERT_TRUE(ws.writeRel("README.md",  "x"));
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({})));
+    ASSERT_TRUE(ws.writeRel("docs/standards/coding.md", "x"));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9000.md",
+        QStringLiteral("# ANTS-9000 — primary\nbody\n")));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9001.md", "# 9001\n"));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9002.md", "# 9002\n"));
+
+    const auto b = ColdEyesEngine::assembleSingleDocBrief(
+        ws.root(), QStringLiteral("docs/specs/ANTS-9000.md"));
+    EXPECT_EQ(b.docPath, QStringLiteral("docs/specs/ANTS-9000.md"));
+    EXPECT_TRUE(b.summary.contains(QStringLiteral("ANTS-9000")));
+    EXPECT_TRUE(b.sameDirSiblings.contains(
+        QStringLiteral("docs/specs/ANTS-9001.md")));
+    EXPECT_TRUE(b.sameDirSiblings.contains(
+        QStringLiteral("docs/specs/ANTS-9002.md")));
+    EXPECT_FALSE(b.sameDirSiblings.contains(
+        QStringLiteral("docs/specs/ANTS-9000.md")))
+        << "primary doc must not appear in its own siblings";
+    EXPECT_TRUE(b.standards.contains(
+        QStringLiteral("docs/standards/coding.md")));
+    EXPECT_TRUE(b.rootContracts.contains(QStringLiteral("CLAUDE.md")));
+    EXPECT_FALSE(b.recommendedReviewers.isEmpty())
+        << "default reviewer list must be non-empty";
+}
+
 // ANTS-1571 INV-E — when docs/standards/ exists, the name-glob fallback
 // is NOT applied (the canonical dir is the source of truth).
 TEST(ColdEyesEngine, StandardsNameGlobFallbackSkippedWhenDirPresent) {

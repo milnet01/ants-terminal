@@ -5465,7 +5465,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: cross-session-report-2026-05-15 (MAME Curator —
   DS02 R2 hot-fix root cause).
 
-- 📋 [ANTS-1411] **`cold_eyes_partition` spec-lane detection
+- ✅ [ANTS-1411] **`cold_eyes_partition` spec-lane detection
   hardcoded to `ANTS-NNNN.md` filename shape.**
   `coldeyesengine.cpp:223,245` builds spec-lane paths as
   `QStringLiteral("docs/specs/ANTS-%1.md").arg(id)`. Cross-session
@@ -5489,7 +5489,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: cross-session-report-2026-05-15 (MAME Curator).
 
-- 📋 [ANTS-1412] **`cold_eyes_partition` `.cold-eyes/partition.json`
+- ✅ [ANTS-1412] **`cold_eyes_partition` `.cold-eyes/partition.json`
   override schema undocumented + silent fallback on malformed.**
   Cross-session report 2026-05-15: caller hand-built
   `.cold-eyes/partition.json` with what they believed was a
@@ -5516,7 +5516,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: cross-session-report-2026-05-15 (MAME Curator).
 
-- 📋 [ANTS-1413] **`cold_eyes_single_doc` brief tool for
+- ✅ [ANTS-1413] **`cold_eyes_single_doc` brief tool for
   single-spec review.** The current cold-eyes MCP surface
   (`partition` / `brief` / `cross_doc_diff` / `corroborate` /
   `fold_in`) is designed for full-doc-tree sweeps. For a single
@@ -5540,7 +5540,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: cross-session-report-2026-05-15.
 
-- 📋 [ANTS-1414] **Expose `cross_doc_diff` regex hotspot
+- ✅ [ANTS-1414] **Expose `cross_doc_diff` regex hotspot
   primitive for indie-review report corroboration.** Cross-
   session report 2026-05-15 confirmed `cold_eyes_cross_doc_diff`
   works well: regex-based hotspot detection across reviewer
@@ -6453,7 +6453,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: session_memory, project_layout, claudeintegration.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1440] **`cold_eyes_brief` spec-lane manifest is too thin — empty cited_code_paths, generic cross-refs, useless summary.**
+- ✅ [ANTS-1440] **`cold_eyes_brief` spec-lane manifest is too thin — empty cited_code_paths, generic cross-refs, useless summary.**
   In-session reproduction 2026-05-16: I drafted ANTS-1435 (security model amendment) + ANTS-1436 (pagination), then called `mcp__ants__cold_eyes_brief{lane:"spec/ANTS-1435"}` to get the reviewer brief. The response:
   
   ```json

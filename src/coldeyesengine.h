@@ -67,6 +67,15 @@ struct PartitionResult {
     Scope       scope = Scope::Default;
     int         scopedCount = 0;  // # of spec lanes considered before INV-2 cap
     bool        truncated = false;  // true if INV-2 cap hit
+    // ANTS-1412 — surface malformed `.cold-eyes/partition.json` to the
+    // caller. Empty when the override file is absent OR was loaded
+    // cleanly. Non-empty when the override was found but rejected
+    // (parse error, wrong version, missing lanes array, every lane
+    // entry filtered out by INV-13 path-rule defence): partition
+    // fell back to the default + caller sees the cause so they can
+    // fix the file. Echoed as the `override_warning` field on the
+    // MCP `cold_eyes_partition` response.
+    QString     overrideWarning;
 };
 
 struct BriefManifest {
@@ -74,6 +83,12 @@ struct BriefManifest {
     QStringList docPaths;
     QStringList crossReferenceDocs;  // INV-4 fixed contract trio + CHANGELOG
     QStringList citedCodePaths;
+    // ANTS-1440 — structured summary surfaced in the MCP envelope.
+    // For spec lanes this is the parsed `# ` H1 line of the primary
+    // spec (e.g. "ANTS-1435 — session_memory reads honour caller_cwd")
+    // instead of the generic lane.summary. Empty when no H1 found
+    // — caller falls back to lane.summary as today.
+    QString     summary;
 };
 
 PartitionResult derivePartition(const QString &projectPath,
@@ -84,6 +99,28 @@ BriefManifest   assembleBriefManifest(const QString &projectPath,
 
 QStringList     extractCitedCodePaths(const QString &projectPath,
                                       const QStringList &docPaths);
+
+// ANTS-1413 — single-doc cross-consistency brief. Cheap entry-point
+// for "given a `doc_path`, what other docs in this project should
+// it stay consistent with?" Returns the related-doc neighbourhood
+// (same-dir siblings, project standards, root contract docs) plus
+// a default reviewer-role list — saves callers building a partition
+// override and dispatching the full multi-lane brief workflow when
+// they just want to sanity-check one fresh spec / doc.
+// `docPathRel` must be project-relative and resolve inside
+// projectPath (the MCP layer's PathValidation already enforces
+// this; the helper trusts the input).
+struct SingleDocBrief {
+    QString     docPath;
+    QString     summary;               // parsed H1 of docPath
+    QStringList sameDirSiblings;       // *.md neighbours of docPath
+    QStringList standards;             // project standards lane
+    QStringList rootContracts;         // CLAUDE/README/ROADMAP/CHANGELOG (+ community docs)
+    QStringList recommendedReviewers;  // role labels — orchestrator dispatches one subagent per
+};
+
+SingleDocBrief assembleSingleDocBrief(const QString &projectPath,
+                                      const QString &docPathRel);
 
 QList<IndieReviewEngine::CorroboratedFinding>
                 crossDocDiffFromDir(const QString &projectPath,
