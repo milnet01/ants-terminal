@@ -150,7 +150,8 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // would be brittle. Window widened to 8000 after ANTS-1452 added
     // two new props (respect_gitignore + include_hidden) with their
     // own description blurbs, pushing the schema past the original
-    // 4 KiB anchor.
+    // 4 KiB anchor. Widened to 10000 again after ANTS-1565 added
+    // timeout_sec with its own description blurb.
     {
         // Anchor at the tools/list registration (literal "workspace_search"
         // with quotes), not the first incidental occurrence in a setter
@@ -159,7 +160,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
         bool ok = false;
         if (reqPos != std::string::npos) {
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 8000);
+                                              reqPos + 10000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"required\"") &&

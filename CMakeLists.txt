@@ -982,7 +982,9 @@ if(ANTS_TESTS)
                 # ANTS-1568 etag-tip memo appended to etag-supporting tools.
                 tests/features/mcp_etag_tip_memo/test_mcp_etag_tip_memo.cpp
                 # ANTS-1578 caller_cwd_info description hint surfacing.
-                tests/features/mcp_caller_cwd_info_description_hint/test_mcp_caller_cwd_info_description_hint.cpp)
+                tests/features/mcp_caller_cwd_info_description_hint/test_mcp_caller_cwd_info_description_hint.cpp
+                # ANTS-1565 workspace_search configurable wall-clock budget.
+                tests/features/mcp_workspace_search_timeout_sec/test_mcp_workspace_search_timeout_sec.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -1091,7 +1093,9 @@ if(ANTS_TESTS)
                 # ANTS-1457 — false-positive ledger helper.
                 tests/features/audit_falsepos_ledger/test_audit_falsepos_ledger.cpp
                 # ANTS-1455 — glob walk + reports_dir opt-in + synth mode/pagination.
-                tests/features/test_audit_glob_walk_synth_mode/test_audit_glob_walk_synth_mode.cpp)
+                tests/features/test_audit_glob_walk_synth_mode/test_audit_glob_walk_synth_mode.cpp
+                # ANTS-1579 — verify_changes timeout_sec end-to-end plumb.
+                tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
@@ -1113,7 +1117,9 @@ if(ANTS_TESTS)
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
         SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
         # ANTS-1455 — taxonomy doc for new error-code rows.
-        MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md")
+        MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
+        # ANTS-1579 — verify_changes description source-scrape (INV-4).
+        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp")
 
     # ANTS-1217 Phase 6 — test_dialogs bundle. Subject: settingsdialog +
     # roadmapdialog + diffviewer (the dialogs hosted by chrome). 11 tests

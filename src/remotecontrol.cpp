@@ -2972,7 +2972,15 @@ namespace {
 QString resolveRootCanonical(MainWindow *main);
 // ANTS-1391 — read-verb overload (see top-of-file forward decl).
 QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
-constexpr int kWorkspaceSearchHardKillMs   = 2000;  // ANTS-1248-INV-5
+// ANTS-1565: default budget raised from 2 s (ANTS-1248) to 5 s — the
+// pre-rg setup (gitignore parse, glob expansion, ANTS-1501 dedup
+// grouping) is a fixed-cost floor that left the original 2 s ceiling
+// tight on > 2 k-file projects. Callers can override via the new
+// `timeout_sec` arg (INV-2), clamped to [kWorkspaceSearchMinBudgetMs,
+// kWorkspaceSearchMaxBudgetMs].
+constexpr int kWorkspaceSearchHardKillMs   = 5000;  // ANTS-1248/1565-INV-1
+constexpr int kWorkspaceSearchMinBudgetMs  = 1000;  // ANTS-1565-INV-2 floor
+constexpr int kWorkspaceSearchMaxBudgetMs  = 30000; // ANTS-1565-INV-2/5 cap
 constexpr int kWorkspaceSearchKillGraceMs  =  200;  // ANTS-1248-INV-5
 constexpr int kWorkspaceSearchMaxResultsCap = 500;  // ANTS-1248-INV-4
 constexpr int kWorkspaceSearchMaxColumns    = 500;
@@ -3081,6 +3089,23 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const bool isRegex = req.value("regex").toBool(false);
     const QString caseMode = req.value("case").toString(QStringLiteral("smart"));
 
+    // ANTS-1565-INV-1/2: per-call wall-clock budget. Default 5 s
+    // (kWorkspaceSearchHardKillMs); accept `timeout_sec` integer in
+    // [1, 30]; out-of-range / non-numeric falls back to default. The
+    // effective value is echoed on both success and hard-kill paths
+    // (INV-4) so callers can see what they got.
+    int budgetMs = kWorkspaceSearchHardKillMs;
+    const QJsonValue tsVal = req.value(QStringLiteral("timeout_sec"));
+    if (tsVal.isDouble()) {
+        const int requestedSec = tsVal.toInt();
+        const int requestedMs  = requestedSec * 1000;
+        if (requestedMs >= kWorkspaceSearchMinBudgetMs &&
+            requestedMs <= kWorkspaceSearchMaxBudgetMs) {
+            budgetMs = requestedMs;
+        }
+    }
+    const int budgetSec = budgetMs / 1000;
+
     // ANTS-1452: gitignore-bypass + hidden-file opt-ins. Both default to
     // pre-1452 behaviour (`respect_gitignore=true`, `include_hidden=false`).
     // Default-preserving toBool overload — non-bool JSON values fall back
@@ -3134,10 +3159,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             QStringLiteral("workspace-search: rg failed to start (is ripgrep installed?)")));
     }
 
-    // ANTS-1248-INV-5: 2 s hard kill via kWorkspaceSearchHardKillMs
-    // (waitForFinished returns false on timeout). On timeout we
-    // terminate(), then grant 200 ms grace, then kill().
-    const bool finished = rg.waitForFinished(kWorkspaceSearchHardKillMs);
+    // ANTS-1248-INV-5: hard kill via budgetMs (default 5 s,
+    // ANTS-1565 expanded to a per-call override; was a hard-coded 2 s
+    // until ANTS-1565). waitForFinished returns false on timeout.
+    // On timeout we terminate(), then grant 200 ms grace, then kill().
+    const bool finished = rg.waitForFinished(budgetMs);
     bool hardKilled = false;
     if (!finished) {
         hardKilled = true;
@@ -3212,9 +3238,17 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     }
     if (hardKilled && matches.isEmpty()) {
         // No partial results — surface the hard kill rather than
-        // pretending the search finished cleanly.
-        return QJsonDocument(wsErr("rg_failed",
-            QStringLiteral("workspace-search: rg exceeded 2 s wall budget, hard-killed")));
+        // pretending the search finished cleanly. ANTS-1565-INV-3/4 —
+        // include the effective budget and a fallback hint so callers
+        // know what to try next without a doc round-trip.
+        QJsonObject o = wsErr("rg_failed",
+            QStringLiteral("workspace-search: rg exceeded %1 s wall budget, hard-killed")
+                .arg(budgetSec));
+        o["timeout_sec"] = budgetSec;
+        o["hint"] = QStringLiteral(
+            "try a narrower lane= or glob= filter, raise timeout_sec "
+            "(max 30), or fall back to `Bash rg` for one-off queries");
+        return QJsonDocument(o);
     }
     // ANTS-1248-INV-4: post-cap detection — truncated iff we either
     // saw more match events than max_results, or the hard kill cut
@@ -3268,6 +3302,9 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // a filter-induced 0-match result from a genuinely clean tree.
     out["respect_gitignore"] = respect_gitignore;
     out["include_hidden"]    = include_hidden;
+    // ANTS-1565-INV-4: echo effective wall-clock budget so a caller can
+    // see whether they got their requested timeout_sec or the default.
+    out["timeout_sec"] = budgetSec;
     out["elapsed_ms"] = static_cast<int>(wall.elapsed());
     // ANTS-1248-INV-6: stateless — no cache, no member-state mutation.
     // ANTS-1248-INV-10: reachability gated by the existing UDS +

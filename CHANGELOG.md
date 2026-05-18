@@ -12,6 +12,71 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP timeout-ergonomics fold-in — pull 12 (ANTS-1565 + 1579 + dupe-closes ANTS-1562/1563/1564/1584, 2026-05-18)
+
+Two targeted fixes against the `workspace_search` and `verify_changes`
+MCP timeout surfaces, sourced from the 2026-05-17 / 2026-05-18 Vestige
+cross-session reports. The bundle also dup-closes four roadmap entries
+that turned out to be duplicates of work already shipped in pull
+33490d1 (ANTS-1486..1498).
+
+- **ANTS-1565 (fix)** — `workspace_search` configurable wall-clock
+  budget. The pre-fix 2 s hard-kill was sized for the ANTS-1248
+  small-project case and tripped on mid-size trees once the rg
+  wrapper's setup costs (gitignore parse, glob expansion, ANTS-1501
+  dedup) hit the floor. Default raised to 5 s; new optional
+  `timeout_sec` caller arg clamped to `[1, 30]` overrides per-call.
+  Both ok and rg_failed envelopes now echo the effective
+  `timeout_sec` so callers can verify what they got. Hard-kill error
+  envelope grows a `hint` field naming the three viable next steps
+  (narrower filter / raise timeout_sec / fall back to `Bash rg`).
+  Schema in `src/claudeintegration.cpp:1968-1996` declares the new
+  property; description names it + the new default. Spec
+  `docs/specs/ANTS-1565.md`; tests
+  `tests/features/mcp_workspace_search_timeout_sec/` (6 invariants).
+  Source: cross-session-report-2026-05-18 (Vestige Issue #8).
+
+- **ANTS-1579 (fix)** — `verify_changes` `timeout_sec` end-to-end
+  plumb verification + asymmetry-doc bump. New regression test at
+  `tests/features/mcp_verify_changes_timeout_headroom/` locks the
+  positive plumb path: a `sleep 1` gate under `opts.timeoutSec=3`
+  runs to natural completion (exitCode 0, durationSec < 3.0, no
+  "timeout" skippedReason). Complements the existing
+  `verify_changes_engine.Inv2TimeoutKillsHangingGate` for
+  bidirectional coverage. The transport-vs-tool asymmetry note moved
+  from inside the `timeout_sec` property description to the top-
+  level `verify_changes` description (reads "Timeouts are two-tier
+  (ANTS-1525/1579): tool-side / transport-side …"); INV-4 source-
+  scrapes both keywords appear within 400 chars of each other so the
+  asymmetry is the first thing a caller sees at pick-time.
+  Streaming-progress ping (Vestige follow-up c) deferred — needs
+  response-shape design. Spec `docs/specs/ANTS-1579.md`.
+  Source: cross-session-report-2026-05-17 (Vestige Issue #1).
+
+- **Dup-closes (4):**
+  - **ANTS-1562** ≡ ANTS-1491 (test-audit pre-pass strip C/C++
+    string literals + comments, `src/testauditengine.cpp:358-526`).
+  - **ANTS-1563** ≡ ANTS-1490 + ANTS-1527 (`test_audit_fold_in`
+    `id_counter_failed` fallback to O_CREAT|O_EXCL rename-locking
+    at `src/roadmapfoldin.cpp:126-176` + `counterPath` field in the
+    error envelope at `src/testauditengine.cpp:1257-1271`).
+  - **ANTS-1564** ≡ ANTS-1488 (`test_audit_synthesis_prompt` per-
+    dimension severity histograms in summary/hybrid mode at
+    `src/testauditengine.cpp:1084-1097`).
+  - **ANTS-1584** ≡ ANTS-1496 (`test-audit-chunk` agent verify file
+    on disk before claiming success — already in
+    `~/.claude/agents/test-audit-chunk.md:52-56`).
+
+  All four targeted the same set of Vestige cross-session-report
+  issues already addressed by pull 33490d1 (2026-05-18). Notes added
+  inline on each ROADMAP entry pointing to the canonical ID.
+
+One adjacent test fix: `tests/features/mcp_workspace_search/`'s
+8000-char window widened to 10000 since the new `timeoutSecProp`
+description blurb pushed the schema past the original anchor.
+
+Build/test: 1021/1021 tests green.
+
 ### 🔌 MCP cold-eyes-cluster fold-in — pull 11 (ANTS-1570 + 1571 + 1572 + 1573 + 1574 + 1575, 2026-05-18 late night)
 
 Six contained MCP improvements aimed at the cold-eyes /

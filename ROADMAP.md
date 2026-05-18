@@ -10806,28 +10806,72 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-roadmap-query, remotecontrol, tests.
   Source: cross-session-report-2026-05-18 (in-session observed against own ROADMAP.md).
 
-- 📋 [ANTS-1562] **test-audit pre-pass regex strips C/C++ string literals + comments before pattern matching.**
+- ✅ [ANTS-1562] **test-audit pre-pass regex strips C/C++ string literals + comments before pattern matching.**
+  Dup-closed 2026-05-18 (pull 12). Already shipped as **ANTS-1491**
+  in pull 33490d1 (2026-05-18): `stripCxxLiteralsAndComments` state-
+  machine at `src/testauditengine.cpp:358-526` handles line/block
+  comments, regular/char literals, and `R"delim(...)delim"` raw
+  strings. `prePassFile` at `:530-560` applies the filter selectively
+  for `isCxxPath()` (`.cpp/.cxx/.cc/.c/.h/.hpp/.hh/.hxx/.ipp/.tcc`)
+  with newlines + column positions preserved so pattern line numbers
+  stay exact.
   Vestige `/test-audit` 2026-05-17 flagged `tests/test_async_driver.cpp:233,331` for `sleep_call` — but those lines are inside C++ raw-string literals holding a Python child-process script (`R"(import time\ntime.sleep(0.2)\n)"`). The C++ test code does not call `sleep` there. The chunk subagent caught and dismissed it, but the pre-pass waste tokens on every future audit. Fix: standard tokenisation step in `featurecoverage`'s pre-pass scanner — skip content inside `"..."`, `R"(...)"`, `'...'`, `//` to EOL, `/* ... */` ranges. Doesn't need to be perfect; "don't match inside obvious literal/comment ranges" covers ~95% of the noise. Composes with the existing comment/string filter the audit pipeline already runs at the late-stage filter step (auditdialog.cpp) — could reuse that scanner if it's pulled out into `auditengine`.
   **Layman:** The first-pass regex scanner that the test-audit tool runs flags suspicious patterns even when they're inside string literals or comments — wastes subagent tokens dismissing false positives every audit. Skip those ranges.
   Kind: fix.
   Lanes: mcp-test-audit, featurecoverage, auditengine.
   Source: cross-session-report-2026-05-17 (Vestige /test-audit Issue #6).
 
-- 📋 [ANTS-1563] **`test_audit_fold_in` `id_counter_failed` — fall back to O_CREAT|O_EXCL rename-locking + surface counter-file path in error.**
+- ✅ [ANTS-1563] **`test_audit_fold_in` `id_counter_failed` — fall back to O_CREAT|O_EXCL rename-locking + surface counter-file path in error.**
+  Dup-closed 2026-05-18 (pull 12). Already shipped as **ANTS-1490**
+  in pull 33490d1 (2026-05-18) plus **ANTS-1527** structured-field
+  follow-up: `acquireRenameLock` at `src/roadmapfoldin.cpp:126-142`
+  is invoked when `flockBroken` (`:166-176`); error envelope at
+  `src/testauditengine.cpp:1257-1271` surfaces `counterPath` both
+  as a structured field (`r.counterPath`) and inlined in the
+  prose-form `error` string ("flock/IO failure on counter %3 —
+  check for a stale %3.lock sibling").
   Vestige 2026-05-17 `/test-audit` hit `{code:"id_counter_failed", error:"test_audit_fold_in: allocateIds returned 0 of 27 (flock/IO failure)"}` on a single-session fold-in (no concurrent caller). The project was on local ext4/btrfs, no NFS. Workaround was a manual ROADMAP block with hand-assigned IDs. Two requested fixes: (a) on flock-EINTR / flock-IO failure, fall back to `O_CREAT | O_EXCL` rename-based locking before giving up; (b) surface the counter-file path in the error envelope so the operator can clear stale locks manually (`counter_path: "<path>"`); (c) document the per-project state location in the tool docstring. Forward-looking concern: with allocateIds(N) for N=27+, confirm `RoadmapFoldIn::insertBlock` handles 80+ items without truncation or ID reuse — a `max_items_per_fold` guard with paging is safer than silent truncation.
   **Layman:** When the test-audit fold-in tool failed to grab a lock on the ID counter file, it gave up with a one-line error and didn't say where the lock file was. Two improvements: try a different lock strategy as a backup, and put the file path in the error so the user can clear it manually.
   Kind: fix.
   Lanes: mcp-test-audit, roadmapfoldin, remotecontrol.
   Source: cross-session-report-2026-05-17 (Vestige /test-audit Issue #4).
 
-- 📋 [ANTS-1564] **`test_audit_synthesis_prompt` `mode="summary"` — emit per-dimension severity histograms.**
+- ✅ [ANTS-1564] **`test_audit_synthesis_prompt` `mode="summary"` — emit per-dimension severity histograms.**
+  Dup-closed 2026-05-18 (pull 12). Already shipped as **ANTS-1488**
+  in pull 33490d1 (2026-05-18): `severityHistograms` map populated
+  at `src/testauditengine.cpp:1004-1009` (mapping `critical`→`crit`,
+  `medium`→`med`), emitted in the response envelope at `:1084-1097`,
+  and rendered into summary/hybrid prompt prose at `:1109-1146`.
   Vestige 2026-05-17 + RetroDB 2026-05-17 both asked for the same thing: in `mode="summary"`, alongside the existing `top_dimensions` hit counts and `file_index`, return a tiny per-dimension severity histogram — e.g. `assertions: {crit:0, high:1, med:7, low:18}`. Lets the orchestrator decide whether to dispatch `mode:"full"` for a specific dimension without reading every `c-NNN.md`. Today the orchestrator must open every chunk file to know "is there a CRIT anywhere?". The triage subagent already builds this synthesis; surfacing it in the MCP layer lets orchestrators skip the subagent entirely on small audits. Cap envelope size — keep the summary < 16 KiB even on 18-dim x 4-severity audits (72 ints + labels is trivial). Optional add: include `top_files_per_dimension: [{dim, files:[...]}]` so the synthesis is enough for "which file gets the next focused subagent" without re-reading.
   **Layman:** The summary mode of the test-audit synthesis tool tells you which dimensions had findings, but not how severe — so a triage caller still has to open every chunk report to find criticals. Add a per-dimension severity histogram to the summary so triage decisions stay in one round-trip.
   Kind: enhancement.
   Lanes: mcp-test-audit, auditengine.
   Source: cross-session-reports-2026-05-17 (Vestige Issue #3 + RetroDB Issue 1).
 
-- 📋 [ANTS-1565] **`workspace_search` 2-second rg wall budget hard-kills on mid-size projects — raise default or expose `timeout_sec`.**
+- ✅ [ANTS-1565] **`workspace_search` 2-second rg wall budget hard-kills on mid-size projects — raise default or expose `timeout_sec`.**
+  Shipped 2026-05-18 (pull 12, MCP timeout-ergonomics fold-in).
+  Default budget raised from 2 s to 5 s
+  (`kWorkspaceSearchHardKillMs = 5000` at
+  `src/remotecontrol.cpp:2980`). New `timeout_sec` caller arg
+  clamped to `[1, 30]` via `kWorkspaceSearchMinBudgetMs` /
+  `kWorkspaceSearchMaxBudgetMs` (`:2981-2983`); parse at `:3093-
+  3104`; out-of-range values fall back to default. Hard-kill
+  envelope grows `hint` + `timeout_sec` fields with the three
+  viable next steps (narrower filter / raise timeout_sec /
+  fallback Bash rg). Both ok and rg_failed envelopes echo
+  effective `timeout_sec`. Schema in
+  `src/claudeintegration.cpp:1968-1996` declares the new
+  `integer [1,30] default 5` property; description blurb names
+  it + the new default. Spec `docs/specs/ANTS-1565.md`; tests
+  `tests/features/mcp_workspace_search_timeout_sec/` (6
+  invariants, source-scrape). Profiling the pre-rg wrapper setup
+  cost (Vestige's "if setup eats > 500 ms that's the real bug"
+  follow-up) deferred to a separate scoped pass.
+  **Layman:** When the workspace search tool runs on a medium-
+  size project (~3700 files), the old 2-second timeout was too
+  tight. The default is now 5 seconds, with a per-call override
+  up to 30 seconds, and the timeout-error message now suggests
+  what to do next.
   Vestige 2026-05-18 localization design session: three `workspace_search` calls (different regex patterns scoped to `engine/**/*.{h,cpp}`) all returned `{ok:false, code:"rg_failed", error:"workspace-search: rg exceeded 2 s wall budget, hard-killed"}`. Fallback `Bash → rg -l --no-messages PATTERN -g '*.h' -g '*.cpp'` completed in 150-400 ms per query — so `rg` itself is fast; the wrapper is eating the budget on setup (gitignore parsing, glob expansion, dedup). Two fixes: (a) profile the pre-rg wrapper code in `remotecontrol`'s `workspace-search` handler — if setup eats > 500 ms on a 3700-file project, that's the real bug; (b) raise the default budget to 5 s (reasonable for projects > 2k files) and expose a `timeout_sec` caller arg with the same plumb-through guarantee `verify_changes` is supposed to honour. Also: improve the error response to hint at fallback — `"hint": "try narrower lane= or glob= filter, or fall back to Bash rg directly"`. Severity medium: the wrapper's dedup / `also_at` grouping (ANTS-1501) is genuinely valuable when it works.
   **Layman:** When the workspace search tool runs on a medium-size project (~3700 files), it gives up after 2 seconds — but the underlying ripgrep call only needs 150-400 ms. The wrapper code is eating the budget on setup. Raise the limit and/or let the caller pass a longer one.
   Kind: fix.
@@ -11081,7 +11125,30 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-discoverability, claudeintegration.
   Source: cross-session-report-2026-05-17 (RetroArch Bundle 63).
 
-- 📋 [ANTS-1579] **`verify_changes` — confirm `timeout_sec` plumbs through end-to-end + name tool-vs-transport timeout source in the error envelope.**
+- ✅ [ANTS-1579] **`verify_changes` — confirm `timeout_sec` plumbs through end-to-end + name tool-vs-transport timeout source in the error envelope.**
+  Shipped 2026-05-18 (pull 12, MCP timeout-ergonomics fold-in).
+  Two parts addressed: (a) the positive plumb path — caller-
+  supplied `timeout_sec` reaches `runOneGate` with enough
+  headroom — is now locked by a live regression test
+  (`tests/features/mcp_verify_changes_timeout_headroom/`,
+  INV-1/2/3). A `sleep 1` gate under `timeout_sec=3` completes
+  naturally with exitCode 0, `durationSec < 3.0`, and no
+  "timeout" skippedReason; pairs with the existing
+  `verify_changes_engine.Inv2TimeoutKillsHangingGate` for
+  bidirectional coverage. (b) The transport-vs-tool asymmetry
+  moved from the `timeout_sec` property description to the
+  top-level `verify_changes` description in
+  `src/claudeintegration.cpp:2748-2783` (now reads "Timeouts
+  are two-tier (ANTS-1525/1579): tool-side / transport-side
+  …"). INV-4 source-scrapes both keywords within 400 chars of
+  each other. Streaming-progress ping (Vestige follow-up c)
+  deferred — needs response-shape design. Spec
+  `docs/specs/ANTS-1579.md`.
+  **Layman:** The build-verification tool's timeout has two
+  layers: its own per-gate budget and the MCP client's overall
+  request timer. The description now explains the split up
+  front, and a test pins that a 3-second budget actually does
+  give a 1-second build the room it needs.
   Vestige 2026-05-17 `/test-audit` called `verify_changes({gates:["build"], timeout_sec:900})` and got `MCP error -32000: Ants MCP transport: timed out`. The build was near-empty (16 ninja steps), completed via Bash → cmake --build in well under a minute. ANTS-1525 added a `tool_timed_out:true` + `timed_out_gate` + `per_gate_timeout_sec` + `timeout_hint` envelope for the tool-side timeout — but the caller's symptom was the transport-side `MCP error -32000`. Three follow-up tasks: (a) verify end-to-end that the caller-supplied `timeout_sec` actually reaches the inner gate runner — write a feature test asserting a 5-second `timeout_sec` gives a 4-second-running gate enough headroom to complete; (b) when the transport-side timeout fires (client closes the socket before any envelope arrives), the caller has no MCP-side envelope at all — document that asymmetry loudly in the tool description and suggest fallback to `Bash → cmake/make` for builds > 60 s; (c) consider exposing a tool-side `streaming-progress` ping every N seconds so the transport stays alive on long builds. ANTS-1525 already names the transport timeout as distinct in the description; this is the next-step verification + ergonomic polish.
   **Layman:** When the build-verify tool times out, the user sees a generic "MCP transport timed out" with no clue whether the tool's own timeout fired (which would have been informative) or the client closed the socket too early (which means just run the build via Bash). Two clarifications and a possible "keep-alive ping" so long builds don't hit the transport cap.
   Kind: fix.
@@ -11116,7 +11183,14 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-roadmap-drift, remotecontrol, claudeintegration.
   Source: cross-session-report-2026-05-18 (RetroArch Bundle 67).
 
-- 📋 [ANTS-1584] **`test-audit-chunk` subagent — verify report file exists on disk before returning success.**
+- ✅ [ANTS-1584] **`test-audit-chunk` subagent — verify report file exists on disk before returning success.**
+  Dup-closed 2026-05-18 (pull 12). Already shipped as
+  **ANTS-1496** in pull 33490d1 (2026-05-18) — both items
+  target the same Vestige Issue #5. The agent definition at
+  `~/.claude/agents/test-audit-chunk.md:52-56` now mandates a
+  post-Write `Bash("ls -la …")` check + retry-once + explicit
+  `{ok:false, error:"report_write_failed"}` refusal envelope if
+  the file still isn't present.
   Vestige 2026-05-17 `/test-audit` Issue #5: the `test-audit-chunk` subagent for c-004 finished successfully, returned a full JSON report inline in its final message, and stated "report written to /tmp/.../c-004.md" — but no such file existed on disk. Other chunks correctly wrote their files. Orchestrator reconstructed c-004.md from the agent's inline JSON output. Skill-side fix in `~/.claude/agents/test-audit-chunk.md` (or wherever the agent definition lives): add a final-step verification — call `ls <reports_dir>/<chunk_id>.md` (or stat() equivalent) before returning success, and refuse to return success if the file isn't present. Cheap to implement, removes a silent-failure class. Not strictly an Ants MCP issue (lives in the user's `~/.claude/` tree, not this repo), but worth tracking here since this is where the MCP-integration work is coordinated. Composes with ANTS-1581 (skill wiring) — both are in the same "make the audit skills more robust" lane.
   **Layman:** The chunk-by-chunk audit sub-agent occasionally claims it wrote its report file when it didn't — the orchestrator has to reconstruct the report from the agent's reply text. Add a one-line "did the file actually appear on disk?" check at the end of the agent definition to refuse a fake success.
   Kind: fix.

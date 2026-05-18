@@ -1890,21 +1890,26 @@ void ClaudeIntegration::onMcpConnection() {
                     "string or regex. Returns {ok, matches:[{file, "
                     "line, text, also_at?:[{file,line}…]}], truncated, "
                     "dedup, dedup_collapsed, respect_gitignore, "
-                    "include_hidden, elapsed_ms}. Prefer this over "
-                    "`Bash grep -r ...` — typically saves 250-4500 "
-                    "tokens per query and avoids round-trips for "
-                    "no-match cases. Args: pattern (required), regex "
-                    "(false), lane (subdir under project root), glob, "
-                    "max_results (default 50, cap 500), context, case "
-                    "(smart/sensitive/insensitive), respect_gitignore "
-                    "(default true — pass false for stale-path audits "
-                    "across build outputs / compile_commands.json / "
-                    "cache dirs), include_hidden (default false — pass "
-                    "true to search dotfile paths; .git/ stays "
-                    "excluded regardless), dedup (default true — "
-                    "collapses near-duplicate excerpts into a single "
-                    "primary match with `also_at` carrying the rest; "
-                    "ANTS-1501).");
+                    "include_hidden, timeout_sec, elapsed_ms}. Prefer "
+                    "this over `Bash grep -r ...` — typically saves "
+                    "250-4500 tokens per query and avoids round-trips "
+                    "for no-match cases. Args: pattern (required), "
+                    "regex (false), lane (subdir under project root), "
+                    "glob, max_results (default 50, cap 500), context, "
+                    "case (smart/sensitive/insensitive), "
+                    "respect_gitignore (default true — pass false for "
+                    "stale-path audits across build outputs / "
+                    "compile_commands.json / cache dirs), "
+                    "include_hidden (default false — pass true to "
+                    "search dotfile paths; .git/ stays excluded "
+                    "regardless), dedup (default true — collapses "
+                    "near-duplicate excerpts into a single primary "
+                    "match with `also_at` carrying the rest; "
+                    "ANTS-1501), timeout_sec (default 5, range [1,30] "
+                    "— raise for mid-size projects > 2 k files; "
+                    "ANTS-1565). On hard-kill the rg_failed envelope "
+                    "carries a `hint` field with the three viable "
+                    "next steps.");
                 wsTool["selection_hint"] = QStringLiteral(
                     "Use for vague-location queries ('where is the X "
                     "feature wired up?'). For known one-keyword bug "
@@ -1974,6 +1979,23 @@ void ClaudeIntegration::onMcpConnection() {
                         "primary match plus `also_at:[{file,line}, …]` "
                         "for the duplicates. Pass false to keep the "
                         "per-match verbatim output.");
+                    // ANTS-1565 — per-call wall-clock budget. Default
+                    // 5 s (raised from 2 s); accept integer in [1, 30].
+                    // Out-of-range values fall back to the default. The
+                    // effective value is echoed on every response so
+                    // callers can see what they got.
+                    QJsonObject timeoutSecProp;
+                    timeoutSecProp["type"]    = "integer";
+                    timeoutSecProp["default"] = 5;
+                    timeoutSecProp["minimum"] = 1;
+                    timeoutSecProp["maximum"] = 30;
+                    timeoutSecProp["description"] = QStringLiteral(
+                        "Wall-clock budget for the rg invocation in "
+                        "seconds. Clamped to [1, 30] (out-of-range "
+                        "falls back to default). Raise when a "
+                        "mid-size project (> 2 k files) hard-kills "
+                        "the default; fall back to `Bash rg` for "
+                        "queries that need longer than 30 s.");
                     props["pattern"]     = patternProp;
                     props["regex"]       = regexProp;
                     props["lane"]        = laneProp;
@@ -1984,6 +2006,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["respect_gitignore"] = respectGitignoreProp;
                     props["include_hidden"]    = includeHiddenProp;
                     props["dedup"]             = dedupProp;
+                    props["timeout_sec"]       = timeoutSecProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
@@ -2735,14 +2758,22 @@ void ClaudeIntegration::onMcpConnection() {
                         "responses carry cache_hit. Pass force_refresh "
                         "to bypass; pass cache_only to probe without "
                         "running. Required: caller_cwd (string — your "
-                        "$PWD; ANTS-1372 cross-project gate). ANTS-1525 "
-                        "— a tool-side timeout surfaces in the envelope "
-                        "as `tool_timed_out:true` + `timed_out_gate` + "
-                        "`per_gate_timeout_sec` + `timeout_hint`; this "
-                        "is distinct from the client-side transport "
-                        "timeout (`MCP error -32000: transport: timed "
-                        "out`), which closes the socket before any "
-                        "envelope arrives.");
+                        "$PWD; ANTS-1372 cross-project gate). "
+                        "**Timeouts are two-tier (ANTS-1525/1579):** "
+                        "the **tool-side** per-gate budget kills the "
+                        "gate process and surfaces a structured "
+                        "envelope (`tool_timed_out:true` + "
+                        "`timed_out_gate` + `per_gate_timeout_sec` + "
+                        "`timeout_hint`). The **transport-side** cap "
+                        "is the MCP client's request timer (Claude "
+                        "Code's is ~60 s) — when that fires, it "
+                        "closes the socket before any envelope can "
+                        "arrive and the caller sees `MCP error "
+                        "-32000: transport: timed out` *outside* the "
+                        "response. For builds > 60 s, fall back to "
+                        "`Bash → cmake/make` rather than raising "
+                        "`timeout_sec`; this tool's [10, 1800] clamp "
+                        "is independent of the transport cap.");
                     t["selection_hint"] = QStringLiteral(
                         "Use after Edit/Write to verify build / "
                         "tests / lint gates still pass. Cheap "
