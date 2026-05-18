@@ -489,4 +489,37 @@ QString templateColdEyesFoldInBlock(
     return out;
 }
 
+QString templateColdEyesFoldInBlockFreeform(
+    const QList<IndieReviewEngine::CorroboratedFinding> &actionable,
+    const QString &dateIso) {
+    // ANTS-1510 — no `[PROJ-NNNN]` prefix and no ID-keyed Source/Kind
+    // metadata. Projects that don't use the shareable roadmap-format.md
+    // ID scheme still get a structured `- ` bullet per finding plus a
+    // single `Source: cold-eyes-<DATE>` provenance line at the bottom of
+    // the block.
+    QString out;
+    out += QStringLiteral("### 📝 Cold-eyes ") + dateIso + QChar('\n');
+    out += QChar('\n');
+    for (const auto &f : actionable) {
+        QString lanesJoined;
+        for (int j = 0; j < f.citingLanes.size(); ++j) {
+            if (j) lanesJoined += QStringLiteral(", ");
+            lanesJoined += f.citingLanes[j];
+        }
+        out += QStringLiteral("- **Cold-eyes finding:** ");
+        out += f.file;
+        if (f.line > 0) {
+            out += QChar(':');
+            out += QString::number(f.line);
+        }
+        out += QStringLiteral(" — cited across [");
+        out += lanesJoined;
+        out += QStringLiteral("].\n");
+    }
+    out += QChar('\n');
+    out += QStringLiteral("Source: cold-eyes-") + dateIso
+         + QStringLiteral(".\n");
+    return out;
+}
+
 }  // namespace ColdEyesEngine

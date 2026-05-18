@@ -7030,6 +7030,170 @@ indie-review finding.
   Kind: perf.
   Source: user-request-2026-05-18.
 
+- 📋 [ANTS-1556] **`--preset=fast` is functionally identical to `--preset=default` — give it a real differentiator.**
+  User reported the build time hasn't changed after the pull-7
+  ANTS-1550 fold-in. Investigation confirmed both build/ and build-fast/
+  configure with `ANTS_CCACHE=ON` and identical 8 per-lib PCH files —
+  the only difference is the build directory path. The preset advertises
+  "ccache + per-lib PCH" but both are already always-on in CMakeLists.txt
+  for every preset (ccache via the unconditional `ANTS_CCACHE=ON`
+  default since ANTS-1550; PCH via the unconditional
+  `target_precompile_headers` block at CMakeLists.txt:412). Net effect:
+  switching `cmake --build build` ↔ `cmake --build --preset=fast` just
+  rebuilds from scratch in a new directory, paying full cc1plus cost
+  on the cold cache.
+  
+  Three repair options:
+    (a) Make `--preset=fast` enable a real extra speed-up not in
+        default — candidates: link-pool=2 (currently 1 globally),
+        thin-LTO=OFF override if default ever enables it, or ship
+        with `ANTS_UNITY_BUILD=ON` once ANTS-1553 lands.
+    (b) Document `fast` as just "isolated build dir to keep `build/`
+        warm" — honest framing, drop the speed-up wording from
+        CLAUDE.md and the preset description.
+    (c) Drop the preset entirely; the actual cheap-iteration knobs
+        (`--target ants-terminal`, `-DANTS_TESTS=OFF`) are
+        project-flags, not build-dir state.
+  
+  Recommend (b) for v1 (zero risk, lands today) and (a) once ANTS-1553
+  ships (unity is the only knob with a measurable cold-build win still
+  on the table).
+  
+  Lanes: build, docs.
+  build, docs
+  **Layman:** The "fast build" mode doesn't actually build faster than the normal mode — they have the same settings. Need to make it really faster, or drop it.
+  Kind: perf.
+  Source: user-report-2026-05-18 (build-time-no-change after pull-7 + pull-8).
+
+- 📋 [ANTS-1557] **Strip the "ccache + PCH" framing from `--preset=fast` docs.**
+  Cheapest of the three [ANTS-1556] options (option b). Both ccache
+  and PCH are already unconditional defaults in CMakeLists.txt — the
+  preset re-asserts them but adds nothing. Touch points:
+  
+    - `CMakePresets.json` — rewrite `fast`'s `description` to say
+      "Isolated build directory to keep `build/` warm during
+      experimental work" or similar.
+    - `CLAUDE.md` § "Cheaper iteration loops" — drop the
+      `cmake --preset=fast` bullet's "ccache + per-lib PCH" framing.
+      Either remove the bullet or rewrite as "isolated build dir
+      for hot-loop work where you don't want to invalidate the
+      default build cache".
+  
+  Zero risk, ~5 lines across two files. Eligible for next chore /
+  debt-sweep pull.
+  
+  Lanes: build, docs.
+  ["build", "docs"]
+  **Layman:** Update the "fast build" mode's description to match what it actually does (just an isolated build folder).
+  Kind: doc-fix.
+  Source: in-session-2026-05-18 (follow-up to [ANTS-1556]).
+
+- 📋 [ANTS-1558] **`--preset=fast` differentiator: bump link_pool from 1 → 2 for parallel test-bundle linking.**
+  One leg of [ANTS-1556] option (a). The in-tree `JOB_POOLS` cap
+  holds link_pool=1 globally — fine for the 8 GiB workstation case
+  but conservative on a 32 GiB host. Override it in the `fast` preset
+  only (defaults stay at 1) so the iteration preset gives a real
+  wall-clock win on full rebuilds where the long tail is the ~30 test
+  bundle links going serially.
+  
+  Implementation: add a cache var `ANTS_LINK_POOL` honoured by the
+  `JOB_POOLS` block in CMakeLists.txt, override it to 2 in the
+  `fast` preset's `cacheVariables`. Default preset stays at 1.
+  
+  RAM risk assessment: each Qt ld invocation peaks at ~1.5–2 GiB
+  with -O2. Two concurrent links = ~4 GiB peak. Headroom on a 32 GiB
+  box but worth a manual measurement before flipping the cap higher
+  (earlyoom history on this host per user memory).
+  
+  Lanes: build, perf.
+  ["build", "perf"]
+  **Layman:** Let the "fast build" mode link two programs at the same time instead of one — should make full rebuilds a few minutes faster.
+  Kind: perf.
+  Source: in-session-2026-05-18 (follow-up to [ANTS-1556]).
+
+- 📋 [ANTS-1559] **PCH consolidation — one shared `target_precompile_headers` consumed via `REUSE_FROM` across libs.**
+  Second leg of [ANTS-1556] option (a). The current
+  `target_precompile_headers` block at CMakeLists.txt:412 attaches a
+  distinct `cmake_pch.hxx.gch` to each of the 8 libs (ants_vt_lib,
+  ants_core_lib, ants_chrome_lib, ants_dialogs_lib, ants_lua_lib,
+  ants_audit_lib, ants_claude_lib, ants-terminal). Each is its own
+  ~30 MB Qt-bloated .gch compile from cold. A single PCH consumed
+  via `target_precompile_headers(target REUSE_FROM other_target)`
+  collapses 7 of those compiles to zero.
+  
+  Catches to verify before shipping:
+    - PCH headers must be a true superset across consumers — any lib
+      that needs a header the source-of-truth lib doesn't include
+      will fail to consume. Quick audit: union the current 8
+      `cmake_pch.hxx` contents, pick the most-included lib as the
+      source.
+    - REUSE_FROM requires matching compile flags. ants_audit_lib
+      has -fno-rtti gated by Qt6::Core, so it can't share with the
+      rtti-on libs. Two PCH base targets (rtti-on / rtti-off) is the
+      likely shape.
+    - Pair with a cold-cache measurement before/after — if the win
+      is < 10 % wall-clock, the layout complexity isn't worth it.
+  
+  Lanes: build, perf.
+  ["build", "perf"]
+  **Layman:** Right now the build creates 8 nearly-identical pre-compiled header files, one per library. Compile one, share it everywhere.
+  Kind: perf.
+  Source: in-session-2026-05-18 (follow-up to [ANTS-1556]).
+
+- 💭 [ANTS-1560] **`build_info.h` HH:MM precision freezes the displayed build time across intra-minute rebuilds.**
+  Withdrawn 2026-05-18 — phantom bug. The scenario
+  (two rebuilds in the same HH:MM minute producing identical
+  build_info.h content) is not reachable in practice: a full
+  rebuild is multi-minute, an incremental rebuild that actually
+  recompiles a TU crosses the minute boundary, and a no-op
+  `cmake --build` correctly leaves the binary (and its displayed
+  stamp) untouched. User's original "build time hasn't changed"
+  observation was the running binary pre-dating the most recent
+  commit — they hadn't actually rebuilt before relaunching.
+  Kept for the historical record so the analysis doesn't get
+  re-invented next time the question comes up.
+
+  --- original (incorrect) hypothesis below ---
+
+  User-observed bug: after rebuilding `cmake --build build` and
+  relaunching, the displayed build time can stay the same as before
+  the rebuild. Root cause is intentional: `GenerateBuildInfo.cmake`
+  formats the stamp as `%Y-%m-%d %H:%M` (minute precision), and
+  `configure_file` uses `copy_if_different` so an intra-minute
+  rebuild produces byte-identical content → file mtime doesn't
+  advance → ninja's depfile check sees nothing new in build_info.h
+  → `mainwindow.cpp` / `aboutdialogs.cpp` don't recompile → linked
+  binary keeps the old timestamp baked in.
+  
+  ANTS-1394's design comment frames this as a ccache-warmth feature
+  ("ccache stays warm on intra-minute rebuilds"), but the visible
+  symptom is "the displayed build time is frozen and you can't tell
+  whether your rebuild actually landed."
+  
+  Fix: bump GenerateBuildInfo.cmake's `string(TIMESTAMP ...)` call to
+  `%H:%M:%S` (second-grain content), so every rebuild produces a new
+  content → file mtime advances → ninja triggers a recompile of the
+  2 consuming TUs (mainwindow.cpp + aboutdialogs.cpp). Cost: ~2 cc1plus
+  runs per rebuild instead of 0 (~1-2 s wall-clock; both TUs are PCH-
+  backed). Benefit: timestamp always reflects the actual build wall-clock,
+  which is the whole point of showing it.
+  
+  Update the ANTS-1394 comment block in CMakeLists.txt:36-40 + the
+  header in build_info.h.in to reflect the new "always recompile"
+  semantic.
+  
+  Optional follow-on: emit a `ANTS_BUILD_EPOCH` integer (Unix seconds)
+  alongside the formatted strings so C++ can render with `QDateTime`
+  locale-respecting formatting in the About dialog. Decouples display
+  precision from on-disk content — but the HH:MM:SS fix is the
+  load-bearing change either way.
+  
+  Lanes: build, dx.
+  ["build", "dx"]
+  **Layman:** The "build time" shown in the title bar stops updating if you rebuild twice in the same minute — fix is to use seconds, not just minutes.
+  Kind: fix.
+  Source: user-report-2026-05-18 (build-time stamp frozen across intra-minute rebuilds).
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,
@@ -9876,7 +10040,27 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes-cross-doc-diff.
   Source: RetroDB /cold-eyes cross-session report 2026-05-18.
 
-- 📋 [ANTS-1510] ****`cold_eyes_fold_in` should accept non-`[PROJ-NNNN]` roadmap formats (ad-hoc section headings, explicit release_block_heading, skip ID alloc).****
+- ✅ [ANTS-1510] ****`cold_eyes_fold_in` accepts non-`[PROJ-NNNN]` roadmap formats (freeform mode).**** Shipped 2026-05-18 (pull-9 pull 1).
+  New `id_allocation: "auto" | "skip"` parameter (default `"auto"`
+  preserves existing behaviour). When `"skip"`, the handler does
+  NOT touch `.roadmap-counter` and renders bullets via the new
+  `ColdEyesEngine::templateColdEyesFoldInBlockFreeform` overload
+  (no `[ANTS-NNNN]` prefix, single trailing `Source: cold-eyes-<DATE>`
+  provenance line). Pair with `release_block_heading:"<the heading>"`
+  for projects that have no recognisable `## (target: YYYY-NN)` line.
+  Descriptor (claudeintegration.cpp) now documents the required
+  project shape upfront + the freeform escape hatch in the
+  `id_allocation` enum description + selection_hint. Spec +
+  regression test at
+  `tests/features/cold_eyes_fold_in_freeform/` (6 invariants
+  source-grep, GUI-free, label `features`). 984/984 features
+  green; verified pre-fix that all 3 tests fail.
+
+  The same freeform-mode follow-up applies to
+  `test_audit_fold_in`, `indie_review_fold_in`, and
+  `debt_sweep_apply_fix` — separate roadmap entries to be filed
+  when those tools are next touched.
+
   RetroDB Issue 5 (LOW). RetroDB's roadmap uses a "Pass N.M" naming
   convention, not the `[PROJ-NNNN]` IDs the fold-in tool expects.
   The tool's `actionable: [{file, line, citing_lanes[]}]` shape and
@@ -9935,7 +10119,29 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-project-layout.
   Source: RetroArch cross-session report 2026-05-18 (Bundle 64 addendum).
 
-- 📋 [ANTS-1512] ****`audit_run` scoped-check mode — `audit_run(scope=[…], tool=…, checks=[…])` for narrow one-check sweeps.****
+- ✅ [ANTS-1512] ****`audit_run` scoped-check mode shipped.**** Shipped 2026-05-18 (pull-9 pull 2).
+  New `paths` (project-relative subdir array) and `checks` (rule
+  ID array) parameters on `audit_run`. `clang-tidy` is now in
+  `kKnownTools()` with a minimal default argv (`-p build/`); when
+  `checks` is non-empty it renders as `--checks=-*,<comma-joined>`,
+  and `paths` append as positional file/dir args.
+  `cppcheck` also honours `paths` (positional override of the
+  default `src/` scan). Other tools refuse `checks` with
+  `code:"bad_args"` rather than silently ignore — narrow means
+  narrow. Per-entry sanitisation: `paths` runs through the existing
+  `isAuditArgSafe` regex; `checks` runs through the new
+  `isAuditCheckSafe` (`^-?[A-Za-z0-9_*.,-]+$`, length ≤ 128).
+  When `paths` or `checks` is present, the project's
+  `.audit-config.json` per-tool override is bypassed — scoped
+  invocations are narrow-on-purpose. Spec + regression test at
+  `tests/features/audit_run_scoped_check/` (7 invariants
+  source-grep, GUI-free, label `features`). 984/984 features
+  green; verified pre-fix that all 7 tests fail.
+
+  Caller pattern surfaced from the RetroArch Bundle 64 use case:
+  `audit_run(tools:["clang-tidy"], paths:["menu/drivers/","gfx/"],
+   checks:["bugprone-integer-division"], caller_cwd:"...")`.
+
   RetroArch Bundle 64: a tree-wide `bugprone-integer-division` sweep
   across 8 menu+gfx files needed `clang-tidy --checks='-*,bugprone-
   integer-division'`. `audit_run` is shaped around the full audit
@@ -10527,7 +10733,22 @@ template / mutate this state atomically" → movable. If it's
   Lanes: build, perf, cmake, test-infrastructure.
   Source: in-session-2026-05-18 (ANTS-1550 follow-up).
 
-- 📋 [ANTS-1554] **`-Wnull-dereference` warning in MainWindow::refreshRepoVisibility's QProcess::finished lambda.**
+- ✅ [ANTS-1554] **`-Wnull-dereference` warning in MainWindow::refreshRepoVisibility silenced.** Shipped 2026-05-18 (pull-9 pull 3).
+  Added a tightly-scoped `#pragma GCC diagnostic push / ignored
+  "-Wnull-dereference" / pop` block around the single
+  `m_repoVisibilityProbeInFlight.remove(repoRoot)` call inside the
+  `QProcess::finished` lambda. The pragma is guarded by
+  `#if defined(__GNUC__) && !defined(__clang__)` so clang builds
+  don't see an unknown-pragma warning. The warning is a known GCC
+  false positive — `QHash::isEmpty()`'s `!d || d->size == 0`
+  short-circuit is logically safe but the value-tracking through
+  the lambda-via-signal callsite can't prove it. Per the "flag
+  warnings, don't dismiss them" rule, locked in with spec +
+  regression test at
+  `tests/features/build_warning_repo_visibility_null_deref/`
+  (4 invariants source-grep, GUI-free, label `features`).
+  984/984 features green; verified pre-fix that the test fails.
+
   Build surfaces a repeating -Wnull-dereference warning chain inlining through QtPrivate::QCallableObject::impl → Functor* → MainWindow::refreshRepoVisibility's [this](int, QProcess::ExitStatus) lambda at mainwindow.cpp:5774, ending at qhash.h:966 (QHash<K,T>::isEmpty's `return !d || d->size == 0`). The compiler can't prove the early-null check forecloses the subsequent QHash::remove path.
   
   Pre-existing (predates pull-7). Per the "flag warnings, don't dismiss" rule it gets a roadmap entry rather than a "known pre-existing" wave-off. Fix candidates:
@@ -10536,7 +10757,6 @@ template / mutate this state atomically" → movable. If it's
   (c) #pragma GCC diagnostic ignored "-Wnull-dereference" tightly scoped — last resort.
   
   Cheapest: (a). Probably 2-3 lines. Has been on the floor for a while; finally surface in a fix-pass.
-  </invoke>
   Kind: fix.
   Lanes: mainwindow, qhash, build-hygiene.
   Source: build-output-2026-05-18 (pull-8 build, recurring warning).
@@ -10551,7 +10771,6 @@ template / mutate this state atomically" → movable. If it's
   - API: `RunResult` gains `cachePath` (where the sarif landed), `priorRun` (manifest snapshot of the prior run if any).
   
   Once shipped, ANTS-1504 + ANTS-1512 can layer on top. Estimated effort: ~150-200 lines (most of the new code is in auditrunner.cpp around the existing writeSarif + a small cachemanifest helper).
-  </invoke>
   Kind: implement.
   Lanes: auditrunner, mcp-audit-run, mcp-token-reduction.
   Source: in-session-2026-05-18 (pull-8 dependency surfaced while sizing ANTS-1504).

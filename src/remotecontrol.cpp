@@ -2336,6 +2336,12 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         text.remove(QRegularExpression(
             QStringLiteral("</body>"),
             QRegularExpression::CaseInsensitiveOption));
+        // ANTS-1554 follow-up — `</invoke>` also leaks through some
+        // harnesses (observed in pull-8 on ANTS-1554 and ANTS-1555
+        // bodies). Same shape as the stray `</body>` closer.
+        text.remove(QRegularExpression(
+            QStringLiteral("</invoke>"),
+            QRegularExpression::CaseInsensitiveOption));
         // Collapse any blank-line runs created by the removal so the
         // splice doesn't accumulate empty body lines.
         text.replace(QRegularExpression(QStringLiteral("\\n{3,}")),
@@ -6032,13 +6038,43 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
         dateIso = QDate::currentDate().toString(Qt::ISODate);
     }
 
-    const auto ids = RoadmapFoldIn::allocateIds(root, actionable.size());
-    if (ids.isEmpty()) return QJsonDocument(ceErr(
-        QStringLiteral("counter_failed"),
-        QStringLiteral("cold_eyes_fold_in: could not allocate IDs")));
+    // ANTS-1510 — id_allocation defaults to "auto" (the existing behavior:
+    // pull N consecutive IDs from .roadmap-counter, render the block with
+    // `[ANTS-NNNN]` prefixes). "skip" suppresses the counter touch entirely
+    // — required for projects whose roadmap doesn't follow the shareable
+    // docs/standards/roadmap-format.md § 3.5.1 ID scheme (e.g. RetroDB's
+    // "Pass N.M" headings). When skipped, the block uses the freeform
+    // template + the response carries `id_allocation:"skip"` echo +
+    // `allocated_ids:[]`.
+    const QString idAllocRaw =
+        req.value(QStringLiteral("id_allocation")).toString();
+    QString idAllocMode = QStringLiteral("auto");
+    if (!idAllocRaw.isEmpty()) {
+        if (idAllocRaw == QStringLiteral("auto")
+            || idAllocRaw == QStringLiteral("skip")) {
+            idAllocMode = idAllocRaw;
+        } else {
+            return QJsonDocument(ceErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("cold_eyes_fold_in: id_allocation must be "
+                               "\"auto\" or \"skip\"")));
+        }
+    }
+    const bool skipAlloc = (idAllocMode == QStringLiteral("skip"));
 
-    const QString block = ColdEyesEngine::templateColdEyesFoldInBlock(
-        actionable, ids, dateIso);
+    QList<int> ids;
+    if (!skipAlloc) {
+        ids = RoadmapFoldIn::allocateIds(root, actionable.size());
+        if (ids.isEmpty()) return QJsonDocument(ceErr(
+            QStringLiteral("counter_failed"),
+            QStringLiteral("cold_eyes_fold_in: could not allocate IDs")));
+    }
+
+    const QString block = skipAlloc
+        ? ColdEyesEngine::templateColdEyesFoldInBlockFreeform(
+              actionable, dateIso)
+        : ColdEyesEngine::templateColdEyesFoldInBlock(
+              actionable, ids, dateIso);
 
     QString heading = req.value(QStringLiteral("release_block_heading"))
                           .toString();
@@ -6056,6 +6092,7 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     QJsonArray idsArr;
     for (int id : ids) idsArr.append(id);
     env["allocated_ids"] = idsArr;
+    env["id_allocation"] = idAllocMode;
     env["written"]       = written;
     if (!heading.isEmpty()) env["release_block_heading"] = heading;
     return QJsonDocument(env);

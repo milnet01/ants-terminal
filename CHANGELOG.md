@@ -12,6 +12,81 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP API hygiene + token-saver fold-in — pull 9 (ANTS-1510 + 1512 + 1554, 2026-05-18 night)
+
+Three contained MCP improvements + cleanup of two stray `</invoke>`
+tool-call XML leaks in the ROADMAP (ANTS-1551's defensive scrub now
+catches that pattern too).
+
+- **ANTS-1510 (enhancement)** — `cold_eyes_fold_in` freeform mode.
+  New `id_allocation: "auto" | "skip"` parameter. `"auto"` (default)
+  preserves the existing behaviour: pull N consecutive IDs from
+  `.roadmap-counter`, render bullets prefixed with `[ANTS-NNNN]`.
+  `"skip"` suppresses the counter touch entirely and emits
+  prefix-free bullets via the new
+  `ColdEyesEngine::templateColdEyesFoldInBlockFreeform` overload —
+  required for projects whose roadmap doesn't follow
+  `docs/standards/roadmap-format.md` (e.g. RetroDB's "Pass N.M"
+  headings). Pair with `release_block_heading:"<the heading>"`
+  when the project has no auto-detectable `## (target: YYYY-NN)`
+  or `## N.M.P — …` release line. Descriptor (claudeintegration.cpp)
+  + selection_hint clarified to document the required project shape
+  for `auto` and the freeform escape hatch. The same enhancement is
+  open as a follow-up for `test_audit_fold_in`,
+  `indie_review_fold_in`, and `debt_sweep_apply_fix` (separate
+  roadmap entries to file when those tools are next touched). Spec
+  + regression test at `tests/features/cold_eyes_fold_in_freeform/`
+  (3 tests / 6 invariants, source-grep, GUI-free).
+
+- **ANTS-1512 (enhancement)** — `audit_run` scoped-check mode. New
+  `paths` (project-relative subdir array) and `checks` (rule ID
+  array) parameters constrain the tool's invocation to a narrow
+  matrix instead of the full-pipeline shape. `clang-tidy` is now in
+  `kKnownTools()` with a minimal default argv (`-p build/`); when
+  `checks` is non-empty it renders as `--checks=-*,<comma-joined>`,
+  and `paths` append as positional file/dir args. `cppcheck` also
+  honours `paths` (positional override of the default `src/` scan).
+  Other tools refuse `checks` with `code:"bad_args"` rather than
+  silently ignore — narrow means narrow. Per-entry sanitisation:
+  `paths` runs through the existing `isAuditArgSafe`; `checks`
+  through the new `isAuditCheckSafe`
+  (`^-?[A-Za-z0-9_*.,-]+$`, length ≤ 128). When `paths` or `checks`
+  is present, the project's `.audit-config.json` per-tool override
+  is bypassed — scoped invocations are narrow-on-purpose. RetroArch
+  Bundle 64 use case now expresses as
+  `audit_run(tools:["clang-tidy"], paths:["menu/drivers/","gfx/"],
+   checks:["bugprone-integer-division"], caller_cwd:"…")`. Spec
+  + regression test at `tests/features/audit_run_scoped_check/`
+  (7 tests / 9 invariants, source-grep, GUI-free).
+
+- **ANTS-1554 (fix)** — `-Wnull-dereference` warning silenced in
+  `MainWindow::refreshRepoVisibility`'s `QProcess::finished`
+  lambda. Tightly-scoped `#pragma GCC diagnostic push / ignored
+  "-Wnull-dereference" / pop` around the single
+  `m_repoVisibilityProbeInFlight.remove(repoRoot)` call. The
+  pragma is guarded by `#if defined(__GNUC__) && !defined(__clang__)`
+  so clang builds don't see an unknown-pragma warning. Root cause:
+  GCC value-tracking through the lambda-via-signal callsite can't
+  prove `QHash::isEmpty()`'s `!d || d->size == 0` short-circuit;
+  the warning fires deep inside `QHash::removeImpl → isEmpty`.
+  Logically safe (QHash's shared-null pattern is intentional);
+  pragma + spec/regression locks the fix so a future refactor that
+  drops it re-surfaces in CI immediately. Spec + regression at
+  `tests/features/build_warning_repo_visibility_null_deref/`
+  (1 test / 4 invariants, source-grep, GUI-free).
+
+- **ANTS-1551 follow-up** — `cmdRoadmapLog`'s defensive body-scrub
+  (src/remotecontrol.cpp) now also strips stray `</invoke>` closers
+  in addition to `</body>`. Two pull-8 ROADMAP entries
+  (ANTS-1554 + ANTS-1555) shipped with leaked `</invoke>` lines in
+  their bodies before this catch; both cleaned by hand in this
+  pull as well. No new ANTS- ID — folded into the original
+  ANTS-1551 entry as a follow-up note.
+
+984/984 features green; verified pre-fix that all three new test
+sets (4 + 6 + 9 = 19 invariants across 11 tests) fail. Build clean
+(no `-Wnull-dereference` re-emission).
+
 ### 🔌 MCP token-saver fold-in — pull 8 (ANTS-1499 + 1500 + 1530, 2026-05-18 evening)
 
 Three token-reduction wins for the MCP surface, plus two follow-up

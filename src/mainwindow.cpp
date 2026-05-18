@@ -4058,6 +4058,16 @@ void MainWindow::setupClaudeMcpProviders() {
                 req.topFindingsCount = args.value(
                     QStringLiteral("top_findings_count")).toInt();
             }
+            // ANTS-1512 — scoped-check mode: narrow the tool's scope
+            // to specific paths and/or a specific check set.
+            const QJsonArray pathsArr = args.value(
+                QStringLiteral("paths")).toArray();
+            for (const QJsonValue &v : pathsArr)
+                req.paths.append(v.toString());
+            const QJsonArray checksArr = args.value(
+                QStringLiteral("checks")).toArray();
+            for (const QJsonValue &v : checksArr)
+                req.checks.append(v.toString());
             // Run synchronously (v1) — caller blocks. v2 will route
             // through the dedicated m_auditPool worker (INV-9).
             const AuditRunner::RunResult r = AuditRunner::runAudit(req);
@@ -5825,8 +5835,23 @@ void MainWindow::refreshRepoVisibility() {
                     visibility,
                     QDateTime::currentMSecsSinceEpoch()};
                 // ANTS-1137 — clear in-flight on completion regardless
-                // of success/failure path.
+                // of success/failure path. ANTS-1554: tightly-scoped
+                // pragma suppresses a GCC -Wnull-dereference false
+                // positive — the warning fires inside QHash::isEmpty()
+                // (qhash.h:966 `!d || d->size == 0`) when the
+                // `QHash::remove` → `removeImpl` → `isEmpty` inline
+                // chain is reached from this lambda-via-signal callsite;
+                // the short-circuit is logically safe but the
+                // template-instantiation context defeats GCC's value
+                // tracking.
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
                 self->m_repoVisibilityProbeInFlight.remove(repoRoot);
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
                 applyVisibility(visibility, slug);
             });
     // ANTS-1137 — mark in-flight before start so a re-entry within

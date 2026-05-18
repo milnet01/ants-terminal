@@ -2842,9 +2842,13 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject toolsProp;
                     toolsProp["type"] = "array";
                     toolsProp["description"] = QStringLiteral(
-                        "Subset of {cppcheck, clazy, ruff, bandit, "
-                        "semgrep, gitleaks, trivy, shellcheck, mypy}. "
-                        "Empty / omitted = auto-detect all runnable.");
+                        "Subset of {cppcheck, clazy, clang-tidy, ruff, "
+                        "bandit, semgrep, gitleaks, trivy, shellcheck, "
+                        "mypy}. Empty / omitted = auto-detect all "
+                        "runnable. clang-tidy is opt-in (no default "
+                        "argv beyond `-p build/`); pair it with "
+                        "`paths` + `checks` for the scoped sweep "
+                        "pattern (ANTS-1512).");
                     QJsonObject scopeProp;
                     scopeProp["type"] = "string";
                     scopeProp["description"] = QStringLiteral(
@@ -2884,6 +2888,28 @@ void ClaudeIntegration::onMcpConnection() {
                         "When > 0, inline first N findings into envelope "
                         "as top_findings[] (avoids the SARIF-Read round "
                         "trip). [0, 100]; out-of-range → bad_args.");
+                    // ANTS-1512 — scoped-check mode.
+                    QJsonObject pathsProp;
+                    pathsProp["type"] = "array";
+                    pathsProp["description"] = QStringLiteral(
+                        "Project-relative paths constraining the "
+                        "tool's invocation (e.g. [\"menu/drivers/\", "
+                        "\"gfx/\"]). Currently honoured by cppcheck "
+                        "and clang-tidy as positional args. Each "
+                        "entry is sanitised through isAuditArgSafe; "
+                        "any failing entry rejects the whole call "
+                        "with code:\"bad_args\".");
+                    QJsonObject checksProp;
+                    checksProp["type"] = "array";
+                    checksProp["description"] = QStringLiteral(
+                        "Check IDs constraining the tool's enabled "
+                        "rule set (e.g. [\"bugprone-integer-division\"]). "
+                        "Currently honoured by clang-tidy only "
+                        "(rendered as `--checks=-*,<joined>`); "
+                        "other tools refuse with code:\"bad_args\" "
+                        "rather than silently ignore. Each entry "
+                        "must match ^-?[A-Za-z0-9_*.,-]+$ "
+                        "(length ≤ 128).");
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
@@ -2896,6 +2922,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["suppressions"]         = suppProp;
                     props["formats"]              = formatsProp;
                     props["top_findings_count"]   = topProp;
+                    props["paths"]                = pathsProp;
+                    props["checks"]               = checksProp;
                     props["caller_cwd"]           = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
@@ -3477,18 +3505,30 @@ void ClaudeIntegration::onMcpConnection() {
                     t["description"] = QStringLiteral(
                         "Render an `### 📝 Cold-eyes <YYYY-MM-DD>` "
                         "ROADMAP block from a list of corroborated "
-                        "findings. Allocates IDs from "
-                        ".roadmap-counter (via "
-                        "RoadmapFoldIn::allocateIds) and, if a "
+                        "findings. Default (`id_allocation:\"auto\"`) "
+                        "allocates IDs from .roadmap-counter (via "
+                        "RoadmapFoldIn::allocateIds) and renders "
+                        "bullets with `[ANTS-NNNN]` prefixes — "
+                        "**REQUIRES** the project to follow "
+                        "docs/standards/roadmap-format.md (counter "
+                        "file + ID-prefixed bullets). "
+                        "`id_allocation:\"skip\"` skips the counter "
+                        "touch and emits prefix-free bullets — use "
+                        "for projects whose roadmap uses ad-hoc "
+                        "headings (e.g. \"Pass N.M\"). When a "
                         "release-block heading is found via "
-                        "findActiveReleaseHeading, atomically "
-                        "inserts the block into ROADMAP.md. "
+                        "findActiveReleaseHeading (or supplied via "
+                        "`release_block_heading`), the block is "
+                        "atomically inserted into ROADMAP.md; "
+                        "otherwise the block is returned in "
+                        "`block` for caller-side splicing. "
                         "Required: actionable (array), caller_cwd "
                         "(string — your $PWD; ANTS-1372).");
                     t["selection_hint"] = QStringLiteral(
-                        "Use to merge a finished cold-eyes set "
-                        "back into ROADMAP.md as a fold-in block. "
-                        "Mutates ROADMAP — caller_cwd required.");
+                        "Use to fold a cold-eyes set into "
+                        "ROADMAP.md. id_allocation:\"skip\" for "
+                        "projects without .roadmap-counter / "
+                        "[PROJ-NNNN] IDs. caller_cwd required.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject aProp;
@@ -3506,7 +3546,31 @@ void ClaudeIntegration::onMcpConnection() {
                     hProp["description"] = QStringLiteral(
                         "Optional explicit `## ` heading to "
                         "insert after; defaults to "
-                        "RoadmapFoldIn::findActiveReleaseHeading.");
+                        "RoadmapFoldIn::findActiveReleaseHeading. "
+                        "Required when the project's ROADMAP.md "
+                        "has no `## (target: YYYY-NN)` or "
+                        "`## N.M.P — …` line (e.g. freeform "
+                        "headings like \"Pass N.M\").");
+                    // ANTS-1510 — id_allocation freeform-mode switch.
+                    QJsonObject iaProp;
+                    iaProp["type"] = "string";
+                    QJsonArray iaEnum;
+                    iaEnum.append("auto");
+                    iaEnum.append("skip");
+                    iaProp["enum"] = iaEnum;
+                    iaProp["default"] = "auto";
+                    iaProp["description"] = QStringLiteral(
+                        "ID allocation mode. \"auto\" (default) "
+                        "pulls N consecutive IDs from "
+                        ".roadmap-counter and renders bullets "
+                        "prefixed with `[ANTS-NNNN]` per "
+                        "docs/standards/roadmap-format.md § 3.5.1. "
+                        "\"skip\" suppresses the counter touch and "
+                        "emits prefix-free bullets — use for "
+                        "projects whose roadmap doesn't follow the "
+                        "shareable ID scheme (e.g. RetroDB's \"Pass "
+                        "N.M\" headings). Echoed in the response "
+                        "envelope.");
                     // ANTS-1389 — caller_cwd schema surfacing.
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
@@ -3518,6 +3582,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["actionable"]            = aProp;
                     props["date_iso"]              = dProp;
                     props["release_block_heading"] = hProp;
+                    props["id_allocation"]         = iaProp;
                     props["caller_cwd"]            = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;

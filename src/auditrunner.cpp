@@ -133,6 +133,7 @@ const QStringList &kKnownTools() {
     static const QStringList v = {
         QStringLiteral("cppcheck"),
         QStringLiteral("clazy"),
+        QStringLiteral("clang-tidy"),   // ANTS-1512 — scoped-check mode
         QStringLiteral("ruff"),
         QStringLiteral("bandit"),
         QStringLiteral("semgrep"),
@@ -142,6 +143,14 @@ const QStringList &kKnownTools() {
         QStringLiteral("mypy"),
     };
     return v;
+}
+
+// ANTS-1512 — tools that honour the `checks` filter. Other tools that
+// receive `checks` refuse with `bad_args` rather than silently ignore
+// them — silent-ignore is a footgun (caller assumes their narrow scope
+// is applied; gets a full run instead).
+bool toolHonoursChecks(const QString &tool) {
+    return tool == QLatin1String("clang-tidy");
 }
 
 // ANTS-1456 / ANTS-1464 — load project-side audit-config.json if
@@ -197,6 +206,19 @@ bool isAuditArgSafe(const QString &arg) {
     return true;
 }
 
+// ANTS-1512 — per-check sanitiser. Check IDs look like
+// `bugprone-integer-division`, `clang-analyzer-core.*`,
+// `-readability-magic-numbers` (the leading `-` opts a check OUT in
+// clang-tidy's --checks syntax). Allowlist is intentionally tight to
+// keep this an argv-injection chokepoint.
+bool isAuditCheckSafe(const QString &check) {
+    if (check.isEmpty() || check.size() > 128) return false;
+    static const QRegularExpression rx(
+        QStringLiteral("^-?[A-Za-z0-9_*.,-]+$"));
+    if (!rx.match(check).hasMatch()) return false;
+    return true;
+}
+
 // Per-tool argv builder. v1 uses minimal sane defaults (parallel to
 // the /audit skill's step 5). ANTS-1456 — `src/` existence is
 // auto-detected so flat-layout projects (RetroArch et al.) no longer
@@ -205,14 +227,22 @@ bool isAuditArgSafe(const QString &arg) {
 // the project ships a `.audit-config.json` or
 // `docs/private/audit/audit-config.json`.
 QStringList toolArgv(const QString &tool, const QString &projectRoot,
-                     const QJsonObject &projectConfig = {}) {
+                     const QJsonObject &projectConfig = {},
+                     const QStringList &scopedPaths = {},
+                     const QStringList &scopedChecks = {}) {
     // ANTS-1464 — project-side override wins. ANTS-1456 cold-eyes
     // follow-up: every arg is validated through isAuditArgSafe()
     // before it reaches child argv. If ANY arg fails, the whole
     // override is discarded (fail-safe — the tool falls back to the
     // hardened built-in argv) so a single bad entry can't silently
     // drop adjacent safe-looking flags.
-    if (projectConfig.contains(tool)) {
+    //
+    // ANTS-1512 — when scopedPaths/scopedChecks are passed, the
+    // project-config override is BYPASSED. Scoped invocations are a
+    // narrow-on-purpose mode; the project's full-run defaults would
+    // re-broaden the scope.
+    if (projectConfig.contains(tool) && scopedPaths.isEmpty()
+        && scopedChecks.isEmpty()) {
         const QJsonObject cfg =
             projectConfig.value(tool).toObject();
         const QJsonValue v = cfg.value(QStringLiteral("args"));
@@ -235,18 +265,37 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
     const QString srcRoot = hasSrcDir
         ? QStringLiteral("src")
         : QStringLiteral(".");
-    if (tool == QLatin1String("cppcheck"))
-        return {QStringLiteral("--enable=all"),
-                QStringLiteral("--std=c++20"),
-                QStringLiteral("--library=qt"),
-                QStringLiteral("--quiet"),
-                QStringLiteral("-I"),
-                srcRoot,
-                srcRoot};
+    if (tool == QLatin1String("cppcheck")) {
+        QStringList args = {QStringLiteral("--enable=all"),
+                            QStringLiteral("--std=c++20"),
+                            QStringLiteral("--library=qt"),
+                            QStringLiteral("--quiet"),
+                            QStringLiteral("-I"),
+                            srcRoot};
+        // ANTS-1512 — scoped paths override the default src/ scan.
+        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        else                        args += srcRoot;
+        return args;
+    }
     if (tool == QLatin1String("clazy"))
         return {QStringLiteral("-checks=level1"),
                 QStringLiteral("-p"),
                 projectRoot + QLatin1String("/build/compile_commands.json")};
+    // ANTS-1512 — clang-tidy scoped invocation. Default argv when no
+    // paths given is a no-op (the tool needs explicit file args), so
+    // we surface a graceful failure via empty argv → "crashed" status.
+    if (tool == QLatin1String("clang-tidy")) {
+        QStringList args = {QStringLiteral("-p"),
+                            projectRoot + QLatin1String("/build")};
+        if (!scopedChecks.isEmpty()) {
+            // clang-tidy --checks syntax: comma-joined, leading `-`
+            // opts a check OUT. Build the joined value here; the
+            // outer runner has already validated each entry.
+            args += QStringLiteral("--checks=-*,") + scopedChecks.join(QChar(','));
+        }
+        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        return args;
+    }
     if (tool == QLatin1String("ruff"))
         return {QStringLiteral("check"), QStringLiteral("."),
                 QStringLiteral("--output-format=json")};
@@ -689,6 +738,49 @@ RunResult runAudit(const RunRequest &req) {
         }
     }
 
+    // ── ANTS-1512 / scoped-paths sanitisation. Each path is run through
+    // the same isAuditArgSafe gate as audit-config.json args. Refuse the
+    // whole call on any unsafe entry — silently dropping bad paths would
+    // mask a typo + still run the unscoped tool, which violates "narrow
+    // means narrow".
+    for (const QString &p : req.paths) {
+        if (!isAuditArgSafe(p)) {
+            r.ok = false;
+            r.code  = QStringLiteral("bad_args");
+            r.error = QStringLiteral(
+                "audit_run: paths entry \"%1\" fails argv-safety "
+                "sanitisation").arg(p);
+            return r;
+        }
+    }
+    // ── ANTS-1512 / scoped-checks sanitisation + tool-compatibility
+    // gate. checks is honoured by clang-tidy only; refuse for other
+    // tools rather than silently ignore.
+    for (const QString &c : req.checks) {
+        if (!isAuditCheckSafe(c)) {
+            r.ok = false;
+            r.code  = QStringLiteral("bad_args");
+            r.error = QStringLiteral(
+                "audit_run: checks entry \"%1\" fails sanitisation "
+                "(allowed: ^-?[A-Za-z0-9_*.,-]+$, length ≤ 128)").arg(c);
+            return r;
+        }
+    }
+    if (!req.checks.isEmpty()) {
+        for (const QString &t : req.tools) {
+            if (!toolHonoursChecks(t)) {
+                r.ok = false;
+                r.code  = QStringLiteral("bad_args");
+                r.error = QStringLiteral(
+                    "audit_run: checks parameter is honoured only by "
+                    "clang-tidy; requested tool \"%1\" does not support "
+                    "it. Pass tools=[\"clang-tidy\"] or drop checks=.")
+                        .arg(t);
+                return r;
+            }
+        }
+    }
+
     // ── ANTS-1456 / ANTS-1464 — load project audit-config.json
     // once per run so toolArgv() can override defaults.
     const QJsonObject projectConfig =
@@ -827,7 +919,8 @@ RunResult runAudit(const RunRequest &req) {
         perToolTimer[tool].start();
         ++pending;
         proc->start(it.value(),
-                    toolArgv(tool, canonProject, projectConfig));
+                    toolArgv(tool, canonProject, projectConfig,
+                             req.paths, req.checks));
     }
 
     // Aggregate cap.

@@ -970,7 +970,11 @@ if(ANTS_TESTS)
                 # ANTS-1352 indie_review_dispatch orchestrator.
                 tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp
                 # ANTS-1453 per-tool MCP selection_hint descriptor field.
-                tests/features/mcp_selection_hint/test_mcp_selection_hint.cpp)
+                tests/features/mcp_selection_hint/test_mcp_selection_hint.cpp
+                # ANTS-1510 cold_eyes_fold_in freeform-mode opt-in.
+                tests/features/cold_eyes_fold_in_freeform/test_cold_eyes_fold_in_freeform.cpp
+                # ANTS-1512 audit_run scoped-check mode.
+                tests/features/audit_run_scoped_check/test_audit_run_scoped_check.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -1013,6 +1017,8 @@ if(ANTS_TESTS)
         SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410.md"
         # ANTS-1351 — audit_run engine source for source-scrape tests.
         SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
+        # ANTS-1512 — audit_run scoped-check mode source-scrape.
+        SRC_AUDITRUNNER_H_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.h"
         # ANTS-1397 — test_audit engine source for source-scrape tests.
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
         # ANTS-1352 — indie_review_dispatch source-scrape paths.
@@ -1020,6 +1026,9 @@ if(ANTS_TESTS)
         SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.cpp"
         SRC_INDIE_REVIEW_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.h"
         SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
+        # ANTS-1510 — cold_eyes_fold_in freeform-mode source-scrape.
+        SRC_COLDEYESENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.h"
+        SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
@@ -1227,6 +1236,7 @@ if(ANTS_TESTS)
                 tests/features/persistence_post_rename_chmod/test_persistence_post_rename_chmod.cpp
                 tests/features/concurrent_writer_lock/test_concurrent_writer_lock.cpp
                 tests/features/secureio_configbackup_split/test_secureio_configbackup_split.cpp
+                tests/features/build_warning_repo_visibility_null_deref/test_build_warning_repo_visibility_null_deref.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"

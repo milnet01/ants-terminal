@@ -36,6 +36,16 @@ struct RunRequest {
     QString     suppressionsMode;        // "auto" | "none" | "path:<file>"
     QStringList formats;                 // {"sarif"} default; {"sarif","html"} for opt-in
     int         topFindingsCount = 0;    // [0, 100]; out-of-range → bad_args
+    // ANTS-1512 — scoped-check mode. `paths` constrains the tool's
+    // invocation to a list of project-relative paths (clang-tidy and
+    // cppcheck both accept these as positional args). `checks`
+    // constrains the tool's enabled check set — currently only
+    // clang-tidy honours it (rendered as `--checks=-*,<joined>`);
+    // other tools refuse with `bad_args` when `checks` is non-empty.
+    // Each path/check is validated through `isAuditArgSafe` /
+    // `isAuditCheckSafe` before reaching the child process.
+    QStringList paths;
+    QStringList checks;
 };
 
 struct ToolResult {

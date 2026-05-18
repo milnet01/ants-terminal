@@ -1,0 +1,151 @@
+// Feature-conformance test for spec.md (ANTS-1512).
+//
+// Source-grep verification that the audit_run scoped-check mode is
+// wired into the engine (auditrunner.{h,cpp}), the MCP provider
+// (mainwindow.cpp), and the schema descriptor (claudeintegration.cpp).
+
+#include <gtest/gtest.h>
+
+#include <fstream>
+#include <sstream>
+#include <string>
+
+namespace {
+
+std::string slurp(const char *path) {
+    std::ifstream in(path);
+    if (!in) return {};
+    std::stringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+bool contains(const std::string &hay, const char *needle) {
+    return hay.find(needle) != std::string::npos;
+}
+
+}  // namespace
+
+TEST(AuditRunScopedCheck, EngineHeaderDeclaresPathsAndChecks) {
+    const std::string hdr = slurp(SRC_AUDITRUNNER_H_PATH);
+    ASSERT_FALSE(hdr.empty());
+
+    // INV-1 — RunRequest carries paths AND checks fields.
+    EXPECT_TRUE(contains(hdr, "QStringList paths"))
+        << "RunRequest.paths field missing";
+    EXPECT_TRUE(contains(hdr, "QStringList checks"))
+        << "RunRequest.checks field missing";
+}
+
+TEST(AuditRunScopedCheck, EngineRegistersClangTidyAsKnownTool) {
+    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+
+    // INV-2 — kKnownTools() contains "clang-tidy".
+    const auto kt = src.find("kKnownTools()");
+    ASSERT_NE(kt, std::string::npos);
+    // Body window: 600 chars after the function signature.
+    const std::string region = src.substr(kt, 800);
+    EXPECT_TRUE(contains(region, "\"clang-tidy\""))
+        << "kKnownTools must include \"clang-tidy\"";
+
+    // INV-3 — toolHonoursChecks predicate present + returns true for
+    // clang-tidy.
+    EXPECT_TRUE(contains(src, "toolHonoursChecks"))
+        << "toolHonoursChecks predicate missing";
+    const auto th = src.find("toolHonoursChecks(");
+    ASSERT_NE(th, std::string::npos);
+    const std::string thRegion = src.substr(th, 400);
+    EXPECT_TRUE(contains(thRegion, "\"clang-tidy\""))
+        << "toolHonoursChecks body must whitelist clang-tidy";
+}
+
+TEST(AuditRunScopedCheck, CheckSanitiserPresent) {
+    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+
+    // INV-4 — isAuditCheckSafe with the documented regex.
+    EXPECT_TRUE(contains(src, "isAuditCheckSafe"))
+        << "isAuditCheckSafe sanitiser missing";
+    EXPECT_TRUE(contains(src, "^-?[A-Za-z0-9_*.,-]+$"))
+        << "isAuditCheckSafe regex literal missing or changed";
+}
+
+TEST(AuditRunScopedCheck, RunAuditValidatesPathsAndChecks) {
+    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+
+    // INV-5 + INV-6 — runAudit walks req.paths + req.checks and refuses
+    // with code:"bad_args" on unsafe entries or tool/check mismatch.
+    const auto fn = src.find("runAudit(const RunRequest");
+    ASSERT_NE(fn, std::string::npos);
+    // Body window: 6 KB.
+    const std::string fnRegion = src.substr(fn, 6000);
+    EXPECT_TRUE(contains(fnRegion, "for (const QString &p : req.paths)"))
+        << "runAudit must iterate req.paths";
+    EXPECT_TRUE(contains(fnRegion, "for (const QString &c : req.checks)"))
+        << "runAudit must iterate req.checks";
+    EXPECT_TRUE(contains(fnRegion, "isAuditCheckSafe(c)"))
+        << "runAudit must validate each check entry";
+    EXPECT_TRUE(contains(fnRegion, "toolHonoursChecks(t)"))
+        << "runAudit must enforce the tool/check compatibility gate";
+}
+
+TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {
+    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+
+    // INV-7 — toolArgv accepts scopedPaths + scopedChecks; clang-tidy
+    // branch renders --checks=-*,...
+    const auto fn = src.find("QStringList toolArgv(");
+    ASSERT_NE(fn, std::string::npos);
+    const std::string region = src.substr(fn, 4000);
+    EXPECT_TRUE(contains(region, "scopedPaths"));
+    EXPECT_TRUE(contains(region, "scopedChecks"));
+    EXPECT_TRUE(contains(region, "--checks=-*,"))
+        << "clang-tidy branch should render the comma-joined --checks=-*";
+    EXPECT_TRUE(contains(region, "\"clang-tidy\""))
+        << "toolArgv must have a clang-tidy branch";
+}
+
+TEST(AuditRunScopedCheck, MainWindowProviderExtractsParams) {
+    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    ASSERT_FALSE(mw.empty());
+
+    // Locate the audit_run provider lambda.
+    const auto reg = mw.find("registerToolProvider(\"audit_run\"");
+    ASSERT_NE(reg, std::string::npos);
+    const std::string region = mw.substr(reg, 5000);
+
+    // INV-8 — extract both paths and checks from args.
+    EXPECT_TRUE(contains(region, "\"paths\""))
+        << "audit_run provider must extract paths array from args";
+    EXPECT_TRUE(contains(region, "\"checks\""))
+        << "audit_run provider must extract checks array from args";
+    EXPECT_TRUE(contains(region, "req.paths.append"));
+    EXPECT_TRUE(contains(region, "req.checks.append"));
+}
+
+TEST(AuditRunScopedCheck, DescriptorDeclaresPropertiesAndClangTidy) {
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+
+    // Locate audit_run descriptor block.
+    const auto name = ci.find("t[\"name\"] = \"audit_run\"");
+    ASSERT_NE(name, std::string::npos);
+    const auto end = ci.find("tools.append(t);", name);
+    ASSERT_NE(end, std::string::npos);
+    const std::string block = ci.substr(name, end - name);
+
+    // INV-9 — paths + checks properties present.
+    EXPECT_TRUE(contains(block, "pathsProp"))
+        << "descriptor must declare a pathsProp schema entry";
+    EXPECT_TRUE(contains(block, "checksProp"))
+        << "descriptor must declare a checksProp schema entry";
+    EXPECT_TRUE(contains(block, "props[\"paths\"]"));
+    EXPECT_TRUE(contains(block, "props[\"checks\"]"));
+
+    // tools description should mention clang-tidy now.
+    EXPECT_TRUE(contains(block, "clang-tidy"))
+        << "tools description must mention clang-tidy after ANTS-1512";
+}

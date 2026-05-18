@@ -106,6 +106,16 @@ QString         templateColdEyesFoldInBlock(
                     const QList<int> &allocatedIds,
                     const QString &dateIso);
 
+// ANTS-1510 — freeform overload. Renders one bullet per finding without
+// a `[PROJ-NNNN]` ID prefix, for projects whose roadmap doesn't use the
+// shareable docs/standards/roadmap-format.md § 3.5.1 ID scheme (e.g.
+// RetroDB's "Pass N.M" headings). Caller passes the freeform release
+// heading separately via `release_block_heading`; this helper emits the
+// block body only.
+QString         templateColdEyesFoldInBlockFreeform(
+                    const QList<IndieReviewEngine::CorroboratedFinding> &actionable,
+                    const QString &dateIso);
+
 // String parser for the `scope` MCP arg. Maps "default" / "docs_only"
 // / "contracts_only" → Scope enum. Returns false on unknown.
 bool            parseScope(const QString &raw, Scope *out);
