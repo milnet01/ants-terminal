@@ -262,3 +262,120 @@ TEST(ColdEyesEngine, ParseScopeCoversAllEnumValues) {
     EXPECT_EQ(s, ColdEyesEngine::Scope::ContractsOnly);
     EXPECT_FALSE(ColdEyesEngine::parseScope("weird_scope", &s));
 }
+
+// ANTS-1571 INV-A — community-contract docs (CONTRIBUTING / SECURITY /
+// LEGAL / CODE_OF_CONDUCT) fold into the contracts lane when present.
+TEST(ColdEyesEngine, ContractsLaneAbsorbsCommunityDocs) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md",          "# CLAUDE\n"));
+    ASSERT_TRUE(ws.writeRel("README.md",          "# README\n"));
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md",
+        stubRoadmap({{1287, QStringLiteral("✅")}})));
+    ASSERT_TRUE(ws.writeRel("CHANGELOG.md",       "# Changelog\n"));
+    ASSERT_TRUE(ws.writeRel("CONTRIBUTING.md",    "# Contributing\n"));
+    ASSERT_TRUE(ws.writeRel("SECURITY.md",        "# Security\n"));
+    ASSERT_TRUE(ws.writeRel("LEGAL.md",           "# Legal\n"));
+    ASSERT_TRUE(ws.writeRel("CODE_OF_CONDUCT.md", "# CoC\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    const ColdEyesEngine::Lane *contracts = nullptr;
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("contracts")) {
+            contracts = &l; break;
+        }
+    }
+    ASSERT_TRUE(contracts != nullptr) << "contracts lane missing";
+    EXPECT_TRUE(contracts->docPaths.contains(QStringLiteral("CONTRIBUTING.md")));
+    EXPECT_TRUE(contracts->docPaths.contains(QStringLiteral("SECURITY.md")));
+    EXPECT_TRUE(contracts->docPaths.contains(QStringLiteral("LEGAL.md")));
+    EXPECT_TRUE(contracts->docPaths.contains(QStringLiteral("CODE_OF_CONDUCT.md")));
+    // Summary tracks doc_paths (ANTS-1506 contract).
+    EXPECT_TRUE(contracts->summary.contains(QStringLiteral("CONTRIBUTING.md")));
+}
+
+// ANTS-1571 INV-B — community-contract case-insensitive: `Contributing.md`,
+// `security.md` resolve through the same case-tolerant walk that
+// canonical contracts get.
+TEST(ColdEyesEngine, ContractsLaneCommunityDocsCaseInsensitive) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("README.md",       "x"));
+    ASSERT_TRUE(ws.writeRel("Contributing.md", "x"));  // alt case
+    ASSERT_TRUE(ws.writeRel("security.md",     "x"));  // lowercase
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    const ColdEyesEngine::Lane *contracts = nullptr;
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("contracts")) {
+            contracts = &l; break;
+        }
+    }
+    ASSERT_TRUE(contracts != nullptr);
+    EXPECT_TRUE(contracts->docPaths.contains(QStringLiteral("Contributing.md")));
+    EXPECT_TRUE(contracts->docPaths.contains(QStringLiteral("security.md")));
+}
+
+// ANTS-1571 INV-C — standards-name fallback fires when docs/standards/
+// is absent AND a docs/*STANDARD*.md ≥ 100 lines exists.
+TEST(ColdEyesEngine, StandardsNameGlobFallbackFiresWhenDirAbsent) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    // Build a 120-line body so the >= 100 line threshold passes.
+    QString body = QStringLiteral("# Design standards\n");
+    for (int i = 0; i < 120; ++i) {
+        body += QStringLiteral("line %1\n").arg(i);
+    }
+    ASSERT_TRUE(ws.writeRel("docs/PROJECT_DESIGN_STANDARDS.md", body));
+    // No docs/standards/ at all.
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    const ColdEyesEngine::Lane *stds = nullptr;
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("standards")) {
+            stds = &l; break;
+        }
+    }
+    ASSERT_TRUE(stds != nullptr) << "standards lane should fall back to glob";
+    EXPECT_TRUE(stds->docPaths.contains(
+        QStringLiteral("docs/PROJECT_DESIGN_STANDARDS.md")));
+    EXPECT_TRUE(stds->summary.contains(QStringLiteral("fallback")))
+        << "fallback summary must declare itself; got " << stds->summary.toStdString();
+}
+
+// ANTS-1571 INV-D — sub-threshold stub files are NOT promoted.
+TEST(ColdEyesEngine, StandardsNameGlobFallbackRejectsShortStubs) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    // 10-line stub, well under the 100-line floor.
+    ASSERT_TRUE(ws.writeRel("docs/STYLE.md",
+        QStringLiteral("# Style\nL1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\n")));
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("standards")) {
+            FAIL() << "stub standards file (< 100 lines) was promoted";
+        }
+    }
+}
+
+// ANTS-1571 INV-E — when docs/standards/ exists, the name-glob fallback
+// is NOT applied (the canonical dir is the source of truth).
+TEST(ColdEyesEngine, StandardsNameGlobFallbackSkippedWhenDirPresent) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/standards/coding.md", "x"));
+    // Also drop a name-glob hit at top level — should NOT be picked up.
+    QString body = QStringLiteral("# Design\n");
+    for (int i = 0; i < 200; ++i) body += QStringLiteral("line\n");
+    ASSERT_TRUE(ws.writeRel("docs/EXTRA_DESIGN_GUIDE.md", body));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    const ColdEyesEngine::Lane *stds = nullptr;
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("standards")) { stds = &l; break; }
+    }
+    ASSERT_TRUE(stds != nullptr);
+    EXPECT_TRUE(stds->docPaths.contains(
+        QStringLiteral("docs/standards/coding.md")));
+    EXPECT_FALSE(stds->docPaths.contains(
+        QStringLiteral("docs/EXTRA_DESIGN_GUIDE.md")))
+        << "canonical docs/standards/ must win over name-glob fallback";
+}

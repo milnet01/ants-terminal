@@ -193,4 +193,77 @@ TEST(ProjectLayoutEngine, JsonRoundTrip) {
     EXPECT_EQ(b.appstreamMetainfo,          a.appstreamMetainfo);
     EXPECT_EQ(b.counterFile,                a.counterFile);
     EXPECT_EQ(b.probedPaths,                a.probedPaths);
+    // ANTS-1574 — standards_files[] round-trips even when empty.
+    EXPECT_EQ(b.standardsFiles,             a.standardsFiles);
+}
+
+// ANTS-1574 INV-A — data/changelog.yaml is recognised as the changelog
+// when no CHANGELOG.{md,yaml,yml} exists at root.
+TEST(ProjectLayoutEngine, DataChangelogYamlIsRecognised) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    writeFile(td.path() + "/data/changelog.yaml",
+              "- version: 1.0\n  date: 2026-05-18\n");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.changelog.path, QString("data/changelog.yaml"));
+    EXPECT_TRUE(env.discovered.contains(QString("data/changelog.yaml")));
+}
+
+// ANTS-1574 INV-B — root CHANGELOG.md still wins over data/changelog.yaml
+// (probe order: canonical root first).
+TEST(ProjectLayoutEngine, RootChangelogStillWinsOverDataYaml) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    writeFile(td.path() + "/CHANGELOG.md",         "# Changelog\n");
+    writeFile(td.path() + "/data/changelog.yaml",  "- version: x\n");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.changelog.path, QString("CHANGELOG.md"));
+}
+
+// ANTS-1574 INV-C — standards-name fallback: when docs/standards/ is
+// absent, a docs/*STANDARD*.md ≥ 100 lines populates standardsFiles[].
+TEST(ProjectLayoutEngine, StandardsNameGlobFallbackPopulatesField) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    QByteArray body = "# Project design standards\n";
+    for (int i = 0; i < 120; ++i) body.append("line\n");
+    writeFile(td.path() + "/docs/RETRODB_DESIGN_STANDARDS.md", body);
+
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_TRUE(env.standardsDir.isEmpty())
+        << "standards_dir must stay empty (no canonical dir found)";
+    EXPECT_TRUE(env.standardsFiles.contains(
+        QString("docs/RETRODB_DESIGN_STANDARDS.md")));
+    EXPECT_TRUE(env.discovered.contains(
+        QString("docs/RETRODB_DESIGN_STANDARDS.md")))
+        << "fallback hit must also be folded into discovered[]";
+}
+
+// ANTS-1574 INV-D — sub-threshold stub files (< 100 lines) are NOT
+// promoted by the name-glob fallback.
+TEST(ProjectLayoutEngine, StandardsNameGlobFallbackRejectsShortStubs) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    writeFile(td.path() + "/docs/STYLE.md",
+              "# Style\nL1\nL2\nL3\nL4\nL5\n");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_TRUE(env.standardsFiles.isEmpty());
+    EXPECT_FALSE(env.discovered.contains(QString("docs/STYLE.md")));
+}
+
+// ANTS-1574 INV-E — when docs/standards/ exists, the fallback is
+// suppressed (canonical dir wins; standards_files[] stays empty).
+TEST(ProjectLayoutEngine, StandardsNameGlobFallbackSkippedWhenDirPresent) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    QDir(td.path()).mkpath(QStringLiteral("docs/standards"));
+    writeFile(td.path() + "/docs/standards/coding.md", "x");
+    QByteArray body = "# Design\n";
+    for (int i = 0; i < 200; ++i) body.append("line\n");
+    writeFile(td.path() + "/docs/EXTRA_DESIGN_GUIDE.md", body);
+
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.standardsDir, QString("docs/standards"));
+    EXPECT_TRUE(env.standardsFiles.isEmpty())
+        << "canonical docs/standards/ wins; fallback must not fire";
 }

@@ -59,6 +59,14 @@ struct LayoutEnvelope {
     // succeeded and here's what I found" without inspecting every
     // nested field. Entries are project-relative paths.
     QStringList    discovered;
+    // ANTS-1574 — when docs/standards/ is absent, top-level docs/*.md
+    // files whose names match STANDARD|DESIGN|STYLE|GUIDE (case-
+    // insensitive, >= 100 lines) populate this list. standards_dir
+    // intentionally stays empty in that case — its contract is "the
+    // directory that holds standards", not "a single standards file".
+    // The fallback files are also folded into `discovered[]` so
+    // callers that scan that list pick them up uniformly.
+    QStringList    standardsFiles;
 };
 
 // Walks the well-known path set under `absoluteCwd`, populates

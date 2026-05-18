@@ -12,6 +12,113 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP cold-eyes-cluster fold-in — pull 11 (ANTS-1570 + 1571 + 1572 + 1573 + 1574 + 1575, 2026-05-18 late night)
+
+Six contained MCP improvements aimed at the cold-eyes /
+project-layout doc-discovery surface, sourced from the 2026-05-17
+RetroDB cold-eyes cross-session report. The cluster closes four
+duplicate findings against earlier-shipped fixes and lands two
+real enhancements (one each for `cold_eyes_partition` and
+`project_layout`).
+
+- **ANTS-1571 (enhancement)** — `cold_eyes_partition` widened
+  discovery in three ways at
+  `src/coldeyesengine.cpp::derivePartition`:
+  (a) **community contracts** — `CONTRIBUTING.md`, `SECURITY.md`,
+  `LEGAL.md`, `CODE_OF_CONDUCT.md` now fold into the contracts
+  lane (case-insensitive via the existing `caseInsensitiveResolve`,
+  so `Contributing.md` / `security.md` resolve too);
+  (b) **name-based standards fallback** — when `docs/standards/`
+  is absent, a new helper `listStandardsByNameGlob` scans
+  `docs/*.md` for filenames matching `STANDARD|DESIGN|STYLE|GUIDE`
+  (case-insensitive) AND ≥ 100 lines (stub-rejection floor — bails
+  out of the line counter past the threshold so large files don't
+  cost more than necessary). When the fallback fires, the
+  standards-lane summary self-declares as a `name-based standards
+  fallback` so downstream consumers can tell the canonical-dir
+  path from the glob path;
+  (c) **next_step_hint** — when `cold_eyes_partition` emits
+  `sparse_partition:true`, the envelope now carries a
+  `next_step_hint` field pointing callers at `cold_eyes_brief`'s
+  lane-agnostic `doc_paths[]` escape hatch (ANTS-1508), so they
+  can drive a sweep on a non-canonical layout without committing a
+  `.cold-eyes/partition.json`. The ask-(a) plumbing
+  `project_layout.discovered[]` into `cold_eyes_partition` is
+  deferred — the name-glob fallback covers the recurring real-
+  world case without coupling the two engines.
+  Tests: 5 new invariants in
+  `tests/features/cold_eyes_engine/test_cold_eyes_engine.cpp`
+  (INV-A community contracts present; INV-B case-insensitive
+  community contracts; INV-C name-glob fallback when dir absent;
+  INV-D sub-threshold rejection; INV-E canonical-dir wins over
+  glob). Pre-fix verified failing.
+
+- **ANTS-1574 (enhancement)** — `project_layout` residual two
+  asks land in `src/projectlayoutengine.cpp`. Case-insensitive
+  probe (ask-a) shipped earlier as ANTS-1507.
+  (b) **`data/changelog.yaml`** — added to
+  `kChangelogCandidates` alongside `data/changelog.yml` /
+  `data/CHANGELOG.yaml` / `data/CHANGELOG.yml`. Root-level
+  `CHANGELOG.md` still wins (probe order is canonical-root first),
+  so projects shipping both keep the canonical signal — INV-B test
+  asserts this;
+  (c) **name-based standards fallback** — new helper
+  `scanStandardsFallback` is invoked when `standardsDir` is empty
+  after the canonical-dir walk. Scans `docs/*.md` for filenames
+  matching `STANDARD|DESIGN|STYLE|GUIDE` (case-insensitive) AND
+  ≥ `kStandardsFallbackMinLines=100` lines, populating a new
+  top-level `standards_files[]` array on the envelope (kept
+  distinct from `standards_dir`'s "directory" contract). Matches
+  also fold into `discovered[]` so consumers that scan that list
+  pick them up uniformly. (Optional ask-d structured
+  `discovered: [{kind, path}]` is deferred — the flat list still
+  covers the recurring case.)
+  Tests: 5 new invariants in
+  `tests/features/mcp_project_layout_scan/test_project_layout_scan.cpp`
+  (INV-A `data/changelog.yaml` recognised; INV-B root CHANGELOG
+  wins; INV-C name-glob populates `standards_files[]` + folds
+  into `discovered[]`; INV-D sub-threshold rejection; INV-E
+  canonical dir suppresses fallback). Pre-fix verified failing
+  (test code probes the `standardsFiles` struct field that didn't
+  exist).
+
+- **ANTS-1570 (fix, duplicate-shipped)** — `cold_eyes_partition`
+  summary now matches `doc_paths` exactly. Already fixed in
+  ANTS-1506 (the contracts-lane summary is built from
+  `contracts.docPaths.join(" + ")` after the case-insensitive
+  existence filter). Pull-11 sweep verified the contract still
+  holds; closing the duplicate finding from the RetroDB
+  2026-05-17 cold-eyes report (Issue 7).
+
+- **ANTS-1572 (enhancement, duplicate-shipped)** —
+  `cold_eyes_cross_doc_diff` now accepts inline `reports` map XOR
+  `reports_dir` string (exactly one required), mirroring
+  `indie_review_corroborate`'s shape. Already shipped in
+  ANTS-1509 at `src/remotecontrol.cpp:5945–6000`. The /cold-eyes
+  skill no longer needs a disk fan-out. Pull-11 sweep verified;
+  closing the duplicate finding from RetroDB (Issue 4) +
+  Music_Production reports.
+
+- **ANTS-1573 (enhancement, duplicate-shipped)** —
+  `cold_eyes_fold_in` now accepts `id_allocation: "auto" | "skip"`
+  so projects whose roadmaps don't use the shareable
+  `[PROJ-NNNN]` ID scheme (e.g. RetroDB's `#### Pass N.M …`)
+  can fold cold-eyes findings in without auto-allocating
+  counter IDs. Already shipped in ANTS-1510. Pair with
+  `release_block_heading: "..."` for projects with no
+  recognisable `## (target: YYYY-NN)` line. Pull-11 sweep
+  verified; closing the duplicate finding from the RetroDB
+  cold-eyes report (Issue 5).
+
+- **ANTS-1575 (fix, duplicate-shipped)** — `project_layout` now
+  emits top-level `roadmap_found:bool` + `changelog_found:bool`
+  so a caller doesn't have to inspect nested objects to tell
+  "scan ran, found nothing" from "scan found everything".
+  Already shipped in ANTS-1511 at
+  `src/projectlayoutengine.cpp:334–335`. Pull-11 sweep
+  verified; closing the duplicate finding from the RetroArch
+  Bundle 62/64 reports.
+
 ### 🔌 MCP discoverability fold-in — pull 10 (ANTS-1561 + 1566 + 1567 + 1568 + 1578, 2026-05-18 late night)
 
 Five contained MCP improvements aimed at making the tool surface

@@ -153,6 +153,53 @@ QStringList listMdInDir(const QString &projectPath, const QString &relDir) {
     return out;
 }
 
+// ANTS-1571 — name-based standards fallback. When docs/standards/ doesn't
+// exist, projects that ship flat standards files at docs/*.md (e.g.
+// `docs/RETRODB_DESIGN_STANDARDS.md`) still get a standards lane. Filter:
+// (1) name contains STANDARD / DESIGN / STYLE / GUIDE (case-insensitive);
+// (2) ≥ kStandardsMinLines lines so stub helper notes don't get promoted.
+// Returns project-relative paths sorted ascending for stable presentation.
+constexpr int kStandardsMinLines = 100;
+
+int countLines(const QString &absPath) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    int n = 0;
+    while (!f.atEnd()) {
+        f.readLine();
+        ++n;
+        // Bail past the threshold — caller only needs to know
+        // "≥ threshold" / "< threshold". Saves wall-time on large
+        // standards files.
+        if (n >= kStandardsMinLines) return n;
+    }
+    return n;
+}
+
+QStringList listStandardsByNameGlob(const QString &projectPath) {
+    QStringList out;
+    const QString docsDir =
+        caseInsensitiveResolve(projectPath, QStringLiteral("docs"));
+    if (docsDir.isEmpty()) return out;
+    QDir d(projectPath + QChar('/') + docsDir);
+    if (!d.exists()) return out;
+    static const QRegularExpression rx(
+        QStringLiteral(".*(STANDARD|DESIGN|STYLE|GUIDE).*\\.md$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto entries =
+        d.entryList(QStringList{QStringLiteral("*.md")},
+                    QDir::Files | QDir::NoDotAndDotDot,
+                    QDir::Name);
+    for (const QString &e : entries) {
+        if (!rx.match(e).hasMatch()) continue;
+        const QString abs = projectPath + QChar('/') + docsDir
+                          + QChar('/') + e;
+        if (countLines(abs) < kStandardsMinLines) continue;
+        out << docsDir + QChar('/') + e;
+    }
+    return out;
+}
+
 }  // namespace
 
 bool parseScope(const QString &raw, Scope *out) {
@@ -244,6 +291,22 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
                 resolveContractStem(projectPath, stem, exts);
             if (!resolved.isEmpty()) contracts.docPaths << resolved;
         }
+        // ANTS-1571 — fold community-contract docs (CONTRIBUTING /
+        // SECURITY / LEGAL / CODE_OF_CONDUCT) into the contracts lane.
+        // Standard names on most modern projects; cold-eyes lanes
+        // should see them rather than dropping them off the side.
+        // Case-insensitive resolution via caseInsensitiveResolve.
+        static const QStringList kCommunityContracts = {
+            QStringLiteral("CONTRIBUTING.md"),
+            QStringLiteral("SECURITY.md"),
+            QStringLiteral("LEGAL.md"),
+            QStringLiteral("CODE_OF_CONDUCT.md"),
+        };
+        for (const QString &name : kCommunityContracts) {
+            const QString resolved =
+                caseInsensitiveResolve(projectPath, name);
+            if (!resolved.isEmpty()) contracts.docPaths << resolved;
+        }
         // ANTS-1506 — summary now mirrors the actually-matched docs,
         // so callers don't see "CLAUDE.md + README.md + ROADMAP.md +
         // CHANGELOG.md" while doc_paths only carries two of those.
@@ -260,6 +323,10 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
     }
 
     // Standards bundle. ANTS-1506 — resolve dir case-insensitively.
+    // ANTS-1571 — when docs/standards/ doesn't exist, fall back to
+    // top-level docs/*.md whose names match STANDARD|DESIGN|STYLE|GUIDE
+    // so projects that ship flat standards files (e.g. RetroDB's
+    // docs/RETRODB_DESIGN_STANDARDS.md) still get a standards lane.
     {
         Lane stds;
         stds.name     = QStringLiteral("standards");
@@ -269,6 +336,13 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
             projectPath, QStringLiteral("docs/standards"));
         if (!stdDir.isEmpty()) {
             stds.docPaths = listMdInDir(projectPath, stdDir);
+        } else {
+            stds.docPaths = listStandardsByNameGlob(projectPath);
+            if (!stds.docPaths.isEmpty()) {
+                stds.summary = QStringLiteral(
+                    "docs/*STANDARD*|*DESIGN*|*STYLE*|*GUIDE*.md "
+                    "(>= 100 lines, name-based standards fallback)");
+            }
         }
         if (!stds.docPaths.isEmpty()) result.lanes << stds;
     }

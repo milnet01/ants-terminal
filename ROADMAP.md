@@ -10910,44 +10910,136 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-current-state, claudeintegration, remotecontrol, perf.
   Source: cross-session-reports-2026-05-18 (MAME Curator x2 late + late evening sessions).
 
-- 📋 [ANTS-1570] **`cold_eyes_partition` summary mismatches `doc_paths` — trim summary to match.**
-  RetroDB 2026-05-17 cold-eyes review hit `{summary:"CLAUDE.md + README.md + ROADMAP.md + CHANGELOG.md (cross-cutting)", doc_paths:["CLAUDE.md","README.md"]}` — the summary names `ROADMAP.md` + `CHANGELOG.md` but the `doc_paths` array only includes the two files that actually exist (RetroDB uses lowercase `roadmap.md` and `data/changelog.yaml`). A downstream caller reading the summary thinks the lane covers the named files; the brief block won't include them. Fix: build the summary from `doc_paths` after the file-existence filter runs, not from the canonical contract-name list. Side effect: when no contract docs match (sparse_partition), the summary should explicitly say "0 contract docs found" rather than naming files that aren't there. Pairs with ANTS-1411/1412 (cold_eyes_partition spec-lane / partition.json override hardening) — same engine module.
-  **Layman:** The cold-eyes partition tool's "summary" field names files (ROADMAP.md, CHANGELOG.md) that the actual lane doesn't include — because the project uses lowercase filenames the partition didn't match. Fix: build the summary from the files that actually made it into the lane, not from the canonical-name list.
+- ✅ [ANTS-1570] **`cold_eyes_partition` summary mismatches `doc_paths` — trim summary to match.**
+  Duplicate-shipped via [ANTS-1506](#ants-1506) (pull 11, fold-in
+  2026-05-18). The shipped fix at
+  `src/coldeyesengine.cpp:250–254` builds the contracts-lane
+  `summary` from `contracts.docPaths.join(" + ")` after the
+  case-insensitive existence filter runs — so the summary now
+  matches `doc_paths` exactly. The fold-in pull-11 sweep verified
+  the contract still holds (no regression) and closes 1570 as a
+  duplicate finding.
+  **Layman:** Already fixed in ANTS-1506. Closing the duplicate
+  report.
   Kind: fix.
   Lanes: mcp-cold-eyes, coldeyesengine.
   Source: cross-session-report-2026-05-17 (RetroDB Issue 7).
 
-- 📋 [ANTS-1571] **`cold_eyes_partition` — widen default doc-tree partition beyond `docs/specs/`.**
-  RetroDB 2026-05-18 full `/cold-eyes` documentation sweep: default partition returned 1 lane (`contracts`: CLAUDE.md + README.md + roadmap.md) on a 21-file doc tree of ~10K lines. The 95% of docs dropped include `docs/specs/` (8 specs, 3.9K lines), `docs/RETRODB_DESIGN_STANDARDS.md` (1.3K lines), `docs/STANDARDS_ADDENDUM.md`, `docs/ROM_NAMING_STANDARD.md`, `docs/PROXY-DEPLOY.md`, `docs/theme_contrast.md`, plus `CONTRIBUTING.md`/`SECURITY.md`/`LEGAL.md` at root. The `sparse_partition_hint` honestly named the missing dirs but only suggested two (`standards/`, `decisions/`). Three fixes: (a) plumb `project_layout`'s `discovered` array into `cold_eyes_partition` as one-lane-per-spec (ANTS-1411 covers the filename-shape rigidity in spec-lane discovery; this is the broader "what counts as a lane" question); (b) treat any root-level `docs/*.md` >100 lines whose filename matches `*STANDARD*|*DESIGN*|*STYLE*|*GUIDE*` as a "standards" lane; (c) treat `CONTRIBUTING.md`, `SECURITY.md`, `LEGAL.md` at project root as first-class root contracts and fold into the contracts lane. Plus: when `sparse_partition=true`, include a `next_step_hint` field naming `cold_eyes_brief`'s ad-hoc `doc_paths[]` escape hatch.
-  **Layman:** When the cold-eyes review tool partitions a project's docs into lanes, it currently only finds the canonical `CLAUDE.md`/`README.md`/`ROADMAP.md`/`CHANGELOG.md`. On a 21-file doc tree it returned ONE lane with two files — 95% of the docs got dropped. Widen the discovery to cover spec dirs, standards-named files, and root community contracts.
+- ✅ [ANTS-1571] **`cold_eyes_partition` — widen default doc-tree partition beyond `docs/specs/`.** Shipped 2026-05-18 (pull 11 pull 1).
+  Three asks landed in `src/coldeyesengine.cpp::derivePartition`:
+  (a) community-contract docs — `CONTRIBUTING.md`, `SECURITY.md`,
+  `LEGAL.md`, `CODE_OF_CONDUCT.md` — fold into the contracts lane
+  via `caseInsensitiveResolve` (so `Contributing.md` /
+  `security.md` resolve too); (b) name-based standards fallback —
+  when `docs/standards/` is absent, top-level `docs/*.md` filenames
+  matching `STANDARD|DESIGN|STYLE|GUIDE` (case-insensitive) AND
+  ≥ 100 lines populate the standards lane via a new helper
+  `listStandardsByNameGlob`. The 100-line floor is a stub-rejection
+  filter that prevents 3-line `STYLE.md` placeholders from being
+  promoted; (c) `next_step_hint` — when `cold_eyes_partition`
+  emits `sparse_partition:true`, the envelope now carries a
+  `next_step_hint` string pointing callers at `cold_eyes_brief`'s
+  lane-agnostic `doc_paths[]` escape hatch (ANTS-1508) so they can
+  drive a sweep on a non-canonical layout without committing a
+  `.cold-eyes/partition.json`. ANTS-1571 ask-(a) plumbing
+  `project_layout.discovered[]` into `cold_eyes_partition` is
+  deferred — the name-glob fallback covers the recurring real-
+  world case without coupling the two engines. Tests:
+  5 new invariants in `tests/features/cold_eyes_engine/` (INV-A
+  through INV-E). Pre-fix verified failing (test code references
+  fields / behaviour that didn't exist).
+  **Layman:** The cold-eyes review tool now finds the standard
+  community docs (CONTRIBUTING, SECURITY, LEGAL, CoC) and falls
+  back to recognising standards files by filename when the project
+  doesn't use the canonical `docs/standards/` directory. When the
+  partition still comes up sparse, the response now tells the
+  caller exactly which tool to reach for next.
   Kind: enhancement.
   Lanes: mcp-cold-eyes, coldeyesengine, projectlayoutengine.
   Source: cross-session-reports-2026-05-17/05-18 (RetroDB Issue 1 + Observation A).
 
-- 📋 [ANTS-1572] **`cold_eyes_cross_doc_diff` — accept inline `reports[]` array (mirror `indie_review_corroborate`'s shape).**
-  RetroDB 2026-05-17 + Music_Production 2026-05-18: the `/cold-eyes` skill bundles agent reports inline in the orchestrator's context (one report per `Agent` tool result), NOT on disk. `cold_eyes_cross_doc_diff` requires `reports_dir` pointing at a directory of `.md` files — reachable from `/indie-review` (which writes reports to disk) but not from `/cold-eyes`. Fix: either (a) accept an inline `reports: [{lane, body}, …]` array alongside `reports_dir` (mirrors `indie_review_corroborate`'s already-implemented shape), OR (b) make the `/cold-eyes` skill write reports to `<project>/.cold-eyes-reports/` so the tool has something to read. Option (a) is the cheap fix; option (b) requires a skill-side change. ANTS-1414 (refactor cross-doc-diff into a generic primitive) would naturally include this. Pairs with ANTS-1571 (sparse_partition next_step_hint).
-  **Layman:** The cold-eyes cross-doc-diff tool only accepts reports from a directory on disk, but the cold-eyes skill keeps them in memory. Either let the tool accept an inline array of reports, or have the skill save its reports to disk first.
+- ✅ [ANTS-1572] **`cold_eyes_cross_doc_diff` — accept inline `reports[]` array (mirror `indie_review_corroborate`'s shape).**
+  Duplicate-shipped via [ANTS-1509](#ants-1509) (shipped earlier
+  in this section). The shipped fix wired the inline form at
+  `src/remotecontrol.cpp:5945–6000`:
+  `cold_eyes_cross_doc_diff` now accepts `reports: {lane → body}`
+  XOR `reports_dir: "<dir>"` (exactly one required), and the
+  in-memory path routes through
+  `ColdEyesEngine::crossDocDiffFromReports` at
+  `src/coldeyesengine.cpp:448–457` — identical contract to
+  `indie_review_corroborate`. The /cold-eyes skill no longer
+  needs a disk fan-out. Pull-11 sweep verified this is the cited
+  ask in full; closing the duplicate.
+  **Layman:** Already fixed in ANTS-1509. Closing the duplicate
+  report.
   Kind: enhancement.
   Lanes: mcp-cold-eyes, coldeyesengine.
   Source: cross-session-reports-2026-05-17/05-18 (RetroDB Issue 4 + Music_Production).
 
-- 📋 [ANTS-1573] **`cold_eyes_fold_in` — loosen `[PROJ-NNNN]` ID-format requirement for non-emoji-bullet roadmaps.**
-  RetroDB 2026-05-17 cold-eyes: skipped `cold_eyes_fold_in` because RetroDB's roadmap.md uses a `#### Pass N.M …` convention (now adapter-readable since ANTS-1530), not `[PROJ-NNNN]` IDs. The fold-in tool's required `actionable: [{file, line, citing_lanes[]}]` shape and "release-block heading" pattern assume the emoji-bullet roadmap format the writer would emit. Two options: (a) document the format requirement up front in the tool description so callers can short-circuit when their project doesn't match; (b) accept an explicit `release_block_heading` (free-text, no auto-allocate) + `skip_id_allocation: true` mode that appends raw bullets under that heading. Pairs with ANTS-1530 (read-side adapter for Pass-heading roadmaps) — the write-side analogue. Also pairs with `roadmap_log`'s op:flip already supporting GFM-task-list and Ants-v1 (ANTS-1441) — fold-in lags behind on shape-flexibility.
-  **Layman:** The cold-eyes fold-in tool only knows how to write into roadmaps that use the `[PROJ-NNNN]` numbered-ID format. For projects using a different naming convention, the tool refuses and the user has to hand-edit. Either document the limit up front, or add a mode that appends bullets without auto-allocating IDs.
+- ✅ [ANTS-1573] **`cold_eyes_fold_in` — loosen `[PROJ-NNNN]` ID-format requirement for non-emoji-bullet roadmaps.**
+  Duplicate-shipped via [ANTS-1510](#ants-1510) (shipped earlier
+  in this section). The shipped fix wired
+  `id_allocation: "auto" | "skip"` at
+  `src/remotecontrol.cpp:6058–6088` — `"skip"` suppresses the
+  counter touch and renders bullets via
+  `ColdEyesEngine::templateColdEyesFoldInBlockFreeform` (no
+  `[ANTS-NNNN]` prefix, trailing `Source: cold-eyes-<DATE>`
+  provenance line). Pair with `release_block_heading: "..."` for
+  projects with no recognisable `## (target: YYYY-NN)` line. The
+  descriptor in `claudeintegration.cpp` documents the required
+  project shape up front and the freeform escape hatch — exactly
+  the asks 1573 cited.
+  **Layman:** Already fixed in ANTS-1510. Closing the duplicate
+  report.
   Kind: enhancement.
   Lanes: mcp-cold-eyes, coldeyesengine, roadmapfoldin.
   Source: cross-session-report-2026-05-17 (RetroDB Issue 5).
 
-- 📋 [ANTS-1574] **`project_layout` — case-insensitive filename probe + `data/changelog.yaml` + `docs/*STANDARD*.md` fallbacks.**
-  RetroDB 2026-05-17 cold-eyes: `project_layout(caller_cwd=…)` returned all-empty fields despite `roadmap.md` (lowercase, 3107 lines, 176 KB), `data/changelog.yaml`, `docs/RETRODB_DESIGN_STANDARDS.md` all existing. Per ANTS-1493 the probe set was widened to fork-only doc trees, but case-insensitive filename matching wasn't part of that. Three fixes: (a) case-insensitive probe — `roadmap.md` should resolve under the `roadmap` slot, same for `changelog.md`; (b) honour `data/changelog.yaml` as a valid changelog format alongside `CHANGELOG.md` (many projects keep structured-YAML changelogs the app reads at runtime); (c) name-based standards fallback — `docs/*STANDARD*.md` / `docs/*DESIGN*.md` / `docs/*STYLE*.md` should populate `standards_dir` when `docs/standards/` doesn't exist. Optional add: return a `discovered: [{kind, path}]` array alongside the canonical-named slots so callers can see what was found vs probed. Cheap to probe; null result on a normal project. Composes with ANTS-1571 (cold_eyes_partition's downstream consumption of project_layout's discovery).
-  **Layman:** The project-layout discovery tool only matches files with exact canonical names — `ROADMAP.md` capitalised, never lowercase. Projects that use `roadmap.md` or keep changelogs as `data/changelog.yaml` or standards files as `docs/RETRODB_DESIGN_STANDARDS.md` all silently return empty fields. Loosen the match.
+- ✅ [ANTS-1574] **`project_layout` — case-insensitive filename probe + `data/changelog.yaml` + `docs/*STANDARD*.md` fallbacks.** Shipped 2026-05-18 (pull 11 pull 2).
+  Case-insensitive probe (ask-a) shipped earlier as ANTS-1507; the
+  pull-11 work covers the two residual asks:
+  (b) `data/changelog.yaml` — added to `kChangelogCandidates`
+  alongside `data/changelog.yml` / `data/CHANGELOG.yaml` /
+  `data/CHANGELOG.yml` at
+  `src/projectlayoutengine.cpp:124–139`. Root-level CHANGELOG.md
+  still wins (probe order is canonical-root first), so projects
+  shipping both keep the canonical signal — see INV-B test;
+  (c) name-based standards fallback — new helper
+  `scanStandardsFallback` at `src/projectlayoutengine.cpp:236–276`
+  is invoked when `standardsDir` is empty after the canonical-dir
+  walk. Scans `docs/*.md` for filenames matching
+  `STANDARD|DESIGN|STYLE|GUIDE` (case-insensitive) AND ≥ 100
+  lines, populating a new top-level `standards_files[]` array on
+  the envelope (kept distinct from `standards_dir`'s "directory"
+  contract — INV-C). Matches also fold into `discovered[]` so
+  consumers that scan that list pick them up uniformly. The
+  `kStandardsFallbackMinLines=100` floor bails out of `countLines`
+  past the threshold (no need to read the whole file).
+  (Optional ask-d structured `discovered: [{kind, path}]` is
+  deferred — the flat list still covers the recurring case.)
+  Tests: 5 new invariants in
+  `tests/features/mcp_project_layout_scan/` (INV-A through INV-E).
+  Pre-fix verified failing (test code references the
+  `standardsFiles` struct field that didn't exist).
+  **Layman:** The project-layout discovery tool now recognises
+  YAML changelogs that live at `data/changelog.yaml` and finds
+  standards files by filename (e.g. `docs/PROJECT_DESIGN_STANDARDS.md`)
+  when the project doesn't have a canonical `docs/standards/`
+  directory. Older case-insensitive probe shipped earlier as
+  ANTS-1507.
   Kind: enhancement.
   Lanes: mcp-project-layout, projectlayoutengine.
   Source: cross-session-report-2026-05-17 (RetroDB Issue 2 + 2026-05-18 Observation A composability).
 
-- 📋 [ANTS-1575] **`project_layout` — emit `roadmap_found: bool` top-level (or `roadmap: null`) when probe found nothing.**
-  RetroArch 2026-05-18 (Bundle 64): `project_layout(caller_cwd=…)` returned `{ok:true, cached:true, roadmap:{path:"", size_bytes:0, ...}, changelog:{path:"", ...}}` — `ok:true` reads as success but every interesting field is an empty string. A caller that only checks `ok` and tries `.split("/").pop()` on `roadmap.path` gets an empty string. Two ergonomic options: (a) top-level `roadmap_found: bool` (and `changelog_found`, `standards_found`, etc.) so a single keyword tells the caller whether to do anything; (b) emit `roadmap: null` (or omit the key) when nothing was probed. Option (a) is more discoverable; option (b) matches the "null means absent, omit empty values" Bundle 69 fix request below (ANTS-1576). Pick one and apply consistently across `project_layout`'s envelope. Recurring across Bundle 62/64 — third RetroArch session reporting this shape confusion.
-  **Layman:** The project-layout tool returns `ok:true` even when it didn't find anything — every path field is an empty string. A caller that trusts `ok:true` and tries to use those paths gets nothing useful. Add a clear "was a roadmap found at all" boolean to the response.
+- ✅ [ANTS-1575] **`project_layout` — emit `roadmap_found: bool` top-level (or `roadmap: null`) when probe found nothing.**
+  Duplicate-shipped via [ANTS-1511](#ants-1511) (shipped earlier
+  in this section). The shipped fix added the top-level booleans
+  `roadmap_found` + `changelog_found` at
+  `src/projectlayoutengine.cpp:334–335` — a single keyword tells
+  the caller whether the probe actually matched a file. Pull-11
+  sweep verified this satisfies the cited ask in full.
+  **Layman:** Already fixed in ANTS-1511. Closing the duplicate
+  report.
   Kind: fix.
   Lanes: mcp-project-layout, projectlayoutengine.
   Source: cross-session-reports-2026-05-17/05-18 (RetroArch Bundles 62/64).

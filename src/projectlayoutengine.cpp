@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonValue>
+#include <QRegularExpression>
 #include <QString>
 #include <QStringList>
 
@@ -125,6 +126,15 @@ const QStringList kChangelogCandidates = {
     QStringLiteral("CHANGELOG.md"),
     QStringLiteral("CHANGELOG.yaml"),
     QStringLiteral("CHANGELOG.yml"),
+    // ANTS-1574 — RetroDB and similar projects keep a runtime-readable
+    // structured changelog at data/changelog.yaml. Probed independently
+    // so it doesn't collide with the root-level CHANGELOG.* set, and so
+    // case-insensitive resolution keeps the lowercase `changelog.yaml`
+    // basename intact.
+    QStringLiteral("data/changelog.yaml"),
+    QStringLiteral("data/changelog.yml"),
+    QStringLiteral("data/CHANGELOG.yaml"),
+    QStringLiteral("data/CHANGELOG.yml"),
     QStringLiteral("docs/private/CHANGELOG.md"),
     QStringLiteral("docs/internal/CHANGELOG.md"),
     QStringLiteral("docs/fork/CHANGELOG.md"),
@@ -232,6 +242,54 @@ void scanFile(const QString &cwd, const QString &rel,
     }
 }
 
+// ANTS-1574 — name-based standards fallback. When docs/standards/ doesn't
+// exist, scan docs/*.md for filenames matching STANDARD|DESIGN|STYLE|GUIDE
+// (case-insensitive). Filter to ≥ kStandardsFallbackMinLines so stub
+// helper docs (e.g. a 3-line CONTRIBUTING-style placeholder named
+// `STYLE.md`) don't get promoted to standards-class. Matches go into
+// `standardsFiles[]` AND `discovered[]` so callers that scan either
+// surface pick them up uniformly. probedPaths records the docs/
+// directory we tried so isStale() can detect later additions.
+constexpr int kStandardsFallbackMinLines = 100;
+
+int countLinesProbe(const QString &absPath) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    int n = 0;
+    while (!f.atEnd()) {
+        f.readLine();
+        ++n;
+        if (n >= kStandardsFallbackMinLines) return n;
+    }
+    return n;
+}
+
+void scanStandardsFallback(const QString &cwd, QStringList &out,
+                           QStringList &probed, QStringList &discovered) {
+    // Marker so isStale picks up future additions / standards-name renames.
+    probed.append(QStringLiteral("docs/*STANDARD*|*DESIGN*|*STYLE*|*GUIDE*.md"));
+    const QString docsDir =
+        caseInsensitiveResolve(cwd, QStringLiteral("docs"));
+    if (docsDir.isEmpty()) return;
+    QDir d(cwd + QLatin1Char('/') + docsDir);
+    if (!d.exists()) return;
+    static const QRegularExpression rx(
+        QStringLiteral(".*(STANDARD|DESIGN|STYLE|GUIDE).*\\.md$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto entries =
+        d.entryList(QStringList{QStringLiteral("*.md")},
+                    QDir::Files | QDir::NoDotAndDotDot,
+                    QDir::Name);
+    for (const QString &e : entries) {
+        if (!rx.match(e).hasMatch()) continue;
+        const QString rel = docsDir + QLatin1Char('/') + e;
+        if (countLinesProbe(cwd + QLatin1Char('/') + rel)
+            < kStandardsFallbackMinLines) continue;
+        out.append(rel);
+        discovered.append(rel);
+    }
+}
+
 void scanAppStream(const QString &cwd, QString &out,
                    QStringList &probed, QStringList &discovered) {
     // ANTS-1493 — probe at repo root + the common packaging dirs.
@@ -284,6 +342,15 @@ LayoutEnvelope scanLayout(const QString &absoluteCwd) {
         scanDir(absoluteCwd, cand, env.standardsDir, env.probedPaths,
                 env.discovered);
     }
+    // ANTS-1574 — only fall back to name-glob when no canonical
+    // standards/ dir resolved. Projects that ship both
+    // docs/standards/ AND name-glob hits keep `standards_dir` as the
+    // primary signal; the name-glob is the "no canonical dir at all"
+    // safety net.
+    if (env.standardsDir.isEmpty()) {
+        scanStandardsFallback(absoluteCwd, env.standardsFiles,
+                              env.probedPaths, env.discovered);
+    }
     for (const QString &cand : kAdrCandidates) {
         if (!env.adrDir.isEmpty()) break;
         scanDir(absoluteCwd, cand, env.adrDir, env.probedPaths,
@@ -333,6 +400,14 @@ QJsonObject toJson(const LayoutEnvelope &env) {
     // roadmap probe matched a file.
     root[QStringLiteral("roadmap_found")]   = !env.roadmap.path.isEmpty();
     root[QStringLiteral("changelog_found")] = !env.changelog.path.isEmpty();
+    // ANTS-1574 — name-glob standards fallback. Empty when
+    // standards_dir was populated OR when no docs/*STANDARD*.md
+    // matched. Callers reading `discovered[]` already see these
+    // paths; this surface lets a caller filter directly without
+    // re-applying the name regex.
+    QJsonArray sfiles;
+    for (const auto &p : env.standardsFiles) sfiles.append(p);
+    root[QStringLiteral("standards_files")] = sfiles;
     return root;
 }
 
@@ -363,6 +438,9 @@ LayoutEnvelope fromJson(const QJsonObject &obj) {
     for (const auto &v : probed) env.probedPaths.append(v.toString());
     const QJsonArray disc = obj.value(QStringLiteral("discovered")).toArray();
     for (const auto &v : disc) env.discovered.append(v.toString());
+    const QJsonArray sfiles =
+        obj.value(QStringLiteral("standards_files")).toArray();
+    for (const auto &v : sfiles) env.standardsFiles.append(v.toString());
     return env;
 }
 

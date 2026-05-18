@@ -5827,6 +5827,15 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
             "docs/standards/ + docs/decisions/ exist. Pass scope="
             "\"contracts_only\" to confirm the contract-doc shape.")
                 .arg(m_coldEyesCache.lanes.size());
+        // ANTS-1571 — point callers at the lane-agnostic cold_eyes_brief
+        // escape hatch (ANTS-1508). Callers driving a sweep on a non-
+        // canonical project layout can mint a brief over an arbitrary
+        // doc set without committing a .cold-eyes/partition.json.
+        env["next_step_hint"] = QStringLiteral(
+            "Call cold_eyes_brief(lane=\"<your-label>\", "
+            "doc_paths=[\"...\"]) to mint a brief over an arbitrary "
+            "doc set when the default partition is too narrow "
+            "(ANTS-1508 lane-agnostic mode).");
     }
     return QJsonDocument(env);
 }
