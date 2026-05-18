@@ -11308,6 +11308,14 @@ template / mutate this state atomically" → movable. If it's
   Lanes: skills-integration, test-audit-chunk-agent.
   Source: cross-session-report-2026-05-17 (Vestige Issue #5).
 
+- 📋 [ANTS-1586] **`roadmap_query` `include_body:true` never returns a `body` field.**
+  The descriptor says `Optional include_body:true (ANTS-1517) adds a body field (truncated to ~2000 chars, body_truncated:true set on truncation)`, but in practice every bullet that comes back with `include_body:true` has only `headline`, `headline_oneline`, `id`, `kind`, `lanes`, `section_slug`, `status` — no `body`, no `body_truncated`. Observed during MCP audit-cache fold-in pull 17 (2026-05-18) — tried to use it to read ANTS-1555 / ANTS-1504 / ANTS-1577 bodies for spec drafting and got nothing, fell back to `Read ROADMAP.md` with explicit `offset:NNNN` ranges. The fall-back consumed ~600 tokens of ROADMAP-prose context per item that `include_body:true` was supposed to save. Suspected location: `parseBullets` in `src/roadmapdialog.cpp` — either the body-capture branch is gated on a flag that isn't propagated, or the body field is being dropped during serialisation. Fix needs (a) reproducer test in `tests/features/roadmap_query_include_body/` asserting that `body` is non-empty for a bullet with known continuation prose, (b) the underlying wiring repair. Pairs with ANTS-1517 (the spec that introduced the field) — verify that whichever invariants it declares are still in test scope.
+  
+  Layman: There's an option on the roadmap query verb that's supposed to bring back each item's full description ("body") — saving callers an extra file read. Today the option does nothing — the description is silently missing from the response. Fix: make it actually return the body.
+  Kind: fix.
+  Lanes: mcp-roadmap-query, roadmap-parser, mcp-token-reduction.
+  Source: in-session-2026-05-18 (MCP audit-cache fold-in pull 17).
+
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.
