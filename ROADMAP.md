@@ -10815,16 +10815,17 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mainwindow, qhash, build-hygiene.
   Source: build-output-2026-05-18 (pull-8 build, recurring warning).
 
-- 📋 [ANTS-1555] **Per-project `.audit_cache/` infrastructure for `audit_run` (blocker for ANTS-1504).**
-  `AuditRunner::runAudit` currently writes SARIF to `/tmp/audit-<seq>-<ts>.sarif` with `allocSarifPath` — no per-project cache, no manifest, no retention. ANTS-1504 (since-last-run mode) assumes a `.audit_cache/<project-hash>/` layout it can read prior runs from; ANTS-1512 (scoped-check mode) would also benefit from caching prior runs. Both are blocked until this lands.
-  
-  Design sketch:
-  - Path: `<project>/.audit_cache/audit-<iso-timestamp>-<git-sha>.sarif` (gitignored per project convention).
-  - Manifest: `.audit_cache/index.json` — { last_run: { timestamp, commit, sarif, by_tool: {tool: {elapsed, raw_count}} } }. One file = simple, atomic via QSaveFile.
-  - Retention: keep last 10 runs, then time-bucket (1 per day for 7 days, 1 per week for 4 weeks). Reaper runs at the end of each successful audit_run.
-  - API: `RunResult` gains `cachePath` (where the sarif landed), `priorRun` (manifest snapshot of the prior run if any).
-  
-  Once shipped, ANTS-1504 + ANTS-1512 can layer on top. Estimated effort: ~150-200 lines (most of the new code is in auditrunner.cpp around the existing writeSarif + a small cachemanifest helper).
+- ✅ [ANTS-1555] **Per-project `.audit_cache/` infrastructure for `audit_run` (blocker for ANTS-1504).**
+  Shipped 2026-05-18 (MCP audit-cache fold-in pull 17). `AuditRunner::runAudit` previously wrote SARIF to `/tmp/audit-<seq>-<ts>.sarif` with `allocSarifPath` — no per-project cache, no manifest, no retention.
+
+  Implemented in a new `auditcache.{h,cpp}` module joining `ants_audit_lib`:
+  - Path: `<project>/.audit_cache/audit-<iso-utc>-<git-sha>.sarif`, joining the same dir the AuditDialog GUI already uses (gitignored).
+  - Manifest: `.audit_cache/index.json` (v1 schema) — `{ version, last_run: { iso_timestamp, commit, branch?, scope, sarif, html?, elapsed_total_ms, total_raw, total_actionable, by_tool }, history[] }`. Atomic via `QSaveFile` + 0600 perms via `setOwnerOnlyPerms`.
+  - Retention: keep last 10 history entries. Reaper deletes only sarif/html files named in dropped history entries — never AuditDialog GUI artefacts (`audit-<yyyyMMdd-HHmmss>.*`), `trend.json`, or `baseline.json`.
+  - API: `RunResult` gains `cachePath` (sarif path under `.audit_cache/`; empty on read-only roots) + `priorRun` (manifest's pre-existing `last_run` snapshot). `audit_run` MCP envelope emits `cache_path` + `prior_run` accordingly.
+  - Fallback: read-only project root keeps the legacy `/tmp/audit-<sid>-<seq>.sarif` path via `allocSarifPath`; `cachePath` empty in that branch so callers can branch on it.
+
+  Spec: `docs/specs/ANTS-1555.md` (10 INVs). Test: `tests/features/audit_run_cache/` (12 tests, label `features;fast`) — source-scrape across `auditrunner.{h,cpp}`, `auditcache.cpp`, `mainwindow.cpp`, `claudeintegration.cpp` plus in-process exercise of `recordRun` against a `QTemporaryDir`-rooted manifest (history-cap, reaper file survival, prior-run surfacing, owner-only perms, unknown-version handling). Unblocks ANTS-1504 (since-last-run mode) and pairs with ANTS-1254 (`last_audit_summary` already discovers `.audit_cache/audit-*.sarif`).
   Kind: implement.
   Lanes: auditrunner, mcp-audit-run, mcp-token-reduction.
   Source: in-session-2026-05-18 (pull-8 dependency surfaced while sizing ANTS-1504).
@@ -11181,7 +11182,8 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-last-audit-summary, auditengine, auditrunner.
   Source: cross-session-reports-2026-05-18 (RetroArch Bundles 66 + 67 + 69).
 
-- 📋 [ANTS-1577] **`audit_run` — scoped-check mode `(scope=[…], tool=…, checks=[…])` for narrow tree-wide sweeps.**
+- ✅ [ANTS-1577] **`audit_run` — scoped-check mode `(scope=[…], tool=…, checks=[…])` for narrow tree-wide sweeps.**
+  Closed 2026-05-18 as a dupe — already shipped as ANTS-1512 the same day (cross-session report and engine work crossed in flight). The shipped surface: `audit_run({tools:["clang-tidy"], paths:[...], checks:[...]})` — `paths` constrains the tool's argv-positional file args, `checks` is rendered as `--checks=-*,<joined>` (clang-tidy only; other tools refuse with `bad_args`). Each path/check is sanitised through `isAuditArgSafe`/`isAuditCheckSafe`. Spec at `docs/specs/ANTS-1512.md` (if drafted); test surface at `tests/features/audit_run_scoped_check/`. Original report:
   RetroArch Bundle 64 (2026-05-18): the work was a tree-wide `clang-tidy --checks='-*,bugprone-integer-division'` sweep over 8 menu+gfx files — a recurring pattern as Tier-3 tidy entries get worked through. `audit_run` today is shaped around the full audit pipeline (cppcheck + clang-tidy + clazy + ...) and doesn't have an obvious "narrow scope: one check, N files" mode. Caller fell back to direct Bash. Add a scoped invocation: `audit_run({scope: ["menu/drivers/", "gfx/"], tool: "clang-tidy", checks: ["bugprone-integer-division"]}) → {warnings: [{file, line, col, rule, message}, ...]}`. Lets the MCP cache + structure the results (which Bash output doesn't). Useful for tree-wide style/idiom sweeps (e.g. tree-wide `cppcheck --enable=style` runs). Composes with ANTS-1504 (since-last-run mode) and ANTS-1555 (per-project `.audit_cache/` infra) — same audit-runner module.
   **Layman:** When a session wants to run just one clang-tidy check across a subset of files (instead of the full audit suite), there's no good way — you have to use Bash directly. Add a scoped mode where the caller picks one tool, one or two checks, and a few scope directories.
   Kind: enhancement.

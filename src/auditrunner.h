@@ -16,6 +16,7 @@
 
 #include <QHash>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QPair>
 #include <QString>
 #include <QStringList>
@@ -71,6 +72,15 @@ struct RunResult {
     qint64                     elapsedTotalMs = 0;
     bool                       samplesTruncated = false;
     QJsonArray                 topFindings;  // present iff topFindingsCount > 0
+    // ANTS-1555 — per-project `.audit_cache/` surface. cachePath is
+    // the SARIF path under `<root>/.audit_cache/`; empty when the
+    // cache write failed (callers should consult `sarifPath` for the
+    // /tmp fallback). priorRun is the manifest's pre-existing
+    // last_run snapshot before this run was recorded — empty on the
+    // first sweep of a project. ANTS-1504 (`since-last-run`) reads
+    // priorRun.commit + priorRun.sarif to compute the delta.
+    QString                    cachePath;
+    QJsonObject                priorRun;
 };
 
 // Aggregate cap = min(tools.count * capPerToolSeconds * 1.5, 240 s).

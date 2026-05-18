@@ -12,6 +12,59 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP audit-cache fold-in — pull 17 (ANTS-1555 + ANTS-1577 dupe-close, 2026-05-18)
+
+Routes `audit_run`'s SARIF output into the same per-project
+`.audit_cache/` directory the AuditDialog GUI already uses, with a
+manifest + 10-entry history + a retention reaper. Unblocks the
+`since-last-run` mode (ANTS-1504) and gives `last_audit_summary`
+a stable anchor on MCP-driven sweeps. ANTS-1577 dropped through
+as a dupe of already-shipped ANTS-1512.
+
+- **ANTS-1555 (implement)** — per-project `.audit_cache/`
+  infrastructure for `audit_run`. New `auditcache.{h,cpp}` module
+  joins `ants_audit_lib`. `AuditRunner::runAudit` no longer writes
+  SARIF to `/tmp/audit-<seq>-<ts>.sarif` on writeable roots —
+  output lands at `<root>/.audit_cache/audit-<iso-utc>-<git-sha>.sarif`
+  with a `.audit_cache/index.json` manifest tracking
+  `{ version:1, last_run, history[] }`. Atomic via `QSaveFile` +
+  0600 perms via `setOwnerOnlyPerms`. `RunResult` gains `cachePath`
+  (sarif path under `.audit_cache/`; empty on read-only roots) +
+  `priorRun` (manifest's pre-existing `last_run` snapshot). The
+  `audit_run` MCP envelope emits `cache_path` + `prior_run`
+  accordingly. Retention: keep last 10 history entries; reaper
+  deletes only sarif/html files named in dropped history entries
+  — never AuditDialog GUI artefacts, `trend.json`, or
+  `baseline.json`. Read-only root falls back to the legacy
+  `/tmp` path via `allocSarifPath`; callers branch on `cachePath`.
+  Spec `docs/specs/ANTS-1555.md` (10 INVs); tests
+  `tests/features/audit_run_cache/` (12 INVs covering header
+  surface, runner wiring, envelope surface, descriptor mention,
+  atomic-write contract, plus in-process exercise against a
+  `QTemporaryDir`-rooted manifest — history cap, reaper file
+  survival, prior-run surfacing, owner-only perms, unknown-version
+  handling).
+  **Layman:** every time the audit tool runs, the output now lands
+  in the same project folder the manual audit window already uses,
+  with a record-keeping file so the next audit can see what
+  changed since last time. Old runs get cleaned up automatically;
+  hand-edited files stay put.
+  Kind: implement.
+  Source: in-session-2026-05-18 (pull-8 dependency surfaced while
+  sizing ANTS-1504).
+
+- **ANTS-1577 (dupe-close)** — `audit_run` scoped-check mode
+  `(scope=[…], tool=…, checks=[…])` for narrow tree-wide sweeps.
+  Cross-session report from RetroArch Bundle 64 on 2026-05-18
+  crossed with the same-day shipment of ANTS-1512 (also 2026-05-18,
+  fold-in pull 9). The shipped surface is
+  `audit_run({tools:["clang-tidy"], paths:[...], checks:[...]})` —
+  `paths` constrains argv-positional file args, `checks` renders
+  as `--checks=-*,<joined>` (clang-tidy only). Roadmap flipped
+  to ✅ as a same-feature duplicate.
+  Kind: chore.
+  Source: cross-session-report-2026-05-18 (RetroArch Bundle 64).
+
 ### 🔌 MCP synth-fence + audit_run path-validation fold-in — pull 16 (ANTS-1445 + 1446 + 1585, 2026-05-18)
 
 Three discrete fixes on the MCP audit / review surface, sourced from

@@ -2919,7 +2919,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "scope (auto / files / since-tag:X / branch-diff), "
                         "and optional top_findings_count for inline "
                         "result preview. Required: caller_cwd (ANTS-1404 "
-                        "Required gate). See docs/specs/ANTS-1351.md.");
+                        "Required gate). ANTS-1555: SARIF now lands in "
+                        "`<root>/.audit_cache/audit-<iso>-<sha>.sarif` "
+                        "(same dir AuditDialog GUI writes to), and the "
+                        "envelope carries `cache_path` + `prior_run` "
+                        "{iso_timestamp, commit, sarif} for the prior "
+                        "sweep — anchor for ANTS-1504 since-last-run "
+                        "mode. /tmp fallback when the root is read-only. "
+                        "See docs/specs/ANTS-1351.md + ANTS-1555.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to run the static-analysis sweep without "
                         "leaving Ants. Pairs with last_audit_summary "

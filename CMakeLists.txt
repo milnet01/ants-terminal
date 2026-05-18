@@ -328,6 +328,8 @@ add_library(ants_audit_lib STATIC
     src/auditrulequality.cpp
     # ANTS-1351 — server-side audit runner (Qt6::Core only).
     src/auditrunner.cpp
+    # ANTS-1555 — per-project .audit_cache/ manifest + retention reaper.
+    src/auditcache.cpp
     # ANTS-1352 — indie-review dispatcher (Qt6::Network).
     src/indiereviewdispatcher.cpp
 )
@@ -988,7 +990,9 @@ if(ANTS_TESTS)
                 # ANTS-1565 workspace_search configurable wall-clock budget.
                 tests/features/mcp_workspace_search_timeout_sec/test_mcp_workspace_search_timeout_sec.cpp
                 # ANTS-1583 roadmap_branch_drift MCP verb.
-                tests/features/mcp_roadmap_branch_drift/test_mcp_roadmap_branch_drift.cpp)
+                tests/features/mcp_roadmap_branch_drift/test_mcp_roadmap_branch_drift.cpp
+                # ANTS-1555 audit_run per-project .audit_cache/ infra.
+                tests/features/audit_run_cache/test_audit_run_cache.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -1033,6 +1037,9 @@ if(ANTS_TESTS)
         SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
         # ANTS-1512 — audit_run scoped-check mode source-scrape.
         SRC_AUDITRUNNER_H_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.h"
+        # ANTS-1555 — audit_run per-project .audit_cache/ infra source-scrape.
+        SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
+        SRC_AUDITCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.h"
         # ANTS-1397 — test_audit engine source for source-scrape tests.
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
         # ANTS-1352 — indie_review_dispatch source-scrape paths.

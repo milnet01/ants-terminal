@@ -33,6 +33,7 @@
 
 #include "auditrunner.h"
 
+#include "auditcache.h"   // ANTS-1555
 #include "auditengine.h"  // ANTS-1576 buildVcsProvenanceBlock
 
 #include <QCoreApplication>
@@ -1286,25 +1287,99 @@ RunResult runAudit(const RunRequest &req) {
     }
 
     // ── INV-12 / SARIF + optional HTML.
+    //
+    // ANTS-1555 — route through `<root>/.audit_cache/` when the
+    // project root is writeable; fall back to /tmp on failure so
+    // `sarifPath` stays meaningful for callers. `cachePath` is set
+    // only on the cache-hit branch.
     const QStringList formats = req.formats.isEmpty()
         ? QStringList{QStringLiteral("sarif")} : req.formats;
+
+    const AuditCache::IsoNow iso     = AuditCache::isoNow();
+    const AuditCache::GitInfo gitI   = AuditCache::gitInfo(canonProject);
+
+    QString cacheSarifAbs;
+    QString cacheHtmlAbs;
     if (formats.contains(QLatin1String("sarif"))) {
-        const QString sp = allocSarifPath();
-        // ANTS-1576 — thread the canonical project root so the SARIF
-        // emission captures git provenance.
-        if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot)) {
-            r.sarifPath = sp;
+        cacheSarifAbs = AuditCache::sarifPathFor(canonProject,
+                                                 iso.forFilename,
+                                                 gitI.shortSha);
+        if (!cacheSarifAbs.isEmpty()
+         && QDir().mkpath(AuditCache::cacheDir(canonProject))
+         && writeSarif(cacheSarifAbs, r.byTool, rawByTool, req.projectRoot)) {
+            r.sarifPath = cacheSarifAbs;
+            r.cachePath = cacheSarifAbs;
+        } else {
+            // Fall back to legacy /tmp path so callers depending on
+            // sarifPath still work even on read-only roots.
+            cacheSarifAbs.clear();
+            const QString sp = allocSarifPath();
+            if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot)) {
+                r.sarifPath = sp;
+            }
         }
     }
     if (formats.contains(QLatin1String("html"))) {
-        QString hp = r.sarifPath;
-        if (!hp.isEmpty()) {
+        QString hp;
+        if (!r.cachePath.isEmpty()) {
+            cacheHtmlAbs = AuditCache::htmlPathFor(canonProject,
+                                                   iso.forFilename,
+                                                   gitI.shortSha);
+            hp = cacheHtmlAbs;
+        } else if (!r.sarifPath.isEmpty()) {
+            // /tmp fallback: mirror the sibling .html naming.
+            hp = r.sarifPath;
             hp.chop(static_cast<int>(strlen(".sarif")));
             hp += QStringLiteral(".html");
         } else {
             hp = QStringLiteral("/tmp/audit-%1.html").arg(sessionIdToken());
         }
         if (writeHtml(hp, r.byTool)) r.htmlPath = hp;
+    }
+
+    // ── ANTS-1555 / record the run in `.audit_cache/index.json`.
+    // Only fires when the cache write succeeded — fallback /tmp
+    // writes don't touch the manifest. priorRun is filled by
+    // recordRun() from the manifest's pre-existing last_run.
+    if (!r.cachePath.isEmpty()) {
+        QJsonObject lastRunJson;
+        lastRunJson[QStringLiteral("iso_timestamp")] = iso.forManifest;
+        lastRunJson[QStringLiteral("commit")]        = gitI.shortSha;
+        if (!gitI.branch.isEmpty()) {
+            lastRunJson[QStringLiteral("branch")] = gitI.branch;
+        }
+        lastRunJson[QStringLiteral("scope")] =
+            req.scope.isEmpty() ? QStringLiteral("auto") : req.scope;
+        // Store sarif/html as basenames inside the manifest; the
+        // reaper resolves them to absolute paths relative to
+        // .audit_cache/ (matches the "self-contained per-project
+        // dir" invariant).
+        lastRunJson[QStringLiteral("sarif")] =
+            QFileInfo(cacheSarifAbs).fileName();
+        if (!cacheHtmlAbs.isEmpty() && !r.htmlPath.isEmpty()
+            && r.htmlPath == cacheHtmlAbs) {
+            lastRunJson[QStringLiteral("html")] =
+                QFileInfo(cacheHtmlAbs).fileName();
+        }
+        lastRunJson[QStringLiteral("elapsed_total_ms")] =
+            static_cast<double>(elapsed.elapsed());
+        lastRunJson[QStringLiteral("total_raw")]        = r.totalRaw;
+        lastRunJson[QStringLiteral("total_actionable")] = r.totalActionable;
+        QJsonObject byToolJson;
+        for (auto it = r.byTool.constBegin();
+             it != r.byTool.constEnd(); ++it) {
+            QJsonObject t;
+            t[QStringLiteral("elapsed_ms")] =
+                static_cast<double>(it->elapsedMs);
+            t[QStringLiteral("raw_count")]  = it->rawCount;
+            t[QStringLiteral("status")]     = it->status;
+            byToolJson[it.key()] = t;
+        }
+        lastRunJson[QStringLiteral("by_tool")] = byToolJson;
+
+        QJsonObject prior;
+        AuditCache::recordRun(canonProject, lastRunJson, &prior);
+        r.priorRun = prior;
     }
 
     r.elapsedTotalMs = elapsed.elapsed();

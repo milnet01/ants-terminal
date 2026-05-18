@@ -4124,6 +4124,17 @@ void MainWindow::setupClaudeMcpProviders() {
             env["samples_truncated"]= r.samplesTruncated;
             if (!r.topFindings.isEmpty())
                 env["top_findings"] = r.topFindings;
+            // ANTS-1555 — per-project `.audit_cache/` surface.
+            // `cache_path` is set only when the SARIF landed in
+            // `<root>/.audit_cache/`; `prior_run` carries the
+            // pre-existing manifest's last_run snapshot (empty
+            // object on a project's first sweep). ANTS-1504 reads
+            // `prior_run.commit` + `prior_run.sarif` to compute
+            // the since-last-run delta.
+            if (!r.cachePath.isEmpty())
+                env["cache_path"] = r.cachePath;
+            if (!r.priorRun.isEmpty())
+                env["prior_run"] = r.priorRun;
             return QString::fromUtf8(
                 QJsonDocument(env).toJson(QJsonDocument::Compact));
         });

@@ -43,6 +43,20 @@ Listed only where behavior isn't obvious from the name.
   `isCatastrophicRegex`, `hardenUserRegex`). Non-GUI consumers
   (CI runners, ants-helper v2 audit-run, future MCP) link this
   without dragging Qt6::Widgets in. ANTS-1119.
+- `auditcache` (Qt6::Core only) — per-project `.audit_cache/`
+  infrastructure for `audit_run` (ANTS-1555). Routes SARIF + a
+  `.audit_cache/index.json` manifest (v1, `{last_run, history[]}`)
+  into `<root>/.audit_cache/audit-<iso-utc>-<sha>.sarif`, the same
+  dir `auditdialog`'s Export-SARIF button writes to. Atomic via
+  `QSaveFile` + 0600 via `setOwnerOnlyPerms`. Retention reaper
+  caps history at 10 entries; deletes only sarif/html files named
+  in dropped manifest entries (never AuditDialog GUI artefacts,
+  `trend.json`, or `baseline.json`). `AuditRunner::RunResult`
+  gains `cachePath` (sarif path under `.audit_cache/`; empty on
+  read-only roots → `/tmp` fallback via `allocSarifPath`) +
+  `priorRun` (manifest's pre-existing `last_run` snapshot) — the
+  anchor for ANTS-1504 since-last-run mode. Spec
+  `docs/specs/ANTS-1555.md`.
 - `audithygiene` — splices project-local scanner config into invocations
   (`.semgrep.yml` header → `--exclude-rule`; `pyproject.toml` ruff S-codes
   → bandit `--skip B<nnn>`).
