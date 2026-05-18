@@ -12,6 +12,99 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP cross-session fold-in — pull 6 (ANTS-1514 + 1518 + 1520 + 1529, 2026-05-18 night)
+
+Four-item cleanup pass — three behavioural fixes + one duplicate-resolution.
+
+- **ANTS-1518 (enhancement)** — Discoverability prefix-tag on every
+  MCP tool description. `tools/list` now prepends `[<kind>] ` to
+  every `description` field via a centralised post-build loop
+  driven by the same kindForName mapping the lite-shape `kind:`
+  field uses. Kinds: `cold-eyes`, `indie-review`, `test-audit`,
+  `debt-sweep`, `roadmap`, `audit`, `verify`, `git`, `workspace`,
+  `memory`, `plan`, `terminal`, `meta`, `other`. Idempotent (skips
+  when description already starts with `[`) so a hot-reload or
+  repeated `tools/list` call doesn't double-prefix. Applied before
+  the `m_lastToolsList` snapshot so `tool_info(name)` returns the
+  prefixed form too. Sessions surfacing the registry can now grep
+  by surface family without parsing every descriptor.
+
+- **ANTS-1520 (enhancement)** — `caller_cwd` made uniformly Required
+  across the MCP namespace. Previously a mixed regime: project-
+  scoped read tools were Optional (focused-tab fallback) while
+  mutating tools were Required. The split added a per-call mental
+  tax of "did I need it this time?" and, worse, optional
+  caller_cwd quietly returned the wrong project's data when the
+  focused Ants tab differed from the caller's project. Now every
+  read and review surface (`roadmap_query`, `subsystem`,
+  `workspace_search`, `file_outline`, `plan_template`, all four
+  cold-eyes / indie-review / debt-sweep / test-audit verb
+  clusters, plus the fall-through default for any new registration)
+  refuses with `{ok:false, code:"caller_cwd_required"}` when
+  absent. The five terminal-state verbs (`get_scrollback`,
+  `get_text`, `get_last_command`, `get_environment`, `get_cwd`)
+  remain TabSpecific (focused-tab fallback when absent). Schema
+  `required[]` is auto-synced in the same `tools/list` loop, so
+  the JSON schema declares `caller_cwd` required for every
+  Required-contract tool without per-tool wiring. `caller_cwd_info`
+  stays Optional — its entire purpose is to answer "what happens
+  without caller_cwd?".
+
+- **ANTS-1529 (fix)** — `cold_eyes_partition` contract-doc resolver
+  now tolerates non-`.md` extensions per stem. README is matched
+  against `.md` / `.rst` / `.adoc` / `.txt`; ROADMAP and CHANGELOG
+  against `.md` / `.yaml` / `.yml` / `.json` (CHANGELOG also
+  `.rst` / `.txt`). Per stem the first existing alternative wins;
+  the common `.md` case stays a single syscall via the existing
+  `caseInsensitiveResolve` short-circuit. Closes the RetroDB
+  reproducer where lowercase `roadmap.md` resolved fine
+  (ANTS-1506) but `data/changelog.yaml` was missed because the
+  candidate list was hardcoded to `.md`.
+
+- **ANTS-1514 (fix, duplicate-resolution)** — `last_audit_summary`
+  raw-scanner-output fallback was already shipped via ANTS-1459
+  (cppcheck XML) + ANTS-1494 (clang-tidy text + semgrep JSON).
+  The `pickLatest` chain at `src/remotecontrol.cpp:4180-4197`
+  walks `cppcheck-*.xml` / `clang-tidy-*.txt` / `semgrep-*.json`
+  when no `audit-*.sarif` exists; the engine has the four matching
+  parsers. RetroArch's recurring `not_audited` was on an older
+  Ants version. Closed as duplicate during the 2026-05-18 MCP
+  bundle.
+
+### 🚀 CI speed-up — ccache + apt cache + paths-ignore (ANTS-1549, 2026-05-18 night)
+
+Three wins on the ~12-15 min/push CI wall-time on
+`.github/workflows/ci.yml`:
+
+- **ccache via `actions/cache@v4` (v4.3.0)** — sets
+  `CMAKE_C/CXX_COMPILER_LAUNCHER=ccache` + persists `$CCACHE_DIR`
+  keyed per-SHA with a restore-keys fallback. Separate cache key
+  for the ASan job (different compile flags hash to different
+  ccache entries — sharing the release cache would 100% miss).
+  Cold cache: small overhead. Warm cache (same SHA re-run): near-
+  instant. Incremental (new SHA): only changed TUs recompile.
+  Expected steady-state saving: ~7 min/push on the touch-2-5-files
+  fold-in pulls that dominate fold-in seasons.
+
+- **apt cache via `awalsh128/cache-apt-pkgs-action@v1` (v1.6.0)** —
+  single cached install replaces the two split `apt-get` blocks
+  per job. Saves ~30-45 s/run on `apt-get update` + download. Both
+  jobs share the action; package list bumped to include `ccache`
+  and the packaging validators (`appstream`, `desktop-file-utils`,
+  `groff`, `zsh`, `fish`) up-front.
+
+- **`paths-ignore` on push trigger** — pure docs/roadmap/changelog
+  commits skip CI entirely (`ROADMAP.md`, `CHANGELOG.md`,
+  `README.md`, `PLUGINS.md`, `LICENSE`, `docs/**`,
+  `.roadmap-counter`). PRs always run (the `pull_request` trigger
+  is unchanged) so the merge gate stays intact even for docs PRs.
+  Eliminates ~12 min CI cost for the cross-session-report
+  bookkeeping commits.
+
+Third-party action SHAs verified via `gh api git/ref/tags` and
+resolved through `git/tags` for annotated tags. Pinned by
+40-char SHA per the workflow's existing hardening convention.
+
 ### 🔌 MCP cross-session fold-in — pull 5 (ANTS-1526 + 1527 + 1538 + 1539 + 1540 + 1543 + 1545 + 1547, 2026-05-18 late evening)
 
 Implementation pass over six roadmap items + one issue caught in-session

@@ -1401,21 +1401,34 @@ void ClaudeIntegration::onMcpConnection() {
             } else if (method == "tools/list") {
                 QJsonArray tools;
 
-                // ANTS-1391: shared schema property for read verbs that
-                // accept caller_cwd as an OPTIONAL anchor. Mutating
-                // verbs gate strictly on caller_cwd via RcGate
-                // (ANTS-1372) and declare their own required-form copy.
+                // ANTS-1520 — shared schema property for tools that
+                // anchor on caller_cwd. Most project-scoped read and
+                // write tools now REQUIRE this (refused at the
+                // dispatcher with code `caller_cwd_required` when
+                // absent). The five terminal-state verbs
+                // (get_scrollback, get_text, get_last_command,
+                // get_environment, get_cwd) classified TabSpecific
+                // still anchor here when present but fall back to
+                // the focused Ants tab when absent — for those tools
+                // it remains a routing hint, not a refusal gate.
+                // Uniform schema opener so consumers see one
+                // canonical statement instead of N variants
+                // (ANTS-1520 spec: "per-tool docstring opens with
+                // the same line"). Original ANTS-1391 rationale
+                // (don't return project A's data when a session is
+                // asking about project B) drove the uniform-Required
+                // upgrade.
                 auto makeCallerCwdReadProp = []{
                     QJsonObject p;
                     p["type"] = "string";
                     p["description"] = QStringLiteral(
-                        "Optional. Your $PWD. ANTS-1391: when "
-                        "present, this read is anchored to your "
-                        "cwd's project instead of whichever tab is "
-                        "focused in Ants. Pass it so a session in "
-                        "project B asking the MCP about project B "
-                        "doesn't get project A's data because Ants "
-                        "happens to have a different tab focused.");
+                        "Your $PWD. Required by the dispatcher for "
+                        "project-scoped read and write tools "
+                        "(refuses with code `caller_cwd_required` "
+                        "when absent — ANTS-1520). The terminal-"
+                        "state verbs (`get_*`) still accept it as "
+                        "an Optional tab-routing anchor and fall "
+                        "back to the focused Ants tab when absent.");
                     return p;
                 };
 
@@ -3975,16 +3988,122 @@ void ClaudeIntegration::onMcpConnection() {
                     if (it != kCosts.end()) return it.value();
                     return {500, 2500};  // conservative default
                 };
+                // ANTS-1518 — discoverability prefix-tag. Defined here
+                // (outer tools/list scope) so both the post-build loop
+                // and the lite-shape branch reuse the same mapping.
+                // Same kind-buckets the lite-shape kind: field uses,
+                // emitted as a `[<kind>] ` prefix on every full-shape
+                // description so a session surfacing tools/list can
+                // grep by surface family without parsing every
+                // descriptor.
+                auto kindForName = [](const QString &name) -> QString {
+                    if (name.startsWith(QStringLiteral("cold_eyes_")))
+                        return QStringLiteral("cold-eyes");
+                    if (name.startsWith(QStringLiteral("indie_review_")))
+                        return QStringLiteral("indie-review");
+                    if (name.startsWith(QStringLiteral("test_audit_")))
+                        return QStringLiteral("test-audit");
+                    if (name.startsWith(QStringLiteral("debt_sweep_")))
+                        return QStringLiteral("debt-sweep");
+                    if (name.startsWith(QStringLiteral("roadmap_")))
+                        return QStringLiteral("roadmap");
+                    if (name == QLatin1String("audit_run") ||
+                        name == QLatin1String("last_audit_summary"))
+                        return QStringLiteral("audit");
+                    if (name == QLatin1String("verify_changes"))
+                        return QStringLiteral("verify");
+                    if (name == QLatin1String("git_state"))
+                        return QStringLiteral("git");
+                    if (name == QLatin1String("workspace_search") ||
+                        name == QLatin1String("file_outline") ||
+                        name == QLatin1String("project_layout") ||
+                        name == QLatin1String("subsystem"))
+                        return QStringLiteral("workspace");
+                    if (name == QLatin1String("session_memory"))
+                        return QStringLiteral("memory");
+                    if (name == QLatin1String("plan_template"))
+                        return QStringLiteral("plan");
+                    if (name.startsWith(QStringLiteral("get_")) ||
+                        name == QLatin1String("tab_list") ||
+                        name == QLatin1String("caller_cwd_info"))
+                        return QStringLiteral("terminal");
+                    if (name == QLatin1String("tool_info") ||
+                        name == QLatin1String("token_usage") ||
+                        name == QLatin1String("mcp_trace"))
+                        return QStringLiteral("meta");
+                    return QStringLiteral("other");
+                };
                 for (int i = 0; i < tools.size(); ++i) {
                     QJsonObject t = tools[i].toObject();
+                    const QString name =
+                        t.value(QStringLiteral("name")).toString();
                     if (!t.contains(QStringLiteral("version"))) {
                         t[QStringLiteral("version")] = QStringLiteral("1.0");
                     }
                     if (!t.contains(QStringLiteral("typical_token_cost"))) {
-                        const auto cost = tokenCostFor(
-                            t.value(QStringLiteral("name")).toString());
+                        const auto cost = tokenCostFor(name);
                         t[QStringLiteral("typical_token_cost")] = cost.first;
                         t[QStringLiteral("worst_case_tokens")]  = cost.second;
+                    }
+                    // ANTS-1518 — prepend `[<kind>] ` to description.
+                    // Idempotent: skip if already starts with `[` so a
+                    // hot-reload or repeated tools/list call doesn't
+                    // double-prefix.
+                    {
+                        const QString desc =
+                            t.value(QStringLiteral("description")).toString();
+                        if (!desc.startsWith(QLatin1Char('['))) {
+                            t[QStringLiteral("description")] =
+                                QStringLiteral("[%1] %2")
+                                    .arg(kindForName(name), desc);
+                        }
+                    }
+                    // ANTS-1520 — keep the JSON-schema `required[]`
+                    // array in sync with the dispatcher's contract.
+                    // For every Required-contract tool, ensure
+                    // `caller_cwd` is in `inputSchema.required`. Saves
+                    // touching ~25 tool-registration blocks individually
+                    // and stays in lockstep with callerCwdContractFor
+                    // automatically. Idempotent: skips when already
+                    // listed (most existing Required tools already
+                    // append it explicitly).
+                    if (callerCwdContractFor(name) ==
+                        CallerCwdContract::Required) {
+                        QJsonObject schema =
+                            t.value(QStringLiteral("inputSchema"))
+                             .toObject();
+                        // Guard: only inject when the schema actually
+                        // declares `properties.caller_cwd`. A `required`
+                        // entry without a matching property would
+                        // produce an invalid JSON schema and Zod
+                        // validators on the consuming side reject the
+                        // whole tools/list response. Today every
+                        // Required-contract tool declares the property
+                        // via `makeCallerCwdReadProp` — this guard
+                        // covers a future Required registration that
+                        // skipped the property by mistake.
+                        const QJsonObject props =
+                            schema.value(QStringLiteral("properties"))
+                                  .toObject();
+                        if (props.contains(
+                                QStringLiteral("caller_cwd"))) {
+                            QJsonArray req =
+                                schema.value(QStringLiteral("required"))
+                                      .toArray();
+                            bool already = false;
+                            for (const auto &rv : std::as_const(req)) {
+                                if (rv.toString() ==
+                                    QStringLiteral("caller_cwd")) {
+                                    already = true;
+                                    break;
+                                }
+                            }
+                            if (!already) {
+                                req.append(QStringLiteral("caller_cwd"));
+                                schema[QStringLiteral("required")] = req;
+                                t[QStringLiteral("inputSchema")] = schema;
+                            }
+                        }
                     }
                     tools.replace(i, t);
                 }
@@ -4017,43 +4136,10 @@ void ClaudeIntegration::onMcpConnection() {
                     if (shape == QLatin1String("lite")) wantLite = true;
                 }
                 if (wantLite) {
-                    auto kindForName = [](const QString &name) -> QString {
-                        if (name.startsWith(QStringLiteral("cold_eyes_")))
-                            return QStringLiteral("cold-eyes");
-                        if (name.startsWith(QStringLiteral("indie_review_")))
-                            return QStringLiteral("indie-review");
-                        if (name.startsWith(QStringLiteral("test_audit_")))
-                            return QStringLiteral("test-audit");
-                        if (name.startsWith(QStringLiteral("debt_sweep_")))
-                            return QStringLiteral("debt-sweep");
-                        if (name.startsWith(QStringLiteral("roadmap_")))
-                            return QStringLiteral("roadmap");
-                        if (name == QLatin1String("audit_run") ||
-                            name == QLatin1String("last_audit_summary"))
-                            return QStringLiteral("audit");
-                        if (name == QLatin1String("verify_changes"))
-                            return QStringLiteral("verify");
-                        if (name == QLatin1String("git_state"))
-                            return QStringLiteral("git");
-                        if (name == QLatin1String("workspace_search") ||
-                            name == QLatin1String("file_outline") ||
-                            name == QLatin1String("project_layout") ||
-                            name == QLatin1String("subsystem"))
-                            return QStringLiteral("workspace");
-                        if (name == QLatin1String("session_memory"))
-                            return QStringLiteral("memory");
-                        if (name == QLatin1String("plan_template"))
-                            return QStringLiteral("plan");
-                        if (name.startsWith(QStringLiteral("get_")) ||
-                            name == QLatin1String("tab_list") ||
-                            name == QLatin1String("caller_cwd_info"))
-                            return QStringLiteral("terminal");
-                        if (name == QLatin1String("tool_info") ||
-                            name == QLatin1String("token_usage") ||
-                            name == QLatin1String("mcp_trace"))
-                            return QStringLiteral("meta");
-                        return QStringLiteral("other");
-                    };
+                    // ANTS-1518 — kindForName is hoisted to the outer
+                    // tools/list scope (above) so the full-shape
+                    // description-prefix loop and this lite-shape branch
+                    // share one source of truth.
                     auto summaryFor = [](const QJsonObject &t) -> QString {
                         // Prefer selection_hint (already terse,
                         // form-factor cue). Fall back to the first
@@ -4527,48 +4613,53 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // is built to answer).
     if (toolName == QStringLiteral("caller_cwd_info"))    return C::Optional;
 
-    // ANTS-1417 — explicit Optional classifications for the
-    // remaining registered tools. These currently behave as
-    // Optional (focused-tab fallback when caller_cwd is absent);
-    // the explicit branches lock in the audit decision so a future
-    // tool registration doesn't silently fall to Optional without
-    // a contributor's review. Per-tool Required/Optional re-
-    // classification (especially for the engine verbs that
-    // mutate `.cold-eyes/` / `.indie-review/` / `.debt-sweep/`
-    // workspace dirs under the caller's project root) is its own
-    // follow-up; that audit weighs survey-from-outside legitimacy
-    // against confused-deputy risk per the ANTS-1404 framework.
-    if (toolName == QStringLiteral("roadmap_query"))      return C::Optional;
-    if (toolName == QStringLiteral("subsystem"))          return C::Optional;
-    if (toolName == QStringLiteral("workspace_search"))   return C::Optional;
-    if (toolName == QStringLiteral("file_outline"))       return C::Optional;
-    if (toolName == QStringLiteral("plan_template"))      return C::Optional;
+    // ANTS-1520 — promoted from Optional to Required across the
+    // project-scoped read and review surfaces. The mixed regime
+    // (some tools Required, others Optional with focused-tab
+    // fallback) added a per-call mental tax of "did I need it
+    // this time?" and, worse, optional `caller_cwd` quietly
+    // returned the wrong project's data when the focused Ants
+    // tab differed from the caller's project. Uniform refusal
+    // closes that silent-miss failure mode. The shared
+    // `caller_cwd_required` refusal envelope is emitted by the
+    // tools/call dispatcher at the same site as ANTS-1404
+    // (no per-tool wiring needed).
+    if (toolName == QStringLiteral("roadmap_query"))      return C::Required;
+    if (toolName == QStringLiteral("subsystem"))          return C::Required;
+    if (toolName == QStringLiteral("workspace_search"))   return C::Required;
+    if (toolName == QStringLiteral("file_outline"))       return C::Required;
+    if (toolName == QStringLiteral("plan_template"))      return C::Required;
     // Cold-eyes verb cluster (ANTS-1313).
-    if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Optional;
-    if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Optional;
-    if (toolName == QStringLiteral("cold_eyes_fold_in"))       return C::Optional;
-    if (toolName == QStringLiteral("cold_eyes_partition"))     return C::Optional;
+    if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Required;
+    if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Required;
+    if (toolName == QStringLiteral("cold_eyes_fold_in"))       return C::Required;
+    if (toolName == QStringLiteral("cold_eyes_partition"))     return C::Required;
     // Debt-sweep verb cluster (ANTS-1316).
-    if (toolName == QStringLiteral("debt_sweep_apply_fix"))     return C::Optional;
-    if (toolName == QStringLiteral("debt_sweep_defer"))         return C::Optional;
-    if (toolName == QStringLiteral("debt_sweep_scan"))          return C::Optional;
-    if (toolName == QStringLiteral("debt_sweep_triage_prompt")) return C::Optional;
+    if (toolName == QStringLiteral("debt_sweep_apply_fix"))     return C::Required;
+    if (toolName == QStringLiteral("debt_sweep_defer"))         return C::Required;
+    if (toolName == QStringLiteral("debt_sweep_scan"))          return C::Required;
+    if (toolName == QStringLiteral("debt_sweep_triage_prompt")) return C::Required;
     // Indie-review verb cluster (ANTS-1311).
-    if (toolName == QStringLiteral("indie_review_brief"))            return C::Optional;
-    if (toolName == QStringLiteral("indie_review_corroborate"))      return C::Optional;
-    if (toolName == QStringLiteral("indie_review_fold_in"))          return C::Optional;
-    if (toolName == QStringLiteral("indie_review_partition"))        return C::Optional;
-    if (toolName == QStringLiteral("indie_review_synthesis_prompt")) return C::Optional;
+    if (toolName == QStringLiteral("indie_review_brief"))            return C::Required;
+    if (toolName == QStringLiteral("indie_review_corroborate"))      return C::Required;
+    if (toolName == QStringLiteral("indie_review_fold_in"))          return C::Required;
+    if (toolName == QStringLiteral("indie_review_partition"))        return C::Required;
+    if (toolName == QStringLiteral("indie_review_synthesis_prompt")) return C::Required;
     // Test-audit verb cluster (ANTS-1397).
-    if (toolName == QStringLiteral("test_audit_brief"))            return C::Optional;
-    if (toolName == QStringLiteral("test_audit_fold_in"))          return C::Optional;
-    if (toolName == QStringLiteral("test_audit_partition"))        return C::Optional;
-    if (toolName == QStringLiteral("test_audit_synthesis_prompt")) return C::Optional;
+    if (toolName == QStringLiteral("test_audit_brief"))            return C::Required;
+    if (toolName == QStringLiteral("test_audit_fold_in"))          return C::Required;
+    if (toolName == QStringLiteral("test_audit_partition"))        return C::Required;
+    if (toolName == QStringLiteral("test_audit_synthesis_prompt")) return C::Required;
 
     // Unclassified — fall through. Future tools should be added
     // above; the ANTS-1417 coverage test fails the build if a
     // new registerToolProvider call has no matching branch here.
-    return C::Optional;
+    // ANTS-1520 also flips the fall-through default to Required
+    // so new tools fail-closed: any new registration that didn't
+    // get an explicit classification refuses without caller_cwd
+    // (loud, contributor-visible) instead of silently anchoring
+    // to the focused tab.
+    return C::Required;
 }
 
 // --- ANTS-1357 — MCP idempotent-read cache helpers ---

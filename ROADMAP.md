@@ -10000,7 +10000,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit.
   Source: Vestige cross-session report 2026-05-18 (Slice 19 addendum).
 
-- 📋 [ANTS-1514] **`last_audit_summary` falls back to raw cppcheck XML / clang-tidy text / semgrep JSON when no SARIF exists.**
+- ✅ [ANTS-1514] **`last_audit_summary` falls back to raw cppcheck XML / clang-tidy text / semgrep JSON when no SARIF exists.**
   RetroArch §2 has been recurring across **at least 3 sessions** —
   the project's `.audit_cache/` contains 21 `cppcheck-b*.xml` files
   (~1.3 MB) but no `audit-*.sarif`, so the tool returns
@@ -10046,7 +10046,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-roadmap-query, roadmap-fold-in.
   Source: RetroArch cross-session report 2026-05-18 Bundle 65 §2.
 
-- 📋 [ANTS-1518] **Three review surfaces (`cold_eyes_*` / `indie_review_*` / `test_audit_*`) — discoverability prefix-tag OR unified `review_*` quartet with `kind:` discriminator.**
+- ✅ [ANTS-1518] **Three review surfaces (`cold_eyes_*` / `indie_review_*` / `test_audit_*`) — discoverability prefix-tag OR unified `review_*` quartet with `kind:` discriminator.**
   Both MAME morning #2 and Music #3 flagged: 15 tools across three
   near-parallel families (`_brief` / `_partition` /
   `_synthesis_prompt` / `_fold_in`) share orchestration shape but
@@ -10076,7 +10076,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit, mcp-cold-eyes, mcp-indie-review.
   Source: MAME_Curator cross-session reports 2026-05-18 (morning + evening).
 
-- 📋 [ANTS-1520] **`caller_cwd` made uniformly Required across the MCP namespace (read AND write).**
+- ✅ [ANTS-1520] **`caller_cwd` made uniformly Required across the MCP namespace (read AND write).**
   MAME evening #1: some tools require `caller_cwd` (refuse on
   empty), others accept it optionally (fall back to the focused
   Ants tab's cwd). The mixed regime adds a per-call mental tax of
@@ -10205,7 +10205,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit, testauditengine, pre-pass.
   Source: Vestige 3D_Engine cross-session report 2026-05-17 §6.
 
-- 📋 [ANTS-1529] **`cold_eyes_partition` case-insensitive filename match + topic-cohesion docs/*.md discovery + summary-vs-doc_paths trim.**
+- ✅ [ANTS-1529] **`cold_eyes_partition` case-insensitive filename match + topic-cohesion docs/*.md discovery + summary-vs-doc_paths trim.**
   RetroDB #1 (HIGH) + #7 (CORRECTNESS). RetroDB uses lowercase
   `roadmap.md` and YAML `data/changelog.yaml`; the partition
   returned only one lane (`contracts` with two docs) for a 12-doc
@@ -10452,6 +10452,47 @@ template / mutate this state atomically" → movable. If it's
   Constraints: must be `caller_cwd_required` (write op). Atomic via QSaveFile per project precedent. Should respect the project's existing CHANGELOG style — gate on detected format the same way `roadmap_log` op:"flip" does (ants-v1 vs github-task-list).
   Lanes: mcp-changelog-log, claudeintegration, remotecontrol, roadmapfoldin.
   Kind: implement.
+  Source: user-request-2026-05-18.
+
+- 📋 [ANTS-1551] **MCP `roadmap_log` defensive body scrub — strip leaked tool-call XML artifacts.**
+  Recurring across at least 3 calls in 2026-05-18 session: when the body parameter is passed alongside an array-typed sibling (lanes), the calling harness occasionally serialises the sibling AS a literal `<parameter name="X">...</parameter>` block appended INSIDE the body string. The MCP server then writes the literal XML into ROADMAP.md. The auto-mode classifier has now started refusing such calls (correctly — they look like prompt injection), so the first-order fix is a defensive scrub at the server's body-sanitiser path: detect and strip `</body>` tokens + `<parameter name="..."\\s*>.*?</parameter>` patterns + raw `<parameter name=` openers before persisting. Optional bonus: when the stripped XML contains a recognised field name (lanes / layman / source), surface a warning in the response envelope so the caller knows their sibling param was lost. Drop the malformed input on the floor rather than rejecting the whole call — the user's prose is the part worth saving. File: `src/remotecontrol.cpp` near `cmdRoadmapLog`'s body handling. Estimated effort: 30 min + a regression test fixture.
+  Layman: When sending a structured "log this roadmap item" command, the harness sometimes garbles part of the data into XML and slips it into the description text. The Ants server today writes that garbled XML literally into the roadmap file. Add a quick sanity-strip pass so the garbled XML is removed before saving, and log a warning so the caller knows their data got eaten.
+  Lanes: mcp-roadmap-log, remotecontrol, mcp-input-validation.
+  Kind: fix.
+  Source: in-session-2026-05-18 (recurring).
+
+- 📋 [ANTS-1552] **Surface existing safe-build patterns prominently in README + CLAUDE.md.**
+  User request 2026-05-18 follow-up: three RAM-safe build-iteration patterns already exist in the codebase but are easy to miss. Document them prominently rather than re-implementing.
+  
+  1. Target-specific build (`cmake --build build --target ants-terminal`). Skips all 28 test binaries when iterating only on the main app. Drastically less RAM peak and wall-clock. Today only mentioned in passing in CLAUDE.md.
+  
+  2. The `workstation` CMake preset (`CMakePresets.json`). Hard-capped at `-j3` with a separate `build-workstation/` dir for constrained hardware or competing desktop sessions. Documented in CLAUDE.md but not in README's Quick start.
+  
+  3. `-DANTS_TESTS=OFF` flag for main-exe-only iteration. Documented in CLAUDE.md but not in README.
+  
+  Both files updated in one pass: README gains a "Faster local builds" subsection under Quick start naming all three patterns plus the upcoming ANTS-1550 flags (`ANTS_CCACHE` / `ANTS_UNITY_BUILD`). CLAUDE.md's Build & test section gets a "Cheaper iteration loops" callout collecting the same patterns. One or two lines mentioning `tools/safe-build.sh` as the layer-3 backstop. Estimated effort: 30-45 min.
+  Layman: Three "build less and use less memory" tricks are already in the codebase but easy to miss. Add a short "Faster local builds" section to the README pointing at them so people don't accidentally rebuild everything when they only need the main app.
+  Lanes: docs, build, dev-experience.
+  Kind: doc.
+  Source: user-request-2026-05-18.
+
+- 📋 [ANTS-1550] **Local-build speed-ups — ccache + opt-in Unity builds + PCH.**
+  User request 2026-05-18: speed up the dev build without raising peak RAM (32 GiB host + earlyoom history). Mirror the CI ccache win (ANTS-1549) on the local side and add two RAM-reducing options.
+  
+  Three layered improvements:
+  
+  1. ccache as an opt-in CMake compiler launcher. When ccache is on PATH and a new option ANTS_CCACHE=ON is set, the configure step wires CMAKE_C/CXX_COMPILER_LAUNCHER=ccache. Default OFF so the existing build behaviour is unchanged for users who don't want it. Persists to ~/.cache/ccache (XDG default). Documented in README + CLAUDE.md.
+  
+  2. Opt-in Unity builds via ANTS_UNITY_BUILD=ON. Folds groups of .cpp into one TU per CMake target, dropping cc1plus instance count (each currently holds ~600 MB Qt headers resident). Typical wins on similar codebases: ~40 percent less peak RAM, ~30 percent faster wall clock. Gated off by default since unity builds occasionally surface latent ODR/anonymous-namespace bugs and can confuse per-file diagnostics. Pair with the existing JOB_POOLS cap so the combined RAM ceiling drops further.
+  
+  3. Precompiled headers (PCH) for the Qt6 + std prelude. CMake target_precompile_headers on the main app + every test target. One-time cost; every subsequent compile reuses the prebuilt header binary. Compounds with ccache for incremental builds.
+  
+  Out of scope for the same spec but worth noting once shipped: documenting the cmake --build build --target ants-terminal pattern for app-only iteration, and the existing -DANTS_TESTS=OFF flag, in CLAUDE.md's "Build &amp; test" section so the patterns are discoverable.
+  
+  File touches: CMakeLists.txt (option declarations + launcher wiring + unity opt-in + PCH), CMakePresets.json (add a "fast" preset bundling all three), CLAUDE.md (Build & test section), README.md (Quick start). Estimated effort: 1-2 h on a test branch with verification across the workstation + debug presets.
+  Layman: Right now, building Ants from scratch hammers RAM (each compile of a Qt-using file needs about 600 MB) and recompiles even files that didn't change. Three low-risk fixes: a small "remember what we built last time" cache so unchanged files get reused (huge speedup for incremental builds); an opt-in "fold many files into one bigger compile" mode that drops peak RAM by about 40 percent and shortens wall time; and a "prebuild the Qt headers once" trick that compounds with the cache. All gated behind off-by-default flags so today's behaviour stays unchanged for anyone who doesn't opt in.
+  Lanes: build, perf, dev-experience, cmake.
+  Kind: perf.
   Source: user-request-2026-05-18.
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)

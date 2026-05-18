@@ -75,6 +75,25 @@ QString caseInsensitiveResolve(const QString &projectPath,
     return cur;
 }
 
+// ANTS-1529 — extension-tolerant contract-doc resolver. Extends the
+// case-insensitive lookup with a list of common alternate extensions
+// per contract stem (README.md / README.rst / README.txt; CHANGELOG.md /
+// CHANGELOG.yaml / CHANGELOG.json — RetroDB ships YAML, some Rust
+// crates ship plain text, ASCIIDoc projects ship .adoc). Returns the
+// first hit's on-disk relative path, or QString() if no extension
+// resolves. Cheap: caseInsensitiveResolve already short-circuits when
+// the literal path exists, so the common .md case is one syscall.
+QString resolveContractStem(const QString &projectPath,
+                            const QString &stem,
+                            const QStringList &extensions) {
+    for (const QString &ext : extensions) {
+        const QString rel = stem + ext;
+        const QString resolved = caseInsensitiveResolve(projectPath, rel);
+        if (!resolved.isEmpty()) return resolved;
+    }
+    return {};
+}
+
 // Read .cold-eyes/partition.json if present. Schema:
 //   {"version": 1, "lanes": [{"name": "...", "summary": "...",
 //                             "doc_paths": ["..."]}, ...]}
@@ -199,15 +218,30 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
     if (scope != Scope::DocsOnly) {
         Lane contracts;
         contracts.name = QStringLiteral("contracts");
-        for (const char *p : {"CLAUDE.md", "README.md", "ROADMAP.md",
-                              "CHANGELOG.md"}) {
-            const QString rel = QString::fromLatin1(p);
-            // ANTS-1506 — case-insensitive: ship doc names like
-            // `Claude.md` / `readme.md` resolve to the contract slot
-            // they match instead of being treated as missing. The
-            // resolved on-disk name is what the brief should hand to
-            // the subagent so its Read tool matches.
-            const QString resolved = caseInsensitiveResolve(projectPath, rel);
+        // ANTS-1506 — case-insensitive: ship doc names like `Claude.md`
+        // / `readme.md` resolve to the contract slot they match instead
+        // of being treated as missing.
+        // ANTS-1529 — also tolerate non-.md extensions per RetroDB
+        // (CHANGELOG as YAML/JSON, README as .rst/.txt/.adoc). Per
+        // stem the first existing alternative wins. Keeps .md as the
+        // primary so the common case is a single syscall.
+        const std::vector<std::pair<QString, QStringList>> kContracts = {
+            { QStringLiteral("CLAUDE"),
+              { QStringLiteral(".md") } },
+            { QStringLiteral("README"),
+              { QStringLiteral(".md"), QStringLiteral(".rst"),
+                QStringLiteral(".adoc"), QStringLiteral(".txt") } },
+            { QStringLiteral("ROADMAP"),
+              { QStringLiteral(".md"), QStringLiteral(".yaml"),
+                QStringLiteral(".yml"), QStringLiteral(".json") } },
+            { QStringLiteral("CHANGELOG"),
+              { QStringLiteral(".md"), QStringLiteral(".yaml"),
+                QStringLiteral(".yml"), QStringLiteral(".json"),
+                QStringLiteral(".rst"), QStringLiteral(".txt") } },
+        };
+        for (const auto &[stem, exts] : kContracts) {
+            const QString resolved =
+                resolveContractStem(projectPath, stem, exts);
             if (!resolved.isEmpty()) contracts.docPaths << resolved;
         }
         // ANTS-1506 — summary now mirrors the actually-matched docs,
