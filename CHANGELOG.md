@@ -12,6 +12,84 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 Ants-MCP cross-session-report fold-in pull 4 (in flight, 2026-05-18)
+
+Fourth pull from the 2026-05-17 / 2026-05-18 cross-session-report
+fold-in. Mix of schema ergonomics, error-envelope clarity, an inline
+alternative for `cold_eyes_cross_doc_diff`, and a documented bootstrap
+for resuming a half-finished `/test-audit`. Five items shipped (1502,
+1509, 1523, 1525, 1528) — one closed as a duplicate of already-shipped
+work (1528 ↔ 1491), four implemented.
+
+- **ANTS-1502 — `tools/list` two-tier discovery (opt-in `lite` shape).**
+  The default `tools/list` response keeps the full per-tool descriptor
+  (~60-75 KiB across ~50 tools), as the MCP spec mandates. When the
+  caller passes `_meta.shape:"lite"` in the `tools/list` request,
+  the server returns a compact `[{name, summary, kind}]` shape (~80
+  chars per entry, ~4 KiB total). Callers drill into a specific
+  tool via `tool_info(name)` for the full schema. `m_lastToolsList`
+  still snapshots the full descriptors so `tool_info` works regardless
+  of which shape was returned. `kind` is one of `cold-eyes` /
+  `indie-review` / `test-audit` / `debt-sweep` / `roadmap` / `audit`
+  / `verify` / `git` / `workspace` / `memory` / `plan` / `terminal`
+  / `meta` / `other`.
+  Layman: a session that doesn't need every tool's full schema up
+  front can now ask for a slim "what tools exist" listing instead.
+
+- **ANTS-1509 — `cold_eyes_cross_doc_diff` accepts inline `reports`
+  array alongside `reports_dir`.** Mirrors the shape
+  `indie_review_corroborate` already takes (XOR — exactly one of
+  `reports` (inline object map of `{lane: report_text}`) or
+  `reports_dir`). The `/cold-eyes` skill bundles agent reports
+  inline in the orchestrator's context rather than writing them to
+  disk; the previous disk-only contract forced an awkward fan-out.
+  Engine adds `ColdEyesEngine::crossDocDiffFromReports` as the
+  in-memory counterpart to `crossDocDiffFromDir`. Both share the
+  same `IndieReviewEngine` corroboration core.
+  Layman: cold-eyes-cross-doc-diff can now take review reports
+  directly instead of requiring them on disk.
+
+- **ANTS-1525 — `verify_changes` distinguishes tool-side timeout from
+  transport-side timeout.** When any gate exceeds its budget (the
+  tool's `[10, 1800]` clamp divided across configured gates per
+  ANTS-1492), the envelope now carries `tool_timed_out:true`,
+  `timed_out_gate:"build"|"tests"|"lint"`, `per_gate_timeout_sec`,
+  and a `timeout_hint` string. This is distinct from the client-side
+  `MCP error -32000: transport: timed out`, which closes the socket
+  before any envelope arrives (typically ~60s for Claude Code's MCP
+  transport). The tool's schema description and registration now
+  state the distinction explicitly so a caller seeing the transport
+  error knows that bumping `timeout_sec` won't help — they need
+  to drop to Bash for long builds.
+  Layman: verify-changes now reports clearly whether the timeout
+  was the tool's own budget (something you can bump) or the MCP
+  client closing the connection (something you can't).
+
+- **ANTS-1523 — documented bootstrap recipe for resuming a
+  half-finished `/test-audit`.** New `docs/RESUME_TEST_AUDIT_RECIPE.md`
+  walks through the four-step path until a thin `test_audit_resume`
+  MCP verb lands: (1) wildcard-list `session_memory` keys under
+  `test_audit/` to find the prior `partition_token`; (2) pull the
+  partition manifest + deferred-findings list; (3) re-verify each
+  cited `file:line` against current code via `workspace_search` +
+  `git_state` (a finding that was a true positive last week may
+  have been fixed in the meantime); (4) run the standard
+  synthesis + fold-in path on the surviving set; cleanup as a fifth
+  step. Conservative posture — re-verifies rather than trusting the
+  earlier session's call.
+  Layman: a documented step-by-step for picking up where an earlier
+  test-suite audit left off, until a one-call resume verb is built.
+
+- **ANTS-1528 — pre-pass strips C/C++ string literals + comments
+  before pattern matching (closed as duplicate of ANTS-1491).**
+  Already shipped — `src/testauditengine.cpp:336-526` implements
+  `stripCxxLiteralsAndComments` + `isCxxPath` gate, applied at
+  `prePassFile`'s `text = isCxxPath(path) ?
+  stripCxxLiteralsAndComments(raw) : raw;` line. Same cite
+  (`tests/test_async_driver.cpp`), same fix. Closed.
+  Layman: the duplicate of an already-fixed test-audit issue
+  was closed.
+
 ### 🔌 Ants-MCP cross-session-report fold-in pull 3 (in flight, 2026-05-18)
 
 Third pull from the 2026-05-17 / 2026-05-18 cross-session-report

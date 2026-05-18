@@ -411,6 +411,17 @@ crossDocDiffFromDir(const QString &projectPath,
         projectPath, reportsDirRelative, minLanes, reportsRead);
 }
 
+QList<IndieReviewEngine::CorroboratedFinding>
+crossDocDiffFromReports(const QString &projectPath,
+                        const QHash<QString, QString> &reports,
+                        int minLanes) {
+    // ANTS-1509 — same in-memory contract as
+    // IndieReviewEngine::corroboratedFindings; engine reuses the
+    // shared (file, line) keying so the regex set is identical.
+    return IndieReviewEngine::corroboratedFindings(
+        projectPath, reports, minLanes);
+}
+
 QString templateColdEyesFoldInBlock(
     const QList<IndieReviewEngine::CorroboratedFinding> &actionable,
     const QList<int> &allocatedIds,

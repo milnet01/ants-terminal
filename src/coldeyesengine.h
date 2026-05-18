@@ -91,6 +91,16 @@ QList<IndieReviewEngine::CorroboratedFinding>
                                     int minLanes = 2,
                                     int *reportsRead = nullptr);
 
+// ANTS-1509 — in-memory counterpart to crossDocDiffFromDir. Mirrors the
+// shape IndieReviewEngine::corroboratedFindings already takes (caller
+// passes a {lane: report_text} map; tool computes diff in-memory). The
+// `/cold-eyes` skill bundles agent reports inline in the orchestrator's
+// context, not on disk — the disk-only variant forced an extra fan-in.
+QList<IndieReviewEngine::CorroboratedFinding>
+                crossDocDiffFromReports(const QString &projectPath,
+                                        const QHash<QString, QString> &reports,
+                                        int minLanes = 2);
+
 QString         templateColdEyesFoldInBlock(
                     const QList<IndieReviewEngine::CorroboratedFinding> &actionable,
                     const QList<int> &allocatedIds,

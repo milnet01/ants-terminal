@@ -14,7 +14,7 @@ strings, args extraction, INV-11 echo hygiene, provider lambdas.
 | # | Case | Asserts |
 |---|---|---|
 | REG-1 | 4 tool names registered + `// ANTS-1319` anchor | `claudeintegration.cpp` contains all four `t["name"] = "cold_eyes_*"` blocks + anchor |
-| REG-2 | Schema required-arrays match INV-10 | partition has none; brief→`["lane"]`; cross_doc_diff→`["reports_dir"]`; fold_in→`["actionable"]` |
+| REG-2 | Schema required-arrays match INV-10 | partition has none; brief→`["lane"]`; cross_doc_diff has none (XOR `reports`/`reports_dir` enforced at handler — ANTS-1509); fold_in→`["actionable"]` |
 | REG-3 | `cmdColdEyes*` extracts every arg via `req.value(…)` | lane / scope / reports_dir / actionable / date_iso |
 | REG-4 | `bad_scope` error code present (INV-8) | string `"bad_scope"` in remotecontrol.cpp |
 | REG-5 | INV-11 echo hygiene on bad scope + lane | `verbatim.truncate(64)` + `< 0x20` substitute, OR shared helper |

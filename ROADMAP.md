@@ -9587,7 +9587,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-workspace-search.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- 📋 [ANTS-1502] ****`tools/list-lite` two-tier discovery — names + 1-line summaries only on initial dump.****
+- ✅ [ANTS-1502] ****`tools/list-lite` two-tier discovery — names + 1-line summaries only on initial dump.****
   Current `tools/list` ships the full descriptor for every tool
   (~40-50 tools × ~1.5 KiB each = ~60-75 KiB). Most sessions never use
   more than a quarter of the surface. `tool_info` (ANTS-1399) already
@@ -9820,7 +9820,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes-brief.
   Source: RetroDB /cold-eyes cross-session report 2026-05-18.
 
-- 📋 [ANTS-1509] ****`cold_eyes_cross_doc_diff` should accept inline `reports[]` array (mirror `indie_review_corroborate`).****
+- ✅ [ANTS-1509] ****`cold_eyes_cross_doc_diff` should accept inline `reports[]` array (mirror `indie_review_corroborate`).****
   RetroDB Issue 4 (MED). The `/cold-eyes` skill bundles agent reports
   inline in the orchestrator's context (one per `Agent` tool result),
   not on disk. `cold_eyes_cross_doc_diff` requires `reports_dir`
@@ -10095,7 +10095,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-git-state.
   Source: MAME_Curator cross-session report 2026-05-18 evening §3.
 
-- 📋 [ANTS-1523] **Document the "resume an audit / pick up deferred audit follow-ups" recipe.**
+- ✅ [ANTS-1523] **Document the "resume an audit / pick up deferred audit follow-ups" recipe.**
   MAME evening #4: a session that picks up the working tree the
   earlier audit left modified-but-uncommitted has no first-class
   MCP entry point — no `test_audit_resume(latest=True)`, no
@@ -10121,7 +10121,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-roadmap-query, mcp-roadmap-log.
   Source: MAME_Curator cross-session report 2026-05-18 evening §6.
 
-- 📋 [ANTS-1525] **`verify_changes` honours caller-supplied `timeout_sec`; error envelope distinguishes tool-timeout vs transport-timeout.**
+- ✅ [ANTS-1525] **`verify_changes` honours caller-supplied `timeout_sec`; error envelope distinguishes tool-timeout vs transport-timeout.**
   3D_Engine #1: `verify_changes(gates:["build"], timeout_sec:900)`
   returned `MCP error -32000: Ants MCP transport: timed out` for
   a 16-step ninja build that should have finished in seconds. The
@@ -10168,7 +10168,13 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit-fold-in, roadmapfoldin.
   Source: Vestige 3D_Engine cross-session report 2026-05-17 §4.
 
-- 📋 [ANTS-1528] **Pre-pass regex strips C/C++ string literals + `//` / `/* */` comments before pattern matching.**
+- ✅ [ANTS-1528] **Pre-pass regex strips C/C++ string literals + `//` / `/* */` comments before pattern matching.**
+  Duplicate of ANTS-1491 (shipped). `src/testauditengine.cpp:336-526`
+  ships `stripCxxLiteralsAndComments` + `isCxxPath` gate, applied at
+  `prePassFile` (line 542-543). Same fix, same code citation
+  (`tests/test_async_driver.cpp` raw-string literal). Closed as
+  duplicate during ANTS-1356 + RetroDB cross-session fold-in pull 4
+  (2026-05-18).
   3D_Engine #6: pre-pass flagged `tests/test_async_driver.cpp`
   for `sleep_call` — but those lines are inside C++ raw-string
   literals holding a Python child-process script

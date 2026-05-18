@@ -67,12 +67,10 @@ TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
     ASSERT_NE(end, std::string::npos);
     const std::string region = ci.substr(pos, end - pos);
 
-    // brief / cross_doc_diff / fold_in each call `req.append("…")`
-    // for their one required arg.
+    // brief / fold_in each call `req.append("…")` for their one
+    // required arg.
     EXPECT_NE(region.find("req.append(\"lane\")"), std::string::npos)
         << "cold_eyes_brief should require lane";
-    EXPECT_NE(region.find("req.append(\"reports_dir\")"), std::string::npos)
-        << "cold_eyes_cross_doc_diff should require reports_dir";
     EXPECT_NE(region.find("req.append(\"actionable\")"), std::string::npos)
         << "cold_eyes_fold_in should require actionable";
 
@@ -86,6 +84,24 @@ TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
     const std::string partRegion = region.substr(pPart, pEnd - pPart);
     EXPECT_EQ(partRegion.find("schema[\"required\"]"), std::string::npos)
         << "cold_eyes_partition unexpectedly sets a required array";
+
+    // ANTS-1509 — cross_doc_diff is XOR `reports`/`reports_dir`,
+    // enforced at the handler (cmdColdEyesCrossDocDiff). The schema
+    // must NOT set required (mirrors indie_review_corroborate's
+    // ANTS-1282 INV-1 pattern). Negative check on the block.
+    const auto pDiff = region.find(
+        "t[\"name\"] = \"cold_eyes_cross_doc_diff\"");
+    ASSERT_NE(pDiff, std::string::npos);
+    const auto pDiffEnd = region.find("tools.append(t);", pDiff);
+    ASSERT_NE(pDiffEnd, std::string::npos);
+    const std::string diffRegion = region.substr(pDiff, pDiffEnd - pDiff);
+    EXPECT_EQ(diffRegion.find("schema[\"required\"]"), std::string::npos)
+        << "cold_eyes_cross_doc_diff unexpectedly sets a required array; "
+           "XOR is enforced at the handler per ANTS-1509";
+    EXPECT_NE(diffRegion.find("props[\"reports\"]"), std::string::npos)
+        << "cross_doc_diff missing inline reports prop (ANTS-1509)";
+    EXPECT_NE(diffRegion.find("props[\"reports_dir\"]"), std::string::npos)
+        << "cross_doc_diff missing reports_dir prop";
 }
 
 // REG-3

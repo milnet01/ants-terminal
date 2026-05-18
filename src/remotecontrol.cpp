@@ -5244,10 +5244,49 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     env[QStringLiteral("cache_hit")]        = false;
 
     QJsonObject gates;
+    // ANTS-1525 — surface the tool-side timeout signal so callers can
+    // tell apart "the tool's per-gate budget killed the gate" from
+    // "the MCP transport closed the connection before the tool
+    // replied". The transport-side kill arrives as
+    // `MCP error -32000: transport: timed out` outside the response
+    // envelope; the tool-side case lands here with skipped_reason
+    // starting "timeout after Ns".
+    bool toolTimedOut = false;
+    QString timedOutGateName;
+    int     timedOutSec = 0;
     for (const auto &g : rep.gates) {
         gates[VerifyEngine::gateKey(g.name)] = vcGateToJson(g);
+        if (!toolTimedOut && g.ran && !g.passed && g.exitCode == -1
+            && g.skippedReason.startsWith(QStringLiteral("timeout"))) {
+            toolTimedOut = true;
+            timedOutGateName = VerifyEngine::gateKey(g.name);
+            // Salvage the per-gate budget from the skippedReason
+            // ("timeout after %1s") — opts.timeoutSec is the total
+            // budget; the gate ran with timeoutTotal / configured-size
+            // per ANTS-1492. Surfacing the actual elapsed cap helps
+            // the caller decide whether bumping timeout_sec helps.
+            const QRegularExpression rx(
+                QStringLiteral("timeout after (\\d+)s"));
+            const auto m = rx.match(g.skippedReason);
+            if (m.hasMatch()) timedOutSec = m.captured(1).toInt();
+        }
     }
     env[QStringLiteral("gates")] = gates;
+    if (toolTimedOut) {
+        env[QStringLiteral("tool_timed_out")] = true;
+        env[QStringLiteral("timed_out_gate")] = timedOutGateName;
+        if (timedOutSec > 0) {
+            env[QStringLiteral("per_gate_timeout_sec")] = timedOutSec;
+        }
+        env[QStringLiteral("timeout_hint")] = QStringLiteral(
+            "Tool-side timeout. The per-gate budget is "
+            "max(min_per_gate=10s, timeout_sec / configured-gates). "
+            "Bump timeout_sec or narrow `gates` to a single entry. "
+            "If you instead saw `MCP error -32000: transport: timed "
+            "out` outside this envelope, that's the client-side "
+            "transport closing the socket (typically ~60s for Claude "
+            "Code) — independent of this tool's [10, 1800] clamp.");
+    }
 
     // Step 10b — post-run snapshot + exclusion-list gate (§ 2.5).
     const VerifyGitSnapshot postSnapshot =
@@ -5669,28 +5708,62 @@ QJsonDocument RemoteControl::cmdColdEyesCrossDocDiff(const QJsonObject &req) {
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_cross_doc_diff: no focused project")));
 
-    const QString reportsDirRaw =
-        req.value(QStringLiteral("reports_dir")).toString();
-    const QString reportsDir = reportsDirRaw.trimmed();
-    if (reportsDir.isEmpty()) return QJsonDocument(ceErr(
-        QStringLiteral("bad_args"),
-        QStringLiteral("cold_eyes_cross_doc_diff: reports_dir must be a "
-                       "non-empty project-relative path")));
-
-    // ANTS-1295: anchor reports_dir before reaching the engine, same
-    // reasoning as indie_review_corroborate.
-    const auto check = PathValidation::validatePath(
-        reportsDir, root,
-        QStringLiteral("cold_eyes_cross_doc_diff"),
-        QStringLiteral("reports_dir"));
-    if (check.bad) return QJsonDocument(check.err);
+    // ANTS-1509: accept EITHER `reports` (inline map, mirrors
+    // indie_review_corroborate's v1 shape) OR `reports_dir` (server-
+    // side disk read). XOR — exactly one required. The /cold-eyes
+    // skill bundles agent reports inline in the orchestrator's
+    // context, so the disk path was unreachable without a fan-out.
+    const bool hasReports    = req.contains(QStringLiteral("reports"));
+    const bool hasReportsDir = req.contains(QStringLiteral("reports_dir"));
+    if (hasReports == hasReportsDir) {
+        return QJsonDocument(ceErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral(
+                "cold_eyes_cross_doc_diff: provide exactly one of "
+                "`reports` (inline map) or `reports_dir` (project-relative "
+                "directory of *.md files)")));
+    }
 
     int minLanes = req.value(QStringLiteral("min_lanes")).toInt(2);
     if (minLanes < 1) minLanes = 1;
 
-    int reportsRead = 0;
-    const auto findings = ColdEyesEngine::crossDocDiffFromDir(
-        root, reportsDir, minLanes, &reportsRead);
+    QList<IndieReviewEngine::CorroboratedFinding> findings;
+    QString reportsDir;
+    int     reportsRead = 0;
+    qint64  totalIn = 0;
+
+    if (hasReportsDir) {
+        const QString reportsDirRaw =
+            req.value(QStringLiteral("reports_dir")).toString();
+        reportsDir = reportsDirRaw.trimmed();
+        if (reportsDir.isEmpty()) return QJsonDocument(ceErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral("cold_eyes_cross_doc_diff: reports_dir must be a "
+                           "non-empty project-relative path")));
+
+        // ANTS-1295: anchor reports_dir before reaching the engine.
+        const auto check = PathValidation::validatePath(
+            reportsDir, root,
+            QStringLiteral("cold_eyes_cross_doc_diff"),
+            QStringLiteral("reports_dir"));
+        if (check.bad) return QJsonDocument(check.err);
+
+        findings = ColdEyesEngine::crossDocDiffFromDir(
+            root, reportsDir, minLanes, &reportsRead);
+    } else {
+        const QJsonObject reportsObj =
+            req.value(QStringLiteral("reports")).toObject();
+        QHash<QString, QString> reports;
+        for (auto it = reportsObj.constBegin();
+             it != reportsObj.constEnd(); ++it) {
+            const QString r = it.value().toString();
+            reports.insert(it.key(), r);
+            totalIn += r.toUtf8().size();
+        }
+        reportsRead = reports.size();
+        findings = ColdEyesEngine::crossDocDiffFromReports(
+            root, reports, minLanes);
+    }
 
     QJsonArray arr;
     for (const auto &f : findings) arr.append(ceFindingToJson(f));
@@ -5700,7 +5773,11 @@ QJsonDocument RemoteControl::cmdColdEyesCrossDocDiff(const QJsonObject &req) {
     env["findings"]        = arr;
     env["total_findings"]  = arr.size();
     env["reports_read"]    = reportsRead;
-    env["reports_dir"]     = reportsDir;
+    if (hasReportsDir) {
+        env["reports_dir"] = reportsDir;
+    } else {
+        env["total_input_bytes"] = totalIn;
+    }
     env["min_lanes"]       = minLanes;
     return QJsonDocument(env);
 }

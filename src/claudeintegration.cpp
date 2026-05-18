@@ -2611,7 +2611,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "responses carry cache_hit. Pass force_refresh "
                         "to bypass; pass cache_only to probe without "
                         "running. Required: caller_cwd (string — your "
-                        "$PWD; ANTS-1372 cross-project gate).");
+                        "$PWD; ANTS-1372 cross-project gate). ANTS-1525 "
+                        "— a tool-side timeout surfaces in the envelope "
+                        "as `tool_timed_out:true` + `timed_out_gate` + "
+                        "`per_gate_timeout_sec` + `timeout_hint`; this "
+                        "is distinct from the client-side transport "
+                        "timeout (`MCP error -32000: transport: timed "
+                        "out`), which closes the socket before any "
+                        "envelope arrives.");
                     t["selection_hint"] = QStringLiteral(
                         "Use after Edit/Write to verify build / "
                         "tests / lint gates still pass. Cheap "
@@ -3287,30 +3294,35 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "cold_eyes_cross_doc_diff";
                     t["description"] = QStringLiteral(
-                        "Cross-doc corroboration filter. Reads "
-                        "*.md files from `<project>/<reports_dir>/` "
-                        "(64 KiB truncate per file, top-level only) "
-                        "and returns findings cited by >= min_lanes "
-                        "distinct reports at the same (file, line). "
-                        "Pure regex pass; no LLM. Mirrors "
-                        "indie_review_corroborate's disk path "
-                        "(ANTS-1282) — the inline-reports alternative "
-                        "is intentionally absent for cold-eyes. "
-                        "Required: reports_dir. Optional: min_lanes "
-                        "(default 2).");
+                        "Cross-doc corroboration filter. Input: "
+                        "EITHER `reports` (inline map of "
+                        "{lane: report_text}, ANTS-1509) OR "
+                        "`reports_dir` (project-relative directory of "
+                        "*.md files, ANTS-1282 — saves parent context "
+                        "by reading from disk server-side). Returns "
+                        "findings cited by >= min_lanes distinct "
+                        "reports at the same (file, line). Pure regex "
+                        "pass; no LLM. Mirrors indie_review_corroborate. "
+                        "Provide exactly one of `reports` or "
+                        "`reports_dir`. Optional: min_lanes (default 2).");
                     t["selection_hint"] = QStringLiteral(
                         "Use to surface drift across two related "
                         "docs (spec vs CHANGELOG, ROADMAP vs spec). "
                         "Regex pass; no LLM.");
                     QJsonObject schema;
                     schema["type"] = "object";
+                    QJsonObject reportsProp;
+                    reportsProp["type"] = "object";
+                    reportsProp["description"] = QStringLiteral(
+                        "Map of {lane_name: report_markdown}. "
+                        "Mutually exclusive with reports_dir.");
                     QJsonObject rdProp;
                     rdProp["type"] = "string";
                     rdProp["description"] = QStringLiteral(
                         "Project-relative path to a directory of "
                         "*.md report files. Lane name = filename "
                         "stem. Top level only; sub-dirs not "
-                        "recursed.");
+                        "recursed. Mutually exclusive with reports.");
                     QJsonObject mlProp;
                     mlProp["type"]    = "integer";
                     mlProp["default"] = 2;
@@ -3319,14 +3331,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "Minimum distinct lanes citing a (file, "
                         "line) for it to count as corroborated.");
                     QJsonObject props;
+                    props["reports"]     = reportsProp;
                     props["reports_dir"] = rdProp;
                     props["min_lanes"]   = mlProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
-                    QJsonArray req;
-                    req.append("reports_dir");
-                    schema["required"] = req;
+                    // INV-1 XOR is enforced at the handler layer
+                    // (cmdColdEyesCrossDocDiff), not the schema —
+                    // JSON Schema's oneOf is verbose and Claude
+                    // Code's schema validator handles oneOf poorly
+                    // (same rationale as indie_review_corroborate
+                    // post-ANTS-1282).
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -3944,12 +3960,112 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.replace(i, t);
                 }
 
-                result["tools"] = tools;
                 // ANTS-1399-INV-2 — snapshot for tool_info to read from
                 // without re-running the array build. Descriptors are
                 // built from compile-time literals so the snapshot
-                // never goes stale in practice.
+                // never goes stale in practice. Snapshot the FULL
+                // tools array before any lite-shape transform so a
+                // tools/list-lite client can still drill in via
+                // tool_info(name) for the full schema.
                 m_lastToolsList = tools;
+
+                // ANTS-1502 — two-tier discovery. When the caller
+                // requests `_meta.shape == "lite"`, return a compact
+                // shape `[{name, summary, kind}]` per tool (~80 chars
+                // per entry) instead of the full descriptor set
+                // (~60-75 KiB for ~50 tools). Callers drill into a
+                // specific tool via `tool_info(name)` (ANTS-1399).
+                // Opt-in only: by default we return the full shape
+                // the MCP spec mandates.
+                bool wantLite = false;
+                {
+                    const QJsonObject params =
+                        request.value("params").toObject();
+                    const QJsonObject metaObj =
+                        params.value(QStringLiteral("_meta")).toObject();
+                    const QString shape =
+                        metaObj.value(QStringLiteral("shape")).toString();
+                    if (shape == QLatin1String("lite")) wantLite = true;
+                }
+                if (wantLite) {
+                    auto kindForName = [](const QString &name) -> QString {
+                        if (name.startsWith(QStringLiteral("cold_eyes_")))
+                            return QStringLiteral("cold-eyes");
+                        if (name.startsWith(QStringLiteral("indie_review_")))
+                            return QStringLiteral("indie-review");
+                        if (name.startsWith(QStringLiteral("test_audit_")))
+                            return QStringLiteral("test-audit");
+                        if (name.startsWith(QStringLiteral("debt_sweep_")))
+                            return QStringLiteral("debt-sweep");
+                        if (name.startsWith(QStringLiteral("roadmap_")))
+                            return QStringLiteral("roadmap");
+                        if (name == QLatin1String("audit_run") ||
+                            name == QLatin1String("last_audit_summary"))
+                            return QStringLiteral("audit");
+                        if (name == QLatin1String("verify_changes"))
+                            return QStringLiteral("verify");
+                        if (name == QLatin1String("git_state"))
+                            return QStringLiteral("git");
+                        if (name == QLatin1String("workspace_search") ||
+                            name == QLatin1String("file_outline") ||
+                            name == QLatin1String("project_layout") ||
+                            name == QLatin1String("subsystem"))
+                            return QStringLiteral("workspace");
+                        if (name == QLatin1String("session_memory"))
+                            return QStringLiteral("memory");
+                        if (name == QLatin1String("plan_template"))
+                            return QStringLiteral("plan");
+                        if (name.startsWith(QStringLiteral("get_")) ||
+                            name == QLatin1String("tab_list") ||
+                            name == QLatin1String("caller_cwd_info"))
+                            return QStringLiteral("terminal");
+                        if (name == QLatin1String("tool_info") ||
+                            name == QLatin1String("token_usage") ||
+                            name == QLatin1String("mcp_trace"))
+                            return QStringLiteral("meta");
+                        return QStringLiteral("other");
+                    };
+                    auto summaryFor = [](const QJsonObject &t) -> QString {
+                        // Prefer selection_hint (already terse,
+                        // form-factor cue). Fall back to the first
+                        // sentence of description, truncated to
+                        // ~140 chars to keep the lite shape compact.
+                        const QString hint =
+                            t.value(QStringLiteral("selection_hint"))
+                             .toString();
+                        if (!hint.isEmpty()) return hint;
+                        QString desc =
+                            t.value(QStringLiteral("description"))
+                             .toString();
+                        const int dot = desc.indexOf(QChar('.'));
+                        if (dot > 0 && dot < 200) {
+                            desc = desc.left(dot + 1);
+                        }
+                        if (desc.size() > 160) {
+                            desc = desc.left(157) + QStringLiteral("...");
+                        }
+                        return desc;
+                    };
+                    QJsonArray lite;
+                    for (const auto &v : std::as_const(tools)) {
+                        const QJsonObject t = v.toObject();
+                        const QString name =
+                            t.value(QStringLiteral("name")).toString();
+                        QJsonObject e;
+                        e[QStringLiteral("name")]    = name;
+                        e[QStringLiteral("summary")] = summaryFor(t);
+                        e[QStringLiteral("kind")]    = kindForName(name);
+                        lite.append(e);
+                    }
+                    result[QStringLiteral("tools")] = lite;
+                    result[QStringLiteral("shape")] = QStringLiteral("lite");
+                    result[QStringLiteral("hint")]  = QStringLiteral(
+                        "Lite shape (ANTS-1502): each entry has only "
+                        "{name, summary, kind}. Call tool_info(name) "
+                        "for the full schema before invoking.");
+                } else {
+                    result["tools"] = tools;
+                }
                 haveResult = true;
             } else if (method == "tools/call") {
                 QJsonObject params = request.value("params").toObject();
