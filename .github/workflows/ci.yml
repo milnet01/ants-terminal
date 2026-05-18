@@ -4,15 +4,32 @@
 #
 # Hardening notes (matches audit STANDARDS.md §Supply chain):
 #   • `permissions: contents: read` — override the overbroad default token.
-#   • actions/checkout pinned by 40-char SHA with `# v4.2.2` for humans.
+#   • Third-party actions pinned by 40-char SHA with `# vX.Y.Z` for humans.
 #     Tags are mutable; SHAs are not (cf. tj-actions/changed-files, 2025).
 #   • No secrets referenced; no `pull_request_target`; no self-hosted runners.
+#
+# ANTS-1549 speedups (2026-05-18):
+#   • ccache via actions/cache — incremental builds skip unchanged TUs.
+#   • apt deps cached via cache-apt-pkgs-action — saves apt-get update + dl.
+#   • paths-ignore on push trigger — pure docs/roadmap/changelog commits
+#     skip CI entirely. PRs always run (safer; merge gate still enforced).
 
 name: CI
 
 on:
   push:
     branches: [main]
+    # Docs-only push commits skip CI. PRs always run — the pull_request
+    # trigger below has no paths-ignore, so a docs change opened as a PR
+    # still gets the full lint gate before merge.
+    paths-ignore:
+      - 'ROADMAP.md'
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - 'PLUGINS.md'
+      - 'LICENSE'
+      - 'docs/**'
+      - '.roadmap-counter'
   pull_request:
     branches: [main]
 
@@ -29,24 +46,50 @@ jobs:
     # another bump. Runner is the GitHub-hosted ubuntu-24.04 (4 vCPU /
     # 16 GiB) with the in-tree JOB_POOLS cap limiting compile to -j2.
     timeout-minutes: 25
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPRESS: "1"
     steps:
       - name: Check out source
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
-      - name: Install Qt6 + build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkg-config \
-            qt6-base-dev qt6-base-dev-tools \
-            libqt6opengl6-dev libqt6openglwidgets6 \
+      - name: Install Qt6 + build + packaging deps (cached)
+        uses: awalsh128/cache-apt-pkgs-action@2c09a5e66da6c8016428a2172bd76e5e4f14bb17  # v1.6.0
+        with:
+          packages: >-
+            build-essential cmake ninja-build pkg-config ccache
+            qt6-base-dev qt6-base-dev-tools
+            libqt6opengl6-dev libqt6openglwidgets6
             liblua5.4-dev cppcheck
+            appstream desktop-file-utils groff zsh fish
+          version: 1.0
 
-      - name: Configure (Release + warnings-as-warnings)
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Restore ccache (release)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          # Exact key per-SHA → 100% hit on a re-run of the same commit;
+          # restore-keys cascades to the latest release-build cache for
+          # incremental compiles on a new SHA.
+          key: ${{ runner.os }}-ccache-release-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-release-
+
+      - name: Configure (Release + ccache compiler launcher)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ccache --zero-stats
 
       - name: Build
         run: cmake --build build --parallel
+
+      - name: ccache stats (release)
+        if: always()
+        run: ccache --show-stats
 
       - name: Run tests
         working-directory: build
@@ -66,11 +109,6 @@ jobs:
       # Runs the same validators distro packagers invoke during package
       # review, so schema drift in the desktop entry or AppStream metainfo
       # fails CI instead of landing in a release tarball.
-      - name: Install AppStream + desktop-file validators + groff + shells
-        run: |
-          sudo apt-get install -y --no-install-recommends \
-            appstream desktop-file-utils groff zsh fish
-
       - name: Validate AppStream metainfo
         run: |
           appstreamcli validate --explain \
@@ -125,24 +163,50 @@ jobs:
     # Mirrors 421e32d's build-test bump shape; 30m gives ~25% headroom
     # over the build-test 25m budget.
     timeout-minutes: 30
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPRESS: "1"
     steps:
       - name: Check out source
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
-      - name: Install Qt6 + build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkg-config \
-            qt6-base-dev qt6-base-dev-tools \
-            libqt6opengl6-dev libqt6openglwidgets6 \
+      - name: Install Qt6 + build deps (cached)
+        uses: awalsh128/cache-apt-pkgs-action@2c09a5e66da6c8016428a2172bd76e5e4f14bb17  # v1.6.0
+        with:
+          packages: >-
+            build-essential cmake ninja-build pkg-config ccache
+            qt6-base-dev qt6-base-dev-tools
+            libqt6opengl6-dev libqt6openglwidgets6
             liblua5.4-dev
+          version: 1.0
 
-      - name: Configure (Debug + ASan/UBSan)
-        run: cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DANTS_SANITIZERS=ON
+      - name: Restore ccache (asan)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          # Separate key from release: different compile flags
+          # (-fsanitize=address,undefined, -O1, -g) hash to different
+          # ccache entries — sharing the release cache would 100% miss.
+          key: ${{ runner.os }}-ccache-asan-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-asan-
+
+      - name: Configure (Debug + ASan/UBSan + ccache compiler launcher)
+        run: |
+          cmake -S . -B build-asan -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DANTS_SANITIZERS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ccache --zero-stats
 
       - name: Build
         run: cmake --build build-asan --parallel
+
+      - name: ccache stats (asan)
+        if: always()
+        run: ccache --show-stats
 
       - name: Run audit-rule tests under sanitizers
         working-directory: build-asan

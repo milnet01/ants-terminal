@@ -7012,6 +7012,24 @@ indie-review finding.
   Kind: investigate.
   Source: user-request-2026-05-15.
 
+- 📋 [ANTS-1549] **CI speed-up — ccache + apt cache + paths-ignore for docs-only pushes.**
+  Current CI wall-time: ~12 min per push on `build-test` + ~12-15 min `build-asan` (run in parallel; ~12-15 min effective wall-time per push). With the current cadence of 5-10 pushes per day during fold-in seasons that's an hour+ of wait between push and green.
+  
+  Three low-effort wins (rough estimates):
+  
+  1. **ccache via `actions/cache@v4`** keyed on `${{ runner.os }}-ccache-${{ github.sha }}` with restore-keys `${{ runner.os }}-ccache-`. Symlink ccache into PATH ahead of g++ so CMake picks it up transparently. Incremental builds (the common case for fold-in pulls that touch 2-5 files) would drop from ~10 min compile to ~2-3 min. Cache size ~500 MB; GitHub gives 10 GiB free per repo. Cumulative saving: ~7 min/push × ~7 pushes/day = ~50 min/day.
+  
+  2. **apt cache via `awalsh128/cache-apt-pkgs-action@v1`** for the Qt6 + ninja + cppcheck deps. Saves the ~30-45 s apt-get update + install per run. Modest in isolation but adds up. Both jobs share the same apt list — single cache hit covers both.
+  
+  3. **`paths-ignore` for docs-only pushes** — skip CI entirely when the only changed files are ROADMAP.md / CHANGELOG.md / README.md / docs/**/*.md / .roadmap-counter. Today the cross-session-report fold-in commits (e.g. f0d5f73) are pure roadmap/CHANGELOG bookkeeping but still spend 12 min CI minutes each. paths-ignore eliminates them entirely. Caveat: only safe if no .cpp/.h/.cmake or test files in the same commit — git's union of changed files is the gate. Apply to the push trigger only (PRs always run, even doc-only).
+  
+  Stretch idea (separate spec): split the workflow into a fast `lint` job (cppcheck + AppStream + desktop-file + groff + completions — ~2 min) that runs on every push, and the heavier `build-test` / `build-asan` jobs on a `[ci-build]` commit-message opt-in or path filter. Cuts the median CI cost dramatically for the bookkeeping commits that don't change build inputs.
+  
+  File: `.github/workflows/ci.yml`. No new repo secrets needed. Estimated effort: 1-2 h to write + verify on a test branch.
+  Lanes: ci, github-actions, perf.
+  Kind: perf.
+  Source: user-request-2026-05-18.
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,
@@ -10417,6 +10435,24 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Lanes: mcp-roadmap-query, roadmapdialog, parseBullets.
   Source: in-session-2026-05-18.
+
+- 📋 [ANTS-1548] **`changelog_log` MCP tool — token-frugal CHANGELOG section writer.**
+  User feedback (2026-05-18): the per-pull CHANGELOG section is currently a hand-written ~70-line Edit (header + bulleted ANTS-IDs + body prose), preceded by a Read for context. Per pull that costs ~2-3K tokens of formatting prose + ~500-800 for the Read setup. Across N weekly pulls that adds up.
+  
+  Three-tier proposal (ship as one tool with three modes):
+  
+  1. **`op:"append_section"`** — Render a `### <emoji> <Heading> (DATE)` section from {date, headline, items: [{id, kind, summary, body}]}. Inserts atomically at the top of `## [Unreleased]`. Pure server-side formatting; saves the prose cost (~2-3K/pull).
+  
+  2. **`op:"append_section_from_roadmap"`** — Pulls bullet body verbatim from ROADMAP.md for each cited ID. Eliminates the LLM-rewrites-the-bullet step entirely. Saves an additional ~5-10K/pull because the prose is reused, not regenerated. Cite-by-ID also keeps the CHANGELOG and ROADMAP in lockstep automatically.
+  
+  3. **`roadmap_log op:"flip" status:"shipped"` integration** — optional `also_write_changelog:true` flag that, when true, appends a one-line entry to `## [Unreleased]` in the same atomic write. Eliminates one whole tool call per shipped bullet for the "trickle" path (the per-feature flip pattern, as opposed to the per-pull bundle pattern).
+  
+  Suggested file: `src/changelogfoldin.{h,cpp}` alongside `roadmapfoldin`. Schema mirrors `roadmap_log` for caller consistency. Refusals: `not_unreleased` (no `[Unreleased]` heading), `format_mismatch` (CHANGELOG doesn't follow Keep-a-Changelog), `id_not_in_roadmap` (mode 2/3 cite-check).
+  
+  Constraints: must be `caller_cwd_required` (write op). Atomic via QSaveFile per project precedent. Should respect the project's existing CHANGELOG style — gate on detected format the same way `roadmap_log` op:"flip" does (ants-v1 vs github-task-list).
+  Lanes: mcp-changelog-log, claudeintegration, remotecontrol, roadmapfoldin.
+  Kind: implement.
+  Source: user-request-2026-05-18.
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
