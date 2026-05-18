@@ -5179,6 +5179,12 @@ QString AuditDialog::exportSarif() const {
     invocation["startTimeUtc"]     = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     QJsonArray invocations; invocations.append(invocation);
     run["invocations"] = invocations;
+    // ANTS-1576 — capture VCS provenance once at SARIF emission time.
+    const QJsonArray vcpBlock =
+        AuditEngine::buildVcsProvenanceBlock(m_projectPath);
+    if (!vcpBlock.isEmpty()) {
+        run["versionControlProvenance"] = vcpBlock;
+    }
 
     QJsonArray runs; runs.append(run);
 

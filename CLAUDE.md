@@ -65,7 +65,8 @@ Listed only where behavior isn't obvious from the name.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
   `get-text`, `launch`, `tab-list`, `roadmap-query`,
-  `workspace-search`, `file-outline`, `git-state`, `subsystem`.
+  `workspace-search`, `file-outline`, `git-state`, `subsystem`,
+  `roadmap-branch-drift` (ANTS-1583).
   Trust model: UID-scoped + 0700 perms + `lstat`-checked
   `S_ISSOCK`.
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local

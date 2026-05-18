@@ -4005,6 +4005,16 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdRoadmapLog(args)
                     .toJson(QJsonDocument::Compact));
         });
+    // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
+    // cited commit SHAs against HEAD's reachable history. caller_cwd
+    // is Required (ANTS-1404 contract registered below).
+    m_claudeIntegration->registerToolProvider("roadmap_branch_drift",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdRoadmapBranchDrift(args)
+                    .toJson(QJsonDocument::Compact));
+        });
     // ANTS-1351 — audit_run server-side runner. Inline in-flight gate
     // via ClaudeIntegration::verbInFlight* (§ 2.4 of v4 spec) — no
     // class abstraction; two consumers (this verb + ANTS-1397's

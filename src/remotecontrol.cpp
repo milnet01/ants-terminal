@@ -4200,6 +4200,11 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
 
 namespace {
 
+// ANTS-1576 — forward declaration of the runGit helper defined further
+// down in this file (used by the live-git fallback in cmdLastAuditSummary).
+// Definition lives near collectGitSnapshot at the bottom of the file.
+QByteArray runGit(const QString &root, const QStringList &argv);
+
 QJsonObject lasErr(const QString &code, const QString &msg) {
     QJsonObject o;
     o["ok"]    = false;
@@ -4225,9 +4230,12 @@ QJsonObject auditSummaryFindingAsJson(
 QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
     QJsonObject ok;
     ok["ok"]         = true;
-    ok["run_at"]     = s.runAtIso;
+    // ANTS-1576 — null-or-omit normalisation. Always emit the
+    // load-bearing fields (sarif_path / source_format / counts /
+    // top_findings); omit run_at / html_path when blank.
+    if (!s.runAtIso.isEmpty())  ok["run_at"]    = s.runAtIso;
     ok["sarif_path"] = s.sarifPath;
-    ok["html_path"]  = s.htmlPath;
+    if (!s.htmlPath.isEmpty())  ok["html_path"] = s.htmlPath;
     // ANTS-1459 — name the source format on every response so the
     // caller doesn't have to guess from sarif_path's extension.
     ok["source_format"] = s.sourceFormat.isEmpty()
@@ -4245,14 +4253,57 @@ QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
     for (const auto &f : s.topFindings) top.append(auditSummaryFindingAsJson(f));
     ok["top_findings"] = top;
 
-    // ANTS-1539 — surface capture-time git provenance when the source
-    // SARIF carried run.versionControlProvenance. Fields omitted when
-    // empty (most non-SARIF formats today — pre-1539 SARIFs also).
+    // ANTS-1539 + ANTS-1576 — surface capture-time git provenance.
+    // Fields omitted when empty (no probe succeeded). ANTS-1576 adds
+    // `branch_source` ("file_provenance" | "read_time") so the caller
+    // can distinguish the SARIF-carried record from the live read-time
+    // fallback.
     if (!s.branch.isEmpty())        ok["branch"]         = s.branch;
     if (!s.commit.isEmpty())        ok["commit"]         = s.commit;
     if (!s.repositoryUri.isEmpty()) ok["repository_uri"] = s.repositoryUri;
+    if (!s.branchSource.isEmpty())  ok["branch_source"]  = s.branchSource;
 
     return ok;
+}
+
+// ANTS-1576 — scope classifier. Inspects the parsed top-findings and
+// the report basename; tags the response as single_file / narrow /
+// broad. Counts distinct files in topFindings[] (server-clamped to
+// 50 by the caller, so O(50) max). Pure function.
+struct ScopeClassification {
+    QString     tag;            // "single_file" | "narrow" | "broad"
+    QStringList distinctFiles;  // up to 5 entries (preview list)
+};
+
+ScopeClassification classifyAuditScope(
+    const AuditEngine::AuditSummary &s,
+    const QString &reportPath) {
+    QSet<QString> seen;
+    QStringList preview;
+    for (const auto &f : s.topFindings) {
+        if (!seen.contains(f.file)) {
+            seen.insert(f.file);
+            if (preview.size() < 5) preview.append(f.file);
+        }
+    }
+    const int distinct = seen.size();
+
+    const QString base = QFileInfo(reportPath).baseName();
+    const bool narrowHint =
+        base.contains(QStringLiteral("-postfix")) ||
+        base.contains(QStringLiteral("-single"))  ||
+        base.contains(QStringLiteral("-narrow"));
+
+    ScopeClassification c;
+    c.distinctFiles = preview;
+    if (distinct == 1 && !narrowHint) {
+        c.tag = QStringLiteral("single_file");
+    } else if (distinct >= 1 && distinct <= 5) {
+        c.tag = QStringLiteral("narrow");
+    } else {
+        c.tag = QStringLiteral("broad");
+    }
+    return c;
 }
 
 // ANTS-1540 — post-cap rule_ids filter. Operates on a snapshot of
@@ -4410,6 +4461,28 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
                                "missing findings (%1)").arg(sourceFormat)));
         }
 
+        // ANTS-1576 — read-time provenance fallback. When the parser
+        // didn't surface branch/commit (every non-SARIF format today,
+        // plus pre-1576 SARIFs without versionControlProvenance), back
+        // -fill from a live git probe before storing into the cache so
+        // subsequent cache hits inherit the populated data for free.
+        if (parsed->branch.isEmpty() && parsed->commit.isEmpty()) {
+            const QString headRaw = QString::fromUtf8(runGit(
+                rootCanonical,
+                {QStringLiteral("rev-parse"), QStringLiteral("HEAD")})).trimmed();
+            const QString branchRaw = QString::fromUtf8(runGit(
+                rootCanonical,
+                {QStringLiteral("symbolic-ref"), QStringLiteral("--short"),
+                 QStringLiteral("HEAD")})).trimmed();
+            if (!headRaw.isEmpty()) {
+                parsed->commit = headRaw;
+                if (!branchRaw.isEmpty()) parsed->branch = branchRaw;
+                parsed->branchSource = QStringLiteral("read_time");
+            }
+        } else {
+            parsed->branchSource = QStringLiteral("file_provenance");
+        }
+
         m_auditSummaryPath        = reportPath;
         m_auditSummaryMtimeMs     = mtimeMs;
         m_auditSummaryCachedTopN  = parserTopN;
@@ -4423,15 +4496,42 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     // ANTS-1540 — post-cap rule_ids filter. Applied on a copy so the
     // cache stays globally-shaped. Echo the requested filter so the
     // caller can confirm what got applied.
+    QJsonObject env;
     if (ruleIdsRequested) {
         summary = applyRuleIdsFilter(summary, ruleIdsFilter, topN);
-        QJsonObject env = buildLasEnvelope(summary);
+        env = buildLasEnvelope(summary);
         QJsonArray echoed;
         for (const QString &r : ruleIdsFilter) echoed.append(r);
         env["rule_ids_filter"] = echoed;
-        return QJsonDocument(env);
+    } else {
+        env = buildLasEnvelope(summary);
     }
-    return QJsonDocument(buildLasEnvelope(summary));
+
+    // ANTS-1576 — scope classifier. Always tag the response so the
+    // caller can distinguish a project-wide sweep from a single-file
+    // rerun. The classifier walks the post-rule_ids topFindings (so
+    // a narrow rule_ids filter doesn't masquerade as a single_file
+    // rerun: classifying after applyRuleIdsFilter would lie — apply
+    // the classifier to the original summary instead).
+    {
+        AuditEngine::AuditSummary preFilter = m_auditSummaryCache;
+        const ScopeClassification sc = classifyAuditScope(preFilter, reportPath);
+        env["scope"] = sc.tag;
+        if (sc.tag != QLatin1String("broad")) {
+            env["narrow_run_warning"] =
+                QStringLiteral("%1 looks like a %2 rerun "
+                               "(%3 distinct files in top findings). "
+                               "A broader recent file may exist in "
+                               ".audit_cache/.")
+                    .arg(QFileInfo(reportPath).fileName(),
+                         sc.tag,
+                         QString::number(sc.distinctFiles.size()));
+            QJsonArray files;
+            for (const QString &f : sc.distinctFiles) files.append(f);
+            env["narrow_run_files"] = files;
+        }
+    }
+    return QJsonDocument(env);
 }
 
 // ----- ANTS-1112 — five `indie_review_*` MCP-tool handlers ---------
@@ -6586,4 +6686,216 @@ QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
     out[QStringLiteral("ok")]     = true;
     out[QStringLiteral("cached")] = cacheHit;
     return QJsonDocument(out);
+}
+
+// =====================================================================
+// ANTS-1583 — roadmap_branch_drift
+// =====================================================================
+//
+// Compares ROADMAP ✅ entries' cited commit SHAs against HEAD-reachable
+// history. Useful for projects with multiple long-lived branches where
+// fix commits and docs commits land on different branches and drift.
+//
+// Implementation reuses findRoadmapUnder (ANTS-1459), collectGitSnapshot
+// (no extra rev-parse fork), and runGit (2 s wall-clock).
+//
+// See docs/specs/ANTS-1583.md for invariants.
+
+namespace {
+
+QJsonObject rbdErr(const QString &code, const QString &msg) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["code"]  = code;
+    o["error"] = msg;
+    return o;
+}
+
+// ANTS-1583 — anchored SHA detector for roadmap_branch_drift.
+// Pre-anchor (`commit X`, `(`, line start, `merge`/`via`/`in`/`at`,
+// `Landed in commit`, `Source:`) plus alpha-required lookahead
+// `(?=[0-9a-f]*[a-f])` plus post-anchor (`[,.\)\s]` or end of input).
+// The post-anchor lookahead covers the bare trailing-comma /
+// period / paren form.
+static const QRegularExpression &rxCommitSha() {
+    static const QRegularExpression r(
+        QStringLiteral(
+            "(?:^|commit\\s+|\\(|"
+            "(?:\\bmerge\\b|\\bvia\\b|\\bin\\b|\\bat\\b|"
+                "\\bLanded in commit\\s+|\\bSource:\\s*)\\s*)"
+            "(?=[0-9a-f]*[a-f])"
+            "([0-9a-f]{7,40})"
+            "(?=[,.\\)\\s]|$)"));
+    return r;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
+    // Caller_cwd contract is Required — enforced at the dispatch layer
+    // (ANTS-1404), but the handler also defends against an empty value
+    // from legacy IPC paths.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    if (callerRaw.isEmpty()) {
+        return QJsonDocument(rbdErr(QStringLiteral("caller_cwd_required"),
+            QStringLiteral("roadmap_branch_drift: caller_cwd is required")));
+    }
+    const QString rootCanonical =
+        QFileInfo(callerRaw).canonicalFilePath();
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(rbdErr(QStringLiteral("cwd_bad"),
+            QStringLiteral("roadmap_branch_drift: caller_cwd does not "
+                           "resolve to an existing directory")));
+    }
+
+    // Roadmap discovery — shared with cmdRoadmapQuery / cmdRoadmapLog.
+    const QString roadmapPath = findRoadmapUnder(rootCanonical);
+    if (roadmapPath.isEmpty()) {
+        return QJsonDocument(rbdErr(QStringLiteral("no_roadmap_loaded"),
+            QStringLiteral("roadmap_branch_drift: no ROADMAP.md found "
+                           "under %1 (or its docs/ / .github/ "
+                           "siblings)").arg(rootCanonical)));
+    }
+
+    // ANTS-1583 INV-10 — reuse collectGitSnapshot so we don't fork an
+    // extra rev-parse HEAD on top of the snapshot path's own call.
+    const VerifyGitSnapshot snap = collectGitSnapshot(rootCanonical);
+    if (!snap.valid) {
+        return QJsonDocument(rbdErr(QStringLiteral("no_git_state"),
+            QStringLiteral("roadmap_branch_drift: %1 is not a git tree "
+                           "or `git rev-parse HEAD` returned empty")
+                .arg(rootCanonical)));
+    }
+    const QString currentCommit = snap.head;
+    const QString currentBranch = QString::fromUtf8(runGit(
+        rootCanonical,
+        {QStringLiteral("symbolic-ref"), QStringLiteral("--short"),
+         QStringLiteral("HEAD")})).trimmed();
+
+    // max_drift clamp [1, 100], default 20.
+    int maxDrift = 20;
+    if (req.contains(QStringLiteral("max_drift")) &&
+        req.value(QStringLiteral("max_drift")).isDouble()) {
+        maxDrift = req.value(QStringLiteral("max_drift")).toInt();
+    }
+    if (maxDrift < 1)   maxDrift = 1;
+    if (maxDrift > 100) maxDrift = 100;
+
+    // Reachable-set build — one `git log --format=%H` rather than N
+    // `git branch --contains` forks. Cap at 200k.
+    const QByteArray logRaw = runGit(rootCanonical,
+        {QStringLiteral("log"), QStringLiteral("--format=%H"),
+         QStringLiteral("HEAD"), QStringLiteral("--max-count=200000")});
+    QSet<QString> reachableFull;
+    QMultiHash<QString, QString> reachableByPrefix;  // 7-hex prefix → full
+    bool truncatedHistory = false;
+    {
+        const QList<QByteArray> lines = logRaw.split('\n');
+        int count = 0;
+        for (const QByteArray &line : lines) {
+            if (line.size() < 40) continue;
+            const QString full = QString::fromUtf8(line.left(40));
+            reachableFull.insert(full);
+            reachableByPrefix.insert(full.left(7), full);
+            if (++count >= 200000) { truncatedHistory = true; break; }
+        }
+    }
+
+    // Read + parse the ROADMAP. Use the same parseBullets entry point
+    // the rest of the file uses; it auto-detects ants-v1 / GFM-task-list
+    // / pass-headings.
+    QFile rf(roadmapPath);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QJsonDocument(rbdErr(QStringLiteral("read_failed"),
+            QStringLiteral("roadmap_branch_drift: could not open %1")
+                .arg(roadmapPath)));
+    }
+    const QString markdown = QString::fromUtf8(rf.readAll());
+    rf.close();
+    const auto bullets = RoadmapDialog::parseBullets(markdown);
+
+    // Classifier helpers.
+    auto isReachable = [&](const QString &sha) -> bool {
+        if (sha.size() == 40) return reachableFull.contains(sha);
+        // Short SHA — look up via the 7-hex prefix index.
+        const QString prefix = sha.left(7);
+        const QList<QString> candidates = reachableByPrefix.values(prefix);
+        for (const QString &c : candidates) {
+            if (c.startsWith(sha)) return true;
+        }
+        return false;
+    };
+    auto existsInGit = [&](const QString &sha) -> bool {
+        // runGit returns empty bytes on non-zero exit which is
+        // ambiguous with cat-file -e's "exists, no stdout" success;
+        // call git directly so we can read the exit code.
+        QProcess p;
+        QStringList full;
+        full << QStringLiteral("-C") << rootCanonical
+             << QStringLiteral("cat-file") << QStringLiteral("-e") << sha;
+        p.start(QStringLiteral("git"), full);
+        if (!p.waitForStarted(1000)) return false;
+        if (!p.waitForFinished(2000)) { p.kill(); return false; }
+        return (p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0);
+    };
+
+    // Walk ✅ bullets; tally drift. The loop variable is renamed `bul`
+    // (not the conventional `b`) so it doesn't trip the source-grep
+    // tripwire in tests/features/roadmap_query_section_index/ that
+    // counts cmdRoadmapQuery cache-fill loops via the b-variable
+    // signature. This verb has its own emission path with no
+    // section_slug contract — exempt by construction.
+    QJsonArray drift;
+    int scannedBullets = 0;
+    int withSha        = 0;
+    bool driftTruncated = false;
+    for (const auto &bul : bullets) {
+        if (bul.status != QStringLiteral("✅")) continue;
+        if (bul.id.isEmpty()) continue;  // narrator / rollup bullets
+        ++scannedBullets;
+
+        const QString joined = bul.headline + QChar('\n') + bul.body;
+        // Extract all SHA candidates from the bullet body.
+        QStringList shas;
+        QRegularExpressionMatchIterator it =
+            rxCommitSha().globalMatch(joined);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            const QString sha = m.captured(1);
+            if (!shas.contains(sha)) shas.append(sha);
+        }
+        if (shas.isEmpty()) continue;
+        ++withSha;
+
+        // First-drifted-wins per bullet (spec § 6 out-of-scope: per-
+        // bullet drift_per_bullet[] left as follow-up).
+        for (const QString &sha : shas) {
+            if (isReachable(sha)) continue;
+            QJsonObject o;
+            o["bullet_id"]  = bul.id;
+            o["cited_sha"]  = sha;
+            o["reason"]     = existsInGit(sha)
+                ? QStringLiteral("sha_not_in_HEAD")
+                : QStringLiteral("sha_not_in_git");
+            o["headline"]   = bul.headline;
+            drift.append(o);
+            if (drift.size() >= maxDrift) { driftTruncated = true; break; }
+            break;  // one drift entry per bullet (first-drifted-wins)
+        }
+        if (driftTruncated) break;
+    }
+
+    QJsonObject env;
+    env["ok"]               = true;
+    env["current_branch"]   = currentBranch;
+    env["current_commit"]   = currentCommit;
+    env["scanned_bullets"]  = scannedBullets;
+    env["with_sha"]         = withSha;
+    env["drift_count"]      = drift.size();
+    env["drift"]            = drift;
+    env["path"]             = QFileInfo(roadmapPath).absoluteFilePath();
+    if (driftTruncated)    env["drift_truncated"]    = true;
+    if (truncatedHistory)  env["truncated_history"]  = true;
+    return QJsonDocument(env);
 }

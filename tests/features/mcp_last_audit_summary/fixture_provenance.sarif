@@ -1,0 +1,41 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/Documents/CommitteeSpecifications/2.1.0/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ants-audit",
+          "version": "0.7.x",
+          "rules": []
+        }
+      },
+      "versionControlProvenance": [
+        {
+          "repositoryUri": "https://example.invalid/owner/repo.git",
+          "revisionId":    "abc1234abc1234abc1234abc1234abc1234abc12",
+          "branch":        "local/test"
+        }
+      ],
+      "results": [
+        {
+          "ruleId":   "rule-x",
+          "level":    "warning",
+          "message":  {"text": "minimal"},
+          "locations": [{
+            "physicalLocation": {
+              "artifactLocation": {"uri": "src/x.cpp"},
+              "region": {"startLine": 1}
+            }
+          }]
+        }
+      ],
+      "invocations": [
+        {
+          "workingDirectory": {"uri": "/tmp/fake"},
+          "startTimeUtc": "2026-05-18T12:00:00Z"
+        }
+      ]
+    }
+  ]
+}

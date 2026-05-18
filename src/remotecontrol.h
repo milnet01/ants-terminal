@@ -261,6 +261,11 @@ public:
     // in `req`. Zero-arg-equivalent (empty req) is back-compat with
     // ANTS-1244 callers — returns the full unfiltered array.
     QJsonDocument cmdRoadmapQuery(const QJsonObject &req = {});
+    // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
+    // cited commit SHAs against HEAD's reachable history. Reuses
+    // findRoadmapUnder + collectGitSnapshot + runGit. See
+    // docs/specs/ANTS-1583.md.
+    QJsonDocument cmdRoadmapBranchDrift(const QJsonObject &req);
     QJsonDocument cmdTabList();
     QJsonDocument cmdGetText(const QJsonObject &req);
 

@@ -61,6 +61,7 @@ against the table below.
 | `tools_not_ready` | The detector / engine hasn't finished initialising. | early MCP call against `tool_info` before the registry is built. |
 | `reports_dir_unreadable` | `reports_dir` canonicalises but the resolved path doesn't exist, isn't a directory, or the calling user lacks read permission (ANTS-1455). | `test_audit_synthesis_prompt allow_outside_project:true reports_dir:"/no/such/dir"`. |
 | `reports_dir_empty` | `reports_dir` is a readable directory containing zero `*.md` files at top level (ANTS-1455). | `test_audit_synthesis_prompt` against a dir where the per-chunk reports weren't written (empty workflow). Saves the silent-success failure mode the v1 engine had. |
+| `no_git_state` | The project root has no `.git/` directory or `git rev-parse HEAD` returned empty (ANTS-1583). The tool's contract needs git state to be meaningful; refuse rather than emit an envelope with zero coverage. | `roadmap_branch_drift` against a non-git project. |
 
 ### 3 — Caller-cwd contract (ANTS-1404 / ANTS-1372)
 

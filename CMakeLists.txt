@@ -984,7 +984,9 @@ if(ANTS_TESTS)
                 # ANTS-1578 caller_cwd_info description hint surfacing.
                 tests/features/mcp_caller_cwd_info_description_hint/test_mcp_caller_cwd_info_description_hint.cpp
                 # ANTS-1565 workspace_search configurable wall-clock budget.
-                tests/features/mcp_workspace_search_timeout_sec/test_mcp_workspace_search_timeout_sec.cpp)
+                tests/features/mcp_workspace_search_timeout_sec/test_mcp_workspace_search_timeout_sec.cpp
+                # ANTS-1583 roadmap_branch_drift MCP verb.
+                tests/features/mcp_roadmap_branch_drift/test_mcp_roadmap_branch_drift.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -1044,6 +1046,8 @@ if(ANTS_TESTS)
         FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
         FIXTURE_EMPTY_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_empty.sarif"
         FIXTURE_CPPCHECK_XML="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_cppcheck.xml"
+        FIXTURE_PROVENANCE_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_provenance.sarif"
+        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
         CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")

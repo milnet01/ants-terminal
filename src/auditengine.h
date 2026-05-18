@@ -17,6 +17,7 @@
 // only; no QWidget, QPainter, QDialog references.
 
 #include <QHash>
+#include <QJsonArray>
 #include <QList>
 #include <QSet>
 #include <QString>
@@ -222,6 +223,12 @@ struct AuditSummary {
     QString branch;        // versionControlDetails.branch
     QString commit;        // versionControlDetails.revisionId
     QString repositoryUri; // versionControlDetails.repositoryUri
+    // ANTS-1576 — provenance origin tag. Set by cmdLastAuditSummary
+    // after parser-side scrape: "file_provenance" when branch/commit
+    // arrived from the source file's metadata, "read_time" when the
+    // handler back-filled from a live `git rev-parse` against the
+    // project root, "" when no provenance is available.
+    QString branchSource;
 };
 
 // ANTS-1254 — read SARIF at `sarifPath`, return compact summary.
@@ -274,6 +281,16 @@ std::optional<AuditSummary> summariseSemgrepJson(
     const QString &jsonPath,
     int topN,
     const QString &levelFloor);
+
+// ANTS-1576 — capture best-effort VCS state for the project at
+// `rootCanonical` (canonical, symlink-resolved). Returns a SARIF
+// versionControlProvenance array (§ 3.14.18) suitable for
+// `run["versionControlProvenance"] = ...`. Empty array when
+// `git rev-parse HEAD` returns empty (non-git tree, missing binary,
+// canonical path empty) — callers omit the block in that case.
+// Forks at most three git subprocesses (rev-parse, symbolic-ref,
+// remote.origin.url), each with a 2 s wall-clock cap.
+QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical);
 
 // ANTS-1111 — severity-tier shift on cross-tool corroboration. In-place
 // mutation of `findings[].severity`:

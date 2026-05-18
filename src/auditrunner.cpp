@@ -33,6 +33,8 @@
 
 #include "auditrunner.h"
 
+#include "auditengine.h"  // ANTS-1576 buildVcsProvenanceBlock
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -515,9 +517,15 @@ ParsedOutput parseToolOutput(const QString &tool,
 // per-tool results into result entries).
 bool writeSarif(const QString &path,
                 const QHash<QString, ToolResult> &byTool,
-                const QHash<QString, QString> &rawByTool) {
+                const QHash<QString, QString> &rawByTool,
+                const QString &rootCanonical) {
     QJsonObject runs;
     QJsonArray  runsArr;
+    // ANTS-1576 — capture once, attach to every run we emit. The probe
+    // forks at most three short git subprocesses; runs once per
+    // writeSarif call (not per tool).
+    const QJsonArray vcpBlock = AuditEngine::buildVcsProvenanceBlock(
+        rootCanonical);
     for (auto it = byTool.constBegin(); it != byTool.constEnd(); ++it) {
         const ToolResult &tr = it.value();
         QJsonObject driver;
@@ -589,6 +597,10 @@ bool writeSarif(const QString &path,
             results.append(result);
         }
         run["results"] = results;
+        // ANTS-1576 — attach VCS provenance when capture succeeded.
+        if (!vcpBlock.isEmpty()) {
+            run["versionControlProvenance"] = vcpBlock;
+        }
         runsArr.append(run);
     }
     QJsonObject doc;
@@ -975,7 +987,11 @@ RunResult runAudit(const RunRequest &req) {
         ? QStringList{QStringLiteral("sarif")} : req.formats;
     if (formats.contains(QLatin1String("sarif"))) {
         const QString sp = allocSarifPath();
-        if (writeSarif(sp, r.byTool, rawByTool)) r.sarifPath = sp;
+        // ANTS-1576 — thread the canonical project root so the SARIF
+        // emission captures git provenance.
+        if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot)) {
+            r.sarifPath = sp;
+        }
     }
     if (formats.contains(QLatin1String("html"))) {
         QString hp = r.sarifPath;

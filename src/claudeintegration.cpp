@@ -1823,6 +1823,62 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(roadmapTool);
 
+                // ANTS-1583 — roadmap_branch_drift descriptor.
+                {
+                    QJsonObject t;
+                    t["name"] = "roadmap_branch_drift";
+                    t["description"] = QStringLiteral(
+                        "Compare ROADMAP ✅ entries' cited commit SHAs "
+                        "against HEAD's reachable history. Returns a "
+                        "drift list when a claimed-shipped commit "
+                        "isn't reachable from current HEAD — useful for "
+                        "projects with multiple long-lived branches "
+                        "where fix commits and docs commits land on "
+                        "different branches and drift. Composes with "
+                        "last_audit_summary's branch capture "
+                        "(ANTS-1576) — once the SARIF records its "
+                        "source branch, this verb's drift list tells "
+                        "the caller whether to trust the audit's "
+                        "claim. Use after a rebase / multi-branch "
+                        "merge to validate ROADMAP claims against "
+                        "actual code state. Envelope: {ok, "
+                        "current_branch, current_commit, "
+                        "scanned_bullets, with_sha, drift_count, "
+                        "drift:[{bullet_id, cited_sha, reason, "
+                        "headline}], path, drift_truncated?, "
+                        "truncated_history?}. SHA detector uses an "
+                        "anchored regex (commit-prefix or trailing-"
+                        "punct context required) plus alpha-required "
+                        "lookahead — keeps the false-positive rate "
+                        "low on heterogeneous citation forms.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use when investigating 'ROADMAP says ✅ but "
+                        "the bug is still there', or before claiming "
+                        "a fix shipped. Cross-checks against "
+                        "last_audit_summary's branch/commit "
+                        "(ANTS-1576).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject maxDriftProp;
+                    maxDriftProp["type"]    = "integer";
+                    maxDriftProp["default"] = 20;
+                    maxDriftProp["minimum"] = 1;
+                    maxDriftProp["maximum"] = 100;
+                    maxDriftProp["description"] = QStringLiteral(
+                        "Cap on drift[] length. Server-clamp [1, 100]. "
+                        "When the scan hits the cap, "
+                        "`drift_truncated:true` flags the envelope.");
+                    props["max_drift"]  = maxDriftProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();
+                    schema["properties"] = props;
+                    schema["required"]   = QJsonArray{
+                        QStringLiteral("caller_cwd")};
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 QJsonObject tabListTool;
                 tabListTool["name"] = "tab_list";
                 tabListTool["description"] = QStringLiteral(
@@ -4967,6 +5023,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // an absent caller_cwd refuses at the dispatcher rather than
     // falling back to the focused tab's roadmap.
     if (toolName == QStringLiteral("roadmap_log"))        return C::Required;
+    // ANTS-1583 — roadmap_branch_drift: read-only ROADMAP scan +
+    // git reachability check, anchored to the caller's project root.
+    if (toolName == QStringLiteral("roadmap_branch_drift")) return C::Required;
     // ANTS-1400 — caller_cwd_info is the diagnostic verb that
     // surfaces the resolution Source enum. caller_cwd is its
     // INPUT (not an anchor), so neither Required nor ProcessGlobal
@@ -5049,7 +5108,12 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")
         || toolName == QStringLiteral("subsystem")
-        || toolName == QStringLiteral("git_state");
+        || toolName == QStringLiteral("git_state")
+        // ANTS-1583 — roadmap_branch_drift response is small but the
+        // drift list rarely changes between calls (ROADMAP mtime +
+        // HEAD reachability snapshot), so the etag 304 round-trip
+        // saves the full re-emit on stable repos.
+        || toolName == QStringLiteral("roadmap_branch_drift");
 }
 
 QString ClaudeIntegration::etagFor(const QString &payload) {

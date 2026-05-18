@@ -11088,7 +11088,39 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-project-layout, projectlayoutengine.
   Source: cross-session-reports-2026-05-17/05-18 (RetroArch Bundles 62/64).
 
-- 📋 [ANTS-1576] **`last_audit_summary` hardening — scope-aware picker + git HEAD/branch capture + `rule_ids[]` filter + null-or-omit for empty fields.**
+- ✅ [ANTS-1576] **`last_audit_summary` hardening — scope-aware picker + git HEAD/branch capture + `rule_ids[]` filter + null-or-omit for empty fields.**
+  Shipped 2026-05-18 (MCP audit-surface git/scope-awareness fold-in
+  pull 14). Three landing-together changes; the fourth (`rule_ids[]`
+  filter) was already shipped as **ANTS-1540** and is regression-
+  locked here. (1) **Write-side git provenance** — new shared
+  helper `AuditEngine::buildVcsProvenanceBlock(rootCanonical)` builds
+  the SARIF `versionControlProvenance` array (§ 3.14.18). Both
+  writers consume it: `auditrunner.cpp::writeSarif` (gains a
+  `rootCanonical` parameter threaded from `RunRequest::projectRoot`)
+  and `auditdialog.cpp::exportSarif` (calls the helper with
+  `m_projectPath`). Three short git forks (rev-parse / symbolic-ref
+  / remote.origin.url) once per write event; empty on rev-parse
+  failure. (2) **Reader-side read-time fallback** — when the
+  parsed summary lacks branch+commit (every non-SARIF format today;
+  pre-1576 SARIFs), `cmdLastAuditSummary` back-fills from live
+  `git rev-parse HEAD` + `git symbolic-ref --short HEAD` against
+  the caller's project root before storing into the single-entry
+  mtime cache, so cache hits inherit the populated data. New
+  `branch_source` envelope field surfaces `"file_provenance"`
+  (SARIF-carried) vs `"read_time"` (live fallback). (3) **Scope
+  classifier** — new helper `classifyAuditScope` tags the envelope
+  as `scope: "single_file" | "narrow" | "broad"`; non-broad
+  envelopes carry `narrow_run_warning` + `narrow_run_files[]`
+  (≤ 5 entries). Catches the Bundle-69 case where
+  `cppcheck-b68-ozone-postfix.xml` silently outranked broader
+  project-wide cppcheck SARIFs in the lex-max picker. (4) **Null-
+  or-omit normalisation** — `buildLasEnvelope` omits `run_at` and
+  `html_path` when blank instead of emitting empty-string values;
+  load-bearing fields (`sarif_path`, `source_format`, `counts`,
+  `top_findings`) stay always-emitted. New `AuditSummary::
+  branchSource` field. Spec `docs/specs/ANTS-1576.md`; tests
+  `tests/features/mcp_last_audit_summary/` (12 new test cases
+  covering INV-1..INV-12). 1053/1053 features green.
   RetroArch Bundles 66/67/69 surfaced four `last_audit_summary` improvements that compose: (1) **scope-aware picker** — Bundle 69 hit a "0 errors, 0 warnings" envelope picking `cppcheck-b68-ozone-postfix.xml` (single-file rerun) over 25+ broader cache files; surface `scope: "single_file"|"narrow"|"broad"` + `narrow_run_files: [...]` + `narrow_run_warning` when picking narrow; prefer broadest-scope file (largest XML or non-`-postfix` suffix) when ties on recency; (2) **git HEAD/branch capture** — Bundle 67 had to cross-reference findings against two branches to know which one the audit ran on; record `git rev-parse HEAD` + `git symbolic-ref HEAD` at scan completion as sidecar JSON next to the SARIF/XML; envelope echoes `branch: "local/audit-2026-04", commit: "1b400e930a"`; (3) **`rule_ids[]` filter** — Bundle 66 wanted `last_audit_summary({rule_ids:["autoVariables","duplicateExpressionTernary"]})` to extract specific FP-class subsets without separate grep; replaces two grep calls with one structured response; (4) **null vs empty string** — Bundle 69 noted `run_at: ""` and `html_path: ""` should be `null` (or omitted) when the field genuinely has no value; "always emit every key as a string" makes Optional-vs-missing harder client-side. Apply consistently across `last_audit_summary`'s envelope.
   **Layman:** Four related improvements to the "what did the last audit find" tool: (1) warn when the cached file is a narrow single-file rerun rather than a full project sweep; (2) record which git branch the audit ran on; (3) let callers filter by specific rule names; (4) use `null` not empty-string when a field genuinely has no value.
   Kind: enhancement.
@@ -11176,7 +11208,30 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes, mcp-indie-review, mcp-test-audit, research.
   Source: cross-session-reports-2026-05-18 (MAME #2 + Music_Production #2).
 
-- 📋 [ANTS-1583] **`roadmap_branch_drift` MCP verb — compare ROADMAP ✅ entries' cited SHAs against `git branch --contains` for HEAD.**
+- ✅ [ANTS-1583] **`roadmap_branch_drift` MCP verb — compare ROADMAP ✅ entries' cited SHAs against `git branch --contains` for HEAD.**
+  Shipped 2026-05-18 (MCP audit-surface git/scope-awareness fold-in
+  pull 14). New verb compares ROADMAP ✅ entries' cited commit
+  SHAs against HEAD's reachable history. SHA detector uses an
+  anchored regex (`// ANTS-1583` comment + pre-anchor: `commit X` /
+  `(` / line start / `merge` / `via` / `in` / `at` / `Landed in
+  commit` / `Source:`; post-anchor: `[,.\)\s]` or EOL; alpha-required
+  lookahead `(?=[0-9a-f]*[a-f])` skips all-digit tokens like epoch
+  timestamps and CVE IDs). Reachability uses **one batched
+  `git log --format=%H HEAD --max-count=200000`** plus a 7-char
+  prefix `QMultiHash` index for O(1) per-cited-SHA lookups —
+  explicit anti-pattern guard test prevents a future switch to
+  `git branch --contains` fork-per-SHA. Reuses `collectGitSnapshot`
+  (no fresh `rev-parse` fork at handler entry) and `findRoadmapUnder`
+  (ANTS-1459 path discovery). Envelope: `{ok, current_branch,
+  current_commit, scanned_bullets, with_sha, drift_count,
+  drift:[{bullet_id, cited_sha, reason, headline}], path,
+  drift_truncated?, truncated_history?}`. `caller_cwd` is Required;
+  etag-supported (304-not-modified short-circuit). New `no_git_state`
+  error code added to `docs/standards/mcp-error-codes.md` § 2.
+  Spec `docs/specs/ANTS-1583.md`; tests
+  `tests/features/mcp_roadmap_branch_drift/` (10 invariants
+  including a runtime A→B→C+orphan-D `QTemporaryDir` git fixture).
+  1053/1053 features green.
   RetroArch Bundle 67 (2026-05-18): the project runs two long-lived branches — `local/audit-2026-04` (docs/roadmap) and `local/fixes-2026-04` (fix commits) — diverged by 76/24 commits. Bundle 60/61/62/64/65 fix commits live only on the fixes branch; the audit branch is missing those commits. ROADMAP claims certain fixes are ✅-landed; cppcheck on the audit branch still flags them. The MCP could detect this cheaply: parse each ✅ bullet for its cited commit SHA (typically a Source: line or a trailing reference like `(2faa000)`), run `git branch --contains <sha>` for the current HEAD, and emit a warning when a claimed-shipped commit isn't reachable. Envelope: `{ok:true, drift_count, drift:[{bullet_id, cited_sha, reason:"sha_not_in_HEAD"}], scanned_bullets, current_branch}`. Composes with ANTS-1576's branch-capture work — once `last_audit_summary` records the branch SARIF was generated on, this verb's "audit-branch fixes not in fixes-branch HEAD" case becomes a clean cross-check. Low-priority feature; works around a project-workflow class issue cheaply.
   **Layman:** When a project uses separate branches for docs/audit work vs. actual fix commits, the two can drift — the docs claim a fix is shipped but the code on the audit branch doesn't have it. An MCP verb that parses ROADMAP ✅ entries' commit references and checks whether they're reachable from HEAD would catch this cheaply.
   Kind: implement.

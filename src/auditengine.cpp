@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QJsonValue>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QTextStream>
 #include <QXmlStreamReader>
@@ -894,6 +895,58 @@ QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
     }
 
     return out;
+}
+
+// ANTS-1576 — capture best-effort VCS state for SARIF writers. Forks
+// up to three short git subprocesses (rev-parse, symbolic-ref,
+// remote.origin.url) with a 2 s wall-clock cap each. Returns an
+// empty array when rev-parse fails — callers omit the SARIF
+// run.versionControlProvenance block in that case rather than
+// emit a half-populated record.
+QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical) {
+    if (rootCanonical.isEmpty()) return {};
+
+    auto runShort = [&](const QStringList &argv) -> QString {
+        QProcess p;
+        p.setProcessChannelMode(QProcess::SeparateChannels);
+        QStringList full;
+        full << QStringLiteral("-C") << rootCanonical;
+        full.append(argv);
+        p.start(QStringLiteral("git"), full);
+        if (!p.waitForStarted(1000)) return {};
+        if (!p.waitForFinished(2000)) {
+            p.kill();
+            p.waitForFinished(500);
+            return {};
+        }
+        if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+            return {};
+        }
+        return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    };
+
+    const QString head = runShort({QStringLiteral("rev-parse"),
+                                   QStringLiteral("HEAD")});
+    if (head.isEmpty()) return {};
+
+    const QString branch = runShort({QStringLiteral("symbolic-ref"),
+                                     QStringLiteral("--short"),
+                                     QStringLiteral("HEAD")});
+    QString remote = runShort({QStringLiteral("config"),
+                               QStringLiteral("--get"),
+                               QStringLiteral("remote.origin.url")});
+    if (remote.isEmpty()) {
+        remote = QStringLiteral("file://") + rootCanonical;
+    }
+
+    QJsonObject vcs;
+    vcs[QStringLiteral("repositoryUri")] = remote;
+    vcs[QStringLiteral("revisionId")]    = head;
+    if (!branch.isEmpty()) vcs[QStringLiteral("branch")] = branch;
+
+    QJsonArray arr;
+    arr.append(vcs);
+    return arr;
 }
 
 }  // namespace AuditEngine

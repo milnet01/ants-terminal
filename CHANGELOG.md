@@ -12,6 +12,104 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP audit-surface git/scope-awareness fold-in — pull 14 (ANTS-1576 + 1583, 2026-05-18)
+
+Two-item bundle pairing a `last_audit_summary` hardening pass with a
+new `roadmap_branch_drift` MCP verb. Both surfaces gain git-provenance
+on the same pull — once the SARIF records its source branch, the new
+verb's drift list tells the caller whether to trust the audit's
+claim. Sourced from the RetroArch cross-session reports (Bundles 66
++ 67 + 69) where the project's two-branch workflow (`local/audit-…`
+vs `local/fixes-…`) drifted such that ROADMAP ✅ entries were missing
+from the audit branch's HEAD.
+
+- **ANTS-1576 (enhancement)** — `last_audit_summary` hardening.
+  Three landing-together changes (the fourth, `rule_ids[]` filter,
+  was already shipped as ANTS-1540 and is now regression-locked).
+  (1) **Write-side git provenance.** New shared helper
+  `AuditEngine::buildVcsProvenanceBlock(rootCanonical)` builds the
+  SARIF `versionControlProvenance` array (§ 3.14.18) from the
+  project root. Both writers consume it: `auditrunner.cpp::
+  writeSarif` (gains a `rootCanonical` parameter threaded from
+  `RunRequest::projectRoot`) and `auditdialog.cpp::exportSarif`
+  (calls the helper with `m_projectPath`). Forks three short git
+  subprocesses (rev-parse, symbolic-ref, remote.origin.url) once
+  per write event; empty when rev-parse fails (no half-populated
+  records). (2) **Reader-side read-time fallback.** When the parsed
+  `AuditSummary` lacks branch+commit (every non-SARIF format today,
+  plus pre-1576 SARIFs), `cmdLastAuditSummary` back-fills from
+  `git rev-parse HEAD` + `git symbolic-ref --short HEAD` against
+  the caller's project root before storing into the single-entry
+  mtime cache — so subsequent cache hits inherit the populated data
+  without re-forking. New `branch_source` envelope field surfaces
+  `"file_provenance"` (SARIF-carried) vs `"read_time"` (live fallback)
+  so callers can distinguish the two paths. (3) **Scope classifier.**
+  New helper `classifyAuditScope(summary, reportPath)` walks
+  `topFindings[]` distinct files and tags the envelope as
+  `scope: "single_file" | "narrow" | "broad"` — `single_file` for
+  1 distinct file with no narrow-name hint, `narrow` for ≤ 5 files
+  or a `-postfix` / `-single` / `-narrow` filename hint, `broad`
+  otherwise. Non-broad envelopes also carry a `narrow_run_warning`
+  string + `narrow_run_files[]` preview list (≤ 5). Catches the
+  Bundle-69 case where a `cppcheck-b68-ozone-postfix.xml` rerun
+  silently outranked the broader project-wide cppcheck SARIFs in
+  the lex-max picker. (4) **Null-or-omit normalisation.**
+  `buildLasEnvelope` now omits `run_at` and `html_path` when blank
+  instead of emitting empty-string values; load-bearing fields
+  (`sarif_path`, `source_format`, `counts`, `top_findings`) stay
+  always-emitted. New `AuditSummary::branchSource` field
+  (`src/auditengine.h`). Spec `docs/specs/ANTS-1576.md`; tests
+  `tests/features/mcp_last_audit_summary/` (12 new test cases
+  covering INV-1..INV-12 — helper declaration, populated-against-
+  own-root, empty-on-non-git, both writer wirings, reader-side
+  fallback + cache anchor, scope classifier × 4, null-or-omit,
+  rule_ids behavioural). Pre-fix verified failing on the scope
+  classifier runtime tests; post-fix 1053/1053 green.
+  **Layman:** When the audit tool ran on the wrong branch, the
+  ROADMAP claimed a fix shipped but the warning was still there.
+  Three improvements: (a) record which branch each audit ran on,
+  (b) flag when the cached audit is just a single-file rerun and
+  a broader recent run probably exists, (c) emit `null` instead
+  of `""` for fields that genuinely have no value.
+  Source: cross-session-reports-2026-05-18 (RetroArch Bundles 66
+  + 67 + 69).
+
+- **ANTS-1583 (implement)** — new `roadmap_branch_drift` MCP verb.
+  Compares ROADMAP ✅ entries' cited commit SHAs against HEAD's
+  reachable history. Returns a drift list with reasons
+  (`sha_not_in_HEAD` / `sha_not_in_git`) when a claimed-shipped
+  commit isn't reachable. SHA detector uses an anchored regex
+  with a `// ANTS-1583` comment (pre-anchor: `commit X` / `(` /
+  line start / `merge` / `via` / `in` / `at` / `Landed in commit`
+  / `Source:`; post-anchor: `[,.\)\s]` or EOL; alpha-required
+  lookahead `(?=[0-9a-f]*[a-f])` to skip all-digit tokens like
+  epoch timestamps and CVE IDs). Reachability uses one batched
+  `git log --format=%H HEAD --max-count=200000` plus a 7-char
+  prefix `QMultiHash` index so per-cited-SHA lookups are O(1)
+  amortised — explicit anti-pattern guard test prevents a future
+  switch to `git branch --contains` fork-per-SHA. Reuses
+  `collectGitSnapshot` (no fresh `rev-parse` fork at handler
+  entry) and `findRoadmapUnder` (ANTS-1459 path discovery).
+  Envelope: `{ok, current_branch, current_commit,
+  scanned_bullets, with_sha, drift_count, drift:[{bullet_id,
+  cited_sha, reason, headline}], path, drift_truncated?,
+  truncated_history?}`. `caller_cwd` is Required; etag-supported
+  (304-not-modified short-circuit). New `no_git_state` error code
+  added to `docs/standards/mcp-error-codes.md` § 2. Spec
+  `docs/specs/ANTS-1583.md`; tests
+  `tests/features/mcp_roadmap_branch_drift/` (10 invariants:
+  contract / etag / regex anchor / max_drift clamp /
+  anti-pattern guard / count fields / `collectGitSnapshot` reuse
+  / taxonomy entry / runtime A→B→C+orphan-D classifier fixture
+  / short-SHA prefix resolution).
+  **Layman:** When you're on the wrong branch (the docs branch
+  vs the fixes branch), the ROADMAP can claim a fix is shipped
+  but the actual commit isn't on this branch's history. The new
+  verb scans the ROADMAP for cited commit SHAs and reports any
+  that aren't reachable from HEAD — cheap way to catch the
+  mismatch before claiming work shipped.
+  Source: cross-session-report-2026-05-18 (RetroArch Bundle 67).
+
 ### 🔌 MCP cold-eyes-engine fold-in — pull 13 (ANTS-1411 + 1412 + 1413 + 1414 + 1440, 2026-05-18)
 
 Five-item bundle against the `cold_eyes_*` MCP family — three fixes
