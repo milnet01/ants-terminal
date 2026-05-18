@@ -153,13 +153,14 @@ For context on the existing defense posture:
 
 ## Acknowledgements
 
-We maintain a public list of researchers who have responsibly
-disclosed vulnerabilities. If you would prefer to remain anonymous,
+We will maintain a public list of researchers who responsibly
+disclose vulnerabilities. *No disclosed vulnerabilities yet
+(as of 2026-05-18).* If you would prefer to remain anonymous,
 say so in your report.
 
 ---
 
 *This policy will be revised as the project matures. Last reviewed for
-the 0.7.x line (most recent re-confirmation: 0.7.83, 2026-05-11 —
+the 0.7.x line (most recent re-confirmation: 0.7.91, 2026-05-18 —
 supported-versions table holds; the substantive disclosure policy is
 unchanged from 0.6.16).*

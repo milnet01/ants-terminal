@@ -356,16 +356,31 @@ adequately.
 
 ## Table of Contents
 
+Regenerated 2026-05-18 to match current `## ` headings. Section
+order below is the source order in the file (top to bottom).
+
 1. [Distribution-adoption overview](#distribution-adoption-overview)
-2. [0.5.0 — shipped](#050--shipped-2026-04-13)
-3. [0.6.0 — shipped](#060--shipped-2026-04-14)
-4. [0.7.0 — shell integration + triggers](#070--shell-integration--triggers-target-2026-06)
-5. [0.7.12 — independent-review sweep](#0712--independent-review-sweep-target-2026-05)
-6. [0.8.0 — multiplexing + marketplace](#080--multiplexing--marketplace-target-2026-08)
-7. [0.9.0 — platform + a11y](#090--platform--a11y-target-2026-10)
-8. [1.0.0 — stability milestone](#100--stability-milestone-target-2026-12)
-9. [Beyond 1.0 — long-horizon](#beyond-10--long-horizon)
-10. [How to propose a roadmap item](#how-to-propose-a-roadmap-item)
+2. [Per-store publication playbook](#per-store-publication-playbook)
+3. [0.5.x and 0.6.x — archived](#05x-and-06x--archived)
+4. [0.7.0 — shell integration + triggers — shipped 2026-04-15](#070--shell-integration--triggers--shipped-2026-04-15)
+5. [0.7.7 — hardening pass — shipped 2026-04-15](#077--hardening-pass--shipped-2026-04-15)
+6. [0.7.12 — independent-review sweep — shipped 2026-04-19](#0712--independent-review-sweep--shipped-2026-04-19)
+7. [0.7.50–0.7.59 — indie-review sweep + companion prep — shipped 2026-04-28+ (in flight at 0.7.59)](#0750—0759--indie-review-sweep--companion-prep--shipped-2026-04-28-in-flight-at-0759)
+8. [0.7.92 — indie-review #4 + Ants MCP roadmap pass (target: 2026-05-21)](#0792--indie-review-4--ants-mcp-roadmap-pass-target-2026-05-21)
+9. [0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)](#0765--bundle-g-indie-review-sweep--ants-1118-fix-pass-target-2026-05)
+10. [0.7.80–0.7.84 — post-0.7.79 user-feedback rolling sweep — shipped 2026-05-10 → 2026-05-11](#0780—0784--post-0779-user-feedback-rolling-sweep--shipped-2026-05-10--2026-05-11)
+11. [0.7.79 — scoped indie-review #3 on TerminalGrid + TerminalWidget — shipped 2026-05-08](#0779--scoped-indie-review-3-on-terminalgrid--terminalwidget--shipped-2026-05-08)
+12. [0.7.78 — independent-review sweep #2 — shipped 2026-05-08](#0778--independent-review-sweep-2--shipped-2026-05-08)
+13. [0.8.0 — multiplexing + marketplace (target: 2026-08)](#080--multiplexing--marketplace-target-2026-08)
+14. [0.9.0 — platform + a11y (target: 2026-10)](#090--platform--a11y-target-2026-10)
+15. [1.0.0 — stability milestone (target: 2026-12)](#100--stability-milestone-target-2026-12)
+16. [Beyond 1.0 — long-horizon](#beyond-10--long-horizon)
+17. [How to propose a roadmap item](#how-to-propose-a-roadmap-item)
+
+> The 0.7.x section order above is **source-file order**, which the
+> Ants Roadmap dialog uses for position-is-priority filtering — not
+> ship-date order. Section anchors are GitHub-rendered slugs; if the
+> linker fails on GitHub, use the in-page search bar instead.
 
 ---
 
@@ -9966,6 +9981,354 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Lanes: mcp-test-audit.
   Source: Vestige cross-session report 2026-05-18 (Slice 19 addendum).
+
+- 📋 [ANTS-1514] **`last_audit_summary` falls back to raw cppcheck XML / clang-tidy text / semgrep JSON when no SARIF exists.**
+  RetroArch §2 has been recurring across **at least 3 sessions** —
+  the project's `.audit_cache/` contains 21 `cppcheck-b*.xml` files
+  (~1.3 MB) but no `audit-*.sarif`, so the tool returns
+  `not_audited`. Many projects keep raw analyzer output rather than
+  running an aggregator pass. Add per-tool ~50-line extractors for
+  cppcheck XML + clang-tidy text + semgrep JSON, surfacing the same
+  `{top_findings, file_counts, severity_distribution}` shape.
+  Kind: enhancement.
+  Lanes: mcp-last-audit-summary, auditengine.
+  Source: RetroArch cross-session reports 2026-05-17 Bundle 62 + 2026-05-17 Bundle 63.
+
+- 📋 [ANTS-1515] **`verify_changes` skips the cwd-match gate when `cache_only=true` (read-only path).**
+  RetroArch Bundle 63: `verify_changes(caller_cwd=…, cache_only:true)`
+  was refused with `cwd_mismatch` because the user's focused tab
+  was on a different project. But `cache_only:true` is documented as
+  "returns the cached response if present; else returns `{ok:true,
+  cache_miss:true}` without running gates" — i.e. pure read, no side
+  effect for the gate to protect against. Relax: when `cache_only`,
+  treat as read and skip the cwd-match (mirror `roadmap_query` /
+  `workspace_search` shape). Optional follow-up: also relax for
+  full runs when caller_cwd is explicit + path is a known tab.
+  Kind: fix.
+  Lanes: mcp-verify-changes, claudeintegration.
+  Source: RetroArch cross-session report 2026-05-17 Bundle 63 §3.
+
+- 📋 [ANTS-1516] **`project_layout` surfaces `roadmap_found: bool` (or `roadmap: null`) when nothing was discovered.**
+  RetroArch Bundle 62 + 64: `project_layout` returned
+  `{ok:true, cached:true, roadmap:{path:"", size_bytes:0, …}}` —
+  the cache hit and empty-path are both correct, but `ok:true` reads
+  as success when nothing useful was found. A caller that only
+  checks `ok` then tries `.split("/")[-1]` on `roadmap.path` gets
+  an empty string. Add `roadmap_found: bool` top-level, or change
+  the empty-result shape to `roadmap: null` so callers can
+  short-circuit. Tiny ergonomics nit; recurring across 2 sessions.
+  Kind: fix.
+  Lanes: mcp-project-layout.
+  Source: RetroArch cross-session reports 2026-05-17 Bundle 62 + 2026-05-18 Bundle 64.
+
+- 📋 [ANTS-1517] **`roadmap_query` adds `include_body: true` mode returning per-bullet body prose (truncated).**
+  RetroArch Bundle 65: dense single-line bundle-progress tables
+  (rows of 2-7 KB of inline triage notes per bundle) make `Read`
+  blow the 25K-token harness budget even at `limit=45`. Forced into
+  5-10-line reads to traverse a 65-line table region — costs
+  approximately 3-5 extra calls per session. `roadmap_query` could
+  return body prose alongside the existing `{id, status, headline,
+  kind, lanes}` shape; truncate to ~2000 chars per bullet with a
+  `body_truncated: bool` flag so callers can follow up with a
+  targeted Read for the full text.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, roadmap-fold-in.
+  Source: RetroArch cross-session report 2026-05-18 Bundle 65 §2.
+
+- 📋 [ANTS-1518] **Three review surfaces (`cold_eyes_*` / `indie_review_*` / `test_audit_*`) — discoverability prefix-tag OR unified `review_*` quartet with `kind:` discriminator.**
+  Both MAME morning #2 and Music #3 flagged: 15 tools across three
+  near-parallel families (`_brief` / `_partition` /
+  `_synthesis_prompt` / `_fold_in`) share orchestration shape but
+  expose subtly different parameters and likely different
+  rendering. From a single session that hasn't read every tool
+  description, the choice looks arbitrary. Two paths: (a) cheap —
+  add a `[cold-eyes]` / `[indie-review]` / `[test-audit]` /
+  `[roadmap]` / `[git]` / `[workspace]` / `[audit]` prefix-tag at the
+  start of every tool's description, grep-friendly in
+  deferred-tool surfacing; (b) principled — single
+  `mcp__ants__review_brief` / `_partition` / `_synthesis_prompt` /
+  `_fold_in` quartet with a `kind: "cold_eyes" | "indie" | "test"`
+  discriminator (3× tool-surface reduction). (a) first; (b) tracked.
+  Kind: enhancement.
+  Lanes: mcp-discoverability, mcp-cold-eyes, mcp-indie-review, mcp-test-audit.
+  Source: MAME_Curator + Music_Production cross-session reports 2026-05-18.
+
+- 📋 [ANTS-1519] **`test_audit_partition` chunk_size default surfaced in tool schema description.**
+  MAME #4 + evening #5 both flagged: the `/test-audit` skill body
+  documents "default chunk_size = 12 files per chunk (override via
+  config)" but the MCP partition tool's schema description doesn't
+  state its own default. A session that calls the MCP directly
+  cannot tell whether 10, 12, or 16 will run. Add the literal
+  default + min/max bounds to the schema description string
+  ("Default: 12; min 4; max 30; override via …").
+  Kind: doc-fix.
+  Lanes: mcp-test-audit, mcp-cold-eyes, mcp-indie-review.
+  Source: MAME_Curator cross-session reports 2026-05-18 (morning + evening).
+
+- 📋 [ANTS-1520] **`caller_cwd` made uniformly Required across the MCP namespace (read AND write).**
+  MAME evening #1: some tools require `caller_cwd` (refuse on
+  empty), others accept it optionally (fall back to the focused
+  Ants tab's cwd). The mixed regime adds a per-call mental tax of
+  "did I need it this time?" and, when a session runs in a tab
+  whose focused project differs from the caller's project, optional
+  `caller_cwd` quietly returns the wrong project's data. Promote
+  every `Optional`-classified read tool to `Required`; emit
+  `caller_cwd_required` uniformly; per-tool docstring opens with
+  the same line.
+  Kind: enhancement.
+  Lanes: mcp-caller-cwd, claudeintegration.
+  Source: MAME_Curator cross-session report 2026-05-18 evening §1.
+
+- 📋 [ANTS-1521] **`roadmap_query` returns a `headline_oneline` field alongside `headline` (newlines → single space).**
+  MAME evening #2: returned headlines include literal `\n`
+  mid-sentence (preserves source-markdown line-wraps). An LLM
+  concatenating headlines into a summary gets garbled output;
+  every consumer has to post-process identically. Add a
+  drop-in `headline_oneline` companion: strip `\n` + collapse
+  runs of whitespace to single space. Keep `headline` for parity
+  with disk.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, roadmap-format.
+  Source: MAME_Curator cross-session report 2026-05-18 evening §2.
+
+- 📋 [ANTS-1522] **`git_state op="status"` merges untracked into `files[]` for `git status --porcelain` parity.**
+  MAME evening #3: today `files:[{path, index, worktree}]` and
+  `untracked:[path…]` are two parallel arrays. Lift untracked
+  into `files[]` with `index:"?"` + `worktree:"?"` — single array,
+  single shape, one fewer special case for the caller's loop.
+  Keep `untracked[]` as a derived field for one release with a
+  `DEPRECATED` marker.
+  Kind: enhancement.
+  Lanes: mcp-git-state.
+  Source: MAME_Curator cross-session report 2026-05-18 evening §3.
+
+- 📋 [ANTS-1523] **Document the "resume an audit / pick up deferred audit follow-ups" recipe.**
+  MAME evening #4: a session that picks up the working tree the
+  earlier audit left modified-but-uncommitted has no first-class
+  MCP entry point — no `test_audit_resume(latest=True)`, no
+  `partition_token` discovery via `session_memory`, no documented
+  "follow-up session" path. The workaround (re-read ROADMAP +
+  verify each FP## against current code) works but a documented
+  recipe would shorten the bootstrap. Either a docs-only entry on
+  the `/test-audit` skill, or a thin `test_audit_resume` MCP verb
+  that scans `session_memory` for prior `partition_token`s.
+  Kind: doc-fix.
+  Lanes: mcp-test-audit, docs, recommended-routines.
+  Source: MAME_Curator cross-session report 2026-05-18 evening §4.
+
+- 📋 [ANTS-1524] **Section-slug case-insensitive match (or loud `bad_case` refusal) in `roadmap_query` / `roadmap_log`.**
+  MAME evening §6: user flagged case-sensitivity in Ants MCP. No
+  concrete hit this session, but for keys / slugs / section-slug
+  lookups a case-insensitive match — or, failing that, a loud
+  `bad_case` refusal — would prevent the silent-miss failure mode
+  that is the worst outcome for an LLM caller. Today an off-case
+  slug returns `bad_section` which reads as "section doesn't
+  exist."
+  Kind: fix.
+  Lanes: mcp-roadmap-query, mcp-roadmap-log.
+  Source: MAME_Curator cross-session report 2026-05-18 evening §6.
+
+- 📋 [ANTS-1525] **`verify_changes` honours caller-supplied `timeout_sec`; error envelope distinguishes tool-timeout vs transport-timeout.**
+  3D_Engine #1: `verify_changes(gates:["build"], timeout_sec:900)`
+  returned `MCP error -32000: Ants MCP transport: timed out` for
+  a 16-step ninja build that should have finished in seconds. The
+  workaround (Bash → `cmake --build`) completed under a minute.
+  Hypotheses: (i) the MCP-side wrapper isn't plumbing
+  `timeout_sec` all the way through, (ii) the transport itself is
+  closing the connection sooner than the tool's budget. Asks:
+  confirm `timeout_sec` is honoured end-to-end; surface in the
+  error string which side timed out; document any practical
+  transport cap separately from the tool's [10, 1800] clamp.
+  Kind: fix.
+  Lanes: mcp-verify-changes, mcp-transport, claudeintegration.
+  Source: Vestige 3D_Engine cross-session report 2026-05-17 §1.
+
+- 📋 [ANTS-1526] **`test_audit_synthesis_prompt` summary mode includes per-dimension severity histograms.**
+  3D_Engine #3: `summary` mode returns dimension hit counts +
+  most-referenced source files — the right shape for triage prep.
+  Wishlist: beyond raw count, include a tiny histogram of
+  severities present per dimension
+  (`{assertions: {crit:0, high:1, med:7, low:18}}`). Lets the
+  orchestrator decide whether to pass `mode:"full"` for a specific
+  dimension without re-reading every chunk file. Today the
+  orchestrator opens every `c-NNN.md` to learn "is there a CRIT
+  anywhere?" — the triage subagent already does this; surfacing
+  it in the MCP layer skips the subagent for small audits.
+  Kind: enhancement.
+  Lanes: mcp-test-audit-synthesis.
+  Source: Vestige 3D_Engine cross-session report 2026-05-17 §3.
+
+- 📋 [ANTS-1527] **`test_audit_fold_in` recovers from `id_counter_failed` flock failures + surfaces the counter-file path in the error envelope.**
+  3D_Engine #4: `test_audit_fold_in` with 27 items failed
+  `{code:"id_counter_failed", error:"allocateIds returned 0 of 27
+  (flock/IO failure)"}`. Single session, no concurrent fold-in,
+  local ext4. Workaround: hand-wrote ROADMAP block with manually
+  assigned IDs. Asks: (a) on flock failure, fall back to
+  `O_CREAT | O_EXCL` rename-based locking before giving up;
+  (b) surface the counter-file path in the error response so the
+  caller can clear a stale lock; (c) document the per-project
+  state location in the tool docstring; (d) confirm
+  `RoadmapFoldIn::insertBlock` handles 80+ items without
+  truncation — a `max-items-per-fold` paged guard would be safer
+  than silent truncation.
+  Kind: fix.
+  Lanes: mcp-test-audit-fold-in, roadmapfoldin.
+  Source: Vestige 3D_Engine cross-session report 2026-05-17 §4.
+
+- 📋 [ANTS-1528] **Pre-pass regex strips C/C++ string literals + `//` / `/* */` comments before pattern matching.**
+  3D_Engine #6: pre-pass flagged `tests/test_async_driver.cpp`
+  for `sleep_call` — but those lines are inside C++ raw-string
+  literals holding a Python child-process script
+  (`"import time\ntime.sleep(0.2)\n"`). The C++ code does not call
+  `sleep` there. Low severity (chunk subagent caught + dismissed
+  it) but wastes subagent tokens on known-bogus checks. Standard
+  tokenisation step; doesn't need to be perfect, just don't match
+  inside `"…"` or `R"(…)"`.
+  Kind: fix.
+  Lanes: mcp-test-audit, testauditengine, pre-pass.
+  Source: Vestige 3D_Engine cross-session report 2026-05-17 §6.
+
+- 📋 [ANTS-1529] **`cold_eyes_partition` case-insensitive filename match + topic-cohesion docs/*.md discovery + summary-vs-doc_paths trim.**
+  RetroDB #1 (HIGH) + #7 (CORRECTNESS). RetroDB uses lowercase
+  `roadmap.md` and YAML `data/changelog.yaml`; the partition
+  returned only one lane (`contracts` with two docs) for a 12-doc
+  tree because canonical contract names didn't match. Three fixes:
+  (a) case-insensitive `roadmap.md` / `changelog.md` matching;
+  (b) discover all `docs/*.md` + `.rst` at top level and propose
+  lanes by topic cohesion; (c) trim the lane `summary` to match
+  the actual `doc_paths` (today's summary names files the lane
+  doesn't include). Optional: `partition_source: "default" |
+  "override"` debug field; `missing_contract_files[]` +
+  `discovered_contract_files[]`.
+  Kind: fix.
+  Lanes: mcp-cold-eyes-partition, coldeyesengine.
+  Source: RetroDB cross-session report 2026-05-18 §1 + §7.
+
+- 📋 [ANTS-1530] **`roadmap_query` adapter for `#### Pass … (SEVERITY, SIZE) + - **Status**: <word>` shape (third format, joining v1 emoji + GFM).**
+  RetroDB #8 (MEDIUM). `roadmap_query` returns
+  `unrecognised_format` for RetroDB's 186-KB `roadmap.md` which
+  uses `#### Pass N.M …` headings with `- **Status**:
+  todo/in-progress/done/shipped/deferred` markers under each.
+  ANTS-1428 + ANTS-1441 added GFM-task-list adapter; extend
+  similarly to this third format. Detection heuristic: zero
+  emoji-prefixed bullets but ≥ N `#### Pass …` headings + ≥ N
+  `- **Status**: <word>` lines → switch to the new adapter. Each
+  `####` becomes one bullet; status maps `todo` → 📋,
+  `in-progress` → 🚧, `done`/`shipped` → ✅,
+  `deferred`/`considered` → 💭. `(SEVERITY, SIZE)` suffix maps to
+  two derived fields.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, mcp-roadmap-log, roadmapfoldin.
+  Source: RetroDB cross-session report 2026-05-18 (Pass 47.1) §8.
+
+- 📋 [ANTS-1531] **Doc-comment widening — `BulletRecord::id` at `src/roadmapdialog.h:293` still reads `ANTS-NNNN`.**
+  Cold-eyes 2026-05-18 follow-up to ANTS-1405. The bullet parser
+  was widened to accept any letter-led prefix
+  (`\[([A-Za-z][A-Za-z0-9_-]*-\d+)\]` at `roadmapdialog.cpp:671`),
+  but the `BulletRecord::id` doc-comment in `roadmapdialog.h:293`
+  still says `ANTS-NNNN; empty if no [ANTS-NNNN] token` — code
+  accurate, comment stale. One-line fix: update to
+  `<PREFIX>-NNNN; empty if no [<PREFIX>-NNNN] token`.
+  Kind: doc-fix.
+  Lanes: roadmapdialog.
+  Source: Cold-eyes 2026-05-18 (contracts + spec ANTS-1160 lanes).
+
+### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
+
+> Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.
+> Loops: 1 dispatch + Phase-3 verification + Phase-4 fix + Phase-5
+> re-pass + Phase-4b fix.
+> Findings surfaced: ~85 (3 CRITICAL, 19 HIGH, 23 MEDIUM, 40 LOW).
+> Findings fixed in this pass: ~32 (the highest-impact accuracy
+> drift + structural items); the rest deferred and surfaced
+> below or addressed at the same line as fixes above (ANTS-1514..1531).
+
+- 📋 [ANTS-1532] **CHANGELOG.md ANTS-1318 rolling-RC entry rewrite.**
+  Cold-eyes spec/ANTS-1318 lane (CRITICAL): the 0.7.91 CHANGELOG
+  entry for ANTS-1318 describes a "rolling-RC tag, force-moved on
+  every push" model that directly contradicts the spec's
+  authoritative frozen-RC + cherry-pick design. Both can't be
+  right — implementer reading CHANGELOG first would build the
+  wrong pipeline. Edit risks touching shipped CHANGELOG history;
+  needs user decision: (a) silent edit to bring CHANGELOG inline
+  with the spec, (b) add a correction footnote in the next
+  CHANGELOG section, (c) leave for the actual implementer to
+  reconcile at ANTS-1318 ship time.
+  Kind: doc-fix.
+  Lanes: changelog, release-pipeline.
+  Source: Cold-eyes 2026-05-18 (spec/ANTS-1318 lane).
+
+- 📋 [ANTS-1533] **`docs/standards/coding.md` cross-references `~/.claude/CLAUDE.md § 5` — non-portable for shareable standard.**
+  Cold-eyes standards lane (HIGH). The README at
+  `docs/standards/README.md:54-66` claims the four v1 standards
+  are "copy verbatim into your project's `docs/standards/`
+  directory." But `coding.md:59-60` reads:
+  *"For per-language idiom examples (Qt 6, C++20+, Python 3.10+,
+  React 18+), see `~/.claude/CLAUDE.md § 5`."* Any downstream
+  adopter hits a dangling pointer into the original author's
+  user-private path. Also the project's `coding.md` is
+  byte-identical to `~/.claude/skills/app-workflow/templates/docs/
+  standards/coding.md` — so the fix needs to land in the
+  template, not just here. Choose one: (a) inline a
+  one-paragraph language-idiom summary; (b) reference a public
+  URL / repo doc; (c) drop the cross-ref entirely.
+  Kind: doc-fix.
+  Lanes: docs-standards, skill-templates.
+  Source: Cold-eyes 2026-05-18 (standards lane).
+
+- 📋 [ANTS-1534] **`docs/specs/ANTS-1318.md` §2.5 RC zsync channel mechanism triple-described.**
+  Cold-eyes spec/ANTS-1318 lane (HIGH). § 2.5 names three
+  different mechanisms for keeping RC users on the RC zsync
+  channel: (i) a literal `rc-channel` tag the workflow
+  maintains; (ii) a regex-based filename pattern
+  (`gh-releases-zsync|milnet01|ants-terminal|v*-rc|...`); (iii)
+  INV-8 just says "RC channel" without picking. Implementer
+  cannot pick. Needs design decision before `release.yml` work
+  starts. Recommend the literal tag (since `gh-releases-zsync`
+  URL spec needs a single tag name, not a wildcard) and drop
+  the other two from the spec.
+  Kind: doc.
+  Lanes: spec-1318, release-pipeline.
+  Source: Cold-eyes 2026-05-18 (spec/ANTS-1318 lane).
+
+- 📋 [ANTS-1535] **HARDWARE_SPONSORS.md vs SUPPORTERS.md tier funding clarity.**
+  Cold-eyes community lane (MEDIUM). HARDWARE_SPONSORS.md lead-in
+  says "One-time 🚀 milestone backers" but line 29 references
+  "Recurring … sustained via the monthly tiers" — two mutually
+  exclusive funding cadences described in adjacent paragraphs.
+  Also SUPPORTERS.md Patrons tier just says "Early access to
+  release candidates" — memory notes (Patrons see week's release
+  as RC starting prior Wednesday) imply a 7-day lead time which
+  the doc doesn't quantify. Sweep both files for cadence + price
+  clarity in one pass.
+  Kind: doc-fix.
+  Lanes: community-docs, hardware-sponsors, supporters.
+  Source: Cold-eyes 2026-05-18 (community lane).
+
+- 📋 [ANTS-1536] **`PLUGINS.md` feature-detect example uses lexicographic version compare (`ants._version >= "0.6"`) — breaks at 0.10+.**
+  Cold-eyes plugins lane (LOW). The §Versioning example at
+  `PLUGINS.md:251-260` uses string-lexicographic comparison
+  (`ants._version >= "0.6"`). Works for 0.6 vs 0.7 but fails
+  for 0.10 vs 0.6 (`"0.10" < "0.6"` lexicographically). Add
+  the counterexample and recommend split/parse: `local
+  major, minor = ants._version:match("(%d+)%.(%d+)"); if
+  tonumber(major) > 0 or tonumber(minor) >= 6 then …`.
+  Kind: doc-fix.
+  Lanes: plugins.
+  Source: Cold-eyes 2026-05-18 (plugins lane).
+
+- 📋 [ANTS-1537] **ANTS-1160 P1 — remaining doc-tree edits for prefix relaxation.**
+  Cold-eyes spec/ANTS-1160 lane. §12 P1 enumerated 7 doc-tree
+  edits (ROADMAP.md format marker, README.md ROADMAP_FORMAT v1
+  text, CLAUDE.md `[ANTS-NNNN]` IDs phrasing, etc) to follow the
+  parser widening. The parser widening shipped under ANTS-1405;
+  the format-spec marker was bumped to v1.1 by this pass; the
+  remaining doc-tree edits (ROADMAP header, README, CLAUDE.md
+  prefix-agnostic phrasing) still need to land. Bundle as one
+  doc-fix commit when the next format change ships.
+  Kind: doc-fix.
+  Lanes: roadmap-format, claude-md, readme.
+  Source: Cold-eyes 2026-05-18 (spec/ANTS-1160 lane).
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 

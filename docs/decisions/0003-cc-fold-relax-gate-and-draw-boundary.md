@@ -95,6 +95,10 @@ two IDs.
    the other once the foundation in 0.7.88 has shipped. 0.7.90
    strictly depends on 0.7.88's RoadmapFoldIn helper.
 
+   **Outcome (2026-05-13):** 0.7.88, 0.7.89, and 0.7.90 all
+   shipped on schedule; ANTS-1111, ANTS-1112, and ANTS-1113
+   closed in their respective release sections of CHANGELOG.md.
+
 4. **Acknowledge what already exists in code** (so neither spec
    re-invents shipped scaffolding):
 

@@ -244,11 +244,13 @@ build a brief, they MUST:
    syntactically isolated.
 
 The filter+cap+truncate text block is bounded at **64 KiB total**.
-The cap is comfortably above the worst case (50 entries × ~1.3 KiB
-each ≈ 65 KiB raw + fence overhead). If the block exceeds the cap,
-it is truncated and a `(truncated — see .ants_review_falsepos.jsonl)`
-sentinel is appended. The cap is a brief-size budget; the on-disk
-ledger is unbounded.
+This roughly matches the worst-case prose footprint (50 entries
+× ~1.3 KiB each ≈ 65 KiB raw); after fence overhead and the
+header, briefs whose 50 entries average above ~1.25 KiB hit the
+truncation path. When the block exceeds the cap it is truncated
+and a `(truncated — see .ants_review_falsepos.jsonl)` sentinel is
+appended. The cap is a brief-size budget; the on-disk ledger is
+unbounded.
 
 ## Crash recovery and orphan lines
 
@@ -272,7 +274,7 @@ The ledger is append-only by contract. Rotation responsibilities:
 - **The user prunes** by hand-editing the file (delete obsolete
   lines, keep the rest). A pre-commit script could re-sort by
   timestamp; the standard does not require this.
-- **MCP does NOT auto-prune.** The 50-entry cap and 8-KiB cap
+- **MCP does NOT auto-prune.** The 50-entry cap and 64-KiB cap
   apply to the *brief*; the *file* is unbounded.
 
 Rotation guardrail: if the user runs a sweep against code that has

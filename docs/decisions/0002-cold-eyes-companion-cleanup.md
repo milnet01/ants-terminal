@@ -1,10 +1,15 @@
 # ADR-0002: Cold-eyes review of the Claude-Code companion bundle
 
-- **Status:** Accepted (decisions 1-9 all observable in code/ROADMAP/CHANGELOG as of 0.7.59 onward)
+- **Status:** Accepted (Amended by
+  [ADR-0003](0003-cc-fold-relax-gate-and-draw-boundary.md) —
+  decision 8: gate relaxed for the
+  `/audit /indie-review /debt-sweep` folds; other decisions
+  unaffected).
 - **Date:** 2026-04-30 (proposed); accepted in effect 2026-04-30 with the 0.7.59 ship
 - **Deciders:** Project lead, Claude
 - **Related:** ROADMAP.md ANTS-1110, ANTS-1111, ANTS-1112, ANTS-1113,
-  ANTS-1114, ANTS-1116, ANTS-1117, ANTS-1056
+  ANTS-1114, ANTS-1116, ANTS-1117, ANTS-1056;
+  [ADR-0003](0003-cc-fold-relax-gate-and-draw-boundary.md)
 
 ## Context
 
@@ -106,7 +111,9 @@ and ship features the user didn't ask for.
   audit consumers (CI runners, MCP server) — the architectural
   payoff outlives the immediate `audit-run` use case.
 - ROADMAP.md shrinks by retiring ANTS-1110 catalogue and
-  ANTS-1056; signal-to-noise ratio goes up.
+  ANTS-1056 — "retire" here means **mark `💭` with a one-line
+  forward pointer in place**, not delete (the stable ID survives
+  per `roadmap-format.md` § 3.5.1). Signal-to-noise ratio goes up.
 
 **Negative:**
 

@@ -1,7 +1,7 @@
 # Ants Terminal — Plugin Authoring Standards
 
 > **Audience**: plugin authors writing against `ants-terminal` **v0.7+** (last
-> reviewed for 0.7.81, Lua 5.4 runtime). The plugin surface hasn't grown
+> reviewed for 0.7.91, Lua 5.4 runtime). The plugin surface hasn't grown
 > since 0.6.9 — per-event "0.6.9" markers below remain accurate. For
 > internal plugin-system architecture notes aimed at Ants-Terminal
 > contributors, see [`docs/standards/coding.md`](docs/standards/coding.md)
@@ -23,7 +23,7 @@ those drift from this doc, the doc wins and an issue should be filed.
 1. [Directory Layout](#directory-layout)
 2. [Manifest (`manifest.json`)](#manifest-manifestjson)
 3. [Entry Point (`init.lua`)](#entry-point-initlua)
-4. [The `ants.*` API — Current (v0.7+, reviewed for 0.7.81)](#the-ants-api--current-v07-reviewed-for-0781)
+4. [The `ants.*` API — Current (v0.7+, reviewed for 0.7.91)](#the-ants-api--current-v07-reviewed-for-0791)
 5. [Events](#events)
 6. [Sandbox Boundaries](#sandbox-boundaries)
 7. [Resource Limits](#resource-limits)
@@ -87,7 +87,7 @@ Optional but strongly recommended. **Manifest v2** (shipped in 0.6.0) adds
 
 | Field             | Type    | Required | Default    | Notes                                                       |
 |-------------------|---------|----------|------------|-------------------------------------------------------------|
-| `name`            | string  | no       | directory  | Human-readable display name                                 |
+| `name`            | string  | no       | directory  | Human-readable display name. **Display only** — the on-disk directory name is the plugin id used for permission grants, `ants.settings` storage keys, and engine bookkeeping. |
 | `version`         | string  | no       | `"0.1.0"`  | **[SemVer](https://semver.org)** encouraged                 |
 | `description`     | string  | no       | `""`       | One sentence; ~80 char soft limit                           |
 | `author`          | string  | no       | `""`       | Name + email or URL                                         |
@@ -101,6 +101,12 @@ Optional but strongly recommended. **Manifest v2** (shipped in 0.6.0) adds
 |-------------------|-----------------------------------------------------------|
 | `clipboard.write` | `ants.clipboard.write(text)` — write system clipboard     |
 | `settings`        | `ants.settings.get(key)` / `ants.settings.set(key, v)` — per-plugin k/v store |
+
+Unknown permission strings (anything outside the table above) are
+**silently dropped** by the manifest parser. A plugin that declares
+`["network"]` will see no permission prompt and no error — only the
+two values above are recognised. Adding a new permission string
+requires a matching entry in `pluginmanager.cpp::knownPermissions()`.
 
 Un-granted permissions result in the corresponding `ants.*` table being
 **absent** (not `nil`), so plugins can feature-detect with
@@ -146,7 +152,11 @@ end)
 - `init.lua` runs **once**, synchronously, when the plugin's VM is created
   (at terminal startup for already-enabled plugins, or when the user toggles
   it on in Settings → Plugins, or when hot-reload fires with
-  `ANTS_PLUGIN_DEV=1`).
+  `ANTS_PLUGIN_DEV` set to any non-`0` value, conventionally `1`).
+  Plugin files: `manifest.json` is capped at 1 MiB
+  (`kMaxManifestBytes`) and `init.lua` must be a regular file —
+  symlinks at `init.lua` are rejected before load
+  (`pluginmanager.cpp::loadFromDir`).
 - A `load` event fires **once** immediately after `init.lua` returns — use
   `ants.on("load", fn)` for deferred setup that needs the full ants API
   ready.
@@ -155,16 +165,16 @@ end)
   or cancel any external work. The VM closes immediately after, so no
   further ants calls will run.
 - Plugins run in **isolated VMs** — shared `lua_State` globals from other
-  plugins are not visible. Each plugin gets its own 10 MB heap and 10 M
-  instruction budget.
+  plugins are not visible. Each plugin gets its own 10 MiB heap and a
+  1.5 s per-pcall wall-clock budget (see § Resource Limits).
 - Plugins should still be **idempotent on re-init**: hot reload tears the
   whole VM down and re-creates it, so re-registered handlers simply
   replace the old ones.
 
-## The `ants.*` API — Current (v0.7+, reviewed for 0.7.81)
+## The `ants.*` API — Current (v0.7+, reviewed for 0.7.91)
 
-This is the complete surface as of **0.7.81** (no plugin-API additions
-have shipped between 0.6.9 and 0.7.81 — the per-event 0.6.9 markers in the
+This is the complete surface as of **0.7.91** (no plugin-API additions
+have shipped between 0.6.9 and 0.7.91 — the per-event 0.6.9 markers in the
 table below remain historically accurate). Functions not listed here
 do not exist and will raise `attempt to call a nil value`. Permissioned
 functions (marked 🔒) are only present when the corresponding permission
@@ -195,7 +205,9 @@ ants.notify("Build finished", "Exit 0 · 1m 14s")
 ### `ants.get_output(n)`
 
 Returns the last `n` lines of visible scrollback as a single newline-joined
-string. Default `n = 50`. Capped at the current scrollback size.
+string. Default `n = 50`. Bounded by the buffer the host pushes via
+`LuaEngine::setRecentOutput()` — currently the visible scrollback
+window.
 
 ```lua
 local recent = ants.get_output(200)
@@ -236,7 +248,8 @@ ants.log("plugin foo: loaded config from " .. cfg_path)
 Registers a callback for a named event. Handler receives event data as a
 string and may return `false` from keypress events to cancel propagation.
 Multiple handlers per event are allowed; invocation order is
-registration order.
+registration order. **Maximum 64 handlers per event** — exceeding the
+cap raises a Lua error (`kMaxHandlersPerEvent` in `luaengine.cpp`).
 
 ```lua
 ants.on("keypress", function(key)
@@ -390,7 +403,7 @@ unsanitised user input directly into `string.find` /
 `string.match` / `string.gsub` regex; bound the input size first.
 
 Available: `string`, `table`, `math`, `utf8`, plus the stripped-down
-`_G`. `print()` is typically redirected to `ants.log`; don't rely on
+`_G`. `print()` is redirected to `ants.log`; don't rely on
 stdout behaving as in a standalone Lua REPL.
 
 **Bytecode rejection:** if `init.lua` begins with the Lua bytecode
@@ -407,7 +420,7 @@ abuse):
 | Open network sockets | blocked — no `io`, no `socket` lib | Planned: capability-gated `ants.net` |
 | Read other plugins' state | blocked — each plugin runs in its own `lua_State` (0.6+) | Hit `ants.settings` to persist your own state |
 | Read arbitrary env vars | blocked — no `os.getenv` | Planned: curated `ants.env.get(name)` for whitelisted vars |
-| Write to clipboard | not exposed yet | Planned: `ants.clipboard.write(text)` |
+| Write to clipboard | available with `clipboard.write` permission | See § 🔒 `ants.clipboard.write(text)` |
 | Read clipboard | not exposed and not planned | OSC 52 read is disabled system-wide for security |
 
 ## Resource Limits
@@ -567,7 +580,7 @@ on these today** — they'll fail with `attempt to call a nil value`.
 
 **All of the below are live in 0.6.0.** See the
 [manifest contract](#manifest-manifestjson) and the
-[`ants.*` API](#the-ants-api--current-v07-reviewed-for-0781) section for concrete docs.
+[`ants.*` API](#the-ants-api--current-v07-reviewed-for-0791) section for concrete docs.
 
 - ✅ **`manifest.json` v2** with declarative `permissions`, `keybindings`,
   and `settings_schema` fields. First-load prompt + persisted grants in
@@ -578,7 +591,7 @@ on these today** — they'll fail with `attempt to call a nil value`.
   is a flat string k/v — the JSON-Schema-driven Settings UI auto-render
   is deferred to 0.7.
 - ✅ **Per-plugin Lua VMs** — each plugin gets its own `lua_State` with
-  independent 10 MB heap + 10 M instruction budget.
+  independent 10 MiB heap + 1.5 s per-pcall wall-clock budget.
 - ✅ **`ants._version`** and **`ants._plugin_name`** exposed.
 - ✅ **Hot reload** via `QFileSystemWatcher` — enabled when
   `ANTS_PLUGIN_DEV=1`. Fires `load` / `unload` lifecycle events.

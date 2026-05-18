@@ -1,5 +1,5 @@
-<!-- ants-roadmap-format-spec: 1 -->
-# ROADMAP.md & CHANGELOG.md format spec (v1)
+<!-- ants-roadmap-format-spec: 1.1 -->
+# ROADMAP.md & CHANGELOG.md format spec (v1.1)
 
 > Detailed format spec for the two files the Ants Terminal Roadmap
 > dialog parses deterministically. Extracted from
@@ -106,8 +106,8 @@ filter panel surfaces any emoji it sees in any `###` heading.
 ```markdown
 - 📋 [PROJ-0123] **One-line headline ending with a period.** Body
   spanning as many lines as needed; lines wrapped to roughly 70
-  columns. Cite `file:line` in backticks when relevant. End with
-  a `Lanes:` line declaring which subsystems own the work.
+  columns. Cite `file:line` in backticks when relevant.
+  Kind: implement.
   Lanes: SubsystemA, SubsystemB.
 ```
 
@@ -151,7 +151,10 @@ The ID is a project-prefixed monotonic integer:
 
 - **Prefix** — 4–6 ASCII letters, all caps. One per project.
   Pick something short and grep-friendly. Examples: `ANTS`,
-  `MYPRJ`, `ENGINE`, `OBS`, `R5`.
+  `MYPRJ`, `ENGINE`, `RETRO`. Multi-prefix repos (e.g. `Sh-`,
+  `Ed-`, `Phase-`) are permitted under § 3.10.4; the
+  `\[[A-Z][A-Z0-9_-]+-\d+\]` regex accepts any
+  letter-led, dash-then-digit token.
 - **Number** — zero-padded to 4 digits minimum (`0001`, `0042`,
   `1234`). Pad wider once a project crosses 9999.
 - **Append-only** — once assigned, an ID never changes. It
@@ -465,8 +468,9 @@ extensions are the parts that GFM doesn't model:
 - A four-state taxonomy (✅ 🚧 📋 💭) instead of the GFM
   two-state checkbox (`[x]` / `[ ]`).
 - Stable IDs (`[PROJ-NNNN]`) for cross-doc reference.
-- Required `Kind:` / `Source:` / `Layman:` metadata lines per
-  bullet.
+- Required `Kind:` metadata line per bullet (§ 3.5); optional
+  `Source:` / `Layman:` metadata for provenance and
+  non-technical readers.
 
 #### 3.10.1 Semantic equivalence
 
@@ -514,10 +518,13 @@ the metadata, and the file is GFM again.
 
 This spec uses **one prefix per repo** (`ANTS-`, `VESTIGE-`,
 …) by convention. Repos with multiple work streams sometimes
-prefer **multi-prefix** schemes (`Sh-`, `Ed-`, `Phase-`) for
+prefer **multi-prefix** schemes (`SH-`, `ED-`, `PHASE-`) for
 lane visibility. Multi-prefix is permitted — the format-spec
-tooling only requires the regex `\[[A-Z][A-Z0-9_-]+-\d+\]`
-to match. The single-prefix rule is convention because it
+tooling only requires the regex
+`\[[A-Za-z][A-Za-z0-9_-]+-\d+\]` to match (mixed-case prefixes
+like `Sh-`, `Ed-` are accepted by the parser; § 3.5.1's
+all-caps rule is the recommended convention but not enforced
+mechanically). The single-prefix rule is convention because it
 keeps `.roadmap-counter` unambiguous; multi-prefix repos need
 one counter per prefix.
 

@@ -4,7 +4,9 @@
 - **Date:** 2026-05-17
 - **Deciders:** Project lead, Claude
 - **Related:** ROADMAP.md ANTS-1351, ANTS-1397, ANTS-1352, ANTS-1416,
-  ANTS-1404, ANTS-1372; CHANGELOG.md [Unreleased]
+  ANTS-1404, ANTS-1372; CHANGELOG.md ANTS-1448 entry (initially
+  filed under `[Unreleased]`; will sit under the release section
+  for the version that ships ADR-0004).
 
 ## Context
 

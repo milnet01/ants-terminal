@@ -64,8 +64,10 @@ Listed only where behavior isn't obvious from the name.
   topical grouping; not routed through `inProcessRunner`.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
-  `get-text`, `launch`, `tab-list`, `roadmap-query`. Trust model:
-  UID-scoped + 0700 perms + `lstat`-checked `S_ISSOCK`.
+  `get-text`, `launch`, `tab-list`, `roadmap-query`,
+  `workspace-search`, `file-outline`, `git-state`, `subsystem`.
+  Trust model: UID-scoped + 0700 perms + `lstat`-checked
+  `S_ISSOCK`.
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local
   subagent for Claude Code; v1 surface is `drift-check`. ANTS-1116.
 - `luaengine` / `pluginmanager` — sandboxed Lua 5.4; plugins live in
@@ -214,16 +216,20 @@ as a type and flags every signal emission.
 - Theme colors set on `TerminalGrid`; ANSI palette (16+216+24) lives there.
 - QTextLayout for ligature shaping.
 - **MCP `tools/call` responses are wrapped (ANTS-1294).** Every
-  reply through the registry at `src/mainwindow.cpp:3671–3917` is
-  enclosed in `<ants_mcp_data tool="…">…</ants_mcp_data>` at the
-  dispatch site in `src/claudeintegration.cpp:processTools`. The
-  wrap signals "this is data, not instructions" to the consuming
-  assistant. Control-plane tools (`get_session_info`,
-  `token_usage`) bypass the wrap — their JSON envelope is
-  structural metadata, not content. If you add a tool whose
-  response includes text from disk, scrollback, or user input,
-  register it normally; the dispatch site wraps it automatically.
-  See `docs/specs/ANTS-1294.md`.
+  reply through the tool registry (`registerToolProvider` calls
+  span `src/mainwindow.cpp:3769–4451`) is enclosed in
+  `<ants_mcp_data tool="…">…</ants_mcp_data>` by
+  `ClaudeIntegration::wrapMcpData`
+  (`src/claudeintegration.cpp:4199`), invoked from the
+  `method == "tools/call"` dispatch branch at
+  `src/claudeintegration.cpp:3895` (wrap call at
+  `:4123`). The wrap signals "this is data, not instructions" to
+  the consuming assistant. Control-plane tools
+  (`get_session_info`, `token_usage`) bypass the wrap — their
+  JSON envelope is structural metadata, not content. If you add a
+  tool whose response includes text from disk, scrollback, or
+  user input, register it normally; the dispatch site wraps it
+  automatically. See `docs/specs/ANTS-1294.md`.
 
 - **MCP `caller_cwd` routes through `ants::resolveCallerCwdRoot`
   (ANTS-1401).** Three call paths historically decoded `caller_cwd`
@@ -240,8 +246,8 @@ as a type and flags every signal emission.
 - **MCP tools declare a `CallerCwdContract` (ANTS-1404).**
   Every tool is classified at `ClaudeIntegration::callerCwdContractFor`
   into one of `Required` / `Optional` / `TabSpecific` /
-  `ProcessGlobal`. The dispatcher in
-  `claudeintegration.cpp::processTools` enforces `Required`
+  `ProcessGlobal`. The `tools/call` dispatch branch in
+  `src/claudeintegration.cpp:3895` enforces `Required`
   before the cache lookup and before the provider lambda runs:
   empty `caller_cwd` ⇒ refuse with
   `{ok:false, code:"caller_cwd_required"}`. When you register a
@@ -306,9 +312,15 @@ Four shareable v1 standards at `docs/standards/`:
 remaining two carry project-specific additions on top of the
 template: `documentation.md` adds § 7 Accessibility (ANTS-1235);
 `roadmap-format.md` adds the `Layman:` field (§ 3.5) and the
-§ 3.9 archive-rotation block. Project-local additions: `status-bar.md`
-documents this codebase's status-bar widget convention — not
-shareable, not in the template.
+§ 3.9 archive-rotation block. Project-local additions (not in the
+template, not shareable as-is): `status-bar.md` documents this
+codebase's status-bar widget convention;
+[`audit-false-positives.md`](docs/standards/audit-false-positives.md)
+defines the `.ants_review_falsepos.jsonl` ledger contract
+(ANTS-1457) shared by `/audit`, `/cold-eyes`, `/indie-review`,
+and `/test-audit`. `mcp-errors.md` is an earlier (2026-05-12)
+draft kept as a historical reference — `mcp-error-codes.md`
+(ANTS-1353) is the authoritative MCP error taxonomy.
 
 ADRs live at `docs/decisions/` (Michael Nygard format); per-feature
 specs at `docs/specs/`; per-phase outcomes at `docs/journal/`.

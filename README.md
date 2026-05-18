@@ -43,7 +43,7 @@
 - **Device Attributes** -- responds to DA1 (`CSI c`) and DA2 (`CSI > c`) queries
 - **Cursor Position Report** -- responds to `CSI 6n` with current cursor position
 - **Window title** -- reads OSC 0/2 title sequences from your shell prompt or running programs
-- **Dynamic resize** -- window size changes propagate to the PTY via `SIGWINCH` with scrollback reflow
+- **Dynamic resize** -- window size changes propagate to the PTY via `TIOCSWINSZ` (the kernel then sends `SIGWINCH` to the child process), with scrollback reflow
 
 ### Rendering
 
@@ -476,7 +476,8 @@ The fastest path. Each tagged release ships an x86_64 AppImage on the
 [Releases page](https://github.com/milnet01/ants-terminal/releases/latest):
 
 ```bash
-# Download the latest AppImage (the URL below uses 0.7.82 — bump to whatever the latest tag is):
+# Download the latest AppImage (the URL pins 0.7.91 — the current release at write time;
+# `/latest/download/` always redirects to the newest tagged AppImage):
 curl -L -o Ants_Terminal-x86_64.AppImage \
   https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.91-x86_64.AppImage
 chmod +x Ants_Terminal-x86_64.AppImage
@@ -503,7 +504,7 @@ below; native packaging is tracked in
 | Dependency | Version | Notes |
 |-----------|---------|-------|
 | C++ compiler | C++20 (GCC 12+, Clang 15+) | |
-| Qt6 | 6.x | Core, Gui, Widgets, Network, OpenGL, OpenGLWidgets |
+| Qt6 | 6.2+ | Core, Gui, Widgets, Network, OpenGL, OpenGLWidgets, DBus, Test |
 | CMake | 3.20+ | |
 | libutil | -- | Included with glibc (provides `forkpty`) |
 | Lua 5.4 | 5.4.x | Optional -- enables plugin system |
@@ -1018,10 +1019,12 @@ ants-terminal/
 ├── ants-terminal.desktop.in    # Desktop entry template (@INSTALL_DIR@)
 ├── assets/                     # App icons (16-256px PNGs)
 ├── packaging/linux/            # Spec-compliant .desktop + AppStream metainfo
-├── docs/standards/             # Shareable v1 standards bundle (coding · documentation · testing · commits + roadmap-format sub-spec)
+├── docs/standards/             # Shareable v1 standards bundle (coding · documentation · testing · commits + roadmap-format sub-spec) plus project-local extras (status-bar, audit-false-positives, mcp-error-codes)
 ├── docs/decisions/             # Architecture Decision Records (Michael Nygard format)
 ├── docs/specs/                 # Per-feature spec drafts (spec-first authoring)
 ├── docs/journal/               # Per-phase outcomes / session notes
+├── docs/roadmap/               # Rotated/archived minor sections (0.5.x, 0.6.x) per ANTS-1125
+├── docs/screenshots/           # README and dialog screenshots
 └── src/
     ├── main.cpp                # Entry point, OpenGL format setup
     ├── mainwindow.h/cpp        # Window, menus, themes, dialogs
@@ -1061,7 +1064,7 @@ Before contributing, please read [`CONTRIBUTING.md`](CONTRIBUTING.md) (build + P
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Build and test: `cmake -G Ninja -B build && cmake --build build` (Ninja honours the in-tree job-pool cap; plain Make does not)
+4. Build and test: `cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --output-on-failure` (Ninja honours the in-tree job-pool cap; plain Make does not. For constrained hardware use `cmake --preset=workstation`.)
 5. Submit a pull request
 
 ---

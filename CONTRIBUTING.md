@@ -17,14 +17,27 @@ file them as public GitHub issues.
 ## Quick start
 
 ```bash
-git clone https://github.com/milnet01/ants-terminal
+git clone https://github.com/milnet01/ants-terminal.git
 cd ants-terminal
-mkdir build && cd build
-cmake .. -G Ninja
-ninja
-ctest --output-on-failure
-./ants-terminal
+cmake -G Ninja -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+./build/ants-terminal
 ```
+
+For constrained hardware (or when the build is competing with a
+heavy desktop session), use the `workstation` preset instead, which
+hard-caps the build at `-j3`:
+
+```bash
+cmake --preset=workstation
+cmake --build --preset=workstation
+ctest --preset=workstation
+```
+
+Both invocations honour the in-tree `JOB_POOLS` cap that prevents
+OOM kills under Ninja; plain `make` ignores the pool and is
+discouraged for this project (see `CLAUDE.md` § Build & test).
 
 Optional dependencies (`clazy`, `cppcheck`, `semgrep`, `lua5.4-devel`) unlock
 extra audit checks and the plugin system. Each component probes with
@@ -137,7 +150,7 @@ Also wires a sanitizer CI job so ASan/UBSan runs on every push.
 (Per `docs/standards/commits.md` § 1.1: subject is `<ID>: <description>`
 where `<ID>` is the stable ANTS-NNNN per `docs/standards/roadmap-format.md`
 § 3.5.1, or a literal version string for release commits like
-`0.7.81:` only.)
+`0.7.91:` only.)
 
 ## Code style highlights
 

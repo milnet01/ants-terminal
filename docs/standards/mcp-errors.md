@@ -99,8 +99,11 @@ list (a) keeps the surface uniform for the model consuming it, (b)
 makes future error-handling logic generalisable, (c) prevents a
 later spec from needing yet another one-off.
 
-Test convention: every spec that adds a new code must add it to a
-canonical-codes test (`tests/features/mcp_error_codes/`) that asserts
-every code returned by every tool falls into one of the families
-listed above. Adding a new family edits this doc *and* the test
-fixture in the same commit.
+Note: the test convention that originally accompanied this draft
+(a `tests/features/mcp_error_codes/` fixture asserting every code
+returned by every tool falls into a canonical family) was never
+implemented and is not part of the v1 contract. The authoritative
+ANTS-1353 standard at
+[`mcp-error-codes.md`](mcp-error-codes.md) deferred mechanical
+enforcement to a future ANTS-NNNN; see that doc for the current
+status.

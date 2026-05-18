@@ -73,7 +73,7 @@ one.
   that turns out to be load-bearing later is easy to skip.
 - A few extra markdown files in the repo. Counted against the
   "documentation drift" risk in the doc-review process (see
-  [documentation § 9](../standards/documentation.md)).
+  [documentation § 9 — Doc reviews](../standards/documentation.md#9-doc-reviews)).
 
 **Neutral:**
 

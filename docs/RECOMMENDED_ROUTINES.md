@@ -84,11 +84,18 @@ runs:
    Apply OutputFilter (dropIfContains + dropIfContextContains + maxLines) per
    the C++ definition. Skip files matching the kFindExcl / kGrepExcl lists.
 
-Compare findings against the last `audit_baseline.json` if one exists at the
-repo root (or against the most recent `docs/AUTOMATED_AUDIT_REPORT_*.md` if
-not).
+Compare findings against the most recent local `audit_report_*` file
+in `.audit_cache/` (the per-project audit cache, gitignored per
+`project_audit_artifact_posture`). The legacy `audit_baseline.json` /
+`docs/AUDIT_BASELINE_STATUS.md` / `docs/AUTOMATED_AUDIT_REPORT_*.md`
+files referenced in earlier versions of this routine are not the
+current baseline source — the AUTOMATED_AUDIT_REPORT_*.md snapshots
+under `docs/` are 2026-04-11/04-13 historical references only, and
+the `.json` and `BASELINE_STATUS.md` files were never committed. If
+no `.audit_cache/audit_report_*` exists locally, run the audit
+once first to seed it.
 
-If there are NEW findings (not in the baseline):
+If there are NEW findings (not in the prior cached report):
 - Open a PR titled `audit: triage findings from <YYYY-MM-DD> nightly run`
   on a `claude/audit-triage-<YYYY-MM-DD>` branch.
 - Body: a markdown table of new findings (file:line, rule, severity, snippet).
@@ -98,10 +105,15 @@ If there are NEW findings (not in the baseline):
   rule-tightening (regex, dropIfContains, dropIfContextContains), include the
   exact src/auditdialog.cpp diff in the PR body as a fenced ```diff block.
   DO NOT push the diff to a branch — that's a follow-up human decision.
+- For findings the user has already triaged as false-positive (project
+  context, not a rule defect), append the rationale to
+  `.ants_review_falsepos.jsonl` per
+  [`docs/standards/audit-false-positives.md`](standards/audit-false-positives.md)
+  rather than re-flagging them on the next sweep.
 
-If there are NO new findings, do not open a PR. Instead, write a one-line
-status to `docs/AUDIT_BASELINE_STATUS.md` (create it if missing): the date,
-total finding count, and `clean` / `regressed` verdict.
+If there are NO new findings, do not open a PR. Note the clean
+result inline in your CC session rather than writing to a file —
+the rotating `.audit_cache/` reports are the authoritative trend.
 
 Reference: docs/AUDIT_TRIAGE_2026-04-16.md is the gold-standard triage
 format — match its tone (concise, file:line for every claim, cite the rule

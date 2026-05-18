@@ -34,7 +34,7 @@ Don't write one for:
 
 Sequential, zero-padded to 4 digits:
 `0001-record-architecture-decisions.md`,
-`0002-use-qt6-not-qt5.md`, …
+`0002-<topic>.md`, …
 
 Append-only — once an ADR has a number, it keeps it forever,
 even if superseded.
@@ -46,11 +46,12 @@ even if superseded.
 | Proposed | Drafted; under discussion. |
 | Accepted | Decision made; in effect. |
 | Deprecated | No longer applies; new code shouldn't follow it. |
-| Superseded by ADR-NNNN | Replaced by a later decision. |
+| Superseded by ADR-NNNN | Replaced wholesale by a later decision. |
+| Amended by ADR-NNNN | Body still in effect except as noted by the cited ADR (partial supersession). |
 
 A status change is an edit to the ADR's `Status:` field; the
-body of an accepted ADR isn't rewritten — supersession is
-captured in a new ADR.
+body of an accepted ADR isn't rewritten — supersession or
+amendment is captured in a new ADR.
 
 ## Template
 
