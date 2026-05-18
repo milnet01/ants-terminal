@@ -9994,34 +9994,27 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-last-audit-summary, auditengine.
   Source: RetroArch cross-session reports 2026-05-17 Bundle 62 + 2026-05-17 Bundle 63.
 
-- 📋 [ANTS-1515] **`verify_changes` skips the cwd-match gate when `cache_only=true` (read-only path).**
-  RetroArch Bundle 63: `verify_changes(caller_cwd=…, cache_only:true)`
-  was refused with `cwd_mismatch` because the user's focused tab
-  was on a different project. But `cache_only:true` is documented as
-  "returns the cached response if present; else returns `{ok:true,
-  cache_miss:true}` without running gates" — i.e. pure read, no side
-  effect for the gate to protect against. Relax: when `cache_only`,
-  treat as read and skip the cwd-match (mirror `roadmap_query` /
-  `workspace_search` shape). Optional follow-up: also relax for
-  full runs when caller_cwd is explicit + path is a known tab.
+- ✅ [ANTS-1515] **`verify_changes` skips the cwd-match gate when `cache_only=true` (read-only path).**
+  Duplicate of ANTS-1497 (shipped). `remotecontrol.cpp:5001-5011`
+  short-circuits the RcGate path when `cache_only && !force_refresh`
+  and routes via `resolveRootCanonical` (read-only resolver). Closed
+  as duplicate during the 2026-05-18 MCP bundle. Option (b) "relax
+  full runs when caller_cwd is a known tab" remains open under a
+  future ID if it surfaces again.
   Kind: fix.
   Lanes: mcp-verify-changes, claudeintegration.
   Source: RetroArch cross-session report 2026-05-17 Bundle 63 §3.
 
-- 📋 [ANTS-1516] **`project_layout` surfaces `roadmap_found: bool` (or `roadmap: null`) when nothing was discovered.**
-  RetroArch Bundle 62 + 64: `project_layout` returned
-  `{ok:true, cached:true, roadmap:{path:"", size_bytes:0, …}}` —
-  the cache hit and empty-path are both correct, but `ok:true` reads
-  as success when nothing useful was found. A caller that only
-  checks `ok` then tries `.split("/")[-1]` on `roadmap.path` gets
-  an empty string. Add `roadmap_found: bool` top-level, or change
-  the empty-result shape to `roadmap: null` so callers can
-  short-circuit. Tiny ergonomics nit; recurring across 2 sessions.
+- ✅ [ANTS-1516] **`project_layout` surfaces `roadmap_found: bool` (or `roadmap: null`) when nothing was discovered.**
+  Duplicate of ANTS-1511 (shipped 0.7.91). `projectlayoutengine.cpp:334`
+  emits `root["roadmap_found"] = !env.roadmap.path.isEmpty()` and the
+  same parallel flags for the other slots. Closed as duplicate
+  during the 2026-05-18 MCP bundle.
   Kind: fix.
   Lanes: mcp-project-layout.
   Source: RetroArch cross-session reports 2026-05-17 Bundle 62 + 2026-05-18 Bundle 64.
 
-- 📋 [ANTS-1517] **`roadmap_query` adds `include_body: true` mode returning per-bullet body prose (truncated).**
+- ✅ [ANTS-1517] **`roadmap_query` adds `include_body: true` mode returning per-bullet body prose (truncated).**
   RetroArch Bundle 65: dense single-line bundle-progress tables
   (rows of 2-7 KB of inline triage notes per bundle) make `Read`
   blow the 25K-token harness budget even at `limit=45`. Forced into
@@ -10053,7 +10046,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-discoverability, mcp-cold-eyes, mcp-indie-review, mcp-test-audit.
   Source: MAME_Curator + Music_Production cross-session reports 2026-05-18.
 
-- 📋 [ANTS-1519] **`test_audit_partition` chunk_size default surfaced in tool schema description.**
+- ✅ [ANTS-1519] **`test_audit_partition` chunk_size default surfaced in tool schema description.**
   MAME #4 + evening #5 both flagged: the `/test-audit` skill body
   documents "default chunk_size = 12 files per chunk (override via
   config)" but the MCP partition tool's schema description doesn't
@@ -10079,7 +10072,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-caller-cwd, claudeintegration.
   Source: MAME_Curator cross-session report 2026-05-18 evening §1.
 
-- 📋 [ANTS-1521] **`roadmap_query` returns a `headline_oneline` field alongside `headline` (newlines → single space).**
+- ✅ [ANTS-1521] **`roadmap_query` returns a `headline_oneline` field alongside `headline` (newlines → single space).**
   MAME evening #2: returned headlines include literal `\n`
   mid-sentence (preserves source-markdown line-wraps). An LLM
   concatenating headlines into a summary gets garbled output;
@@ -10091,7 +10084,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-roadmap-query, roadmap-format.
   Source: MAME_Curator cross-session report 2026-05-18 evening §2.
 
-- 📋 [ANTS-1522] **`git_state op="status"` merges untracked into `files[]` for `git status --porcelain` parity.**
+- ✅ [ANTS-1522] **`git_state op="status"` merges untracked into `files[]` for `git status --porcelain` parity.**
   MAME evening #3: today `files:[{path, index, worktree}]` and
   `untracked:[path…]` are two parallel arrays. Lift untracked
   into `files[]` with `index:"?"` + `worktree:"?"` — single array,
@@ -10116,7 +10109,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit, docs, recommended-routines.
   Source: MAME_Curator cross-session report 2026-05-18 evening §4.
 
-- 📋 [ANTS-1524] **Section-slug case-insensitive match (or loud `bad_case` refusal) in `roadmap_query` / `roadmap_log`.**
+- ✅ [ANTS-1524] **Section-slug case-insensitive match (or loud `bad_case` refusal) in `roadmap_query` / `roadmap_log`.**
   MAME evening §6: user flagged case-sensitivity in Ants MCP. No
   concrete hit this session, but for keys / slugs / section-slug
   lookups a case-insensitive match — or, failing that, a loud
@@ -10221,7 +10214,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-roadmap-query, mcp-roadmap-log, roadmapfoldin.
   Source: RetroDB cross-session report 2026-05-18 (Pass 47.1) §8.
 
-- 📋 [ANTS-1531] **Doc-comment widening — `BulletRecord::id` at `src/roadmapdialog.h:293` still reads `ANTS-NNNN`.**
+- ✅ [ANTS-1531] **Doc-comment widening — `BulletRecord::id` at `src/roadmapdialog.h:293` still reads `ANTS-NNNN`.**
   Cold-eyes 2026-05-18 follow-up to ANTS-1405. The bullet parser
   was widened to accept any letter-led prefix
   (`\[([A-Za-z][A-Za-z0-9_-]*-\d+)\]` at `roadmapdialog.cpp:671`),

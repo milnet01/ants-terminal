@@ -133,6 +133,69 @@ QJsonArray kUnrecognisedFormatExpected() {
     return a;
 }
 
+// ANTS-1517 — per-bullet body truncation cap. 2 KiB strikes a
+// balance between "long enough to capture the rationale of a typical
+// roadmap bullet" and "short enough that 500 bullets × 2 KiB stays
+// under the response soft cap". Callers needing the verbatim full
+// body should follow up with a targeted Read.
+constexpr int kRoadmapQueryBodyCap = 2000;
+
+// Always populate body + body_truncated on every cached bullet
+// (regardless of the caller's include_body preference), so a later
+// call that DOES want include_body doesn't need to rebuild the cache.
+// rcStripBodyFields below removes them just before emission when
+// include_body is false. Trade: ~500 bullets × 2 KiB = ~1 MiB extra
+// in m_roadmapCacheBullets per cached roadmap (capped per-file).
+void rcSetBodyFields(QJsonObject &o, const QString &body) {
+    if (body.size() > kRoadmapQueryBodyCap) {
+        o["body"] = body.left(kRoadmapQueryBodyCap);
+        o["body_truncated"] = true;
+    } else {
+        o["body"] = body;
+    }
+}
+
+// Strip body fields from a paginated bullets slice before envelope
+// assembly. No-op if the bullets predate ANTS-1517 (older cached
+// entries simply have no `body` field to remove).
+void rcStripBodyFields(QJsonArray &arr) {
+    for (int i = 0; i < arr.size(); ++i) {
+        QJsonObject o = arr.at(i).toObject();
+        if (o.contains(QStringLiteral("body")) ||
+            o.contains(QStringLiteral("body_truncated"))) {
+            o.remove(QStringLiteral("body"));
+            o.remove(QStringLiteral("body_truncated"));
+            arr.replace(i, o);
+        }
+    }
+}
+
+// ANTS-1521 — collapse a possibly multi-line headline to a single
+// line: \r and \n become spaces, then runs of whitespace collapse to
+// one space, then trim. Used to populate the `headline_oneline`
+// companion field on every bullet emission site so an LLM caller
+// concatenating headlines into prose gets a clean string without
+// having to post-process every consumer. Keep `headline` intact for
+// disk-parity.
+QString rcHeadlineOneline(const QString &headline) {
+    if (headline.isEmpty()) return QString();
+    QString s;
+    s.reserve(headline.size());
+    bool prevSpace = false;
+    for (QChar c : headline) {
+        const bool isWs = c.isSpace() || c == QChar('\n') ||
+                          c == QChar('\r') || c == QChar('\t');
+        if (isWs) {
+            if (!prevSpace) s.append(QChar(' '));
+            prevSpace = true;
+        } else {
+            s.append(c);
+            prevSpace = false;
+        }
+    }
+    return s.trimmed();
+}
+
 // ANTS-1462 — render a header-inventory envelope from a built
 // RoadmapIndex. Used by cmdRoadmapQuery as a fall-through when the
 // bullet parser yields zero entries but the file still has ##/###
@@ -1307,6 +1370,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const bool includeNarratorBullets =
         req.value(QStringLiteral("include_narrator_bullets")).toBool(false);
 
+    // ANTS-1517 — `include_body` opt-in. Default false. When true,
+    // each bullet carries a `body` field (truncated to
+    // kRoadmapQueryBodyCap chars; `body_truncated:true` set on
+    // truncation). Saves the 3-5 follow-up Reads a session does to
+    // pick up Kind / Lanes / Source prose from a dense bundle-
+    // progress table whose headlines would otherwise blow the
+    // harness budget. Cache always populates body — projection-out
+    // happens at emission time via rcStripBodyFields when this flag
+    // is false.
+    const bool hasIncludeBodyArg =
+        req.contains(QStringLiteral("include_body"));
+    const bool includeBody =
+        req.value(QStringLiteral("include_body")).toBool(false);
+
     // ANTS-1398-INV-2: rollup predicate. A bullet is a section rollup
     // iff its `id` and `headline` are both empty — the unambiguous
     // signature of `parseBullets`'s status-only summary cards.
@@ -1399,6 +1476,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 o["id"] = b.id;
                 o["status"] = b.status;
                 o["headline"] = b.headline;
+                // ANTS-1521 — single-line headline companion.
+                o["headline_oneline"] = rcHeadlineOneline(b.headline);
+                // ANTS-1517 — body (truncated). Always cached; the
+                // strip pass at emission removes when include_body
+                // is false.
+                rcSetBodyFields(o, b.body);
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
@@ -1451,6 +1534,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     o["id"] = b.id;
                     o["status"] = b.status;
                     o["headline"] = b.headline;
+                    // ANTS-1521 — single-line headline companion.
+                    o["headline_oneline"] = rcHeadlineOneline(b.headline);
+                    // ANTS-1517 — body (truncated).
+                    rcSetBodyFields(o, b.body);
                     o["kind"] = b.kind;
                     o["section_slug"] = b.sectionSlug;
                     QJsonArray lanes;
@@ -1582,6 +1669,24 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             for (int i = 0; i < verbatim.size(); ++i) {
                 if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
             }
+            // ANTS-1524 — distinguish off-case slug from genuinely
+            // unknown slug. Slugs are canonically lowercase; an
+            // LLM caller that passed "Performance" instead of
+            // "performance" gets a loud `bad_case` refusal with
+            // the canonical form surfaced, instead of the silent
+            // "doesn't exist" reading that bad_section conveys.
+            const QString sectionCi = section.toLower();
+            for (const auto &s : std::as_const(m_roadmapIndex)) {
+                if (s.slug.toLower() == sectionCi && s.slug != section) {
+                    out["ok"]             = false;
+                    out["error"]          = QStringLiteral(
+                        "section slug case mismatch: \"%1\" — did you "
+                        "mean \"%2\"?").arg(verbatim, s.slug);
+                    out["code"]           = QStringLiteral("bad_case");
+                    out["canonical_slug"] = s.slug;
+                    return QJsonDocument(out);
+                }
+            }
             out["ok"] = false;
             out["error"] = QStringLiteral("unknown section: %1").arg(verbatim);
             out["code"] = QStringLiteral("bad_section");
@@ -1611,6 +1716,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 o["id"] = b.id;
                 o["status"] = b.status;
                 o["headline"] = b.headline;
+                // ANTS-1521 — single-line headline companion.
+                o["headline_oneline"] = rcHeadlineOneline(b.headline);
+                // ANTS-1517 — body (truncated).
+                rcSetBodyFields(o, b.body);
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
@@ -1672,11 +1781,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
         // One call site per emission branch (section + full-file).
-        const auto page = PaginationEngine::pageBullets(
+        auto page = PaginationEngine::pageBullets(
             filtered, offsetArg, limitArg);
         const bool emitPagination =
             PaginationEngine::shouldEmitPaginationFields(
                 callerPassedOffset, callerPassedLimit, page.truncated);
+        // ANTS-1517 — strip body fields when include_body is false.
+        if (!includeBody) rcStripBodyFields(page.slice);
         out["ok"] = true;
         out["bullets"] = page.slice;
         out["path"] = path;
@@ -1698,6 +1809,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (hasIncludeNarratorsArg) {
             out["include_narrator_bullets"] = includeNarratorBullets;
         }
+        // ANTS-1517 — same echo-only-when-set discipline.
+        if (hasIncludeBodyArg) {
+            out["include_body"] = includeBody;
+        }
         // ANTS-1437 — mode echo only when caller set the arg
         // (default-back-compat envelope shape per INV-1).
         if (hasModeArg) out["mode"] = mode;
@@ -1718,6 +1833,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 o["id"] = b.id;
                 o["status"] = b.status;
                 o["headline"] = b.headline;
+                // ANTS-1521 — single-line headline companion.
+                o["headline_oneline"] = rcHeadlineOneline(b.headline);
+                // ANTS-1517 — body (truncated).
+                rcSetBodyFields(o, b.body);
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
@@ -1824,11 +1943,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // Second of two call sites (the other is in the section-mode
     // branch above). Stateless; auto-truncate fires when caller
     // omitted limit AND filtered exceeds the soft cap.
-    const auto page = PaginationEngine::pageBullets(
+    auto page = PaginationEngine::pageBullets(
         filtered, offsetArg, limitArg);
     const bool emitPagination =
         PaginationEngine::shouldEmitPaginationFields(
             callerPassedOffset, callerPassedLimit, page.truncated);
+
+    // ANTS-1517 — strip body fields when include_body is false.
+    if (!includeBody) rcStripBodyFields(page.slice);
 
     out["ok"] = true;
     out["bullets"] = page.slice;
@@ -1863,6 +1985,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-1425 — same echo-only-when-set discipline.
     if (hasIncludeNarratorsArg) {
         out["include_narrator_bullets"] = includeNarratorBullets;
+    }
+    // ANTS-1517 — same echo-only-when-set discipline.
+    if (hasIncludeBodyArg) {
+        out["include_body"] = includeBody;
     }
     // ANTS-1437 — mode echo only when caller set the arg
     // (default-back-compat envelope shape per INV-1).
@@ -2094,6 +2220,23 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         for (int i = 0; i < verbatim.size(); ++i) {
             if (verbatim.at(i).unicode() < 0x20) {
                 verbatim[i] = QChar('?');
+            }
+        }
+        // ANTS-1524 — bad_case parity with cmdRoadmapQuery so a
+        // caller that case-mangled the slug gets a loud refusal
+        // with the canonical form instead of a silent-miss
+        // bad_section.
+        const QString sectionCi = section.toLower();
+        for (const auto &s : index) {
+            if (s.slug.toLower() == sectionCi && s.slug != section) {
+                QJsonObject env;
+                env["ok"]             = false;
+                env["code"]           = QStringLiteral("bad_case");
+                env["error"]          = QStringLiteral(
+                    "roadmap_log: section slug case mismatch: \"%1\" — "
+                    "did you mean \"%2\"?").arg(verbatim, s.slug);
+                env["canonical_slug"] = s.slug;
+                return QJsonDocument(env);
             }
         }
         return rlErr(QStringLiteral("bad_section"),
@@ -3290,6 +3433,17 @@ QJsonObject runStatusOp(MainWindow *main, const QJsonObject &req) {
         const QString xy   = line.left(2);
         const QString path = line.mid(3);
         if (xy == QStringLiteral("??")) {
+            // ANTS-1522 — merge untracked paths into files[] with
+            // `index:"?"` + `worktree:"?"` so callers iterating
+            // files[] hit `git status --porcelain` parity. Keep
+            // untracked[] populated in parallel as a derived field
+            // for one release with a DEPRECATED marker (removed in
+            // 0.7.93 — same horizon as session_memory's `cwd`).
+            QJsonObject f;
+            f["path"]     = path;
+            f["index"]    = QStringLiteral("?");
+            f["worktree"] = QStringLiteral("?");
+            files.append(f);
             untracked.append(path);
             continue;
         }

@@ -1605,8 +1605,18 @@ void ClaudeIntegration::onMcpConnection() {
                 // slices when only one block is needed.
                 roadmapTool["description"] = QStringLiteral(
                     "Query the active tab's ROADMAP.md as structured "
-                    "bullets. Each bullet: {id, status, headline, kind, "
-                    "lanes}. Optional `status` filter — \"active\" "
+                    "bullets. Each bullet: {id, status, headline, "
+                    "headline_oneline, kind, lanes}. `headline_oneline` "
+                    "(ANTS-1521) is `headline` with newlines + "
+                    "whitespace runs collapsed to a single space — safe "
+                    "to concatenate into a summary without post-"
+                    "processing. Optional `include_body:true` "
+                    "(ANTS-1517) adds a `body` field (truncated to "
+                    "~2000 chars, `body_truncated:true` set on "
+                    "truncation) — saves the 3-5 follow-up Reads a "
+                    "session does to pick up Kind / Lanes / Source "
+                    "prose from a dense bundle table. Optional "
+                    "`status` filter — \"active\" "
                     "(📋+🚧, ~1.7 K tokens — recommended for planning "
                     "queries) / \"shipped\" (✅ only) / \"all\" (default, "
                     "~12 K tokens). Optional `section` slug — returns "
@@ -1655,8 +1665,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "Slug of a ## or ### heading (e.g. "
                         "\"performance-2\"). Returns only bullets "
                         "within that section; saves a full reparse "
-                        "for partial queries. Unknown slug → "
-                        "code=bad_section.");
+                        "for partial queries. Slugs are canonically "
+                        "lowercase; off-case spelling → code=bad_case "
+                        "with `canonical_slug` surfaced (ANTS-1524). "
+                        "Unknown slug → code=bad_section.");
                     props["section"] = sectionProp;
                     // ANTS-1398 — opt-in to retain section-rollup
                     // bullets (empty id/headline, status emoji only).
@@ -1688,6 +1700,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "non-actionable marker. Opt-in for back-compat "
                         "callers (ANTS-1425).");
                     props["include_narrator_bullets"] = inclNarratorsProp;
+                    // ANTS-1517 — include_body opt-in. Default false.
+                    QJsonObject inclBodyProp;
+                    inclBodyProp["type"] = "boolean";
+                    inclBodyProp["default"] = false;
+                    inclBodyProp["description"] = QStringLiteral(
+                        "If true, each bullet carries a `body` field "
+                        "(continuation prose, truncated to ~2000 chars "
+                        "with `body_truncated:true` on truncation). "
+                        "Default false. Use when triaging dense bundle "
+                        "tables where the rationale lives in the body, "
+                        "not the headline (ANTS-1517).");
+                    props["include_body"] = inclBodyProp;
                     // ANTS-1437 — mode arg. Default "bullets" (legacy).
                     // "section_index" returns a compact section index
                     // instead of bullets — use to discover slugs cheaply.
@@ -1951,7 +1975,12 @@ void ClaudeIntegration::onMcpConnection() {
                     "cap 100), path (log/diff filter), range (diff "
                     "only, e.g. HEAD~5..HEAD), body (log only, "
                     "include commit body). Saves ~14-300 tokens per "
-                    "call vs Bash.");
+                    "call vs Bash. op=\"status\" envelope (ANTS-1522): "
+                    "`files[]` now includes untracked paths with "
+                    "`index:\"?\"` + `worktree:\"?\"` for `git status "
+                    "--porcelain` parity — one array, one shape. "
+                    "`untracked[]` (DEPRECATED) is still emitted in "
+                    "parallel for one release; removed in 0.7.93.");
                 gsTool["selection_hint"] = QStringLiteral(
                     "Use for git status/log/diff in one structured "
                     "call (vs three Bash invocations). Pairs with "
@@ -2783,10 +2812,40 @@ void ClaudeIntegration::onMcpConnection() {
                     schema["type"] = "object";
                     QJsonObject sP; sP["type"] = "string";
                     QJsonObject dP; dP["type"] = "string";
-                    QJsonObject cP; cP["type"] = "integer";
-                    QJsonObject qP; qP["type"] = "boolean";
-                    QJsonObject oP; oP["type"] = "integer";
-                    QJsonObject lP; lP["type"] = "integer";
+                    // ANTS-1519 — chunk_size default + bounds surfaced on
+                    // the property itself so a session reading the JSON
+                    // schema (not the prose description) still knows the
+                    // default. Server-side clamp [4, 30] lives in
+                    // testauditengine.cpp; default 12 lives in
+                    // testauditengine.h PartitionRequest::chunkSize.
+                    QJsonObject cP;
+                    cP["type"] = "integer";
+                    cP["default"] = 12;
+                    cP["minimum"] = 4;
+                    cP["maximum"] = 30;
+                    cP["description"] = QStringLiteral(
+                        "Files per chunk. Default 12; clamped to [4, 30] "
+                        "server-side. Override via "
+                        "<projectPath>/.test-audit/partition.json.");
+                    QJsonObject qP;
+                    qP["type"] = "boolean";
+                    qP["default"] = false;
+                    qP["description"] = QStringLiteral(
+                        "Quick mode — skip pre-pass regex scan. Default "
+                        "false.");
+                    QJsonObject oP;
+                    oP["type"] = "integer";
+                    oP["default"] = 0;
+                    oP["minimum"] = 0;
+                    oP["description"] = QStringLiteral(
+                        "0-based start index into chunks[]. Default 0.");
+                    QJsonObject lP;
+                    lP["type"] = "integer";
+                    lP["default"] = -1;
+                    lP["description"] = QStringLiteral(
+                        "Cap on chunks[] length. Default -1 (no caller "
+                        "limit; server may still auto-truncate large "
+                        "envelopes).");
                     QJsonObject ccwd; ccwd["type"] = "string";
                     QJsonObject props;
                     props["scope"] = sP; props["dimensions"] = dP;

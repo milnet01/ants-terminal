@@ -12,6 +12,97 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 Ants-MCP cross-session-report fold-in pull 3 (in flight, 2026-05-18)
+
+Third pull from the 2026-05-17 / 2026-05-18 cross-session-report
+fold-in. Items group around small descriptor/envelope ergonomics
+fixes that LLM callers hit repeatedly across the four AI-reviewer
+sweep skills and the seven generic MCP read verbs. Eight items
+shipped (1515, 1516, 1517, 1519, 1521, 1522, 1524, 1531) — two
+closed as duplicates of already-shipped work (1515 ↔ 1497, 1516 ↔
+1511), six implemented.
+
+- **ANTS-1517 — `roadmap_query` adds `include_body:true` mode.**
+  When set, each bullet carries a `body` field (continuation prose,
+  truncated to ~2000 chars with `body_truncated:true` flag on
+  truncation). Saves the 3–5 follow-up Reads a session does to pick
+  up Kind / Lanes / Source prose from a dense bundle-progress
+  table where the rationale lives in the body, not the headline.
+  Default false; cache always populates body internally so a
+  toggle on the same file doesn't pay a re-parse. Strip pass at
+  emission removes body fields when the flag is false, keeping the
+  back-compat envelope tidy. Memory budget: ~1 MiB extra per cached
+  roadmap (500 bullets × 2 KiB cap).
+  Layman: the roadmap-query tool can now return the full bullet
+  body (not just the headline), so a session triaging a dense
+  bundle table doesn't have to follow up with multiple Read calls
+  to find the rationale.
+
+- **ANTS-1524 — Section-slug case-insensitive match (loud `bad_case`
+  refusal) in `roadmap_query` and `roadmap_log`.** Slugs are
+  canonically lowercase but an LLM caller can easily pass
+  "Performance" when the slug is "performance". The old behaviour
+  refused with `bad_section`, which reads as "section doesn't
+  exist" — a silent-miss failure mode. Both verbs now detect
+  case-only mismatch via a lowercase comparison loop and refuse
+  with `code:"bad_case"`, surfacing `canonical_slug` so the caller
+  can retry. `bad_section` is reserved for genuinely unknown slugs.
+  Layman: typing the wrong capitalisation in a section slug now
+  gets a "did you mean X?" error with the correct form, instead of
+  a misleading "section doesn't exist".
+
+- **ANTS-1521 — `roadmap_query` returns a `headline_oneline`
+  companion field.** Multi-line headlines (the source markdown
+  often wraps long titles across two lines) used to round-trip
+  with embedded `\n` characters, garbling any LLM-side
+  concatenation step. `headline_oneline` collapses every whitespace
+  run (including newlines) to a single space and trims. `headline`
+  is preserved verbatim for disk parity.
+  Layman: roadmap-query now returns each bullet's title in two
+  shapes — the original (which may have newlines from source) and
+  a clean single-line version safe to paste into prose.
+
+- **ANTS-1522 — `git_state op:"status"` merges untracked paths into
+  `files[]` for `git status --porcelain` parity.** Untracked paths
+  now appear in `files[]` with `index:"?"` and `worktree:"?"`
+  alongside tracked entries, so callers iterating files[] handle
+  one shape instead of branching between `files[]` + `untracked[]`.
+  `untracked[]` is still emitted in parallel as a derived field
+  with a DEPRECATED marker; removed in 0.7.93.
+  Layman: the git-status tool's "files" list now also includes
+  untracked files, so any code looping over it doesn't have to
+  remember to also walk the separate "untracked" list.
+
+- **ANTS-1519 — `test_audit_partition` schema property gains
+  default, min, max + descriptions.** The `chunk_size` property
+  used to be bare `{type:"integer"}`. Now the JSON schema carries
+  `default:12, minimum:4, maximum:30` + a description string
+  pointing at the override path. `quick`, `offset`, and `limit`
+  also gain default + description fields. Lets a session reading
+  the JSON schema (rather than the prose description) see the
+  defaults without round-tripping a probe call.
+  Layman: the schema for the test-audit-partition tool now spells
+  out the defaults so an AI caller can pick the right chunk-size
+  on the first try.
+
+- **ANTS-1531 — `BulletRecord::id` doc-comment widening.** The
+  `src/roadmapdialog.h:293` comment still read "ANTS-NNNN" after
+  ANTS-1405 widened the bullet parser to accept any
+  `[<PREFIX>-NNNN]` token. One-line fix; updated to
+  `<PREFIX>-NNNN`.
+  Layman: a stale code comment now matches what the code actually
+  accepts (any project ID prefix, not just ANTS).
+
+- **ANTS-1515 — Closed as duplicate of ANTS-1497.** The
+  cache_only-read cwd-gate relaxation shipped under ANTS-1497 in
+  the 0.7.92 run. The follow-up cross-session report rediscovered
+  it; closed cleanly.
+
+- **ANTS-1516 — Closed as duplicate of ANTS-1511.** The
+  `roadmap_found:bool` top-level flag on `project_layout` shipped
+  under ANTS-1511 in 0.7.91. The follow-up cross-session report
+  rediscovered it; closed cleanly.
+
 ### 🔌 Ants-MCP cross-session-report fold-in pull 2 (in flight, 2026-05-18)
 
 Second pull from the 2026-05-17 cross-session-report fold-in. Items

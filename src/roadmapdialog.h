@@ -290,7 +290,7 @@ public:
     // don't have stable IDs and so are out of contract). See
     // `docs/specs/ANTS-1117.md` § Acceptance criteria.
     struct BulletRecord {
-        QString id;          // ANTS-NNNN; empty if no `[ANTS-NNNN]` token
+        QString id;          // <PREFIX>-NNNN; empty if no `[<PREFIX>-NNNN]` token (ANTS-1405)
         QString status;      // "✅" | "🚧" | "📋" | "💭"
         QString headline;    // first **bold** chunk after the emoji (≤ 120 chars)
         QString kind;        // value from `Kind:` line; "" if absent
