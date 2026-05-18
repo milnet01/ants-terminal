@@ -291,6 +291,49 @@ as a type and flags every signal emission.
   the explicit declaration. `TabSpecific` is classified but not
   enforced in Phase 3a. See `docs/specs/ANTS-1404.md`.
 
+- **MCP read tools opt into the ETag "304 Not Modified" pattern
+  (ANTS-1499).** Eight tools (`project_layout`, `roadmap_query`,
+  `file_outline`, `last_audit_summary`, `get_environment`,
+  `tab_list`, `subsystem`, `git_state`) emit an `etag` field
+  (sha256-hex16 of the canonical response body) and accept an
+  `etag_match` input. When the caller passes a matching etag,
+  `ClaudeIntegration::applyEtagPattern` short-circuits to
+  `{ok:true, unchanged:true, etag:"<same>"}` instead of re-emitting
+  the full body. Hooked at the dispatch site after the idempotent-
+  read cache (so cache stores the un-etagged form) and before the
+  `<ants_mcp_data>` wrap (so the hash covers the JSON envelope, not
+  the wrapper tag). Allowlist is in `isEtagSupportedTool`; add a
+  tool there + a `makeEtagMatchProp()` line to its schema to
+  opt-in. Non-JSON responses are returned unmodified.
+
+- **`get_scrollback` has a since-cursor incremental mode
+  (ANTS-1500).** Absent `since_cursor` ⇒ legacy raw-text return
+  (backwards-compatible). Present ⇒ JSON envelope shape
+  `{ok, content, cursor, cursor_stale, stale_reason?}` where
+  `content` is only the bytes appended since the cursor was
+  issued, and `cursor` is the new cursor for the next call.
+  Cursor encodes `TerminalGrid::scrollbackPushed()` (uint64
+  monotonic). Three stale paths surface explicit reasons:
+  `malformed_cursor`, `counter_regressed` (terminal restart /
+  unrelated session), `ring_wrapped` (gap exceeded
+  `maxScrollback()`). All three fall back to the full window so
+  the caller never silently loses data.
+
+- **`roadmap_query` now recognises three formats (ANTS-1530).**
+  `detectRoadmapFormat` returns one of `ants-v1` (default),
+  `github-task-list` (ANTS-1428), or `pass-headings` (ANTS-1530).
+  The last triggers on docs with ≥2 `#### Pass N.M …` headings
+  and ≥2 `- **Status**: <word>` markers AND no ants-v1 emoji
+  bullets — the 2+2 threshold rules out accidental fenced-code
+  examples. `parsePassHeadingBullets` synthesises one bullet per
+  `#### Pass N.M …` heading with ID `PASS-<major>-<minor>` (so
+  the default `[PROJ-NNNN]` filter still surfaces them) and maps
+  the status word from the next `- **Status**:` line
+  (`todo/planned` → 📋, `in-progress/doing/wip` → 🚧,
+  `done/shipped/completed` → ✅, `deferred/considered/parked` →
+  💭). `(SEVERITY, SIZE)` meta re-emits in the headline so it
+  survives in `headline_oneline`.
+
 - **session_memory + project_layout gate routing is asymmetric
   (ANTS-1336 + ANTS-1435).** Write ops on tenant-hashed storage
   (`session_memory set/delete`) go through RcGate — focused-tab

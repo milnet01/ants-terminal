@@ -1446,19 +1446,50 @@ void ClaudeIntegration::onMcpConnection() {
                         "Pass `caller_cwd` to anchor to your tab (ANTS-1392).");
                 };
 
+                // ANTS-1499 — `etag_match` input prop for read tools
+                // that opt into the "304 Not Modified" pattern. Eight
+                // tools allowlisted in isEtagSupportedTool(); the same
+                // schema fragment is reused for each so the field
+                // description stays in lockstep.
+                auto makeEtagMatchProp = []{
+                    QJsonObject p;
+                    p["type"] = "string";
+                    p["description"] = QStringLiteral(
+                        "Optional. Server-issued etag from a prior "
+                        "call. If the server's current etag equals "
+                        "this value, the response is short-circuited "
+                        "to {ok:true, unchanged:true, etag:\"<same>\"} "
+                        "— saves the full response body. Otherwise the "
+                        "current response carries a fresh `etag` field "
+                        "for the next call (ANTS-1499 \"304 Not "
+                        "Modified\" pattern).");
+                    return p;
+                };
+
                 QJsonObject scrollbackTool;
                 scrollbackTool["name"] = "get_scrollback";
                 scrollbackTool["description"] = QStringLiteral(
                     "Get the last N lines of terminal scrollback. "
                     "Pass `caller_cwd` (your $PWD) to anchor to your "
                     "tab; without it the result comes from whichever "
-                    "tab Ants happens to have focused (ANTS-1392).");
+                    "tab Ants happens to have focused (ANTS-1392). "
+                    "ANTS-1500: pass `since_cursor` (from a prior "
+                    "response) for incremental-fetch mode — server "
+                    "returns only the bytes appended since the cursor "
+                    "(envelope: {ok, content, cursor, cursor_stale, "
+                    "stale_reason?}) instead of the full window. "
+                    "Saves 80-95% on rapid-polling loops. Stale "
+                    "cursors (ring wrap, terminal restart) flip "
+                    "cursor_stale:true and fall back to the full "
+                    "window.");
                 // ANTS-1453 — selection_hint: one-sentence
                 // form-factor cue for the calling assistant.
                 scrollbackTool["selection_hint"] = QStringLiteral(
                     "Use when you need recent terminal output (e.g. "
                     "the last build error). Prefer over Read/Grep "
-                    "when the data lives in stdout, not on disk.");
+                    "when the data lives in stdout, not on disk. "
+                    "Polling loops: pass since_cursor for delta-only "
+                    "responses (ANTS-1500).");
                 // ANTS-1395 — scope props/schema inside a block so every
                 // subsequent tool's matching declarations (each already
                 // wrapped in `{ ... }`) no longer trigger
@@ -1472,6 +1503,20 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1392 — caller_cwd anchor for the terminal-state
                     // verbs. Optional; falls back to focused tab when absent.
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    // ANTS-1500 — since_cursor opt-in for incremental
+                    // mode. Absent → legacy raw-text return. Present →
+                    // JSON envelope with content+cursor+stale flag.
+                    QJsonObject sinceProp;
+                    sinceProp["type"] = "string";
+                    sinceProp["description"] = QStringLiteral(
+                        "Optional. Opaque cursor token from a prior "
+                        "response. When present, the server returns "
+                        "only content appended since the cursor was "
+                        "issued; cursor_stale:true falls back to the "
+                        "full window (terminal restart, ring wrap). "
+                        "Triggers JSON-envelope response shape; absent "
+                        "preserves the legacy raw-text return.");
+                    props["since_cursor"] = sinceProp;
                     QJsonObject schema;
                     schema["type"] = "object";
                     schema["properties"] = props;
@@ -1597,6 +1642,7 @@ void ClaudeIntegration::onMcpConnection() {
                     schema["type"] = "object";
                     QJsonObject props;
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"] = props;
                     envTool["inputSchema"] = schema;
                 }
@@ -1771,6 +1817,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["limit"] = limitProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"] = props;
                     roadmapTool["inputSchema"] = schema;
                 }
@@ -1786,7 +1833,18 @@ void ClaudeIntegration::onMcpConnection() {
                     "Use when multiple Ants tabs may exist and you "
                     "need to pick the right one (e.g. cross-tab "
                     "queries). Cheap; no caller_cwd anchor.");
-                tabListTool["inputSchema"] = emptySchema;
+                // ANTS-1499 — tab_list opts into the etag pattern so
+                // a session polling for "did a tab appear?" pays the
+                // full envelope only on the change. Schema carries
+                // `etag_match` only — no other inputs.
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["etag_match"] = makeEtagMatchProp();
+                    schema["properties"] = props;
+                    tabListTool["inputSchema"] = schema;
+                }
                 tools.append(tabListTool);
 
                 QJsonObject getTextTool;
@@ -1985,6 +2043,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["max_symbols"]          = maxSymProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]           = makeCallerCwdReadProp();
+                    props["etag_match"]           = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("path");
@@ -2051,6 +2110,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["body"]  = bodyProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("op");
@@ -2101,6 +2161,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["n"]    = nProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("op");
@@ -2188,6 +2249,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["rule_ids"]       = ruleIdsProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]     = makeCallerCwdReadProp();
+                    props["etag_match"]     = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"]    = props;
                     lasTool["inputSchema"] = schema;
                 }
@@ -3818,6 +3880,7 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     props["force_rescan"] = forceProp;
                     props["caller_cwd"]   = callerProp;
+                    props["etag_match"]   = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"]  = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
@@ -4416,9 +4479,26 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 // ANTS-1357 — populate cache on miss-success. INV-5
                 // exclusions enforced inside maybeInsertIdempotentReadCache.
+                // The cache stores the un-etagged response so subsequent
+                // callers can either reuse it verbatim OR short-circuit
+                // via etag_match against the same fingerprint.
                 if (toolHandled && cacheable && !cachedHit) {
                     maybeInsertIdempotentReadCache(
                         toolName, argsObj, responseText);
+                }
+                // ANTS-1499 — ETag short-circuit. Runs after the
+                // idempotent-read cache so the cached body stays in its
+                // canonical (un-etagged) form, and before the wrap so
+                // the etag is computed against the actual JSON envelope
+                // (not the <ants_mcp_data> wrapper bytes which would
+                // shift the hash for every tool name change).
+                if (toolHandled && isEtagSupportedTool(toolName)) {
+                    bool etagUnchanged = false;
+                    responseText = applyEtagPattern(
+                        toolName, argsObj, responseText, &etagUnchanged);
+                    if (etagUnchanged) {
+                        dispatchResult = QStringLiteral("etag_unchanged");
+                    }
                 }
 
                 if (toolHandled) {
@@ -4699,6 +4779,59 @@ bool ClaudeIntegration::isIdempotentReadTool(const QString &toolName) {
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")
         || toolName == QStringLiteral("last_audit_summary");
+}
+
+bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
+    // ANTS-1499 — read tools that return JSON envelopes large enough
+    // for the etag short-circuit to be worth it. Order mirrors the
+    // priority list in the roadmap entry.
+    return toolName == QStringLiteral("project_layout")
+        || toolName == QStringLiteral("roadmap_query")
+        || toolName == QStringLiteral("file_outline")
+        || toolName == QStringLiteral("last_audit_summary")
+        || toolName == QStringLiteral("get_environment")
+        || toolName == QStringLiteral("tab_list")
+        || toolName == QStringLiteral("subsystem")
+        || toolName == QStringLiteral("git_state");
+}
+
+QString ClaudeIntegration::etagFor(const QString &payload) {
+    // Same hex16-of-sha256 shape as idempotentReadCacheKey for
+    // operational sanity (one hash format across MCP internals).
+    return QString::fromUtf8(QCryptographicHash::hash(
+        payload.toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
+}
+
+QString ClaudeIntegration::applyEtagPattern(const QString &toolName,
+                                            const QJsonObject &args,
+                                            const QString &responseText,
+                                            bool *unchanged) {
+    if (unchanged) *unchanged = false;
+    if (!isEtagSupportedTool(toolName)) return responseText;
+    const QString etag  = etagFor(responseText);
+    const QString match = args.value(QStringLiteral("etag_match"))
+        .toString();
+    if (!match.isEmpty() && match == etag) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]        = true;
+        env[QStringLiteral("unchanged")] = true;
+        env[QStringLiteral("etag")]      = etag;
+        if (unchanged) *unchanged = true;
+        return QString::fromUtf8(
+            QJsonDocument(env).toJson(QJsonDocument::Compact));
+    }
+    QJsonParseError err{};
+    const QJsonDocument doc =
+        QJsonDocument::fromJson(responseText.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        // Provider returned a non-JSON payload — return as-is.
+        // ETag injection only applies to JSON-envelope tools.
+        return responseText;
+    }
+    QJsonObject obj = doc.object();
+    obj[QStringLiteral("etag")] = etag;
+    return QString::fromUtf8(
+        QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }
 
 QString ClaudeIntegration::idempotentReadCacheKey(

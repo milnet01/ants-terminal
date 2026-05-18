@@ -3773,9 +3773,64 @@ void MainWindow::setupClaudeMcpProviders() {
             // present; falls back to focusedTerminal() otherwise.
             const QString callerCwd =
                 args.value("caller_cwd").toString();
-            if (auto *t = terminalForCaller(callerCwd))
+            auto *t = terminalForCaller(callerCwd);
+            if (!t) return {};
+            // ANTS-1500 — since_cursor incremental-fetch mode. Cursor
+            // encodes the grid's monotonic scrollbackPushed counter at
+            // the time of issue. On a follow-up call the server
+            // computes the delta and only emits new content, or flips
+            // cursor_stale:true when the gap exceeds ring capacity
+            // (terminal restart, ring wrap). Absent since_cursor →
+            // legacy raw-text response (current contract).
+            const QString sinceStr =
+                args.value(QStringLiteral("since_cursor")).toString();
+            if (sinceStr.isEmpty()) {
                 return t->recentOutput(lines);
-            return {};
+            }
+            const uint64_t currentPushed =
+                t->grid()->scrollbackPushed();
+            const int  ringCap = t->grid()->maxScrollback();
+            const int  screenRows = t->grid()->rows();
+            QJsonObject env;
+            env[QStringLiteral("ok")]     = true;
+            env[QStringLiteral("cursor")] =
+                QString::number(currentPushed);
+            bool parsedOk = false;
+            const uint64_t since =
+                sinceStr.toULongLong(&parsedOk);
+            auto emitFullWindow = [&](const QString &reason) {
+                env[QStringLiteral("cursor_stale")] = true;
+                env[QStringLiteral("stale_reason")] = reason;
+                env[QStringLiteral("content")] =
+                    t->recentOutput(lines);
+                return QString::fromUtf8(QJsonDocument(env)
+                    .toJson(QJsonDocument::Compact));
+            };
+            if (!parsedOk) {
+                return emitFullWindow(QStringLiteral("malformed_cursor"));
+            }
+            if (since > currentPushed) {
+                // Counter went backwards — terminal restart or unrelated
+                // session. Stale fallback returns the current window.
+                return emitFullWindow(
+                    QStringLiteral("counter_regressed"));
+            }
+            const uint64_t added = currentPushed - since;
+            if (added > static_cast<uint64_t>(ringCap)) {
+                // Lines lost beyond what the ring can replay.
+                return emitFullWindow(QStringLiteral("ring_wrapped"));
+            }
+            // Up-to-date case: emit the delta lines + current screen so
+            // the caller sees both newly-scrolled content and the live
+            // viewport. content == "" only when nothing happened AND
+            // the screen is empty.
+            const int deltaPlusScreen =
+                static_cast<int>(added) + screenRows;
+            env[QStringLiteral("cursor_stale")] = false;
+            env[QStringLiteral("content")] =
+                t->recentOutput(deltaPlusScreen);
+            return QString::fromUtf8(QJsonDocument(env)
+                .toJson(QJsonDocument::Compact));
         });
     m_claudeIntegration->registerToolProvider("get_cwd",
         [this](const QJsonObject &args) -> QString {

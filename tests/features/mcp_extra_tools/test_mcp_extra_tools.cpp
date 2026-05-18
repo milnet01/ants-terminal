@@ -147,9 +147,12 @@ static int runMain() {
         std::string body = (braceOpen == std::string::npos)
             ? std::string()
             // Window bumped 16→32 KiB after ANTS-1351's audit_run
-            // dispatch lambda landed (~5 KiB inline). The window is
-            // a heuristic body-cap; raise as new providers slot in.
-            : mwCpp.substr(braceOpen, 32 * 1024);
+            // dispatch lambda landed (~5 KiB inline), 32→48 KiB after
+            // ANTS-1500 fattened the get_scrollback provider with
+            // since_cursor handling (~3 KiB) which pushed get_text
+            // past the old window. The window is a heuristic body-cap;
+            // raise as new providers slot in.
+            : mwCpp.substr(braceOpen, 48 * 1024);
         inv(6, contains(body, "registerToolProvider(\"roadmap_query\""),
             "setupClaudeMcpProviders does not register roadmap_query");
         inv(6, contains(body, "registerToolProvider(\"tab_list\""),

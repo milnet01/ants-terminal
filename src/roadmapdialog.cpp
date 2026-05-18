@@ -640,11 +640,25 @@ bool stripInlineEmoji(QString &head, QString &status) {
 }
 
 // Detect format by scanning the head of the document for one of
-// the two shapes. ants-v1 marker wins; otherwise look for GFM
-// task-list bullets in the first 100 non-empty lines.
+// three shapes. ants-v1 marker wins; otherwise look for GFM
+// task-list bullets, then the ANTS-1530 `#### Pass N.M (SEVERITY,
+// SIZE) … - **Status**: <word>` shape used by RetroDB's roadmap.
+// We scan a larger budget (300 lines) so Pass-style docs with a
+// long preamble still trigger the right adapter.
 QString detectRoadmapFormat(const QStringList &lines) {
     if (lines.isEmpty()) return QStringLiteral("ants-v1");
     int seen = 0;
+    bool hasGfm           = false;
+    bool hasAntsV1Emoji   = false;
+    int  passHeadings     = 0;
+    int  statusMarkers    = 0;
+    static const QRegularExpression rxAntsV1Bullet(
+        QStringLiteral("^- (✅|📋|🚧|💭)"));
+    static const QRegularExpression rxPassHeading(
+        QStringLiteral("^####\\s+Pass\\s+\\d"));
+    static const QRegularExpression rxStatusMarker(
+        QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
+        QRegularExpression::CaseInsensitiveOption);
     for (const auto &ln : lines) {
         if (ln.contains(QStringLiteral("<!-- ants-roadmap-format: 1 -->"))) {
             return QStringLiteral("ants-v1");
@@ -653,11 +667,130 @@ QString detectRoadmapFormat(const QStringList &lines) {
         if (ln.startsWith(QStringLiteral("- [ ]")) ||
             ln.startsWith(QStringLiteral("- [x]")) ||
             ln.startsWith(QStringLiteral("- [X]"))) {
-            return QStringLiteral("github-task-list");
+            hasGfm = true;
         }
-        if (++seen >= 100) break;
+        if (rxAntsV1Bullet.match(ln).hasMatch()) {
+            hasAntsV1Emoji = true;
+        }
+        if (rxPassHeading.match(ln).hasMatch()) {
+            ++passHeadings;
+        }
+        if (rxStatusMarker.match(ln).hasMatch()) {
+            ++statusMarkers;
+        }
+        if (++seen >= 300) break;
+    }
+    if (hasGfm)          return QStringLiteral("github-task-list");
+    // ANTS-1530 — pass-headings adapter. Triggered only when no
+    // ants-v1 emoji bullets are present (so we never override a
+    // native-format doc) and the document carries at least two
+    // Pass-N.M headings AND two `- **Status**: …` markers (the
+    // 2+2 threshold rules out an accidental fenced-code example).
+    if (!hasAntsV1Emoji && passHeadings >= 2 && statusMarkers >= 2) {
+        return QStringLiteral("pass-headings");
     }
     return QStringLiteral("ants-v1");
+}
+
+// ANTS-1530 — parse a doc in `pass-headings` format. Each `####
+// Pass N.M (SEVERITY, SIZE) …` heading becomes one bullet; the
+// status emoji is derived from the first `- **Status**: <word>`
+// line that follows the heading (bounded by the next heading or 50
+// lines, whichever first). ID synthesised as `PASS-<major>-<minor>`
+// so the bullet survives the default `[PROJ-NNNN]` filter and the
+// numbering reverses cleanly back to the source heading.
+QVector<RoadmapDialog::BulletRecord>
+parsePassHeadingBullets(const QStringList &lines) {
+    QVector<RoadmapDialog::BulletRecord> out;
+    static const QRegularExpression rxHead(
+        QStringLiteral("^####\\s+Pass\\s+(\\d+)\\.(\\d+)\\s*"
+                       "(?:\\(([^)]*)\\))?\\s*(.*?)\\s*$"));
+    static const QRegularExpression rxStatusLine(
+        QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:\\s*"
+                       "([A-Za-z0-9_-]+)"),
+        QRegularExpression::CaseInsensitiveOption);
+    QString currentSectionHeading;
+    QString currentSectionSlug;
+    int     currentSectionLevel = 0;
+    QSet<QString> seenSlugs;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &raw = lines[i];
+        QString headingText;
+        const int level = headingLevel(raw, &headingText);
+        if (level == 2 || level == 3) {
+            currentSectionHeading = headingText;
+            currentSectionLevel   = level;
+            currentSectionSlug    = uniqueSlug(seenSlugs, headingText);
+            continue;
+        }
+        if (level != 4) continue;
+        const QRegularExpressionMatch m = rxHead.match(raw);
+        if (!m.hasMatch()) continue;
+        const int major = m.captured(1).toInt();
+        const int minor = m.captured(2).toInt();
+        const QString meta = m.captured(3).trimmed();   // "CRITICAL, S"
+        const QString tail = m.captured(4).trimmed();
+        // Status lookahead. 50-line cap keeps the scan bounded on
+        // sparse docs; a heading without a Status marker within the
+        // window defaults to planned (📋).
+        QString statusWord;
+        const int probeCap = std::min<int>(
+            lines.size(), i + 51);
+        for (int j = i + 1; j < probeCap; ++j) {
+            const QString &peek = lines[j];
+            // Stop at any heading level ≤ 4 (next sibling/parent).
+            if (peek.startsWith(QStringLiteral("#")) &&
+                !peek.startsWith(QStringLiteral("#####"))) {
+                break;
+            }
+            const QRegularExpressionMatch sm = rxStatusLine.match(peek);
+            if (sm.hasMatch()) {
+                statusWord = sm.captured(1).trimmed().toLower();
+                break;
+            }
+        }
+        RoadmapDialog::BulletRecord rec;
+        rec.id     = QStringLiteral("PASS-%1-%2").arg(major).arg(minor);
+        rec.format = QStringLiteral("pass-headings");
+        if (statusWord == QStringLiteral("done") ||
+            statusWord == QStringLiteral("shipped") ||
+            statusWord == QStringLiteral("completed")) {
+            rec.status = QStringLiteral("✅");
+        } else if (statusWord == QStringLiteral("in-progress") ||
+                   statusWord == QStringLiteral("in_progress") ||
+                   statusWord == QStringLiteral("inprogress") ||
+                   statusWord == QStringLiteral("doing") ||
+                   statusWord == QStringLiteral("wip")) {
+            rec.status = QStringLiteral("🚧");
+        } else if (statusWord == QStringLiteral("deferred") ||
+                   statusWord == QStringLiteral("considered") ||
+                   statusWord == QStringLiteral("parked")) {
+            rec.status = QStringLiteral("💭");
+        } else {
+            // todo / planned / unknown / absent
+            rec.status = QStringLiteral("📋");
+        }
+        // Headline: re-emit the meta in parens so SEVERITY+SIZE
+        // survive in headline_oneline (no dedicated bullet fields
+        // for them yet; cheapest fidelity-preserving option).
+        QString headline = tail;
+        if (!meta.isEmpty()) {
+            headline = QStringLiteral("(%1) %2").arg(meta, tail).trimmed();
+        }
+        if (headline.size() > 120) {
+            headline.truncate(120);
+            headline.append(QStringLiteral("…"));
+        }
+        rec.headline       = headline;
+        rec.body           = headline;
+        rec.sectionHeading = currentSectionHeading;
+        rec.sectionLevel   = currentSectionLevel;
+        if (!currentSectionHeading.isEmpty()) {
+            rec.sectionSlug = currentSectionSlug;
+        }
+        out.append(rec);
+    }
+    return out;
 }
 
 }  // namespace
@@ -704,6 +837,14 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // present. Native parse path is byte-identical to pre-1428
     // behaviour when format == "ants-v1".
     const QString docFormat = detectRoadmapFormat(lines);
+    // ANTS-1530 — `pass-headings` is a fundamentally different
+    // shape (bullets come from #### headings, not `- ` lines), so
+    // it routes to a dedicated parser instead of slotting into the
+    // main loop. Returns immediately; the rest of parseBullets
+    // never sees pass-headings input.
+    if (docFormat == QStringLiteral("pass-headings")) {
+        return parsePassHeadingBullets(lines);
+    }
     const bool isGfm = (docFormat == QStringLiteral("github-task-list"));
 
     QString currentSectionHeading;

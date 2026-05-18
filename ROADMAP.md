@@ -9523,7 +9523,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-caller-cwd-info.
   Source: RetroArch cross-session report 2026-05-17 (Bundle 63 addendum).
 
-- 📋 [ANTS-1499] ****ETag / since-mtime "304 Not Modified" pattern across read tools.****
+- ✅ [ANTS-1499] ****ETag / since-mtime "304 Not Modified" pattern across read tools.****
   Tools that read disk content currently re-emit the full payload on
   every call even when nothing changed. Adopt an HTTP-304-style idiom:
   
@@ -9554,7 +9554,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-project-layout, mcp-roadmap-query, mcp-last-audit-summary, mcp-file-outline.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- 📋 [ANTS-1500] ****`get_scrollback` since-cursor incremental-fetch mode.****
+- ✅ [ANTS-1500] ****`get_scrollback` since-cursor incremental-fetch mode.****
   Currently every `get_scrollback` call returns the full requested
   window — when a session polls "what just happened" repeatedly, the
   overlapping prefix is re-emitted on every call.
@@ -9688,6 +9688,17 @@ template / mutate this state atomically" → movable. If it's
   Risk: stale cache rebases. If the prior cache's git HEAD is gone
   from history (rebase / force-push), fall back to full scan with a
   `scope_demoted:"full"` flag in the response.
+  
+  **Deferral note (pull-8 picker, 2026-05-18):** the scoped audit cache
+  implied here doesn't exist yet — `auditrunner.cpp` currently writes
+  SARIF to `/tmp/audit-<seq>-<ts>.sarif`, with no per-project
+  `.audit_cache/` layout, no manifest, no retention policy. A faithful
+  shipment of this item also requires per-tool argv variants so the
+  narrowed file list can flow to tools that today receive `srcRoot` /
+  `.` (cppcheck, bandit, semgrep, ruff, …). Treat as ~200-400 lines
+  with its own design pass; don't bundle into a token-saver pull. The
+  honest next step is to ship `.audit_cache/` infrastructure first
+  (separate roadmap entry — TODO), then `since-last-run` on top.
   
   Kind: enhancement.
   Lanes: mcp-token-reduction, mcp-audit-run.
@@ -10221,7 +10232,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes-partition, coldeyesengine.
   Source: RetroDB cross-session report 2026-05-18 §1 + §7.
 
-- 📋 [ANTS-1530] **`roadmap_query` adapter for `#### Pass … (SEVERITY, SIZE) + - **Status**: <word>` shape (third format, joining v1 emoji + GFM).**
+- ✅ [ANTS-1530] **`roadmap_query` adapter for `#### Pass … (SEVERITY, SIZE) + - **Status**: <word>` shape (third format, joining v1 emoji + GFM).**
   RetroDB #8 (MEDIUM). `roadmap_query` returns
   `unrecognised_format` for RetroDB's 186-KB `roadmap.md` which
   uses `#### Pass N.M …` headings with `- **Status**:
@@ -10515,6 +10526,35 @@ template / mutate this state atomically" → movable. If it's
   Kind: refactor.
   Lanes: build, perf, cmake, test-infrastructure.
   Source: in-session-2026-05-18 (ANTS-1550 follow-up).
+
+- 📋 [ANTS-1554] **`-Wnull-dereference` warning in MainWindow::refreshRepoVisibility's QProcess::finished lambda.**
+  Build surfaces a repeating -Wnull-dereference warning chain inlining through QtPrivate::QCallableObject::impl → Functor* → MainWindow::refreshRepoVisibility's [this](int, QProcess::ExitStatus) lambda at mainwindow.cpp:5774, ending at qhash.h:966 (QHash<K,T>::isEmpty's `return !d || d->size == 0`). The compiler can't prove the early-null check forecloses the subsequent QHash::remove path.
+  
+  Pre-existing (predates pull-7). Per the "flag warnings, don't dismiss" rule it gets a roadmap entry rather than a "known pre-existing" wave-off. Fix candidates:
+  (a) Add an explicit `if (m_someHash.isEmpty()) return;` guard before the .remove() call so the compiler sees the null-check.
+  (b) Use std::optional-style access or QHash::value() with a default to bypass the bare m_d->size deref.
+  (c) #pragma GCC diagnostic ignored "-Wnull-dereference" tightly scoped — last resort.
+  
+  Cheapest: (a). Probably 2-3 lines. Has been on the floor for a while; finally surface in a fix-pass.
+  </invoke>
+  Kind: fix.
+  Lanes: mainwindow, qhash, build-hygiene.
+  Source: build-output-2026-05-18 (pull-8 build, recurring warning).
+
+- 📋 [ANTS-1555] **Per-project `.audit_cache/` infrastructure for `audit_run` (blocker for ANTS-1504).**
+  `AuditRunner::runAudit` currently writes SARIF to `/tmp/audit-<seq>-<ts>.sarif` with `allocSarifPath` — no per-project cache, no manifest, no retention. ANTS-1504 (since-last-run mode) assumes a `.audit_cache/<project-hash>/` layout it can read prior runs from; ANTS-1512 (scoped-check mode) would also benefit from caching prior runs. Both are blocked until this lands.
+  
+  Design sketch:
+  - Path: `<project>/.audit_cache/audit-<iso-timestamp>-<git-sha>.sarif` (gitignored per project convention).
+  - Manifest: `.audit_cache/index.json` — { last_run: { timestamp, commit, sarif, by_tool: {tool: {elapsed, raw_count}} } }. One file = simple, atomic via QSaveFile.
+  - Retention: keep last 10 runs, then time-bucket (1 per day for 7 days, 1 per week for 4 weeks). Reaper runs at the end of each successful audit_run.
+  - API: `RunResult` gains `cachePath` (where the sarif landed), `priorRun` (manifest snapshot of the prior run if any).
+  
+  Once shipped, ANTS-1504 + ANTS-1512 can layer on top. Estimated effort: ~150-200 lines (most of the new code is in auditrunner.cpp around the existing writeSarif + a small cachemanifest helper).
+  </invoke>
+  Kind: implement.
+  Lanes: auditrunner, mcp-audit-run, mcp-token-reduction.
+  Source: in-session-2026-05-18 (pull-8 dependency surfaced while sizing ANTS-1504).
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 

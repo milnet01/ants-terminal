@@ -320,6 +320,24 @@ public:
     static QString wrapMcpData(const QString &toolName,
                                const QString &payload);
 
+    // ANTS-1499 — ETag "304 Not Modified" pattern for read tools.
+    // isEtagSupportedTool gates the allowlist (project_layout,
+    // roadmap_query, file_outline, last_audit_summary, get_environment,
+    // tab_list, subsystem, git_state). etagFor returns the sha256-hex16
+    // fingerprint of the raw response bytes (stable across runs).
+    // applyEtagPattern injects an `etag` field into a parseable JSON
+    // envelope; when the caller passes `etag_match` matching the
+    // current etag, returns a short {ok:true,unchanged:true,etag:"…"}
+    // envelope instead of the full body. *unchanged is true iff the
+    // short envelope path was taken (used by token_usage so cache-hit
+    // accounting reflects the smaller payload).
+    static bool isEtagSupportedTool(const QString &toolName);
+    static QString etagFor(const QString &payload);
+    static QString applyEtagPattern(const QString &toolName,
+                                    const QJsonObject &args,
+                                    const QString &responseText,
+                                    bool *unchanged);
+
     // ANTS-1360 — MCP debug-log tap. The registered `mcp_trace`
     // provider lambda calls this to read a slice of the ring.
     // Filter: id >= since (INV-3 inclusive). Result envelope shape:

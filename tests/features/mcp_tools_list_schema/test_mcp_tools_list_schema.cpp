@@ -74,13 +74,20 @@ TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
     // get_environment in ANTS-1392 (caller_cwd anchor for the
     // terminal-state read verbs). For those, we check the substring
     // before the `=` so the test stays robust to the inputSchema body.
+    // ANTS-1499 widened tab_list's schema from emptySchema to a
+    // real {type:object, properties:{etag_match}} object so the tool
+    // can opt into the "304 Not Modified" pattern. The INV-2 spirit
+    // ("any inputSchema assignment, just don't ship the response
+    // without one") still holds — the assertion drops the `emptySchema`
+    // qualifier to match the new substring shape, same relaxation
+    // get_cwd/get_environment/get_git_status received under ANTS-1391.
     struct { const char *tool; const char *assign; } checks[] = {
         { "get_cwd",          "cwdTool[\"inputSchema\"] = "       },
         { "get_session_info", "sessionTool[\"inputSchema\"] = emptySchema" },
         { "get_last_command", "lastCmdTool[\"inputSchema\"] = "   },
         { "get_git_status",   "gitTool[\"inputSchema\"] = "       },
         { "get_environment",  "envTool[\"inputSchema\"] = "       },
-        { "tab_list",         "tabListTool[\"inputSchema\"] = emptySchema" },
+        { "tab_list",         "tabListTool[\"inputSchema\"] = "   },
     };
 
     for (const auto &c : checks) {

@@ -12,6 +12,81 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP token-saver fold-in — pull 8 (ANTS-1499 + 1500 + 1530, 2026-05-18 evening)
+
+Three token-reduction wins for the MCP surface, plus two follow-up
+roadmap entries from build-warning + dependency surfacing.
+
+- **ANTS-1499 (enhancement)** — ETag / `etag_match` "304 Not Modified"
+  pattern across eight read tools (project_layout, roadmap_query,
+  file_outline, last_audit_summary, get_environment, tab_list,
+  subsystem, git_state). Every response from those tools now carries
+  an `etag` field (sha256-hex16 of the canonical response body).
+  Callers pass `etag_match:"<prior_etag>"` on the next call; on a
+  match the server returns a short `{ok:true, unchanged:true,
+  etag:"<same>"}` envelope instead of the full body. Saves 100% of
+  the payload bytes on every cache hit. Hooked at the dispatch
+  layer (`ClaudeIntegration::applyEtagPattern` in
+  src/claudeintegration.cpp) so per-tool code stays unchanged; the
+  cached body in the idempotent-read cache (ANTS-1357) is the
+  un-etagged form, so re-fingerprinting on cache-hit emits the
+  same etag as on first miss.
+
+- **ANTS-1500 (enhancement)** — `get_scrollback` since-cursor
+  incremental-fetch mode. Pass `since_cursor` (opaque token from a
+  prior response) and the server returns only content appended
+  since the cursor was issued — envelope shape
+  `{ok, content, cursor, cursor_stale, stale_reason?}`. Cursor
+  format: the grid's monotonic `scrollbackPushed` counter. Stale
+  detection covers three cases (`malformed_cursor`,
+  `counter_regressed`, `ring_wrapped`); each falls back to the
+  full window with `cursor_stale:true` + the diagnostic reason.
+  Absent `since_cursor` preserves the legacy raw-text return.
+  Cuts response size 80-95% on rapid-polling loops (Bash-output
+  watch, "did the build finish?" idiom).
+
+- **ANTS-1530 (enhancement)** — `roadmap_query` adapter for the
+  `#### Pass N.M (SEVERITY, SIZE) <text>` + `- **Status**: <word>`
+  shape used by RetroDB's 186-KB roadmap. Detection in
+  `detectRoadmapFormat` (now three-way: ants-v1, github-task-list,
+  pass-headings; 2+2 threshold on `#### Pass` headings and Status
+  markers to rule out fenced-code examples). Each heading becomes
+  one bullet via `parsePassHeadingBullets`; status word maps
+  `todo/planned` → 📋, `in-progress/doing/wip` → 🚧,
+  `done/shipped/completed` → ✅, `deferred/considered/parked` → 💭.
+  IDs synthesised as `PASS-<major>-<minor>` so the default
+  `[PROJ-NNNN]` filter still surfaces them (and the number is
+  reversibly traceable to the source heading). `(SEVERITY, SIZE)`
+  meta re-emits in the headline so it survives in
+  `headline_oneline`.
+
+- **Deferred (logged)** — ANTS-1504 (`audit_run` since-last-run)
+  was in the original pull-8 brief but needs `.audit_cache/`
+  infrastructure that doesn't exist yet (AuditRunner writes SARIF
+  to `/tmp/`) plus per-tool argv variants for narrowing file lists.
+  ROADMAP body now carries a deferral note; ANTS-1555 (planned)
+  is the new prerequisite — per-project `.audit_cache/` layout +
+  manifest + retention.
+
+- **Follow-ups logged**:
+  - **ANTS-1554** — pre-existing `-Wnull-dereference` warning in
+    MainWindow::refreshRepoVisibility's QProcess::finished lambda
+    (qhash.h:966 inlined chain). Surfaced during pull-8 builds;
+    fix is a 2-3 line explicit `isEmpty()` guard.
+  - **ANTS-1555** — per-project `.audit_cache/` infrastructure
+    blocking ANTS-1504 (+ ANTS-1512). Sketched at ~150-200 lines
+    in the roadmap entry.
+
+- **Test-suite lockstep** — two feature tests updated alongside
+  the source: `mcp_extra_tools` bumped its `setupClaudeMcpProviders`
+  body window from 32 KiB → 48 KiB (since_cursor handler pushed
+  get_text registration past the prior limit, exactly the case the
+  test comment said to bump for); `mcp_tools_list_schema` relaxed
+  the `tab_list` assertion to "any inputSchema assignment" (now
+  carries an `etag_match` schema instead of bare `emptySchema`,
+  same relaxation get_cwd/get_environment received under ANTS-1391).
+  975/975 tests pass on default + fast presets.
+
 ### 🏗 Build + 🔌 MCP cross-session fold-in — pull 7 (ANTS-1501 + 1543 + 1550 + 1551 + 1552, 2026-05-18 late)
 
 Two build-speed items (ANTS-1550 + ANTS-1552) + three MCP token / UX fixes.
