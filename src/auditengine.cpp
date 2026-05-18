@@ -348,6 +348,20 @@ std::optional<AuditSummary> summariseSarif(
                          .value(QStringLiteral("startTimeUtc")).toString();
     }
 
+    // ANTS-1539 — scrape SARIF run.versionControlProvenance § 3.14.18.
+    // First entry wins (single-repo audits the only shape we emit).
+    // Fields left empty when the SARIF omits the block — buildLasEnvelope
+    // skips emission for empty strings, so the envelope stays trim on
+    // pre-1539 SARIFs.
+    const QJsonArray vcp = run.value(
+        QStringLiteral("versionControlProvenance")).toArray();
+    if (!vcp.isEmpty()) {
+        const QJsonObject vcs = vcp.first().toObject();
+        s.branch        = vcs.value(QStringLiteral("branch")).toString();
+        s.commit        = vcs.value(QStringLiteral("revisionId")).toString();
+        s.repositoryUri = vcs.value(QStringLiteral("repositoryUri")).toString();
+    }
+
     // Spec § 3.1 step 3 — build rule index keyed by id → severity string.
     QHash<QString, QString> ruleSeverity;
     const QJsonObject tool = run.value(QStringLiteral("tool")).toObject();

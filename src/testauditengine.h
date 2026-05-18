@@ -171,6 +171,11 @@ struct FoldInResult {
     int         writtenCount = 0;
     int         failedCount = 0;
     bool        partial = false;
+    // ANTS-1527 — counter-file path populated on id_counter_failed so
+    // the caller has a programmatic handle to the file (and the
+    // implicit `<path>.lock` sibling) without parsing the prose error
+    // message. Empty on success / other failure modes.
+    QString     counterPath;
 };
 
 PartitionResult partition(const PartitionRequest &req);

@@ -2092,6 +2092,14 @@ void ClaudeIntegration::onMcpConnection() {
                     "clang-tidy-*.txt → semgrep-*.json (ANTS-1494). "
                     "Returns {ok:false, code:\"not_audited\"} if no "
                     "recognised report is present. "
+                    "Provenance (ANTS-1545): scrape-on-query against "
+                    "disk artefacts that a previous `audit_run` (or "
+                    "an out-of-band AuditDialog sweep / CI job) wrote "
+                    "to .audit_cache. NOT paired with any specific "
+                    "writer call — every invocation re-opens and "
+                    "re-parses the newest matching file. If you need "
+                    "a fresh sweep, call `audit_run` first; this tool "
+                    "never re-runs the scanners. "
                     "Cppcheck gotcha: the default `--check-level=normal` "
                     "branch budget can silently truncate findings on "
                     "files > 5 K LoC; re-run cppcheck with "
@@ -2122,8 +2130,29 @@ void ClaudeIntegration::onMcpConnection() {
                     floorProp["description"] = QStringLiteral(
                         "SARIF level floor for top_findings[]. "
                         "Findings below this are still counted.");
+                    // ANTS-1540 — `rule_ids: ["check-id-1", ...]`.
+                    // Optional. When set, top_findings[] is filtered
+                    // to only entries whose ruleId is in the list.
+                    // Server expands the internal cap to 50 then
+                    // re-applies top_n on the filtered slice so a
+                    // rare rule below the default top-5 ranking
+                    // still surfaces. Counts[] stays global.
+                    QJsonObject ruleIdsProp;
+                    ruleIdsProp["type"] = "array";
+                    QJsonObject ruleIdsItems;
+                    ruleIdsItems["type"] = "string";
+                    ruleIdsProp["items"] = ruleIdsItems;
+                    ruleIdsProp["description"] = QStringLiteral(
+                        "Optional. Filter top_findings[] to only "
+                        "those with ruleId in this list. Server "
+                        "scans up to 50 raw findings under the hood "
+                        "so a rare rule below the default top-5 "
+                        "ranking still appears. Counts (error / "
+                        "warning / note / suppressed) stay global. "
+                        "Empty array equivalent to absent.");
                     props["top_n"]          = topNProp;
                     props["severity_floor"] = floorProp;
+                    props["rule_ids"]       = ruleIdsProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]     = makeCallerCwdReadProp();
                     schema["properties"]    = props;

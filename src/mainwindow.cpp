@@ -4198,6 +4198,13 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
                 env["written_count"]=r.writtenCount; env["failed_count"]=r.failedCount;
                 env["partial"]=r.partial;
+                // ANTS-1527 — surface counter_path as a programmatic
+                // field on id_counter_failed so the caller can clear
+                // a stale `.lock` sibling without parsing the prose
+                // error. Only emitted when the engine populated it
+                // (id_counter_failed path); other failure modes leave
+                // it empty.
+                if (!r.counterPath.isEmpty()) env["counter_path"] = r.counterPath;
                 return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
             env["ok"]                    = true;
             env["block"]                 = r.block;

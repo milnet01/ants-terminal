@@ -10136,7 +10136,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-verify-changes, mcp-transport, claudeintegration.
   Source: Vestige 3D_Engine cross-session report 2026-05-17 §1.
 
-- 📋 [ANTS-1526] **`test_audit_synthesis_prompt` summary mode includes per-dimension severity histograms.**
+- ✅ [ANTS-1526] **`test_audit_synthesis_prompt` summary mode includes per-dimension severity histograms.**
   3D_Engine #3: `summary` mode returns dimension hit counts +
   most-referenced source files — the right shape for triage prep.
   Wishlist: beyond raw count, include a tiny histogram of
@@ -10151,7 +10151,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit-synthesis.
   Source: Vestige 3D_Engine cross-session report 2026-05-17 §3.
 
-- 📋 [ANTS-1527] **`test_audit_fold_in` recovers from `id_counter_failed` flock failures + surfaces the counter-file path in the error envelope.**
+- ✅ [ANTS-1527] **`test_audit_fold_in` recovers from `id_counter_failed` flock failures + surfaces the counter-file path in the error envelope.**
   3D_Engine #4: `test_audit_fold_in` with 27 items failed
   `{code:"id_counter_failed", error:"allocateIds returned 0 of 27
   (flock/IO failure)"}`. Single session, no concurrent fold-in,
@@ -10236,7 +10236,7 @@ template / mutate this state atomically" → movable. If it's
      from RetroArch Bundles 62-68 + RetroDB Pass 47.1 + MAME Curator
      late session + Music Production audit. -->
 
-- 📋 [ANTS-1538] **`roadmap_query` surfaces a `warning` when the default ID-filter silently drops every actionable bullet on a legacy-format roadmap.**
+- ✅ [ANTS-1538] **`roadmap_query` surfaces a `warning` when the default ID-filter silently drops every actionable bullet on a legacy-format roadmap.**
   RetroArch Bundle 67 §A + Bundle 68 §1. On a roadmap whose bullets
   use `📋 **HEADLINE.** body` (status emoji + bold headline + body)
   but lack the `[PROJ-NNNN]` ID token, `roadmap_query(status="active")`
@@ -10273,7 +10273,7 @@ template / mutate this state atomically" → movable. If it's
   Source: RetroArch cross-session reports 2026-05-18 Bundle 67 §A +
   Bundle 68 §1 (recurring across 4 bundles).
 
-- 📋 [ANTS-1539] **`last_audit_summary` envelope echoes `branch` + `commit` metadata when the source SARIF / XML / JSON was captured against a known git state.**
+- ✅ [ANTS-1539] **`last_audit_summary` envelope echoes `branch` + `commit` metadata when the source SARIF / XML / JSON was captured against a known git state.**
   RetroArch Bundle 67 §B. The same finding can be a real bug on one
   branch and already-fixed on another. RetroArch deliberately splits
   work across `local/audit-2026-04` (docs) and `local/fixes-2026-04`
@@ -10298,7 +10298,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-last-audit-summary, mcp-audit-run, auditengine.
   Source: RetroArch cross-session report 2026-05-18 Bundle 67 §B.
 
-- 📋 [ANTS-1540] **`last_audit_summary` accepts `rule_ids: [...]` filter to slice the actionable list by rule.**
+- ✅ [ANTS-1540] **`last_audit_summary` accepts `rule_ids: [...]` filter to slice the actionable list by rule.**
   RetroArch Bundle 66 §2. For follow-up sessions targeting a
   specific class of finding (here, `autoVariables` +
   `duplicateExpressionTernary` from a prior cppcheck cluster), the
@@ -10334,7 +10334,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-caller-cwd-info, docs.
   Source: RetroArch cross-session report 2026-05-18 Bundle 63 (bonus).
 
-- 📋 [ANTS-1543] **`session_memory` refusal envelope embeds a concrete `caller_cwd: "<your $PWD>"` example.**
+- ✅ [ANTS-1543] **`session_memory` refusal envelope embeds a concrete `caller_cwd: "<your $PWD>"` example.**
   MAME Curator P10 chunk-3 (late) §Minor friction. The current
   refusal envelope for `session_memory` calls without `caller_cwd`
   is clear (`code:"cwd_missing"`, message "caller_cwd argument
@@ -10380,7 +10380,7 @@ template / mutate this state atomically" → movable. If it's
   Source: MAME_Curator cross-session report 2026-05-18 P10 chunk-3
   (late).
 
-- 📋 [ANTS-1545] **`last_audit_summary` docstring clarifies provenance: scrape-on-query vs paired-write tool.**
+- ✅ [ANTS-1545] **`last_audit_summary` docstring clarifies provenance: scrape-on-query vs paired-write tool.**
   Music Production audit §5. The tool surface exposes
   `last_audit_summary` but no paired `audit_record_summary` write
   tool. From a session that has just run `/audit` /
@@ -10411,6 +10411,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc-fix.
   Lanes: mcp-test-audit-partition, mcp-test-audit-brief, docs.
   Source: Vestige 3D_Engine cross-session report 2026-05-17 §2.
+
+- ✅ [ANTS-1547] **`roadmap_query` returns empty `headline` / `headline_oneline` when the bullet's bold span contains inline-code backticks with embedded `*`.**
+  Repro: ANTS-1518 and ANTS-1529 (their ROADMAP source has bold spans like `**Three review surfaces (cold_eyes_* / indie_review_* / test_audit_*) — ...**`). `rxBold` in `roadmapdialog.cpp:673` (and the rendering copy at :236) is `\\*\\*([^*]+)\\*\\*` — the `[^*]` exclusion makes the regex fail when a single `*` lives inside an inline-code span, so `parseBullets` falls through with an empty `rec.headline`. MCP roadmap_query then emits `headline:""` + `headline_oneline:""`, which downstream readers (cards renderer, this session's bundle pick) read as "no headline" and misattribute. Fix: relax both regexes to lazy `\\*\\*(.+?)\\*\\*`; add a regression fixture covering a bullet with inline-code asterisks.
+  Kind: fix.
+  Lanes: mcp-roadmap-query, roadmapdialog, parseBullets.
+  Source: in-session-2026-05-18.
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 

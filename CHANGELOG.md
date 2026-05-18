@@ -12,6 +12,69 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP cross-session fold-in — pull 5 (ANTS-1526 + 1527 + 1538 + 1539 + 1540 + 1543 + 1545 + 1547, 2026-05-18 late evening)
+
+Implementation pass over six roadmap items + one issue caught in-session
+while running through the MCP fold-in bundle.
+
+- **ANTS-1545 (doc-fix)** — `last_audit_summary` description gains a
+  Provenance: paragraph distinguishing scrape-on-query semantics
+  from `audit_run`'s writer role. Stops sessions reading a stale
+  envelope as "fresh audit data" because the tool name implies a
+  paired write that doesn't exist.
+
+- **ANTS-1543 (doc-fix)** — `session_memory` refusal envelopes
+  (`cwd_missing`, `cwd_bad`, RcGate cross-tenant) now carry a
+  concrete `example: {op, caller_cwd:"<your $PWD>", key, value}`
+  field so consumers see the exact JSON shape required to retry,
+  without round-tripping through the schema docs.
+
+- **ANTS-1538 (fix)** — `roadmap_query` now surfaces a `warning`
+  field when the default ID-filter (mandatory `[PROJ-NNNN]` per
+  roadmap-format.md § 3.5.1) silently drops every actionable
+  bullet. Names the opt-ins (`include_narrator_bullets:true`,
+  `include_section_headers:true`) so the caller can re-issue
+  instead of misreading `{count:0, bullets:[]}` as "section is
+  empty". Applies to both the full-file and section-mode emission
+  paths.
+
+- **ANTS-1540 (enhancement)** — `last_audit_summary` accepts an
+  optional `rule_ids: [...]` filter that slices `top_findings[]`
+  to only entries whose `ruleId` is in the requested set. Internal
+  parser pass uses the expanded topN=50 budget so a rare rule
+  below the default top-5 ranking still surfaces; final cap
+  re-applies the caller's `top_n` after filter. Counts stay global.
+  Envelope echoes `rule_ids_filter` for confirmation.
+
+- **ANTS-1539 (enhancement)** — `last_audit_summary` envelope now
+  echoes `branch` / `commit` / `repository_uri` scraped from SARIF
+  `run.versionControlProvenance` (§ 3.14.18). Fields omitted on
+  pre-1539 SARIFs and on the non-SARIF fallback formats that don't
+  carry equivalent provenance. Lets cross-branch consumers detect
+  staleness without parsing `sarif_path`.
+
+- **ANTS-1526 — flipped to shipped (duplicate of ANTS-1488).** The
+  per-dimension severity histograms in `test_audit_synthesis_prompt`
+  summary mode shipped under ANTS-1488 (2026-05 indie-review sweep);
+  ANTS-1526 was a later cross-session report (3D_Engine) of the
+  same ask. No code change — bookkeeping flip.
+
+- **ANTS-1527 (fix)** — `test_audit_fold_in` now populates a
+  programmatic `counter_path` field on the `id_counter_failed`
+  refusal envelope. The path was already inside the prose error
+  message via ANTS-1490; this exposes it as a structured field so
+  the caller can remove a stale `.lock` sibling without grepping
+  the human message.
+
+- **ANTS-1547 (fix, in-session find)** — `RoadmapDialog::parseBullets`
+  + the HTML applyInline helper used `\*\*([^*]+)\*\*` for bold spans,
+  which fails when the bold wraps inline-code that contains a single
+  `*` (e.g. ANTS-1518 / 1529 's `**Three review surfaces (cold_eyes_*
+  / ...)**`). Result: `headline` and `headline_oneline` emitted empty
+  via MCP `roadmap_query`. Relaxed both regexes to lazy
+  `\*\*(.+?)\*\*`. Caught by this session while running the MCP pass
+  — surfacing it as ANTS-1547 mid-session.
+
 ### 📋 Ants-MCP cross-session-report fold-in — 6 new roadmap items + 3 dupes closed (2026-05-18 evening)
 
 Cross-session-report fold-in pass over five feedback files (RetroArch

@@ -1256,8 +1256,11 @@ FoldInResult foldIn(const FoldInRequest &req) {
     if (allocatedInts.size() != n) {
         // ANTS-1490 — surface the counter-file path in the error so the
         // caller can clear a stale `.lock` sibling or inspect the file.
+        // ANTS-1527 — also populate `counterPath` as a structured
+        // field so callers can extract it without parsing the prose.
         const QString counterPath = RoadmapFoldIn::counterFilePath(canon);
         r.ok = false; r.code = QStringLiteral("id_counter_failed");
+        r.counterPath = counterPath;
         r.error = QStringLiteral(
             "test_audit_fold_in: allocateIds returned %1 of %2 "
             "(flock/IO failure on counter %3 — check for a stale "

@@ -213,6 +213,15 @@ struct AuditSummary {
     // native cppcheck XML fallback. Empty when set by an older
     // call site (defaults to "sarif" in the envelope when blank).
     QString sourceFormat;
+    // ANTS-1539 — capture-time git provenance, scraped from SARIF
+    // run.versionControlProvenance (§ 3.14.18). Empty when the SARIF
+    // omits the block or the source format doesn't carry it (every
+    // non-SARIF format today — they have no equivalent surface). The
+    // envelope-builder omits the fields when empty so callers can
+    // distinguish "unknown" from "main" / "abc123".
+    QString branch;        // versionControlDetails.branch
+    QString commit;        // versionControlDetails.revisionId
+    QString repositoryUri; // versionControlDetails.repositoryUri
 };
 
 // ANTS-1254 — read SARIF at `sarifPath`, return compact summary.

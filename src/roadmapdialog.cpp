@@ -233,7 +233,11 @@ QString applyInline(const QString &line) {
     static const QRegularExpression rxCode(QStringLiteral("`([^`]+)`"));
     s.replace(rxCode,
               QStringLiteral("<code style=\"font-family:monospace\">\\1</code>"));
-    static const QRegularExpression rxBold(QStringLiteral("\\*\\*([^*]+)\\*\\*"));
+    // ANTS-1547 — lazy `(.+?)` instead of `[^*]+` so the regex still
+    // matches when the bold span wraps an inline-code segment that
+    // itself contains a `*` (e.g. `**foo `bar_*` baz**`). The pre-1547
+    // exclusion broke parsing for ANTS-1518 / 1529 -shaped bullets.
+    static const QRegularExpression rxBold(QStringLiteral("\\*\\*(.+?)\\*\\*"));
     s.replace(rxBold, QStringLiteral("<strong>\\1</strong>"));
     return s;
 }
@@ -670,7 +674,12 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // the previous "ANTS-%1".arg(N) shape byte-for-byte.
     static const QRegularExpression rxId(
         QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*-\\d+)\\]"));
-    static const QRegularExpression rxBold(QStringLiteral("\\*\\*([^*]+)\\*\\*"));
+    // ANTS-1547 — lazy `(.+?)` instead of `[^*]+`. Bullets whose bold
+    // span wraps inline-code with a literal `*` (e.g. `**Three review
+    // surfaces (`cold_eyes_*` / ...)** `) would otherwise fall through
+    // boldMatch.hasMatch() with `rec.headline` left empty, and
+    // roadmap_query would emit headline:"" / headline_oneline:"".
+    static const QRegularExpression rxBold(QStringLiteral("\\*\\*(.+?)\\*\\*"));
     // MultilineOption so `^` anchors at the start of any line within
     // the bullet body — Kind: / Lanes: / Layman: live as continuation
     // lines, not at the start of the string.

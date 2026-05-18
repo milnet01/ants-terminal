@@ -1772,6 +1772,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // ANTS-1398-INV-3b + ANTS-1425 — section-mode emission drops
         // both rollup and narrator bullets post-status filter unless
         // the caller opts each class back in via the matching flag.
+        // ANTS-1538 — capture pre-prune count so we can surface a
+        // `warning` when the default ID-filter silently dropped every
+        // actionable bullet (legacy GFM-task-list / older-spec roadmaps
+        // whose authors used narrator prose instead of `[PROJ-NNNN]`
+        // tokens).
+        const int preIdPruneCountSec = filtered.size();
         {
             QJsonArray pruned;
             for (const auto &v : std::as_const(filtered)) {
@@ -1794,6 +1800,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["count"] = page.slice.size();
         out["filter"] = filter;
         out["section"] = sec->slug;
+        // ANTS-1538 — if every bullet got pruned by the default
+        // ID-filter, name the opt-ins so the caller can re-issue
+        // with the correct flag instead of misreading the empty
+        // result as "section is genuinely empty".
+        if (preIdPruneCountSec > 0 && filtered.isEmpty() &&
+            !includeNarratorBullets && !includeSectionHeaders) {
+            out["warning"] = QStringLiteral(
+                "default ID-filter dropped all %1 bullet(s) in this "
+                "section (every entry was either a rollup-summary or "
+                "narrator-prose line with no [PROJ-NNNN] id). "
+                "Re-issue with include_narrator_bullets:true and/or "
+                "include_section_headers:true to see them.")
+                    .arg(preIdPruneCountSec);
+        }
         if (emitPagination) {
             out["offset"]    = page.offset;
             out["limit"]     = page.limit;
@@ -1931,6 +1951,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-1398-INV-3a + ANTS-1425 — full-file emission drops both
     // rollup and narrator bullets post-status filter unless the caller
     // opts each class back in via the matching flag.
+    // ANTS-1538 — capture pre-prune count for the warning gate below.
+    const int preIdPruneCountFull = filtered.size();
     {
         QJsonArray pruned;
         for (const auto &v : std::as_const(filtered)) {
@@ -1965,6 +1987,22 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["total"]     = page.total;
         out["truncated"] = page.truncated;
         if (page.truncated) out["next_offset"] = page.nextOffset;
+    }
+    // ANTS-1538 — when the default ID-filter silently dropped every
+    // actionable bullet, surface a warning naming the opt-ins. Common
+    // on legacy GFM-task-list or older-spec roadmaps whose authors
+    // didn't tag bullets with [PROJ-NNNN] tokens; without this hint
+    // the caller reads {ok:true, bullets:[], count:0} as "no work"
+    // when in reality every bullet was pruned by the ID-mandate.
+    if (preIdPruneCountFull > 0 && filtered.isEmpty() &&
+        !includeNarratorBullets && !includeSectionHeaders) {
+        out["warning"] = QStringLiteral(
+            "default ID-filter dropped all %1 bullet(s) (every entry "
+            "was either a rollup-summary or narrator-prose line with "
+            "no [PROJ-NNNN] id). Re-issue with "
+            "include_narrator_bullets:true and/or "
+            "include_section_headers:true to see them.")
+                .arg(preIdPruneCountFull);
     }
     // ANTS-1428 — envelope-level format echo. The adapter parses
     // the whole file in one shape; if any bullet was tagged GFM,
@@ -4034,7 +4072,31 @@ QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
     for (const auto &f : s.topFindings) top.append(auditSummaryFindingAsJson(f));
     ok["top_findings"] = top;
 
+    // ANTS-1539 — surface capture-time git provenance when the source
+    // SARIF carried run.versionControlProvenance. Fields omitted when
+    // empty (most non-SARIF formats today — pre-1539 SARIFs also).
+    if (!s.branch.isEmpty())        ok["branch"]         = s.branch;
+    if (!s.commit.isEmpty())        ok["commit"]         = s.commit;
+    if (!s.repositoryUri.isEmpty()) ok["repository_uri"] = s.repositoryUri;
+
     return ok;
+}
+
+// ANTS-1540 — post-cap rule_ids filter. Operates on a snapshot of
+// AuditSummary; restricts topFindings[] to entries whose ruleId is in
+// the filter set, then caps to `cap`. Pure function.
+AuditEngine::AuditSummary applyRuleIdsFilter(
+    AuditEngine::AuditSummary s,
+    const QSet<QString> &ruleIds,
+    int cap) {
+    QList<AuditEngine::AuditSummaryFinding> kept;
+    kept.reserve(s.topFindings.size());
+    for (const auto &f : s.topFindings) {
+        if (ruleIds.contains(f.ruleId)) kept.append(f);
+        if (kept.size() >= cap) break;
+    }
+    s.topFindings = std::move(kept);
+    return s;
 }
 
 }  // namespace
@@ -4061,6 +4123,25 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     }
     if (topN < 0)  topN = 0;
     if (topN > 50) topN = 50;
+
+    // ANTS-1540 — optional `rule_ids` filter. When set, the internal
+    // parser pass uses a generous topN=50 so a rare rule that didn't
+    // make the default top-N still surfaces, then we post-filter to
+    // ruleId ∈ set and re-cap to the caller's topN.
+    QSet<QString> ruleIdsFilter;
+    bool ruleIdsRequested = false;
+    if (req.contains(QStringLiteral("rule_ids")) &&
+        req.value(QStringLiteral("rule_ids")).isArray()) {
+        const QJsonArray arr = req.value(QStringLiteral("rule_ids")).toArray();
+        for (const QJsonValue &v : arr) {
+            if (!v.isString()) continue;
+            const QString s = v.toString().trimmed();
+            if (!s.isEmpty()) ruleIdsFilter.insert(s);
+        }
+        // Empty array ⇒ filter absent (per schema). Non-empty ⇒ active.
+        ruleIdsRequested = !ruleIdsFilter.isEmpty();
+    }
+    const int parserTopN = ruleIdsRequested ? 50 : topN;
 
     // Discover latest SARIF in {projectRoot}/.audit_cache.
     // ANTS-1391: caller_cwd anchors the root when present.
@@ -4116,51 +4197,68 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
                            "one of the supported scanners first.")));
     }
 
-    // Cache key: (path, mtime, topN, floor). Keyed on resolved path
-    // so a cppcheck-xml read can't collide with a sarif read.
+    // Cache key: (path, mtime, parserTopN, floor). Keyed on resolved
+    // path so a cppcheck-xml read can't collide with a sarif read.
+    // ANTS-1540 — when rule_ids is set, the parser ran with the
+    // expanded budget (50), so the cache slot is keyed off that
+    // budget; subsequent calls without rule_ids re-parse only if the
+    // earlier slot used a smaller cap.
     const qint64 mtimeMs =
         QFileInfo(reportPath).lastModified().toMSecsSinceEpoch();
     const bool hit = (reportPath == m_auditSummaryPath
                       && mtimeMs == m_auditSummaryMtimeMs
-                      && topN    == m_auditSummaryCachedTopN
+                      && parserTopN == m_auditSummaryCachedTopN
                       && floor   == m_auditSummaryCachedFloor);
+    AuditEngine::AuditSummary summary;
     if (hit) {
-        return QJsonDocument(buildLasEnvelope(m_auditSummaryCache));
-    }
-
-    // Cache miss — parse with the format-appropriate engine helper.
-    auto parsed = [&]() -> std::optional<AuditEngine::AuditSummary> {
-        if (sourceFormat == QLatin1String("cppcheck-xml"))
-            return AuditEngine::summariseCppcheckXml(reportPath, topN, floor);
-        if (sourceFormat == QLatin1String("clang-tidy-text"))
-            return AuditEngine::summariseClangTidyText(reportPath, topN, floor);
-        if (sourceFormat == QLatin1String("semgrep-json"))
-            return AuditEngine::summariseSemgrepJson(reportPath, topN, floor);
-        return AuditEngine::summariseSarif(reportPath, topN, floor);
-    }();
-    if (!parsed) {
-        QFile f(reportPath);
-        if (!f.open(QIODevice::ReadOnly)) {
-            return QJsonDocument(lasErr(QStringLiteral("read_failed"),
-                QStringLiteral("last_audit_summary: cannot read "
-                               "report")));
+        summary = m_auditSummaryCache;
+    } else {
+        // Cache miss — parse with the format-appropriate engine helper.
+        auto parsed = [&]() -> std::optional<AuditEngine::AuditSummary> {
+            if (sourceFormat == QLatin1String("cppcheck-xml"))
+                return AuditEngine::summariseCppcheckXml(reportPath, parserTopN, floor);
+            if (sourceFormat == QLatin1String("clang-tidy-text"))
+                return AuditEngine::summariseClangTidyText(reportPath, parserTopN, floor);
+            if (sourceFormat == QLatin1String("semgrep-json"))
+                return AuditEngine::summariseSemgrepJson(reportPath, parserTopN, floor);
+            return AuditEngine::summariseSarif(reportPath, parserTopN, floor);
+        }();
+        if (!parsed) {
+            QFile f(reportPath);
+            if (!f.open(QIODevice::ReadOnly)) {
+                return QJsonDocument(lasErr(QStringLiteral("read_failed"),
+                    QStringLiteral("last_audit_summary: cannot read "
+                                   "report")));
+            }
+            f.close();
+            // INV-10: empty results / no runs[] → not_audited.
+            return QJsonDocument(lasErr(QStringLiteral("parse_failed"),
+                QStringLiteral("last_audit_summary: report malformed or "
+                               "missing findings (%1)").arg(sourceFormat)));
         }
-        f.close();
-        // INV-10: empty results / no runs[] → not_audited.
-        return QJsonDocument(lasErr(QStringLiteral("parse_failed"),
-            QStringLiteral("last_audit_summary: report malformed or "
-                           "missing findings (%1)").arg(sourceFormat)));
+
+        m_auditSummaryPath        = reportPath;
+        m_auditSummaryMtimeMs     = mtimeMs;
+        m_auditSummaryCachedTopN  = parserTopN;
+        m_auditSummaryCachedFloor = floor;
+        m_auditSummaryCache       = std::move(*parsed);
+        // ANTS-1459 — sourceFormat lives on AuditSummary itself so the
+        // cache hit path naturally carries the tag.
+        summary = m_auditSummaryCache;
     }
 
-    m_auditSummaryPath        = reportPath;
-    m_auditSummaryMtimeMs     = mtimeMs;
-    m_auditSummaryCachedTopN  = topN;
-    m_auditSummaryCachedFloor = floor;
-    m_auditSummaryCache       = std::move(*parsed);
-    // ANTS-1459 — sourceFormat lives on AuditSummary itself so the
-    // cache hit path naturally carries the tag.
-
-    return QJsonDocument(buildLasEnvelope(m_auditSummaryCache));
+    // ANTS-1540 — post-cap rule_ids filter. Applied on a copy so the
+    // cache stays globally-shaped. Echo the requested filter so the
+    // caller can confirm what got applied.
+    if (ruleIdsRequested) {
+        summary = applyRuleIdsFilter(summary, ruleIdsFilter, topN);
+        QJsonObject env = buildLasEnvelope(summary);
+        QJsonArray echoed;
+        for (const QString &r : ruleIdsFilter) echoed.append(r);
+        env["rule_ids_filter"] = echoed;
+        return QJsonDocument(env);
+    }
+    return QJsonDocument(buildLasEnvelope(summary));
 }
 
 // ----- ANTS-1112 — five `indie_review_*` MCP-tool handlers ---------
@@ -5923,31 +6021,57 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
     QString cwd;
     const bool isReadOp = (op == SessionMemoryEngine::Op::Get ||
                            op == SessionMemoryEngine::Op::List);
+    // ANTS-1543 — concrete JSON example for refusal envelopes. Shows
+    // the exact arguments shape so a session that hit `cwd_missing`
+    // / `cwd_bad` / a gate refusal can self-correct without round-
+    // tripping through the docs. Op-specific so it doubles as a
+    // syntax cheat-sheet.
+    auto smExample = [&]() -> QJsonObject {
+        QJsonObject ex;
+        ex["op"]         = opRaw.isEmpty() ? QStringLiteral("get") : opRaw;
+        ex["caller_cwd"] = QStringLiteral("<your $PWD>");
+        if (op == SessionMemoryEngine::Op::Get ||
+            op == SessionMemoryEngine::Op::Set ||
+            op == SessionMemoryEngine::Op::Delete) {
+            ex["key"] = QStringLiteral("my-key");
+        }
+        if (op == SessionMemoryEngine::Op::Set) {
+            ex["value"] = QStringLiteral("<any JSON>");
+        }
+        return ex;
+    };
+
     if (isReadOp) {
         const QString rawCaller =
             req.value(QStringLiteral("caller_cwd")).toString();
         if (rawCaller.isEmpty()) {
-            return QJsonDocument(smErr(
+            QJsonObject env = smErr(
                 QStringLiteral("cwd_missing"),
                 QStringLiteral("session_memory: caller_cwd argument "
                     "required (pass your $PWD)"),
-                opRaw, QString()));
+                opRaw, QString());
+            env["example"] = smExample();
+            return QJsonDocument(env);
         }
         const QFileInfo fi(rawCaller);
         const QString canon = fi.canonicalFilePath();
         if (canon.isEmpty()) {
-            return QJsonDocument(smErr(
+            QJsonObject env = smErr(
                 QStringLiteral("cwd_bad"),
                 QStringLiteral("session_memory: caller_cwd \"%1\" "
                     "does not exist").arg(rawCaller),
-                opRaw, QString()));
+                opRaw, QString());
+            env["example"] = smExample();
+            return QJsonDocument(env);
         }
         if (!QFileInfo(canon).isDir()) {
-            return QJsonDocument(smErr(
+            QJsonObject env = smErr(
                 QStringLiteral("cwd_bad"),
                 QStringLiteral("session_memory: caller_cwd \"%1\" "
                     "is not a directory").arg(rawCaller),
-                opRaw, QString()));
+                opRaw, QString());
+            env["example"] = smExample();
+            return QJsonDocument(env);
         }
         cwd = canon;
     } else {
@@ -5955,8 +6079,10 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
             resolveRootCanonical(m_main), req,
             QStringLiteral("session_memory"));
         if (!gate.ok) {
-            return QJsonDocument(smErr(gate.errorCode, gate.error,
-                                       opRaw, QString()));
+            QJsonObject env = smErr(gate.errorCode, gate.error,
+                                    opRaw, QString());
+            env["example"] = smExample();
+            return QJsonDocument(env);
         }
         cwd = gate.focused;
     }
