@@ -10232,6 +10232,186 @@ template / mutate this state atomically" → movable. If it's
   Lanes: roadmapdialog.
   Source: Cold-eyes 2026-05-18 (contracts + spec ANTS-1160 lanes).
 
+<!-- 2026-05-18 evening — additional cross-session-report fold-ins
+     from RetroArch Bundles 62-68 + RetroDB Pass 47.1 + MAME Curator
+     late session + Music Production audit. -->
+
+- 📋 [ANTS-1538] **`roadmap_query` surfaces a `warning` when the default ID-filter silently drops every actionable bullet on a legacy-format roadmap.**
+  RetroArch Bundle 67 §A + Bundle 68 §1. On a roadmap whose bullets
+  use `📋 **HEADLINE.** body` (status emoji + bold headline + body)
+  but lack the `[PROJ-NNNN]` ID token, `roadmap_query(status="active")`
+  returns `count: 0` while `roadmap_query(mode="section_index")`
+  reports tens of active bullets across multiple sections. The two
+  counters disagree because `section_index`'s `active_count` counts
+  by status emoji while default `bullets[]` filters by ID presence.
+  A session sees the empty default-bullets response and either gives
+  up or starts inventing items. The recurring report pattern across
+  Bundles 65/66/67/68 says this is "the **first call** the agent
+  makes against the MCP, so the friction lands at the start of every
+  session, not somewhere mid-flow." Three fix options (any one is
+  enough):
+  (a) Emit a `warning` field on the envelope when filtered-count is
+  positive AND returned `count==0` — text e.g. "47 of 49 bullets
+  filtered because they lack `[PROJ-NNNN]` IDs (legacy roadmap
+  format). Pass `include_narrator_bullets=true` to retrieve them."
+  Cheapest, doesn't change defaults, self-diagnosing.
+  (b) Auto-fallback: when >75% of bullets in the file lack
+  `[PROJ-NNNN]` IDs, treat the file as legacy-format and default
+  `include_narrator_bullets=true` (still emit `legacy_format: true`
+  so the client knows).
+  (c) Make `section_index`'s `active_count` honour the same filter
+  the default `bullets[]` query uses, so the two response modes
+  agree on what they count. If the silent-filter is intentional, at
+  minimum keep the counters consistent.
+  Layman: when a project's roadmap uses an older format without
+  per-bullet IDs, the MCP's roadmap-query tool returns "0 items"
+  even when the section index shows N. We'll either warn explicitly,
+  auto-detect the older format, or keep the two counters in sync —
+  so a session doesn't think the roadmap is empty.
+  Kind: fix.
+  Lanes: mcp-roadmap-query.
+  Source: RetroArch cross-session reports 2026-05-18 Bundle 67 §A +
+  Bundle 68 §1 (recurring across 4 bundles).
+
+- 📋 [ANTS-1539] **`last_audit_summary` envelope echoes `branch` + `commit` metadata when the source SARIF / XML / JSON was captured against a known git state.**
+  RetroArch Bundle 67 §B. The same finding can be a real bug on one
+  branch and already-fixed on another. RetroArch deliberately splits
+  work across `local/audit-2026-04` (docs) and `local/fixes-2026-04`
+  (source fixes) via two long-lived worktrees; without branch
+  context, the audit summary isn't fully actionable — the caller has
+  to cross-reference each cited `file:line` against the contents on
+  both branches to decide whether the finding still applies.
+  Approach: `audit_run` (or whatever records the audit) captures
+  `git rev-parse HEAD` + `git symbolic-ref HEAD` + `git diff --stat
+  HEAD` (count) at scan completion, and stores them as sidecar JSON
+  next to the artefact (or as an XML metadata comment). Then
+  `last_audit_summary`'s envelope echoes `branch:
+  "local/audit-2026-04"`, `commit: "1b400e930a"`, `working_tree_dirty:
+  false`. Distinct from ANTS-1406 (which scopes to since-commit cache
+  reuse, not metadata exposure).
+  Layman: audit results don't say which branch they were captured
+  on. When a project keeps audit and fix work on different branches,
+  the same finding can be a real bug on one and already-fixed on
+  the other. Surfacing branch + commit in the audit-summary envelope
+  closes that gap.
+  Kind: enhancement.
+  Lanes: mcp-last-audit-summary, mcp-audit-run, auditengine.
+  Source: RetroArch cross-session report 2026-05-18 Bundle 67 §B.
+
+- 📋 [ANTS-1540] **`last_audit_summary` accepts `rule_ids: [...]` filter to slice the actionable list by rule.**
+  RetroArch Bundle 66 §2. For follow-up sessions targeting a
+  specific class of finding (here, `autoVariables` +
+  `duplicateExpressionTernary` from a prior cppcheck cluster), the
+  current top-N severity-floored response forces grep over the raw
+  XML to pull line numbers per rule. A `rule_ids: ["autoVariables",
+  "duplicateExpressionTernary"]` filter — accepted alongside the
+  existing `severity_floor` — returns a structured response with
+  line numbers + locations without the caller needing to know the
+  source XML's schema. Implementation note: keep the filter
+  case-sensitive (cppcheck rule IDs are camelCase / snake_case in
+  practice); document that.
+  Layman: when a session is following up on one specific kind of
+  warning, the audit-summary tool can't slice the results by rule
+  name. Adding a `rule_ids` filter saves a couple of grep calls
+  per follow-up.
+  Kind: enhancement.
+  Lanes: mcp-last-audit-summary.
+  Source: RetroArch cross-session report 2026-05-18 Bundle 66 §2.
+
+- ✅ [ANTS-1541] **`cold_eyes_brief` accepts an arbitrary `lane` block (off-partition) so the caller can use the brief tool even when the partition was hand-built.**
+  Duplicate of ANTS-1508 (shipped). Same fix scope; same RetroDB
+  cold-eyes Issue 3 (MEDIUM) source. Closed as duplicate during
+  the 2026-05-18 evening cross-session-report fold-in pass.
+  Kind: enhancement.
+  Lanes: mcp-cold-eyes-brief, coldeyesengine.
+  Source: RetroDB cross-session report 2026-05-18 cold-eyes §3.
+
+- ✅ [ANTS-1542] **`caller_cwd_info` tool description tells callers WHEN to use it, not just what it does.**
+  Duplicate of ANTS-1498 (shipped). Same scope; same RetroArch
+  Bundle 63 (bonus) source. Closed as duplicate during the
+  2026-05-18 evening cross-session-report fold-in pass.
+  Kind: doc-fix.
+  Lanes: mcp-caller-cwd-info, docs.
+  Source: RetroArch cross-session report 2026-05-18 Bundle 63 (bonus).
+
+- 📋 [ANTS-1543] **`session_memory` refusal envelope embeds a concrete `caller_cwd: "<your $PWD>"` example.**
+  MAME Curator P10 chunk-3 (late) §Minor friction. The current
+  refusal envelope for `session_memory` calls without `caller_cwd`
+  is clear (`code:"cwd_missing"`, message "caller_cwd argument
+  required (pass your $PWD)") but adding a literal example string
+  — `caller_cwd: "<your $PWD>"` or `caller_cwd: "/abs/path"` — to
+  the message body would help future Claudes self-correct in one
+  more tool call instead of two. Same pattern across other
+  RcGate refusal codes (cf. mcp-error-codes.md taxonomy) — apply
+  uniformly. ~10-line code fix per refusal site; tiny test
+  surface.
+  Layman: when a tool refuses with "you forgot caller_cwd", the
+  error message tells you it's required but doesn't show a
+  concrete example. Adding one will help sessions correct
+  themselves faster.
+  Kind: doc-fix.
+  Lanes: mcp-session-memory, mcp-error-codes, mcp-caller-cwd.
+  Source: MAME_Curator cross-session report 2026-05-18 P10 chunk-3
+  (late).
+
+- 💭 [ANTS-1544] **`mcp__ants__current_bullet` — one-call session-start state resolver.**
+  MAME Curator P10 chunk-3 (late) §Suggestion. Today's recipe for
+  a session-start state recovery is three tool calls: (1) Read
+  `.claude/workflow.md` § 1 for the active item ID; (2)
+  `roadmap_query(status="active")` to confirm the bullet still
+  has `status: 🚧` and grab `section_slug`; (3) Read
+  `docs/specs/<ID>.md` for the chunk-table / next-gate. A single
+  MCP verb that returns `{active_id, bullet, spec_path,
+  next_steps[]}` would compress those three reads into one. The
+  CLAUDE.md "Session start — read & summarise" instruction would
+  drop from 3 reads to 1.
+  Speculative — depends on the `.claude/workflow.md` convention
+  being stable across projects, and the spec-doc location being
+  derivable from the bullet ID. May be better implemented as a
+  recipe (similar to ANTS-1523's resume-audit doc) rather than a
+  new verb. Logged 💭 considered for that reason — re-promote to
+  📋 if a second cross-session report endorses the verb shape.
+  Layman: sessions waste a couple of tool calls at the start to
+  figure out "what bullet am I on, where's the spec, what's next."
+  One MCP call that returns all three would save that overhead —
+  but only if the convention it relies on is broadly applicable.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, mcp-current-bullet, mcp-workflow.
+  Source: MAME_Curator cross-session report 2026-05-18 P10 chunk-3
+  (late).
+
+- 📋 [ANTS-1545] **`last_audit_summary` docstring clarifies provenance: scrape-on-query vs paired-write tool.**
+  Music Production audit §5. The tool surface exposes
+  `last_audit_summary` but no paired `audit_record_summary` write
+  tool. From a session that has just run `/audit` /
+  `/test-audit` / `/indie-review`, it's unclear whether the next
+  session will be able to query the result via MCP — or whether
+  the read tool only scrapes ROADMAP.md at query time. The
+  ambiguity matters because each AI-reviewer sweep skill writes
+  its fold-in block in a different shape (`/audit` is severity-
+  sorted, `/test-audit` is dimension-grouped). Two paths: (a) add
+  a paired `audit_record_summary` MCP verb that the skills call
+  at fold-in time, normalising the on-disk shape; (b) document
+  that `last_audit_summary` reads from ROADMAP.md / SARIF /
+  audit-cache at query time, and note which inputs it accepts.
+  (b) matches today's behaviour and is one description-string
+  edit — preferred unless / until (a) materialises.
+  Layman: the tool that reads the last audit's summary doesn't
+  explain where it pulls the data from. Some projects expect a
+  separate write tool to populate it; we'll clarify the
+  read-vs-write split in the tool's description.
+  Kind: doc-fix.
+  Lanes: mcp-last-audit-summary, docs.
+  Source: Music Production cross-session report 2026-05-18 §5.
+
+- ✅ [ANTS-1546] **`test_audit_partition` response declares `pre_pass_findings_by_chunk` as the authoritative pre-pass discovery map (skip per-chunk `test_audit_brief` when missing).**
+  Duplicate of ANTS-1489 (shipped). Same fix scope; same Vestige
+  3D_Engine Issue #2 source. Closed as duplicate during the
+  2026-05-18 evening cross-session-report fold-in pass.
+  Kind: doc-fix.
+  Lanes: mcp-test-audit-partition, mcp-test-audit-brief, docs.
+  Source: Vestige 3D_Engine cross-session report 2026-05-17 §2.
+
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.

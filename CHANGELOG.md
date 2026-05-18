@@ -12,6 +12,79 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 📋 Ants-MCP cross-session-report fold-in — 6 new roadmap items + 3 dupes closed (2026-05-18 evening)
+
+Cross-session-report fold-in pass over five feedback files (RetroArch
+Bundles 62-68, RetroDB Pass 47.1 + cold-eyes, MAME Curator late
+session, Vestige 3D Engine, Music Production audit). 9 IDs allocated
+(ANTS-1538..1546); 6 net-new tracked items (1538, 1539, 1540, 1543,
+1544, 1545); 3 closed as duplicates of already-shipped work (1541 ↔
+1508 cold_eyes_brief lane-agnostic; 1542 ↔ 1498 caller_cwd_info
+"use FIRST when" docstring; 1546 ↔ 1489 test_audit_brief pre-pass
+discovery). Remaining feedback items confirmed already shipped
+(ANTS-1459, 1486, 1487, 1491, 1494, 1497, 1507, 1511, 1517, 1521,
+1522, 1523, 1524, 1525) or already roadmapped (ANTS-1406, 1495,
+1510, 1512, 1513, 1514, 1518, 1520, 1526, 1527, 1529, 1530). No new
+code in this pass — pure roadmap+CHANGELOG bookkeeping.
+
+- **ANTS-1538 (HIGH, recurring 4×)** — `roadmap_query` legacy-format
+  silent-filter footgun. When a project's roadmap uses status emoji
+  + bold headlines but no `[PROJ-NNNN]` IDs, `roadmap_query(status=
+  "active")` returns `count:0` while `mode:"section_index"` shows
+  tens of bullets across sections. Three fix options (warn / auto-
+  fallback / counter-consistency); recommend (a) the warning field.
+  Layman: when a roadmap uses an older format without per-bullet
+  IDs, the MCP returns "0 items" even when there are many — we'll
+  warn explicitly or fix the counter inconsistency.
+
+- **ANTS-1539 (MED)** — `last_audit_summary` envelope echoes
+  `branch` + `commit` metadata. RetroArch's audit/fixes branch
+  split makes the same SARIF finding mean different things on
+  different branches; without metadata in the read tool, callers
+  must cross-reference per finding.
+
+- **ANTS-1540 (MED)** — `last_audit_summary` accepts `rule_ids: […]`
+  filter. Slice the actionable list by cppcheck rule (e.g.
+  `autoVariables`, `duplicateExpressionTernary`) for narrow follow-
+  up work without grepping the raw XML.
+
+- **ANTS-1541 — closed as duplicate of ANTS-1508 (shipped).** Same
+  fix scope: `cold_eyes_brief` accepts arbitrary `lane` +
+  `doc_paths: […]` so partition output isn't required.
+
+- **ANTS-1542 — closed as duplicate of ANTS-1498 (shipped).** Same
+  doc-fix: `caller_cwd_info` description appends "Use this FIRST
+  when `no_roadmap_loaded` / `cwd_mismatch` fires."
+
+- **ANTS-1543 (LOW, doc-fix)** — `session_memory` (and other
+  RcGate-protected verbs) embed a concrete `caller_cwd: "<your
+  $PWD>"` example in the refusal envelope so sessions self-correct
+  in one tool call instead of two.
+
+- **ANTS-1544 (💭 considered)** — `mcp__ants__current_bullet`
+  one-call session-start resolver returning `{active_id, bullet,
+  spec_path, next_steps[]}`. Logged 💭 because it depends on the
+  `.claude/workflow.md` convention being stable across projects;
+  re-promote to 📋 if a second cross-session report endorses
+  the verb shape (vs. a recipe doc à la ANTS-1523).
+
+- **ANTS-1545 (LOW, doc-fix)** — `last_audit_summary` docstring
+  clarifies provenance: scrape-on-query (today) vs paired write
+  tool (speculative). The ambiguity matters because each AI-
+  reviewer sweep skill (`/audit`, `/test-audit`, `/indie-review`)
+  writes its fold-in block in a different shape, and a paired
+  write verb would normalise that.
+
+- **ANTS-1546 — closed as duplicate of ANTS-1489 (shipped).** Same
+  doc-fix: `test_audit_partition`'s `pre_pass_findings_by_chunk`
+  declared authoritative so callers can skip empty briefs.
+
+Counter bumped 1537→1546 (3 IDs spent on dupes — preserved as
+documentation that the duplicate was identified during fold-in).
+ROADMAP block appended after ANTS-1531 in the
+`ants-mcp-follow-ups-from-ants-1356-retrodb-cross-session-
+reports-2026-05-17` section.
+
 ### 🔌 Ants-MCP cross-session-report fold-in pull 4 (in flight, 2026-05-18)
 
 Fourth pull from the 2026-05-17 / 2026-05-18 cross-session-report
