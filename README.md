@@ -550,6 +550,23 @@ bypasses the cap and can OOM on Qt-heavy translation units.
 Tests are built by default. To skip them for a faster main-exe-only
 iteration: `cmake -G Ninja -B build -DANTS_TESTS=OFF`.
 
+#### Faster local builds
+
+Five overlapping knobs cut wall-clock and peak RAM on the workstation
+loop. Combine as many as the situation justifies:
+
+| Pattern | What it does | How to invoke |
+|---|---|---|
+| Target-specific build | Skips the ~30 test binaries when only the main app changed. | `cmake --build build --target ants-terminal` |
+| `-DANTS_TESTS=OFF` | Drops every test target from the graph entirely. | `cmake -G Ninja -B build -DANTS_TESTS=OFF` |
+| `-DANTS_CCACHE=ON` *(default)* | Wires `ccache` as the C/C++ compiler launcher when installed; second build of any file is a cache hit (zero compile cost). Pass `-DANTS_CCACHE=OFF` to disable. | `zypper install ccache` (or distro equivalent), then `cmake -G Ninja -B build` |
+| `-DANTS_UNITY_BUILD=ON` | Folds groups of `.cpp` into one TU per CMake target, dropping `cc1plus` instance count (each holds ~600 MiB of Qt headers). **Experimental** — incompatible with the current test-bundle selective-link layout (see ANTS-1553). Use only on main-exe-only builds. | `cmake -G Ninja -B build -DANTS_TESTS=OFF -DANTS_UNITY_BUILD=ON` |
+| `fast` preset | Bundles ccache + per-lib PCH in `build-fast/`. | `cmake --preset=fast && cmake --build --preset=fast` |
+
+The `fast` preset is the recommended starting point for hot-loop work
+once your workstation has `ccache` installed. It deliberately leaves
+Unity builds off until ANTS-1553 ships.
+
 #### Constrained hardware: workstation preset
 
 For 8–16 GiB hosts (laptops, modest workstations) — or any time the

@@ -64,6 +64,11 @@ QJsonObject gateErrorEnvelope(const CallerCwdGate &g) {
         env[QStringLiteral("hint")] = QStringLiteral(
             "call mcp__ants__caller_cwd_info with your $PWD to "
             "confirm which tab Ants would route this call to");
+        // ANTS-1543 — concrete JSON snippet so the caller can copy
+        // the exact shape (mirrors session_memory's per-op example).
+        QJsonObject ex;
+        ex[QStringLiteral("caller_cwd")] = QStringLiteral("<your $PWD>");
+        env[QStringLiteral("example")] = ex;
     }
     return env;
 }

@@ -35,6 +35,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <algorithm>
+#include <QHash>
 #include <QJsonArray>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -2293,8 +2294,67 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     bullet += QStringLiteral("- ") + statusEmoji + QChar(' ') +
               QChar('[') + idStr + QChar(']') + QChar(' ') +
               QStringLiteral("**") + headline + QStringLiteral("**\n");
-    const QString body =
+
+    // ANTS-1551 — defensive scrub of leaked tool-call XML. Some
+    // harnesses serialise sibling array/object params (lanes,
+    // layman, source) as literal `<parameter name="X">...</parameter>`
+    // blocks appended inside the body string. Strip those before
+    // they end up in ROADMAP.md, but keep the user's prose. Record
+    // any recognised sibling names so the response envelope can
+    // surface a warning — the caller's typed argument was lost.
+    QStringList scrubbedNames;
+    auto scrubLeakedToolXml = [&scrubbedNames](QString &text) {
+        if (text.isEmpty()) return;
+        // Matched <parameter name="X">…</parameter> pairs. [\s\S] is
+        // required to span newlines because QRegularExpression's
+        // default '.' doesn't cross them and DotMatchesEverything
+        // would also relax greedy quantifiers elsewhere.
+        QRegularExpression pairRx(
+            QStringLiteral("<parameter\\s+name=(?:\"([^\"]*)\"|"
+                           "'([^']*)'|([^\\s>]+))[^>]*>"
+                           "[\\s\\S]*?</parameter>"),
+            QRegularExpression::CaseInsensitiveOption);
+        auto it = pairRx.globalMatch(text);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            QString name = m.captured(1);
+            if (name.isEmpty()) name = m.captured(2);
+            if (name.isEmpty()) name = m.captured(3);
+            if (!name.isEmpty() && !scrubbedNames.contains(name)) {
+                scrubbedNames.append(name);
+            }
+        }
+        text.remove(pairRx);
+        // Orphan openers/closers without a matched pair.
+        text.remove(QRegularExpression(
+            QStringLiteral("<parameter\\s+name=[^>]*>"),
+            QRegularExpression::CaseInsensitiveOption));
+        text.remove(QRegularExpression(
+            QStringLiteral("</parameter>"),
+            QRegularExpression::CaseInsensitiveOption));
+        // Stray closing tags from a leaked outer <body> wrapper.
+        text.remove(QRegularExpression(
+            QStringLiteral("</body>"),
+            QRegularExpression::CaseInsensitiveOption));
+        // Collapse any blank-line runs created by the removal so the
+        // splice doesn't accumulate empty body lines.
+        text.replace(QRegularExpression(QStringLiteral("\\n{3,}")),
+                     QStringLiteral("\n\n"));
+        // Trim trailing whitespace from each line + overall.
+        QStringList ls = text.split(QChar('\n'));
+        for (QString &l : ls) {
+            while (!l.isEmpty() && (l.endsWith(QChar(' ')) ||
+                                    l.endsWith(QChar('\t')))) {
+                l.chop(1);
+            }
+        }
+        text = ls.join(QChar('\n'));
+        while (text.endsWith(QChar('\n'))) text.chop(1);
+    };
+
+    QString body =
         req.value(QStringLiteral("body")).toString();
+    scrubLeakedToolXml(body);
     if (!body.isEmpty()) {
         const QStringList lines = body.split(QChar('\n'));
         for (const QString &ln : lines) {
@@ -2374,6 +2434,21 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["line"]          = insertAt + 1;  // 1-based for humans
     out["bytes_written"] = static_cast<qint64>(bullet.toUtf8().size());
+    // ANTS-1551 — if the defensive scrub stripped leaked tool-call
+    // XML, surface the recognised sibling-parameter names so the
+    // caller knows which typed arguments were lost in transit.
+    if (!scrubbedNames.isEmpty()) {
+        QJsonArray names;
+        for (const QString &n : scrubbedNames) names.append(n);
+        QJsonObject warn;
+        warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
+        warn["message"] = QStringLiteral(
+            "Stripped leaked <parameter name=\"…\"> tool-call XML "
+            "from body; resend the named siblings as proper JSON "
+            "fields if you intended them.");
+        warn["lost_parameters"] = names;
+        out["warnings"] = QJsonArray{ warn };
+    }
     return QJsonDocument(out);
 }
 
@@ -3123,11 +3198,49 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // us off mid-stream.
     if (seenMatchEvents > matches.size() || hardKilled) truncated = true;
 
+    // ANTS-1501 — near-duplicate excerpt dedup. Broad queries that hit
+    // a common code shape ("emit signalName", `connect(`, "qDebug() <<")
+    // repeat the same surrounding text across N files. Group by
+    // whitespace-normalised excerpt; emit the first verbatim with
+    // `also_at: [{file, line}, …]` carrying the rest. Default on; pass
+    // dedup:false to preserve per-match verbatim output.
+    const bool dedupOn =
+        req.value(QStringLiteral("dedup")).toBool(true);
+    int dedupCollapsed = 0;
+    if (dedupOn && matches.size() > 1) {
+        QHash<QString, int> firstByKey;  // normalised text → matches index
+        QJsonArray collapsed;
+        for (const QJsonValue &v : std::as_const(matches)) {
+            const QJsonObject m = v.toObject();
+            QString key = m.value("text").toString().simplified();
+            const auto it = firstByKey.find(key);
+            if (it == firstByKey.end()) {
+                firstByKey.insert(key, collapsed.size());
+                collapsed.append(m);
+            } else {
+                QJsonObject prim = collapsed.at(*it).toObject();
+                QJsonArray alsoAt = prim.value("also_at").toArray();
+                QJsonObject loc;
+                loc["file"] = m.value("file").toString();
+                loc["line"] = m.value("line").toInt();
+                alsoAt.append(loc);
+                prim["also_at"] = alsoAt;
+                collapsed.replace(*it, prim);
+                ++dedupCollapsed;
+            }
+        }
+        matches = collapsed;
+    }
+
     QJsonObject out;
     out["ok"]         = true;
     out["pattern"]    = pattern;
     out["matches"]    = matches;
     out["truncated"]  = truncated;
+    if (dedupOn) {
+        out["dedup"]            = true;
+        out["dedup_collapsed"]  = dedupCollapsed;
+    }
     // ANTS-1452-INV-4: echo effective filter values so callers can tell
     // a filter-induced 0-match result from a genuinely clean tree.
     out["respect_gitignore"] = respect_gitignore;

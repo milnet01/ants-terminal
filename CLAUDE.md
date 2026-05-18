@@ -146,20 +146,55 @@ ctest --test-dir build --output-on-failure 2>&1 | tail -20
 This keeps a 10k-line build log out of the assistant's context window
 while preserving the tail where compile/link failures actually surface.
 
+### Cheaper iteration loops
+
+Five overlapping knobs trim wall-clock and peak RAM on the workstation
+edit-build-test loop (ANTS-1550 / ANTS-1552):
+
+- `cmake --build build --target ants-terminal` — skips the ~30 test
+  bundle binaries when only the main app changed.
+- `-DANTS_TESTS=OFF` at configure time — drops every test target from
+  the graph entirely. Pair with the target-specific build above for
+  the absolute floor.
+- `-DANTS_CCACHE=ON` (default) — wires `ccache` as the C/C++ compiler
+  launcher when installed; on a cache hit `cc1plus` is not invoked
+  at all (zero RSS, zero time). Pass `-DANTS_CCACHE=OFF` to disable
+  if the auto-pick is unwanted.
+- `-DANTS_UNITY_BUILD=ON` — folds groups of `.cpp` into one TU per
+  CMake target, dropping concurrent `cc1plus` instance count. **Opt-
+  in, experimental.** The current STATIC-lib layout exposes two
+  cross-cutting issues: (a) per-test-bundle `static int runMain()`
+  helpers collide when unified (test bundles are exempted via
+  `UNITY_BUILD OFF`); (b) merging TUs inside `ants_core_lib`
+  produces unity `.o` files that reference symbols from higher libs
+  (`MainWindow`, `RoadmapDialog`), which breaks the test bundles'
+  selective `--start-group` link. ANTS-1553 tracks the lib-boundary
+  rework needed to make Unity work end-to-end.
+- `cmake --preset=fast` — bundles ccache + per-lib PCH in
+  `build-fast/`. Recommended starting point for hot-loop work.
+  Unity is intentionally *not* enabled in the preset until
+  ANTS-1553 ships.
+
+Layer 3 backstop (`tools/safe-build.sh`, below) still applies if a
+future regression reintroduces over-parallelism — the new knobs lower
+the working-set ceiling, not the safety net.
+
 ### CMake presets
 
-`CMakePresets.json` ships three presets:
+`CMakePresets.json` ships four presets:
 
 | Preset | Use |
 |---|---|
 | `default` | Release + Ninja in `build/`. Honours the in-tree JOB_POOLS cap. |
 | `workstation` | Release in `build-workstation/` hard-capped at `-j3` for constrained hardware *or* when the build is competing with a heavy desktop session. Pair with `cmake --build --preset=workstation`. |
 | `debug` | Debug + ASan/UBSan in `build-asan/` with sanitizer env vars wired into `ctest --preset=debug`. |
+| `fast` | Release in `build-fast/` bundling ccache + Unity + per-lib PCH (ANTS-1550). Lowest wall-clock for incremental hot-loop work on a warm cache. |
 
 ```bash
 cmake --preset=default    && cmake --build --preset=default    && ctest --preset=default
 cmake --preset=workstation && cmake --build --preset=workstation && ctest --preset=workstation
 cmake --preset=debug      && cmake --build --preset=debug      && ctest --preset=debug
+cmake --preset=fast       && cmake --build --preset=fast       && ctest --preset=fast
 ```
 
 ### Last-resort backstop: `tools/safe-build.sh`

@@ -9582,7 +9582,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-get-scrollback.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- 📋 [ANTS-1501] ****`workspace_search` near-duplicate excerpt dedup.****
+- ✅ [ANTS-1501] ****`workspace_search` near-duplicate excerpt dedup.****
   When a query matches the same code shape across many files (e.g.
   "emit signalName" finding 14 connect() call sites with near-identical
   excerpts), the response repeats the same surrounding context lines N
@@ -10454,14 +10454,14 @@ template / mutate this state atomically" → movable. If it's
   Kind: implement.
   Source: user-request-2026-05-18.
 
-- 📋 [ANTS-1551] **MCP `roadmap_log` defensive body scrub — strip leaked tool-call XML artifacts.**
+- ✅ [ANTS-1551] **MCP `roadmap_log` defensive body scrub — strip leaked tool-call XML artifacts.**
   Recurring across at least 3 calls in 2026-05-18 session: when the body parameter is passed alongside an array-typed sibling (lanes), the calling harness occasionally serialises the sibling AS a literal `<parameter name="X">...</parameter>` block appended INSIDE the body string. The MCP server then writes the literal XML into ROADMAP.md. The auto-mode classifier has now started refusing such calls (correctly — they look like prompt injection), so the first-order fix is a defensive scrub at the server's body-sanitiser path: detect and strip `</body>` tokens + `<parameter name="..."\\s*>.*?</parameter>` patterns + raw `<parameter name=` openers before persisting. Optional bonus: when the stripped XML contains a recognised field name (lanes / layman / source), surface a warning in the response envelope so the caller knows their sibling param was lost. Drop the malformed input on the floor rather than rejecting the whole call — the user's prose is the part worth saving. File: `src/remotecontrol.cpp` near `cmdRoadmapLog`'s body handling. Estimated effort: 30 min + a regression test fixture.
   Layman: When sending a structured "log this roadmap item" command, the harness sometimes garbles part of the data into XML and slips it into the description text. The Ants server today writes that garbled XML literally into the roadmap file. Add a quick sanity-strip pass so the garbled XML is removed before saving, and log a warning so the caller knows their data got eaten.
   Lanes: mcp-roadmap-log, remotecontrol, mcp-input-validation.
   Kind: fix.
   Source: in-session-2026-05-18 (recurring).
 
-- 📋 [ANTS-1552] **Surface existing safe-build patterns prominently in README + CLAUDE.md.**
+- ✅ [ANTS-1552] **Surface existing safe-build patterns prominently in README + CLAUDE.md.**
   User request 2026-05-18 follow-up: three RAM-safe build-iteration patterns already exist in the codebase but are easy to miss. Document them prominently rather than re-implementing.
   
   1. Target-specific build (`cmake --build build --target ants-terminal`). Skips all 28 test binaries when iterating only on the main app. Drastically less RAM peak and wall-clock. Today only mentioned in passing in CLAUDE.md.
@@ -10476,7 +10476,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc.
   Source: user-request-2026-05-18.
 
-- 📋 [ANTS-1550] **Local-build speed-ups — ccache + opt-in Unity builds + PCH.**
+- ✅ [ANTS-1550] **Local-build speed-ups — ccache + opt-in Unity builds + PCH.**
   User request 2026-05-18: speed up the dev build without raising peak RAM (32 GiB host + earlyoom history). Mirror the CI ccache win (ANTS-1549) on the local side and add two RAM-reducing options.
   
   Three layered improvements:
@@ -10494,6 +10494,27 @@ template / mutate this state atomically" → movable. If it's
   Lanes: build, perf, dev-experience, cmake.
   Kind: perf.
   Source: user-request-2026-05-18.
+
+- 📋 [ANTS-1553] **Unity-build lib-boundary rework — make `ANTS_UNITY_BUILD=ON` viable end-to-end.**
+  ANTS-1550 shipped `ANTS_UNITY_BUILD=ON` as an opt-in CMake option but the current STATIC-lib layout makes it experimental:
+  
+  1. Per-test-bundle `static int runMain()` + anonymous-namespace `slurp`/`expect_*` helpers (`tests/_support/expect.h`) collide when unified. Mitigated by `set_target_properties(<bundle> PROPERTIES UNITY_BUILD OFF)` inside `ants_add_gui_bundle` / `ants_add_core_bundle` — test bundles run on the per-TU path.
+  
+  2. Deeper issue: unifying TUs inside `ants_core_lib` produces unity `.o` files that reference symbols from higher libs (`MainWindow::currentTerminal`, `RoadmapDialog::parseBullets`, `AuditEngine::summariseSarif`, `FeatureCoverage::buildProjectSourceBlob`). The test bundles' `--start-group/--end-group` selective link breaks because the merged unity_0 .o pulls in dangling externals that aren't on the bundle's lib list. Pre-unity each .cpp was its own .o so the bundle linker only pulled in what it actually needed.
+  
+  Two paths to fix:
+  
+  a) Reorganise lib boundaries so cross-lib references inside a single unity batch don't dangle — e.g. promote `MainWindow*` / `RoadmapDialog::parseBullets` users in `ants_core_lib` to `ants_chrome_lib`. Larger change but matches the layering the libs were originally designed for.
+  
+  b) Always link every test bundle against the full lib stack (`ants_chrome_lib` + `ants_dialogs_lib`). Drops the selective-link strategy and inflates link time + bundle binary size; ~3× slower test bundle links is the rough estimate.
+  
+  (a) is the architecturally clean answer; (b) is the lowest-risk fast move. The `fast` CMake preset currently bundles only ccache + PCH (not Unity) and the docs (README + CLAUDE.md) say so honestly. Once this ships the preset gains Unity back.
+  
+  Estimated effort: 4-6 h (option a — audit cross-lib refs + lift symbols to the right layer + re-run the full test matrix).
+  **Layman:** The "fold many files into one bigger compile" speedup (Unity builds) doesn't currently play nicely with how the test suite picks-and-chooses which library pieces to link. We added the option but it's marked experimental. This follow-up reorganises the library layout so it works for the whole project, not just the main app.
+  Kind: refactor.
+  Lanes: build, perf, cmake, test-infrastructure.
+  Source: in-session-2026-05-18 (ANTS-1550 follow-up).
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 

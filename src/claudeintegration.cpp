@@ -1830,7 +1830,8 @@ void ClaudeIntegration::onMcpConnection() {
                 wsTool["description"] = QStringLiteral(
                     "Search the project for code matching a literal "
                     "string or regex. Returns {ok, matches:[{file, "
-                    "line, text}], truncated, respect_gitignore, "
+                    "line, text, also_at?:[{file,line}…]}], truncated, "
+                    "dedup, dedup_collapsed, respect_gitignore, "
                     "include_hidden, elapsed_ms}. Prefer this over "
                     "`Bash grep -r ...` — typically saves 250-4500 "
                     "tokens per query and avoids round-trips for "
@@ -1842,7 +1843,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "across build outputs / compile_commands.json / "
                     "cache dirs), include_hidden (default false — pass "
                     "true to search dotfile paths; .git/ stays "
-                    "excluded regardless).");
+                    "excluded regardless), dedup (default true — "
+                    "collapses near-duplicate excerpts into a single "
+                    "primary match with `also_at` carrying the rest; "
+                    "ANTS-1501).");
                 wsTool["selection_hint"] = QStringLiteral(
                     "Use for vague-location queries ('where is the X "
                     "feature wired up?'). For known one-keyword bug "
@@ -1897,6 +1901,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "When true, search dotfile paths (--hidden). "
                         "Excludes .git/ itself regardless of this "
                         "flag.");
+                    // ANTS-1501 — near-duplicate excerpt dedup. Default
+                    // on; collapses identical excerpts into one primary
+                    // match with `also_at: [{file, line}, …]` carrying
+                    // the rest. Pass dedup:false on the rare query
+                    // where the exact surrounding context per hit
+                    // matters more than per-call token cost.
+                    QJsonObject dedupProp;
+                    dedupProp["type"]    = "boolean";
+                    dedupProp["default"] = true;
+                    dedupProp["description"] = QStringLiteral(
+                        "When true (default), group identical "
+                        "whitespace-normalised excerpts into one "
+                        "primary match plus `also_at:[{file,line}, …]` "
+                        "for the duplicates. Pass false to keep the "
+                        "per-match verbatim output.");
                     props["pattern"]     = patternProp;
                     props["regex"]       = regexProp;
                     props["lane"]        = laneProp;
@@ -1906,6 +1925,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;
                     props["include_hidden"]    = includeHiddenProp;
+                    props["dedup"]             = dedupProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
@@ -4250,6 +4270,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "call mcp__ants__caller_cwd_info with your "
                         "$PWD to confirm which tab Ants would route "
                         "this call to");
+                    // ANTS-1543 — concrete JSON snippet (mirrors the
+                    // session_memory + RcGate envelopes) so the
+                    // caller can copy the exact arguments shape.
+                    QJsonObject ex;
+                    ex[QStringLiteral("caller_cwd")] =
+                        QStringLiteral("<your $PWD>");
+                    env[QStringLiteral("example")] = ex;
                     responseText = QString::fromUtf8(
                         QJsonDocument(env)
                             .toJson(QJsonDocument::Compact));

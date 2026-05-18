@@ -33,6 +33,16 @@
                 "CMAKE_BUILD_TYPE": "Debug",
                 "ANTS_SANITIZERS": "ON"
             }
+        },
+        {
+            "name": "fast",
+            "displayName": "Fast iteration (ccache + PCH)",
+            "description": "Release build bundling the safe ANTS-1550 speed-ups: ccache launcher + the per-lib PCH (PCH is always-on, listed here for the manifest). Unity builds (ANTS_UNITY_BUILD) are opt-in only — the current STATIC-lib layout means unifying TUs makes .a archives less granular, which breaks the test-bundle selective-link strategy.",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/build-fast",
+            "cacheVariables": {
+                "ANTS_CCACHE": "ON"
+            }
         }
     ],
     "buildPresets": [
@@ -48,6 +58,10 @@
         {
             "name": "debug",
             "configurePreset": "debug"
+        },
+        {
+            "name": "fast",
+            "configurePreset": "fast"
         }
     ],
     "testPresets": [
@@ -75,6 +89,13 @@
                 "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
                 "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1",
                 "LSAN_OPTIONS": "suppressions=${sourceDir}/tests/lsan-suppressions.txt:print_suppressions=0"
+            }
+        },
+        {
+            "name": "fast",
+            "configurePreset": "fast",
+            "output": {
+                "outputOnFailure": true
             }
         }
     ]

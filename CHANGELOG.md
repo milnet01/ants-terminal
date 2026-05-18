@@ -12,6 +12,63 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🏗 Build + 🔌 MCP cross-session fold-in — pull 7 (ANTS-1501 + 1543 + 1550 + 1551 + 1552, 2026-05-18 late)
+
+Two build-speed items (ANTS-1550 + ANTS-1552) + three MCP token / UX fixes.
+
+- **ANTS-1550 (perf)** — Local-build speed-ups. Three layered options
+  on top of the existing JOB_POOLS cap: `-DANTS_CCACHE=ON` (default,
+  gates the existing auto-detect — pass `OFF` to bypass);
+  `-DANTS_UNITY_BUILD=ON` (off by default, experimental — Unity
+  folds break the test bundles' selective `--start-group` link
+  because unifying `ants_core_lib` TUs surfaces cross-lib externals
+  the bundles don't pull in; ANTS-1553 tracks the lib-boundary
+  rework needed); and PCH extended from `main.cpp` to every STATIC
+  lib (`ants_core_lib`, `ants_vt_lib`, `ants_chrome_lib`,
+  `ants_claude_lib`, `ants_audit_lib`, `ants_dialogs_lib`,
+  `ants_lua_lib`). Per-lib PCH avoids the `REUSE_FROM` trap exposed
+  by the test bundles' divergent flag sets. New `fast` CMake preset
+  (`build-fast/`) bundles ccache + PCH (Unity intentionally
+  excluded until ANTS-1553).
+
+- **ANTS-1552 (doc)** — Surface the existing safe-build patterns in
+  README + CLAUDE.md. `README.md` Building gains a "Faster local
+  builds" table; `CLAUDE.md` Build & test gains a "Cheaper iteration
+  loops" callout. Both name target-specific builds
+  (`cmake --build build --target ants-terminal`), `-DANTS_TESTS=OFF`,
+  the ANTS-1550 flags, and the `fast` preset.
+
+- **ANTS-1501 (enhancement)** — `workspace_search` near-duplicate
+  excerpt dedup. Default-on grouping of identical whitespace-
+  normalised excerpts into one primary match plus
+  `also_at:[{file,line}, …]` for the rest. Cuts response payload
+  ~60-80 % on broad cross-file searches that hit a common pattern
+  (Qt signal emissions, fixture imports, log calls). Pass
+  `dedup:false` to preserve verbatim output. Envelope echoes
+  `dedup:true, dedup_collapsed:N` so the caller can tell how much
+  was collapsed.
+
+- **ANTS-1551 (fix)** — `roadmap_log` defensive body scrub. Strips
+  leaked `<parameter name="…">…</parameter>` tool-call XML from the
+  incoming `body` before splicing into ROADMAP.md, plus orphan
+  openers/closers + `</body>` fragments. Recognised sibling
+  parameter names (lanes / layman / source / …) surface on the
+  success envelope as `warnings:[{code:"body_scrubbed_tool_xml",
+  lost_parameters:[…]}]` so the caller knows which typed argument
+  was lost in transit. Three calls in the 2026-05-18 fold-in
+  session were tripping this; the auto-mode classifier now
+  refuses such malformed payloads — the server-side scrub
+  rescues the prose half of the call.
+
+- **ANTS-1543 (doc-fix)** — Concrete `caller_cwd` example in the
+  remaining two refusal sites. The `session_memory` envelope
+  already shipped one (per-op JSON example); now the central
+  RcGate `gateErrorEnvelope` (covers every gated verb) and the
+  dispatcher's `caller_cwd_required` branch (covers Required-
+  contract tools) each carry `example:{caller_cwd:"<your $PWD>"}`
+  alongside the `hint`. Same shape across all three sites so a
+  session that hit one self-corrects in one tool call.
+
 ### 🔌 MCP cross-session fold-in — pull 6 (ANTS-1514 + 1518 + 1520 + 1529, 2026-05-18 night)
 
 Four-item cleanup pass — three behavioural fixes + one duplicate-resolution.

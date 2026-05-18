@@ -108,11 +108,29 @@ find_package(LayerShellQt CONFIG QUIET)
 #      serialises the bundle linker steps — link is the heaviest single
 #      process and the one most likely to swap.
 # ---------------------------------------------------------------------------
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
-    set(CMAKE_C_COMPILER_LAUNCHER   ${CCACHE_PROGRAM})
-    message(STATUS "ccache found at ${CCACHE_PROGRAM} — using as compiler launcher")
+# ANTS-1550 — ANTS_CCACHE gates the existing auto-detect. Default ON
+# preserves prior behaviour (ccache used when installed); -DANTS_CCACHE=OFF
+# disables for users who don't want their PATH ccache picked up implicitly.
+option(ANTS_CCACHE "Wire ccache as the C/C++ compiler launcher when installed" ON)
+if(ANTS_CCACHE)
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+        set(CMAKE_C_COMPILER_LAUNCHER   ${CCACHE_PROGRAM})
+        message(STATUS "ccache found at ${CCACHE_PROGRAM} — using as compiler launcher")
+    endif()
+endif()
+
+# ANTS-1550 — opt-in Unity builds. Folds groups of .cpp into single TUs per
+# CMake target, dropping cc1plus instance count (each holds ~600 MiB of
+# Qt headers resident). Default OFF: unity builds occasionally surface
+# latent ODR / anonymous-namespace collisions, and per-file compile
+# diagnostics get harder to read. Pair with the JOB_POOLS cap below so
+# the combined peak-RAM ceiling drops further.
+option(ANTS_UNITY_BUILD "Enable CMake UNITY_BUILD on STATIC libs (opt-in; may surface ODR drift)" OFF)
+if(ANTS_UNITY_BUILD)
+    set(CMAKE_UNITY_BUILD ON)
+    message(STATUS "Unity builds enabled (ANTS_UNITY_BUILD=ON)")
 endif()
 
 set(CMAKE_OPTIMIZE_DEPENDENCIES ON)
@@ -384,11 +402,30 @@ target_link_libraries(ants-terminal PRIVATE
 # .cpp under src/. PCH cuts that 30-50%, which keeps the build under
 # RAM+swap on 32 GiB hosts as the source tree grows. Aggregate headers
 # (no individual classes) so the PCH stays valid across edits.
-target_precompile_headers(ants-terminal PRIVATE
-    <QtCore/QtCore>
-    <QtGui/QtGui>
-    <QtWidgets/QtWidgets>
-)
+#
+# ANTS-1550 extends PCH from main.cpp's lone TU to every STATIC lib (where
+# the bulk of compile time lives). Each lib builds its own PCH once and
+# every .cpp inside reuses it — REUSE_FROM is avoided because per-lib
+# compile flags drift (ANTS_LUA_PLUGINS / ANTS_WAYLAND_LAYER_SHELL /
+# OpenGLWidgets define) would invalidate a single shared PCH.
+function(ants_apply_qt_pch tgt)
+    target_precompile_headers(${tgt} PRIVATE
+        <QtCore/QtCore>
+        <QtGui/QtGui>
+        <QtWidgets/QtWidgets>
+    )
+endfunction()
+
+ants_apply_qt_pch(ants-terminal)
+ants_apply_qt_pch(ants_core_lib)
+ants_apply_qt_pch(ants_vt_lib)
+ants_apply_qt_pch(ants_chrome_lib)
+ants_apply_qt_pch(ants_claude_lib)
+ants_apply_qt_pch(ants_audit_lib)
+ants_apply_qt_pch(ants_dialogs_lib)
+if(LUA_FOUND)
+    ants_apply_qt_pch(ants_lua_lib)
+endif()
 
 # ANTS-1116 v1 — optional `ants-helper` CLI binary. Default OFF
 # until ANTS-1120 measurement validates the token-saving claim.
@@ -545,6 +582,13 @@ if(ANTS_TESTS)
     function(ants_add_gui_bundle name)
         cmake_parse_arguments(B "" "" "LIBS;SOURCES" ${ARGN})
         add_executable(${name} tests/bundle_main_gui.cpp ${B_SOURCES})
+        # ANTS-1550 — opt out of CMAKE_UNITY_BUILD for test bundles.
+        # Each tests/features/*/test_*.cpp defines its own `static int
+        # runMain()` + anonymous-namespace `slurp` / `expect_*` helpers;
+        # unifying multiple of them into one TU produces redefinition
+        # errors. Test bundles compile fast already (≤ 4 TUs each) so
+        # there's no win to chase — leave them on the per-TU path.
+        set_target_properties(${name} PROPERTIES UNITY_BUILD OFF)
         target_link_libraries(${name} PRIVATE
             -Wl,--start-group ${B_LIBS} -Wl,--end-group
             ants_warnings GTest::gtest)
@@ -573,6 +617,9 @@ if(ANTS_TESTS)
     function(ants_add_core_bundle name)
         cmake_parse_arguments(B "" "" "LIBS;SOURCES" ${ARGN})
         add_executable(${name} tests/bundle_main_core.cpp ${B_SOURCES})
+        # ANTS-1550 — same opt-out as the GUI bundle: anonymous-namespace
+        # / static helpers across test files collide under Unity.
+        set_target_properties(${name} PROPERTIES UNITY_BUILD OFF)
         target_link_libraries(${name} PRIVATE
             ${B_LIBS} ants_warnings GTest::gtest Qt6::Core)
         target_include_directories(${name} PRIVATE
