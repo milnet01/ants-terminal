@@ -5044,20 +5044,21 @@ class; the deferrals below cover the rest.
 
 #### 🔒 Tier 2 — hardening sweep
 
-- 📋 [ANTS-1339] **`applyFilter` line-split materialisation on
-  64 MB tool output (lane-4 M3).** `auditengine.cpp:148`
-  materialises `raw.split('\n')` up-front. The upstream
-  `MAX_TOOL_OUTPUT_BYTES = 64 * 1024 * 1024` cap means a
-  pathological tool emitting 64 MB of single-character lines
-  allocates ~64M QString headers (~1.5–2 GB peak) before
-  `maxLines` truncates. The `f.maxLines` cap (default 100) only
-  applies to the kept output. Stream line-by-line with
-  `indexOf('\n')` + slice and bail at `keptCount >= maxLines`.
-  Amplification factor ~30×; real-world tools don't hit this
-  but the 64 MB cap is the only backstop.
+- ✅ [ANTS-1339] **`applyFilter` line-split materialisation on
+  64 MB tool output (lane-4 M3).** Shipped 2026-05-18 (Bundle G
+  pull 15). `AuditEngine::applyFilter` now streams over `raw` with
+  `indexOf('\n')` + slice and bails as soon as `keptCount >=
+  f.maxLines`, instead of materialising the full QStringList up
+  front. Allocates only kept lines — a 64 MB single-char-line
+  output with `maxLines=100` now allocates ~100 short QStrings
+  rather than ~64 M. Empty-trailing-line and no-trailing-newline
+  cases handled. Spec `docs/specs/ANTS-1339.md`; tests
+  `tests/features/audit_engine_stream_line_split/` (5 INVs:
+  source-grep guard, maxLines + drop/keep predicates, 1 MiB bail
+  under 250 ms, tail-without-newline, empty-input).
   **Layman:** a misbehaving lint tool that dumps 64 MB of
-  garbage briefly allocates ~2 GB of memory before being
-  truncated; stream the trim instead.
+  garbage briefly allocated ~2 GB of memory before being
+  truncated; streaming the trim caps that to a few KB.
   Kind: perf.
   Source: indie-review-2026-05-14.
 
@@ -5112,43 +5113,72 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1343] **`consolidateMypyStubHints` `findingCount`
-  clobber (lane-4 M2).** `auditdialog.cpp:2702` sets
-  `r.findingCount = kept.size() + r.omittedCount;` to reflect
-  the N→1 collapse, but `:4039` unconditionally overwrites
-  `r.findingCount = r.findings.size() + r.omittedCount;` — the
-  collapsed count is lost. UI labels show post-collapse list
-  size, not the original raw count. Fix: gate `:4039` on
-  whether a consolidator already authored the count.
-  **Layman:** the audit dialog shows a misleading
-  "N findings" count after the mypy-stub consolidation step
-  collapses several into one; preserve the pre-collapse count.
+- ✅ [ANTS-1343] **`consolidateMypyStubHints` `findingCount`
+  clobber (lane-4 M2).** Shipped 2026-05-18 (Bundle G pull 15).
+  Added `bool findingCountAuthored = false;` to `CheckResult`.
+  The consolidator (now lifted to `AuditEngine::consolidate-
+  MypyStubHints`, so it's testable without a QDialog) captures
+  the pre-collapse `r.findings.size()` before mutating the list,
+  sets `findingCount = preCollapse + omittedCount`, and stamps
+  `findingCountAuthored = true`. The dispatcher at
+  `auditdialog.cpp:4040` gates the post-cap arithmetic overwrite
+  on `!r.findingCountAuthored`, so the pre-collapse count
+  survives. Spec `docs/specs/ANTS-1343.md`; tests
+  `tests/features/audit_mypy_stub_count_preserved/` (5 INVs:
+  header flag, non-mypy no-op, single-pkg no-fold,
+  multi-pkg collapse with preCollapse=23 preserved, dispatcher
+  source-grep).
+  **Layman:** the audit dialog showed a misleading
+  "1 findings" count after the mypy-stub consolidation step
+  collapsed N entries into one; now it preserves the original N.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1344] **`extractCitedCodePaths` 64 KiB scan cap
-  silently truncates reports (lane-5 ME-4).**
-  `indiereviewengine.cpp:301–303`. Spec INV-8 documents
-  `kMaxScanBytes = 64 * 1024`. A subagent that emits a 200 KiB
-  review report loses 70 % of its citations. Surface a
-  `truncated: true` flag in the MCP response envelope when
-  scope < report size so the caller knows to fetch the rest.
-  **Layman:** when a big code review report gets trimmed for
-  parsing, the MCP response doesn't say so — surface the
-  truncation in the envelope.
+- ✅ [ANTS-1344] **`extractCitedCodePaths` 64 KiB scan cap
+  silently truncates reports (lane-5 ME-4).** Shipped 2026-05-18
+  (Bundle G pull 15). Surfaced truncation as three envelope
+  fields — `truncated: true`, `truncated_lanes: ["…"]`,
+  `truncated_at_bytes: 65536` — across both
+  `indie_review_corroborate` and the lane-source-agnostic alias
+  `cross_doc_diff`. Engine signatures stay untouched; detection
+  runs at the `RemoteControl` layer (inline `reports` path:
+  compare `QString::size()` against `kMaxScanBytes`;
+  `reports_dir` path: walk top-level `*.md` files and check
+  `QFileInfo::size()`). The constant is now a public
+  `IndieReviewEngine::kMaxScanBytes` constexpr in the header.
+  Envelope shape stays byte-identical to v1 on the happy path
+  (no `truncated` key when nothing was clipped). Spec
+  `docs/specs/ANTS-1344.md`; tests
+  `tests/features/indie_review_truncation_flag/` (4 INVs:
+  constexpr exposure, corroborate envelope grep, cross_doc_diff
+  parity, gated emission).
+  **Layman:** when a big code-review report got trimmed for
+  parsing, the MCP response didn't say so — now it tells the
+  caller which lanes were clipped and at what size.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1345] **Cold-eyes `derivePartition` mtime-gameable
-  (lane-5 ME-5).** `coldeyesengine.cpp:206–220` picks the top
-  `kMaxSpecLanes` specs by `lastModified`. `touch
-  docs/specs/ANTS-1234.md` rearranges the partition. Low-
-  impact (the partition isn't security-critical) but a future
-  CI workflow that touches files would deterministically break
-  partition stability. Fix: tiebreak on path-lexicographic
-  order when mtimes are within 1 s.
-  **Layman:** an unrelated file `touch` reorders the cold-
-  eyes review partition; make the order deterministic.
+- ✅ [ANTS-1345] **Cold-eyes `derivePartition` mtime-gameable
+  (lane-5 ME-5).** Shipped 2026-05-18 (Bundle G pull 15). The
+  spec-lane comparator buckets `lastModified` into 1 s windows
+  and tiebreaks within a bucket by path-lex ascending. Bucketing
+  (rather than a tolerance window) keeps the comparator a strict
+  weak ordering — a `|a − b| ≤ N` predicate breaks transitivity
+  when chains cross the boundary and triggers undefined-behaviour
+  sort. The fix matters at the `kMaxSpecLanes` truncation
+  cutoff: when more candidates exist than the cap allows, the
+  set of survivors is now deterministic (newer-bucket files
+  always survive; older-bucket truncation drops by lex-largest).
+  Post-truncation lane order remains path-lex ascending
+  (unchanged). Spec `docs/specs/ANTS-1345.md`; tests
+  `tests/features/cold_eyes_partition_deterministic/` (3 INVs:
+  same-mtime cutoff picks lex-smallest, newer-bucket survives,
+  idempotency across calls). Test fixtures use `utimensat` for
+  ms-precision mtime control after `QFile::setFileTime` proved
+  unreliable on the test sandbox.
+  **Layman:** an unrelated file `touch` could swap which specs
+  the cold-eyes review picked when there were too many to
+  review at once — now the selection is deterministic.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
@@ -6768,6 +6798,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: feat.
   Lanes: remotecontrol, claudeintegration, mcp_workspace_search.
   Source: external-cc-feedback-2026-05-17 (Vestige session).
+
+- 📋 [ANTS-1585] **`Finding` struct enum members lack default initializers — `-Wuninitialized` on uninitialised declarations.**
+  `src/auditengine.h:82` declares `CheckType type;` and `Severity severity;` without default initializers. GCC's `-Wuninitialized` fires whenever a caller writes `Finding f;` and the struct is then copied (e.g. into a QList). Surfaced during the ANTS-1343 build at `tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp:61` (`Finding f; QList&lt;Finding&gt; findings = {f, f};` triggers `-Wuninitialized` on `f`). Pre-existing; not introduced by Bundle G — verified by `git stash + rebuild`. Fix: add `= CheckType::Info;` and `= Severity::Info;` defaults to match the rest of the struct's `= -1` / `= false` style.
+  **Layman:** A compiler warning has been quietly firing on every test build — fix the underlying default values so the warning goes away cleanly.
+  Kind: fix.
+  Lanes: auditengine.
+  Source: in-session-2026-05-18 Bundle G observation.
 
 ### ⚡ Other improvements (performance, security, optimisations)
 

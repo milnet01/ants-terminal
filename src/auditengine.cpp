@@ -159,13 +159,27 @@ FilterResult applyFilter(const QString &raw,
         QStringLiteral(R"(^\./([^:]+\.(?:cpp|cc|cxx|c|h|hpp|hxx|py|sh|js|ts|go|rs|lua|java)):(\d+):)"));
 
     QStringList out;
-    const QStringList lines = raw.split('\n', Qt::KeepEmptyParts);
     int keptCount = 0;
-    for (const QString &line : lines) {
+    // ANTS-1339 — stream over `raw` with indexOf('\n') + slice instead
+    // of an up-front QStringList materialisation. The previous v1 form
+    // built a full QStringList (one QString header per line) BEFORE the
+    // f.maxLines bail at the loop tail, so a 64 MB tool output of
+    // single-char lines allocated ~1.5–2 GB peak before being truncated
+    // to the 100-line cap. The streaming walk allocates only kept lines.
+    const int totalLen = raw.size();
+    int pos = 0;
+    while (pos <= totalLen) {
+        int nl = raw.indexOf(QLatin1Char('\n'), pos);
+        if (nl < 0) nl = totalLen;
+        const QString line = raw.mid(pos, nl - pos);
+        pos = nl + 1;
         // ANTS-1123 indie-review M2: empty lines are dropped silently
         // — most checker outputs separate findings with blank lines and
         // those carry no signal for the dedup/SARIF pipeline downstream.
-        if (line.isEmpty()) continue;
+        if (line.isEmpty()) {
+            if (nl == totalLen) break;
+            continue;
+        }
 
         bool drop = false;
         for (const QString &needle : f.dropIfContains) {
@@ -293,6 +307,63 @@ void capFindings(CheckResult &r, int cap) {
     if (cap <= 0 || r.findings.size() <= cap) return;
     r.omittedCount = r.findings.size() - cap;
     r.findings.erase(r.findings.begin() + cap, r.findings.end());
+}
+
+// ANTS-1343 — see header comment. Pre-collapse `r.findings.size()` is
+// captured before reassignment so the authored `findingCount` reflects
+// the count the user actually saw on the wire from mypy, not the post-
+// fold list size.
+void consolidateMypyStubHints(CheckResult &r) {
+    if (r.checkId != QStringLiteral("mypy")) return;
+    if (r.findings.size() < 2) return;
+
+    // Raw string uses `re` delimiter because the pattern itself
+    // contains `)"`. Mirrors the prior AuditDialog::consolidate-
+    // MypyStubHints body verbatim.
+    static const QRegularExpression stubRe(
+        QStringLiteral(R"re(Library stubs not installed for "([A-Za-z0-9_.\-]+)")re"));
+
+    QStringList packages;
+    QList<Finding> kept;
+    kept.reserve(r.findings.size());
+    for (const Finding &f : std::as_const(r.findings)) {
+        const QRegularExpressionMatch m = stubRe.match(f.message);
+        if (m.hasMatch()) {
+            const QString pkg = m.captured(1);
+            if (!packages.contains(pkg)) packages << pkg;
+        } else {
+            kept.append(f);
+        }
+    }
+    if (packages.size() < 2) return;  // nothing to fold
+
+    Finding hint;
+    hint.checkId   = r.checkId;
+    hint.checkName = r.checkName;
+    hint.category  = r.category;
+    hint.type      = CheckType::Info;
+    hint.severity  = Severity::Info;
+    hint.source    = QStringLiteral("mypy");
+    QStringList pipTypes;
+    for (const QString &p : std::as_const(packages))
+        pipTypes << QStringLiteral("types-") + QString(p).replace('.', '-');
+    hint.message = QStringLiteral("%1 missing stub package(s): pip install %2")
+                       .arg(packages.size())
+                       .arg(pipTypes.join(QChar(' ')));
+    hint.dedupKey = computeDedup(
+        QStringLiteral("mypy-stub-hint"), 0,
+        QStringLiteral("mypy-stub-hint"),
+        packages.join(QChar(',')));
+    kept.prepend(hint);
+
+    // ANTS-1343 — preserve the pre-collapse raw count. The post-cap
+    // dispatcher at auditdialog.cpp's runCheck completion gates on
+    // findingCountAuthored so the v1 `findings.size() + omittedCount`
+    // overwrite no longer clobbers this value.
+    const int preCollapse = r.findings.size();
+    r.findings = kept;
+    r.findingCount         = preCollapse + r.omittedCount;
+    r.findingCountAuthored = true;
 }
 
 // ANTS-1254 — last_audit_summary helpers + parser.

@@ -1099,7 +1099,15 @@ if(ANTS_TESTS)
                 # ANTS-1455 — glob walk + reports_dir opt-in + synth mode/pagination.
                 tests/features/test_audit_glob_walk_synth_mode/test_audit_glob_walk_synth_mode.cpp
                 # ANTS-1579 — verify_changes timeout_sec end-to-end plumb.
-                tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp)
+                tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp
+                # ANTS-1339 — applyFilter streaming line-split.
+                tests/features/audit_engine_stream_line_split/test_audit_engine_stream_line_split.cpp
+                # ANTS-1343 — mypy stub-hint pre-collapse count preserved.
+                tests/features/audit_mypy_stub_count_preserved/test_audit_mypy_stub_count_preserved.cpp
+                # ANTS-1344 — indie_review_corroborate truncation flag.
+                tests/features/indie_review_truncation_flag/test_indie_review_truncation_flag.cpp
+                # ANTS-1345 — cold-eyes derivePartition deterministic tiebreak.
+                tests/features/cold_eyes_partition_deterministic/test_cold_eyes_partition_deterministic.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
@@ -1120,6 +1128,8 @@ if(ANTS_TESTS)
         SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
         SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
+        # ANTS-1344 — truncation-flag source-grep needs the engine header.
+        SRC_INDIE_REVIEW_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.h"
         # ANTS-1455 — taxonomy doc for new error-code rows.
         MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         # ANTS-1579 — verify_changes description source-scrape (INV-4).

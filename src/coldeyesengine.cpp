@@ -581,9 +581,21 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
     auto mtimes = listSpecLaneCandidates(projectPath, activeAntsIds);
     // INV-2: pick the kMaxSpecLanes most-recently-modified, then
     // sort by basename for stable presentation order.
+    // ANTS-1345 — deterministic tiebreak. Bucket mtimes into 1 s
+    // windows so a cluster of edits within a second sorts by path-lex
+    // (alphabetic) rather than by filesystem enumeration order. The
+    // bucketing form keeps the comparator a strict weak ordering — a
+    // tolerance-window approach (|a-b| < N) breaks transitivity when
+    // chains cross the window boundary and triggers undefined sort
+    // behaviour.
     result.scopedCount = mtimes.size();
     std::sort(mtimes.begin(), mtimes.end(),
-              [](const auto &a, const auto &b) { return a.first > b.first; });
+              [](const auto &a, const auto &b) {
+                  const qint64 aBucket = a.first / 1000;
+                  const qint64 bBucket = b.first / 1000;
+                  if (aBucket != bBucket) return aBucket > bBucket;
+                  return a.second < b.second;
+              });
     if (mtimes.size() > kMaxSpecLanes) {
         mtimes = mtimes.mid(0, kMaxSpecLanes);
         result.truncated = true;

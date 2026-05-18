@@ -2647,60 +2647,10 @@ bool AuditDialog::allowlisted(const Finding &f) const {
 // entry listing the packages to install. Bulk-installing is deterministic
 // and the stub-install nag doesn't need to consume 20 finding slots.
 void AuditDialog::consolidateMypyStubHints(CheckResult &r) const {
-    if (r.checkId != "mypy") return;
-    if (r.findings.size() < 2) return;
-
-    // Raw string uses `re` delimiter because the pattern itself contains `)"`.
-    static const QRegularExpression stubRe(
-        R"re(Library stubs not installed for "([A-Za-z0-9_.\-]+)")re");
-    QStringList packages;
-    QList<Finding> kept;
-    kept.reserve(r.findings.size());
-    for (const Finding &f : std::as_const(r.findings)) {
-        const QRegularExpressionMatch m = stubRe.match(f.message);
-        if (m.hasMatch()) {
-            const QString pkg = m.captured(1);
-            if (!packages.contains(pkg)) packages << pkg;
-        } else {
-            kept.append(f);
-        }
-    }
-    if (packages.size() < 2) return;  // nothing to fold
-
-    Finding hint;
-    hint.checkId   = r.checkId;
-    hint.checkName = r.checkName;
-    hint.category  = r.category;
-    hint.type      = CheckType::Info;
-    hint.severity  = Severity::Info;
-    hint.source    = "mypy";
-    // Build the pip-install hint. `types-*` package names follow mypy's
-    // stubgen convention for common libraries; for everything else we emit
-    // the import name with a `types-` prefix and let the user adjust.
-    QStringList pipTypes;
-    for (const QString &p : std::as_const(packages))
-        pipTypes << "types-" + QString(p).replace('.', '-');
-    hint.message = QString("%1 missing stub package(s): pip install %2")
-                       .arg(packages.size())
-                       .arg(pipTypes.join(' '));
-    // ANTS-1136 — route through AuditEngine::computeDedup so
-    // the synthetic finding's key uses the same 24-hex width
-    // as every other dedup key in the pipeline. Pre-fix
-    // 16-hex left() truncation made this site collide on
-    // 16-prefix-of-24 with isSuppressed() lookups (a 96 → 64
-    // bit birthday-attack space narrowing — astronomical, but
-    // the symmetry of the documented contract was broken).
-    hint.dedupKey = AuditEngine::computeDedup(
-        QStringLiteral("mypy-stub-hint"), 0,
-        QStringLiteral("mypy-stub-hint"),
-        packages.join(','));
-    kept.prepend(hint);
-
-    // Decrement findingCount for the collapsed entries.
-    const int collapsed = r.findings.size() - kept.size() + 1;  // +1 for hint we added
-    r.findings = kept;
-    r.findingCount = kept.size() + r.omittedCount;
-    Q_UNUSED(collapsed);
+    // ANTS-1343 — body lifted to AuditEngine so the consolidator can
+    // run in non-GUI contexts (test bundles, future CLI) and so the
+    // pre-collapse-count authoring is co-located with the data shape.
+    AuditEngine::consolidateMypyStubHints(r);
 }
 
 void AuditDialog::loadSuppressions() {
@@ -4032,11 +3982,15 @@ void AuditDialog::handleCheckOutput(const QString &output) {
         dropFindingsInCommentsOrStrings(r);
 
     // Fold mypy "Library stubs not installed" repeats into one Info hint so
-    // a missing-types nag doesn't eat 20 finding slots.
+    // a missing-types nag doesn't eat 20 finding slots. When the
+    // consolidator collapses ≥2 entries it stamps r.findingCountAuthored
+    // = true with the pre-collapse count so the post-cap arithmetic
+    // below leaves that value alone (ANTS-1343).
     consolidateMypyStubHints(r);
 
     AuditEngine::capFindings(r, kMaxFindingsPerCheck);
-    r.findingCount = r.findings.size() + r.omittedCount;
+    if (!r.findingCountAuthored)
+        r.findingCount = r.findings.size() + r.omittedCount;
     m_completedResults.append(r);
 
     // 0.6.31 self-learning — record one fire per finding so the per-rule

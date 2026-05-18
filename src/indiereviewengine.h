@@ -44,6 +44,13 @@
 
 namespace IndieReviewEngine {
 
+// ANTS-1344 — public sibling of the file-local kMaxScanBytes constants
+// used by extractFileLineCitations + corroboratedFindingsFromDir. The
+// MCP handler reads this to detect "report was truncated before scan"
+// and surface the signal in the response envelope. Keep in lockstep
+// with the file-local copies (INV-1 source-grep guards the pairing).
+constexpr int kMaxScanBytes = 64 * 1024;
+
 struct Lane {
     QString     name;
     QString     summary;

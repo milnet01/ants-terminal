@@ -121,6 +121,12 @@ struct CheckResult {
     QString output;
     int findingCount = 0;
     bool warning = false;
+    // ANTS-1343 — set by a consolidator that authors findingCount
+    // out of band (e.g. consolidateMypyStubHints, which collapses N→1
+    // and wants findingCount to reflect the pre-collapse N). The
+    // dispatcher in auditdialog.cpp gates the post-cap arithmetic
+    // overwrite on this flag.
+    bool findingCountAuthored = false;
 };
 
 namespace AuditEngine {
@@ -163,6 +169,16 @@ QString sourceForCheck(const QString &checkId);
 // (e.g. consolidateMypyStubHints) doesn't have to re-implement it.
 QString computeDedup(const QString &file, int line,
                      const QString &checkId, const QString &title);
+
+// ANTS-1343 — mypy "Library stubs not installed" consolidator. When
+// `r.checkId == "mypy"` and ≥ 2 distinct missing stub packages are
+// present, collapse the per-package findings into a single synthetic
+// Info hint ("N missing stub package(s): pip install …") and stamp
+// the pre-collapse count onto `r.findingCount` with
+// `findingCountAuthored=true`. No-op for non-mypy checks or single-
+// package mypy runs. Pure function — no `this` state required, no GUI
+// dependencies. Test access without instantiating AuditDialog.
+void consolidateMypyStubHints(CheckResult &r);
 
 // Catastrophic-regex shape detector. Rejects patterns whose AST
 // shape is known to backtrack pathologically — quantifier inside a

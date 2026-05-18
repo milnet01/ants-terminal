@@ -12,6 +12,106 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP audit/review-engine-quality fold-in — pull 15 (ANTS-1339 + 1343 + 1344 + 1345, 2026-05-18)
+
+Bundle G of the 0.7.92 plan (`Audit / review engine quality`). Four
+discrete fixes that tighten the engines powering `audit_run`,
+`last_audit_summary`, `indie_review_corroborate`, `cross_doc_diff`,
+and `cold_eyes_partition`. Sourced from the 2026-05-14 indie-review
+sweep (lane-4 + lane-5 findings). ANTS-1358 (`debt_sweep` detector
+expansion) stays parked — its scope is a new-detector design pass,
+not a one-shot fix, so it migrates to its own cycle.
+
+- **ANTS-1339 (perf)** — `AuditEngine::applyFilter` streaming
+  line-split. The v1 path materialised
+  `raw.split('\n', Qt::KeepEmptyParts)` up front, allocating
+  one `QString` header per line BEFORE the `f.maxLines` bail. A
+  pathological 64 MB tool output of single-char lines briefly
+  spiked the working set to ~1.5–2 GB. The new path walks `raw`
+  with `indexOf('\n')` + `mid()` slices and bails as soon as
+  `keptCount >= f.maxLines` — only kept lines materialise. Tail
+  handling: input without a trailing `\n` yields the final slice
+  as a candidate; empty input short-circuits to `{"", 0}`. Spec
+  `docs/specs/ANTS-1339.md`; tests
+  `tests/features/audit_engine_stream_line_split/` (5 INVs: source-
+  grep guard, maxLines + drop/keep predicates, 1 MiB → 5-line bail
+  under 250 ms, tail-without-newline, empty-input).
+  **Layman:** a misbehaving lint tool that dumped 64 MB of garbage
+  briefly allocated ~2 GB of memory before being truncated;
+  streaming the trim caps that to a few KB.
+  Source: indie-review-2026-05-14 lane-4 M3.
+
+- **ANTS-1343 (fix)** — `consolidateMypyStubHints` pre-collapse
+  count preserved. The v1 path set `r.findingCount = kept.size() +
+  r.omittedCount` after the N→1 collapse, then the dispatcher at
+  `auditdialog.cpp:4039` unconditionally overwrote it with
+  `r.findings.size() + r.omittedCount`, clobbering the consolidator's
+  value. UI labels showed `1 findings` for a run that actually had
+  23 missing-stub warnings. Added a `bool findingCountAuthored =
+  false` flag on `CheckResult`; the consolidator (now lifted to
+  `AuditEngine::consolidateMypyStubHints` so it's testable without
+  a QDialog) captures the pre-collapse size before mutating the
+  list, sets `findingCount = preCollapse + omittedCount`, and
+  stamps the flag. Dispatcher gates the post-cap overwrite on
+  `!r.findingCountAuthored`. Spec `docs/specs/ANTS-1343.md`; tests
+  `tests/features/audit_mypy_stub_count_preserved/` (5 INVs: header
+  flag declaration, non-mypy no-op, single-package no-fold,
+  multi-package collapse preserves preCollapse=23, dispatcher gate
+  source-grep).
+  **Layman:** the audit dialog showed a misleading "1 findings"
+  count after the mypy-stub consolidation step collapsed N entries
+  into one synthetic hint; now the count reflects the original N.
+  Source: indie-review-2026-05-14 lane-4 M2.
+
+- **ANTS-1344 (fix)** — `indie_review_corroborate` + `cross_doc_diff`
+  truncation envelope. Both verbs share the engine's 64 KiB
+  `kMaxScanBytes` cap inside `extractFileLineCitations` and
+  `corroboratedFindingsFromDir`. A subagent that emitted a 200 KiB
+  review report lost ~70 % of its citations silently — the envelope
+  shape carried no signal that the engine had clipped the input.
+  Now both envelopes carry three new fields when truncation fires:
+  `truncated: true`, `truncated_lanes: ["…"]` (sorted-by-discovery
+  list of clipped lane names), `truncated_at_bytes: 65536`.
+  Envelope stays byte-identical to v1 on the happy path. The constant
+  is now `IndieReviewEngine::kMaxScanBytes` (public constexpr) so the
+  MCP layer doesn't hard-code it. Detection runs at the
+  `RemoteControl` layer (inline `reports`: compare
+  `QString::size()`; `reports_dir`: walk top-level `*.md` and check
+  `QFileInfo::size()`); engine signatures are untouched. Spec
+  `docs/specs/ANTS-1344.md`; tests
+  `tests/features/indie_review_truncation_flag/` (4 INVs: constexpr
+  exposure, corroborate envelope grep, cross_doc_diff parity, gated
+  emission).
+  **Layman:** when a big code-review report got trimmed for
+  parsing, the MCP response didn't say so — now it tells the
+  caller which lanes were clipped and at what byte size.
+  Source: indie-review-2026-05-14 lane-5 ME-4.
+
+- **ANTS-1345 (fix)** — cold-eyes `derivePartition` deterministic
+  tiebreak. The v1 spec-lane comparator sorted purely by
+  `lastModified` descending, leaving equal-mtime entries in
+  filesystem-enumeration order — `touch docs/specs/ANTS-1234.md`
+  could swap which specs fit inside the `kMaxSpecLanes` (12) cap.
+  New comparator buckets `lastModified` into 1 s windows and
+  tiebreaks within a bucket by path-lex ascending. Bucketing
+  (rather than a tolerance window) keeps the comparator a strict
+  weak ordering — a `|a − b| ≤ N` predicate breaks transitivity
+  when chains cross the boundary and triggers undefined-behaviour
+  sort. Fix matters at the truncation cutoff (which specs survive
+  the cap), not at the final lane order (still path-lex). Spec
+  `docs/specs/ANTS-1345.md`; tests
+  `tests/features/cold_eyes_partition_deterministic/` (3 INVs:
+  same-mtime cluster cutoff picks lex-smallest, newer-bucket
+  always survives, idempotency across calls). Test fixtures
+  drive mtimes via `utimensat` for ms precision after
+  `QFile::setFileTime` proved unreliable on the test sandbox.
+  **Layman:** an unrelated file `touch` could swap which specs
+  the cold-eyes review picked when there were too many to review
+  at once — now the selection is deterministic across runs.
+  Source: indie-review-2026-05-14 lane-5 ME-5.
+
+Full feature suite green post-fold: 1068/1068.
+
 ### 🔌 MCP audit-surface git/scope-awareness fold-in — pull 14 (ANTS-1576 + 1583, 2026-05-18)
 
 Two-item bundle pairing a `last_audit_summary` hardening pass with a

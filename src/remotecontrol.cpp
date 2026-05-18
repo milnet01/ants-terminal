@@ -4660,6 +4660,11 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     QString reportsDir;
     int     reportsRead = 0;
     qint64  totalIn = 0;
+    // ANTS-1344 — surface per-lane truncation when the engine's 64 KiB
+    // kMaxScanBytes cap clipped the input. Collected at the MCP layer
+    // (cheap; bounded by lane count) so the engine's pure-function
+    // signature stays unchanged.
+    QStringList truncatedLanes;
 
     if (hasReportsDir) {
         reportsDir = req.value(QStringLiteral("reports_dir"))
@@ -4682,6 +4687,23 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
         // No totalIn tally for the disk path — the orchestrator
         // didn't pay the parent-context cost, which is the whole
         // point of ANTS-1282.
+
+        // ANTS-1344 — re-walk the validated dir to detect files whose
+        // on-disk size exceeded the engine's read cap. Top-level
+        // `*.md` only (matches corroboratedFindingsFromDir's entry
+        // filter); QDir::NoDotAndDotDot so hidden + traversal entries
+        // are excluded. Bounded by lane count.
+        QDir d(check.resolved);
+        const QStringList entries = d.entryList(
+            QStringList{QStringLiteral("*.md")},
+            QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QString &name : entries) {
+            if (name.startsWith(QChar('.'))) continue;
+            const QFileInfo fi(d.filePath(name));
+            if (fi.size() > IndieReviewEngine::kMaxScanBytes) {
+                truncatedLanes << QFileInfo(name).completeBaseName();
+            }
+        }
     } else {
         const QJsonObject reportsObj =
             req.value(QStringLiteral("reports")).toObject();
@@ -4691,6 +4713,12 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
             const QString r = it.value().toString();
             reports.insert(it.key(), r);
             totalIn += r.toUtf8().size();
+            // ANTS-1344 — extractFileLineCitations caps on QString::size()
+            // (UTF-16 codepoint count). Mirror that here so the signal
+            // matches the engine's actual truncation point.
+            if (r.size() > IndieReviewEngine::kMaxScanBytes) {
+                truncatedLanes << it.key();
+            }
         }
         reportsRead = reports.size();
         found = IndieReviewEngine::corroboratedFindings(
@@ -4718,6 +4746,17 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     env["total_findings"]     = arr.size();
     env["reports_read"]       = reportsRead;
     if (hasReportsDir) env["reports_dir"] = reportsDir;
+    // ANTS-1344 — surface truncation. `truncated` is the headline flag;
+    // `truncated_lanes` lets the caller know which inputs to re-fetch
+    // smaller / paginate. Both omitted when no truncation occurred
+    // (envelope stays byte-identical to v1 on the happy path).
+    if (!truncatedLanes.isEmpty()) {
+        env["truncated"]       = true;
+        QJsonArray tl;
+        for (const QString &ln : std::as_const(truncatedLanes)) tl.append(ln);
+        env["truncated_lanes"] = tl;
+        env["truncated_at_bytes"] = IndieReviewEngine::kMaxScanBytes;
+    }
     return QJsonDocument(env);
 }
 
@@ -6364,6 +6403,9 @@ QJsonDocument RemoteControl::cmdCrossDocDiff(const QJsonObject &req) {
     QString reportsDir;
     int     reportsRead = 0;
     qint64  totalIn = 0;
+    // ANTS-1344 — parity with cmdIndieReviewCorroborate. cross_doc_diff
+    // shares the engine path so it needs the same truncation surface.
+    QStringList truncatedLanes;
 
     if (hasReportsDir) {
         reportsDir = req.value(QStringLiteral("reports_dir"))
@@ -6379,6 +6421,18 @@ QJsonDocument RemoteControl::cmdCrossDocDiff(const QJsonObject &req) {
         if (check.bad) return QJsonDocument(check.err);
         findings = IndieReviewEngine::corroboratedFindingsFromDir(
             root, reportsDir, minLanes, &reportsRead);
+        // ANTS-1344 — see cmdIndieReviewCorroborate companion block.
+        QDir d(check.resolved);
+        const QStringList entries = d.entryList(
+            QStringList{QStringLiteral("*.md")},
+            QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QString &name : entries) {
+            if (name.startsWith(QChar('.'))) continue;
+            const QFileInfo fi(d.filePath(name));
+            if (fi.size() > IndieReviewEngine::kMaxScanBytes) {
+                truncatedLanes << QFileInfo(name).completeBaseName();
+            }
+        }
     } else {
         const QJsonObject reportsObj =
             req.value(QStringLiteral("reports")).toObject();
@@ -6388,6 +6442,9 @@ QJsonDocument RemoteControl::cmdCrossDocDiff(const QJsonObject &req) {
             const QString r = it.value().toString();
             reports.insert(it.key(), r);
             totalIn += r.toUtf8().size();
+            if (r.size() > IndieReviewEngine::kMaxScanBytes) {
+                truncatedLanes << it.key();
+            }
         }
         reportsRead = reports.size();
         findings = IndieReviewEngine::corroboratedFindings(
@@ -6408,6 +6465,13 @@ QJsonDocument RemoteControl::cmdCrossDocDiff(const QJsonObject &req) {
         env["total_input_bytes"] = totalIn;
     }
     env["min_lanes"]       = minLanes;
+    if (!truncatedLanes.isEmpty()) {
+        env["truncated"]          = true;
+        QJsonArray tl;
+        for (const QString &ln : std::as_const(truncatedLanes)) tl.append(ln);
+        env["truncated_lanes"]    = tl;
+        env["truncated_at_bytes"] = IndieReviewEngine::kMaxScanBytes;
+    }
     return QJsonDocument(env);
 }
 
