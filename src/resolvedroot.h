@@ -63,4 +63,14 @@ struct ResolvedRoot {
 ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
                                   const QString &callerCwd);
 
+// ANTS-1390 — global Claude config sentinel. Returns canonical
+// `~/.claude/` when `callerCwd` is the `~global` or `~claude-config`
+// magic value, else empty string. Path tools (workspace_search,
+// file_outline) detect this before normal root resolution so callers
+// editing global Claude config can search / outline without a project
+// root. Skips the per-tool focused-tab fallback so the sentinel always
+// means "global config tree", never accidentally "this project's
+// .claude/ subdir".
+QString expandGlobalConfigSentinel(const QString &callerCwd);
+
 }  // namespace ants

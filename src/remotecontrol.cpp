@@ -3061,10 +3061,17 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // ANTS-1391: prefer the caller_cwd-rooted project when present so a
     // Claude session in project B searches project B, not whichever tab
     // is focused in Ants.
+    // ANTS-1390: `~global` / `~claude-config` sentinel routes to
+    // ~/.claude/ so global-config edits (skills, agents, the global
+    // CLAUDE.md) can be searched without a project root.
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
     QString rootCwd;
-    if (!callerRaw.isEmpty()) {
+    const QString sentinelRoot =
+        ants::expandGlobalConfigSentinel(callerRaw);
+    if (!sentinelRoot.isEmpty()) {
+        rootCwd = sentinelRoot;
+    } else if (!callerRaw.isEmpty()) {
         rootCwd = callerRaw;
     } else if (auto *t = m_main->currentTerminal()) {
         rootCwd = t->shellCwd();
@@ -3449,7 +3456,16 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     // check.resolved is empty with a `not_found` code distinct from
     // the anchor-fail `bad_path` envelope.
     // ANTS-1391: prefer caller_cwd's project root over the focused tab.
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    // ANTS-1390: `~global` / `~claude-config` sentinel routes to
+    // ~/.claude/ so global-config edits (skills, agents, the global
+    // CLAUDE.md) can be outlined without a project root.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString sentinelRoot =
+        ants::expandGlobalConfigSentinel(callerRaw);
+    const QString rootCanonical =
+        !sentinelRoot.isEmpty() ? sentinelRoot
+                                : resolveRootCanonical(m_main, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -3641,6 +3657,24 @@ ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
     rr.source = ResolvedRoot::Source::NoMatch;
     rr.cwd    = wantCanonical;
     return rr;
+}
+
+// ANTS-1390 — global Claude config sentinel. Path tools
+// (workspace_search, file_outline) detect this *before* the normal
+// caller_cwd resolution above, so a Claude session editing global
+// config under ~/.claude/ can search / outline without owning a
+// project root. Returns empty when not a sentinel (caller falls
+// through to the regular resolveRootCanonical path).
+QString expandGlobalConfigSentinel(const QString &callerCwd) {
+    if (callerCwd != QLatin1String("~global") &&
+        callerCwd != QLatin1String("~claude-config")) {
+        return QString();
+    }
+    const QString claudeDir =
+        QDir::homePath() + QStringLiteral("/.claude");
+    const QFileInfo fi(claudeDir);
+    if (!fi.exists() || !fi.isDir()) return QString();
+    return fi.canonicalFilePath();
 }
 
 }  // namespace ants
@@ -4714,6 +4748,57 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
         summary = m_auditSummaryCache;
     }
 
+    // ANTS-1406 — `since_commit` short-circuit. Caller (typically
+    // /close-phase) asks "is there an audit-clean snapshot already
+    // cached at this commit?" before dispatching /audit. Two
+    // independent gates: (a) commit-equality (exact prefix match,
+    // ≥ 7 hex chars treated as a prefix; full SHAs match exactly),
+    // (b) mtime within a 5-minute freshness window.
+    constexpr qint64 kSinceCommitFreshnessMs = 5 * 60 * 1000;
+    const QString sinceCommitRaw =
+        req.value(QStringLiteral("since_commit")).toString().trimmed();
+    if (!sinceCommitRaw.isEmpty()) {
+        const qint64 nowMs =
+            QDateTime::currentMSecsSinceEpoch();
+        const qint64 ageMs = nowMs - mtimeMs;
+        const QString lastCommit = summary.commit.trimmed();
+        QString reason;
+        bool fresh = false;
+        if (lastCommit.isEmpty()) {
+            reason = QStringLiteral("no_provenance");
+        } else if (ageMs > kSinceCommitFreshnessMs) {
+            reason = QStringLiteral("stale_mtime");
+        } else {
+            // Case-insensitive hex compare. Treat the shorter of the
+            // two strings as the prefix so a full-SHA caller can
+            // match an abbreviated last_run_commit, and vice versa.
+            const QString a = sinceCommitRaw.toLower();
+            const QString b = lastCommit.toLower();
+            const int n = std::min(a.size(), b.size());
+            const bool commitOk = n >= 7
+                && a.left(n) == b.left(n);
+            if (!commitOk) {
+                reason = QStringLiteral("commit_drift");
+            } else {
+                fresh = true;
+            }
+        }
+        if (!fresh) {
+            QJsonObject env;
+            env[QStringLiteral("ok")]               = true;
+            env[QStringLiteral("fresh")]            = false;
+            env[QStringLiteral("since_commit")]     = sinceCommitRaw;
+            if (!lastCommit.isEmpty()) {
+                env[QStringLiteral("last_run_commit")] = lastCommit;
+            }
+            env[QStringLiteral("last_run_age_ms")]  = ageMs;
+            env[QStringLiteral("reason")]           = reason;
+            return QJsonDocument(env);
+        }
+        // Fall through; the full envelope below gets the `fresh:true`
+        // flag so callers can confirm the short-circuit landed.
+    }
+
     // ANTS-1540 — post-cap rule_ids filter. Applied on a copy so the
     // cache stays globally-shaped. Echo the requested filter so the
     // caller can confirm what got applied.
@@ -4726,6 +4811,12 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
         env["rule_ids_filter"] = echoed;
     } else {
         env = buildLasEnvelope(summary);
+    }
+    // ANTS-1406 — confirm the short-circuit gate landed on a fresh
+    // cache hit. Callers (/close-phase, future automation) read
+    // `fresh:true` as "skip the /audit dispatch".
+    if (!sinceCommitRaw.isEmpty()) {
+        env[QStringLiteral("fresh")] = true;
     }
 
     // ANTS-1576 — scope classifier. Always tag the response so the

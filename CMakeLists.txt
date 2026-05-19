@@ -888,6 +888,11 @@ if(ANTS_TESTS)
                 tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp
                 tests/features/mcp_workspace_search/test_mcp_workspace_search.cpp
                 tests/features/mcp_file_outline/test_mcp_file_outline.cpp
+                # ANTS-1390 ~global / ~claude-config caller_cwd sentinel
+                # for path tools (workspace_search, file_outline).
+                tests/features/mcp_global_config_sentinel/test_mcp_global_config_sentinel.cpp
+                # ANTS-1406 last_audit_summary `since_commit` short-circuit.
+                tests/features/mcp_last_audit_summary_since_commit/test_mcp_last_audit_summary_since_commit.cpp
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
                 tests/features/mcp_subsystem/test_mcp_subsystem.cpp
                 tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp

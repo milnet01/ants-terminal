@@ -4806,11 +4806,13 @@ cycle. Cadence: one bundle per Wednesday per
   on user palette feedback before sizing the swatch list.
 - ANTS-1376 (CC ghost-suggestion auto-submit) — investigate-first,
   no fix prescribed yet.
-- ANTS-1390 (path-tool scope excludes `~/.claude/`) — design
-  decision (sentinel vs flag vs new tool); own design pass.
+- ANTS-1390 (path-tool scope excludes `~/.claude/`) — ✅ shipped
+  pull 31 (2026-05-19) — `~global` / `~claude-config` caller_cwd
+  sentinel on workspace_search + file_outline.
 - ANTS-1406 (`last_audit_summary since_commit` /
-  `audit_precondition_summary`) — spec-first; pairs with the
-  ANTS-1359 caching pattern.
+  `audit_precondition_summary`) — ✅ option (a) shipped pull 31
+  (2026-05-19); option (b) `audit_precondition_summary` still
+  deferred pending /close-phase user feedback.
 - ANTS-1408 (archive-rotate shipped 0.7.x sections out of
   ROADMAP.md) — process / infra, schedule when audit cadence
   permits.
@@ -6748,6 +6750,41 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: testauditengine.
   Source: deferred from ANTS-1397 v1 (in-session 2026-05-17).
 
+- 📋 [ANTS-1646] **`roadmap_log` duplicate-ID guard +
+  `.roadmap-counter` drift detector.** Surfaced 2026-05-19 (pull
+  31 prep): a survey of active bullets via
+  `mcp__ants__roadmap_query mode:section_index` revealed two
+  active bullets sharing id ANTS-1415 — one for "Phase 3b
+  TabSpecific contract enforcement" (security, 2026-05-16) and one
+  for "DBGLOG `##__VA_ARGS__` token-paste extension" (refactor,
+  2026-05-15). Both bullets were appended through hand-edits of
+  ROADMAP.md rather than via `roadmap_log` op:append, so the
+  counter-bump + uniqueness invariant the verb maintains was
+  bypassed. Two follow-ups:
+  (a) **Pre-commit / CI guard.** Add a parse-time linter that
+  scans ROADMAP.md for duplicate `[PROJ-NNNN]` ids and fails the
+  commit / CI run. Trivially cheap (one regex pass). Could live
+  in `tools/check-roadmap.sh` and be wired into the `.audit_run`
+  default tool set so every audit catches recurrences.
+  (b) **`roadmap_query` envelope flag.** Emit
+  `duplicate_ids:[...]` in every response when the parser sees
+  collisions. Surfaces the bug to every consuming Claude session
+  without requiring a separate verb. Cheap (parser already walks
+  every bullet) and high-value (the next CC session that asks for
+  the roadmap will see the warning rather than picking up a stale
+  bullet at random).
+  Pairs with: ANTS-1581 (skill wiring — skills using
+  `roadmap_log` op:append would hit the counter-bump path
+  naturally and never produce duplicates).
+  **Layman:** a hand-edit to ROADMAP.md produced two bullets with
+  the same ANTS ID. The MCP-tracked `.roadmap-counter` only bumps
+  when `roadmap_log` writes; manual appends bypass it. Add a
+  duplicate-id detector so the next collision surfaces
+  immediately instead of weeks later.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, mcp-roadmap-log, audit.
+  Source: in-session 2026-05-19 (pull 31 ROADMAP survey).
+
 - ✅ [ANTS-1451] **`test_audit_partition` picks up `build-asan/` MOC autogen files as tests.**
   Observed live 2026-05-17: `test_audit_partition` on the Ants
   Terminal repo returned 419 files with the first 15 (chunk c-001)
@@ -6968,8 +7005,11 @@ indie-review finding.
   Kind: security.
   Source: indie-review-2026-05-14 (lane-6 L-4).
 
-- 📋 [ANTS-1415] **`DBGLOG` macro uses GNU
-  `##__VA_ARGS__` token-paste extension.** Surfaced during the
+- 📋 [ANTS-1645] **`DBGLOG` macro uses GNU
+  `##__VA_ARGS__` token-paste extension.** Renumbered from
+  ANTS-1415 (duplicate-ID collision with Phase 3b TabSpecific
+  contract enforcement at line 5597); the latter was added
+  2026-05-16 and is the canonical owner.  Surfaced during the
   ANTS-1333 fix build (2026-05-15): clang emits
   `-Wgnu-zero-variadic-macro-arguments` at
   `terminalgrid.cpp:18:95`. Pre-existing — the `do { if (...)
@@ -7517,8 +7557,8 @@ Regression-locked in
 `tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp`
 (`RegistryLambdasForwardCallerCwd`).
 
-Still open (deferred): path-tool scope excludes `~/.claude/` global
-config (ANTS-1390 — separate scope, not cross-tab leak).
+Path-tool scope for `~/.claude/` global config closed by ANTS-1390
+(`~global` / `~claude-config` caller_cwd sentinel) — shipped pull 31.
 
 Companion in "🔒 Tier 1 — security & data-loss" above: ANTS-1336
 (`session_memory`'s `cwd` arg still accepts unanchored paths) —
@@ -7555,18 +7595,43 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Source: cross-session-report-2026-05-15.
 
-- 📋 [ANTS-1390] **MCP path-tool scope excludes `~/.claude/`
-  global config tree.** `workspace_search`, `file_outline`, and
-  `verify_changes` all anchor against the focused tab's project
-  root (`resolveRootCanonical`), which is correct for project
-  work but unusable when a user is editing global Claude Code
-  config — skills, agents, commands, the global CLAUDE.md — under
-  `~/.claude/`. Cross-session report 2026-05-15: a CC session
-  asked to streamline `~/.claude/skills/` while cwd was
-  `/mnt/Games`; workspace_search would have been the natural tool
-  but scope rejected, so the assistant fell back to `grep -r` via
-  Bash and burned ~250-4500 extra tokens per query. Three
-  remediations to consider, in increasing intrusiveness:
+- ✅ [ANTS-1390] **MCP path-tool scope opt-in for `~/.claude/`
+  global config tree.** Shipped 2026-05-19 (pull 31). Added a
+  `caller_cwd` sentinel (`~global` or alias `~claude-config`)
+  recognised by `cmdWorkspaceSearch` and `cmdFileOutline` —
+  when the caller passes either literal, the tool's root is
+  remapped to the canonical `~/.claude/` for that one call
+  regardless of which Ants tab is focused. Implemented via a
+  new helper `ants::expandGlobalConfigSentinel(const QString&)`
+  declared in `src/resolvedroot.h` and defined alongside
+  `resolveCallerCwdRoot` in `src/remotecontrol.cpp`. Each of the
+  two tools checks the sentinel BEFORE the existing
+  caller_cwd / focused-tab resolution; any other `caller_cwd`
+  value (empty, an absolute path, a non-sentinel literal) flows
+  through the pre-1390 path unchanged. Tool descriptions in
+  `src/claudeintegration.cpp` now document the sentinel inline
+  so the assistant discovers it without inspecting the schema.
+  `verify_changes` is intentionally out of scope for v1 (no
+  build/test gates apply to markdown skill files); a follow-up
+  is logged for the frontmatter-parses + cross-references-
+  resolve check that would make verify_changes meaningful in
+  the global-config tree. Spec
+  `tests/features/mcp_global_config_sentinel/spec.md` (12
+  invariants: 7 wiring + 5 runtime). Tests:
+  `tests/features/mcp_global_config_sentinel/test_mcp_global_config_sentinel.cpp`
+  — both `WiringContract` and `RuntimeSentinelExpand` green
+  (3/3 in the gated subset, full features suite 1211/1211 still
+  green).
+  **Layman:** Claude sessions editing global Claude config under
+  `~/.claude/` (skills, agents, the global CLAUDE.md) can now
+  pass `caller_cwd: "~global"` to point `workspace_search` and
+  `file_outline` at the global config tree without needing a
+  project root. Closes the ~250-4500 tokens-per-query Bash
+  fallback the 2026-05-15 cross-session report flagged.
+  Kind: refactor.
+  Source: cross-session-report-2026-05-15.
+
+  Three remediations were considered, in increasing intrusiveness:
   (1) New `lane` sentinel like `~global` / `~claude-config` that
   resolves to `~/.claude/` regardless of cwd — fits the existing
   `lane` shape; tool descriptors gain one documented value.
@@ -8045,9 +8110,48 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: cross-session-report-2026-05-15 (other CC
   instance running on MAME Curator project).
 
-- 📋 [ANTS-1406] **`last_audit_summary` `since_commit`
-  / `audit_precondition_summary` — short-circuit /audit
-  on clean closes.** Cross-session report 2026-05-15:
+- ✅ [ANTS-1406] **`last_audit_summary` `since_commit`
+  short-circuit — option (a) shipped 2026-05-19 (pull 31).**
+  Added a `since_commit` schema property (`type:"string"`) and
+  the matching short-circuit gate in `cmdLastAuditSummary`.
+  When the caller passes their HEAD SHA, the server compares
+  it against the cached summary's `commit` field
+  (filled by SARIF provenance or read-time
+  `git rev-parse HEAD` fallback) and additionally checks the
+  report's mtime against a 5-minute freshness window
+  (`kSinceCommitFreshnessMs`). Both gates pass ⇒ full envelope
+  + `fresh:true`. Otherwise short envelope
+  `{ok:true, fresh:false, since_commit, last_run_commit?,
+  last_run_age_ms, reason:"commit_drift" | "stale_mtime" |
+  "no_provenance"}`. Match semantics: case-insensitive hex,
+  shorter-of-the-two-strings treated as a prefix, ≥ 7 hex
+  characters required. Top-level tool description + schema
+  description both surface the knob inline so /close-phase can
+  discover the contract from the registry. Option (b)
+  `audit_precondition_summary` (separate verb that probes
+  individual gate state without re-running) is deferred —
+  option (a) alone hits the ~45-50 K tokens-per-clean-close
+  saving the cross-session report flagged, and option (b)'s
+  per-tool cache markers require a /close-phase user-feedback
+  signal before the design pass starts. Spec:
+  `tests/features/mcp_last_audit_summary_since_commit/spec.md`
+  (8 source-grep invariants). Tests:
+  `tests/features/mcp_last_audit_summary_since_commit/test_mcp_last_audit_summary_since_commit.cpp`
+  — green (3/3 in the gated subset; full features suite
+  1211/1211 still green).
+  **Layman:** /close-phase used to dispatch /audit twice on
+  clean closes — once as a gate, then once as the audit
+  itself — for ~50 K tokens of redundant work per close. Now
+  the caller passes its HEAD SHA, and the audit summary tool
+  short-circuits to a one-line "still fresh, skip" response
+  when the cached snapshot is at that commit and within 5 min.
+  Kind: perf / optimize.
+  Source: cross-session-report-2026-05-15 (~50 K tokens × 30
+  closes/month/project ≈ ~1.5 M tokens/month/project on clean
+  closes).
+
+  Original entry — `audit_precondition_summary` option still
+  deferred — cross-session report 2026-05-15:
   `/close-phase` dispatches `/audit` + `/indie-review`
   in parallel; on clean closes, `/audit` returns "all
   gates green + 0 actionable" after burning ~45–50 K

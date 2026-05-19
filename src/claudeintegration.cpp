@@ -2018,7 +2018,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "— raise for mid-size projects > 2 k files; "
                     "ANTS-1565). On hard-kill the rg_failed envelope "
                     "carries a `hint` field with the three viable "
-                    "next steps.");
+                    "next steps. ANTS-1390: pass `caller_cwd: "
+                    "\"~global\"` (alias `\"~claude-config\"`) to "
+                    "search ~/.claude/ instead of a project root — "
+                    "for sessions editing global Claude config "
+                    "(skills, agents, the global CLAUDE.md).");
                 wsTool["selection_hint"] = QStringLiteral(
                     "Use for vague-location queries ('where is the X "
                     "feature wired up?'). For known one-keyword bug "
@@ -2153,7 +2157,12 @@ void ClaudeIntegration::onMcpConnection() {
                     "Languages: cpp / py / md (auto-picked by "
                     "extension); other types still report "
                     "total_lines/total_bytes for orientation. "
-                    "Typically 13-39× smaller than a full Read.");
+                    "Typically 13-39× smaller than a full Read. "
+                    "ANTS-1390: pass `caller_cwd: \"~global\"` "
+                    "(alias `\"~claude-config\"`) to outline files "
+                    "under ~/.claude/ — for sessions editing global "
+                    "Claude config (skills, agents, the global "
+                    "CLAUDE.md).");
                 foTool["selection_hint"] = QStringLiteral(
                     "Use to map a large file's symbols before Read. "
                     "Prefer over `Read` when you only need a "
@@ -2341,7 +2350,13 @@ void ClaudeIntegration::onMcpConnection() {
                     "Cppcheck gotcha: the default `--check-level=normal` "
                     "branch budget can silently truncate findings on "
                     "files > 5 K LoC; re-run cppcheck with "
-                    "--check-level=exhaustive for full coverage.");
+                    "--check-level=exhaustive for full coverage. "
+                    "ANTS-1406: pass `since_commit:<sha>` to short-"
+                    "circuit redundant /audit re-runs — the response "
+                    "carries `fresh:false` when the cached summary "
+                    "is at a different commit or older than 5 min, "
+                    "letting /close-phase skip a no-op audit "
+                    "dispatch.");
                 lasTool["selection_hint"] = QStringLiteral(
                     "Use when planning audit-touching work to see "
                     "what's already been flagged. Cheap; runs against "
@@ -2388,9 +2403,34 @@ void ClaudeIntegration::onMcpConnection() {
                         "ranking still appears. Counts (error / "
                         "warning / note / suppressed) stay global. "
                         "Empty array equivalent to absent.");
+                    // ANTS-1406 — `since_commit` short-circuit. When
+                    // set, returns the cached snapshot only if it was
+                    // produced at-or-after the supplied SHA (exact-match
+                    // semantics) AND within a 5-minute freshness window.
+                    // Otherwise returns {ok:true, fresh:false,
+                    // since_commit, last_run_commit?, last_run_age_ms,
+                    // reason:"commit_drift" | "stale_mtime" |
+                    // "no_provenance"}. /close-phase uses this to skip
+                    // a redundant /audit re-run when the prior pass is
+                    // already cached at HEAD.
+                    QJsonObject sinceCommitProp;
+                    sinceCommitProp["type"] = "string";
+                    sinceCommitProp["description"] = QStringLiteral(
+                        "Optional. Short-circuit gate (ANTS-1406). "
+                        "Pass your current HEAD SHA (full or shortened "
+                        "≥7 hex chars). Server returns the cached "
+                        "summary only if it was produced at this exact "
+                        "commit AND the report mtime is within 5 min. "
+                        "Otherwise responds {ok:true, fresh:false, "
+                        "since_commit, last_run_commit?, "
+                        "last_run_age_ms, reason} so callers can "
+                        "decide whether to run a fresh audit. Saves "
+                        "the ~45-50 K tokens /close-phase otherwise "
+                        "burns re-running gates already known clean.");
                     props["top_n"]          = topNProp;
                     props["severity_floor"] = floorProp;
                     props["rule_ids"]       = ruleIdsProp;
+                    props["since_commit"]   = sinceCommitProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]     = makeCallerCwdReadProp();
                     props["etag_match"]     = makeEtagMatchProp();   // ANTS-1499

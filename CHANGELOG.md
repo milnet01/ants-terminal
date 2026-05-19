@@ -12,6 +12,82 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP path-tool global-config sentinel + last_audit_summary since_commit — pull 31 (ANTS-1390 + ANTS-1406, 2026-05-19)
+
+Two independent MCP ergonomics fixes that both surfaced in the
+2026-05-15 cross-session report. The first lets Claude sessions
+editing global Claude config (`~/.claude/`) point the path tools at
+the global tree without owning a project root; the second lets
+`/close-phase` skip a redundant `/audit` re-run when the cached
+snapshot is already at HEAD and fresh.
+
+- **ANTS-1390 (refactor)** — `caller_cwd` sentinel for path tools.
+  `cmdWorkspaceSearch` and `cmdFileOutline` now recognise the literal
+  values `~global` (alias `~claude-config`) on the `caller_cwd`
+  argument and remap their project-root to the canonical `~/.claude/`
+  for that one call. Implemented via a new helper
+  `ants::expandGlobalConfigSentinel(const QString&)` declared in
+  `src/resolvedroot.h` alongside `resolveCallerCwdRoot` so the test
+  bundle can link it without dragging Qt6::Widgets. Each tool checks
+  the sentinel BEFORE the existing caller_cwd / focused-tab path; any
+  other `caller_cwd` value (empty, an absolute path, a non-sentinel
+  literal) flows through the pre-1390 resolution unchanged. Tool
+  descriptions in `src/claudeintegration.cpp` document the sentinel
+  inline so the assistant discovers it without inspecting the schema.
+  `verify_changes` is intentionally out of scope for v1 (no
+  build/test gates apply to markdown skill files); the
+  frontmatter-parses + cross-references-resolve follow-up was logged
+  in the original roadmap bullet. Spec
+  `tests/features/mcp_global_config_sentinel/spec.md` (12 invariants:
+  7 wiring + 5 runtime); regression tests
+  `tests/features/mcp_global_config_sentinel/test_mcp_global_config_sentinel.cpp`
+  cover the helper directly + source-grep the wiring (both
+  `WiringContract` and `RuntimeSentinelExpand` green). Closes the
+  ~250-4500 tokens-per-query Bash fallback the cross-session report
+  flagged.
+
+- **ANTS-1406 (perf / optimize)** — `last_audit_summary since_commit`
+  short-circuit (option (a)). New `since_commit:<sha>` schema property
+  on `last_audit_summary`. When set, the server compares the supplied
+  SHA against the cached summary's `commit` field (filled by SARIF
+  provenance or read-time `git rev-parse HEAD` fallback) under a
+  case-insensitive ≥ 7-hex-char prefix-match contract, AND checks the
+  report's mtime against a 5-minute freshness window
+  (`kSinceCommitFreshnessMs = 5 * 60 * 1000`). Both gates pass ⇒ the
+  full envelope ships with `fresh:true`. Otherwise the short envelope
+  `{ok:true, fresh:false, since_commit, last_run_commit?,
+  last_run_age_ms, reason:"commit_drift" | "stale_mtime" |
+  "no_provenance"}` ships so callers can decide whether to dispatch a
+  fresh audit. Option (b) `audit_precondition_summary` (separate verb
+  that probes individual gate state without re-running scanners) is
+  deferred — option (a) alone hits the ~45-50 K tokens-per-clean-close
+  saving the report flagged; option (b)'s per-tool cache markers
+  require a /close-phase user-feedback signal before the design pass
+  starts. Spec
+  `tests/features/mcp_last_audit_summary_since_commit/spec.md` (8
+  source-grep invariants); regression test
+  `tests/features/mcp_last_audit_summary_since_commit/test_mcp_last_audit_summary_since_commit.cpp`
+  green. Saving: ~50 K tokens × 30 closes/month/project ≈ ~1.5 M
+  tokens/month/project on clean closes.
+
+Companion bookkeeping in the same pull:
+
+- **ANTS-1645 (roadmap chore)** — renumbered a duplicate `[ANTS-1415]`
+  ID. Two distinct active bullets had been hand-appended with the same
+  ID — "Phase 3b TabSpecific contract enforcement" (security,
+  added 2026-05-16) and "DBGLOG `##__VA_ARGS__` token-paste extension"
+  (refactor, added 2026-05-15). The Phase 3b entry is the canonical
+  owner; the DBGLOG entry now carries the fresh ID ANTS-1645 and
+  `.roadmap-counter` bumped to 1646.
+
+- **ANTS-1646 (enhancement, roadmap'd not shipped)** — logged a META
+  follow-up to add a duplicate-ID guard. Two paths considered: a
+  pre-commit/CI parse-time linter (cheap, catches future collisions)
+  and a `roadmap_query` envelope flag (`duplicate_ids:[…]`) that
+  surfaces the bug to every consuming Claude session.
+
+Full features suite 1211/1211 green.
+
 ### 🔌 MCP cold-eyes + indie-review fold-in narrative_mode — pull 30 (ANTS-1644, 2026-05-19)
 
 Ports the ANTS-1635 narrative_mode escape hatch from `test_audit_fold_in`
