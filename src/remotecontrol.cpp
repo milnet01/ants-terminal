@@ -1,4 +1,5 @@
 #include "remotecontrol.h"
+#include "buildcache.h"
 #include "coldeyesengine.h"
 #include "debtsweepengine.h"
 #include "fileoutline.h"
@@ -21,6 +22,7 @@
 #include "roadmapindex.h"
 #include "subsystemmap.h"
 #include "terminalwidget.h"
+#include "testrescache.h"
 #include "verifyengine.h"
 #include "verifytrust.h"
 #include "debuglog.h"
@@ -7996,5 +7998,213 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
     env["path"]             = QFileInfo(roadmapPath).absoluteFilePath();
     if (driftTruncated)    env["drift_truncated"]    = true;
     if (truncatedHistory)  env["truncated_history"]  = true;
+    return QJsonDocument(env);
+}
+
+// ----- ANTS-1299 + ANTS-1300 — build/test cache MCP tools -----------
+//
+// Shared helpers — small refusal envelope + op dispatcher. The two
+// tools live next to each other because they share the .audit_cache/
+// directory, the op surface ({read, record}), and the refusal-code
+// taxonomy (see docs/standards/mcp-error-codes.md § 2).
+
+namespace {
+
+QJsonObject btErr(const QString &code, const QString &message) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = message;
+    o["code"]  = code;
+    return o;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(btErr(
+            QStringLiteral("no_project"),
+            QStringLiteral("build_status: project root unresolved")));
+    }
+    const QString op = req.value(QStringLiteral("op")).toString(
+        QStringLiteral("read"));
+    if (op != QLatin1String("read") && op != QLatin1String("record")) {
+        return QJsonDocument(btErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral("build_status: \"op\" must be \"read\" or "
+                           "\"record\"")));
+    }
+
+    if (op == QLatin1String("record")) {
+        // Validate args.
+        const QJsonValue exitV = req.value(QStringLiteral("exit_code"));
+        if (!exitV.isDouble()) {
+            return QJsonDocument(btErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("build_status: \"exit_code\" must be an "
+                               "integer (required for op=record)")));
+        }
+        const QJsonValue outV = req.value(QStringLiteral("output"));
+        if (!outV.isString()) {
+            return QJsonDocument(btErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("build_status: \"output\" must be a "
+                               "string (required for op=record)")));
+        }
+        const QString output = outV.toString();
+        if (output.isEmpty()) {
+            return QJsonDocument(btErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("build_status: \"output\" must be "
+                               "non-empty for op=record")));
+        }
+        BuildCache::ParsedBuild build = BuildCache::parseBuildOutput(output);
+        build.exitCode = exitV.toInt();
+        if (req.contains(QStringLiteral("started_at_ms"))) {
+            build.startedAtMs = static_cast<qint64>(
+                req.value(QStringLiteral("started_at_ms")).toDouble(0));
+        }
+        if (req.contains(QStringLiteral("finished_at_ms"))) {
+            build.finishedAtMs = static_cast<qint64>(
+                req.value(QStringLiteral("finished_at_ms")).toDouble(0));
+        }
+        if (!BuildCache::recordBuild(rootCanonical, build)) {
+            return QJsonDocument(btErr(
+                QStringLiteral("write_failed"),
+                QStringLiteral("build_status: failed to write "
+                               ".audit_cache/build.json")));
+        }
+        QJsonObject env = BuildCache::toJson(build);
+        env["ok"] = true;
+        return QJsonDocument(env);
+    }
+
+    // op == "read"
+    auto loaded = BuildCache::loadBuild(rootCanonical);
+    if (!loaded) {
+        return QJsonDocument(btErr(
+            QStringLiteral("not_cached"),
+            QStringLiteral("build_status: no recorded build "
+                           "(call op=record first)")));
+    }
+    QJsonObject env = BuildCache::toJson(*loaded);
+    env["ok"] = true;
+    const auto stale =
+        BuildCache::checkStale(rootCanonical, loaded->recordedAtMs);
+    if (!stale.staleKnown) {
+        env["stale_walk_capped"] = true;
+    } else if (stale.stale) {
+        env["stale"] = true;
+    }
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(btErr(
+            QStringLiteral("no_project"),
+            QStringLiteral("test_results: project root unresolved")));
+    }
+    const QString op = req.value(QStringLiteral("op")).toString(
+        QStringLiteral("read"));
+    if (op != QLatin1String("read") && op != QLatin1String("record")) {
+        return QJsonDocument(btErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral("test_results: \"op\" must be \"read\" or "
+                           "\"record\"")));
+    }
+
+    if (op == QLatin1String("record")) {
+        if (req.contains(QStringLiteral("detail"))) {
+            return QJsonDocument(btErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("test_results: \"detail\" not allowed "
+                               "on op=record (read-only argument)")));
+        }
+        const QJsonValue exitV = req.value(QStringLiteral("exit_code"));
+        if (!exitV.isDouble()) {
+            return QJsonDocument(btErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("test_results: \"exit_code\" must be "
+                               "an integer (required for op=record)")));
+        }
+        const QJsonValue outV = req.value(QStringLiteral("output"));
+        if (!outV.isString()) {
+            return QJsonDocument(btErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("test_results: \"output\" must be a "
+                               "string (required for op=record)")));
+        }
+        const QString output = outV.toString();
+        if (output.isEmpty()) {
+            return QJsonDocument(btErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("test_results: \"output\" must be "
+                               "non-empty for op=record")));
+        }
+        TestResCache::ParsedTests tests =
+            TestResCache::parseCtestOutput(output);
+        if (!tests.recognised) {
+            return QJsonDocument(btErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("test_results: \"output\" does not look "
+                               "like ctest --output-on-failure output "
+                               "(no summary footer or per-test status "
+                               "line recognised)")));
+        }
+        tests.exitCode = exitV.toInt();
+        if (req.contains(QStringLiteral("started_at_ms"))) {
+            tests.startedAtMs = static_cast<qint64>(
+                req.value(QStringLiteral("started_at_ms")).toDouble(0));
+        }
+        if (req.contains(QStringLiteral("finished_at_ms"))) {
+            tests.finishedAtMs = static_cast<qint64>(
+                req.value(QStringLiteral("finished_at_ms")).toDouble(0));
+        }
+        if (req.contains(QStringLiteral("duration_ms"))) {
+            tests.durationMs = static_cast<qint64>(
+                req.value(QStringLiteral("duration_ms")).toDouble(-1));
+        }
+        if (!TestResCache::recordTests(rootCanonical, tests)) {
+            return QJsonDocument(btErr(
+                QStringLiteral("write_failed"),
+                QStringLiteral("test_results: failed to write "
+                               ".audit_cache/tests.json")));
+        }
+        QJsonObject env = TestResCache::toJsonWire(tests);
+        env["ok"] = true;
+        return QJsonDocument(env);
+    }
+
+    // op == "read"
+    auto loaded = TestResCache::loadTests(rootCanonical);
+    if (!loaded) {
+        return QJsonDocument(btErr(
+            QStringLiteral("not_cached"),
+            QStringLiteral("test_results: no recorded test run "
+                           "(call op=record first)")));
+    }
+    const QString detail = req.value(QStringLiteral("detail")).toString();
+    if (!detail.isEmpty()) {
+        for (const auto &pf : loaded->failingTests) {
+            if (pf.name == detail) {
+                QJsonObject env;
+                env["ok"]     = true;
+                QJsonObject d;
+                d["name"]    = pf.name;
+                d["excerpt"] = pf.fullExcerpt;  // replace with full body
+                env["detail"] = d;
+                return QJsonDocument(env);
+            }
+        }
+        return QJsonDocument(btErr(
+            QStringLiteral("detail_not_found"),
+            QStringLiteral("test_results: \"%1\" not in failing_tests[]")
+                .arg(detail)));
+    }
+    QJsonObject env = TestResCache::toJsonWire(*loaded);
+    env["ok"] = true;
     return QJsonDocument(env);
 }

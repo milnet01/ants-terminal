@@ -4418,6 +4418,25 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdInvariantCheck(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1299 + ANTS-1300 — build/test cache MCP tools. Both
+    // are op-dispatched (op=read | op=record) and write to
+    // <project>/.audit_cache/. MCP-only. See docs/specs/ANTS-1299.md
+    // and docs/specs/ANTS-1300.md.
+    m_claudeIntegration->registerToolProvider("build_status",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdBuildStatus(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("test_results",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdTestResults(args).toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
     // the active project via the focused TerminalWidget's shellCwd
     // (matches the convention used by git_state / subsystem /

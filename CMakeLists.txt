@@ -239,6 +239,12 @@ add_library(ants_core_lib STATIC
     src/tooldetectionengine.cpp
     # ANTS-1397 — test_audit_* trio engine (Qt6::Core only).
     src/testauditengine.cpp
+    # ANTS-1299 + ANTS-1300 — build/test cache MCP tools. Live in
+    # ants_core_lib (next to remotecontrol.cpp) so they reach the
+    # MCP dispatch path without forcing ants_audit_lib into the
+    # core lib's link graph; .audit_cache/ path is computed inline.
+    src/buildcache.cpp
+    src/testrescache.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
@@ -1018,7 +1024,11 @@ if(ANTS_TESTS)
                 # ANTS-1309 spec_query MCP tool.
                 tests/features/mcp_spec_query/test_mcp_spec_query.cpp
                 # ANTS-1308 invariant_check MCP tool.
-                tests/features/mcp_invariant_check/test_mcp_invariant_check.cpp)
+                tests/features/mcp_invariant_check/test_mcp_invariant_check.cpp
+                # ANTS-1299 build_status MCP tool.
+                tests/features/mcp_build_status/test_mcp_build_status.cpp
+                # ANTS-1300 test_results MCP tool.
+                tests/features/mcp_test_results/test_mcp_test_results.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -1068,6 +1078,9 @@ if(ANTS_TESTS)
         # ANTS-1555 — audit_run per-project .audit_cache/ infra source-scrape.
         SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
         SRC_AUDITCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.h"
+        # ANTS-1299 + ANTS-1300 — build/test cache MCP source-scrape.
+        SRC_BUILDCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/buildcache.h"
+        SRC_TESTRESCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/testrescache.h"
         # ANTS-1397 — test_audit engine source for source-scrape tests.
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
         # ANTS-1352 — indie_review_dispatch source-scrape paths.

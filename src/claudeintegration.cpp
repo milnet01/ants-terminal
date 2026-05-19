@@ -2593,6 +2593,196 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1299 — build_status: record/read the most recent
+                // build's outcome at <root>/.audit_cache/build.json.
+                {
+                    QJsonObject t;
+                    t["name"] = "build_status";
+                    t["description"] = QStringLiteral(
+                        "Record or read the most recent build's outcome. "
+                        "op=record takes {exit_code, output, started_at_ms?, "
+                        "finished_at_ms?} and parses GCC/clang/cppcheck-2.x "
+                        "compiler output into errors[] + warnings_count; "
+                        "writes <root>/.audit_cache/build.json atomically. "
+                        "op=read (default) returns the cached envelope OR "
+                        "{ok:false, code:\"not_cached\"} when no record "
+                        "exists. Read also surfaces stale:true when any "
+                        "compile-input file (src/, tests/, cmake/, "
+                        "CMakeLists.txt) has mtime newer than the cache. "
+                        "Saves ~3-10 K tokens per build cycle vs. shelling "
+                        "`cmake --build` and reading the full output.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Call op=record right after every `cmake --build` "
+                        "you run, then call op=read on subsequent steps "
+                        "instead of re-shelling the build. Pairs with "
+                        "test_results for the build → test → commit gate.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject opProp;
+                        opProp["type"]        = "string";
+                        QJsonArray opEnum;
+                        opEnum.append("read");
+                        opEnum.append("record");
+                        opProp["enum"]        = opEnum;
+                        opProp["default"]     = "read";
+                        opProp["description"] = QStringLiteral(
+                            "Verb. \"read\" (default) returns the "
+                            "cached envelope; \"record\" parses the "
+                            "supplied output and writes the cache.");
+                        props["op"] = opProp;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Build exit code (required for op=record).");
+                        props["exit_code"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Full stdout+stderr of the build "
+                            "(required for op=record).");
+                        props["output"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Wall-clock ms when the build started "
+                            "(optional, op=record).");
+                        props["started_at_ms"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Wall-clock ms when the build finished "
+                            "(optional, op=record).");
+                        props["finished_at_ms"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
+                // ANTS-1300 — test_results: record/read the most recent
+                // ctest --output-on-failure run.
+                {
+                    QJsonObject t;
+                    t["name"] = "test_results";
+                    t["description"] = QStringLiteral(
+                        "Record or read the most recent ctest run's "
+                        "summary. op=record takes {exit_code, output, "
+                        "started_at_ms?, finished_at_ms?, duration_ms?} "
+                        "and parses ctest --output-on-failure into "
+                        "{passed, failed, skipped, total, failing_tests:"
+                        "[{name, excerpt}]}; writes "
+                        "<root>/.audit_cache/tests.json atomically. "
+                        "op=read (default) returns the cached envelope. "
+                        "op=read with detail=<name> returns one failing "
+                        "test's full captured block (up to 8 000 chars) "
+                        "instead of the truncated 20-line excerpt. "
+                        "Refusals: not_cached (no record), "
+                        "detail_not_found (cache exists, named test "
+                        "wasn't in failing_tests[]). Saves ~3-15 K "
+                        "tokens per test cycle.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Call op=record after every `ctest "
+                        "--output-on-failure`, then op=read for "
+                        "subsequent checks. Use detail=<name> when you "
+                        "need the full body of one failing test "
+                        "without re-running the suite.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject opProp;
+                        opProp["type"]        = "string";
+                        QJsonArray opEnum;
+                        opEnum.append("read");
+                        opEnum.append("record");
+                        opProp["enum"]        = opEnum;
+                        opProp["default"]     = "read";
+                        opProp["description"] = QStringLiteral(
+                            "Verb. \"read\" (default) returns the "
+                            "cached envelope; \"record\" parses the "
+                            "supplied output and writes the cache.");
+                        props["op"] = opProp;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Ctest exit code (required for op=record).");
+                        props["exit_code"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Full stdout+stderr of the ctest run "
+                            "(required for op=record).");
+                        props["output"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Wall-clock ms when the ctest run "
+                            "started (optional, op=record).");
+                        props["started_at_ms"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Wall-clock ms when the ctest run "
+                            "finished (optional, op=record).");
+                        props["finished_at_ms"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Total duration in ms (optional, "
+                            "op=record). Caller-supplied wins over "
+                            "the parsed `Total Test time (real)` "
+                            "footer.");
+                        props["duration_ms"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Failing-test name selector (optional, "
+                            "op=read only). When present, response "
+                            "shape is {ok, detail:{name, excerpt}} "
+                            "with the full captured block as "
+                            "excerpt. detail_not_found refusal "
+                            "when the name isn't in failing_tests[].");
+                        props["detail"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1112 — five `indie_review_*` tools that lift the
                 // mechanical halves of /indie-review out of orchestrator
                 // context. Engine: src/indiereviewengine.{h,cpp}.
@@ -4864,6 +5054,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // Spec-aware (ANTS-1309 + ANTS-1308).
                         {QStringLiteral("spec_query"),         {500,  2500}},
                         {QStringLiteral("invariant_check"),    {800,  4000}},
+                        // Build/test cache (ANTS-1299 + ANTS-1300).
+                        {QStringLiteral("build_status"),       {500,  2000}},
+                        {QStringLiteral("test_results"),       {800,  3000}},
                     };
                     const auto it = kCosts.find(name);
                     if (it != kCosts.end()) return it.value();
@@ -4924,6 +5117,12 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name == QLatin1String("spec_query") ||
                         name == QLatin1String("invariant_check"))
                         return QStringLiteral("spec");
+                    // ANTS-1299 — build_status cache.
+                    if (name == QLatin1String("build_status"))
+                        return QStringLiteral("build");
+                    // ANTS-1300 — test_results cache.
+                    if (name == QLatin1String("test_results"))
+                        return QStringLiteral("test");
                     if (name.startsWith(QStringLiteral("get_")) ||
                         name == QLatin1String("tab_list"))
                         return QStringLiteral("terminal");
@@ -5597,6 +5796,11 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // Required matches sibling project-scoped readers.
     if (toolName == QStringLiteral("spec_query"))         return C::Required;
     if (toolName == QStringLiteral("invariant_check"))    return C::Required;
+    // ANTS-1299 + ANTS-1300 — build/test cache MCP tools. Both ops
+    // (record + read) scope to <root>/.audit_cache/; Required matches
+    // sibling project-scoped tools.
+    if (toolName == QStringLiteral("build_status"))       return C::Required;
+    if (toolName == QStringLiteral("test_results"))       return C::Required;
     // Cold-eyes verb cluster (ANTS-1313).
     if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Required;
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Required;
@@ -5666,7 +5870,14 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // composed into one envelope; the etag covers the union, so
         // a session re-asking "what's the state" between upstream
         // changes short-circuits.
-        || toolName == QStringLiteral("current_state");
+        || toolName == QStringLiteral("current_state")
+        // ANTS-1299 + ANTS-1300 — build/test caches. The envelope on
+        // op=read is stable between record calls, so re-reads from
+        // peer sessions / tabs short-circuit. Etag injection is
+        // op-agnostic at the dispatcher (record responses also carry
+        // an etag); the field is only semantically useful on op=read.
+        || toolName == QStringLiteral("build_status")
+        || toolName == QStringLiteral("test_results");
 }
 
 QString ClaudeIntegration::etagFor(const QString &payload) {

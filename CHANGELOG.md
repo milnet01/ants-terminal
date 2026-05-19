@@ -12,6 +12,89 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP build/test cache — pull 34 (ANTS-1299 + ANTS-1300, 2026-05-19)
+
+Two new MCP tools that cache the most recent build / test outcomes
+under `<project>/.audit_cache/` so a later session can branch on
+the structured summary without re-shelling `cmake --build` or
+`ctest --output-on-failure`. Op-dispatched `record` / `read`
+surface; `op=read` is the default. Both tools live as siblings to
+ANTS-1555's `.audit_cache/` infrastructure (same directory, same
+0600 atomic-write pattern, same gitignored posture).
+
+- **ANTS-1299 (implement)** — `build_status` MCP tool. `op=record`
+  takes `{exit_code, output, started_at_ms?, finished_at_ms?}`,
+  parses the supplied compiler output into `errors:[{file, line,
+  severity, message}]` + `warnings_count` via the GCC/clang/
+  cppcheck-2.x `<path>:<line>:<col>?: <severity>: <msg>` regex,
+  and writes `<root>/.audit_cache/build.json` atomically. `op=read`
+  (default) returns the cached envelope OR `{ok:false,
+  code:"not_cached"}` when no record exists. Read also surfaces
+  `stale:true` when any compile-input file (`src/`, `tests/`,
+  `cmake/`, `CMakeLists.txt`, plus `include/` if present) has
+  mtime newer than the cache; walk capped at 5 000 files
+  (`stale_walk_capped:true` when the cap fires before any newer
+  file is found). Errors[] cap 50; per-message text cap 240 chars.
+  Continuation rule: a `note:` line immediately following an
+  `error:` is folded into the parent's message rather than
+  counted as a warning. Required-contract gated; etag-enabled
+  via the ANTS-1499 304 pattern. Token-cost ledger entry
+  `(500, 2000)`. Saves ~3-10 K tokens per build cycle vs reading
+  the full `cmake --build` output.
+
+- **ANTS-1300 (implement)** — `test_results` MCP tool. `op=record`
+  takes `{exit_code, output, started_at_ms?, finished_at_ms?,
+  duration_ms?}`, parses ctest --output-on-failure into
+  `{passed, failed, skipped, total, failing_tests:[{name,
+  excerpt}], duration_ms}` and writes
+  `<root>/.audit_cache/tests.json` atomically. Regex anchors are
+  `^\s*`-prefixed to match ctest's indented `N/M Test #K:` lines;
+  the `(?:\*\*\*)?` optional prefix catches `***Failed`,
+  `***Timeout`, `***Exception` markers. Per-failure capture
+  blocks bounded by the next `Test #N:` line or the summary
+  footer. Each failure carries `excerpt` (last 20 lines, per-line
+  capped at 1 000 chars, joined capped at 4 000 chars) plus an
+  on-disk-only `full_excerpt` (whole block capped at 8 000 chars).
+  `op=read` default path strips `full_excerpt` from the wire
+  envelope (handler-level via `toJsonWire`, INV-18); `op=read
+  detail=<name>` returns `{ok, detail:{name, excerpt}}` with the
+  full body for one named test. Refusals: `not_cached` (no
+  cache), `detail_not_found` (cache exists but name not in
+  failing_tests[]), `bad_args` for missing args / unparseable
+  output / `detail` on `op=record`. failing_tests[] cap 50;
+  parser refuses to write a zero-record when neither summary nor
+  per-test line is recognised (avoids stomping a valid prior
+  cache). Token-cost ledger entry `(800, 3000)`.
+
+Both tools register through `MainWindow::setupClaudeMcpProviders`
+with `CallerCwdContract::Required`, bucket as `[build]` and
+`[test]` in `kindForName` (new branches), and opt into
+`isEtagSupportedTool` (etag injection is op-agnostic at the
+dispatcher; the field is only semantically useful on `op=read`).
+Cache directory path computed inline in both `buildcache.cpp` +
+`testrescache.cpp` to keep the modules in `ants_core_lib`
+alongside `remotecontrol.cpp` — avoids dragging `ants_audit_lib`
+into the core lib's link graph for `AuditCache::cacheDir`. Source
+files: `src/buildcache.{h,cpp}` (~280 LOC), `src/testrescache.{h,cpp}`
+(~330 LOC), plus the two `cmd*` handlers in `src/remotecontrol.cpp`
+(~210 LOC). Refusal codes `not_cached` + `detail_not_found` added
+to `docs/standards/mcp-error-codes.md` § 2 (Resource state) in
+the same commit. Specs `docs/specs/ANTS-1299.md` +
+`docs/specs/ANTS-1300.md` (cold-eyes-reviewed 3 loops: 27 → 2 →
+0 verified findings). Tests `tests/features/mcp_build_status/`
+(11 source-grep INVs) + `tests/features/mcp_test_results/`
+(12 source-grep INVs). Full features suite 1221/1221 green.
+
+This bundle also folds in 4 new MCP-themed roadmap items from the
+2026-05-19 cross-session feedback sweep (3D_Engine /
+Music_Production / RetroArch sessions): ANTS-1688 (roadmap_query
+section_index payload shrink), ANTS-1689 (test_audit
+synthesis_prompt markdown `[SEVERITY]` fallback parser),
+ANTS-1690 (`roadmap_log op:flip_batch`), ANTS-1691
+(`roadmap_log` bundle-progress-table verb). The MAME_Curator and
+RetroDB reports surfaced no new items — every concrete
+observation already shipped or already on roadmap.
+
 ### 🔌 MCP spec-aware token-savers — pull 33 (ANTS-1309 + ANTS-1308, 2026-05-19)
 
 Two new MCP tools that surface a spec's invariant list without

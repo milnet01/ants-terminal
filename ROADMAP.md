@@ -8363,7 +8363,7 @@ gets one CHANGELOG section + one drift cycle + one push.
 
 | Pull | Theme | Items | File affinity | Size |
 |------|-------|-------|---------------|------|
-| **34** | Test/build cache MCP — `.audit_cache/` siblings | ANTS-1300 (`test_results`) · ANTS-1299 (`build_status`) | new `testrescache.{h,cpp}` · new `buildcache.{h,cpp}` · `remotecontrol.cpp` · `mainwindow.cpp` | medium (~500 LOC + fixtures) |
+| **34** ✅ | Test/build cache MCP — `.audit_cache/` siblings (shipped 2026-05-19) | ANTS-1300 (`test_results`) · ANTS-1299 (`build_status`) | new `testrescache.{h,cpp}` · new `buildcache.{h,cpp}` · `remotecontrol.cpp` · `mainwindow.cpp` | medium (~500 LOC + fixtures) |
 | **35** | Symbol queries (cheap LSP shape) | ANTS-1303 (`find_definition` + `find_caller`) | new `symbolquery.{h,cpp}` · regex anchors only · `remotecontrol.cpp` | medium (~400 LOC) |
 | **36** | Scrollback error extraction | ANTS-1301 (`recent_errors`) | new `scrollbackerrors.{h,cpp}` · per-language regex bank · `remotecontrol.cpp` | small-medium (~300 LOC) |
 | **37** | Task-start context bundling | ANTS-1306 (`task_priors`) · ANTS-1307 (`project_conventions`) | composer over existing verbs · `remotecontrol.cpp` | small (~250 LOC, pure composer) |
@@ -12505,6 +12505,86 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc-fix.
   Source: in-session-2026-05-17.
 
+### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-05-19)
+
+Triaged from five sibling-project feedback files
+(`/mnt/Games/Scripts/Linux/{3D_Engine,MAME_Curator,Music_Production,RetroArch,RetroDB}_Ants_MCP_Feedback.md`)
+during pull 34. 3D_Engine + MAME_Curator + RetroDB carried zero
+new items (every concrete observation already shipped or already
+on roadmap); Music_Production + RetroArch surfaced four small
+follow-ups below. Items ordered by severity within this
+subsection.
+
+- 📋 [ANTS-1690] **`roadmap_log op:flip_batch` for closing N
+  bullets atomically.** Fold-in bundles routinely close 5-15
+  bullets in lockstep (cold-eyes / indie-review / test-audit
+  sweeps). Per-bullet `op:flip` calls force N round-trips; the
+  reporting session fell back to `sed -i '455,463 s/^- 📋 /- ✅
+  /'` (atomic but loses the verb's structural awareness +
+  anchor injection). Add `op:flip_batch` taking
+  `locators:[{headline}|{line_range}]` + `to_status`, returning
+  `{flipped, skipped:[…], anchors_injected:[…]}`. The single
+  reparse + single QSaveFile commit also avoids the dueling-mtime
+  scenario where two close-together flips race the file watcher.
+  **Layman:** when a release closes a dozen bullets at once,
+  Claude should be able to flip all of them in one MCP call
+  instead of twelve.
+  Kind: enhance.
+  Source: cross-session-report-2026-05-19 (RetroArch CC session
+  bundle 71).
+
+- 📋 [ANTS-1688] **`roadmap_query mode:"section_index"` payload
+  shrink for legacy-format roadmaps with many duplicate-ID
+  occurrences.** On a 456 KB ROADMAP from a sibling project,
+  `mode:"section_index"` returned a 54.9 KB envelope dominated
+  by `duplicate_ids[].occurrences[]` — each legacy non-ID
+  bullet (Phase 9F-1, Photo mode, …) surfaced with up to 8
+  occurrences, triggering the persisted-output truncation path.
+  Fix shape: cap `occurrences[]` at ~3 with a per-ID
+  `truncated_count` field, OR collapse to a top-level
+  `duplicate_id_count` integer by default and gate the full
+  list behind an opt-in flag (`include_duplicate_id_details:true`).
+  Most callers just want "is the roadmap clean?".
+  **Layman:** when a roadmap has dozens of legacy bullets that
+  share generic headlines, the duplicate-IDs surface gets huge —
+  cap it so the response stays under the truncation limit.
+  Kind: refactor.
+  Source: cross-session-report-2026-05-19 (3D_Engine CC session).
+
+- 📋 [ANTS-1689] **`test_audit_synthesis_prompt` markdown
+  `[SEVERITY]` fallback parser.** ANTS-1617 (pull 18) taught the
+  parser to recognise `### [SEVERITY] dimension:` headers + a
+  `## Findings (JSON)` block, but chunk subagents emitting prose-
+  style markdown (the default `/test-audit` flow) still produce
+  reports with `[CRITICAL] / [HIGH] / [MEDIUM] / [LOW] / [INFO]`
+  prefixes on inline lines. The synthesis prompt then returns
+  `severity_histograms:{}` even though the data is right there.
+  Add a looser regex pass that scans markdown for inline
+  `[SEVERITY]` tokens as a last-resort fallback.
+  **Layman:** the test-audit summary tool can already count
+  findings when chunks emit structured JSON or specific markdown
+  headers, but not when they emit prose with `[HIGH]` tags inline
+  — fix the fallback parser.
+  Kind: enhance.
+  Source: cross-session-report-2026-05-19 (Music_Production CC
+  session).
+
+- 📋 [ANTS-1691] **`roadmap_log` bundle-progress-table verb.**
+  Some projects maintain a `## 📊 Bundle progress` markdown
+  table (multi-KB prose per cell) and need to append rows + keep
+  them sorted. `roadmap_log` only knows bullets, so the reporting
+  session fell back to `sed`/`sort -t'|'`/`head`/`tail` — works
+  but risks pipe-corruption on cells that contain `|`.
+  Optional `roadmap_bundle_log(bundle_id, commit_sha, theme,
+  sites)` verb that knows table shape, does pipe-escaping, and
+  inserts in order. Lower priority than ANTS-1690.
+  **Layman:** projects that track bundles in a markdown table
+  shouldn't have to use `sed` to add a row — give them an MCP
+  verb that knows the table shape.
+  Kind: enhance.
+  Source: cross-session-report-2026-05-19 (RetroArch CC session
+  bundle 71).
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
@@ -12736,29 +12816,39 @@ expected token-leverage per implementation hour.
 
 #### 🔌 Tight-loop iteration (build / test / diagnose)
 
-- 📋 [ANTS-1299] **`build_status` MCP — cached build outcome + extracted
-  errors.** Every multi-step Claude task does build cycles; today
-  Claude shells `cmake --build` and reads ~50–500 lines of compiler
-  output to decide whether to continue. Cache the most recent build's
-  outcome at `.audit_cache/build.json` (`{exit_code, started_at,
-  finished_at, errors: [{file, line, severity, message}],
-  warnings_count}`); MCP returns the compact summary. Claude
-  branches on `exit_code` + reads only the extracted errors instead
-  of the full output. Saves ~3–10 K tokens per build cycle.
-  Invalidated by mtime-newer-than-cache on any compile-input file.
+- ✅ [ANTS-1299] **`build_status` MCP — cached build outcome + extracted
+  errors.** Shipped 2026-05-19, pull 34. Op-dispatched `record`/`read`
+  surface over `<root>/.audit_cache/build.json` (schema_version 1).
+  `op=record` parses GCC/clang/cppcheck-2.x compiler output into
+  `errors:[{file, line, severity, message}]` + `warnings_count`
+  (cap 50 errors, 240-char per-message); `op=read` (default) returns
+  the cached envelope OR `{ok:false, code:"not_cached"}`. Read also
+  surfaces `stale:true` when any compile-input file (`src/`,
+  `tests/`, `cmake/`, `CMakeLists.txt`, plus `include/` if present)
+  has mtime newer than the cache (walk capped at 5 000 files).
+  Required-contract gated, etag-enabled, token-cost `(500, 2000)`.
+  Spec `docs/specs/ANTS-1299.md`; tests
+  `tests/features/mcp_build_status/`.
   **Layman:** instead of running `cmake --build` and parsing 500
   lines, ask the MCP for "did it build, and what failed."
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1300] **`test_results` MCP — last test run summary + failure
-  excerpts.** Mirror shape to ANTS-1299 for ctest. Cache at
-  `.audit_cache/tests.json` (`{pass, fail, failing_tests: [{name,
-  excerpt: <last 20 lines>}], duration_ms}`). Replaces parsing full
-  `ctest --output-on-failure` (~3–15 K depending on suite size). When
-  Claude wants the full body of one failure, it can fetch via
-  `test_results detail=<name>`. Pairs with ANTS-1310 (`validate_commit`)
-  which would query this before allowing the commit gate to pass.
+- ✅ [ANTS-1300] **`test_results` MCP — last test run summary + failure
+  excerpts.** Shipped 2026-05-19, pull 34. Sibling op surface to
+  ANTS-1299; cache at `<root>/.audit_cache/tests.json`. `op=record`
+  parses `ctest --output-on-failure` into `{passed, failed, skipped,
+  total, failing_tests:[{name, excerpt}], duration_ms}`. Each
+  failure's `excerpt` is the last 20 lines (per-line cap 1 000,
+  joined cap 4 000); the on-disk `full_excerpt` (cap 8 000) is
+  stripped from the wire envelope on default reads. `op=read
+  detail=<name>` returns `{ok, detail:{name, excerpt}}` with the
+  full body for one named test. Refusals: `not_cached`,
+  `detail_not_found`, `bad_args`. failing_tests[] cap 50; parser
+  refuses zero-record on unparseable input to avoid stomping a
+  valid prior cache. Required-contract, etag-enabled, token-cost
+  `(800, 3000)`. Spec `docs/specs/ANTS-1300.md`; tests
+  `tests/features/mcp_test_results/`.
   **Layman:** test-results MCP returns pass/fail + just the failing
   tests' tails, not the whole 422-test log.
   Kind: implement.

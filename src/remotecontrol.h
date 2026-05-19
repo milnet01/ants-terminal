@@ -326,6 +326,19 @@ public:
     // Shares the spec parser with cmdSpecQuery. MCP-only.
     QJsonDocument cmdInvariantCheck(const QJsonObject &req);
 
+    // ANTS-1299: build_status — record/read the most recent build's
+    // {exit_code, errors:[], warnings_count} summary at
+    // <root>/.audit_cache/build.json. op ∈ {record, read} (default
+    // read). MCP-only. See docs/specs/ANTS-1299.md.
+    QJsonDocument cmdBuildStatus(const QJsonObject &req);
+
+    // ANTS-1300: test_results — record/read the most recent ctest run's
+    // {passed, failed, skipped, total, failing_tests:[…]} summary at
+    // <root>/.audit_cache/tests.json. op ∈ {record, read} (default
+    // read); op=read also accepts detail=<name> to return one
+    // failing test's full excerpt. MCP-only.
+    QJsonDocument cmdTestResults(const QJsonObject &req);
+
     // ANTS-1112 — five `indie_review_*` MCP tools. All resolve the
     // active project via the focused TerminalWidget's shellCwd
     // (matches git_state / subsystem / last_audit_summary). Pure

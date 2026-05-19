@@ -62,6 +62,8 @@ against the table below.
 | `reports_dir_unreadable` | `reports_dir` canonicalises but the resolved path doesn't exist, isn't a directory, or the calling user lacks read permission (ANTS-1455). | `test_audit_synthesis_prompt allow_outside_project:true reports_dir:"/no/such/dir"`. |
 | `reports_dir_empty` | `reports_dir` is a readable directory containing zero `*.md` files at top level (ANTS-1455). | `test_audit_synthesis_prompt` against a dir where the per-chunk reports weren't written (empty workflow). Saves the silent-success failure mode the v1 engine had. |
 | `no_git_state` | The project root has no `.git/` directory or `git rev-parse HEAD` returned empty (ANTS-1583). The tool's contract needs git state to be meaningful; refuse rather than emit an envelope with zero coverage. | `roadmap_branch_drift` against a non-git project. |
+| `not_cached` | The tool's per-project cache file is absent or fails its schema check; the verb has no recorded data to return (ANTS-1299 / ANTS-1300). Distinct from `not_found` (which is keyed by caller-named resource); this is "the cache itself isn't there yet." | `build_status op:"read"` before any `op:"record"` has populated `<root>/.audit_cache/build.json`; `test_results op:"read"` before the first `op:"record"`. |
+| `detail_not_found` | The cache exists but the caller's `detail` selector (e.g. a named failing test) is not present in it (ANTS-1300). Distinct from `not_cached` (no cache at all) and `not_found` (resource by path). | `test_results op:"read" detail:"NoSuchTest"` when the recorded `failing_tests[]` doesn't carry that name. |
 
 ### 3 — Caller-cwd contract (ANTS-1404 / ANTS-1372)
 
