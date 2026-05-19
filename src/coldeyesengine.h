@@ -95,6 +95,16 @@ struct PartitionResult {
     QStringList missingContractFiles;
 };
 
+// ANTS-1634(b) — orchestrator-supplied "already fixed in the prior
+// loop" record. Loop-2 dispatches inject one of these per item closed
+// by loop-1 so the reviewer doesn't re-raise the same finding. Both
+// fields are optional individually; an entry with both empty is
+// silently dropped at the MCP layer before reaching the engine.
+struct PriorLoopFix {
+    QString title;
+    QString summary;
+};
+
 struct BriefManifest {
     QString     brief;
     QStringList docPaths;
@@ -119,7 +129,8 @@ PartitionResult derivePartition(const QString &projectPath,
                                 Scope scope = Scope::Default);
 
 BriefManifest   assembleBriefManifest(const QString &projectPath,
-                                      const Lane &lane);
+                                      const Lane &lane,
+                                      const QList<PriorLoopFix> &priorLoopFixes = {});
 
 QStringList     extractCitedCodePaths(const QString &projectPath,
                                       const QStringList &docPaths,

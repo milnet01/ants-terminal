@@ -3417,7 +3417,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "or empty in all three → "
                         "{ok:false, code:\"bad_actionable\"} naming "
                         "the offending index. Long headlines are "
-                        "truncated to 120 chars with \" …\" suffix.");
+                        "truncated to 120 chars with \" …\" suffix. "
+                        "**Narrative mode (ANTS-1635):** pass "
+                        "`narrative_mode=true` + `narrative_md=\"…\"` "
+                        "to insert pre-rendered prose verbatim under "
+                        "the `### 🧪 Test Audit YYYY-MM-DD` heading "
+                        "instead of the per-finding bullet rendering. "
+                        "Skips ID allocation and `.roadmap-counter` "
+                        "touch entirely. `actionable[]` is not "
+                        "required in narrative mode. Empty / "
+                        "whitespace-only `narrative_md` → "
+                        "{ok:false, code:\"narrative_md_required\"}.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to merge a finished test-audit set "
                         "back into ROADMAP.md as a fold-in block. "
@@ -3430,17 +3440,38 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject dP; dP["type"] = "array";
                     QJsonObject rfP; rfP["type"] = "integer";
                     QJsonObject ccwd; ccwd["type"] = "string";
+                    // ANTS-1635 — narrative-mode opt-in.
+                    QJsonObject nmP; nmP["type"] = "boolean";
+                    nmP["description"] = QStringLiteral(
+                        "When true, skip per-finding bullet rendering "
+                        "and ID allocation; insert `narrative_md` "
+                        "verbatim under the section heading.");
+                    QJsonObject nmdP; nmdP["type"] = "string";
+                    nmdP["description"] = QStringLiteral(
+                        "Pre-rendered markdown inserted under the "
+                        "`### 🧪 Test Audit YYYY-MM-DD` heading when "
+                        "narrative_mode=true. Required + non-empty in "
+                        "that mode; ignored when narrative_mode is "
+                        "false / absent. Caller owns sub-headings and "
+                        "structure inside this body.");
                     QJsonObject props;
-                    props["actionable"]    = aP;
-                    props["framework"]     = fP;
-                    props["files_scanned"] = fsP;
-                    props["dimensions"]    = dP;
-                    props["raw_findings"]  = rfP;
-                    props["caller_cwd"]    = ccwd;
+                    props["actionable"]      = aP;
+                    props["framework"]       = fP;
+                    props["files_scanned"]   = fsP;
+                    props["dimensions"]      = dP;
+                    props["raw_findings"]    = rfP;
+                    props["narrative_mode"]  = nmP;
+                    props["narrative_md"]    = nmdP;
+                    props["caller_cwd"]      = ccwd;
                     schema["properties"] = props;
+                    // ANTS-1635 — `actionable` is no longer strictly
+                    // required at the schema level; the engine refuses
+                    // missing+non-narrative requests with the same
+                    // `missing_field` error (now naming the
+                    // narrative_mode escape hatch in the message).
+                    // Keep `caller_cwd` required (mutating verb).
                     QJsonArray req;
                     req.append("caller_cwd");
-                    req.append("actionable");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -3693,7 +3724,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "Paths must be project-relative and resolve "
                         "inside the project root (INV-13 enforced); "
                         "absolute paths and symlink escapes are "
-                        "rejected silently. **Rate limit (ANTS-1629):** "
+                        "rejected silently. Optional (ANTS-1634b): "
+                        "prior_loop_fixes[] — orchestrator-supplied "
+                        "list of {title, summary} records the engine "
+                        "renders as a 'Previously fixed in loop 1' "
+                        "block before the Instructions section, so "
+                        "loop-2 reviewers don't re-raise items "
+                        "already closed. **Rate limit (ANTS-1629):** "
                         "BriefAssembly tier — 30 calls / 60 s "
                         "per (tool, caller_cwd). A canonical "
                         "`/cold-eyes` Phase-2 fan-out dispatches "
@@ -3725,9 +3762,50 @@ void ClaudeIntegration::onMcpConnection() {
                         "lane. Used only when `lane` is absent from "
                         "the auto-partition. Each entry is anchored "
                         "inside the project root.");
+                    // ANTS-1634(b) — orchestrator-supplied prior-loop
+                    // fix list. Loop-2 dispatches inject one entry per
+                    // item closed by loop-1 so the reviewer doesn't
+                    // re-flag the same finding. Engine renders a
+                    // "Previously fixed in loop 1 (do not re-raise)"
+                    // section before the Instructions block.
+                    QJsonObject priorFixesProp;
+                    priorFixesProp["type"] = "array";
+                    QJsonObject priorFixesItem;
+                    priorFixesItem["type"] = "object";
+                    QJsonObject priorFixesItemProps;
+                    QJsonObject priorFixesTitleP;
+                    priorFixesTitleP["type"] = "string";
+                    priorFixesTitleP["description"] = QStringLiteral(
+                        "Short headline for the closed item (e.g. "
+                        "\"ANTS-1500 missing stale_reason on "
+                        "counter_regressed\").");
+                    QJsonObject priorFixesSummaryP;
+                    priorFixesSummaryP["type"] = "string";
+                    priorFixesSummaryP["description"] = QStringLiteral(
+                        "One-sentence summary of what loop-1 changed. "
+                        "Empty allowed but at least one of "
+                        "title/summary must be non-empty (entries with "
+                        "both empty are silently dropped).");
+                    priorFixesItemProps["title"]   = priorFixesTitleP;
+                    priorFixesItemProps["summary"] = priorFixesSummaryP;
+                    priorFixesItem["properties"]   = priorFixesItemProps;
+                    priorFixesItem["additionalProperties"] = false;
+                    priorFixesProp["items"] = priorFixesItem;
+                    priorFixesProp["description"] = QStringLiteral(
+                        "Optional (ANTS-1634b). Orchestrator-supplied "
+                        "list of {title, summary} records describing "
+                        "items that were already fixed in loop 1. The "
+                        "engine renders a 'Previously fixed in loop 1 "
+                        "(do not re-raise)' section before the "
+                        "reviewer Instructions block. Saves the "
+                        "orchestrator from hand-rolling the block into "
+                        "each subagent prompt. Empty/missing entries "
+                        "are skipped; an empty array omits the "
+                        "section entirely.");
                     QJsonObject props;
-                    props["lane"]      = laneProp;
-                    props["doc_paths"] = docPathsProp;
+                    props["lane"]             = laneProp;
+                    props["doc_paths"]        = docPathsProp;
+                    props["prior_loop_fixes"] = priorFixesProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;

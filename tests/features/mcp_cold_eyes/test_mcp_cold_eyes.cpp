@@ -231,3 +231,58 @@ TEST(McpColdEyes, FoldInUsesRoadmapFoldInAllocateAndInsert) {
               std::string::npos)
         << "cmdColdEyesFoldIn must call the engine's template helper";
 }
+
+// ANTS-1634(b) INV-11 — claudeintegration.cpp's cold_eyes_brief
+// registration block declares the `prior_loop_fixes` array prop with
+// `{title, summary}` item objects. Schema-shape source-grep so a
+// future rename / signature drift is caught at test time, before any
+// orchestrator that depends on the field hits an `unknown_arg`-shape
+// refusal.
+TEST(McpColdEyes, Ants1634PriorLoopFixesSchemaDeclared) {
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    // Scope to the cold_eyes_brief block: starts at the name literal,
+    // ends at the next `tools.append(t);`.
+    const auto pos = ci.find("t[\"name\"] = \"cold_eyes_brief\"");
+    ASSERT_NE(pos, std::string::npos);
+    const auto end = ci.find("tools.append(t);", pos);
+    ASSERT_NE(end, std::string::npos);
+    const std::string region = ci.substr(pos, end - pos);
+
+    EXPECT_NE(region.find("props[\"prior_loop_fixes\"]"), std::string::npos)
+        << "INV-11: prior_loop_fixes prop not added to cold_eyes_brief schema";
+    EXPECT_NE(region.find("priorFixesItemProps[\"title\"]"),
+              std::string::npos)
+        << "INV-11: item schema missing `title` property";
+    EXPECT_NE(region.find("priorFixesItemProps[\"summary\"]"),
+              std::string::npos)
+        << "INV-11: item schema missing `summary` property";
+}
+
+// ANTS-1634(b) INV-12 — cmdColdEyesBrief extracts the
+// `prior_loop_fixes` array from the request and forwards it to
+// ColdEyesEngine::assembleBriefManifest as a third arg. Source-grep
+// only — the wiring's behavioural correctness is covered by the
+// engine tests under `cold_eyes_engine`.
+TEST(McpColdEyes, Ants1634PriorLoopFixesExtractedInHandler) {
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    const auto pos = rc.find(
+        "QJsonDocument RemoteControl::cmdColdEyesBrief");
+    ASSERT_NE(pos, std::string::npos);
+    const auto end = rc.find("\n}\n", pos);
+    ASSERT_NE(end, std::string::npos);
+    const std::string body = rc.substr(pos, end - pos);
+
+    EXPECT_NE(body.find("\"prior_loop_fixes\""), std::string::npos)
+        << "INV-12: cmdColdEyesBrief must read the prior_loop_fixes field";
+    EXPECT_NE(body.find("ColdEyesEngine::PriorLoopFix"), std::string::npos)
+        << "INV-12: handler must construct engine PriorLoopFix records";
+    // Whitespace-tolerant: assert the engine call and the priorFixes
+    // identifier both appear in the handler body. A formatter that
+    // breaks the call across more lines must still pass this gate.
+    EXPECT_NE(body.find("assembleBriefManifest"), std::string::npos)
+        << "INV-12: handler must call assembleBriefManifest";
+    EXPECT_NE(body.find("priorFixes"), std::string::npos)
+        << "INV-12: handler must forward priorFixes";
+}

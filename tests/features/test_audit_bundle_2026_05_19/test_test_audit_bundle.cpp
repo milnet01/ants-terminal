@@ -310,3 +310,138 @@ TEST(TestAuditBundle201926519, Ants1617SynthRecognisesFindingsJsonBlock) {
     EXPECT_EQ(sr.severityHistograms.value("verbosity")
                   .toObject().value("low").toInt(), 1);
 }
+
+// ── ANTS-1635 narrative_mode ─────────────────────────────────────────
+//
+// Music Production /test-audit 2026-05-18 surfaced the "structured
+// per-finding shape doesn't fit a prose Closed-inline / Deferred /
+// False-positives summary" friction. `narrative_mode=true` lets the
+// caller insert pre-rendered markdown verbatim under the section
+// heading, skipping ID allocation and bullet rendering.
+
+// INV-1 — narrative_mode emits heading + narrative_md verbatim, no
+// per-finding bullets and no .roadmap-counter touch.
+TEST(TestAuditBundle201926519, Ants1635NarrativeModeEmitsVerbatimMarkdown) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    scaffoldRoadmap(tmp.path());
+    // Record counter pre-state — narrative mode must NOT touch it.
+    QFile c(tmp.path() + "/.roadmap-counter");
+    ASSERT_TRUE(c.open(QIODevice::ReadOnly));
+    const QString counterBefore = QString::fromUtf8(c.readAll());
+    c.close();
+
+    const QString narrative = QStringLiteral(
+        "**Closed inline (3):**\n"
+        "- Fix A — landed in src/foo.cpp.\n"
+        "- Fix B — landed in src/bar.cpp.\n"
+        "- Fix C — covered by existing test.\n\n"
+        "**Deferred (1):**\n"
+        "- Issue D — needs design pass.\n\n"
+        "**False-positives (1):**\n"
+        "- Issue E — see `.ants_review_falsepos.jsonl`.");
+
+    TestAuditEngine::FoldInRequest req;
+    req.callerCwd     = tmp.path();
+    req.narrativeMode = true;
+    req.narrativeMd   = narrative;
+
+    const auto r = TestAuditEngine::foldIn(req);
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    // Heading + verbatim narrative present.
+    EXPECT_TRUE(r.block.contains(QStringLiteral("### 🧪 Test Audit")));
+    EXPECT_TRUE(r.block.contains(QStringLiteral("**Closed inline (3):**")));
+    EXPECT_TRUE(r.block.contains(QStringLiteral("**Deferred (1):**")));
+    EXPECT_TRUE(r.block.contains(QStringLiteral("**False-positives (1):**")));
+    // No structured-mode preamble (Framework / Files scanned / Dimensions
+    // / Raw / Actionable).
+    EXPECT_FALSE(r.block.contains(QStringLiteral("Framework:")));
+    EXPECT_FALSE(r.block.contains(QStringLiteral("Files scanned")));
+    EXPECT_FALSE(r.block.contains(QStringLiteral("Actionable:")));
+    // No per-finding bullet shape (`- 📋 [ANTS-NNNN]`).
+    EXPECT_FALSE(r.block.contains(QStringLiteral("- 📋 [ANTS-")));
+    EXPECT_TRUE(r.allocatedIds.isEmpty())
+        << "narrative mode must NOT allocate any IDs";
+    EXPECT_EQ(r.writtenCount, 0)
+        << "narrative mode reports writtenCount=0 (no per-bullet count)";
+
+    // Counter file untouched.
+    QFile c2(tmp.path() + "/.roadmap-counter");
+    ASSERT_TRUE(c2.open(QIODevice::ReadOnly));
+    const QString counterAfter = QString::fromUtf8(c2.readAll());
+    EXPECT_EQ(counterBefore, counterAfter)
+        << "narrative mode must NOT touch .roadmap-counter";
+}
+
+// INV-2 — narrative_mode=true + missing/empty narrative_md refuses with
+// the dedicated `narrative_md_required` code (separate from
+// `missing_field` so the orchestrator can distinguish "forgot the
+// body" from "forgot the actionable list").
+TEST(TestAuditBundle201926519, Ants1635NarrativeModeRequiresBody) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    scaffoldRoadmap(tmp.path());
+
+    TestAuditEngine::FoldInRequest req;
+    req.callerCwd     = tmp.path();
+    req.narrativeMode = true;
+    // narrative_md left empty.
+
+    const auto r = TestAuditEngine::foldIn(req);
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.code, QStringLiteral("narrative_md_required"));
+    EXPECT_TRUE(r.error.contains(QStringLiteral("narrative_mode")));
+
+    // Whitespace-only payload also refuses.
+    req.narrativeMd = QStringLiteral("   \n  \t\n");
+    const auto r2 = TestAuditEngine::foldIn(req);
+    EXPECT_FALSE(r2.ok);
+    EXPECT_EQ(r2.code, QStringLiteral("narrative_md_required"))
+        << "whitespace-only narrative_md must refuse like empty";
+}
+
+// INV-3 — narrative_mode=false (default) keeps the old `actionable[]
+// required` contract; the missing_field error names the narrative
+// escape hatch so callers discover it.
+TEST(TestAuditBundle201926519, Ants1635NonNarrativeStillRequiresActionable) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    scaffoldRoadmap(tmp.path());
+
+    TestAuditEngine::FoldInRequest req;
+    req.callerCwd = tmp.path();
+    // narrative_mode defaults to false; actionable empty.
+
+    const auto r = TestAuditEngine::foldIn(req);
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.code, QStringLiteral("missing_field"));
+    EXPECT_TRUE(r.error.contains(QStringLiteral("narrative_mode")))
+        << "missing_field error must name the narrative escape hatch";
+}
+
+// INV-4 — narrative mode writes to the same release-heading slot as
+// structured mode (RoadmapFoldIn::insertBlock). The
+// `releaseBlockHeading` echo lets the caller confirm placement.
+TEST(TestAuditBundle201926519, Ants1635NarrativeModeWritesToRoadmap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    scaffoldRoadmap(tmp.path());
+
+    TestAuditEngine::FoldInRequest req;
+    req.callerCwd     = tmp.path();
+    req.narrativeMode = true;
+    req.narrativeMd   = QStringLiteral("Single-paragraph summary line.");
+
+    const auto r = TestAuditEngine::foldIn(req);
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_FALSE(r.releaseBlockHeading.isEmpty())
+        << "release heading must be reported back to the caller";
+    EXPECT_FALSE(r.written.isEmpty());
+
+    // ROADMAP.md actually carries the narrative + heading.
+    QFile f(tmp.path() + "/ROADMAP.md");
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QString rm = QString::fromUtf8(f.readAll());
+    EXPECT_TRUE(rm.contains(QStringLiteral("### 🧪 Test Audit")));
+    EXPECT_TRUE(rm.contains(QStringLiteral("Single-paragraph summary line.")));
+}

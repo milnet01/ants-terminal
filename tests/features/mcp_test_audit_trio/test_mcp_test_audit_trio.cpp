@@ -265,3 +265,39 @@ TEST(mcp_test_audit_trio, AllFourVerbsRegistered) {
            "schema: test_audit_fold_in descriptor");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-1635 — test_audit_fold_in declares narrative_mode + narrative_md
+// schema props and the handler forwards both fields. Source-grep over
+// claudeintegration.cpp's registration block + mainwindow.cpp's
+// provider lambda.
+TEST(mcp_test_audit_trio, Ants1635NarrativeModeSchemaAndHandler) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    // Scope to the test_audit_fold_in registration block.
+    const auto pos = ci.find("t[\"name\"] = \"test_audit_fold_in\"");
+    ASSERT_NE(pos, std::string::npos);
+    const auto end = ci.find("tools.append(t);", pos);
+    ASSERT_NE(end, std::string::npos);
+    const std::string region = ci.substr(pos, end - pos);
+
+    expect(contains(region, "props[\"narrative_mode\"]"),
+           "ANTS-1635: schema declares narrative_mode prop");
+    expect(contains(region, "props[\"narrative_md\"]"),
+           "ANTS-1635: schema declares narrative_md prop");
+
+    // The handler in mainwindow.cpp forwards both args.
+    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const auto hpos = mw.find("registerToolProvider(\"test_audit_fold_in\"");
+    ASSERT_NE(hpos, std::string::npos);
+    // Scan to the closing of the registration call (next `});`).
+    const auto hend = mw.find("});", hpos);
+    ASSERT_NE(hend, std::string::npos);
+    const std::string hbody = mw.substr(hpos, hend - hpos);
+
+    expect(contains(hbody, "narrative_mode"),
+           "ANTS-1635: handler extracts narrative_mode arg");
+    expect(contains(hbody, "narrative_md"),
+           "ANTS-1635: handler extracts narrative_md arg");
+
+    EXPECT_EQ(0, expect_failures());
+}

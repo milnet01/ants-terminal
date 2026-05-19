@@ -166,6 +166,17 @@ struct FoldInRequest {
     int         filesScanned = 0;
     QStringList dimensions;
     int         rawFindings = 0;
+    // ANTS-1635 — narrative-mode opt-in. When `narrativeMode==true`,
+    // `actionable[]` is no longer required; `narrativeMd` is inserted
+    // verbatim under the `### 🧪 Test Audit YYYY-MM-DD` heading instead
+    // of the per-finding bullet rendering. ID allocation is skipped
+    // entirely (no `.roadmap-counter` touch). The metadata line
+    // (Framework / Files scanned / …) is omitted because the caller's
+    // narrative carries its own structure. Closes the "I want a prose
+    // ROADMAP subsection, not 30 bullets" friction class observed in
+    // Music Production /test-audit 2026-05-18.
+    bool        narrativeMode = false;
+    QString     narrativeMd;
 };
 
 struct FoldInResult {

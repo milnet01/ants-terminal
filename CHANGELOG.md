@@ -12,6 +12,67 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP test_audit_fold_in narrative_mode — pull 30 (ANTS-1635, 2026-05-19)
+
+Closes the "I want a prose ROADMAP subsection, not 30 structured
+bullets" friction class on `test_audit_fold_in`. Pairs naturally with
+the cold-eyes loop-2 ergonomics in pull 29 — same MCP-tool-shape
+mismatch class on a sibling verb.
+
+- **ANTS-1635 (enhancement)** — `test_audit_fold_in` accepts two
+  new optional fields: `narrative_mode: bool` + `narrative_md:
+  string`. When `narrative_mode=true`, the engine skips ID
+  allocation and per-finding bullet rendering entirely and inserts
+  `narrative_md` verbatim under the `### 🧪 Test Audit YYYY-MM-DD`
+  heading. `actionable[]` is no longer schema-required; the engine
+  enforces "either narrative_mode OR actionable[]" at runtime
+  with two distinct error codes — `narrative_md_required` when
+  narrative mode is set but the body is empty/whitespace-only,
+  and the existing `missing_field` (now naming the narrative
+  escape hatch in its message) when neither path is taken. The
+  `.roadmap-counter` file is never touched in narrative mode —
+  saves an allocation per call and prevents wasted IDs when the
+  caller's prose isn't shaped per-finding. Closes the friction
+  Music Production /test-audit second sweep (2026-05-18) hit when
+  it bypassed the verb entirely. Spec `docs/specs/ANTS-1635.md`;
+  4 new engine tests in `tests/features/test_audit_bundle_2026_05_19/`
+  (`Ants1635*` — verbatim insert, body required, back-compat,
+  insertBlock writes to ROADMAP) + 1 source-grep test in
+  `tests/features/mcp_test_audit_trio/`
+  (`Ants1635NarrativeModeSchemaAndHandler`). Sibling fold-in tools
+  (`cold_eyes_fold_in`, `indie_review_fold_in`) have the same
+  shape gap — tracked as follow-ups under [[ANTS-1635]] § 5.
+
+### 🔌 MCP cold-eyes prior_loop_fixes — pull 29 (ANTS-1634 part b, 2026-05-19)
+
+Closes out the deferred part (b) of ANTS-1634 — `cold_eyes_brief`'s
+loop-2 ergonomics. Parts (a) sparse_partition_hint pointers and
+(c) audit-infra lane shipped in pull 22; part (b) was held for its
+own pull because it touches the brief schema, the engine render
+path, and the source-grep test surface.
+
+- **ANTS-1634(b) (enhancement)** — `cold_eyes_brief` accepts an
+  optional `prior_loop_fixes: [{title, summary}]` input. The engine
+  renders a `## Previously fixed in loop 1 (do not re-raise)`
+  section before the reviewer Instructions block, with one
+  `**title** — summary` bullet per entry. Title-only / summary-only
+  entries render without the em-dash; entries with both fields
+  empty are silently dropped at the MCP layer. Empty or missing
+  list omits the section entirely — strict backward-compat for
+  every existing caller. Orchestrators driving loop-2 sweeps no
+  longer hand-roll the "already-fixed in loop 1" block into each
+  subagent prompt; the verb does it once and consistently.
+  Composes with [[ANTS-1457]] (false-positive ledger sits in the
+  same render slot — same "do not re-raise" semantic) and
+  [[ANTS-1584]] (verify-report-on-disk discipline — pairs with
+  this for loop-2 hygiene). Spec `docs/specs/ANTS-1634.md` § 2.3
+  flips from "deferred" to "shipped". 4 new engine tests in
+  `tests/features/cold_eyes_engine/` (`Ants1634PriorLoopFixes*` —
+  empty omits, render shape, position before Instructions, partial
+  fields tolerated) + 2 source-grep tests in
+  `tests/features/mcp_cold_eyes/` (schema declared, handler
+  extracts + forwards).
+
 ### 🔌 MCP call-site contract + cross-language brief citations — pull 28 (ANTS-1419 + ANTS-1633, 2026-05-19)
 
 Two MCP improvements from the 2026-05-14 / 2026-05-18 follow-ups:

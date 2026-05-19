@@ -1008,3 +1008,109 @@ TEST(ColdEyesEngine, Ants1633BriefManifestCarriesStaleCitations) {
         QStringLiteral("gone/missing.go")))
         << "INV-D: stale citation must be on BriefManifest";
 }
+
+// ANTS-1634(b) INV-7 — passing an empty priorLoopFixes list omits the
+// section entirely (default-arg backward-compat path).
+TEST(ColdEyesEngine, Ants1634PriorLoopFixesEmptyOmitsSection) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md", "# Spec\n"));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-9999");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
+
+    // Two-arg call exercises the default-arg ({}) path explicitly.
+    const auto m1 = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    EXPECT_FALSE(m1.brief.contains(QStringLiteral("Previously fixed")))
+        << "INV-7: empty default → section must be absent";
+
+    // Three-arg call with explicit empty list — same expectation.
+    const auto m2 = ColdEyesEngine::assembleBriefManifest(
+        ws.root(), lane, QList<ColdEyesEngine::PriorLoopFix>{});
+    EXPECT_FALSE(m2.brief.contains(QStringLiteral("Previously fixed")))
+        << "INV-7: explicit empty list → section must be absent";
+}
+
+// ANTS-1634(b) INV-8 — non-empty list renders one bullet per entry with
+// the canonical heading and the `**title** — summary` shape.
+TEST(ColdEyesEngine, Ants1634PriorLoopFixesRendered) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md", "# Spec\n"));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-9999");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
+
+    QList<ColdEyesEngine::PriorLoopFix> priorFixes;
+    priorFixes.append({ QStringLiteral("ANTS-1500 missing stale_reason"),
+                        QStringLiteral("Loop-1 added the field to the "
+                                       "counter_regressed branch.") });
+    priorFixes.append({ QStringLiteral("OSC 9;4 first-byte peek"),
+                        QStringLiteral("Disambiguated from OSC 9 via "
+                                       "`4;` lookahead.") });
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(
+        ws.root(), lane, priorFixes);
+    EXPECT_TRUE(m.brief.contains(QStringLiteral(
+        "## Previously fixed in loop 1 (do not re-raise)")))
+        << "INV-8: canonical section heading must appear";
+    EXPECT_TRUE(m.brief.contains(QStringLiteral(
+        "- **ANTS-1500 missing stale_reason** — Loop-1 added")))
+        << "INV-8: first entry must render as `**title** — summary`";
+    EXPECT_TRUE(m.brief.contains(QStringLiteral(
+        "- **OSC 9;4 first-byte peek** — Disambiguated")))
+        << "INV-8: second entry must render as `**title** — summary`";
+}
+
+// ANTS-1634(b) INV-9 — the section appears between the false-positive
+// ledger (ANTS-1457) and the Instructions block. Reviewer reads
+// already-fixed items before they begin the sweep.
+TEST(ColdEyesEngine, Ants1634PriorLoopFixesBeforeInstructions) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md", "# Spec\n"));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-9999");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
+
+    QList<ColdEyesEngine::PriorLoopFix> priorFixes;
+    priorFixes.append({ QStringLiteral("Fix one"),
+                        QStringLiteral("Closed in loop 1.") });
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(
+        ws.root(), lane, priorFixes);
+    const auto fixedPos = m.brief.indexOf(QStringLiteral("Previously fixed"));
+    const auto instrPos = m.brief.indexOf(QStringLiteral("## Instructions"));
+    ASSERT_NE(fixedPos, -1);
+    ASSERT_NE(instrPos, -1);
+    EXPECT_LT(fixedPos, instrPos)
+        << "INV-9: 'Previously fixed' must appear before '## Instructions'";
+}
+
+// ANTS-1634(b) INV-10 — title-only and summary-only entries render
+// without the em-dash; both-empty entries are dropped silently.
+TEST(ColdEyesEngine, Ants1634PriorLoopFixesPartialFields) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md", "# Spec\n"));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-9999");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
+
+    QList<ColdEyesEngine::PriorLoopFix> priorFixes;
+    priorFixes.append({ QStringLiteral("Title only"), QString() });
+    priorFixes.append({ QString(), QStringLiteral("Summary only.") });
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(
+        ws.root(), lane, priorFixes);
+    EXPECT_TRUE(m.brief.contains(QStringLiteral("- **Title only**\n")))
+        << "INV-10: title-only → no em-dash, no trailing text";
+    EXPECT_TRUE(m.brief.contains(QStringLiteral("- Summary only.\n")))
+        << "INV-10: summary-only → no leading bold span";
+    EXPECT_FALSE(m.brief.contains(QStringLiteral("Title only** — \n")))
+        << "INV-10: title-only must not emit a dangling em-dash";
+}

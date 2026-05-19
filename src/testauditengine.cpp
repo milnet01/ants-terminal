@@ -1653,16 +1653,67 @@ FoldInResult foldIn(const FoldInRequest &req) {
             "test_audit_fold_in: caller_cwd does not canonicalise");
         return r;
     }
-    if (req.actionable.isEmpty()) {
-        r.ok = false; r.code = QStringLiteral("missing_field");
-        r.error = QStringLiteral(
-            "test_audit_fold_in: actionable[] is required");
-        return r;
-    }
-    // INV-3 — single batched allocate + insertBlock.
+    // ANTS-1635 — narrative-mode short-circuit. Caller supplies pre-
+    // rendered markdown under the `### 🧪 Test Audit YYYY-MM-DD`
+    // heading; engine inserts it verbatim, skipping ID allocation and
+    // per-finding bullet rendering entirely. Useful when the natural
+    // shape is "prose subsection grouped by Closed-inline / Deferred /
+    // False-positives", not 30 structured bullets.
     const QString heading = QStringLiteral("### 🧪 Test Audit %1")
         .arg(QDateTime::currentDateTimeUtc().toString(Qt::ISODate)
                 .left(10));
+    if (req.narrativeMode) {
+        const QString narrative = req.narrativeMd.trimmed();
+        if (narrative.isEmpty()) {
+            r.ok = false;
+            r.code  = QStringLiteral("narrative_md_required");
+            r.error = QStringLiteral(
+                "test_audit_fold_in: narrative_mode=true requires "
+                "non-empty narrative_md");
+            return r;
+        }
+        QString block;
+        block.reserve(heading.size() + narrative.size() + 8);
+        block += heading;
+        block += QStringLiteral("\n\n");
+        block += narrative;
+        if (!block.endsWith(QChar('\n'))) block += QChar('\n');
+        const QString release =
+            RoadmapFoldIn::findActiveReleaseHeading(canon);
+        const bool wrote =
+            RoadmapFoldIn::insertBlock(canon, release, block);
+        if (!wrote) {
+            r.ok = false;
+            r.code  = QStringLiteral("write_failed");
+            r.error = QStringLiteral(
+                "test_audit_fold_in: insertBlock failed (heading not "
+                "found OR IO error) — release heading was \"%1\"")
+                    .arg(release);
+            return r;
+        }
+        r.block               = block;
+        r.bytesWritten        = block.toUtf8().size();
+        // Narrative mode does not allocate IDs and the on-roadmap
+        // bullet count is opaque to the engine — leave writtenCount=0
+        // (the standard "no per-bullet allocation" signal). Callers
+        // that care about a paragraph-vs-bullet count parse the
+        // returned `block` themselves.
+        r.writtenCount        = 0;
+        r.failedCount         = 0;
+        r.partial             = false;
+        r.releaseBlockHeading = release;
+        r.written             = canon + QLatin1String("/ROADMAP.md");
+        return r;
+    }
+    if (req.actionable.isEmpty()) {
+        r.ok = false; r.code = QStringLiteral("missing_field");
+        r.error = QStringLiteral(
+            "test_audit_fold_in: actionable[] is required "
+            "(or pass narrative_mode=true + narrative_md=\"…\" — "
+            "ANTS-1635)");
+        return r;
+    }
+    // INV-3 — single batched allocate + insertBlock.
     QString block;
     QTextStream bs(&block);
     bs << heading << "\n\n"

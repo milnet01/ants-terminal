@@ -928,7 +928,8 @@ QStringList extractCitedCodePaths(const QString &projectPath,
 }
 
 BriefManifest assembleBriefManifest(const QString &projectPath,
-                                    const Lane &lane) {
+                                    const Lane &lane,
+                                    const QList<PriorLoopFix> &priorLoopFixes) {
     BriefManifest m;
     m.docPaths = lane.docPaths;
 
@@ -1007,6 +1008,27 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
             b += QChar('\n');
             b += block;
             if (!b.endsWith(QChar('\n'))) b += QChar('\n');
+        }
+    }
+    // ANTS-1634(b) — orchestrator-supplied "already fixed in loop 1"
+    // entries. Rendered before the Instructions block (same position
+    // as the ANTS-1457 false-positive ledger) so loop-2 reviewers
+    // read it before they begin and don't re-flag closed items.
+    // Empty list → section omitted entirely.
+    if (!priorLoopFixes.isEmpty()) {
+        b += QStringLiteral(
+            "\n## Previously fixed in loop 1 (do not re-raise)\n\n");
+        for (const PriorLoopFix &fix : priorLoopFixes) {
+            const bool hasTitle   = !fix.title.isEmpty();
+            const bool hasSummary = !fix.summary.isEmpty();
+            if (!hasTitle && !hasSummary) continue;
+            b += QStringLiteral("- ");
+            if (hasTitle) {
+                b += QStringLiteral("**") + fix.title + QStringLiteral("**");
+                if (hasSummary) b += QStringLiteral(" — ");
+            }
+            if (hasSummary) b += fix.summary;
+            b += QChar('\n');
         }
     }
     b += QStringLiteral(

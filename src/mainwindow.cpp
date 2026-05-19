@@ -4305,6 +4305,10 @@ void MainWindow::setupClaudeMcpProviders() {
             const QJsonArray dimsArr = args.value(QStringLiteral("dimensions")).toArray();
             for (const QJsonValue &v : dimsArr) req.dimensions.append(v.toString());
             req.rawFindings  = args.value(QStringLiteral("raw_findings")).toInt();
+            // ANTS-1635 — narrative-mode opt-in. Forward both fields so
+            // the engine's short-circuit gate is reachable.
+            req.narrativeMode = args.value(QStringLiteral("narrative_mode")).toBool();
+            req.narrativeMd   = args.value(QStringLiteral("narrative_md")).toString();
             const auto r = TestAuditEngine::foldIn(req);
             QJsonObject env;
             if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;

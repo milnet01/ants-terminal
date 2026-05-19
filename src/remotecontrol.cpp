@@ -6579,7 +6579,29 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
         return QJsonDocument(err);
     }
 
-    const auto m = ColdEyesEngine::assembleBriefManifest(root, *match);
+    // ANTS-1634(b) — orchestrator-supplied "already fixed in loop 1"
+    // records. Parsed permissively: skip non-object items, skip
+    // entries with both fields empty, trim each side. Empty array or
+    // missing field → no section emitted by the engine.
+    QList<ColdEyesEngine::PriorLoopFix> priorFixes;
+    const QJsonValue priorFixesV =
+        req.value(QStringLiteral("prior_loop_fixes"));
+    if (priorFixesV.isArray()) {
+        for (const QJsonValue &v : priorFixesV.toArray()) {
+            if (!v.isObject()) continue;
+            const QJsonObject o = v.toObject();
+            ColdEyesEngine::PriorLoopFix fix;
+            fix.title =
+                o.value(QStringLiteral("title")).toString().trimmed();
+            fix.summary =
+                o.value(QStringLiteral("summary")).toString().trimmed();
+            if (fix.title.isEmpty() && fix.summary.isEmpty()) continue;
+            priorFixes.append(fix);
+        }
+    }
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(
+        root, *match, priorFixes);
 
     QJsonArray dps;
     for (const QString &p : m.docPaths) dps.append(p);

@@ -11824,8 +11824,8 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes, coldeyesengine.
   Source: cross-session-report-2026-05-18 (RetroArch /cold-eyes doc-tree sweep).
 
-- 🚧 [ANTS-1634] **`cold_eyes_partition` + `cold_eyes_brief` UX polish — sparse_partition_hint pointer + prior_loop_fixes parameter + audit-infra lane class.**
-  Parts (a) + (c) shipped 2026-05-19 (Pull 22, MCP cold-eyes partition fold-in). Part (b) carries — `cold_eyes_brief`'s `prior_loop_fixes` parameter is meaningfully bigger than the partition tweaks (schema change + engine-side rendering + new source-grep tests) and benefits from its own pull. Status flips back to ✅ when part (b) ships.
+- ✅ [ANTS-1634] **`cold_eyes_partition` + `cold_eyes_brief` UX polish — sparse_partition_hint pointer + prior_loop_fixes parameter + audit-infra lane class.**
+  Parts (a) + (c) shipped 2026-05-19 (Pull 22, MCP cold-eyes partition fold-in). Part (b) shipped 2026-05-19 (Pull 29) — `cold_eyes_brief` now accepts `prior_loop_fixes: [{title, summary}]` and renders a "## Previously fixed in loop 1 (do not re-raise)" section before the Instructions block. 4 engine tests + 2 source-grep tests; 1195/1195 features green.
 
   - **(a) sparse_partition_hint pointer.** `cmdColdEyesPartition`'s hint string now names both existing escape hatches inline — `cold_eyes_brief(doc_paths=[...])` (ANTS-1508 lane-agnostic mode) AND `<projectPath>/.cold-eyes/partition.json` (ANTS-1412 override). Caller seeing a sparse partition gets the workaround alongside the diagnostic without having to remember either ID. Source-grep test in `tests/features/mcp_cold_eyes/` guards the four literals.
   - **(c) audit-infra lane class.** New `scanAuditInfra(projectPath)` helper detects `docs/audit/`, `docs/private/audit/`, or `docs/internal/audit/` carrying ≥ 2 `.md` files; populates an `audit-infra` lane next to `decisions`/`plugins`. Threshold (≥ 2) prevents promoting an empty suppressions stub. One-level walk — subdir files don't count toward the threshold or the doc list (vendor-tree guard). Four cases in `tests/features/cold_eyes_engine/` under the `Ants1634*` prefix.
@@ -11838,12 +11838,22 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes, coldeyesengine.
   Source: cross-session-reports-2026-05-18 (RetroDB Obs B + Obs G, Vestige 3D_Engine #15, RetroArch /cold-eyes audit-infra).
 
-- 📋 [ANTS-1635] **`test_audit_fold_in` — `narrative_mode` accepting prose-shaped ROADMAP subsections (not just per-finding `actionable[]` bullets).**
+- ✅ [ANTS-1635] **`test_audit_fold_in` — `narrative_mode` accepting prose-shaped ROADMAP subsections (not just per-finding `actionable[]` bullets).**
+  Shipped 2026-05-19 (Pull 30). `narrative_mode=true` + `narrative_md="…"` skips ID allocation + per-finding bullet rendering; inserts the caller-supplied markdown verbatim under the `### 🧪 Test Audit YYYY-MM-DD` heading. `actionable[]` is no longer schema-required; engine enforces "either narrative_mode OR actionable[]" with `narrative_md_required` / `missing_field` (now naming the escape hatch). Spec `docs/specs/ANTS-1635.md`; 5 new tests (1200/1200 features green). Sibling fold-in tools (`cold_eyes_fold_in`, `indie_review_fold_in`) carry the same shape gap — tracked as the follow-up below.
+
+  Original finding —
   Music Production 2026-05-18 (`/test-audit` second sweep): the tool's `actionable: [{file, line, severity, dimension, headline?, …}]` shape is right for machine-driven bullet-per-finding fold-in, but doesn't fit the common case of "I want one narrative ROADMAP subsection grouped by Closed-inline / Deferred / False-positives". Caller hand-wrote the markdown subsection rather than coercing 30+ bullets through the tool. Two solution shapes: (a) add a `narrative_mode: true` flag that accepts pre-rendered prose verbatim under `narrative_md: "<markdown>"` and inserts it as a single subsection block (skip ID allocation, skip per-bullet header formatting); (b) keep the structured path as canonical but document explicitly that the narrative path is hand-edit, so callers don't burn time trying to coerce a 30-bullet narrative through `actionable[]`. Closely related to ANTS-1615 (empty `**.**` bullets when `headline` is omitted) — both flag the same underlying mismatch: the tool's shape assumes structured per-finding entries, but the natural shape for "I just audited and want to write a 30-line summary" is prose. Same friction class affects `cold_eyes_fold_in` and `indie_review_fold_in`. Composes with ANTS-1581 (skill wiring) — if /test-audit, /cold-eyes, /indie-review natively call fold_in, the narrative-vs-structured choice becomes per-call.
   **Layman:** The "fold audit findings into ROADMAP" verb wants a list of per-finding records (file, line, severity). Most human-authored audit summaries are paragraphs grouped by "fixed inline / deferred / false-positive" — a different shape. Either accept the prose form via a `narrative_mode` flag, or document loudly that narrative summaries are hand-edited.
   Kind: enhancement.
   Lanes: mcp-test-audit, mcp-cold-eyes, mcp-indie-review, roadmapfoldin.
   Source: cross-session-report-2026-05-18 (Music_Production /test-audit second sweep Issue #3).
+
+- 📋 [ANTS-1644] **`cold_eyes_fold_in` + `indie_review_fold_in` — port `narrative_mode` from ANTS-1635.**
+  Sibling fold-in tools to `test_audit_fold_in` carry the same "structured-shape mismatch" gap that ANTS-1635 closed for the test-audit verb on 2026-05-19. Each engine renders one bullet per `actionable[]` entry under a section heading, allocating one roadmap ID per bullet — wrong for the natural human shape of "I want one prose subsection grouped by Closed-inline / Deferred / False-positives". The fix template is now in place (ANTS-1635 spec § 2.1-2.3 + INV checklist + test pattern); each sibling tool just needs the schema + handler + engine short-circuit applied. Scope per tool: (a) add `narrative_mode: bool` + `narrative_md: string` schema props, (b) add fields to the engine `FoldInRequest`, (c) short-circuit in the engine's fold-in entry point (`coldEyesFoldIn` / `indieReviewFoldIn`), (d) two new tests per tool (verbatim insert + body required), (e) flip schema `required` from `actionable` to caller_cwd-only.
+  **Layman:** The cold-eyes and indie-review companions to /test-audit have the same "30 bullets when you wanted 1 paragraph" issue ANTS-1635 just fixed for /test-audit. Port the same fix to those two tools.
+  Kind: enhancement.
+  Lanes: mcp-cold-eyes, mcp-indie-review, roadmapfoldin, coldeyesengine, indiereviewengine.
+  Source: ANTS-1635 fold-in (out of scope; sibling-tool gap, 2026-05-19).
 
 - 📋 [ANTS-1636] **`find_sources` MCP tool — topic-to-files discovery for subsystems not in the parsed Module map.**
   User asked 2026-05-19: "Can Ants MCP help with finding relevant source files?" Today three MCP tools partially cover this and each has a gap:
