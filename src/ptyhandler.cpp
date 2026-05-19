@@ -210,6 +210,12 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     childEnvp[envpCount++] = "COLORFGBG=15;0";
     childEnvp[envpCount] = nullptr;
 
+    // indie-review-2026-05-19 ptyhandler M1 — explicit -1 init.
+    // POSIX forkpty does not guarantee `*amaster` is untouched on -1.
+    // Pty::start is one-shot today, but the header doesn't enforce
+    // single-call; a future "restart shell" path would, without this
+    // line, see a stale FD value if forkpty failed.
+    m_masterFd = -1;
     m_childPid = forkpty(&m_masterFd, nullptr, nullptr, &ws);
 
     if (m_childPid < 0) {
@@ -302,10 +308,14 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         const char *shellName = ::strrchr(shellCStr, '/');
         shellName = shellName ? shellName + 1 : shellCStr;
 
-        // Login shell (prefix with -). Truncation is acceptable — shellName
-        // comes from the ShellEntry we just validated, and argv[0] is a
-        // display/login-marker, not a lookup key, so the cast silences the
-        // cert-err33-c diagnostic without losing any real guarantee.
+        // Login shell (prefix with -). Truncation is acceptable —
+        // shellName is the basename of `shellCStr`, which the parent
+        // resolved from (in order): caller arg → $SHELL → getpwuid()
+        // → "/bin/bash" literal fallback. No separate validation step;
+        // the same-UID trust model (ADR-0004) accepts $SHELL as the
+        // primary source. argv[0] here is a display/login-marker, not
+        // a lookup key, so the cast silences the cert-err33-c
+        // diagnostic without losing any real guarantee.
         char argv0[256];
         (void)::snprintf(argv0, sizeof(argv0), "-%s", shellName);
 
@@ -345,8 +355,9 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         }
 
         // ANTS-1135 — execle (signal-safe) replaces execlp. The
-        // shell path comes from validated ShellEntry resolution
-        // above — already absolute, so PATH search isn't needed.
+        // shell path is the absolute string resolved in the parent
+        // from caller arg → $SHELL → getpwuid() → "/bin/bash" fallback
+        // (no separate validation step; same-UID trust per ADR-0004).
         // childEnvp was built pre-fork in the parent; readable
         // here via fork's COW semantics until execle replaces
         // the address space.

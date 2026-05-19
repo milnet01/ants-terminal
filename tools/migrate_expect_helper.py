@@ -245,7 +245,11 @@ def apply_pattern_a(src: str) -> tuple[str, bool, list[str]]:
         m = pat.search(src)
         if m:
             indent = m.group("indent")
-            src = src[: m.start()] + f"{indent}return expect_finish();\n" + src[m.end():]
+            src = (
+                src[: m.start()]
+                + f"{indent}return expect_finish();\n"
+                + src[m.end():]
+            )
             notes.append("runMain-tail->expect_finish")
             break
     else:

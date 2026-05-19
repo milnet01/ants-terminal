@@ -457,11 +457,9 @@ QList<Finding> detectRoadmapShippedWithoutCommit(
     const QString body = slurpUtf8(roadmapPath);
     if (body.isEmpty()) return {};
 
-    static const QRegularExpression kShippedRe(
-        QStringLiteral(R"(^- \xE2\x9C\x85 \[(ANTS-\d+)\])"));
-    // Note: U+2705 ✅ is `\xE2\x9C\x85` in UTF-8. QString literal is
-    // already UTF-16; the regex pattern will be applied per-character.
-    // Use the literal emoji directly below for clarity:
+    // U+2705 ✅ embedded directly; QString literal is UTF-16 so the
+    // emoji is one code-point match. (Earlier UTF-8-byte variant
+    // `kShippedRe` was dead — removed.)
     static const QRegularExpression kShippedReUtf16(
         QStringLiteral("^- ✅ \\[(ANTS-\\d+)\\]"));
 

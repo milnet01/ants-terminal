@@ -434,6 +434,19 @@ void VtParser::processChar(uint32_t ch) {
             a.colonSep = m_colonSep;
             m_callback(a);
             transition(Ground);
+        } else if (ch < 0x20) {
+            // ECMA-48 / Williams parser table: a C0 control inside
+            // `csi_intermediate` Executes and stays in csi_intermediate
+            // (the CSI is NOT aborted). xterm dispatches the embedded
+            // BEL / DEL / NL etc. and resumes parsing for the final byte.
+            // Previously this branch fell through to `transition(Ground)`,
+            // silently aborting CSIs like `CSI ! <BEL> p` (DECSTR with
+            // an embedded BEL) — asymmetric with the CsiParam C0 branch
+            // above. indie-review-2026-05-19 vtparser H2.
+            VtAction a;
+            a.type = VtAction::Execute;
+            a.controlChar = static_cast<char>(ch);
+            m_callback(a);
         } else {
             transition(Ground);
         }

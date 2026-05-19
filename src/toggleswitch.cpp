@@ -30,7 +30,9 @@ ToggleSwitch::ToggleSwitch(QWidget *parent) : QAbstractButton(parent) {
 QSize ToggleSwitch::sizeHint() const { return {kW, kH}; }
 
 void ToggleSwitch::setThumbX(int x) {
+    if (m_thumbX == x) return;
     m_thumbX = x;
+    emit thumbXChanged(x);
     update();
 }
 
@@ -49,7 +51,9 @@ void ToggleSwitch::paintEvent(QPaintEvent *) {
         : m_offColor.darker(150);
     p.setPen(Qt::NoPen);
     p.setBrush(track);
-    p.drawRoundedRect(0, 0, kW, kH, kH / 2, kH / 2);
+    p.drawRoundedRect(0, 0, kW, kH,
+                      static_cast<qreal>(kH) / 2.0,
+                      static_cast<qreal>(kH) / 2.0);
 
     QColor thumb = isEnabled() ? Qt::white : m_offColor.lighter(110);
     p.setBrush(thumb);

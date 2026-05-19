@@ -83,11 +83,14 @@ public slots:
     // an mtime check short-circuits the full JSONL parse.
     void poll();
 
+public:
     // ANTS-1458 — diagnostic accessor for the chip-refresh
     // instrumentation (latency-investigation phase 1). Surfaces
     // the mtime that gated the last rescan so refreshTasksButton
     // can log (current_mtime, last_rescan_mtime, delta_ms) per
-    // tick under ANTS_DEBUG=claude.
+    // tick under ANTS_DEBUG=claude. Moved out of `public slots:`
+    // (clazy const-signal-or-slot, 2026-05-19) — a const getter is
+    // not a slot.
     qint64 lastRescanMtimeMs() const;
 
 private:

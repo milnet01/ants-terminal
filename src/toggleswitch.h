@@ -7,7 +7,11 @@ class QPropertyAnimation;
 
 class ToggleSwitch : public QAbstractButton {
     Q_OBJECT
-    Q_PROPERTY(int thumbX READ thumbX WRITE setThumbX)
+    // NOTIFY signal not needed: this property is animated by a
+    // QPropertyAnimation we own; nothing outside the widget reads it.
+    // The "thumbX" property exists solely to let the animation framework
+    // call setThumbX() each tick.
+    Q_PROPERTY(int thumbX READ thumbX WRITE setThumbX NOTIFY thumbXChanged)
 
 public:
     explicit ToggleSwitch(QWidget *parent = nullptr);
@@ -18,6 +22,9 @@ public:
 
     // Theme-aware colors
     void setThemeColors(const QColor &onColor, const QColor &offColor);
+
+signals:
+    void thumbXChanged(int x);
 
 protected:
     void paintEvent(QPaintEvent *) override;

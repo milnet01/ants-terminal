@@ -1652,17 +1652,43 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
                     ? defaultDir
                     : m_imagePasteDir;
 
-                // Canonicalise. If the canonical form doesn't start
-                // with $HOME, the configured value escapes the user's
-                // home tree (symlink + traversal, attacker-controlled
-                // settings, etc.). Reject + fall back to default.
-                QDir().mkpath(dir);
-                const QString canonDir = QDir(dir).canonicalPath();
-                const QString canonHome = QDir(QDir::homePath()).canonicalPath();
-                if (canonDir.isEmpty() || !canonDir.startsWith(canonHome)) {
+                // Canonicalise BEFORE mkpath. Two prior bugs flagged by
+                // indie-review-2026-05-19 terminalwidget H2:
+                //   (a) `startsWith(canonHome)` is a textual prefix
+                //       check — `/home/alice-evil` would pass when the
+                //       home was `/home/alice`. Fix: require either
+                //       exact match OR canonHome + '/' as the prefix.
+                //   (b) `mkpath(dir)` ran BEFORE the prefix check. A
+                //       bad `m_imagePasteDir` value created a real
+                //       directory outside $HOME as a side effect, then
+                //       got rejected and re-targeted to the safe
+                //       default — the bad directory persisted on disk.
+                //       Fix: canonicalise first; only mkpath an
+                //       accepted path.
+                const QString canonHome =
+                    QDir(QDir::homePath()).canonicalPath();
+                auto isInsideHome = [&](const QString &candidate) {
+                    const QString c = QDir(candidate).canonicalPath();
+                    if (c.isEmpty()) {
+                        // Path doesn't exist yet; fall back to the
+                        // parent's canonical form (mkdir won't create
+                        // beyond the configured root, so it suffices
+                        // to validate the leaf's parent).
+                        const QString parent =
+                            QDir(QFileInfo(candidate).absolutePath())
+                                .canonicalPath();
+                        if (parent.isEmpty()) return false;
+                        return parent == canonHome
+                            || parent.startsWith(
+                                   canonHome + QLatin1Char('/'));
+                    }
+                    return c == canonHome
+                        || c.startsWith(canonHome + QLatin1Char('/'));
+                };
+                if (!isInsideHome(dir)) {
                     dir = defaultDir;
-                    QDir().mkpath(dir);
                 }
+                QDir().mkpath(dir);
 
                 // UUID4 suffix — short form (8 chars) is unique enough
                 // for paste-collision purposes and keeps filenames

@@ -35,6 +35,7 @@
 
 #include "auditcache.h"   // ANTS-1555
 #include "auditengine.h"  // ANTS-1576 buildVcsProvenanceBlock
+#include "secureio.h"     // setOwnerOnlyPerms — 0600 on SARIF/HTML
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -53,6 +54,7 @@
 #include <QStandardPaths>
 #include <QString>
 #include <QTextStream>
+#include <QUuid>
 #include <QTimer>
 
 #include <cstring>
@@ -334,8 +336,6 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                 QStringLiteral("json"),
                 QStringLiteral(".")};
     if (tool == QLatin1String("shellcheck")) {
-        // Find shell scripts; cap at projectRoot.
-        QStringList args;
         // shellcheck wants files on argv; v1 passes the project root
         // and lets it discover via shell-glob — most users have a
         // small set of *.sh files.
@@ -416,11 +416,31 @@ QString sessionIdToken() {
 int g_sarifSeq = 0;
 std::mutex g_sarifSeqMutex;
 
+// Fallback SARIF path when .audit_cache is read-only.
+// Prefer XDG cache (`~/.cache/Ants Terminal/audit/`) so fallbacks land
+// in a 0700-eligible per-user directory; /tmp only as a last resort and
+// with a 16-byte random suffix to defeat the predictable-filename
+// pre-create attack that the older `/tmp/audit-<pid>-<epoch>-<seq>`
+// scheme allowed (indie-review-2026-05-19 audit-pipeline H2).
 QString allocSarifPath() {
     std::lock_guard<std::mutex> lk(g_sarifSeqMutex);
     const int seq = ++g_sarifSeq;
-    return QStringLiteral("/tmp/audit-%1-%2.sarif")
-        .arg(sessionIdToken()).arg(seq);
+    const QString rand =
+        QUuid::createUuid().toRfc4122().toHex().left(16);
+    // Try $XDG_CACHE_HOME/Ants Terminal/audit/<random>.sarif first.
+    const QString cacheRoot =
+        QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    if (!cacheRoot.isEmpty()) {
+        const QString dir = cacheRoot + QLatin1String("/audit");
+        if (QDir().mkpath(dir)) {
+            return QStringLiteral("%1/audit-%2-%3-%4.sarif")
+                .arg(dir, sessionIdToken(), QString::number(seq), rand);
+        }
+    }
+    // /tmp last-resort with a random suffix — still predictable-by-pid
+    // but the random tail breaks the symlink-squat window.
+    return QStringLiteral("/tmp/audit-%1-%2-%3.sarif")
+        .arg(sessionIdToken(), QString::number(seq), rand);
 }
 
 // Heuristic finding count + sample extraction from raw tool output.
@@ -614,16 +634,20 @@ bool writeSarif(const QString &path,
 
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    setOwnerOnlyPerms(f);
     const QByteArray bytes =
         QJsonDocument(doc).toJson(QJsonDocument::Indented);
     if (f.write(bytes) != bytes.size()) return false;
-    return f.commit();
+    if (!f.commit()) return false;
+    setOwnerOnlyPerms(path);
+    return true;
 }
 
 bool writeHtml(const QString &path,
                const QHash<QString, ToolResult> &byTool) {
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    setOwnerOnlyPerms(f);
     QTextStream s(&f);
     s << "<!DOCTYPE html><html><head><meta charset='utf-8'>"
          "<title>Audit report</title></head><body>"
@@ -640,7 +664,9 @@ bool writeHtml(const QString &path,
     }
     s << "</table></body></html>";
     s.flush();
-    return f.commit();
+    if (!f.commit()) return false;
+    setOwnerOnlyPerms(path);
+    return true;
 }
 
 // ── ANTS-1446 — compile_commands.json include-path validation.
@@ -1332,7 +1358,20 @@ RunResult runAudit(const RunRequest &req) {
             hp.chop(static_cast<int>(strlen(".sarif")));
             hp += QStringLiteral(".html");
         } else {
-            hp = QStringLiteral("/tmp/audit-%1.html").arg(sessionIdToken());
+            // No SARIF + no cache: emit HTML alongside a randomised path so
+            // an attacker can't pre-create a symlink at a known location.
+            const QString rand =
+                QUuid::createUuid().toRfc4122().toHex().left(16);
+            const QString cacheRoot = QStandardPaths::writableLocation(
+                QStandardPaths::CacheLocation);
+            if (!cacheRoot.isEmpty()
+             && QDir().mkpath(cacheRoot + QLatin1String("/audit"))) {
+                hp = QStringLiteral("%1/audit/audit-%2-%3.html")
+                    .arg(cacheRoot, sessionIdToken(), rand);
+            } else {
+                hp = QStringLiteral("/tmp/audit-%1-%2.html")
+                    .arg(sessionIdToken(), rand);
+            }
         }
         if (writeHtml(hp, r.byTool)) r.htmlPath = hp;
     }

@@ -14,6 +14,22 @@ static LuaEngine *getEngine(lua_State *L) {
     return engine;
 }
 
+// Panic handler. PLUGINS.md guarantees the terminal will never crash
+// from a plugin; the per-plugin `lua_State`'s default panic handler
+// calls `abort()`, which would breach that contract on any unhandled
+// Lua error escaping a `pcall` (today: rare; tomorrow: a regression
+// adding a `lua_call` site). Log + return 0 — Lua treats a non-jump
+// return from atpanic as fatal anyway, so the process still aborts,
+// but at least the user sees an actionable diagnostic instead of a
+// bare SIGABRT.
+static int luaPanicHandler(lua_State *L) {
+    const char *msg = lua_tostring(L, -1);
+    qCritical().nospace()
+        << "ants: Lua plugin VM panic (unhandled error outside pcall): "
+        << (msg ? msg : "<no message>");
+    return 0;
+}
+
 // Custom Lua allocator with memory limit (prevents string.rep OOM)
 void *LuaEngine::luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     auto *engine = static_cast<LuaEngine *>(ud);
@@ -78,6 +94,7 @@ bool LuaEngine::initialize() {
     m_killed = false;
     m_state = lua_newstate(luaAlloc, this);
     if (!m_state) return false;
+    lua_atpanic(m_state, &luaPanicHandler);
 
     // Load safe standard libraries
     luaL_requiref(m_state, "string", luaopen_string, 1); lua_pop(m_state, 1);

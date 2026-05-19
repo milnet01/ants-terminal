@@ -41,7 +41,7 @@ have_jq=0
 command -v jq >/dev/null 2>&1 && have_jq=1
 
 # ---------- INV-1: every hook exits 0 on `{}` from project root ----------
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || { echo "FAIL: cd $REPO_ROOT failed"; exit 1; }
 for f in "$HOOKS_DIR"/ants-*.sh; do
     if printf '{}\n' | timeout 5 bash "$f" >/dev/null 2>&1; then
         pass "INV-1 ${f##*/} exits 0"
@@ -85,7 +85,7 @@ if [ "$have_jq" -eq 1 ]; then
     if [ -z "$(printf '%s' '{"tool_input":{"command":"ls -la"}}' | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)" ]; then
         pass "behaviour bash-veto silent on unrelated command"
     else
-        fail "behaviour bash-veto fired on `ls -la`"
+        fail "behaviour bash-veto fired on \"ls -la\""
     fi
 
     # Bypass: trailing `# ants-bypass` suppresses the veto.
