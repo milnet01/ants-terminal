@@ -11914,6 +11914,38 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-codebase-index, claudeintegration, remotecontrol, perf, mcp-find-sources.
   Source: user request 2026-05-19 (follow-on to ANTS-1636).
 
+- 📋 [ANTS-1638] **Right-click context menu on Task List + Background Tasks dialogs — copy task text / ID / row as markdown.**
+  User request 2026-05-19 (screenshot of the Task List dialog). Today both `ClaudeTaskListDialog` (`src/claudetasklistdialog.{h,cpp}`) and the sibling `ClaudeBgTasksDialog` (`src/claudebgtasksdialog.{h,cpp}`) render rows as plain `QListWidget` items with no interaction beyond Close. There's no way to extract a task's text without manually selecting + copying with the mouse — and that breaks on multi-line wrapped rows because `QListWidget` selection copies the visible-row glyph runs, not the underlying string.
+
+  Proposed shape:
+  - `m_list->setContextMenuPolicy(Qt::CustomContextMenu)` on both dialogs.
+  - Connect `customContextMenuRequested` → slot that pops a `QMenu` at the cursor with:
+    - **Copy task text** — copies the bullet's display string verbatim to `QGuiApplication::clipboard()`.
+    - **Copy task ID** — when the bullet was emitted via TaskCreate and the underlying record has an ID, copy just the ID; greyed when absent.
+    - **Copy as markdown** — wraps in the `- [ ] <text>` / `- [x] <text>` form so it pastes cleanly into a notes file.
+  - Keyboard parity: `Ctrl+C` on a focused row copies "Copy task text" (the most common action).
+  - Plumb via `QListWidgetItem::data(Qt::UserRole)` for the structured fields (ID + status), keeping the rendered display text in `Qt::DisplayRole`. The tracker (`ClaudeTaskListTracker` / `ClaudeBgTasksTracker`) already parses these from the transcript JSONL — `rebuild()` can stash both alongside.
+
+  RAM budget: zero — same data, two extra QString fields per row (<= ~100 B/row × ~50 rows = 5 KB upper bound). No new file watchers or buffers.
+
+  **Layman:** Right now if you want to share or save a task's text from the Task List dialog, you have to drag-select with the mouse and that often grabs the wrong piece. A right-click menu with "Copy task text" / "Copy task ID" / "Copy as markdown" would make it a single click.
+  Kind: implement.
+  Lanes: claudetasklist, claudebgtasks, claudestatuswidgets.
+  Source: user request 2026-05-19 (Task List dialog screenshot).
+
+- 📋 [ANTS-1639] **Task List + bg-tasks parser doesn't sanitise raw tool-input markup leaked from malformed `TaskCreate` calls.**
+  Observed in the same 2026-05-19 screenshot: a row reads `Roadmap "find-relevant-source-files" MCP feature (user 2026-05-19)</subject><parameter name="description">User asked: …`. The leak happened when an upstream `TaskCreate` invocation was malformed (sent `<parameter name="description">` markup instead of a `description:` field) and Claude Code's transcript-side error envelope ended up captured by the tracker as the task's title.
+
+  Two-layer fix:
+  - **Parser side (`ClaudeTaskListTracker::parseTranscript`,
+    `src/claudetasklist.cpp:191`)** — detect raw tool-input XML-ish markers (`<parameter name=…>`, `</subject>`, `</description>`) and either (a) strip the residue so the user sees the intended title, or (b) flag the entry as `[malformed]` so the source is obvious without exposing inner machinery. (b) is preferred — silent stripping hides the underlying upstream bug.
+  - **Rendering side (`ClaudeTaskListDialog::rebuild`)** — even on a clean parse, escape HTML-like sequences before handing the string to `QListWidgetItem::setText` so future leaks render as visible glyphs, not partial markup. Mirror the same pattern in `ClaudeBgTasksDialog`.
+
+  **Layman:** When Claude Code mis-types the call that adds a task, the raw tool-input garbage ends up showing as the task's title. We should detect that and either clean it up or mark it as "malformed" so it's obvious where the gunk came from.
+  Kind: fix.
+  Lanes: claudetasklist, claudebgtasks, claudetasklistdialog.
+  Source: user request 2026-05-19 (Task List dialog screenshot — second row).
+
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.
