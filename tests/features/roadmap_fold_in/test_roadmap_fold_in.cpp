@@ -99,12 +99,68 @@ TEST(RoadmapFoldIn, AllocateZeroOrNegativeReturnsEmpty) {
     EXPECT_TRUE(RoadmapFoldIn::allocateIds(tmp.path(), -1).isEmpty());
 }
 
-TEST(RoadmapFoldIn, AllocateMissingCounterFails) {
+// ANTS-1618 — empty (or freshly-created) `.roadmap-counter` is a valid
+// initial state. Pre-1618 the allocate failed with `id_counter_failed`
+// and a misleading "stale .lock sibling" hint; post-1618 the engine
+// auto-initialises and returns IDs starting at 1.
+TEST(RoadmapFoldIn, Ants1618EmptyCounterAutoInitsToZero) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    // No .roadmap-counter present — open() in lockExclusive creates one
-    // empty, then read returns "" → toInt fails → empty list.
+    // No .roadmap-counter present — lockExclusive creates an empty
+    // file; allocateIds should now treat empty == current=0.
+    const auto ids = RoadmapFoldIn::allocateIds(tmp.path(), 3);
+    ASSERT_EQ(ids.size(), 3);
+    EXPECT_EQ(ids[0], 1);
+    EXPECT_EQ(ids[1], 2);
+    EXPECT_EQ(ids[2], 3);
+    // And the file now holds the new high-water mark.
+    EXPECT_EQ(slurp(QDir(tmp.path()).filePath(".roadmap-counter")).trimmed(),
+              QByteArray("3"));
+}
+
+// ANTS-1618 — 0-byte (vs absent) counter: same auto-init behaviour.
+TEST(RoadmapFoldIn, Ants1618ZeroByteCounterAutoInits) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), ".roadmap-counter", QByteArray());  // 0 bytes
+    const auto ids = RoadmapFoldIn::allocateIds(tmp.path(), 2);
+    ASSERT_EQ(ids.size(), 2);
+    EXPECT_EQ(ids[0], 1);
+    EXPECT_EQ(ids[1], 2);
+}
+
+// ANTS-1618 — corrupt content (non-integer) still fails, but
+// inspectCounter() reports CounterState::Corrupt so the caller can
+// emit a state-specific message instead of the legacy "stale .lock
+// sibling" hint.
+TEST(RoadmapFoldIn, Ants1618InspectReportsCorruptOnNonIntegerCounter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), ".roadmap-counter", "not-a-number\n");
     EXPECT_TRUE(RoadmapFoldIn::allocateIds(tmp.path(), 1).isEmpty());
+    const auto ins = RoadmapFoldIn::inspectCounter(tmp.path());
+    EXPECT_EQ(ins.state, RoadmapFoldIn::CounterState::Corrupt);
+    EXPECT_TRUE(ins.preview.contains(QStringLiteral("not-a-number")));
+}
+
+// ANTS-1618 — inspectCounter reports Ok with parsed value on a healthy
+// counter (used by callers as a positive readiness check).
+TEST(RoadmapFoldIn, Ants1618InspectReportsOkOnHealthyCounter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), ".roadmap-counter", "42\n");
+    const auto ins = RoadmapFoldIn::inspectCounter(tmp.path());
+    EXPECT_EQ(ins.state, RoadmapFoldIn::CounterState::Ok);
+    EXPECT_EQ(ins.value, 42);
+}
+
+// ANTS-1618 — inspectCounter reports EmptyOrAbsent when the file is
+// absent or empty (both are valid initial states for allocateIds).
+TEST(RoadmapFoldIn, Ants1618InspectReportsEmptyOnAbsentCounter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const auto ins = RoadmapFoldIn::inspectCounter(tmp.path());
+    EXPECT_EQ(ins.state, RoadmapFoldIn::CounterState::EmptyOrAbsent);
 }
 
 // ---- INV-8: insertBlock places block after named heading --------
@@ -272,17 +328,21 @@ TEST(RoadmapFoldIn, R2HappyPathStillAllocates) {
 }
 
 // R3: legitimate first-allocation path (counter doesn't exist yet) —
-// guard does not falsely refuse. The existing behaviour was
-// "lockExclusive creates an empty file; read returns ""; toInt fails;
-// return {}". The new guard should leave this path intact.
+// the ANTS-1342 symlink-escape guard must NOT falsely refuse.
+// Pre-ANTS-1618 this returned {} because the empty-file read failed
+// toInt(); post-ANTS-1618 the engine auto-initialises empty/absent
+// to current=0 and returns [1]. The point of the test (guard does
+// not block legitimate paths) is unchanged — only the success shape
+// changed from "empty list" to "list with one ID".
 TEST(RoadmapFoldIn, R3FirstAllocationStillFalsThroughExistingPath) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     // No .roadmap-counter, no symlinks. Guard MUST allow (parent dir
-    // canonicalises to the project root), then the legacy
-    // "open-with-O_CREAT-and-toInt-fails" path returns {}.
+    // canonicalises to the project root), and the auto-init path
+    // succeeds with [1] (ANTS-1618).
     auto ids = RoadmapFoldIn::allocateIds(tmp.path(), 1);
-    EXPECT_TRUE(ids.isEmpty());
+    ASSERT_EQ(ids.size(), 1);
+    EXPECT_EQ(ids[0], 1);
 }
 
 // Same guard applied to insertBlock — refuse if ROADMAP.md is a symlink

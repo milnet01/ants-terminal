@@ -149,6 +149,46 @@ QString counterFilePath(const QString &projectPath) {
     return canon + QStringLiteral("/.roadmap-counter");
 }
 
+// ANTS-1618 — post-failure inspection. Callers invoke this AFTER
+// allocateIds has returned an empty list so they can compose a
+// state-specific error message instead of the generic "flock/IO
+// failure" hint that misled cross-session reports when the real
+// cause was an empty / corrupt counter file.
+CounterInspection inspectCounter(const QString &projectPath) {
+    CounterInspection ins;
+    const QString path = counterPath(projectPath);
+    if (!counterStaysInProject(projectPath, path)) {
+        ins.state = CounterState::PathRefused;
+        return ins;
+    }
+    QFile f(path);
+    if (!f.exists()) {
+        ins.state = CounterState::EmptyOrAbsent;
+        return ins;
+    }
+    if (!f.open(QIODevice::ReadOnly)) {
+        ins.state = CounterState::PermissionDenied;
+        return ins;
+    }
+    const QByteArray raw = f.readAll();
+    f.close();
+    const QByteArray trimmed = raw.trimmed();
+    if (trimmed.isEmpty()) {
+        ins.state = CounterState::EmptyOrAbsent;
+        return ins;
+    }
+    bool ok = false;
+    const int v = trimmed.toInt(&ok);
+    if (!ok) {
+        ins.state = CounterState::Corrupt;
+        ins.preview = QString::fromUtf8(raw.left(80));
+        return ins;
+    }
+    ins.state = CounterState::Ok;
+    ins.value = v;
+    return ins;
+}
+
 QList<int> allocateIds(const QString &projectPath, int n) {
     if (n <= 0) return {};
     const QString path = counterPath(projectPath);
@@ -193,11 +233,21 @@ QList<int> allocateIds(const QString &projectPath, int n) {
     const QByteArray raw = f.readAll();
     f.close();
 
-    bool ok = false;
-    int current = raw.trimmed().toInt(&ok);
-    if (!ok) {
-        cleanup();
-        return {};
+    // ANTS-1618 — empty/whitespace counter is a valid INITIAL state
+    // (the file was just created — `flock` + `open(O_CREAT)` above
+    // doesn't write any content). Treat as current=0 rather than
+    // failing the toInt() parse. Cross-session reports observed
+    // 0-byte `.roadmap-counter` files returning misleading "stale
+    // .lock sibling" hints when no .lock existed.
+    int current = 0;
+    const QByteArray trimmed = raw.trimmed();
+    if (!trimmed.isEmpty()) {
+        bool ok = false;
+        current = trimmed.toInt(&ok);
+        if (!ok) {
+            cleanup();
+            return {};
+        }
     }
 
     QList<int> ids;

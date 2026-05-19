@@ -108,8 +108,15 @@ struct PrePattern {
 };
 
 const QVector<PrePattern> &g_kPrePatterns() {
-    // Small built-in set for v1. Hardcoded; v2 ships JSON resource.
+    // Pattern set widened ANTS-1616 — v1 was Python-centric and missed
+    // every real C/C++/Qt test smell in this codebase (zero-hit rate
+    // across 19 chunks reported in 2026-05-18 cross-session reports).
+    // v2 ships JSON resource (see Source: in ANTS-1616 follow-up); the
+    // built-in set below stays language-broad so the orchestrator's
+    // pre_pass_chunk_ids[] optimisation actually fires on mixed
+    // codebases.
     static const QVector<PrePattern> v = {
+        // ── Python (v1 originals) ──
         {QStringLiteral("sleep_call"),     QStringLiteral("flakiness"),
             QStringLiteral("\\btime\\.sleep\\(")},
         {QStringLiteral("datetime_now"),   QStringLiteral("determinism"),
@@ -120,6 +127,37 @@ const QVector<PrePattern> &g_kPrePatterns() {
             QStringLiteral("\\bapi_key\\s*=\\s*[\"']")},
         {QStringLiteral("real_network"),       QStringLiteral("isolation"),
             QStringLiteral("\\b(requests|urlopen|fetch)\\(['\"]?https?://")},
+        // ── C/C++ sleep + threading ──
+        {QStringLiteral("cpp_sleep_for"),       QStringLiteral("flakiness"),
+            QStringLiteral("\\bstd::this_thread::sleep_for\\b")},
+        {QStringLiteral("qt_msleep"),           QStringLiteral("flakiness"),
+            QStringLiteral("\\bQThread::(?:msleep|sleep|usleep)\\(")},
+        {QStringLiteral("posix_sleep"),         QStringLiteral("flakiness"),
+            QStringLiteral("\\b(?:usleep|nanosleep|sleep)\\(")},
+        // ── C/C++ exit/abort in tests ──
+        {QStringLiteral("cpp_exit"),            QStringLiteral("error_handling"),
+            QStringLiteral("\\b(?:std::exit|::exit|exit|abort|std::abort)\\(")},
+        // ── stderr noise / FAIL-prints ──
+        {QStringLiteral("stderr_fail_print"),   QStringLiteral("verbosity"),
+            QStringLiteral("(?:std::fprintf|fprintf)\\s*\\(\\s*stderr\\b")},
+        {QStringLiteral("cpp_cerr"),            QStringLiteral("verbosity"),
+            QStringLiteral("\\bstd::cerr\\s*<<")},
+        // ── Env-mutation without restore (isolation breach) ──
+        {QStringLiteral("qputenv_call"),        QStringLiteral("isolation"),
+            QStringLiteral("\\bqputenv\\s*\\(")},
+        {QStringLiteral("setenv_call"),         QStringLiteral("isolation"),
+            QStringLiteral("\\b(?:setenv|putenv|_putenv)\\s*\\(")},
+        // ── External process / shell-out from tests ──
+        {QStringLiteral("system_shell_out"),    QStringLiteral("isolation"),
+            QStringLiteral("\\b(?:std::system|::system|system|popen)\\s*\\(")},
+        // ── Non-deterministic seed ──
+        {QStringLiteral("cpp_rand"),            QStringLiteral("determinism"),
+            QStringLiteral("\\b(?:std::rand|qrand|rand)\\s*\\(\\s*\\)")},
+        {QStringLiteral("cpp_srand"),           QStringLiteral("determinism"),
+            QStringLiteral("\\b(?:std::srand|srand)\\s*\\(")},
+        // ── Always-true assertion smell ──
+        {QStringLiteral("tautological_expect"), QStringLiteral("assertions"),
+            QStringLiteral("\\b(?:EXPECT_TRUE|ASSERT_TRUE|expect)\\s*\\(\\s*(?:true|1)\\s*\\)")},
     };
     return v;
 }
@@ -950,6 +988,19 @@ SynthResult synthesize(const SynthRequest &req) {
     // canonical 5 severities and the "MEDIUM" full-word form too.
     static const QRegularExpression findingRx(QStringLiteral(
         "^\\s*-\\s*\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]"));
+    // ANTS-1617 — alternative finding shape: `### [SEV] dimension: <name>`
+    // (RetroDB convention). The `###` doubles as a per-finding header
+    // (not a section header); count once and read the dimension out of
+    // the `dimension: <name>` tail if present.
+    static const QRegularExpression headingFindingRx(QStringLiteral(
+        "^#{3}\\s+\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]"));
+    static const QRegularExpression headingDimensionRx(QStringLiteral(
+        "dimension:\\s*([\\w_]+)"));
+    // ANTS-1617 — `## Findings (JSON)` block opener (3D Engine
+    // convention). The next fenced code block is parsed as a JSON
+    // array of finding objects with `severity` + optional `dimension`.
+    static const QRegularExpression findingsJsonOpenerRx(QStringLiteral(
+        "^#{2}\\s+Findings\\s*\\(JSON\\)\\s*$"));
     // ANTS-1486 — per-chunk total finding count, for hybrid mode's
     // "top-N by max-finding-count" pick. Computed during pass 1 so we
     // don't re-scan.
@@ -984,10 +1035,98 @@ SynthResult synthesize(const SynthRequest &req) {
         // outside a recognised dimension header still count toward the
         // dimension's bucket if the dimension keyword appears in the
         // header line, even if the prose styled it differently.
+        // ANTS-1617 — also recognise `### [SEV] dimension: <name>`
+        // (heading-finding form) and `## Findings (JSON)` blocks.
+        auto sevCanonical = [](QString sev) -> QString {
+            sev = sev.toLower();
+            if (sev == QLatin1String("critical")) return QStringLiteral("crit");
+            if (sev == QLatin1String("medium"))   return QStringLiteral("med");
+            return sev;
+        };
         QString curDim;
         int chunkFindings = 0;
+        // 0 = normal; 1 = saw `## Findings (JSON)` header, awaiting
+        // ``` fence opener; 2 = inside fence, accumulating body.
+        int jsonFenceState = 0;
+        QString findingsJsonBuf;
+        auto parseFindingsJson = [&](const QString &buf) {
+            QJsonParseError err{};
+            const QJsonDocument doc = QJsonDocument::fromJson(
+                buf.toUtf8(), &err);
+            if (err.error != QJsonParseError::NoError || !doc.isArray()) return;
+            const QJsonArray arr = doc.array();
+            for (const QJsonValue &v : arr) {
+                if (!v.isObject()) continue;
+                const QJsonObject obj = v.toObject();
+                ++chunkFindings;
+                const QString sev = sevCanonical(
+                    obj.value(QStringLiteral("severity")).toString());
+                QString dim = obj.value(QStringLiteral("dimension"))
+                                .toString().toLower();
+                if (dim.isEmpty()) dim = curDim;
+                if (!dim.isEmpty() && !sev.isEmpty()
+                    && g_kDimensions().contains(dim)
+                    && kSevs.contains(sev)) {
+                    ++sevHist[dim][sev];
+                }
+            }
+        };
         const QStringList lines = contents.split(QLatin1Char('\n'));
         for (const QString &line : lines) {
+            // — Findings(JSON) fenced-block state machine.
+            if (jsonFenceState == 2) {
+                if (line.trimmed().startsWith(QStringLiteral("```"))) {
+                    parseFindingsJson(findingsJsonBuf);
+                    jsonFenceState = 0;
+                    findingsJsonBuf.clear();
+                } else {
+                    findingsJsonBuf += line + QLatin1Char('\n');
+                }
+                continue;
+            }
+            if (jsonFenceState == 1) {
+                if (line.trimmed().startsWith(QStringLiteral("```"))) {
+                    // Fence opener — flip into accumulation mode. The
+                    // opener line itself isn't part of the JSON body.
+                    jsonFenceState = 2;
+                    continue;
+                }
+                // Non-blank non-fence line before opener — abandon the
+                // pending Findings(JSON) state; treat the line normally
+                // by falling through into the regular handlers below.
+                if (!line.trimmed().isEmpty()) {
+                    jsonFenceState = 0;
+                }
+                // (else: blank lines between header and opener are fine)
+                if (jsonFenceState == 1) continue;
+            }
+            // — `## Findings (JSON)` opener → expect a ```json fence next.
+            if (findingsJsonOpenerRx.match(line).hasMatch()) {
+                jsonFenceState = 1;
+                findingsJsonBuf.clear();
+                continue;
+            }
+            // — Heading-finding form: `### [SEV] dimension: <name> — ...`
+            {
+                const auto hfm = headingFindingRx.match(line);
+                if (hfm.hasMatch()) {
+                    ++chunkFindings;
+                    const QString sev = sevCanonical(hfm.captured(1));
+                    QString dim;
+                    const auto dimMatch = headingDimensionRx.match(line);
+                    if (dimMatch.hasMatch()) {
+                        dim = dimMatch.captured(1).toLower();
+                    } else {
+                        // Fall back to current section's dimension.
+                        dim = curDim;
+                    }
+                    if (!dim.isEmpty() && g_kDimensions().contains(dim)
+                        && kSevs.contains(sev)) {
+                        ++sevHist[dim][sev];
+                    }
+                    continue;
+                }
+            }
             if (headerRx.match(line).hasMatch()) {
                 curDim.clear();
                 for (const QString &d : g_kDimensions()) {
@@ -1002,12 +1141,14 @@ SynthResult synthesize(const SynthRequest &req) {
             if (fm.hasMatch()) {
                 ++chunkFindings;
                 if (!curDim.isEmpty()) {
-                    QString sev = fm.captured(1).toLower();
-                    if (sev == QLatin1String("critical")) sev = QStringLiteral("crit");
-                    if (sev == QLatin1String("medium"))   sev = QStringLiteral("med");
+                    const QString sev = sevCanonical(fm.captured(1));
                     ++sevHist[curDim][sev];
                 }
             }
+        }
+        // Trailing-buffer flush if a Findings(JSON) block was never closed.
+        if (jsonFenceState == 2 && !findingsJsonBuf.trimmed().isEmpty()) {
+            parseFindingsJson(findingsJsonBuf);
         }
         findingCountByChunk.append(chunkFindings);
     }
@@ -1258,16 +1399,49 @@ FoldInResult foldIn(const FoldInRequest &req) {
         // caller can clear a stale `.lock` sibling or inspect the file.
         // ANTS-1527 — also populate `counterPath` as a structured
         // field so callers can extract it without parsing the prose.
+        // ANTS-1618 — call inspectCounter post-failure to compose a
+        // state-specific message; the prior unconditional "stale .lock
+        // sibling" hint misled cross-session reports when the real
+        // cause was corrupt content or permission failure.
         const QString counterPath = RoadmapFoldIn::counterFilePath(canon);
+        const auto ins = RoadmapFoldIn::inspectCounter(canon);
         r.ok = false; r.code = QStringLiteral("id_counter_failed");
         r.counterPath = counterPath;
+        const QString counterPathOrUnknown = counterPath.isEmpty()
+            ? QStringLiteral("(unresolvable)") : counterPath;
+        QString stateHint;
+        switch (ins.state) {
+        case RoadmapFoldIn::CounterState::Corrupt:
+            stateHint = QStringLiteral(
+                "counter contains non-integer data (preview: \"%1\") "
+                "— fix the file and retry").arg(ins.preview);
+            break;
+        case RoadmapFoldIn::CounterState::PermissionDenied:
+            stateHint = QStringLiteral(
+                "no read permission on counter file");
+            break;
+        case RoadmapFoldIn::CounterState::PathRefused:
+            stateHint = QStringLiteral(
+                "counter path escapes project root (symlink guard "
+                "tripped — ANTS-1342)");
+            break;
+        case RoadmapFoldIn::CounterState::EmptyOrAbsent:
+        case RoadmapFoldIn::CounterState::Ok:
+            // Ok/Empty here means inspect saw a valid counter, so the
+            // failure was elsewhere — flock contention or the O_EXCL
+            // rename-lock fallback (ANTS-1490) both gave up after the
+            // 5 s budget. Retain the legacy hint.
+            stateHint = QStringLiteral(
+                "flock + O_EXCL rename-lock both timed out — check "
+                "for a stale %1.lock sibling or a concurrent fold-in")
+                .arg(counterPathOrUnknown);
+            break;
+        }
         r.error = QStringLiteral(
-            "test_audit_fold_in: allocateIds returned %1 of %2 "
-            "(flock/IO failure on counter %3 — check for a stale "
-            "%3.lock sibling)")
+            "test_audit_fold_in: allocateIds returned %1 of %2 on "
+            "counter %3 — %4")
                 .arg(allocatedInts.size()).arg(n)
-                .arg(counterPath.isEmpty()
-                     ? QStringLiteral("(unresolvable)") : counterPath);
+                .arg(counterPathOrUnknown).arg(stateHint);
         return r;
     }
     QStringList allocated;
@@ -1275,11 +1449,39 @@ FoldInResult foldIn(const FoldInRequest &req) {
         allocated.append(QStringLiteral("ANTS-%1").arg(v));
     }
     r.allocatedIds = allocated;
+    // ANTS-1615 — pre-validate headlines before emitting any bullet so
+    // a caller that forgot to supply `summary`/`headline`/`claim` gets a
+    // loud `bad_actionable` refusal instead of silent `**.**` bullets.
+    // Accept any of the three field names (callers in the wild observed
+    // using all three); truncate to ~120 chars with " …" suffix.
+    QStringList headlines;
+    headlines.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        const QJsonObject f = req.actionable.at(i).toObject();
+        QString h;
+        for (const auto &k : {QStringLiteral("headline"),
+                              QStringLiteral("summary"),
+                              QStringLiteral("claim")}) {
+            const QString v = f.value(k).toString().trimmed();
+            if (!v.isEmpty()) { h = v; break; }
+        }
+        if (h.isEmpty()) {
+            r.ok = false; r.code = QStringLiteral("bad_actionable");
+            r.error = QStringLiteral(
+                "test_audit_fold_in: actionable[%1] has no headline / "
+                "summary / claim field (keys present: %2)")
+                .arg(i).arg(f.keys().join(QLatin1String(", ")));
+            r.failedCount = n;
+            return r;
+        }
+        if (h.size() > 120) h = h.left(120).trimmed() + QStringLiteral(" …");
+        headlines.append(h);
+    }
     // Render per-finding bullets.
     for (int i = 0; i < n; ++i) {
         const QJsonObject f = req.actionable.at(i).toObject();
         bs << "- 📋 [" << allocated.at(i) << "] **"
-           << f.value(QStringLiteral("summary")).toString() << ".**\n"
+           << headlines.at(i) << ".**\n"
            << "  - File: " << f.value(QStringLiteral("file")).toString()
            << ":" << f.value(QStringLiteral("line")).toInt() << "\n"
            << "  - Dimension: "

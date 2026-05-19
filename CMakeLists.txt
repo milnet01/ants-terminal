@@ -1116,7 +1116,9 @@ if(ANTS_TESTS)
                 # ANTS-1344 — indie_review_corroborate truncation flag.
                 tests/features/indie_review_truncation_flag/test_indie_review_truncation_flag.cpp
                 # ANTS-1345 — cold-eyes derivePartition deterministic tiebreak.
-                tests/features/cold_eyes_partition_deterministic/test_cold_eyes_partition_deterministic.cpp)
+                tests/features/cold_eyes_partition_deterministic/test_cold_eyes_partition_deterministic.cpp
+                # ANTS-1615/1616/1617 — 2026-05-19 test_audit bundle fold-in.
+                tests/features/test_audit_bundle_2026_05_19/test_test_audit_bundle.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

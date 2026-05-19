@@ -218,7 +218,21 @@ PlanResult buildPlan(const QString &projectRoot, const PlanOptions &opts) {
         r.antsId = opts.antsId;
         r.antsIdSource = AntsIdSource::Provided;
     } else {
-        const QList<int> ids = RoadmapFoldIn::allocateIds(projectRoot, 1);
+        // Only allocate when the project has already opted into ID
+        // tracking by checking in a `.roadmap-counter`. ANTS-1618
+        // changed allocateIds to auto-init absent/empty counters from
+        // 0 — that's the right shape for the test_audit fold-in
+        // workflow but here it would surprise plan-template callers
+        // by silently creating the counter file in a project that
+        // doesn't use it. Probe first; fall through to AntsIdSource::
+        // None when the file is absent.
+        const QString counter = RoadmapFoldIn::counterFilePath(projectRoot);
+        const bool counterPresent = !counter.isEmpty()
+            && QFileInfo::exists(counter);
+        QList<int> ids;
+        if (counterPresent) {
+            ids = RoadmapFoldIn::allocateIds(projectRoot, 1);
+        }
         if (ids.isEmpty()) {
             r.antsId.clear();
             r.antsIdSource = AntsIdSource::None;

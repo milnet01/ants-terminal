@@ -47,6 +47,28 @@ QList<int> allocateIds(const QString &projectPath, int n);
 // "/.roadmap-counter"); empty when projectPath fails to canonicalise.
 QString counterFilePath(const QString &projectPath);
 
+// ANTS-1618 — post-failure inspection helper. allocateIds returns an
+// empty QList on every failure mode (flock contention, corrupt int,
+// permission, symlink-escape); callers want a state-specific message.
+// Call this AFTER a failed allocate (the lock is already released).
+// Read-only; opens the counter file unlocked for inspection.
+enum class CounterState {
+    Ok,                // file contains a valid integer
+    EmptyOrAbsent,     // file doesn't exist OR is empty/whitespace
+                       // (NOTE: allocateIds now auto-inits this case)
+    Corrupt,           // non-integer content
+    PermissionDenied,  // cannot open for read
+    PathRefused,       // counterStaysInProject() guard failed
+};
+
+struct CounterInspection {
+    CounterState state = CounterState::Ok;
+    QString      preview;  // first ~80 bytes when state==Corrupt
+    int          value = 0; // parsed integer when state==Ok
+};
+
+CounterInspection inspectCounter(const QString &projectPath);
+
 // Atomic insert per the doc-comment above. Returns true on success,
 // false on heading-not-found or IO error.
 bool insertBlock(const QString &projectPath,

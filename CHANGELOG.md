@@ -12,6 +12,60 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP test-audit cross-session fold-in — pull 18 (ANTS-1615 + ANTS-1616 + ANTS-1617 + ANTS-1618, 2026-05-19)
+
+Closes four cross-session-report symptoms surfaced by the 2026-05-18
+test-audit run on three external Claude Code projects (RetroDB,
+Vestige 3D Engine, Music Production / Album Builder). All four are
+"silent failure" classes: fold-in writes `**.**` placeholders, the
+pre-pass returns zero hits, the synthesis parser reports `chunks_returned:0`,
+and `id_counter_failed` blames a non-existent `.lock` sibling.
+
+- **ANTS-1615 (fix)** — `test_audit_fold_in` accepts `headline` /
+  `summary` / `claim` interchangeably and refuses up-front with
+  `{ok:false, code:"bad_actionable"}` naming the offending index when
+  all three are missing or empty. Replaces silent `**.**` bullet output.
+  Long headlines truncated to 120 chars with " …" suffix. Schema
+  description in `claudeintegration.cpp` now documents the per-item
+  fields and the fallback order.
+- **ANTS-1616 (enhancement)** — pre-pass pattern set widened from 5
+  Python-only regexes to 16, adding C/C++/Qt smells the codebase
+  actually uses: `qt_msleep`, `cpp_sleep_for`, `posix_sleep`,
+  `cpp_exit`, `stderr_fail_print`, `cpp_cerr`, `qputenv_call`,
+  `setenv_call`, `system_shell_out`, `cpp_rand`, `cpp_srand`,
+  `tautological_expect`. Restores the documented `pre_pass_chunk_ids[]`
+  skip-empty-chunks optimisation on mixed-language projects.
+- **ANTS-1617 (fix)** — `test_audit_synthesis_prompt` summary parser
+  now recognises `### [SEVERITY] dimension: <name>` heading-form
+  findings (RetroDB convention) and `## Findings (JSON)` fenced blocks
+  (3D Engine convention). 3-state fence machine accumulates the JSON
+  body, parses each entry's `severity` + `dimension`, and attributes
+  it to the per-dimension severity histogram. Previously
+  `severity_histograms:{}` came back empty despite real findings.
+- **ANTS-1618 (fix)** — `RoadmapFoldIn::allocateIds` auto-initialises
+  an empty (0-byte) or absent `.roadmap-counter` to current=0 rather
+  than failing with the misleading "stale .lock sibling" hint. New
+  `inspectCounter(projectPath)` helper returns `{state, preview, value}`
+  for post-failure diagnostics (states: `Ok`, `EmptyOrAbsent`,
+  `Corrupt`, `PermissionDenied`, `PathRefused`); test_audit_fold_in's
+  error message now switches on the state instead of unconditionally
+  blaming `flock`. `PlanTemplateEngine::buildPlan` opted out of the
+  auto-init (probes counter presence first; preserves the
+  AntsIdSource::None contract for plan callers that haven't opted into
+  ID tracking).
+- **Regression coverage** — new `tests/features/test_audit_bundle_2026_05_19/`
+  test bundle (8 GoogleTest cases): empty-headline refusal, headline
+  / summary / claim fallback, 120-char truncation, pre-pass hits the
+  five new pattern IDs on a C++/Qt fixture, synthesise parses both
+  heading-form findings and `## Findings (JSON)` blocks into the
+  severity histograms. Existing `roadmap_fold_in` tests extended with
+  five `Ants1618*` cases for the auto-init + inspectCounter helper.
+- **Roadmapped follow-ups** (logged this session, no code) —
+  ANTS-1636 "find_sources" MCP tool (topic→files discovery for
+  subsystems not in the Module map), ANTS-1637 project-wide codebase
+  index (`.ants_cache/codebase-index.json` with per-file outlines +
+  lane-to-files + test-for-symbol reverse map; pairs with ANTS-1636).
+
 ### 🔌 MCP audit-cache fold-in — pull 17 (ANTS-1555 + ANTS-1577 dupe-close, 2026-05-18)
 
 Routes `audit_run`'s SARIF output into the same per-project

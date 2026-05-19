@@ -3248,7 +3248,19 @@ void ClaudeIntegration::onMcpConnection() {
                         "rename-lock on filesystems where flock returns "
                         "systemic errors). On id_counter_failed the "
                         "error message names the counter path so the "
-                        "caller can clear a stale .lock sibling.");
+                        "caller can clear a stale .lock sibling. "
+                        "Each `actionable[]` item is an object with "
+                        "fields: `file` (path), `line` (int), "
+                        "`dimension` (one of the 18 kDimensions), "
+                        "`severity` (CRITICAL/HIGH/MEDIUM/LOW/INFO), "
+                        "`fix` (one-line remediation), and a "
+                        "headline-bearing field — `headline` "
+                        "preferred, with `summary` and `claim` "
+                        "accepted as fallbacks (ANTS-1615). Missing "
+                        "or empty in all three → "
+                        "{ok:false, code:\"bad_actionable\"} naming "
+                        "the offending index. Long headlines are "
+                        "truncated to 120 chars with \" …\" suffix.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to merge a finished test-audit set "
                         "back into ROADMAP.md as a fold-in block. "
