@@ -11569,7 +11569,9 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp, cold-eyes.
   Source: cross-session-2026-05-17/18 (RetroDB).
 
-- 📋 [ANTS-1620] **project_layout: probed_paths echo doesn't include docs/private/, docs/internal/, docs/fork/ paths the description (ANTS-1493) claims are probed.**
+- ✅ [ANTS-1620] **project_layout: probed_paths echo doesn't include docs/private/, docs/internal/, docs/fork/ paths the description (ANTS-1493) claims are probed.**
+  Shipped 2026-05-19. Root cause: the ANTS-1493 widening did populate `probed_paths[]` on a fresh scan, but cached envelopes from before ANTS-1493 landed stayed valid until natural 7-day TTL expiry, surfacing a narrow stale echo. Fix: added `probe_set_version` (currently `3`) to the `LayoutEnvelope` JSON. `isStale` returns true whenever `cached.probeSetVersion < kProbeSetVersion`, regardless of mtime/TTL state. Pre-existing caches written without the field default to `0` on `fromJson` and so invalidate on the first read after upgrade. Bumping the constant is now part of the protocol for any future probe-set widening (spec INV-9 calls it out so the discipline survives turnover). Files: `src/projectlayoutengine.{h,cpp}`, `docs/specs/ANTS-1430.md` (INV-9 + envelope-shape example), `tests/features/mcp_project_layout_scan/test_project_layout_scan.cpp` (4 new INV-9 tests + INV-9d that asserts the widened fork-candidate paths show up in the echo).
+
   RetroArch Bundle 70 (2026-05-18) noted: `roadmap_query` correctly finds `docs/private/ROADMAP.md` per ANTS-1493 — but `project_layout` against the same `caller_cwd` still returns `roadmap_found: false`, `roadmap.path: ""`, and its `probed_paths[]` echo shows only the narrow root-level set:
   
   ```
@@ -11592,7 +11594,9 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp.
   Source: cross-session-2026-05-18 (RetroArch Bundle 70).
 
-- 📋 [ANTS-1621] **verify_changes: `cache_only=true` is a pure read — should skip the ANTS-1372 cwd-mismatch gate when caller_cwd is explicit and points at a real git repo.**
+- ✅ [ANTS-1621] **verify_changes: `cache_only=true` is a pure read — should skip the ANTS-1372 cwd-mismatch gate when caller_cwd is explicit and points at a real git repo.**
+  Shipped 2026-05-19. The "Option 1" code-side fix already landed under ANTS-1497 (2026-05-15) — `cmdVerifyChanges` routes `cache_only:true` through the read-only resolver and bypasses the RcGate cross-project check. Live-verified the behaviour from this session before re-flagging the item closed (calling `verify_changes(caller_cwd="/mnt/Games/Scripts/Linux/RetroArch", cache_only:true)` from a tab on Ants Terminal returned `{ok:true, cache_miss:true}` instead of `cwd_mismatch`). What was missing was the "Option 3" doc-side surface — the top-level tool description still warned about the cross-project gate without mentioning the cache_only escape hatch, so callers reading only the description-level overview kept budgeting around the gate. Fix: extended the `verify_changes` tool-description string in `src/claudeintegration.cpp` to surface the cache_only-bypass rule alongside the existing ANTS-1525/1579 timeout block. The schema-level `cache_only` arg description already named the behaviour under ANTS-1497.
+
   RetroArch Bundle 63 (2026-05-17) reported: when the focused Ants tab was on the Ants Terminal repo, calling `verify_changes(caller_cwd="/mnt/Games/Scripts/Linux/RetroArch", gates: ["build"], cache_only: true)` was refused with `code: "cwd_mismatch"`.
   
   The ANTS-1372 cross-project gate exists to prevent confused-deputy mutations (e.g. running a build in project B's tree because Ants happened to focus there). But `cache_only=true` is documented as "returns the cached response if present; else returns {ok:true, cache_miss:true} **without running gates**". That's a pure read with zero side effects — the gate has nothing to protect against.
@@ -11610,7 +11614,9 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp.
   Source: cross-session-2026-05-17 (RetroArch Bundle 63).
 
-- 📋 [ANTS-1622] **roadmap_query: section_index's active_count and default bullets[] disagree on legacy-format roadmaps — `count: 0` reads as "no work" when 11 active bullets exist (just lack [PROJ-NNNN] IDs).**
+- ✅ [ANTS-1622] **roadmap_query: section_index's active_count and default bullets[] disagree on legacy-format roadmaps — `count: 0` reads as "no work" when 11 active bullets exist (just lack [PROJ-NNNN] IDs).**
+  Shipped 2026-05-19. The disagreement was structural: `section_index.active_count` counted every bullet whose status emoji was 📋/🚧 (including narrator-prose lines without IDs), while the default `bullets[]` filter dropped narrator bullets (empty `id` field) unless the caller opted in via `include_narrator_bullets:true`. Fix: extended `RoadmapIndex::SectionCounts` with parallel `activeWithId` / `shippedWithId` / `totalWithId` tallies (rollup helper propagates them), and section_index now emits `active_count_id_only` / `shipped_count_id_only` / `total_count_id_only` alongside each section's existing counts — callers reading the response see the disagreement at a glance. The envelope also gains a top-level `legacy_format_sections[]` array (slug list) plus a `legacy_format_hint` string, only present when at least one section's direct bullets are all narrator-only — keeps the response shape unchanged for well-tagged roadmaps. Tool description in `src/claudeintegration.cpp` updated to enumerate the new fields. Composes with ANTS-1538 (warning when ID-filter empties the bullet array in a single-section query). Files: `src/roadmapindex.{h,cpp}`, `src/remotecontrol.cpp` (tally + emission), `src/claudeintegration.cpp` (description + mode property), `tests/features/roadmap_query_section_index/test_roadmap_query_section_index.cpp` (INV-11 functional rollup test + INV-12 emission-anchor test).
+
   RetroArch Bundle 67 + Bundle 68 (2026-05-18) repeated the same friction:
   
   ```
@@ -11794,7 +11800,9 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes, coldeyesengine, projectlayoutengine.
   Source: cross-session-reports-2026-05-18 (Vestige 3D_Engine #13 + MAME Curator /cold-eyes #d + RetroArch /cold-eyes + RetroDB Obs A).
 
-- 📋 [ANTS-1632] **`project_layout` format-sniffer trips on mixed-format ROADMAPs — `roadmap.format: "unknown"` + `bullet_count_estimate: 0` against demonstrably populated GFM-task-list + ants-v1 hybrids.**
+- ✅ [ANTS-1632] **`project_layout` format-sniffer trips on mixed-format ROADMAPs — `roadmap.format: "unknown"` + `bullet_count_estimate: 0` against demonstrably populated GFM-task-list + ants-v1 hybrids.**
+  Shipped 2026-05-19. The pre-1632 sniffer required the explicit `<!-- ants-roadmap-format: 1 -->` marker OR a `- [ ]`/`- [x]` GFM bullet in the first 4 KB; a populated ants-v1 emoji-only file without the marker dropped to `"unknown"`, and a file with both shapes inherited the same fate. Fix: the sniffer now scans the head for both ants-v1 status-emoji bullets (`- ✅` / `- 📋` / `- 🚧` / `- 💭`) and GFM task-list bullets in one pass, returns `"mixed"` when both shapes hit, `"ants-v1"` when only emoji bullets are present (even without the marker), `"github-task-list"` when only GFM bullets hit, and `"unknown"` only when neither hits. `countBullets` honours the same union so `bullet_count_estimate` is non-zero for mixed files. Pre-1632 caches that recorded `format:"unknown"` against demonstrably-populated mixed files invalidate via the ANTS-1620 `kProbeSetVersion` bump from `2` → `3`. Spec INV-10 added so the discipline survives. Files: `src/projectlayoutengine.{h,cpp}`, `docs/specs/ANTS-1430.md`, `tests/features/mcp_project_layout_scan/test_project_layout_scan.cpp` (INV-10a mixed-format + INV-10b ants-v1-without-marker).
+
   Vestige 3D Engine #9 / #16 (re-confirmed across two cold-eyes sessions): `project_layout` returns `roadmap.format: "unknown"`, `bullet_count_estimate: 0`, `format_marker_present: false` against a ROADMAP.md that's ~432 KB and packed with `- [ ]` / `- [x]` / `📋` / `✅` bullets in active sections. `roadmap_query` itself works fine on the same file (correctly returns 542 active bullets across 162 sections), so only the layout-cache estimate is wrong — but callers that trust the estimate will under-allocate. The mixed-format case (GFM task-list bullets in newer sections, Ants-v1 emoji-status in older slices, no explicit format-marker line) is what the sniffer chokes on. Two fix options: (a) drop the estimate from the cache (callers should call `roadmap_query` for real numbers anyway, and the format field is brittle when projects accumulate multiple shapes over time); (b) teach the sniffer to handle mixed-format roadmaps — count whichever marker shape has the most matches as the dominant format, emit `format: "mixed"` if multiple shapes hit, surface `bullet_count_estimate` as the union of all parseable shapes.
   **Layman:** The project-layout tool's "guess what kind of roadmap this is + roughly how many bullets" estimator returns "unknown / 0" for any project whose roadmap has more than one bullet style (e.g. some sections use checkboxes, others use status emojis). The roadmap-query tool handles the same file correctly; only the layout estimator gets confused.
   Kind: fix.
@@ -11948,6 +11956,28 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Lanes: diffviewer, claudestatuswidgets.
   Source: user request 2026-05-19 (Review Changes screenshot).
+
+- 📋 [ANTS-1641] **Task List dialog — uneven vertical spacing between rows when description contains `[]` token.**
+  Reported 2026-05-19 with a screenshot of the Task List dialog showing the 5 tasks for this MCP-bundle session. The ANTS-1620 row (which has `probed_paths[]` in its description) renders with visibly more vertical padding between it and the next row than the sibling rows have between each other — looks like the parser sanitiser (ANTS-1639) or the QTextDocument rich-text renderer is treating the `[]` token as a markdown empty-link-anchor and emitting an extra block-level break around it.
+
+  Repro recipe:
+  1. Create a task whose `description` contains a `[]` token (e.g. "the `foo[]` echo doesn't include bar").
+  2. Open the Task List dialog.
+  3. Compare the gap between that task and the next vs the gap between two adjacent tasks without `[]`.
+
+  Suggested investigation:
+  - Check whether `ClaudeTaskListDialog::rebuild` (or the ANTS-1639 markup sanitiser) interprets `[…]` as a markdown link target. If so, escape `[` and `]` to entities BEFORE feeding the string to `QListWidgetItem::setText` / the rich-text renderer (mirror the ANTS-1639 escape pattern that's already applied for `<`/`>`/`&`).
+  - Check the bg-tasks dialog for the same regression — same parser, same likely bug.
+  - Bound the fix to display-only escaping — the underlying task data must keep the verbatim `[]` so right-click copy (ANTS-1638) yields the original characters.
+
+  Composes with ANTS-1639 (markup sanitisation) — same parser, same defensive-escape discipline.
+
+  RAM budget: zero — same data, two extra `replace()` calls per row at render time.
+
+  **Layman:** When a task description contains square brackets (like `foo[]`), the Task List dialog draws a bigger gap underneath that row than the others. Cosmetic but distracting. Likely the renderer is mistaking the brackets for a markdown link and inserting a blank-line break.
+  Kind: fix.
+  Lanes: claudetasklist, claudebgtasks, claudestatuswidgets.
+  Source: user request 2026-05-19 (Task List dialog screenshot, ANTS-1620 row).
 
 - ✅ [ANTS-1639] **Task List + bg-tasks parser doesn't sanitise raw tool-input markup leaked from malformed `TaskCreate` calls.**
   Observed in the same 2026-05-19 screenshot: a row reads `Roadmap "find-relevant-source-files" MCP feature (user 2026-05-19)</subject><parameter name="description">User asked: …`. The leak happened when an upstream `TaskCreate` invocation was malformed (sent `<parameter name="description">` markup instead of a `description:` field) and Claude Code's transcript-side error envelope ended up captured by the tracker as the task's title.

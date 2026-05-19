@@ -136,9 +136,13 @@ QHash<QString, SectionCounts> rollupCounts(
             if (!nested) continue;
             const auto it = direct.constFind(candidate.slug);
             if (it == direct.cend()) continue;
-            agg.active  += it->active;
-            agg.shipped += it->shipped;
-            agg.total   += it->total;
+            agg.active        += it->active;
+            agg.shipped       += it->shipped;
+            agg.total         += it->total;
+            // ANTS-1622 — roll up the ID-only parallels too.
+            agg.activeWithId  += it->activeWithId;
+            agg.shippedWithId += it->shippedWithId;
+            agg.totalWithId   += it->totalWithId;
         }
         out.insert(parent.slug, agg);
     }

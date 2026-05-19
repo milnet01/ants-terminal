@@ -49,7 +49,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 40 * 1024) {
+                           size_t kMaxBound = 44 * 1024) {
     // ANTS-1436 bumped 28→32 KB: pagination args parse (~1.5 KB)
     // + PaginationEngine::pageBullets call + envelope augment at
     // each of the 2 emission sites (~600 B × 2). The pagination
@@ -60,6 +60,11 @@ std::string boundedBetween(const std::string &cpp,
     // each of the 2 emission sites in cmdRoadmapQuery. The
     // inventory rendering itself lives in
     // buildHeaderInventoryEnvelope outside the function body.
+    // ANTS-1622 bumped 40→44 KB: section_index emission grew by
+    // ~1.5 KB to surface the three `*_id_only` parallel counts
+    // per section + the top-level legacy_format_sections[] hint
+    // (the tally pass itself only adds ~200 B; the bulk is in
+    // the per-section emission and the inline rationale comment).
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());

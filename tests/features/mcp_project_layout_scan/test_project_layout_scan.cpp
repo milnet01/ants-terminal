@@ -195,6 +195,8 @@ TEST(ProjectLayoutEngine, JsonRoundTrip) {
     EXPECT_EQ(b.probedPaths,                a.probedPaths);
     // ANTS-1574 — standards_files[] round-trips even when empty.
     EXPECT_EQ(b.standardsFiles,             a.standardsFiles);
+    // ANTS-1620 — probe-set version round-trips.
+    EXPECT_EQ(b.probeSetVersion,            a.probeSetVersion);
 }
 
 // ANTS-1574 INV-A — data/changelog.yaml is recognised as the changelog
@@ -249,6 +251,105 @@ TEST(ProjectLayoutEngine, StandardsNameGlobFallbackRejectsShortStubs) {
     const auto env = PLE::scanLayout(td.path());
     EXPECT_TRUE(env.standardsFiles.isEmpty());
     EXPECT_FALSE(env.discovered.contains(QString("docs/STYLE.md")));
+}
+
+// ANTS-1632 INV-10a — mixed-format roadmaps: file contains BOTH
+// GFM task-list and ants-v1 emoji bullets, no format marker → the
+// sniffer returns "mixed" instead of dropping out to "unknown".
+TEST(ProjectLayoutEngine, ScanDetectsMixedFormatRoadmap) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    writeFile(td.path() + "/ROADMAP.md",
+        "# Roadmap\n\n"
+        "## Newer slice (GFM)\n"
+        "- [x] **Sh1.** Shipped item\n"
+        "- [ ] **Ed1.** Planned item\n\n"
+        "## Older slice (ants-v1)\n"
+        "- ✅ [ANTS-0001] **Done**\n"
+        "- 📋 [ANTS-0002] **Planned**\n"
+        "- 🚧 [ANTS-0003] **In progress**\n");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.roadmap.format, QString("mixed"));
+    EXPECT_FALSE(env.roadmap.formatMarkerPresent);
+    // bullet_count_estimate counts the union of both shapes.
+    EXPECT_EQ(env.roadmap.bulletCountEstimate, 5);
+}
+
+// ANTS-1632 INV-10b — ants-v1 emoji-only ROADMAP (no format marker,
+// no GFM bullets) is detected as "ants-v1" not "unknown". Prior to
+// 1632 the sniffer required the format marker to call a file ants-v1.
+TEST(ProjectLayoutEngine, ScanDetectsAntsV1WithoutMarker) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    writeFile(td.path() + "/ROADMAP.md",
+        "# Roadmap\n\n"
+        "## Open\n"
+        "- ✅ [ANTS-0001] **Done**\n"
+        "- 📋 [ANTS-0002] **Planned**\n");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.roadmap.format, QString("ants-v1"));
+    EXPECT_FALSE(env.roadmap.formatMarkerPresent)
+        << "ANTS-1632: marker absent — format inferred from emoji "
+           "bullets, formatMarkerPresent stays false";
+    EXPECT_EQ(env.roadmap.bulletCountEstimate, 2);
+}
+
+// ANTS-1620 INV-9a — fresh scan tags the envelope with the current
+// probe-set version; isStale returns false for the version it just
+// produced.
+TEST(ProjectLayoutEngine, ProbeSetVersionStampedOnScan) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.probeSetVersion, PLE::kProbeSetVersion);
+    EXPECT_FALSE(PLE::isStale(env, env.scannedAtMs + 100));
+}
+
+// ANTS-1620 INV-9b — cached envelope with stale probe-set version
+// (i.e. pre-widening) is invalidated regardless of mtime/TTL. This
+// is the contract failure mode: pre-ANTS-1493 caches surfaced a
+// narrow probed_paths[] echo until natural TTL expiry, hiding the
+// fact that docs/private/ etc. were now probed.
+TEST(ProjectLayoutEngine, IsStaleWhenProbeSetVersionRegressed) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    auto env = PLE::scanLayout(td.path());
+    env.probeSetVersion = PLE::kProbeSetVersion - 1;
+    EXPECT_TRUE(PLE::isStale(env, env.scannedAtMs + 100));
+}
+
+// ANTS-1620 INV-9c — fromJson on a pre-1620 envelope (no
+// probe_set_version field) defaults the version to 0, which is
+// < kProbeSetVersion ⇒ isStale invalidates.
+TEST(ProjectLayoutEngine, LegacyEnvelopeWithoutProbeSetVersionIsStale) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    const auto fresh = PLE::scanLayout(td.path());
+    auto j = PLE::toJson(fresh);
+    j.remove(QStringLiteral("probe_set_version"));
+    const auto legacy = PLE::fromJson(j);
+    EXPECT_EQ(legacy.probeSetVersion, 0);
+    EXPECT_TRUE(PLE::isStale(legacy, legacy.scannedAtMs + 100));
+}
+
+// ANTS-1620 INV-9d — fresh scan's probed_paths[] surfaces the
+// widened ANTS-1493 candidates (docs/private/, docs/internal/,
+// docs/fork/) even when none of those directories exist on disk.
+// Contract: the echo must list every path actually probed.
+TEST(ProjectLayoutEngine, ProbedPathsIncludeWidenedForkCandidates) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_TRUE(env.probedPaths.contains(
+        QStringLiteral("docs/private/ROADMAP.md")));
+    EXPECT_TRUE(env.probedPaths.contains(
+        QStringLiteral("docs/internal/ROADMAP.md")));
+    EXPECT_TRUE(env.probedPaths.contains(
+        QStringLiteral("docs/fork/ROADMAP.md")));
+    EXPECT_TRUE(env.probedPaths.contains(
+        QStringLiteral("docs/private/CHANGELOG.md")));
+    EXPECT_TRUE(env.probedPaths.contains(
+        QStringLiteral("docs/private/specs")));
 }
 
 // ANTS-1574 INV-E — when docs/standards/ exists, the fallback is

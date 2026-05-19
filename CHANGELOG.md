@@ -12,6 +12,85 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP read-tool correctness fixes — pull 21 (ANTS-1620 + ANTS-1621 + ANTS-1622 + ANTS-1632, 2026-05-19)
+
+Four small MCP-side fixes, all addressing the same shape of bug —
+a tool's metadata/echo disagreed with what its scan actually saw,
+leading callers to make decisions on stale or misleading info:
+
+- **ANTS-1620 (fix)** — `project_layout`'s `probed_paths[]` echo
+  on cached envelopes still listed only the pre-ANTS-1493 narrow
+  candidate set, even though the scan code probes the widened
+  `docs/{private,internal,fork}/` paths on a fresh run. Root
+  cause: `isStale` only checked TTL + mtime, so any envelope
+  written before the probe-set widened stayed valid until the
+  7-day TTL expired. Fix: added `probe_set_version` (currently
+  `3`) to the cached envelope JSON. `isStale` returns true
+  whenever the cached version is less than the current
+  constant, regardless of TTL/mtime state. Pre-1620 envelopes
+  (no field) default to `0` on `fromJson` and so invalidate on
+  the next read after upgrade. Spec INV-9 codifies the
+  bump-on-widening discipline so the rule survives turnover.
+
+- **ANTS-1621 (doc)** — `verify_changes(cache_only:true)` was
+  reported as still hitting the cross-project `cwd_mismatch`
+  gate. Live-verified in this session that the code-side fix
+  shipped under ANTS-1497 (2026-05-15) is working — calling
+  the verb against a non-focused project with `cache_only:true`
+  now returns `{ok:true, cache_miss:true}` straight through.
+  What was missing was the doc surface: the top-level tool
+  description still warned about the ANTS-1372 gate without
+  naming the cache-only escape hatch, so callers reading only
+  the overview kept budgeting around the gate. Description
+  updated to call it out alongside the existing timeout block.
+
+- **ANTS-1622 (fix)** — `roadmap_query`'s `section_index` mode
+  reported `active_count: 11` for a legacy-format section while
+  the default `bullets[]` query against the same section
+  returned `count: 0`. Disagreement was structural: section_index
+  counted narrator bullets (empty id, status-emoji line), but
+  the default `bullets[]` filter dropped them unless the caller
+  opted in via `include_narrator_bullets:true`. Fix: extended
+  `RoadmapIndex::SectionCounts` with parallel `*WithId` tallies
+  that mirror the default-`bullets[]` predicate. Section_index
+  emits them as `active_count_id_only` / `shipped_count_id_only`
+  / `total_count_id_only` per section; the rollup helper
+  propagates them so level-2 parents see the disagreement too.
+  Envelope also surfaces top-level `legacy_format_sections[]`
+  (slug list) + `legacy_format_hint` (one-line explanation),
+  only when the disagreement actually exists — keeps the
+  response shape unchanged on well-tagged roadmaps. Tool
+  description updated to enumerate the new fields. Composes
+  with ANTS-1538 (warning when ID-filter empties a single
+  bullets-mode query).
+
+- **ANTS-1632 (fix)** — `project_layout`'s format-sniffer
+  returned `roadmap.format: "unknown"` + `bullet_count_estimate:
+  0` against a populated ROADMAP.md whose bullets mixed GFM
+  task-list shape (`- [ ]` / `- [x]`) with ants-v1 emoji shape
+  (`- ✅` / `- 📋` / `- 🚧` / `- 💭`) and lacked the explicit
+  format marker. The sniffer now scans the head for both shapes
+  in one pass: both hit → `"mixed"`, only ants-v1 → `"ants-v1"`
+  (even without the marker — pre-1632 this dropped to
+  `"unknown"`), only GFM → `"github-task-list"`, neither →
+  `"unknown"`. `countBullets` honours the same union so
+  `bullet_count_estimate` is non-zero for mixed files. The
+  ANTS-1620 `kProbeSetVersion` bump from `2` → `3` invalidates
+  pre-1632 caches that captured the wrong format value. Spec
+  INV-10 codifies the rule.
+
+Regression coverage: 7 new feature tests across
+`mcp_project_layout_scan/` (5: INV-9a-d probe-set version
+invalidation + INV-10a-b mixed/ants-v1-without-marker) and
+`roadmap_query_section_index/` (2: INV-11 ID-only rollup +
+INV-12 emission anchors). 1125/1125 features-lane tests green.
+
+ROADMAP.md also tracks **ANTS-1641 (fix, deferred)** — Task
+List dialog renders an extra vertical gap below rows whose
+description contains a `[]` token (likely a markdown empty-link
+misinterpretation in the renderer). Reported 2026-05-19 from
+the same Task List screenshot that prompted ANTS-1638..1640.
+
 ### 🎨 Task List dialog right-click copy + Review Changes alignment — pull 20 (ANTS-1638 + ANTS-1639 + ANTS-1640, 2026-05-19)
 
 Three small UX wins from a single 2026-05-19 user-feedback bundle —

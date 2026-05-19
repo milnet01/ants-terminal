@@ -88,9 +88,12 @@ TEST(roadmap_query_filter_section_headers, Inv4SchemaPropertyAdded) {
     ASSERT_NE(pos, std::string::npos)
         << "INV-4 precondition: roadmap_query tool name missing "
            "from claudeintegration.cpp";
-    // 6 KiB window covers the description + properties block
+    // 7 KiB window covers the description + properties block
     // without bleeding into the following tool descriptor.
-    const std::string region = ci.substr(pos, 6000);
+    // ANTS-1622 bumped 6→7 KiB: section_index description grew
+    // by ~800 B to enumerate the new `*_id_only` parallel counts
+    // and the `legacy_format_sections[]` envelope field.
+    const std::string region = ci.substr(pos, 7000);
     expect(contains(region, "include_section_headers"),
            "INV-4: include_section_headers schema property must "
            "be declared on the roadmap_query tool descriptor");

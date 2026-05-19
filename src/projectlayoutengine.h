@@ -25,6 +25,20 @@ constexpr int kDefaultTtlDays   = 7;
 // justification. Files smaller than this are read whole.
 constexpr int kFormatSniffBytes = 4096;
 
+// ANTS-1620 — probe-set schema version. Bump whenever the
+// candidate path list (`kRoadmapCandidates`, `kChangelogCandidates`,
+// `kSpecsCandidates`, etc.) widens — old envelopes whose
+// `probedPaths[]` echo doesn't include the new candidates
+// otherwise stay valid until TTL (7 days), surfacing a stale
+// `probed_paths[]` contract back to callers. `isStale` invalidates
+// any cache whose stored `probeSetVersion` is below this constant.
+//
+// History:
+//   v1 = initial ANTS-1430 set (root-level ROADMAP/CHANGELOG/docs/{specs,standards,decisions}, packaging .metainfo.xml, .roadmap-counter)
+//   v2 = ANTS-1493 widened to docs/{private,internal,fork}/ + data/changelog.yaml + standards name-glob fallback
+//   v3 = ANTS-1632 format-sniffer recognises "mixed" (GFM task-list + ants-v1 emoji bullets in the same file) and `bullet_count_estimate` counts the union — invalidates pre-1632 caches that returned `format:"unknown"` + `bullet_count_estimate:0` on the same on-disk file
+constexpr int kProbeSetVersion  = 3;
+
 struct RoadmapInfo {
     QString  path;
     QString  format;                       // "ants-v1" | "github-task-list" | "unknown" | ""
@@ -67,6 +81,13 @@ struct LayoutEnvelope {
     // The fallback files are also folded into `discovered[]` so
     // callers that scan that list pick them up uniformly.
     QStringList    standardsFiles;
+    // ANTS-1620 — schema version of the probe set that produced
+    // `probedPaths[]`. `isStale` returns true when this is less
+    // than `kProbeSetVersion` so cached envelopes from before a
+    // probe-set widening don't surface a stale echo. Defaults to
+    // 0 on fromJson when the field is missing (pre-ANTS-1620
+    // caches) — also < kProbeSetVersion, so they invalidate.
+    int            probeSetVersion = kProbeSetVersion;
 };
 
 // Walks the well-known path set under `absoluteCwd`, populates

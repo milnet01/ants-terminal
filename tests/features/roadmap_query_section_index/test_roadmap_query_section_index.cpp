@@ -319,6 +319,74 @@ TEST(roadmap_query_section_index, Inv10FunctionalFlatNoRollup) {
     EXPECT_EQ(rb.total,   5);
 }
 
+// ANTS-1622 INV-11 — section_index tally maintains the *_id_only
+// parallels alongside the headline counts; rollup propagates them
+// to ancestor sections too. The bug was that callers reading
+// `active_count: 11` from section_index couldn't predict that the
+// default bullets[] predicate would return zero (legacy roadmaps
+// without [PROJ-NNNN] ids on every bullet); the parallel counts
+// make the disagreement visible without a second query.
+TEST(roadmap_query_section_index, Inv11IdOnlyParallelsRollUp) {
+    QVector<RoadmapIndex::Section> index;
+    {
+        RoadmapIndex::Section parent;
+        parent.slug        = QStringLiteral("tier-3");
+        parent.headingText = QStringLiteral("Tier 3");
+        parent.level       = 2;
+        parent.lineStart   = 0;
+        parent.lineEnd     = 200;
+        index.append(parent);
+    }
+    {
+        RoadmapIndex::Section child;
+        child.slug        = QStringLiteral("tier-3-tasks");
+        child.headingText = QStringLiteral("Tasks");
+        child.level       = 3;
+        child.lineStart   = 10;
+        child.lineEnd     = 100;
+        index.append(child);
+    }
+
+    // Direct tally: child has 11 active total, 0 of which carry IDs
+    // (legacy GFM-task-list shape — exactly the cross-session-reported
+    // failure case).
+    QHash<QString, RoadmapIndex::SectionCounts> direct;
+    RoadmapIndex::SectionCounts c;
+    c.active = 11; c.shipped = 0; c.total = 11;
+    c.activeWithId = 0; c.shippedWithId = 0; c.totalWithId = 0;
+    direct[QStringLiteral("tier-3-tasks")] = c;
+
+    const auto rolled = RoadmapIndex::rollupCounts(index, direct);
+    const auto parent = rolled.value(QStringLiteral("tier-3"));
+    EXPECT_EQ(parent.active,        11);
+    EXPECT_EQ(parent.activeWithId,  0)
+        << "ANTS-1622: parent rollup must surface the ID-only "
+           "shortfall so callers see the legacy-format disagreement";
+    EXPECT_EQ(parent.total,         11);
+    EXPECT_EQ(parent.totalWithId,   0);
+}
+
+// ANTS-1622 INV-12 — emission side: section_index response shape
+// carries the parallel counts and the legacy-format hint surface.
+// Source-scrape style (matches the sibling INVs).
+TEST(roadmap_query_section_index, Inv12EmitsIdOnlyAndLegacyHint) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "active_count_id_only"),
+           "INV-12: active_count_id_only emitted on each section");
+    expect(contains(cpp, "shipped_count_id_only"),
+           "INV-12: shipped_count_id_only emitted on each section");
+    expect(contains(cpp, "total_count_id_only"),
+           "INV-12: total_count_id_only emitted on each section");
+    expect(contains(cpp, "legacy_format_sections"),
+           "INV-12: top-level legacy_format_sections list emitted");
+    expect(contains(cpp, "legacy_format_hint"),
+           "INV-12: top-level legacy_format_hint string emitted");
+    expect(contains(cpp, "ANTS-1622"),
+           "INV-12: anchor comment present");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // Dispatch — mainwindow's MCP→cmdRoadmapQuery lambda forwards the
 // `mode` arg (and `include_section_headers`, caught during 1437
 // live-test). Without this, the schema advertises args the

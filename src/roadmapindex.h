@@ -43,10 +43,22 @@ QString uniqueSlug(QSet<QString> &seen, const QString &heading);
 // ANTS-1442 — per-section tally used by roadmap_query's section_index
 // mode. Same shape as the `{active,shipped,total}` triplet the verb
 // emits.
+//
+// ANTS-1622 — `*WithId` parallels mirror the default bullets[] filter
+// predicate: a bullet whose `id` is empty (narrator prose, rollup, or
+// legacy GFM-task-list line without an [PROJ-NNNN] token) doesn't
+// contribute. Section_index emits both shapes side-by-side so callers
+// reading `active_count` AND `active_count_id_only` see at-a-glance
+// when a section's actionable bullets would survive the default
+// bullets[] predicate vs when they wouldn't (the legacy-format
+// disagreement case the bug report hit).
 struct SectionCounts {
-    int active  = 0;
-    int shipped = 0;
-    int total   = 0;
+    int active        = 0;
+    int shipped       = 0;
+    int total         = 0;
+    int activeWithId  = 0;
+    int shippedWithId = 0;
+    int totalWithId   = 0;
 };
 
 // ANTS-1442 — given direct per-slug tallies (bullets keyed by their

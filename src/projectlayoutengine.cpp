@@ -18,22 +18,49 @@ namespace ProjectLayoutEngine {
 
 namespace {
 
-// Detect Ants-format marker / GFM task-list shape from the head
-// of a ROADMAP.md. See spec § Scan logic for the rule list.
+// Detect Ants-format marker / GFM task-list / ants-v1 emoji shape
+// from the head of a ROADMAP.md. See spec § Scan logic for the rule
+// list. ANTS-1632 — when multiple shapes hit (mixed-format roadmaps
+// accumulated over time: newer sections in GFM task-list shape,
+// older slices in ants-v1 emoji shape, no explicit format marker),
+// return "mixed" instead of dropping out to "unknown". `countBullets`
+// honours the same disjunction so `bullet_count_estimate` doesn't
+// drop to zero on the mixed case.
 QString detectFormat(const QByteArray &head, bool &markerPresent) {
     markerPresent = false;
     if (head.contains("<!-- ants-roadmap-format: 1 -->")) {
         markerPresent = true;
         return QStringLiteral("ants-v1");
     }
-    // GFM task-list bullets: "- [ ]" or "- [x]" at line start.
+    // ANTS-1632 — scan once, score both shapes.
+    bool gfmHit  = false;
+    bool antsHit = false;
+    // ants-v1 emoji status prefixes (UTF-8). Mirror countBullets'
+    // kPrefixes set so detection and count agree on what counts
+    // as an ants-v1 bullet.
+    static const QByteArray kAntsPrefixes[4] = {
+        QByteArrayLiteral("- \xE2\x9C\x85"),         // ✅
+        QByteArrayLiteral("- \xF0\x9F\x93\x8B"),     // 📋
+        QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),     // 🚧
+        QByteArrayLiteral("- \xF0\x9F\x92\xAD"),     // 💭
+    };
     const auto lines = head.split('\n');
     for (const auto &ln : lines) {
-        if (ln.startsWith("- [ ]") || ln.startsWith("- [x]") ||
-            ln.startsWith("- [X]")) {
-            return QStringLiteral("github-task-list");
+        if (!gfmHit &&
+            (ln.startsWith("- [ ]") || ln.startsWith("- [x]") ||
+             ln.startsWith("- [X]"))) {
+            gfmHit = true;
         }
+        if (!antsHit) {
+            for (const auto &p : kAntsPrefixes) {
+                if (ln.startsWith(p)) { antsHit = true; break; }
+            }
+        }
+        if (gfmHit && antsHit) break;
     }
+    if (gfmHit && antsHit) return QStringLiteral("mixed");
+    if (gfmHit)            return QStringLiteral("github-task-list");
+    if (antsHit)           return QStringLiteral("ants-v1");
     return QStringLiteral("unknown");
 }
 
@@ -41,33 +68,40 @@ QString detectFormat(const QByteArray &head, bool &markerPresent) {
 // match the detected format. Pre-1430 native parsers already do
 // this; we duplicate the count here because callers want it
 // without paying the full parser tax.
+// ANTS-1632 — "mixed" counts the union (a line scoring as either
+// shape ticks the counter once); "unknown" stays on the ants-v1
+// pass so back-compat callers see the same number they always have.
 int countBullets(const QByteArray &body, const QString &format) {
     const auto lines = body.split('\n');
     int n = 0;
-    if (format == QStringLiteral("ants-v1") ||
-        format == QStringLiteral("unknown") ||
-        format.isEmpty()) {
-        // Native shape: `- <emoji>` at line start. The four status
-        // emoji glyphs in UTF-8.
-        static const QByteArray kPrefixes[4] = {
-            QByteArrayLiteral("- \xE2\x9C\x85"),  // ✅
-            QByteArrayLiteral("- \xF0\x9F\x93\x8B"),  // 📋
-            QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),  // 🚧
-            QByteArrayLiteral("- \xF0\x9F\x92\xAD"),  // 💭
-        };
-        for (const auto &ln : lines) {
-            for (const auto &p : kPrefixes) {
-                if (ln.startsWith(p)) { ++n; break; }
-            }
+    // Native ants-v1 shape: `- <status-emoji>` at line start. The
+    // four status emoji glyphs in UTF-8. Used by the ants-v1,
+    // mixed, unknown, and empty-format paths.
+    static const QByteArray kAntsPrefixes[4] = {
+        QByteArrayLiteral("- \xE2\x9C\x85"),         // ✅
+        QByteArrayLiteral("- \xF0\x9F\x93\x8B"),     // 📋
+        QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),     // 🚧
+        QByteArrayLiteral("- \xF0\x9F\x92\xAD"),     // 💭
+    };
+    auto matchesAnts = [&](const QByteArray &ln) {
+        for (const auto &p : kAntsPrefixes) {
+            if (ln.startsWith(p)) return true;
         }
-    }
-    if (format == QStringLiteral("github-task-list")) {
-        for (const auto &ln : lines) {
-            if (ln.startsWith("- [ ]") || ln.startsWith("- [x]") ||
-                ln.startsWith("- [X]")) {
-                ++n;
-            }
-        }
+        return false;
+    };
+    auto matchesGfm = [](const QByteArray &ln) {
+        return ln.startsWith("- [ ]") || ln.startsWith("- [x]") ||
+               ln.startsWith("- [X]");
+    };
+    const bool wantAnts = (format == QStringLiteral("ants-v1") ||
+                           format == QStringLiteral("mixed") ||
+                           format == QStringLiteral("unknown") ||
+                           format.isEmpty());
+    const bool wantGfm  = (format == QStringLiteral("github-task-list") ||
+                           format == QStringLiteral("mixed"));
+    for (const auto &ln : lines) {
+        if (wantAnts && matchesAnts(ln)) { ++n; continue; }
+        if (wantGfm  && matchesGfm(ln))  { ++n; continue; }
     }
     return n;
 }
@@ -389,6 +423,9 @@ QJsonObject toJson(const LayoutEnvelope &env) {
     QJsonArray probed;
     for (const auto &p : env.probedPaths) probed.append(p);
     root[QStringLiteral("probed_paths")] = probed;
+    // ANTS-1620 — schema version so `isStale` can invalidate
+    // pre-widening caches before TTL expiry.
+    root[QStringLiteral("probe_set_version")] = env.probeSetVersion;
     // ANTS-1507 — discovered[] mirror of probedPaths filtered to
     // paths that actually matched. Cheap disambiguation for callers
     // ("scan succeeded with nothing" vs "scan found these things").
@@ -436,6 +473,10 @@ LayoutEnvelope fromJson(const QJsonObject &obj) {
     env.counterFile       = obj.value(QStringLiteral("counter_file")).toString();
     const QJsonArray probed = obj.value(QStringLiteral("probed_paths")).toArray();
     for (const auto &v : probed) env.probedPaths.append(v.toString());
+    // ANTS-1620 — default 0 when the field is absent (pre-1620
+    // cached envelopes); 0 < kProbeSetVersion ⇒ isStale invalidates.
+    env.probeSetVersion =
+        obj.value(QStringLiteral("probe_set_version")).toInt(0);
     const QJsonArray disc = obj.value(QStringLiteral("discovered")).toArray();
     for (const auto &v : disc) env.discovered.append(v.toString());
     const QJsonArray sfiles =
@@ -446,6 +487,12 @@ LayoutEnvelope fromJson(const QJsonObject &obj) {
 
 bool isStale(const LayoutEnvelope &cached, qint64 nowMs) {
     if (cached.scannedAtMs <= 0) return true;
+    // ANTS-1620 — probe-set version mismatch invalidates the cache.
+    // A cache that was scanned with a narrower candidate set would
+    // otherwise return a stale `probed_paths[]` echo until TTL
+    // expiry (7 days), violating the documented contract that the
+    // echo lists every path actually probed by the current build.
+    if (cached.probeSetVersion < kProbeSetVersion) return true;
     const qint64 ttlMs =
         static_cast<qint64>(cached.ttlDays) * 24 * 3600 * 1000;
     if (nowMs - cached.scannedAtMs > ttlMs) return true;

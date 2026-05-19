@@ -1611,10 +1611,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (id.isEmpty() && hl.isEmpty()) continue;  // INV-6 rollup
             const QString slug  = o.value(QStringLiteral("section_slug")).toString();
             const QString s     = o.value(QStringLiteral("status")).toString();
+            const bool hasId    = !id.isEmpty();
             RoadmapIndex::SectionCounts &t = direct[slug];
-            if (s == plannedEmoji || s == progressEmoji) t.active++;
-            if (s == doneEmoji) t.shipped++;
+            if (s == plannedEmoji || s == progressEmoji) {
+                t.active++;
+                if (hasId) t.activeWithId++;
+            }
+            if (s == doneEmoji) {
+                t.shipped++;
+                if (hasId) t.shippedWithId++;
+            }
             t.total++;
+            if (hasId) t.totalWithId++;
         }
 
         // ANTS-1442 — INV-10. Roll up child-section tallies into
@@ -1624,18 +1632,40 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             m_roadmapIndex, direct);
 
         // INV-4 — emit EVERY indexed section, including empties.
+        // ANTS-1622 — emit the ID-only parallel counts alongside the
+        // emoji-only ones so callers see whether a section's bullets
+        // would survive the default `bullets[]` ID-filter predicate.
+        // The disagreement was the root of the cross-session bug: a
+        // legacy GFM-task-list section reports `active_count: 11`
+        // here but `roadmap_query(section=…, status="active")`
+        // returns `count: 0` because none of the 11 bullets carry a
+        // [PROJ-NNNN] token. Surfacing `active_count_id_only: 0`
+        // alongside makes that visible without a second call.
         QJsonArray sections;
+        QJsonArray legacyFormatSections;
         for (const auto &sec : std::as_const(m_roadmapIndex)) {
             const auto t = rolled.value(sec.slug,
                                         RoadmapIndex::SectionCounts{});
             QJsonObject obj;
-            obj["slug"]          = sec.slug;
-            obj["headline"]      = sec.headingText;
-            obj["level"]         = sec.level;
-            obj["active_count"]  = t.active;
-            obj["shipped_count"] = t.shipped;
-            obj["total_count"]   = t.total;
+            obj["slug"]                 = sec.slug;
+            obj["headline"]             = sec.headingText;
+            obj["level"]                = sec.level;
+            obj["active_count"]         = t.active;
+            obj["shipped_count"]        = t.shipped;
+            obj["total_count"]          = t.total;
+            obj["active_count_id_only"]  = t.activeWithId;
+            obj["shipped_count_id_only"] = t.shippedWithId;
+            obj["total_count_id_only"]   = t.totalWithId;
             sections.append(obj);
+            // Self-only (un-rolled) check: if this section directly
+            // owns bullets, all of which lack IDs, surface its slug
+            // at the top level so a caller scanning the envelope sees
+            // the legacy-format sections at a glance.
+            const auto self = direct.value(sec.slug,
+                                           RoadmapIndex::SectionCounts{});
+            if (self.total > 0 && self.totalWithId == 0) {
+                legacyFormatSections.append(sec.slug);
+            }
         }
 
         out["ok"] = true;
@@ -1643,6 +1673,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["path"] = path;
         out["filter"] = filter;      // status filter echo (no-op here)
         out["sections"] = sections;
+        // ANTS-1622 — top-level legacy-format hint. Only emitted
+        // when at least one section's direct bullets all lack
+        // [PROJ-NNNN] ids — staying absent on well-tagged roadmaps
+        // keeps the response shape unchanged for the common case.
+        if (!legacyFormatSections.isEmpty()) {
+            out["legacy_format_sections"] = legacyFormatSections;
+            out["legacy_format_hint"] = QStringLiteral(
+                "%1 section(s) carry bullets that lack [PROJ-NNNN] "
+                "ids — the default bullets[] filter will return "
+                "count:0 for those. Re-issue any bullets-mode query "
+                "against those slugs with include_narrator_bullets:true "
+                "to retrieve their content.")
+                    .arg(legacyFormatSections.size());
+        }
         return QJsonDocument(out);
     }
 
