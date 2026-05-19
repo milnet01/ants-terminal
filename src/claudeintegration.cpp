@@ -2392,7 +2392,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "its Read tool. Saves ~10-30 K orchestrator "
                         "tokens per lane vs the v1 shape that "
                         "inlined bodies. Pure file IO (no LLM). "
-                        "Required: lane (string).");
+                        "Required: lane (string). **Rate limit "
+                        "(ANTS-1643):** BriefAssembly tier — 30 calls "
+                        "/ 60 s per (tool, caller_cwd). A canonical "
+                        "`/indie-review` Phase-2 fan-out dispatches "
+                        "12-16 briefs in one parallel batch, which "
+                        "fits comfortably under this cap. Higher "
+                        "than the 10/min Expensive tier the sibling "
+                        "`indie_review_*` verbs sit in.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to assemble the brief for one "
                         "indie-review chunk. Run after "
@@ -3155,7 +3162,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "pre_pass_findings) — NO `brief` string field "
                         "(caller composes the subagent prompt from "
                         "structured siblings). Requires "
-                        "partition_token from a prior partition call.");
+                        "partition_token from a prior partition call. "
+                        "**Rate limit (ANTS-1643):** BriefAssembly "
+                        "tier — 30 calls / 60 s per (tool, "
+                        "caller_cwd). A canonical `/test-audit` "
+                        "Phase-2 fan-out dispatches 12-16 briefs in "
+                        "one parallel batch, which fits comfortably "
+                        "under this cap. Higher than the 10/min "
+                        "Expensive tier the sibling `test_audit_*` "
+                        "verbs sit in.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to assemble the brief for one "
                         "test-audit chunk. Phase 2 of the trio; "
@@ -5285,13 +5300,17 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     if (toolName == QStringLiteral("tool_info"))          return R::ControlPlane;
     if (toolName == QStringLiteral("mcp_trace"))          return R::ControlPlane;
     if (toolName == QStringLiteral("caller_cwd_info"))    return R::ControlPlane;
-    // ANTS-1629 — BriefAssembly tier (30/min). Brief-generation verbs
-    // that fan out one-per-lane during a /cold-eyes sweep. The
-    // canonical Phase-2 step dispatches 12-16 briefs in one parallel
-    // batch, which the 10/min Expensive cap was blocking. Cost shape
-    // is read-and-template-assembly, not shell-out — semantically
-    // between Cheap and Expensive.
+    // ANTS-1629 + ANTS-1643 — BriefAssembly tier (30/min). Brief-
+    // generation verbs that fan out one-per-lane during a /cold-eyes,
+    // /indie-review, or /test-audit sweep. The canonical Phase-2 step
+    // dispatches 12-16 briefs in one parallel batch, which the 10/min
+    // Expensive cap was blocking. Cost shape is read-and-template-
+    // assembly, not shell-out — semantically between Cheap and
+    // Expensive. ANTS-1643 extended the tier to indie_review_brief +
+    // test_audit_brief before the sibling fan-out report landed.
     if (toolName == QStringLiteral("cold_eyes_brief"))          return R::BriefAssembly;
+    if (toolName == QStringLiteral("indie_review_brief"))       return R::BriefAssembly;
+    if (toolName == QStringLiteral("test_audit_brief"))         return R::BriefAssembly;
     // Expensive — 10/min. Heavy verbs (shell-out, subagent dispatch,
     // cmake/ctest, full-corpus scan).
     if (toolName == QStringLiteral("audit_run"))                return R::Expensive;
@@ -5302,13 +5321,15 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     if (toolName == QStringLiteral("cold_eyes_fold_in"))        return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_single_doc"))     return R::Expensive;
     if (toolName == QStringLiteral("cross_doc_diff"))           return R::Expensive;
-    if (toolName == QStringLiteral("indie_review_brief"))       return R::Expensive;
+    // ANTS-1643: indie_review_brief + test_audit_brief moved to
+    // BriefAssembly above. Their sibling partition / corroborate /
+    // fold_in / dispatch verbs stay Expensive (heavier cost shapes —
+    // subagent dispatch, multi-doc scan, file writes).
     if (toolName == QStringLiteral("indie_review_partition"))   return R::Expensive;
     if (toolName == QStringLiteral("indie_review_corroborate")) return R::Expensive;
     if (toolName == QStringLiteral("indie_review_fold_in"))     return R::Expensive;
     // ANTS-1352: indie_review_dispatch
     if (toolName == QStringLiteral("indie_review_dispatch"))    return R::Expensive;
-    if (toolName == QStringLiteral("test_audit_brief"))         return R::Expensive;
     if (toolName == QStringLiteral("test_audit_partition"))     return R::Expensive;
     if (toolName == QStringLiteral("test_audit_fold_in"))       return R::Expensive;
     if (toolName == QStringLiteral("debt_sweep_scan"))          return R::Expensive;

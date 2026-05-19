@@ -276,14 +276,17 @@ TEST_F(RateLimitTestFixture, Inv13TierClassification) {
     }
 
     // Expensive list spot-check.
-    // ANTS-1629 — cold_eyes_brief moved out of Expensive into the
-    // new BriefAssembly tier (30/min), so it's no longer in this set.
+    // ANTS-1629 + ANTS-1643 — the three brief-assembly verbs
+    // (cold_eyes_brief, indie_review_brief, test_audit_brief) moved
+    // out of Expensive into BriefAssembly (30/min). Sibling
+    // partition / corroborate / fold_in / dispatch verbs stay
+    // Expensive.
     const std::string exp[] = {
         "\"audit_run\")",
         "\"workspace_search\")",
         "\"verify_changes\")",
-        "\"indie_review_brief\")",
-        "\"test_audit_brief\")",
+        "\"indie_review_partition\")",
+        "\"test_audit_partition\")",
         "\"debt_sweep_scan\")"};
     for (const auto &needle : exp) {
         const auto pos = classBody.find(needle);
@@ -296,19 +299,22 @@ TEST_F(RateLimitTestFixture, Inv13TierClassification) {
             << " must map to R::Expensive; found line: " << line;
     }
 
-    // ANTS-1629 — BriefAssembly tier (30/min). cold_eyes_brief is the
-    // first/only tenant. Same line must map to R::BriefAssembly.
+    // ANTS-1629 + ANTS-1643 — BriefAssembly tier (30/min). Three
+    // tenants: cold_eyes_brief (1629), indie_review_brief (1643),
+    // test_audit_brief (1643). Each must map to R::BriefAssembly.
     const std::string briefAssembly[] = {
-        "\"cold_eyes_brief\")"};
+        "\"cold_eyes_brief\")",
+        "\"indie_review_brief\")",
+        "\"test_audit_brief\")"};
     for (const auto &needle : briefAssembly) {
         const auto pos = classBody.find(needle);
         ASSERT_NE(pos, std::string::npos)
-            << "INV-13 (ANTS-1629): BriefAssembly list missing "
+            << "INV-13 (ANTS-1629/1643): BriefAssembly list missing "
             << needle;
         const auto lineEnd = classBody.find('\n', pos);
         const std::string line = classBody.substr(pos, lineEnd - pos);
         EXPECT_NE(line.find("R::BriefAssembly"), std::string::npos)
-            << "INV-13 (ANTS-1629): " << needle
+            << "INV-13 (ANTS-1629/1643): " << needle
             << " must map to R::BriefAssembly; found line: " << line;
     }
 }
@@ -402,6 +408,34 @@ TEST_F(RateLimitTestFixture, Inv17BriefAssemblyCapAt30) {
     // Sanity: the refusal points at a positive remaining-window value
     // bounded above by kRateLimitWindowMs.
     EXPECT_LE(retry, qint64{60'000});
+}
+
+// ANTS-1643 INV-17b — indie_review_brief + test_audit_brief siblings
+// land in the same 30-cap BriefAssembly tier as cold_eyes_brief.
+// Functional proof that the sibling-fan-out pattern works at 30
+// before the orchestration report lands.
+TEST_F(RateLimitTestFixture, Inv17bBriefAssemblyCoversSiblings) {
+    ClaudeIntegration ci;
+    const QString siblings[] = {
+        QStringLiteral("indie_review_brief"),
+        QStringLiteral("test_audit_brief"),
+    };
+    qint64 base = 10'000;
+    for (const QString &tool : siblings) {
+        // 30 calls within the window must all accept on a per-tool
+        // (per-bucket) basis — sibling tools don't share a bucket.
+        for (int i = 0; i < 30; ++i) {
+            ASSERT_EQ(ci.rateLimitCheck(tool, kCwdA, base + i), 0)
+                << "INV-17b: " << tool.toStdString()
+                << " call " << i << " of 30 must accept";
+        }
+        // 31st must refuse.
+        EXPECT_GT(ci.rateLimitCheck(tool, kCwdA, base + 30), 0)
+            << "INV-17b: " << tool.toStdString()
+            << " 31st call must refuse";
+        base += 100'000;  // jump windows so per-tool buckets don't
+                          // pollute the next sibling
+    }
 }
 
 // ANTS-1629 INV-18 — 3-arg test-cap-override setter drives the

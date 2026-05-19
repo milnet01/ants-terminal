@@ -12,6 +12,39 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP dispatch-forward completeness test + BriefAssembly tier extension — pull 24 (ANTS-1642 + ANTS-1643, 2026-05-19)
+
+Two follow-ups to pull 23 — pre-empting the next instance of two
+bug shapes the previous pull's reports surfaced.
+
+- **ANTS-1642 (test)** — new feature-conformance test
+  `tests/features/mcp_dispatch_forward_completeness/` walks every
+  MCP tool's `props["X"]` entries in `claudeintegration.cpp` and
+  asserts the matching `registerToolProvider` lambda in
+  `mainwindow.cpp` reads each prop via `args.value("X")` — unless
+  the lambda hands `args` directly to a cmd handler (INV-2 pass-
+  through exemption) or the prop is transport-handled (INV-3, e.g.
+  `etag_match` consumed by `applyEtagPattern` at the dispatcher).
+  Catches the bug shape that shipped three times unnoticed
+  (ANTS-1437 `mode`, ANTS-1398 `include_section_headers`,
+  ANTS-1586 `include_body`) before a downstream session has to
+  report it. Detector tolerates the codebase's multi-line
+  `args.value(\n QStringLiteral("X"))` formatting via a windowed
+  substring match.
+
+- **ANTS-1643 (enhancement)** — `indie_review_brief` and
+  `test_audit_brief` join `cold_eyes_brief` in the `BriefAssembly`
+  rate-limit tier (30/min) introduced by ANTS-1629. Same cost
+  shape (read project specs/standards + template assembly, no
+  shell-out, no subagent dispatch) and same fan-out pattern (one
+  call per lane during a `/indie-review` or `/test-audit` Phase-2
+  sweep), so pre-empting the report before a 12+ lane review
+  through them hits the wall. Sibling partition / corroborate /
+  fold_in / dispatch verbs stay in `Expensive` (heavier cost).
+  New `Inv17bBriefAssemblyCoversSiblings` in `mcp_rate_limit`
+  asserts both new tenants accept 30 calls; updated `INV-13`
+  spot-checks the migration.
+
 ### 🔌 MCP roadmap_query / verify_changes / rate-limit fixes — pull 23 (ANTS-1586 + ANTS-1628 + ANTS-1629, 2026-05-19)
 
 Three MCP follow-ups from the RetroArch / Vestige 3D Engine / MAME

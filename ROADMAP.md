@@ -12006,6 +12006,26 @@ template / mutate this state atomically" → movable. If it's
   Lanes: claudetasklist, claudebgtasks, claudetasklistdialog.
   Source: user request 2026-05-19 (Task List dialog screenshot — second row).
 
+- ✅ [ANTS-1642] **Schema-vs-lambda forward-completeness test for every MCP tool with a selective-forward dispatch lambda.** (Pull 24, 2026-05-19.)
+  ANTS-1586 is the third instance of the same dispatch-forward bug (after ANTS-1437 forwarding `mode` and ANTS-1398 forwarding `include_section_headers`). Pattern: a new arg is added to the schema in `claudeintegration.cpp`, but the matching `registerToolProvider` lambda in `mainwindow.cpp` doesn't forward it to the IPC verb. The verb then reads the default at every call and the new arg silently does nothing.
+  
+  Proposed test: a single source-scrape regression test (`tests/features/mcp_dispatch_forward_completeness/`) that walks every `props["X"] = …` entry inside each tool's registration block in `claudeintegration.cpp`, then asserts the matching `args.value("X")` read exists in the corresponding lambda in `mainwindow.cpp` (for tools whose lambda selective-forwards). Allow-list known exceptions: `etag_match` is handled by the MCP layer pre-dispatch; `caller_cwd` flows through the dispatcher gate; tools whose lambda passes `args` directly to `cmdXxx(args)` can't drop a field by construction.
+  
+  This catches the next ANTS-1586 shape at CI time instead of after a cross-session report. Cost: one test, no runtime overhead, no API change.
+  **Layman:** Three times now, a new option was added to an Ants MCP tool's schema but the dispatch code in the middle didn't pass it through — so the option silently did nothing until a user reported it. Add one test that walks every tool's schema, confirms each option is forwarded to the underlying handler, and catches the same shape of bug automatically next time.
+  Kind: test.
+  Lanes: mcp-discoverability, test-infrastructure, claudeintegration.
+  Source: in-session-2026-05-19 (ANTS-1586 root-cause follow-up — third instance of the same dispatch-forward bug shape).
+
+- ✅ [ANTS-1643] **Extend BriefAssembly rate-limit tier to indie_review_brief + test_audit_brief.** (Pull 24, 2026-05-19.)
+  ANTS-1629 introduced the `BriefAssembly` tier (30/min) and moved only `cold_eyes_brief` into it — that was the verb the MAME Curator session reported. `indie_review_brief` and `test_audit_brief` have identical cost shape (read project specs/standards + template assembly, no shell-out, no subagent dispatch) and the same fan-out pattern (one call per lane during a `/indie-review` or `/test-audit` Phase-2 sweep). They currently sit in `Expensive` (10/min) and will hit the same orchestration ceiling as soon as someone runs a 12+ lane review through them.
+  
+  Pre-empt the report by moving both verbs into `BriefAssembly` in `ClaudeIntegration::rateLimitClassFor`. Update the `INV-13TierClassification` source-scrape to assert the new membership, add the same 30-cap tool-description block to both verbs, and add functional INVs that confirm 30 calls accept (mirror of `Inv17BriefAssemblyCapAt30`). Risk: zero — same cost class, same caller pattern, same workflow.
+  **Layman:** The "draft a per-lane review brief" verb's rate limit was just raised from 10/min to 30/min for cold-eyes reviews. The same kind of brief verb exists for indie-review and test-audit reviews — same cost, same fan-out pattern. Raise their cap too before someone hits the wall.
+  Kind: enhancement.
+  Lanes: mcp-indie-review, mcp-test-audit, claudeintegration.
+  Source: in-session-2026-05-19 (ANTS-1629 follow-up — extend the new tier to siblings before they report).
+
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.
