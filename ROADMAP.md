@@ -11914,7 +11914,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-codebase-index, claudeintegration, remotecontrol, perf, mcp-find-sources.
   Source: user request 2026-05-19 (follow-on to ANTS-1636).
 
-- 📋 [ANTS-1638] **Right-click context menu on Task List + Background Tasks dialogs — copy task text / ID / row as markdown.**
+- ✅ [ANTS-1638] **Right-click context menu on Task List + Background Tasks dialogs — copy task text / ID / row as markdown.**
   User request 2026-05-19 (screenshot of the Task List dialog). Today both `ClaudeTaskListDialog` (`src/claudetasklistdialog.{h,cpp}`) and the sibling `ClaudeBgTasksDialog` (`src/claudebgtasksdialog.{h,cpp}`) render rows as plain `QListWidget` items with no interaction beyond Close. There's no way to extract a task's text without manually selecting + copying with the mouse — and that breaks on multi-line wrapped rows because `QListWidget` selection copies the visible-row glyph runs, not the underlying string.
 
   Proposed shape:
@@ -11933,7 +11933,23 @@ template / mutate this state atomically" → movable. If it's
   Lanes: claudetasklist, claudebgtasks, claudestatuswidgets.
   Source: user request 2026-05-19 (Task List dialog screenshot).
 
-- 📋 [ANTS-1639] **Task List + bg-tasks parser doesn't sanitise raw tool-input markup leaked from malformed `TaskCreate` calls.**
+- ✅ [ANTS-1640] **Review Changes dialog — ragged left margin in the diffstat region (one row has leading space, sibling rows don't).**
+  Reported 2026-05-19 with a screenshot of the dialog showing
+  ```
+  src/claudetasklistdialog.cpp | 116 +++++++++…--
+   src/claudetasklistdialog.h   |   7 +++
+  2 files changed, 119 insertions(+), 4 deletions(-)
+  ```
+  git's `--stat` output prefixes EVERY line with one space, but QTextEdit's HTML renderer (inside `<pre>`) collapses leading whitespace inconsistently for lines that immediately follow a closing `</span>`, producing the ragged left edge the user called out as "unprofessional". Fix at `src/diffviewer.cpp:234` (the `Diff` section render loop): track an `inStatRegion` flag that flips to false at the first `diff --git ` line, and strip leading spaces while it's true. Path columns still align via git's right-padding of the path; only the leading indent goes. Patch context lines (whose leading space carries meaning) keep theirs.
+
+  Clipboard payload (Copy Diff button) intentionally NOT touched — it should remain git-native so it pastes cleanly into PR descriptions and issues.
+
+  **Layman:** The Review Changes dialog's file list looked uneven — first row at the left edge, second row indented by one space. Now they all sit flush left.
+  Kind: fix.
+  Lanes: diffviewer, claudestatuswidgets.
+  Source: user request 2026-05-19 (Review Changes screenshot).
+
+- ✅ [ANTS-1639] **Task List + bg-tasks parser doesn't sanitise raw tool-input markup leaked from malformed `TaskCreate` calls.**
   Observed in the same 2026-05-19 screenshot: a row reads `Roadmap "find-relevant-source-files" MCP feature (user 2026-05-19)</subject><parameter name="description">User asked: …`. The leak happened when an upstream `TaskCreate` invocation was malformed (sent `<parameter name="description">` markup instead of a `description:` field) and Claude Code's transcript-side error envelope ended up captured by the tracker as the task's title.
 
   Two-layer fix:

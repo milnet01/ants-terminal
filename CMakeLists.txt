@@ -1178,7 +1178,10 @@ if(ANTS_TESTS)
                 # ANTS-1405 stable-ID regex widened to [PROJ-NNNN] shape.
                 tests/features/roadmap_query_external_project_ids/test_roadmap_query_external_project_ids.cpp
                 tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
-                tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp)
+                tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp
+                # ANTS-1638 + ANTS-1639 — Task List dialog right-click copy
+                # + malformed-markup flagging.
+                tests/features/task_list_dialog_context_menu/test_task_list_dialog_context_menu.cpp)
     target_compile_definitions(test_dialogs PRIVATE
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"

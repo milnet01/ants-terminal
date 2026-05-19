@@ -4,12 +4,17 @@
 #include "dialogchrome.h"
 #include "themes.h"
 
+#include <QAction>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListView>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QMenu>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QVBoxLayout>
 
 namespace {
@@ -21,18 +26,67 @@ QString statusIcon(const QString &status) {
     return QStringLiteral("☐");  // pending or unknown
 }
 
+// ANTS-1639 — detect raw tool-input XML-ish markup leaked from a
+// malformed upstream TaskCreate call. Three observed shapes:
+//   * Closing tags:  `</subject>`, `</description>`
+//   * Opening tags with a `name="…"` attr: `<parameter name="…">`
+//   * Bare opening tags: `<subject>`, `<description>`
+// We MUST NOT match every `<…>` (legitimate task subjects can mention
+// `<repo>` or `<branch>` in angle-bracket placeholders). The
+// rule-of-thumb here is: only flag when the markup looks exactly
+// like an unescaped fragment of the Claude Code tool-input wrapper.
+bool looksMalformedMarkup(const QString &s) {
+    static const QRegularExpression rx(QStringLiteral(
+        "</(?:subject|description|parameter)>"
+        "|<parameter\\s+name=\""
+        "|<(?:subject|description)>"));
+    return rx.match(s).hasMatch();
+}
+
 // One-line render for a row. Subject is bold. Description (or
 // activeForm fallback) follows after an em-dash, truncated to keep
-// the row legible.
+// the row legible. ANTS-1639 — prepend "[malformed] " when either
+// the subject or description bears raw tool-input markup, so the
+// user can spot the upstream encoding bug without stripping the
+// evidence (per the entry's design preference (b) over (a)).
 QString rowText(const ClaudeTask &t) {
     constexpr int kMaxDesc = 200;
     QString detail = t.description.isEmpty() ? t.activeForm : t.description;
     if (detail.size() > kMaxDesc)
         detail = detail.left(kMaxDesc - 1) + QChar(0x2026);  // …
+    const bool malformed = looksMalformedMarkup(t.subject)
+                         || looksMalformedMarkup(detail);
+    const QString prefix = malformed ? QStringLiteral("[malformed] ")
+                                     : QString();
     if (detail.isEmpty())
-        return QStringLiteral("%1  %2").arg(statusIcon(t.status), t.subject);
-    return QStringLiteral("%1  %2 — %3")
-        .arg(statusIcon(t.status), t.subject, detail);
+        return QStringLiteral("%1  %2%3")
+            .arg(statusIcon(t.status), prefix, t.subject);
+    return QStringLiteral("%1  %2%3 — %4")
+        .arg(statusIcon(t.status), prefix, t.subject, detail);
+}
+
+// ANTS-1638 — UserRole keys for structured task data stored alongside
+// the rendered display string. Lets the context-menu slot recover
+// the task's id / status / raw fields without re-walking the
+// tracker's task vector and matching by row text (which is lossy
+// after the [malformed] prefix + truncation).
+constexpr int kRoleTaskId          = Qt::UserRole + 1;
+constexpr int kRoleStatus          = Qt::UserRole + 2;
+constexpr int kRoleSubject         = Qt::UserRole + 3;
+constexpr int kRoleDescriptionFull = Qt::UserRole + 4;
+
+// ANTS-1638 — "Copy as markdown" payload: GFM-style task list bullet,
+// status emoji rendered as `[ ]` / `[x]` checkbox. Keeps the long
+// description intact (no 200-char truncation).
+QString markdownForRow(const QString &status,
+                       const QString &subject,
+                       const QString &description) {
+    const QString box = (status == QStringLiteral("completed"))
+        ? QStringLiteral("[x]") : QStringLiteral("[ ]");
+    if (description.isEmpty()) {
+        return QStringLiteral("- %1 %2").arg(box, subject);
+    }
+    return QStringLiteral("- %1 %2 — %3").arg(box, subject, description);
 }
 
 } // namespace
@@ -62,6 +116,13 @@ ClaudeTaskListDialog::ClaudeTaskListDialog(ClaudeTaskListTracker *tracker,
     list->setObjectName(QStringLiteral("taskListItems"));
     list->setSelectionMode(QAbstractItemView::NoSelection);
     list->setFocusPolicy(Qt::NoFocus);
+    // ANTS-1638 — wire up a custom context menu on row right-click.
+    // Slot itemAt()s the position and pops a QMenu with Copy
+    // variants. NoSelection + NoFocus stay as-is — the menu reads
+    // from UserRole-stashed data, not from a selected-row state.
+    list->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(list, &QWidget::customContextMenuRequested,
+            this, &ClaudeTaskListDialog::showRowContextMenu);
     // ANTS-1328: wrap long task subjects to the dialog's width
     // instead of letting them overflow horizontally. `setWordWrap`
     // toggles per-item wrapping; `setTextElideMode(Qt::ElideNone)`
@@ -136,5 +197,52 @@ void ClaudeTaskListDialog::rebuild() {
         if (t.status == QStringLiteral("completed"))
             fg = th.textSecondary;
         item->setForeground(fg);
+        // ANTS-1638 — stash the structured fields so the context
+        // menu can read raw values without re-walking the tracker.
+        // Use the long description (not the 200-char truncated one
+        // that rowText() built) so Copy-as-markdown is lossless.
+        item->setData(kRoleTaskId,  t.id);
+        item->setData(kRoleStatus,  t.status);
+        item->setData(kRoleSubject, t.subject);
+        item->setData(kRoleDescriptionFull,
+                      t.description.isEmpty() ? t.activeForm : t.description);
+    }
+}
+
+// ANTS-1638 — right-click context menu handler. itemAt() against the
+// list's viewport-local pos (the position emitted by
+// customContextMenuRequested is in viewport coordinates already).
+// Returns early when the cursor isn't over a row, so the menu only
+// pops on a real target. Actions copy the variant to the clipboard
+// via QGuiApplication::clipboard().
+void ClaudeTaskListDialog::showRowContextMenu(const QPoint &pos) {
+    if (!m_list) return;
+    QListWidgetItem *item = m_list->itemAt(pos);
+    if (!item) return;
+
+    const QString rendered    = item->text();
+    const QString taskId      = item->data(kRoleTaskId).toString();
+    const QString status      = item->data(kRoleStatus).toString();
+    const QString subject     = item->data(kRoleSubject).toString();
+    const QString description = item->data(kRoleDescriptionFull).toString();
+
+    QMenu menu(this);
+    auto *copyText = menu.addAction(tr("Copy task text"));
+    auto *copyMarkdown = menu.addAction(tr("Copy as markdown"));
+    QAction *copyId = nullptr;
+    if (!taskId.isEmpty()) {
+        copyId = menu.addAction(tr("Copy task ID"));
+    }
+
+    QAction *picked = menu.exec(m_list->viewport()->mapToGlobal(pos));
+    if (!picked) return;
+    QClipboard *cb = QGuiApplication::clipboard();
+    if (!cb) return;
+    if (picked == copyText) {
+        cb->setText(rendered);
+    } else if (picked == copyMarkdown) {
+        cb->setText(markdownForRow(status, subject, description));
+    } else if (copyId && picked == copyId) {
+        cb->setText(taskId);
     }
 }

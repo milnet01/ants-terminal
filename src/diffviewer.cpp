@@ -233,8 +233,32 @@ QDialog *show(QWidget *parent,
         }
         if (!state->diff.isEmpty()) {
             section(QStringLiteral("Diff"));
+            // ANTS-1640 — normalise leading whitespace in the diffstat
+            // region so the file-list block sits flush against the left
+            // margin. git emits one leading space on every stat row +
+            // the summary row, but QTextEdit's HTML parser collapses
+            // it inconsistently inside <pre> (leading space after a
+            // close tag drops, mid-block space stays) — producing the
+            // ragged left edge the user reported 2026-05-19. Stripping
+            // is safe: git's right-padding of the path column preserves
+            // the `|` column alignment without the leading space.
+            // Switch off the moment we see the first `diff --git ` so
+            // patch-region context lines (which legitimately use a
+            // leading space to indicate "unchanged context") keep
+            // their semantics.
+            bool inStatRegion = true;
             for (const QString &line : state->diff.split('\n')) {
-                QString esc = line.toHtmlEscaped();
+                if (inStatRegion && line.startsWith("diff --git "))
+                    inStatRegion = false;
+                QString rendered = line;
+                if (inStatRegion) {
+                    int i = 0;
+                    while (i < rendered.size()
+                           && rendered.at(i) == QLatin1Char(' '))
+                        ++i;
+                    if (i > 0) rendered = rendered.mid(i);
+                }
+                QString esc = rendered.toHtmlEscaped();
                 if (line.startsWith('+') && !line.startsWith("+++"))
                     html += QStringLiteral("<span style='color: %1;'>").arg(lth.ansi[2].name()) + esc + "</span>\n";
                 else if (line.startsWith('-') && !line.startsWith("---"))

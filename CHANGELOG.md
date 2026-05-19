@@ -12,6 +12,52 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🎨 Task List dialog right-click copy + Review Changes alignment — pull 20 (ANTS-1638 + ANTS-1639 + ANTS-1640, 2026-05-19)
+
+Three small UX wins from a single 2026-05-19 user-feedback bundle —
+all spotted from screenshots of the running app:
+
+- **ANTS-1638 (implement)** — right-click context menu on
+  `ClaudeTaskListDialog`'s row list. Menu has **Copy task text**,
+  **Copy as markdown** (GFM checkbox shape: `- [x] subject — desc`),
+  and **Copy task ID** (only when the row carries an ID — TodoWrite-
+  sourced rows omit it; TaskCreate rows include it via the paired
+  tool_result envelope). Plumbs the structured fields via four
+  UserRole slots on each `QListWidgetItem` so the menu reads from
+  the raw values rather than the 200-char-truncated display text.
+  `ClaudeBgTasksDialog` is a sibling but uses `QTextEdit` — that
+  widget already ships a native right-click "Copy" so no work
+  needed there.
+
+- **ANTS-1639 (fix)** — task tracker's row renderer detects raw
+  upstream tool-input markup (`</subject>`, `</description>`,
+  `</parameter>`, `<parameter name="…">`, `<subject>`,
+  `<description>`) leaked from malformed `TaskCreate` calls and
+  prepends `[malformed]` to the displayed row. Detection is
+  exact-shape only — legitimate angle-bracket prose like
+  `Refactor <repo>/<branch>` does NOT trip the flag. The
+  underlying task data is preserved verbatim so the user can copy
+  via the new context menu and report the upstream encoding bug.
+
+- **ANTS-1640 (fix)** — Review Changes dialog's diffstat region
+  rendered with a ragged left margin: row 1 was at col 0, row 2
+  at col 1, summary at col 0. Root cause: git's `--stat` emits
+  one leading space on every line, but QTextEdit's HTML parser
+  collapsed it inconsistently inside the `<pre>` block (lines
+  immediately following a `</span>` close lost their leading
+  space). Fix: strip leading whitespace from every line in the
+  stat region (up to the first `diff --git ` marker), so the
+  file list sits flush against the left margin. Path-column
+  alignment via git's right-padding survives. Clipboard payload
+  (Copy Diff button) intentionally untouched — it stays
+  git-native so it pastes cleanly into PR descriptions.
+
+Regression coverage: new
+`tests/features/task_list_dialog_context_menu/` (4 GoogleTest
+cases: UserRole stash round-trip, context-menu policy wired,
+malformed-markup flag prefix, false-positive guard on legitimate
+angle-bracket prose). 1117/1117 features tests green.
+
 ### 🔬 Test-suite isolation + flakiness + assertion-routing — pull 19 (ANTS-1590 + ANTS-1591 + ANTS-1600 + ANTS-1603, 2026-05-19)
 
 Lands the fix-pass for the 2026-05-18 `/test-audit` findings:

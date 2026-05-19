@@ -26,6 +26,13 @@ public:
 
 private slots:
     void rebuild();
+    // ANTS-1638 — right-click context menu on a list row. Slot
+    // builds a QMenu with "Copy task text" / "Copy task ID" / "Copy
+    // as markdown" and copies the selected variant into
+    // QGuiApplication::clipboard(). Connected via
+    // customContextMenuRequested on m_list. No-op when the cursor
+    // isn't over a row.
+    void showRowContextMenu(const QPoint &pos);
 
 private:
     ClaudeTaskListTracker *m_tracker;
