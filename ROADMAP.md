@@ -8350,6 +8350,72 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 
+### 📦 Bundle plan for pulls 34+ (logged 2026-05-19)
+
+Forward plan for MCP-themed roadmap items remaining active after
+pull 33. Pull 33 closed ANTS-1308 + ANTS-1309 (spec-aware token
+savers). Bundles below organise the remaining active items by
+**theme + file affinity** so future sessions can grab a coherent
+pair/triple and ship it in one cycle, mirroring the cadence of
+pulls 29-33. Each bundle still expects per-item
+`tests/features/<name>/` spec + regression coverage; the bundle
+gets one CHANGELOG section + one drift cycle + one push.
+
+| Pull | Theme | Items | File affinity | Size |
+|------|-------|-------|---------------|------|
+| **34** | Test/build cache MCP — `.audit_cache/` siblings | ANTS-1300 (`test_results`) · ANTS-1299 (`build_status`) | new `testrescache.{h,cpp}` · new `buildcache.{h,cpp}` · `remotecontrol.cpp` · `mainwindow.cpp` | medium (~500 LOC + fixtures) |
+| **35** | Symbol queries (cheap LSP shape) | ANTS-1303 (`find_definition` + `find_caller`) | new `symbolquery.{h,cpp}` · regex anchors only · `remotecontrol.cpp` | medium (~400 LOC) |
+| **36** | Scrollback error extraction | ANTS-1301 (`recent_errors`) | new `scrollbackerrors.{h,cpp}` · per-language regex bank · `remotecontrol.cpp` | small-medium (~300 LOC) |
+| **37** | Task-start context bundling | ANTS-1306 (`task_priors`) · ANTS-1307 (`project_conventions`) | composer over existing verbs · `remotecontrol.cpp` | small (~250 LOC, pure composer) |
+| **38** | Focused test runner | ANTS-1302 (`focused_test`) | new `focusedtest.{h,cpp}` · `tests/coverage-map.json` schema · `remotecontrol.cpp` | medium (~400 LOC) |
+| **39** | Pattern-shape matcher | ANTS-1305 (`similar_code`) | new `similarcode.{h,cpp}` · indexer + signature hasher | medium-large (~600 LOC) |
+| **40** | Contract enforcement Phase 3b + cwd-field schema drop | ANTS-1415 (Phase 3b spec + impl) · ANTS-1420 (drop deprecated `cwd`) | `claudeintegration.cpp` · `docs/specs/ANTS-1415.md` | small-medium (1420 is one-line; 1415 needs spec) |
+| **41** | Test-infra hardening | ANTS-1434 (KwinPositionTracker flake) · ANTS-1433 (atomic-write rollback test seam) | `tests/features/kwin_position_tracker/` · new `ANTS_TEST_HOOKS` define · new `tests/features/mcp_roadmap_log_atomicity/` | small-medium (each ~150 LOC) |
+| **42** | Defensive observations (doc-only) | ANTS-1439 (cache relocation contract) · ANTS-1447 (test_audit mtime deep-tree gap) | `docs/specs/ANTS-1397.md` INV-15 amendment · `docs/standards/mcp-caches.md` (new) | tiny (docs only) |
+| **43** | Debt-sweep detector expansion | ANTS-1358 (4 new detectors) | `debtsweepengine.cpp` · 4 detector classes + fixtures | medium (~500 LOC) |
+| **44** | Audit pipeline lib split | ANTS-1444 (`ants_audit_lib` engine/runner ↔ dialog GUI) | `CMakeLists.txt` · `src/auditrunner.{h,cpp}` move · all test bundles re-link | medium (refactor, ~200 LOC moved) |
+| **45** | `audit_run` v2 — real per-tool parsers | ANTS-1449 (AuditDialog config-table integration) | `auditrunner.cpp` · `auditengine.cpp` · `auditdialog.cpp` | large (~800 LOC; depends on bundle 44) |
+| **46** | `test_audit_*` v2 — JSON pattern resource | ANTS-1450 (full pattern set + drift-guard) | `testauditengine.cpp` · new `docs/standards/test-audit-grep-patterns.json` | medium (~400 LOC) |
+| **47** | `audit_run` streaming progress | ANTS-1443 (progress_notification events) | `auditrunner.cpp` · `claudeintegration.cpp` notification surface | medium (~300 LOC; new MCP surface) |
+| **48** | `changelog_log` MCP tool | ANTS-1548 (3-mode CHANGELOG writer) | new `changelogfoldin.{h,cpp}` · `roadmap_log` op:flip integration | medium (~500 LOC) |
+| **49** | Orchestration-safe write path | ANTS-1630 (cwd-mismatch escape hatch) | needs design spec first · `remotecontrol.cpp` · `claudeintegration.cpp` | medium-large (security-sensitive, spec-gated) |
+| **50** | Discoverability + skill wiring | ANTS-1581 (skill MCP wiring + tool-description notes) | `~/.claude/skills/*/SKILL.md` · `claudeintegration.cpp` tool descriptions | small (skill wiring is the bigger half) |
+| **51** | Source discovery | ANTS-1636 (`find_sources`) | new `findsources.{h,cpp}` · CLAUDE.md lane parser reuse | medium (~500 LOC) |
+| **52** | Codebase index | ANTS-1637 (per-project structural map) | new `codebaseindex.{h,cpp}` · background timer · `.ants_cache/codebase-index.json` | large (~1000 LOC) |
+| **53** | UX bug — Tasks chip refresh latency | ANTS-1458 (chip + dialog lag past 2 s tick) | `claudetasklist.cpp` · `claudestatuswidgets.cpp` · `claudebgtasks.cpp` | small-medium (instrumentation first, then fix) |
+| **54** | UX bug — Task List dialog vertical spacing | ANTS-1641 (`[]` + parenthesised tokens trigger extra block break) | `claudetasklist.cpp` parser/sanitiser | small (~150 LOC; needs renderer probe) |
+
+**Standalone — pull when adjacent work touches the same file:**
+
+- ANTS-1310 (`validate_commit` MCP gate) — composes with bundle 34
+  if a slot opens; depends on `test_results` cache being live.
+- ANTS-1312 (`Send selection to Claude` shortcut) — keyboard
+  + IPC pair; small, isolated; bundle with any UX pull.
+
+**Marketing / packaging — separate cadence (not weekly Wednesday):**
+
+- ANTS-1313 / ANTS-1314 / ANTS-1315 / ANTS-1316 / ANTS-1317 —
+  registry submission, demo video, Discord showcase, distro
+  packaging push, HN launch post. Driven by release-readiness
+  signal, not paired with code pulls.
+
+**Notes for the picker:**
+
+1. **Cadence drift.** Pulls 34-37 are sized to land 2/week if the
+   user agrees to break the once-Wednesday cadence — most are
+   small-to-medium token savers with clear test seams. Pulls 38+
+   are weekly-Wednesday paced.
+2. **Spec-first gates.** Bundles 40 (ANTS-1415) and 49 (ANTS-1630)
+   need a written spec before code lands; treat the spec-draft as
+   the first iteration of that pull, not a sidecar.
+3. **Lib-boundary dependency.** Bundle 45 (`audit_run` v2 parsers)
+   benefits from bundle 44 (lib split) landing first so the v2 work
+   doesn't drag Qt6::Widgets into MCP test bundles.
+4. **Test-coverage map.** Bundle 38 (`focused_test`) needs a new
+   `tests/coverage-map.json` schema; either the user supplies the
+   first map or the picker writes a heuristic version
+   (`foo.cpp → test_foo*`) and documents the gap.
+
 ### 🔍 Indie-review fold-in (2026-05-19)
 
 **Theme:** 11 lanes (vtparser, terminalgrid, terminalwidget, ptyhandler, audit-pipeline, claudeintegration, claude-statusbar, ipc-trust, lua-sandbox, mcp-review-engines, roadmap-stack) cold-reviewed in one parallel batch. After threat-model calibration (same-UID trust, public repo, sole-author): 0 CRITICAL, 27 HIGH, 39 MEDIUM, ~30 LOW. /audit static analysis added 17 hot-path-regex sites (clazy), 145 range-loop-detach sites, 3 unused vars, 1 Q_PROPERTY-without-notify, plus shellcheck and ruff noise. 18 items fixed inline (see Closed inline / 2026-05-19 below); remainder tiered below.
