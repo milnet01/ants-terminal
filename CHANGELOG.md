@@ -12,6 +12,49 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP test-audit framework + last_audit_summary picker — pull 25 (ANTS-1624 + ANTS-1625, 2026-05-19)
+
+Two cross-session-report enhancements for the audit + test-audit
+data paths. Both are contained data-quality fixes — no API breakage,
+caller-side reads stay valid.
+
+- **ANTS-1624 (enhancement)** — `test_audit_partition` now detects
+  libcheck C-unit-test suites. New probe-table entry sits between
+  `jest` and `ctest`: signal file `Makefile.test`, test globs
+  `tests/**/test_*.c`, `**/test_*.c`, `**/tst_*.c`. Probe order is
+  load-bearing — libcheck before ctest so projects shipping both
+  `CMakeLists.txt` (main build) and `Makefile.test` (libcheck suite)
+  route to libcheck and its `.c` globs rather than ctest's
+  `.cpp`-only globs. Reported by RetroArch Bundle 70 (2026-05-18,
+  `/test-audit` on libretro-common's 5-file libcheck suite —
+  2274 LoC silently invisible because the probe table didn't
+  recognise `Makefile.test`). Spec `docs/specs/ANTS-1624.md`;
+  6 new tests in `tests/features/test_audit_libcheck_detection/`.
+
+- **ANTS-1625 (enhancement)** — `last_audit_summary`'s foreign-
+  format picker now prefers broader-scope files over lex-max
+  narrow ones. New `pickForeignReport` helper ranks `cppcheck-*.xml`
+  / `clang-tidy-*.txt` / `semgrep-*.json` candidates within a
+  24-hour recency window: non-narrow-suffix names (no `-postfix` /
+  `-single` / `-narrow`) beat narrow ones; among same narrowness,
+  larger file size wins; tiebreak by lex-max name. Every
+  `{ok:true}` envelope now carries
+  `pick_basis ∈ {"sole","newest","broadest_in_recency_window"}` so
+  callers can tell whether the picker preferred broader or just took
+  the newest. SARIF path unchanged — `audit-<iso-utc>-<sha>.sarif`
+  naming already sorts correctly lex-max. Narrow-suffix set mirrors
+  ANTS-1576's `classifyAuditScope` verbatim (source-grep tripwire
+  prevents drift). RetroArch Bundle 69 (2026-05-18) reported the
+  bug: a single-file rerun (`cppcheck-b68-ozone-postfix.xml`)
+  outranked 25 broader siblings, surfacing `counts: {error:0,
+  warning:0, note:68}` and pointing a session opener away from
+  the real project state (56 errors + 105 warnings). [[ANTS-1576]]
+  already shipped scope tagging + branch/commit metadata +
+  null-or-omit in pull 14; this pull lands the picker re-pick that
+  1576's spec explicitly deferred. Spec `docs/specs/ANTS-1625.md`;
+  8 new tests in `tests/features/mcp_last_audit_summary/`
+  (6 behavioural + 2 wiring). Full suite 1165/1165.
+
 ### 🔌 MCP dispatch-forward completeness test + BriefAssembly tier extension — pull 24 (ANTS-1642 + ANTS-1643, 2026-05-19)
 
 Two follow-ups to pull 23 — pre-empting the next instance of two

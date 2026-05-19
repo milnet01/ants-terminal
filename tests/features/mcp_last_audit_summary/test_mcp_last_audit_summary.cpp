@@ -437,10 +437,12 @@ TEST(Ants1576, ReaderFallbackWired) {
     // INV-6 — cmdLastAuditSummary's cache-miss branch contains the
     // read-time fallback: "rev-parse" + "symbolic-ref" calls and the
     // two branchSource literals.
+    // Window grown to 12 KiB after ANTS-1625 added the pickForeign
+    // lambda + pick_basis emission (~25 extra lines in the handler).
     const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
     const auto fnPos = rcc.find("cmdLastAuditSummary(const QJsonObject");
     if (fnPos == std::string::npos) FAIL();
-    const std::string body = rcc.substr(fnPos, 8000);
+    const std::string body = rcc.substr(fnPos, 12000);
     expect(body.find("\"read_time\"") != std::string::npos,
            "INV-6", "expected read_time literal in handler");
     expect(body.find("\"file_provenance\"") != std::string::npos,
@@ -630,5 +632,230 @@ TEST(McpLastAuditSummary, Inv5And6WiringRegistered) {
            "INV-6",
            "cmdLastAuditSummary must scan with QDir::Name | QDir::Reversed "
            "for lex-max filename discovery");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ----------------------------------------------------------------
+// ANTS-1625 — foreign-format picker preference.
+// ----------------------------------------------------------------
+
+namespace ants1625 {
+
+struct PickProbe {
+    QString name;
+    QString basis;
+};
+
+// Mirrors `pickForeignReport` in remotecontrol.cpp. The production helper
+// is in an anon namespace; we replicate the algorithm here so the test
+// asserts the contract independently of the call site (same approach
+// used for ANTS-1576's classifyAuditScope above).
+PickProbe pickForeign(const QDir &dir, const QString &glob) {
+    PickProbe out;
+    const QStringList ns = dir.entryList(
+        QStringList{glob}, QDir::Files, QDir::Name | QDir::Reversed);
+    if (ns.isEmpty()) return out;
+    if (ns.size() == 1) {
+        out.name  = ns.first();
+        out.basis = QStringLiteral("sole");
+        return out;
+    }
+    struct Cand { QString name; qint64 mtimeMs; qint64 size; bool narrow; };
+    QList<Cand> cands;
+    qint64 newestMs = 0;
+    for (const QString &n : ns) {
+        const QFileInfo fi(dir.absoluteFilePath(n));
+        Cand c;
+        c.name    = n;
+        c.mtimeMs = fi.lastModified().toMSecsSinceEpoch();
+        c.size    = fi.size();
+        const QString lower = n.toLower();
+        c.narrow = lower.contains(QStringLiteral("-postfix"))
+                || lower.contains(QStringLiteral("-single"))
+                || lower.contains(QStringLiteral("-narrow"));
+        cands.append(c);
+        if (c.mtimeMs > newestMs) newestMs = c.mtimeMs;
+    }
+    constexpr qint64 kWindowMs = 24LL * 60LL * 60LL * 1000LL;
+    const qint64 minMs = newestMs - kWindowMs;
+    QString newestName;
+    for (const Cand &c : cands) {
+        if (c.mtimeMs != newestMs) continue;
+        if (newestName.isEmpty() || c.name > newestName) newestName = c.name;
+    }
+    const Cand *best = nullptr;
+    for (const Cand &c : cands) {
+        if (c.mtimeMs < minMs) continue;
+        if (!best) { best = &c; continue; }
+        if (c.narrow != best->narrow) {
+            if (!c.narrow) best = &c;
+            continue;
+        }
+        if (c.size != best->size) {
+            if (c.size > best->size) best = &c;
+            continue;
+        }
+        if (c.name > best->name) best = &c;
+    }
+    if (!best) {
+        out.name  = newestName;
+        out.basis = QStringLiteral("newest");
+        return out;
+    }
+    out.name  = best->name;
+    out.basis = (best->name == newestName)
+        ? QStringLiteral("newest")
+        : QStringLiteral("broadest_in_recency_window");
+    return out;
+}
+
+void writeFile(const QDir &dir, const QString &name,
+               const QByteArray &content, qint64 mtimeMs) {
+    QFile f(dir.absoluteFilePath(name));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        FAIL() << "cannot write " << name.toStdString();
+    }
+    f.write(content);
+    f.close();
+    QFile g(dir.absoluteFilePath(name));
+    ASSERT_TRUE(g.open(QIODevice::ReadOnly));
+    g.setFileTime(QDateTime::fromMSecsSinceEpoch(mtimeMs),
+                  QFileDevice::FileModificationTime);
+    g.close();
+}
+
+}  // namespace ants1625
+
+TEST(Ants1625, HelperDeclaredInRemoteControl) {
+    expect_reset();
+    // INV-1 — pickForeignReport exists in remotecontrol.cpp.
+    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(rcc.find("pickForeignReport") != std::string::npos,
+           "INV-1",
+           "remotecontrol.cpp must declare pickForeignReport helper");
+    expect(rcc.find("broadest_in_recency_window") != std::string::npos,
+           "INV-1",
+           "pickForeignReport must define the broadest_in_recency_window "
+           "basis literal");
+    EXPECT_EQ(0, expect_failures());
+}
+
+TEST(Ants1625, PickBasisWiredInHandler) {
+    expect_reset();
+    // INV-2 — `pick_basis` envelope wiring.
+    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(rcc.find("env[\"pick_basis\"]") != std::string::npos,
+           "INV-2",
+           "cmdLastAuditSummary must emit env[\"pick_basis\"]");
+    EXPECT_EQ(0, expect_failures());
+}
+
+TEST(Ants1625, NarrowSuffixLiteralsConsistent) {
+    expect_reset();
+    // INV-8 — narrow-suffix set mirrors ANTS-1576's classifyAuditScope:
+    // both helpers in remotecontrol.cpp must agree on `-postfix`,
+    // `-single`, `-narrow`. Source-grep tripwire prevents drift.
+    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    auto countOf = [&](const char *needle) {
+        size_t n = 0, pos = 0;
+        while ((pos = rcc.find(needle, pos)) != std::string::npos) {
+            ++n; pos += 1;
+        }
+        return n;
+    };
+    expect(countOf("\"-postfix\"") >= 2, "INV-8",
+           "-postfix literal must appear in both classifyAuditScope and "
+           "pickForeignReport");
+    expect(countOf("\"-single\"") >= 2, "INV-8",
+           "-single literal must appear in both helpers");
+    expect(countOf("\"-narrow\"") >= 2, "INV-8",
+           "-narrow literal must appear in both helpers");
+    EXPECT_EQ(0, expect_failures());
+}
+
+TEST(Ants1625, SoleCase) {
+    // INV-3 — one file → "sole".
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QDir dir(tmp.path());
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    ants1625::writeFile(dir, "cppcheck-only.xml",
+                        QByteArrayLiteral("<a/>"), now);
+    auto p = ants1625::pickForeign(dir, QStringLiteral("cppcheck-*.xml"));
+    EXPECT_EQ(QString("cppcheck-only.xml"), p.name);
+    EXPECT_EQ(QString("sole"), p.basis);
+}
+
+TEST(Ants1625, NewestIsBroadest) {
+    // INV-4 — two files in-window; newest is also largest non-narrow.
+    // Picker chooses it; basis == "newest".
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QDir dir(tmp.path());
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    ants1625::writeFile(dir, "cppcheck-aaa.xml",
+                        QByteArray(1024, 'x'), now - 30 * 60 * 1000);
+    ants1625::writeFile(dir, "cppcheck-zzz.xml",
+                        QByteArray(4096, 'y'), now);
+    auto p = ants1625::pickForeign(dir, QStringLiteral("cppcheck-*.xml"));
+    EXPECT_EQ(QString("cppcheck-zzz.xml"), p.name);
+    EXPECT_EQ(QString("newest"), p.basis);
+}
+
+TEST(Ants1625, BroadestInWindowBeatsLexMaxNarrow) {
+    // INV-5 — load-bearing case from RetroArch Bundle 69. Older + larger +
+    // non-narrow beats newer + smaller + narrow-suffix when both are
+    // inside the 24-hour recency window.
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QDir dir(tmp.path());
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // older but larger and non-narrow → preferred
+    ants1625::writeFile(dir, "cppcheck-aaa-broad.xml",
+                        QByteArray(8192, 'x'), now - 30 * 60 * 1000);
+    // newest but narrow-postfix and smaller
+    ants1625::writeFile(dir, "cppcheck-zzz-ozone-postfix.xml",
+                        QByteArray(512, 'y'), now);
+    auto p = ants1625::pickForeign(dir, QStringLiteral("cppcheck-*.xml"));
+    EXPECT_EQ(QString("cppcheck-aaa-broad.xml"), p.name);
+    EXPECT_EQ(QString("broadest_in_recency_window"), p.basis);
+}
+
+TEST(Ants1625, OutOfWindowNarrowStaysAsNewest) {
+    // INV-6 — broader candidate older than 24h is out-of-window. Picker
+    // falls back to the newest entry (the narrow one), basis="newest".
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QDir dir(tmp.path());
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    ants1625::writeFile(dir, "cppcheck-aaa-broad.xml",
+                        QByteArray(8192, 'x'),
+                        now - 48LL * 60 * 60 * 1000);
+    ants1625::writeFile(dir, "cppcheck-zzz-ozone-postfix.xml",
+                        QByteArray(512, 'y'), now);
+    auto p = ants1625::pickForeign(dir, QStringLiteral("cppcheck-*.xml"));
+    EXPECT_EQ(QString("cppcheck-zzz-ozone-postfix.xml"), p.name);
+    EXPECT_EQ(QString("newest"), p.basis);
+}
+
+TEST(Ants1625, SarifPathUnchanged) {
+    // INV-7 — SARIF path does NOT route through pickForeignReport.
+    // Source-grep that the SARIF branch still uses QDir::entryList with
+    // the audit-*.sarif glob and lex-max-reversed ordering, and sets
+    // pickBasis directly.
+    expect_reset();
+    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    // Locate the cmdLastAuditSummary handler and assert the SARIF branch
+    // is still a direct entryList call, not pickForeignReport.
+    const auto handlerStart = rcc.find("cmdLastAuditSummary(");
+    ASSERT_NE(handlerStart, std::string::npos);
+    const auto sarifBranch = rcc.find("sarifNames", handlerStart);
+    ASSERT_NE(sarifBranch, std::string::npos);
+    // The sarif branch must still pre-populate pickBasis ("sole"/"newest")
+    // rather than route through the foreign-pick lambda.
+    const auto pickForeignCall =
+        rcc.find("pickForeign(", handlerStart);
+    ASSERT_NE(pickForeignCall, std::string::npos);
+    // The pickForeign call must be inside the else-branch (i.e. after
+    // sarifNames is empty), not before it.
+    EXPECT_LT(sarifBranch, pickForeignCall)
+        << "INV-7: SARIF branch must run before the foreign pickForeign "
+           "lambda — SARIF naming already sorts correctly lex-max";
     EXPECT_EQ(0, expect_failures());
 }

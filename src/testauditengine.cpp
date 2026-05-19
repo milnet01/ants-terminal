@@ -87,6 +87,15 @@ const QVector<FrameworkProbe> &g_kFrameworks() {
           QStringLiteral("jest.config.ts")},
          {QStringLiteral("**/*.spec.js"),  QStringLiteral("**/*.test.js"),
           QStringLiteral("**/*.spec.ts"),  QStringLiteral("**/*.test.ts")}},
+        // ANTS-1624 — libcheck C-unit detection. Probe before ctest so a
+        // project that ships both CMake (main build) and Makefile.test
+        // (libcheck suite) gets routed to libcheck and its .c globs
+        // rather than ctest's .cpp-only globs.
+        {QStringLiteral("libcheck"),
+         {QStringLiteral("Makefile.test")},
+         {QStringLiteral("tests/**/test_*.c"),
+          QStringLiteral("**/test_*.c"),
+          QStringLiteral("**/tst_*.c")}},
         {QStringLiteral("ctest"),
          {QStringLiteral("CMakeLists.txt")},
          {QStringLiteral("tests/**/*.cpp"), QStringLiteral("test_*.cpp")}},

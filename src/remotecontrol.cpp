@@ -4350,6 +4350,103 @@ ScopeClassification classifyAuditScope(
     return c;
 }
 
+// ANTS-1625 — foreign-format picker preference. The lex-max picker that
+// audit-cache SARIF naming relies on is wrong for user-named foreign-
+// scanner outputs (cppcheck-b68-ozone-postfix.xml sorts above
+// cppcheck-broad.xml even though the latter is the actually-broad sweep).
+// Among candidates within a 24-hour window of the newest file, prefer
+// non-narrow-name (no `-postfix` / `-single` / `-narrow` suffix) and
+// larger size. Returns `{basename, basis}` where basis ∈
+// {"sole","newest","broadest_in_recency_window"}.
+struct ForeignPick {
+    QString name;
+    QString basis;
+};
+
+ForeignPick pickForeignReport(const QDir &cacheDir, const QString &glob) {
+    ForeignPick out;
+    const QStringList ns = cacheDir.entryList(
+        QStringList{glob}, QDir::Files, QDir::Name | QDir::Reversed);
+    if (ns.isEmpty()) return out;
+    if (ns.size() == 1) {
+        out.name  = ns.first();
+        out.basis = QStringLiteral("sole");
+        return out;
+    }
+
+    struct Cand {
+        QString name;
+        qint64  mtimeMs = 0;
+        qint64  size    = 0;
+        bool    narrow  = false;
+    };
+    QList<Cand> cands;
+    qint64 newestMs = 0;
+    for (const QString &n : ns) {
+        const QFileInfo fi(cacheDir.absoluteFilePath(n));
+        Cand c;
+        c.name    = n;
+        c.mtimeMs = fi.lastModified().toMSecsSinceEpoch();
+        c.size    = fi.size();
+        const QString lower = n.toLower();
+        // Narrow-suffix set mirrors ANTS-1576's classifyAuditScope
+        // verbatim — keep the two surfaces consistent so a caller
+        // seeing `pick_basis == "broadest_in_recency_window"` and
+        // `scope == "narrow"` reads as the picker preferred broader
+        // already and the chosen file still looks narrow.
+        c.narrow = lower.contains(QStringLiteral("-postfix"))
+                || lower.contains(QStringLiteral("-single"))
+                || lower.contains(QStringLiteral("-narrow"));
+        cands.append(c);
+        if (c.mtimeMs > newestMs) newestMs = c.mtimeMs;
+    }
+
+    constexpr qint64 kRecencyWindowMs = 24LL * 60LL * 60LL * 1000LL;
+    const qint64 minMs = newestMs - kRecencyWindowMs;
+
+    // Locate the lex-max-name newest file (matches the legacy picker
+    // behaviour: when no broader candidate is in-window, we surface
+    // this entry with basis == "newest").
+    QString newestName;
+    for (const Cand &c : cands) {
+        if (c.mtimeMs != newestMs) continue;
+        if (newestName.isEmpty() || c.name > newestName) newestName = c.name;
+    }
+
+    // Among in-window candidates, prefer non-narrow then larger size;
+    // tiebreak lex-max name.
+    const Cand *best = nullptr;
+    for (const Cand &c : cands) {
+        if (c.mtimeMs < minMs) continue;
+        if (!best) { best = &c; continue; }
+        // non-narrow beats narrow
+        if (c.narrow != best->narrow) {
+            if (!c.narrow) best = &c;
+            continue;
+        }
+        // same narrowness: larger size wins
+        if (c.size != best->size) {
+            if (c.size > best->size) best = &c;
+            continue;
+        }
+        // size tie: lex-max name wins (matches legacy ordering)
+        if (c.name > best->name) best = &c;
+    }
+    if (!best) {
+        // No candidate inside the window (only possible if the file
+        // mtimes span > 24h AND only one file is the newest). Fall
+        // back to the legacy newest.
+        out.name  = newestName;
+        out.basis = QStringLiteral("newest");
+        return out;
+    }
+    out.name  = best->name;
+    out.basis = (best->name == newestName)
+        ? QStringLiteral("newest")
+        : QStringLiteral("broadest_in_recency_window");
+    return out;
+}
+
 // ANTS-1540 — post-cap rule_ids filter. Operates on a snapshot of
 // AuditSummary; restricts topFindings[] to entries whose ruleId is in
 // the filter set, then caps to `cap`. Pure function.
@@ -4437,24 +4534,38 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     // regardless of input format is the discoverability fix.
     QString reportPath;
     QString sourceFormat;  // "sarif" | "cppcheck-xml" | "clang-tidy-text" | "semgrep-json"
-    auto pickLatest = [&](const QString &glob, const QString &tag) {
+    // ANTS-1625 — pick_basis records how the picker landed on `reportPath`.
+    //   "sole"                       — one match for the chosen glob
+    //   "newest"                     — multi-match; chosen entry is the newest
+    //   "broadest_in_recency_window" — multi-match; picker preferred a
+    //                                  broader non-narrow-name file within
+    //                                  24 h of the newest entry
+    QString pickBasis;
+    auto pickForeign = [&](const QString &glob, const QString &tag) {
         if (!reportPath.isEmpty()) return;
-        const QStringList ns = cacheDir.entryList(
-            QStringList{glob}, QDir::Files, QDir::Name | QDir::Reversed);
-        if (ns.isEmpty()) return;
-        reportPath   = cacheDir.absoluteFilePath(ns.first());
+        const auto fp = pickForeignReport(cacheDir, glob);
+        if (fp.name.isEmpty()) return;
+        reportPath   = cacheDir.absoluteFilePath(fp.name);
         sourceFormat = tag;
+        pickBasis    = fp.basis;
     };
     if (!sarifNames.isEmpty()) {
         reportPath   = cacheDir.absoluteFilePath(sarifNames.first());
         sourceFormat = QStringLiteral("sarif");
+        // SARIF naming (audit-<iso-utc>-<sha>.sarif) sorts
+        // lex-max == newest, so the existing lex-max behaviour is
+        // already "newest". Tag accordingly so every {ok:true}
+        // envelope carries pick_basis (INV-2).
+        pickBasis = (sarifNames.size() == 1)
+            ? QStringLiteral("sole")
+            : QStringLiteral("newest");
     } else {
-        pickLatest(QStringLiteral("cppcheck-*.xml"),
-                   QStringLiteral("cppcheck-xml"));
-        pickLatest(QStringLiteral("clang-tidy-*.txt"),
-                   QStringLiteral("clang-tidy-text"));
-        pickLatest(QStringLiteral("semgrep-*.json"),
-                   QStringLiteral("semgrep-json"));
+        pickForeign(QStringLiteral("cppcheck-*.xml"),
+                    QStringLiteral("cppcheck-xml"));
+        pickForeign(QStringLiteral("clang-tidy-*.txt"),
+                    QStringLiteral("clang-tidy-text"));
+        pickForeign(QStringLiteral("semgrep-*.json"),
+                    QStringLiteral("semgrep-json"));
     }
     if (reportPath.isEmpty()) {
         return QJsonDocument(lasErr(QStringLiteral("not_audited"),
@@ -4575,6 +4686,9 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
             env["narrow_run_files"] = files;
         }
     }
+    // ANTS-1625 — always emit `pick_basis` so callers can tell whether
+    // the picker preferred a broader file or just took the newest.
+    if (!pickBasis.isEmpty()) env["pick_basis"] = pickBasis;
     return QJsonDocument(env);
 }
 

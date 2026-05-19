@@ -949,6 +949,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_test_audit_trio/test_mcp_test_audit_trio.cpp
                 # ANTS-1451 walkTestFiles build-tree exclusions.
                 tests/features/test_audit_walk_exclusions/test_walk_exclusions.cpp
+                # ANTS-1624 libcheck C-unit framework detection.
+                tests/features/test_audit_libcheck_detection/test_libcheck_detection.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.
